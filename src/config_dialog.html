@@ -1104,35 +1104,33 @@
                     <div class="section">
                         <h3 data-i18n="tab.notifications.section.event-type-configuration.heading">Event Type Configuration</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.notifications.section.event-type-configuration.hint">Per-event notification, suppression, speech, and border behavior. Hover a column header for details.</p>
-                        <div style="overflow-x: auto;">
-                            <table id="notificationTypesTable" class="notification-types-table">
-                                <thead>
-                                    <tr>
-                                        <th rowspan="2" class="category-col"></th>
-                                        <th rowspan="2" class="event-type-col" data-i18n="tab.notifications.table.event-type.heading">Event Type</th>
-                                        <th colspan="2" data-i18n="tab.notifications.table.notification.heading">Notification</th>
-                                        <th colspan="3" data-i18n="tab.notifications.table.suppress.heading">Suppress</th>
-                                        <th rowspan="2" title="Speak this event aloud (requires Enable Text-to-Speech above)" data-i18n-title="tab.notifications.table.speech.title" data-i18n="tab.notifications.table.speech.heading">Speech</th>
-                                        <th colspan="1" data-i18n="tab.notifications.table.text.heading">Text</th>
-                                        <th colspan="3" data-i18n="tab.notifications.table.border.heading">Border</th>
-                                    </tr>
-                                    <tr>
-                                        <th title="Enable notifications for this event" data-i18n-title="tab.notifications.table.enabled.title" data-i18n="tab.notifications.table.enabled.heading">Enabled</th>
-                                        <th title="Duration in seconds" data-i18n-title="tab.notifications.table.duration.title" data-i18n="tab.notifications.table.duration.heading">Duration (s)</th>
-                                        <th title="Suppress notification when character is focused" data-i18n-title="tab.notifications.table.suppress-focused.title" data-i18n="tab.notifications.table.suppress-focused.heading">Focused</th>
-                                        <th title="Suppress notification when character window is clicked" data-i18n-title="tab.notifications.table.suppress-clicked.title" data-i18n="tab.notifications.table.suppress-clicked.heading">Clicked</th>
-                                        <th title="Ignore repeat notifications of this type within this many seconds of the last one shown" data-i18n-title="tab.notifications.table.throttle.title" data-i18n="tab.notifications.table.throttle.heading">Throttle (s)</th>
-                                        <th title="Override notification text color while this notification is active (unchecked = use default text color)" data-i18n-title="tab.notifications.table.text-color.title" data-i18n="tab.notifications.table.text-color.heading">Color</th>
-                                        <th title="Draw a border around the thumbnail while this notification is active" data-i18n-title="tab.notifications.table.border-show.title" data-i18n="tab.notifications.table.border-show.heading">Show</th>
-                                        <th title="Blink the border on/off 4 times when the notification starts, then hold it on (requires Show Border)" data-i18n-title="tab.notifications.table.border-flash.title" data-i18n="tab.notifications.table.border-flash.heading">Flash</th>
-                                        <th title="Override border color while this notification is active (unchecked = use Alert state color)" data-i18n-title="tab.notifications.table.border-color.title" data-i18n="tab.notifications.table.border-color.heading">Color</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="notificationTypesList">
-                                    <!-- Notification type configs will be dynamically populated here -->
-                                </tbody>
-                            </table>
-                        </div>
+                        <table id="notificationTypesTable" class="notification-types-table">
+                            <thead>
+                                <tr>
+                                    <th rowspan="2" class="category-col"></th>
+                                    <th rowspan="2" class="event-type-col" data-i18n="tab.notifications.table.event-type.heading">Event Type</th>
+                                    <th colspan="2" data-i18n="tab.notifications.table.notification.heading">Notification</th>
+                                    <th colspan="3" data-i18n="tab.notifications.table.suppress.heading">Suppress</th>
+                                    <th rowspan="2" title="Speak this event aloud (requires Enable Text-to-Speech above)" data-i18n-title="tab.notifications.table.speech.title" data-i18n="tab.notifications.table.speech.heading">Speech</th>
+                                    <th colspan="1" data-i18n="tab.notifications.table.text.heading">Text</th>
+                                    <th colspan="3" data-i18n="tab.notifications.table.border.heading">Border</th>
+                                </tr>
+                                <tr>
+                                    <th title="Enable notifications for this event" data-i18n-title="tab.notifications.table.enabled.title" data-i18n="tab.notifications.table.enabled.heading">Enabled</th>
+                                    <th title="Duration in seconds" data-i18n-title="tab.notifications.table.duration.title" data-i18n="tab.notifications.table.duration.heading">Duration (s)</th>
+                                    <th title="Suppress notification when character is focused" data-i18n-title="tab.notifications.table.suppress-focused.title" data-i18n="tab.notifications.table.suppress-focused.heading">Focused</th>
+                                    <th title="Suppress notification when character window is clicked" data-i18n-title="tab.notifications.table.suppress-clicked.title" data-i18n="tab.notifications.table.suppress-clicked.heading">Clicked</th>
+                                    <th title="Ignore repeat notifications of this type within this many seconds of the last one shown" data-i18n-title="tab.notifications.table.throttle.title" data-i18n="tab.notifications.table.throttle.heading">Throttle (s)</th>
+                                    <th title="Override notification text color while this notification is active (unchecked = use default text color)" data-i18n-title="tab.notifications.table.text-color.title" data-i18n="tab.notifications.table.text-color.heading">Color</th>
+                                    <th title="Draw a border around the thumbnail while this notification is active" data-i18n-title="tab.notifications.table.border-show.title" data-i18n="tab.notifications.table.border-show.heading">Show</th>
+                                    <th title="Blink the border on/off 4 times when the notification starts, then hold it on (requires Show Border)" data-i18n-title="tab.notifications.table.border-flash.title" data-i18n="tab.notifications.table.border-flash.heading">Flash</th>
+                                    <th title="Override border color while this notification is active (unchecked = use Alert state color)" data-i18n-title="tab.notifications.table.border-color.title" data-i18n="tab.notifications.table.border-color.heading">Color</th>
+                                </tr>
+                            </thead>
+                            <tbody id="notificationTypesList">
+                                <!-- Notification type configs will be dynamically populated here -->
+                            </tbody>
+                        </table>
                         <div style="display: flex; gap: 8px; margin-top: 8px;">
                             <button type="button" class="button-danger" onclick="resetNotificationTextColors()" style="width: 100%;" data-i18n="button.reset-notification-text-colors.label">Reset All Text Colors</button>
                             <button type="button" class="button-danger" onclick="resetNotificationBorderColors()" style="width: 100%;" data-i18n="button.reset-notification-border-colors.label">Reset All Border Colors</button>

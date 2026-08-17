@@ -329,7 +329,8 @@ p {
 /* Notification types table */
 .notification-types-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     border: 1px solid #888888;
     background: #1a1a1a;
     font-size: 13px;
