@@ -1,0 +1,1754 @@
+* {
+    -webkit-user-drag: none;
+    box-sizing: border-box;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+:root {
+    --vh: 1vh;
+    /* Danger/error red palette - named so the relationship between shades (urgent
+       error vs. hover accent vs. confirm-delete fill) is intentional, not drift */
+    --color-danger-urgent: #ff0000;   /* active errors, hotkey conflicts */
+    --color-danger: #ff4444;          /* hover accent on destructive buttons */
+    --color-danger-fill: #ff6666;     /* confirm-delete button fill */
+    --color-danger-fill-hover: #ff8888; /* confirm-delete hover/border */
+    --color-success: #44ff44;         /* success status, active hotkey-edit state */
+    --color-success-rgb: 68, 255, 68; /* for rgba() glow/tint backgrounds */
+    --color-warning: #ffaa00;         /* pending-changes indicator */
+    --color-warning-rgb: 255, 170, 0; /* for rgba() tint backgrounds */
+}
+
+html.pre-init {
+    visibility: hidden;
+}
+
+/* Allow text selection in input fields */
+input, textarea, select {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
+body {
+    background: #000000;
+    color: #ffffff;
+    height: 100vh;
+    overflow: hidden;
+    margin: 0;
+    font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.4;
+    text-shadow: 0 0 2px rgba(255, 255, 255, 0.65);
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.15) 0px,
+        rgba(0, 0, 0, 0.15) 1px,
+        transparent 1px,
+        transparent 2px
+    );
+    pointer-events: none;
+    z-index: 1000;
+}
+
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(
+        ellipse at center,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(0, 0, 0, 0.3) 100%
+    );
+    pointer-events: none;
+    z-index: 999;
+}
+
+/* Frameless window */
+#window-container {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #000000;
+    box-shadow: inset 0 0 100px rgba(255, 255, 255, 0.05);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    #window-container {
+        animation: flicker 3s infinite;
+    }
+}
+
+/* Custom titlebar */
+#titlebar {
+    height: 28px;
+    background: #1a1a1a;
+    display: none; /* Hidden in browser mode - browser provides its own titlebar */
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px;
+    border-bottom: 1px solid #ffffff;
+    -webkit-app-region: drag;
+    flex-shrink: 0;
+}
+
+#title {
+    font-size: 13px;
+    font-weight: 400;
+    color: #ffffff;
+    letter-spacing: 0.5px;
+    font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+}
+
+#title::before {
+    content: 'eve@config:~$ ';
+    color: #dddddd;
+}
+
+#window-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    -webkit-app-region: no-drag;
+}
+
+.window-btn {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #ffffff;
+    background: #000000;
+    cursor: pointer;
+    transition: all 0.2s;
+    padding: 0;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 11px;
+    color: #ffffff;
+    position: relative;
+    line-height: 16px;
+    text-align: center;
+}
+
+.window-btn:hover { 
+    background: #ffffff;
+    color: #000000;
+}
+.btn-close::after { 
+    content: 'X'; 
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+.btn-minimize::after { 
+    content: '_'; 
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+/* Main layout */
+#main-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Sidebar - Terminal menu style */
+#tabs-sidebar {
+    width: 164px;
+    background: #0f0f0f;
+    border-right: 1px solid #ffffff;
+    padding: 6px 0;
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+
+.tab-item {
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: #ffffff;
+    font-size: 13px;
+    position: relative;
+    font-weight: 400;
+    letter-spacing: 0.3px;
+    text-transform: capitalize;
+}
+
+.tab-item::before {
+    content: '$ ';
+    color: #ffffff;
+    margin-right: 4px;
+    text-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+}
+
+.tab-item:hover {
+    background: #252525;
+    color: #ffffff;
+}
+
+.tab-item.active {
+    background: #252525;
+    color: #ffffff;
+    font-weight: 700;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+}
+
+.tab-item.active::before {
+    content: '> ';
+    animation: blink 1.5s infinite;
+}
+
+
+
+@keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+
+@keyframes flicker {
+    0% { opacity: 0.98; }
+    5% { opacity: 1; }
+    10% { opacity: 0.98; }
+    15% { opacity: 1; }
+    20% { opacity: 0.98; }
+    25% { opacity: 1; }
+    100% { opacity: 1; }
+}
+
+/* Content panel */
+#content-panel {
+    flex: 1;
+    padding: 8px;
+    overflow-y: auto;
+    background: #000000;
+    display: flex;
+    flex-direction: column;
+}
+
+.panel-content {
+    display: none;
+}
+
+.panel-content.active {
+    display: block;
+    animation: fadeIn 0.2s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+h3 {
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 700;
+    margin-top: 12px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    border-bottom: 1px solid #ffffff;
+    padding-bottom: 3px;
+    padding-left: 14px;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+    position: relative;
+}
+
+h3::before {
+    content: '# ';
+    color: #dddddd;
+    position: absolute;
+    left: 0;
+}
+
+h3:first-child {
+    margin-top: 0;
+}
+
+h4 {
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 16px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid #666666;
+    padding-bottom: 2px;
+}
+
+h4:first-child {
+    margin-top: 0;
+}
+
+/* Column headers sit at the top of a fresh grid column, not mid-flow,
+   so they get a smaller top margin than a full-width subsection break */
+.column > h4:first-child {
+    margin-top: 8px;
+}
+
+/* ASCII art and pre-formatted text */
+pre {
+    font-family: monospace;
+    line-height: 1.1;
+    margin: 0 0 16px 0;
+    overflow-x: auto;
+    text-align: center;
+    font-size: 12px;
+}
+
+#ascii-logo {
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Paragraph spacing */
+p {
+    margin: 6px 0;
+    line-height: 1.4;
+}
+
+/* Notification types table */
+.notification-types-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid #888888;
+    background: #1a1a1a;
+    font-size: 13px;
+    margin-top: 8px;
+}
+
+.notification-types-table th {
+    background: #0f0f0f;
+    border: 1px solid #888888;
+    padding: 6px 8px;
+    text-align: center;
+    color: #ffffff;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    line-height: 1.2;
+    white-space: nowrap;
+    position: sticky;
+    z-index: 10;
+    cursor: help;
+}
+
+.notification-types-table thead tr:first-child th {
+    top: 0;
+    z-index: 11;
+}
+
+.notification-types-table thead tr:last-child th {
+    top: 28px;
+    font-weight: 500;
+    color: #dddddd;
+}
+
+.notification-types-table th:hover {
+    background: #1a1a1a;
+}
+
+.notification-types-table th.event-type-col {
+    min-width: 180px;
+    text-align: left;
+}
+
+.notification-types-table th.category-col {
+    min-width: 28px;
+}
+
+.notification-types-table td {
+    border: 1px solid #444444;
+    padding: 6px 4px;
+    vertical-align: middle;
+    text-align: center;
+}
+
+.notification-types-table td.event-name-cell {
+    text-align: left;
+    padding: 6px 8px;
+}
+
+.notification-types-table tbody tr {
+    transition: background 0.15s;
+}
+
+.notification-types-table tbody tr:hover {
+    background: #252525;
+}
+
+.notification-types-table tbody tr:nth-child(even) {
+    background: #171717;
+}
+
+.notification-types-table tbody tr:nth-child(even):hover {
+    background: #252525;
+}
+
+.notification-types-table .event-name {
+    font-weight: 500;
+    color: #ffffff;
+    line-height: 1.3;
+}
+
+.notification-types-table .event-description {
+    font-size: 12px;
+    color: #999999;
+    margin-top: 2px;
+    line-height: 1.2;
+}
+
+.notification-types-table input[type="number"] {
+    width: 56px;
+    height: 24px;
+    padding: 2px 6px;
+    margin: 0;
+    font-size: 12px;
+}
+
+.notification-types-table input[type="number"]::placeholder {
+    color: #777777;
+    font-style: italic;
+}
+
+.notification-types-table label {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 24px;
+    width: 100%;
+}
+
+.notification-types-table input[type="checkbox"] + .label-body {
+    padding-left: 0;
+    width: 28px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.notification-types-table input[type="checkbox"] + .label-body::before {
+    position: static;
+    transform: none;
+    left: auto;
+    top: auto;
+}
+
+/* Disabled state for notification table controls */
+.notification-types-table input:disabled,
+.notification-types-table input[type="checkbox"]:disabled + .label-body::before {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.notification-types-table input[type="checkbox"]:disabled + .label-body {
+    cursor: not-allowed;
+}
+
+.notification-types-table tr.category-separator td {
+    border-top: 1px solid #888888;
+}
+
+.notification-types-table td.category-cell {
+    background: #0f0f0f;
+    color: #ffffff;
+    text-align: center;
+    padding: 8px 4px;
+    border-color: #888888;
+    border-bottom: 1px solid #888888;
+}
+
+.notification-types-table td.category-cell .category-cell-label {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    display: inline-block;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+/* Terminal-style form elements */
+input[type="text"],
+input[type="number"],
+input[type="range"],
+select {
+    background-color: #1a1a1a;
+    border: 1px solid #888888;
+    color: #ffffff;
+    padding: 4px 8px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 13px;
+    width: 100%;
+    margin-bottom: 6px;
+    height: 28px;
+    box-sizing: border-box;
+}
+
+input.recording {
+    background-color: #2a1a1a;
+    border-color: #ffffff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+/* Momentary highlight after a number input is clamped to its min/max on blur -
+   warning-orange (not the danger-red used for .hotkey-conflict) since this is an
+   auto-correction, not an error. Class is removed on a timer in JS; the transition
+   here is what makes that removal read as a fade instead of a snap. */
+input.field-clamped {
+    border-color: var(--color-warning) !important;
+    background-color: rgba(var(--color-warning-rgb), 0.12);
+    box-shadow: 0 0 8px rgba(var(--color-warning-rgb), 0.5);
+    transition: border-color 1s ease-out, background-color 1s ease-out, box-shadow 1s ease-out;
+}
+
+input.hotkey-conflict {
+    border-color: var(--color-danger-urgent) !important;
+    background-color: rgba(255, 0, 0, 0.1);
+}
+
+input:focus,
+select:focus {
+    outline: none;
+    border-color: #ffffff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.4), inset 0 0 5px rgba(255, 255, 255, 0.1);
+    text-shadow: 0 0 2px rgba(255, 255, 255, 0.3);
+}
+
+label {
+    color: #dddddd;
+    font-weight: 500;
+    font-size: 13px;
+    display: block;
+    margin-bottom: 3px;
+    margin-top: 6px;
+    padding-left: 24px;
+    position: relative;
+}
+
+label::before {
+    content: '» ';
+    color: #ffffff;
+    position: absolute;
+    left: 7px;
+}
+
+/* Remove prefix and padding for checkbox labels */
+label:has(input[type="checkbox"])::before {
+    content: none;
+}
+
+/* Remove padding for checkbox labels since they handle their own spacing */
+label:has(input[type="checkbox"]) {
+    padding-left: 0;
+}
+
+/* Checkbox styling - terminal style */
+input[type="checkbox"] {
+    opacity: 0;
+    position: absolute;
+    width: 0;
+    height: 0;
+}
+
+input[type="checkbox"] + .label-body {
+    position: relative;
+    padding-left: 24px;
+    cursor: pointer;
+    display: inline-block;
+    color: #dddddd;
+    font-weight: 500;
+}
+
+input[type="checkbox"] + .label-body::before {
+    content: '';
+    display: inline-block;
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+    text-align: center;
+    border: 1px solid #999999;
+    box-sizing: border-box;
+    color: #ffffff;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+input[type="checkbox"]:checked + .label-body::before {
+    content: '✕';
+    border-color: #ffffff;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+}
+
+input[type="checkbox"]:focus + .label-body::before {
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+}
+
+label:hover input[type="checkbox"] + .label-body::before {
+    border-color: #ffffff;
+}
+
+.hint {
+    color: #bbbbbb;
+    font-size: 12px;
+    font-style: italic;
+    text-shadow: 0 0 2px rgba(170, 170, 170, 0.5);
+    margin: 2px 0;
+}
+
+.hint::before {
+    content: none;
+}
+
+/* Status message */
+.status-message {
+    padding: 6px 10px;
+    margin: 0;
+    display: none;
+    font-size: 13px;
+    border: 1px solid;
+    font-weight: 500;
+    height: 28px;
+    box-sizing: border-box;
+    align-items: center;
+    line-height: 1.2;
+}
+
+.status-message.success {
+    color: var(--color-success);
+    border-color: var(--color-success);
+    background: rgba(var(--color-success-rgb), 0.1);
+}
+
+.status-message.error {
+    color: var(--color-danger-urgent);
+    border-color: var(--color-danger-urgent);
+    background: rgba(255, 0, 0, 0.1);
+}
+
+.status-message.info {
+    color: #dddddd;
+    border-color: #cccccc;
+    background: rgba(204, 204, 204, 0.1);
+}
+
+.status-message::before {
+    content: '>>> ';
+    font-weight: 700;
+}
+
+/* Button overrides */
+button {
+    background-color: #1a1a1a;
+    border: 1px solid #888888;
+    color: #ffffff;
+    padding: 6px 12px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 500;
+    text-transform: uppercase;
+    height: 28px;
+    line-height: 1.4;
+}
+
+button:hover {
+    background-color: #ffffff;
+    color: #000000;
+    border-color: #ffffff;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+    text-shadow: none;
+}
+
+button:active {
+    transform: scale(0.98);
+}
+
+.button-outline {
+    background-color: transparent;
+    color: #999999;
+}
+
+.button-outline:hover {
+    background-color: #1a1a1a;
+    color: #ffffff;
+}
+
+/* Destructive actions (delete/reset): reuse the same red used for
+   hotkey-clear and confirm-delete instead of the neutral hover above */
+.button-danger:hover {
+    background-color: #1a1a1a;
+    color: var(--color-danger);
+    border-color: var(--color-danger);
+    box-shadow: 0 0 10px rgba(255, 68, 68, 0.4);
+}
+
+/* Fixed footer */
+/* Profile Header */
+#profile-header {
+    height: 44px;
+    background: #0f0f0f;
+    border-bottom: 1px solid #ffffff;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+#profile-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#profile-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.main-app-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+    color: #999999;
+    transition: color 0.3s;
+}
+
+.main-app-status .indicator-dot {
+    animation: none;
+}
+
+.main-app-status.status-online {
+    color: var(--color-success);
+}
+
+.main-app-status.status-online .indicator-dot {
+    animation: pulse 2s ease-in-out infinite, dotGlow 2s ease-in-out infinite;
+}
+
+@keyframes dotGlow {
+    0%, 100% {
+        text-shadow: 0 0 3px rgba(var(--color-success-rgb), 0.4);
+    }
+    50% {
+        text-shadow: 0 0 10px rgba(var(--color-success-rgb), 0.9);
+    }
+}
+
+#footer {
+    height: 44px;
+    background: #1a1a1a;
+    border-top: 1px solid #ffffff;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+#footer-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+#search-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.search-input-wrapper {
+    position: relative;
+    width: 180px;
+}
+
+input.search-filter-input {
+    background: #1a1a1a;
+    color: #ffffff;
+    border: 1px solid #888888;
+    padding: 6px 32px 6px 8px;
+    margin: 0;
+    font-size: 13px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    height: 28px;
+    width: 100%;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    line-height: normal;
+    box-sizing: border-box;
+}
+
+.search-filter-input:focus {
+    outline: none;
+    border-color: #ffffff;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+}
+
+.search-filter-input::placeholder {
+    color: #777777;
+}
+
+.search-count {
+    font-size: 13px;
+    color: #999999;
+    min-width: 60px;
+    margin: 0;
+}
+
+.button-clear {
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    background: transparent;
+    border: none;
+    color: #999999;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    font-size: 15px;
+    font-family: Arial, sans-serif;
+    transition: all 0.2s;
+    line-height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.search-filter-input:not(:placeholder-shown) ~ .button-clear {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.button-clear:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+}
+
+.button-clear:active {
+    transform: scale(0.9);
+}
+
+.hotkey-clear-btn {
+    width: 28px;
+    flex: none;
+    padding: 0;
+    font-size: 17px;
+    line-height: 1;
+    color: #999999;
+}
+
+.hotkey-clear-btn:hover {
+    color: var(--color-danger);
+    border-color: var(--color-danger);
+    background-color: #1a1a1a;
+    box-shadow: 0 0 10px rgba(255, 68, 68, 0.4);
+}
+
+/* Manual key-name entry toggle: advanced-mode only, sits next to Record/Clear */
+.hotkey-edit-btn {
+    width: 28px;
+    flex: none;
+    padding: 0;
+    font-size: 15px;
+    line-height: 1;
+    color: #999999;
+    display: none;
+}
+
+body.advanced-mode .hotkey-edit-btn {
+    display: inline-block;
+}
+
+.hotkey-edit-btn:hover {
+    color: var(--color-success);
+    border-color: var(--color-success);
+    background-color: #1a1a1a;
+    box-shadow: 0 0 10px rgba(var(--color-success-rgb), 0.4);
+}
+
+.hotkey-edit-btn.active {
+    color: #000000;
+    background-color: var(--color-success);
+    border-color: var(--color-success);
+}
+
+input.manual-editing {
+    background-color: #1a2a1a;
+    border-color: var(--color-success);
+    box-shadow: 0 0 10px rgba(var(--color-success-rgb), 0.4);
+}
+
+#footer-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.changes-pending {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--color-warning);
+    padding: 6px 8px;
+    border: 1px solid var(--color-warning);
+    border-radius: 2px;
+    background: rgba(var(--color-warning-rgb), 0.1);
+    height: 28px;
+    box-sizing: border-box;
+    animation: slideInFade 0.3s ease-in-out;
+}
+
+.indicator-dot {
+    animation: pulse 2s ease-in-out infinite;
+    font-size: 11px;
+    line-height: 1;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.2);
+    }
+}
+
+@keyframes slideInFade {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+#profile-select {
+    background-color: #1a1a1a;
+    color: #ffffff;
+    border: 1px solid #888888;
+    padding: 4px 8px;
+    font-size: 13px;
+    min-width: 130px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    height: 28px;
+    line-height: normal;
+    margin: 0;
+    vertical-align: middle;
+    box-sizing: border-box;
+}
+
+#profile-select:focus {
+    border-color: #ffffff;
+    outline: none;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #000000;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #888888;
+    border: 1px solid #ffffff;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #ffffff;
+}
+
+/* Section containers */
+.section {
+    background-color: #0f0f0f;
+    border: 1px solid #888888;
+    padding: 8px;
+    margin-bottom: 8px;
+}
+
+/* Advanced-only sections: hidden unless Advanced Mode is enabled */
+.advanced-section {
+    display: none;
+}
+
+body.advanced-mode .advanced-section {
+    display: block;
+}
+
+/* Advanced-only tabs (e.g. General): hide the sidebar entry and its panel entirely */
+.advanced-tab {
+    display: none;
+}
+
+body.advanced-mode .advanced-tab {
+    display: block;
+}
+
+body:not(.advanced-mode) .panel-content.advanced-tab-panel {
+    display: none !important;
+}
+
+.section h3 {
+    margin-top: 0;
+}
+
+.section:last-child {
+    margin-bottom: 0;
+}
+
+/* Grid for two-column layouts */
+.row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.column {
+    min-width: 0;
+}
+
+/* Grid for three-column layouts */
+.text-settings {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+}
+
+/* Grid for two-column key binding layouts */
+.key-bindings {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+}
+
+.field {
+    min-width: 0;
+}
+
+/* Color input styling */
+input[type="color"] {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    height: 28px;
+    width: 50px;
+    padding: 3px;
+    cursor: pointer;
+    border: 1px solid #888888;
+    background-color: #1a1a1a;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type="color"]:hover,
+input[type="color"]:focus {
+    outline: none;
+    border-color: #ffffff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.4), inset 0 0 5px rgba(255, 255, 255, 0.1);
+}
+
+input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+input[type="color"]::-webkit-color-swatch {
+    border: none;
+}
+
+input[type="color"]::-moz-color-swatch {
+    border: none;
+}
+
+/* Wraps optional/override swatches (see data-optional-color) so the "not set"
+   indicator below can be layered on top without fighting the browser-drawn
+   swatch fill, which can't take CSS content of its own. */
+.swatch-wrap {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 28px;
+}
+
+.swatch-wrap input[type="color"] {
+    width: 100%;
+    height: 100%;
+}
+
+/* Diagonal slash over a cleared swatch - otherwise "unset" and "explicitly
+   black" render identically. Reflects the input's own data-cleared attribute
+   (kept in sync by initCustomColorPicker), not a separate piece of state. */
+.swatch-wrap:has(input[data-cleared="true"])::after {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    pointer-events: none;
+    opacity: 0.35;
+    background: linear-gradient(
+        to top right,
+        transparent calc(50% - 1px),
+        var(--color-danger) calc(50% - 1px),
+        var(--color-danger) calc(50% + 1px),
+        transparent calc(50% + 1px)
+    );
+}
+
+/* Custom color picker popup (replaces the native OS color dialog, which
+   cannot be themed) */
+#custom-color-picker {
+    position: fixed;
+    z-index: 10000;
+    display: none;
+    background: #0d0d0d;
+    border: 1px solid #888888;
+    box-shadow: 0 0 16px rgba(255, 255, 255, 0.25), 0 4px 20px rgba(0, 0, 0, 0.6);
+    padding: 12px;
+    width: 200px;
+    box-sizing: border-box;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+}
+
+#custom-color-picker.open {
+    display: block;
+}
+
+.cp-sv-area {
+    position: relative;
+    width: 100%;
+    height: 130px;
+    cursor: crosshair;
+    border: 1px solid #444444;
+}
+
+.cp-sv-white {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right, #ffffff, rgba(255, 255, 255, 0));
+    pointer-events: none;
+}
+
+.cp-sv-black {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, #000000, rgba(0, 0, 0, 0));
+    pointer-events: none;
+}
+
+.cp-sv-thumb {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 0 1px #000000;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.cp-hue-row {
+    margin-top: 10px;
+}
+
+.cp-hue-slider {
+    position: relative;
+    width: 100%;
+    height: 10px;
+    cursor: pointer;
+    border: 1px solid #444444;
+    background: linear-gradient(to right,
+        #ff0000 0%, #ffff00 17%, #00ff00 33%,
+        #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%);
+}
+
+.cp-hue-thumb {
+    position: absolute;
+    top: 50%;
+    width: 10px;
+    height: 16px;
+    background: #ffffff;
+    border: 1px solid #888888;
+    box-sizing: border-box;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.cp-hex-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.cp-hex-prefix {
+    color: #999999;
+    font-size: 13px;
+}
+
+.cp-hex-input {
+    flex: 1;
+    background-color: #1a1a1a;
+    border: 1px solid #888888;
+    color: #ffffff;
+    padding: 4px 8px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 13px;
+    height: 26px;
+    box-sizing: border-box;
+    text-transform: uppercase;
+}
+
+.cp-hex-input:focus {
+    outline: none;
+    border-color: #ffffff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.4), inset 0 0 5px rgba(255, 255, 255, 0.1);
+}
+
+/* Shown only when the active swatch opts in via data-optional-color (reset to
+   null/inherited) or data-default-color (reset to the app's factory color). */
+.cp-clear-btn {
+    display: none;
+    width: 100%;
+    margin-top: 10px;
+    margin-bottom: 0;
+    font-size: 13px;
+    color: #999999;
+}
+
+.cp-clear-btn:hover {
+    color: var(--color-danger);
+    border-color: var(--color-danger);
+    background-color: #1a1a1a;
+    box-shadow: 0 0 10px rgba(255, 68, 68, 0.4);
+}
+
+/* Range slider styling */
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: #1a1a1a;
+    outline: none;
+    height: 6px;
+    border-radius: 0;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: #ffffff;
+    cursor: pointer;
+    border: 1px solid #888888;
+}
+
+input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: #ffffff;
+    cursor: pointer;
+    border: 1px solid #888888;
+}
+
+/* Character accordion styles */
+.accordion {
+    border: 1px solid #444;
+    margin-bottom: 6px;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.accordion-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    background: #1a1a1a;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.accordion-header:hover {
+    background: #252525;
+}
+
+.accordion-header button {
+    min-width: 80px;
+}
+
+.accordion-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.character-portrait {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border: 1px solid #999999;
+    background: #000000;
+    flex-shrink: 0;
+}
+
+.accordion-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.accordion-hotkey-badge {
+    font-size: 12px;
+    color: #999999;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+.accordion-count-badge {
+    font-size: 12px;
+    color: #999999;
+    white-space: nowrap;
+}
+
+.accordion-toggle {
+    font-family: monospace;
+    font-size: 17px;
+    color: #ffffff;
+    user-select: none;
+}
+
+.accordion-name {
+    font-weight: bold;
+}
+
+.accordion-content {
+    padding: 8px;
+    display: none;
+}
+
+.accordion.expanded .accordion-content {
+    display: block;
+}
+
+.accordion.expanded .accordion-toggle::before {
+    content: '↓';
+}
+
+.accordion:not(.expanded) .accordion-toggle::before {
+    content: '→';
+}
+
+/* Drag-to-reorder handle */
+.character-drag-handle {
+    cursor: grab;
+    color: #999999;
+    font-size: 15px;
+    padding: 0 2px;
+    -webkit-user-drag: element;
+    user-select: none;
+}
+
+.character-drag-handle:hover {
+    color: #ffffff;
+}
+
+.character-drag-handle:active {
+    cursor: grabbing;
+}
+
+.accordion.dragging {
+    opacity: 0.4;
+}
+
+.accordion.drag-over-top {
+    border-top: 2px solid #ffffff;
+}
+
+.accordion.drag-over-bottom {
+    border-bottom: 2px solid #ffffff;
+}
+
+/* Character panel: roster + single-panel detail, instead of an accordion list.
+   Stretched to fill the window instead of growing with #content-panel, so the
+   roster stays fully visible and scrolls independently of whichever detail
+   form is open. flex + min-height:0 all the way down, not height:100% - a
+   flex item's stretched size doesn't count as an "explicit" height, so
+   percentage heights on its descendants won't resolve against it. */
+.panel-content[data-panel="characters"].active {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.panel-content[data-panel="characters"] .section {
+    flex: 1;
+    min-height: 0;
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* #charactersList (the plain div populateCharacters() renders into, see
+   config_dialog.html) sits between .section and .character-master-detail -
+   without flex sizing here too, .character-master-detail's flex:1 has
+   nothing to grow into and just falls back to its content height. */
+#charactersList {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.character-master-detail {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    min-height: 0;
+}
+
+.character-roster {
+    width: 200px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    border: 1px solid #444444;
+    border-radius: 4px;
+}
+
+.roster-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid #2a2a2a;
+    cursor: pointer;
+    color: #aaaaaa;
+}
+
+.roster-row:last-child {
+    border-bottom: none;
+}
+
+.roster-row:hover {
+    background: #1a1a1a;
+    color: #ffffff;
+}
+
+.roster-row.selected {
+    background: #1a1a1a;
+    color: #ffffff;
+    box-shadow: inset 3px 0 0 #ffffff;
+}
+
+.roster-row.selected .roster-name {
+    font-weight: bold;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
+}
+
+.roster-row .character-portrait {
+    width: 24px;
+    height: 24px;
+}
+
+.roster-name {
+    flex: 1;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.roster-hotkey-badge {
+    font-size: 11px;
+    color: #999999;
+    white-space: nowrap;
+}
+
+.roster-row.dragging {
+    opacity: 0.4;
+}
+
+.roster-row.drag-over-top {
+    border-top: 2px solid #ffffff;
+}
+
+.roster-row.drag-over-bottom {
+    border-bottom: 2px solid #ffffff;
+}
+
+.character-detail-stack {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    border: 1px solid #444444;
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.char-detail-panel {
+    display: none;
+}
+
+.char-detail-panel.active {
+    display: block;
+    animation: fadeIn 0.15s;
+}
+
+.char-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #888888;
+}
+
+.char-detail-name {
+    flex: 1;
+    font-weight: bold;
+    font-size: 15px;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+}
+
+/* Hotkey group character list (drag-to-reorder rows) */
+.hkgroup-chars-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.hkgroup-char-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 6px;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: #1a1a1a;
+}
+
+.hkgroup-char-row.dragging {
+    opacity: 0.4;
+}
+
+.hkgroup-char-row.drag-over-top {
+    border-top: 2px solid #ffffff;
+}
+
+.hkgroup-char-row.drag-over-bottom {
+    border-bottom: 2px solid #ffffff;
+}
+
+/* Character remove button confirmation state */
+button.confirm-delete {
+    background: var(--color-danger-fill) !important;
+    color: #ffffff !important;
+    border-color: var(--color-danger-fill-hover) !important;
+}
+
+button.confirm-delete:hover {
+    background: var(--color-danger-fill-hover) !important;
+    color: #ffffff !important;
+}
+
+/* Modal Dialog */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 10000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.2s ease-in;
+}
+
+.modal.show {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background: #1a1a1a;
+    border: 1px solid #ffffff;
+    padding: 16px;
+    width: 380px;
+    max-width: 90%;
+    border-radius: 4px;
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.3), inset 0 0 100px rgba(255, 255, 255, 0.05);
+    animation: slideIn 0.2s ease-out;
+    position: relative;
+}
+
+.modal-content.modal-wide {
+    width: 560px;
+    max-height: 82vh;
+    overflow-y: auto;
+    text-align: left;
+}
+
+.modal-content::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.15) 0px,
+        rgba(0, 0, 0, 0.15) 1px,
+        transparent 1px,
+        transparent 2px
+    );
+    pointer-events: none;
+    z-index: 1;
+    border-radius: 4px;
+}
+
+.modal-content h3 {
+    margin: 0 0 12px 0;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #ffffff;
+    font-size: 15px;
+    font-weight: 400;
+    letter-spacing: 1px;
+    position: relative;
+    z-index: 2;
+}
+
+.modal-content input[type="text"] {
+    width: 100%;
+    margin-bottom: 12px;
+    position: relative;
+    z-index: 2;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    position: relative;
+    z-index: 2;
+}
+
+.modal-buttons button {
+    min-width: 80px;
+    /* Ensure modal buttons match footer buttons exactly */
+    background-color: #1a1a1a;
+    border: 1px solid #888888;
+    color: #ffffff;
+    padding: 6px 12px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 500;
+    text-transform: uppercase;
+    height: 28px;
+    line-height: 1.4;
+    box-sizing: border-box;
+    position: relative;
+    overflow: hidden;
+}
+
+.modal-buttons button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.15) 0px,
+        rgba(0, 0, 0, 0.15) 1px,
+        transparent 1px,
+        transparent 2px
+    );
+    pointer-events: none;
+    z-index: 1;
+}
+
+.modal-buttons button:hover {
+    background-color: #ffffff;
+    color: #000000;
+    border-color: #ffffff;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+    text-shadow: none;
+}
+
+.modal-buttons button:active {
+    transform: scale(0.98);
+}
+
+.modal-buttons .button-outline {
+    background-color: transparent;
+    color: #999999;
+}
+
+.modal-buttons .button-outline:hover {
+    background-color: #1a1a1a;
+    color: #ffffff;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}

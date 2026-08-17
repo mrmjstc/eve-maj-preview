@@ -1,0 +1,24 @@
+# Zig build artifacts
+zig-out/
+zig-cache/
+.zig-cache/
+
+# Packaged release archives
+dist/
+
+# Compiled binaries
+*.exe
+*.pdb
+*.obj
+*.o
+
+# Local profile configurations
+profiles/
+
+.vs/
+
+CLAUDE.md
+TODO
+build-release.ps1
+.claude/
+.vscode/launch.json

@@ -1,0 +1,254 @@
+const std = @import("std");
+const win32 = @import("win32.zig");
+const log = @import("log.zig");
+const build_options = @import("build_options");
+const slog = log.scoped("update");
+
+/// Mutex-guarded holder for the latest known update result, written by the background check thread and read by the tray menu on the main thread.
+pub const UpdateStatus = struct {
+    mutex: std.Thread.Mutex = .{},
+    version: ?[]const u8 = null,
+    url: ?[]const u8 = null,
+    allocator: ?std.mem.Allocator = null,
+
+    /// Stores a fresh update result, freeing any previous one first; copies `version`/`url` rather than taking ownership of the passed-in slices.
+    pub fn set(self: *UpdateStatus, allocator: std.mem.Allocator, version: []const u8, url: []const u8) !void {
+        const version_copy = try allocator.dupe(u8, version);
+        errdefer allocator.free(version_copy);
+        const url_copy = try allocator.dupe(u8, url);
+        errdefer allocator.free(url_copy);
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        self.freeLocked();
+        self.version = version_copy;
+        self.url = url_copy;
+        self.allocator = allocator;
+    }
+
+    fn freeLocked(self: *UpdateStatus) void {
+        const allocator = self.allocator orelse return;
+        if (self.version) |v| allocator.free(v);
+        if (self.url) |u| allocator.free(u);
+    }
+
+    pub fn deinit(self: *UpdateStatus) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        self.freeLocked();
+        self.version = null;
+        self.url = null;
+    }
+
+    pub fn isAvailable(self: *UpdateStatus) bool {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        return self.version != null;
+    }
+
+    /// Copies the stored release URL, null-terminated, into `buf`; returns null if no update is available or the URL doesn't fit.
+    pub fn copyUrlZ(self: *UpdateStatus, buf: []u8) ?[:0]const u8 {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        const url = self.url orelse return null;
+        if (url.len >= buf.len) return null;
+        @memcpy(buf[0..url.len], url);
+        buf[url.len] = 0;
+        return buf[0..url.len :0];
+    }
+};
+
+/// Global update state (see UpdateStatus doc comment).
+pub var g_update_status: UpdateStatus = .{};
+
+pub const UpdateChecker = struct {
+    allocator: std.mem.Allocator,
+    current_version: []const u8,
+
+    pub fn init(allocator: std.mem.Allocator) UpdateChecker {
+        return UpdateChecker{
+            .allocator = allocator,
+            .current_version = build_options.version,
+        };
+    }
+
+    pub fn deinit(self: *UpdateChecker) void {
+        _ = self;
+        g_update_status.deinit();
+    }
+
+    /// Check for updates against GitHub releases
+    pub fn checkForUpdates(self: *UpdateChecker) !?UpdateInfo {
+        slog.info("Checking for updates (current: {s})", .{self.current_version});
+
+        var child = std.process.Child.init(&.{
+            "curl",
+            "-s",
+            "-H",
+            "User-Agent: EVE-Maj-Preview",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "https://api.github.com/repos/mrmjstc/eve-maj-preview/releases/latest",
+        }, self.allocator);
+        child.stdin_behavior = .Ignore;
+        child.stdout_behavior = .Pipe;
+        child.stderr_behavior = .Pipe;
+        // Prevent a console window flash when spawning curl.exe from this GUI-subsystem process.
+        child.create_no_window = true;
+
+        var stdout: std.ArrayList(u8) = .empty;
+        defer stdout.deinit(self.allocator);
+        var stderr: std.ArrayList(u8) = .empty;
+        defer stderr.deinit(self.allocator);
+
+        try child.spawn();
+        errdefer _ = child.kill() catch {};
+        try child.collectOutput(self.allocator, &stdout, &stderr, 50 * 1024);
+        const term = try child.wait();
+
+        const result = .{
+            .stdout = try stdout.toOwnedSlice(self.allocator),
+            .stderr = try stderr.toOwnedSlice(self.allocator),
+            .term = term,
+        };
+        defer self.allocator.free(result.stdout);
+        defer self.allocator.free(result.stderr);
+
+        switch (result.term) {
+            .Exited => |code| {
+                if (code != 0) {
+                    slog.warn("curl command failed with exit code: {d}", .{code});
+                    return null;
+                }
+            },
+            else => {
+                slog.warn("curl command terminated abnormally", .{});
+                return null;
+            },
+        }
+
+        const body = result.stdout;
+
+        slog.debug("GitHub API response: {s}", .{body});
+
+        const parsed = try std.json.parseFromSlice(
+            std.json.Value,
+            self.allocator,
+            body,
+            .{},
+        );
+        defer parsed.deinit();
+
+        if (parsed.value != .object) {
+            slog.debug("GitHub API response is not a JSON object", .{});
+            return null;
+        }
+        const root = parsed.value.object;
+
+        // Check for GitHub API errors (e.g., private repo, rate limit, 404)
+        if (root.get("message")) |message| {
+            if (message == .string) {
+                slog.debug("GitHub API returned error: {s} (this is normal for private repos)", .{message.string});
+                return null;
+            }
+        }
+
+        const tag_name = root.get("tag_name") orelse {
+            slog.debug("No tag_name in GitHub API response", .{});
+            return null;
+        };
+        const html_url = root.get("html_url") orelse {
+            slog.debug("No html_url in GitHub API response", .{});
+            return null;
+        };
+        if (tag_name != .string or html_url != .string) {
+            slog.debug("tag_name/html_url in GitHub API response are not strings", .{});
+            return null;
+        }
+
+        const latest_version = tag_name.string;
+        const release_url = html_url.string;
+
+        const normalized_current = if (std.mem.startsWith(u8, self.current_version, "v"))
+            self.current_version[1..]
+        else
+            self.current_version;
+
+        const normalized_latest = if (std.mem.startsWith(u8, latest_version, "v"))
+            latest_version[1..]
+        else
+            latest_version;
+
+        if (std.mem.eql(u8, normalized_current, normalized_latest)) {
+            slog.info("Already on latest version: {s}", .{self.current_version});
+            return null;
+        }
+
+        const current_semver = std.SemanticVersion.parse(normalized_current) catch {
+            slog.warn("Failed to parse current version: {s}", .{normalized_current});
+            return null;
+        };
+
+        const latest_semver = std.SemanticVersion.parse(normalized_latest) catch {
+            slog.warn("Failed to parse latest version: {s}", .{normalized_latest});
+            return null;
+        };
+
+        const order = current_semver.order(latest_semver);
+        if (order == .lt) {
+            slog.info("Update available: {s} -> {s}", .{ self.current_version, latest_version });
+            return UpdateInfo{
+                .version = try self.allocator.dupe(u8, latest_version),
+                .url = try self.allocator.dupe(u8, release_url),
+            };
+        }
+
+        slog.info("Current version is up to date or newer", .{});
+        return null;
+    }
+
+    pub fn checkForUpdatesBackground(allocator: std.mem.Allocator) void {
+        var checker = UpdateChecker.init(allocator);
+
+        const update_info = checker.checkForUpdates() catch |err| {
+            slog.warn("Update check failed: {}", .{err});
+            return;
+        };
+
+        if (update_info) |info| {
+            defer allocator.free(info.version);
+            defer allocator.free(info.url);
+
+            g_update_status.set(allocator, info.version, info.url) catch |err| {
+                slog.warn("Failed to store update status: {}", .{err});
+                return;
+            };
+            slog.info("Update available stored: {s}", .{info.version});
+        }
+    }
+};
+
+pub const UpdateInfo = struct {
+    version: []const u8,
+    url: []const u8,
+};
+
+pub fn openReleasesPage() void {
+    var url_buffer: [512]u8 = undefined;
+    const url = g_update_status.copyUrlZ(&url_buffer) orelse "https://github.com/mrmjstc/eve-maj-preview/releases";
+
+    slog.info("Opening releases page: {s}", .{url});
+
+    const result = win32.ShellExecuteA(
+        null,
+        "open",
+        url.ptr,
+        null,
+        null,
+        win32.SW_SHOW,
+    );
+
+    if (@intFromPtr(result) <= 32) {
+        slog.err("Failed to open URL in browser", .{});
+    }
+}

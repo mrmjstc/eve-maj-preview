@@ -1,0 +1,12 @@
+.{
+    .name = .EVE_Maj_Preview,
+    .version = "0.15.2",
+    .dependencies = .{
+        .zig_webui = .{
+            .url = "https://github.com/webui-dev/zig-webui/archive/refs/heads/main.tar.gz",
+            .hash = "zig_webui-2.5.0-beta.4-M4z7zfBlAQDCSVNk_B9TZkOw3PE1NsKKrabgVforJoaV",
+        },
+    },
+    .paths = .{""},
+    .fingerprint = 0x92cdb9db8adfb629,
+}

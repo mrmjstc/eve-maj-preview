@@ -1,0 +1,666 @@
+const std = @import("std");
+const log = @import("log.zig");
+const slog = log.scoped("activity_tracker");
+
+/// A single parsed combat event (one damage hit, incoming or outgoing).
+pub const CombatEvent = struct {
+    timestamp_ms: i64,
+    amount: u32,
+    is_incoming: bool,
+};
+
+/// Ring-buffer capacity per character; 512 entries covers ~8 min at 1 hit/sec, within window_seconds ≤ 600.
+const RING_CAPACITY = 512;
+
+/// Upper bound on spark-chart bucket count; must match SparkChartConfig.BUCKET_COUNT_MAX.
+pub const MAX_CHART_BUCKETS: usize = 60;
+
+/// Per-character sliding-window DPS accumulator with zero heap allocations after init.
+pub const CombatWindow = struct {
+    entries: [RING_CAPACITY]CombatEvent = undefined,
+    /// Next write slot, wraps mod RING_CAPACITY.
+    head: usize = 0,
+    /// Valid entry count, saturates at RING_CAPACITY.
+    count: usize = 0,
+    window_ms: i64,
+    last_hit_ms: i64 = 0,
+    last_incoming_hit_ms: i64 = 0,
+    /// 0 = never fired.
+    last_damage_alert_ms: i64 = 0,
+
+    // Cached last-computed values, updated by refresh().
+    last_incoming_dps: f32 = 0.0,
+    last_outgoing_dps: f32 = 0.0,
+
+    pub fn init(window_seconds: u32) CombatWindow {
+        return .{
+            .window_ms = @as(i64, window_seconds) * std.time.ms_per_s,
+        };
+    }
+
+    /// Append a new hit to the ring buffer (O(1), overwrites oldest on overflow).
+    /// `counts_for_alert` only gates `last_incoming_hit_ms` (checkDamageAlert's trigger) — the hit is always ring-buffered so DPS stays accurate for filtered hits.
+    pub fn addEntry(self: *CombatWindow, amount: u32, is_incoming: bool, timestamp_ms: i64, counts_for_alert: bool) void {
+        self.entries[self.head] = .{
+            .timestamp_ms = timestamp_ms,
+            .amount = amount,
+            .is_incoming = is_incoming,
+        };
+        self.head = (self.head + 1) % RING_CAPACITY;
+        if (self.count < RING_CAPACITY) self.count += 1;
+        if (timestamp_ms > self.last_hit_ms) self.last_hit_ms = timestamp_ms;
+        if (is_incoming and counts_for_alert and timestamp_ms > self.last_incoming_hit_ms) self.last_incoming_hit_ms = timestamp_ms;
+    }
+
+    /// Fires when incoming damage has landed since the last alert, debounced to at most once per `repeat_ms`; stays silent once combat stops instead of repeating on a timer.
+    pub fn checkDamageAlert(self: *CombatWindow, now_ms: i64, repeat_ms: i64) bool {
+        if (self.last_incoming_hit_ms == 0) return false;
+        if (self.last_incoming_hit_ms <= self.last_damage_alert_ms) return false;
+        if (self.last_damage_alert_ms != 0 and now_ms - self.last_damage_alert_ms < repeat_ms) return false;
+        self.last_damage_alert_ms = now_ms;
+        return true;
+    }
+
+    /// Compute incoming and outgoing DPS over the sliding window ending at now_ms.
+    pub fn computeDps(self: *const CombatWindow, now_ms: i64) struct { incoming: f32, outgoing: f32 } {
+        // Short-circuit: if the newest hit is already outside the window, skip the O(n) walk over stale entries.
+        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) {
+            return .{ .incoming = 0.0, .outgoing = 0.0 };
+        }
+        const cutoff = now_ms - self.window_ms;
+        var in_total: u64 = 0;
+        var out_total: u64 = 0;
+
+        var i: usize = 0;
+        while (i < self.count) : (i += 1) {
+            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
+            const entry = &self.entries[idx];
+            // Ring is chronologically ordered, so all further entries are also expired
+            if (entry.timestamp_ms < cutoff) break;
+            if (entry.is_incoming) {
+                in_total += entry.amount;
+            } else {
+                out_total += entry.amount;
+            }
+        }
+
+        const window_secs = @as(f32, @floatFromInt(self.window_ms)) / 1000.0;
+        return .{
+            .incoming = @as(f32, @floatFromInt(in_total)) / window_secs,
+            .outgoing = @as(f32, @floatFromInt(out_total)) / window_secs,
+        };
+    }
+
+    /// Each checkpoint is a trailing window_ms average ending at that point (matching computeDps at "now"), not a disjoint per-slice sum that would spike-then-zero between sparse hits — implemented as a difference array over a 2×window_ms lookback so one prefix sum reconstructs every checkpoint.
+    pub fn computeBuckets(self: *const CombatWindow, now_ms: i64, out_incoming: []f32, out_outgoing: []f32) void {
+        @memset(out_incoming, 0);
+        @memset(out_outgoing, 0);
+        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= 2 * self.window_ms) return;
+        const cutoff = now_ms - 2 * self.window_ms;
+
+        // bucket_ms == 0 means that direction's chart is disabled; the loop below just skips bucketing it.
+        const in_bucket_ms: i64 = if (out_incoming.len > 0) @divTrunc(self.window_ms, @as(i64, @intCast(out_incoming.len))) else 0;
+        const out_bucket_ms: i64 = if (out_outgoing.len > 0) @divTrunc(self.window_ms, @as(i64, @intCast(out_outgoing.len))) else 0;
+        const in_now_slot = if (in_bucket_ms > 0) @divFloor(now_ms, in_bucket_ms) else 0;
+        const out_now_slot = if (out_bucket_ms > 0) @divFloor(now_ms, out_bucket_ms) else 0;
+        const in_last_idx: i64 = if (out_incoming.len > 0) @intCast(out_incoming.len - 1) else 0;
+        const out_last_idx: i64 = if (out_outgoing.len > 0) @intCast(out_outgoing.len - 1) else 0;
+
+        var in_diff: [MAX_CHART_BUCKETS + 1]f32 = @splat(0);
+        var out_diff: [MAX_CHART_BUCKETS + 1]f32 = @splat(0);
+
+        var i: usize = 0;
+        while (i < self.count) : (i += 1) {
+            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
+            const entry = &self.entries[idx];
+            if (entry.timestamp_ms < cutoff) break;
+            if (entry.is_incoming) {
+                if (in_bucket_ms <= 0) continue;
+                const slot = @divFloor(entry.timestamp_ms, in_bucket_ms);
+                const b = in_last_idx - (in_now_slot - slot);
+                const start = @max(b, 0);
+                const end = @min(b + in_last_idx, in_last_idx);
+                if (start > end) continue;
+                in_diff[@intCast(start)] += @floatFromInt(entry.amount);
+                in_diff[@intCast(end + 1)] -= @floatFromInt(entry.amount);
+            } else {
+                if (out_bucket_ms <= 0) continue;
+                const slot = @divFloor(entry.timestamp_ms, out_bucket_ms);
+                const b = out_last_idx - (out_now_slot - slot);
+                const start = @max(b, 0);
+                const end = @min(b + out_last_idx, out_last_idx);
+                if (start > end) continue;
+                out_diff[@intCast(start)] += @floatFromInt(entry.amount);
+                out_diff[@intCast(end + 1)] -= @floatFromInt(entry.amount);
+            }
+        }
+
+        const window_secs = @as(f32, @floatFromInt(self.window_ms)) / 1000.0;
+        var running: f32 = 0;
+        for (out_incoming, 0..) |*v, out_idx| {
+            running += in_diff[out_idx];
+            v.* = running / window_secs;
+        }
+        running = 0;
+        for (out_outgoing, 0..) |*v, out_idx| {
+            running += out_diff[out_idx];
+            v.* = running / window_secs;
+        }
+    }
+
+    /// Recompute DPS, update last_ fields. Returns true if either value changed by >= 0.1.
+    pub fn refresh(self: *CombatWindow, now_ms: i64) bool {
+        const new = self.computeDps(now_ms);
+        const changed = @abs(new.incoming - self.last_incoming_dps) >= 0.1 or
+            @abs(new.outgoing - self.last_outgoing_dps) >= 0.1;
+        self.last_incoming_dps = new.incoming;
+        self.last_outgoing_dps = new.outgoing;
+        return changed;
+    }
+};
+
+/// Shared allocator/mutex/hashmap plumbing for a per-character sliding-window tracker.
+/// WindowT must expose `fn init(window_seconds: u32) WindowT` and `fn refresh(*WindowT, now_ms: i64) bool`.
+fn TrackerBase(comptime WindowT: type) type {
+    return struct {
+        allocator: std.mem.Allocator,
+        mutex: std.Thread.Mutex = .{},
+        windows: std.StringHashMap(WindowT),
+        window_seconds: u32,
+
+        const Self = @This();
+
+        fn init(allocator: std.mem.Allocator, window_seconds: u32) Self {
+            return .{
+                .allocator = allocator,
+                .windows = std.StringHashMap(WindowT).init(allocator),
+                .window_seconds = window_seconds,
+            };
+        }
+
+        /// Must only be called after the worker thread has stopped (no lock needed).
+        fn deinit(self: *Self) void {
+            var iter = self.windows.keyIterator();
+            while (iter.next()) |key| {
+                self.allocator.free(key.*);
+            }
+            self.windows.deinit();
+        }
+
+        fn removeCharacter(self: *Self, character_name: []const u8) void {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            if (self.windows.fetchRemove(character_name)) |entry| {
+                self.allocator.free(entry.key);
+            }
+        }
+
+        fn refreshAll(self: *Self, now_ms: i64) bool {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            var any_changed = false;
+            var iter = self.windows.valueIterator();
+            while (iter.next()) |window| {
+                if (window.refresh(now_ms)) any_changed = true;
+            }
+            return any_changed;
+        }
+
+        /// Returns character_name's window, creating one via WindowT.init(window_seconds) if absent. Caller must hold mutex.
+        fn getOrCreate(self: *Self, character_name: []const u8) !*WindowT {
+            if (self.windows.getPtr(character_name)) |window| return window;
+            const key = try self.allocator.dupe(u8, character_name);
+            errdefer self.allocator.free(key);
+            try self.windows.put(key, WindowT.init(self.window_seconds));
+            return self.windows.getPtr(character_name).?;
+        }
+    };
+}
+
+/// Multi-character DPS tracker; owns a CombatWindow and duped key string per character.
+/// Thread-safe: the main thread calls refreshAll/getDps while the chatlog worker thread calls addEntry/removeCharacter concurrently.
+pub const CombatTracker = struct {
+    base: TrackerBase(CombatWindow),
+
+    pub fn init(allocator: std.mem.Allocator, window_seconds: u32) CombatTracker {
+        return .{ .base = TrackerBase(CombatWindow).init(allocator, window_seconds) };
+    }
+
+    pub fn deinit(self: *CombatTracker) void {
+        self.base.deinit();
+    }
+
+    /// Record a hit for character_name.  Creates a new window on the first call per character.
+    pub fn addEntry(
+        self: *CombatTracker,
+        character_name: []const u8,
+        amount: u32,
+        is_incoming: bool,
+        timestamp_ms: i64,
+        counts_for_alert: bool,
+    ) !void {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        const window = try self.base.getOrCreate(character_name);
+        window.addEntry(amount, is_incoming, timestamp_ms, counts_for_alert);
+    }
+
+    /// Remove a character's window (call on character logout to free the entry).
+    pub fn removeCharacter(self: *CombatTracker, character_name: []const u8) void {
+        self.base.removeCharacter(character_name);
+    }
+
+    /// Return the last-refreshed DPS values for character_name.
+    pub fn getDps(self: *CombatTracker, character_name: []const u8) struct { incoming: f32, outgoing: f32 } {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        if (self.base.windows.get(character_name)) |window| {
+            return .{ .incoming = window.last_incoming_dps, .outgoing = window.last_outgoing_dps };
+        }
+        return .{ .incoming = 0.0, .outgoing = 0.0 };
+    }
+
+    /// Bucket character_name's sliding window for spark-chart rendering. See CombatWindow.computeBuckets.
+    /// No-op (leaves buffers zeroed) if character_name has no window yet.
+    pub fn getBuckets(self: *CombatTracker, character_name: []const u8, now_ms: i64, out_incoming: []f32, out_outgoing: []f32) void {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        if (self.base.windows.getPtr(character_name)) |window| {
+            window.computeBuckets(now_ms, out_incoming, out_outgoing);
+            return;
+        }
+        @memset(out_incoming, 0);
+        @memset(out_outgoing, 0);
+    }
+
+    /// Re-evaluate all windows against now_ms.  Returns true if any DPS value changed by >= 0.1.
+    pub fn refreshAll(self: *CombatTracker, now_ms: i64) bool {
+        return self.base.refreshAll(now_ms);
+    }
+
+    /// See CombatWindow.checkDamageAlert. Returns false if character_name has no window yet.
+    pub fn checkDamageAlert(self: *CombatTracker, character_name: []const u8, now_ms: i64, repeat_ms: i64) bool {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        const window = self.base.windows.getPtr(character_name) orelse return false;
+        return window.checkDamageAlert(now_ms, repeat_ms);
+    }
+};
+
+/// Parse a `(combat)` gamelog line and extract damage amount + direction.
+/// Incoming misses return a zero-amount incoming hit (counts for the Taking Damage alert but not DPS); outgoing misses are ignored entirely.
+/// Direction: " from " → incoming, " to " → outgoing, matched against the text following the damage number.
+/// `weapon_buf` receives the weapon/module name copied out of the function-local stripped-HTML buffer; empty if the line has no weapon segment or the buffer is too small.
+pub fn parseCombatLine(line: []const u8, weapon_buf: []u8) ?struct { amount: u32, is_incoming: bool, weapon: []const u8 } {
+    const combat_prefix = "(combat)";
+    const combat_pos = std.mem.indexOf(u8, line, combat_prefix) orelse return null;
+    const payload = std.mem.trimLeft(u8, line[combat_pos + combat_prefix.len ..], " \t");
+
+    // Skip remote-rep / cap-transfer lines (these are not damage hits)
+    if (std.mem.indexOf(u8, payload, "boosts your") != null or
+        std.mem.indexOf(u8, payload, "shields your") != null or
+        std.mem.indexOf(u8, payload, "repairs your") != null or
+        std.mem.indexOf(u8, payload, "transfers") != null)
+    {
+        return null;
+    }
+
+    var stripped_buf: [512]u8 = undefined;
+    const stripped = stripHtml(payload, &stripped_buf);
+
+    if (std.mem.indexOf(u8, stripped, "misses you") != null and !std.mem.startsWith(u8, stripped, "You ")) {
+        return .{ .amount = 0, .is_incoming = true, .weapon = "" };
+    }
+
+    // Rejects lines that start with a non-digit and aren't an incoming miss (handled above).
+    var amount: u32 = 0;
+    var digits_end: usize = 0;
+    var found_digit = false;
+    for (stripped, 0..) |c, i| {
+        if (c >= '0' and c <= '9') {
+            amount = amount * 10 + (c - '0');
+            digits_end = i + 1;
+            found_digit = true;
+        } else if (found_digit) {
+            break;
+        } else {
+            // Allow leading whitespace; anything else is not a damage line
+            if (c != ' ' and c != '\t') return null;
+        }
+    }
+    if (!found_digit or amount == 0) return null;
+
+    // Direction keyword immediately follows the number (see doc comment above)
+    const rest = stripped[digits_end..];
+    const is_incoming = if (std.mem.indexOf(u8, rest, " from ") != null)
+        true
+    else if (std.mem.indexOf(u8, rest, " to ") != null)
+        false
+    else
+        return null;
+
+    // Weapon name sits before the trailing hit-quality word; searched from the end because target names can themselves contain " - " (e.g. structure kills), which would otherwise be misread as the weapon segment.
+    var weapon: []const u8 = "";
+    if (std.mem.lastIndexOf(u8, rest, " - ")) |quality_dash| {
+        const before_quality = rest[0..quality_dash];
+        if (std.mem.lastIndexOf(u8, before_quality, " - ")) |weapon_dash| {
+            const w = std.mem.trim(u8, before_quality[weapon_dash + 3 ..], " \t");
+            const n = @min(w.len, weapon_buf.len);
+            @memcpy(weapon_buf[0..n], w[0..n]);
+            weapon = weapon_buf[0..n];
+        }
+    }
+
+    return .{ .amount = amount, .is_incoming = is_incoming, .weapon = weapon };
+}
+
+/// True if `weapon` case-insensitively contains any comma-separated entry of `excluded_csv`; empty entries are skipped so trailing/stray commas don't match everything.
+pub fn isWeaponExcluded(weapon: []const u8, excluded_csv: []const u8) bool {
+    if (weapon.len == 0 or excluded_csv.len == 0) return false;
+    var it = std.mem.splitScalar(u8, excluded_csv, ',');
+    while (it.next()) |raw_entry| {
+        const entry = std.mem.trim(u8, raw_entry, " \t");
+        if (entry.len == 0 or entry.len > weapon.len) continue;
+        var i: usize = 0;
+        while (i + entry.len <= weapon.len) : (i += 1) {
+            if (std.ascii.eqlIgnoreCase(weapon[i .. i + entry.len], entry)) return true;
+        }
+    }
+    return false;
+}
+
+/// A single parsed mining event (one yield from a mining cycle).
+pub const MiningEvent = struct {
+    timestamp_ms: i64,
+    amount: u32,
+};
+
+/// Per-character sliding-window mining-rate accumulator with zero heap allocations after init.
+pub const MiningWindow = struct {
+    entries: [RING_CAPACITY]MiningEvent = undefined,
+    head: usize = 0,
+    count: usize = 0,
+    window_ms: i64,
+    last_hit_ms: i64 = 0,
+
+    // Cached last-computed value, updated by refresh().
+    last_units_per_sec: f32 = 0.0,
+    // Timestamp of the last idle-alert fired for this window (ms). 0 = never.
+    last_alert_ms: i64 = 0,
+    // Timestamp of the last stopped-alert fired (ms). Reset when mining resumes.
+    last_stopped_alert_ms: i64 = 0,
+
+    pub fn init(window_seconds: u32) MiningWindow {
+        return .{
+            .window_ms = @as(i64, window_seconds) * std.time.ms_per_s,
+        };
+    }
+
+    /// Append a new yield to the ring buffer (O(1), overwrites oldest on overflow).
+    pub fn addEntry(self: *MiningWindow, amount: u32, timestamp_ms: i64) void {
+        self.entries[self.head] = .{
+            .timestamp_ms = timestamp_ms,
+            .amount = amount,
+        };
+        self.head = (self.head + 1) % RING_CAPACITY;
+        if (self.count < RING_CAPACITY) self.count += 1;
+        if (timestamp_ms > self.last_hit_ms) self.last_hit_ms = timestamp_ms;
+        // Mining resumed — allow the stopped alert to fire again next time.
+        self.last_stopped_alert_ms = 0;
+    }
+
+    /// Count the number of events within the sliding window ending at now_ms.
+    pub fn countEvents(self: *const MiningWindow, window_ms: i64, now_ms: i64) usize {
+        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= window_ms) return 0;
+        const cutoff = now_ms - window_ms;
+        var n: usize = 0;
+        var i: usize = 0;
+        while (i < self.count) : (i += 1) {
+            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
+            if (self.entries[idx].timestamp_ms < cutoff) break;
+            n += 1;
+        }
+        return n;
+    }
+
+    /// Compute units-per-second over the sliding window ending at now_ms.
+    pub fn computeRate(self: *const MiningWindow, now_ms: i64) f32 {
+        // Short-circuit: if the newest yield is already outside the window, skip the O(n) walk over stale entries.
+        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) {
+            return 0.0;
+        }
+        const cutoff = now_ms - self.window_ms;
+        var total: u64 = 0;
+
+        var i: usize = 0;
+        while (i < self.count) : (i += 1) {
+            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
+            const entry = &self.entries[idx];
+            if (entry.timestamp_ms < cutoff) break;
+            total += entry.amount;
+        }
+
+        const window_secs = @as(f32, @floatFromInt(self.window_ms)) / 1000.0;
+        return @as(f32, @floatFromInt(total)) / window_secs;
+    }
+
+    /// Wider than window_seconds so a checkpoint averages several yield cycles instead of ~1, avoiding an oscillating N/N+1 pulse at a steady rate.
+    const CHART_SMOOTHING_WINDOWS: i64 = 3;
+
+    /// Each checkpoint is a trailing average, not a raw slice sum, so gaps between infrequent yields don't read as zero — see CombatWindow.computeBuckets for the shared difference-array technique.
+    /// Smooths over CHART_SMOOTHING_WINDOWS x window_ms, so unlike CombatWindow's the newest checkpoint won't exactly match computeRate(now_ms); the visible span is still capped at window_ms.
+    pub fn computeBuckets(self: *const MiningWindow, now_ms: i64, out: []f32) void {
+        @memset(out, 0);
+        if (out.len == 0) return;
+        // Cut off at window_ms (not the wider smoothing span) so the chart clears exactly when the displayed rate does.
+        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) return;
+        const smoothing_ms = self.window_ms * CHART_SMOOTHING_WINDOWS;
+        const cutoff = now_ms - self.window_ms - smoothing_ms;
+        const bucket_ms = @divTrunc(self.window_ms, @as(i64, @intCast(out.len)));
+        if (bucket_ms <= 0) return;
+        const range_buckets = @divTrunc(smoothing_ms, bucket_ms);
+        const now_slot = @divFloor(now_ms, bucket_ms);
+        const last_idx: i64 = @intCast(out.len - 1);
+
+        var diff: [MAX_CHART_BUCKETS + 1]f32 = @splat(0);
+        var i: usize = 0;
+        while (i < self.count) : (i += 1) {
+            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
+            const entry = &self.entries[idx];
+            if (entry.timestamp_ms < cutoff) break;
+            const entry_slot = @divFloor(entry.timestamp_ms, bucket_ms);
+            const b = last_idx - (now_slot - entry_slot);
+            const start = @max(b, 0);
+            const end = @min(b + range_buckets - 1, last_idx);
+            if (start > end) continue;
+            diff[@intCast(start)] += @floatFromInt(entry.amount);
+            diff[@intCast(end + 1)] -= @floatFromInt(entry.amount);
+        }
+
+        const smoothing_secs = @as(f32, @floatFromInt(smoothing_ms)) / 1000.0;
+        var running: f32 = 0;
+        for (out, 0..) |*v, out_idx| {
+            running += diff[out_idx];
+            v.* = running / smoothing_secs;
+        }
+    }
+
+    /// Recompute rate, update last_units_per_sec. Returns true if value changed by >= 0.1.
+    pub fn refresh(self: *MiningWindow, now_ms: i64) bool {
+        const new_rate = self.computeRate(now_ms);
+        const changed = @abs(new_rate - self.last_units_per_sec) >= 0.1;
+        self.last_units_per_sec = new_rate;
+        return changed;
+    }
+};
+
+/// Multi-character mining rate tracker; owns a MiningWindow and duped key string per character.
+/// Thread-safe: the main thread calls refreshAll/getRate/checkIdleAlert/checkStoppedAlert while the chatlog worker thread calls addEntry/removeCharacter concurrently.
+pub const MiningTracker = struct {
+    base: TrackerBase(MiningWindow),
+
+    pub fn init(allocator: std.mem.Allocator, window_seconds: u32) MiningTracker {
+        return .{ .base = TrackerBase(MiningWindow).init(allocator, window_seconds) };
+    }
+
+    pub fn deinit(self: *MiningTracker) void {
+        self.base.deinit();
+    }
+
+    /// Record a yield for character_name. Creates a new window on the first call per character.
+    pub fn addEntry(
+        self: *MiningTracker,
+        character_name: []const u8,
+        amount: u32,
+        timestamp_ms: i64,
+    ) !void {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        const window = try self.base.getOrCreate(character_name);
+        window.addEntry(amount, timestamp_ms);
+    }
+
+    /// Remove a character's window (call on character logout to free the entry).
+    pub fn removeCharacter(self: *MiningTracker, character_name: []const u8) void {
+        self.base.removeCharacter(character_name);
+    }
+
+    /// Return the last-refreshed mining rate for character_name (units/sec).
+    pub fn getRate(self: *MiningTracker, character_name: []const u8) f32 {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        if (self.base.windows.get(character_name)) |window| {
+            return window.last_units_per_sec;
+        }
+        return 0.0;
+    }
+
+    /// Bucket character_name's sliding window for spark-chart rendering. See MiningWindow.computeBuckets.
+    /// No-op (leaves out zeroed) if character_name has no window yet.
+    pub fn getBuckets(self: *MiningTracker, character_name: []const u8, now_ms: i64, out: []f32) void {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        if (self.base.windows.getPtr(character_name)) |window| {
+            window.computeBuckets(now_ms, out);
+            return;
+        }
+        @memset(out, 0);
+    }
+
+    /// Re-evaluate all windows against now_ms. Returns true if any rate changed by >= 0.1.
+    pub fn refreshAll(self: *MiningTracker, now_ms: i64) bool {
+        return self.base.refreshAll(now_ms);
+    }
+
+    /// Returns true (and records the alert) if event count within alert_window_ms is <= threshold and the cooldown since the last alert has elapsed.
+    pub fn checkIdleAlert(
+        self: *MiningTracker,
+        character_name: []const u8,
+        now_ms: i64,
+        alert_window_ms: i64,
+        threshold: u32,
+    ) bool {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        const window = self.base.windows.getPtr(character_name) orelse return false;
+        // Only alert if the character has mined at least once (avoids false positives on start-up).
+        if (window.last_hit_ms == 0) return false;
+        const count = window.countEvents(alert_window_ms, now_ms);
+        if (count > threshold) {
+            // Active — reset so we alert again if they go idle later.
+            window.last_alert_ms = 0;
+            return false;
+        }
+        // Idle: count <= threshold. Fire once per idle episode; re-arms when mining resumes.
+        if (window.last_alert_ms != 0) {
+            return false;
+        }
+        window.last_alert_ms = now_ms;
+        return true;
+    }
+
+    /// Returns true once when mining has stopped for at least stopped_window_ms; rearms when mining resumes (addEntry resets last_stopped_alert_ms).
+    pub fn checkStoppedAlert(
+        self: *MiningTracker,
+        character_name: []const u8,
+        now_ms: i64,
+        stopped_window_ms: i64,
+    ) bool {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        const window = self.base.windows.getPtr(character_name) orelse return false;
+        // Only alert if the character has mined at least once.
+        if (window.last_hit_ms == 0) return false;
+        // Still within the grace window — not stopped yet.
+        if (now_ms - window.last_hit_ms < stopped_window_ms) return false;
+        // Already fired this stopped-episode — wait for mining to resume.
+        if (window.last_stopped_alert_ms != 0) return false;
+        window.last_stopped_alert_ms = now_ms;
+        return true;
+    }
+};
+
+/// Parse a `(mining)` gamelog line and extract the mined unit count.
+/// Returns null for residue/waste lines, lines with no `(mining)` tag, or unrecognised formats; handles both normal and critical ("an additional") bonus yields.
+pub fn parseMiningLine(line: []const u8) ?struct { amount: u32 } {
+    const mining_prefix = "(mining)";
+    const mining_pos = std.mem.indexOf(u8, line, mining_prefix) orelse return null;
+    const payload = std.mem.trimLeft(u8, line[mining_pos + mining_prefix.len ..], " \t");
+
+    var stripped_buf: [512]u8 = undefined;
+    const stripped = stripHtml(payload, &stripped_buf);
+
+    // Skip residue/waste lines – the player does not gain those units
+    if (std.mem.indexOf(u8, stripped, "depleted from asteroid as residue") != null) {
+        return null;
+    }
+
+    // Find "You mined" which appears in both normal and critical lines.
+    const mined_kw = "You mined";
+    const mined_pos = std.mem.indexOf(u8, stripped, mined_kw) orelse return null;
+    var cursor = std.mem.trimLeft(u8, stripped[mined_pos + mined_kw.len ..], " \t");
+
+    // Skip optional "an additional " prefix (critical yield)
+    const additional_kw = "an additional ";
+    if (std.mem.startsWith(u8, cursor, additional_kw)) {
+        cursor = cursor[additional_kw.len..];
+    }
+
+    var amount: u32 = 0;
+    var found_digit = false;
+    for (cursor) |c| {
+        if (c >= '0' and c <= '9') {
+            amount = amount * 10 + (c - '0');
+            found_digit = true;
+        } else if (found_digit) {
+            break;
+        } else {
+            if (c != ' ' and c != '\t') return null;
+        }
+    }
+    if (!found_digit or amount == 0) return null;
+
+    return .{ .amount = amount };
+}
+
+/// Strip HTML/XML tags from src into out_buf.  Returns the written slice.
+pub fn stripHtml(src: []const u8, out_buf: []u8) []const u8 {
+    var out: usize = 0;
+    var in_tag = false;
+    for (src) |c| {
+        if (out >= out_buf.len) break;
+        switch (c) {
+            '<' => {
+                in_tag = true;
+            },
+            '>' => {
+                in_tag = false;
+            },
+            else => if (!in_tag) {
+                out_buf[out] = c;
+                out += 1;
+            },
+        }
+    }
+    return out_buf[0..out];
+}
