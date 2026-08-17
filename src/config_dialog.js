@@ -59,6 +59,7 @@ function switchLanguage(code) {
     document.documentElement.lang = code;
     applyTranslations();
     refreshDynamicSections();
+    buildSectionNav();
 }
 
 // data-i18n* covers static markup, but these list-editor sections build their rows
@@ -900,6 +901,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
     
     initializeTabs();
+    buildSectionNav();
+    setupSectionScrollSpy();
 
     const ready = await waitForWebUI();
     if (ready) {
@@ -958,6 +961,171 @@ function switchTab(panelId) {
     if (contentPanel) {
         contentPanel.scrollTop = 0;
     }
+
+    updateActiveSectionHighlight();
+}
+
+// Tabs whose sections are too few/short to be worth a sidebar sub-list.
+// Shared with updateActiveSectionHighlight() so the scrollspy glow doesn't
+// highlight a section that has no subheader to match it.
+const TABS_WITHOUT_SUBHEADERS = ['about', 'characters', 'chatlog'];
+
+// Sidebar subheaders that jump to a section - IDs and labels are derived from
+// each section's h3[data-i18n] (tab.<tab>.section.<slug>.heading) rather than
+// hand-maintained, so they can't drift out of sync as sections are added/removed.
+// Rebuilt whenever section visibility or labels can change (see call sites).
+function buildSectionNav() {
+    document.querySelectorAll('.subheader-list').forEach(el => el.remove());
+
+    document.querySelectorAll('.tab-item').forEach(tabItem => {
+        const tabName = tabItem.getAttribute('data-tab');
+        if (TABS_WITHOUT_SUBHEADERS.includes(tabName)) return;
+        const panel = document.querySelector(`.panel-content[data-panel="${tabName}"]`);
+        if (!panel) return;
+
+        const list = document.createElement('div');
+        list.className = 'subheader-list';
+
+        panel.querySelectorAll('.section').forEach((section, index) => {
+            if (section.style.display === 'none') return;
+            if (section.classList.contains('advanced-section') && !document.body.classList.contains('advanced-mode')) return;
+
+            const heading = section.querySelector('h3');
+            if (!heading) return;
+
+            const i18nKey = heading.getAttribute('data-i18n') || '';
+            const slugMatch = i18nKey.match(/^tab\.[a-z0-9-]+\.section\.([a-z0-9-]+)\.heading$/);
+            section.id = `section-${tabName}-${slugMatch ? slugMatch[1] : index}`;
+
+            const item = document.createElement('div');
+            item.className = 'subheader-item';
+            item.textContent = heading.textContent;
+            item.addEventListener('click', () => jumpToSection(tabName, section.id));
+            list.appendChild(item);
+
+            section._navItem = item;
+        });
+
+        tabItem.insertAdjacentElement('afterend', list);
+    });
+
+    updateActiveSectionHighlight();
+}
+
+function jumpToSection(tabName, sectionId) {
+    // Only switchTab() (which resets scroll to top) when the tab isn't already
+    // showing - otherwise a same-tab jump should smooth-scroll from wherever
+    // the user currently is, up or down, instead of snapping to top first.
+    const tabItem = document.querySelector(`.tab-item[data-tab="${tabName}"]`);
+    if (!tabItem || !tabItem.classList.contains('active')) {
+        switchTab(tabName);
+    }
+    requestAnimationFrame(() => {
+        const section = document.getElementById(sectionId);
+        if (!section) return;
+        suppressSectionScrollSpy();
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setActiveSection(section);
+    });
+}
+
+// Highlights the current section (glowing border, config_dialog.css
+// .section-active) and its matching sidebar subheader together - "current"
+// meaning either just jumped to, or, via the scrollspy below, whatever's
+// scrolled into view. No timer: the CSS transition on .section-active handles
+// both the fade-in when a section becomes current and the fade-out when
+// another section takes over.
+function setActiveSection(section) {
+    document.querySelectorAll('.section-active').forEach(el => el.classList.remove('section-active'));
+    document.querySelectorAll('.subheader-item-active').forEach(el => el.classList.remove('subheader-item-active'));
+    if (!section) return;
+    section.classList.add('section-active');
+    if (section._navItem) {
+        section._navItem.classList.add('subheader-item-active');
+    }
+}
+
+// Scrollspy: highlights whichever section's top has scrolled past the top of
+// #content-panel (plus a small buffer) - the standard "which heading are we
+// currently under" rule, using the last section that qualifies so a short
+// section can't out-rank a tall one the way an intersection-ratio comparison
+// would.
+const SECTION_SCROLL_SPY_OFFSET = 40;
+
+function updateActiveSectionHighlight() {
+    const contentPanel = document.getElementById('content-panel');
+    const activePanel = document.querySelector('.panel-content.active');
+    if (!contentPanel || !activePanel) return;
+
+    if (TABS_WITHOUT_SUBHEADERS.includes(activePanel.getAttribute('data-panel'))) {
+        setActiveSection(null);
+        return;
+    }
+
+    const sections = Array.from(activePanel.querySelectorAll('.section')).filter(s => s.style.display !== 'none');
+    if (!sections.length) return;
+
+    // A short last section can't be scrolled all the way up to the threshold
+    // line if there's nothing left below it to make room - once the panel is
+    // scrolled to its end, just assume the last section is the one selected.
+    const atBottom = contentPanel.scrollTop + contentPanel.clientHeight >= contentPanel.scrollHeight - 1;
+    if (atBottom) {
+        setActiveSection(sections[sections.length - 1]);
+        return;
+    }
+
+    const containerTop = contentPanel.getBoundingClientRect().top;
+    const threshold = containerTop + SECTION_SCROLL_SPY_OFFSET;
+
+    let current = null;
+    sections.forEach(section => {
+        if (section.getBoundingClientRect().top <= threshold) {
+            current = section;
+        }
+    });
+
+    setActiveSection(current);
+}
+
+// scrollIntoView's own smooth-scroll animation fires a 'scroll' event on
+// nearly every frame while it's mid-flight, which would otherwise make the
+// live scrollspy below immediately recompute "current" from an in-between
+// position and strip the class jumpToSection() just set - for a section that
+// can't scroll all the way to the container's top (e.g. one near the end of
+// the panel), the spy's answer never lands back on it, so the highlight never
+// reappears. Suppressing the spy for the duration of a programmatic scroll
+// avoids that fight; 'scrollend' lifts the suppression once it actually
+// settles, with a timeout as a fallback for engines that lack that event.
+let sectionScrollSpySuppressed = false;
+let sectionScrollSpySuppressTimer = null;
+
+function suppressSectionScrollSpy() {
+    sectionScrollSpySuppressed = true;
+    clearTimeout(sectionScrollSpySuppressTimer);
+    sectionScrollSpySuppressTimer = setTimeout(() => {
+        sectionScrollSpySuppressed = false;
+    }, 700);
+}
+
+function setupSectionScrollSpy() {
+    const contentPanel = document.getElementById('content-panel');
+    if (!contentPanel) return;
+
+    let ticking = false;
+    contentPanel.addEventListener('scroll', () => {
+        if (sectionScrollSpySuppressed) return;
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+            updateActiveSectionHighlight();
+            ticking = false;
+        });
+    });
+
+    contentPanel.addEventListener('scrollend', () => {
+        sectionScrollSpySuppressed = false;
+        clearTimeout(sectionScrollSpySuppressTimer);
+    });
 }
 
 function closeDialog() {
@@ -4679,7 +4847,7 @@ function populateCharacters() {
         const hotkeyDisplay = char.hotkey ? vkHexToFriendly(char.hotkey) : '';
         return `
             <div class="roster-row ${index === selectedCharacterIndex ? 'selected' : ''}" data-index="${index}" onclick="selectCharacter(${index})">
-                <span class="character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">≡</span>
+                <span class="drag-index-chip character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(index + 1).padStart(2, '0')}</span>
                 <img class="character-portrait" id="char_${index}_portrait" src="${portraitUrl || ''}" alt="" style="${portraitUrl ? '' : 'display:none'}" onerror="this.style.display='none'">
                 <span class="roster-name" id="char_${index}_header_name">${char.name || t('dynamic.character.defaultNamePrefix') + ' ' + (index + 1)}</span>
                 <span class="roster-hotkey-badge" id="char_${index}_hotkeyBadge" style="${hotkeyDisplay ? '' : 'display:none'}">[${hotkeyDisplay}]</span>
@@ -5274,7 +5442,7 @@ function populateHotkeyGroups() {
 function renderHotkeyGroupCharRows(groupIndex, characters) {
     return (characters || []).map((name, charIndex) => `
         <div class="hkgroup-char-row" data-char-index="${charIndex}">
-            <span class="character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">≡</span>
+            <span class="drag-index-chip character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(charIndex + 1).padStart(2, '0')}</span>
             <input type="text" class="hkgroup-char-input" value="${name}" placeholder="${t('common.characterName')}" style="flex: 1; margin-bottom: 0;">
             <button type="button" class="hotkey-clear-btn" onclick="removeHotkeyGroupCharacter(${groupIndex}, ${charIndex})" title="${t('common.remove')}" style="margin-bottom: 0;">×</button>
         </div>
@@ -5685,6 +5853,7 @@ async function loadGlobalSettingsFromBackend() {
     const advancedToggle = document.getElementById('advancedModeToggle');
     if (advancedToggle) advancedToggle.checked = advancedModeEnabled;
     document.body.classList.toggle('advanced-mode', advancedModeEnabled);
+    buildSectionNav();
 
     refreshCharacterPortraits();
 }
@@ -5695,6 +5864,7 @@ async function loadGlobalSettingsFromBackend() {
 function toggleAdvancedMode() {
     const enabled = document.getElementById('advancedModeToggle').checked;
     document.body.classList.toggle('advanced-mode', enabled);
+    buildSectionNav();
 
     if (!currentGlobalSettings) currentGlobalSettings = {};
     currentGlobalSettings.advancedMode = enabled;

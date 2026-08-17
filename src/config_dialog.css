@@ -181,7 +181,7 @@ body::after {
 }
 
 .tab-item {
-    padding: 6px 12px;
+    padding: 6px 12px 6px 8px;
     cursor: pointer;
     transition: all 0.15s;
     color: #ffffff;
@@ -195,7 +195,7 @@ body::after {
 .tab-item::before {
     content: '$ ';
     color: #ffffff;
-    margin-right: 4px;
+    margin-right: 2px;
     text-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
 }
 
@@ -216,7 +216,30 @@ body::after {
     animation: blink 1.5s infinite;
 }
 
+.subheader-list {
+    display: none;
+}
 
+.tab-item.active + .subheader-list {
+    display: block;
+}
+
+.subheader-item {
+    padding: 3px 12px 3px 26px;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: #888888;
+    font-size: 11px;
+}
+
+.subheader-item:hover {
+    color: #ffffff;
+}
+
+.subheader-item.subheader-item-active {
+    color: #ffffff;
+    font-weight: 600;
+}
 
 @keyframes blink {
     0%, 49% { opacity: 1; }
@@ -530,6 +553,17 @@ input.field-clamped {
 input.hotkey-conflict {
     border-color: var(--color-danger-urgent) !important;
     background-color: rgba(255, 0, 0, 0.1);
+}
+
+/* Highlights whichever section is currently in view (scrollspy) or was just
+   jumped to via a sidebar subheader - brightens the section's existing border
+   plus a soft glow, toned down from the button hover glow (0 0 15px / 0.5).
+   No timer: the transition just animates in when the class is added and back
+   out when it's removed as scroll moves to a different section. */
+.section.section-active {
+    border-color: #ffffff;
+    box-shadow: 0 0 11px rgba(255, 255, 255, 0.4);
+    transition: border-color 0.4s ease-out, box-shadow 0.4s ease-out;
 }
 
 input:focus,
@@ -1012,6 +1046,17 @@ input.manual-editing {
     border: 1px solid #888888;
     padding: 8px;
     margin-bottom: 8px;
+    /* Leaves a gap above the section when jumped to via scrollIntoView, so its
+       top border/glow isn't flush against #content-panel's edge. */
+    scroll-margin-top: 12px;
+}
+
+/* About sections' last child (p/ul/div/select/label) each carry their own
+   bottom margin - inline on most of them, so !important is needed to beat
+   that - which stacks on top of .section's own 8px padding and makes the
+   bottom gap bigger than the top. Zeroing it makes both sides match. */
+.panel-content[data-panel="about"] .section > *:last-child {
+    margin-bottom: 0 !important;
 }
 
 /* Advanced-only sections: hidden unless Advanced Mode is enabled */
@@ -1484,7 +1529,6 @@ input[type="range"]::-moz-range-thumb {
 .roster-row.selected {
     background: #1a1a1a;
     color: #ffffff;
-    box-shadow: inset 3px 0 0 #ffffff;
 }
 
 .roster-row.selected .roster-name {
@@ -1572,6 +1616,21 @@ input[type="range"]::-moz-range-thumb {
     border: 1px solid #444;
     border-radius: 4px;
     background: #1a1a1a;
+}
+
+.drag-index-chip {
+    font-size: 12px;
+    min-width: 16px;
+    text-align: center;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 3px;
+    padding: 1px 2px;
+}
+
+.drag-index-chip:hover {
+    background: #383838;
+    border-color: #666;
 }
 
 .hkgroup-char-row.dragging {
