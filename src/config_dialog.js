@@ -1,6 +1,4 @@
-// Forwards console.error/console.warn (and otherwise-silent uncaught errors) to the
-// Zig backend's log.zig, via the logClientMessage bind, so they land in eve-maj.log
-// instead of only being visible in this webview's normally-hidden devtools console.
+// Forwards console.error/warn to Zig's log.zig since this webview's devtools console is normally hidden.
 function formatLogArgs(args) {
     return args.map((a) => {
         if (a instanceof Error) return a.stack || a.message;
@@ -49,9 +47,7 @@ function applyTranslations() {
     });
 }
 
-// window.__I18N_ALL__ (lang code -> full catalog) is populated by Zig's
-// injectResources() before this script runs, from every SupportedLang variant,
-// so switching languages doesn't need a reload or a backend round trip.
+// window.__I18N_ALL__ is populated by Zig's injectResources(), so switching languages needs no reload/backend round trip.
 function switchLanguage(code) {
     const all = window.__I18N_ALL__ || {};
     if (!(code in all)) return;
@@ -62,12 +58,7 @@ function switchLanguage(code) {
     buildSectionNav();
 }
 
-// data-i18n* covers static markup, but these list-editor sections build their rows
-// via innerHTML template literals that call t() once, at render time - so a language
-// switch has to re-render them, not just re-scan the DOM. Each save*() call flushes
-// in-progress form edits into currentConfig/currentGlobalSettings first (the same
-// save-before-rebuild pattern addCharacter()/addSystemColor()/etc. already use)
-// so re-rendering for translation doesn't drop anything the user just typed.
+// List sections render via one-time innerHTML templates, so translations need re-render, not a DOM re-scan; save*() flushes pending edits first so nothing is lost.
 function refreshDynamicSections() {
     if (!currentConfig) return;
     saveWindowFilters();
@@ -101,35 +92,22 @@ let currentConfig = null;
 let currentGlobalSettings = null;
 // Tracks names removed this session so reloadLivePositions() won't resurrect them from disk.
 let deletedCharacterNames = new Set();
-// Character names staged by pickRunningWindowForFilter(), keyed lowercased; only actually
-// added to currentConfig.characters at Save time, not the moment a window is picked.
+// Character names staged by pickRunningWindowForFilter(), keyed lowercased; added to currentConfig.characters only at Save time.
 let pendingCharacterNames = new Map();
-// The app's factory-default config (not any saved profile), fetched once at dialog
-// startup - see loadDefaultConfig(). Feeds the color picker's "Clear to Default"
-// button so reset values come from Config's Zig field defaults instead of being
-// duplicated as literals here. Stays null on fetch failure/mock mode; every
-// consumer must tolerate that and fall back to its existing hardcoded literal.
+// Factory-default config fetched once at startup (loadDefaultConfig); feeds "Clear to Default" buttons. May stay null on fetch failure - callers must tolerate that.
 let defaultConfig = null;
 let webuiReady = false;
 let hasUnsavedChanges = false;
-let originalConfigSnapshot = null;
 
-// Server-truth min/max bounds, keyed by the same dotted config path CONFIG_SCHEMA
-// uses, in the units Config.zig's validate() clamps to (see loadValidationRanges()).
+// Server-truth min/max bounds keyed by CONFIG_SCHEMA's dotted path, in Config.zig's validate() units.
 let VALIDATION_RANGES = {};
-// VALIDATION_RANGES re-keyed by HTML field id and converted into the units the field
-// actually displays (e.g. ms -> seconds), so getFieldValue() can clamp by id alone -
-// see buildFieldRanges().
+// VALIDATION_RANGES re-keyed by field id and converted to display units (e.g. ms -> seconds) - see buildFieldRanges().
 let FIELD_RANGES = {};
 
-// Profile currently loaded into the form for editing (e.g. "default.json").
 let dialogEditingProfile = null;
-// Profile the dialog believes is actually driving the running app's live thumbnails.
-// Live-preview patches only get sent while this equals dialogEditingProfile - see
-// switchProfile() and sendThumbnailPreview().
+// Profile the dialog believes is driving the running app's live thumbnails; live-preview patches only send while this equals dialogEditingProfile.
 let liveConfirmedProfile = null;
 
-// Convert 0xAARRGGBB or 0xRRGGBB format to #RRGGBB for HTML color inputs
 function zigColorToHtml(color) {
     if (!color) return '#000000';
 
@@ -146,7 +124,6 @@ function zigColorToHtml(color) {
     return '#' + rgb.toUpperCase();
 }
 
-// Convert #RRGGBB format from HTML color input to 0xAARRGGBB format for Zig
 function htmlColorToZig(htmlColor) {
     if (!htmlColor) return '0xFF000000';
 
@@ -154,9 +131,7 @@ function htmlColorToZig(htmlColor) {
     return '0xFF' + rgb.toUpperCase();
 }
 
-// Shared <option> lists for the many identical position/font <select> elements
-// scattered across tabs (character/system name, notifications, combat, mining...).
-// Kept here once instead of duplicated per-select in the HTML.
+// Shared <option> lists for the many identical position/font <select> elements across tabs.
 const POSITION_OPTIONS = [
     ['TopLeft', 'Top Left'], ['TopCenter', 'Top Center'], ['TopRight', 'Top Right'],
     ['LeftCenter', 'Left Center'], ['Center', 'Center'], ['RightCenter', 'Right Center'],
@@ -168,10 +143,7 @@ const FONT_OPTIONS = [
     'Tahoma', 'Trebuchet MS', 'Segoe UI', 'Calibri', 'Georgia', 'Times New Roman',
 ];
 
-// Must run before any setFieldValue() call targets these selects, otherwise there
-// are no <option> elements yet for the value to match against.
-// window.__I18N_LANGS__ (lang code -> display name) is populated by Zig's
-// injectResources() before this script runs, from every SupportedLang variant.
+// Must run before any setFieldValue() targets these selects, or there are no <option> elements yet to match.
 function populateLanguageSelect() {
     const select = document.getElementById('languageSelect');
     if (!select) return;
@@ -188,28 +160,7 @@ function populateSharedSelectOptions() {
     });
 }
 
-// One entry per scalar/enum/color field bound between currentConfig and a DOM
-// element, replacing what used to be one setFieldValue/getFieldValue call per
-// field duplicated between populateFormFields() and saveConfiguration().
-//
-// Repeating-list sections (window filters, system colors, characters, hotkey
-// groups, notification types) and a handful of genuinely composite fields
-// (textBgColor+textBgOpacity, startX/startY, the "active" state-visibility
-// checkbox) aren't representable as a single {id, path} pair and are handled
-// by applySpecialFieldsToForm/FromForm() below instead.
-//
-// transform:
-//   (none)     - passed through getFieldValue/setFieldValue as-is (dispatches
-//                on the DOM element's native type: number/checkbox/color/select/text)
-//   'ms'       - stored in the config as milliseconds, edited in the UI as
-//                seconds; uses parseFloat directly (not getFieldValue's
-//                parseInt) so fractional seconds aren't truncated
-//   'opacity'  - stored as 0-255, edited as a 0-100% slider
-//   'vkhex'    - stored as a "0xNN"-style hex/combo string; friendly display
-//                name (e.g. "Ctrl+F9") only on load - save passes the field's
-//                raw value straight through since vk.parseVirtualKey (Zig
-//                side) accepts either form
-//   'nullable' - empty field means null, not 0 (getNullableFieldValue)
+// One entry per scalar/enum/color field bound between currentConfig and a DOM element; composite/list fields are handled separately by applySpecialFields*() below.
 const CONFIG_SCHEMA = [
     { id: 'scanInterval', path: 'timer.scanIntervalMs', transform: 'ms' },
     { id: 'enableDragging', path: 'interaction.enableDragging' },
@@ -246,7 +197,7 @@ const CONFIG_SCHEMA = [
     { id: 'quickGroupBadgeOffsetY', path: 'thumbnail.quickGroupBadgeOffsetY' },
     { id: 'quickGroupBadgeColor', path: 'thumbnail.quickGroupBadgeColor' },
     { id: 'exclusionOverlayStyle', path: 'thumbnail.exclusionOverlayStyle' },
-    // exclusionOverlayColor/exclusionOverlayOpacity are special-cased below (see applySpecialFields*).
+    // exclusionOverlayColor/exclusionOverlayOpacity are special-cased below.
     { id: 'useUniqueSystemColors', path: 'thumbnail.useUniqueSystemColors' },
     { id: 'useUniqueCharacterNameColors', path: 'thumbnail.useUniqueCharacterNameColors' },
     { id: 'textFontName', path: 'thumbnail.textFontName' },
@@ -258,8 +209,7 @@ const CONFIG_SCHEMA = [
     { id: 'textColor', path: 'thumbnail.textColor' },
     { id: 'systemNameColor', path: 'thumbnail.systemNameColor' },
     { id: 'textBgColorInheritBorderColor', path: 'thumbnail.textBgColorInheritBorderColor' },
-    // showBorderWhenFocused/showBorderWhenInactive/borderEnabled and
-    // textBgColor/textBgOpacity are special-cased below (see applySpecialFields*).
+    // showBorderWhenFocused/showBorderWhenInactive/borderEnabled and textBgColor/textBgOpacity are special-cased below.
 
     { id: 'spacing', path: 'display.spacing' },
     { id: 'spacingX', path: 'display.spacingX', transform: 'nullable' },
@@ -281,8 +231,7 @@ const CONFIG_SCHEMA = [
     { id: 'monitorIndex', path: 'display.monitorIndex', transform: 'nullable' },
     { id: 'useMonitorWorkArea', path: 'display.useMonitorWorkArea' },
     { id: 'honorSavedPositions', path: 'display.honorSavedPositions' },
-    // startX/startY are populate-only (see applySpecialFieldsToForm) - saveConfiguration
-    // deliberately reloads them from disk instead of the form (see reloadLivePositions).
+    // startX/startY are populate-only - saveConfiguration reloads them from disk instead of the form (see reloadLivePositions).
 
     { id: 'autoMinimizeEnabled', path: 'autoMinimize.enabled' },
     { id: 'autoMinimizeDelay', path: 'autoMinimize.delayMs', transform: 'ms' },
@@ -307,12 +256,7 @@ const CONFIG_SCHEMA = [
     { id: 'hotkeyPreviousNotified', path: 'hotkeys.hotkeyPreviousNotified', transform: 'vkhex' },
     { id: 'hotkeySuspend', path: 'hotkeys.hotkeySuspend', transform: 'vkhex' },
 
-    // Per-state thumbnail visibility. "active" is intentionally NOT here - unlike
-    // the other six, unchecking it must write null (defer to activeThumbnailHidden),
-    // not false (force-hidden) - see applySpecialFields*. This also fixes a
-    // pre-existing bug: these previously read/wrote a top-level currentConfig.states.*
-    // object that no Zig code (old or new) ever parsed from or serialized to, so
-    // these six checkboxes never actually persisted to the saved profile.
+    // "active" is intentionally not here - unchecking it must write null (defer to activeThumbnailHidden), not false; see applySpecialFields*.
     { id: 'stateInactiveShow', path: 'thumbnail.inactive.showThumbnail' },
     { id: 'stateHoverShow', path: 'thumbnail.hover.showThumbnail' },
     { id: 'stateAlertShow', path: 'thumbnail.alert.showThumbnail' },
@@ -329,8 +273,7 @@ const CONFIG_SCHEMA = [
     { id: 'ttsVolume', path: 'thumbnail.notifications.tts_volume', default: 100 },
     { id: 'ttsRate', path: 'thumbnail.notifications.tts_rate', default: 0 },
     { id: 'ttsUseDisplayName', path: 'thumbnail.notifications.tts_use_display_name', default: false },
-    // notifCycleRetention (clamped 5-600 on save) and ttsSpeakCharacterName
-    // (defaults true, not false, when unset) are special-cased below.
+    // notifCycleRetention and ttsSpeakCharacterName are special-cased below.
 
     { id: 'chatlogEnabled', path: 'chatlog.enabled' },
     { id: 'chatlogDir', path: 'chatlog.chatlogDir' },
@@ -340,10 +283,7 @@ const CONFIG_SCHEMA = [
     { id: 'chatlogMaxPollMultiplier', path: 'chatlog.maxPollMultiplier' },
     { id: 'chatlogUseThreading', path: 'chatlog.useThreading' },
 
-    // combat.*/mining.* paths are snake_case, not camelCase like the rest of this
-    // table - CombatConfig/MiningConfig's Zig fields (and their Wire mirrors) were
-    // never renamed to match the rest of Config, so the JSON keys are window_seconds,
-    // show_incoming, etc. Using camelCase here silently no-ops (see getConfigPath).
+    // combat.*/mining.* paths are snake_case, unlike the rest of this table - camelCase here would silently no-op (see getConfigPath).
     { id: 'combatEnabled', path: 'combat.enabled' },
     { id: 'combatWindowSeconds', path: 'combat.window_seconds' },
     { id: 'combatUpdateIntervalMs', path: 'combat.update_interval_ms', transform: 'ms' },
@@ -423,7 +363,6 @@ function setConfigPath(obj, path, value) {
     target[keys[keys.length - 1]] = value;
 }
 
-// Populate direction: currentConfig -> DOM, per CONFIG_SCHEMA.
 function applyConfigSchemaToForm() {
     for (const f of CONFIG_SCHEMA) {
         let value = getConfigPath(currentConfig, f.path);
@@ -438,7 +377,6 @@ function applyConfigSchemaToForm() {
     }
 }
 
-// Save direction: DOM -> currentConfig, per CONFIG_SCHEMA.
 function applyConfigSchemaFromForm() {
     for (const f of CONFIG_SCHEMA) {
         let value;
@@ -458,12 +396,7 @@ function applyConfigSchemaFromForm() {
     }
 }
 
-// Validation ranges (server-truth min/max, see getValidationRanges() in
-// config_dialog.zig / Config.buildValidationRangesJson() in config.zig)
-// Fetched once at dialog startup rather than hand-copied into this file, so a bound
-// changed in one place (the Zig validate() functions) never needs a matching edit
-// here - see CLAUDE.md's note on this file being kept in sync with the backend.
-
+// Fetched once from Zig (not hand-copied) so validate() bound changes never need a matching edit here.
 function clampToValidationRange(path, value) {
     if (value == null || typeof value !== 'number' || isNaN(value)) return value;
     const range = VALIDATION_RANGES[path];
@@ -471,9 +404,7 @@ function clampToValidationRange(path, value) {
     return Math.min(range.max, Math.max(range.min, value));
 }
 
-// Re-keys VALIDATION_RANGES (dotted path, backend units) by HTML field id and
-// converts each bound into the units that field displays, so getFieldValue() can
-// clamp a raw DOM read without knowing about CONFIG_SCHEMA or transforms.
+// Re-keys VALIDATION_RANGES by field id in display units, so getFieldValue() can clamp a raw DOM read without knowing about CONFIG_SCHEMA/transforms.
 function buildFieldRanges() {
     FIELD_RANGES = {};
     for (const f of CONFIG_SCHEMA) {
@@ -488,11 +419,7 @@ function buildFieldRanges() {
     }
 }
 
-// Sets native min/max on every number/range input CONFIG_SCHEMA maps to a bounded
-// path, so the browser's spinner arrows and :invalid styling reflect the real
-// backend limits (previously hand-typed into this HTML and prone to drifting from
-// the Zig side - e.g. thumbWidth/thumbHeight were capped at 1000px here while
-// Config.zig actually allowed up to 3840x2160).
+// Sets native min/max on schema-mapped number/range inputs so the browser reflects real backend limits instead of hand-typed HTML values.
 function applyValidationRangesToInputs() {
     for (const [id, range] of Object.entries(FIELD_RANGES)) {
         const field = document.getElementById(id);
@@ -514,13 +441,7 @@ async function loadValidationRanges() {
     applyValidationRangesToInputs();
 }
 
-// Native min/max on a number input only affects the spinner arrows and :invalid
-// styling - the browser does not stop someone from typing 50000 into a field
-// capped at 3840. getFieldValue() already clamps what's saved into currentConfig,
-// but the field itself would keep showing the out-of-range number until reload.
-// Clamp visually once the user commits the value (blur/Enter fires 'change';
-// unlike 'input' this doesn't fight the user mid-keystroke) so the field always
-// reflects what will actually be saved.
+// Native min/max only affects spinner UI, not typed values, so clamp visually on 'change' (not 'input', which would fight mid-keystroke) once the user commits a value.
 document.addEventListener('change', (e) => {
     const field = e.target;
     if (field.type !== 'number' && field.type !== 'range') return;
@@ -535,20 +456,14 @@ document.addEventListener('change', (e) => {
     }
 });
 
-// Briefly highlights a field whose value was just auto-corrected to its min/max
-// (see the 'change' listener above). Timer is stashed on the element itself so
-// clamping the same field again quickly restarts the fade instead of stacking
-// timeouts that could remove the class early.
+// Timer is stashed on the element itself so re-clamping quickly restarts the fade instead of stacking timeouts.
 function flashClampedField(field) {
     field.classList.add('field-clamped');
     clearTimeout(field._clampFlashTimer);
     field._clampFlashTimer = setTimeout(() => field.classList.remove('field-clamped'), 1500);
 }
 
-// Fields that can't be expressed as a single {id, path} pair: composite values
-// (textBgColor+textBgOpacity), fields with asymmetric load/save behavior
-// (startX/Y, "active" state visibility), or default-when-unset logic that isn't
-// a plain `?? default` (ttsSpeakCharacterName, notifCycleRetention's clamp).
+// Fields that can't be expressed as a single {id, path} pair: composite values, asymmetric load/save, or non-trivial defaults.
 function applySpecialFieldsToForm() {
     setFieldValue('startX', currentConfig.display?.startX);
     setFieldValue('startY', currentConfig.display?.startY);
@@ -589,9 +504,7 @@ function applySpecialFieldsFromForm() {
         clampToValidationRange('thumbnail.notifications.notified_cycle_retention_seconds', rawRetention);
 }
 
-// Shared handler for every range slider that just mirrors its value into a
-// nearby <span> (via data-value-target="spanId") - covers thumbnail/notification/
-// combat/mining offset and opacity sliders without a per-slider inline handler.
+// Mirrors any range slider's value into its data-value-target span, covering all offset/opacity sliders without a per-slider handler.
 document.addEventListener('input', (e) => {
     if (e.target.matches('input[type="range"][data-value-target]')) {
         const span = document.getElementById(e.target.dataset.valueTarget);
@@ -601,7 +514,7 @@ document.addEventListener('input', (e) => {
 
 async function waitForWebUI() {
     let attempts = 0;
-    const maxAttempts = 50; // 5 seconds max
+    const maxAttempts = 50;
 
     while (attempts < maxAttempts) {
         if (typeof webui !== 'undefined' && webui.call) {
@@ -640,9 +553,7 @@ function markAsSaved() {
     }
 }
 
-// Delegated (not per-element) so rows added later at runtime - characters, system
-// colors, window filters, hotkey groups, notification types - are covered without
-// needing to re-run this after every dynamic list rebuild.
+// Delegated (not per-element) so rows added later at runtime are covered without needing to re-run this after every dynamic list rebuild.
 function isTrackedFormElement(element) {
     if (!element.matches || !element.matches('input, select, textarea')) return false;
     return element.id !== 'search-filter' && element.id !== 'profile-select';
@@ -662,8 +573,7 @@ function setupChangeDetection() {
     });
 }
 
-// Live thumbnail preview (Thumbnails/Overlay Text tabs): pushes an unsaved patch to the running main app so open thumbnails reflect edits immediately, without writing to disk.
-// startX/startY are excluded since they can be live-dragged in the running app - see repositionAllThumbnails() in painter.zig.
+// Pushes an unsaved patch to the running main app so open thumbnails reflect edits immediately, without writing to disk. startX/startY are excluded since they can be live-dragged (see painter.zig's repositionAllThumbnails()).
 const THUMBNAIL_PREVIEW_FIELD_IDS = [
     'borderEnabled', 'showBorderWhenFocused', 'borderWidth', 'borderStyle', 'borderColor',
     'showBorderWhenInactive', 'inactiveBorderWidth', 'inactiveBorderStyle', 'inactiveBorderColor',
@@ -757,10 +667,7 @@ function buildThumbnailPreviewPatch(includePositions = false) {
     };
 }
 
-// Reads the System Color Overrides list straight from the DOM (not currentConfig -
-// see saveSystemColors(), which only ever writes a `.name` property while the field
-// loaded from disk is `.systemName`, so the object can't be trusted as a live source).
-// Skips rows with a blank name since those aren't valid overrides yet.
+// Reads straight from the DOM, not currentConfig - saveSystemColors() writes a `.name` property while the field loaded from disk is `.systemName`, so that object can't be trusted as a live source.
 function buildSystemColorsPreviewPatch() {
     const container = document.getElementById('systemColorsList');
     if (!container) return [];
@@ -776,14 +683,14 @@ function buildSystemColorsPreviewPatch() {
     return result;
 }
 
-// Reads per-character display-name, border/name-color, and thumbnail-size overrides
-// straight from the accordion DOM, using the same "originally set OR changed from the
-// #000000 default (unless dataset.cleared)" convention as saveCharacters() for the
-// color fields - so a live preview and the eventual Save agree on what counts as "set".
-// Matched against the currently-running character by char.name (the value loaded when
-// the dialog opened), not any in-progress rename in the name field, since renames
-// aren't live-previewed and would break the match on the receiving end.
-// includePositions is only true for the one-shot post-import preview (see runImport()) - position can be live-dragged in the running app, so it's excluded from the general per-edit debounce.
+// A color counts as "set" if it was already set on load, or the user changed it from the #000000 default; "Clear to Default" sets dataset.cleared to override this.
+function resolveOptionalCharacterColor(input, hadValue) {
+    if (!input || input.dataset.cleared === 'true') return null;
+    const changed = input.value.toUpperCase() !== '#000000';
+    return (hadValue || changed) ? htmlColorToZig(input.value) : null;
+}
+
+// Reads straight from the accordion DOM using the same "set OR changed from #000000 default" convention as saveCharacters(), so live preview and Save agree on what counts as "set".
 function buildCharacterOverridesPreviewPatch(includePositions = false) {
     if (!currentConfig || !currentConfig.characters) return [];
     const result = [];
@@ -806,28 +713,13 @@ function buildCharacterOverridesPreviewPatch(includePositions = false) {
         const h = height ? (parseInt(height.value) || null) : null;
         const thumbnailSize = (w || h) ? { width: w, height: h } : null;
 
-        const hadActive = !!(char.borderColors && char.borderColors.activeBorderColor);
-        const hadInactive = !!(char.borderColors && char.borderColors.inactiveBorderColor);
-        let activeOut = null;
-        if (activeColor && activeColor.dataset.cleared !== 'true') {
-            const changed = activeColor.value.toUpperCase() !== '#000000';
-            if (hadActive || changed) activeOut = htmlColorToZig(activeColor.value);
-        }
-        let inactiveOut = null;
-        if (inactiveColor && inactiveColor.dataset.cleared !== 'true') {
-            const changed = inactiveColor.value.toUpperCase() !== '#000000';
-            if (hadInactive || changed) inactiveOut = htmlColorToZig(inactiveColor.value);
-        }
+        const activeOut = resolveOptionalCharacterColor(activeColor, !!(char.borderColors && char.borderColors.activeBorderColor));
+        const inactiveOut = resolveOptionalCharacterColor(inactiveColor, !!(char.borderColors && char.borderColors.inactiveBorderColor));
         const borderColors = (activeOut || inactiveOut)
             ? { activeBorderColor: activeOut, inactiveBorderColor: inactiveOut }
             : null;
 
-        const hadNameColor = !!char.nameColor;
-        let nameColorOut = null;
-        if (nameColor && nameColor.dataset.cleared !== 'true') {
-            const changed = nameColor.value.toUpperCase() !== '#000000';
-            if (hadNameColor || changed) nameColorOut = htmlColorToZig(nameColor.value);
-        }
+        const nameColorOut = resolveOptionalCharacterColor(nameColor, !!char.nameColor);
 
         const entry = { name: char.name, displayName, hideThumbnail, thumbnailSize, borderColors, nameColor: nameColorOut };
         if (includePositions && char.position) entry.position = char.position;
@@ -838,8 +730,7 @@ function buildCharacterOverridesPreviewPatch(includePositions = false) {
 
 async function sendThumbnailPreview(includePositions = false) {
     if (typeof webui === 'undefined' || !webuiReady || !currentConfig) return;
-    // Never push a preview onto a profile the dialog hasn't confirmed is actually
-    // running - see the live-switch confirmation modal in switchProfile().
+    // Never push a preview onto a profile the dialog hasn't confirmed is actually running - see switchProfile()'s live-switch modal.
     if (!dialogEditingProfile || dialogEditingProfile !== liveConfirmedProfile) return;
     try {
         await webui.call('previewThumbnailConfig', JSON.stringify(buildThumbnailPreviewPatch(includePositions)));
@@ -856,8 +747,7 @@ function setupThumbnailPreview() {
         field.addEventListener(eventName, scheduleThumbnailPreview);
     });
 
-    // System Color Overrides rows are added/removed at runtime (addSystemColor(),
-    // removeSystemColor()), so listen on the container instead of individual fields.
+    // System Color Overrides rows are added/removed at runtime, so listen on the container instead of individual fields.
     const systemColorsList = document.getElementById('systemColorsList');
     if (systemColorsList) {
         systemColorsList.addEventListener('input', (e) => {
@@ -868,9 +758,7 @@ function setupThumbnailPreview() {
         });
     }
 
-    // Per-character override fields (width/height/colors) are regenerated per
-    // accordion row by populateCharacters(), so listen on the container instead
-    // of individual fields, same as System Color Overrides above.
+    // Per-character override fields are regenerated per accordion row by populateCharacters(), so listen on the container, same as above.
     const charactersList = document.getElementById('charactersList');
     if (charactersList) {
         const isPreviewableCharField = (id) => /^char_\d+_(width|height|activeColor|inactiveColor|nameColor|displayName|hideThumbnail)$/.test(id);
@@ -906,9 +794,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     const ready = await waitForWebUI();
     if (ready) {
-        // None of these calls depend on each other's results, so fire them all immediately
-        // instead of serializing a round trip per call - only loadProfileList()'s completion
-        // is actually needed below, to read the profile it populated into #profile-select.
+        // Fire independent calls immediately instead of serializing a round trip each - only loadProfileList()'s completion is needed below.
         const profileListLoaded = loadProfileList();
         loadConfigurationFromBackend();
         loadGlobalSettingsFromBackend();
@@ -919,9 +805,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         refreshWindowPositionSourceOptions();
 
         await profileListLoaded;
-        // Best-effort assumption: whatever profile the app loaded with is what's
-        // actually live. Only an explicit "Make It Live" click or a Save updates
-        // liveConfirmedProfile after this - see switchProfile().
+        // Best-effort assumption: whatever profile the app loaded with is live. Only "Make It Live" or a Save updates liveConfirmedProfile after this.
         const initialProfile = document.getElementById('profile-select').value;
         dialogEditingProfile = initialProfile;
         liveConfirmedProfile = initialProfile;
@@ -965,15 +849,10 @@ function switchTab(panelId) {
     updateActiveSectionHighlight();
 }
 
-// Tabs whose sections are too few/short to be worth a sidebar sub-list.
-// Shared with updateActiveSectionHighlight() so the scrollspy glow doesn't
-// highlight a section that has no subheader to match it.
+// Tabs whose sections are too few/short to be worth a sidebar sub-list; shared with updateActiveSectionHighlight() so scrollspy doesn't glow a section with no subheader.
 const TABS_WITHOUT_SUBHEADERS = ['about', 'characters', 'chatlog'];
 
-// Sidebar subheaders that jump to a section - IDs and labels are derived from
-// each section's h3[data-i18n] (tab.<tab>.section.<slug>.heading) rather than
-// hand-maintained, so they can't drift out of sync as sections are added/removed.
-// Rebuilt whenever section visibility or labels can change (see call sites).
+// IDs/labels are derived from each section's h3[data-i18n] rather than hand-maintained, so they can't drift out of sync as sections are added/removed.
 function buildSectionNav() {
     document.querySelectorAll('.subheader-list').forEach(el => el.remove());
 
@@ -1013,9 +892,7 @@ function buildSectionNav() {
 }
 
 function jumpToSection(tabName, sectionId) {
-    // Only switchTab() (which resets scroll to top) when the tab isn't already
-    // showing - otherwise a same-tab jump should smooth-scroll from wherever
-    // the user currently is, up or down, instead of snapping to top first.
+    // Only switchTab() (resets scroll to top) when the tab isn't already showing, so a same-tab jump smooth-scrolls instead of snapping to top.
     const tabItem = document.querySelector(`.tab-item[data-tab="${tabName}"]`);
     if (!tabItem || !tabItem.classList.contains('active')) {
         switchTab(tabName);
@@ -1029,12 +906,7 @@ function jumpToSection(tabName, sectionId) {
     });
 }
 
-// Highlights the current section (glowing border, config_dialog.css
-// .section-active) and its matching sidebar subheader together - "current"
-// meaning either just jumped to, or, via the scrollspy below, whatever's
-// scrolled into view. No timer: the CSS transition on .section-active handles
-// both the fade-in when a section becomes current and the fade-out when
-// another section takes over.
+// No timer: the CSS transition on .section-active handles both the fade-in and fade-out.
 function setActiveSection(section) {
     document.querySelectorAll('.section-active').forEach(el => el.classList.remove('section-active'));
     document.querySelectorAll('.subheader-item-active').forEach(el => el.classList.remove('subheader-item-active'));
@@ -1045,11 +917,7 @@ function setActiveSection(section) {
     }
 }
 
-// Scrollspy: highlights whichever section's top has scrolled past the top of
-// #content-panel (plus a small buffer) - the standard "which heading are we
-// currently under" rule, using the last section that qualifies so a short
-// section can't out-rank a tall one the way an intersection-ratio comparison
-// would.
+// Highlights whichever section's top has scrolled past #content-panel's top (plus a buffer), using the last section that qualifies so a short section can't out-rank a tall one.
 const SECTION_SCROLL_SPY_OFFSET = 40;
 
 function updateActiveSectionHighlight() {
@@ -1065,9 +933,7 @@ function updateActiveSectionHighlight() {
     const sections = Array.from(activePanel.querySelectorAll('.section')).filter(s => s.style.display !== 'none');
     if (!sections.length) return;
 
-    // A short last section can't be scrolled all the way up to the threshold
-    // line if there's nothing left below it to make room - once the panel is
-    // scrolled to its end, just assume the last section is the one selected.
+    // A short last section may never reach the threshold line if there's no room below it - once scrolled to the end, just assume it's selected.
     const atBottom = contentPanel.scrollTop + contentPanel.clientHeight >= contentPanel.scrollHeight - 1;
     if (atBottom) {
         setActiveSection(sections[sections.length - 1]);
@@ -1087,15 +953,7 @@ function updateActiveSectionHighlight() {
     setActiveSection(current);
 }
 
-// scrollIntoView's own smooth-scroll animation fires a 'scroll' event on
-// nearly every frame while it's mid-flight, which would otherwise make the
-// live scrollspy below immediately recompute "current" from an in-between
-// position and strip the class jumpToSection() just set - for a section that
-// can't scroll all the way to the container's top (e.g. one near the end of
-// the panel), the spy's answer never lands back on it, so the highlight never
-// reappears. Suppressing the spy for the duration of a programmatic scroll
-// avoids that fight; 'scrollend' lifts the suppression once it actually
-// settles, with a timeout as a fallback for engines that lack that event.
+// scrollIntoView's smooth-scroll fires 'scroll' on nearly every frame, which would fight the highlight jumpToSection() just set; suppress the spy until 'scrollend' (with a timeout fallback).
 let sectionScrollSpySuppressed = false;
 let sectionScrollSpySuppressTimer = null;
 
@@ -1142,9 +1000,7 @@ function minimizeDialog() {
     }
 }
 
-// Polls whether the main EVE-Maj Preview app process is running, so the top-right
-// status indicator reflects live state (e.g. if the app is closed/reopened while
-// this dialog stays open).
+// Polls whether the main app process is running, so the status indicator reflects it being closed/reopened while this dialog stays open.
 const MAIN_APP_STATUS_POLL_MS = 3000;
 
 async function updateMainAppStatus() {
@@ -1201,11 +1057,7 @@ async function loadConfigurationFromBackend() {
     }
 }
 
-// Fetches the app's factory defaults once, independent of whatever profile is
-// loaded. Deliberately not awaited before the first render (see call site in
-// DOMContentLoaded) - populateCharacters()/populateNotificationTypes() shouldn't
-// wait on a second round trip, and every consumer of defaultConfig already falls
-// back to its previous hardcoded literal until this resolves.
+// Deliberately not awaited before the first render - consumers of defaultConfig fall back to their hardcoded literal until this resolves.
 async function loadDefaultConfig() {
     try {
         if (typeof webui === 'undefined') return;
@@ -1218,11 +1070,7 @@ async function loadDefaultConfig() {
     }
 }
 
-// Overwrites the 10 global color swatches' data-default-color (see
-// initCustomColorPicker's "Clear to Default" button) with the real backend
-// default once it's fetched. The HTML's static data-default-color attributes
-// stay in place as the fallback for before this resolves / fetch failure /
-// mock mode - this only upgrades them when real data is available.
+// Upgrades the swatches' static data-default-color (see initCustomColorPicker's "Clear to Default") to the real backend value once fetched.
 function applyBackendDefaultColors() {
     if (!defaultConfig) return;
     const map = {
@@ -1244,8 +1092,7 @@ function applyBackendDefaultColors() {
     }
 }
 
-// Same idea as the pair above, but for the notification table's per-type text/border
-// color swatches - see notifDefaultTextColorHtml()/notifDefaultBorderColorHtml().
+// Same idea as applyBackendDefaultColors(), for the notification table's per-type text/border swatches.
 function refreshNotificationColorDefaults() {
     if (!defaultConfig) return;
     const textDefault = notifDefaultTextColorHtml();
@@ -1294,10 +1141,7 @@ function populateFormFields() {
     applyConfigSchemaToForm();
     applySpecialFieldsToForm();
 
-    // UI enabled/disabled-state initializers. Order-independent: each just reads
-    // fields already populated above and adjusts unrelated elements' disabled
-    // state, so batching them here (instead of interspersed, as before) produces
-    // the same end state.
+    // Order-independent: each just reads fields already populated above and adjusts unrelated elements' disabled state.
     toggleSnappingOptions();
     toggleBorderOptions();
     toggleFocusedBorderOptions();
@@ -1336,8 +1180,7 @@ function setFieldValue(fieldId, value) {
     const field = document.getElementById(fieldId);
     if (!field) return;
 
-    // A missing/null value means the loaded profile has nothing set for this field -
-    // clear it rather than leaving behind whatever the previously loaded profile had.
+    // A missing/null value means nothing is set for this field - clear it rather than leaving the previous profile's value.
     if (value === undefined || value === null) {
         field.value = field.type === 'color' ? zigColorToHtml(null) : '';
         return;
@@ -1349,9 +1192,7 @@ function setFieldValue(fieldId, value) {
         field.value = value;
     }
 
-    // Range sliders that mirror their value into a <span> (data-value-target) need
-    // that span updated too - the browser only fires 'input' for user interaction,
-    // not for this programmatic assignment.
+    // The browser only fires 'input' for user interaction, not this programmatic assignment, so update the mirrored span manually.
     if (field.dataset.valueTarget) {
         const span = document.getElementById(field.dataset.valueTarget);
         if (span) span.textContent = field.value;
@@ -1437,15 +1278,13 @@ async function loadProfileList() {
     }
 }
 
-// deferLivePush skips the immediate switchProfileLive call for a profile runImport() just created (still empty at this point) - the modal still asks and records the choice, but runImport() does the actual live push once it has real data to save.
-// Returns the modal's choice ('live'/'edit'), 'cancel', or null if no modal was shown.
+// deferLivePush skips the immediate switchProfileLive call for a profile runImport() just created (still empty) - runImport() does the actual live push once it has real data to save.
 async function switchProfile(deferLivePush = false) {
     const profileSelect = document.getElementById('profile-select');
     const selectedProfile = profileSelect.value;
     let liveChoice = null;
 
-    // Switching which profile the form edits doesn't have to touch the running app -
-    // ask, since making it live means an immediate thumbnail/hotkey/chatlog reload.
+    // Ask before making it live, since that means an immediate thumbnail/hotkey/chatlog reload in the running app.
     if (dialogEditingProfile && selectedProfile !== dialogEditingProfile) {
         const choice = await showLiveSwitchModal(selectedProfile);
         liveChoice = choice;
@@ -1468,8 +1307,7 @@ async function switchProfile(deferLivePush = false) {
                 }
             }
         }
-        // choice === 'edit' -> leave liveConfirmedProfile as-is, so preview stays
-        // suppressed for selectedProfile until it's confirmed live or saved.
+        // choice === 'edit' -> leave liveConfirmedProfile as-is, so preview stays suppressed until confirmed live or saved.
     }
 
     console.log('Switching to profile:', selectedProfile);
@@ -1481,9 +1319,7 @@ async function switchProfile(deferLivePush = false) {
             const result = JSON.parse(response);
 
             if (result.success) {
-                // Keep the in-memory global settings snapshot in sync so a later
-                // Save doesn't overwrite the backend's lastUsedProfile update
-                // (persisted by the switchProfile handler) with a stale value.
+                // Keep the in-memory snapshot in sync so a later Save doesn't overwrite the backend's lastUsedProfile update with a stale value.
                 if (!currentGlobalSettings) currentGlobalSettings = {};
                 currentGlobalSettings.lastUsedProfile = selectedProfile;
                 dialogEditingProfile = selectedProfile;
@@ -1506,8 +1342,6 @@ async function switchProfile(deferLivePush = false) {
     return liveChoice;
 }
 
-// Resolves to 'live' (make selectedProfile the running app's active profile),
-// 'edit' (just load it into the form), or 'cancel' (abort the switch entirely).
 function showLiveSwitchModal(selectedProfile) {
     return new Promise((resolve) => {
         const modal = document.getElementById('live-switch-modal');
@@ -1518,10 +1352,7 @@ function showLiveSwitchModal(selectedProfile) {
 
         message.textContent = t('status.liveSwitchConfirm').replace('{name}', selectedProfile.replace(/\.json$/, ''));
 
-        // All .modal elements share the same z-index, so when this fires while another
-        // modal is already open (e.g. mid-import, from runImport's new-profile flow),
-        // DOM order decides who paints on top. Re-parenting to the end of <body> puts
-        // this modal above whatever else is showing, instead of rendering hidden behind it.
+        // All .modal elements share the same z-index, so DOM order decides who paints on top; re-parent to the end of <body> to stay above other open modals.
         document.body.appendChild(modal);
         modal.classList.add('show');
 
@@ -1640,12 +1471,10 @@ async function copyCurrentProfile() {
     }
 }
 
-let importParsedData = null; // Raw parsed data from the selected legacy settings file
-let importFormat = null; // 'evex' (EVE-X Preview JSON) | 'apm' (EVE-APM Preview Qt/INI) | 'eveo' (EVE-O Preview JSON) | 'maj' (this app's own profile JSON)
+let importParsedData = null;
+let importFormat = null;
 
-// Must match config.zig's PROFILE_FORMAT_IDENTIFIER - stamped onto every profile this app
-// saves, so a maj-format file can be recognized outright instead of guessed at like the
-// legacy formats below (see isEveoConfigData).
+// Must match config.zig's PROFILE_FORMAT_IDENTIFIER, stamped onto every profile this app saves so it can be recognized outright instead of guessed at like the legacy formats below.
 const MAJ_FORMAT_IDENTIFIER = 'eve-maj-preview';
 
 function escapeHtml(str) {
@@ -1656,25 +1485,15 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
-// --- Legacy (AutoHotkey v1) hotkey string -> new combined-hex VK format ---
-// Mirrors combineKey()/extractVk()/extractModifiers() in virtual_keys.zig:
-// low byte = base VK code, bits 8-11 = MOD_ALT(0x01)/MOD_CONTROL(0x02)/MOD_SHIFT(0x04)/MOD_WIN(0x08).
+// Mirrors combineKey()/extractVk()/extractModifiers() in virtual_keys.zig: low byte = base VK code, bits 8-11 = MOD_ALT/MOD_CONTROL/MOD_SHIFT/MOD_WIN.
 const LEGACY_MOD_SYMBOLS = { '^': 0x02, '!': 0x01, '+': 0x04, '#': 0x08 };
-// AHK v1 "prefix" symbols that affect hook behavior rather than the modifier set: '*'
-// (wildcard - fire regardless of extra held modifiers), '~' (pass the keystroke through),
-// '$' (force the keyboard hook). None have an OS-level modifier equivalent, but they're
-// not reasons to fail the whole conversion either - e.g. "*F22" (common in these tools,
-// to make a dedicated key fire no matter what else is held) should just become plain F22.
+// AHK v1 prefix symbols that affect hook behavior, not the modifier set; none have an OS-level equivalent, but aren't reasons to fail the conversion (e.g. "*F22" just becomes plain F22).
 const LEGACY_PREFIX_SYMBOLS = new Set(['*', '~', '$']);
 const LEGACY_MOD_WORDS = { ctrl: 0x02, control: 0x02, alt: 0x01, shift: 0x04, win: 0x08, lwin: 0x08, rwin: 0x08 };
 const LEGACY_MOUSE_BUTTONS = new Set(['lbutton', 'rbutton', 'mbutton', 'xbutton1', 'xbutton2']);
-// XButton1/XButton2 (mouse side buttons) are real Win32 VK codes (0x05/0x06) and are
-// representable as OS-level hotkeys via this app's own low-level mouse hook (see
-// mouse_hook.zig) - the other legacy mouse buttons stay unsupported (RButton/LButton are
-// already used locally for thumbnail drag/click; hooking them globally would break that).
+// XButton1/XButton2 are real Win32 VK codes representable as OS-level hotkeys via this app's mouse hook - other legacy mouse buttons stay unsupported (already used locally for drag/click).
 const LEGACY_MOUSE_BUTTON_VK = { xbutton1: 0x05, xbutton2: 0x06 };
-// WheelUp/WheelDown are valid AHK v1 hotkey names too, and go through the same low-level
-// mouse hook as the X buttons above (see mouse_hook.zig) via pseudo VK codes 0x0A/0x0B.
+// WheelUp/WheelDown go through the same low-level mouse hook via pseudo VK codes 0x0A/0x0B.
 const LEGACY_WHEEL_VK = { wheelup: 0x0A, wheeldown: 0x0B };
 const LEGACY_NAMED_KEYS = {
     space: 0x20, pageup: 0x21, pgup: 0x21, pagedown: 0x22, pgdn: 0x22,
@@ -1690,8 +1509,8 @@ function legacyBaseKeyToVk(token) {
     if (t.length === 0) return null;
     if (t.length === 1) {
         const ch = t.toUpperCase().charCodeAt(0);
-        if (ch >= 0x41 && ch <= 0x5A) return ch; // A-Z
-        if (ch >= 0x30 && ch <= 0x39) return ch; // 0-9
+        if (ch >= 0x41 && ch <= 0x5A) return ch;
+        if (ch >= 0x30 && ch <= 0x39) return ch;
     }
     const lower = t.toLowerCase();
     if (/^f([1-9]|1[0-9]|2[0-4])$/.test(lower)) {
@@ -1706,11 +1525,7 @@ function legacyBaseKeyToVk(token) {
     return null;
 }
 
-// Convert an EVE-X Preview (AutoHotkey v1) hotkey string (e.g. "ctrl & 1", "^F9", "F22")
-// to the combined hex VK format used throughout currentConfig (e.g. "0x0231").
-// Returns null if the hotkey can't be represented as an OS-level modifier+key hotkey
-// (mouse buttons, unrecognized custom combinations, etc.) - callers must report this,
-// never silently drop it.
+// Returns null if the hotkey can't be represented as an OS-level modifier+key hotkey (mouse buttons, unrecognized combinations) - callers must report this, never silently drop it.
 function legacyHotkeyToVkHex(rawStr) {
     if (!rawStr || typeof rawStr !== 'string') return null;
     let str = rawStr.trim();
@@ -1722,10 +1537,7 @@ function legacyHotkeyToVkHex(rawStr) {
         str = str.slice(1);
     }
 
-    // AHK v1 "A & B" custom-combination syntax: only representable if the left side is a
-    // real modifier word - a mouse button (or anything else) held down isn't an OS modifier.
-    // The right side (the actual pressed key) can still be XButton1/XButton2 though, e.g.
-    // "ctrl & xbutton1" is just Ctrl+XButton1 in the new representation.
+    // AHK v1 "A & B" syntax is only representable if the left side is a real modifier word - a held mouse button isn't an OS modifier, but the right side can still be one.
     const ampIdx = str.indexOf(' & ');
     if (ampIdx !== -1) {
         const left = str.slice(0, ampIdx).trim().toLowerCase();
@@ -1756,8 +1568,7 @@ function legacyHotkeyToVkHex(rawStr) {
     return '0x' + combined.toString(16).toUpperCase();
 }
 
-// Convert a legacy color string ("#RRGGBB" or bare "RRGGBB", no alpha) to the
-// "0xAARRGGBB" format used throughout currentConfig. Returns null if unparseable.
+// Converts "#RRGGBB"/"RRGGBB" (no alpha) to the "0xAARRGGBB" format used throughout currentConfig; null if unparseable.
 function legacyColorToZig(str) {
     if (!str) return null;
     const hex = String(str).replace(/^#/, '').replace(/^0x/i, '').trim();
@@ -1765,7 +1576,6 @@ function legacyColorToZig(str) {
     return '0xFF' + hex.toUpperCase();
 }
 
-// Replace the alpha byte of an existing "0x[AA]RRGGBB" color string.
 function zigColorWithAlpha(zigColorHex, alpha0to255) {
     if (!zigColorHex) return null;
     const rgb = zigColorHex.replace(/^0x/i, '').slice(-6).toUpperCase();
@@ -1773,7 +1583,6 @@ function zigColorWithAlpha(zigColorHex, alpha0to255) {
     return '0x' + a + rgb;
 }
 
-// Read the alpha byte (0-255) out of a "0xAARRGGBB" color string/number.
 // Defaults to fully opaque if no alpha channel is present (e.g. "0xRRGGBB").
 function zigColorAlpha(zigColorHex) {
     if (!zigColorHex) return 255;
@@ -1782,11 +1591,7 @@ function zigColorAlpha(zigColorHex) {
     return parseInt(hex.slice(0, 2), 16);
 }
 
-// --- EVE-X Preview (JSON) section availability / extraction ---
-
-// EVE-X Preview's JSON serializes some numeric fields as quoted strings (e.g.
-// "ThumbnailSnap_Distance":"50") inconsistently across versions/fields - coerce and
-// validate rather than trusting typeof.
+// EVE-X Preview's JSON serializes some numeric fields as quoted strings inconsistently across versions - coerce and validate rather than trusting typeof.
 function legacyNum(v) {
     return (v === undefined || v === null || v === '' || isNaN(Number(v))) ? null : Number(v);
 }
@@ -2017,9 +1822,7 @@ function extractSnapping(oldProfile, oldGlobal) {
     return { snappingPatch, hotkeysPatch, notes };
 }
 
-// Merge per-character patches (from the positions and colors/hotkeys sections, which both
-// touch characters[]) into currentConfig, matching by name so neither section clobbers the
-// other's fields. Creates a new character entry if the name isn't already present.
+// Matches by name so patches from different sections don't clobber each other's fields; creates a new entry if the name isn't already present.
 function mergeCharacterPatch(cfg, characterPatches) {
     if (!cfg.characters) cfg.characters = [];
     characterPatches.forEach(cp => {
@@ -2040,11 +1843,7 @@ function mergeCharacterPatch(cfg, characterPatches) {
     });
 }
 
-// --- EVE-APM Preview (Qt/INI) parsing helpers ---
-
-// Minimal INI parser for EVE-APM Preview's QSettings-style file: [section] headers,
-// key=value lines. Returns { sectionName: { key: rawValueString } }. Values are left
-// raw (quoted/escaped as written) - callers use iniUnquote/parseQtPoint/etc. as needed.
+// Minimal INI parser for EVE-APM Preview's QSettings-style file; values are left raw, callers use iniUnquote/parseQtPoint/etc. as needed.
 function parseIniText(text) {
     const sections = {};
     let current = null;
@@ -2067,13 +1866,7 @@ function parseIniText(text) {
     return sections;
 }
 
-// QSettings percent-encodes non-ASCII/reserved characters in key names, but NOT with
-// standard URI percent-encoding: each escaped char is "%" + 2 hex digits of its raw
-// Latin-1/UTF-16 code unit (e.g. " " -> "%20", ":" -> "%3A"), and characters outside
-// Latin-1 use "%U" + 4 hex digits of the UTF-16 code unit (e.g. an em dash -> "%U2014").
-// decodeURIComponent expects %XX to be a UTF-8 byte instead, so it mis-decodes anything
-// outside plain ASCII (and throws outright on "%U..." or a lone %80-%FF byte) - callers
-// used to silently fall back to the still-escaped raw key in that case.
+// QSettings percent-encoding isn't standard URI encoding (raw Latin-1/UTF-16 code units, plus a "%U"+4-hex form outside Latin-1), so decodeURIComponent mis-decodes or throws on it.
 function iniDecodeKey(key) {
     let out = '';
     for (let i = 0; i < key.length; i++) {
@@ -2124,33 +1917,24 @@ function parseQtFont(v) {
     return { family: family || null, size: Number.isFinite(size) ? size : null };
 }
 
-// EVE-APM Preview's [cycleGroups]/[characterHotkeys] hotkeys are packed as raw integer
-// tuples ("1,114,0,0,0") rather than a text key sequence. Verified against EVE-APM
-// Preview's own HotkeyBinding::toString()/fromString() (hotkeymanager.cpp): the format is
-// exactly "enabled,keyCode,ctrl,alt,shift", and keyCode is passed straight through to
-// Win32's RegisterHotKey() with no translation, i.e. it's already a raw VK code.
+// Packed as raw integer tuples "enabled,keyCode,ctrl,alt,shift" (verified against EVE-APM Preview's HotkeyBinding::toString/fromString); keyCode is already a raw VK code.
 function decodeApmHotkeyTuple(csv) {
     if (!csv) return null;
     const parts = String(csv).split(',').map(s => parseInt(s.trim(), 10));
     if (parts.length < 2 || !parts[0]) return null;
     const vk = parts[1];
     if (!Number.isFinite(vk) || vk <= 0) return null;
-    // VK_LBUTTON/RBUTTON/MBUTTON (1/2/4) can't be registered as OS-level hotkeys here -
-    // they're already used locally for thumbnail drag/click (same restriction as the
-    // EVE-X import path's LEGACY_MOUSE_BUTTONS check). EVE-APM Preview itself special-cases
-    // these by routing them through its own mouse hook instead of RegisterHotKey.
+    // VK_LBUTTON/RBUTTON/MBUTTON can't be registered as OS-level hotkeys - they're already used locally for thumbnail drag/click.
     if (vk === 0x01 || vk === 0x02 || vk === 0x04) return null;
 
     let mods = 0;
-    if (parts[2]) mods |= 0x02; // Ctrl
-    if (parts[3]) mods |= 0x01; // Alt
-    if (parts[4]) mods |= 0x04; // Shift
+    if (parts[2]) mods |= 0x02;
+    if (parts[3]) mods |= 0x01;
+    if (parts[4]) mods |= 0x04;
 
     const combined = (vk & 0xFF) | ((mods & 0x0F) << 8);
     return '0x' + combined.toString(16).toUpperCase();
 }
-
-// --- EVE-APM Preview (Qt/INI) section availability / extraction ---
 
 function computeApmImportSections(sections) {
     const hasThumbAppearance = !!(sections['ui'] || sections['overlay'] || sections['thumbnail']);
@@ -2192,9 +1976,7 @@ function computeApmImportSections(sections) {
     ];
 }
 
-// EVE-APM Preview's OverlayPosition enum (include/overlayinfo.h) is ordinally identical to
-// EVE-Maj Preview's TextPosition - same 3x3 grid, same order - just two names have their
-// words swapped ("CenterLeft"/"CenterRight" vs. "LeftCenter"/"RightCenter").
+// EVE-APM Preview's OverlayPosition enum is ordinally identical to this app's TextPosition, except two names have their words swapped.
 const APM_POSITION_MAP = ['TopLeft', 'TopCenter', 'TopRight', 'LeftCenter', 'Center', 'RightCenter', 'BottomLeft', 'BottomCenter', 'BottomRight'];
 
 function apmPositionToZig(raw) {
@@ -2202,10 +1984,7 @@ function apmPositionToZig(raw) {
     return Number.isFinite(n) ? (APM_POSITION_MAP[n] || null) : null;
 }
 
-// EVE-APM Preview's BorderStyle enum (include/borderstyle.h). Only the first four values
-// share both a name and a visual meaning with EVE-Maj Preview's border styles - the rest
-// are glow/neon/animated effects with no equivalent here, so they're intentionally left
-// unmapped (and reported) rather than guessed onto an unrelated style.
+// Only the first four values of EVE-APM Preview's BorderStyle enum share a visual meaning here - the rest are glow/animated effects, intentionally left unmapped and reported.
 const APM_BORDER_STYLE_NAMES = ['Solid', 'Dashed', 'Dotted', 'DashDot', 'FadedEdges', 'CornerAccents', 'RoundedCorners', 'Neon', 'Shimmer', 'ThickThin', 'ElectricArc', 'Rainbow', 'BreathingGlow', 'DoubleGlow', 'Zigzag'];
 const APM_BORDER_STYLE_SUPPORTED = new Set(['Solid', 'Dashed', 'Dotted', 'DashDot']);
 
@@ -2292,12 +2071,7 @@ function apmExtractThumbnailAppearance(sections) {
     return { patch, notes };
 }
 
-// EVE-APM Preview's "show non-EVE windows" overlay feature (thumbnail.showNonEVEOverlay)
-// tracks arbitrary windows alongside real EVE clients, storing them in the same
-// [thumbnailPositions]/[characterBorderColors] sections under a "<processName>.exe::
-// <window title>" key. EVE-Maj Preview has no such feature, so these aren't characters
-// and must not be imported as ones (window titles as "character names" would be nonsense
-// and would never match a real EVE client for hotkeys/coloring).
+// EVE-APM Preview's "show non-EVE windows" overlay stores arbitrary window titles in the same sections under a "<processName>.exe::<title>" key - these aren't characters and must not be imported as ones.
 function isApmNonEveWindowEntry(decodedName) {
     return /\.[a-z0-9]+::/i.test(decodedName);
 }
@@ -2356,10 +2130,7 @@ function apmExtractCharacterColors(sections) {
     return { characterPatches, notes };
 }
 
-// Whether an EVE-APM hotkey tuple ("enabled,keyCode,ctrl,alt,shift") represents an actual
-// enabled binding, regardless of whether decodeApmHotkeyTuple can represent it here - used
-// to tell "nothing was bound" apart from "something was bound but couldn't be converted"
-// so the latter is never silently dropped.
+// Distinguishes "nothing was bound" from "something was bound but couldn't be converted" so the latter is never silently dropped, regardless of whether decodeApmHotkeyTuple can represent it.
 function isApmHotkeyTupleEnabled(csv) {
     if (!csv) return false;
     const parts = String(csv).split(',').map(s => parseInt(s.trim(), 10));
@@ -2398,11 +2169,7 @@ function apmExtractGlobalHotkeys(sections) {
     const patch = {};
     const notes = [];
 
-    // These fields are saved by HotkeyManager::saveHotkeyList() as pipe-joined
-    // "enabled,keyCode,ctrl,alt,shift" tuples (same format as [cycleGroups]/
-    // [characterHotkeys], verified against hotkeymanager.cpp) - not a "Ctrl+Alt+F9"-style
-    // text sequence. EVE-APM Preview allows multiple bound keys per action; EVE-Maj Preview
-    // only stores one, so only the first enabled/convertible binding is kept.
+    // Saved as pipe-joined "enabled,keyCode,ctrl,alt,shift" tuples, same as [cycleGroups]; EVE-APM allows multiple bound keys per action, EVE-Maj Preview only stores one.
     const tryKey = (sectionName, keyName, targetField, label) => {
         const raw = (sections[sectionName] || {})[keyName];
         if (!raw || raw.trim() === '') return;
@@ -2464,8 +2231,7 @@ function apmExtractChatlog(sections) {
     return { patch, notes: ['Chatlog monitoring settings imported.'] };
 }
 
-// EVE-APM Preview event-type name -> EVE-Maj Preview NotificationType. "mining_started"
-// has no equivalent notification type in EVE-Maj Preview and is intentionally unmapped.
+// "mining_started" has no equivalent notification type here and is intentionally unmapped.
 const APM_EVENT_TYPE_MAP = {
     fleet_invite: 'FleetInvite',
     follow_warp: 'FleetFollow',
@@ -2506,12 +2272,7 @@ function apmExtractNotifications(sections) {
     return { notificationsPatch, typePatches, notes };
 }
 
-// --- EVE-O Preview (flat JSON) parsing helpers ---
-// EVE-O Preview (Phrynohyas/eve-o-preview and its forks) writes a single flat settings
-// object - no per-profile wrapper like EVE-X, no ini sections like EVE-APM.
-
-// Sniff EVE-O Preview's JSON: no distinguishing wrapper key exists, so use a couple of its
-// always-present, EVE-O-specific field names as a signature.
+// EVE-O Preview writes a single flat settings object - no distinguishing wrapper key, so sniff a couple of its always-present field names as a signature.
 function isEveoConfigData(data) {
     if (!data || typeof data !== 'object') return false;
     return Array.isArray(data.CycleGroup1ForwardHotkeys) ||
@@ -2519,21 +2280,14 @@ function isEveoConfigData(data) {
         typeof data.DisableThumbnail === 'object';
 }
 
-// EVE-O Preview keys its per-client maps by the EVE client window title ("EVE - CharName"),
-// not the bare character name - strip that prefix to match this app's character names.
-// Verified against a third-party EVE-O migrator's ExtractCharacterName() helper.
+// Keyed by the EVE client window title ("EVE - CharName"), not the bare name - strip the prefix to match this app's character names.
 function eveoExtractCharacterName(title) {
     const prefix = 'EVE - ';
     const t = String(title || '');
     return t.startsWith(prefix) ? t.slice(prefix.length).trim() : t.trim();
 }
 
-// EVE-O Preview ships its default config pre-populated with placeholder client entries
-// ("EVE - Example Toon 1", "EVE - cycle group 3", the bare fallback "EVE" entry in
-// FlatLayout, ...) for slots the user never configured. These live in the very same maps
-// as real data - there's no separate "Default profile" wrapper to skip, unlike EVE-X/
-// EVE-APM - so they have to be filtered out by name instead; importing them would create
-// bogus characters and hotkey groups.
+// EVE-O Preview's default config ships placeholder client entries mixed into the same maps as real data (no separate wrapper to skip), so they must be filtered out by name.
 function isEveoPlaceholderClient(name) {
     const n = (name || '').trim();
     if (n === '' || n.toLowerCase() === 'eve') return true;
@@ -2546,8 +2300,7 @@ function eveoNonPlaceholderKeys(map) {
     return Object.keys(map || {}).filter(k => !isEveoPlaceholderClient(eveoExtractCharacterName(k)));
 }
 
-// .NET's named-color set (System.Drawing.KnownColor / System.Windows.Media.Colors) is the
-// standard CSS3/X11 extended color-keyword table.
+// .NET's named-color set is the standard CSS3/X11 extended color-keyword table.
 const EVEO_NAMED_COLORS = {
     aliceblue: 'F0F8FF', antiquewhite: 'FAEBD7', aqua: '00FFFF', aquamarine: '7FFFD4', azure: 'F0FFFF',
     beige: 'F5F5DC', bisque: 'FFE4C4', black: '000000', blanchedalmond: 'FFEBCD', blue: '0000FF',
@@ -2581,9 +2334,7 @@ const EVEO_NAMED_COLORS = {
     whitesmoke: 'F5F5F5', yellow: 'FFFF00', yellowgreen: '9ACD32',
 };
 
-// EVE-O Preview colors are either a "#RRGGBB"/"#AARRGGBB" hex string or a .NET named color -
-// verified against a third-party EVE-O migrator's ConvertNamedColorToHex(), which tries
-// System.Windows.Media.ColorConverter (the same CSS3/X11 keyword table) after a "#" check.
+// EVE-O Preview colors are either a "#RRGGBB"/"#AARRGGBB" hex string or a .NET named color.
 function eveoColorToZig(str) {
     if (!str || typeof str !== 'string') return null;
     const s = str.trim();
@@ -2592,8 +2343,7 @@ function eveoColorToZig(str) {
     return hex ? '0xFF' + hex : null;
 }
 
-// WinForms' Size/Point TypeConverters serialize as "W, H" / "X, Y" - verified against a
-// third-party EVE-O migrator's ParseSize()/ParsePoint() helpers (split on ',' or ' ').
+// WinForms' Size/Point TypeConverters serialize as "W, H" / "X, Y".
 function eveoParsePair(str) {
     if (!str || typeof str !== 'string') return null;
     const parts = str.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
@@ -2604,9 +2354,7 @@ function eveoParsePair(str) {
     return { a, b };
 }
 
-// WinForms' Keys enum names the digit row "D0".."D9" (not bare "0".."9") and has dedicated
-// Windows-key members "LWin"/"RWin" - extend the shared legacyBaseKeyToVk resolver for
-// those before falling back to it (letters, F-keys, numpad, named keys all already match).
+// WinForms' Keys enum names the digit row "D0".."D9" and has dedicated "LWin"/"RWin" members - extend legacyBaseKeyToVk for those before falling back to it.
 function eveoBaseKeyToVk(token) {
     const t = token.trim();
     const d = /^D([0-9])$/i.exec(t);
@@ -2617,11 +2365,7 @@ function eveoBaseKeyToVk(token) {
     return legacyBaseKeyToVk(t);
 }
 
-// EVE-O Preview hotkeys (CycleGroupNForward/BackwardHotkeys, ClientHotkey) are serialized
-// via System.Windows.Forms.KeysConverter.ConvertToInvariantString(), which joins modifier
-// names and the base key with '+' (e.g. "Control+F14") - verified against
-// ThumbnailConfiguration.cs's SetClientHotkey()/StringToKey(). No Windows-key modifier
-// exists in WinForms' Keys flags (LWin/RWin are base keys, not modifiers).
+// Serialized via KeysConverter.ConvertToInvariantString(), joining modifier names and the base key with '+' (e.g. "Control+F14"); no Windows-key modifier exists in WinForms' Keys flags.
 const EVEO_MOD_WORDS = { control: 0x02, alt: 0x01, shift: 0x04 };
 
 function eveoHotkeyToVkHex(rawStr) {
@@ -2646,8 +2390,7 @@ function eveoHotkeyToVkHex(rawStr) {
     return '0x' + combined.toString(16).toUpperCase();
 }
 
-// Returns the hex code for the first non-empty, convertible entry in a hotkey list (EVE-O
-// Preview allows multiple bound keys per action; EVE-Maj Preview only stores one).
+// EVE-O Preview allows multiple bound keys per action; EVE-Maj Preview only stores one.
 function eveoFirstConvertibleHotkey(list) {
     for (const raw of (list || [])) {
         if (!raw || raw.trim() === '') continue;
@@ -2657,8 +2400,7 @@ function eveoFirstConvertibleHotkey(list) {
     return null;
 }
 
-// Non-placeholder character names for cycle group N, ordered the same way EVE-O Preview
-// cycles through them (by their ClientsOrder index).
+// Ordered the same way EVE-O Preview cycles through them (by their ClientsOrder index).
 function eveoCycleGroupCharacters(data, n) {
     const order = data[`CycleGroup${n}ClientsOrder`] || {};
     return Object.keys(order)
@@ -2667,8 +2409,6 @@ function eveoCycleGroupCharacters(data, n) {
         .sort((a, b) => a.order - b.order)
         .map(e => e.name);
 }
-
-// --- EVE-O Preview section availability / extraction ---
 
 function computeEveoImportSections(data) {
     const hasThumbAppearance = ('ThumbnailsOpacity' in data) || ('ActiveClientHighlightColor' in data) ||
@@ -2717,9 +2457,7 @@ function eveoExtractThumbnailAppearance(data) {
     }
     if (typeof data.ActiveClientHighlightThickness === 'number') patch.borderWidth = data.ActiveClientHighlightThickness;
 
-    // EVE-O Preview has one "show borders on all thumbnails, not just the active one" toggle
-    // rather than separate active/inactive border settings - maps to showBorderWhenInactive,
-    // matching the equivalent EVE-X field's (ShowAllColoredBorders) precedent.
+    // EVE-O Preview has one "show borders on all thumbnails" toggle rather than separate active/inactive settings - maps to showBorderWhenInactive.
     if ('ShowThumbnailFrames' in data) patch.showBorderWhenInactive = !!data.ShowThumbnailFrames;
     if ('ShowThumbnailOverlays' in data) patch.showText = !!data.ShowThumbnailOverlays;
 
@@ -2730,8 +2468,7 @@ function eveoExtractThumbnailAppearance(data) {
     }
     if (typeof data.OverlayLabelSize === 'number') patch.textFontSize = data.OverlayLabelSize;
     if (typeof data.OverlayLabelAnchor === 'number') {
-        // EVE-O Preview's ZoomAnchor enum (NW,N,NE,W,C,E,SW,S,SE) is the same 3x3 grid in
-        // the same order as EVE-Maj Preview's TextPosition - reuses APM_POSITION_MAP.
+        // EVE-O Preview's ZoomAnchor enum is the same 3x3 grid/order as TextPosition, so APM_POSITION_MAP is reused here.
         const pos = APM_POSITION_MAP[data.OverlayLabelAnchor];
         if (pos) patch.characterNamePosition = pos;
     }
@@ -2867,12 +2604,7 @@ function eveoExtractSnapping(data) {
     return { snappingPatch, notes: ['Snapping settings imported.'] };
 }
 
-// --- EVE-Maj Preview (own JSON format) section availability / extraction ---
-//
-// Unlike the legacy formats above, a maj-format file already has exactly currentConfig's
-// shape (both come from the same Config.Wire on the backend) - no field-by-field
-// translation is needed, just a per-section merge into currentConfig.
-
+// Unlike the legacy formats above, a maj-format file already has exactly currentConfig's shape, so no field-by-field translation is needed, just a per-section merge.
 const MAJ_SECTIONS = [
     { id: 'thumbnail', title: 'Thumbnail Appearance & Notifications', hint: 'Border/text styling, per-state visuals, alert notifications', kind: 'object' },
     { id: 'display', title: 'Display', hint: 'List view appearance', kind: 'object' },
@@ -2901,12 +2633,7 @@ function computeMajImportSections(data) {
     });
 }
 
-// Merges by name/systemName so re-running an import (or importing into a profile that
-// already has some of these entries) updates matching entries in place instead of
-// duplicating them - imported items (characters/systemColors/windowFilters/hotkeyGroups,
-// across all import formats) are already full currentConfig-shaped entries, so unlike
-// mergeCharacterPatch (built for partial legacy patches) this can just overwrite the
-// matched entry wholesale.
+// Merges by name/systemName so re-running an import updates matching entries in place instead of duplicating them; unlike mergeCharacterPatch, imported items are already full entries so this overwrites wholesale.
 function mergeMajByKey(list, imported, keyField) {
     imported.forEach(item => {
         const key = (item[keyField] || '').trim();
@@ -2947,8 +2674,6 @@ function applyMajImport(checked, allNotes) {
         allNotes.push(`Imported ${data.windowFilters.length} window filter(s).`);
     }
 }
-
-// --- Modal wiring ---
 
 function openImportModal() {
     importParsedData = null;
@@ -3000,7 +2725,6 @@ async function handleImportFileSelected(event) {
     try {
         const text = await file.text();
 
-        // Try EVE-X Preview's JSON format first.
         let data = null;
         try { data = JSON.parse(text); } catch (_) { data = null; }
 
@@ -3044,7 +2768,6 @@ async function handleImportFileSelected(event) {
 
             statusEl.textContent = t('status.detectedEveoFile');
         } else {
-            // Fall back to EVE-APM Preview's Qt/INI format.
             const sections = parseIniText(text);
             if (Object.keys(sections).length === 0) {
                 statusEl.textContent = t('status.unrecognizedSettingsFile');
@@ -3242,8 +2965,7 @@ async function runImport() {
         return !!(el && el.checked && !el.disabled);
     };
 
-    // A brand-new profile only auto-saves if "Live" was picked in the switch prompt, since previewThumbnailConfig can't retarget the main app to a different profile.
-    // Importing into the profile already open in the dialog instead gets an instant live preview; persisting to disk still waits for Save.
+    // A brand-new profile only auto-saves if "Live" was picked, since previewThumbnailConfig can't retarget the main app to a different profile.
     let autoSaveAfterImport = false;
     let previewAfterImport = false;
 
@@ -3389,7 +3111,6 @@ function deleteCurrentProfile() {
         return;
     }
     
-    // Use the same confirmation pattern as other remove buttons
     confirmRemove('delete-profile-btn', async () => {
         showStatus(t('status.deletingProfile'), 'info');
         
@@ -3424,7 +3145,6 @@ function resetCurrentProfile() {
     const currentProfile = profileSelect.value;
     const currentDisplayName = currentProfile.replace(/\.json$/, '');
 
-    // Use the same confirmation pattern as other destructive buttons
     confirmRemove('reset-profile-btn', async () => {
         showStatus(t('status.resettingProfile').replace('{name}', currentDisplayName), 'info');
 
@@ -3453,7 +3173,7 @@ function resetCurrentProfile() {
 
 let isSavingConfig = false;
 
-// Reentrancy guard: prevents a rapid double-click from firing two overlapping saves.
+// Prevents a rapid double-click from firing two overlapping saves.
 async function saveConfiguration() {
     if (isSavingConfig) return;
     isSavingConfig = true;
@@ -3476,16 +3196,11 @@ async function saveConfigurationImpl() {
         applyConfigSchemaFromForm();
         applySpecialFieldsFromForm();
 
-        // applyConfigSchemaFromForm()/applySpecialFieldsFromForm() just clamped and
-        // defaulted the raw form values on their way into currentConfig (e.g. an
-        // emptied thumbWidth field silently became the 50px minimum). Run the same
-        // schema the other direction so the DOM reflects that outcome immediately,
-        // instead of the field showing blank until the dialog is reloaded from disk.
+        // The From-form pass just clamped/defaulted raw values into currentConfig - run the schema back the other way so the DOM reflects that outcome immediately, not after a reload.
         applyConfigSchemaToForm();
         applySpecialFieldsToForm();
 
-        // Reload live-tracked positions to avoid overwriting positions that
-        // were changed by dragging thumbnails/the list view after the dialog was opened
+        // Avoids overwriting positions changed by dragging thumbnails/the list view after the dialog was opened.
         await reloadLivePositions();
 
         for (const name of pendingCharacterNames.values()) addCharacterIfMissing(name);
@@ -3511,7 +3226,6 @@ async function saveConfigurationImpl() {
         currentGlobalSettings.hotkeyCycleNotLoggedInBackward = getFieldValue('hotkeyCycleNotLoggedInBackward') || null;
     }
 
-    // Block saving while any two hotkey fields are bound to the same key combination
     const hotkeyConflicts = updateHotkeyConflictHighlights();
     if (hotkeyConflicts.length > 0) {
         switchTab('hotkeys');
@@ -3521,10 +3235,7 @@ async function saveConfigurationImpl() {
 
     try {
         if (typeof webui !== 'undefined') {
-            // Global settings must hit disk before saveConfig's reloadProfileInMainApp()
-            // fires - that call blocks (SendMessageA) until the main app finishes reloading,
-            // which includes re-reading global.settings.json. Saving it after would mean
-            // every reload picks up the previous save's global settings, one generation behind.
+            // Must hit disk before saveConfig's reloadProfileInMainApp() blocks until the main app re-reads global.settings.json, or every reload picks up a stale generation.
             if (currentGlobalSettings) {
                 await webui.call('saveGlobalSettings', JSON.stringify(currentGlobalSettings, null, 2));
             }
@@ -3535,8 +3246,7 @@ async function saveConfigurationImpl() {
             if (result.success) {
                 showStatus(t('status.configSavedSuccess'), 'success');
                 setTimeout(() => hideStatus(), 3000);
-                // Saving always pushes this profile live (see saveConfig's
-                // reloadProfileInMainApp() call), so live preview can resume for it.
+                // Saving always pushes this profile live (see saveConfig's reloadProfileInMainApp()), so live preview can resume for it.
                 liveConfirmedProfile = dialogEditingProfile;
                 deletedCharacterNames.clear();
             } else {
@@ -3570,20 +3280,13 @@ function hideStatus() {
     statusEl.style.display = 'none';
 }
 
-// Base virtual key code -> friendly name (e.g. 0x78 -> "F9"). Mirrors the Zig-side
-// writeVirtualKey() in virtual_keys.zig - keep these two in sync.
+// Mirrors the Zig-side writeVirtualKey() in virtual_keys.zig - keep these two in sync.
 function friendlyBaseKeyName(vkCode) {
-    // F1-F24: 0x70-0x87
     if (vkCode >= 0x70 && vkCode <= 0x87) return 'F' + (vkCode - 0x70 + 1);
-    // Letters A-Z: 0x41-0x5A
     if (vkCode >= 0x41 && vkCode <= 0x5A) return String.fromCharCode(vkCode);
-    // Digits 0-9: 0x30-0x39
     if (vkCode >= 0x30 && vkCode <= 0x39) return String.fromCharCode(vkCode);
-    // Numpad 0-9: 0x60-0x69
     if (vkCode >= 0x60 && vkCode <= 0x69) return 'Numpad' + (vkCode - 0x60);
-    // Named special keys — kept in sync with the key_name switch in
-    // virtual_keys.zig's writeVirtualKey(); spellings must match parseBaseKey()
-    // exactly since this text round-trips back through it on save.
+    // Spellings must match parseBaseKey() exactly since this text round-trips back through it on save.
     const named = {
         0x09: 'Tab',
         0x13: 'Pause',
@@ -3623,18 +3326,10 @@ function friendlyBaseKeyName(vkCode) {
         0xDE: "'",
     };
     if (named[vkCode]) return named[vkCode];
-    // Fallback: keep a hex representation so nothing is lost
     return '0x' + vkCode.toString(16).toUpperCase().padStart(2, '0');
 }
 
-// Convert a VK hex code string (e.g. "0x85" or "Ctrl+0x85") to a friendly
-// AHK-format name (e.g. "F22" or "Ctrl+F22"). Tokens that are not hex VK
-// codes are returned unchanged so plain friendly names round-trip safely.
-//
-// A hex token can itself pack modifier flags in bits 8-11 alongside the base
-// key in the low byte (see combineKey/extractVk/extractModifiers in
-// virtual_keys.zig) - e.g. "0x0278" is Ctrl+F9. Those get expanded into their
-// own "Ctrl+Alt+..." prefix here.
+// Tokens that aren't hex VK codes are returned unchanged; a hex token can pack modifier flags in bits 8-11 (see virtual_keys.zig), expanded into a "Ctrl+Alt+..." prefix here.
 function vkHexToFriendly(str) {
     if (!str) return str;
     const tokens = str.split('+');
@@ -3646,10 +3341,10 @@ function vkHexToFriendly(str) {
         const mods = (combined >> 8) & 0x0F;
 
         const parts = [];
-        if (mods & 0x02) parts.push('Ctrl'); // MOD_CONTROL
-        if (mods & 0x01) parts.push('Alt'); // MOD_ALT
-        if (mods & 0x04) parts.push('Shift'); // MOD_SHIFT
-        if (mods & 0x08) parts.push('LWin'); // MOD_WIN
+        if (mods & 0x02) parts.push('Ctrl');
+        if (mods & 0x01) parts.push('Alt');
+        if (mods & 0x04) parts.push('Shift');
+        if (mods & 0x08) parts.push('LWin');
         parts.push(friendlyBaseKeyName(vkCode));
 
         return parts.join('+');
@@ -3657,9 +3352,14 @@ function vkHexToFriendly(str) {
     return converted.join('+');
 }
 
-// Every hotkey <input> in the dialog (global actions, hotkey groups, per-character
-// hotkeys, profile switch hotkeys) carries the shared "hotkey-input" class so conflicts
-// can be found across all of them without hardcoding each field's id.
+function renderHotkeyInputHtml(fieldId, value, placeholder) {
+    return `<input type="text" id="${fieldId}" class="hotkey-input" value="${value}" placeholder="${placeholder}" readonly style="flex: 1; margin-bottom: 0;">
+<button type="button" class="hotkey-clear-btn" onclick="clearHotkey('${fieldId}')" title="${t('common.hotkeyClear')}" style="margin-bottom: 0;">×</button>
+<button type="button" class="hotkey-record-btn" onclick="recordHotkey('${fieldId}')" style="width: auto; margin-bottom: 0;">${t('common.hotkeyRecord')}</button>
+<button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('${fieldId}')" title="${t('common.hotkeyTypeDirectly')}" style="margin-bottom: 0;">✎</button>`;
+}
+
+// Every hotkey <input> carries the shared "hotkey-input" class so conflicts can be found across all of them without hardcoding each field's id.
 function getAllHotkeyInputs() {
     return Array.from(document.querySelectorAll('input.hotkey-input'));
 }
@@ -3668,13 +3368,10 @@ function normalizeHotkeyValue(value) {
     if (!value) return null;
     const v = value.trim();
     if (!v || v === 'Press keys...' || v === 'Waiting for input...') return null;
-    // Some fields display raw "0xNN" hex (global action hotkeys) while others display
-    // friendly names (hotkey groups, characters, profile switch hotkeys) — run everything
-    // through vkHexToFriendly so the same physical key compares equal either way.
+    // Some fields display raw "0xNN" hex while others display friendly names - run everything through vkHexToFriendly so the same physical key compares equal.
     const friendly = vkHexToFriendly(v).toLowerCase();
 
-    // Modifier order is irrelevant to the OS ("Ctrl+Alt+F9" == "Alt+Ctrl+F9") but not to a
-    // plain string compare - canonicalize the modifier order before comparing for conflicts.
+    // Modifier order is irrelevant to the OS ("Ctrl+Alt+F9" == "Alt+Ctrl+F9") but not to a string compare - canonicalize order before comparing.
     const tokens = friendly.split('+').map(t => t.trim()).filter(Boolean);
     if (tokens.length <= 1) return friendly;
     const mainKey = tokens[tokens.length - 1];
@@ -3683,10 +3380,7 @@ function normalizeHotkeyValue(value) {
     return [...modifiers, mainKey].join('+');
 }
 
-// Derive a human-readable label for a hotkey field: its <label for="..."> text if one
-// exists (global action fields), otherwise the name shown in its enclosing accordion or
-// character detail panel (hotkey groups, characters, profile switch hotkeys), disambiguating
-// forward/backward.
+// Uses the field's <label for="..."> text if one exists, otherwise the name in its enclosing accordion/character panel, disambiguating forward/backward.
 function hotkeyFieldLabel(input) {
     if (input.id) {
         const label = document.querySelector(`label[for="${input.id}"]`);
@@ -3704,9 +3398,7 @@ function hotkeyFieldLabel(input) {
         const nameEl = accordion.querySelector('.accordion-name');
         const base = (nameEl && nameEl.textContent.trim()) || 'Item';
 
-        // Hotkey groups can be renamed to anything, so "PvP Squad" alone wouldn't tell
-        // the user it's a group's cycling key rather than a character or profile switch —
-        // always call it out explicitly.
+        // Groups can be renamed to anything, so the base name alone wouldn't tell the user this is a cycling key rather than a character/profile switch hotkey.
         if (input.id.startsWith('hkgroup_')) {
             const direction = input.id.endsWith('_forward') ? 'Forward' : input.id.endsWith('_backward') ? 'Backward' : null;
             return direction ? `Hotkey Group "${base}" (${direction})` : `Hotkey Group "${base}"`;
@@ -3723,8 +3415,6 @@ function hotkeyFieldLabel(input) {
     return input.id || 'Hotkey';
 }
 
-// Returns an array of conflict groups; each group is an array of >=2 inputs sharing
-// the same (case-insensitive) key combination.
 function findHotkeyConflicts() {
     const byKey = new Map();
     getAllHotkeyInputs().forEach(input => {
@@ -3737,8 +3427,7 @@ function findHotkeyConflicts() {
     return Array.from(byKey.values()).filter(inputs => inputs.length > 1);
 }
 
-// Recomputes conflicts and toggles the .hotkey-conflict highlight on every hotkey
-// input accordingly. Returns the conflict groups so callers can report them.
+// Returns the conflict groups so callers can report them.
 function updateHotkeyConflictHighlights() {
     getAllHotkeyInputs().forEach(input => input.classList.remove('hotkey-conflict'));
     const conflicts = findHotkeyConflicts();
@@ -3749,10 +3438,7 @@ function updateHotkeyConflictHighlights() {
     return conflicts;
 }
 
-// Mirrors each character's hotkey input into the small badge shown on its
-// (possibly off-screen, scrolled-past) roster row. Piggybacks on updateHotkeyConflictHighlights()
-// since that already runs after every finalized hotkey change (record/clear/manual-edit)
-// and after populateCharacters() rebuilds the list.
+// Piggybacks on updateHotkeyConflictHighlights() since that already runs after every finalized hotkey change and after populateCharacters() rebuilds the list.
 function refreshCharacterHotkeyBadges() {
     document.querySelectorAll('#charactersList .roster-row').forEach(row => {
         const index = row.dataset.index;
@@ -3767,8 +3453,7 @@ function refreshCharacterHotkeyBadges() {
     });
 }
 
-// Mirrors each hotkey group's forward/backward inputs into the badges shown on its
-// (possibly collapsed) accordion header.
+// Mirrors each hotkey group's forward/backward inputs into the badges shown on its (possibly collapsed) accordion header.
 function refreshHotkeyGroupBadges() {
     document.querySelectorAll('#hotkeyGroupsList > .accordion').forEach(accordion => {
         const index = accordion.dataset.index;
@@ -3791,8 +3476,6 @@ function describeHotkeyConflicts(conflicts) {
         .join('\n');
 }
 
-// Single-button message modal, styled like the profile name modal, used to block
-// Save when hotkey conflicts are found.
 function showHotkeyConflictModal(message) {
     const modal = document.getElementById('hotkey-conflict-modal');
     const messageEl = document.getElementById('hotkey-conflict-message');
@@ -3825,17 +3508,10 @@ function showHotkeyConflictModal(message) {
 }
 
 let recordingField = null;
-let recordedKeys = [];
-// Once a combo is captured, ignore further capture events until stopRecording() runs -
-// otherwise releasing a modifier (e.g. Ctrl) after the main key fires another keyup that
-// overwrites the already-captured combo with just the modifier.
+// Once a combo is captured, ignore further capture events until stopRecording() runs, or releasing a modifier after the main key would overwrite it with just the modifier.
 let recordingComboCaptured = false;
 
-// Tell the running main app to suspend/resume its live global hotkeys for the
-// duration of a Record capture - otherwise pressing a key still bound to a running
-// action (e.g. cycle-client) fires that action while we're just trying to capture it.
-// Fire-and-forget: recordHotkey()/stopRecording() must stay synchronous, and a missed
-// suspend/resume round-trip (main app not running) is harmless either way.
+// Fire-and-forget: recordHotkey()/stopRecording() must stay synchronous, and a missed round-trip (main app not running) is harmless.
 async function suspendMainAppHotkeysForRecording() {
     if (typeof webui === 'undefined') return;
     try {
@@ -3889,7 +3565,6 @@ function recordHotkey(fieldId) {
     }
 
     recordingField = fieldId;
-    recordedKeys = [];
     recordingComboCaptured = false;
     suspendMainAppHotkeysForRecording();
     input.classList.add('recording');
@@ -3902,10 +3577,7 @@ function recordHotkey(fieldId) {
         button.textContent = t('status.hotkeyStopLabel');
     }
 
-    // Use native keydown/keyup, mouseup and wheel listeners to capture keys, mouse buttons
-    // and wheel scrolls. `wheel` listeners are passive by default, which would block the
-    // preventDefault() in captureWheel (needed to stop the page scrolling under the modal) -
-    // pass { passive: false } explicitly to allow it.
+    // `wheel` listeners are passive by default, which would block captureWheel's preventDefault() (needed to stop the page scrolling under the modal).
     document.addEventListener('keydown', captureKeyDown, true);
     document.addEventListener('keyup', captureKey, true);
     document.addEventListener('mouseup', captureMouseButton, true);
@@ -3913,11 +3585,16 @@ function recordHotkey(fieldId) {
     document.addEventListener('contextmenu', preventContextMenu, true);
 }
 
-// Modifier state at keyup only reflects modifiers still held - if the modifier is
-// released before the main key (e.g. Ctrl up, then 1 up), its keyup already reports
-// ctrlKey=false. Main keys are therefore captured here, on keydown, while the
-// modifiers are still reliably reflected on the event. keyup (captureKey) is left to
-// handle Escape-to-cancel and binding a bare modifier released by itself.
+function buildModifierCombo(e) {
+    let combo = [];
+    if (e.ctrlKey) combo.push('Ctrl');
+    if (e.altKey) combo.push('Alt');
+    if (e.shiftKey) combo.push('Shift');
+    if (e.metaKey) combo.push('LWin');
+    return combo;
+}
+
+// Modifier state at keyup only reflects modifiers still held, so main keys are captured here on keydown instead, while modifiers are still reliably reflected.
 function captureKeyDown(e) {
     if (!recordingField || recordingComboCaptured) return;
 
@@ -3929,17 +3606,12 @@ function captureKeyDown(e) {
 
     if (key === 'Control' || key === 'Alt' || key === 'Shift' || key === 'Meta') return;
 
-    let combo = [];
-    if (e.ctrlKey) combo.push('Ctrl');
-    if (e.altKey) combo.push('Alt');
-    if (e.shiftKey) combo.push('Shift');
-    if (e.metaKey) combo.push('LWin');
+    let combo = buildModifierCombo(e);
     combo.push(mapMainKey(key, e.code));
 
     finalizeCapture(combo);
 }
 
-// Maps a KeyboardEvent's key (or code, for numpad) to this app's hotkey token spelling.
 function mapMainKey(key, code) {
     const codeMap = {
         'Numpad0': 'Numpad0',
@@ -3960,20 +3632,15 @@ function mapMainKey(key, code) {
         'NumpadDecimal': 'NumpadDecimal',
     };
 
-    // Check code-based mapping first (for numpad keys)
     if (code && codeMap[code]) {
         return codeMap[code];
     } else {
-        // Fall back to key-based mapping
         const keyMap = {
-                // Whitespace & Special
                 ' ': 'Space',
                 'Enter': 'Enter',
                 'Escape': 'Esc',
                 'Tab': 'Tab',
                 'Backspace': 'Backspace',
-                
-                // Navigation
                 'Delete': 'Delete',
                 'Insert': 'Insert',
                 'Home': 'Home',
@@ -3984,26 +3651,18 @@ function mapMainKey(key, code) {
                 'ArrowDown': 'Down',
                 'ArrowLeft': 'Left',
                 'ArrowRight': 'Right',
-                
-                // Function keys
                 'F1': 'F1', 'F2': 'F2', 'F3': 'F3', 'F4': 'F4',
                 'F5': 'F5', 'F6': 'F6', 'F7': 'F7', 'F8': 'F8',
                 'F9': 'F9', 'F10': 'F10', 'F11': 'F11', 'F12': 'F12',
                 'F13': 'F13', 'F14': 'F14', 'F15': 'F15', 'F16': 'F16',
                 'F17': 'F17', 'F18': 'F18', 'F19': 'F19', 'F20': 'F20',
                 'F21': 'F21', 'F22': 'F22', 'F23': 'F23', 'F24': 'F24',
-                
-                // Lock keys
                 'CapsLock': 'CapsLock',
                 'NumLock': 'NumLock',
                 'ScrollLock': 'ScrollLock',
-                
-                // System keys
                 'PrintScreen': 'PrintScreen',
                 'Pause': 'Pause',
                 'ContextMenu': 'AppsKey',
-                
-                // Media keys
                 'AudioVolumeUp': 'Volume_Up',
                 'AudioVolumeDown': 'Volume_Down',
                 'AudioVolumeMute': 'Volume_Mute',
@@ -4011,8 +3670,6 @@ function mapMainKey(key, code) {
                 'MediaStop': 'Media_Stop',
                 'MediaTrackNext': 'Media_Next',
                 'MediaTrackPrevious': 'Media_Prev',
-                
-                // Browser keys
                 'BrowserBack': 'Browser_Back',
                 'BrowserForward': 'Browser_Forward',
                 'BrowserRefresh': 'Browser_Refresh',
@@ -4021,11 +3678,7 @@ function mapMainKey(key, code) {
                 'BrowserFavorites': 'Browser_Favorites',
                 'BrowserHome': 'Browser_Home',
                 
-                // Punctuation: one OEM key can produce two chars via Shift (e.g. ';'/':');
-                // Shift is captured separately above, so both normalize to the unshifted
-                // spelling - keep in sync with parseBaseKey()'s VK_OEM_* handling in
-                // virtual_keys.zig. '+' maps to '=' instead of round-tripping literally,
-                // since a trailing '+' would be ambiguous with the modifier-combo delimiter.
+                // One OEM key can produce two chars via Shift (e.g. ';'/':'); both normalize to the unshifted spelling since Shift is captured separately above. '+' maps to '=' since a trailing '+' would be ambiguous with the modifier-combo delimiter.
                 ';': ';',
                 '=': '=',
                 '+': '=',
@@ -4056,8 +3709,7 @@ function finalizeCapture(combo) {
     setTimeout(() => stopRecording(), 300);
 }
 
-// Handles Escape-to-cancel and binding a bare modifier released with no other key
-// pressed. Non-modifier keys are captured on keydown instead (see captureKeyDown).
+// Handles Escape-to-cancel and binding a bare modifier released alone; non-modifier keys are captured on keydown instead (see captureKeyDown).
 function captureKey(e) {
     if (!recordingField) return;
 
@@ -4074,11 +3726,7 @@ function captureKey(e) {
     if (recordingComboCaptured) return;
     if (key !== 'Control' && key !== 'Alt' && key !== 'Shift' && key !== 'Meta') return;
 
-    let combo = [];
-    if (e.ctrlKey) combo.push('Ctrl');
-    if (e.altKey) combo.push('Alt');
-    if (e.shiftKey) combo.push('Shift');
-    if (e.metaKey) combo.push('LWin');
+    let combo = buildModifierCombo(e);
     if (key === 'Control' && !combo.includes('Ctrl')) combo.push('Ctrl');
     else if (key === 'Alt' && !combo.includes('Alt')) combo.push('Alt');
     else if (key === 'Shift' && !combo.includes('Shift')) combo.push('Shift');
@@ -4113,15 +3761,13 @@ function stopRecording() {
     document.removeEventListener('contextmenu', preventContextMenu, true);
 
     recordingField = null;
-    recordedKeys = [];
     recordingComboCaptured = false;
     resumeMainAppHotkeysAfterRecording();
 
     updateHotkeyConflictHighlights();
 }
 
-// Advanced-mode escape hatch: lets a hotkey be typed directly (e.g. "Ctrl+F9")
-// instead of captured via Record, for keys the recorder can't pick up cleanly.
+// Lets a hotkey be typed directly (e.g. "Ctrl+F9") instead of captured via Record, for keys the recorder can't pick up cleanly.
 function toggleManualHotkeyEdit(fieldId) {
     const input = document.getElementById(fieldId);
     if (!input) return;
@@ -4182,21 +3828,12 @@ function captureMouseButton(e) {
     e.stopPropagation();
 
     const button = e.button;
-    let combo = [];
+    let combo = buildModifierCombo(e);
 
-    if (e.ctrlKey) combo.push('Ctrl');
-    if (e.altKey) combo.push('Alt');
-    if (e.shiftKey) combo.push('Shift');
-    if (e.metaKey) combo.push('LWin');
-
-    // Only XButton1/XButton2 (mouse4/5, the back/forward side buttons) are wired up as
-    // actual working hotkeys (see mouse_hook.zig) - LButton/RButton/MButton are left out here
-    // rather than recorded into a field that silently never fires: RButton/LButton are
-    // already used locally for thumbnail drag/click, so hooking them globally would break
-    // that, and MButton has no hook support at all.
+    // Only XButton1/XButton2 are wired up as working hotkeys (see mouse_hook.zig) - LButton/RButton are already used locally for thumbnail drag/click, and MButton has no hook support.
     const mouseMap = {
-        3: 'XButton1',   // Side button 1 (back)
-        4: 'XButton2'    // Side button 2 (forward)
+        3: 'XButton1',
+        4: 'XButton2'
     };
 
     const mouseButton = mouseMap[button];
@@ -4206,20 +3843,14 @@ function captureMouseButton(e) {
     }
 }
 
-// Mouse wheel scroll, also wired up as an actual working hotkey via the same low-level
-// mouse hook as XButton1/XButton2 (see mouse_hook.zig).
+// Also wired up as a working hotkey via the same low-level mouse hook as XButton1/XButton2 (see mouse_hook.zig).
 function captureWheel(e) {
     if (!recordingField || recordingComboCaptured) return;
 
     e.preventDefault();
     e.stopPropagation();
 
-    let combo = [];
-
-    if (e.ctrlKey) combo.push('Ctrl');
-    if (e.altKey) combo.push('Alt');
-    if (e.shiftKey) combo.push('Shift');
-    if (e.metaKey) combo.push('LWin');
+    let combo = buildModifierCombo(e);
 
     // deltaY < 0 is scrolled up/away from the user, > 0 is scrolled down/toward the user
     combo.push(e.deltaY < 0 ? 'WheelUp' : 'WheelDown');
@@ -4234,7 +3865,6 @@ function preventContextMenu(e) {
     }
 }
 
-// Snake Game Easter Egg
 let asciiClickCount = 0;
 let snakeGameActive = false;
 let snakeGameLoop = null;
@@ -4383,22 +4013,18 @@ function initSnakeGame(canvas) {
             e.stopPropagation();
         }
         
-        // left
         if (e.which === 37 && snake.dx === 0) {
             snake.dx = -grid;
             snake.dy = 0;
         }
-        // up
         else if (e.which === 38 && snake.dy === 0) {
             snake.dy = -grid;
             snake.dx = 0;
         }
-        // right
         else if (e.which === 39 && snake.dx === 0) {
             snake.dx = grid;
             snake.dy = 0;
         }
-        // down
         else if (e.which === 40 && snake.dy === 0) {
             snake.dy = grid;
             snake.dx = 0;
@@ -4409,17 +4035,7 @@ function initSnakeGame(canvas) {
 
     snakeGameLoop = requestAnimationFrame(loop);
 }
-// Shared drag-to-reorder wiring, used by both the top-level character list
-// (setupCharacterDragAndDrop) and each hotkey group's nested character list
-// (setupHotkeyGroupCharDragAndDrop) - the two were previously near-identical
-// ~60-line blocks differing only in selectors and the reorder callback.
-//
-// `container` holds the draggable items; `itemSelector` finds them within it;
-// `handleSelector` finds each item's drag handle (defaults to the item itself
-// if omitted); `getIndex(item)` reads an item's current index from the DOM;
-// `onReorder(fromIndex, insertBeforeIndex)` is called on drop, with
-// insertBeforeIndex expressed in the pre-move indexing (matches the original
-// reorderCharacters/reorderHotkeyGroupChars convention).
+// Shared by setupCharacterDragAndDrop and setupHotkeyGroupCharDragAndDrop, which were previously near-identical ~60-line blocks differing only in selectors and the reorder callback.
 function setupDragReorder(container, itemSelector, handleSelector, getIndex, onReorder) {
     if (!container) return;
     const items = Array.from(container.querySelectorAll(itemSelector));
@@ -4477,8 +4093,7 @@ function setupDragReorder(container, itemSelector, handleSelector, getIndex, onR
     });
 }
 
-// Shared accordion expand/collapse, used by window filters, characters, and
-// hotkey groups (system colors isn't an accordion - it's a flat row list).
+// Used by window filters, characters, and hotkey groups (system colors isn't an accordion - it's a flat row list).
 function toggleAccordion(containerSelector, index) {
     const accordions = document.querySelectorAll(`${containerSelector} .accordion`);
     if (accordions[index]) {
@@ -4486,8 +4101,6 @@ function toggleAccordion(containerSelector, index) {
     }
 }
 
-// Shared "live-update the collapsed accordion header from its name input"
-// wiring, used by the same three accordion-based lists as toggleAccordion.
 function syncAccordionHeaderName(nameFieldId, headerFieldId, fallbackPrefix, index) {
     const nameInput = document.getElementById(nameFieldId);
     const headerName = document.getElementById(headerFieldId);
@@ -4498,7 +4111,6 @@ function syncAccordionHeaderName(nameFieldId, headerFieldId, fallbackPrefix, ind
     }
 }
 
-// Window Filters Management
 function populateWindowFilters() {
     const container = document.getElementById('windowFiltersList');
     if (!container) return;
@@ -4559,10 +4171,7 @@ function toggleWindowFilterAccordion(index) {
 
 function addWindowFilter() {
     if (!currentConfig.windowFilters) currentConfig.windowFilters = [];
-    
-    // Save current form values first to preserve unsaved changes
     saveWindowFilters();
-    
     currentConfig.windowFilters.push({
         name: 'New Filter',
         enabled: true,
@@ -4579,7 +4188,6 @@ function addWindowFilter() {
 
 function removeWindowFilter(index) {
     if (currentConfig.windowFilters && currentConfig.windowFilters[index]) {
-        // Save all filters first to preserve any unsaved changes in other filters
         saveWindowFilters();
         const removedName = currentConfig.windowFilters[index].name || '';
         currentConfig.windowFilters.splice(index, 1);
@@ -4695,10 +4303,7 @@ function populateSystemColors() {
 
 function addSystemColor() {
     if (!currentConfig.systemColors) currentConfig.systemColors = [];
-    
-    // Save current form values first to preserve unsaved changes
     saveSystemColors();
-    
     currentConfig.systemColors.push({ systemName: '', color: '0xFFFFFFFF' });
     populateSystemColors();
     scheduleThumbnailPreview();
@@ -4706,7 +4311,6 @@ function addSystemColor() {
 
 function removeSystemColor(index) {
     if (currentConfig.systemColors && currentConfig.systemColors[index] !== undefined) {
-        // Save all colors first to preserve any unsaved changes in other colors
         saveSystemColors();
         currentConfig.systemColors.splice(index, 1);
         populateSystemColors();
@@ -4726,9 +4330,7 @@ function saveSystemColors() {
     });
 }
 
-/// Reload live-tracked positions (per-character thumbnail positions and the
-/// list view window position) from the backend to avoid overwriting positions
-/// that were changed by dragging after the dialog was opened
+// Avoids overwriting positions that were changed by dragging after the dialog was opened.
 async function reloadLivePositions() {
     try {
         if (typeof webui !== 'undefined') {
@@ -4744,9 +4346,7 @@ async function reloadLivePositions() {
                     if (char) {
                         char.position = savedChar.position;
                     } else {
-                        // Character was dragged (creating its first saved position) after the
-                        // dialog was opened, so it never made it into the dialog's snapshot -
-                        // without this it would be dropped entirely when currentConfig is written.
+                        // Character was dragged (creating its first saved position) after the dialog snapshot - without this it would be dropped entirely.
                         currentConfig.characters.push(savedChar);
                     }
                 });
@@ -4764,8 +4364,7 @@ async function reloadLivePositions() {
     }
 }
 
-// Current text in the "Search characters..." box, applied by applyCharacterFilter()
-// after every populateCharacters() rebuild so the filter survives add/remove/reorder.
+// Applied by applyCharacterFilter() after every populateCharacters() rebuild so the filter survives add/remove/reorder.
 let characterSearchQuery = '';
 
 // Which character's detail panel is showing in the master-detail characters view.
@@ -4793,10 +4392,7 @@ function applyCharacterFilter() {
     });
 }
 
-// EVE character IDs are learned at runtime from chatlog filenames (see
-// characterIdMap in config.zig) and cached in global settings, keyed by
-// character name - so a freshly added or renamed character has no portrait
-// until the app has seen a chatlog for it.
+// Character IDs are learned at runtime from chatlog filenames and cached in global settings, so a freshly added or renamed character has no portrait until the app has seen a chatlog for it.
 function characterPortraitUrl(name) {
     const id = currentGlobalSettings?.characterIdMap?.[(name || '').trim()];
     return id ? `https://images.evetech.net/characters/${id}/portrait?size=128` : null;
@@ -4814,10 +4410,7 @@ function applyCharacterPortrait(img, name) {
     }
 }
 
-// Re-applies portraits to already-rendered accordion rows. Needed because
-// loadConfigurationFromBackend() and loadGlobalSettingsFromBackend() (which
-// owns characterIdMap) fire concurrently - whichever resolves first must not
-// leave portraits permanently blank.
+// loadConfigurationFromBackend() and loadGlobalSettingsFromBackend() (which owns characterIdMap) fire concurrently, so whichever resolves first must not leave portraits permanently blank.
 function refreshCharacterPortraits() {
     (currentConfig?.characters || []).forEach((char, index) => {
         applyCharacterPortrait(document.getElementById(`char_${index}_portrait`), char.name);
@@ -4872,12 +4465,7 @@ function populateCharacters() {
                 </div>
             </div>
             <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('common.hotkeyLabel')}</h4>
-            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 0;">
-                <input type="text" id="char_${index}_hotkey" class="hotkey-input" value="${vkHexToFriendly(char.hotkey) || ''}" placeholder="${t('dynamic.character.hotkeyPlaceholder')}" readonly style="flex: 1; margin-bottom: 0;">
-                <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('char_${index}_hotkey')" title="${t('common.hotkeyClear')}" style="margin-bottom: 0;">×</button>
-                <button type="button" class="hotkey-record-btn" onclick="recordHotkey('char_${index}_hotkey')" style="width: auto; margin-bottom: 0;">${t('common.hotkeyRecord')}</button>
-                <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('char_${index}_hotkey')" title="${t('common.hotkeyTypeDirectly')}" style="margin-bottom: 0;">✎</button>
-            </div>
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 0;">${renderHotkeyInputHtml(`char_${index}_hotkey`, vkHexToFriendly(char.hotkey) || '', t('dynamic.character.hotkeyPlaceholder'))}</div>
             <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.thumbnailSizeHeading')}</h4>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                 <div>
@@ -5062,9 +4650,7 @@ async function clearAllCharacterWindowPositions() {
     }
 }
 
-// Drag-to-reorder support for the character roster (see setupDragReorder).
-// Listeners are re-attached each time populateCharacters() rebuilds the list
-// since innerHTML replacement discards the previous elements' listeners.
+// Listeners are re-attached each time populateCharacters() rebuilds the list, since innerHTML replacement discards the previous elements' listeners.
 function setupCharacterDragAndDrop() {
     const container = document.getElementById('charactersList');
     setupDragReorder(
@@ -5076,10 +4662,7 @@ function setupCharacterDragAndDrop() {
     );
 }
 
-// Moves the character at fromIndex so it sits immediately before the item that was
-// at insertBeforeIndex (in the array's indexing prior to removal). Tracks the
-// selected character by identity so the open detail panel follows it, rather than
-// whatever character the raw index now happens to point at.
+// Tracks the selected character by identity so the open detail panel follows it, rather than whatever character the raw index now happens to point at.
 function reorderCharacters(fromIndex, insertBeforeIndex) {
     if (!currentConfig.characters) return;
 
@@ -5102,9 +4685,7 @@ function updateCharacterHeaderName(index) {
     updateCharacterHeaderPortrait(index);
 }
 
-// Swaps which character's detail panel is shown, without rebuilding the DOM -
-// every character's fields stay mounted (just hidden) so hotkey-conflict detection,
-// which scans all input.hotkey-input elements at once, keeps seeing every character.
+// Every character's fields stay mounted (just hidden) so hotkey-conflict detection, which scans all input.hotkey-input elements at once, keeps seeing every character.
 function selectCharacter(index) {
     selectedCharacterIndex = index;
     document.querySelectorAll('#charactersList .roster-row').forEach(row => {
@@ -5152,8 +4733,6 @@ function generateUniqueColor(index) {
 
 function addCharacter() {
     if (!currentConfig.characters) currentConfig.characters = [];
-    
-    // Save current form values first to preserve unsaved changes
     saveCharacters();
 
     const assignUniqueColors = document.getElementById('assignUniqueCharacterColors')?.checked || false;
@@ -5266,9 +4845,7 @@ function confirmRemoveCharacter(index) {
     confirmRemove(`char_${index}_removeBtn`, () => removeCharacter(index));
 }
 
-// Keeps the open detail panel on the same character across a removal elsewhere in the
-// list; if the removed character was the selected one, falls back to whichever
-// character now sits at the removed slot (or the last one, if it was removed).
+// If the removed character was the selected one, falls back to whichever character now sits at the removed slot (or the last one).
 function reselectCharacterAfterRemoval(selectedChar, removedIndex) {
     const chars = currentConfig.characters;
     const stillPresent = selectedChar ? chars.indexOf(selectedChar) : -1;
@@ -5290,7 +4867,6 @@ function removeCharacterByName(name) {
 
 function removeCharacter(index) {
     if (currentConfig.characters && currentConfig.characters[index]) {
-        // Save all characters first to preserve any unsaved changes in other characters
         saveCharacters();
         deletedCharacterNames.add((currentConfig.characters[index].name || '').trim().toLowerCase());
         const selectedChar = currentConfig.characters[selectedCharacterIndex];
@@ -5332,42 +4908,13 @@ function saveCharacters() {
             char.thumbnailSize = null;
         }
         
-        // Only save each color field if it was originally set OR the user changed it from the
-        // default (#000000, shown when there's no override). Active/inactive are tracked
-        // independently: imports (EVE-X/EVE-APM) often set only one of the pair, and treating
-        // them as a single all-or-nothing flag caused the untouched field to be force-written
-        // to black on the next save, clobbering the "inherit global color" behavior.
-        const hadActive = !!(char.borderColors && char.borderColors.activeBorderColor);
-        const hadInactive = !!(char.borderColors && char.borderColors.inactiveBorderColor);
-
-        let activeOut = null;
-        if (activeColor && activeColor.dataset.cleared !== 'true') {
-            const changed = activeColor.value.toUpperCase() !== '#000000';
-            if (hadActive || changed) activeOut = htmlColorToZig(activeColor.value);
-        }
-
-        let inactiveOut = null;
-        if (inactiveColor && inactiveColor.dataset.cleared !== 'true') {
-            const changed = inactiveColor.value.toUpperCase() !== '#000000';
-            if (hadInactive || changed) inactiveOut = htmlColorToZig(inactiveColor.value);
-        }
-
+        const activeOut = resolveOptionalCharacterColor(activeColor, !!(char.borderColors && char.borderColors.activeBorderColor));
+        const inactiveOut = resolveOptionalCharacterColor(inactiveColor, !!(char.borderColors && char.borderColors.inactiveBorderColor));
         char.borderColors = (activeOut || inactiveOut)
             ? { activeBorderColor: activeOut, inactiveBorderColor: inactiveOut }
             : null;
 
-        // Same "originally set OR changed from the #000000 default" convention as the
-        // border colors above. The "Clear to Default" button in the color picker sets
-        // dataset.cleared, which overrides that convention so an existing override can
-        // actually be removed (just re-showing #000000 would otherwise get re-saved as
-        // literal black instead of null, since hadNameColor is still true).
-        const hadNameColor = !!char.nameColor;
-        let nameColorOut = null;
-        if (nameColor && nameColor.dataset.cleared !== 'true') {
-            const changed = nameColor.value.toUpperCase() !== '#000000';
-            if (hadNameColor || changed) nameColorOut = htmlColorToZig(nameColor.value);
-        }
-        char.nameColor = nameColorOut;
+        char.nameColor = resolveOptionalCharacterColor(nameColor, !!char.nameColor);
     });
 }
 
@@ -5405,21 +4952,11 @@ function populateHotkeyGroups() {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
                     <div>
                         <label>${t('dynamic.hotkeyGroup.forwardKeyLabel')}</label>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <input type="text" id="hkgroup_${index}_forward" class="hotkey-input" value="${vkHexToFriendly(group.forwardKey) || ''}" placeholder="${t('dynamic.hotkeyGroup.forwardPlaceholder')}" readonly style="flex: 1; margin-bottom: 0;">
-                            <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hkgroup_${index}_forward')" title="${t('common.hotkeyClear')}" style="margin-bottom: 0;">×</button>
-                            <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hkgroup_${index}_forward')" style="width: auto; margin-bottom: 0;">${t('common.hotkeyRecord')}</button>
-                            <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hkgroup_${index}_forward')" title="${t('common.hotkeyTypeDirectly')}" style="margin-bottom: 0;">✎</button>
-                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`hkgroup_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.hotkeyGroup.forwardPlaceholder'))}</div>
                     </div>
                     <div>
                         <label>${t('dynamic.hotkeyGroup.backwardKeyLabel')}</label>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <input type="text" id="hkgroup_${index}_backward" class="hotkey-input" value="${vkHexToFriendly(group.backwardKey) || ''}" placeholder="${t('dynamic.hotkeyGroup.backwardPlaceholder')}" readonly style="flex: 1; margin-bottom: 0;">
-                            <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hkgroup_${index}_backward')" title="${t('common.hotkeyClear')}" style="margin-bottom: 0;">×</button>
-                            <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hkgroup_${index}_backward')" style="width: auto; margin-bottom: 0;">${t('common.hotkeyRecord')}</button>
-                            <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hkgroup_${index}_backward')" title="${t('common.hotkeyTypeDirectly')}" style="margin-bottom: 0;">✎</button>
-                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`hkgroup_${index}_backward`, vkHexToFriendly(group.backwardKey) || '', t('dynamic.hotkeyGroup.backwardPlaceholder'))}</div>
                     </div>
                 </div>
                 <label style="display: block; margin-top: 8px;">${t('dynamic.hotkeyGroup.charactersLabel')}</label>
@@ -5438,7 +4975,6 @@ function populateHotkeyGroups() {
     updateHotkeyConflictHighlights();
 }
 
-// Renders the drag-to-reorder character rows for one hotkey group's character list.
 function renderHotkeyGroupCharRows(groupIndex, characters) {
     return (characters || []).map((name, charIndex) => `
         <div class="hkgroup-char-row" data-char-index="${charIndex}">
@@ -5449,9 +4985,7 @@ function renderHotkeyGroupCharRows(groupIndex, characters) {
     `).join('');
 }
 
-// Re-renders only the character rows for one group (not the whole accordion), so
-// adding/removing/reordering characters doesn't collapse the accordion or disturb
-// other groups' in-progress edits.
+// Re-renders only the character rows for one group, so adding/removing/reordering doesn't collapse the accordion or disturb other groups' in-progress edits.
 function refreshHotkeyGroupCharsList(groupIndex) {
     const group = currentConfig.hotkeyGroups && currentConfig.hotkeyGroups[groupIndex];
     const list = document.getElementById(`hkgroup_${groupIndex}_charsList`);
@@ -5470,14 +5004,7 @@ function updateHotkeyGroupHeaderCount(groupIndex) {
     badge.textContent = `(${(group.characters || []).length})`;
 }
 
-// Drag-to-reorder support for character rows within each hotkey group's character
-// list (see setupDragReorder). Listeners are re-attached on every render since
-// innerHTML replacement discards the previous elements' listeners. When called
-// with no arguments, wires up every group's list (used after a full
-// populateHotkeyGroups() rebuild); when called with a specific list/groupIndex,
-// wires up just that one (used after a targeted refresh). Each list gets its own
-// independent setupDragReorder closure, so - unlike the old shared-module-level-
-// variable version - there's no need to guard against cross-group drag state.
+// Called with no arguments to wire up every group's list, or with a specific list/groupIndex to wire up just that one. Each list gets its own independent setupDragReorder closure, so there's no cross-group drag state to guard against.
 function setupHotkeyGroupCharDragAndDrop(onlyList, onlyGroupIndex) {
     const lists = onlyList ? [onlyList] : Array.from(document.querySelectorAll('.hkgroup-chars-list'));
 
@@ -5493,10 +5020,7 @@ function setupHotkeyGroupCharDragAndDrop(onlyList, onlyGroupIndex) {
     });
 }
 
-// Moves the character at fromIndex so it sits immediately before the item that was
-// at insertBeforeIndex (in the array's indexing prior to removal).
 function reorderHotkeyGroupChars(groupIndex, fromIndex, insertBeforeIndex) {
-    // Persist any in-progress edits (including this group's other character rows) first
     saveHotkeyGroups();
 
     const group = currentConfig.hotkeyGroups && currentConfig.hotkeyGroups[groupIndex];
@@ -5542,10 +5066,7 @@ function addHotkeyGroupCharacter(groupIndex) {
 
 function addHotkeyGroup() {
     if (!currentConfig.hotkeyGroups) currentConfig.hotkeyGroups = [];
-    
-    // Save current form values first to preserve unsaved changes
     saveHotkeyGroups();
-    
     currentConfig.hotkeyGroups.push({
         name: '',
         forwardKey: '',
@@ -5647,7 +5168,6 @@ async function fillHotkeyGroupFromClients(index) {
 
 function removeHotkeyGroup(index) {
     if (currentConfig.hotkeyGroups && currentConfig.hotkeyGroups[index]) {
-        // Save all groups first to preserve any unsaved changes in other groups
         saveHotkeyGroups();
         currentConfig.hotkeyGroups.splice(index, 1);
         populateHotkeyGroups();
@@ -5717,30 +5237,15 @@ function populateQuickGroups() {
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px;">
                     <div>
                         <label>${t('dynamic.quickGroup.assignKeyLabel')}</label>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <input type="text" id="qg_${index}_assign" class="hotkey-input" value="${vkHexToFriendly(group.assignKey) || ''}" placeholder="${t('dynamic.quickGroup.assignPlaceholder')}" readonly style="flex: 1; margin-bottom: 0;">
-                            <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('qg_${index}_assign')" title="${t('common.hotkeyClear')}" style="margin-bottom: 0;">×</button>
-                            <button type="button" class="hotkey-record-btn" onclick="recordHotkey('qg_${index}_assign')" style="width: auto; margin-bottom: 0;">${t('common.hotkeyRecord')}</button>
-                            <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('qg_${index}_assign')" title="${t('common.hotkeyTypeDirectly')}" style="margin-bottom: 0;">✎</button>
-                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`qg_${index}_assign`, vkHexToFriendly(group.assignKey) || '', t('dynamic.quickGroup.assignPlaceholder'))}</div>
                     </div>
                     <div>
                         <label>${t('dynamic.quickGroup.forwardKeyLabel')}</label>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <input type="text" id="qg_${index}_forward" class="hotkey-input" value="${vkHexToFriendly(group.forwardKey) || ''}" placeholder="${t('dynamic.quickGroup.forwardPlaceholder')}" readonly style="flex: 1; margin-bottom: 0;">
-                            <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('qg_${index}_forward')" title="${t('common.hotkeyClear')}" style="margin-bottom: 0;">×</button>
-                            <button type="button" class="hotkey-record-btn" onclick="recordHotkey('qg_${index}_forward')" style="width: auto; margin-bottom: 0;">${t('common.hotkeyRecord')}</button>
-                            <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('qg_${index}_forward')" title="${t('common.hotkeyTypeDirectly')}" style="margin-bottom: 0;">✎</button>
-                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`qg_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.quickGroup.forwardPlaceholder'))}</div>
                     </div>
                     <div>
                         <label>${t('dynamic.quickGroup.backwardKeyLabel')}</label>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <input type="text" id="qg_${index}_backward" class="hotkey-input" value="${vkHexToFriendly(group.backwardKey) || ''}" placeholder="${t('dynamic.quickGroup.backwardPlaceholder')}" readonly style="flex: 1; margin-bottom: 0;">
-                            <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('qg_${index}_backward')" title="${t('common.hotkeyClear')}" style="margin-bottom: 0;">×</button>
-                            <button type="button" class="hotkey-record-btn" onclick="recordHotkey('qg_${index}_backward')" style="width: auto; margin-bottom: 0;">${t('common.hotkeyRecord')}</button>
-                            <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('qg_${index}_backward')" title="${t('common.hotkeyTypeDirectly')}" style="margin-bottom: 0;">✎</button>
-                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`qg_${index}_backward`, vkHexToFriendly(group.backwardKey) || '', t('dynamic.quickGroup.backwardPlaceholder'))}</div>
                     </div>
                 </div>
             </div>
@@ -5753,8 +5258,6 @@ function populateQuickGroups() {
 
 function addQuickGroup() {
     if (!currentConfig.quickGroups) currentConfig.quickGroups = [];
-
-    // Save current form values first to preserve unsaved changes
     saveQuickGroups();
 
     currentConfig.quickGroups.push({
@@ -5822,7 +5325,6 @@ function refreshQuickGroupBadges() {
     });
 }
 
-// Profile Switch Hotkeys Management (global.settings.json)
 async function loadGlobalSettingsFromBackend() {
     try {
         if (typeof webui !== 'undefined') {
@@ -5858,9 +5360,7 @@ async function loadGlobalSettingsFromBackend() {
     refreshCharacterPortraits();
 }
 
-// Advanced Mode - shows/hides power-user sections (Position Parameters, Snapping,
-// Layout System, Monitor Settings, Auto-Arrange). Preference lives in global.settings.json
-// so it applies across all profiles.
+// Preference lives in global.settings.json so it applies across all profiles.
 function toggleAdvancedMode() {
     const enabled = document.getElementById('advancedModeToggle').checked;
     document.body.classList.toggle('advanced-mode', enabled);
@@ -5869,8 +5369,7 @@ function toggleAdvancedMode() {
     if (!currentGlobalSettings) currentGlobalSettings = {};
     currentGlobalSettings.advancedMode = enabled;
 
-    // If an advanced-only tab was open when Advanced Mode got turned off,
-    // its sidebar entry just vanished - move to the always-visible About tab.
+    // If an advanced-only tab was open when Advanced Mode got turned off, its sidebar entry just vanished - move to the always-visible About tab.
     if (!enabled) {
         const activePanel = document.querySelector('.panel-content.active');
         if (activePanel && activePanel.classList.contains('advanced-tab-panel')) {
@@ -5905,8 +5404,7 @@ async function populateProfileSwitchHotkeys() {
 
     container.innerHTML = '';
     entries.forEach((entry, index) => {
-        // If no target is set yet, the <select> will auto-select its first option,
-        // so treat that as the effective target for the header label too.
+        // If no target is set yet, the <select> auto-selects its first option, so treat that as the effective target for the header label too.
         const effectiveTarget = entry.targetProfile || profiles[0] || '';
         const optionsHtml = profiles.map(p => {
             const selected = p === effectiveTarget ? ' selected' : '';
@@ -5929,12 +5427,7 @@ async function populateProfileSwitchHotkeys() {
                     ${optionsHtml}
                 </select>
                 <label>${t('common.hotkeyLabel')}</label>
-                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 0;">
-                    <input type="text" id="pshotkey_${index}_hotkey" class="hotkey-input" value="${vkHexToFriendly(entry.hotkey) || ''}" placeholder="${t('dynamic.profileSwitchHotkey.hotkeyPlaceholder')}" readonly style="flex: 1; margin-bottom: 0;">
-                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('pshotkey_${index}_hotkey')" title="${t('common.hotkeyClear')}" style="margin-bottom: 0;">×</button>
-                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('pshotkey_${index}_hotkey')" style="width: auto; margin-bottom: 0;">${t('common.hotkeyRecord')}</button>
-                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('pshotkey_${index}_hotkey')" title="${t('common.hotkeyTypeDirectly')}" style="margin-bottom: 0;">✎</button>
-                </div>
+                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 0;">${renderHotkeyInputHtml(`pshotkey_${index}_hotkey`, vkHexToFriendly(entry.hotkey) || '', t('dynamic.profileSwitchHotkey.hotkeyPlaceholder'))}</div>
             </div>
         `;
         container.appendChild(row);
@@ -5946,8 +5439,6 @@ async function populateProfileSwitchHotkeys() {
 function addProfileSwitchHotkey() {
     if (!currentGlobalSettings) currentGlobalSettings = {};
     if (!currentGlobalSettings.profileSwitchHotkeys) currentGlobalSettings.profileSwitchHotkeys = [];
-
-    // Save current form values first to preserve unsaved changes
     saveProfileSwitchHotkeys();
 
     currentGlobalSettings.profileSwitchHotkeys.push({
@@ -5986,10 +5477,7 @@ function updateProfileSwitchHotkeyHeaderName(index) {
 }
 
 function toggleProfileSwitchHotkeyAccordion(index) {
-    const accordions = document.querySelectorAll('#profileSwitchHotkeysList .accordion');
-    if (accordions[index]) {
-        accordions[index].classList.toggle('expanded');
-    }
+    toggleAccordion('#profileSwitchHotkeysList', index);
 }
 
 function saveProfileSwitchHotkeys() {
@@ -6044,14 +5532,7 @@ const NOTIFICATION_CATEGORY_LABEL_KEYS = {
     general: 'notification.category.general.heading'
 };
 
-// Single source for the notification table's text/border color placeholders - used
-// for the initial swatch value when unset, the picker's data-default-color, and the
-// "Reset All" functions below, instead of each hardcoding '#FFFFFF'/'#606060'
-// separately. Falls back to those same literals until defaultConfig has loaded.
-// Border is an approximation: the true resolved fallback is the Alert state's
-// border color (falling back to inactive border) per config.zig's comments, but
-// that "state" UI isn't wired up in this dialog yet - inactiveBorderColor is the
-// closest real default currently exposed.
+// Single source for the notification table's default swatch colors, falling back to '#FFFFFF'/'#606060' until defaultConfig loads. Border is an approximation - the true fallback is the Alert state's border color, which isn't wired up in this dialog yet.
 function notifDefaultTextColorHtml() {
     return defaultConfig?.thumbnail?.textColor != null ? zigColorToHtml(defaultConfig.thumbnail.textColor) : '#FFFFFF';
 }
@@ -6226,14 +5707,10 @@ function toggleNotificationTypeEnabled(typeKey) {
     if (throttleInput) throttleInput.disabled = !isEnabled;
     if (ttsCheckbox) ttsCheckbox.disabled = !isTtsAvailable;
     if (showBorderCheckbox) showBorderCheckbox.disabled = !isEnabled;
-    // Text color isn't tied to the border - it applies to the notification text itself,
-    // which renders whenever the notification is enabled, regardless of border visibility.
+    // Text color isn't tied to the border - it renders whenever the notification is enabled, regardless of border visibility.
     if (textColorEnabledCheckbox) textColorEnabledCheckbox.disabled = !isEnabled;
     if (textColorInput) textColorInput.disabled = !isEnabled;
-    // The override checkbox, color picker, and flash checkbox are all enabled/disabled at
-    // the row level, and further gated by the Show Border checkbox: a hidden border has no
-    // color to set and nothing to flash. The override checkbox determines whether the
-    // selected color is actually saved (vs. null = use Alert default).
+    // Border override/color/flash are further gated by Show Border: a hidden border has no color to set and nothing to flash.
     const showBorderChecked = !showBorderCheckbox || showBorderCheckbox.checked;
     if (borderColorEnabledCheckbox) borderColorEnabledCheckbox.disabled = !isEnabled || !showBorderChecked;
     if (borderColorInput) borderColorInput.disabled = !isEnabled || !showBorderChecked;
@@ -6244,9 +5721,7 @@ function toggleNotifShowBorder(typeKey) {
     toggleNotificationTypeEnabled(typeKey);
 }
 
-// The checkbox itself is still the value read at save time (see saveNotificationTypes());
-// this just keeps the swatch's cleared indicator/tooltip in sync when the checkbox is
-// toggled directly instead of via the color picker's own "Clear to Default" button.
+// Keeps the swatch's cleared indicator/tooltip in sync when the checkbox is toggled directly instead of via the picker's "Clear to Default" button.
 function toggleNotifBorderColor(typeKey) {
     syncNotifSwatchClearedState(`notif_${typeKey}_borderColorEnabled`, `notif_${typeKey}_borderColor`);
 }
@@ -6270,35 +5745,28 @@ function syncNotifSwatchClearedState(checkboxId, inputId) {
     }
 }
 
-function resetNotificationBorderColors() {
+function resetNotificationColors(kind, defaultColorHtml) {
     NOTIFICATION_TYPES.forEach((notifType) => {
-        const cb = document.getElementById(`notif_${notifType.key}_borderColorEnabled`);
-        const input = document.getElementById(`notif_${notifType.key}_borderColor`);
+        const cb = document.getElementById(`notif_${notifType.key}_${kind}ColorEnabled`);
+        const input = document.getElementById(`notif_${notifType.key}_${kind}Color`);
         if (cb) cb.checked = false;
         if (input) {
-            input.value = notifDefaultBorderColorHtml();
+            input.value = defaultColorHtml();
             input.dataset.cleared = 'true';
             input.title = 'Not set - inheriting default color';
         }
     });
+}
+
+function resetNotificationBorderColors() {
+    resetNotificationColors('border', notifDefaultBorderColorHtml);
 }
 
 function resetNotificationTextColors() {
-    NOTIFICATION_TYPES.forEach((notifType) => {
-        const cb = document.getElementById(`notif_${notifType.key}_textColorEnabled`);
-        const input = document.getElementById(`notif_${notifType.key}_textColor`);
-        if (cb) cb.checked = false;
-        if (input) {
-            input.value = notifDefaultTextColorHtml();
-            input.dataset.cleared = 'true';
-            input.title = 'Not set - inheriting default color';
-        }
-    });
+    resetNotificationColors('text', notifDefaultTextColorHtml);
 }
 
-// Shows/hides a checkbox-gated options block by toggling opacity + pointer-events.
-// Returns the checkbox's checked state (or undefined if either element is missing)
-// so callers that need to chain extra logic (e.g. toggleBorderOptions) still can.
+// Returns the checkbox's checked state (or undefined if either element is missing) so callers that need to chain extra logic still can.
 function applyOptionToggle(checkboxId, optionsId) {
     const checkbox = document.getElementById(checkboxId);
     const options = document.getElementById(optionsId);
@@ -6433,19 +5901,13 @@ function toggleUniqueCharacterColors() {
 
 function assignUniqueColorsToAllCharacters() {
     if (!currentConfig.characters) return;
-    
-    // Save current form values first
     saveCharacters();
-    
-    // Assign unique colors to each character
     currentConfig.characters.forEach((char, index) => {
         if (!char.borderColors) {
             char.borderColors = {};
         }
         char.borderColors.activeBorderColor = generateUniqueColor(index);
     });
-    
-    // Refresh the display
     populateCharacters();
 }
 
@@ -6474,34 +5936,23 @@ function toggleTextBgColorOptions() {
     }
 }
 
-function toggleUniqueSystemColors() {
-    const useUniqueSystemColors = document.getElementById('useUniqueSystemColors');
-    const systemNameColorOption = document.getElementById('systemNameColorOption');
+// Opposite polarity of applyOptionToggle(): the target options are disabled when the checkbox IS checked.
+function toggleInverseOption(checkboxId, optionsId) {
+    const checkbox = document.getElementById(checkboxId);
+    const options = document.getElementById(optionsId);
+    if (!checkbox || !options) return;
 
-    if (useUniqueSystemColors && systemNameColorOption) {
-        if (useUniqueSystemColors.checked) {
-            systemNameColorOption.style.opacity = '0.5';
-            systemNameColorOption.style.pointerEvents = 'none';
-        } else {
-            systemNameColorOption.style.opacity = '1';
-            systemNameColorOption.style.pointerEvents = 'auto';
-        }
-    }
+    const disabled = checkbox.checked;
+    options.style.opacity = disabled ? '0.5' : '1';
+    options.style.pointerEvents = disabled ? 'none' : 'auto';
+}
+
+function toggleUniqueSystemColors() {
+    toggleInverseOption('useUniqueSystemColors', 'systemNameColorOption');
 }
 
 function toggleUniqueCharacterNameColors() {
-    const useUniqueCharacterNameColors = document.getElementById('useUniqueCharacterNameColors');
-    const textColorOption = document.getElementById('textColorOption');
-
-    if (useUniqueCharacterNameColors && textColorOption) {
-        if (useUniqueCharacterNameColors.checked) {
-            textColorOption.style.opacity = '0.5';
-            textColorOption.style.pointerEvents = 'none';
-        } else {
-            textColorOption.style.opacity = '1';
-            textColorOption.style.pointerEvents = 'auto';
-        }
-    }
+    toggleInverseOption('useUniqueCharacterNameColors', 'textColorOption');
 }
 
 function toggleAutoMinimizeOptions() {
@@ -6530,9 +5981,7 @@ function toggleNotificationOptions() {
                 input.disabled = !isEnabled;
             });
 
-            // Re-apply per-row enabled/disabled state when notifications are on,
-            // so border color pickers aren't spuriously enabled when their
-            // per-type enable checkbox is unchecked.
+            // Re-apply per-row state so border color pickers aren't spuriously enabled when their per-type checkbox is unchecked.
             if (isEnabled && typeof NOTIFICATION_TYPES !== 'undefined') {
                 NOTIFICATION_TYPES.forEach(nt => toggleNotificationTypeEnabled(nt.key));
             }
@@ -6625,8 +6074,7 @@ function saveNotificationTypes() {
     }
     
     const typeConfigs = currentConfig.thumbnail.notifications.type_configs;
-    
-    // Always save all notification types with explicit values
+
     NOTIFICATION_TYPES.forEach((notifType) => {
         const enabled = document.getElementById(`notif_${notifType.key}_enabled`);
         const duration = document.getElementById(`notif_${notifType.key}_duration`);
@@ -6663,8 +6111,7 @@ function saveNotificationTypes() {
         const flashBorder = document.getElementById(`notif_${notifType.key}_flashBorder`);
         config.flash_border = flashBorder ? flashBorder.checked : false;
 
-        // Save per-type border color override (null = use Alert state color).
-        // The override checkbox opts in; its unchecked state means "use Alert default".
+        // null = use Alert state color; the override checkbox opts in.
         const borderColorEnabled = document.getElementById(`notif_${notifType.key}_borderColorEnabled`);
         const borderColorInput = document.getElementById(`notif_${notifType.key}_borderColor`);
         config.border_color = (borderColorEnabled && borderColorEnabled.checked && borderColorInput && borderColorInput.value)
@@ -6687,9 +6134,7 @@ let searchState = {
     initiallyHiddenTabs: []
 };
 
-// filterSettings() rescans every panel/section/label in the whole document, so it's
-// debounced here to avoid doing that on every single keystroke while typing. Clearing
-// the box runs immediately since there's no scan cost to an empty query.
+// filterSettings() rescans every panel/section/label in the document, so it's debounced here; clearing the box runs immediately since there's no scan cost to an empty query.
 let searchDebounceTimer = null;
 
 function onSearchInput(query) {
@@ -6738,8 +6183,7 @@ function filterSettings(query) {
         let panelHasMatches = false;
         
         sections.forEach(section => {
-            // Advanced-only sections stay hidden while Advanced Mode is off,
-            // even if their contents would otherwise match the search.
+            // Advanced-only sections stay hidden while Advanced Mode is off, even if their contents would otherwise match.
             if (section.classList.contains('advanced-section') && !document.body.classList.contains('advanced-mode')) {
                 section.style.display = 'none';
                 return;
@@ -6806,12 +6250,7 @@ function filterSettings(query) {
     }
 }
 
-// Custom color picker: replaces the native OS color dialog (which can't be
-// themed) with a popup styled to match the rest of this UI. Every
-// input[type="color"] keeps acting as the real value/event source - this
-// only intercepts the click that would otherwise open the native picker, so
-// it works automatically on inputs created dynamically (system colors,
-// per-character colors, notification border colors) with no extra wiring.
+// Replaces the native OS color dialog (which can't be themed) with a popup styled to match this UI; every input[type="color"] still acts as the real value/event source, so this works automatically on dynamically-created inputs with no extra wiring.
 (function initCustomColorPicker() {
     let panel = null;
     let svArea = null;
@@ -6919,10 +6358,7 @@ function filterSettings(query) {
         clearBtn.addEventListener('click', () => {
             if (!activeInput) return;
             if (activeInput.dataset.optionalColor === 'true') {
-                // #000000 is the display placeholder for "unset" (falls back to
-                // data-default-color when the field has a more meaningful neutral
-                // shade, e.g. the notification table). dataset.cleared is the
-                // actual signal consumed at save time, not the displayed color.
+                // #000000 is the display placeholder for "unset"; dataset.cleared is the actual signal consumed at save time, not the displayed color.
                 activeInput.value = activeInput.dataset.defaultColor || '#000000';
                 activeInput.dataset.cleared = 'true';
                 activeInput.title = 'Not set - inheriting global color';
@@ -6934,10 +6370,7 @@ function filterSettings(query) {
             activeInput.dispatchEvent(new Event('input', { bubbles: true }));
             activeInput.dispatchEvent(new Event('change', { bubbles: true }));
 
-            // Some optional swatches (the notification table) use a paired "Enabled"
-            // checkbox, not dataset.cleared, as the real null signal read at save time
-            // (see saveNotificationTypes()). Uncheck it last: the swatch's own onchange,
-            // triggered by the 'change' dispatch above, force-checks it on any edit.
+            // Some swatches use a paired "Enabled" checkbox, not dataset.cleared, as the real null signal; uncheck it last since the 'change' dispatch above force-checks it.
             const nullCheckboxId = activeInput.dataset.nullCheckbox;
             if (nullCheckboxId) {
                 const cb = document.getElementById(nullCheckboxId);
