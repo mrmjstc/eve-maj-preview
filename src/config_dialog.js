@@ -3516,12 +3516,19 @@ function normalizeHotkeyValue(value) {
 }
 
 // Derive a human-readable label for a hotkey field: its <label for="..."> text if one
-// exists (global action fields), otherwise the name shown in its enclosing accordion
-// (hotkey groups, characters, profile switch hotkeys), disambiguating forward/backward.
+// exists (global action fields), otherwise the name shown in its enclosing accordion or
+// character detail panel (hotkey groups, characters, profile switch hotkeys), disambiguating
+// forward/backward.
 function hotkeyFieldLabel(input) {
     if (input.id) {
         const label = document.querySelector(`label[for="${input.id}"]`);
         if (label) return label.textContent.trim();
+    }
+
+    const charPanel = input.closest('.char-detail-panel');
+    if (charPanel) {
+        const nameEl = charPanel.querySelector('.char-detail-name');
+        return (nameEl && nameEl.textContent.trim()) || 'Character';
     }
 
     const accordion = input.closest('.accordion');
@@ -3575,12 +3582,12 @@ function updateHotkeyConflictHighlights() {
 }
 
 // Mirrors each character's hotkey input into the small badge shown on its
-// (possibly collapsed) accordion header. Piggybacks on updateHotkeyConflictHighlights()
+// (possibly off-screen, scrolled-past) roster row. Piggybacks on updateHotkeyConflictHighlights()
 // since that already runs after every finalized hotkey change (record/clear/manual-edit)
 // and after populateCharacters() rebuilds the list.
 function refreshCharacterHotkeyBadges() {
-    document.querySelectorAll('#charactersList > .accordion').forEach(accordion => {
-        const index = accordion.dataset.index;
+    document.querySelectorAll('#charactersList .roster-row').forEach(row => {
+        const index = row.dataset.index;
         const input = document.getElementById(`char_${index}_hotkey`);
         const badge = document.getElementById(`char_${index}_hotkeyBadge`);
         if (!input || !badge) return;
@@ -4593,6 +4600,9 @@ async function reloadLivePositions() {
 // after every populateCharacters() rebuild so the filter survives add/remove/reorder.
 let characterSearchQuery = '';
 
+// Which character's detail panel is showing in the master-detail characters view.
+let selectedCharacterIndex = 0;
+
 function onCharacterSearchInput(query) {
     characterSearchQuery = query.toLowerCase().trim();
     applyCharacterFilter();
@@ -4609,9 +4619,9 @@ function applyCharacterFilter() {
     const container = document.getElementById('charactersList');
     if (!container) return;
 
-    container.querySelectorAll(':scope > .accordion').forEach(accordion => {
-        const name = (accordion.querySelector('.accordion-name')?.textContent || '').toLowerCase();
-        accordion.style.display = !characterSearchQuery || name.includes(characterSearchQuery) ? '' : 'none';
+    container.querySelectorAll('.roster-row').forEach(row => {
+        const name = (row.querySelector('.roster-name')?.textContent || '').toLowerCase();
+        row.style.display = !characterSearchQuery || name.includes(characterSearchQuery) ? '' : 'none';
     });
 }
 
@@ -4654,104 +4664,115 @@ function populateCharacters() {
     const container = document.getElementById('charactersList');
     if (!container) return;
 
-    container.innerHTML = '';
     const chars = currentConfig.characters || [];
 
-    chars.forEach((char, index) => {
-        const charDiv = document.createElement('div');
-        charDiv.className = 'accordion';
-        charDiv.dataset.index = index;
+    if (chars.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    if (selectedCharacterIndex >= chars.length) selectedCharacterIndex = chars.length - 1;
+    if (selectedCharacterIndex < 0) selectedCharacterIndex = 0;
+
+    const rosterRows = chars.map((char, index) => {
         const portraitUrl = characterPortraitUrl(char.name);
         const hotkeyDisplay = char.hotkey ? vkHexToFriendly(char.hotkey) : '';
-        charDiv.innerHTML = `
-            <div class="accordion-header" onclick="toggleCharacterAccordion(${index})">
-                <div class="accordion-title">
-                    <span class="character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">≡</span>
-                    <img class="character-portrait" id="char_${index}_portrait" src="${portraitUrl || ''}" alt="" style="${portraitUrl ? '' : 'display:none'}" onerror="this.style.display='none'">
-                    <span class="accordion-name" id="char_${index}_header_name">${char.name || t('dynamic.character.defaultNamePrefix') + ' ' + (index + 1)}</span>
+        return `
+            <div class="roster-row ${index === selectedCharacterIndex ? 'selected' : ''}" data-index="${index}" onclick="selectCharacter(${index})">
+                <span class="character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">≡</span>
+                <img class="character-portrait" id="char_${index}_portrait" src="${portraitUrl || ''}" alt="" style="${portraitUrl ? '' : 'display:none'}" onerror="this.style.display='none'">
+                <span class="roster-name" id="char_${index}_header_name">${char.name || t('dynamic.character.defaultNamePrefix') + ' ' + (index + 1)}</span>
+                <span class="roster-hotkey-badge" id="char_${index}_hotkeyBadge" style="${hotkeyDisplay ? '' : 'display:none'}">[${hotkeyDisplay}]</span>
+            </div>
+        `;
+    }).join('');
+
+    const detailPanels = chars.map((char, index) => `
+        <div class="char-detail-panel ${index === selectedCharacterIndex ? 'active' : ''}" data-index="${index}">
+            <div class="char-detail-header">
+                <span class="char-detail-name" id="char_${index}_detail_name">${char.name || t('dynamic.character.defaultNamePrefix') + ' ' + (index + 1)}</span>
+                <button type="button" id="char_${index}_removeBtn" onclick="confirmRemoveCharacter(${index})" style="margin-bottom: 0;">${t('common.remove')}</button>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div>
+                    <label>${t('common.characterName')}</label>
+                    <input type="text" id="char_${index}_name" value="${char.name || ''}" placeholder="${t('common.characterName')}" oninput="updateCharacterHeaderName(${index})">
                 </div>
-                <div class="accordion-header-actions">
-                    <span class="accordion-hotkey-badge" id="char_${index}_hotkeyBadge" style="${hotkeyDisplay ? '' : 'display:none'}">[${hotkeyDisplay}]</span>
-                    <button type="button" id="char_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemoveCharacter(${index})" style="margin-bottom: 0;">${t('common.remove')}</button>
+                <div>
+                    <label>${t('dynamic.character.displayNameLabel')}</label>
+                    <input type="text" id="char_${index}_displayName" value="${char.displayName || ''}" placeholder="${t('dynamic.character.displayNamePlaceholder')}">
                 </div>
             </div>
-            <div class="accordion-content">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <div>
-                        <label>${t('common.characterName')}</label>
-                        <input type="text" id="char_${index}_name" value="${char.name || ''}" placeholder="${t('common.characterName')}" oninput="updateCharacterHeaderName(${index})">
-                    </div>
-                    <div>
-                        <label>${t('dynamic.character.displayNameLabel')}</label>
-                        <input type="text" id="char_${index}_displayName" value="${char.displayName || ''}" placeholder="${t('dynamic.character.displayNamePlaceholder')}">
+            <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('common.hotkeyLabel')}</h4>
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 0;">
+                <input type="text" id="char_${index}_hotkey" class="hotkey-input" value="${vkHexToFriendly(char.hotkey) || ''}" placeholder="${t('dynamic.character.hotkeyPlaceholder')}" readonly style="flex: 1; margin-bottom: 0;">
+                <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('char_${index}_hotkey')" title="${t('common.hotkeyClear')}" style="margin-bottom: 0;">×</button>
+                <button type="button" class="hotkey-record-btn" onclick="recordHotkey('char_${index}_hotkey')" style="width: auto; margin-bottom: 0;">${t('common.hotkeyRecord')}</button>
+                <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('char_${index}_hotkey')" title="${t('common.hotkeyTypeDirectly')}" style="margin-bottom: 0;">✎</button>
+            </div>
+            <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.thumbnailSizeHeading')}</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div>
+                    <label>${t('common.widthPxLabel')}</label>
+                    <input type="number" id="char_${index}_width" value="${char.thumbnailSize?.width || ''}" placeholder="${t('dynamic.character.widthPlaceholder')}" min="50" max="3840">
+                </div>
+                <div>
+                    <label>${t('common.heightPxLabel')}</label>
+                    <input type="number" id="char_${index}_height" value="${char.thumbnailSize?.height || ''}" placeholder="${t('dynamic.character.heightPlaceholder')}" min="50" max="2160">
+                </div>
+            </div>
+            <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.borderColorsHeading')}</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                <div>
+                    <label>${t('dynamic.character.activeBorderColorLabel')}</label>
+                    <div class="swatch-wrap">
+                        <input type="color" id="char_${index}_activeColor" data-optional-color="true" ${!char.borderColors?.activeBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.activeBorderColor) || '#FFFF00'}">
                     </div>
                 </div>
-                <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('common.hotkeyLabel')}</h4>
-                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 0;">
-                    <input type="text" id="char_${index}_hotkey" class="hotkey-input" value="${vkHexToFriendly(char.hotkey) || ''}" placeholder="${t('dynamic.character.hotkeyPlaceholder')}" readonly style="flex: 1; margin-bottom: 0;">
-                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('char_${index}_hotkey')" title="${t('common.hotkeyClear')}" style="margin-bottom: 0;">×</button>
-                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('char_${index}_hotkey')" style="width: auto; margin-bottom: 0;">${t('common.hotkeyRecord')}</button>
-                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('char_${index}_hotkey')" title="${t('common.hotkeyTypeDirectly')}" style="margin-bottom: 0;">✎</button>
-                </div>
-                <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.thumbnailSizeHeading')}</h4>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <div>
-                        <label>${t('common.widthPxLabel')}</label>
-                        <input type="number" id="char_${index}_width" value="${char.thumbnailSize?.width || ''}" placeholder="${t('dynamic.character.widthPlaceholder')}" min="50" max="3840">
-                    </div>
-                    <div>
-                        <label>${t('common.heightPxLabel')}</label>
-                        <input type="number" id="char_${index}_height" value="${char.thumbnailSize?.height || ''}" placeholder="${t('dynamic.character.heightPlaceholder')}" min="50" max="2160">
+                <div>
+                    <label>${t('dynamic.character.inactiveBorderColorLabel')}</label>
+                    <div class="swatch-wrap">
+                        <input type="color" id="char_${index}_inactiveColor" data-optional-color="true" ${!char.borderColors?.inactiveBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.inactiveBorderColor) || '#606060'}">
                     </div>
                 </div>
-                <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.borderColorsHeading')}</h4>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <div>
-                        <label>${t('dynamic.character.activeBorderColorLabel')}</label>
-                        <div class="swatch-wrap">
-                            <input type="color" id="char_${index}_activeColor" data-optional-color="true" ${!char.borderColors?.activeBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.activeBorderColor) || '#FFFF00'}">
-                        </div>
-                    </div>
-                    <div>
-                        <label>${t('dynamic.character.inactiveBorderColorLabel')}</label>
-                        <div class="swatch-wrap">
-                            <input type="color" id="char_${index}_inactiveColor" data-optional-color="true" ${!char.borderColors?.inactiveBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.inactiveBorderColor) || '#606060'}">
-                        </div>
-                    </div>
-                </div>
-                <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.nameColorHeading')}</h4>
                 <div>
                     <label>${t('field.textColor.label')}</label>
                     <div class="swatch-wrap">
                         <input type="color" id="char_${index}_nameColor" data-optional-color="true" ${!char.nameColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.nameColor)}">
                     </div>
                 </div>
-                <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.behaviorHeading')}</h4>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-                    <label>
-                        <input type="checkbox" id="char_${index}_excludeMinimize" ${char.excludeFromMinimize ? 'checked' : ''}>
-                        <span class="label-body">${t('dynamic.character.excludeMinimizeLabel')}</span>
-                    </label>
-                    <label>
-                        <input type="checkbox" id="char_${index}_excludeCloseAll" ${char.excludeFromCloseAll ? 'checked' : ''}>
-                        <span class="label-body">${t('dynamic.character.excludeCloseAllLabel')}</span>
-                    </label>
-                    <label>
-                        <input type="checkbox" id="char_${index}_hideThumbnail" ${char.hideThumbnail ? 'checked' : ''}>
-                        <span class="label-body">${t('dynamic.character.hideThumbnailLabel')}</span>
-                    </label>
-                </div>
-                <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.windowPositionHeading')}</h4>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span id="char_${index}_windowPositionDisplay">${char.windowPosition ? `${char.windowPosition.x}, ${char.windowPosition.y}` : t('dynamic.character.windowPositionNotSet')}</span>
-                    <button type="button" onclick="setCharacterWindowPosition(${index})">${t('dynamic.character.setWindowPositionButton')}</button>
-                    <button type="button" id="char_${index}_clearWindowPositionBtn" onclick="confirmClearCharacterWindowPosition(${index})">${t('dynamic.character.clearWindowPositionButton')}</button>
-                </div>
-                <p class="hint">${t('dynamic.character.setWindowPositionHint')}</p>
             </div>
-        `;
-        container.appendChild(charDiv);
-    });
+            <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.behaviorHeading')}</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                <label>
+                    <input type="checkbox" id="char_${index}_excludeMinimize" ${char.excludeFromMinimize ? 'checked' : ''}>
+                    <span class="label-body">${t('dynamic.character.excludeMinimizeLabel')}</span>
+                </label>
+                <label>
+                    <input type="checkbox" id="char_${index}_excludeCloseAll" ${char.excludeFromCloseAll ? 'checked' : ''}>
+                    <span class="label-body">${t('dynamic.character.excludeCloseAllLabel')}</span>
+                </label>
+                <label>
+                    <input type="checkbox" id="char_${index}_hideThumbnail" ${char.hideThumbnail ? 'checked' : ''}>
+                    <span class="label-body">${t('dynamic.character.hideThumbnailLabel')}</span>
+                </label>
+            </div>
+            <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.windowPositionHeading')}</h4>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span id="char_${index}_windowPositionDisplay">${char.windowPosition ? `${char.windowPosition.x}, ${char.windowPosition.y}` : t('dynamic.character.windowPositionNotSet')}</span>
+                <button type="button" onclick="setCharacterWindowPosition(${index})">${t('dynamic.character.setWindowPositionButton')}</button>
+                <button type="button" id="char_${index}_clearWindowPositionBtn" onclick="confirmClearCharacterWindowPosition(${index})">${t('dynamic.character.clearWindowPositionButton')}</button>
+            </div>
+            <p class="hint">${t('dynamic.character.setWindowPositionHint')}</p>
+        </div>
+    `).join('');
+
+    container.innerHTML = `
+        <div class="character-master-detail">
+            <div class="character-roster">${rosterRows}</div>
+            <div class="character-detail-stack">${detailPanels}</div>
+        </div>
+    `;
 
     setupCharacterDragAndDrop();
     updateHotkeyConflictHighlights();
@@ -4873,14 +4894,14 @@ async function clearAllCharacterWindowPositions() {
     }
 }
 
-// Drag-to-reorder support for the character accordions (see setupDragReorder).
+// Drag-to-reorder support for the character roster (see setupDragReorder).
 // Listeners are re-attached each time populateCharacters() rebuilds the list
 // since innerHTML replacement discards the previous elements' listeners.
 function setupCharacterDragAndDrop() {
     const container = document.getElementById('charactersList');
     setupDragReorder(
         container,
-        '.accordion',
+        '.roster-row',
         '.character-drag-handle',
         (item) => parseInt(item.dataset.index, 10),
         reorderCharacters
@@ -4888,7 +4909,9 @@ function setupCharacterDragAndDrop() {
 }
 
 // Moves the character at fromIndex so it sits immediately before the item that was
-// at insertBeforeIndex (in the array's indexing prior to removal).
+// at insertBeforeIndex (in the array's indexing prior to removal). Tracks the
+// selected character by identity so the open detail panel follows it, rather than
+// whatever character the raw index now happens to point at.
 function reorderCharacters(fromIndex, insertBeforeIndex) {
     if (!currentConfig.characters) return;
 
@@ -4896,20 +4919,32 @@ function reorderCharacters(fromIndex, insertBeforeIndex) {
     saveCharacters();
 
     const chars = currentConfig.characters;
+    const selectedChar = chars[selectedCharacterIndex];
     const [moved] = chars.splice(fromIndex, 1);
     const insertAt = fromIndex < insertBeforeIndex ? insertBeforeIndex - 1 : insertBeforeIndex;
     chars.splice(insertAt, 0, moved);
 
+    if (selectedChar) selectedCharacterIndex = chars.indexOf(selectedChar);
     populateCharacters();
 }
 
 function updateCharacterHeaderName(index) {
     syncAccordionHeaderName(`char_${index}_name`, `char_${index}_header_name`, 'Character', index);
+    syncAccordionHeaderName(`char_${index}_name`, `char_${index}_detail_name`, 'Character', index);
     updateCharacterHeaderPortrait(index);
 }
 
-function toggleCharacterAccordion(index) {
-    toggleAccordion('#charactersList', index);
+// Swaps which character's detail panel is shown, without rebuilding the DOM -
+// every character's fields stay mounted (just hidden) so hotkey-conflict detection,
+// which scans all input.hotkey-input elements at once, keeps seeing every character.
+function selectCharacter(index) {
+    selectedCharacterIndex = index;
+    document.querySelectorAll('#charactersList .roster-row').forEach(row => {
+        row.classList.toggle('selected', parseInt(row.dataset.index, 10) === index);
+    });
+    document.querySelectorAll('#charactersList .char-detail-panel').forEach(panel => {
+        panel.classList.toggle('active', parseInt(panel.dataset.index, 10) === index);
+    });
 }
 
 function generateUniqueColor(index) {
@@ -4972,12 +5007,12 @@ function addCharacter() {
     populateCharacters();
 
     const newIndex = currentConfig.characters.length - 1;
-    toggleCharacterAccordion(newIndex);
+    selectCharacter(newIndex);
 
-    const contentPanel = document.getElementById('content-panel');
-    if (contentPanel) {
+    const roster = document.querySelector('#charactersList .character-roster');
+    if (roster) {
         setTimeout(() => {
-            contentPanel.scrollTop = contentPanel.scrollHeight;
+            roster.scrollTop = roster.scrollHeight;
         }, 50);
     }
 }
@@ -5063,6 +5098,15 @@ function confirmRemoveCharacter(index) {
     confirmRemove(`char_${index}_removeBtn`, () => removeCharacter(index));
 }
 
+// Keeps the open detail panel on the same character across a removal elsewhere in the
+// list; if the removed character was the selected one, falls back to whichever
+// character now sits at the removed slot (or the last one, if it was removed).
+function reselectCharacterAfterRemoval(selectedChar, removedIndex) {
+    const chars = currentConfig.characters;
+    const stillPresent = selectedChar ? chars.indexOf(selectedChar) : -1;
+    selectedCharacterIndex = stillPresent !== -1 ? stillPresent : Math.min(removedIndex, chars.length - 1);
+}
+
 function removeCharacterByName(name) {
     if (!currentConfig.characters || !name.trim()) return;
     saveCharacters();
@@ -5070,7 +5114,9 @@ function removeCharacterByName(name) {
     const index = currentConfig.characters.findIndex(c => (c.name || '').trim().toLowerCase() === target);
     if (index === -1) return;
     deletedCharacterNames.add(target);
+    const selectedChar = currentConfig.characters[selectedCharacterIndex];
     currentConfig.characters.splice(index, 1);
+    reselectCharacterAfterRemoval(selectedChar, index);
     populateCharacters();
 }
 
@@ -5079,7 +5125,9 @@ function removeCharacter(index) {
         // Save all characters first to preserve any unsaved changes in other characters
         saveCharacters();
         deletedCharacterNames.add((currentConfig.characters[index].name || '').trim().toLowerCase());
+        const selectedChar = currentConfig.characters[selectedCharacterIndex];
         currentConfig.characters.splice(index, 1);
+        reselectCharacterAfterRemoval(selectedChar, index);
         populateCharacters();
     }
 }

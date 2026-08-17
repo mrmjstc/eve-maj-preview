@@ -239,6 +239,8 @@ body::after {
     padding: 8px;
     overflow-y: auto;
     background: #000000;
+    display: flex;
+    flex-direction: column;
 }
 
 .panel-content {
@@ -1410,6 +1412,148 @@ input[type="range"]::-moz-range-thumb {
 
 .accordion.drag-over-bottom {
     border-bottom: 2px solid #ffffff;
+}
+
+/* Character panel: roster + single-panel detail, instead of an accordion list.
+   Stretched to fill the window instead of growing with #content-panel, so the
+   roster stays fully visible and scrolls independently of whichever detail
+   form is open. flex + min-height:0 all the way down, not height:100% - a
+   flex item's stretched size doesn't count as an "explicit" height, so
+   percentage heights on its descendants won't resolve against it. */
+.panel-content[data-panel="characters"].active {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.panel-content[data-panel="characters"] .section {
+    flex: 1;
+    min-height: 0;
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* #charactersList (the plain div populateCharacters() renders into, see
+   config_dialog.html) sits between .section and .character-master-detail -
+   without flex sizing here too, .character-master-detail's flex:1 has
+   nothing to grow into and just falls back to its content height. */
+#charactersList {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.character-master-detail {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    min-height: 0;
+}
+
+.character-roster {
+    width: 200px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    border: 1px solid #444444;
+    border-radius: 4px;
+}
+
+.roster-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid #2a2a2a;
+    cursor: pointer;
+    color: #aaaaaa;
+}
+
+.roster-row:last-child {
+    border-bottom: none;
+}
+
+.roster-row:hover {
+    background: #1a1a1a;
+    color: #ffffff;
+}
+
+.roster-row.selected {
+    background: #1a1a1a;
+    color: #ffffff;
+    box-shadow: inset 3px 0 0 #ffffff;
+}
+
+.roster-row.selected .roster-name {
+    font-weight: bold;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
+}
+
+.roster-row .character-portrait {
+    width: 24px;
+    height: 24px;
+}
+
+.roster-name {
+    flex: 1;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.roster-hotkey-badge {
+    font-size: 11px;
+    color: #999999;
+    white-space: nowrap;
+}
+
+.roster-row.dragging {
+    opacity: 0.4;
+}
+
+.roster-row.drag-over-top {
+    border-top: 2px solid #ffffff;
+}
+
+.roster-row.drag-over-bottom {
+    border-bottom: 2px solid #ffffff;
+}
+
+.character-detail-stack {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    border: 1px solid #444444;
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.char-detail-panel {
+    display: none;
+}
+
+.char-detail-panel.active {
+    display: block;
+    animation: fadeIn 0.15s;
+}
+
+.char-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #888888;
+}
+
+.char-detail-name {
+    flex: 1;
+    font-weight: bold;
+    font-size: 15px;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
 }
 
 /* Hotkey group character list (drag-to-reorder rows) */
