@@ -5232,13 +5232,17 @@ function populateQuickGroups() {
                 </div>
             </div>
             <div class="accordion-content">
-                <label style="display: block; margin-top: 8px;">${t('dynamic.quickGroup.nameLabel')}</label>
-                <input type="text" id="qg_${index}_name" value="${group.name || ''}" placeholder="${t('dynamic.quickGroup.namePlaceholder')}" oninput="updateQuickGroupHeaderName(${index})">
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+                    <div>
+                        <label>${t('dynamic.quickGroup.nameLabel')}</label>
+                        <input type="text" id="qg_${index}_name" value="${group.name || ''}" placeholder="${t('dynamic.quickGroup.namePlaceholder')}" oninput="updateQuickGroupHeaderName(${index})">
+                    </div>
                     <div>
                         <label>${t('dynamic.quickGroup.assignKeyLabel')}</label>
                         <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`qg_${index}_assign`, vkHexToFriendly(group.assignKey) || '', t('dynamic.quickGroup.assignPlaceholder'))}</div>
                     </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
                     <div>
                         <label>${t('dynamic.quickGroup.forwardKeyLabel')}</label>
                         <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`qg_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.quickGroup.forwardPlaceholder'))}</div>

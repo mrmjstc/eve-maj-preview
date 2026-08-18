@@ -700,16 +700,21 @@
                         </label>
 
                         <div id="autoMinimizeOptions">
-                            <label for="animationStyle" data-i18n="field.animationStyle.label">Animation Style</label>
-                            <select id="animationStyle">
-                                <option value="NoAnimation" data-i18n="field.animationStyle.option.noanimation">No Animation</option>
-                                <option value="OriginalAnimation" data-i18n="field.animationStyle.option.originalanimation">Original Animation</option>
-                            </select>
-                            <p class="hint" data-i18n="field.animationStyle.hint">Visual transition used when a window is automatically minimized/restored</p>
-
-                            <label for="autoMinimizeDelay" data-i18n="field.autoMinimizeDelay.label">Delay (s)</label>
-                            <input type="number" id="autoMinimizeDelay" min="0" max="10" step="0.1">
-                            <p class="hint" data-i18n="field.autoMinimizeDelay.hint">Inactivity duration before automatic minimize</p>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                <div>
+                                    <label for="autoMinimizeDelay" data-i18n="field.autoMinimizeDelay.label">Delay (s)</label>
+                                    <input type="number" id="autoMinimizeDelay" min="0" max="10" step="0.1">
+                                    <p class="hint" data-i18n="field.autoMinimizeDelay.hint">Inactivity duration before automatic minimize</p>
+                                </div>
+                                <div>
+                                    <label for="animationStyle" data-i18n="field.animationStyle.label">Animation Style</label>
+                                    <select id="animationStyle">
+                                        <option value="NoAnimation" data-i18n="field.animationStyle.option.noanimation">No Animation</option>
+                                        <option value="OriginalAnimation" data-i18n="field.animationStyle.option.originalanimation">Original Animation</option>
+                                    </select>
+                                    <p class="hint" data-i18n="field.animationStyle.hint">Visual transition used when a window is automatically minimized/restored</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -738,10 +743,10 @@
                         </select>
                         <p class="hint" data-i18n="field.exclusionOverlayStyle.hint">Visual shown on a thumbnail while its character is excluded from hotkey cycling</p>
 
-                        <label for="exclusionOverlayColor" data-i18n="field.exclusionOverlayColor.label">Overlay Color</label>
-                        <input type="color" id="exclusionOverlayColor" data-default-color="#ff0000">
                         <label for="exclusionOverlayOpacity"><span data-i18n="field.exclusionOverlayOpacity.label">Overlay Opacity: </span><span id="exclusionOverlayOpacityValue">20</span>%</label>
                         <input type="range" id="exclusionOverlayOpacity" min="0" max="100" value="20" data-value-target="exclusionOverlayOpacityValue">
+                        <label for="exclusionOverlayColor" data-i18n="field.exclusionOverlayColor.label">Overlay Color</label>
+                        <input type="color" id="exclusionOverlayColor" data-default-color="#ff0000">
                     </div>
 
                     <div class="section">
@@ -1132,8 +1137,8 @@
                             </tbody>
                         </table>
                         <div style="display: flex; gap: 8px; margin-top: 8px;">
-                            <button type="button" class="button-danger" onclick="resetNotificationTextColors()" style="width: 100%;" data-i18n="button.reset-notification-text-colors.label">Reset All Text Colors</button>
-                            <button type="button" class="button-danger" onclick="resetNotificationBorderColors()" style="width: 100%;" data-i18n="button.reset-notification-border-colors.label">Reset All Border Colors</button>
+                            <button type="button" class="button-danger" onclick="resetNotificationTextColors()" style="width: 100%;" data-i18n="button.reset-notification-text-colors.label">↻ Reset All Text Colors</button>
+                            <button type="button" class="button-danger" onclick="resetNotificationBorderColors()" style="width: 100%;" data-i18n="button.reset-notification-border-colors.label">↻ Reset All Border Colors</button>
                         </div>
                     </div>
                 </div>

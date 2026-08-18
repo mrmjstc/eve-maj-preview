@@ -1603,8 +1603,8 @@ input[type="range"]::-moz-range-thumb {
 
 /* Hotkey group character list (drag-to-reorder rows) */
 .hkgroup-chars-list {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 4px;
 }
 
