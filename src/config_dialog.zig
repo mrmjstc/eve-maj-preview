@@ -16,7 +16,6 @@ const catalog_en = @embedFile("lang/en.json");
 const catalog_de = @embedFile("lang/de.json");
 const catalog_es = @embedFile("lang/es.json");
 const catalog_ru = @embedFile("lang/ru.json");
-const catalog_uwu = @embedFile("lang/uwu.json");
 
 /// Add a language by dropping src/lang/xx.json, embedding it above, and adding one variant here plus one arm each in `catalog()` and `displayName()`.
 const SupportedLang = enum {
@@ -24,7 +23,6 @@ const SupportedLang = enum {
     de,
     es,
     ru,
-    uwu,
 
     fn catalog(self: SupportedLang) []const u8 {
         return switch (self) {
@@ -32,7 +30,6 @@ const SupportedLang = enum {
             .de => catalog_de,
             .es => catalog_es,
             .ru => catalog_ru,
-            .uwu => catalog_uwu,
         };
     }
 
@@ -42,7 +39,6 @@ const SupportedLang = enum {
             .de => "Deutsch",
             .es => "Español",
             .ru => "Русский",
-            .uwu => "UwU",
         };
     }
 };
