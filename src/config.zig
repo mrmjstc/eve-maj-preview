@@ -327,7 +327,7 @@ pub const GlobalSettings = struct {
 
     pub const Wire = struct {
         lastUsedProfile: []const u8 = DEFAULT_PROFILE,
-        logLevel: log.LogLevel = .debug,
+        logLevel: log.LogLevel = .err,
         hotkeyNextProfile: ?VkCode = null,
         hotkeyPreviousProfile: ?VkCode = null,
         hotkeyCycleAllClientsForward: ?VkCode = null,
