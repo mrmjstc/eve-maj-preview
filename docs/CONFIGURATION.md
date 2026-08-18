@@ -454,7 +454,54 @@ By default (`"NoAnimation"`), the application temporarily disables Windows syste
 
 ## Protocol Handler
 
-Control whether the application automatically registers the `evemajpreview://` protocol handler on startup. This lives under `"hotkeys"` (see [Hotkey Configuration](#hotkey-configuration)):
+EVE-Maj Preview registers a `evemajpreview://` custom URL protocol for external control - character switching, profile loading, and hotkey actions. Useful for Stream Deck buttons, AutoHotkey scripts, browser bookmarks, or any tool that can open a URL.
+
+### How It Works
+
+Windows launches `eve-maj-preview.exe --protocol "<url>"` when a `evemajpreview://` link is opened. That new process does not become the running instance - it looks for an already-running instance by window class, forwards the parsed command to it via `WM_COPYDATA`/`WM_APP` messages, then exits.
+
+> **Note:** The application must already be running for a protocol URL to do anything. If no running instance is found, the command is logged and silently dropped - it does not launch a new instance.
+
+### URL Format
+
+```
+evemajpreview://<action>/<param>
+```
+
+- **`switch/<character-name>`**: Switch to and foreground the named character's client. The name must be URL-encoded (spaces as `%20` or `+`).
+- **`profile/<filename>`**: Load the named profile (filename relative to `profiles\`, e.g. `pvp.json`).
+- **`hotkey/<action>`**: Trigger one of the hotkey actions below, exactly as if its configured global hotkey had been pressed.
+
+**Hotkey Actions:**
+
+| Action | Effect |
+|---|---|
+| `minimize_all` | Minimize all EVE client windows |
+| `close_all` | Close all EVE client windows |
+| `toggle_visibility` | Toggle visibility of all thumbnails |
+| `toggle_auto_minimize` | Toggle auto-minimize mode on/off |
+| `next_profile` / `previous_profile` | Cycle to next/previous profile |
+| `toggle_exclusion` | Toggle exclusion of the focused EVE window from cycling |
+| `next_excluded` / `previous_excluded` | Cycle through excluded characters |
+| `suspend_hotkeys` | Suspend/resume all other hotkeys |
+| `cycle_notified` / `previous_notified` | Cycle forward/backward through recently notified characters |
+| `next_all_clients` / `previous_all_clients` | Cycle forward/backward through all logged-in clients |
+| `next_not_logged_in` / `previous_not_logged_in` | Cycle forward/backward through not-logged-in clients |
+| `move_to_saved_positions` | Move all clients back to their saved positions |
+
+These correspond directly to the actions in [Hotkey Configuration](#hotkey-configuration) - see that section for details on what each one does.
+
+**Example Commands:**
+
+```
+evemajpreview://switch/Character%20Name
+evemajpreview://profile/pvp.json
+evemajpreview://hotkey/toggle_visibility
+```
+
+### Registration
+
+Control whether the application automatically registers the protocol handler on startup with `autoRegisterProtocol`, under `"hotkeys"` (see [Hotkey Configuration](#hotkey-configuration)):
 
 ```json
 {
@@ -464,7 +511,7 @@ Control whether the application automatically registers the `evemajpreview://` p
 }
 ```
 
-When enabled (default: `true`), the application checks if the protocol handler is registered and attempts to register it if needed. This requires Windows Registry access and may need administrator privileges.
+When enabled (default: `true`), the application checks whether the protocol handler is registered at startup and registers it if needed. Registration writes to `HKEY_CURRENT_USER\Software\Classes\evemajpreview` rather than `HKEY_CLASSES_ROOT`, so it does not require administrator privileges. The registered command points at the currently running executable's path plus `--protocol "%1"`, so re-registration is needed if the executable is moved.
 
 ## Auto-Minimize
 
