@@ -14,25 +14,12 @@
         <div class="shell">
             <aside class="sidebar">
                 <div class="section">
-                    <h3>Character</h3>
-                    <div class="picker-row">
-                        <select id="characterSelect"><option value="">No clients detected</option></select>
-                        <button id="refreshCharactersBtn" title="Rescan open EVE clients">↻</button>
-                    </div>
-                    <button class="open-file" id="loadCharacterBtn">Load Gamelog</button>
-                    <div class="file-hint">Picks the newest gamelog belonging to the selected character's known gamelog directory.</div>
-                    <button class="open-file button-outline" id="openFileBtn">Open File Instead…</button>
-                    <input id="fileInput" type="file" accept=".txt,.log,text/plain" hidden>
+                    <h3>Characters</h3>
+                    <div class="character-list" id="characterList"><div class="damage-empty">No clients detected</div></div>
+                    <div class="file-hint">Rescanned automatically. Check a character to load and combine their gamelog; uncheck to remove it.</div>
+                    <button class="open-file button-outline" id="openFileBtn">Open File(s) Instead…</button>
+                    <input id="fileInput" type="file" accept=".txt,.log,text/plain" multiple hidden>
                     <div class="status-message" id="loadStatus"></div>
-                </div>
-
-                <div class="section">
-                    <h3>Session</h3>
-                    <div class="session-card">
-                        <div class="listener" id="listener">—</div>
-                        <div class="session-time" id="sessionTime">—</div>
-                        <div class="filename" id="filename">No file loaded</div>
-                    </div>
                 </div>
 
                 <div class="section">
@@ -65,9 +52,9 @@
             <main class="main" id="main">
                 <div class="toolbar">
                     <div class="search"><input id="search" type="search" autocomplete="off" placeholder="Search pilot, ship, module, event…"></div>
-                    <button class="toolbtn" id="copyBtn">Copy visible</button><button class="toolbtn" id="resetBtn">Reset</button><div class="visible-count" id="visibleCount"></div>
+                    <button id="copyBtn">Copy visible</button><button id="resetBtn">Reset</button><div class="visible-count" id="visibleCount"></div>
                 </div>
-                <div class="log-wrap" id="logWrap"><div class="log" id="log"></div><div class="empty show" id="empty"><strong>No gamelog loaded</strong><span>Pick a character on the left or open a gamelog file.</span></div></div>
+                <div class="log-wrap" id="logWrap"><div class="log" id="log"></div><div class="empty show" id="empty"><strong>No gamelog loaded</strong><span>Pick one or more characters on the left or open a gamelog file.</span></div></div>
                 <div class="drop-overlay" id="dropOverlay"><div class="drop-box"><strong>Drop Gamelog</strong>Release the file to open it</div></div>
             </main>
         </div>

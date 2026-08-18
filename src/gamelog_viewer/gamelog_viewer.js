@@ -38,10 +38,16 @@ window.addEventListener('unhandledrejection', (event) => {
 let events = [];
 let filter = 'all';
 let excludeDroneTargets = false;
+// Keyed by character name for checkbox-driven loads, or `file:<n>:<name>` for manually opened
+// files - a single map so both paths share one recompute/render step (see recomputeAndRender()).
+let loadedSources = new Map();
 
 const log = document.getElementById('log'), search = document.getElementById('search'), empty = document.getElementById('empty'), visibleCount = document.getElementById('visibleCount');
 const fileInput = document.getElementById('fileInput'), filtersEl = document.getElementById('filters'), excludeDroneTargetsEl = document.getElementById('excludeDroneTargets');
-const characterSelect = document.getElementById('characterSelect'), loadStatus = document.getElementById('loadStatus');
+const characterList = document.getElementById('characterList'), loadStatus = document.getElementById('loadStatus');
+
+const CHARACTER_RESCAN_MS = 3000;
+const DEFAULT_TITLE = document.title;
 
 function showStatus(message, type) {
     loadStatus.textContent = message;
@@ -52,39 +58,84 @@ function clearStatus() {
     loadStatus.className = 'status-message';
 }
 
+function checkedCharacterNames() {
+    return [...characterList.querySelectorAll('.char-checkbox:checked')].map(cb => cb.value);
+}
+
+function setCharacterCheckbox(name, checked) {
+    const cb = characterList.querySelector(`.char-checkbox[value="${CSS.escape(name)}"]`);
+    if (cb) cb.checked = checked;
+}
+
+// Rescans open EVE clients and refreshes the checkbox list, preserving which ones are checked.
+// A character that disappears from the scan (client closed) is also dropped from the merged
+// view, so a stale log doesn't linger after that client logs out.
 async function populateCharacters() {
-    const previous = characterSelect.value;
+    const previouslyChecked = new Set(checkedCharacterNames());
     try {
         const result = await webui.call('listOpenCharacters');
         const names = JSON.parse(result);
-        characterSelect.innerHTML = names.length
-            ? names.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('')
-            : '<option value="">No clients detected</option>';
-        if (names.includes(previous)) characterSelect.value = previous;
+        characterList.innerHTML = names.length
+            ? names.map(name => `<label class="char-row"><input type="checkbox" class="char-checkbox" value="${escapeHtml(name)}"${previouslyChecked.has(name) ? ' checked' : ''}><span class="label-body">${escapeHtml(name)}</span></label>`).join('')
+            : '<div class="damage-empty">No clients detected</div>';
+
+        const stillOpen = new Set(names);
+        const goneCharacters = [...loadedSources.keys()].filter(key => !key.startsWith('file:') && !stillOpen.has(key));
+        if (goneCharacters.length) {
+            goneCharacters.forEach(name => loadedSources.delete(name));
+            recomputeAndRender();
+        }
     } catch (error) {
         logError('Failed to list open EVE clients:', error);
-        characterSelect.innerHTML = '<option value="">No clients detected</option>';
+        characterList.innerHTML = '<div class="damage-empty">No clients detected</div>';
     }
 }
 
-async function loadCharacterGamelog() {
-    const name = characterSelect.value;
-    if (!name) {
-        showStatus('Select a character first.', 'error');
+// Recomputes the merged `events` array from every loaded source and re-renders. Search/filter
+// text is intentionally left as-is here (unlike a fresh file load) so checking/unchecking one
+// more character doesn't discard what the user was already searching for.
+function recomputeAndRender() {
+    events = [];
+    for (const source of loadedSources.values()) events.push(...source.events);
+    // Timestamps are fixed-width zero-padded ("YYYY.MM.DD HH:MM:SS"), so plain string
+    // comparison sorts chronologically without needing to parse each one into a Date.
+    events.sort((a, b) => a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0);
+
+    log.classList.toggle('multi', loadedSources.size > 1);
+    const listeners = [...loadedSources.values()].map(s => s.listener);
+    document.title = listeners.length > 1 ? `EVE Gamelog — ${listeners.length} sources` : listeners.length === 1 ? `EVE Gamelog — ${listeners[0]}` : DEFAULT_TITLE;
+
+    rebuildFilters(); updateStats(); render();
+}
+
+// Bound to a character checkbox's change event: loads and adds that character's newest gamelog
+// to the merged view when checked, or drops it when unchecked.
+async function setCharacterLoaded(name, shouldLoad) {
+    if (!shouldLoad) {
+        loadedSources.delete(name);
+        recomputeAndRender();
         return;
     }
-    clearStatus();
+
     try {
         const text = await webui.call('loadGamelogForCharacter', name);
         if (!text) {
             showStatus(`No gamelog file found for ${name}.`, 'error');
+            setCharacterCheckbox(name, false);
             return;
         }
-        loadText(text, `${name} — gamelog.txt`);
+        const data = parseLog(text);
+        data.events.forEach(e => { e.character = data.listener; });
+        loadedSources.set(name, data);
+        clearStatus();
     } catch (error) {
         logError('Failed to load gamelog for character:', name, error);
         showStatus(`Failed to load gamelog for ${name}.`, 'error');
+        setCharacterCheckbox(name, false);
+        return;
     }
+
+    recomputeAndRender();
 }
 
 function decodeEntities(s) { const t = document.createElement('textarea'); t.innerHTML = s; return t.value }
@@ -193,7 +244,7 @@ function formatMessage(e) {
 }
 function render() {
     log.innerHTML = ''; const frag = document.createDocumentFragment();
-    events.forEach(e => { const isDrone = !!(e.damage && e.damage.isDrone), targetIsDrone = !!(e.damage && e.damage.targetIsDrone); const row = document.createElement('div'); row.className = `row ${e.type}${isDrone ? ' drone-hit' : ''}${targetIsDrone ? ' drone-target-hit' : ''}`; row.dataset.type = e.type; row.dataset.drone = isDrone ? '1' : '0'; row.dataset.droneTarget = targetIsDrone ? '1' : '0'; row.dataset.search = (e.ts + ' ' + e.sourceType + ' ' + e.message).toLowerCase(); const kind = targetIsDrone ? 'to drone' : (isDrone ? 'drone' : e.sourceType); row.innerHTML = `<div class="time">${escapeHtml(e.time)}</div><div class="kind">${escapeHtml(kind)}</div><div class="msg">${formatMessage(e)}</div>`; frag.appendChild(row) });
+    events.forEach(e => { const isDrone = !!(e.damage && e.damage.isDrone), targetIsDrone = !!(e.damage && e.damage.targetIsDrone); const row = document.createElement('div'); row.className = `row ${e.type}${isDrone ? ' drone-hit' : ''}${targetIsDrone ? ' drone-target-hit' : ''}`; row.dataset.type = e.type; row.dataset.drone = isDrone ? '1' : '0'; row.dataset.droneTarget = targetIsDrone ? '1' : '0'; row.dataset.search = (e.ts + ' ' + e.sourceType + ' ' + e.message + ' ' + (e.character || '')).toLowerCase(); const kind = targetIsDrone ? 'to drone' : (isDrone ? 'drone' : e.sourceType); row.innerHTML = `<div class="time">${escapeHtml(e.time)}</div><div class="who">${escapeHtml(e.character || '')}</div><div class="kind">${escapeHtml(kind)}</div><div class="msg">${formatMessage(e)}</div>`; frag.appendChild(row) });
     log.appendChild(frag); apply();
 }
 function labelForType(type) { return ({ combat: 'Combat', notify: 'Notify', bounty: 'Bounty', question: 'Fleet prompt', hint: 'Hints' })[type] || type.charAt(0).toUpperCase() + type.slice(1) }
@@ -234,29 +285,48 @@ function updateStats() {
     document.getElementById('shipDamageOut').textContent = shipOut.toLocaleString(); document.getElementById('droneDamageOut').textContent = droneOut.toLocaleString(); document.getElementById('droneDamageIn').textContent = droneIn.toLocaleString(); document.getElementById('damageToDrones').textContent = damageToDrones.toLocaleString(); renderDroneBreakdown(byDrone, droneOut);
     let span = '0s'; if (events.length > 1) { const a = parseLocalTimestamp(events[0].ts), b = parseLocalTimestamp(events[events.length - 1].ts); if (a && b) span = formatSpan(b - a) } document.getElementById('logSpan').textContent = span;
 }
-function loadText(text, name) {
-    const data = parseLog(text); events = data.events; filter = 'all'; search.value = '';
-    document.getElementById('listener').textContent = data.listener; document.getElementById('sessionTime').textContent = data.session; document.getElementById('filename').textContent = name || 'Loaded log'; document.title = `EVE Gamelog — ${data.listener}`;
-    rebuildFilters(); updateStats(); render(); document.getElementById('logWrap').scrollTop = 0;
-}
 function apply() {
     const q = search.value.trim().toLowerCase(); let shown = 0; [...log.children].forEach(row => { const okType = filter === 'all' || (filter === 'drone' ? row.dataset.drone === '1' : filter === 'drone-target' ? row.dataset.droneTarget === '1' : row.dataset.type === filter), okSearch = !q || row.dataset.search.includes(q), okDroneTarget = !(excludeDroneTargets && row.dataset.droneTarget === '1'), show = okType && okSearch && okDroneTarget; row.classList.toggle('hidden', !show); if (show) shown++ }); visibleCount.textContent = events.length ? `${shown} / ${events.length} visible` : ''; empty.classList.toggle('show', shown === 0);
 }
-async function openFile(file) { if (!file) return; try { const text = await file.text(); loadText(text, file.name); clearStatus(); } catch (err) { logError('Failed to read dropped/opened gamelog file:', err); showStatus('Unable to read that file. Please choose a plain-text EVE gamelog.', 'error'); } }
+// Manually opened files replace any character-checkbox sources rather than adding to them, so
+// checkbox state (still shown checked) doesn't silently drift out of sync with what's loaded.
+async function openFiles(fileList) {
+    const files = [...(fileList || [])];
+    if (!files.length) return;
+    try {
+        const texts = await Promise.all(files.map(file => file.text()));
+
+        loadedSources.clear();
+        checkedCharacterNames().forEach(name => setCharacterCheckbox(name, false));
+        texts.forEach((text, i) => {
+            const data = parseLog(text);
+            data.events.forEach(e => { e.character = data.listener; });
+            loadedSources.set(`file:${i}:${files[i].name}`, data);
+        });
+
+        filter = 'all'; search.value = '';
+        recomputeAndRender();
+        document.getElementById('logWrap').scrollTop = 0;
+        clearStatus();
+    } catch (err) {
+        logError('Failed to read dropped/opened gamelog file(s):', err);
+        showStatus('Unable to read that file. Please choose plain-text EVE gamelog(s).', 'error');
+    }
+}
 
 document.getElementById('openFileBtn').addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', () => { openFile(fileInput.files[0]); fileInput.value = ''; });
-document.getElementById('loadCharacterBtn').addEventListener('click', loadCharacterGamelog);
-document.getElementById('refreshCharactersBtn').addEventListener('click', populateCharacters);
+fileInput.addEventListener('change', () => { openFiles(fileInput.files); fileInput.value = ''; });
+characterList.addEventListener('change', (e) => { const cb = e.target.closest('.char-checkbox'); if (cb) setCharacterLoaded(cb.value, cb.checked); });
 excludeDroneTargetsEl.addEventListener('change', () => { excludeDroneTargets = excludeDroneTargetsEl.checked; updateStats(); apply() });
 search.addEventListener('input', apply);
 document.getElementById('resetBtn').addEventListener('click', () => { search.value = ''; filter = 'all'; excludeDroneTargets = false; excludeDroneTargetsEl.checked = false; [...filtersEl.children].forEach(b => b.classList.toggle('active', b.dataset.filter === 'all')); updateStats(); apply() });
-document.getElementById('copyBtn').addEventListener('click', async () => { const rows = [...log.children].filter(r => !r.classList.contains('hidden')); const text = rows.map(r => `[ ${r.querySelector('.time').textContent} ] (${r.querySelector('.kind').textContent}) ${r.querySelector('.msg').innerText}`).join('\n'); try { await navigator.clipboard.writeText(text); const b = document.getElementById('copyBtn'), old = b.textContent; b.textContent = 'Copied'; setTimeout(() => b.textContent = old, 900) } catch (e) { logWarn('Clipboard write failed:', e) } });
+document.getElementById('copyBtn').addEventListener('click', async () => { const rows = [...log.children].filter(r => !r.classList.contains('hidden')); const text = rows.map(r => { const who = r.querySelector('.who').textContent; return `[ ${r.querySelector('.time').textContent} ]${who ? ' ' + who : ''} (${r.querySelector('.kind').textContent}) ${r.querySelector('.msg').innerText}`; }).join('\n'); try { await navigator.clipboard.writeText(text); const b = document.getElementById('copyBtn'), old = b.textContent; b.textContent = 'Copied'; setTimeout(() => b.textContent = old, 900) } catch (e) { logWarn('Clipboard write failed:', e) } });
 
 const main = document.getElementById('main'), dropOverlay = document.getElementById('dropOverlay'); let dragDepth = 0;
 ['dragenter', 'dragover'].forEach(type => main.addEventListener(type, e => { e.preventDefault(); dragDepth++; dropOverlay.classList.add('show') }));
 main.addEventListener('dragleave', e => { e.preventDefault(); dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) dropOverlay.classList.remove('show') });
-main.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; dropOverlay.classList.remove('show'); openFile(e.dataTransfer.files && e.dataTransfer.files[0]) });
+main.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; dropOverlay.classList.remove('show'); openFiles(e.dataTransfer.files) });
 
 populateCharacters();
+setInterval(populateCharacters, CHARACTER_RESCAN_MS);
 apply();

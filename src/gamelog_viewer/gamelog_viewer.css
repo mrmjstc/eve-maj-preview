@@ -43,7 +43,7 @@ body {
     overflow: hidden;
     margin: 0;
     font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.4;
     text-shadow: 0 0 2px rgba(255, 255, 255, 0.65);
 }
@@ -101,13 +101,18 @@ body::after {
 
 h3 {
     color: #ffffff;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 700;
+    /* No margin-top: .section boxes already get their gap from .sidebar's flex `gap`, so an
+       extra top margin here (as config_dialog.css uses) would double up the spacing. */
     margin: 0 0 8px;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    position: relative;
+    letter-spacing: 1.5px;
+    border-bottom: 1px solid #ffffff;
+    padding-bottom: 3px;
     padding-left: 14px;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+    position: relative;
 }
 
 h3::before {
@@ -123,7 +128,11 @@ button {
     color: #ffffff;
     padding: 6px 12px;
     font-family: 'Cascadia Code', 'Consolas', monospace;
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 500;
+    text-transform: uppercase;
+    height: 28px;
+    line-height: 1.4;
     cursor: pointer;
     transition: all 0.15s;
 }
@@ -151,7 +160,7 @@ input, select {
     color: #ffffff;
     padding: 4px 8px;
     font-family: 'Cascadia Code', 'Consolas', monospace;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 input:focus, select:focus {
@@ -267,27 +276,37 @@ label:hover input[type="checkbox"] + .label-body::before {
 .sidebar {
     min-height: 0;
     overflow: auto;
-    border-right: 1px solid #333333;
+    border-right: 1px solid #888888;
     padding: 12px;
     display: flex;
     flex-direction: column;
     gap: 10px;
 }
 
-.picker-row {
-    display: flex;
-    gap: 6px;
+.character-list {
+    display: grid;
+    gap: 2px;
+    max-height: 160px;
+    overflow: auto;
     margin-bottom: 8px;
+    border: 1px solid #333333;
+    background: #0a0a0a;
+    padding: 4px;
 }
 
-.picker-row select {
-    flex: 1;
-    min-width: 0;
+.char-row {
+    display: block;
+    padding: 4px 6px;
+    cursor: pointer;
 }
 
-.picker-row button {
-    flex: 0 0 auto;
-    padding: 4px 8px;
+.char-row:hover {
+    background: #151515;
+}
+
+.char-row .label-body {
+    font-size: 11px;
+    color: #dddddd;
 }
 
 .open-file {
@@ -301,34 +320,6 @@ label:hover input[type="checkbox"] + .label-body::before {
     color: #777777;
     text-shadow: none;
     margin: 0 0 10px;
-}
-
-.session-card {
-    border: 1px solid #333333;
-    background: #0a0a0a;
-    padding: 8px 9px;
-}
-
-.listener {
-    color: #ffffff;
-    font-weight: 700;
-    margin-bottom: 3px;
-}
-
-.session-time {
-    font: 11px/1.4 Consolas, monospace;
-    color: #999999;
-    text-shadow: none;
-}
-
-.filename {
-    margin-top: 6px;
-    color: #777777;
-    font-size: 10px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    text-shadow: none;
 }
 
 .filters {
@@ -545,7 +536,7 @@ label:hover input[type="checkbox"] + .label-body::before {
     gap: 8px;
     align-items: center;
     padding: 10px 12px;
-    border-bottom: 1px solid #333333;
+    border-bottom: 1px solid #888888;
 }
 
 .search {
@@ -568,10 +559,6 @@ label:hover input[type="checkbox"] + .label-body::before {
     color: #888888;
     font-size: 15px;
     text-shadow: none;
-}
-
-.toolbtn {
-    height: 28px;
 }
 
 .visible-count {
@@ -630,6 +617,25 @@ label:hover input[type="checkbox"] + .label-body::before {
     min-width: 0;
     color: #dddddd;
     word-break: break-word;
+}
+
+.who {
+    display: none;
+    font: 10px/1.6 Consolas, monospace;
+    color: #9ad1e0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: none;
+}
+
+/* Only shown once more than one character's log is merged - a single-source log doesn't need it repeated on every row. */
+.log.multi .row {
+    grid-template-columns: 86px 92px 78px minmax(0, 1fr);
+}
+
+.log.multi .who {
+    display: block;
 }
 
 .row.combat .kind { color: var(--color-damage-out); }
@@ -719,7 +725,7 @@ label:hover input[type="checkbox"] + .label-body::before {
 
 @media (max-width: 780px) {
     .shell { grid-template-columns: 1fr; }
-    .sidebar { border-right: 0; border-bottom: 1px solid #333333; }
+    .sidebar { border-right: 0; border-bottom: 1px solid #888888; }
     .stats { margin-top: 0; }
     .log { min-width: 0; }
     .row { grid-template-columns: 78px 60px minmax(0, 1fr); padding-right: 8px; }
