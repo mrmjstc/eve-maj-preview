@@ -67,7 +67,7 @@
                     <span data-i18n="tab.hotkeys.title">hotkeys</span>
                 </div>
                 <div class="tab-item" data-tab="chatlog">
-                    <span data-i18n="tab.chatlog.title">chatlog monitor</span>
+                    <span data-i18n="tab.chatlog.title">log monitoring</span>
                 </div>
                 <div class="tab-item" data-tab="notifications">
                     <span data-i18n="tab.notifications.title">notifications</span>
@@ -149,7 +149,7 @@
 
                 <div class="panel-content advanced-tab-panel" data-panel="general">
                     <div class="section">
-                        <h3 data-i18n="tab.general.section.system-configuration.heading">System Configuration</h3>
+                        <h3 data-i18n="tab.general.section.system-configuration.heading">Logging &amp; Scanning</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.general.section.system-configuration.hint">Log Level sets logging verbosity and applies globally, across all profiles. Scan Interval is the delay between checks for new windows, and applies to this profile only.</p>
 
 <label for="logLevel" data-i18n="field.logLevel.label">Log Level</label>
@@ -185,7 +185,7 @@
 
                 <div class="panel-content" data-panel="thumbnails">
                     <div class="section">
-                        <h3 data-i18n="tab.thumbnails.section.thumbnail-dimensions.heading">Thumbnail Dimensions</h3>
+                        <h3 data-i18n="tab.thumbnails.section.thumbnail-dimensions.heading">Dimensions</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.thumbnails.section.thumbnail-dimensions.hint">Set the pixel size each thumbnail is rendered at.</p>
 
                         <!-- min/max on the number inputs below are a fallback for before
@@ -339,7 +339,7 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.thumbnails.section.border-configuration.heading">Border Configuration</h3>
+                        <h3 data-i18n="tab.thumbnails.section.border-configuration.heading">Borders</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.thumbnails.section.border-configuration.hint">Draw a styled border around thumbnails based on their focus state.</p>
 
                         <label>
@@ -506,7 +506,7 @@
 
                 <div class="panel-content" data-panel="overlay-text">
                     <div class="section">
-                        <h3 data-i18n="tab.overlay-text.section.text-display-system.heading">Text Display System</h3>
+                        <h3 data-i18n="tab.overlay-text.section.text-display-system.heading">Text Overlays</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.overlay-text.section.text-display-system.hint">Overlay a text strip on each thumbnail showing the character's name and/or current solar system.</p>
 
                         <label>
@@ -641,7 +641,7 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.overlay-text.section.system-color-overrides.heading">System Color Overrides</h3>
+                        <h3 data-i18n="tab.overlay-text.section.system-color-overrides.heading">Custom System Colors</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.overlay-text.section.system-color-overrides.hint">Define custom colors for specific solar systems (only used when Unique System Colors is enabled).</p>
                         
                         <div id="systemColorsList" style="margin-bottom: 8px;">
@@ -654,7 +654,7 @@
 
                 <div class="panel-content" data-panel="characters">
                     <div class="section">
-                        <h3 data-i18n="tab.characters.section.per-character-configuration.heading">Per-Character Configuration</h3>
+                        <h3 data-i18n="tab.characters.section.per-character-configuration.heading">Character List</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.characters.section.per-character-configuration.hint">Customize each character's saved position, size, border color, display name, and jump-to hotkey. Characters are added automatically when detected.</p>
 
                         <div class="search-input-wrapper" style="width: 100%; margin-bottom: 8px;">
@@ -691,7 +691,7 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.behavior.section.auto-minimize-all-clients.heading">Auto-Minimize All Clients</h3>
+                        <h3 data-i18n="tab.behavior.section.auto-minimize-all-clients.heading">Auto-Minimize</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.behavior.section.auto-minimize-all-clients.hint">Minimizes an EVE client window after it's been unfocused for the configured delay. Toggle at runtime with the Toggle Auto-Minimize hotkey.</p>
 
                         <label>
@@ -780,7 +780,7 @@
                         </label>
                         <label>
                             <input type="checkbox" id="autoRegisterProtocol">
-                            <span class="label-body" data-i18n="field.autoRegisterProtocol.label">Auto-Register Protocol</span>
+                            <span class="label-body" data-i18n="field.autoRegisterProtocol.label">Auto-Register Protocol Handler</span>
                         </label>
                         <label>
                             <input type="checkbox" id="resetGroupIndexOnNonGroupFocus">
@@ -945,7 +945,7 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.hotkeys.section.global-hotkeys.heading">Global Hotkeys</h3>
+                        <h3 data-i18n="tab.hotkeys.section.global-hotkeys.heading">Global Key Bindings</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.hotkeys.section.global-hotkeys.hint">These hotkeys are global and stay active regardless of the loaded profile.</p>
 
                         <h4 data-i18n="tab.hotkeys.section.profile-switch-hotkeys.heading">Profile Switch Hotkeys</h4>
@@ -1107,7 +1107,7 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.notifications.section.event-type-configuration.heading">Event Type Configuration</h3>
+                        <h3 data-i18n="tab.notifications.section.event-type-configuration.heading">Event Alerts</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.notifications.section.event-type-configuration.hint">Per-event notification, suppression, speech, and border behavior. Hover a column header for details.</p>
                         <table id="notificationTypesTable" class="notification-types-table">
                             <thead>
@@ -1145,12 +1145,12 @@
 
                 <div class="panel-content" data-panel="chatlog">
                     <div class="section">
-                        <h3 data-i18n="tab.chatlog.section.chatlog-monitoring.heading">Chatlog Monitoring</h3>
+                        <h3 data-i18n="tab.chatlog.section.chatlog-monitoring.heading">Log Monitoring</h3>
                         <p class="hint" style="margin-bottom: 8px;"><span data-i18n="tab.chatlog.section.chatlog-monitoring.hint-intro">Watches EVE's chatlog and gamelog files to drive the DPS overlay, mining overlay, and system-location display. In EVE, enable </span><strong><span data-i18n="tab.chatlog.section.chatlog-monitoring.hint-menu-path">Esc &gt; Chat Channel Settings &gt; Log chat to file</span></strong><span data-i18n="tab.chatlog.section.chatlog-monitoring.hint-outro"> so logs get written to disk.</span></p>
 
                         <label>
                             <input type="checkbox" id="chatlogEnabled" onchange="toggleChatlogOptions()">
-                            <span class="label-body" data-i18n="field.chatlogEnabled.label">Enable Chatlog Monitoring</span>
+                            <span class="label-body" data-i18n="field.chatlogEnabled.label">Enable Log Monitoring</span>
                         </label>
 
                         <div id="chatlogOptions">
@@ -1193,12 +1193,12 @@
 
                 <div class="panel-content" data-panel="combat">
                     <div class="section">
-                        <h3 data-i18n="tab.combat.section.combat-dps-overlay.heading">Combat DPS Overlay</h3>
+                        <h3 data-i18n="tab.combat.section.combat-dps-overlay.heading">Text Overlays</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.combat.section.combat-dps-overlay.hint">Displays incoming and outgoing DPS below each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
 
                         <label>
                             <input type="checkbox" id="combatEnabled" onchange="toggleCombatOptions()">
-                            <span class="label-body" data-i18n="field.combatEnabled.label">Enable Combat DPS Overlay</span>
+                            <span class="label-body" data-i18n="field.combatEnabled.label">Enable Text Overlays</span>
                         </label>
 
                         <div id="combatOptions">
@@ -1258,7 +1258,7 @@
 
                     <div class="section">
                         <h3 data-i18n="tab.combat.section.alerts.heading">Alerts</h3>
-                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.combat.section.alerts.hint">Notifications and status icon triggered by incoming damage. Requires Combat DPS Overlay above to be enabled.</p>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.combat.section.alerts.hint">Notifications and status icon triggered by incoming damage. Requires Text Overlays above to be enabled.</p>
 
                         <div id="combatAlertsOptions">
                             <h4 data-i18n="tab.combat.section.taking-damage-alert.heading">Taking Damage Alert</h4>
@@ -1313,7 +1313,7 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.combat.section.dps-charts.heading">DPS Charts</h3>
+                        <h3 data-i18n="tab.combat.section.dps-charts.heading">Damage Charts</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.combat.section.dps-charts.hint">Small line charts of recent DPS, shown instead of/alongside the text display. Reuse the colors and DPS Window (seconds) setting above.</p>
 
                         <div id="combatChartsOptions">
@@ -1412,12 +1412,12 @@
 
                 <div class="panel-content" data-panel="mining">
                     <div class="section">
-                        <h3 data-i18n="tab.mining.section.mining-rate-overlay.heading">Mining Rate Overlay</h3>
+                        <h3 data-i18n="tab.mining.section.mining-rate-overlay.heading">Text Overlays</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.mining.section.mining-rate-overlay.hint">Displays units mined per second on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
 
                         <label>
                             <input type="checkbox" id="miningEnabled" onchange="toggleMiningOptions()">
-                            <span class="label-body" data-i18n="field.miningEnabled.label">Enable Mining Rate Overlay</span>
+                            <span class="label-body" data-i18n="field.miningEnabled.label">Enable Text Overlays</span>
                         </label>
 
                         <div id="miningOptions">
@@ -1458,7 +1458,7 @@
 
                     <div class="section">
                         <h3 data-i18n="tab.mining.section.alerts.heading">Alerts</h3>
-                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.mining.section.alerts.hint">Notifications triggered by mining laser activity. Requires Mining Rate Overlay above to be enabled.</p>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.mining.section.alerts.hint">Notifications triggered by mining laser activity. Requires Text Overlays above to be enabled.</p>
 
                         <div id="miningAlertsOptions">
                             <h4 data-i18n="tab.mining.section.laser-idle-alert.heading">Laser Idle Alert</h4>
@@ -1492,13 +1492,13 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.mining.section.mining-rate-chart.heading">Mining Rate Chart</h3>
+                        <h3 data-i18n="tab.mining.section.mining-rate-chart.heading">Mining Charts</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.mining.section.mining-rate-chart.hint">Shows a small line chart of recent mining rate instead of/alongside the text. Reuses the Text Color above and covers the same Window (seconds) as the rate calculation.</p>
 
                         <div id="miningChartOptions">
                             <label>
                                 <input type="checkbox" id="miningChartEnabled">
-                                <span class="label-body" data-i18n="field.miningChartEnabled.label">Enable Mining Rate Chart</span>
+                                <span class="label-body" data-i18n="field.miningChartEnabled.label">Enable Mining Charts</span>
                             </label>
 
                             <label>
@@ -1544,7 +1544,7 @@
 
                 <div class="panel-content" data-panel="advanced" style="display: none;">
                     <div class="section">
-                        <h3 data-i18n="tab.advanced.section.state-overrides.heading">State-Specific Visual Overrides</h3>
+                        <h3 data-i18n="tab.advanced.section.state-overrides.heading">State Overrides</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.advanced.section.state-overrides.hint">Configure visual appearance for each thumbnail state. Leave fields empty to use default values.</p>
 
                         <div class="accordion">
