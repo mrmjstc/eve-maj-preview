@@ -1,7 +1,7 @@
 
 # EVE-Maj Preview
 
-![EVE-Maj Preview screenshot](http://i.mjst.cc/V8tzkjPpU4.png)
+![EVE-Maj Preview screenshot](http://i.mjst.cc/wkMWgprMn5.png)
 ![EVE-Maj Preview thumbnails](http://i.mjst.cc/BGIojpNJon.gif)
 
 A *very* lightweight Windows tool for displaying DWM-based thumbnail previews of EVE Online client windows with customizable borders, text overlays, and advanced configuration options.
