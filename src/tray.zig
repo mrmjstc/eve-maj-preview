@@ -167,6 +167,7 @@ pub const TrayIcon = struct {
 
         _ = win32.AppendMenuA(menu, win32.MF_POPUP, @intFromPtr(profile_submenu), "Load Profile");
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_OPEN_CONFIG, "Open Configuration...");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_OPEN_GAMELOG_VIEWER, "Open Gamelog Viewer...");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
         const dragging_flags: u32 = if (config.interaction.enableDragging)
@@ -256,6 +257,12 @@ pub const TrayIcon = struct {
         if (command_id == win32.IDM_OPEN_CONFIG) {
             slog.info("Opening configuration dialog from system tray", .{});
             openConfigDialog();
+            return true;
+        }
+
+        if (command_id == win32.IDM_OPEN_GAMELOG_VIEWER) {
+            slog.info("Opening gamelog viewer from system tray", .{});
+            openGamelogViewer();
             return true;
         }
 
@@ -367,5 +374,41 @@ fn openConfigDialog() void {
 
     if (@intFromPtr(result) <= 32) {
         slog.err("Failed to launch config.exe, error code: {}", .{@intFromPtr(result)});
+    }
+}
+
+/// Launch gamelog.exe, which is installed alongside the main executable
+fn openGamelogViewer() void {
+    var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const exe_dir = std.fs.selfExeDirPath(&exe_dir_buf) catch {
+        slog.err("Failed to determine executable directory", .{});
+        return;
+    };
+
+    var dir_z_buf: [std.fs.max_path_bytes + 1]u8 = undefined;
+    const exe_dir_z = std.fmt.bufPrintZ(&dir_z_buf, "{s}", .{exe_dir}) catch {
+        slog.err("Executable directory path too long", .{});
+        return;
+    };
+
+    var path_buf: [std.fs.max_path_bytes + 16]u8 = undefined;
+    const gamelog_exe_path = std.fmt.bufPrintZ(&path_buf, "{s}\\gamelog.exe", .{exe_dir}) catch {
+        slog.err("Failed to build gamelog.exe path", .{});
+        return;
+    };
+
+    slog.info("Launching gamelog viewer: {s}", .{gamelog_exe_path});
+
+    const result = win32.ShellExecuteA(
+        null,
+        "open",
+        gamelog_exe_path.ptr,
+        null,
+        exe_dir_z.ptr,
+        win32.SW_SHOW,
+    );
+
+    if (@intFromPtr(result) <= 32) {
+        slog.err("Failed to launch gamelog.exe, error code: {}", .{@intFromPtr(result)});
     }
 }

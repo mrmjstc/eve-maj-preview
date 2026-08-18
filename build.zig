@@ -115,4 +115,40 @@ pub fn build(b: *std.Build) void {
 
     const config_dialog_step = b.step("config", "Run the configuration dialog");
     config_dialog_step.dependOn(&config_dialog_run.step);
+
+    const gamelog_viewer = b.addExecutable(.{
+        .name = "gamelog",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/gamelog_viewer.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    gamelog_viewer.subsystem = .Windows;
+
+    // Resource file includes the app icon, so the taskbar shows the tray icon instead of the default exe icon.
+    gamelog_viewer.addWin32ResourceFile(.{
+        .file = b.path("app.rc"),
+    });
+
+    gamelog_viewer.root_module.addImport("webui", zig_webui.module("webui"));
+
+    gamelog_viewer.root_module.linkSystemLibrary("c", .{});
+    gamelog_viewer.root_module.linkSystemLibrary("user32", .{});
+    gamelog_viewer.root_module.linkSystemLibrary("gdi32", .{});
+    gamelog_viewer.root_module.linkSystemLibrary("shell32", .{});
+    gamelog_viewer.root_module.linkSystemLibrary("psapi", .{});
+
+    b.installArtifact(gamelog_viewer);
+
+    const gamelog_viewer_run = b.addRunArtifact(gamelog_viewer);
+    gamelog_viewer_run.step.dependOn(b.getInstallStep());
+
+    if (b.args) |args| {
+        gamelog_viewer_run.addArgs(args);
+    }
+
+    const gamelog_viewer_step = b.step("gamelog", "Run the gamelog viewer");
+    gamelog_viewer_step.dependOn(&gamelog_viewer_run.step);
 }
