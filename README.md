@@ -82,6 +82,10 @@ See [Protocol Handler](docs/CONFIGURATION.md#protocol-handler) in the configurat
 
 See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the full configuration reference, covering every profile JSON setting, thumbnail/display/notification options, hotkeys, and the color format.
 
+## Architecture
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a map of how the source modules fit together - entry points, the threading model, and the per-tick update flow.
+
 ## License
 
 See [LICENSE](LICENSE) file for details.
