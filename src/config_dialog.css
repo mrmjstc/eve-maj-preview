@@ -42,7 +42,6 @@ body {
     font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
     font-size: 14px;
     line-height: 1.4;
-    text-shadow: 0 0 2px rgba(255, 255, 255, 0.65);
 }
 
 body::before {
@@ -54,8 +53,8 @@ body::before {
     height: 100%;
     background: repeating-linear-gradient(
         0deg,
-        rgba(0, 0, 0, 0.15) 0px,
-        rgba(0, 0, 0, 0.15) 1px,
+        rgba(0, 0, 0, 0.08) 0px,
+        rgba(0, 0, 0, 0.08) 1px,
         transparent 1px,
         transparent 2px
     );
@@ -91,7 +90,7 @@ body::after {
 
 @media (prefers-reduced-motion: no-preference) {
     #window-container {
-        animation: flicker 3s infinite;
+        animation: flicker 14s infinite;
     }
 }
 
@@ -196,7 +195,6 @@ body::after {
     content: '$ ';
     color: #ffffff;
     margin-right: 2px;
-    text-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
 }
 
 .tab-item:hover {
@@ -208,7 +206,6 @@ body::after {
     background: #252525;
     color: #ffffff;
     font-weight: 700;
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
 }
 
 .tab-item.active::before {
@@ -291,7 +288,6 @@ h3 {
     border-bottom: 1px solid #ffffff;
     padding-bottom: 3px;
     padding-left: 14px;
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
     position: relative;
 }
 
@@ -450,7 +446,7 @@ p {
 }
 
 .notification-types-table input[type="number"]::placeholder {
-    color: #777777;
+    color: #909090;
     font-style: italic;
 }
 
@@ -531,6 +527,7 @@ select {
     margin-bottom: 6px;
     height: 28px;
     box-sizing: border-box;
+    text-shadow: none;
 }
 
 input.recording {
@@ -571,7 +568,6 @@ select:focus {
     outline: none;
     border-color: #ffffff;
     box-shadow: 0 0 10px rgba(255, 255, 255, 0.4), inset 0 0 5px rgba(255, 255, 255, 0.1);
-    text-shadow: 0 0 2px rgba(255, 255, 255, 0.3);
 }
 
 label {
@@ -639,7 +635,6 @@ input[type="checkbox"] + .label-body::before {
 input[type="checkbox"]:checked + .label-body::before {
     content: '✕';
     border-color: #ffffff;
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
 }
 
 input[type="checkbox"]:focus + .label-body::before {
@@ -654,7 +649,6 @@ label:hover input[type="checkbox"] + .label-body::before {
     color: #bbbbbb;
     font-size: 12px;
     font-style: italic;
-    text-shadow: 0 0 2px rgba(170, 170, 170, 0.5);
     margin: 2px 0;
 }
 
@@ -713,6 +707,7 @@ button {
     text-transform: uppercase;
     height: 28px;
     line-height: 1.4;
+    text-shadow: none;
 }
 
 button:hover {
@@ -791,16 +786,7 @@ button:active {
 }
 
 .main-app-status.status-online .indicator-dot {
-    animation: pulse 2s ease-in-out infinite, dotGlow 2s ease-in-out infinite;
-}
-
-@keyframes dotGlow {
-    0%, 100% {
-        text-shadow: 0 0 3px rgba(var(--color-success-rgb), 0.4);
-    }
-    50% {
-        text-shadow: 0 0 10px rgba(var(--color-success-rgb), 0.9);
-    }
+    animation: pulse 2s ease-in-out infinite;
 }
 
 #footer {
@@ -846,6 +832,7 @@ input.search-filter-input {
     transition: border-color 0.2s, box-shadow 0.2s;
     line-height: normal;
     box-sizing: border-box;
+    text-shadow: none;
 }
 
 .search-filter-input:focus {
@@ -855,7 +842,7 @@ input.search-filter-input {
 }
 
 .search-filter-input::placeholder {
-    color: #777777;
+    color: #909090;
 }
 
 .search-count {
@@ -1014,6 +1001,7 @@ input.manual-editing {
     margin: 0;
     vertical-align: middle;
     box-sizing: border-box;
+    text-shadow: none;
 }
 
 #profile-select:focus {
@@ -1286,6 +1274,7 @@ input[type="color"]::-moz-color-swatch {
     height: 26px;
     box-sizing: border-box;
     text-transform: uppercase;
+    text-shadow: none;
 }
 
 .cp-hex-input:focus {
@@ -1533,7 +1522,6 @@ input[type="range"]::-moz-range-thumb {
 
 .roster-row.selected .roster-name {
     font-weight: bold;
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
 }
 
 .roster-row .character-portrait {
@@ -1598,7 +1586,6 @@ input[type="range"]::-moz-range-thumb {
     flex: 1;
     font-weight: bold;
     font-size: 15px;
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
 }
 
 /* Hotkey group character list (drag-to-reorder rows) */
@@ -1705,8 +1692,8 @@ button.confirm-delete:hover {
     height: 100%;
     background: repeating-linear-gradient(
         0deg,
-        rgba(0, 0, 0, 0.15) 0px,
-        rgba(0, 0, 0, 0.15) 1px,
+        rgba(0, 0, 0, 0.08) 0px,
+        rgba(0, 0, 0, 0.08) 1px,
         transparent 1px,
         transparent 2px
     );
@@ -1759,6 +1746,7 @@ button.confirm-delete:hover {
     box-sizing: border-box;
     position: relative;
     overflow: hidden;
+    text-shadow: none;
 }
 
 .modal-buttons button::before {
@@ -1770,8 +1758,8 @@ button.confirm-delete:hover {
     height: 100%;
     background: repeating-linear-gradient(
         0deg,
-        rgba(0, 0, 0, 0.15) 0px,
-        rgba(0, 0, 0, 0.15) 1px,
+        rgba(0, 0, 0, 0.08) 0px,
+        rgba(0, 0, 0, 0.08) 1px,
         transparent 1px,
         transparent 2px
     );
