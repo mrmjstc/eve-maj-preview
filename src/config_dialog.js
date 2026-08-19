@@ -3542,6 +3542,7 @@ function clearHotkey(fieldId) {
         commitManualHotkeyEdit(fieldId);
     }
 
+    if (input.value !== '') markAsChanged();
     input.value = '';
     updateHotkeyConflictHighlights();
 }
@@ -3705,6 +3706,7 @@ function finalizeCapture(combo) {
     const hotkeyString = combo.join('+');
     const input = document.getElementById(recordingField);
     input.value = hotkeyString;
+    markAsChanged();
 
     setTimeout(() => stopRecording(), 300);
 }
@@ -3813,6 +3815,7 @@ function commitManualHotkeyEdit(fieldId) {
     input.value = input.value.trim();
     input.readOnly = true;
     input.classList.remove('manual-editing');
+    markAsChanged();
     if (button) {
         button.classList.remove('active');
         button.title = 'Type key name directly';
@@ -4089,6 +4092,7 @@ function setupDragReorder(container, itemSelector, handleSelector, getIndex, onR
             const rect = item.getBoundingClientRect();
             const isAfter = (e.clientY - rect.top) > rect.height / 2;
             onReorder(draggedIndex, isAfter ? targetIndex + 1 : targetIndex);
+            markAsChanged();
         });
     });
 }
@@ -4178,6 +4182,7 @@ function addWindowFilter() {
         class_names: [],
         executable_names: []
     });
+    markAsChanged();
     populateWindowFilters();
 
     // Automatically expand the newly added filter (always rendered last)
@@ -4193,6 +4198,7 @@ function removeWindowFilter(index) {
         currentConfig.windowFilters.splice(index, 1);
         pendingCharacterNames.delete(removedName.trim().toLowerCase());
         removeCharacterByName(removedName);
+        markAsChanged();
         populateWindowFilters();
     }
 }
@@ -4305,6 +4311,7 @@ function addSystemColor() {
     if (!currentConfig.systemColors) currentConfig.systemColors = [];
     saveSystemColors();
     currentConfig.systemColors.push({ systemName: '', color: '0xFFFFFFFF' });
+    markAsChanged();
     populateSystemColors();
     scheduleThumbnailPreview();
 }
@@ -4313,6 +4320,7 @@ function removeSystemColor(index) {
     if (currentConfig.systemColors && currentConfig.systemColors[index] !== undefined) {
         saveSystemColors();
         currentConfig.systemColors.splice(index, 1);
+        markAsChanged();
         populateSystemColors();
         scheduleThumbnailPreview();
     }
@@ -4751,6 +4759,7 @@ function addCharacter() {
     };
     
     currentConfig.characters.push(newChar);
+    markAsChanged();
     populateCharacters();
 
     const newIndex = currentConfig.characters.length - 1;
@@ -4802,6 +4811,7 @@ async function populateCharactersFromClients() {
 
         populateCharacters();
         if (added > 0) {
+            markAsChanged();
             showStatus(t('status.addedCharactersFromClients').replace('{n}', added), 'success');
         } else {
             showStatus(t('status.allClientsInList'), 'info');
@@ -4872,6 +4882,7 @@ function removeCharacter(index) {
         const selectedChar = currentConfig.characters[selectedCharacterIndex];
         currentConfig.characters.splice(index, 1);
         reselectCharacterAfterRemoval(selectedChar, index);
+        markAsChanged();
         populateCharacters();
     }
 }
@@ -5041,6 +5052,7 @@ function removeHotkeyGroupCharacter(groupIndex, charIndex) {
     if (!group || !group.characters) return;
 
     group.characters.splice(charIndex, 1);
+    markAsChanged();
     refreshHotkeyGroupCharsList(groupIndex);
 }
 
@@ -5058,6 +5070,7 @@ function addHotkeyGroupCharacter(groupIndex) {
 
     if (!group.characters) group.characters = [];
     group.characters.push(name);
+    markAsChanged();
     refreshHotkeyGroupCharsList(groupIndex);
 
     input.value = '';
@@ -5073,6 +5086,7 @@ function addHotkeyGroup() {
         backwardKey: null,
         characters: []
     });
+    markAsChanged();
     populateHotkeyGroups();
 
     const newIndex = currentConfig.hotkeyGroups.length - 1;
@@ -5107,6 +5121,7 @@ async function addHotkeyGroupFromClients() {
             backwardKey: null,
             characters: names
         });
+        markAsChanged();
 
         populateHotkeyGroups();
         const newIndex = currentConfig.hotkeyGroups.length - 1;
@@ -5170,6 +5185,7 @@ function removeHotkeyGroup(index) {
     if (currentConfig.hotkeyGroups && currentConfig.hotkeyGroups[index]) {
         saveHotkeyGroups();
         currentConfig.hotkeyGroups.splice(index, 1);
+        markAsChanged();
         populateHotkeyGroups();
     }
 }
@@ -5270,6 +5286,7 @@ function addQuickGroup() {
         forwardKey: null,
         backwardKey: null
     });
+    markAsChanged();
     populateQuickGroups();
 
     const newIndex = currentConfig.quickGroups.length - 1;
@@ -5284,6 +5301,7 @@ function removeQuickGroup(index) {
     if (currentConfig.quickGroups && currentConfig.quickGroups[index]) {
         saveQuickGroups();
         currentConfig.quickGroups.splice(index, 1);
+        markAsChanged();
         populateQuickGroups();
     }
 }
@@ -5449,6 +5467,7 @@ function addProfileSwitchHotkey() {
         hotkey: null,
         targetProfile: ''
     });
+    markAsChanged();
 
     populateProfileSwitchHotkeys().then(() => {
         const newIndex = currentGlobalSettings.profileSwitchHotkeys.length - 1;
@@ -5467,6 +5486,7 @@ function removeProfileSwitchHotkey(index) {
     if (currentGlobalSettings?.profileSwitchHotkeys && currentGlobalSettings.profileSwitchHotkeys[index]) {
         saveProfileSwitchHotkeys();
         currentGlobalSettings.profileSwitchHotkeys.splice(index, 1);
+        markAsChanged();
         populateProfileSwitchHotkeys();
     }
 }
@@ -5760,6 +5780,7 @@ function resetNotificationColors(kind, defaultColorHtml) {
             input.title = 'Not set - inheriting default color';
         }
     });
+    markAsChanged();
 }
 
 function resetNotificationBorderColors() {
