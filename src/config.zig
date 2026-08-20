@@ -195,7 +195,7 @@ pub const DEFAULT_ORE_TABLE = [_]OreEntry.Wire{
     .{ .name = "Loparite", .category = "Moons", .volumeM3 = 10.00, .price = 8060 },
     .{ .name = "Xenotime", .category = "Moons", .volumeM3 = 10.00, .price = 8166 },
     .{ .name = "Ytterbite", .category = "Moons", .volumeM3 = 10.00, .price = 4728 },
-    .{ .name = "Zeolites", .category = "Moons", .volumeM3 = 10.00, .price = 0 },
+    .{ .name = "Zeolites", .category = "Moons", .volumeM3 = 10.00, .price = 1360 },
     .{ .name = "Arkonor", .category = "Ore", .volumeM3 = 16.00, .price = 4264 },
     .{ .name = "Bistot", .category = "Ore", .volumeM3 = 16.00, .price = 3613 },
     .{ .name = "Crokite", .category = "Ore", .volumeM3 = 16.00, .price = 5300 },
@@ -1078,8 +1078,8 @@ pub const MiningConfig = struct {
     idle_alert_threshold: u32 = 1,
     stopped_alert_enabled: bool = false,
     stopped_alert_window_seconds: u32 = 60,
-    show_isk_rate: bool = false,
-    isk_rate_unit: IskRateUnit = .minute,
+    show_isk_rate: bool = true,
+    isk_rate_unit: IskRateUnit = .hour,
 
     pub const WINDOW_SECONDS_MIN: u32 = 1;
     pub const WINDOW_SECONDS_MAX: u32 = 3600;
@@ -1176,11 +1176,11 @@ pub const MiningConfig = struct {
 /// ISK/min-style overlay for bounty payouts; mirrors MiningConfig's ISK-rate half, but bounty has no m3 twin or ore table since payouts already arrive in ISK.
 pub const BountyConfig = struct {
     enabled: bool = false,
-    window_seconds: u32 = 60,
+    window_seconds: u32 = 1200,
     color: u32 = 0xFFFFD700,
     font_size: i32 = 11,
     update_interval_ms: u32 = 1000,
-    position: types.TextPosition = .BottomRight,
+    position: types.TextPosition = .TopRight,
     offset_x: i32 = 0,
     offset_y: i32 = 0,
     isk_rate_unit: IskRateUnit = .hour,
