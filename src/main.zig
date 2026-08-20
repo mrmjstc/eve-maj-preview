@@ -58,6 +58,7 @@ var g_last_bounty_update_ms: i64 = 0;
 // Reused across timer ticks to avoid a heap allocation every tick just to pass
 // character names into the chatlog monitor; borrowed slices only, no ownership.
 var g_chatlog_char_names: std.ArrayList([]const u8) = .empty;
+var g_chatlog_logged_out_names: std.ArrayList([]const u8) = .empty;
 
 fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
@@ -216,7 +217,7 @@ fn onTimerTick() void {
     defer scout_result.deinit(g_allocator);
 
     if (g_painter) |painter_ptr| {
-        painter_ptr.update(scout_result.windows, scout_result.closed_windows.items) catch |err| {
+        painter_ptr.update(scout_result.windows, scout_result.closed_windows.items, scout_result.name_changes.items) catch |err| {
             slog.err("Failed to update Painter: {}", .{err});
         };
 
@@ -225,12 +226,19 @@ fn onTimerTick() void {
 
     if (g_chatlog_monitor) |monitor| {
         g_chatlog_char_names.clearRetainingCapacity();
+        g_chatlog_logged_out_names.clearRetainingCapacity();
 
         for (scout_result.windows) |eve_window| {
             g_chatlog_char_names.append(g_allocator, eve_window.character_name) catch continue;
         }
 
-        monitor.update(g_chatlog_char_names.items, scout_result.closed_windows.items) catch |err| {
+        for (scout_result.name_changes.items) |change| {
+            if (scout.isGenericCharacterName(change.new_name) and !scout.isGenericCharacterName(change.old_name)) {
+                g_chatlog_logged_out_names.append(g_allocator, change.old_name) catch continue;
+            }
+        }
+
+        monitor.update(g_chatlog_char_names.items, scout_result.closed_windows.items, g_chatlog_logged_out_names.items) catch |err| {
             slog.err("Failed to update Chatlog Monitor: {}", .{err});
         };
     }
@@ -277,9 +285,7 @@ fn onTimerTick() void {
     }
 }
 
-/// Shared throttle/dispatch loop for the combat and mining trackers: refreshes
-/// the tracker every tick, but only pushes values into the painter (and flushes
-/// dirty overlays) once per `interval_ms`, skipping the placeholder "EVE" window.
+/// Shared throttle/dispatch loop for the combat/mining/bounty trackers: refreshes every tick, pushes values into the painter (and flushes dirty overlays) once per `interval_ms`.
 fn updateThrottledTracker(
     comptime T: type,
     comptime perWindow: fn (*T, *painter.Painter, scout.EveWindow, i64) void,
@@ -295,7 +301,6 @@ fn updateThrottledTracker(
 
     const painter_ptr = g_painter orelse return;
     for (windows) |eve_window| {
-        if (std.mem.eql(u8, eve_window.character_name, "EVE")) continue;
         perWindow(tracker, painter_ptr, eve_window, now_ms);
     }
     painter_ptr.processDirtyDpsOverlays();
@@ -507,6 +512,7 @@ fn mainImpl() !void {
     defer _ = gpa.deinit();
     g_allocator = gpa.allocator();
     defer g_chatlog_char_names.deinit(g_allocator);
+    defer g_chatlog_logged_out_names.deinit(g_allocator);
 
     slog.info("EVE-Maj Preview v{s}", .{build_options.version});
 

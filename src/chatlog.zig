@@ -641,7 +641,7 @@ pub const ChatlogMonitor = struct {
             const char_name = character_names[self.pending_scan_index];
 
             // Skip generic "EVE" name (logged out or loading windows)
-            if (std.mem.eql(u8, char_name, "EVE")) continue;
+            if (scout_mod.isGenericCharacterName(char_name)) continue;
 
             if (self.pending_chatlog_signaled) {
                 if (self.findChatlogForCharacter(char_name)) |chatlog_path| {
@@ -681,7 +681,7 @@ pub const ChatlogMonitor = struct {
     }
 
     /// Main update cycle - performs all Chatlog operations for a single tick
-    pub fn update(self: *ChatlogMonitor, character_names: []const []const u8, closed_windows: []const scout_mod.ClosedWindow) !void {
+    pub fn update(self: *ChatlogMonitor, character_names: []const []const u8, closed_windows: []const scout_mod.ClosedWindow, logged_out_names: []const []const u8) !void {
         // In Phase 1 (synchronous mode), handle I/O directly on main thread
         if (!self.threading_enabled) {
             // pollLogFiles()'s per-file backoff assumes fixed-interval calls, which this
@@ -695,6 +695,10 @@ pub const ChatlogMonitor = struct {
 
             for (closed_windows) |cw| {
                 self.removeCharacter(cw.character_name);
+            }
+
+            for (logged_out_names) |name| {
+                self.removeCharacter(name);
             }
 
             // 2ms time budget (safe for 60fps); continues next frame if work remains
@@ -713,9 +717,20 @@ pub const ChatlogMonitor = struct {
                 }
             }
 
+            for (logged_out_names) |name| {
+                if (self.pending_characters.fetchRemove(name)) |entry| {
+                    self.allocator.free(entry.key);
+
+                    const cmd = ChatlogCommand{
+                        .remove_character = try self.allocator.dupe(u8, name),
+                    };
+                    try self.command_queue.push(cmd);
+                }
+            }
+
             for (character_names) |char_name| {
                 // Skip generic "EVE" name (logged out or loading windows)
-                if (std.mem.eql(u8, char_name, "EVE")) continue;
+                if (scout_mod.isGenericCharacterName(char_name)) continue;
 
                 if (self.pending_characters.contains(char_name)) continue;
 

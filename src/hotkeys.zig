@@ -8,13 +8,11 @@ const mouse_hook = @import("mouse_hook.zig");
 const log = @import("log.zig");
 const slog = log.scoped("hotkeys");
 
-// Static buffers for profile names - must stay valid until the asynchronously processed
-// WM_SWITCH_PROFILE message is handled.
+// Static buffers for profile names; must stay valid until the async WM_SWITCH_PROFILE handler runs.
 var g_profile_cycle_buffer: [256]u8 = undefined;
 var g_profile_switch_buffer: [256]u8 = undefined;
 
-// Hotkey IDs are banded by range to avoid collisions: 0-999 cycling groups, 1000-1999 global
-// actions, 2000-2999 per-character, 3000+ profile switch, 4000+ quick groups (3 IDs each).
+// Hotkey IDs are banded to avoid collisions: 0-999 groups, 1000s global, 2000s per-character, 3000s profile switch, 4000s+ quick groups.
 const HOTKEY_ID_CYCLE_GROUP_BASE: c_int = 0;
 const HOTKEY_ID_GLOBAL_ACTION_BASE: c_int = 1000;
 const HOTKEY_ID_PER_CHARACTER_BASE: c_int = 2000;
@@ -39,7 +37,6 @@ const GlobalActionId = enum(c_int) {
     NextNotLoggedIn = HOTKEY_ID_GLOBAL_ACTION_BASE + 14,
     PreviousNotLoggedIn = HOTKEY_ID_GLOBAL_ACTION_BASE + 15,
     MoveToSavedPositions = HOTKEY_ID_GLOBAL_ACTION_BASE + 16,
-    // Future actions can be added here
     _,
 };
 
@@ -119,29 +116,15 @@ pub const HotkeyManager = struct {
     excluded_cycle_index: ?usize = null,
     /// Whether hotkeys are currently suspended (except suspend hotkey itself)
     hotkeys_suspended: bool = false,
-    /// Whether the config dialog is actively recording a new hotkey - separate from
-    /// hotkeys_suspended so this doesn't clobber (or get clobbered by) the user's own
-    /// suspend/resume toggle. See dialogSuspendHotkeys()/dialogResumeHotkeys().
+    /// Whether the config dialog is recording a new hotkey; kept separate from hotkeys_suspended so the two don't clobber each other.
     dialog_suspended: bool = false,
-    /// Owned copy of the character name we last jumped to via cycleNotified() —
-    /// used as the cursor for the next press instead of a raw index, since
-    /// Painter's notified_queue mutates between presses (entries age out,
-    /// re-notifies bump to the back). null = no press yet; start from the front.
+    /// Owned name of the character cycleNotified() last jumped to; used as cursor since notified_queue mutates between presses.
     last_notified_cycle_name: ?[]const u8 = null,
-    /// Owned copy of the character name we last jumped to via cycleAllClients() —
-    /// same rationale as last_notified_cycle_name: Scout.windows mutates as clients
-    /// log in/out between key presses, so a raw index would drift. null = no press
-    /// yet; start from the front (forward) or back (backward).
+    /// Owned name cycleAllClients() last jumped to; same rationale as last_notified_cycle_name, since Scout.windows mutates between presses.
     last_all_clients_cycle_name: ?[]const u8 = null,
-    /// HWND (not name) we last jumped to via cycleNotLoggedIn() — every not-logged-in
-    /// window shares the same character_name ("EVE"), so name can't disambiguate
-    /// between them the way it does for last_all_clients_cycle_name. HWNDs are stable
-    /// for the lifetime of the window, so no dupe/free bookkeeping is needed either.
+    /// HWND (not name) cycleNotLoggedIn() last jumped to; every not-logged-in window shares the name "EVE" so name can't disambiguate.
     last_not_logged_in_cycle_hwnd: ?win32.HWND = null,
-    /// Owned names of characters excluded via shift-click that don't belong to any
-    /// hotkey group. Per-group exclusion lists only mean anything to group-specific
-    /// cycling, so a character with no group would otherwise have nowhere to record
-    /// "excluded" at all — this is that fallback, checked by isCharacterExcluded().
+    /// Fallback exclusion list for shift-click-excluded characters that belong to no hotkey group; checked by isCharacterExcluded().
     manually_excluded_characters: std.ArrayList([]const u8) = .empty,
 
     pub fn init(allocator: std.mem.Allocator, cfg: *const config_mod.Config, gs: *const config_mod.GlobalSettings, s: *scout.Scout, p: *@import("painter.zig").Painter) !HotkeyManager {
@@ -168,8 +151,7 @@ pub const HotkeyManager = struct {
 
     /// Layered errdefer: each step's cleanup only runs if a later step in registration fails.
     fn registerAndTrackHotkey(self: *HotkeyManager, hwnd: win32.HWND, id: c_int, virtual_key: u32, action: HotkeyAction, description: []const u8) !void {
-        // RegisterHotKey can't see mouse buttons; route those through the mouse hook instead,
-        // which re-posts WM_HOTKEY on a match so downstream code stays unaware of the distinction.
+        // RegisterHotKey can't see mouse buttons; route those through the mouse hook, which re-posts WM_HOTKEY on a match.
         if (vk.isMouseHookVk(vk.extractVk(virtual_key))) {
             try mouse_hook.register(self.allocator, hwnd, virtual_key, id);
             errdefer mouse_hook.unregister(virtual_key);
@@ -591,17 +573,11 @@ pub const HotkeyManager = struct {
 
     fn registerSingleHotkey(self: *HotkeyManager, hwnd: win32.HWND, id: c_int, virtual_key: u32, description: []const u8) !void {
         _ = self;
-        // virtual_key packs modifier flags (Ctrl/Alt/Shift/Win) alongside the base key; split
-        // them back out since RegisterHotKey takes them as separate arguments.
-        //
-        // Deliberately not using MOD_NOREPEAT: it relies on observing the key's physical release,
-        // but input.zig's release tracking already swallows that release at a lower level once a
-        // hotkey's action moves focus, so MOD_NOREPEAT would never re-arm. handleHotkeyPress does
-        // repeat suppression itself instead, via input.trackHotkeyPress on the same hook.
         const base_vk: win32.UINT = @intCast(vk.extractVk(virtual_key));
         const key_modifiers: win32.UINT = @intCast(vk.extractModifiers(virtual_key));
         const modifiers: win32.UINT = key_modifiers;
 
+        // Deliberately not MOD_NOREPEAT; handleHotkeyPress suppresses repeats itself via input.trackHotkeyPress.
         if (!win32.toBool(win32.RegisterHotKey(hwnd, id, modifiers, base_vk))) {
             // Likely already in use by another application
             return error.HotkeyRegistrationFailed;
@@ -614,8 +590,7 @@ pub const HotkeyManager = struct {
     }
 
     pub fn unregisterAll(self: *HotkeyManager, hwnd: win32.HWND) void {
-        // Always clear mouse-button bindings too, regardless of whether any keyboard hotkeys
-        // were registered - cheap no-op if none were ever added.
+        // Always clear mouse-button bindings too; cheap no-op if none were registered.
         mouse_hook.unregisterAll();
         input.uninstallHotkeyReleaseHook();
 
@@ -623,8 +598,7 @@ pub const HotkeyManager = struct {
 
         slog.debug("Unregistering {} hotkey(s)...", .{self.registered_ids.items.len});
         for (self.registered_ids.items) |id| {
-            // Mouse-button hotkeys were never registered via RegisterHotKey, so this call is
-            // expected to (harmlessly) fail for them - already cleaned up by mouse_hook.unregisterAll() above.
+            // Mouse-button hotkeys were never registered via RegisterHotKey, so this expectedly (harmlessly) fails for them.
             if (!win32.toBool(win32.UnregisterHotKey(hwnd, id))) {
                 slog.debug("Failed to unregister hotkey ID {}", .{id});
             }
@@ -633,17 +607,14 @@ pub const HotkeyManager = struct {
         self.hotkey_map.clearRetainingCapacity();
     }
 
-    /// Handle a hotkey press event from WM_HOTKEY. `lparam` is the raw WM_HOTKEY lParam,
-    /// used only to recover the triggering virtual-key code for release-consumption.
+    /// Handles a WM_HOTKEY press; lparam is the raw lParam, used only to recover the vk code for release-consumption.
     pub fn handleHotkeyPress(self: *HotkeyManager, hotkey_id: c_int, lparam: win32.LPARAM) void {
         const action = self.hotkey_map.get(hotkey_id) orelse {
             slog.warn("Received unknown hotkey ID: {}", .{hotkey_id});
             return;
         };
 
-        // Hotkeys aren't registered with MOD_NOREPEAT (see registerSingleHotkey), so this has to
-        // run before every early return below - otherwise Windows' auto-repeat would re-fire
-        // WM_HOTKEY while the key is held, e.g. rapidly flipping the suspend toggle on and off.
+        // No MOD_NOREPEAT (see registerSingleHotkey), so this must run before every early return or held keys would re-fire.
         const vk_code = win32.hotkeyVkFromLparam(lparam);
         if (!input.trackHotkeyPress(self.allocator, vk_code)) {
             slog.debug("Hotkey {} ignored - key-repeat re-fire while held", .{hotkey_id});
@@ -673,10 +644,7 @@ pub const HotkeyManager = struct {
             }
         }
 
-        // Only swallow this key's physical release if the action actually moved focus, not just
-        // because its type is capable of it - a cycle that finds no eligible target still runs
-        // this dispatch but never calls input.handleThumbnailClick, so foreground stays unchanged
-        // and the release passes through normally instead of being eaten from under the user.
+        // Only swallow the key's release if focus actually moved; a cycle with no eligible target never changes foreground.
         const foreground_before = win32.GetForegroundWindow();
 
         switch (action) {
@@ -878,17 +846,14 @@ pub const HotkeyManager = struct {
         const target_index = if (current_index) |idx|
             (if (forward) (idx + 1) % profiles.items.len else if (idx == 0) profiles.items.len - 1 else idx - 1)
         else if (forward)
-            // If current not found, start at beginning
             0
         else
-            // If current not found, start at end
             profiles.items.len - 1;
 
         const target_profile = profiles.items[target_index];
         slog.info("Cycling to {s} profile: {s} -> {s}", .{ if (forward) "next" else "previous", current_profile, target_profile });
 
-        // Copy the profile name to a static buffer before freeing the profiles list
-        // This is necessary because the WM_SWITCH_PROFILE message is processed asynchronously
+        // Copied to a static buffer since WM_SWITCH_PROFILE is processed asynchronously, after profiles/target_profile go out of scope.
         if (target_profile.len >= g_profile_cycle_buffer.len) {
             slog.err("Profile name too long: {s}", .{target_profile});
             return;
@@ -896,10 +861,7 @@ pub const HotkeyManager = struct {
         @memcpy(g_profile_cycle_buffer[0..target_profile.len], target_profile);
         const profile_name_slice = g_profile_cycle_buffer[0..target_profile.len];
 
-        // Store the target profile name in tray module for WM_SWITCH_PROFILE handler.
-        // Safe because it points into g_profile_cycle_buffer (static, file-scope storage),
-        // not a stack frame - tray.zig's takePendingProfileName() does NOT dupe this slice,
-        // it just hands the pointer back as-is.
+        // Safe because it points into g_profile_cycle_buffer (static storage); tray.zig's takePendingProfileName() doesn't dupe it.
         const tray_mod = @import("tray.zig");
         tray_mod.g_pending_profile_name = profile_name_slice;
 
@@ -911,7 +873,7 @@ pub const HotkeyManager = struct {
         }
     }
 
-    /// This triggers a profile switch by posting a message to the main window
+    /// Triggers a profile switch by posting a message to the main window.
     fn handleSwitchToProfile(self: *HotkeyManager, profile_index: usize) void {
         if (profile_index >= self.global_settings.profileSwitchHotkeys.items.len) {
             slog.err("Invalid profile switch index {}", .{profile_index});
@@ -921,9 +883,7 @@ pub const HotkeyManager = struct {
         const target_profile = self.global_settings.profileSwitchHotkeys.items[profile_index].targetProfile;
         slog.info("Switch to profile hotkey pressed: {s} -> {s}", .{ self.config.profile_name, target_profile });
 
-        // Copy the profile name to a static buffer since the WM_SWITCH_PROFILE message
-        // is processed asynchronously and target_profile's backing memory may be freed
-        // if the config is reloaded before the message is handled
+        // Copied to a static buffer since a config reload could free target_profile's backing memory before the async message is handled.
         if (target_profile.len >= g_profile_switch_buffer.len) {
             slog.err("Profile name too long: {s}", .{target_profile});
             return;
@@ -931,7 +891,6 @@ pub const HotkeyManager = struct {
         @memcpy(g_profile_switch_buffer[0..target_profile.len], target_profile);
         const profile_name_slice = g_profile_switch_buffer[0..target_profile.len];
 
-        // Store the target profile name in tray module for WM_SWITCH_PROFILE handler
         const tray_mod = @import("tray.zig");
         tray_mod.g_pending_profile_name = profile_name_slice;
 
@@ -943,7 +902,6 @@ pub const HotkeyManager = struct {
         }
     }
 
-    /// Toggles exclusion for the currently focused EVE window
     fn handleToggleExclusion(self: *HotkeyManager) void {
         const foreground_hwnd = win32.GetForegroundWindow() orelse {
             slog.debug("No window has focus for exclusion toggle", .{});
@@ -1008,15 +966,7 @@ pub const HotkeyManager = struct {
         return self.hotkeys_suspended;
     }
 
-    /// Suspend hotkeys while the config dialog records a new key combo (via
-    /// PROTOCOL_DIALOG_SUSPEND_HOTKEYS). This actually unregisters every live
-    /// RegisterHotKey binding, not just gates dispatch of the resulting action:
-    /// RegisterHotKey intercepts its key combo system-wide, so a key already bound to
-    /// a running hotkey never reaches the dialog's browser window as a normal
-    /// keyup/keydown event at all - the Record UI would never see it fire, no matter
-    /// what handleHotkeyPress does after the fact. dialog_suspended still gates
-    /// dispatch too, as a safety net for any WM_HOTKEY already queued the instant
-    /// before UnregisterHotKey takes effect.
+    /// Unregisters every live hotkey (not just gates dispatch) since RegisterHotKey intercepts system-wide, so a gate alone would never let the dialog see the keypress.
     pub fn dialogSuspendHotkeys(self: *HotkeyManager, hwnd: win32.HWND) void {
         if (self.dialog_suspended) return;
         slog.debug("Config dialog is recording a hotkey - unregistering live hotkeys", .{});
@@ -1024,10 +974,7 @@ pub const HotkeyManager = struct {
         self.unregisterAll(hwnd);
     }
 
-    /// Re-register hotkeys after the config dialog finishes recording (via
-    /// PROTOCOL_DIALOG_RESUME_HOTKEYS). Re-reads from the same in-memory config/
-    /// global_settings unregisterAll left untouched, so this restores exactly what
-    /// was live before - nothing on disk changed just from recording.
+    /// Re-registers from the same in-memory config unregisterAll left untouched, so this restores exactly what was live before.
     pub fn dialogResumeHotkeys(self: *HotkeyManager, hwnd: win32.HWND) void {
         if (!self.dialog_suspended) return;
         slog.debug("Config dialog finished recording - re-registering hotkeys", .{});
@@ -1053,7 +1000,6 @@ pub const HotkeyManager = struct {
         }
     }
 
-    /// Cycle through characters in a group and activate the next/previous one
     fn cycleGroup(self: *HotkeyManager, group: *config_mod.HotkeyGroup, forward: bool) void {
         const num_chars = group.characters.items.len;
         if (num_chars == 0) {
@@ -1095,7 +1041,6 @@ pub const HotkeyManager = struct {
             }
         }
 
-        // Restore original index if no characters were found
         group.currentIndex = start_index;
         slog.warn("No characters from hotkey group are currently running (or all are excluded)", .{});
     }
@@ -1221,10 +1166,7 @@ pub const HotkeyManager = struct {
         return false;
     }
 
-    /// Toggle character exclusion from cycling in all groups that contain the character.
-    /// Characters that belong to no group fall back to manually_excluded_characters, so
-    /// shift-click exclusion still works (and Cycle All Clients still respects it) before
-    /// the user has set up any hotkey groups.
+    /// Toggles exclusion in every group containing the character; characters in no group fall back to manually_excluded_characters.
     pub fn toggleCharacterExclusion(self: *HotkeyManager, character_name: []const u8) void {
         var found_in_group = false;
 
@@ -1274,8 +1216,7 @@ pub const HotkeyManager = struct {
         self.excluded_cycle_index = null;
     }
 
-    /// Toggle a character's membership in manually_excluded_characters (the fallback
-    /// exclusion list for characters that don't belong to any hotkey group).
+    /// Toggles membership in manually_excluded_characters, the fallback list for characters in no hotkey group.
     fn toggleManualExclusion(self: *HotkeyManager, character_name: []const u8) void {
         var excluded_index: ?usize = null;
         for (self.manually_excluded_characters.items, 0..) |excluded, i| {
@@ -1313,8 +1254,7 @@ pub const HotkeyManager = struct {
         self.cycleExcluded(false);
     }
 
-    /// Appends names not already in `seen` to `dest`, marking them seen. Used by
-    /// buildExcludedList() to dedupe across multiple exclusion sources.
+    /// Appends names not already in seen to dest, marking them seen; used by buildExcludedList() to dedupe.
     fn appendUnseenNames(self: *HotkeyManager, dest: *std.ArrayList([]const u8), seen: *std.StringHashMap(void), names: []const []const u8) void {
         for (names) |excluded_name| {
             const result = seen.getOrPut(excluded_name) catch {
@@ -1330,10 +1270,7 @@ pub const HotkeyManager = struct {
         }
     }
 
-    /// Builds a unified, deduplicated list of all excluded character names, combining
-    /// every hotkey group's exclusion list with manually_excluded_characters (the
-    /// fallback for characters that belong to no group). Shared by cycleExcluded() and
-    /// updateExcludedCycleIndex() so both agree on ordering/membership.
+    /// Builds the deduplicated union of every group's exclusion list and manually_excluded_characters; shared so cycleExcluded/updateExcludedCycleIndex agree.
     fn buildExcludedList(self: *HotkeyManager) std.ArrayList([]const u8) {
         var excluded_list: std.ArrayList([]const u8) = .empty;
 
@@ -1390,7 +1327,6 @@ pub const HotkeyManager = struct {
             }
         }
 
-        // Restore original index if no characters were found
         self.excluded_cycle_index = start_index;
         slog.warn("No excluded characters are currently running", .{});
     }
@@ -1400,14 +1336,7 @@ pub const HotkeyManager = struct {
         self.cycleNotified(forward);
     }
 
-    /// Cycle to the character whose window most recently sent a notification.
-    /// FIFO order: oldest-still-eligible entry first, advancing toward newest,
-    /// then wrapping back to oldest (or the reverse, when `forward` is false).
-    /// Re-notifying an already-queued character bumps it to the back (see
-    /// Painter.trackNotifiedCharacter), so "newest" always means "most recently
-    /// (re-)notified". The cursor is the last character name we jumped to (not
-    /// a raw index), since the underlying queue mutates between presses
-    /// (entries age out, re-notifies bump).
+    /// Cycles to the most-recently-notified character (FIFO); cursor is the last character name jumped to since the queue mutates between presses.
     fn cycleNotified(self: *HotkeyManager, forward: bool) void {
         const retention_ms: u64 = @as(u64, self.config.thumbnail.notifications.notified_cycle_retention_seconds) * 1000;
 
@@ -1457,8 +1386,7 @@ pub const HotkeyManager = struct {
         slog.warn("No recently-notified characters are currently running", .{});
     }
 
-    /// Replace self.last_notified_cycle_name with an owned copy of `name`,
-    /// freeing the previous owned copy (if any).
+    /// Replaces last_notified_cycle_name with an owned copy of name, freeing the previous one.
     fn setLastNotifiedCycleName(self: *HotkeyManager, name: []const u8) void {
         const duped = self.allocator.dupe(u8, name) catch |err| {
             slog.err("Failed to remember notified cycle cursor for {s}: {}", .{ name, err });
@@ -1478,11 +1406,7 @@ pub const HotkeyManager = struct {
         self.handleCycleAllClients(forward);
     }
 
-    /// Cycle through every currently logged-in EVE client, regardless of profile,
-    /// in the order Scout first discovered them (tracked/launch order). Unlike
-    /// cycleGroup/cycleExcluded/cycleNotified, every entry here is guaranteed to be
-    /// running (Scout only tracks live windows), so the only reason to skip an entry
-    /// is the optional exclusion filter.
+    /// Cycles every logged-in client in Scout's discovery order; unlike other cycles, every entry is guaranteed running.
     fn cycleAllClients(self: *HotkeyManager, forward: bool) void {
         const windows = self.scout.getWindows();
         const num = windows.len;
@@ -1526,8 +1450,7 @@ pub const HotkeyManager = struct {
         slog.warn("No logged-in clients are eligible to cycle to (all excluded)", .{});
     }
 
-    /// Replace self.last_all_clients_cycle_name with an owned copy of `name`,
-    /// freeing the previous owned copy (if any).
+    /// Replaces last_all_clients_cycle_name with an owned copy of name, freeing the previous one.
     fn setLastAllClientsCycleName(self: *HotkeyManager, name: []const u8) void {
         const duped = self.allocator.dupe(u8, name) catch |err| {
             slog.err("Failed to remember all-clients cycle cursor for {s}: {}", .{ name, err });
@@ -1547,17 +1470,14 @@ pub const HotkeyManager = struct {
         self.handleCycleNotLoggedIn(forward);
     }
 
-    /// Cycle through EVE client windows that are sitting at the login screen, i.e. still
-    /// carry the generic "EVE" window title (see Scout.extractCharacterName). Every such
-    /// window shares that same character_name, so - unlike cycleAllClients - the cursor
-    /// has to be the HWND we last jumped to rather than a name.
+    /// Cycles windows still at the login screen ("EVE" title); cursor must be HWND since they all share that name.
     fn cycleNotLoggedIn(self: *HotkeyManager, forward: bool) void {
         const windows = self.scout.getWindows();
 
         var candidates: std.ArrayList(win32.HWND) = .empty;
         defer candidates.deinit(self.allocator);
         for (windows) |w| {
-            if (std.mem.eql(u8, w.character_name, "EVE")) {
+            if (scout.isGenericCharacterName(w.character_name)) {
                 candidates.append(self.allocator, w.hwnd) catch |err| {
                     slog.err("Failed to collect not-logged-in candidate window: {}", .{err});
                 };
@@ -1593,8 +1513,7 @@ pub const HotkeyManager = struct {
 
     /// Update currentIndex for hotkey groups when a character is manually focused
     pub fn updateFocusedCharacter(self: *HotkeyManager, character_name: []const u8) void {
-        // Verify the character's window actually has focus before updating cycle position
-        // This prevents stale updates during rapid cycling
+        // Verify the window actually has focus first, to avoid stale updates during rapid cycling.
         const character_hwnd = self.scout.getHwndByName(character_name);
         const foreground_hwnd = win32.GetForegroundWindow();
 
@@ -1633,8 +1552,7 @@ pub const HotkeyManager = struct {
             }
         }
 
-        // Each group kind resets independently - being in a hotkey group shouldn't
-        // block a quick-group reset (or vice versa) when you've left that kind's groups.
+        // Each group kind resets independently; being in a hotkey group shouldn't block a quick-group reset or vice versa.
         if (self.config.resetGroupIndexOnNonGroupFocus and !found_in_hotkey_group) {
             for (self.config.hotkeyGroups.items) |*group| {
                 group.currentIndex = null;

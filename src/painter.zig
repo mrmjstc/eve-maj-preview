@@ -648,27 +648,25 @@ pub const Painter = struct {
         }
     }
 
-    /// Resolves hwnd to its thumbnails[] index, verifying identity so a rate-limit-staled map entry can't point at the wrong (still-live) thumbnail.
+    /// Resolves hwnd to its thumbnails[] index; only matches Painter's own thumbnail/text windows, since a source EVE window closing is Scout's call (closed_windows -> cleanupClosedThumbnails).
     fn resolveThumbnailIndexForDestroy(self: *Painter, hwnd: win32.HWND) ?usize {
-        const raw_index = self.hwnd_to_thumbnail_index.get(hwnd) orelse
-            self.thumbnail_hwnd_to_index.get(hwnd) orelse
+        const raw_index = self.thumbnail_hwnd_to_index.get(hwnd) orelse
             self.text_hwnd_to_index.get(hwnd) orelse return null;
 
         if (raw_index < self.thumbnails.items.len) {
             const candidate = self.thumbnails.items[raw_index];
-            if (candidate.source_hwnd == hwnd or candidate.hwnd == hwnd or candidate.text_hwnd == hwnd) {
+            if (candidate.hwnd == hwnd or candidate.text_hwnd == hwnd) {
                 return raw_index;
             }
         }
 
         self.rebuildHwndIndex(true);
-        const retry_index = self.hwnd_to_thumbnail_index.get(hwnd) orelse
-            self.thumbnail_hwnd_to_index.get(hwnd) orelse
+        const retry_index = self.thumbnail_hwnd_to_index.get(hwnd) orelse
             self.text_hwnd_to_index.get(hwnd) orelse return null;
         if (retry_index >= self.thumbnails.items.len) return null;
 
         const candidate = self.thumbnails.items[retry_index];
-        if (candidate.source_hwnd == hwnd or candidate.hwnd == hwnd or candidate.text_hwnd == hwnd) {
+        if (candidate.hwnd == hwnd or candidate.text_hwnd == hwnd) {
             return retry_index;
         }
         return null;
@@ -1257,89 +1255,103 @@ pub const Painter = struct {
         }
     }
 
-    pub fn updateThumbnailNames(self: *Painter, eve_windows: []const @import("scout.zig").EveWindow) void {
-        for (eve_windows) |eve_window| {
-            if (self.getThumbnailBySourceHwnd(eve_window.hwnd)) |thumbnail| {
-                if (!std.mem.eql(u8, thumbnail.character_name, eve_window.character_name)) {
-                    const old_name = thumbnail.character_name;
-                    const was_generic = std.mem.eql(u8, old_name, "EVE");
-                    const now_specific = !std.mem.eql(u8, eve_window.character_name, "EVE");
+    /// Reacts to Scout's name-change events: syncs the affected thumbnail's name/title and runs the associated side effects (position restore, system-name clear, exclusion restore).
+    pub fn applyNameChanges(self: *Painter, name_changes: []const scout_mod.NameChange, eve_windows: []const scout_mod.EveWindow) void {
+        for (name_changes) |change| {
+            const thumbnail = self.getThumbnailBySourceHwnd(change.hwnd) orelse continue;
 
-                    const new_title_dup = self.allocator.dupe(u8, eve_window.title) catch {
-                        slog.err("Failed to allocate title for {s}", .{eve_window.character_name});
-                        continue;
-                    };
-                    const new_char_dup = self.allocator.dupe(u8, eve_window.character_name) catch {
-                        self.allocator.free(new_title_dup);
-                        slog.err("Failed to allocate character name for {s}", .{eve_window.character_name});
-                        continue;
-                    };
+            const was_generic = scout_mod.isGenericCharacterName(change.old_name);
+            const now_specific = !scout_mod.isGenericCharacterName(change.new_name);
 
-                    self.allocator.free(thumbnail.title);
-                    self.allocator.free(old_name);
-                    thumbnail.title = new_title_dup;
-                    thumbnail.character_name = new_char_dup;
-                    thumbnail.cached_char_dims = null;
-                    thumbnail.cached_display_name = self.config.getDisplayName(new_char_dup);
-                    thumbnail.cached_active_border_override = if (self.config.getCharacterBorderColors(new_char_dup)) |c| c.activeBorderColor else null;
-                    thumbnail.cached_character_color = self.config.getCharacterNameColor(new_char_dup);
-
-                    // If character logged in (changed from "EVE" to actual name), move to saved position
-                    if (was_generic and now_specific) {
-                        if (thumbnail.win32_enabled) {
-                            if (self.config.getCharacterPosition(eve_window.character_name)) |saved_pos| {
-                                const thumb_size = self.getThumbnailSize(eve_window.character_name);
-                                _ = win32.SetWindowPos(thumbnail.hwnd, win32.HWND_NOTOPMOST, saved_pos.x, saved_pos.y, thumb_size.width, thumb_size.height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
-                                _ = win32.SetWindowPos(thumbnail.text_hwnd, win32.HWND_TOPMOST, saved_pos.x, saved_pos.y, thumb_size.width, thumb_size.height, win32.SWP_NOACTIVATE);
-                                slog.info("Moved {s} to saved position: ({}, {})", .{ eve_window.character_name, saved_pos.x, saved_pos.y });
-                            } else {
-                                slog.debug("No saved position for {s}, keeping current location", .{eve_window.character_name});
-                            }
-                        }
-                    }
-
-                    // If character logged out (title is just "EVE"), clear system name
-                    if (std.mem.eql(u8, eve_window.character_name, "EVE")) {
-                        // Allocate empty string first to prevent use-after-free
-                        const empty_system = self.allocator.dupe(u8, "") catch {
-                            slog.err("Failed to allocate empty system name for {s}", .{eve_window.character_name});
-                            // Keep old system name on allocation failure
-                            continue;
-                        };
-                        self.allocator.free(thumbnail.system_name);
-                        thumbnail.system_name = empty_system;
-                        thumbnail.cached_system_color = self.config.thumbnail.systemNameColor;
-                        thumbnail.cached_sys_dims = null;
-                        slog.debug("Cleared system name for logged out client", .{});
-                    }
-
-                    // Update exclusion state when character name becomes known (e.g., "EVE" -> "Probe Enthusiast")
-                    if (was_generic and now_specific) {
-                        if (g_hotkey_manager_ptr) |manager| {
-                            const is_excluded = manager.isCharacterExcluded(eve_window.character_name);
-                            if (is_excluded != thumbnail.is_excluded_from_cycle) {
-                                thumbnail.is_excluded_from_cycle = is_excluded;
-                                if (is_excluded) {
-                                    slog.info("Restored exclusion state for {s}", .{eve_window.character_name});
-                                }
-                            }
-                        }
-                    }
-
-                    self.renderThumbnail(thumbnail) catch |err| {
-                        slog.err("Failed to render thumbnail for {s}: {}", .{ thumbnail.character_name, err });
-                    };
-
-                    slog.info("Updated thumbnail for {s}", .{thumbnail.character_name});
-                } else if (!std.mem.eql(u8, thumbnail.title, eve_window.title)) {
-                    const new_title_dup = self.allocator.dupe(u8, eve_window.title) catch {
-                        slog.err("Failed to allocate title for {s}", .{eve_window.character_name});
-                        continue;
-                    };
-                    self.allocator.free(thumbnail.title);
-                    thumbnail.title = new_title_dup;
+            var new_title: []const u8 = change.new_name;
+            for (eve_windows) |w| {
+                if (w.hwnd == change.hwnd) {
+                    new_title = w.title;
+                    break;
                 }
             }
+
+            const new_title_dup = self.allocator.dupe(u8, new_title) catch {
+                slog.err("Failed to allocate title for {s}", .{change.new_name});
+                continue;
+            };
+            const new_char_dup = self.allocator.dupe(u8, change.new_name) catch {
+                self.allocator.free(new_title_dup);
+                slog.err("Failed to allocate character name for {s}", .{change.new_name});
+                continue;
+            };
+
+            self.allocator.free(thumbnail.title);
+            self.allocator.free(thumbnail.character_name);
+            thumbnail.title = new_title_dup;
+            thumbnail.character_name = new_char_dup;
+            thumbnail.cached_char_dims = null;
+            thumbnail.cached_display_name = self.config.getDisplayName(new_char_dup);
+            thumbnail.cached_active_border_override = if (self.config.getCharacterBorderColors(new_char_dup)) |c| c.activeBorderColor else null;
+            thumbnail.cached_character_color = self.config.getCharacterNameColor(new_char_dup);
+
+            // If character logged in (changed from "EVE" to actual name), move to saved position
+            if (was_generic and now_specific) {
+                if (thumbnail.win32_enabled) {
+                    if (self.config.getCharacterPosition(change.new_name)) |saved_pos| {
+                        const thumb_size = self.getThumbnailSize(change.new_name);
+                        _ = win32.SetWindowPos(thumbnail.hwnd, win32.HWND_NOTOPMOST, saved_pos.x, saved_pos.y, thumb_size.width, thumb_size.height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
+                        _ = win32.SetWindowPos(thumbnail.text_hwnd, win32.HWND_TOPMOST, saved_pos.x, saved_pos.y, thumb_size.width, thumb_size.height, win32.SWP_NOACTIVATE);
+                        slog.info("Moved {s} to saved position: ({}, {})", .{ change.new_name, saved_pos.x, saved_pos.y });
+                    } else {
+                        slog.debug("No saved position for {s}, keeping current location", .{change.new_name});
+                    }
+                }
+            }
+
+            // If character logged out (title is just "EVE"), clear system name
+            if (!now_specific) {
+                // Allocate empty string first to prevent use-after-free
+                const empty_system = self.allocator.dupe(u8, "") catch {
+                    slog.err("Failed to allocate empty system name for {s}", .{change.new_name});
+                    // Keep old system name on allocation failure
+                    continue;
+                };
+                self.allocator.free(thumbnail.system_name);
+                thumbnail.system_name = empty_system;
+                thumbnail.cached_system_color = self.config.thumbnail.systemNameColor;
+                thumbnail.cached_sys_dims = null;
+                slog.debug("Cleared system name for logged out client", .{});
+            }
+
+            // Update exclusion state when character name becomes known (e.g., "EVE" -> "Probe Enthusiast")
+            if (was_generic and now_specific) {
+                if (g_hotkey_manager_ptr) |manager| {
+                    const is_excluded = manager.isCharacterExcluded(change.new_name);
+                    if (is_excluded != thumbnail.is_excluded_from_cycle) {
+                        thumbnail.is_excluded_from_cycle = is_excluded;
+                        if (is_excluded) {
+                            slog.info("Restored exclusion state for {s}", .{change.new_name});
+                        }
+                    }
+                }
+            }
+
+            self.renderThumbnail(thumbnail) catch |err| {
+                slog.err("Failed to render thumbnail for {s}: {}", .{ thumbnail.character_name, err });
+            };
+
+            slog.info("Updated thumbnail for {s}", .{thumbnail.character_name});
+        }
+    }
+
+    /// Syncs thumbnail title text against Scout's latest scan, independent of character-name changes.
+    fn syncThumbnailTitles(self: *Painter, eve_windows: []const scout_mod.EveWindow) void {
+        for (eve_windows) |eve_window| {
+            const thumbnail = self.getThumbnailBySourceHwnd(eve_window.hwnd) orelse continue;
+            if (std.mem.eql(u8, thumbnail.title, eve_window.title)) continue;
+
+            const new_title_dup = self.allocator.dupe(u8, eve_window.title) catch {
+                slog.err("Failed to allocate title for {s}", .{eve_window.character_name});
+                continue;
+            };
+            self.allocator.free(thumbnail.title);
+            thumbnail.title = new_title_dup;
         }
     }
 
@@ -1361,15 +1373,14 @@ pub const Painter = struct {
     }
 
     /// Main update cycle - performs all Painter operations for a single tick
-    pub fn update(self: *Painter, eve_windows: []const scout_mod.EveWindow, closed_windows: []const scout_mod.ClosedWindow) !void {
+    pub fn update(self: *Painter, eve_windows: []const scout_mod.EveWindow, closed_windows: []const scout_mod.ClosedWindow, name_changes: []const scout_mod.NameChange) !void {
         self.cleanupClosedThumbnails(closed_windows);
         self.updateThumbnailStates();
-        self.updateThumbnailNames(eve_windows);
+        self.applyNameChanges(name_changes, eve_windows);
+        self.syncThumbnailTitles(eve_windows);
 
-        const created_new = self.syncThumbnailsWithWindows(eve_windows);
-        if (created_new) {
-            self.updateThumbnailNames(eve_windows);
-        }
+        // createThumbnail seeds title/character_name from eve_window, so new thumbnails need no re-sync.
+        _ = self.syncThumbnailsWithWindows(eve_windows);
 
         // Thumbnail-mode only — ClientList has no Win32 windows to redraw here.
         try self.processDirtyThumbnails();
@@ -1522,7 +1533,7 @@ pub const Painter = struct {
     ) config_mod.Position {
         const cfg = &self.config.display;
 
-        const is_generic = std.mem.eql(u8, character_name, "EVE");
+        const is_generic = scout_mod.isGenericCharacterName(character_name);
         const use_saved_position = !is_generic and
             cfg.honorSavedPositions and
             self.config.getCharacterPosition(character_name) != null;

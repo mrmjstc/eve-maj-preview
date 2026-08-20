@@ -22,6 +22,13 @@ pub const ClosedWindow = struct {
     character_name: []const u8,
 };
 
+/// character_name before login or after logout while the client window stays open.
+pub const GENERIC_CHARACTER_NAME = "EVE";
+
+pub fn isGenericCharacterName(name: []const u8) bool {
+    return std.mem.eql(u8, name, GENERIC_CHARACTER_NAME);
+}
+
 pub const UpdateResult = struct {
     windows: []const EveWindow,
     closed_windows: std.ArrayList(ClosedWindow),
