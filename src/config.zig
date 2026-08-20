@@ -176,6 +176,7 @@ pub const DEFAULT_ORE_TABLE = [_]OreEntry.Wire{
     .{ .name = "Dark Ochre", .category = "Ore", .volumeM3 = 8.00, .price = 4200 },
 
     .{ .name = "Bitumens", .category = "Moons", .volumeM3 = 10.00, .price = 1164 },
+    .{ .name = "Coesite", .category = "Moons", .volumeM3 = 10.00, .price = 0 },
     .{ .name = "Evaporite Deposits", .category = "Moons", .volumeM3 = 10.00, .price = 0 },
     .{ .name = "Sylvite", .category = "Moons", .volumeM3 = 10.00, .price = 801 },
     .{ .name = "Cobaltite", .category = "Moons", .volumeM3 = 10.00, .price = 285.8 },
@@ -194,6 +195,7 @@ pub const DEFAULT_ORE_TABLE = [_]OreEntry.Wire{
     .{ .name = "Loparite", .category = "Moons", .volumeM3 = 10.00, .price = 8060 },
     .{ .name = "Xenotime", .category = "Moons", .volumeM3 = 10.00, .price = 8166 },
     .{ .name = "Ytterbite", .category = "Moons", .volumeM3 = 10.00, .price = 4728 },
+    .{ .name = "Zeolites", .category = "Moons", .volumeM3 = 10.00, .price = 0 },
     .{ .name = "Arkonor", .category = "Ore", .volumeM3 = 16.00, .price = 4264 },
     .{ .name = "Bistot", .category = "Ore", .volumeM3 = 16.00, .price = 3613 },
     .{ .name = "Crokite", .category = "Ore", .volumeM3 = 16.00, .price = 5300 },
