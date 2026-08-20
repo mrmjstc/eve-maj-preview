@@ -15,6 +15,9 @@ const RING_CAPACITY = 512;
 /// Upper bound on spark-chart bucket count; must match SparkChartConfig.BUCKET_COUNT_MAX.
 pub const MAX_CHART_BUCKETS: usize = 60;
 
+/// Guards against simultaneous multi-module/multi-weapon log lines spiking a rate computed over a near-zero span.
+const MIN_RATE_SPAN_MS: i64 = 3 * std.time.ms_per_s;
+
 /// Per-character sliding-window DPS accumulator with zero heap allocations after init.
 pub const CombatWindow = struct {
     entries: [RING_CAPACITY]CombatEvent = undefined,
@@ -27,7 +30,6 @@ pub const CombatWindow = struct {
     last_incoming_hit_ms: i64 = 0,
     /// 0 = never fired.
     last_damage_alert_ms: i64 = 0,
-    window_start_ms: i64 = 0,
 
     // Cached last-computed values, updated by refresh().
     last_incoming_dps: f32 = 0.0,
@@ -42,9 +44,6 @@ pub const CombatWindow = struct {
     /// Append a new hit to the ring buffer (O(1), overwrites oldest on overflow).
     /// `counts_for_alert` only gates `last_incoming_hit_ms` (checkDamageAlert's trigger) — the hit is always ring-buffered so DPS stays accurate for filtered hits.
     pub fn addEntry(self: *CombatWindow, amount: u32, is_incoming: bool, timestamp_ms: i64, counts_for_alert: bool) void {
-        if (self.last_hit_ms == 0 or timestamp_ms - self.last_hit_ms >= self.window_ms) {
-            self.window_start_ms = timestamp_ms;
-        }
         self.entries[self.head] = .{
             .timestamp_ms = timestamp_ms,
             .amount = amount,
@@ -74,7 +73,8 @@ pub const CombatWindow = struct {
         const cutoff = now_ms - self.window_ms;
         var in_total: u64 = 0;
         var out_total: u64 = 0;
-        var entry_count: usize = 0;
+        var newest_ms: i64 = 0;
+        var oldest_ms: i64 = 0;
 
         var i: usize = 0;
         while (i < self.count) : (i += 1) {
@@ -82,17 +82,18 @@ pub const CombatWindow = struct {
             const entry = &self.entries[idx];
             // Ring is chronologically ordered, so all further entries are also expired
             if (entry.timestamp_ms < cutoff) break;
-            entry_count += 1;
+            if (i == 0) newest_ms = entry.timestamp_ms;
+            oldest_ms = entry.timestamp_ms;
             if (entry.is_incoming) {
                 in_total += entry.amount;
             } else {
                 out_total += entry.amount;
             }
         }
-        if (entry_count < 2) return .{ .incoming = 0.0, .outgoing = 0.0 };
+        const span_ms = newest_ms - oldest_ms;
+        if (span_ms < MIN_RATE_SPAN_MS) return .{ .incoming = 0.0, .outgoing = 0.0 };
 
-        const elapsed_ms = @max(@min(self.window_ms, now_ms - self.window_start_ms), std.time.ms_per_s);
-        const window_secs = @as(f32, @floatFromInt(elapsed_ms)) / 1000.0;
+        const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
         return .{
             .incoming = @as(f32, @floatFromInt(in_total)) / window_secs,
             .outgoing = @as(f32, @floatFromInt(out_total)) / window_secs,
@@ -105,6 +106,7 @@ pub const CombatWindow = struct {
         @memset(out_outgoing, 0);
         if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= 2 * self.window_ms) return;
         const cutoff = now_ms - 2 * self.window_ms;
+        const recent_cutoff = now_ms - self.window_ms;
 
         // bucket_ms == 0 means that direction's chart is disabled; the loop below just skips bucketing it.
         const in_bucket_ms: i64 = if (out_incoming.len > 0) @divTrunc(self.window_ms, @as(i64, @intCast(out_incoming.len))) else 0;
@@ -116,14 +118,18 @@ pub const CombatWindow = struct {
 
         var in_diff: [MAX_CHART_BUCKETS + 1]f32 = @splat(0);
         var out_diff: [MAX_CHART_BUCKETS + 1]f32 = @splat(0);
-        var entry_count: usize = 0;
+        var newest_ms: i64 = 0;
+        var oldest_ms: i64 = 0;
 
         var i: usize = 0;
         while (i < self.count) : (i += 1) {
             const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
             const entry = &self.entries[idx];
             if (entry.timestamp_ms < cutoff) break;
-            entry_count += 1;
+            if (entry.timestamp_ms >= recent_cutoff) {
+                if (newest_ms == 0) newest_ms = entry.timestamp_ms;
+                oldest_ms = entry.timestamp_ms;
+            }
             if (entry.is_incoming) {
                 if (in_bucket_ms <= 0) continue;
                 const slot = @divFloor(entry.timestamp_ms, in_bucket_ms);
@@ -145,10 +151,10 @@ pub const CombatWindow = struct {
             }
         }
 
-        if (entry_count < 2) return;
+        const span_ms = newest_ms - oldest_ms;
+        if (span_ms < MIN_RATE_SPAN_MS) return;
 
-        const elapsed_ms = @max(@min(self.window_ms, now_ms - self.window_start_ms), std.time.ms_per_s);
-        const window_secs = @as(f32, @floatFromInt(elapsed_ms)) / 1000.0;
+        const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
         var running: f32 = 0;
         for (out_incoming, 0..) |*v, out_idx| {
             running += in_diff[out_idx];
@@ -396,7 +402,6 @@ pub const MiningWindow = struct {
     count: usize = 0,
     window_ms: i64,
     last_hit_ms: i64 = 0,
-    window_start_ms: i64 = 0,
 
     // Cached last-computed values, updated by refresh().
     last_m3_per_sec: f32 = 0.0,
@@ -414,9 +419,6 @@ pub const MiningWindow = struct {
 
     /// Append a new yield to the ring buffer (O(1), overwrites oldest on overflow).
     pub fn addEntry(self: *MiningWindow, m3: f32, isk: f32, timestamp_ms: i64) void {
-        if (self.last_hit_ms == 0 or timestamp_ms - self.last_hit_ms >= self.window_ms) {
-            self.window_start_ms = timestamp_ms;
-        }
         self.entries[self.head] = .{
             .timestamp_ms = timestamp_ms,
             .m3 = m3,
@@ -451,20 +453,22 @@ pub const MiningWindow = struct {
         }
         const cutoff = now_ms - self.window_ms;
         var total: f32 = 0;
-        var entry_count: usize = 0;
+        var newest_ms: i64 = 0;
+        var oldest_ms: i64 = 0;
 
         var i: usize = 0;
         while (i < self.count) : (i += 1) {
             const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
             const entry = &self.entries[idx];
             if (entry.timestamp_ms < cutoff) break;
-            entry_count += 1;
+            if (i == 0) newest_ms = entry.timestamp_ms;
+            oldest_ms = entry.timestamp_ms;
             total += entry.m3;
         }
-        if (entry_count < 2) return 0.0;
+        const span_ms = newest_ms - oldest_ms;
+        if (span_ms < MIN_RATE_SPAN_MS) return 0.0;
 
-        const elapsed_ms = @max(@min(self.window_ms, now_ms - self.window_start_ms), std.time.ms_per_s);
-        const window_secs = @as(f32, @floatFromInt(elapsed_ms)) / 1000.0;
+        const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
         return total / window_secs;
     }
 
@@ -475,20 +479,22 @@ pub const MiningWindow = struct {
         }
         const cutoff = now_ms - self.window_ms;
         var total: f32 = 0;
-        var entry_count: usize = 0;
+        var newest_ms: i64 = 0;
+        var oldest_ms: i64 = 0;
 
         var i: usize = 0;
         while (i < self.count) : (i += 1) {
             const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
             const entry = &self.entries[idx];
             if (entry.timestamp_ms < cutoff) break;
-            entry_count += 1;
+            if (i == 0) newest_ms = entry.timestamp_ms;
+            oldest_ms = entry.timestamp_ms;
             total += entry.isk;
         }
-        if (entry_count < 2) return 0.0;
+        const span_ms = newest_ms - oldest_ms;
+        if (span_ms < MIN_RATE_SPAN_MS) return 0.0;
 
-        const elapsed_ms = @max(@min(self.window_ms, now_ms - self.window_start_ms), std.time.ms_per_s);
-        const window_secs = @as(f32, @floatFromInt(elapsed_ms)) / 1000.0;
+        const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
         return total / window_secs;
     }
 
@@ -504,6 +510,7 @@ pub const MiningWindow = struct {
         if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) return;
         const smoothing_ms = self.window_ms * CHART_SMOOTHING_WINDOWS;
         const cutoff = now_ms - self.window_ms - smoothing_ms;
+        const recent_cutoff = now_ms - self.window_ms;
         const bucket_ms = @divTrunc(self.window_ms, @as(i64, @intCast(out.len)));
         if (bucket_ms <= 0) return;
         const range_buckets = @divTrunc(smoothing_ms, bucket_ms);
@@ -511,13 +518,17 @@ pub const MiningWindow = struct {
         const last_idx: i64 = @intCast(out.len - 1);
 
         var diff: [MAX_CHART_BUCKETS + 1]f32 = @splat(0);
-        var entry_count: usize = 0;
+        var newest_ms: i64 = 0;
+        var oldest_ms: i64 = 0;
         var i: usize = 0;
         while (i < self.count) : (i += 1) {
             const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
             const entry = &self.entries[idx];
             if (entry.timestamp_ms < cutoff) break;
-            entry_count += 1;
+            if (entry.timestamp_ms >= recent_cutoff) {
+                if (newest_ms == 0) newest_ms = entry.timestamp_ms;
+                oldest_ms = entry.timestamp_ms;
+            }
             const entry_slot = @divFloor(entry.timestamp_ms, bucket_ms);
             const b = last_idx - (now_slot - entry_slot);
             const start = @max(b, 0);
@@ -526,10 +537,10 @@ pub const MiningWindow = struct {
             diff[@intCast(start)] += entry.m3;
             diff[@intCast(end + 1)] -= entry.m3;
         }
-        if (entry_count < 2) return;
+        const span_ms = newest_ms - oldest_ms;
+        if (span_ms < MIN_RATE_SPAN_MS) return;
 
-        const elapsed_ms = @max(@min(smoothing_ms, now_ms - self.window_start_ms), std.time.ms_per_s);
-        const smoothing_secs = @as(f32, @floatFromInt(elapsed_ms)) / 1000.0;
+        const smoothing_secs = @as(f32, @floatFromInt(@min(smoothing_ms, span_ms))) / 1000.0;
         var running: f32 = 0;
         for (out, 0..) |*v, out_idx| {
             running += diff[out_idx];
