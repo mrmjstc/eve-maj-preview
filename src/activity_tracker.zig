@@ -18,6 +18,16 @@ pub const MAX_CHART_BUCKETS: usize = 60;
 /// Guards against simultaneous multi-module/multi-weapon log lines spiking a rate computed over a near-zero span.
 const MIN_RATE_SPAN_MS: i64 = 3 * std.time.ms_per_s;
 
+/// Rate multiplier that decays 1.0 -> 0.0 as idle time crosses the window's second half, instead of holding flat then cutting to zero.
+fn idleDecayFactor(now_ms: i64, last_activity_ms: i64, window_ms: i64) f32 {
+    const idle_ms = now_ms - last_activity_ms;
+    const grace_ms = @divTrunc(window_ms, 2);
+    if (idle_ms <= grace_ms) return 1.0;
+    const decay_span_ms = window_ms - grace_ms;
+    const over_ms = @min(idle_ms - grace_ms, decay_span_ms);
+    return 1.0 - @as(f32, @floatFromInt(over_ms)) / @as(f32, @floatFromInt(decay_span_ms));
+}
+
 /// Per-character sliding-window DPS accumulator with zero heap allocations after init.
 pub const CombatWindow = struct {
     entries: [RING_CAPACITY]CombatEvent = undefined,
@@ -30,6 +40,9 @@ pub const CombatWindow = struct {
     last_incoming_hit_ms: i64 = 0,
     /// 0 = never fired.
     last_damage_alert_ms: i64 = 0,
+    /// Per-direction activity clocks for idleDecayFactor; unlike last_incoming_hit_ms, not gated by counts_for_alert.
+    last_incoming_activity_ms: i64 = 0,
+    last_outgoing_activity_ms: i64 = 0,
 
     // Cached last-computed values, updated by refresh(). Null means not enough span yet to trust a rate.
     last_incoming_dps: ?f32 = null,
@@ -52,7 +65,12 @@ pub const CombatWindow = struct {
         self.head = (self.head + 1) % RING_CAPACITY;
         if (self.count < RING_CAPACITY) self.count += 1;
         if (timestamp_ms > self.last_hit_ms) self.last_hit_ms = timestamp_ms;
-        if (is_incoming and counts_for_alert and timestamp_ms > self.last_incoming_hit_ms) self.last_incoming_hit_ms = timestamp_ms;
+        if (is_incoming) {
+            if (counts_for_alert and timestamp_ms > self.last_incoming_hit_ms) self.last_incoming_hit_ms = timestamp_ms;
+            if (timestamp_ms > self.last_incoming_activity_ms) self.last_incoming_activity_ms = timestamp_ms;
+        } else if (timestamp_ms > self.last_outgoing_activity_ms) {
+            self.last_outgoing_activity_ms = timestamp_ms;
+        }
     }
 
     /// Fires when incoming damage has landed since the last alert, debounced to at most once per `repeat_ms`; stays silent once combat stops instead of repeating on a timer.
@@ -94,9 +112,11 @@ pub const CombatWindow = struct {
         if (span_ms < MIN_RATE_SPAN_MS) return .{ .incoming = null, .outgoing = null };
 
         const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
+        const in_factor = idleDecayFactor(now_ms, self.last_incoming_activity_ms, self.window_ms);
+        const out_factor = idleDecayFactor(now_ms, self.last_outgoing_activity_ms, self.window_ms);
         return .{
-            .incoming = @as(f32, @floatFromInt(in_total)) / window_secs,
-            .outgoing = @as(f32, @floatFromInt(out_total)) / window_secs,
+            .incoming = (@as(f32, @floatFromInt(in_total)) / window_secs) * in_factor,
+            .outgoing = (@as(f32, @floatFromInt(out_total)) / window_secs) * out_factor,
         };
     }
 
@@ -155,15 +175,17 @@ pub const CombatWindow = struct {
         if (span_ms < MIN_RATE_SPAN_MS) return;
 
         const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
+        const in_factor = idleDecayFactor(now_ms, self.last_incoming_activity_ms, self.window_ms);
+        const out_factor = idleDecayFactor(now_ms, self.last_outgoing_activity_ms, self.window_ms);
         var running: f32 = 0;
         for (out_incoming, 0..) |*v, out_idx| {
             running += in_diff[out_idx];
-            v.* = running / window_secs;
+            v.* = (running / window_secs) * in_factor;
         }
         running = 0;
         for (out_outgoing, 0..) |*v, out_idx| {
             running += out_diff[out_idx];
-            v.* = running / window_secs;
+            v.* = (running / window_secs) * out_factor;
         }
     }
 
@@ -475,7 +497,7 @@ pub const MiningWindow = struct {
         if (span_ms < MIN_RATE_SPAN_MS) return null;
 
         const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
-        return total / window_secs;
+        return (total / window_secs) * idleDecayFactor(now_ms, self.last_hit_ms, self.window_ms);
     }
 
     /// Compute ISK-per-second over the sliding window ending at now_ms; same walk as computeRate but summing isk instead of m3. Null means not enough span yet to trust a rate.
@@ -501,7 +523,7 @@ pub const MiningWindow = struct {
         if (span_ms < MIN_RATE_SPAN_MS) return null;
 
         const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
-        return total / window_secs;
+        return (total / window_secs) * idleDecayFactor(now_ms, self.last_hit_ms, self.window_ms);
     }
 
     /// Wider than window_seconds so a checkpoint averages several yield cycles instead of ~1, avoiding an oscillating N/N+1 pulse at a steady rate.
@@ -547,10 +569,11 @@ pub const MiningWindow = struct {
         if (span_ms < MIN_RATE_SPAN_MS) return;
 
         const smoothing_secs = @as(f32, @floatFromInt(@min(smoothing_ms, span_ms))) / 1000.0;
+        const factor = idleDecayFactor(now_ms, self.last_hit_ms, self.window_ms);
         var running: f32 = 0;
         for (out, 0..) |*v, out_idx| {
             running += diff[out_idx];
-            v.* = running / smoothing_secs;
+            v.* = (running / smoothing_secs) * factor;
         }
     }
 
