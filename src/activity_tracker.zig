@@ -372,7 +372,8 @@ pub fn isWeaponExcluded(weapon: []const u8, excluded_csv: []const u8) bool {
 /// A single parsed mining event (one yield from a mining cycle).
 pub const MiningEvent = struct {
     timestamp_ms: i64,
-    amount: u32,
+    m3: f32,
+    isk: f32,
 };
 
 /// Per-character sliding-window mining-rate accumulator with zero heap allocations after init.
@@ -383,8 +384,9 @@ pub const MiningWindow = struct {
     window_ms: i64,
     last_hit_ms: i64 = 0,
 
-    // Cached last-computed value, updated by refresh().
-    last_units_per_sec: f32 = 0.0,
+    // Cached last-computed values, updated by refresh().
+    last_m3_per_sec: f32 = 0.0,
+    last_isk_per_sec: f32 = 0.0,
     // Timestamp of the last idle-alert fired for this window (ms). 0 = never.
     last_alert_ms: i64 = 0,
     // Timestamp of the last stopped-alert fired (ms). Reset when mining resumes.
@@ -397,10 +399,11 @@ pub const MiningWindow = struct {
     }
 
     /// Append a new yield to the ring buffer (O(1), overwrites oldest on overflow).
-    pub fn addEntry(self: *MiningWindow, amount: u32, timestamp_ms: i64) void {
+    pub fn addEntry(self: *MiningWindow, m3: f32, isk: f32, timestamp_ms: i64) void {
         self.entries[self.head] = .{
             .timestamp_ms = timestamp_ms,
-            .amount = amount,
+            .m3 = m3,
+            .isk = isk,
         };
         self.head = (self.head + 1) % RING_CAPACITY;
         if (self.count < RING_CAPACITY) self.count += 1;
@@ -423,25 +426,45 @@ pub const MiningWindow = struct {
         return n;
     }
 
-    /// Compute units-per-second over the sliding window ending at now_ms.
+    /// Compute m3-per-second over the sliding window ending at now_ms.
     pub fn computeRate(self: *const MiningWindow, now_ms: i64) f32 {
         // Short-circuit: if the newest yield is already outside the window, skip the O(n) walk over stale entries.
         if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) {
             return 0.0;
         }
         const cutoff = now_ms - self.window_ms;
-        var total: u64 = 0;
+        var total: f32 = 0;
 
         var i: usize = 0;
         while (i < self.count) : (i += 1) {
             const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
             const entry = &self.entries[idx];
             if (entry.timestamp_ms < cutoff) break;
-            total += entry.amount;
+            total += entry.m3;
         }
 
         const window_secs = @as(f32, @floatFromInt(self.window_ms)) / 1000.0;
-        return @as(f32, @floatFromInt(total)) / window_secs;
+        return total / window_secs;
+    }
+
+    /// Compute ISK-per-second over the sliding window ending at now_ms; same walk as computeRate but summing isk instead of m3.
+    pub fn computeIskRate(self: *const MiningWindow, now_ms: i64) f32 {
+        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) {
+            return 0.0;
+        }
+        const cutoff = now_ms - self.window_ms;
+        var total: f32 = 0;
+
+        var i: usize = 0;
+        while (i < self.count) : (i += 1) {
+            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
+            const entry = &self.entries[idx];
+            if (entry.timestamp_ms < cutoff) break;
+            total += entry.isk;
+        }
+
+        const window_secs = @as(f32, @floatFromInt(self.window_ms)) / 1000.0;
+        return total / window_secs;
     }
 
     /// Wider than window_seconds so a checkpoint averages several yield cycles instead of ~1, avoiding an oscillating N/N+1 pulse at a steady rate.
@@ -473,8 +496,8 @@ pub const MiningWindow = struct {
             const start = @max(b, 0);
             const end = @min(b + range_buckets - 1, last_idx);
             if (start > end) continue;
-            diff[@intCast(start)] += @floatFromInt(entry.amount);
-            diff[@intCast(end + 1)] -= @floatFromInt(entry.amount);
+            diff[@intCast(start)] += entry.m3;
+            diff[@intCast(end + 1)] -= entry.m3;
         }
 
         const smoothing_secs = @as(f32, @floatFromInt(smoothing_ms)) / 1000.0;
@@ -485,11 +508,13 @@ pub const MiningWindow = struct {
         }
     }
 
-    /// Recompute rate, update last_units_per_sec. Returns true if value changed by >= 0.1.
+    /// Recompute m3 and ISK rates, updating both cached values. Returns true if the m3 rate changed by >= 0.1 -
+    /// the ISK rate is driven by the exact same set of window entries, so an unchanged m3 rate means an unchanged ISK rate too.
     pub fn refresh(self: *MiningWindow, now_ms: i64) bool {
         const new_rate = self.computeRate(now_ms);
-        const changed = @abs(new_rate - self.last_units_per_sec) >= 0.1;
-        self.last_units_per_sec = new_rate;
+        const changed = @abs(new_rate - self.last_m3_per_sec) >= 0.1;
+        self.last_m3_per_sec = new_rate;
+        self.last_isk_per_sec = self.computeIskRate(now_ms);
         return changed;
     }
 };
@@ -507,17 +532,18 @@ pub const MiningTracker = struct {
         self.base.deinit();
     }
 
-    /// Record a yield for character_name. Creates a new window on the first call per character.
+    /// Record a yield (m3 and its ISK value) for character_name. Creates a new window on the first call per character.
     pub fn addEntry(
         self: *MiningTracker,
         character_name: []const u8,
-        amount: u32,
+        m3: f32,
+        isk: f32,
         timestamp_ms: i64,
     ) !void {
         self.base.mutex.lock();
         defer self.base.mutex.unlock();
         const window = try self.base.getOrCreate(character_name);
-        window.addEntry(amount, timestamp_ms);
+        window.addEntry(m3, isk, timestamp_ms);
     }
 
     /// Remove a character's window (call on character logout to free the entry).
@@ -525,12 +551,22 @@ pub const MiningTracker = struct {
         self.base.removeCharacter(character_name);
     }
 
-    /// Return the last-refreshed mining rate for character_name (units/sec).
+    /// Return the last-refreshed mining rate for character_name (m3/sec).
     pub fn getRate(self: *MiningTracker, character_name: []const u8) f32 {
         self.base.mutex.lock();
         defer self.base.mutex.unlock();
         if (self.base.windows.get(character_name)) |window| {
-            return window.last_units_per_sec;
+            return window.last_m3_per_sec;
+        }
+        return 0.0;
+    }
+
+    /// Return the last-refreshed ISK rate for character_name (ISK/sec).
+    pub fn getIskRate(self: *MiningTracker, character_name: []const u8) f32 {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        if (self.base.windows.get(character_name)) |window| {
+            return window.last_isk_per_sec;
         }
         return 0.0;
     }
@@ -600,9 +636,19 @@ pub const MiningTracker = struct {
     }
 };
 
-/// Parse a `(mining)` gamelog line and extract the mined unit count.
-/// Returns null for residue/waste lines, lines with no `(mining)` tag, or unrecognised formats; handles both normal and critical ("an additional") bonus yields.
-pub fn parseMiningLine(line: []const u8) ?struct { amount: u32 } {
+/// Raw unit count plus the mined ore/ice/gas name, copied by value since parseMiningLine's buffer is stack-local.
+pub const ParsedMiningEvent = struct {
+    amount: u32,
+    name_buf: [64]u8 = undefined,
+    name_len: u8 = 0,
+
+    pub fn name(self: *const ParsedMiningEvent) []const u8 {
+        return self.name_buf[0..self.name_len];
+    }
+};
+
+/// Parses a `(mining)` gamelog line into the mined unit count and ore/ice/gas name; returns null for residue/waste lines, missing tags, or unrecognised formats.
+pub fn parseMiningLine(line: []const u8) ?ParsedMiningEvent {
     const mining_prefix = "(mining)";
     const mining_pos = std.mem.indexOf(u8, line, mining_prefix) orelse return null;
     const payload = std.mem.trimLeft(u8, line[mining_pos + mining_prefix.len ..], " \t");
@@ -628,10 +674,12 @@ pub fn parseMiningLine(line: []const u8) ?struct { amount: u32 } {
 
     var amount: u32 = 0;
     var found_digit = false;
-    for (cursor) |c| {
+    var digit_end: usize = 0;
+    for (cursor, 0..) |c, i| {
         if (c >= '0' and c <= '9') {
             amount = amount * 10 + (c - '0');
             found_digit = true;
+            digit_end = i + 1;
         } else if (found_digit) {
             break;
         } else {
@@ -640,7 +688,19 @@ pub fn parseMiningLine(line: []const u8) ?struct { amount: u32 } {
     }
     if (!found_digit or amount == 0) return null;
 
-    return .{ .amount = amount };
+    const units_of_kw = "units of ";
+    const rest = cursor[digit_end..];
+    const units_pos = std.mem.indexOf(u8, rest, units_of_kw) orelse return null;
+    const name_start = rest[units_pos + units_of_kw.len ..];
+    const name_end = std.mem.indexOfScalar(u8, name_start, '.') orelse name_start.len;
+    const ore_name = std.mem.trim(u8, name_start[0..name_end], " \t");
+    if (ore_name.len == 0) return null;
+
+    var result: ParsedMiningEvent = .{ .amount = amount };
+    if (ore_name.len > result.name_buf.len) return null;
+    @memcpy(result.name_buf[0..ore_name.len], ore_name);
+    result.name_len = @intCast(ore_name.len);
+    return result;
 }
 
 /// Strip HTML/XML tags from src into out_buf.  Returns the written slice.

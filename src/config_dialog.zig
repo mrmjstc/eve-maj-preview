@@ -138,6 +138,7 @@ pub fn main() !void {
     _ = try win.bind("getRunningWindows", getRunningWindows);
     _ = try win.bind("loadGlobalSettings", loadGlobalSettings);
     _ = try win.bind("saveGlobalSettings", saveGlobalSettings);
+    _ = try win.bind("fetchOrePrices", fetchOrePrices);
     _ = try win.bind("previewThumbnailConfig", previewThumbnailConfig);
     _ = try win.bind("suspendHotkeysForRecording", suspendHotkeysForRecording);
     _ = try win.bind("resumeHotkeysAfterRecording", resumeHotkeysAfterRecording);
@@ -457,47 +458,348 @@ fn resumeHotkeysAfterRecording(e: *webui.Event) void {
 
 const GLOBAL_SETTINGS_PATH = "profiles/global.settings.json";
 
+/// GlobalSettings only persists a price per ore (see OrePriceEntry); this rebuilds the full name/category/volumeM3/price view the dialog renders,
+/// filling each row's price from the persisted override if present or DEFAULT_ORE_TABLE's snapshot otherwise.
 fn loadGlobalSettings(e: *webui.Event) void {
     const allocator = gpa.allocator();
 
     slog.debug("Loading global settings from: {s}", .{GLOBAL_SETTINGS_PATH});
 
-    const file = std.fs.cwd().openFile(GLOBAL_SETTINGS_PATH, .{}) catch |err| {
-        slog.debug("Could not open global settings file ({}), returning empty defaults", .{err});
+    var settings = config_mod.GlobalSettings.load(allocator) catch |err| {
+        slog.warn("Failed to load global settings ({}), returning empty defaults", .{err});
         e.returnString("{}");
         return;
     };
-    defer file.close();
+    defer settings.deinit();
 
-    const content = file.readToEndAllocOptions(allocator, 1024 * 1024, null, .@"1", 0) catch |err| {
-        slog.warn("Failed to read global settings file: {}", .{err});
+    const base_json = settings.toJsonString(allocator) catch |err| {
+        slog.warn("Failed to serialize global settings: {}", .{err});
         e.returnString("{}");
         return;
     };
-    defer allocator.free(content);
+    defer allocator.free(base_json);
 
-    e.returnString(content);
+    var parsed = std.json.parseFromSlice(std.json.Value, allocator, base_json, .{}) catch |err| {
+        slog.warn("Failed to re-parse global settings for oreTable merge: {}", .{err});
+        e.returnString("{}");
+        return;
+    };
+    defer parsed.deinit();
+
+    if (parsed.value == .object) {
+        // Allocated from parsed's own arena, not the outer allocator, so parsed.deinit() below frees this too.
+        const arena_allocator = parsed.arena.allocator();
+        var display_ore = std.json.Array.init(arena_allocator);
+        for (config_mod.DEFAULT_ORE_TABLE) |default_entry| {
+            const price = settings.orePrice(default_entry.name) orelse default_entry.price;
+            var obj = std.json.ObjectMap.init(arena_allocator);
+            obj.put("name", .{ .string = default_entry.name }) catch continue;
+            obj.put("category", .{ .string = default_entry.category }) catch continue;
+            obj.put("volumeM3", .{ .float = default_entry.volumeM3 }) catch continue;
+            obj.put("price", .{ .float = price }) catch continue;
+            display_ore.append(.{ .object = obj }) catch continue;
+        }
+        parsed.value.object.put("oreTable", .{ .array = display_ore }) catch {};
+    }
+
+    const merged_json = std.json.Stringify.valueAlloc(allocator, parsed.value, .{}) catch |err| {
+        slog.warn("Failed to serialize merged global settings: {}", .{err});
+        e.returnString("{}");
+        return;
+    };
+    defer allocator.free(merged_json);
+
+    const json_z = allocator.dupeZ(u8, merged_json) catch |err| {
+        slog.warn("Failed to serialize merged global settings: {}", .{err});
+        e.returnString("{}");
+        return;
+    };
+    defer allocator.free(json_z);
+
+    e.returnString(json_z);
 }
 
+/// Parses the dialog's full-view payload (see loadGlobalSettings) back through GlobalSettings.Wire, which only keeps name/price from each oreTable
+/// entry (ignore_unknown_fields drops category/volumeM3) - so only prices ever reach disk, not the fixed defaults sent along for display.
 fn saveGlobalSettings(e: *webui.Event) void {
     const json_data = e.getString();
-    slog.debug("Saving global settings: {s}", .{json_data});
+    const allocator = gpa.allocator();
 
-    const file = std.fs.cwd().createFile(GLOBAL_SETTINGS_PATH, .{}) catch |err| {
-        slog.err("Failed to create global settings file: {}", .{err});
-        e.returnString("{\"success\": false, \"error\": \"Failed to create file\"}");
+    const parsed_value = std.json.parseFromSlice(std.json.Value, allocator, json_data, .{}) catch |err| {
+        slog.err("Failed to parse global settings JSON: {}", .{err});
+        e.returnString("{\"success\": false, \"error\": \"Invalid JSON\"}");
         return;
     };
-    defer file.close();
+    defer parsed_value.deinit();
 
-    file.writeAll(json_data) catch |err| {
-        slog.err("Failed to write global settings file: {}", .{err});
+    const parsed_wire = std.json.parseFromValue(config_mod.GlobalSettings.Wire, allocator, parsed_value.value, .{ .ignore_unknown_fields = true }) catch |err| {
+        slog.err("Failed to parse global settings into Wire: {}", .{err});
+        e.returnString("{\"success\": false, \"error\": \"Invalid settings format\"}");
+        return;
+    };
+    defer parsed_wire.deinit();
+
+    var settings = config_mod.GlobalSettings.fromWire(parsed_wire.value, allocator) catch |err| {
+        slog.err("Failed to build global settings from wire: {}", .{err});
+        e.returnString("{\"success\": false, \"error\": \"Failed to process settings\"}");
+        return;
+    };
+    defer settings.deinit();
+
+    settings.save() catch |err| {
+        slog.err("Failed to save global settings: {}", .{err});
         e.returnString("{\"success\": false, \"error\": \"Failed to write file\"}");
         return;
     };
 
     slog.info("Global settings saved successfully", .{});
     e.returnString("{\"success\": true}");
+}
+
+const ESI_BASE = "https://esi.evetech.net/latest";
+const ESI_JITA_REGION_ID = 10000002;
+const ESI_JITA_STATION_ID: i64 = 60003760;
+
+/// Spawns curl with the given args and returns captured stdout (caller frees) if it exits 0, else null.
+fn curlRun(allocator: std.mem.Allocator, args: []const []const u8) ?[]u8 {
+    var child = std.process.Child.init(args, allocator);
+    child.stdin_behavior = .Ignore;
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
+    child.create_no_window = true;
+
+    var stdout: std.ArrayList(u8) = .empty;
+    var stderr: std.ArrayList(u8) = .empty;
+    defer stderr.deinit(allocator);
+
+    child.spawn() catch |err| {
+        slog.warn("Failed to spawn curl: {}", .{err});
+        return null;
+    };
+    child.collectOutput(allocator, &stdout, &stderr, 4 * 1024 * 1024) catch |err| {
+        slog.warn("Failed to read curl output: {}", .{err});
+        _ = child.kill() catch {};
+        stdout.deinit(allocator);
+        return null;
+    };
+    const term = child.wait() catch |err| {
+        slog.warn("Failed to wait for curl: {}", .{err});
+        stdout.deinit(allocator);
+        return null;
+    };
+
+    switch (term) {
+        .Exited => |code| if (code != 0) {
+            slog.warn("curl exited with code {d}: {s}", .{ code, stderr.items });
+            stdout.deinit(allocator);
+            return null;
+        },
+        else => {
+            slog.warn("curl terminated abnormally", .{});
+            stdout.deinit(allocator);
+            return null;
+        },
+    }
+
+    return stdout.toOwnedSlice(allocator) catch {
+        stdout.deinit(allocator);
+        return null;
+    };
+}
+
+/// Resolves "Compressed <name>" -> ESI type_id for each ore name via the public (no-auth) ESI name resolver.
+/// Names with no market match are simply absent from the result. Caller frees both the keys and the map.
+fn resolveOreTypeIds(allocator: std.mem.Allocator, names: []const []const u8) !std.StringHashMap(i64) {
+    var result = std.StringHashMap(i64).init(allocator);
+    errdefer result.deinit();
+    if (names.len == 0) return result;
+
+    const prefixed = try allocator.alloc([]const u8, names.len);
+    defer {
+        for (prefixed) |p| allocator.free(p);
+        allocator.free(prefixed);
+    }
+    for (names, 0..) |name, i| {
+        prefixed[i] = try std.fmt.allocPrint(allocator, "Compressed {s}", .{name});
+    }
+
+    const body = try std.json.Stringify.valueAlloc(allocator, prefixed, .{});
+    defer allocator.free(body);
+
+    const stdout = curlRun(allocator, &.{
+        "curl", "-s", "-X", "POST",
+        "-H",   "User-Agent: EVE-Maj-Preview",
+        "-H",   "Content-Type: application/json",
+        "--data-binary", body,
+        ESI_BASE ++ "/universe/ids/?datasource=tranquility",
+    }) orelse return result;
+    defer allocator.free(stdout);
+
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, stdout, .{}) catch |err| {
+        slog.warn("Failed to parse ESI universe/ids response: {}", .{err});
+        return result;
+    };
+    defer parsed.deinit();
+
+    if (parsed.value != .object) return result;
+    const inventory_types = parsed.value.object.get("inventory_types") orelse return result;
+    if (inventory_types != .array) return result;
+
+    for (inventory_types.array.items) |item| {
+        if (item != .object) continue;
+        const id_val = item.object.get("id") orelse continue;
+        const name_val = item.object.get("name") orelse continue;
+        if (id_val != .integer or name_val != .string) continue;
+
+        const prefix = "Compressed ";
+        if (!std.mem.startsWith(u8, name_val.string, prefix)) continue;
+        const base_name = name_val.string[prefix.len..];
+
+        const key = try allocator.dupe(u8, base_name);
+        errdefer allocator.free(key);
+        try result.put(key, id_val.integer);
+    }
+
+    return result;
+}
+
+/// Highest current Jita 4-4 buy order price for type_id (what a seller would instantly receive), or null if unavailable/illiquid.
+/// Only reads page 1 of the region's buy orders - fine for these commodity ore types, whose buy-order counts stay well under the 1000-order page size in practice.
+fn fetchJitaBuyPrice(allocator: std.mem.Allocator, type_id: i64) ?f64 {
+    const url = std.fmt.allocPrint(allocator, ESI_BASE ++ "/markets/{d}/orders/?datasource=tranquility&order_type=buy&type_id={d}", .{ ESI_JITA_REGION_ID, type_id }) catch return null;
+    defer allocator.free(url);
+
+    const stdout = curlRun(allocator, &.{ "curl", "-s", "-H", "User-Agent: EVE-Maj-Preview", url }) orelse return null;
+    defer allocator.free(stdout);
+
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, stdout, .{}) catch return null;
+    defer parsed.deinit();
+    if (parsed.value != .array) return null;
+
+    var best: ?f64 = null;
+    for (parsed.value.array.items) |order| {
+        if (order != .object) continue;
+        const location_val = order.object.get("location_id") orelse continue;
+        if (location_val != .integer or location_val.integer != ESI_JITA_STATION_ID) continue;
+
+        const price_val = order.object.get("price") orelse continue;
+        const price: f64 = switch (price_val) {
+            .float => |f| f,
+            .integer => |i| @floatFromInt(i),
+            else => continue,
+        };
+        if (best == null or price > best.?) best = price;
+    }
+    return best;
+}
+
+/// Caps how many curl requests run at once for a price fetch - bounded so this stays polite to ESI rather than opening dozens of connections at once.
+const MAX_CONCURRENT_PRICE_REQUESTS = 8;
+
+const PriceLookup = struct {
+    name: []const u8,
+    type_id: i64,
+};
+
+const PriceFetchContext = struct {
+    allocator: std.mem.Allocator,
+    lookups: []const PriceLookup,
+    next_index: std.atomic.Value(usize),
+    results_mutex: std.Thread.Mutex = .{},
+    results: *std.json.ObjectMap,
+};
+
+/// Pulls lookups off ctx's shared index until exhausted; safe to run on several threads (including the caller's) at once.
+fn priceFetchWorker(ctx: *PriceFetchContext) void {
+    while (true) {
+        const i = ctx.next_index.fetchAdd(1, .monotonic);
+        if (i >= ctx.lookups.len) return;
+
+        const lookup = ctx.lookups[i];
+        const price = fetchJitaBuyPrice(ctx.allocator, lookup.type_id) orelse continue;
+
+        ctx.results_mutex.lock();
+        defer ctx.results_mutex.unlock();
+        ctx.results.put(lookup.name, .{ .float = price }) catch {};
+    }
+}
+
+/// Looks up each ore name's Jita buy price via its compressed variant (readily liquid there) using the public ESI API - no key required.
+/// Request body: JSON array of ore names. Response: JSON object of {name: price}, omitting names with no market match.
+fn fetchOrePrices(e: *webui.Event) void {
+    const allocator = gpa.allocator();
+    const json_data = e.getString();
+
+    const parsed_names = std.json.parseFromSlice([]const []const u8, allocator, json_data, .{}) catch |err| {
+        slog.warn("Failed to parse fetchOrePrices request: {}", .{err});
+        e.returnString("{}");
+        return;
+    };
+    defer parsed_names.deinit();
+
+    var type_ids = resolveOreTypeIds(allocator, parsed_names.value) catch |err| {
+        slog.warn("Failed to resolve ore type ids via ESI: {}", .{err});
+        e.returnString("{}");
+        return;
+    };
+    defer {
+        var key_it = type_ids.keyIterator();
+        while (key_it.next()) |k| allocator.free(k.*);
+        type_ids.deinit();
+    }
+
+    var results = std.json.ObjectMap.init(allocator);
+    defer results.deinit();
+
+    const lookups = allocator.alloc(PriceLookup, type_ids.count()) catch {
+        e.returnString("{}");
+        return;
+    };
+    defer allocator.free(lookups);
+    {
+        var idx: usize = 0;
+        var it = type_ids.iterator();
+        while (it.next()) |entry| : (idx += 1) {
+            lookups[idx] = .{ .name = entry.key_ptr.*, .type_id = entry.value_ptr.* };
+        }
+    }
+
+    if (lookups.len > 0) {
+        var ctx = PriceFetchContext{
+            .allocator = allocator,
+            .lookups = lookups,
+            .next_index = std.atomic.Value(usize).init(0),
+            .results = &results,
+        };
+
+        // Spawn up to MAX_CONCURRENT_PRICE_REQUESTS - 1 background workers; the calling thread pulls from the same queue as the last one, so a failed spawn just means less parallelism, not less work done.
+        const worker_count = @min(MAX_CONCURRENT_PRICE_REQUESTS, lookups.len);
+        var threads = [_]?std.Thread{null} ** (MAX_CONCURRENT_PRICE_REQUESTS - 1);
+        const background_workers = worker_count - 1;
+        for (threads[0..background_workers]) |*slot| {
+            slot.* = std.Thread.spawn(.{}, priceFetchWorker, .{&ctx}) catch |err| blk: {
+                slog.warn("Failed to spawn price-fetch worker: {}", .{err});
+                break :blk null;
+            };
+        }
+        priceFetchWorker(&ctx);
+        for (threads[0..background_workers]) |maybe_t| {
+            if (maybe_t) |t| t.join();
+        }
+    }
+
+    const json = std.json.Stringify.valueAlloc(allocator, std.json.Value{ .object = results }, .{}) catch {
+        e.returnString("{}");
+        return;
+    };
+    defer allocator.free(json);
+    const json_z = allocator.dupeZ(u8, json) catch {
+        e.returnString("{}");
+        return;
+    };
+    defer allocator.free(json_z);
+
+    e.returnString(json_z);
 }
 
 /// Single discovered EVE client, paired with its process creation time for sorting.

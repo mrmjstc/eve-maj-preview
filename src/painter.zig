@@ -109,6 +109,7 @@ const RenderSettings = struct {
     dps_incoming: f32 = 0.0,
     dps_outgoing: f32 = 0.0,
     mining_rate: f32 = 0.0,
+    mining_isk_rate: f32 = 0.0,
 
     // Included so a config-only color change still invalidates renderThumbnail's cache even when the DPS/rate value itself hasn't moved.
     dps_incoming_color: u32 = 0xFFFF4444,
@@ -142,6 +143,7 @@ pub const ThumbnailWindow = struct {
     last_incoming_dps: f32 = 0.0,
     last_outgoing_dps: f32 = 0.0,
     last_mining_rate: f32 = 0.0,
+    last_mining_isk_rate: f32 = 0.0,
 
     // Spark-chart bucket series; only the first config.*.chart.bucket_count entries are meaningful.
     mining_chart_buckets: [activity_tracker.MAX_CHART_BUCKETS]f32 = @splat(0),
@@ -503,6 +505,7 @@ pub const Painter = struct {
             a.dps_incoming == b.dps_incoming and
             a.dps_outgoing == b.dps_outgoing and
             a.mining_rate == b.mining_rate and
+            a.mining_isk_rate == b.mining_isk_rate and
             a.dps_incoming_color == b.dps_incoming_color and
             a.dps_outgoing_color == b.dps_outgoing_color and
             a.mining_color == b.mining_color and
@@ -1209,13 +1212,14 @@ pub const Painter = struct {
         };
     }
 
-    /// Updates mining rate for a character's overlay; buckets is this tick's spark-chart series, empty when disabled.
-    pub fn updateMiningForCharacter(self: *Painter, source_hwnd: win32.HWND, rate: f32, buckets: []const f32) void {
+    /// Updates mining rate (and its ISK/sec twin) for a character's overlay; buckets is this tick's spark-chart series, empty when disabled.
+    pub fn updateMiningForCharacter(self: *Painter, source_hwnd: win32.HWND, rate: f32, isk_rate: f32, buckets: []const f32) void {
         if (self.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
             // See updateDpsForCharacter for why buckets are compared separately from rate.
             const buckets_changed = buckets.len > 0 and !std.mem.eql(f32, thumbnail.mining_chart_buckets[0..buckets.len], buckets);
-            if (thumbnail.last_mining_rate != rate or buckets_changed) {
+            if (thumbnail.last_mining_rate != rate or thumbnail.last_mining_isk_rate != isk_rate or buckets_changed) {
                 thumbnail.last_mining_rate = rate;
+                thumbnail.last_mining_isk_rate = isk_rate;
                 if (buckets_changed) {
                     @memcpy(thumbnail.mining_chart_buckets[0..buckets.len], buckets);
                     updateChartScale(&thumbnail.mining_chart_scale, buckets);
@@ -2206,6 +2210,25 @@ fn clearPixels(pixels: [*]u32, count: usize) void {
     @memset(pixels[0..count], 0);
 }
 
+const HorizontalAlign = enum { left, center, right };
+
+fn horizontalAlignOf(position: TextPosition) HorizontalAlign {
+    return switch (position) {
+        .TopLeft, .LeftCenter, .BottomLeft => .left,
+        .TopCenter, .Center, .BottomCenter => .center,
+        .TopRight, .RightCenter, .BottomRight => .right,
+    };
+}
+
+/// x for a line of `line_width` so it sits flush against whichever edge `alignment` anchors to, within a block of `block_width` starting at `block_x`.
+fn alignedLineX(block_x: i32, block_width: usize, line_width: usize, alignment: HorizontalAlign) i32 {
+    return switch (alignment) {
+        .left => block_x,
+        .center => block_x + @as(i32, @intCast((block_width -| line_width) / 2)),
+        .right => block_x + @as(i32, @intCast(block_width -| line_width)),
+    };
+}
+
 fn calculateTextPosition(
     position: TextPosition,
     text_width: usize,
@@ -2556,6 +2579,18 @@ fn plotLine(pixels: [*]u32, width: usize, height: usize, x0: i64, y0: i64, x1: i
             err += dx;
             y += sy;
         }
+    }
+}
+
+/// Abbreviates an ISK value with k/m suffixes (e.g. 2_450_000.0 -> "2.5m", 200_000.0 -> "200k", 850.0 -> "850").
+fn formatIskAbbrev(buf: []u8, value: f32) []const u8 {
+    const abs_value = @abs(value);
+    if (abs_value >= 1_000_000.0) {
+        return std.fmt.bufPrint(buf, "{d:.1}m", .{value / 1_000_000.0}) catch "?";
+    } else if (abs_value >= 1_000.0) {
+        return std.fmt.bufPrint(buf, "{d:.0}k", .{value / 1_000.0}) catch "?";
+    } else {
+        return std.fmt.bufPrint(buf, "{d:.0}", .{value}) catch "?";
     }
 }
 
@@ -2938,25 +2973,54 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     }
 
     // Measure and fill mining rate text background BEFORE the border so the border renders on top.
+    // ISK rate (if shown) stacks as a second GDI-single-line text; both lines share one background width so text can align to mining_cfg.position's edge without a gap.
     var mining_buf: [32]u8 = undefined;
+    var mining_isk_buf: [24]u8 = undefined;
     var mining_text: []const u8 = "";
+    var mining_isk_text: []const u8 = "";
     var mining_pos: TextPos = .{ .x = 0, .y = 0 };
+    var mining_isk_pos: TextPos = .{ .x = 0, .y = 0 };
     var mining_dims: TextDimensions = .{ .width = 0, .height = 0 };
+    var mining_isk_dims: TextDimensions = .{ .width = 0, .height = 0 };
+    var mining_block_x: i32 = 0;
+    var mining_block_width: usize = 0;
     var mining_font: ?win32.HFONT = null;
     if (config.mining.enabled and thumbnail.last_mining_rate > 0) {
         const mining_cfg = &config.mining;
         const mf = try painter.getCachedFont(.mining, settings.text_font_name, mining_cfg.font_size, settings.text_font_weight);
         mining_font = mf;
         _ = win32.SelectObject(overlay.mem_dc, mf);
-        // Displayed per-minute: ice yields ~1 unit per cycle, which rounds to "0" at u/s precision but reads fine per minute.
+        // Displayed per-minute rather than per-second so low-yield ore doesn't round to "0".
         const rate_per_min = thumbnail.last_mining_rate * 60.0;
         mining_text = if (rate_per_min < 10.0)
-            std.fmt.bufPrint(&mining_buf, "M: {d:.1} u/min", .{rate_per_min}) catch "M: ---"
+            std.fmt.bufPrint(&mining_buf, "M: {d:.1} m3/min", .{rate_per_min}) catch "M: ---"
         else
-            std.fmt.bufPrint(&mining_buf, "M: {d:.0} u/min", .{rate_per_min}) catch "M: ---";
+            std.fmt.bufPrint(&mining_buf, "M: {d:.0} m3/min", .{rate_per_min}) catch "M: ---";
         mining_dims = measureText(overlay.mem_dc, mining_text);
-        mining_pos = calculateTextPosition(mining_cfg.position, mining_dims.width, mining_dims.height, overlay.width, overlay.height, mining_cfg.offset_x, mining_cfg.offset_y);
-        fillTextBackground(overlay.pixels, overlay.width, overlay.height, mining_pos.x, mining_pos.y, mining_dims.width, mining_dims.height, settings.text_bg_color);
+
+        if (mining_cfg.show_isk_rate) {
+            const period_secs: f32 = if (mining_cfg.isk_rate_unit == .hour) 3600.0 else 60.0;
+            const unit_suffix: []const u8 = if (mining_cfg.isk_rate_unit == .hour) "hr" else "min";
+            var isk_buf: [16]u8 = undefined;
+            const isk_abbrev = formatIskAbbrev(&isk_buf, thumbnail.last_mining_isk_rate * period_secs);
+            mining_isk_text = std.fmt.bufPrint(&mining_isk_buf, "{s} ISK/{s}", .{ isk_abbrev, unit_suffix }) catch "";
+            mining_isk_dims = measureText(overlay.mem_dc, mining_isk_text);
+        }
+
+        // Anchored as one combined block so Bottom*/Center* positions account for both lines' height, not just the first; each line then just stacks top-down from there.
+        mining_block_width = @max(mining_dims.width, mining_isk_dims.width);
+        const combined_height = mining_dims.height + mining_isk_dims.height;
+        const anchor = calculateTextPosition(mining_cfg.position, mining_block_width, combined_height, overlay.width, overlay.height, mining_cfg.offset_x, mining_cfg.offset_y);
+        mining_block_x = anchor.x;
+
+        const h_align = horizontalAlignOf(mining_cfg.position);
+        mining_pos = .{ .x = alignedLineX(anchor.x, mining_block_width, mining_dims.width, h_align), .y = anchor.y };
+        mining_isk_pos = .{ .x = alignedLineX(anchor.x, mining_block_width, mining_isk_dims.width, h_align), .y = anchor.y + @as(i32, @intCast(mining_dims.height)) };
+
+        fillTextBackground(overlay.pixels, overlay.width, overlay.height, mining_block_x, mining_pos.y, mining_block_width, mining_dims.height, settings.text_bg_color);
+        if (mining_isk_text.len > 0) {
+            fillTextBackground(overlay.pixels, overlay.width, overlay.height, mining_block_x, mining_isk_pos.y, mining_block_width, mining_isk_dims.height, settings.text_bg_color);
+        }
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
 
@@ -3034,6 +3098,9 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         const mf = mining_font.?;
         _ = win32.SelectObject(overlay.mem_dc, mf);
         renderText(overlay.mem_dc, mining_text, mining_pos.x, mining_pos.y, config.mining.color);
+        if (mining_isk_text.len > 0) {
+            renderText(overlay.mem_dc, mining_isk_text, mining_isk_pos.x, mining_isk_pos.y, config.mining.color);
+        }
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
 
@@ -3082,7 +3149,10 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         }
     }
     if (mining_text.len > 0) {
-        gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, mining_pos.x, mining_pos.y, mining_dims.width, mining_dims.height);
+        gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, mining_block_x, mining_pos.y, mining_block_width, mining_dims.height);
+    }
+    if (mining_isk_text.len > 0) {
+        gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, mining_block_x, mining_isk_pos.y, mining_block_width, mining_isk_dims.height);
     }
     if (icon_font != null) {
         gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, icon_pos.x, icon_pos.y, icon_dims.width, icon_dims.height);
@@ -3305,6 +3375,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .dps_incoming = if (cfg.combat.enabled) thumbnail.last_incoming_dps else 0.0,
         .dps_outgoing = if (cfg.combat.enabled) thumbnail.last_outgoing_dps else 0.0,
         .mining_rate = if (cfg.mining.enabled) thumbnail.last_mining_rate else 0.0,
+        .mining_isk_rate = if (cfg.mining.enabled and cfg.mining.show_isk_rate) thumbnail.last_mining_isk_rate else 0.0,
         .dps_incoming_color = cfg.combat.incoming_color,
         .dps_outgoing_color = cfg.combat.outgoing_color,
         .mining_color = cfg.mining.color,

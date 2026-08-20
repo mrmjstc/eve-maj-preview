@@ -1413,7 +1413,7 @@
                 <div class="panel-content" data-panel="mining">
                     <div class="section">
                         <h3 data-i18n="tab.mining.section.mining-rate-overlay.heading">Text Overlays</h3>
-                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.mining.section.mining-rate-overlay.hint">Displays units mined per second on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.mining.section.mining-rate-overlay.hint">Displays m3 mined per second on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
 
                         <label>
                             <input type="checkbox" id="miningEnabled" onchange="toggleMiningOptions()">
@@ -1453,6 +1453,20 @@
 
                             <label for="miningFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
                             <input type="number" id="miningFontSize" min="6" max="72">
+
+                            <label>
+                                <input type="checkbox" id="miningShowIskRate" onchange="toggleMiningOptions()">
+                                <span class="label-body" data-i18n="field.miningShowIskRate.label">Show ISK Rate</span>
+                            </label>
+                            <p class="hint" data-i18n="field.miningShowIskRate.hint">Appends an abbreviated ISK/min or ISK/hour estimate next to the m3/min text, using each ore's Price from the ore/ice/gas table below.</p>
+
+                            <div id="miningIskRateOptions">
+                                <label for="miningIskRateUnit" data-i18n="field.miningIskRateUnit.label">ISK Rate Unit</label>
+                                <select id="miningIskRateUnit">
+                                    <option value="minute" data-i18n="field.miningIskRateUnit.minute">Per Minute</option>
+                                    <option value="hour" data-i18n="field.miningIskRateUnit.hour">Per Hour</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -1539,6 +1553,24 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="section">
+                        <h3>Ore / Ice / Gas Prices</h3>
+                        <p class="hint" style="margin-bottom: 8px;">"Fetch Prices" pulls current Jita buy prices from EVE's market.</p>
+
+                        <table class="notification-types-table">
+                            <thead>
+                                <tr>
+                                    <th class="category-col"></th>
+                                    <th class="event-type-col">Name</th>
+                                    <th>Price (ISK)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="oreTableBody"></tbody>
+                        </table>
+
+                        <button type="button" id="fetchOrePricesBtn" class="full-width-btn" onclick="fetchOrePrices()">↻ Fetch Prices</button>
                     </div>
                 </div>
 

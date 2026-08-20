@@ -68,6 +68,7 @@ function refreshDynamicSections() {
     saveQuickGroups();
     saveNotificationTypes();
     saveProfileSwitchHotkeys();
+    saveOreTable();
 
     populateWindowFilters();
     populateSystemColors();
@@ -76,6 +77,7 @@ function refreshDynamicSections() {
     populateQuickGroups();
     populateNotificationTypes();
     populateProfileSwitchHotkeys();
+    populateOreTable();
 }
 
 window.addEventListener('error', (event) => {
@@ -333,6 +335,8 @@ const CONFIG_SCHEMA = [
     { id: 'miningFontSize', path: 'mining.font_size' },
     { id: 'miningOffsetX', path: 'mining.offset_x' },
     { id: 'miningOffsetY', path: 'mining.offset_y' },
+    { id: 'miningShowIskRate', path: 'mining.show_isk_rate' },
+    { id: 'miningIskRateUnit', path: 'mining.isk_rate_unit' },
     { id: 'miningChartEnabled', path: 'mining.chart.enabled' },
     { id: 'miningChartShowBackground', path: 'mining.chart.show_background' },
     { id: 'miningChartPosition', path: 'mining.chart.position' },
@@ -3213,6 +3217,7 @@ async function saveConfigurationImpl() {
         saveQuickGroups();
         saveNotificationTypes();
         saveProfileSwitchHotkeys();
+        saveOreTable();
 
         if (!currentGlobalSettings) currentGlobalSettings = {};
         currentGlobalSettings.logLevel = getFieldValue('logLevel');
@@ -5364,6 +5369,9 @@ async function loadGlobalSettingsFromBackend() {
     if (!currentGlobalSettings.profileSwitchHotkeys) currentGlobalSettings.profileSwitchHotkeys = [];
     await populateProfileSwitchHotkeys();
 
+    if (!currentGlobalSettings.oreTable) currentGlobalSettings.oreTable = [];
+    populateOreTable();
+
     setFieldValue('logLevel', currentGlobalSettings.logLevel || 'err');
     setFieldValue('languageSelect', currentGlobalSettings.language || 'en');
     setFieldValue('hotkeyNextProfile', vkHexToFriendly(currentGlobalSettings.hotkeyNextProfile));
@@ -5515,6 +5523,104 @@ function saveProfileSwitchHotkeys() {
         if (target) entry.targetProfile = target.value || '';
         if (hotkey) entry.hotkey = hotkey.value || null;
     });
+}
+
+const ORE_CATEGORIES = ['Ore', 'Ice', 'Moons', 'Gas'];
+
+function oreCategoryRank(category) {
+    const i = ORE_CATEGORIES.indexOf(category);
+    return i === -1 ? ORE_CATEGORIES.length : i;
+}
+
+// Price is the only user-editable field shown - name, category, and m3/unit are still tracked internally (see OreEntry in config.zig) and fixed, but category still drives the grouped/sorted display below (same rowspan'd-label + separator-border technique as the Event Alerts table's populateNotificationTypes).
+// Name is deliberately not editable: chatlog.zig matches mined-ore log lines against this exact string, so renaming a row would silently break that ore's lookup.
+function populateOreTable() {
+    const tbody = document.getElementById('oreTableBody');
+    if (!tbody) return;
+
+    const entries = currentGlobalSettings?.oreTable || [];
+
+    const displayOrder = entries.map((entry, index) => ({ entry, index }));
+    displayOrder.sort((a, b) => {
+        const rankDiff = oreCategoryRank(a.entry.category) - oreCategoryRank(b.entry.category);
+        return rankDiff !== 0 ? rankDiff : a.index - b.index;
+    });
+
+    const categoryRowCounts = {};
+    displayOrder.forEach(({ entry }) => {
+        const category = entry.category || 'Ore';
+        categoryRowCounts[category] = (categoryRowCounts[category] || 0) + 1;
+    });
+
+    tbody.innerHTML = '';
+    let lastCategory = null;
+    displayOrder.forEach(({ entry, index }) => {
+        const category = entry.category || 'Ore';
+        const isFirstInCategory = category !== lastCategory;
+        const isFirstCategoryOverall = lastCategory === null;
+        lastCategory = category;
+
+        const row = document.createElement('tr');
+        if (isFirstInCategory && !isFirstCategoryOverall) row.className = 'category-separator';
+
+        row.innerHTML = `
+            ${isFirstInCategory ? `<td rowspan="${categoryRowCounts[category]}" class="category-cell"><span class="category-cell-label">${escapeHtml(category)}</span></td>` : ''}
+            <td class="event-name-cell">${escapeHtml(entry.name || '')}</td>
+            <td><input type="number" class="ore-price-input" id="ore_${index}_price" value="${entry.price ?? 0}" min="0" step="0.01"></td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function saveOreTable() {
+    if (!currentGlobalSettings?.oreTable) return;
+
+    currentGlobalSettings.oreTable.forEach((entry, index) => {
+        const price = document.getElementById(`ore_${index}_price`);
+
+        if (price) entry.price = parseFloat(price.value) || 0;
+    });
+}
+
+let isFetchingOrePrices = false;
+
+// Looks up each row's Jita buy price via ESI (public, no key needed) - see fetchOrePrices in config_dialog.zig for the actual request.
+async function fetchOrePrices() {
+    if (isFetchingOrePrices) return;
+    if (!currentGlobalSettings?.oreTable?.length) return;
+
+    saveOreTable();
+    const names = currentGlobalSettings.oreTable.map(e => e.name).filter(n => n);
+    if (names.length === 0) return;
+
+    isFetchingOrePrices = true;
+    const btn = document.getElementById('fetchOrePricesBtn');
+    if (btn) btn.disabled = true;
+    showStatus(`Fetching ${names.length} price(s) from ESI...`, 'info');
+
+    try {
+        const response = await webui.call('fetchOrePrices', JSON.stringify(names));
+        const prices = JSON.parse(response);
+
+        let updated = 0;
+        currentGlobalSettings.oreTable.forEach(entry => {
+            if (Object.prototype.hasOwnProperty.call(prices, entry.name)) {
+                entry.price = prices[entry.name];
+                updated++;
+            }
+        });
+
+        markAsChanged();
+        populateOreTable();
+        showStatus(`Updated ${updated} of ${names.length} price(s) from ESI.`, updated > 0 ? 'success' : 'error');
+    } catch (error) {
+        logError('Failed to fetch ore prices:', error);
+        showStatus('Failed to fetch prices from ESI.', 'error');
+    } finally {
+        isFetchingOrePrices = false;
+        if (btn) btn.disabled = false;
+        setTimeout(() => hideStatus(), 4000);
+    }
 }
 
 const NOTIFICATION_TYPES = [
@@ -6050,6 +6156,7 @@ function toggleMiningOptions() {
     applyOptionToggle('miningEnabled', 'miningOptions');
     applyOptionToggle('miningEnabled', 'miningAlertsOptions');
     applyOptionToggle('miningEnabled', 'miningChartOptions');
+    applyOptionToggle('miningShowIskRate', 'miningIskRateOptions');
 }
 
 async function browseChatlogDir() {

@@ -99,6 +99,132 @@ pub const StringMapWire = struct {
     }
 };
 
+/// A default ore/ice/gas reference row (name, category, m3/unit, fallback price). Not persisted itself - see OrePriceEntry for what GlobalSettings actually stores.
+pub const OreEntry = struct {
+    name: []const u8,
+    category: []const u8,
+    volumeM3: f64,
+    price: f64 = 0,
+
+    pub const Wire = struct {
+        name: []const u8,
+        category: []const u8 = "Ore",
+        volumeM3: f64,
+        price: f64 = 0,
+    };
+};
+
+/// The only per-ore state GlobalSettings actually persists - name/category/volumeM3 come from DEFAULT_ORE_TABLE instead, since those never vary by user.
+pub const OrePriceEntry = struct {
+    name: []const u8,
+    price: f64 = 0,
+
+    pub fn deinit(self: *OrePriceEntry, allocator: std.mem.Allocator) void {
+        allocator.free(self.name);
+    }
+
+    pub const Wire = struct {
+        name: []const u8,
+        price: f64 = 0,
+    };
+
+    pub fn toWire(self: OrePriceEntry) Wire {
+        return .{ .name = self.name, .price = self.price };
+    }
+
+    pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !OrePriceEntry {
+        return .{ .name = try allocator.dupe(u8, w.name), .price = w.price };
+    }
+};
+
+/// Fallback prices are a Jita snapshot and will drift - re-fetch via "Fetch Prices" for current numbers.
+pub const DEFAULT_ORE_TABLE = [_]OreEntry.Wire{
+    .{ .name = "Veldspar", .category = "Ore", .volumeM3 = 0.10, .price = 11.53 },
+    .{ .name = "Mordunium", .category = "Ore", .volumeM3 = 0.10, .price = 12.83 },
+    .{ .name = "Scordite", .category = "Ore", .volumeM3 = 0.15, .price = 22.05 },
+    .{ .name = "Pyroxeres", .category = "Ore", .volumeM3 = 0.30, .price = 32 },
+    .{ .name = "Plagioclase", .category = "Ore", .volumeM3 = 0.35, .price = 33.4 },
+    .{ .name = "Omber", .category = "Ore", .volumeM3 = 0.60, .price = 112.5 },
+    .{ .name = "Ytirium", .category = "Ore", .volumeM3 = 0.60, .price = 350.9 },
+    .{ .name = "Griemeer", .category = "Ore", .volumeM3 = 0.80, .price = 111.1 },
+    .{ .name = "Kernite", .category = "Ore", .volumeM3 = 1.20, .price = 207 },
+    .{ .name = "Kylixium", .category = "Ore", .volumeM3 = 1.20, .price = 252.5 },
+    .{ .name = "Jaspet", .category = "Ore", .volumeM3 = 2.00, .price = 374.5 },
+    .{ .name = "Hedbergite", .category = "Ore", .volumeM3 = 3.00, .price = 627.6 },
+    .{ .name = "Hemorphite", .category = "Ore", .volumeM3 = 3.00, .price = 808.9 },
+    .{ .name = "Talassonite", .category = "Ore", .volumeM3 = 3.00, .price = 8421 },
+    .{ .name = "Nocxite", .category = "Ore", .volumeM3 = 4.00, .price = 605.3 },
+    .{ .name = "Gneiss", .category = "Ore", .volumeM3 = 5.00, .price = 2100 },
+    .{ .name = "Hezorime", .category = "Ore", .volumeM3 = 5.00, .price = 957.1 },
+    .{ .name = "Rakovene", .category = "Ore", .volumeM3 = 5.00, .price = 7520 },
+    .{ .name = "Ueganite", .category = "Ore", .volumeM3 = 5.00, .price = 900 },
+    .{ .name = "Bezdnacine", .category = "Ore", .volumeM3 = 8.00, .price = 9220 },
+    .{ .name = "Dark Ochre", .category = "Ore", .volumeM3 = 8.00, .price = 4200 },
+
+    .{ .name = "Bitumens", .category = "Moons", .volumeM3 = 10.00, .price = 1164 },
+    .{ .name = "Evaporite Deposits", .category = "Moons", .volumeM3 = 10.00, .price = 0 },
+    .{ .name = "Sylvite", .category = "Moons", .volumeM3 = 10.00, .price = 801 },
+    .{ .name = "Cobaltite", .category = "Moons", .volumeM3 = 10.00, .price = 285.8 },
+    .{ .name = "Euxenite", .category = "Moons", .volumeM3 = 10.00, .price = 900.6 },
+    .{ .name = "Scheelite", .category = "Moons", .volumeM3 = 10.00, .price = 253.1 },
+    .{ .name = "Titanite", .category = "Moons", .volumeM3 = 10.00, .price = 211.1 },
+    .{ .name = "Chromite", .category = "Moons", .volumeM3 = 10.00, .price = 1611 },
+    .{ .name = "Otavite", .category = "Moons", .volumeM3 = 10.00, .price = 1439 },
+    .{ .name = "Sperrylite", .category = "Moons", .volumeM3 = 10.00, .price = 1548 },
+    .{ .name = "Vanadinite", .category = "Moons", .volumeM3 = 10.00, .price = 634.6 },
+    .{ .name = "Carnotite", .category = "Moons", .volumeM3 = 10.00, .price = 4706 },
+    .{ .name = "Cinnabar", .category = "Moons", .volumeM3 = 10.00, .price = 600.3 },
+    .{ .name = "Pollucite", .category = "Moons", .volumeM3 = 10.00, .price = 1644 },
+    .{ .name = "Zircon", .category = "Moons", .volumeM3 = 10.00, .price = 439.7 },
+    .{ .name = "Monazite", .category = "Moons", .volumeM3 = 10.00, .price = 9800 },
+    .{ .name = "Loparite", .category = "Moons", .volumeM3 = 10.00, .price = 8060 },
+    .{ .name = "Xenotime", .category = "Moons", .volumeM3 = 10.00, .price = 8166 },
+    .{ .name = "Ytterbite", .category = "Moons", .volumeM3 = 10.00, .price = 4728 },
+    .{ .name = "Arkonor", .category = "Ore", .volumeM3 = 16.00, .price = 4264 },
+    .{ .name = "Bistot", .category = "Ore", .volumeM3 = 16.00, .price = 3613 },
+    .{ .name = "Crokite", .category = "Ore", .volumeM3 = 16.00, .price = 5300 },
+    .{ .name = "Ducinium", .category = "Ore", .volumeM3 = 16.00, .price = 3629 },
+    .{ .name = "Eifyrium", .category = "Ore", .volumeM3 = 16.00, .price = 2889 },
+    .{ .name = "Spodumain", .category = "Ore", .volumeM3 = 16.00, .price = 8507 },
+    .{ .name = "Mercoxit", .category = "Ore", .volumeM3 = 40.00, .price = 18460 },
+    .{ .name = "Prismaticite", .category = "Ore", .volumeM3 = 40.00, .price = 18740 },
+
+    .{ .name = "Fullerite-C50", .category = "Gas", .volumeM3 = 1.00, .price = 4707 },
+    .{ .name = "Fullerite-C60", .category = "Gas", .volumeM3 = 1.00, .price = 4683 },
+    .{ .name = "Fullerite-C70", .category = "Gas", .volumeM3 = 1.00, .price = 8211 },
+    .{ .name = "Fullerite-C28", .category = "Gas", .volumeM3 = 2.00, .price = 13100 },
+    .{ .name = "Fullerite-C72", .category = "Gas", .volumeM3 = 2.00, .price = 6990 },
+    .{ .name = "Fullerite-C84", .category = "Gas", .volumeM3 = 2.00, .price = 9896 },
+    .{ .name = "Fullerite-C32", .category = "Gas", .volumeM3 = 5.00, .price = 20000 },
+    .{ .name = "Fullerite-C320", .category = "Gas", .volumeM3 = 5.00, .price = 32400 },
+    .{ .name = "Fullerite-C540", .category = "Gas", .volumeM3 = 10.00, .price = 47410 },
+    .{ .name = "Amber Cytoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 30600 },
+    .{ .name = "Azure Cytoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 19150 },
+    .{ .name = "Celadon Cytoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 26130 },
+    .{ .name = "Golden Cytoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 36220 },
+    .{ .name = "Lime Cytoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 31100 },
+    .{ .name = "Malachite Cytoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 133300 },
+    .{ .name = "Vermillion Cytoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 25120 },
+    .{ .name = "Viridian Cytoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 51080 },
+    .{ .name = "Amber Mykoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 95230 },
+    .{ .name = "Azure Mykoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 48370 },
+    .{ .name = "Celadon Mykoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 83500 },
+    .{ .name = "Golden Mykoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 97940 },
+    .{ .name = "Lime Mykoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 77980 },
+    .{ .name = "Malachite Mykoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 88850 },
+    .{ .name = "Vermillion Mykoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 77970 },
+    .{ .name = "Viridian Mykoserocin", .category = "Gas", .volumeM3 = 10.00, .price = 91090 },
+
+    .{ .name = "Clear Icicle", .category = "Ice", .volumeM3 = 1000.00, .price = 234300 },
+    .{ .name = "Blue Ice", .category = "Ice", .volumeM3 = 1000.00, .price = 187200 },
+    .{ .name = "Glacial Mass", .category = "Ice", .volumeM3 = 1000.00, .price = 170800 },
+    .{ .name = "White Glaze", .category = "Ice", .volumeM3 = 1000.00, .price = 196600 },
+    .{ .name = "Dark Glitter", .category = "Ice", .volumeM3 = 1000.00, .price = 332000 },
+    .{ .name = "Gelidus", .category = "Ice", .volumeM3 = 1000.00, .price = 350100 },
+    .{ .name = "Krystallos", .category = "Ice", .volumeM3 = 1000.00, .price = 592500 },
+    .{ .name = "Glare Crust", .category = "Ice", .volumeM3 = 1000.00, .price = 220200 },
+};
+
 /// Binding of a hotkey to a specific target profile ("quick switch")
 pub const ProfileSwitchHotkey = struct {
     hotkey: ?u32,
@@ -137,6 +263,7 @@ pub const GlobalSettings = struct {
     characterIdMap: std.StringHashMap([]const u8),
     disableUpdateChecks: bool,
     language: []const u8,
+    oreTable: std.ArrayList(OrePriceEntry),
     needs_free: bool,
 
     pub fn init(allocator: std.mem.Allocator) GlobalSettings {
@@ -155,6 +282,7 @@ pub const GlobalSettings = struct {
             .characterIdMap = std.StringHashMap([]const u8).init(allocator),
             .disableUpdateChecks = false,
             .language = "en",
+            .oreTable = std.ArrayList(OrePriceEntry).empty,
             .needs_free = false,
         };
     }
@@ -166,11 +294,15 @@ pub const GlobalSettings = struct {
         if (self.needs_free and self.language.len > 0) {
             self.allocator.free(self.language);
         }
-
         for (self.profileSwitchHotkeys.items) |*psh| {
             psh.deinit(self.allocator);
         }
         self.profileSwitchHotkeys.deinit(self.allocator);
+
+        for (self.oreTable.items) |*entry| {
+            entry.deinit(self.allocator);
+        }
+        self.oreTable.deinit(self.allocator);
 
         var iter = self.characterIdMap.iterator();
         while (iter.next()) |entry| {
@@ -178,6 +310,26 @@ pub const GlobalSettings = struct {
             self.allocator.free(entry.value_ptr.*);
         }
         self.characterIdMap.deinit();
+    }
+
+    /// Volume never varies by user, so this reads DEFAULT_ORE_TABLE directly rather than the persisted oreTable.
+    pub fn oreVolume(self: *const GlobalSettings, name: []const u8) ?f64 {
+        _ = self;
+        for (DEFAULT_ORE_TABLE) |entry| {
+            if (std.mem.eql(u8, entry.name, name)) return entry.volumeM3;
+        }
+        return null;
+    }
+
+    /// Checks the persisted price override first, then falls back to DEFAULT_ORE_TABLE's snapshot price.
+    pub fn orePrice(self: *const GlobalSettings, name: []const u8) ?f64 {
+        for (self.oreTable.items) |entry| {
+            if (std.mem.eql(u8, entry.name, name)) return entry.price;
+        }
+        for (DEFAULT_ORE_TABLE) |entry| {
+            if (std.mem.eql(u8, entry.name, name)) return entry.price;
+        }
+        return null;
     }
 
     /// Load global settings from file, falling back to defaults on any missing/unreadable/malformed input, matching Config's load policy (see loadProfileFromJson).
@@ -339,11 +491,15 @@ pub const GlobalSettings = struct {
         characterIdMap: StringMapWire = .{},
         disableUpdateChecks: bool = false,
         language: []const u8 = "en",
+        oreTable: []const OrePriceEntry.Wire = &.{},
     };
 
     pub fn toWire(self: *const GlobalSettings, allocator: std.mem.Allocator) !Wire {
         const psh = try allocator.alloc(ProfileSwitchHotkey.Wire, self.profileSwitchHotkeys.items.len);
         for (self.profileSwitchHotkeys.items, 0..) |item, i| psh[i] = item.toWire();
+
+        const ore = try allocator.alloc(OrePriceEntry.Wire, self.oreTable.items.len);
+        for (self.oreTable.items, 0..) |item, i| ore[i] = item.toWire();
 
         const entries = try allocator.alloc(StringMapWire.Entry, self.characterIdMap.count());
         var it = self.characterIdMap.iterator();
@@ -366,6 +522,7 @@ pub const GlobalSettings = struct {
             .characterIdMap = .{ .entries = entries },
             .disableUpdateChecks = self.disableUpdateChecks,
             .language = self.language,
+            .oreTable = ore,
         };
     }
 
@@ -389,6 +546,10 @@ pub const GlobalSettings = struct {
 
         for (w.profileSwitchHotkeys) |item_wire| {
             try settings.profileSwitchHotkeys.append(allocator, try ProfileSwitchHotkey.fromWire(item_wire, allocator));
+        }
+
+        for (w.oreTable) |item_wire| {
+            try settings.oreTable.append(allocator, try OrePriceEntry.fromWire(item_wire, allocator));
         }
 
         for (w.characterIdMap.entries) |entry| {
@@ -887,7 +1048,7 @@ pub const CombatConfig = struct {
     }
 };
 
-/// Small spark line showing recent history for a rate-like value (mining units/sec, incoming/outgoing DPS); no color field - reuses the parent's color and the global text background.
+/// Small spark line showing recent history for a rate-like value (mining m3/sec, incoming/outgoing DPS); no color field - reuses the parent's color and the global text background.
 pub const SparkChartConfig = struct {
     enabled: bool = false,
     /// Percentage of the thumbnail width, not a pixel count (unlike height).
@@ -964,6 +1125,8 @@ pub const SparkChartConfig = struct {
     }
 };
 
+pub const IskRateUnit = enum { minute, hour };
+
 pub const MiningConfig = struct {
     enabled: bool = false,
     window_seconds: u32 = 60,
@@ -978,6 +1141,8 @@ pub const MiningConfig = struct {
     idle_alert_threshold: u32 = 1,
     stopped_alert_enabled: bool = false,
     stopped_alert_window_seconds: u32 = 60,
+    show_isk_rate: bool = false,
+    isk_rate_unit: IskRateUnit = .minute,
     chart: SparkChartConfig = .{},
 
     pub const WINDOW_SECONDS_MIN: u32 = 1;
@@ -1029,6 +1194,8 @@ pub const MiningConfig = struct {
         idle_alert_threshold: u32 = (MiningConfig{}).idle_alert_threshold,
         stopped_alert_enabled: bool = (MiningConfig{}).stopped_alert_enabled,
         stopped_alert_window_seconds: u32 = (MiningConfig{}).stopped_alert_window_seconds,
+        show_isk_rate: bool = (MiningConfig{}).show_isk_rate,
+        isk_rate_unit: IskRateUnit = (MiningConfig{}).isk_rate_unit,
         chart: SparkChartConfig.Wire = .{},
     };
 
@@ -1047,6 +1214,8 @@ pub const MiningConfig = struct {
             .idle_alert_threshold = self.idle_alert_threshold,
             .stopped_alert_enabled = self.stopped_alert_enabled,
             .stopped_alert_window_seconds = self.stopped_alert_window_seconds,
+            .show_isk_rate = self.show_isk_rate,
+            .isk_rate_unit = self.isk_rate_unit,
             .chart = self.chart.toWire(),
         };
     }
@@ -1066,6 +1235,8 @@ pub const MiningConfig = struct {
             .idle_alert_threshold = w.idle_alert_threshold,
             .stopped_alert_enabled = w.stopped_alert_enabled,
             .stopped_alert_window_seconds = w.stopped_alert_window_seconds,
+            .show_isk_rate = w.show_isk_rate,
+            .isk_rate_unit = w.isk_rate_unit,
             .chart = SparkChartConfig.fromWire(w.chart),
         };
     }

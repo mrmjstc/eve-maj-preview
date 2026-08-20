@@ -1271,15 +1271,23 @@ pub const ChatlogMonitor = struct {
         slog.debug("Combat event: {s} -> {s}", .{ state.character_name, event_text });
     }
 
-    /// Handle mining event and record yield in the mining tracker.
+    /// Parses the log line, looks up the ore's m3/unit and ISK/unit in GlobalSettings.oreTable, and records both in the mining tracker.
+    /// A missing price (unset by the user) contributes 0 ISK rather than dropping the yield - only a missing volume does that, since m3 can't be computed at all without it.
     fn handleMiningEvent(self: *ChatlogMonitor, state: *LogFileState, event_text: []const u8) void {
-        if (self.mining_tracker) |tracker| {
-            if (activity_mod.parseMiningLine(event_text)) |parsed| {
-                tracker.addEntry(state.character_name, parsed.amount, std.time.milliTimestamp()) catch |err| {
-                    slog.warn("Failed to record mining entry for {s}: {}", .{ state.character_name, err });
-                };
-            }
-        }
+        const tracker = self.mining_tracker orelse return;
+        const parsed = activity_mod.parseMiningLine(event_text) orelse return;
+        const gs = self.global_settings orelse return;
+        const volume_per_unit = gs.oreVolume(parsed.name()) orelse {
+            slog.warn("Unknown ore/ice/gas type in mining line, dropping yield: '{s}'", .{parsed.name()});
+            return;
+        };
+        const price_per_unit = gs.orePrice(parsed.name()) orelse 0;
+        const amount_f: f32 = @floatFromInt(parsed.amount);
+        const m3 = amount_f * @as(f32, @floatCast(volume_per_unit));
+        const isk = amount_f * @as(f32, @floatCast(price_per_unit));
+        tracker.addEntry(state.character_name, m3, isk, std.time.milliTimestamp()) catch |err| {
+            slog.warn("Failed to record mining entry for {s}: {}", .{ state.character_name, err });
+        };
     }
 
     /// Finds `needle` in line, then `secondary` after it, and returns the trimmed text between

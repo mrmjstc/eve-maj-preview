@@ -316,6 +316,7 @@ fn pushDpsUpdate(tracker: *activity_mod.CombatTracker, painter_ptr: *painter.Pai
 
 fn pushMiningUpdate(tracker: *activity_mod.MiningTracker, painter_ptr: *painter.Painter, eve_window: scout.EveWindow, now_ms: i64) void {
     const rate = tracker.getRate(eve_window.character_name);
+    const isk_rate = tracker.getIskRate(eve_window.character_name);
 
     // See pushDpsUpdate for why this is also gated on viewMode.
     var chart_buf: [activity_mod.MAX_CHART_BUCKETS]f32 = undefined;
@@ -326,7 +327,7 @@ fn pushMiningUpdate(tracker: *activity_mod.MiningTracker, painter_ptr: *painter.
         chart_buckets = chart_buf[0..count];
     }
 
-    painter_ptr.updateMiningForCharacter(eve_window.hwnd, rate, chart_buckets);
+    painter_ptr.updateMiningForCharacter(eve_window.hwnd, rate, isk_rate, chart_buckets);
 
     if (g_config.mining.idle_alert_enabled) {
         const alert_window_ms: i64 = @as(i64, g_config.mining.idle_alert_window_seconds) * std.time.ms_per_s;

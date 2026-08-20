@@ -499,6 +499,11 @@ p {
     padding: 8px 4px;
     border-color: #888888;
     border-bottom: 1px solid #888888;
+    /* Pins the column to a fixed width regardless of content - large rowspans (as in the ore table, unlike notifications' short ones) can otherwise
+       trip up auto table layout's handling of the vertical-rl label below, letting the column balloon to the label's unrotated horizontal width. */
+    width: 28px;
+    max-width: 28px;
+    overflow: hidden;
 }
 
 .notification-types-table td.category-cell .category-cell-label {
@@ -1075,6 +1080,17 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 
 .section:last-child {
     margin-bottom: 0;
+}
+
+.full-width-btn {
+    width: 100%;
+    margin-top: 8px;
+}
+
+/* The ore table reuses .notification-types-table (see above) wholesale for identical visual/scrolling behavior - this is the one thing that table never needed. */
+/* Wider than the shared 56px number-input rule (sized for notifications' Duration/Throttle) - fetched ISK prices run up to 6+ digits. */
+.notification-types-table input.ore-price-input {
+    width: 90px;
 }
 
 /* Grid for two-column layouts */
