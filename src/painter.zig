@@ -1228,6 +1228,22 @@ pub const Painter = struct {
         }
     }
 
+    /// Ends thumbnail's active notification (if any) and restores pre_notification_state, same as a natural expiry.
+    fn clearActiveNotification(self: *Painter, thumbnail: *ThumbnailWindow) void {
+        const notif = thumbnail.active_notification orelse return;
+        self.allocator.free(notif.text);
+        thumbnail.active_notification = null;
+        thumbnail.cached_notif_dims = null;
+
+        // Restore prior focus state, but only if we entered Alert via showNotification; direct-set notifications (e.g. input.zig) leave pre_notification_state null.
+        if (thumbnail.pre_notification_state) |restore_state| {
+            thumbnail.pre_notification_state = null;
+            thumbnail.setState(restore_state);
+        }
+
+        thumbnail.needs_render = true;
+    }
+
     /// Clear expired notifications (call from update loop)
     pub fn updateNotifications(self: *Painter) void {
         const now = win32.GetTickCount64();
@@ -1236,17 +1252,7 @@ pub const Painter = struct {
             if (thumbnail.active_notification) |notif| {
                 // duration_ms == 0 means the notification is permanent.
                 if (notif.duration_ms > 0 and (now - notif.start_time) >= notif.duration_ms) {
-                    self.allocator.free(notif.text);
-                    thumbnail.active_notification = null;
-                    thumbnail.cached_notif_dims = null;
-
-                    // Restore prior focus state, but only if we entered Alert via showNotification; direct-set notifications (e.g. input.zig) leave pre_notification_state null.
-                    if (thumbnail.pre_notification_state) |restore_state| {
-                        thumbnail.pre_notification_state = null;
-                        thumbnail.setState(restore_state);
-                    }
-
-                    thumbnail.needs_render = true;
+                    self.clearActiveNotification(thumbnail);
                 } else if (notif.flash_border and (now - notif.start_time) < NOTIFICATION_FLASH_TOTAL_MS) {
                     // Force a render each tick so the alternating on/off flash phases actually paint.
                     thumbnail.needs_render = true;
@@ -1317,6 +1323,8 @@ pub const Painter = struct {
                 thumbnail.cached_system_color = self.config.thumbnail.systemNameColor;
                 thumbnail.cached_sys_dims = null;
                 slog.debug("Cleared system name for logged out client", .{});
+
+                self.clearActiveNotification(thumbnail);
             }
 
             // Update exclusion state when character name becomes known (e.g., "EVE" -> "Probe Enthusiast")
