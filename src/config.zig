@@ -1242,6 +1242,88 @@ pub const MiningConfig = struct {
     }
 };
 
+/// ISK/min-style overlay for bounty payouts; mirrors MiningConfig's ISK-rate half, but bounty has no m3 twin or ore table since payouts already arrive in ISK.
+pub const BountyConfig = struct {
+    enabled: bool = false,
+    window_seconds: u32 = 60,
+    color: u32 = 0xFFFFD700,
+    font_size: i32 = 11,
+    update_interval_ms: u32 = 1000,
+    position: types.TextPosition = .BottomRight,
+    offset_x: i32 = 0,
+    offset_y: i32 = 0,
+    isk_rate_unit: IskRateUnit = .hour,
+    chart: SparkChartConfig = .{},
+
+    pub const WINDOW_SECONDS_MIN: u32 = 1;
+    pub const WINDOW_SECONDS_MAX: u32 = 3600;
+    pub const FONT_SIZE_MIN: i32 = 6;
+    pub const FONT_SIZE_MAX: i32 = 72;
+    pub const UPDATE_INTERVAL_MS_MIN: u32 = 100;
+    pub const UPDATE_INTERVAL_MS_MAX: u32 = 60000;
+    pub const OFFSET_MIN: i32 = -50;
+    pub const OFFSET_MAX: i32 = 50;
+
+    pub fn validate(self: *BountyConfig) void {
+        if (self.window_seconds == 0) self.window_seconds = 60;
+        if (self.window_seconds > WINDOW_SECONDS_MAX) self.window_seconds = WINDOW_SECONDS_MAX;
+        if (self.font_size < FONT_SIZE_MIN) self.font_size = FONT_SIZE_MIN;
+        if (self.font_size > FONT_SIZE_MAX) self.font_size = FONT_SIZE_MAX;
+        if (self.update_interval_ms < UPDATE_INTERVAL_MS_MIN) self.update_interval_ms = UPDATE_INTERVAL_MS_MIN;
+        if (self.update_interval_ms > UPDATE_INTERVAL_MS_MAX) self.update_interval_ms = UPDATE_INTERVAL_MS_MAX;
+
+        if (self.offset_x < OFFSET_MIN) self.offset_x = OFFSET_MIN;
+        if (self.offset_x > OFFSET_MAX) self.offset_x = OFFSET_MAX;
+        if (self.offset_y < OFFSET_MIN) self.offset_y = OFFSET_MIN;
+        if (self.offset_y > OFFSET_MAX) self.offset_y = OFFSET_MAX;
+
+        self.chart.validate(self.window_seconds);
+    }
+
+    pub const Wire = struct {
+        enabled: bool = (BountyConfig{}).enabled,
+        window_seconds: u32 = (BountyConfig{}).window_seconds,
+        color: Argb = .{ .value = (BountyConfig{}).color },
+        font_size: i32 = (BountyConfig{}).font_size,
+        update_interval_ms: u32 = (BountyConfig{}).update_interval_ms,
+        position: types.TextPosition = (BountyConfig{}).position,
+        offset_x: i32 = (BountyConfig{}).offset_x,
+        offset_y: i32 = (BountyConfig{}).offset_y,
+        isk_rate_unit: IskRateUnit = (BountyConfig{}).isk_rate_unit,
+        chart: SparkChartConfig.Wire = .{},
+    };
+
+    pub fn toWire(self: BountyConfig) Wire {
+        return .{
+            .enabled = self.enabled,
+            .window_seconds = self.window_seconds,
+            .color = .{ .value = self.color },
+            .font_size = self.font_size,
+            .update_interval_ms = self.update_interval_ms,
+            .position = self.position,
+            .offset_x = self.offset_x,
+            .offset_y = self.offset_y,
+            .isk_rate_unit = self.isk_rate_unit,
+            .chart = self.chart.toWire(),
+        };
+    }
+
+    pub fn fromWire(w: Wire) BountyConfig {
+        return .{
+            .enabled = w.enabled,
+            .window_seconds = w.window_seconds,
+            .color = w.color.value,
+            .font_size = w.font_size,
+            .update_interval_ms = w.update_interval_ms,
+            .position = w.position,
+            .offset_x = w.offset_x,
+            .offset_y = w.offset_y,
+            .isk_rate_unit = w.isk_rate_unit,
+            .chart = SparkChartConfig.fromWire(w.chart),
+        };
+    }
+};
+
 pub const NotificationTypeConfig = struct {
     enabled: bool = true,
     duration_ms: u32 = 10000,
@@ -1489,6 +1571,7 @@ pub const Config = struct {
     chatlog: ChatlogConfig,
     combat: CombatConfig,
     mining: MiningConfig,
+    bounty: BountyConfig,
 
     windowFilters: std.ArrayList(WindowFilter),
 
@@ -1534,6 +1617,7 @@ pub const Config = struct {
         chatlog: ChatlogConfig.Wire = .{},
         combat: CombatConfig.Wire = .{},
         mining: MiningConfig.Wire = .{},
+        bounty: BountyConfig.Wire = .{},
         windowFilters: []const WindowFilter = &.{WindowFilter.DEFAULT},
         characters: []const CharacterConfig.Wire = &.{},
         systemColors: []const SystemColor.Wire = &.{},
@@ -1591,6 +1675,7 @@ pub const Config = struct {
             .chatlog = self.chatlog.toWire(),
             .combat = self.combat.toWire(),
             .mining = self.mining.toWire(),
+            .bounty = self.bounty.toWire(),
             .windowFilters = window_filters,
             .characters = chars,
             .systemColors = sys_colors,
@@ -1633,6 +1718,7 @@ pub const Config = struct {
         cfg.closeAll = w.closeAll;
         cfg.combat = try CombatConfig.fromWire(w.combat, allocator);
         cfg.mining = MiningConfig.fromWire(w.mining);
+        cfg.bounty = BountyConfig.fromWire(w.bounty);
         cfg.requireEveFocus = w.hotkeys.requireEveFocus;
         cfg.resetGroupIndexOnNonGroupFocus = w.hotkeys.resetGroupIndexOnNonGroupFocus;
         cfg.autoRegisterProtocol = w.hotkeys.autoRegisterProtocol;
@@ -2962,6 +3048,7 @@ pub const Config = struct {
             },
             .combat = .{},
             .mining = .{},
+            .bounty = .{},
             .windowFilters = default_filters,
             .characters = std.ArrayList(CharacterConfig).empty,
             .systemColors = std.ArrayList(SystemColor).empty,
@@ -3193,6 +3280,7 @@ pub const Config = struct {
         self.chatlog.validate();
         self.combat.validate();
         self.mining.validate();
+        self.bounty.validate();
 
         // Per-character thumbnail size overrides live on CharacterConfig, not ThumbnailConfig, so they bypass validate() above and need clamping here too.
         for (self.characters.items) |*char| {
@@ -3278,6 +3366,17 @@ pub const Config = struct {
             .@"mining.chart.offset_x" = Range{ .min = SparkChartConfig.OFFSET_MIN, .max = SparkChartConfig.OFFSET_MAX },
             .@"mining.chart.offset_y" = Range{ .min = SparkChartConfig.OFFSET_MIN, .max = SparkChartConfig.OFFSET_MAX },
             .@"mining.chart.bucket_count" = Range{ .min = SparkChartConfig.BUCKET_COUNT_MIN, .max = SparkChartConfig.BUCKET_COUNT_MAX },
+
+            .@"bounty.window_seconds" = Range{ .min = BountyConfig.WINDOW_SECONDS_MIN, .max = BountyConfig.WINDOW_SECONDS_MAX },
+            .@"bounty.update_interval_ms" = Range{ .min = BountyConfig.UPDATE_INTERVAL_MS_MIN, .max = BountyConfig.UPDATE_INTERVAL_MS_MAX },
+            .@"bounty.font_size" = Range{ .min = BountyConfig.FONT_SIZE_MIN, .max = BountyConfig.FONT_SIZE_MAX },
+            .@"bounty.offset_x" = Range{ .min = BountyConfig.OFFSET_MIN, .max = BountyConfig.OFFSET_MAX },
+            .@"bounty.offset_y" = Range{ .min = BountyConfig.OFFSET_MIN, .max = BountyConfig.OFFSET_MAX },
+            .@"bounty.chart.width" = Range{ .min = SparkChartConfig.WIDTH_MIN, .max = SparkChartConfig.WIDTH_MAX },
+            .@"bounty.chart.height" = Range{ .min = SparkChartConfig.HEIGHT_MIN, .max = SparkChartConfig.HEIGHT_MAX },
+            .@"bounty.chart.offset_x" = Range{ .min = SparkChartConfig.OFFSET_MIN, .max = SparkChartConfig.OFFSET_MAX },
+            .@"bounty.chart.offset_y" = Range{ .min = SparkChartConfig.OFFSET_MIN, .max = SparkChartConfig.OFFSET_MAX },
+            .@"bounty.chart.bucket_count" = Range{ .min = SparkChartConfig.BUCKET_COUNT_MIN, .max = SparkChartConfig.BUCKET_COUNT_MAX },
         };
 
         return std.json.Stringify.valueAlloc(allocator, ranges, .{});

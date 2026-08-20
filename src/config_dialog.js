@@ -350,6 +350,24 @@ const CONFIG_SCHEMA = [
     { id: 'miningIdleAlertThreshold', path: 'mining.idle_alert_threshold' },
     { id: 'miningStoppedAlertEnabled', path: 'mining.stopped_alert_enabled' },
     { id: 'miningStoppedAlertWindowSeconds', path: 'mining.stopped_alert_window_seconds' },
+
+    { id: 'bountyEnabled', path: 'bounty.enabled' },
+    { id: 'bountyWindowSeconds', path: 'bounty.window_seconds' },
+    { id: 'bountyUpdateIntervalMs', path: 'bounty.update_interval_ms', transform: 'ms' },
+    { id: 'bountyPosition', path: 'bounty.position' },
+    { id: 'bountyColor', path: 'bounty.color' },
+    { id: 'bountyFontSize', path: 'bounty.font_size' },
+    { id: 'bountyOffsetX', path: 'bounty.offset_x' },
+    { id: 'bountyOffsetY', path: 'bounty.offset_y' },
+    { id: 'bountyIskRateUnit', path: 'bounty.isk_rate_unit' },
+    { id: 'bountyChartEnabled', path: 'bounty.chart.enabled' },
+    { id: 'bountyChartShowBackground', path: 'bounty.chart.show_background' },
+    { id: 'bountyChartPosition', path: 'bounty.chart.position' },
+    { id: 'bountyChartBucketCount', path: 'bounty.chart.bucket_count' },
+    { id: 'bountyChartWidth', path: 'bounty.chart.width' },
+    { id: 'bountyChartHeight', path: 'bounty.chart.height' },
+    { id: 'bountyChartOffsetX', path: 'bounty.chart.offset_x' },
+    { id: 'bountyChartOffsetY', path: 'bounty.chart.offset_y' },
 ];
 
 function getConfigPath(obj, path) {
@@ -1088,6 +1106,7 @@ function applyBackendDefaultColors() {
         combatOutgoingColor: defaultConfig.combat?.outgoing_color,
         combatIconColor: defaultConfig.combat?.icon_color,
         miningColor: defaultConfig.mining?.color,
+        bountyColor: defaultConfig.bounty?.color,
     };
     for (const [id, value] of Object.entries(map)) {
         if (value == null) continue;
@@ -1164,6 +1183,7 @@ function populateFormFields() {
     toggleChatlogOptions();
     toggleCombatOptions();
     toggleMiningOptions();
+    toggleBountyOptions();
 
     populateWindowFilters();
 
@@ -2620,6 +2640,7 @@ const MAJ_SECTIONS = [
     { id: 'chatlog', title: 'Chatlog Monitoring', hint: 'Chat/game log directories and triggers', kind: 'object' },
     { id: 'combat', title: 'Combat Tracker', hint: 'Combat log parsing', kind: 'object' },
     { id: 'mining', title: 'Mining Tracker', hint: 'Mining log parsing', kind: 'object' },
+    { id: 'bounty', title: 'Bounty Tracker', hint: 'Bounty log parsing', kind: 'object' },
     { id: 'hotkeys', title: 'Global Hotkeys', hint: 'App-wide hotkeys', kind: 'object' },
     { id: 'characters', title: 'Characters', hint: 'Positions, sizes, colors, hotkeys', kind: 'array' },
     { id: 'systemColors', title: 'System Colors', hint: 'Per-system border colors', kind: 'array' },
@@ -6157,6 +6178,11 @@ function toggleMiningOptions() {
     applyOptionToggle('miningEnabled', 'miningAlertsOptions');
     applyOptionToggle('miningEnabled', 'miningChartOptions');
     applyOptionToggle('miningShowIskRate', 'miningIskRateOptions');
+}
+
+function toggleBountyOptions() {
+    applyOptionToggle('bountyEnabled', 'bountyOptions');
+    applyOptionToggle('bountyEnabled', 'bountyChartOptions');
 }
 
 async function browseChatlogDir() {

@@ -78,6 +78,9 @@
                 <div class="tab-item" data-tab="mining">
                     <span data-i18n="tab.mining.title">mining overlay</span>
                 </div>
+                <div class="tab-item" data-tab="bounty">
+                    <span data-i18n="tab.bounty.title">bounty overlay</span>
+                </div>
                 <div class="tab-item" data-tab="advanced" style="display: none;">
                     <span data-i18n="tab.advanced.title">advanced</span>
                 </div>
@@ -1571,6 +1574,109 @@
                         </table>
 
                         <button type="button" id="fetchOrePricesBtn" class="full-width-btn" onclick="fetchOrePrices()">↻ Fetch Prices</button>
+                    </div>
+                </div>
+
+                <div class="panel-content" data-panel="bounty">
+                    <div class="section">
+                        <h3 data-i18n="tab.bounty.section.bounty-rate-overlay.heading">Text Overlays</h3>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.bounty.section.bounty-rate-overlay.hint">Displays ISK bounty payouts per minute/hour on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
+
+                        <label>
+                            <input type="checkbox" id="bountyEnabled" onchange="toggleBountyOptions()">
+                            <span class="label-body" data-i18n="field.bountyEnabled.label">Enable Text Overlays</span>
+                        </label>
+
+                        <div id="bountyOptions">
+                            <label for="bountyWindowSeconds" data-i18n="field.bountyWindowSeconds.label">Window (seconds)</label>
+                            <input type="number" id="bountyWindowSeconds" min="1" max="3600">
+                            <p class="hint" data-i18n="field.bountyWindowSeconds.hint">Sliding time window for rate calculation (1–3600 s)</p>
+
+                            <label for="bountyUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
+                            <input type="number" id="bountyUpdateIntervalMs" min="0.1" max="60" step="0.1">
+                            <p class="hint" data-i18n="field.bountyUpdateIntervalMs.hint">How often the display refreshes (0.1–60 s)</p>
+
+                            <div class="row">
+                                <div class="column">
+                                    <label for="bountyPosition" data-i18n="common.positionLabel">Position</label>
+                                    <select id="bountyPosition" class="position-options"></select>
+                                </div>
+                                <div class="column">
+                                    <label for="bountyColor" data-i18n="common.textColorLabel">Text Color</label>
+                                    <input type="color" id="bountyColor" data-default-color="#FFD700">
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="column">
+                                    <label for="bountyOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="bountyOffsetXValue">0</span></label>
+                                    <input type="range" id="bountyOffsetX" min="-50" max="50" value="0" data-value-target="bountyOffsetXValue">
+                                </div>
+                                <div class="column">
+                                    <label for="bountyOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="bountyOffsetYValue">0</span></label>
+                                    <input type="range" id="bountyOffsetY" min="-50" max="50" value="0" data-value-target="bountyOffsetYValue">
+                                </div>
+                            </div>
+
+                            <label for="bountyFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
+                            <input type="number" id="bountyFontSize" min="6" max="72">
+
+                            <label for="bountyIskRateUnit" data-i18n="field.bountyIskRateUnit.label">ISK Rate Unit</label>
+                            <select id="bountyIskRateUnit">
+                                <option value="minute" data-i18n="field.miningIskRateUnit.minute">Per Minute</option>
+                                <option value="hour" data-i18n="field.miningIskRateUnit.hour">Per Hour</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h3 data-i18n="tab.bounty.section.bounty-rate-chart.heading">Bounty Charts</h3>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.bounty.section.bounty-rate-chart.hint">Shows a small line chart of recent bounty ISK rate instead of/alongside the text. Reuses the Text Color above and covers the same Window (seconds) as the rate calculation.</p>
+
+                        <div id="bountyChartOptions">
+                            <label>
+                                <input type="checkbox" id="bountyChartEnabled">
+                                <span class="label-body" data-i18n="field.bountyChartEnabled.label">Enable Bounty Charts</span>
+                            </label>
+
+                            <label>
+                                <input type="checkbox" id="bountyChartShowBackground">
+                                <span class="label-body" data-i18n="common.showBackgroundLabel">Show Background</span>
+                            </label>
+
+                            <div class="row">
+                                <div class="column">
+                                    <label for="bountyChartPosition" data-i18n="common.positionLabel">Position</label>
+                                    <select id="bountyChartPosition" class="position-options"></select>
+                                </div>
+                                <div class="column">
+                                    <label for="bountyChartBucketCount" data-i18n="common.pointsLabel">Points</label>
+                                    <input type="number" id="bountyChartBucketCount" min="5" max="60">
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="column">
+                                    <label for="bountyChartWidth" data-i18n="common.widthPercentLabel">Width (%)</label>
+                                    <input type="number" id="bountyChartWidth" min="10" max="100">
+                                </div>
+                                <div class="column">
+                                    <label for="bountyChartHeight" data-i18n="common.heightPxLabel">Height (px)</label>
+                                    <input type="number" id="bountyChartHeight" min="10" max="100">
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="column">
+                                    <label for="bountyChartOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="bountyChartOffsetXValue">0</span></label>
+                                    <input type="range" id="bountyChartOffsetX" min="-50" max="50" value="0" data-value-target="bountyChartOffsetXValue">
+                                </div>
+                                <div class="column">
+                                    <label for="bountyChartOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="bountyChartOffsetYValue">0</span></label>
+                                    <input type="range" id="bountyChartOffsetY" min="-50" max="50" value="0" data-value-target="bountyChartOffsetYValue">
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

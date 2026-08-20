@@ -708,6 +708,213 @@ pub const MiningTracker = struct {
     }
 };
 
+/// A single parsed bounty payout event.
+pub const BountyEvent = struct {
+    timestamp_ms: i64,
+    isk: f32,
+};
+
+/// Per-character sliding-window bounty ISK-rate accumulator with zero heap allocations after init. Mirrors MiningWindow's ISK-rate half; there's no m3 twin since bounty payouts already arrive in ISK.
+pub const BountyWindow = struct {
+    entries: [RING_CAPACITY]BountyEvent = undefined,
+    head: usize = 0,
+    count: usize = 0,
+    window_ms: i64,
+    last_hit_ms: i64 = 0,
+
+    last_isk_per_sec: ?f32 = null,
+
+    pub fn init(window_seconds: u32) BountyWindow {
+        return .{
+            .window_ms = @as(i64, window_seconds) * std.time.ms_per_s,
+        };
+    }
+
+    /// Append a new bounty payout to the ring buffer (O(1), overwrites oldest on overflow).
+    pub fn addEntry(self: *BountyWindow, isk: f32, timestamp_ms: i64) void {
+        self.entries[self.head] = .{
+            .timestamp_ms = timestamp_ms,
+            .isk = isk,
+        };
+        self.head = (self.head + 1) % RING_CAPACITY;
+        if (self.count < RING_CAPACITY) self.count += 1;
+        if (timestamp_ms > self.last_hit_ms) self.last_hit_ms = timestamp_ms;
+    }
+
+    /// Compute ISK-per-second over the sliding window ending at now_ms. Null means not enough span yet to trust a rate.
+    pub fn computeIskRate(self: *const BountyWindow, now_ms: i64) ?f32 {
+        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) {
+            return 0.0;
+        }
+        const cutoff = now_ms - self.window_ms;
+        var total: f32 = 0;
+        var newest_ms: i64 = 0;
+        var oldest_ms: i64 = 0;
+
+        var i: usize = 0;
+        while (i < self.count) : (i += 1) {
+            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
+            const entry = &self.entries[idx];
+            if (entry.timestamp_ms < cutoff) break;
+            if (i == 0) newest_ms = entry.timestamp_ms;
+            oldest_ms = entry.timestamp_ms;
+            total += entry.isk;
+        }
+        const span_ms = newest_ms - oldest_ms;
+        if (span_ms < MIN_RATE_SPAN_MS) return null;
+
+        const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
+        return (total / window_secs) * idleDecayFactor(now_ms, self.last_hit_ms, self.window_ms);
+    }
+
+    /// Wider than window_seconds so a checkpoint averages several payouts instead of ~1, avoiding an oscillating N/N+1 pulse between sporadic kills.
+    const CHART_SMOOTHING_WINDOWS: i64 = 3;
+
+    /// Each checkpoint is a trailing average, not a raw slice sum - see MiningWindow.computeBuckets for the shared difference-array technique.
+    pub fn computeBuckets(self: *const BountyWindow, now_ms: i64, out: []f32) void {
+        @memset(out, 0);
+        if (out.len == 0) return;
+        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) return;
+        const smoothing_ms = self.window_ms * CHART_SMOOTHING_WINDOWS;
+        const cutoff = now_ms - self.window_ms - smoothing_ms;
+        const recent_cutoff = now_ms - self.window_ms;
+        const bucket_ms = @divTrunc(self.window_ms, @as(i64, @intCast(out.len)));
+        if (bucket_ms <= 0) return;
+        const range_buckets = @divTrunc(smoothing_ms, bucket_ms);
+        const now_slot = @divFloor(now_ms, bucket_ms);
+        const last_idx: i64 = @intCast(out.len - 1);
+
+        var diff: [MAX_CHART_BUCKETS + 1]f32 = @splat(0);
+        var newest_ms: i64 = 0;
+        var oldest_ms: i64 = 0;
+        var i: usize = 0;
+        while (i < self.count) : (i += 1) {
+            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
+            const entry = &self.entries[idx];
+            if (entry.timestamp_ms < cutoff) break;
+            if (entry.timestamp_ms >= recent_cutoff) {
+                if (newest_ms == 0) newest_ms = entry.timestamp_ms;
+                oldest_ms = entry.timestamp_ms;
+            }
+            const entry_slot = @divFloor(entry.timestamp_ms, bucket_ms);
+            const b = last_idx - (now_slot - entry_slot);
+            const start = @max(b, 0);
+            const end = @min(b + range_buckets - 1, last_idx);
+            if (start > end) continue;
+            diff[@intCast(start)] += entry.isk;
+            diff[@intCast(end + 1)] -= entry.isk;
+        }
+        const span_ms = newest_ms - oldest_ms;
+        if (span_ms < MIN_RATE_SPAN_MS) return;
+
+        const smoothing_secs = @as(f32, @floatFromInt(@min(smoothing_ms, span_ms))) / 1000.0;
+        const factor = idleDecayFactor(now_ms, self.last_hit_ms, self.window_ms);
+        var running: f32 = 0;
+        for (out, 0..) |*v, out_idx| {
+            running += diff[out_idx];
+            v.* = (running / smoothing_secs) * factor;
+        }
+    }
+
+    /// Recompute the ISK rate. Returns true if it changed by >= 0.1 or crossed to/from null.
+    pub fn refresh(self: *BountyWindow, now_ms: i64) bool {
+        const new_rate = self.computeIskRate(now_ms);
+        const changed = if (self.last_isk_per_sec) |old|
+            (if (new_rate) |new| @abs(new - old) >= 0.1 else true)
+        else
+            new_rate != null;
+        self.last_isk_per_sec = new_rate;
+        return changed;
+    }
+};
+
+/// Multi-character bounty ISK-rate tracker; owns a BountyWindow and duped key string per character.
+/// Thread-safe: the main thread calls refreshAll/getIskRate while the chatlog worker thread calls addEntry/removeCharacter concurrently.
+pub const BountyTracker = struct {
+    base: TrackerBase(BountyWindow),
+
+    pub fn init(allocator: std.mem.Allocator, window_seconds: u32) BountyTracker {
+        return .{ .base = TrackerBase(BountyWindow).init(allocator, window_seconds) };
+    }
+
+    pub fn deinit(self: *BountyTracker) void {
+        self.base.deinit();
+    }
+
+    /// Record a bounty payout (ISK) for character_name. Creates a new window on the first call per character.
+    pub fn addEntry(
+        self: *BountyTracker,
+        character_name: []const u8,
+        isk: f32,
+        timestamp_ms: i64,
+    ) !void {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        const window = try self.base.getOrCreate(character_name);
+        window.addEntry(isk, timestamp_ms);
+    }
+
+    /// Remove a character's window (call on character logout to free the entry).
+    pub fn removeCharacter(self: *BountyTracker, character_name: []const u8) void {
+        self.base.removeCharacter(character_name);
+    }
+
+    /// Return the last-refreshed ISK rate for character_name (ISK/sec). Null means not enough span yet to trust a rate.
+    pub fn getIskRate(self: *BountyTracker, character_name: []const u8) ?f32 {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        if (self.base.windows.get(character_name)) |window| {
+            return window.last_isk_per_sec;
+        }
+        return 0.0;
+    }
+
+    /// Bucket character_name's sliding window for spark-chart rendering. See BountyWindow.computeBuckets.
+    /// No-op (leaves out zeroed) if character_name has no window yet.
+    pub fn getBuckets(self: *BountyTracker, character_name: []const u8, now_ms: i64, out: []f32) void {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        if (self.base.windows.getPtr(character_name)) |window| {
+            window.computeBuckets(now_ms, out);
+            return;
+        }
+        @memset(out, 0);
+    }
+
+    /// Re-evaluate all windows against now_ms. Returns true if any rate changed by >= 0.1.
+    pub fn refreshAll(self: *BountyTracker, now_ms: i64) bool {
+        return self.base.refreshAll(now_ms);
+    }
+};
+
+/// Parses a `(bounty)` gamelog line into the ISK amount added to the next payout; returns null for unrecognised formats.
+/// Bounty amounts use comma thousand-separators ("246,153 ISK"), unlike the plain digit runs parseCombatLine/parseMiningLine parse.
+pub fn parseBountyLine(line: []const u8) ?f32 {
+    const bounty_prefix = "(bounty)";
+    const bounty_pos = std.mem.indexOf(u8, line, bounty_prefix) orelse return null;
+    const payload = std.mem.trimLeft(u8, line[bounty_pos + bounty_prefix.len ..], " \t");
+
+    var stripped_buf: [512]u8 = undefined;
+    const stripped = stripHtml(payload, &stripped_buf);
+
+    var amount: u32 = 0;
+    var found_digit = false;
+    for (stripped) |c| {
+        if (c >= '0' and c <= '9') {
+            amount = amount * 10 + (c - '0');
+            found_digit = true;
+        } else if (c == ',' and found_digit) {
+            continue;
+        } else if (found_digit) {
+            break;
+        } else if (c != ' ' and c != '\t') {
+            return null;
+        }
+    }
+    if (!found_digit or amount == 0) return null;
+    return @floatFromInt(amount);
+}
+
 /// Raw unit count plus the mined ore/ice/gas name, copied by value since parseMiningLine's buffer is stack-local.
 pub const ParsedMiningEvent = struct {
     amount: u32,

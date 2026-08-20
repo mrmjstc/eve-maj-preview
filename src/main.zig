@@ -32,6 +32,7 @@ var g_hotkey_manager: ?*hotkeys.HotkeyManager = null;
 var g_chatlog_monitor: ?*chatlog.ChatlogMonitor = null;
 var g_combat_tracker: ?*activity_mod.CombatTracker = null;
 var g_mining_tracker: ?*activity_mod.MiningTracker = null;
+var g_bounty_tracker: ?*activity_mod.BountyTracker = null;
 pub var g_config: config_mod.Config = undefined;
 var g_global_settings: config_mod.GlobalSettings = undefined;
 var g_tray_icon: ?tray.TrayIcon = null;
@@ -51,6 +52,8 @@ const SCAN_INTERVAL_TICKS: u32 = 20;
 var g_last_dps_update_ms: i64 = 0;
 // Mining update throttling: track last time mining rate was pushed to painter
 var g_last_mining_update_ms: i64 = 0;
+// Bounty update throttling: track last time bounty rate was pushed to painter
+var g_last_bounty_update_ms: i64 = 0;
 
 // Reused across timer ticks to avoid a heap allocation every tick just to pass
 // character names into the chatlog monitor; borrowed slices only, no ownership.
@@ -259,6 +262,19 @@ fn onTimerTick() void {
             scout_result.windows,
         );
     }
+
+    if (g_bounty_tracker) |tracker| {
+        const interval_ms: i64 = @intCast(g_config.bounty.update_interval_ms);
+        updateThrottledTracker(
+            activity_mod.BountyTracker,
+            pushBountyUpdate,
+            tracker,
+            now_ms,
+            &g_last_bounty_update_ms,
+            interval_ms,
+            scout_result.windows,
+        );
+    }
 }
 
 /// Shared throttle/dispatch loop for the combat and mining trackers: refreshes
@@ -346,6 +362,21 @@ fn pushMiningUpdate(tracker: *activity_mod.MiningTracker, painter_ptr: *painter.
             };
         }
     }
+}
+
+fn pushBountyUpdate(tracker: *activity_mod.BountyTracker, painter_ptr: *painter.Painter, eve_window: scout.EveWindow, now_ms: i64) void {
+    const isk_rate = tracker.getIskRate(eve_window.character_name);
+
+    // See pushDpsUpdate for why this is also gated on viewMode.
+    var chart_buf: [activity_mod.MAX_CHART_BUCKETS]f32 = undefined;
+    var chart_buckets: []const f32 = &.{};
+    if (g_config.display.viewMode == .Thumbnails and g_config.bounty.chart.enabled) {
+        const count: usize = g_config.bounty.chart.bucket_count;
+        tracker.getBuckets(eve_window.character_name, now_ms, chart_buf[0..count]);
+        chart_buckets = chart_buf[0..count];
+    }
+
+    painter_ptr.updateBountyForCharacter(eve_window.hwnd, isk_rate, chart_buckets);
 }
 
 fn createTracker(comptime T: type, allocator: std.mem.Allocator, window_seconds: u32) !*T {
@@ -659,6 +690,25 @@ fn mainImpl() !void {
         }
     }
 
+    if (g_config.bounty.enabled) {
+        g_bounty_tracker = try createTracker(activity_mod.BountyTracker, g_allocator, g_config.bounty.window_seconds);
+
+        // Wire tracker into chatlog monitor so bounty events are accumulated
+        if (g_chatlog_monitor) |monitor| {
+            monitor.bounty_tracker = g_bounty_tracker.?;
+        }
+
+        slog.debug("Bounty rate tracking enabled ({d}s window)", .{g_config.bounty.window_seconds});
+    }
+
+    defer {
+        if (g_bounty_tracker) |tracker| {
+            tracker.deinit();
+            g_allocator.destroy(tracker);
+            g_bounty_tracker = null;
+        }
+    }
+
     // Registered after the tracker defers so it runs first (LIFO): the worker thread must
     // stop before combat/mining trackers are freed, since it may be mid-iteration reading them.
     defer {
@@ -831,6 +881,14 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         g_allocator.destroy(tracker);
         g_mining_tracker = null;
         slog.debug("Cleaned up mining tracker", .{});
+    }
+
+    // Must run after chatlog monitor teardown.
+    if (g_bounty_tracker) |tracker| {
+        tracker.deinit();
+        g_allocator.destroy(tracker);
+        g_bounty_tracker = null;
+        slog.debug("Cleaned up bounty tracker", .{});
     }
 
     if (g_hotkey_manager) |manager| {
@@ -1016,6 +1074,26 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         } else {
             if (g_chatlog_monitor) |monitor| monitor.mining_tracker = null;
             slog.debug("Mining rate tracking disabled in new profile", .{});
+        }
+
+        if (g_config.bounty.enabled) {
+            if (createTracker(activity_mod.BountyTracker, g_allocator, g_config.bounty.window_seconds)) |tracker_ptr| {
+                g_bounty_tracker = tracker_ptr;
+
+                // Wire tracker into chatlog monitor so bounty events are accumulated
+                if (g_chatlog_monitor) |monitor| {
+                    monitor.bounty_tracker = tracker_ptr;
+                }
+
+                slog.debug("Bounty rate tracking enabled ({d}s window)", .{g_config.bounty.window_seconds});
+            } else |err| {
+                slog.err("Failed to create bounty tracker: {}", .{err});
+                g_bounty_tracker = null;
+                if (g_chatlog_monitor) |monitor| monitor.bounty_tracker = null;
+            }
+        } else {
+            if (g_chatlog_monitor) |monitor| monitor.bounty_tracker = null;
+            slog.debug("Bounty rate tracking disabled in new profile", .{});
         }
 
         // Resume the paused worker only now that combat/mining trackers above are repointed

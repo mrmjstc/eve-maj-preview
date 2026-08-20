@@ -110,11 +110,13 @@ const RenderSettings = struct {
     dps_outgoing: f32 = 0.0,
     mining_rate: f32 = 0.0,
     mining_isk_rate: f32 = 0.0,
+    bounty_isk_rate: f32 = 0.0,
 
     // Included so a config-only color change still invalidates renderThumbnail's cache even when the DPS/rate value itself hasn't moved.
     dps_incoming_color: u32 = 0xFFFF4444,
     dps_outgoing_color: u32 = 0xFF44FF44,
     mining_color: u32 = 0xFF44AAFF,
+    bounty_color: u32 = 0xFFFFD700,
     icon_color: u32 = 0xFFFF4444,
 
     // Mirrors ThumbnailWindow.chart_generation so a bucket-data change invalidates the cache even when dps_incoming/mining_rate didn't move.
@@ -145,15 +147,18 @@ pub const ThumbnailWindow = struct {
     last_outgoing_dps: ?f32 = null,
     last_mining_rate: ?f32 = null,
     last_mining_isk_rate: ?f32 = null,
+    last_bounty_isk_rate: ?f32 = null,
 
     // Spark-chart bucket series; only the first config.*.chart.bucket_count entries are meaningful.
     mining_chart_buckets: [activity_tracker.MAX_CHART_BUCKETS]f32 = @splat(0),
     combat_incoming_chart_buckets: [activity_tracker.MAX_CHART_BUCKETS]f32 = @splat(0),
     combat_outgoing_chart_buckets: [activity_tracker.MAX_CHART_BUCKETS]f32 = @splat(0),
+    bounty_chart_buckets: [activity_tracker.MAX_CHART_BUCKETS]f32 = @splat(0),
     // Peak-hold auto-scale per chart (see updateChartScale).
     mining_chart_scale: f32 = 0,
     combat_incoming_chart_scale: f32 = 0,
     combat_outgoing_chart_scale: f32 = 0,
+    bounty_chart_scale: f32 = 0,
     // Bumped when bucket data changes; mirrored into RenderSettings.chart_generation so a shifted line isn't mistaken for no change.
     chart_generation: u32 = 0,
 
@@ -226,7 +231,7 @@ pub const ThumbnailWindow = struct {
 };
 
 /// Identifies which per-purpose font cache slot to use (see `Painter.cached_fonts`).
-pub const FontSlot = enum(u2) { main, combat, mining, icon };
+pub const FontSlot = enum(u3) { main, combat, mining, icon, bounty };
 
 /// Fixed typeface for the combat icon glyph, unlike the other overlay fonts, since the user's chosen font typically lacks the glyph's Unicode symbol coverage.
 const ICON_FONT_NAME = "Segoe UI Symbol";
@@ -276,7 +281,7 @@ pub const Painter = struct {
     hide_debounce_timer_hwnd: ?win32.HWND = null,
     window_manager: manager_mod.WindowManager,
     /// Fonts used per render (main text, combat DPS, mining, combat icon), each with its own cache slot so resolving one never deletes a handle still in use by another.
-    cached_fonts: [4]FontCacheEntry = .{ .{}, .{}, .{}, .{} },
+    cached_fonts: [5]FontCacheEntry = .{ .{}, .{}, .{}, .{}, .{} },
     /// Non-null when viewMode == .ClientList; owns the compact list panel window.
     list_window: ?list_view.ListWindow = null,
     /// FIFO queue of recently-notified characters, oldest first; populated by trackNotifiedCharacter, consumed by HotkeyManager.cycleNotified via getNotifiedCharacterNames.
@@ -507,9 +512,11 @@ pub const Painter = struct {
             a.dps_outgoing == b.dps_outgoing and
             a.mining_rate == b.mining_rate and
             a.mining_isk_rate == b.mining_isk_rate and
+            a.bounty_isk_rate == b.bounty_isk_rate and
             a.dps_incoming_color == b.dps_incoming_color and
             a.dps_outgoing_color == b.dps_outgoing_color and
             a.mining_color == b.mining_color and
+            a.bounty_color == b.bounty_color and
             a.icon_color == b.icon_color and
             a.chart_generation == b.chart_generation;
     }
@@ -1224,6 +1231,23 @@ pub const Painter = struct {
                 if (buckets_changed) {
                     @memcpy(thumbnail.mining_chart_buckets[0..buckets.len], buckets);
                     updateChartScale(&thumbnail.mining_chart_scale, buckets);
+                    thumbnail.chart_generation +%= 1;
+                }
+                thumbnail.needs_render = true;
+            }
+        }
+    }
+
+    /// Updates the bounty ISK/sec rate for a character's overlay; buckets is this tick's spark-chart series, empty when disabled.
+    pub fn updateBountyForCharacter(self: *Painter, source_hwnd: win32.HWND, isk_rate: ?f32, buckets: []const f32) void {
+        if (self.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
+            // See updateDpsForCharacter for why buckets are compared separately from rate.
+            const buckets_changed = buckets.len > 0 and !std.mem.eql(f32, thumbnail.bounty_chart_buckets[0..buckets.len], buckets);
+            if (thumbnail.last_bounty_isk_rate != isk_rate or buckets_changed) {
+                thumbnail.last_bounty_isk_rate = isk_rate;
+                if (buckets_changed) {
+                    @memcpy(thumbnail.bounty_chart_buckets[0..buckets.len], buckets);
+                    updateChartScale(&thumbnail.bounty_chart_scale, buckets);
                     thumbnail.chart_generation +%= 1;
                 }
                 thumbnail.needs_render = true;
@@ -3050,6 +3074,44 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         }
     }
 
+    // Measure and fill bounty rate text background BEFORE the border, same as the mining block above.
+    var bounty_buf: [24]u8 = undefined;
+    var bounty_text: []const u8 = "";
+    var bounty_pos: TextPos = .{ .x = 0, .y = 0 };
+    var bounty_dims: TextDimensions = .{ .width = 0, .height = 0 };
+    var bounty_font: ?win32.HFONT = null;
+    if (config.bounty.enabled and (thumbnail.last_bounty_isk_rate == null or thumbnail.last_bounty_isk_rate.? > 0)) {
+        const bounty_cfg = &config.bounty;
+        const bf = try painter.getCachedFont(.bounty, settings.text_font_name, bounty_cfg.font_size, settings.text_font_weight);
+        bounty_font = bf;
+        _ = win32.SelectObject(overlay.mem_dc, bf);
+        const period_secs: f32 = if (bounty_cfg.isk_rate_unit == .hour) 3600.0 else 60.0;
+        const unit_suffix: []const u8 = if (bounty_cfg.isk_rate_unit == .hour) "hr" else "min";
+        if (thumbnail.last_bounty_isk_rate) |isk_rate| {
+            var isk_buf: [16]u8 = undefined;
+            const isk_abbrev = formatIskAbbrev(&isk_buf, isk_rate * period_secs);
+            bounty_text = std.fmt.bufPrint(&bounty_buf, "B: {s} ISK/{s}", .{ isk_abbrev, unit_suffix }) catch "B: ---";
+        } else {
+            bounty_text = std.fmt.bufPrint(&bounty_buf, "B: ?? ISK/{s}", .{unit_suffix}) catch "B: ---";
+        }
+        bounty_dims = measureText(overlay.mem_dc, bounty_text);
+        bounty_pos = calculateTextPosition(bounty_cfg.position, bounty_dims.width, bounty_dims.height, overlay.width, overlay.height, bounty_cfg.offset_x, bounty_cfg.offset_y);
+
+        fillTextBackground(overlay.pixels, overlay.width, overlay.height, bounty_pos.x, bounty_pos.y, bounty_dims.width, bounty_dims.height, settings.text_bg_color);
+        _ = win32.SelectObject(overlay.mem_dc, font);
+    }
+
+    // Same timing as bounty text; see the DPS chart gate above for why this checks the buckets, not the instant rate.
+    var bounty_chart_pos: TextPos = .{ .x = 0, .y = 0 };
+    if (config.bounty.chart.enabled and chartHasData(thumbnail.bounty_chart_buckets[0..@intCast(config.bounty.chart.bucket_count)])) {
+        const chart_cfg = &config.bounty.chart;
+        const bounty_chart_w = chartPixelWidth(overlay.width, chart_cfg.width);
+        bounty_chart_pos = calculateTextPosition(chart_cfg.position, bounty_chart_w, @intCast(chart_cfg.height), overlay.width, overlay.height, chart_cfg.offset_x, chart_cfg.offset_y);
+        if (chart_cfg.show_background) {
+            fillTextBackground(overlay.pixels, overlay.width, overlay.height, bounty_chart_pos.x, bounty_chart_pos.y, bounty_chart_w, @intCast(chart_cfg.height), settings.text_bg_color);
+        }
+    }
+
     // No background fill, unlike DPS/mining text — the glyph sits directly on the thumbnail as an ambient "under fire" indicator, independent of the one-shot notification border override.
     var icon_pos: TextPos = .{ .x = 0, .y = 0 };
     var icon_dims: TextDimensions = .{ .width = 0, .height = 0 };
@@ -3119,6 +3181,13 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
 
+    if (config.bounty.enabled and bounty_text.len > 0) {
+        const bf = bounty_font.?;
+        _ = win32.SelectObject(overlay.mem_dc, bf);
+        renderText(overlay.mem_dc, bounty_text, bounty_pos.x, bounty_pos.y, config.bounty.color);
+        _ = win32.SelectObject(overlay.mem_dc, font);
+    }
+
     // Backgrounds were already filled before the border above.
     if (config.combat.enabled) {
         const combat_cfg = &config.combat;
@@ -3134,6 +3203,10 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     if (config.mining.chart.enabled and chartHasData(thumbnail.mining_chart_buckets[0..@intCast(config.mining.chart.bucket_count)])) {
         const chart_cfg = &config.mining.chart;
         drawSparkLine(overlay.pixels, overlay.width, overlay.height, mining_chart_pos.x, mining_chart_pos.y, chartPixelWidth(overlay.width, chart_cfg.width), @intCast(chart_cfg.height), thumbnail.mining_chart_buckets[0..@intCast(chart_cfg.bucket_count)], thumbnail.mining_chart_scale, config.mining.color);
+    }
+    if (config.bounty.chart.enabled and chartHasData(thumbnail.bounty_chart_buckets[0..@intCast(config.bounty.chart.bucket_count)])) {
+        const chart_cfg = &config.bounty.chart;
+        drawSparkLine(overlay.pixels, overlay.width, overlay.height, bounty_chart_pos.x, bounty_chart_pos.y, chartPixelWidth(overlay.width, chart_cfg.width), @intCast(chart_cfg.height), thumbnail.bounty_chart_buckets[0..@intCast(chart_cfg.bucket_count)], thumbnail.bounty_chart_scale, config.bounty.color);
     }
 
     if (icon_font) |icf| {
@@ -3168,6 +3241,9 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     }
     if (mining_isk_text.len > 0) {
         gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, mining_block_x, mining_isk_pos.y, mining_block_width, mining_isk_dims.height);
+    }
+    if (bounty_text.len > 0) {
+        gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, bounty_pos.x, bounty_pos.y, bounty_dims.width, bounty_dims.height);
     }
     if (icon_font != null) {
         gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, icon_pos.x, icon_pos.y, icon_dims.width, icon_dims.height);
@@ -3393,9 +3469,11 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .dps_outgoing = if (cfg.combat.enabled) (thumbnail.last_outgoing_dps orelse -1.0) else 0.0,
         .mining_rate = if (cfg.mining.enabled) (thumbnail.last_mining_rate orelse -1.0) else 0.0,
         .mining_isk_rate = if (cfg.mining.enabled and cfg.mining.show_isk_rate) (thumbnail.last_mining_isk_rate orelse -1.0) else 0.0,
+        .bounty_isk_rate = if (cfg.bounty.enabled) (thumbnail.last_bounty_isk_rate orelse -1.0) else 0.0,
         .dps_incoming_color = cfg.combat.incoming_color,
         .dps_outgoing_color = cfg.combat.outgoing_color,
         .mining_color = cfg.mining.color,
+        .bounty_color = cfg.bounty.color,
         .icon_color = cfg.combat.icon_color,
         .chart_generation = thumbnail.chart_generation,
     };
