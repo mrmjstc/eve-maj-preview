@@ -111,6 +111,10 @@ const RenderSettings = struct {
     mining_rate: f32 = 0.0,
     mining_isk_rate: f32 = 0.0,
     bounty_isk_rate: f32 = 0.0,
+    // Included so the false->true transition on first tracker push invalidates the cache even when the (sentineled) rate value itself didn't change.
+    has_dps_data: bool = false,
+    has_mining_data: bool = false,
+    has_bounty_data: bool = false,
 
     // Included so a config-only color change still invalidates renderThumbnail's cache even when the DPS/rate value itself hasn't moved.
     dps_incoming_color: u32 = 0xFFFF4444,
@@ -145,6 +149,11 @@ pub const ThumbnailWindow = struct {
     last_mining_rate: ?f32 = null,
     last_mining_isk_rate: ?f32 = null,
     last_bounty_isk_rate: ?f32 = null,
+
+    // False until the tracker's first push actually arrives; distinguishes "never heard from the tracker yet" (show nothing) from a genuine null rate the tracker reported (show "??"), since both look identical as `null` otherwise.
+    has_dps_data: bool = false,
+    has_mining_data: bool = false,
+    has_bounty_data: bool = false,
 
     // Cached overlay bitmap — kept alive between renders, recreated only on resize
     cached_overlay: ?gdi_overlay.OverlayBitmap = null,
@@ -497,6 +506,9 @@ pub const Painter = struct {
             a.mining_rate == b.mining_rate and
             a.mining_isk_rate == b.mining_isk_rate and
             a.bounty_isk_rate == b.bounty_isk_rate and
+            a.has_dps_data == b.has_dps_data and
+            a.has_mining_data == b.has_mining_data and
+            a.has_bounty_data == b.has_bounty_data and
             a.dps_incoming_color == b.dps_incoming_color and
             a.dps_outgoing_color == b.dps_outgoing_color and
             a.mining_color == b.mining_color and
@@ -1176,7 +1188,9 @@ pub const Painter = struct {
     /// Updates DPS values for a character's overlay.
     pub fn updateDpsForCharacter(self: *Painter, source_hwnd: win32.HWND, incoming_dps: ?f32, outgoing_dps: ?f32) void {
         if (self.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
-            if (thumbnail.last_incoming_dps != incoming_dps or thumbnail.last_outgoing_dps != outgoing_dps) {
+            const first_update = !thumbnail.has_dps_data;
+            thumbnail.has_dps_data = true;
+            if (first_update or thumbnail.last_incoming_dps != incoming_dps or thumbnail.last_outgoing_dps != outgoing_dps) {
                 thumbnail.last_incoming_dps = incoming_dps;
                 thumbnail.last_outgoing_dps = outgoing_dps;
                 thumbnail.needs_render = true;
@@ -1194,7 +1208,9 @@ pub const Painter = struct {
     /// Updates mining rate (and its ISK/sec twin) for a character's overlay.
     pub fn updateMiningForCharacter(self: *Painter, source_hwnd: win32.HWND, rate: ?f32, isk_rate: ?f32) void {
         if (self.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
-            if (thumbnail.last_mining_rate != rate or thumbnail.last_mining_isk_rate != isk_rate) {
+            const first_update = !thumbnail.has_mining_data;
+            thumbnail.has_mining_data = true;
+            if (first_update or thumbnail.last_mining_rate != rate or thumbnail.last_mining_isk_rate != isk_rate) {
                 thumbnail.last_mining_rate = rate;
                 thumbnail.last_mining_isk_rate = isk_rate;
                 thumbnail.needs_render = true;
@@ -1205,7 +1221,9 @@ pub const Painter = struct {
     /// Updates the bounty ISK/sec rate for a character's overlay.
     pub fn updateBountyForCharacter(self: *Painter, source_hwnd: win32.HWND, isk_rate: ?f32) void {
         if (self.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
-            if (thumbnail.last_bounty_isk_rate != isk_rate) {
+            const first_update = !thumbnail.has_bounty_data;
+            thumbnail.has_bounty_data = true;
+            if (first_update or thumbnail.last_bounty_isk_rate != isk_rate) {
                 thumbnail.last_bounty_isk_rate = isk_rate;
                 thumbnail.needs_render = true;
             }
@@ -2865,7 +2883,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         dps_font = f;
         // Temporarily switch to DPS font for measurement (may differ in font_size).
         _ = win32.SelectObject(overlay.mem_dc, f);
-        if (combat_cfg.show_incoming and (thumbnail.last_incoming_dps == null or thumbnail.last_incoming_dps.? > 0)) {
+        if (combat_cfg.show_incoming and thumbnail.has_dps_data and (thumbnail.last_incoming_dps == null or thumbnail.last_incoming_dps.? > 0)) {
             dps_in_text = if (thumbnail.last_incoming_dps) |dps|
                 std.fmt.bufPrint(&dps_in_buf, "IN: {d:.0}", .{dps}) catch "IN: ---"
             else
@@ -2874,7 +2892,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
             dps_in_pos = calculateTextPosition(combat_cfg.incoming_position, dps_in_dims.width, dps_in_dims.height, overlay.width, overlay.height, combat_cfg.incoming_offset_x, combat_cfg.incoming_offset_y);
             fillTextBackground(overlay.pixels, overlay.width, overlay.height, dps_in_pos.x, dps_in_pos.y, dps_in_dims.width, dps_in_dims.height, settings.text_bg_color);
         }
-        if (combat_cfg.show_outgoing and (thumbnail.last_outgoing_dps == null or thumbnail.last_outgoing_dps.? > 0)) {
+        if (combat_cfg.show_outgoing and thumbnail.has_dps_data and (thumbnail.last_outgoing_dps == null or thumbnail.last_outgoing_dps.? > 0)) {
             dps_out_text = if (thumbnail.last_outgoing_dps) |dps|
                 std.fmt.bufPrint(&dps_out_buf, "OUT: {d:.0}", .{dps}) catch "OUT: ---"
             else
@@ -2900,7 +2918,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     var mining_block_x: i32 = 0;
     var mining_block_width: usize = 0;
     var mining_font: ?win32.HFONT = null;
-    if (config.mining.enabled and (thumbnail.last_mining_rate == null or thumbnail.last_mining_rate.? > 0)) {
+    if (config.mining.enabled and thumbnail.has_mining_data and (thumbnail.last_mining_rate == null or thumbnail.last_mining_rate.? > 0)) {
         const mining_cfg = &config.mining;
         const mf = try painter.getCachedFont(.mining, settings.text_font_name, mining_cfg.font_size, settings.text_font_weight);
         mining_font = mf;
@@ -2957,7 +2975,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     var bounty_pos: TextPos = .{ .x = 0, .y = 0 };
     var bounty_dims: TextDimensions = .{ .width = 0, .height = 0 };
     var bounty_font: ?win32.HFONT = null;
-    if (config.bounty.enabled and (thumbnail.last_bounty_isk_rate == null or thumbnail.last_bounty_isk_rate.? > 0)) {
+    if (config.bounty.enabled and thumbnail.has_bounty_data and (thumbnail.last_bounty_isk_rate == null or thumbnail.last_bounty_isk_rate.? > 0)) {
         const bounty_cfg = &config.bounty;
         const bf = try painter.getCachedFont(.bounty, settings.text_font_name, bounty_cfg.font_size, settings.text_font_weight);
         bounty_font = bf;
@@ -3315,6 +3333,9 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .mining_rate = if (cfg.mining.enabled) (thumbnail.last_mining_rate orelse -1.0) else 0.0,
         .mining_isk_rate = if (cfg.mining.enabled and cfg.mining.show_isk_rate) (thumbnail.last_mining_isk_rate orelse -1.0) else 0.0,
         .bounty_isk_rate = if (cfg.bounty.enabled) (thumbnail.last_bounty_isk_rate orelse -1.0) else 0.0,
+        .has_dps_data = thumbnail.has_dps_data,
+        .has_mining_data = thumbnail.has_mining_data,
+        .has_bounty_data = thumbnail.has_bounty_data,
         .dps_incoming_color = cfg.combat.incoming_color,
         .dps_outgoing_color = cfg.combat.outgoing_color,
         .mining_color = cfg.mining.color,
