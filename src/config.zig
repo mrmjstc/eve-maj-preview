@@ -137,6 +137,20 @@ pub const OrePriceEntry = struct {
     }
 };
 
+/// True if `base` appears as a whole word in `name` - i.e. `name` is `base` with a quality adjective added before and/or after (e.g. "Nocxite II-Grade" or "Shining Loparite" are both variants of their base ore, priced/measured the same).
+fn isGradeVariant(name: []const u8, base: []const u8) bool {
+    if (base.len == 0 or base.len >= name.len) return false;
+    var search_start: usize = 0;
+    while (std.mem.indexOfPos(u8, name, search_start, base)) |pos| {
+        const before_ok = pos == 0 or name[pos - 1] == ' ';
+        const after_pos = pos + base.len;
+        const after_ok = after_pos == name.len or name[after_pos] == ' ';
+        if (before_ok and after_ok) return true;
+        search_start = pos + 1;
+    }
+    return false;
+}
+
 /// Fallback prices are a Jita snapshot and will drift - re-fetch via "Fetch Prices" for current numbers.
 pub const DEFAULT_ORE_TABLE = [_]OreEntry.Wire{
     .{ .name = "Veldspar", .category = "Ore", .volumeM3 = 0.10, .price = 11.53 },
@@ -318,6 +332,9 @@ pub const GlobalSettings = struct {
         for (DEFAULT_ORE_TABLE) |entry| {
             if (std.mem.eql(u8, entry.name, name)) return entry.volumeM3;
         }
+        for (DEFAULT_ORE_TABLE) |entry| {
+            if (isGradeVariant(name, entry.name)) return entry.volumeM3;
+        }
         return null;
     }
 
@@ -328,6 +345,12 @@ pub const GlobalSettings = struct {
         }
         for (DEFAULT_ORE_TABLE) |entry| {
             if (std.mem.eql(u8, entry.name, name)) return entry.price;
+        }
+        for (self.oreTable.items) |entry| {
+            if (isGradeVariant(name, entry.name)) return entry.price;
+        }
+        for (DEFAULT_ORE_TABLE) |entry| {
+            if (isGradeVariant(name, entry.name)) return entry.price;
         }
         return null;
     }
