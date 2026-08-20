@@ -304,21 +304,7 @@ fn updateThrottledTracker(
 fn pushDpsUpdate(tracker: *activity_mod.CombatTracker, painter_ptr: *painter.Painter, eve_window: scout.EveWindow, now_ms: i64) void {
     const dps = tracker.getDps(eve_window.character_name);
 
-    // Only walk the ring buffer when a chart is enabled and its overlay can actually
-    // be drawn - ClientList/Nothing view modes create no thumbnail overlay at all.
-    var incoming_buf: [activity_mod.MAX_CHART_BUCKETS]f32 = undefined;
-    var outgoing_buf: [activity_mod.MAX_CHART_BUCKETS]f32 = undefined;
-    var incoming_buckets: []const f32 = &.{};
-    var outgoing_buckets: []const f32 = &.{};
-    if (g_config.display.viewMode == .Thumbnails and (g_config.combat.incoming_chart.enabled or g_config.combat.outgoing_chart.enabled)) {
-        const in_count: usize = if (g_config.combat.incoming_chart.enabled) g_config.combat.incoming_chart.bucket_count else 0;
-        const out_count: usize = if (g_config.combat.outgoing_chart.enabled) g_config.combat.outgoing_chart.bucket_count else 0;
-        tracker.getBuckets(eve_window.character_name, now_ms, incoming_buf[0..in_count], outgoing_buf[0..out_count]);
-        incoming_buckets = incoming_buf[0..in_count];
-        outgoing_buckets = outgoing_buf[0..out_count];
-    }
-
-    painter_ptr.updateDpsForCharacter(eve_window.hwnd, dps.incoming, dps.outgoing, incoming_buckets, outgoing_buckets);
+    painter_ptr.updateDpsForCharacter(eve_window.hwnd, dps.incoming, dps.outgoing);
 
     if (g_config.combat.damage_alert_enabled) {
         const repeat_ms: i64 = @as(i64, g_config.combat.damage_alert_repeat_seconds) * std.time.ms_per_s;
@@ -334,16 +320,7 @@ fn pushMiningUpdate(tracker: *activity_mod.MiningTracker, painter_ptr: *painter.
     const rate = tracker.getRate(eve_window.character_name);
     const isk_rate = tracker.getIskRate(eve_window.character_name);
 
-    // See pushDpsUpdate for why this is also gated on viewMode.
-    var chart_buf: [activity_mod.MAX_CHART_BUCKETS]f32 = undefined;
-    var chart_buckets: []const f32 = &.{};
-    if (g_config.display.viewMode == .Thumbnails and g_config.mining.chart.enabled) {
-        const count: usize = g_config.mining.chart.bucket_count;
-        tracker.getBuckets(eve_window.character_name, now_ms, chart_buf[0..count]);
-        chart_buckets = chart_buf[0..count];
-    }
-
-    painter_ptr.updateMiningForCharacter(eve_window.hwnd, rate, isk_rate, chart_buckets);
+    painter_ptr.updateMiningForCharacter(eve_window.hwnd, rate, isk_rate);
 
     if (g_config.mining.idle_alert_enabled) {
         const alert_window_ms: i64 = @as(i64, g_config.mining.idle_alert_window_seconds) * std.time.ms_per_s;
@@ -365,18 +342,10 @@ fn pushMiningUpdate(tracker: *activity_mod.MiningTracker, painter_ptr: *painter.
 }
 
 fn pushBountyUpdate(tracker: *activity_mod.BountyTracker, painter_ptr: *painter.Painter, eve_window: scout.EveWindow, now_ms: i64) void {
+    _ = now_ms;
     const isk_rate = tracker.getIskRate(eve_window.character_name);
 
-    // See pushDpsUpdate for why this is also gated on viewMode.
-    var chart_buf: [activity_mod.MAX_CHART_BUCKETS]f32 = undefined;
-    var chart_buckets: []const f32 = &.{};
-    if (g_config.display.viewMode == .Thumbnails and g_config.bounty.chart.enabled) {
-        const count: usize = g_config.bounty.chart.bucket_count;
-        tracker.getBuckets(eve_window.character_name, now_ms, chart_buf[0..count]);
-        chart_buckets = chart_buf[0..count];
-    }
-
-    painter_ptr.updateBountyForCharacter(eve_window.hwnd, isk_rate, chart_buckets);
+    painter_ptr.updateBountyForCharacter(eve_window.hwnd, isk_rate);
 }
 
 fn createTracker(comptime T: type, allocator: std.mem.Allocator, window_seconds: u32) !*T {

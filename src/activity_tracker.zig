@@ -12,9 +12,6 @@ pub const CombatEvent = struct {
 /// Ring-buffer capacity per character; 512 entries covers ~8 min at 1 hit/sec, within window_seconds ≤ 600.
 const RING_CAPACITY = 512;
 
-/// Upper bound on spark-chart bucket count; must match SparkChartConfig.BUCKET_COUNT_MAX.
-pub const MAX_CHART_BUCKETS: usize = 60;
-
 /// Guards against simultaneous multi-module/multi-weapon log lines spiking a rate computed over a near-zero span.
 const MIN_RATE_SPAN_MS: i64 = 3 * std.time.ms_per_s;
 
@@ -118,75 +115,6 @@ pub const CombatWindow = struct {
             .incoming = (@as(f32, @floatFromInt(in_total)) / window_secs) * in_factor,
             .outgoing = (@as(f32, @floatFromInt(out_total)) / window_secs) * out_factor,
         };
-    }
-
-    /// Each checkpoint is a trailing window_ms average ending at that point (matching computeDps at "now"), not a disjoint per-slice sum that would spike-then-zero between sparse hits — implemented as a difference array over a 2×window_ms lookback so one prefix sum reconstructs every checkpoint.
-    pub fn computeBuckets(self: *const CombatWindow, now_ms: i64, out_incoming: []f32, out_outgoing: []f32) void {
-        @memset(out_incoming, 0);
-        @memset(out_outgoing, 0);
-        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= 2 * self.window_ms) return;
-        const cutoff = now_ms - 2 * self.window_ms;
-        const recent_cutoff = now_ms - self.window_ms;
-
-        // bucket_ms == 0 means that direction's chart is disabled; the loop below just skips bucketing it.
-        const in_bucket_ms: i64 = if (out_incoming.len > 0) @divTrunc(self.window_ms, @as(i64, @intCast(out_incoming.len))) else 0;
-        const out_bucket_ms: i64 = if (out_outgoing.len > 0) @divTrunc(self.window_ms, @as(i64, @intCast(out_outgoing.len))) else 0;
-        const in_now_slot = if (in_bucket_ms > 0) @divFloor(now_ms, in_bucket_ms) else 0;
-        const out_now_slot = if (out_bucket_ms > 0) @divFloor(now_ms, out_bucket_ms) else 0;
-        const in_last_idx: i64 = if (out_incoming.len > 0) @intCast(out_incoming.len - 1) else 0;
-        const out_last_idx: i64 = if (out_outgoing.len > 0) @intCast(out_outgoing.len - 1) else 0;
-
-        var in_diff: [MAX_CHART_BUCKETS + 1]f32 = @splat(0);
-        var out_diff: [MAX_CHART_BUCKETS + 1]f32 = @splat(0);
-        var newest_ms: i64 = 0;
-        var oldest_ms: i64 = 0;
-
-        var i: usize = 0;
-        while (i < self.count) : (i += 1) {
-            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
-            const entry = &self.entries[idx];
-            if (entry.timestamp_ms < cutoff) break;
-            if (entry.timestamp_ms >= recent_cutoff) {
-                if (newest_ms == 0) newest_ms = entry.timestamp_ms;
-                oldest_ms = entry.timestamp_ms;
-            }
-            if (entry.is_incoming) {
-                if (in_bucket_ms <= 0) continue;
-                const slot = @divFloor(entry.timestamp_ms, in_bucket_ms);
-                const b = in_last_idx - (in_now_slot - slot);
-                const start = @max(b, 0);
-                const end = @min(b + in_last_idx, in_last_idx);
-                if (start > end) continue;
-                in_diff[@intCast(start)] += @floatFromInt(entry.amount);
-                in_diff[@intCast(end + 1)] -= @floatFromInt(entry.amount);
-            } else {
-                if (out_bucket_ms <= 0) continue;
-                const slot = @divFloor(entry.timestamp_ms, out_bucket_ms);
-                const b = out_last_idx - (out_now_slot - slot);
-                const start = @max(b, 0);
-                const end = @min(b + out_last_idx, out_last_idx);
-                if (start > end) continue;
-                out_diff[@intCast(start)] += @floatFromInt(entry.amount);
-                out_diff[@intCast(end + 1)] -= @floatFromInt(entry.amount);
-            }
-        }
-
-        const span_ms = newest_ms - oldest_ms;
-        if (span_ms < MIN_RATE_SPAN_MS) return;
-
-        const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
-        const in_factor = idleDecayFactor(now_ms, self.last_incoming_activity_ms, self.window_ms);
-        const out_factor = idleDecayFactor(now_ms, self.last_outgoing_activity_ms, self.window_ms);
-        var running: f32 = 0;
-        for (out_incoming, 0..) |*v, out_idx| {
-            running += in_diff[out_idx];
-            v.* = (running / window_secs) * in_factor;
-        }
-        running = 0;
-        for (out_outgoing, 0..) |*v, out_idx| {
-            running += out_diff[out_idx];
-            v.* = (running / window_secs) * out_factor;
-        }
     }
 
     /// Recompute DPS, update last_ fields. Returns true if either value changed by >= 0.1, or crossed to/from null.
@@ -305,19 +233,6 @@ pub const CombatTracker = struct {
             return .{ .incoming = window.last_incoming_dps, .outgoing = window.last_outgoing_dps };
         }
         return .{ .incoming = 0.0, .outgoing = 0.0 };
-    }
-
-    /// Bucket character_name's sliding window for spark-chart rendering. See CombatWindow.computeBuckets.
-    /// No-op (leaves buffers zeroed) if character_name has no window yet.
-    pub fn getBuckets(self: *CombatTracker, character_name: []const u8, now_ms: i64, out_incoming: []f32, out_outgoing: []f32) void {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
-        if (self.base.windows.getPtr(character_name)) |window| {
-            window.computeBuckets(now_ms, out_incoming, out_outgoing);
-            return;
-        }
-        @memset(out_incoming, 0);
-        @memset(out_outgoing, 0);
     }
 
     /// Re-evaluate all windows against now_ms.  Returns true if any DPS value changed by >= 0.1.
@@ -526,57 +441,6 @@ pub const MiningWindow = struct {
         return (total / window_secs) * idleDecayFactor(now_ms, self.last_hit_ms, self.window_ms);
     }
 
-    /// Wider than window_seconds so a checkpoint averages several yield cycles instead of ~1, avoiding an oscillating N/N+1 pulse at a steady rate.
-    const CHART_SMOOTHING_WINDOWS: i64 = 3;
-
-    /// Each checkpoint is a trailing average, not a raw slice sum, so gaps between infrequent yields don't read as zero — see CombatWindow.computeBuckets for the shared difference-array technique.
-    /// Smooths over CHART_SMOOTHING_WINDOWS x window_ms, so unlike CombatWindow's the newest checkpoint won't exactly match computeRate(now_ms); the visible span is still capped at window_ms.
-    pub fn computeBuckets(self: *const MiningWindow, now_ms: i64, out: []f32) void {
-        @memset(out, 0);
-        if (out.len == 0) return;
-        // Cut off at window_ms (not the wider smoothing span) so the chart clears exactly when the displayed rate does.
-        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) return;
-        const smoothing_ms = self.window_ms * CHART_SMOOTHING_WINDOWS;
-        const cutoff = now_ms - self.window_ms - smoothing_ms;
-        const recent_cutoff = now_ms - self.window_ms;
-        const bucket_ms = @divTrunc(self.window_ms, @as(i64, @intCast(out.len)));
-        if (bucket_ms <= 0) return;
-        const range_buckets = @divTrunc(smoothing_ms, bucket_ms);
-        const now_slot = @divFloor(now_ms, bucket_ms);
-        const last_idx: i64 = @intCast(out.len - 1);
-
-        var diff: [MAX_CHART_BUCKETS + 1]f32 = @splat(0);
-        var newest_ms: i64 = 0;
-        var oldest_ms: i64 = 0;
-        var i: usize = 0;
-        while (i < self.count) : (i += 1) {
-            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
-            const entry = &self.entries[idx];
-            if (entry.timestamp_ms < cutoff) break;
-            if (entry.timestamp_ms >= recent_cutoff) {
-                if (newest_ms == 0) newest_ms = entry.timestamp_ms;
-                oldest_ms = entry.timestamp_ms;
-            }
-            const entry_slot = @divFloor(entry.timestamp_ms, bucket_ms);
-            const b = last_idx - (now_slot - entry_slot);
-            const start = @max(b, 0);
-            const end = @min(b + range_buckets - 1, last_idx);
-            if (start > end) continue;
-            diff[@intCast(start)] += entry.m3;
-            diff[@intCast(end + 1)] -= entry.m3;
-        }
-        const span_ms = newest_ms - oldest_ms;
-        if (span_ms < MIN_RATE_SPAN_MS) return;
-
-        const smoothing_secs = @as(f32, @floatFromInt(@min(smoothing_ms, span_ms))) / 1000.0;
-        const factor = idleDecayFactor(now_ms, self.last_hit_ms, self.window_ms);
-        var running: f32 = 0;
-        for (out, 0..) |*v, out_idx| {
-            running += diff[out_idx];
-            v.* = (running / smoothing_secs) * factor;
-        }
-    }
-
     /// Recompute m3 and ISK rates, updating both cached values. Returns true if the m3 rate changed by >= 0.1 or crossed to/from null -
     /// the ISK rate is driven by the exact same set of window entries, so an unchanged m3 rate means an unchanged ISK rate too.
     pub fn refresh(self: *MiningWindow, now_ms: i64) bool {
@@ -641,18 +505,6 @@ pub const MiningTracker = struct {
             return window.last_isk_per_sec;
         }
         return 0.0;
-    }
-
-    /// Bucket character_name's sliding window for spark-chart rendering. See MiningWindow.computeBuckets.
-    /// No-op (leaves out zeroed) if character_name has no window yet.
-    pub fn getBuckets(self: *MiningTracker, character_name: []const u8, now_ms: i64, out: []f32) void {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
-        if (self.base.windows.getPtr(character_name)) |window| {
-            window.computeBuckets(now_ms, out);
-            return;
-        }
-        @memset(out, 0);
     }
 
     /// Re-evaluate all windows against now_ms. Returns true if any rate changed by >= 0.1.
@@ -767,55 +619,6 @@ pub const BountyWindow = struct {
         return (total / window_secs) * idleDecayFactor(now_ms, self.last_hit_ms, self.window_ms);
     }
 
-    /// Wider than window_seconds so a checkpoint averages several payouts instead of ~1, avoiding an oscillating N/N+1 pulse between sporadic kills.
-    const CHART_SMOOTHING_WINDOWS: i64 = 3;
-
-    /// Each checkpoint is a trailing average, not a raw slice sum - see MiningWindow.computeBuckets for the shared difference-array technique.
-    pub fn computeBuckets(self: *const BountyWindow, now_ms: i64, out: []f32) void {
-        @memset(out, 0);
-        if (out.len == 0) return;
-        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) return;
-        const smoothing_ms = self.window_ms * CHART_SMOOTHING_WINDOWS;
-        const cutoff = now_ms - self.window_ms - smoothing_ms;
-        const recent_cutoff = now_ms - self.window_ms;
-        const bucket_ms = @divTrunc(self.window_ms, @as(i64, @intCast(out.len)));
-        if (bucket_ms <= 0) return;
-        const range_buckets = @divTrunc(smoothing_ms, bucket_ms);
-        const now_slot = @divFloor(now_ms, bucket_ms);
-        const last_idx: i64 = @intCast(out.len - 1);
-
-        var diff: [MAX_CHART_BUCKETS + 1]f32 = @splat(0);
-        var newest_ms: i64 = 0;
-        var oldest_ms: i64 = 0;
-        var i: usize = 0;
-        while (i < self.count) : (i += 1) {
-            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
-            const entry = &self.entries[idx];
-            if (entry.timestamp_ms < cutoff) break;
-            if (entry.timestamp_ms >= recent_cutoff) {
-                if (newest_ms == 0) newest_ms = entry.timestamp_ms;
-                oldest_ms = entry.timestamp_ms;
-            }
-            const entry_slot = @divFloor(entry.timestamp_ms, bucket_ms);
-            const b = last_idx - (now_slot - entry_slot);
-            const start = @max(b, 0);
-            const end = @min(b + range_buckets - 1, last_idx);
-            if (start > end) continue;
-            diff[@intCast(start)] += entry.isk;
-            diff[@intCast(end + 1)] -= entry.isk;
-        }
-        const span_ms = newest_ms - oldest_ms;
-        if (span_ms < MIN_RATE_SPAN_MS) return;
-
-        const smoothing_secs = @as(f32, @floatFromInt(@min(smoothing_ms, span_ms))) / 1000.0;
-        const factor = idleDecayFactor(now_ms, self.last_hit_ms, self.window_ms);
-        var running: f32 = 0;
-        for (out, 0..) |*v, out_idx| {
-            running += diff[out_idx];
-            v.* = (running / smoothing_secs) * factor;
-        }
-    }
-
     /// Recompute the ISK rate. Returns true if it changed by >= 0.1 or crossed to/from null.
     pub fn refresh(self: *BountyWindow, now_ms: i64) bool {
         const new_rate = self.computeIskRate(now_ms);
@@ -867,18 +670,6 @@ pub const BountyTracker = struct {
             return window.last_isk_per_sec;
         }
         return 0.0;
-    }
-
-    /// Bucket character_name's sliding window for spark-chart rendering. See BountyWindow.computeBuckets.
-    /// No-op (leaves out zeroed) if character_name has no window yet.
-    pub fn getBuckets(self: *BountyTracker, character_name: []const u8, now_ms: i64, out: []f32) void {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
-        if (self.base.windows.getPtr(character_name)) |window| {
-            window.computeBuckets(now_ms, out);
-            return;
-        }
-        @memset(out, 0);
     }
 
     /// Re-evaluate all windows against now_ms. Returns true if any rate changed by >= 0.1.

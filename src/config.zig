@@ -912,8 +912,6 @@ pub const CombatConfig = struct {
     icon_offset_x: i32 = 0,
     icon_offset_y: i32 = 0,
     icon_font_size: i32 = 20,
-    incoming_chart: SparkChartConfig = .{},
-    outgoing_chart: SparkChartConfig = .{},
 
     pub const WINDOW_SECONDS_MIN: u32 = 1;
     pub const WINDOW_SECONDS_MAX: u32 = 3600;
@@ -950,9 +948,6 @@ pub const CombatConfig = struct {
         if (self.icon_offset_x > OFFSET_MAX) self.icon_offset_x = OFFSET_MAX;
         if (self.icon_offset_y < OFFSET_MIN) self.icon_offset_y = OFFSET_MIN;
         if (self.icon_offset_y > OFFSET_MAX) self.icon_offset_y = OFFSET_MAX;
-
-        self.incoming_chart.validate(self.window_seconds);
-        self.outgoing_chart.validate(self.window_seconds);
     }
 
     pub fn deinit(self: *CombatConfig, allocator: std.mem.Allocator) void {
@@ -983,8 +978,6 @@ pub const CombatConfig = struct {
         icon_offset_x: i32 = (CombatConfig{}).icon_offset_x,
         icon_offset_y: i32 = (CombatConfig{}).icon_offset_y,
         icon_font_size: i32 = (CombatConfig{}).icon_font_size,
-        incoming_chart: SparkChartConfig.Wire = .{},
-        outgoing_chart: SparkChartConfig.Wire = .{},
     };
 
     pub fn toWire(self: CombatConfig) Wire {
@@ -1012,8 +1005,6 @@ pub const CombatConfig = struct {
             .icon_offset_x = self.icon_offset_x,
             .icon_offset_y = self.icon_offset_y,
             .icon_font_size = self.icon_font_size,
-            .incoming_chart = self.incoming_chart.toWire(),
-            .outgoing_chart = self.outgoing_chart.toWire(),
         };
     }
 
@@ -1042,85 +1033,6 @@ pub const CombatConfig = struct {
             .icon_offset_x = w.icon_offset_x,
             .icon_offset_y = w.icon_offset_y,
             .icon_font_size = w.icon_font_size,
-            .incoming_chart = SparkChartConfig.fromWire(w.incoming_chart),
-            .outgoing_chart = SparkChartConfig.fromWire(w.outgoing_chart),
-        };
-    }
-};
-
-/// Small spark line showing recent history for a rate-like value (mining m3/sec, incoming/outgoing DPS); no color field - reuses the parent's color and the global text background.
-pub const SparkChartConfig = struct {
-    enabled: bool = false,
-    /// Percentage of the thumbnail width, not a pixel count (unlike height).
-    width: i32 = 100,
-    height: i32 = 24,
-    position: types.TextPosition = .Center,
-    offset_x: i32 = 0,
-    offset_y: i32 = 0,
-    bucket_count: u32 = 20,
-    show_background: bool = true,
-
-    pub const WIDTH_MIN: i32 = 10;
-    pub const WIDTH_MAX: i32 = 100;
-    pub const HEIGHT_MIN: i32 = 10;
-    pub const HEIGHT_MAX: i32 = 100;
-    pub const OFFSET_MIN: i32 = -50;
-    pub const OFFSET_MAX: i32 = 50;
-    pub const BUCKET_COUNT_MIN: u32 = 5;
-    /// Must match activity_tracker.MAX_CHART_BUCKETS.
-    pub const BUCKET_COUNT_MAX: u32 = 60;
-
-    /// window_seconds is the parent Mining/CombatConfig's rate window, needed to clamp bucket_count below.
-    pub fn validate(self: *SparkChartConfig, window_seconds: u32) void {
-        if (self.width < WIDTH_MIN) self.width = WIDTH_MIN;
-        if (self.width > WIDTH_MAX) self.width = WIDTH_MAX;
-        if (self.height < HEIGHT_MIN) self.height = HEIGHT_MIN;
-        if (self.height > HEIGHT_MAX) self.height = HEIGHT_MAX;
-        if (self.offset_x < OFFSET_MIN) self.offset_x = OFFSET_MIN;
-        if (self.offset_x > OFFSET_MAX) self.offset_x = OFFSET_MAX;
-        if (self.offset_y < OFFSET_MIN) self.offset_y = OFFSET_MIN;
-        if (self.offset_y > OFFSET_MAX) self.offset_y = OFFSET_MAX;
-        if (self.bucket_count < BUCKET_COUNT_MIN) self.bucket_count = BUCKET_COUNT_MIN;
-        if (self.bucket_count > BUCKET_COUNT_MAX) self.bucket_count = BUCKET_COUNT_MAX;
-        // More buckets than seconds of window gives sub-second, mostly-empty buckets.
-        const max_useful = @max(BUCKET_COUNT_MIN, window_seconds);
-        if (self.bucket_count > max_useful) self.bucket_count = max_useful;
-    }
-
-    pub const Wire = struct {
-        enabled: bool = (SparkChartConfig{}).enabled,
-        width: i32 = (SparkChartConfig{}).width,
-        height: i32 = (SparkChartConfig{}).height,
-        position: types.TextPosition = (SparkChartConfig{}).position,
-        offset_x: i32 = (SparkChartConfig{}).offset_x,
-        offset_y: i32 = (SparkChartConfig{}).offset_y,
-        bucket_count: u32 = (SparkChartConfig{}).bucket_count,
-        show_background: bool = (SparkChartConfig{}).show_background,
-    };
-
-    pub fn toWire(self: SparkChartConfig) Wire {
-        return .{
-            .enabled = self.enabled,
-            .width = self.width,
-            .height = self.height,
-            .position = self.position,
-            .offset_x = self.offset_x,
-            .offset_y = self.offset_y,
-            .bucket_count = self.bucket_count,
-            .show_background = self.show_background,
-        };
-    }
-
-    pub fn fromWire(w: Wire) SparkChartConfig {
-        return .{
-            .enabled = w.enabled,
-            .width = w.width,
-            .height = w.height,
-            .position = w.position,
-            .offset_x = w.offset_x,
-            .offset_y = w.offset_y,
-            .bucket_count = w.bucket_count,
-            .show_background = w.show_background,
         };
     }
 };
@@ -1143,7 +1055,6 @@ pub const MiningConfig = struct {
     stopped_alert_window_seconds: u32 = 60,
     show_isk_rate: bool = false,
     isk_rate_unit: IskRateUnit = .minute,
-    chart: SparkChartConfig = .{},
 
     pub const WINDOW_SECONDS_MIN: u32 = 1;
     pub const WINDOW_SECONDS_MAX: u32 = 3600;
@@ -1176,8 +1087,6 @@ pub const MiningConfig = struct {
         if (self.offset_y > OFFSET_MAX) self.offset_y = OFFSET_MAX;
 
         if (self.idle_alert_threshold > IDLE_ALERT_THRESHOLD_MAX) self.idle_alert_threshold = IDLE_ALERT_THRESHOLD_MAX;
-
-        self.chart.validate(self.window_seconds);
     }
 
     pub const Wire = struct {
@@ -1196,7 +1105,6 @@ pub const MiningConfig = struct {
         stopped_alert_window_seconds: u32 = (MiningConfig{}).stopped_alert_window_seconds,
         show_isk_rate: bool = (MiningConfig{}).show_isk_rate,
         isk_rate_unit: IskRateUnit = (MiningConfig{}).isk_rate_unit,
-        chart: SparkChartConfig.Wire = .{},
     };
 
     pub fn toWire(self: MiningConfig) Wire {
@@ -1216,7 +1124,6 @@ pub const MiningConfig = struct {
             .stopped_alert_window_seconds = self.stopped_alert_window_seconds,
             .show_isk_rate = self.show_isk_rate,
             .isk_rate_unit = self.isk_rate_unit,
-            .chart = self.chart.toWire(),
         };
     }
 
@@ -1237,7 +1144,6 @@ pub const MiningConfig = struct {
             .stopped_alert_window_seconds = w.stopped_alert_window_seconds,
             .show_isk_rate = w.show_isk_rate,
             .isk_rate_unit = w.isk_rate_unit,
-            .chart = SparkChartConfig.fromWire(w.chart),
         };
     }
 };
@@ -1253,7 +1159,6 @@ pub const BountyConfig = struct {
     offset_x: i32 = 0,
     offset_y: i32 = 0,
     isk_rate_unit: IskRateUnit = .hour,
-    chart: SparkChartConfig = .{},
 
     pub const WINDOW_SECONDS_MIN: u32 = 1;
     pub const WINDOW_SECONDS_MAX: u32 = 3600;
@@ -1276,8 +1181,6 @@ pub const BountyConfig = struct {
         if (self.offset_x > OFFSET_MAX) self.offset_x = OFFSET_MAX;
         if (self.offset_y < OFFSET_MIN) self.offset_y = OFFSET_MIN;
         if (self.offset_y > OFFSET_MAX) self.offset_y = OFFSET_MAX;
-
-        self.chart.validate(self.window_seconds);
     }
 
     pub const Wire = struct {
@@ -1290,7 +1193,6 @@ pub const BountyConfig = struct {
         offset_x: i32 = (BountyConfig{}).offset_x,
         offset_y: i32 = (BountyConfig{}).offset_y,
         isk_rate_unit: IskRateUnit = (BountyConfig{}).isk_rate_unit,
-        chart: SparkChartConfig.Wire = .{},
     };
 
     pub fn toWire(self: BountyConfig) Wire {
@@ -1304,7 +1206,6 @@ pub const BountyConfig = struct {
             .offset_x = self.offset_x,
             .offset_y = self.offset_y,
             .isk_rate_unit = self.isk_rate_unit,
-            .chart = self.chart.toWire(),
         };
     }
 
@@ -1319,7 +1220,6 @@ pub const BountyConfig = struct {
             .offset_x = w.offset_x,
             .offset_y = w.offset_y,
             .isk_rate_unit = w.isk_rate_unit,
-            .chart = SparkChartConfig.fromWire(w.chart),
         };
     }
 };
@@ -3342,16 +3242,6 @@ pub const Config = struct {
             .@"combat.outgoing_offset_y" = Range{ .min = CombatConfig.OFFSET_MIN, .max = CombatConfig.OFFSET_MAX },
             .@"combat.icon_offset_x" = Range{ .min = CombatConfig.OFFSET_MIN, .max = CombatConfig.OFFSET_MAX },
             .@"combat.icon_offset_y" = Range{ .min = CombatConfig.OFFSET_MIN, .max = CombatConfig.OFFSET_MAX },
-            .@"combat.incoming_chart.width" = Range{ .min = SparkChartConfig.WIDTH_MIN, .max = SparkChartConfig.WIDTH_MAX },
-            .@"combat.incoming_chart.height" = Range{ .min = SparkChartConfig.HEIGHT_MIN, .max = SparkChartConfig.HEIGHT_MAX },
-            .@"combat.incoming_chart.offset_x" = Range{ .min = SparkChartConfig.OFFSET_MIN, .max = SparkChartConfig.OFFSET_MAX },
-            .@"combat.incoming_chart.offset_y" = Range{ .min = SparkChartConfig.OFFSET_MIN, .max = SparkChartConfig.OFFSET_MAX },
-            .@"combat.incoming_chart.bucket_count" = Range{ .min = SparkChartConfig.BUCKET_COUNT_MIN, .max = SparkChartConfig.BUCKET_COUNT_MAX },
-            .@"combat.outgoing_chart.width" = Range{ .min = SparkChartConfig.WIDTH_MIN, .max = SparkChartConfig.WIDTH_MAX },
-            .@"combat.outgoing_chart.height" = Range{ .min = SparkChartConfig.HEIGHT_MIN, .max = SparkChartConfig.HEIGHT_MAX },
-            .@"combat.outgoing_chart.offset_x" = Range{ .min = SparkChartConfig.OFFSET_MIN, .max = SparkChartConfig.OFFSET_MAX },
-            .@"combat.outgoing_chart.offset_y" = Range{ .min = SparkChartConfig.OFFSET_MIN, .max = SparkChartConfig.OFFSET_MAX },
-            .@"combat.outgoing_chart.bucket_count" = Range{ .min = SparkChartConfig.BUCKET_COUNT_MIN, .max = SparkChartConfig.BUCKET_COUNT_MAX },
 
             .@"mining.window_seconds" = Range{ .min = MiningConfig.WINDOW_SECONDS_MIN, .max = MiningConfig.WINDOW_SECONDS_MAX },
             .@"mining.update_interval_ms" = Range{ .min = MiningConfig.UPDATE_INTERVAL_MS_MIN, .max = MiningConfig.UPDATE_INTERVAL_MS_MAX },
@@ -3361,22 +3251,12 @@ pub const Config = struct {
             .@"mining.offset_x" = Range{ .min = MiningConfig.OFFSET_MIN, .max = MiningConfig.OFFSET_MAX },
             .@"mining.offset_y" = Range{ .min = MiningConfig.OFFSET_MIN, .max = MiningConfig.OFFSET_MAX },
             .@"mining.idle_alert_threshold" = Range{ .min = MiningConfig.IDLE_ALERT_THRESHOLD_MIN, .max = MiningConfig.IDLE_ALERT_THRESHOLD_MAX },
-            .@"mining.chart.width" = Range{ .min = SparkChartConfig.WIDTH_MIN, .max = SparkChartConfig.WIDTH_MAX },
-            .@"mining.chart.height" = Range{ .min = SparkChartConfig.HEIGHT_MIN, .max = SparkChartConfig.HEIGHT_MAX },
-            .@"mining.chart.offset_x" = Range{ .min = SparkChartConfig.OFFSET_MIN, .max = SparkChartConfig.OFFSET_MAX },
-            .@"mining.chart.offset_y" = Range{ .min = SparkChartConfig.OFFSET_MIN, .max = SparkChartConfig.OFFSET_MAX },
-            .@"mining.chart.bucket_count" = Range{ .min = SparkChartConfig.BUCKET_COUNT_MIN, .max = SparkChartConfig.BUCKET_COUNT_MAX },
 
             .@"bounty.window_seconds" = Range{ .min = BountyConfig.WINDOW_SECONDS_MIN, .max = BountyConfig.WINDOW_SECONDS_MAX },
             .@"bounty.update_interval_ms" = Range{ .min = BountyConfig.UPDATE_INTERVAL_MS_MIN, .max = BountyConfig.UPDATE_INTERVAL_MS_MAX },
             .@"bounty.font_size" = Range{ .min = BountyConfig.FONT_SIZE_MIN, .max = BountyConfig.FONT_SIZE_MAX },
             .@"bounty.offset_x" = Range{ .min = BountyConfig.OFFSET_MIN, .max = BountyConfig.OFFSET_MAX },
             .@"bounty.offset_y" = Range{ .min = BountyConfig.OFFSET_MIN, .max = BountyConfig.OFFSET_MAX },
-            .@"bounty.chart.width" = Range{ .min = SparkChartConfig.WIDTH_MIN, .max = SparkChartConfig.WIDTH_MAX },
-            .@"bounty.chart.height" = Range{ .min = SparkChartConfig.HEIGHT_MIN, .max = SparkChartConfig.HEIGHT_MAX },
-            .@"bounty.chart.offset_x" = Range{ .min = SparkChartConfig.OFFSET_MIN, .max = SparkChartConfig.OFFSET_MAX },
-            .@"bounty.chart.offset_y" = Range{ .min = SparkChartConfig.OFFSET_MIN, .max = SparkChartConfig.OFFSET_MAX },
-            .@"bounty.chart.bucket_count" = Range{ .min = SparkChartConfig.BUCKET_COUNT_MIN, .max = SparkChartConfig.BUCKET_COUNT_MAX },
         };
 
         return std.json.Stringify.valueAlloc(allocator, ranges, .{});

@@ -310,23 +310,6 @@ const CONFIG_SCHEMA = [
     { id: 'combatIconOffsetX', path: 'combat.icon_offset_x' },
     { id: 'combatIconOffsetY', path: 'combat.icon_offset_y' },
 
-    { id: 'combatIncomingChartEnabled', path: 'combat.incoming_chart.enabled' },
-    { id: 'combatIncomingChartShowBackground', path: 'combat.incoming_chart.show_background' },
-    { id: 'combatIncomingChartPosition', path: 'combat.incoming_chart.position' },
-    { id: 'combatIncomingChartBucketCount', path: 'combat.incoming_chart.bucket_count' },
-    { id: 'combatIncomingChartWidth', path: 'combat.incoming_chart.width' },
-    { id: 'combatIncomingChartHeight', path: 'combat.incoming_chart.height' },
-    { id: 'combatIncomingChartOffsetX', path: 'combat.incoming_chart.offset_x' },
-    { id: 'combatIncomingChartOffsetY', path: 'combat.incoming_chart.offset_y' },
-    { id: 'combatOutgoingChartEnabled', path: 'combat.outgoing_chart.enabled' },
-    { id: 'combatOutgoingChartShowBackground', path: 'combat.outgoing_chart.show_background' },
-    { id: 'combatOutgoingChartPosition', path: 'combat.outgoing_chart.position' },
-    { id: 'combatOutgoingChartBucketCount', path: 'combat.outgoing_chart.bucket_count' },
-    { id: 'combatOutgoingChartWidth', path: 'combat.outgoing_chart.width' },
-    { id: 'combatOutgoingChartHeight', path: 'combat.outgoing_chart.height' },
-    { id: 'combatOutgoingChartOffsetX', path: 'combat.outgoing_chart.offset_x' },
-    { id: 'combatOutgoingChartOffsetY', path: 'combat.outgoing_chart.offset_y' },
-
     { id: 'miningEnabled', path: 'mining.enabled' },
     { id: 'miningWindowSeconds', path: 'mining.window_seconds' },
     { id: 'miningUpdateIntervalMs', path: 'mining.update_interval_ms', transform: 'ms' },
@@ -337,14 +320,6 @@ const CONFIG_SCHEMA = [
     { id: 'miningOffsetY', path: 'mining.offset_y' },
     { id: 'miningShowIskRate', path: 'mining.show_isk_rate' },
     { id: 'miningIskRateUnit', path: 'mining.isk_rate_unit' },
-    { id: 'miningChartEnabled', path: 'mining.chart.enabled' },
-    { id: 'miningChartShowBackground', path: 'mining.chart.show_background' },
-    { id: 'miningChartPosition', path: 'mining.chart.position' },
-    { id: 'miningChartBucketCount', path: 'mining.chart.bucket_count' },
-    { id: 'miningChartWidth', path: 'mining.chart.width' },
-    { id: 'miningChartHeight', path: 'mining.chart.height' },
-    { id: 'miningChartOffsetX', path: 'mining.chart.offset_x' },
-    { id: 'miningChartOffsetY', path: 'mining.chart.offset_y' },
     { id: 'miningIdleAlertEnabled', path: 'mining.idle_alert_enabled' },
     { id: 'miningIdleAlertWindowSeconds', path: 'mining.idle_alert_window_seconds' },
     { id: 'miningIdleAlertThreshold', path: 'mining.idle_alert_threshold' },
@@ -360,14 +335,6 @@ const CONFIG_SCHEMA = [
     { id: 'bountyOffsetX', path: 'bounty.offset_x' },
     { id: 'bountyOffsetY', path: 'bounty.offset_y' },
     { id: 'bountyIskRateUnit', path: 'bounty.isk_rate_unit' },
-    { id: 'bountyChartEnabled', path: 'bounty.chart.enabled' },
-    { id: 'bountyChartShowBackground', path: 'bounty.chart.show_background' },
-    { id: 'bountyChartPosition', path: 'bounty.chart.position' },
-    { id: 'bountyChartBucketCount', path: 'bounty.chart.bucket_count' },
-    { id: 'bountyChartWidth', path: 'bounty.chart.width' },
-    { id: 'bountyChartHeight', path: 'bounty.chart.height' },
-    { id: 'bountyChartOffsetX', path: 'bounty.chart.offset_x' },
-    { id: 'bountyChartOffsetY', path: 'bounty.chart.offset_y' },
 ];
 
 function getConfigPath(obj, path) {
@@ -6170,19 +6137,16 @@ function toggleChatlogOptions() {
 function toggleCombatOptions() {
     applyOptionToggle('combatEnabled', 'combatOptions');
     applyOptionToggle('combatEnabled', 'combatAlertsOptions');
-    applyOptionToggle('combatEnabled', 'combatChartsOptions');
 }
 
 function toggleMiningOptions() {
     applyOptionToggle('miningEnabled', 'miningOptions');
     applyOptionToggle('miningEnabled', 'miningAlertsOptions');
-    applyOptionToggle('miningEnabled', 'miningChartOptions');
     applyOptionToggle('miningShowIskRate', 'miningIskRateOptions');
 }
 
 function toggleBountyOptions() {
     applyOptionToggle('bountyEnabled', 'bountyOptions');
-    applyOptionToggle('bountyEnabled', 'bountyChartOptions');
 }
 
 async function browseChatlogDir() {

@@ -118,9 +118,6 @@ const RenderSettings = struct {
     mining_color: u32 = 0xFF44AAFF,
     bounty_color: u32 = 0xFFFFD700,
     icon_color: u32 = 0xFFFF4444,
-
-    // Mirrors ThumbnailWindow.chart_generation so a bucket-data change invalidates the cache even when dps_incoming/mining_rate didn't move.
-    chart_generation: u32 = 0,
 };
 
 pub const ThumbnailWindow = struct {
@@ -148,19 +145,6 @@ pub const ThumbnailWindow = struct {
     last_mining_rate: ?f32 = null,
     last_mining_isk_rate: ?f32 = null,
     last_bounty_isk_rate: ?f32 = null,
-
-    // Spark-chart bucket series; only the first config.*.chart.bucket_count entries are meaningful.
-    mining_chart_buckets: [activity_tracker.MAX_CHART_BUCKETS]f32 = @splat(0),
-    combat_incoming_chart_buckets: [activity_tracker.MAX_CHART_BUCKETS]f32 = @splat(0),
-    combat_outgoing_chart_buckets: [activity_tracker.MAX_CHART_BUCKETS]f32 = @splat(0),
-    bounty_chart_buckets: [activity_tracker.MAX_CHART_BUCKETS]f32 = @splat(0),
-    // Peak-hold auto-scale per chart (see updateChartScale).
-    mining_chart_scale: f32 = 0,
-    combat_incoming_chart_scale: f32 = 0,
-    combat_outgoing_chart_scale: f32 = 0,
-    bounty_chart_scale: f32 = 0,
-    // Bumped when bucket data changes; mirrored into RenderSettings.chart_generation so a shifted line isn't mistaken for no change.
-    chart_generation: u32 = 0,
 
     // Cached overlay bitmap — kept alive between renders, recreated only on resize
     cached_overlay: ?gdi_overlay.OverlayBitmap = null,
@@ -517,8 +501,7 @@ pub const Painter = struct {
             a.dps_outgoing_color == b.dps_outgoing_color and
             a.mining_color == b.mining_color and
             a.bounty_color == b.bounty_color and
-            a.icon_color == b.icon_color and
-            a.chart_generation == b.chart_generation;
+            a.icon_color == b.icon_color;
     }
 
     fn renderSettingsEqual(a: RenderSettings, b: RenderSettings) bool {
@@ -1190,24 +1173,12 @@ pub const Painter = struct {
         _ = win32.EndDeferWindowPos(hdwp);
     }
 
-    /// Updates DPS values for a character's overlay; incoming_buckets/outgoing_buckets are this tick's spark-chart series, empty when that direction's chart is disabled.
-    pub fn updateDpsForCharacter(self: *Painter, source_hwnd: win32.HWND, incoming_dps: ?f32, outgoing_dps: ?f32, incoming_buckets: []const f32, outgoing_buckets: []const f32) void {
+    /// Updates DPS values for a character's overlay.
+    pub fn updateDpsForCharacter(self: *Painter, source_hwnd: win32.HWND, incoming_dps: ?f32, outgoing_dps: ?f32) void {
         if (self.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
-            // Buckets are compared separately from the scalar values so an idle (bit-identical) chart doesn't force a redraw.
-            const incoming_changed = incoming_buckets.len > 0 and !std.mem.eql(f32, thumbnail.combat_incoming_chart_buckets[0..incoming_buckets.len], incoming_buckets);
-            const outgoing_changed = outgoing_buckets.len > 0 and !std.mem.eql(f32, thumbnail.combat_outgoing_chart_buckets[0..outgoing_buckets.len], outgoing_buckets);
-            if (thumbnail.last_incoming_dps != incoming_dps or thumbnail.last_outgoing_dps != outgoing_dps or incoming_changed or outgoing_changed) {
+            if (thumbnail.last_incoming_dps != incoming_dps or thumbnail.last_outgoing_dps != outgoing_dps) {
                 thumbnail.last_incoming_dps = incoming_dps;
                 thumbnail.last_outgoing_dps = outgoing_dps;
-                if (incoming_changed) {
-                    @memcpy(thumbnail.combat_incoming_chart_buckets[0..incoming_buckets.len], incoming_buckets);
-                    updateChartScale(&thumbnail.combat_incoming_chart_scale, incoming_buckets);
-                }
-                if (outgoing_changed) {
-                    @memcpy(thumbnail.combat_outgoing_chart_buckets[0..outgoing_buckets.len], outgoing_buckets);
-                    updateChartScale(&thumbnail.combat_outgoing_chart_scale, outgoing_buckets);
-                }
-                if (incoming_changed or outgoing_changed) thumbnail.chart_generation +%= 1;
                 thumbnail.needs_render = true;
             }
         }
@@ -1220,36 +1191,22 @@ pub const Painter = struct {
         };
     }
 
-    /// Updates mining rate (and its ISK/sec twin) for a character's overlay; buckets is this tick's spark-chart series, empty when disabled.
-    pub fn updateMiningForCharacter(self: *Painter, source_hwnd: win32.HWND, rate: ?f32, isk_rate: ?f32, buckets: []const f32) void {
+    /// Updates mining rate (and its ISK/sec twin) for a character's overlay.
+    pub fn updateMiningForCharacter(self: *Painter, source_hwnd: win32.HWND, rate: ?f32, isk_rate: ?f32) void {
         if (self.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
-            // See updateDpsForCharacter for why buckets are compared separately from rate.
-            const buckets_changed = buckets.len > 0 and !std.mem.eql(f32, thumbnail.mining_chart_buckets[0..buckets.len], buckets);
-            if (thumbnail.last_mining_rate != rate or thumbnail.last_mining_isk_rate != isk_rate or buckets_changed) {
+            if (thumbnail.last_mining_rate != rate or thumbnail.last_mining_isk_rate != isk_rate) {
                 thumbnail.last_mining_rate = rate;
                 thumbnail.last_mining_isk_rate = isk_rate;
-                if (buckets_changed) {
-                    @memcpy(thumbnail.mining_chart_buckets[0..buckets.len], buckets);
-                    updateChartScale(&thumbnail.mining_chart_scale, buckets);
-                    thumbnail.chart_generation +%= 1;
-                }
                 thumbnail.needs_render = true;
             }
         }
     }
 
-    /// Updates the bounty ISK/sec rate for a character's overlay; buckets is this tick's spark-chart series, empty when disabled.
-    pub fn updateBountyForCharacter(self: *Painter, source_hwnd: win32.HWND, isk_rate: ?f32, buckets: []const f32) void {
+    /// Updates the bounty ISK/sec rate for a character's overlay.
+    pub fn updateBountyForCharacter(self: *Painter, source_hwnd: win32.HWND, isk_rate: ?f32) void {
         if (self.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
-            // See updateDpsForCharacter for why buckets are compared separately from rate.
-            const buckets_changed = buckets.len > 0 and !std.mem.eql(f32, thumbnail.bounty_chart_buckets[0..buckets.len], buckets);
-            if (thumbnail.last_bounty_isk_rate != isk_rate or buckets_changed) {
+            if (thumbnail.last_bounty_isk_rate != isk_rate) {
                 thumbnail.last_bounty_isk_rate = isk_rate;
-                if (buckets_changed) {
-                    @memcpy(thumbnail.bounty_chart_buckets[0..buckets.len], buckets);
-                    updateChartScale(&thumbnail.bounty_chart_scale, buckets);
-                    thumbnail.chart_generation +%= 1;
-                }
                 thumbnail.needs_render = true;
             }
         }
@@ -2581,32 +2538,6 @@ fn drawRectOutline(pixels: [*]u32, buf_width: usize, buf_height: usize, x: i32, 
     fillRect(pixels, buf_width, right - t, top, t, bottom - top, color);
 }
 
-/// Plots a 1px line from (x0,y0) to (x1,y1) via integer Bresenham; bounds-checked per pixel as defense against an out-of-bounds framebuffer write.
-fn plotLine(pixels: [*]u32, width: usize, height: usize, x0: i64, y0: i64, x1: i64, y1: i64, color: u32) void {
-    var x = x0;
-    var y = y0;
-    const dx: i64 = @intCast(@abs(x1 - x0));
-    const sx: i64 = if (x0 < x1) 1 else -1;
-    const dy: i64 = -@as(i64, @intCast(@abs(y1 - y0)));
-    const sy: i64 = if (y0 < y1) 1 else -1;
-    var err = dx + dy;
-    while (true) {
-        if (x >= 0 and y >= 0 and @as(usize, @intCast(x)) < width and @as(usize, @intCast(y)) < height) {
-            pixels[@as(usize, @intCast(y)) * width + @as(usize, @intCast(x))] = color;
-        }
-        if (x == x1 and y == y1) break;
-        const e2 = 2 * err;
-        if (e2 >= dy) {
-            err += dy;
-            x += sx;
-        }
-        if (e2 <= dx) {
-            err += dx;
-            y += sy;
-        }
-    }
-}
-
 /// Abbreviates an ISK value with k/m suffixes (e.g. 2_450_000.0 -> "2.5m", 200_000.0 -> "200k", 850.0 -> "850").
 fn formatIskAbbrev(buf: []u8, value: f32) []const u8 {
     const abs_value = @abs(value);
@@ -2616,60 +2547,6 @@ fn formatIskAbbrev(buf: []u8, value: f32) []const u8 {
         return std.fmt.bufPrint(buf, "{d:.0}k", .{value / 1_000.0}) catch "?";
     } else {
         return std.fmt.bufPrint(buf, "{d:.0}", .{value}) catch "?";
-    }
-}
-
-/// True if any bucket has data; gates chart visibility on "has history" rather than the instant scalar, which would flicker for bursty activity.
-fn chartHasData(buckets: []const f32) bool {
-    for (buckets) |v| {
-        if (v > 0) return true;
-    }
-    return false;
-}
-
-/// Fraction of the old scale retained per decay step; a "few ticks" half-life so amplitude settles soon after a spike without snapping.
-const CHART_SCALE_DECAY: f32 = 0.85;
-
-/// Peak-hold auto-scale: snaps up immediately for a new spike, decays slowly otherwise, so amplitude stays comparable between redraws.
-fn updateChartScale(scale: *f32, buckets: []const f32) void {
-    var new_max: f32 = 0;
-    for (buckets) |v| new_max = @max(new_max, v);
-    if (new_max > scale.*) {
-        scale.* = new_max;
-    } else {
-        scale.* = scale.* * CHART_SCALE_DECAY + new_max * (1.0 - CHART_SCALE_DECAY);
-    }
-}
-
-/// SparkChartConfig.width is a percentage of the thumbnail width, so it scales with the overlay instead of needing per-thumbnail-size retuning.
-fn chartPixelWidth(overlay_width: usize, width_percent: i32) usize {
-    return overlay_width * @as(usize, @intCast(width_percent)) / 100;
-}
-
-/// Draws a spark line connecting each bucket left to right, scaled against `scale`; zero-value buckets plot at the baseline rather than being skipped, so gaps read as dips.
-/// Clamps to the pixel buffer bounds itself rather than trusting the caller's x/y/w/h, since chart width/height are user-configurable.
-fn drawSparkLine(pixels: [*]u32, width: usize, height: usize, x: i32, y: i32, w: usize, h: usize, buckets: []const f32, scale: f32, color: u32) void {
-    if (buckets.len < 2 or scale <= 0) return;
-
-    const start_x: usize = @intCast(@max(0, x));
-    const start_y: usize = @intCast(@max(0, y));
-    const end_x = @min(start_x + w, width);
-    const end_y = @min(start_y + h, height);
-    if (end_x <= start_x or end_y <= start_y) return;
-    const chart_w: i64 = @intCast(end_x - start_x);
-    const chart_h: i64 = @intCast(end_y - start_y);
-    const last_i: i64 = @intCast(buckets.len - 1);
-
-    var prev_x: i64 = undefined;
-    var prev_y: i64 = undefined;
-    for (buckets, 0..) |v, i| {
-        const px = @as(i64, @intCast(start_x)) + @divTrunc(@as(i64, @intCast(i)) * (chart_w - 1), last_i);
-        // norm is 0..1 from baseline; clamp is defensive since scale should always be >= v.
-        const norm = @min(1.0, v / scale);
-        const py = @as(i64, @intCast(end_y)) - 1 - @as(i64, @intFromFloat(norm * @as(f32, @floatFromInt(chart_h - 1))));
-        if (i > 0) plotLine(pixels, width, height, prev_x, prev_y, px, py, color);
-        prev_x = px;
-        prev_y = py;
     }
 }
 
@@ -2956,9 +2833,6 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     var dps_in_dims: TextDimensions = .{ .width = 0, .height = 0 };
     var dps_out_dims: TextDimensions = .{ .width = 0, .height = 0 };
     var dps_font: ?win32.HFONT = null;
-    // Spark-chart positions/backgrounds, computed alongside the DPS text above; no font needed (a plotted line, not glyphs), but same fill-before-border timing.
-    var dps_incoming_chart_pos: TextPos = .{ .x = 0, .y = 0 };
-    var dps_outgoing_chart_pos: TextPos = .{ .x = 0, .y = 0 };
     if (config.combat.enabled) {
         const combat_cfg = &config.combat;
         const f = try painter.getCachedFont(.combat, settings.text_font_name, combat_cfg.font_size, settings.text_font_weight);
@@ -2982,22 +2856,6 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
             dps_out_dims = measureText(overlay.mem_dc, dps_out_text);
             dps_out_pos = calculateTextPosition(combat_cfg.outgoing_position, dps_out_dims.width, dps_out_dims.height, overlay.width, overlay.height, combat_cfg.outgoing_offset_x, combat_cfg.outgoing_offset_y);
             fillTextBackground(overlay.pixels, overlay.width, overlay.height, dps_out_pos.x, dps_out_pos.y, dps_out_dims.width, dps_out_dims.height, settings.text_bg_color);
-        }
-        if (combat_cfg.incoming_chart.enabled and chartHasData(thumbnail.combat_incoming_chart_buckets[0..@intCast(combat_cfg.incoming_chart.bucket_count)])) {
-            const chart_cfg = &combat_cfg.incoming_chart;
-            const incoming_chart_w = chartPixelWidth(overlay.width, chart_cfg.width);
-            dps_incoming_chart_pos = calculateTextPosition(chart_cfg.position, incoming_chart_w, @intCast(chart_cfg.height), overlay.width, overlay.height, chart_cfg.offset_x, chart_cfg.offset_y);
-            if (chart_cfg.show_background) {
-                fillTextBackground(overlay.pixels, overlay.width, overlay.height, dps_incoming_chart_pos.x, dps_incoming_chart_pos.y, incoming_chart_w, @intCast(chart_cfg.height), settings.text_bg_color);
-            }
-        }
-        if (combat_cfg.outgoing_chart.enabled and chartHasData(thumbnail.combat_outgoing_chart_buckets[0..@intCast(combat_cfg.outgoing_chart.bucket_count)])) {
-            const chart_cfg = &combat_cfg.outgoing_chart;
-            const outgoing_chart_w = chartPixelWidth(overlay.width, chart_cfg.width);
-            dps_outgoing_chart_pos = calculateTextPosition(chart_cfg.position, outgoing_chart_w, @intCast(chart_cfg.height), overlay.width, overlay.height, chart_cfg.offset_x, chart_cfg.offset_y);
-            if (chart_cfg.show_background) {
-                fillTextBackground(overlay.pixels, overlay.width, overlay.height, dps_outgoing_chart_pos.x, dps_outgoing_chart_pos.y, outgoing_chart_w, @intCast(chart_cfg.height), settings.text_bg_color);
-            }
         }
         // Restore main font for subsequent background fills and renders.
         _ = win32.SelectObject(overlay.mem_dc, font);
@@ -3063,17 +2921,6 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
 
-    // Same timing as mining text; see the DPS chart gate above for why this checks the buckets, not the instant rate.
-    var mining_chart_pos: TextPos = .{ .x = 0, .y = 0 };
-    if (config.mining.chart.enabled and chartHasData(thumbnail.mining_chart_buckets[0..@intCast(config.mining.chart.bucket_count)])) {
-        const chart_cfg = &config.mining.chart;
-        const mining_chart_w = chartPixelWidth(overlay.width, chart_cfg.width);
-        mining_chart_pos = calculateTextPosition(chart_cfg.position, mining_chart_w, @intCast(chart_cfg.height), overlay.width, overlay.height, chart_cfg.offset_x, chart_cfg.offset_y);
-        if (chart_cfg.show_background) {
-            fillTextBackground(overlay.pixels, overlay.width, overlay.height, mining_chart_pos.x, mining_chart_pos.y, mining_chart_w, @intCast(chart_cfg.height), settings.text_bg_color);
-        }
-    }
-
     // Measure and fill bounty rate text background BEFORE the border, same as the mining block above.
     var bounty_buf: [24]u8 = undefined;
     var bounty_text: []const u8 = "";
@@ -3099,17 +2946,6 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
 
         fillTextBackground(overlay.pixels, overlay.width, overlay.height, bounty_pos.x, bounty_pos.y, bounty_dims.width, bounty_dims.height, settings.text_bg_color);
         _ = win32.SelectObject(overlay.mem_dc, font);
-    }
-
-    // Same timing as bounty text; see the DPS chart gate above for why this checks the buckets, not the instant rate.
-    var bounty_chart_pos: TextPos = .{ .x = 0, .y = 0 };
-    if (config.bounty.chart.enabled and chartHasData(thumbnail.bounty_chart_buckets[0..@intCast(config.bounty.chart.bucket_count)])) {
-        const chart_cfg = &config.bounty.chart;
-        const bounty_chart_w = chartPixelWidth(overlay.width, chart_cfg.width);
-        bounty_chart_pos = calculateTextPosition(chart_cfg.position, bounty_chart_w, @intCast(chart_cfg.height), overlay.width, overlay.height, chart_cfg.offset_x, chart_cfg.offset_y);
-        if (chart_cfg.show_background) {
-            fillTextBackground(overlay.pixels, overlay.width, overlay.height, bounty_chart_pos.x, bounty_chart_pos.y, bounty_chart_w, @intCast(chart_cfg.height), settings.text_bg_color);
-        }
     }
 
     // No background fill, unlike DPS/mining text — the glyph sits directly on the thumbnail as an ambient "under fire" indicator, independent of the one-shot notification border override.
@@ -3186,27 +3022,6 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         _ = win32.SelectObject(overlay.mem_dc, bf);
         renderText(overlay.mem_dc, bounty_text, bounty_pos.x, bounty_pos.y, config.bounty.color);
         _ = win32.SelectObject(overlay.mem_dc, font);
-    }
-
-    // Backgrounds were already filled before the border above.
-    if (config.combat.enabled) {
-        const combat_cfg = &config.combat;
-        if (combat_cfg.incoming_chart.enabled and chartHasData(thumbnail.combat_incoming_chart_buckets[0..@intCast(combat_cfg.incoming_chart.bucket_count)])) {
-            const chart_cfg = &combat_cfg.incoming_chart;
-            drawSparkLine(overlay.pixels, overlay.width, overlay.height, dps_incoming_chart_pos.x, dps_incoming_chart_pos.y, chartPixelWidth(overlay.width, chart_cfg.width), @intCast(chart_cfg.height), thumbnail.combat_incoming_chart_buckets[0..@intCast(chart_cfg.bucket_count)], thumbnail.combat_incoming_chart_scale, combat_cfg.incoming_color);
-        }
-        if (combat_cfg.outgoing_chart.enabled and chartHasData(thumbnail.combat_outgoing_chart_buckets[0..@intCast(combat_cfg.outgoing_chart.bucket_count)])) {
-            const chart_cfg = &combat_cfg.outgoing_chart;
-            drawSparkLine(overlay.pixels, overlay.width, overlay.height, dps_outgoing_chart_pos.x, dps_outgoing_chart_pos.y, chartPixelWidth(overlay.width, chart_cfg.width), @intCast(chart_cfg.height), thumbnail.combat_outgoing_chart_buckets[0..@intCast(chart_cfg.bucket_count)], thumbnail.combat_outgoing_chart_scale, combat_cfg.outgoing_color);
-        }
-    }
-    if (config.mining.chart.enabled and chartHasData(thumbnail.mining_chart_buckets[0..@intCast(config.mining.chart.bucket_count)])) {
-        const chart_cfg = &config.mining.chart;
-        drawSparkLine(overlay.pixels, overlay.width, overlay.height, mining_chart_pos.x, mining_chart_pos.y, chartPixelWidth(overlay.width, chart_cfg.width), @intCast(chart_cfg.height), thumbnail.mining_chart_buckets[0..@intCast(chart_cfg.bucket_count)], thumbnail.mining_chart_scale, config.mining.color);
-    }
-    if (config.bounty.chart.enabled and chartHasData(thumbnail.bounty_chart_buckets[0..@intCast(config.bounty.chart.bucket_count)])) {
-        const chart_cfg = &config.bounty.chart;
-        drawSparkLine(overlay.pixels, overlay.width, overlay.height, bounty_chart_pos.x, bounty_chart_pos.y, chartPixelWidth(overlay.width, chart_cfg.width), @intCast(chart_cfg.height), thumbnail.bounty_chart_buckets[0..@intCast(chart_cfg.bucket_count)], thumbnail.bounty_chart_scale, config.bounty.color);
     }
 
     if (icon_font) |icf| {
@@ -3475,7 +3290,6 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .mining_color = cfg.mining.color,
         .bounty_color = cfg.bounty.color,
         .icon_color = cfg.combat.icon_color,
-        .chart_generation = thumbnail.chart_generation,
     };
 }
 
