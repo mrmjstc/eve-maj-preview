@@ -4283,7 +4283,8 @@ function addCharacterIfMissing(name) {
         borderColors: null,
         thumbnailSize: null,
         displayName: null,
-        hotkey: null
+        hotkey: null,
+        excludeFromMinimize: true
     });
     populateCharacters();
 }
