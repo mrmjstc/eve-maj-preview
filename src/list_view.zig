@@ -346,6 +346,8 @@ pub const ListWindow = struct {
         h.update(std.mem.asBytes(&self.config.combat.outgoing_color));
         h.update(std.mem.asBytes(&self.config.mining.enabled));
         h.update(std.mem.asBytes(&self.config.mining.color));
+        h.update(std.mem.asBytes(&self.config.bounty.enabled));
+        h.update(std.mem.asBytes(&self.config.bounty.color));
 
         for (thumbnails) |*t| {
             h.update(t.character_name);
@@ -357,6 +359,7 @@ pub const ListWindow = struct {
             h.update(std.mem.asBytes(&t.last_incoming_dps));
             h.update(std.mem.asBytes(&t.last_outgoing_dps));
             h.update(std.mem.asBytes(&t.last_mining_rate));
+            h.update(std.mem.asBytes(&t.last_bounty_isk_rate));
             if (t.system_name.len > 0) {
                 // cached_system_color is kept in sync by painter.zig on system-name change; reuse it instead of re-resolving from config every tick (getSystemNameColor does a lookup per call).
                 h.update(std.mem.asBytes(&t.cached_system_color));
@@ -382,12 +385,25 @@ pub const ListWindow = struct {
         return self.resolveActiveBadgeColor(thumb);
     }
 
+    /// Abbreviates an ISK value with k/m suffixes; mirrors painter.zig's own formatIskAbbrev for the thumbnail overlay text.
+    fn formatIskAbbrev(buf: []u8, value: f32) []const u8 {
+        const abs_value = @abs(value);
+        if (abs_value >= 1_000_000.0) {
+            return std.fmt.bufPrint(buf, "{d:.1}m", .{value / 1_000_000.0}) catch "?";
+        } else if (abs_value >= 1_000.0) {
+            return std.fmt.bufPrint(buf, "{d:.0}k", .{value / 1_000.0}) catch "?";
+        } else {
+            return std.fmt.bufPrint(buf, "{d:.0}", .{value}) catch "?";
+        }
+    }
+
     /// Compact combined DPS in/out + mining rate string for the list row's right-side slot; empty when neither stat is active. Mirrors the thumbnail overlay's own formatting (painter.renderThumbnail).
     fn buildStatText(self: *const ListWindow, buf: []u8, thumb: *const ThumbnailWindow) []const u8 {
         var stream = std.io.fixedBufferStream(buf);
         const writer = stream.writer();
         const combat_cfg = &self.config.combat;
         const mining_cfg = &self.config.mining;
+        const bounty_cfg = &self.config.bounty;
         var wrote = false;
 
         if (combat_cfg.enabled) {
@@ -422,17 +438,31 @@ pub const ListWindow = struct {
             }
         }
 
+        if (bounty_cfg.enabled and (thumb.last_bounty_isk_rate == null or thumb.last_bounty_isk_rate.? > 0)) {
+            if (wrote) writer.writeByte(' ') catch {};
+            if (thumb.last_bounty_isk_rate) |isk_rate| {
+                var isk_buf: [16]u8 = undefined;
+                const period_secs: f32 = if (bounty_cfg.isk_rate_unit == .hour) 3600.0 else 60.0;
+                const isk_abbrev = formatIskAbbrev(&isk_buf, isk_rate * period_secs);
+                writer.print("B:{s}", .{isk_abbrev}) catch {};
+            } else {
+                writer.writeAll("B:??") catch {};
+            }
+        }
+
         return stream.getWritten();
     }
 
-    /// Text color for buildStatText's output; incoming DPS takes priority (most urgent), then outgoing, then mining.
+    /// Text color for buildStatText's output; incoming DPS takes priority (most urgent), then outgoing, then mining, then bounty.
     fn statColor(self: *const ListWindow, thumb: *const ThumbnailWindow) u32 {
         const combat_cfg = &self.config.combat;
         const mining_cfg = &self.config.mining;
+        const bounty_cfg = &self.config.bounty;
 
         if (combat_cfg.enabled and combat_cfg.show_incoming and (thumb.last_incoming_dps == null or thumb.last_incoming_dps.? > 0)) return combat_cfg.incoming_color & 0xFFFFFF;
         if (combat_cfg.enabled and combat_cfg.show_outgoing and (thumb.last_outgoing_dps == null or thumb.last_outgoing_dps.? > 0)) return combat_cfg.outgoing_color & 0xFFFFFF;
         if (mining_cfg.enabled and (thumb.last_mining_rate == null or thumb.last_mining_rate.? > 0)) return mining_cfg.color & 0xFFFFFF;
+        if (bounty_cfg.enabled and (thumb.last_bounty_isk_rate == null or thumb.last_bounty_isk_rate.? > 0)) return bounty_cfg.color & 0xFFFFFF;
         return ARGB_SYS_TEXT & 0xFFFFFF;
     }
 

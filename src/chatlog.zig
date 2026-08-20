@@ -169,6 +169,7 @@ pub const ChatlogMonitor = struct {
     global_settings: ?*@import("config.zig").GlobalSettings = null,
     combat_tracker: ?*activity_mod.CombatTracker = null,
     mining_tracker: ?*activity_mod.MiningTracker = null,
+    bounty_tracker: ?*activity_mod.BountyTracker = null,
     idle_poll_threshold: u32 = 20,
     max_poll_multiplier: u8 = 8,
     poll_interval_ms: u32 = 50,
@@ -213,6 +214,7 @@ pub const ChatlogMonitor = struct {
         monitor.global_settings = global_settings_ref;
         monitor.combat_tracker = null;
         monitor.mining_tracker = null;
+        monitor.bounty_tracker = null;
         monitor.idle_poll_threshold = idle_poll_threshold;
         monitor.max_poll_multiplier = max_poll_multiplier;
 
@@ -472,6 +474,10 @@ pub const ChatlogMonitor = struct {
                 }
 
                 if (self.mining_tracker) |tracker| {
+                    tracker.removeCharacter(character_name);
+                }
+
+                if (self.bounty_tracker) |tracker| {
                     tracker.removeCharacter(character_name);
                 }
 
@@ -1202,6 +1208,12 @@ pub const ChatlogMonitor = struct {
                             self.handleMiningEvent(state, clean_line);
                         }
                     },
+                    'b' => {
+                        // "(bounty)" - bounty payouts
+                        if (std.mem.startsWith(u8, message_part, "(bounty)")) {
+                            self.handleBountyEvent(state, clean_line);
+                        }
+                    },
                     'N' => {
                         // "(None)" - system jumps, conversation invites
                         if (std.mem.startsWith(u8, message_part, "(None)")) {
@@ -1287,6 +1299,14 @@ pub const ChatlogMonitor = struct {
         const isk = amount_f * @as(f32, @floatCast(price_per_unit));
         tracker.addEntry(state.character_name, m3, isk, std.time.milliTimestamp()) catch |err| {
             slog.warn("Failed to record mining entry for {s}: {}", .{ state.character_name, err });
+        };
+    }
+
+    fn handleBountyEvent(self: *ChatlogMonitor, state: *LogFileState, event_text: []const u8) void {
+        const tracker = self.bounty_tracker orelse return;
+        const isk = activity_mod.parseBountyLine(event_text) orelse return;
+        tracker.addEntry(state.character_name, isk, std.time.milliTimestamp()) catch |err| {
+            slog.warn("Failed to record bounty entry for {s}: {}", .{ state.character_name, err });
         };
     }
 
