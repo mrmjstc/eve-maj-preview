@@ -31,9 +31,9 @@ pub const CombatWindow = struct {
     /// 0 = never fired.
     last_damage_alert_ms: i64 = 0,
 
-    // Cached last-computed values, updated by refresh().
-    last_incoming_dps: f32 = 0.0,
-    last_outgoing_dps: f32 = 0.0,
+    // Cached last-computed values, updated by refresh(). Null means not enough span yet to trust a rate.
+    last_incoming_dps: ?f32 = null,
+    last_outgoing_dps: ?f32 = null,
 
     pub fn init(window_seconds: u32) CombatWindow {
         return .{
@@ -64,8 +64,8 @@ pub const CombatWindow = struct {
         return true;
     }
 
-    /// Compute incoming and outgoing DPS over the sliding window ending at now_ms.
-    pub fn computeDps(self: *const CombatWindow, now_ms: i64) struct { incoming: f32, outgoing: f32 } {
+    /// Compute incoming and outgoing DPS over the sliding window ending at now_ms. Null means not enough span yet to trust a rate.
+    pub fn computeDps(self: *const CombatWindow, now_ms: i64) struct { incoming: ?f32, outgoing: ?f32 } {
         // Short-circuit: if the newest hit is already outside the window, skip the O(n) walk over stale entries.
         if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) {
             return .{ .incoming = 0.0, .outgoing = 0.0 };
@@ -91,7 +91,7 @@ pub const CombatWindow = struct {
             }
         }
         const span_ms = newest_ms - oldest_ms;
-        if (span_ms < MIN_RATE_SPAN_MS) return .{ .incoming = 0.0, .outgoing = 0.0 };
+        if (span_ms < MIN_RATE_SPAN_MS) return .{ .incoming = null, .outgoing = null };
 
         const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
         return .{
@@ -167,14 +167,20 @@ pub const CombatWindow = struct {
         }
     }
 
-    /// Recompute DPS, update last_ fields. Returns true if either value changed by >= 0.1.
+    /// Recompute DPS, update last_ fields. Returns true if either value changed by >= 0.1, or crossed to/from null.
     pub fn refresh(self: *CombatWindow, now_ms: i64) bool {
         const new = self.computeDps(now_ms);
-        const changed = @abs(new.incoming - self.last_incoming_dps) >= 0.1 or
-            @abs(new.outgoing - self.last_outgoing_dps) >= 0.1;
+        const in_changed = if (self.last_incoming_dps) |old|
+            (if (new.incoming) |n| @abs(n - old) >= 0.1 else true)
+        else
+            new.incoming != null;
+        const out_changed = if (self.last_outgoing_dps) |old|
+            (if (new.outgoing) |n| @abs(n - old) >= 0.1 else true)
+        else
+            new.outgoing != null;
         self.last_incoming_dps = new.incoming;
         self.last_outgoing_dps = new.outgoing;
-        return changed;
+        return in_changed or out_changed;
     }
 };
 
@@ -269,8 +275,8 @@ pub const CombatTracker = struct {
         self.base.removeCharacter(character_name);
     }
 
-    /// Return the last-refreshed DPS values for character_name.
-    pub fn getDps(self: *CombatTracker, character_name: []const u8) struct { incoming: f32, outgoing: f32 } {
+    /// Return the last-refreshed DPS values for character_name. Null means not enough span yet to trust a rate.
+    pub fn getDps(self: *CombatTracker, character_name: []const u8) struct { incoming: ?f32, outgoing: ?f32 } {
         self.base.mutex.lock();
         defer self.base.mutex.unlock();
         if (self.base.windows.get(character_name)) |window| {
@@ -403,9 +409,9 @@ pub const MiningWindow = struct {
     window_ms: i64,
     last_hit_ms: i64 = 0,
 
-    // Cached last-computed values, updated by refresh().
-    last_m3_per_sec: f32 = 0.0,
-    last_isk_per_sec: f32 = 0.0,
+    // Cached last-computed values, updated by refresh(). Null means not enough span yet to trust a rate.
+    last_m3_per_sec: ?f32 = null,
+    last_isk_per_sec: ?f32 = null,
     // Timestamp of the last idle-alert fired for this window (ms). 0 = never.
     last_alert_ms: i64 = 0,
     // Timestamp of the last stopped-alert fired (ms). Reset when mining resumes.
@@ -445,8 +451,8 @@ pub const MiningWindow = struct {
         return n;
     }
 
-    /// Compute m3-per-second over the sliding window ending at now_ms.
-    pub fn computeRate(self: *const MiningWindow, now_ms: i64) f32 {
+    /// Compute m3-per-second over the sliding window ending at now_ms. Null means not enough span yet to trust a rate.
+    pub fn computeRate(self: *const MiningWindow, now_ms: i64) ?f32 {
         // Short-circuit: if the newest yield is already outside the window, skip the O(n) walk over stale entries.
         if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) {
             return 0.0;
@@ -466,14 +472,14 @@ pub const MiningWindow = struct {
             total += entry.m3;
         }
         const span_ms = newest_ms - oldest_ms;
-        if (span_ms < MIN_RATE_SPAN_MS) return 0.0;
+        if (span_ms < MIN_RATE_SPAN_MS) return null;
 
         const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
         return total / window_secs;
     }
 
-    /// Compute ISK-per-second over the sliding window ending at now_ms; same walk as computeRate but summing isk instead of m3.
-    pub fn computeIskRate(self: *const MiningWindow, now_ms: i64) f32 {
+    /// Compute ISK-per-second over the sliding window ending at now_ms; same walk as computeRate but summing isk instead of m3. Null means not enough span yet to trust a rate.
+    pub fn computeIskRate(self: *const MiningWindow, now_ms: i64) ?f32 {
         if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) {
             return 0.0;
         }
@@ -492,7 +498,7 @@ pub const MiningWindow = struct {
             total += entry.isk;
         }
         const span_ms = newest_ms - oldest_ms;
-        if (span_ms < MIN_RATE_SPAN_MS) return 0.0;
+        if (span_ms < MIN_RATE_SPAN_MS) return null;
 
         const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
         return total / window_secs;
@@ -548,11 +554,14 @@ pub const MiningWindow = struct {
         }
     }
 
-    /// Recompute m3 and ISK rates, updating both cached values. Returns true if the m3 rate changed by >= 0.1 -
+    /// Recompute m3 and ISK rates, updating both cached values. Returns true if the m3 rate changed by >= 0.1 or crossed to/from null -
     /// the ISK rate is driven by the exact same set of window entries, so an unchanged m3 rate means an unchanged ISK rate too.
     pub fn refresh(self: *MiningWindow, now_ms: i64) bool {
         const new_rate = self.computeRate(now_ms);
-        const changed = @abs(new_rate - self.last_m3_per_sec) >= 0.1;
+        const changed = if (self.last_m3_per_sec) |old|
+            (if (new_rate) |new| @abs(new - old) >= 0.1 else true)
+        else
+            new_rate != null;
         self.last_m3_per_sec = new_rate;
         self.last_isk_per_sec = self.computeIskRate(now_ms);
         return changed;
@@ -591,8 +600,8 @@ pub const MiningTracker = struct {
         self.base.removeCharacter(character_name);
     }
 
-    /// Return the last-refreshed mining rate for character_name (m3/sec).
-    pub fn getRate(self: *MiningTracker, character_name: []const u8) f32 {
+    /// Return the last-refreshed mining rate for character_name (m3/sec). Null means not enough span yet to trust a rate.
+    pub fn getRate(self: *MiningTracker, character_name: []const u8) ?f32 {
         self.base.mutex.lock();
         defer self.base.mutex.unlock();
         if (self.base.windows.get(character_name)) |window| {
@@ -601,8 +610,8 @@ pub const MiningTracker = struct {
         return 0.0;
     }
 
-    /// Return the last-refreshed ISK rate for character_name (ISK/sec).
-    pub fn getIskRate(self: *MiningTracker, character_name: []const u8) f32 {
+    /// Return the last-refreshed ISK rate for character_name (ISK/sec). Null means not enough span yet to trust a rate.
+    pub fn getIskRate(self: *MiningTracker, character_name: []const u8) ?f32 {
         self.base.mutex.lock();
         defer self.base.mutex.unlock();
         if (self.base.windows.get(character_name)) |window| {

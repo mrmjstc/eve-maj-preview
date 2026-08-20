@@ -391,24 +391,34 @@ pub const ListWindow = struct {
         var wrote = false;
 
         if (combat_cfg.enabled) {
-            if (combat_cfg.show_incoming and thumb.last_incoming_dps > 0) {
-                writer.print("IN:{d:.0}", .{thumb.last_incoming_dps}) catch {};
+            if (combat_cfg.show_incoming and (thumb.last_incoming_dps == null or thumb.last_incoming_dps.? > 0)) {
+                if (thumb.last_incoming_dps) |dps|
+                    writer.print("IN:{d:.0}", .{dps}) catch {}
+                else
+                    writer.writeAll("IN:??") catch {};
                 wrote = true;
             }
-            if (combat_cfg.show_outgoing and thumb.last_outgoing_dps > 0) {
+            if (combat_cfg.show_outgoing and (thumb.last_outgoing_dps == null or thumb.last_outgoing_dps.? > 0)) {
                 if (wrote) writer.writeByte(' ') catch {};
-                writer.print("OUT:{d:.0}", .{thumb.last_outgoing_dps}) catch {};
+                if (thumb.last_outgoing_dps) |dps|
+                    writer.print("OUT:{d:.0}", .{dps}) catch {}
+                else
+                    writer.writeAll("OUT:??") catch {};
                 wrote = true;
             }
         }
 
-        if (mining_cfg.enabled and thumb.last_mining_rate > 0) {
-            const rate_per_min = thumb.last_mining_rate * 60.0;
+        if (mining_cfg.enabled and (thumb.last_mining_rate == null or thumb.last_mining_rate.? > 0)) {
             if (wrote) writer.writeByte(' ') catch {};
-            if (rate_per_min < 10.0) {
-                writer.print("M:{d:.1}", .{rate_per_min}) catch {};
+            if (thumb.last_mining_rate) |rate| {
+                const rate_per_min = rate * 60.0;
+                if (rate_per_min < 10.0) {
+                    writer.print("M:{d:.1}", .{rate_per_min}) catch {};
+                } else {
+                    writer.print("M:{d:.0}", .{rate_per_min}) catch {};
+                }
             } else {
-                writer.print("M:{d:.0}", .{rate_per_min}) catch {};
+                writer.writeAll("M:??") catch {};
             }
         }
 
@@ -420,9 +430,9 @@ pub const ListWindow = struct {
         const combat_cfg = &self.config.combat;
         const mining_cfg = &self.config.mining;
 
-        if (combat_cfg.enabled and combat_cfg.show_incoming and thumb.last_incoming_dps > 0) return combat_cfg.incoming_color & 0xFFFFFF;
-        if (combat_cfg.enabled and combat_cfg.show_outgoing and thumb.last_outgoing_dps > 0) return combat_cfg.outgoing_color & 0xFFFFFF;
-        if (mining_cfg.enabled and thumb.last_mining_rate > 0) return mining_cfg.color & 0xFFFFFF;
+        if (combat_cfg.enabled and combat_cfg.show_incoming and (thumb.last_incoming_dps == null or thumb.last_incoming_dps.? > 0)) return combat_cfg.incoming_color & 0xFFFFFF;
+        if (combat_cfg.enabled and combat_cfg.show_outgoing and (thumb.last_outgoing_dps == null or thumb.last_outgoing_dps.? > 0)) return combat_cfg.outgoing_color & 0xFFFFFF;
+        if (mining_cfg.enabled and (thumb.last_mining_rate == null or thumb.last_mining_rate.? > 0)) return mining_cfg.color & 0xFFFFFF;
         return ARGB_SYS_TEXT & 0xFFFFFF;
     }
 
