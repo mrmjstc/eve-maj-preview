@@ -1632,9 +1632,10 @@ pub const Config = struct {
 
         cfg.thumbnail = try ThumbnailConfig.fromWire(w.thumbnail, allocator);
         cfg.timer = w.timer;
-        // DisplayConfig.listViewFontName would otherwise be left pointing into parsed_wire's arena (freed once buildConfigFromJson returns) — give it its own heap-owned copy, same as ThumbnailConfig.fromWire does for thumbnail.textFontName.
+        // DisplayConfig.listViewFontName/notifInfoPanelFontName would otherwise be left pointing into parsed_wire's arena (freed once buildConfigFromJson returns) — give them their own heap-owned copies, same as ThumbnailConfig.fromWire does for thumbnail.textFontName.
         cfg.display = w.display;
         cfg.display.listViewFontName = try allocator.dupe(u8, w.display.listViewFontName);
+        cfg.display.notifInfoPanelFontName = try allocator.dupe(u8, w.display.notifInfoPanelFontName);
         cfg.snapping = w.snapping;
         cfg.interaction = w.interaction;
         cfg.autoMinimize = w.autoMinimize;
@@ -2139,6 +2140,18 @@ pub const Config = struct {
         listViewFontSize: i32 = 13,
         listViewFontWeight: types.FontWeight = .Regular,
 
+        // History Panel: an always-available, resizable panel showing recent notification history.
+        showNotifInfoPanel: bool = false,
+        notifInfoPanelX: i32 = 10,
+        notifInfoPanelY: i32 = 250,
+        notifInfoPanelWidth: i32 = 200,
+        notifInfoPanelHeight: i32 = 224,
+        rememberNotifInfoPanelPosition: bool = true,
+        notifInfoPanelOpacity: u8 = 255,
+        notifInfoPanelFontName: []const u8 = DEFAULT_FONT_NAME,
+        notifInfoPanelFontSize: i32 = 13,
+        notifInfoPanelFontWeight: types.FontWeight = .Regular,
+
         layoutMode: types.LayoutMode = .HorizontalList,
         layoutDirection: types.LayoutDirection = .RowFirst_LTR_TTB,
 
@@ -2160,6 +2173,12 @@ pub const Config = struct {
         pub const START_X_MAX: i32 = 7680;
         pub const START_Y_MIN: i32 = -2160;
         pub const START_Y_MAX: i32 = 4320;
+        pub const NOTIF_PANEL_WIDTH_MIN: i32 = 100;
+        pub const NOTIF_PANEL_WIDTH_MAX: i32 = 1920;
+        pub const NOTIF_PANEL_HEIGHT_MIN: i32 = 60;
+        pub const NOTIF_PANEL_HEIGHT_MAX: i32 = 2160;
+        pub const NOTIF_PANEL_FONT_SIZE_MIN: i32 = 6;
+        pub const NOTIF_PANEL_FONT_SIZE_MAX: i32 = 72;
         pub const SPACING_MIN: i32 = 0;
         pub const SPACING_MAX: i32 = 500;
         pub const GRID_COLUMNS_MIN: u32 = 1;
@@ -2179,6 +2198,16 @@ pub const Config = struct {
             if (self.startX > START_X_MAX) self.startX = START_X_MAX;
             if (self.startY < START_Y_MIN) self.startY = START_Y_MIN;
             if (self.startY > START_Y_MAX) self.startY = START_Y_MAX;
+
+            if (self.notifInfoPanelX < START_X_MIN) self.notifInfoPanelX = START_X_MIN;
+            if (self.notifInfoPanelX > START_X_MAX) self.notifInfoPanelX = START_X_MAX;
+            if (self.notifInfoPanelY < START_Y_MIN) self.notifInfoPanelY = START_Y_MIN;
+            if (self.notifInfoPanelY > START_Y_MAX) self.notifInfoPanelY = START_Y_MAX;
+
+            if (self.notifInfoPanelWidth < NOTIF_PANEL_WIDTH_MIN) self.notifInfoPanelWidth = NOTIF_PANEL_WIDTH_MIN;
+            if (self.notifInfoPanelWidth > NOTIF_PANEL_WIDTH_MAX) self.notifInfoPanelWidth = NOTIF_PANEL_WIDTH_MAX;
+            if (self.notifInfoPanelHeight < NOTIF_PANEL_HEIGHT_MIN) self.notifInfoPanelHeight = NOTIF_PANEL_HEIGHT_MIN;
+            if (self.notifInfoPanelHeight > NOTIF_PANEL_HEIGHT_MAX) self.notifInfoPanelHeight = NOTIF_PANEL_HEIGHT_MAX;
 
             if (self.spacing < SPACING_MIN) self.spacing = SPACING_MIN;
             if (self.spacing > SPACING_MAX) {
@@ -2220,6 +2249,14 @@ pub const Config = struct {
             } else if (self.listViewFontSize > LIST_VIEW_FONT_SIZE_MAX) {
                 slog.warn("List view font size {} too large, clamping to {}", .{ self.listViewFontSize, LIST_VIEW_FONT_SIZE_MAX });
                 self.listViewFontSize = LIST_VIEW_FONT_SIZE_MAX;
+            }
+
+            if (self.notifInfoPanelFontSize < NOTIF_PANEL_FONT_SIZE_MIN) {
+                slog.warn("Notification history panel font size {} too small, clamping to {}", .{ self.notifInfoPanelFontSize, NOTIF_PANEL_FONT_SIZE_MIN });
+                self.notifInfoPanelFontSize = NOTIF_PANEL_FONT_SIZE_MIN;
+            } else if (self.notifInfoPanelFontSize > NOTIF_PANEL_FONT_SIZE_MAX) {
+                slog.warn("Notification history panel font size {} too large, clamping to {}", .{ self.notifInfoPanelFontSize, NOTIF_PANEL_FONT_SIZE_MAX });
+                self.notifInfoPanelFontSize = NOTIF_PANEL_FONT_SIZE_MAX;
             }
 
             // Uses a typical 200x150 thumbnail size to estimate whether this grid configuration would spawn thumbnails off-screen.
@@ -2835,6 +2872,34 @@ pub const Config = struct {
                 display.listViewFontWeight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
             }
         }
+        if (obj.get("notifInfoPanelWidth")) |v| {
+            if (v == .integer) display.notifInfoPanelWidth = std.math.cast(i32, v.integer) orelse display.notifInfoPanelWidth;
+        }
+        if (obj.get("notifInfoPanelHeight")) |v| {
+            if (v == .integer) display.notifInfoPanelHeight = std.math.cast(i32, v.integer) orelse display.notifInfoPanelHeight;
+        }
+        if (obj.get("notifInfoPanelOpacity")) |v| {
+            if (v == .integer) {
+                if (std.math.cast(u8, v.integer)) |val| display.notifInfoPanelOpacity = val;
+            }
+        }
+        if (obj.get("notifInfoPanelFontName")) |v| {
+            if (v == .string) {
+                const old_font = display.notifInfoPanelFontName;
+                display.notifInfoPanelFontName = try allocator.dupe(u8, v.string);
+                if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
+                    allocator.free(old_font);
+                }
+            }
+        }
+        if (obj.get("notifInfoPanelFontSize")) |v| {
+            if (v == .integer) display.notifInfoPanelFontSize = std.math.cast(i32, v.integer) orelse display.notifInfoPanelFontSize;
+        }
+        if (obj.get("notifInfoPanelFontWeight")) |v| {
+            if (v == .string) {
+                display.notifInfoPanelFontWeight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
+            }
+        }
     }
 
     /// CharacterConfig.thumbnailSize isn't covered by ThumbnailConfig.validate(), and std.math.cast at the JSON parse site only rejects values too large for i32, not e.g. -5, which would still panic when narrowed to usize downstream — this closes that gap.
@@ -3247,6 +3312,9 @@ pub const Config = struct {
             .@"display.monitorIndex" = Range{ .min = 0, .max = DisplayConfig.MONITOR_INDEX_MAX },
             .@"display.listViewColumns" = Range{ .min = DisplayConfig.LIST_VIEW_COLUMNS_MIN, .max = DisplayConfig.LIST_VIEW_COLUMNS_MAX },
             .@"display.listViewFontSize" = Range{ .min = DisplayConfig.LIST_VIEW_FONT_SIZE_MIN, .max = DisplayConfig.LIST_VIEW_FONT_SIZE_MAX },
+            .@"display.notifInfoPanelWidth" = Range{ .min = DisplayConfig.NOTIF_PANEL_WIDTH_MIN, .max = DisplayConfig.NOTIF_PANEL_WIDTH_MAX },
+            .@"display.notifInfoPanelHeight" = Range{ .min = DisplayConfig.NOTIF_PANEL_HEIGHT_MIN, .max = DisplayConfig.NOTIF_PANEL_HEIGHT_MAX },
+            .@"display.notifInfoPanelFontSize" = Range{ .min = DisplayConfig.NOTIF_PANEL_FONT_SIZE_MIN, .max = DisplayConfig.NOTIF_PANEL_FONT_SIZE_MAX },
 
             .@"snapping.threshold" = Range{ .min = SnappingConfig.THRESHOLD_MIN, .max = SnappingConfig.THRESHOLD_MAX },
 
@@ -3303,6 +3371,9 @@ pub const Config = struct {
         if (self.display.listViewFontName.ptr != DEFAULT_FONT_NAME.ptr) {
             allocator.free(self.display.listViewFontName);
         }
+        if (self.display.notifInfoPanelFontName.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.display.notifInfoPanelFontName);
+        }
 
         for (self.characters.items) |*char| {
             char.deinit(allocator);
@@ -3358,6 +3429,13 @@ pub const Config = struct {
         const new_list_view_font_weight = fresh.display.listViewFontWeight;
         fresh.display.listViewFontName = DEFAULT_FONT_NAME;
 
+        // Same detach dance for the History Panel's opacity/font fields.
+        const new_notif_panel_opacity = fresh.display.notifInfoPanelOpacity;
+        const new_notif_panel_font_name = fresh.display.notifInfoPanelFontName;
+        const new_notif_panel_font_size = fresh.display.notifInfoPanelFontSize;
+        const new_notif_panel_font_weight = fresh.display.notifInfoPanelFontWeight;
+        fresh.display.notifInfoPanelFontName = DEFAULT_FONT_NAME;
+
         // Grid/stack/list layout fields ride along too, but never startX/startY - those can be live-dragged in the running app.
         const new_spacing = fresh.display.spacing;
         const new_spacing_x = fresh.display.spacingX;
@@ -3411,6 +3489,14 @@ pub const Config = struct {
         self.display.listViewOpacity = new_list_view_opacity;
         self.display.listViewFontSize = new_list_view_font_size;
         self.display.listViewFontWeight = new_list_view_font_weight;
+
+        if (self.display.notifInfoPanelFontName.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.display.notifInfoPanelFontName);
+        }
+        self.display.notifInfoPanelFontName = new_notif_panel_font_name;
+        self.display.notifInfoPanelOpacity = new_notif_panel_opacity;
+        self.display.notifInfoPanelFontSize = new_notif_panel_font_size;
+        self.display.notifInfoPanelFontWeight = new_notif_panel_font_weight;
 
         self.display.spacing = new_spacing;
         self.display.spacingX = new_spacing_x;
@@ -3607,5 +3693,13 @@ pub const Config = struct {
 
         try self.saveCurrentProfile(allocator);
         slog.debug("Saved list view position for profile '{s}': ({}, {})", .{ self.profile_name, pos.x, pos.y });
+    }
+
+    pub fn saveNotifInfoPanelPosition(self: *Config, allocator: std.mem.Allocator, pos: Position) !void {
+        self.display.notifInfoPanelX = pos.x;
+        self.display.notifInfoPanelY = pos.y;
+
+        try self.saveCurrentProfile(allocator);
+        slog.debug("Saved notification/info panel position for profile '{s}': ({}, {})", .{ self.profile_name, pos.x, pos.y });
     }
 };

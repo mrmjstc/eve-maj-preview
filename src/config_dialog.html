@@ -1144,6 +1144,64 @@
                             <button type="button" class="button-danger" onclick="resetNotificationBorderColors()" style="width: 100%;" data-i18n="button.reset-notification-border-colors.label">↻ Reset All Border Colors</button>
                         </div>
                     </div>
+
+                    <div class="section">
+                        <h3 data-i18n="tab.notifications.section.history-panel.heading">History Panel</h3>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.notifications.section.history-panel.hint">A draggable, resizable panel showing recent notification history. Click a row to jump to that character.</p>
+
+                        <label>
+                            <input type="checkbox" id="showNotifInfoPanel" onchange="toggleNotifInfoPanelOptions()">
+                            <span class="label-body" data-i18n="field.showNotifInfoPanel.label">Show History Panel</span>
+                        </label>
+
+                        <div id="notifInfoPanelOptions">
+                            <div class="row">
+                                <div class="column">
+                                    <label for="notifInfoPanelWidth" data-i18n="field.notifInfoPanelWidth.label">Panel Width (px)</label>
+                                    <input type="number" id="notifInfoPanelWidth" min="100" max="1920">
+                                </div>
+                                <div class="column">
+                                    <label for="notifInfoPanelHeight" data-i18n="field.notifInfoPanelHeight.label">Panel Height (px)</label>
+                                    <input type="number" id="notifInfoPanelHeight" min="60" max="2160">
+                                </div>
+                            </div>
+
+                            <label for="notifInfoPanelOpacity" style="margin-top: 8px;"><span data-i18n="field.notifInfoPanelOpacity.label">Panel Opacity: </span><span id="notifInfoPanelOpacityValue">100</span>%</label>
+                            <input type="range" id="notifInfoPanelOpacity" min="0" max="100" value="100" data-value-target="notifInfoPanelOpacityValue">
+                            <p class="hint" data-i18n="field.notifInfoPanelOpacity.hint">Transparency level of the History panel</p>
+
+                            <h4 data-i18n="tab.notifications.section.history-panel-font.heading">Font</h4>
+
+                            <div class="text-settings">
+                                <div class="field">
+                                    <label for="notifInfoPanelFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                    <select id="notifInfoPanelFontName" class="font-options"></select>
+                                </div>
+
+                                <div class="field">
+                                    <label for="notifInfoPanelFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                    <input type="number" id="notifInfoPanelFontSize" min="6" max="72">
+                                </div>
+
+                                <div class="field">
+                                    <label for="notifInfoPanelFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                    <select id="notifInfoPanelFontWeight">
+                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <h4 data-i18n="tab.notifications.section.history-panel-behavior.heading">Behavior</h4>
+
+                            <label>
+                                <input type="checkbox" id="rememberNotifInfoPanelPosition">
+                                <span class="label-body" data-i18n="field.rememberNotifInfoPanelPosition.label">Remember History Panel Position</span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="panel-content" data-panel="chatlog">

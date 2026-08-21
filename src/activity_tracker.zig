@@ -354,6 +354,10 @@ pub const MiningWindow = struct {
     // Timestamp of the last stopped-alert fired (ms). Reset when mining resumes.
     last_stopped_alert_ms: i64 = 0,
 
+    // Session totals since this window was created (i.e. since the character logged in — removeCharacter drops the whole window on logout).
+    total_m3: f64 = 0,
+    total_isk: f64 = 0,
+
     pub fn init(window_seconds: u32) MiningWindow {
         return .{
             .window_ms = @as(i64, window_seconds) * std.time.ms_per_s,
@@ -372,6 +376,8 @@ pub const MiningWindow = struct {
         if (timestamp_ms > self.last_hit_ms) self.last_hit_ms = timestamp_ms;
         // Mining resumed — allow the stopped alert to fire again next time.
         self.last_stopped_alert_ms = 0;
+        self.total_m3 += m3;
+        self.total_isk += isk;
     }
 
     /// Count the number of events within the sliding window ending at now_ms.
@@ -507,6 +513,16 @@ pub const MiningTracker = struct {
         return 0.0;
     }
 
+    /// Session totals (m3, ISK) for character_name since their window was created; zero if never mined this session.
+    pub fn getTotals(self: *MiningTracker, character_name: []const u8) struct { m3: f64, isk: f64 } {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        if (self.base.windows.get(character_name)) |window| {
+            return .{ .m3 = window.total_m3, .isk = window.total_isk };
+        }
+        return .{ .m3 = 0, .isk = 0 };
+    }
+
     /// Re-evaluate all windows against now_ms. Returns true if any rate changed by >= 0.1.
     pub fn refreshAll(self: *MiningTracker, now_ms: i64) bool {
         return self.base.refreshAll(now_ms);
@@ -576,6 +592,9 @@ pub const BountyWindow = struct {
 
     last_isk_per_sec: ?f32 = null,
 
+    // Session total since this window was created (i.e. since the character logged in — removeCharacter drops the whole window on logout).
+    total_isk: f64 = 0,
+
     pub fn init(window_seconds: u32) BountyWindow {
         return .{
             .window_ms = @as(i64, window_seconds) * std.time.ms_per_s,
@@ -591,6 +610,7 @@ pub const BountyWindow = struct {
         self.head = (self.head + 1) % RING_CAPACITY;
         if (self.count < RING_CAPACITY) self.count += 1;
         if (timestamp_ms > self.last_hit_ms) self.last_hit_ms = timestamp_ms;
+        self.total_isk += isk;
     }
 
     /// Compute ISK-per-second over the sliding window ending at now_ms. Null means not enough span yet to trust a rate.
@@ -670,6 +690,16 @@ pub const BountyTracker = struct {
             return window.last_isk_per_sec;
         }
         return 0.0;
+    }
+
+    /// Session bounty ISK total for character_name since their window was created; zero if never paid out this session.
+    pub fn getTotal(self: *BountyTracker, character_name: []const u8) f64 {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        if (self.base.windows.get(character_name)) |window| {
+            return window.total_isk;
+        }
+        return 0;
     }
 
     /// Re-evaluate all windows against now_ms. Returns true if any rate changed by >= 0.1.

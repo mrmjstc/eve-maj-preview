@@ -8,6 +8,7 @@ const types = @import("types.zig");
 const manager_mod = @import("manager.zig");
 const scout_mod = @import("scout.zig");
 const list_view = @import("list_view.zig");
+const notif_info_view = @import("notif_info_view.zig");
 const activity_tracker = @import("activity_tracker.zig");
 const gdi_overlay = @import("gdi_overlay.zig");
 const log = @import("log.zig");
@@ -38,6 +39,28 @@ pub const ActiveNotification = struct {
     text_color_override: ?u32 = null,
     show_border: bool = true,
     flash_border: bool = false,
+};
+
+/// Ring-buffer capacity for Painter.notification_history, feeding the History Panel's history list.
+pub const NOTIF_HISTORY_CAPACITY = 15;
+
+/// One past notification retained for the History Panel; fixed-size buffers avoid a heap allocation per notification.
+pub const NotificationHistoryEntry = struct {
+    source_hwnd: win32.HWND,
+    notification_type: types.NotificationType,
+    character_name_buf: [64]u8 = undefined,
+    character_name_len: u8 = 0,
+    text_buf: [96]u8 = undefined,
+    text_len: u8 = 0,
+    timestamp_ms: u64 = 0,
+
+    pub fn characterName(self: *const NotificationHistoryEntry) []const u8 {
+        return self.character_name_buf[0..self.character_name_len];
+    }
+
+    pub fn text(self: *const NotificationHistoryEntry) []const u8 {
+        return self.text_buf[0..self.text_len];
+    }
 };
 
 /// Cap on simultaneously stacked notifications per thumbnail; kept small since the overlay is drawn onto a small thumbnail bitmap.
@@ -286,8 +309,14 @@ pub const Painter = struct {
     cached_fonts: [5]FontCacheEntry = .{ .{}, .{}, .{}, .{}, .{} },
     /// Non-null when viewMode == .ClientList; owns the compact list panel window.
     list_window: ?list_view.ListWindow = null,
+    /// Non-null when display.showNotifInfoPanel is enabled; owns the notification-history/activity-totals panel.
+    notif_info_window: ?notif_info_view.NotifInfoWindow = null,
     /// FIFO queue of recently-notified characters, oldest first; populated by trackNotifiedCharacter, consumed by HotkeyManager.cycleNotified via getNotifiedCharacterNames.
     notified_queue: std.ArrayList(NotifiedCharacterEntry) = .empty,
+    /// Ring buffer of the last NOTIF_HISTORY_CAPACITY notifications shown, across all characters, newest overwrites oldest; feeds notif_info_window.
+    notification_history: [NOTIF_HISTORY_CAPACITY]NotificationHistoryEntry = undefined,
+    notification_history_head: usize = 0,
+    notification_history_count: usize = 0,
     /// Transient overlay shown only while dragging, outlining other characters' saved positions; created lazily, hidden (not destroyed) between drags.
     ghost_overlay_hwnd: ?win32.HWND = null,
     ghost_overlay_bitmap: ?gdi_overlay.OverlayBitmap = null,
@@ -405,10 +434,18 @@ pub const Painter = struct {
         // Lets the list window proc activate EVE clients without a direct list_view → input dependency.
         list_view.g_activate_fn = input.handleThumbnailClick;
         list_view.g_shift_click_fn = input.handleThumbnailShiftClick;
+        notif_info_view.g_activate_fn = input.handleThumbnailClick;
 
         if (cfg.display.viewMode == .ClientList) {
             painter.list_window = list_view.ListWindow.init(allocator, cfg, instance) catch |err| blk: {
                 slog.err("Failed to create list window: {}", .{err});
+                break :blk null;
+            };
+        }
+
+        if (cfg.display.showNotifInfoPanel) {
+            painter.notif_info_window = notif_info_view.NotifInfoWindow.init(allocator, cfg, instance) catch |err| blk: {
+                slog.err("Failed to create notification/info window: {}", .{err});
                 break :blk null;
             };
         }
@@ -423,6 +460,11 @@ pub const Painter = struct {
         if (self.list_window) |*lw| {
             lw.deinit();
             self.list_window = null;
+        }
+
+        if (self.notif_info_window) |*niw| {
+            niw.deinit();
+            self.notif_info_window = null;
         }
 
         const main_mod = @import("main.zig");
@@ -997,6 +1039,7 @@ pub const Painter = struct {
             });
 
             self.trackNotifiedCharacter(thumbnail.character_name);
+            self.pushNotificationHistory(source_hwnd, thumbnail.character_name, notification_text, notification_type);
 
             // Speaks the same phrase the visual notification shows, gated by the master switch plus this type's own opt-in.
             if (self.config.thumbnail.notifications.tts_enabled and type_config.tts_enabled) {
@@ -1502,6 +1545,40 @@ pub const Painter = struct {
                 slog.err("Failed to render list window: {}", .{err});
             };
         }
+
+        if (self.notif_info_window) |*niw| {
+            niw.render(self) catch |err| {
+                slog.err("Failed to render notification history window: {}", .{err});
+            };
+        }
+    }
+
+    /// Returns the notification-history ring buffer entries in newest-first order, written into `out` (capped to NOTIF_HISTORY_CAPACITY and out.len).
+    pub fn getNotificationHistory(self: *const Painter, out: []NotificationHistoryEntry) []NotificationHistoryEntry {
+        const n = @min(self.notification_history_count, out.len);
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            const idx = (self.notification_history_head + NOTIF_HISTORY_CAPACITY - 1 - i) % NOTIF_HISTORY_CAPACITY;
+            out[i] = self.notification_history[idx];
+        }
+        return out[0..n];
+    }
+
+    /// Appends a notification to the history ring buffer (overwrites the oldest entry once full); called from showNotification for every notification actually shown.
+    fn pushNotificationHistory(self: *Painter, source_hwnd: win32.HWND, character_name: []const u8, notification_text: []const u8, notification_type: types.NotificationType) void {
+        var entry: NotificationHistoryEntry = .{ .source_hwnd = source_hwnd, .notification_type = notification_type, .timestamp_ms = win32.GetTickCount64() };
+
+        const name_n = @min(character_name.len, entry.character_name_buf.len);
+        @memcpy(entry.character_name_buf[0..name_n], character_name[0..name_n]);
+        entry.character_name_len = @intCast(name_n);
+
+        const text_n = @min(notification_text.len, entry.text_buf.len);
+        @memcpy(entry.text_buf[0..text_n], notification_text[0..text_n]);
+        entry.text_len = @intCast(text_n);
+
+        self.notification_history[self.notification_history_head] = entry;
+        self.notification_history_head = (self.notification_history_head + 1) % NOTIF_HISTORY_CAPACITY;
+        if (self.notification_history_count < NOTIF_HISTORY_CAPACITY) self.notification_history_count += 1;
     }
 
     fn registerWindowClass(self: *Painter) !void {
