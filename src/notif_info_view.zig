@@ -11,18 +11,15 @@ const painter_mod = @import("painter.zig");
 
 const HEADER_HEIGHT: i32 = 18;
 const ROW_HEIGHT: i32 = 16;
-const INFO_LABEL_HEIGHT: i32 = 14;
 const TEXT_LEFT: i32 = 6;
 const RIGHT_MARGIN: i32 = 6;
 const TEXT_BUF: usize = 160;
 
 const RGB_HEADER: u32 = 0x001A1A1A;
 const RGB_BODY: u32 = 0x000F0F0F;
-const RGB_INFO_BG: u32 = 0x00151515;
 const ARGB_SEPARATOR: u32 = 0xFF888888;
 const ARGB_HDR_TEXT: u32 = 0xFFFFFFFF;
 const ARGB_CHAR_NAME: u32 = 0xFFCCCCCC;
-const ARGB_NOTIF_TEXT: u32 = 0xFFFFAA00;
 const ARGB_EMPTY_TEXT: u32 = 0xFF666666;
 const RGB_FRAME: u32 = 0x00888888;
 
@@ -38,30 +35,6 @@ var g_drag_anchor_rect: win32.RECT = .{ .left = 0, .top = 0, .right = 0, .bottom
 pub var g_activate_fn: ?*const fn (win32.HWND) void = null;
 
 const NOTIF_INFO_WINDOW_CLASS = "EVE_NOTIFINFO_CLASS";
-
-fn formatIskAbbrev(buf: []u8, value: f64) []const u8 {
-    const abs_value = @abs(value);
-    if (abs_value >= 1_000_000_000.0) {
-        return std.fmt.bufPrint(buf, "{d:.2}b isk", .{value / 1_000_000_000.0}) catch "?";
-    } else if (abs_value >= 1_000_000.0) {
-        return std.fmt.bufPrint(buf, "{d:.1}m isk", .{value / 1_000_000.0}) catch "?";
-    } else if (abs_value >= 1_000.0) {
-        return std.fmt.bufPrint(buf, "{d:.0}k isk", .{value / 1_000.0}) catch "?";
-    } else {
-        return std.fmt.bufPrint(buf, "{d:.0} isk", .{value}) catch "?";
-    }
-}
-
-fn formatM3Abbrev(buf: []u8, value: f64) []const u8 {
-    const abs_value = @abs(value);
-    if (abs_value >= 1_000_000.0) {
-        return std.fmt.bufPrint(buf, "{d:.1}m m3", .{value / 1_000_000.0}) catch "?";
-    } else if (abs_value >= 1_000.0) {
-        return std.fmt.bufPrint(buf, "{d:.1}k m3", .{value / 1_000.0}) catch "?";
-    } else {
-        return std.fmt.bufPrint(buf, "{d:.0} m3", .{value}) catch "?";
-    }
-}
 
 pub const NotifInfoWindow = struct {
     hwnd: win32.HWND,
@@ -91,12 +64,12 @@ pub const NotifInfoWindow = struct {
             win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW |
                 win32.WS_EX_NOACTIVATE | win32.WS_EX_LAYERED,
             NOTIF_INFO_WINDOW_CLASS,
-            "EVE Notifications & Info",
+            "EVE Notification History",
             win32.WS_POPUP,
             cfg.display.notifInfoPanelX,
             cfg.display.notifInfoPanelY,
-            cfg.thumbnail.width,
-            cfg.thumbnail.height * 2,
+            cfg.display.notifInfoPanelWidth,
+            cfg.display.notifInfoPanelHeight,
             null,
             null,
             instance,
@@ -104,16 +77,16 @@ pub const NotifInfoWindow = struct {
         ) orelse return error.CreateWindowFailed;
         errdefer _ = win32.DestroyWindow(hwnd);
 
-        const font_name_z = try allocator.dupeZ(u8, cfg.thumbnail.textFontName);
+        const font_name_z = try allocator.dupeZ(u8, cfg.display.notifInfoPanelFontName);
         defer allocator.free(font_name_z);
 
         const font = win32.CreateFontA(
-            -cfg.thumbnail.textFontSize,
+            -cfg.display.notifInfoPanelFontSize,
             0,
             0,
             0,
-            cfg.thumbnail.textFontWeight.toWin32Weight(),
-            if (cfg.thumbnail.textFontWeight.isItalic()) 1 else 0,
+            cfg.display.notifInfoPanelFontWeight.toWin32Weight(),
+            if (cfg.display.notifInfoPanelFontWeight.isItalic()) 1 else 0,
             0,
             0,
             win32.DEFAULT_CHARSET,
@@ -130,9 +103,9 @@ pub const NotifInfoWindow = struct {
             .allocator = allocator,
             .config = cfg,
             .font = font,
-            .cached_font_name = cfg.thumbnail.textFontName,
-            .cached_font_size = cfg.thumbnail.textFontSize,
-            .cached_font_weight = cfg.thumbnail.textFontWeight,
+            .cached_font_name = cfg.display.notifInfoPanelFontName,
+            .cached_font_size = cfg.display.notifInfoPanelFontSize,
+            .cached_font_weight = cfg.display.notifInfoPanelFontWeight,
         };
     }
 
@@ -142,31 +115,31 @@ pub const NotifInfoWindow = struct {
         _ = win32.DestroyWindow(self.hwnd);
     }
 
-    /// Recreates `font` if the thumbnail overlay text font settings changed since last built; mirrors list_view.zig's ensureFont, but tracks thumbnail.textFont* (the overlay text styling) rather than List View's own font settings.
+    /// Recreates `font` if the panel's own font settings changed since last built (e.g. a live-previewed edit); mirrors list_view.zig's ensureFont, but tracks display.notifInfoPanelFont* rather than List View's own font settings.
     fn ensureFont(self: *NotifInfoWindow) void {
-        const cfg = self.config.thumbnail;
+        const cfg = self.config.display;
         const unchanged = self.font != null and
-            std.mem.eql(u8, self.cached_font_name, cfg.textFontName) and
-            self.cached_font_size == cfg.textFontSize and
-            self.cached_font_weight == cfg.textFontWeight;
+            std.mem.eql(u8, self.cached_font_name, cfg.notifInfoPanelFontName) and
+            self.cached_font_size == cfg.notifInfoPanelFontSize and
+            self.cached_font_weight == cfg.notifInfoPanelFontWeight;
         if (unchanged) return;
 
         if (self.font) |old| _ = win32.DeleteObject(old);
         self.font = null;
 
-        const font_name_z = self.allocator.dupeZ(u8, cfg.textFontName) catch |err| {
-            slog.err("Failed to allocate notif/info panel font name: {}", .{err});
+        const font_name_z = self.allocator.dupeZ(u8, cfg.notifInfoPanelFontName) catch |err| {
+            slog.err("Failed to allocate notification history panel font name: {}", .{err});
             return;
         };
         defer self.allocator.free(font_name_z);
 
         self.font = win32.CreateFontA(
-            -cfg.textFontSize,
+            -cfg.notifInfoPanelFontSize,
             0,
             0,
             0,
-            cfg.textFontWeight.toWin32Weight(),
-            if (cfg.textFontWeight.isItalic()) 1 else 0,
+            cfg.notifInfoPanelFontWeight.toWin32Weight(),
+            if (cfg.notifInfoPanelFontWeight.isItalic()) 1 else 0,
             0,
             0,
             win32.DEFAULT_CHARSET,
@@ -176,12 +149,14 @@ pub const NotifInfoWindow = struct {
             win32.DEFAULT_PITCH,
             font_name_z,
         );
-        self.cached_font_name = cfg.textFontName;
-        self.cached_font_size = cfg.textFontSize;
-        self.cached_font_weight = cfg.textFontWeight;
+        self.cached_font_name = cfg.notifInfoPanelFontName;
+        self.cached_font_size = cfg.notifInfoPanelFontSize;
+        self.cached_font_weight = cfg.notifInfoPanelFontWeight;
     }
 
     fn saveWindowPosition(self: *NotifInfoWindow) void {
+        if (!self.config.display.rememberNotifInfoPanelPosition) return;
+
         var rect: win32.RECT = undefined;
         _ = win32.GetWindowRect(self.hwnd, &rect);
 
@@ -191,33 +166,29 @@ pub const NotifInfoWindow = struct {
         };
 
         self.config.saveNotifInfoPanelPosition(self.allocator, pos) catch |err| {
-            slog.err("Failed to save notification/info panel position: {}", .{err});
+            slog.err("Failed to save notification history panel position: {}", .{err});
         };
     }
 
-    /// Whether the Bounty/Mining totals rows should be drawn this render: gated on the setting being enabled AND the total being nonzero, so an idle character doesn't leave a permanent "0" row.
-    fn infoRowsShown(self: *const NotifInfoWindow, painter: *const painter_mod.Painter) struct { bounty: bool, mining: bool } {
-        return .{
-            .bounty = self.config.bounty.enabled and painter.total_bounty_isk != 0,
-            .mining = self.config.mining.enabled and (painter.total_mining_m3 != 0 or painter.total_mining_isk != 0),
-        };
+    /// Character-name color for a history row: per-character override, else the auto-generated unique color (if enabled), else the default label color.
+    fn resolveCharColor(self: *const NotifInfoWindow, name: []const u8) u32 {
+        return (self.config.getCharacterNameColor(name) orelse (ARGB_CHAR_NAME & 0x00FF_FFFF)) & 0x00FF_FFFF;
+    }
+
+    /// Notification text color for a history row: the notification type's configured color, else the thumbnail overlay's default text color.
+    fn resolveNotifTextColor(self: *const NotifInfoWindow, ntype: types.NotificationType) u32 {
+        const type_cfg = self.config.thumbnail.notifications.getTypeConfig(ntype);
+        return (type_cfg.text_color orelse self.config.thumbnail.textColor) & 0x00FF_FFFF;
     }
 
     fn computeRenderSignature(self: *const NotifInfoWindow, painter: *const painter_mod.Painter) u64 {
         var h = std.hash.Wyhash.init(0);
-        h.update(std.mem.asBytes(&self.config.thumbnail.width));
-        h.update(std.mem.asBytes(&self.config.thumbnail.height));
-        h.update(self.config.thumbnail.textFontName);
-        h.update(std.mem.asBytes(&self.config.thumbnail.textFontSize));
-        h.update(std.mem.asBytes(&self.config.thumbnail.textFontWeight));
-        h.update(std.mem.asBytes(&self.config.bounty.enabled));
-        h.update(std.mem.asBytes(&self.config.bounty.color));
-        h.update(std.mem.asBytes(&self.config.mining.enabled));
-        h.update(std.mem.asBytes(&self.config.mining.color));
-        h.update(std.mem.asBytes(&self.config.mining.show_isk_rate));
-        h.update(std.mem.asBytes(&painter.total_bounty_isk));
-        h.update(std.mem.asBytes(&painter.total_mining_m3));
-        h.update(std.mem.asBytes(&painter.total_mining_isk));
+        h.update(std.mem.asBytes(&self.config.display.notifInfoPanelWidth));
+        h.update(std.mem.asBytes(&self.config.display.notifInfoPanelHeight));
+        h.update(std.mem.asBytes(&self.config.display.notifInfoPanelOpacity));
+        h.update(self.config.display.notifInfoPanelFontName);
+        h.update(std.mem.asBytes(&self.config.display.notifInfoPanelFontSize));
+        h.update(std.mem.asBytes(&self.config.display.notifInfoPanelFontWeight));
         h.update(std.mem.asBytes(&painter.notification_history_count));
         h.update(std.mem.asBytes(&painter.notification_history_head));
 
@@ -226,12 +197,16 @@ pub const NotifInfoWindow = struct {
         for (hist) |*e| {
             h.update(e.characterName());
             h.update(e.text());
+            const char_color = self.resolveCharColor(e.characterName());
+            const text_color = self.resolveNotifTextColor(e.notification_type);
+            h.update(std.mem.asBytes(&char_color));
+            h.update(std.mem.asBytes(&text_color));
         }
 
         return h.final();
     }
 
-    /// Re-render the panel from the painter's live notification history + activity totals; called every painter update tick and skips the GDI redraw when the render signature matches the previous tick's.
+    /// Re-render the panel from the painter's live notification history; called every painter update tick and skips the GDI redraw when the render signature matches the previous tick's.
     pub fn render(self: *NotifInfoWindow, painter: *const painter_mod.Painter) !void {
         self.ensureFont();
 
@@ -241,8 +216,8 @@ pub const NotifInfoWindow = struct {
             return;
         }
 
-        const win_w: i32 = @max(1, self.config.thumbnail.width);
-        const win_h: i32 = @max(1, self.config.thumbnail.height * 2);
+        const win_w: i32 = @max(1, self.config.display.notifInfoPanelWidth);
+        const win_h: i32 = @max(1, self.config.display.notifInfoPanelHeight);
 
         if (win_w != self.last_win_w or win_h != self.last_win_h) {
             _ = win32.SetWindowPos(
@@ -280,14 +255,7 @@ pub const NotifInfoWindow = struct {
         fillRect(ov.pixels, W, 0, 0, W, @intCast(HEADER_HEIGHT), self.withAlpha(RGB_HEADER));
         fillRect(ov.pixels, W, 0, @intCast(HEADER_HEIGHT), W, H - @as(usize, @intCast(HEADER_HEIGHT)), self.withAlpha(RGB_BODY));
 
-        const shown_rows = self.infoRowsShown(painter);
-        var info_rows: i32 = 0;
-        if (shown_rows.bounty) info_rows += 1;
-        if (shown_rows.mining) info_rows += 1;
-        // BOX_PADDING covers the border box's own top/bottom border lines plus a little breathing room around the "Fleet Totals" label and rows.
-        const BOX_PADDING: i32 = 6;
-        const info_height: i32 = if (info_rows > 0) BOX_PADDING + INFO_LABEL_HEIGHT + info_rows * ROW_HEIGHT + BOX_PADDING else 0;
-        const history_area_h: i32 = @max(0, win_h - HEADER_HEIGHT - info_height);
+        const history_area_h: i32 = @max(0, win_h - HEADER_HEIGHT);
         const history_rows_fit: usize = @intCast(@max(0, @divTrunc(history_area_h, ROW_HEIGHT)));
 
         if (self.font) |f| {
@@ -296,7 +264,10 @@ pub const NotifInfoWindow = struct {
                 if (old) |o| _ = win32.SelectObject(ov.mem_dc, o);
             }
 
-            drawText(ov.mem_dc, "Notifications", TEXT_LEFT, 3, ARGB_HDR_TEXT);
+            const header_text = "Notification History";
+            const header_text_h = measureTextHeight(ov.mem_dc, header_text);
+            const header_text_y = @max(0, @divTrunc(HEADER_HEIGHT - header_text_h, 2));
+            drawText(ov.mem_dc, header_text, TEXT_LEFT, header_text_y, ARGB_HDR_TEXT);
 
             var entries: [painter_mod.NOTIF_HISTORY_CAPACITY]painter_mod.NotificationHistoryEntry = undefined;
             const hist = painter.getNotificationHistory(&entries);
@@ -307,62 +278,14 @@ pub const NotifInfoWindow = struct {
                 drawText(ov.mem_dc, "No notifications yet", TEXT_LEFT, HEADER_HEIGHT + 2, ARGB_EMPTY_TEXT);
             }
 
+            const max_w: usize = @intCast(@max(0, win_w - TEXT_LEFT - RIGHT_MARGIN));
             for (hist[0..shown], 0..) |*entry, i| {
                 const row_top = HEADER_HEIGHT + @as(i32, @intCast(i)) * ROW_HEIGHT;
                 self.history_row_hwnds[i] = entry.source_hwnd;
 
-                var line_buf: [TEXT_BUF]u8 = undefined;
-                const line = std.fmt.bufPrint(&line_buf, "{s}: {s}", .{ entry.characterName(), entry.text() }) catch entry.text();
-
-                const max_w: usize = @intCast(@max(0, win_w - TEXT_LEFT - RIGHT_MARGIN));
-                const name_w = measureTextWidth(ov.mem_dc, line);
-                if (name_w <= max_w) {
-                    drawText(ov.mem_dc, line, TEXT_LEFT, row_top + 1, ARGB_NOTIF_TEXT);
-                } else {
-                    drawTextTruncated(ov.mem_dc, line, TEXT_LEFT, row_top + 1, ARGB_NOTIF_TEXT, max_w);
-                }
-            }
-
-            if (info_rows > 0) {
-                const info_top: i32 = win_h - info_height;
-                const box_l: usize = 2;
-                const box_r: usize = W - 2;
-                const box_t: usize = @intCast(info_top);
-                const box_b: usize = H - 2;
-                const box_w = box_r - box_l;
-                const box_h = box_b - box_t;
-                const frame_col = self.withAlpha(RGB_FRAME);
-
-                fillRect(ov.pixels, W, box_l, box_t, box_w, box_h, self.withAlpha(RGB_INFO_BG));
-                fillRect(ov.pixels, W, box_l, box_t, box_w, 1, frame_col);
-                fillRect(ov.pixels, W, box_l, box_b - 1, box_w, 1, frame_col);
-                fillRect(ov.pixels, W, box_l, box_t, 1, box_h, frame_col);
-                fillRect(ov.pixels, W, box_r - 1, box_t, 1, box_h, frame_col);
-
-                drawText(ov.mem_dc, "Fleet Totals", TEXT_LEFT, info_top + 3, ARGB_HDR_TEXT);
-
-                var row_i: i32 = 0;
-                var val_buf: [32]u8 = undefined;
-
-                if (shown_rows.bounty) {
-                    const y = info_top + BOX_PADDING + INFO_LABEL_HEIGHT + row_i * ROW_HEIGHT;
-                    const val = formatIskAbbrev(&val_buf, painter.total_bounty_isk);
-                    drawKeyValue(ov.mem_dc, "Bounty", val, TEXT_LEFT, y, win_w - RIGHT_MARGIN, self.config.bounty.color & 0xFFFFFF);
-                    row_i += 1;
-                }
-
-                if (shown_rows.mining) {
-                    const y = info_top + BOX_PADDING + INFO_LABEL_HEIGHT + row_i * ROW_HEIGHT;
-                    var m3_buf: [32]u8 = undefined;
-                    var isk_buf: [32]u8 = undefined;
-                    const m3_str = formatM3Abbrev(&m3_buf, painter.total_mining_m3);
-                    const val = if (self.config.mining.show_isk_rate)
-                        std.fmt.bufPrint(&val_buf, "{s} / {s}", .{ m3_str, formatIskAbbrev(&isk_buf, painter.total_mining_isk) }) catch m3_str
-                    else
-                        m3_str;
-                    drawKeyValue(ov.mem_dc, "Mining", val, TEXT_LEFT, y, win_w - RIGHT_MARGIN, self.config.mining.color & 0xFFFFFF);
-                    row_i += 1;
-                }
+                const char_color = self.resolveCharColor(entry.characterName());
+                const text_color = self.resolveNotifTextColor(entry.notification_type);
+                drawHistoryRow(ov.mem_dc, entry.characterName(), entry.text(), TEXT_LEFT, row_top + 1, char_color, text_color, max_w);
             }
         }
 
@@ -386,7 +309,7 @@ pub const NotifInfoWindow = struct {
         var blend = win32.BLENDFUNCTION{
             .BlendOp = win32.AC_SRC_OVER,
             .BlendFlags = 0,
-            .SourceConstantAlpha = self.config.display.listViewOpacity,
+            .SourceConstantAlpha = self.config.display.notifInfoPanelOpacity,
             .AlphaFormat = win32.AC_SRC_ALPHA,
         };
 
@@ -407,14 +330,38 @@ pub const NotifInfoWindow = struct {
     }
 
     fn withAlpha(self: *const NotifInfoWindow, rgb: u32) u32 {
-        const a: u32 = self.config.display.listViewOpacity;
+        const a: u32 = self.config.display.notifInfoPanelOpacity;
         return (a << 24) | (rgb & 0x00FF_FFFF);
     }
 };
 
-fn drawKeyValue(dc: win32.HDC, key: []const u8, value: []const u8, left_x: i32, y: i32, right_x: i32, value_color: u32) void {
-    drawText(dc, key, left_x, y, ARGB_CHAR_NAME);
-    drawTextRight(dc, value, right_x, y, value_color);
+/// Draws "CharacterName: message" with the name and message independently colored, truncating the message (then the name, if needed) to fit max_w.
+fn drawHistoryRow(dc: win32.HDC, name: []const u8, msg: []const u8, x: i32, y: i32, name_color: u32, msg_color: u32, max_w: usize) void {
+    const name_w = measureTextWidth(dc, name);
+    if (name_w > max_w) {
+        drawTextTruncated(dc, name, x, y, name_color, max_w);
+        return;
+    }
+    drawText(dc, name, x, y, name_color);
+
+    const remaining_after_name = max_w -| name_w;
+    if (remaining_after_name == 0) return;
+
+    const sep = ": ";
+    const sep_w = measureTextWidth(dc, sep);
+    if (sep_w > remaining_after_name) return;
+    drawText(dc, sep, x + @as(i32, @intCast(name_w)), y, msg_color);
+
+    const remaining_for_msg = remaining_after_name - sep_w;
+    if (remaining_for_msg == 0) return;
+    const msg_x = x + @as(i32, @intCast(name_w + sep_w));
+
+    const msg_w = measureTextWidth(dc, msg);
+    if (msg_w <= remaining_for_msg) {
+        drawText(dc, msg, msg_x, y, msg_color);
+    } else {
+        drawTextTruncated(dc, msg, msg_x, y, msg_color, remaining_for_msg);
+    }
 }
 
 fn registerClass(instance: win32.HINSTANCE) !void {
@@ -558,9 +505,14 @@ fn measureTextWidth(dc: win32.HDC, text: []const u8) usize {
     return @intCast(@max(0, sz.cx));
 }
 
-fn drawTextRight(dc: win32.HDC, text: []const u8, right_x: i32, y: i32, rgb: u32) void {
-    const w = measureTextWidth(dc, text);
-    drawText(dc, text, right_x - @as(i32, @intCast(w)), y, rgb);
+fn measureTextHeight(dc: win32.HDC, text: []const u8) i32 {
+    var buf: [TEXT_BUF:0]u8 = undefined;
+    const n = @min(text.len, TEXT_BUF - 1);
+    @memcpy(buf[0..n], text[0..n]);
+    buf[n] = 0;
+    var sz: win32.SIZE = undefined;
+    _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(n), &sz);
+    return @max(0, sz.cy);
 }
 
 fn drawTextTruncated(dc: win32.HDC, text: []const u8, x: i32, y: i32, rgb: u32, max_w: usize) void {

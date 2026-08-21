@@ -283,18 +283,6 @@ fn onTimerTick() void {
             scout_result.windows,
         );
     }
-
-    if (g_painter) |painter_ptr| {
-        var mining_m3: f64 = 0;
-        var mining_isk: f64 = 0;
-        if (g_mining_tracker) |tracker| {
-            const totals = tracker.getGrandTotals();
-            mining_m3 = totals.m3;
-            mining_isk = totals.isk;
-        }
-        const bounty_isk: f64 = if (g_bounty_tracker) |tracker| tracker.getGrandTotal() else 0;
-        painter_ptr.updateActivityTotals(mining_m3, mining_isk, bounty_isk);
-    }
 }
 
 /// Shared throttle/dispatch loop for the combat/mining/bounty trackers: refreshes every tick, pushes values into the painter (and flushes dirty overlays) once per `interval_ms`.

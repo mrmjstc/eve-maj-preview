@@ -234,6 +234,13 @@ const CONFIG_SCHEMA = [
     { id: 'useMonitorWorkArea', path: 'display.useMonitorWorkArea' },
     { id: 'honorSavedPositions', path: 'display.honorSavedPositions' },
     { id: 'showNotifInfoPanel', path: 'display.showNotifInfoPanel' },
+    { id: 'notifInfoPanelWidth', path: 'display.notifInfoPanelWidth' },
+    { id: 'notifInfoPanelHeight', path: 'display.notifInfoPanelHeight' },
+    { id: 'notifInfoPanelOpacity', path: 'display.notifInfoPanelOpacity', transform: 'opacity', default: 255 },
+    { id: 'notifInfoPanelFontName', path: 'display.notifInfoPanelFontName' },
+    { id: 'notifInfoPanelFontSize', path: 'display.notifInfoPanelFontSize' },
+    { id: 'notifInfoPanelFontWeight', path: 'display.notifInfoPanelFontWeight' },
+    { id: 'rememberNotifInfoPanelPosition', path: 'display.rememberNotifInfoPanelPosition' },
     // startX/startY/notifInfoPanelX/notifInfoPanelY are populate-only - saveConfiguration reloads them from disk instead of the form (see reloadLivePositions).
 
     { id: 'autoMinimizeEnabled', path: 'autoMinimize.enabled' },
@@ -579,6 +586,8 @@ const THUMBNAIL_PREVIEW_FIELD_IDS = [
     'textBgColor', 'textBgOpacity',
     'thumbWidth', 'thumbHeight', 'thumbSizeSlider', 'hideWhenNoEveFocus',
     'listViewOpacity', 'listViewFontName', 'listViewFontSize', 'listViewFontWeight',
+    'notifInfoPanelWidth', 'notifInfoPanelHeight',
+    'notifInfoPanelOpacity', 'notifInfoPanelFontName', 'notifInfoPanelFontSize', 'notifInfoPanelFontWeight',
     'spacing', 'spacingX', 'spacingY', 'layoutMode', 'layoutDirection',
     'gridColumns', 'gridRows', 'stackOffset', 'stackAlignment',
     'monitorIndex', 'useMonitorWorkArea', 'honorSavedPositions',
@@ -639,6 +648,12 @@ function buildThumbnailPreviewPatch(includePositions = false) {
             listViewFontName: getFieldValue('listViewFontName'),
             listViewFontSize: getFieldValue('listViewFontSize'),
             listViewFontWeight: getFieldValue('listViewFontWeight'),
+            notifInfoPanelWidth: getFieldValue('notifInfoPanelWidth'),
+            notifInfoPanelHeight: getFieldValue('notifInfoPanelHeight'),
+            notifInfoPanelOpacity: percentToOpacity(getFieldValue('notifInfoPanelOpacity')),
+            notifInfoPanelFontName: getFieldValue('notifInfoPanelFontName'),
+            notifInfoPanelFontSize: getFieldValue('notifInfoPanelFontSize'),
+            notifInfoPanelFontWeight: getFieldValue('notifInfoPanelFontWeight'),
             // startX/startY are deliberately omitted - see repositionAllThumbnails() in painter.zig.
             spacing: getFieldValue('spacing'),
             spacingX: getNullableFieldValue('spacingX'),
@@ -1134,6 +1149,7 @@ function populateFormFields() {
 
     // Order-independent: each just reads fields already populated above and adjusts unrelated elements' disabled state.
     toggleSnappingOptions();
+    toggleNotifInfoPanelOptions();
     toggleBorderOptions();
     toggleFocusedBorderOptions();
     toggleInactiveBorderOptions();
@@ -5903,6 +5919,10 @@ function applyOptionToggle(checkboxId, optionsId) {
 
 function toggleSnappingOptions() {
     applyOptionToggle('snappingEnabled', 'snappingOptions');
+}
+
+function toggleNotifInfoPanelOptions() {
+    applyOptionToggle('showNotifInfoPanel', 'notifInfoPanelOptions');
 }
 
 function toggleClientListOptions() {

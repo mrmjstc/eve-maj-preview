@@ -41,12 +41,13 @@ pub const ActiveNotification = struct {
     flash_border: bool = false,
 };
 
-/// Ring-buffer capacity for Painter.notification_history, feeding the notification/info panel's history list.
+/// Ring-buffer capacity for Painter.notification_history, feeding the History Panel's history list.
 pub const NOTIF_HISTORY_CAPACITY = 15;
 
-/// One past notification retained for the notification/info panel; fixed-size buffers avoid a heap allocation per notification.
+/// One past notification retained for the History Panel; fixed-size buffers avoid a heap allocation per notification.
 pub const NotificationHistoryEntry = struct {
     source_hwnd: win32.HWND,
+    notification_type: types.NotificationType,
     character_name_buf: [64]u8 = undefined,
     character_name_len: u8 = 0,
     text_buf: [96]u8 = undefined,
@@ -307,10 +308,6 @@ pub const Painter = struct {
     notification_history: [NOTIF_HISTORY_CAPACITY]NotificationHistoryEntry = undefined,
     notification_history_head: usize = 0,
     notification_history_count: usize = 0,
-    /// Fleet-wide activity session totals, pushed each tick by main.zig from the mining/bounty trackers; reset per-character on logout since removeCharacter drops that character's tracker window.
-    total_mining_m3: f64 = 0,
-    total_mining_isk: f64 = 0,
-    total_bounty_isk: f64 = 0,
     /// Transient overlay shown only while dragging, outlining other characters' saved positions; created lazily, hidden (not destroyed) between drags.
     ghost_overlay_hwnd: ?win32.HWND = null,
     ghost_overlay_bitmap: ?gdi_overlay.OverlayBitmap = null,
@@ -1033,7 +1030,7 @@ pub const Painter = struct {
             thumbnail.needs_render = true;
 
             self.trackNotifiedCharacter(thumbnail.character_name);
-            self.pushNotificationHistory(source_hwnd, thumbnail.character_name, notification_text);
+            self.pushNotificationHistory(source_hwnd, thumbnail.character_name, notification_text, notification_type);
 
             // Speaks the same phrase the visual notification shows, gated by the master switch plus this type's own opt-in.
             if (self.config.thumbnail.notifications.tts_enabled and type_config.tts_enabled) {
@@ -1447,16 +1444,9 @@ pub const Painter = struct {
 
         if (self.notif_info_window) |*niw| {
             niw.render(self) catch |err| {
-                slog.err("Failed to render notification/info window: {}", .{err});
+                slog.err("Failed to render notification history window: {}", .{err});
             };
         }
-    }
-
-    /// Pushes fleet-wide mining/bounty session totals for the notification/info panel; called once per tick from main.zig, cheap enough to run unconditionally (a handful of float adds over the tracked-character count).
-    pub fn updateActivityTotals(self: *Painter, mining_m3: f64, mining_isk: f64, bounty_isk: f64) void {
-        self.total_mining_m3 = mining_m3;
-        self.total_mining_isk = mining_isk;
-        self.total_bounty_isk = bounty_isk;
     }
 
     /// Returns the notification-history ring buffer entries in newest-first order, written into `out` (capped to NOTIF_HISTORY_CAPACITY and out.len).
@@ -1471,8 +1461,8 @@ pub const Painter = struct {
     }
 
     /// Appends a notification to the history ring buffer (overwrites the oldest entry once full); called from showNotification for every notification actually shown.
-    fn pushNotificationHistory(self: *Painter, source_hwnd: win32.HWND, character_name: []const u8, notification_text: []const u8) void {
-        var entry: NotificationHistoryEntry = .{ .source_hwnd = source_hwnd, .timestamp_ms = win32.GetTickCount64() };
+    fn pushNotificationHistory(self: *Painter, source_hwnd: win32.HWND, character_name: []const u8, notification_text: []const u8, notification_type: types.NotificationType) void {
+        var entry: NotificationHistoryEntry = .{ .source_hwnd = source_hwnd, .notification_type = notification_type, .timestamp_ms = win32.GetTickCount64() };
 
         const name_n = @min(character_name.len, entry.character_name_buf.len);
         @memcpy(entry.character_name_buf[0..name_n], character_name[0..name_n]);

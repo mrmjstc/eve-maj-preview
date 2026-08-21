@@ -523,20 +523,6 @@ pub const MiningTracker = struct {
         return .{ .m3 = 0, .isk = 0 };
     }
 
-    /// Sum of session totals across every currently-tracked (logged-in) character.
-    pub fn getGrandTotals(self: *MiningTracker) struct { m3: f64, isk: f64 } {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
-        var m3: f64 = 0;
-        var isk: f64 = 0;
-        var iter = self.base.windows.valueIterator();
-        while (iter.next()) |window| {
-            m3 += window.total_m3;
-            isk += window.total_isk;
-        }
-        return .{ .m3 = m3, .isk = isk };
-    }
-
     /// Re-evaluate all windows against now_ms. Returns true if any rate changed by >= 0.1.
     pub fn refreshAll(self: *MiningTracker, now_ms: i64) bool {
         return self.base.refreshAll(now_ms);
@@ -714,18 +700,6 @@ pub const BountyTracker = struct {
             return window.total_isk;
         }
         return 0;
-    }
-
-    /// Sum of session bounty totals across every currently-tracked (logged-in) character.
-    pub fn getGrandTotal(self: *BountyTracker) f64 {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
-        var total: f64 = 0;
-        var iter = self.base.windows.valueIterator();
-        while (iter.next()) |window| {
-            total += window.total_isk;
-        }
-        return total;
     }
 
     /// Re-evaluate all windows against now_ms. Returns true if any rate changed by >= 0.1.
