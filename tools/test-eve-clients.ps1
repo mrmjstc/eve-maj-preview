@@ -44,7 +44,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string[]]$CharacterNames = @('Test Client 1', 'Test Client 2', 'Test Client 3'),
+    [string[]]$CharacterNames = @('Test Client 1', 'Test Client 2', 'Test Client 3', 'Test Client 4', 'Test Client 5', 'Test Client 6', 'Test Client 7', 'Test Client 8', 'Test Client 9', 'Test Client 10'),
     [string]$WorkDir = (Join-Path $env:TEMP 'EveMajSim'),
     # Matches config.zig's own default, so the app picks these fixtures up with no settings change.
     [string]$ChatlogDir = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'EVE\logs\Chatlogs'),
