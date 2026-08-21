@@ -44,8 +44,8 @@
 #>
 [CmdletBinding()]
 param(
-    [string[]]$CharacterNames = @('Aria Kestrel', 'Dax Solano', 'Vex Ironclad'),
-    [string]$WorkDir = (Join-Path $env:TEMP 'EveZigSim'),
+    [string[]]$CharacterNames = @('Test Client 1', 'Test Client 2', 'Test Client 3'),
+    [string]$WorkDir = (Join-Path $env:TEMP 'EveMajSim'),
     # Matches config.zig's own default, so the app picks these fixtures up with no settings change.
     [string]$ChatlogDir = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'EVE\logs\Chatlogs'),
     [string]$GamelogDir = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'EVE\logs\Gamelogs'),
@@ -383,14 +383,110 @@ function Add-GamelogEvent {
         'undock' {
             "[ $ts ] Undocking from Jita IV - Moon 4 - Caldari Navy Assembly Plant in Jita"
         }
-        'fleetInvite' {
+        # Everything below fires one specific src/types.zig NotificationType, matching the exact substrings
+        # src/chatlog.zig's parseQuestionEvent/parseNotifyEvent/parseCombatEvent/parseNoneEvent look for - see
+        # the config dialog's Event Alerts table (NOTIFICATION_TYPES in config_dialog.js) for the full type list.
+        'FleetInvite' {
             "[ $ts ] (question) Someone wants you to join their fleet, do you accept?"
+        }
+        'FleetFollow' {
+            "[ $ts ] (notify) Following Fleet Commander in warp"
+        }
+        'FleetRegroup' {
+            "[ $ts ] (notify) Regrouping to Fleet Commander"
+        }
+        'FleetDisband' {
+            "[ $ts ] (notify) Your fleet is disbanding"
+        }
+        'JumpCloning' {
+            "[ $ts ] (notify) Starting clone jumping"
+        }
+        'MiningCompression' {
+            "[ $ts ] (notify) Successfully compressed Veldspar into 10 Compressed Veldspar"
+        }
+        'AsteroidDepleted' {
+            "[ $ts ] (notify) Your Miner II deactivates as it finds the resource it was harvesting a pale shadow of its former glory."
+        }
+        'CargoFull' {
+            "[ $ts ] (notify) Your Miner II has completed operations. Ship's cargo hold is full."
+        }
+        'CrystalBroke' {
+            "[ $ts ] (notify) Mining Laser Upgrade II deactivates due to the destruction of the Mining Crystal II."
+        }
+        'WarpScrambled' {
+            "[ $ts ] (combat) Warp scramble attempt from Hostile Pilot to you!"
+        }
+        'WarpDisrupted' {
+            "[ $ts ] (combat) Warp disruption attempt from Hostile Pilot to you!"
+        }
+        'Decloak' {
+            "[ $ts ] (notify) Your cloak deactivates due to proximity to Guristas Pith Ship."
+        }
+        'ObservatoryDecloak' {
+            "[ $ts ] (notify) Your cloak deactivates due to a pulse from a Mobile Observatory in the area."
+        }
+        'CloakFailed' {
+            "[ $ts ] (notify) Your cloaking systems are unable to activate due to your ship being within 2000m of a hostile."
+        }
+        'BombLauncherEmpty' {
+            "[ $ts ] (notify) Bomb Launcher II has run out of charges"
+        }
+        'SelfDestruct' {
+            "[ $ts ] (notify) Your Capsule will self-destruct in 5 seconds."
+        }
+        'WarpBubble' {
+            "[ $ts ] (notify) You are within a warp disruption zone. Get 20000.0 meters from Warp Disrupt Probe to warp."
+        }
+        'Docking' {
+            "[ $ts ] (notify) You cannot do that while docking."
+        }
+        'AutopilotReached' {
+            "[ $ts ] (notify) Autopilot disabled - Waypoint reached"
+        }
+        'AutopilotApproaching' {
+            "[ $ts ] (notify) Autopilot approaching target"
+        }
+        'JumpRange' {
+            "[ $ts ] (notify) Please get within 2500 meters of the stargate to jump."
+        }
+        'AggressionCantJump' {
+            "[ $ts ] (notify) The stargate denies you permission to jump for the moment due to your recent acts of aggression."
+        }
+        'ConduitJump' {
+            "[ $ts ] (notify) A Conduit Field jumps you to Jita."
+        }
+        'ConversationInvite' {
+            "[ $ts ] (None) Some Pilot is inviting you to a conversation"
         }
     }
     if ($line) {
         [System.IO.File]::AppendAllText($Path, $line + "`r`n", [System.Text.Encoding]::UTF8)
     }
     return $line
+}
+
+# One-shot NotificationType kinds fireable via Add-GamelogEvent - excludes TakingDamage/MiningIdle/MiningStopped
+# (tracker-driven, use the b/m/c bursts or 'x' instead) and SystemChange (fired by the j/r jump commands instead).
+$script:NotificationTypeKinds = @(
+    'FleetInvite', 'FleetFollow', 'FleetRegroup', 'FleetDisband',
+    'MiningCompression', 'AsteroidDepleted', 'CargoFull', 'CrystalBroke',
+    'WarpScrambled', 'WarpDisrupted', 'Decloak', 'ObservatoryDecloak', 'CloakFailed', 'BombLauncherEmpty', 'SelfDestruct', 'WarpBubble',
+    'Docking', 'AutopilotReached', 'AutopilotApproaching', 'JumpRange', 'AggressionCantJump', 'ConduitJump', 'JumpCloning',
+    'ConversationInvite'
+)
+
+function Select-NotificationTypeKind {
+    Write-Host ''
+    for ($idx = 0; $idx -lt $script:NotificationTypeKinds.Count; $idx++) {
+        Write-Host ("{0,2}) {1}" -f ($idx + 1), $script:NotificationTypeKinds[$idx])
+    }
+    $sel = Read-Host 'Event type number (or name)'
+    if ($sel -match '^\d+$' -and [int]$sel -ge 1 -and [int]$sel -le $script:NotificationTypeKinds.Count) {
+        return $script:NotificationTypeKinds[[int]$sel - 1]
+    }
+    if ($script:NotificationTypeKinds -contains $sel) { return $sel }
+    Write-Warning 'No such event type.'
+    return $null
 }
 
 # Runs in its own child process via Start-Job, so line-building is duplicated from Add-GamelogEvent rather than shared.
@@ -610,19 +706,35 @@ function Select-Character {
 }
 
 function Start-CharacterBurst {
-    param([string]$CharName, [string]$Kind)
+    param([string]$CharName, [string]$Kind, [int]$DurationSeconds = 60)
 
     $c = $clients[$CharName]
     $existing = $c.Jobs[$Kind]
     if ($existing -and $existing.State -eq 'Running') {
-        Write-Warning "$CharName is already bursting '$Kind' - let it finish (60s) or wait it out before starting another."
+        Write-Warning "$CharName is already bursting '$Kind' - let it finish or wait it out before starting another."
         return
     }
     if ($existing) {
         Remove-Job -Job $existing -Force -ErrorAction SilentlyContinue
     }
-    $c.Jobs[$Kind] = Start-EventBurst -Path $c.Gamelog -Kind $Kind
-    Write-Host "$CharName started a 60s '$Kind' burst (events every $($script:BurstIntervals[$Kind])s)." -ForegroundColor Green
+    $c.Jobs[$Kind] = Start-EventBurst -Path $c.Gamelog -Kind $Kind -DurationSeconds $DurationSeconds
+    Write-Host "$CharName started a ${DurationSeconds}s '$Kind' burst (events every $($script:BurstIntervals[$Kind])s)." -ForegroundColor Green
+}
+
+# Fires several distinct NotificationTypes on one character ~1.5s apart (one from each Event Alerts category:
+# fleet, mining, combat, navigation, general) so they land inside each other's default 10s display window and
+# visibly stack - exercises both the stack itself and the oldest-entry eviction once more than MAX_STACKED_NOTIFICATIONS
+# (3, see painter.zig) are active at once. Blocks the menu loop for a few seconds while it runs.
+function Start-NotificationStorm {
+    param([string]$CharName, [string[]]$Kinds = @('FleetInvite', 'CargoFull', 'Decloak', 'Docking', 'ConversationInvite'))
+
+    $c = $clients[$CharName]
+    Write-Host "${CharName}: firing $($Kinds -join ' -> ') 1.5s apart ..." -ForegroundColor Green
+    foreach ($kind in $Kinds) {
+        Write-Host (Add-GamelogEvent -Path $c.Gamelog -Kind $kind)
+        Start-Sleep -Milliseconds 1500
+    }
+    Write-Host "${CharName}: storm complete." -ForegroundColor Green
 }
 
 function Start-CharacterJumpSequence {
@@ -662,7 +774,8 @@ $menu = @'
   [s] status                 [n] start new character   [o] log OUT (title -> "EVE")
   [i] log back IN            [k] kill (crash) client    [b] bounty burst (60s)
   [m] mining burst (60s)     [c] combat burst (60s)     [j] jump to system
-  [r] random 3-system route  [f] append fleet invite    [q] quit (stops everyone)
+  [r] random 3-system route  [e] fire event type...     [x] notification storm (multi-alert test)
+  [q] quit (stops everyone)
 '@
 
 # try/finally makes cleanup Ctrl+C-safe: Ctrl+C raises a pipeline-stop that unwinds through finally.
@@ -737,9 +850,16 @@ try {
             $name = Select-Character
             if ($name) { Start-CharacterJumpSequence -CharName $name }
         }
-        'f' {
+        'e' {
             $name = Select-Character
-            if ($name) { Write-Host (Add-GamelogEvent -Path $clients[$name].Gamelog -Kind 'fleetInvite') }
+            if ($name) {
+                $kind = Select-NotificationTypeKind
+                if ($kind) { Write-Host (Add-GamelogEvent -Path $clients[$name].Gamelog -Kind $kind) }
+            }
+        }
+        'x' {
+            $name = Select-Character
+            if ($name) { Start-NotificationStorm -CharName $name }
         }
         'q' {
             break mainLoop
