@@ -373,7 +373,8 @@ pub const ListWindow = struct {
             if (self.resolveActiveBadgeColorIfActive(t)) |badge_color| {
                 h.update(std.mem.asBytes(&badge_color));
             }
-            if (t.active_notification) |notif| {
+            for (t.active_notifications) |maybe_notif| {
+                const notif = maybe_notif orelse break;
                 h.update(notif.text);
                 h.update(std.mem.asBytes(&notif.border_color_override));
                 h.update(std.mem.asBytes(&notif.text_color_override));
@@ -582,8 +583,8 @@ pub const ListWindow = struct {
             const row_bg: u32 = if (is_active)
                 self.withListAlpha(RGB_ROW_INACTIVE)
             else if (is_alert) blk: {
-                // Tint row slightly with the notification border color if available
-                if (thumb.active_notification) |notif| {
+                // Tint row slightly with the newest stacked notification's border color if available
+                if (thumb.active_notifications[0]) |notif| {
                     if (notif.border_color_override) |nc| {
                         const r: u32 = (((nc >> 16) & 0xFF) * 35 / 255 + 0x1A) & 0xFF;
                         const g: u32 = (((nc >> 8) & 0xFF) * 35 / 255 + 0x1A) & 0xFF;
@@ -642,7 +643,8 @@ pub const ListWindow = struct {
                 var stat_buf: [64]u8 = undefined;
                 const stat_text = self.buildStatText(&stat_buf, thumb);
 
-                const right_text: []const u8 = if (thumb.active_notification) |notif|
+                // Compact list rows only have room for one right-hand slot; the newest stacked notification wins.
+                const right_text: []const u8 = if (thumb.active_notifications[0]) |notif|
                     notif.text
                 else if (stat_text.len > 0)
                     stat_text
@@ -651,7 +653,7 @@ pub const ListWindow = struct {
                 else
                     "";
 
-                const right_col: u32 = if (thumb.active_notification) |notif|
+                const right_col: u32 = if (thumb.active_notifications[0]) |notif|
                     (notif.text_color_override orelse ARGB_NOTIF_TEXT) & 0xFFFFFF
                 else if (stat_text.len > 0)
                     self.statColor(thumb)
