@@ -233,7 +233,8 @@ const CONFIG_SCHEMA = [
     { id: 'monitorIndex', path: 'display.monitorIndex', transform: 'nullable' },
     { id: 'useMonitorWorkArea', path: 'display.useMonitorWorkArea' },
     { id: 'honorSavedPositions', path: 'display.honorSavedPositions' },
-    // startX/startY are populate-only - saveConfiguration reloads them from disk instead of the form (see reloadLivePositions).
+    { id: 'showNotifInfoPanel', path: 'display.showNotifInfoPanel' },
+    // startX/startY/notifInfoPanelX/notifInfoPanelY are populate-only - saveConfiguration reloads them from disk instead of the form (see reloadLivePositions).
 
     { id: 'autoMinimizeEnabled', path: 'autoMinimize.enabled' },
     { id: 'autoMinimizeDelay', path: 'autoMinimize.delayMs', transform: 'ms' },
@@ -4358,6 +4359,8 @@ async function reloadLivePositions() {
                 if (!currentConfig.display) currentConfig.display = {};
                 currentConfig.display.startX = savedConfig.display.startX;
                 currentConfig.display.startY = savedConfig.display.startY;
+                currentConfig.display.notifInfoPanelX = savedConfig.display.notifInfoPanelX;
+                currentConfig.display.notifInfoPanelY = savedConfig.display.notifInfoPanelY;
             }
         }
     } catch (error) {

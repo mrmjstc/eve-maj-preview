@@ -2139,6 +2139,11 @@ pub const Config = struct {
         listViewFontSize: i32 = 13,
         listViewFontWeight: types.FontWeight = .Regular,
 
+        // Notification/Info panel: an always-available two-thumbnails-tall panel showing recent notification history and fleet-wide bounty/mining totals.
+        showNotifInfoPanel: bool = false,
+        notifInfoPanelX: i32 = 10,
+        notifInfoPanelY: i32 = 250,
+
         layoutMode: types.LayoutMode = .HorizontalList,
         layoutDirection: types.LayoutDirection = .RowFirst_LTR_TTB,
 
@@ -2179,6 +2184,11 @@ pub const Config = struct {
             if (self.startX > START_X_MAX) self.startX = START_X_MAX;
             if (self.startY < START_Y_MIN) self.startY = START_Y_MIN;
             if (self.startY > START_Y_MAX) self.startY = START_Y_MAX;
+
+            if (self.notifInfoPanelX < START_X_MIN) self.notifInfoPanelX = START_X_MIN;
+            if (self.notifInfoPanelX > START_X_MAX) self.notifInfoPanelX = START_X_MAX;
+            if (self.notifInfoPanelY < START_Y_MIN) self.notifInfoPanelY = START_Y_MIN;
+            if (self.notifInfoPanelY > START_Y_MAX) self.notifInfoPanelY = START_Y_MAX;
 
             if (self.spacing < SPACING_MIN) self.spacing = SPACING_MIN;
             if (self.spacing > SPACING_MAX) {
@@ -3607,5 +3617,13 @@ pub const Config = struct {
 
         try self.saveCurrentProfile(allocator);
         slog.debug("Saved list view position for profile '{s}': ({}, {})", .{ self.profile_name, pos.x, pos.y });
+    }
+
+    pub fn saveNotifInfoPanelPosition(self: *Config, allocator: std.mem.Allocator, pos: Position) !void {
+        self.display.notifInfoPanelX = pos.x;
+        self.display.notifInfoPanelY = pos.y;
+
+        try self.saveCurrentProfile(allocator);
+        slog.debug("Saved notification/info panel position for profile '{s}': ({}, {})", .{ self.profile_name, pos.x, pos.y });
     }
 };
