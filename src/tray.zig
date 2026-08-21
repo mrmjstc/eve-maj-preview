@@ -193,6 +193,15 @@ pub const TrayIcon = struct {
             break :blk if (is_visible) win32.MF_STRING | win32.MF_CHECKED else win32.MF_STRING;
         } else win32.MF_STRING;
         _ = win32.AppendMenuA(menu, visibility_flags, win32.IDM_TOGGLE_VISIBILITY, "Show Thumbnails");
+        _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
+
+        const history_panel_flags: u32 = if (config.display.showNotifInfoPanel)
+            win32.MF_STRING | win32.MF_CHECKED
+        else
+            win32.MF_STRING;
+        _ = win32.AppendMenuA(menu, history_panel_flags, win32.IDM_TOGGLE_NOTIF_HISTORY, "Show History Panel");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLEAR_NOTIF_HISTORY, "Clear Notification History");
+        _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
         if (hotkey_manager) |hkm| {
             const suspend_flags: u32 = if (hkm.areHotkeysSuspended())
@@ -200,9 +209,8 @@ pub const TrayIcon = struct {
             else
                 win32.MF_STRING;
             _ = win32.AppendMenuA(menu, suspend_flags, win32.IDM_SUSPEND_HOTKEYS, "Suspend Hotkeys");
+            _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
         }
-
-        _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
         if (update.g_update_status.isAvailable()) {
             slog.debug("Adding update menu item", .{});
@@ -274,6 +282,38 @@ pub const TrayIcon = struct {
                 _ = win32.PostMessageA(hwnd, win32.WM_TOGGLE_VISIBILITY, 0, 0);
             } else {
                 slog.err("Timer window not available for toggle visibility", .{});
+            }
+            return true;
+        }
+
+        if (command_id == win32.IDM_TOGGLE_NOTIF_HISTORY) {
+            slog.info("Toggle history panel requested from system tray", .{});
+            const painter_mod = @import("painter.zig");
+            if (painter_mod.g_painter_ptr) |painter_ptr| {
+                painter_ptr.toggleNotifInfoPanel();
+
+                const profile_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, config.profile_name }) catch |err| {
+                    slog.err("Failed to build profile path for save: {}", .{err});
+                    return true;
+                };
+                defer allocator.free(profile_path);
+
+                config_mod.Config.saveToJsonFile(config, allocator, profile_path) catch |err| {
+                    slog.err("Failed to save config after toggling history panel: {}", .{err});
+                };
+            } else {
+                slog.err("Painter not available for toggle history panel", .{});
+            }
+            return true;
+        }
+
+        if (command_id == win32.IDM_CLEAR_NOTIF_HISTORY) {
+            slog.info("Clear notification history requested from system tray", .{});
+            const painter_mod = @import("painter.zig");
+            if (painter_mod.g_painter_ptr) |painter_ptr| {
+                painter_ptr.clearNotificationHistory();
+            } else {
+                slog.err("Painter not available for clear notification history", .{});
             }
             return true;
         }

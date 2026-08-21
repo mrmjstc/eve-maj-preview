@@ -1547,10 +1547,43 @@ pub const Painter = struct {
         }
 
         if (self.notif_info_window) |*niw| {
-            niw.render(self) catch |err| {
-                slog.err("Failed to render notification history window: {}", .{err});
-            };
+            if (self.config.display.hideNotifInfoPanelWhenNoCharacters and !self.anyCharacterLoggedIn()) {
+                niw.hide();
+            } else {
+                niw.render(self) catch |err| {
+                    slog.err("Failed to render notification history window: {}", .{err});
+                };
+            }
         }
+    }
+
+    /// True when at least one tracked EVE client currently has a real (non-generic) character name, i.e. is logged in.
+    pub fn anyCharacterLoggedIn(self: *const Painter) bool {
+        for (self.thumbnails.items) |thumbnail| {
+            if (!scout_mod.isGenericCharacterName(thumbnail.character_name)) return true;
+        }
+        return false;
+    }
+
+    /// Creates or destroys the history panel window on demand; used by the tray menu's "Show History Panel" toggle.
+    pub fn toggleNotifInfoPanel(self: *Painter) void {
+        if (self.notif_info_window) |*niw| {
+            niw.deinit();
+            self.notif_info_window = null;
+            self.config.display.showNotifInfoPanel = false;
+        } else {
+            self.notif_info_window = notif_info_view.NotifInfoWindow.init(self.allocator, self.config, self.instance) catch |err| {
+                slog.err("Failed to create notification history window: {}", .{err});
+                return;
+            };
+            self.config.display.showNotifInfoPanel = true;
+        }
+    }
+
+    /// Resets the notification-history ring buffer; used by the tray menu's "Clear Notification History" action.
+    pub fn clearNotificationHistory(self: *Painter) void {
+        self.notification_history_head = 0;
+        self.notification_history_count = 0;
     }
 
     /// Returns the notification-history ring buffer entries in newest-first order, written into `out` (capped to NOTIF_HISTORY_CAPACITY and out.len).

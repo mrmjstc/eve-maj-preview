@@ -2154,6 +2154,7 @@ pub const Config = struct {
         notifInfoPanelWidth: i32 = 200,
         notifInfoPanelHeight: i32 = 224,
         rememberNotifInfoPanelPosition: bool = true,
+        hideNotifInfoPanelWhenNoCharacters: bool = true,
         notifInfoPanelOpacity: u8 = 255,
         notifInfoPanelFontName: []const u8 = DEFAULT_FONT_NAME,
         notifInfoPanelFontSize: i32 = 13,
@@ -2888,6 +2889,15 @@ pub const Config = struct {
             if (v == .string) {
                 display.listViewFontWeight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
             }
+        }
+        if (obj.get("showNotifInfoPanel")) |v| {
+            if (v == .bool) display.showNotifInfoPanel = v.bool;
+        }
+        if (obj.get("rememberNotifInfoPanelPosition")) |v| {
+            if (v == .bool) display.rememberNotifInfoPanelPosition = v.bool;
+        }
+        if (obj.get("hideNotifInfoPanelWhenNoCharacters")) |v| {
+            if (v == .bool) display.hideNotifInfoPanelWhenNoCharacters = v.bool;
         }
         if (obj.get("notifInfoPanelWidth")) |v| {
             if (v == .integer) display.notifInfoPanelWidth = std.math.cast(i32, v.integer) orelse display.notifInfoPanelWidth;

@@ -312,6 +312,7 @@
   "field.notifInfoPanelOpacity.label": "Panel-Deckkraft: ",
   "field.notifInfoPanelOpacity.hint": "Transparenzgrad des Verlauf-Panels",
   "field.rememberNotifInfoPanelPosition.label": "Position des Verlauf-Panels merken",
+  "field.hideNotifInfoPanelWhenNoCharacters.label": "Panel ausblenden, wenn keine Charaktere angemeldet sind",
   "field.showQuickGroupBadge.label": "Schnellgruppen-Badge anzeigen",
   "field.showSystemName.label": "Systemnamen anzeigen",
   "field.showText.label": "Text-Overlay anzeigen",

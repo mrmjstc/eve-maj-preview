@@ -312,6 +312,7 @@
   "field.notifInfoPanelOpacity.label": "Panel Opacity: ",
   "field.notifInfoPanelOpacity.hint": "Transparency level of the History panel",
   "field.rememberNotifInfoPanelPosition.label": "Remember History Panel Position",
+  "field.hideNotifInfoPanelWhenNoCharacters.label": "Hide Panel When No Characters Are Logged In",
   "field.showQuickGroupBadge.label": "Show Quick Group Badge",
   "field.showSystemName.label": "Show System Name",
   "field.showText.label": "Show Text Overlay",

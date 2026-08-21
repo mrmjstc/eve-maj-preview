@@ -312,6 +312,7 @@
   "field.notifInfoPanelOpacity.label": "Прозрачность панели: ",
   "field.notifInfoPanelOpacity.hint": "Уровень прозрачности панели истории",
   "field.rememberNotifInfoPanelPosition.label": "Запоминать положение панели истории",
+  "field.hideNotifInfoPanelWhenNoCharacters.label": "Скрывать панель, если нет вошедших персонажей",
   "field.showQuickGroupBadge.label": "Показывать значок быстрой группы",
   "field.showSystemName.label": "Показывать название системы",
   "field.showText.label": "Показывать текстовый оверлей",

@@ -241,6 +241,7 @@ const CONFIG_SCHEMA = [
     { id: 'notifInfoPanelFontSize', path: 'display.notifInfoPanelFontSize' },
     { id: 'notifInfoPanelFontWeight', path: 'display.notifInfoPanelFontWeight' },
     { id: 'rememberNotifInfoPanelPosition', path: 'display.rememberNotifInfoPanelPosition' },
+    { id: 'hideNotifInfoPanelWhenNoCharacters', path: 'display.hideNotifInfoPanelWhenNoCharacters' },
     // startX/startY/notifInfoPanelX/notifInfoPanelY are populate-only - saveConfiguration reloads them from disk instead of the form (see reloadLivePositions).
 
     { id: 'autoMinimizeEnabled', path: 'autoMinimize.enabled' },

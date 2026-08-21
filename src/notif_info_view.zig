@@ -115,6 +115,10 @@ pub const NotifInfoWindow = struct {
         _ = win32.DestroyWindow(self.hwnd);
     }
 
+    pub fn hide(self: *NotifInfoWindow) void {
+        _ = win32.ShowWindow(self.hwnd, win32.SW_HIDE);
+    }
+
     /// Recreates `font` if the panel's own font settings changed since last built (e.g. a live-previewed edit); mirrors list_view.zig's ensureFont, but tracks display.notifInfoPanelFont* rather than List View's own font settings.
     fn ensureFont(self: *NotifInfoWindow) void {
         const cfg = self.config.display;
@@ -414,6 +418,12 @@ fn notifInfoWindowProc(
         win32.WM_ENTERSIZEMOVE => {
             _ = win32.GetCursorPos(&g_drag_anchor_cursor);
             _ = win32.GetWindowRect(hwnd, &g_drag_anchor_rect);
+
+            const painter_ptr_mod = @import("painter.zig");
+            if (painter_ptr_mod.g_painter_ptr) |p| {
+                // No single character owns this panel, so nothing is excluded - every saved position shows as a ghost.
+                p.showGhostOverlay("");
+            }
             return 0;
         },
 
@@ -440,6 +450,7 @@ fn notifInfoWindowProc(
         win32.WM_EXITSIZEMOVE => {
             const painter_ptr_mod = @import("painter.zig");
             if (painter_ptr_mod.g_painter_ptr) |p| {
+                p.hideGhostOverlay();
                 if (p.notif_info_window) |*niw| {
                     niw.saveWindowPosition();
                 }
