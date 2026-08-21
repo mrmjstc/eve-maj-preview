@@ -195,7 +195,8 @@ pub const TrayIcon = struct {
         _ = win32.AppendMenuA(menu, visibility_flags, win32.IDM_TOGGLE_VISIBILITY, "Show Thumbnails");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
-        const history_panel_flags: u32 = if (config.display.showNotifInfoPanel)
+        const history_panel_visible = if (painter) |p| p.isNotifInfoPanelVisible() else config.display.showNotifInfoPanel;
+        const history_panel_flags: u32 = if (history_panel_visible)
             win32.MF_STRING | win32.MF_CHECKED
         else
             win32.MF_STRING;

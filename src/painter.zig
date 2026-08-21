@@ -317,6 +317,10 @@ pub const Painter = struct {
     notification_history: [NOTIF_HISTORY_CAPACITY]NotificationHistoryEntry = undefined,
     notification_history_head: usize = 0,
     notification_history_count: usize = 0,
+    /// Tray-toggle override: forces the History Panel visible past hideNotifInfoPanelWhenNoCharacters until characters go logged-in -> logged-out again.
+    notif_history_force_visible: bool = false,
+    /// Last-seen anyCharacterLoggedIn() result, used to detect the logged-in -> logged-out edge that clears notif_history_force_visible.
+    notif_history_had_characters: bool = false,
     /// Transient overlay shown only while dragging, outlining other characters' saved positions; created lazily, hidden (not destroyed) between drags.
     ghost_overlay_hwnd: ?win32.HWND = null,
     ghost_overlay_bitmap: ?gdi_overlay.OverlayBitmap = null,
@@ -1546,13 +1550,21 @@ pub const Painter = struct {
             };
         }
 
+        {
+            const characters_logged_in = self.anyCharacterLoggedIn();
+            if (self.notif_history_had_characters and !characters_logged_in) {
+                self.notif_history_force_visible = false;
+            }
+            self.notif_history_had_characters = characters_logged_in;
+        }
+
         if (self.notif_info_window) |*niw| {
-            if (self.config.display.hideNotifInfoPanelWhenNoCharacters and !self.anyCharacterLoggedIn()) {
-                niw.hide();
-            } else {
+            if (self.isNotifInfoPanelVisible()) {
                 niw.render(self) catch |err| {
                     slog.err("Failed to render notification history window: {}", .{err});
                 };
+            } else {
+                niw.hide();
             }
         }
     }
@@ -1565,18 +1577,31 @@ pub const Painter = struct {
         return false;
     }
 
-    /// Creates or destroys the history panel window on demand; used by the tray menu's "Show History Panel" toggle.
+    /// Whether the History Panel is actually on-screen right now, accounting for hideNotifInfoPanelWhenNoCharacters and the tray-toggle force override; drives both the render/hide gate and the tray menu's checked state.
+    pub fn isNotifInfoPanelVisible(self: *const Painter) bool {
+        if (self.notif_info_window == null) return false;
+        if (!self.config.display.hideNotifInfoPanelWhenNoCharacters) return true;
+        return self.anyCharacterLoggedIn() or self.notif_history_force_visible;
+    }
+
+    /// Toggles the history panel between visible and off, keyed on isNotifInfoPanelVisible() rather than mere window existence so it turns fully off (not re-hidden) when clicked while visible, and forces it on immediately - even with no characters logged in - when clicked while off/auto-hidden. Used by the tray menu's "Show History Panel" item.
     pub fn toggleNotifInfoPanel(self: *Painter) void {
-        if (self.notif_info_window) |*niw| {
-            niw.deinit();
-            self.notif_info_window = null;
+        if (self.isNotifInfoPanelVisible()) {
+            if (self.notif_info_window) |*niw| {
+                niw.deinit();
+                self.notif_info_window = null;
+            }
             self.config.display.showNotifInfoPanel = false;
+            self.notif_history_force_visible = false;
         } else {
-            self.notif_info_window = notif_info_view.NotifInfoWindow.init(self.allocator, self.config, self.instance) catch |err| {
-                slog.err("Failed to create notification history window: {}", .{err});
-                return;
-            };
+            if (self.notif_info_window == null) {
+                self.notif_info_window = notif_info_view.NotifInfoWindow.init(self.allocator, self.config, self.instance) catch |err| {
+                    slog.err("Failed to create notification history window: {}", .{err});
+                    return;
+                };
+            }
             self.config.display.showNotifInfoPanel = true;
+            self.notif_history_force_visible = true;
         }
     }
 
