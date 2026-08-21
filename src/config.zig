@@ -1852,6 +1852,8 @@ pub const Config = struct {
         pub const BORDER_WIDTH_MAX: u8 = 50;
         pub const FONT_SIZE_MIN: i32 = 6;
         pub const FONT_SIZE_MAX: i32 = 72;
+        /// 20% of 255, the floor below which thumbnails/overlays effectively vanish.
+        pub const OPACITY_MIN: u8 = 51;
         pub const OFFSET_MIN: i32 = -500;
         pub const OFFSET_MAX: i32 = 500;
         pub const TTS_VOLUME_MAX: u8 = 100;
@@ -1899,6 +1901,11 @@ pub const Config = struct {
             } else if (self.textFontSize > FONT_SIZE_MAX) {
                 slog.warn("Font size {} too large, clamping to {}", .{ self.textFontSize, FONT_SIZE_MAX });
                 self.textFontSize = FONT_SIZE_MAX;
+            }
+
+            if (self.thumbnailOpacity < OPACITY_MIN) {
+                slog.warn("Thumbnail opacity {} too low, clamping to {}", .{ self.thumbnailOpacity, OPACITY_MIN });
+                self.thumbnailOpacity = OPACITY_MIN;
             }
 
             if (self.characterNameOffsetX < OFFSET_MIN) self.characterNameOffsetX = OFFSET_MIN;
@@ -2192,6 +2199,7 @@ pub const Config = struct {
         pub const LIST_VIEW_COLUMNS_MAX: u32 = 15;
         pub const LIST_VIEW_FONT_SIZE_MIN: i32 = 6;
         pub const LIST_VIEW_FONT_SIZE_MAX: i32 = 72;
+        pub const OPACITY_MIN: u8 = 51;
 
         pub fn validate(self: *DisplayConfig) void {
             if (self.startX < START_X_MIN) self.startX = START_X_MIN;
@@ -2242,6 +2250,15 @@ pub const Config = struct {
 
             if (self.listViewColumns < LIST_VIEW_COLUMNS_MIN) self.listViewColumns = LIST_VIEW_COLUMNS_MIN;
             if (self.listViewColumns > LIST_VIEW_COLUMNS_MAX) self.listViewColumns = LIST_VIEW_COLUMNS_MAX;
+
+            if (self.listViewOpacity < OPACITY_MIN) {
+                slog.warn("Client List opacity {} too low, clamping to {}", .{ self.listViewOpacity, OPACITY_MIN });
+                self.listViewOpacity = OPACITY_MIN;
+            }
+            if (self.notifInfoPanelOpacity < OPACITY_MIN) {
+                slog.warn("History panel opacity {} too low, clamping to {}", .{ self.notifInfoPanelOpacity, OPACITY_MIN });
+                self.notifInfoPanelOpacity = OPACITY_MIN;
+            }
 
             if (self.listViewFontSize < LIST_VIEW_FONT_SIZE_MIN) {
                 slog.warn("List view font size {} too small, clamping to {}", .{ self.listViewFontSize, LIST_VIEW_FONT_SIZE_MIN });
@@ -3296,6 +3313,7 @@ pub const Config = struct {
             .@"thumbnail.quickGroupBadgeOffsetX" = Range{ .min = ThumbnailConfig.OFFSET_MIN, .max = ThumbnailConfig.OFFSET_MAX },
             .@"thumbnail.quickGroupBadgeOffsetY" = Range{ .min = ThumbnailConfig.OFFSET_MIN, .max = ThumbnailConfig.OFFSET_MAX },
             .@"thumbnail.hideDebounceMs" = Range{ .min = 0, .max = ThumbnailConfig.HIDE_DEBOUNCE_MS_MAX },
+            .@"thumbnail.thumbnailOpacity" = Range{ .min = ThumbnailConfig.OPACITY_MIN, .max = 255 },
             .@"thumbnail.notifications.offset_x" = Range{ .min = ThumbnailConfig.OFFSET_MIN, .max = ThumbnailConfig.OFFSET_MAX },
             .@"thumbnail.notifications.offset_y" = Range{ .min = ThumbnailConfig.OFFSET_MIN, .max = ThumbnailConfig.OFFSET_MAX },
             .@"thumbnail.notifications.tts_volume" = Range{ .min = 0, .max = ThumbnailConfig.TTS_VOLUME_MAX },
@@ -3315,6 +3333,8 @@ pub const Config = struct {
             .@"display.notifInfoPanelWidth" = Range{ .min = DisplayConfig.NOTIF_PANEL_WIDTH_MIN, .max = DisplayConfig.NOTIF_PANEL_WIDTH_MAX },
             .@"display.notifInfoPanelHeight" = Range{ .min = DisplayConfig.NOTIF_PANEL_HEIGHT_MIN, .max = DisplayConfig.NOTIF_PANEL_HEIGHT_MAX },
             .@"display.notifInfoPanelFontSize" = Range{ .min = DisplayConfig.NOTIF_PANEL_FONT_SIZE_MIN, .max = DisplayConfig.NOTIF_PANEL_FONT_SIZE_MAX },
+            .@"display.listViewOpacity" = Range{ .min = DisplayConfig.OPACITY_MIN, .max = 255 },
+            .@"display.notifInfoPanelOpacity" = Range{ .min = DisplayConfig.OPACITY_MIN, .max = 255 },
 
             .@"snapping.threshold" = Range{ .min = SnappingConfig.THRESHOLD_MIN, .max = SnappingConfig.THRESHOLD_MAX },
 
