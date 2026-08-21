@@ -63,6 +63,15 @@ pub const NotificationHistoryEntry = struct {
     }
 };
 
+/// Cap on simultaneously stacked notifications per thumbnail; kept small since the overlay is drawn onto a small thumbnail bitmap.
+const MAX_STACKED_NOTIFICATIONS: usize = 3;
+
+/// One resolved (text, color) line of the stacked notification block; built by createRenderSettings, drawn by renderThumbnailOverlay.
+const NotificationLine = struct {
+    text: []const u8 = "",
+    color: u32 = 0xFFFFFF,
+};
+
 const NOTIFICATION_FLASH_PHASE_MS: u64 = 150;
 const NOTIFICATION_FLASH_CYCLES: u64 = 4;
 const NOTIFICATION_FLASH_TOTAL_MS: u64 = NOTIFICATION_FLASH_PHASE_MS * NOTIFICATION_FLASH_CYCLES * 2;
@@ -101,8 +110,8 @@ const RenderSettings = struct {
     system_name_offset_x: i32 = 0,
     system_name_offset_y: i32 = 0,
     show_notifications: bool = false,
-    notification_text: []const u8 = "",
-    notification_text_color: u32 = 0xFFFFFF,
+    notification_lines: [MAX_STACKED_NOTIFICATIONS]NotificationLine = .{NotificationLine{}} ** MAX_STACKED_NOTIFICATIONS,
+    notification_line_count: usize = 0,
     notifications_position: TextPosition = .Center,
     notifications_offset_x: i32 = 0,
     notifications_offset_y: i32 = 0,
@@ -158,7 +167,8 @@ pub const ThumbnailWindow = struct {
     system_name: []const u8,
     // In-game timestamp of the event that set system_name (YYYYMMDD*1000000+HHMMSS); 0 = untimestamped source (e.g. live tailing), which always applies.
     system_name_event_ts: u64 = 0,
-    active_notification: ?ActiveNotification = null,
+    // Packed newest-first at the front (no gaps); see Painter.pushNotification.
+    active_notifications: [MAX_STACKED_NOTIFICATIONS]?ActiveNotification = .{@as(?ActiveNotification, null)} ** MAX_STACKED_NOTIFICATIONS,
     last_click_time: u64 = 0,
     // GetTickCount64() of the last notification actually shown per type; suppressed attempts don't update this, so throttle_ms anchors to the last one actually displayed.
     last_notification_time_by_type: std.enums.EnumArray(types.NotificationType, u64) = .initFill(0),
@@ -191,7 +201,6 @@ pub const ThumbnailWindow = struct {
     cached_render_settings: ?RenderSettings = null,
     cached_char_dims: ?TextDimensions = null,
     cached_sys_dims: ?TextDimensions = null,
-    cached_notif_dims: ?TextDimensions = null,
     cached_qg_dims: ?TextDimensions = null,
     cached_icon_dims: ?TextDimensions = null,
     cached_icon_font_size: i32 = 0,
@@ -518,10 +527,17 @@ pub const Painter = struct {
             a.system_name_offset_x == b.system_name_offset_x and
             a.system_name_offset_y == b.system_name_offset_y and
             a.show_notifications == b.show_notifications and
-            (a.notification_text.ptr == b.notification_text.ptr and
-                a.notification_text.len == b.notification_text.len or
-                std.mem.eql(u8, a.notification_text, b.notification_text)) and
-            a.notification_text_color == b.notification_text_color and
+            a.notification_line_count == b.notification_line_count and
+            (blk: {
+                var idx: usize = 0;
+                while (idx < a.notification_line_count) : (idx += 1) {
+                    const al = a.notification_lines[idx];
+                    const bl = b.notification_lines[idx];
+                    if (al.color != bl.color) break :blk false;
+                    if (!(al.text.ptr == bl.text.ptr and al.text.len == bl.text.len or std.mem.eql(u8, al.text, bl.text))) break :blk false;
+                }
+                break :blk true;
+            }) and
             a.notifications_position == b.notifications_position and
             a.notifications_offset_x == b.notifications_offset_x and
             a.notifications_offset_y == b.notifications_offset_y and
@@ -624,8 +640,8 @@ pub const Painter = struct {
         self.allocator.free(thumbnail.character_name);
         self.allocator.free(thumbnail.system_name);
         self.allocator.free(thumbnail.cached_quick_group_label);
-        if (thumbnail.active_notification) |notif| {
-            self.allocator.free(notif.text);
+        for (thumbnail.active_notifications) |maybe_notif| {
+            if (maybe_notif) |notif| self.allocator.free(notif.text);
         }
     }
 
@@ -1002,10 +1018,6 @@ pub const Painter = struct {
             }
             thumbnail.last_notification_time_by_type.set(notification_type, win32.GetTickCount64());
 
-            if (thumbnail.active_notification) |old| {
-                self.allocator.free(old.text);
-            }
-
             // Save focus state only on the first notification; a second Alert shouldn't overwrite the saved state.
             if (thumbnail.current_state != .Alert) {
                 thumbnail.pre_notification_state = thumbnail.current_state;
@@ -1013,7 +1025,7 @@ pub const Painter = struct {
 
             thumbnail.setState(.Alert);
 
-            thumbnail.active_notification = .{
+            self.pushNotification(thumbnail, .{
                 .text = try self.allocator.dupe(u8, notification_text),
                 .notification_type = notification_type,
                 .start_time = win32.GetTickCount64(),
@@ -1024,10 +1036,7 @@ pub const Painter = struct {
                 .text_color_override = type_config.text_color,
                 .show_border = type_config.show_border,
                 .flash_border = type_config.flash_border,
-            };
-
-            thumbnail.cached_notif_dims = null;
-            thumbnail.needs_render = true;
+            });
 
             self.trackNotifiedCharacter(thumbnail.character_name);
             self.pushNotificationHistory(source_hwnd, thumbnail.character_name, notification_text, notification_type);
@@ -1048,12 +1057,76 @@ pub const Painter = struct {
                 }
             }
 
-            slog.debug("Queued notification for {s}: [{s}] {s} (border_color_override: {?})", .{ thumbnail.character_name, @tagName(notification_type), notification_text, thumbnail.active_notification.?.border_color_override });
+            slog.debug("Queued notification for {s}: [{s}] {s} (border_color_override: {?})", .{ thumbnail.character_name, @tagName(notification_type), notification_text, type_config.border_color });
             return;
         }
 
         // Window not found - this can happen if thumbnail hasn't been created yet
         slog.debug("Window 0x{x} not found for notification update (thumbnail may not exist yet)", .{@intFromPtr(source_hwnd)});
+    }
+
+    /// Inserts `entry` at the front of thumbnail's notification stack (newest first). Replaces any existing entry of the
+    /// same notification_type in place (bump-to-top) and evicts the oldest entry once the stack is at MAX_STACKED_NOTIFICATIONS.
+    pub fn pushNotification(self: *Painter, thumbnail: *ThumbnailWindow, entry: ActiveNotification) void {
+        var count: usize = 0;
+        while (count < MAX_STACKED_NOTIFICATIONS and thumbnail.active_notifications[count] != null) : (count += 1) {}
+
+        var i: usize = 0;
+        while (i < count) : (i += 1) {
+            if (thumbnail.active_notifications[i].?.notification_type == entry.notification_type) {
+                self.allocator.free(thumbnail.active_notifications[i].?.text);
+                var j = i;
+                while (j + 1 < count) : (j += 1) {
+                    thumbnail.active_notifications[j] = thumbnail.active_notifications[j + 1];
+                }
+                count -= 1;
+                break;
+            }
+        }
+
+        if (count == MAX_STACKED_NOTIFICATIONS) {
+            self.allocator.free(thumbnail.active_notifications[count - 1].?.text);
+            count -= 1;
+        }
+
+        var k = count;
+        while (k > 0) : (k -= 1) {
+            thumbnail.active_notifications[k] = thumbnail.active_notifications[k - 1];
+        }
+        thumbnail.active_notifications[0] = entry;
+
+        thumbnail.needs_render = true;
+    }
+
+    /// Removes every stacked notification with suppress_when_clicked set (used by input.zig's click handler). Returns whether anything was removed.
+    pub fn dismissClickSuppressedNotifications(self: *Painter, thumbnail: *ThumbnailWindow) bool {
+        var write_idx: usize = 0;
+        var removed_any = false;
+        var read_idx: usize = 0;
+        while (read_idx < MAX_STACKED_NOTIFICATIONS) : (read_idx += 1) {
+            const entry = thumbnail.active_notifications[read_idx] orelse break;
+            if (entry.suppress_when_clicked) {
+                self.allocator.free(entry.text);
+                removed_any = true;
+                continue;
+            }
+            thumbnail.active_notifications[write_idx] = entry;
+            write_idx += 1;
+        }
+        while (write_idx < MAX_STACKED_NOTIFICATIONS) : (write_idx += 1) {
+            thumbnail.active_notifications[write_idx] = null;
+        }
+
+        if (removed_any) {
+            if (thumbnail.active_notifications[0] == null) {
+                if (thumbnail.pre_notification_state) |restore_state| {
+                    thumbnail.pre_notification_state = null;
+                    thumbnail.setState(restore_state);
+                }
+            }
+            thumbnail.needs_render = true;
+        }
+        return removed_any;
     }
 
     /// Pushes/bumps character_name into the "recently notified" FIFO used by the cycle-to-notified-character hotkey; re-notifying bumps to the back instead of duplicating.
@@ -1271,12 +1344,17 @@ pub const Painter = struct {
         }
     }
 
-    /// Ends thumbnail's active notification (if any) and restores pre_notification_state, same as a natural expiry.
-    fn clearActiveNotification(self: *Painter, thumbnail: *ThumbnailWindow) void {
-        const notif = thumbnail.active_notification orelse return;
-        self.allocator.free(notif.text);
-        thumbnail.active_notification = null;
-        thumbnail.cached_notif_dims = null;
+    /// Unconditionally clears the entire notification stack (e.g. on character logout) and restores pre_notification_state, same as a full natural expiry.
+    fn clearAllNotifications(self: *Painter, thumbnail: *ThumbnailWindow) void {
+        var had_any = false;
+        for (&thumbnail.active_notifications) |*slot| {
+            if (slot.*) |notif| {
+                self.allocator.free(notif.text);
+                slot.* = null;
+                had_any = true;
+            }
+        }
+        if (!had_any) return;
 
         // Restore prior focus state, but only if we entered Alert via showNotification; direct-set notifications (e.g. input.zig) leave pre_notification_state null.
         if (thumbnail.pre_notification_state) |restore_state| {
@@ -1292,12 +1370,38 @@ pub const Painter = struct {
         const now = win32.GetTickCount64();
 
         for (self.thumbnails.items) |*thumbnail| {
-            if (thumbnail.active_notification) |notif| {
+            var write_idx: usize = 0;
+            var any_expired = false;
+            var read_idx: usize = 0;
+            while (read_idx < MAX_STACKED_NOTIFICATIONS) : (read_idx += 1) {
+                const notif = thumbnail.active_notifications[read_idx] orelse break;
                 // duration_ms == 0 means the notification is permanent.
                 if (notif.duration_ms > 0 and (now - notif.start_time) >= notif.duration_ms) {
-                    self.clearActiveNotification(thumbnail);
-                } else if (notif.flash_border and (now - notif.start_time) < NOTIFICATION_FLASH_TOTAL_MS) {
-                    // Force a render each tick so the alternating on/off flash phases actually paint.
+                    self.allocator.free(notif.text);
+                    any_expired = true;
+                    continue;
+                }
+                thumbnail.active_notifications[write_idx] = notif;
+                write_idx += 1;
+            }
+
+            if (any_expired) {
+                while (write_idx < MAX_STACKED_NOTIFICATIONS) : (write_idx += 1) {
+                    thumbnail.active_notifications[write_idx] = null;
+                }
+                thumbnail.needs_render = true;
+
+                if (thumbnail.active_notifications[0] == null) {
+                    if (thumbnail.pre_notification_state) |restore_state| {
+                        thumbnail.pre_notification_state = null;
+                        thumbnail.setState(restore_state);
+                    }
+                }
+            }
+
+            // Force a render each tick so the newest entry's alternating on/off flash phases actually paint.
+            if (thumbnail.active_notifications[0]) |notif| {
+                if (notif.flash_border and (now - notif.start_time) < NOTIFICATION_FLASH_TOTAL_MS) {
                     thumbnail.needs_render = true;
                 }
             }
@@ -1367,7 +1471,7 @@ pub const Painter = struct {
                 thumbnail.cached_sys_dims = null;
                 slog.debug("Cleared system name for logged out client", .{});
 
-                self.clearActiveNotification(thumbnail);
+                self.clearAllNotifications(thumbnail);
             }
 
             // Update exclusion state when character name becomes known (e.g., "EVE" -> "Probe Enthusiast")
@@ -2755,16 +2859,6 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     const character_name = thumbnail.character_name;
     const system_name = thumbnail.system_name;
 
-    const notification_text = if (thumbnail.active_notification) |notif| blk: {
-        // In Alert state the actual focus is tracked in pre_notification_state.
-        const notif_is_focused = thumbnail.current_state == .Active or
-            (thumbnail.current_state == .Alert and thumbnail.pre_notification_state == .Active);
-        if (notif.suppress_when_focused and notif_is_focused) {
-            break :blk "";
-        }
-        break :blk notif.text;
-    } else "";
-
     const width = settings.overlay_width;
     const height = settings.overlay_height;
 
@@ -2838,14 +2932,17 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         }
     }
 
+    // Stacked notification lines aren't dims-cached (unlike char/system name above): the stack's contents change
+    // far more often than those, so a cache would invalidate almost every render anyway.
+    var notif_line_dims: [MAX_STACKED_NOTIFICATIONS]TextDimensions = undefined;
     var notifications_text_dims: TextDimensions = .{ .width = 0, .height = 0 };
-    const has_notification_text = notification_text.len > 0;
+    const has_notification_text = settings.notification_line_count > 0;
     if (settings.show_notifications and has_notification_text) {
-        if (thumbnail.cached_notif_dims != null and !font_changed) {
-            notifications_text_dims = thumbnail.cached_notif_dims.?;
-        } else {
-            notifications_text_dims = measureText(overlay.mem_dc, notification_text);
-            thumbnail.cached_notif_dims = notifications_text_dims;
+        var idx: usize = 0;
+        while (idx < settings.notification_line_count) : (idx += 1) {
+            notif_line_dims[idx] = measureText(overlay.mem_dc, settings.notification_lines[idx].text);
+            notifications_text_dims.width = @max(notifications_text_dims.width, notif_line_dims[idx].width);
+            notifications_text_dims.height += notif_line_dims[idx].height;
         }
     }
 
@@ -3131,7 +3228,13 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         renderText(overlay.mem_dc, system_name, system_text_pos.x, system_text_pos.y, settings.system_name_color);
     }
     if (settings.show_notifications and has_notification_text) {
-        renderText(overlay.mem_dc, notification_text, notifications_text_pos.x, notifications_text_pos.y, settings.notification_text_color);
+        var notif_line_y = notifications_text_pos.y;
+        var idx: usize = 0;
+        while (idx < settings.notification_line_count) : (idx += 1) {
+            const line = settings.notification_lines[idx];
+            renderText(overlay.mem_dc, line.text, notifications_text_pos.x, notif_line_y, line.color);
+            notif_line_y += @as(i32, @intCast(notif_line_dims[idx].height));
+        }
     }
     if (settings.show_quick_group_badge) {
         renderText(overlay.mem_dc, settings.quick_group_badge_text, qg_badge_pos.x, qg_badge_pos.y, settings.quick_group_badge_color);
@@ -3239,16 +3342,6 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
     const cached_system_color = thumbnail.cached_system_color;
     const is_visible = thumbnail.visibility_state.isVisible();
 
-    // In Alert state the actual focus is tracked in pre_notification_state.
-    const notification_text = if (thumbnail.active_notification) |notif| blk: {
-        const notif_is_focused = state == .Active or
-            (state == .Alert and thumbnail.pre_notification_state == .Active);
-        if (notif.suppress_when_focused and notif_is_focused) {
-            break :blk "";
-        }
-        break :blk notif.text;
-    } else "";
-
     const state_cfg = cfg.thumbnail.getStateConfig(state);
 
     // Already resolved when system name was set.
@@ -3278,13 +3371,14 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
     // Whether this thumbnail belongs to the character focused when the notification fired; notification border effects must not fight with that character's always-on active border.
     const notif_on_focused_char = thumbnail.pre_notification_state == .Active;
 
+    // Border color/flash effects are governed solely by the newest (index 0) stacked notification; older entries only add text lines.
     // Per-type "show_border: false" forces the border off during Alert, skipped for the focused character so it can't also hide that character's active border.
     const notif_hides_border = state == .Alert and !notif_on_focused_char and
-        if (thumbnail.active_notification) |notif| !notif.show_border else false;
+        if (thumbnail.active_notifications[0]) |notif| !notif.show_border else false;
 
     // Blinks the border off for alternating phases at Alert start (see isNotificationFlashOff), skipped for the focused character for the same reason as notif_hides_border.
     const notif_flash_hides_border = state == .Alert and !notif_on_focused_char and
-        if (thumbnail.active_notification) |notif| isNotificationFlashOff(notif, win32.GetTickCount64()) else false;
+        if (thumbnail.active_notifications[0]) |notif| isNotificationFlashOff(notif, win32.GetTickCount64()) else false;
 
     const effective_show_border = if (should_hide_all or notif_hides_border or notif_flash_hides_border)
         false
@@ -3315,7 +3409,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
 
     // When suppress_when_focused is true and the character is focused, the border falls back to normal Active appearance instead of the Alert override color.
     const is_suppressed_alert = if (state == .Alert) blk: {
-        if (thumbnail.active_notification) |notif| {
+        if (thumbnail.active_notifications[0]) |notif| {
             const notif_is_focused = thumbnail.pre_notification_state == .Active;
             break :blk notif.suppress_when_focused and notif_is_focused;
         }
@@ -3324,21 +3418,15 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
 
     // Per-type border color override sits above the Alert StateVisualConfig but below per-character overrides; skipped when the alert is suppressed.
     if (state == .Alert and !is_suppressed_alert) {
-        if (thumbnail.active_notification) |notif| {
+        if (thumbnail.active_notifications[0]) |notif| {
             if (notif.border_color_override) |color| {
                 final_border_color = color;
             }
         }
     }
 
-    var final_notification_text_color = state_cfg.getTextColor(cfg.thumbnail.textColor);
-    if (state == .Alert and !is_suppressed_alert) {
-        if (thumbnail.active_notification) |notif| {
-            if (notif.text_color_override) |color| {
-                final_notification_text_color = color;
-            }
-        }
-    }
+    // Fallback color for stacked notification lines that don't carry their own text_color_override.
+    const notification_base_text_color = state_cfg.getTextColor(cfg.thumbnail.textColor);
 
     // Per-character border color has the highest precedence; a suppressed Alert is treated as Active for border purposes.
     if (cfg.getCharacterBorderColors(character_name)) |char_colors| {
@@ -3362,6 +3450,24 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
     const char_size = cfg.getCharacterSize(character_name);
     const overlay_width = if (char_size) |cs| cs.width orelse cfg.thumbnail.width else cfg.thumbnail.width;
     const overlay_height = if (char_size) |cs| cs.height orelse cfg.thumbnail.height else cfg.thumbnail.height;
+
+    // Builds the visible stack, newest first: each entry keeps its own suppress_when_focused/text_color_override,
+    // so different notification types can be filtered and colored independently within the same stack.
+    var notification_lines: [MAX_STACKED_NOTIFICATIONS]NotificationLine = .{NotificationLine{}} ** MAX_STACKED_NOTIFICATIONS;
+    var notification_line_count: usize = 0;
+    if (effective_show_notifications) {
+        const notif_is_focused = state == .Active or
+            (state == .Alert and thumbnail.pre_notification_state == .Active);
+        for (thumbnail.active_notifications) |maybe_notif| {
+            const notif = maybe_notif orelse break;
+            if (notif.suppress_when_focused and notif_is_focused) continue;
+            notification_lines[notification_line_count] = .{
+                .text = notif.text,
+                .color = notif.text_color_override orelse notification_base_text_color,
+            };
+            notification_line_count += 1;
+        }
+    }
 
     return .{
         .show_text = effective_show_text,
@@ -3393,8 +3499,8 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .system_name_offset_x = cfg.thumbnail.systemNameOffsetX,
         .system_name_offset_y = cfg.thumbnail.systemNameOffsetY,
         .show_notifications = effective_show_notifications,
-        .notification_text = notification_text,
-        .notification_text_color = final_notification_text_color,
+        .notification_lines = notification_lines,
+        .notification_line_count = notification_line_count,
         .notifications_position = cfg.thumbnail.notifications.position,
         .notifications_offset_x = cfg.thumbnail.notifications.offset_x,
         .notifications_offset_y = cfg.thumbnail.notifications.offset_y,

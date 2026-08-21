@@ -164,23 +164,11 @@ fn handleThumbnailClickWithAnimation(source_hwnd: win32.HWND, animation_style: t
         if (painter.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
             thumbnail.last_click_time = win32.GetTickCount64();
 
-            if (thumbnail.active_notification) |notif| {
-                if (notif.suppress_when_clicked) {
-                    painter.allocator.free(notif.text);
-                    thumbnail.active_notification = null;
-                    thumbnail.cached_notif_dims = null;
-
-                    if (thumbnail.pre_notification_state) |restore_state| {
-                        thumbnail.pre_notification_state = null;
-                        thumbnail.setState(restore_state);
-                    }
-
-                    thumbnail.needs_render = true;
-                    painter.renderThumbnail(thumbnail) catch |err| {
-                        slog.err("Failed to render thumbnail after click-suppress clear: {}", .{err});
-                    };
-                    thumbnail.needs_render = false;
-                }
+            if (painter.dismissClickSuppressedNotifications(thumbnail)) {
+                painter.renderThumbnail(thumbnail) catch |err| {
+                    slog.err("Failed to render thumbnail after click-suppress clear: {}", .{err});
+                };
+                thumbnail.needs_render = false;
             }
         }
     }
@@ -310,11 +298,7 @@ pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
 
         const notification_text = if (thumbnail.is_excluded_from_cycle) "Excluded" else "Included";
 
-        if (thumbnail.active_notification) |old| {
-            painter.allocator.free(old.text);
-        }
-
-        thumbnail.active_notification = .{
+        painter.pushNotification(thumbnail, .{
             .text = painter.allocator.dupe(u8, notification_text) catch {
                 slog.err("Failed to allocate notification text", .{});
                 return;
@@ -324,9 +308,7 @@ pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
             .duration_ms = 5000,
             .suppress_when_focused = false,
             .suppress_when_clicked = false,
-        };
-
-        thumbnail.cached_notif_dims = null;
+        });
 
         painter.renderThumbnail(thumbnail) catch |err| {
             slog.err("Failed to render thumbnail after exclusion toggle: {}", .{err});
