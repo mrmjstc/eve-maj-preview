@@ -358,7 +358,7 @@ fn updateThumbnailStatesAfterFocus(focused_hwnd: win32.HWND) void {
 /// Start dragging a window (thumbnail or text overlay)
 pub fn startDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
     if (g_painter_ptr) |painter| {
-        if (!painter.config.interaction.enableDragging) {
+        if (!painter.config.interaction.enableDragging or painter.config.display.thumbnailSpace != null) {
             return;
         }
     }

@@ -132,6 +132,7 @@ pub const GWLP_USERDATA = -21;
 pub const GWL_EXSTYLE = -20;
 
 pub const IDC_ARROW: LPCSTR = @ptrFromInt(32512);
+pub const IDC_CROSS: LPCSTR = @ptrFromInt(32515);
 
 pub const PROCESS_QUERY_INFORMATION = 0x0400;
 pub const PROCESS_VM_READ = 0x0010;
@@ -592,6 +593,7 @@ pub const VK_SHIFT = 0x10;
 pub const VK_CONTROL = 0x11;
 // Alt
 pub const VK_MENU = 0x12;
+pub const VK_ESCAPE = 0x1B;
 pub const VK_LWIN = 0x5B;
 pub const VK_RWIN = 0x5C;
 

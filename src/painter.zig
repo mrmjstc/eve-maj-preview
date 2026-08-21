@@ -67,6 +67,8 @@ const TEXT_PADDING_X = 5;
 const TEXT_PADDING_Y = 2;
 const OVERLAY_ALPHA = 255;
 
+const ThumbnailDimensions = struct { width: i32, height: i32 };
+
 /// Settings for rendering thumbnail overlays (text and border).
 const RenderSettings = struct {
     show_text: bool = true,
@@ -292,7 +294,16 @@ pub const Painter = struct {
     ghost_overlay_hwnd: ?win32.HWND = null,
     ghost_overlay_bitmap: ?gdi_overlay.OverlayBitmap = null,
 
-    fn getThumbnailSize(self: *const Painter, character_name: []const u8) struct { width: i32, height: i32 } {
+    fn getThumbnailSize(self: *const Painter, character_name: []const u8) ThumbnailDimensions {
+        if (self.config.display.thumbnailSpace) |region| {
+            return computeThumbnailSpaceCellSize(
+                region,
+                self.config.display.gridColumns,
+                self.thumbnails.items.len,
+                self.config.display.getSpacingX(),
+                self.config.display.getSpacingY(),
+            );
+        }
         if (self.config.getCharacterSize(character_name)) |char_size| {
             return .{
                 .width = char_size.width orelse self.config.thumbnail.width,
@@ -544,7 +555,7 @@ pub const Painter = struct {
     pub fn renderThumbnail(self: *const Painter, thumbnail: *ThumbnailWindow) !void {
         // ClientList mode renders via ListWindow.render() instead; Nothing mode renders nothing
         if (!thumbnail.win32_enabled) return;
-        const settings = createRenderSettings(self.config, thumbnail);
+        const settings = createRenderSettings(self.config, thumbnail, self.getThumbnailSize(thumbnail.character_name));
 
         if (thumbnail.cached_render_settings) |cached| {
             if (renderSettingsEqual(cached, settings)) {
@@ -607,8 +618,8 @@ pub const Painter = struct {
         return self.hwnd_to_thumbnail_index.contains(source_hwnd);
     }
 
-    /// Remove thumbnails whose source / related windows are gone (defensive cleanup)
-    pub fn cleanupClosedThumbnails(self: *Painter, closed_windows: []const scout_mod.ClosedWindow) void {
+    /// Remove thumbnails whose source / related windows are gone (defensive cleanup); returns whether any were removed, so callers can trigger a Thumbnail Space reflow.
+    pub fn cleanupClosedThumbnails(self: *Painter, closed_windows: []const scout_mod.ClosedWindow) bool {
         // By source_hwnd, not name: multiple windows can share a name (e.g. "EVE").
         var removed_any = false;
         for (closed_windows) |cw| {
@@ -632,6 +643,7 @@ pub const Painter = struct {
         if (removed_any) {
             self.rebuildHwndIndex(false);
         }
+        return removed_any;
     }
 
     /// Rebuilds all HWND → index mappings; call after removing thumbnails to keep indices consistent. `force` bypasses the rate limit when the caller needs a correct index immediately.
@@ -1186,6 +1198,71 @@ pub const Painter = struct {
         _ = win32.EndDeferWindowPos(hdwp);
     }
 
+    const ThumbnailSpaceOrderEntry = struct { thumb_index: usize, sort_key: usize };
+
+    fn thumbnailSpaceOrderLessThan(_: void, a: ThumbnailSpaceOrderEntry, b: ThumbnailSpaceOrderEntry) bool {
+        return a.sort_key < b.sort_key;
+    }
+
+    /// Grid fill order for Thumbnail Space: by each character's position in the config dialog's Character list, with characters not yet in that list (e.g. a brand-new login) placed after all listed ones, in their current thumbnail order. Caller frees the result.
+    fn computeThumbnailSpaceOrder(self: *Painter, allocator: std.mem.Allocator) ![]ThumbnailSpaceOrderEntry {
+        const entries = try allocator.alloc(ThumbnailSpaceOrderEntry, self.thumbnails.items.len);
+        for (self.thumbnails.items, 0..) |thumbnail, i| {
+            const roster_index = self.config.getCharacterRosterIndex(thumbnail.character_name);
+            entries[i] = .{ .thumb_index = i, .sort_key = roster_index orelse (self.config.characters.items.len + i) };
+        }
+        std.sort.pdq(ThumbnailSpaceOrderEntry, entries, {}, thumbnailSpaceOrderLessThan);
+        return entries;
+    }
+
+    /// Recomputes and re-applies every thumbnail's position AND size to fill the active Thumbnail Space region; no-op if no region is set. Called whenever the thumbnail count changes (see Painter.update), since region cell size depends on the current count.
+    pub fn reflowThumbnailSpace(self: *Painter) void {
+        if (self.config.display.thumbnailSpace == null) return;
+
+        var window_count: c_int = 0;
+        for (self.thumbnails.items) |thumbnail| {
+            if (thumbnail.win32_enabled) window_count += 2;
+        }
+        if (window_count == 0) return;
+
+        const order = self.computeThumbnailSpaceOrder(self.allocator) catch |err| {
+            slog.err("Failed to compute Thumbnail Space fill order: {}", .{err});
+            return;
+        };
+        defer self.allocator.free(order);
+
+        var hdwp = win32.BeginDeferWindowPos(window_count) orelse return;
+        for (order, 0..) |entry, index| {
+            const thumbnail = self.thumbnails.items[entry.thumb_index];
+            if (!thumbnail.win32_enabled) continue;
+            const size = self.getThumbnailSize(thumbnail.character_name);
+            const pos = self.calculateThumbnailPosition(thumbnail.character_name, size.width, size.height, index);
+            hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_NOTOPMOST, pos.x, pos.y, size.width, size.height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE) orelse return;
+            // text_hwnd is positioned here; its size follows as a side effect of the forced renderThumbnail() below (see resizeThumbnailIfNeeded's doc comment).
+            hdwp = win32.DeferWindowPos(hdwp, thumbnail.text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOACTIVATE) orelse return;
+        }
+        _ = win32.EndDeferWindowPos(hdwp);
+
+        for (self.thumbnails.items) |*thumbnail| {
+            if (!thumbnail.win32_enabled) continue;
+            const size = self.getThumbnailSize(thumbnail.character_name);
+            const props = win32.DWM_THUMBNAIL_PROPERTIES{
+                .dwFlags = win32.DWM_TNP_RECTDESTINATION,
+                .rcDestination = win32.RECT{ .left = 0, .top = 0, .right = @intCast(size.width), .bottom = @intCast(size.height) },
+                .rcSource = win32.RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
+                .opacity = 255,
+                .fVisible = win32.TRUE,
+                .fSourceClientAreaOnly = win32.TRUE,
+            };
+            _ = win32.DwmUpdateThumbnailProperties(thumbnail.thumbnail_id, &props);
+
+            thumbnail.cached_render_settings = null;
+            self.renderThumbnail(thumbnail) catch |err| {
+                slog.err("Failed to re-render thumbnail for {s} during Thumbnail Space reflow: {}", .{ thumbnail.character_name, err });
+            };
+        }
+    }
+
     /// Resizes a thumbnail's window and DWM live-thumbnail rect to the configured size if changed; text_hwnd resizes separately as a side effect of UpdateLayeredWindow in renderThumbnailOverlay.
     fn resizeThumbnailIfNeeded(self: *Painter, thumbnail: *ThumbnailWindow) void {
         const target = self.getThumbnailSize(thumbnail.character_name);
@@ -1486,13 +1563,14 @@ pub const Painter = struct {
 
     /// Main update cycle - performs all Painter operations for a single tick
     pub fn update(self: *Painter, eve_windows: []const scout_mod.EveWindow, closed_windows: []const scout_mod.ClosedWindow, name_changes: []const scout_mod.NameChange) !void {
-        self.cleanupClosedThumbnails(closed_windows);
+        const removed_any = self.cleanupClosedThumbnails(closed_windows);
         self.updateThumbnailStates();
         self.applyNameChanges(name_changes, eve_windows);
         self.syncThumbnailTitles(eve_windows);
 
         // createThumbnail seeds title/character_name from eve_window, so new thumbnails need no re-sync.
-        _ = self.syncThumbnailsWithWindows(eve_windows);
+        const created_new = self.syncThumbnailsWithWindows(eve_windows);
+        if (removed_any or created_new) self.reflowThumbnailSpace();
 
         // Thumbnail-mode only — ClientList has no Win32 windows to redraw here.
         try self.processDirtyThumbnails();
@@ -1645,6 +1723,12 @@ pub const Painter = struct {
     ) config_mod.Position {
         const cfg = &self.config.display;
 
+        // A Thumbnail Space region overrides layoutMode, saved/manual positions, and monitor offset/clamping - its
+        // captured rect is already an absolute screen coordinate and may deliberately span or straddle monitors.
+        if (cfg.thumbnailSpace != null) {
+            return self.calculateGridPosition(index, thumb_width, thumb_height);
+        }
+
         const is_generic = scout_mod.isGenericCharacterName(character_name);
         const use_saved_position = !is_generic and
             cfg.honorSavedPositions and
@@ -1732,6 +1816,19 @@ pub const Painter = struct {
         return pos;
     }
 
+    /// Derives a per-cell width/height that tiles `columns` columns and ceil(count/columns) rows evenly into `region`, including inter-cell spacing. Deliberately allowed to go below ThumbnailConfig.WIDTH_MIN/HEIGHT_MIN (only floored to avoid a degenerate 0/negative window size) so a Thumbnail Space region never spills thumbnails outside its bounds.
+    fn computeThumbnailSpaceCellSize(region: config_mod.Config.RegionRect, columns: u32, count: usize, spacing_x: i32, spacing_y: i32) ThumbnailDimensions {
+        const cols_i: i32 = @intCast(columns);
+        const rows: usize = std.math.divCeil(usize, @max(count, 1), columns) catch 1;
+        const rows_i: i32 = @intCast(rows);
+        const raw_w = @divTrunc(region.width - (cols_i - 1) * spacing_x, cols_i);
+        const raw_h = @divTrunc(region.height - (rows_i - 1) * spacing_y, rows_i);
+        return .{
+            .width = @max(raw_w, config_mod.Config.DisplayConfig.THUMBNAIL_SPACE_CELL_FLOOR),
+            .height = @max(raw_h, config_mod.Config.DisplayConfig.THUMBNAIL_SPACE_CELL_FLOOR),
+        };
+    }
+
     fn calculateGridPosition(
         self: *const Painter,
         index: usize,
@@ -1742,6 +1839,12 @@ pub const Painter = struct {
         const spacing_x = cfg.getSpacingX();
         const spacing_y = cfg.getSpacingY();
         const columns = cfg.gridColumns;
+
+        // A Thumbnail Space region derives row count from the live thumbnail count instead of the configured gridRows.
+        const rows: u32 = if (cfg.thumbnailSpace != null)
+            @intCast(std.math.divCeil(usize, @max(self.thumbnails.items.len, 1), columns) catch 1)
+        else
+            (cfg.gridRows orelse 999);
 
         var col: i32 = undefined;
         var row: i32 = undefined;
@@ -1764,22 +1867,18 @@ pub const Painter = struct {
                 row = -@as(i32, @intCast(index / columns));
             },
             .ColumnFirst_TTB_LTR => {
-                const rows = cfg.gridRows orelse 999;
                 col = @intCast(index / rows);
                 row = @intCast(index % rows);
             },
             .ColumnFirst_BTT_LTR => {
-                const rows = cfg.gridRows orelse 999;
                 col = @intCast(index / rows);
                 row = -@as(i32, @intCast(index % rows));
             },
             .ColumnFirst_TTB_RTL => {
-                const rows = cfg.gridRows orelse 999;
                 col = -@as(i32, @intCast(index / rows));
                 row = @intCast(index % rows);
             },
             .ColumnFirst_BTT_RTL => {
-                const rows = cfg.gridRows orelse 999;
                 col = -@as(i32, @intCast(index / rows));
                 row = -@as(i32, @intCast(index % rows));
             },
@@ -1790,8 +1889,10 @@ pub const Painter = struct {
             },
         }
 
-        const x = col * (thumb_width + spacing_x) + cfg.startX;
-        const y = row * (thumb_height + spacing_y) + cfg.startY;
+        const origin_x = if (cfg.thumbnailSpace) |region| region.x else cfg.startX;
+        const origin_y = if (cfg.thumbnailSpace) |region| region.y else cfg.startY;
+        const x = col * (thumb_width + spacing_x) + origin_x;
+        const y = row * (thumb_height + spacing_y) + origin_y;
 
         slog.debug("Grid layout: thumbnail #{} at ({}, {}) [col={}, row={}]", .{ index, x, y, col, row });
         return .{ .x = x, .y = y };
@@ -3258,7 +3359,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
 }
 
 /// Builds RenderSettings from Painter config; the single point where the state machine determines all visual properties.
-fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWindow) RenderSettings {
+fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWindow, overlay_size: ThumbnailDimensions) RenderSettings {
     const state = thumbnail.current_state;
     const character_name = thumbnail.character_name;
     const system_name = thumbnail.system_name;
@@ -3370,9 +3471,8 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         final_text_color = unique_color;
     }
 
-    const char_size = cfg.getCharacterSize(character_name);
-    const overlay_width = if (char_size) |cs| cs.width orelse cfg.thumbnail.width else cfg.thumbnail.width;
-    const overlay_height = if (char_size) |cs| cs.height orelse cfg.thumbnail.height else cfg.thumbnail.height;
+    const overlay_width = overlay_size.width;
+    const overlay_height = overlay_size.height;
 
     // Builds the visible stack, newest first: each entry keeps its own suppress_when_focused/text_color_override,
     // so different notification types can be filtered and colored independently within the same stack.

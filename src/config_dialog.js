@@ -474,6 +474,14 @@ function applySpecialFieldsToForm() {
 
     setCheckboxValue('ttsSpeakCharacterName', currentConfig.thumbnail?.notifications?.tts_speak_character_name !== false);
     setFieldValue('notifCycleRetention', currentConfig.thumbnail?.notifications?.notified_cycle_retention_seconds ?? 30);
+
+    const space = currentConfig.display?.thumbnailSpace;
+    const thumbnailSpaceStatus = document.getElementById('thumbnailSpaceStatus');
+    if (thumbnailSpaceStatus) {
+        thumbnailSpaceStatus.textContent = space
+            ? `${t('field.thumbnailSpace.setPrefix')} ${space.width}x${space.height} @ (${space.x}, ${space.y})`
+            : t('field.thumbnailSpace.notSet');
+    }
 }
 
 function applySpecialFieldsFromForm() {
@@ -651,6 +659,7 @@ function buildThumbnailPreviewPatch(includePositions = false) {
             monitorIndex: getNullableFieldValue('monitorIndex'),
             useMonitorWorkArea: getFieldValue('useMonitorWorkArea'),
             honorSavedPositions: getFieldValue('honorSavedPositions'),
+            thumbnailSpace: currentConfig.display?.thumbnailSpace ?? null,
         },
         characterOverrides: buildCharacterOverridesPreviewPatch(includePositions),
     };
@@ -6147,6 +6156,32 @@ function toggleMiningOptions() {
 
 function toggleBountyOptions() {
     applyOptionToggle('bountyEnabled', 'bountyOptions');
+}
+
+async function startRegionSelect() {
+    try {
+        if (typeof webui !== 'undefined') {
+            const raw = await webui.call('startRegionSelect');
+            const region = raw && raw !== 'null' ? JSON.parse(raw) : null;
+            if (!currentConfig.display) currentConfig.display = {};
+            currentConfig.display.thumbnailSpace = region;
+            applySpecialFieldsToForm();
+            markAsChanged();
+            scheduleThumbnailPreview();
+        } else {
+            logWarn('WebUI not available for region selection');
+        }
+    } catch (error) {
+        logError('Failed to select thumbnail space region:', error);
+    }
+}
+
+function clearRegionSelect() {
+    if (!currentConfig.display) return;
+    currentConfig.display.thumbnailSpace = null;
+    applySpecialFieldsToForm();
+    markAsChanged();
+    scheduleThumbnailPreview();
 }
 
 async function browseChatlogDir() {

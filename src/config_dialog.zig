@@ -4,6 +4,7 @@ const protocol = @import("protocol.zig");
 const win32 = @import("win32.zig");
 const build_options = @import("build_options");
 const config_mod = @import("config.zig");
+const gdi_overlay = @import("gdi_overlay.zig");
 const log = @import("log.zig");
 
 const slog = log.scoped("config_dialog");
@@ -146,6 +147,7 @@ pub fn main() !void {
     _ = try win.bind("logClientMessage", logClientMessage);
     _ = try win.bind("getMainAppStatus", getMainAppStatus);
     _ = try win.bind("getValidationRanges", getValidationRanges);
+    _ = try win.bind("startRegionSelect", startRegionSelect);
 
     const html_with_resources = try injectResources(allocator, active_lang);
     defer allocator.free(html_with_resources);
@@ -1520,6 +1522,238 @@ fn browseChatlogDir(e: *webui.Event) void {
 
 fn browseGamelogDir(e: *webui.Event) void {
     browseDirAndReturn(e, "Select Gamelog Directory");
+}
+
+const REGION_SELECT_CLASS_NAME = "EVE_REGION_SELECT_CLASS";
+var g_region_select_class_registered = false;
+
+const RegionSelectState = struct {
+    dragging: bool = false,
+    start: win32.POINT = .{ .x = 0, .y = 0 },
+    current: win32.POINT = .{ .x = 0, .y = 0 },
+    done: bool = false,
+    result: ?config_mod.Config.RegionRect = null,
+    overlay: ?gdi_overlay.OverlayBitmap = null,
+};
+
+var g_region_select: RegionSelectState = .{};
+
+fn fillRegionPixels(pixels: [*]u32, width: usize, x: usize, y: usize, w: usize, h: usize, color: u32) void {
+    for (y..y + h) |row_y| {
+        const row = row_y * width;
+        @memset(pixels[row + x .. row + x + w], color);
+    }
+}
+
+/// Draws a `thickness`-px outline of a sub-rect within a `buf_width`x`buf_height` pixel buffer, clamped to the buffer bounds.
+fn drawRegionOutline(pixels: [*]u32, buf_width: usize, buf_height: usize, x: i32, y: i32, w: usize, h: usize, thickness: usize, color: u32) void {
+    const left: usize = @intCast(std.math.clamp(x, 0, @as(i32, @intCast(buf_width))));
+    const top: usize = @intCast(std.math.clamp(y, 0, @as(i32, @intCast(buf_height))));
+    const right = @min(buf_width, left + w);
+    const bottom = @min(buf_height, top + h);
+    if (right <= left or bottom <= top) return;
+
+    const t = @min(thickness, @min(right - left, bottom - top));
+    fillRegionPixels(pixels, buf_width, left, top, right - left, t, color);
+    fillRegionPixels(pixels, buf_width, left, bottom - t, right - left, t, color);
+    fillRegionPixels(pixels, buf_width, left, top, t, bottom - top, color);
+    fillRegionPixels(pixels, buf_width, right - t, top, t, bottom - top, color);
+}
+
+/// Repaints the capture overlay: a translucent dark tint across the whole virtual desktop, plus (while dragging) a bright rubber-band outline around the in-progress selection.
+fn redrawRegionSelect(hwnd: win32.HWND) void {
+    const overlay = &(g_region_select.overlay orelse return);
+    @memset(overlay.pixels[0 .. overlay.width * overlay.height], @as(u32, 0x50000000));
+
+    if (g_region_select.dragging) {
+        const vx: i32 = win32.GetSystemMetrics(win32.SM_XVIRTUALSCREEN);
+        const vy: i32 = win32.GetSystemMetrics(win32.SM_YVIRTUALSCREEN);
+        const start_x: i32 = @intCast(g_region_select.start.x);
+        const start_y: i32 = @intCast(g_region_select.start.y);
+        const current_x: i32 = @intCast(g_region_select.current.x);
+        const current_y: i32 = @intCast(g_region_select.current.y);
+        const local_x: i32 = @min(start_x, current_x) - vx;
+        const local_y: i32 = @min(start_y, current_y) - vy;
+        const w: usize = @intCast(@abs(current_x - start_x));
+        const h: usize = @intCast(@abs(current_y - start_y));
+        drawRegionOutline(overlay.pixels, overlay.width, overlay.height, local_x, local_y, w, h, 2, 0xFFFFFFFF);
+    }
+
+    const screen_dc = win32.GetDC(null) orelse return;
+    defer _ = win32.ReleaseDC(null, screen_dc);
+    const window_size = win32.SIZE{ .cx = @intCast(overlay.width), .cy = @intCast(overlay.height) };
+    const source_pos = win32.POINT{ .x = 0, .y = 0 };
+    var blend = win32.BLENDFUNCTION{
+        .BlendOp = win32.AC_SRC_OVER,
+        .BlendFlags = 0,
+        .SourceConstantAlpha = 255,
+        .AlphaFormat = win32.AC_SRC_ALPHA,
+    };
+    _ = win32.UpdateLayeredWindow(hwnd, screen_dc, null, @constCast(&window_size), overlay.mem_dc, @constCast(&source_pos), 0, &blend, win32.ULW_ALPHA);
+}
+
+fn regionSelectWndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
+    switch (msg) {
+        win32.WM_LBUTTONDOWN => {
+            var pt: win32.POINT = undefined;
+            _ = win32.GetCursorPos(&pt);
+            g_region_select.dragging = true;
+            g_region_select.start = pt;
+            g_region_select.current = pt;
+            _ = win32.SetCapture(hwnd);
+            redrawRegionSelect(hwnd);
+            return 0;
+        },
+        win32.WM_MOUSEMOVE => {
+            if (g_region_select.dragging) {
+                var pt: win32.POINT = undefined;
+                _ = win32.GetCursorPos(&pt);
+                g_region_select.current = pt;
+                redrawRegionSelect(hwnd);
+            }
+            return 0;
+        },
+        win32.WM_LBUTTONUP => {
+            if (g_region_select.dragging) {
+                _ = win32.ReleaseCapture();
+                g_region_select.dragging = false;
+                const w: i32 = @intCast(@abs(g_region_select.current.x - g_region_select.start.x));
+                const h: i32 = @intCast(@abs(g_region_select.current.y - g_region_select.start.y));
+                // A plain click (near-zero drag distance) is treated as a cancel, not a degenerate region.
+                if (w < 8 or h < 8) {
+                    g_region_select.result = null;
+                } else {
+                    g_region_select.result = config_mod.Config.RegionRect{
+                        .x = @intCast(@min(g_region_select.start.x, g_region_select.current.x)),
+                        .y = @intCast(@min(g_region_select.start.y, g_region_select.current.y)),
+                        .width = w,
+                        .height = h,
+                    };
+                }
+                g_region_select.done = true;
+            }
+            return 0;
+        },
+        win32.WM_KEYDOWN => {
+            if (wParam == win32.VK_ESCAPE) {
+                _ = win32.ReleaseCapture();
+                g_region_select.dragging = false;
+                g_region_select.result = null;
+                g_region_select.done = true;
+            }
+            return 0;
+        },
+        else => return win32.DefWindowProcA(hwnd, msg, wParam, lParam),
+    }
+}
+
+fn ensureRegionSelectClassRegistered(instance: win32.HINSTANCE) !void {
+    if (g_region_select_class_registered) return;
+
+    const wc = win32.WNDCLASSEXA{
+        .cbSize = @sizeOf(win32.WNDCLASSEXA),
+        .style = 0,
+        .lpfnWndProc = regionSelectWndProc,
+        .cbClsExtra = 0,
+        .cbWndExtra = 0,
+        .hInstance = instance,
+        .hIcon = null,
+        .hCursor = win32.LoadCursorA(null, win32.IDC_CROSS),
+        .hbrBackground = null,
+        .lpszMenuName = null,
+        .lpszClassName = REGION_SELECT_CLASS_NAME,
+        .hIconSm = null,
+    };
+    if (win32.RegisterClassExA(&wc) == 0) return error.RegisterRegionSelectClassFailed;
+    g_region_select_class_registered = true;
+}
+
+/// Bound to config_dialog.js's startRegionSelect(): blocks the calling (webui event) thread while the user drags a
+/// rectangle across the full virtual desktop (mirrors showFolderPicker's "blocking native call on the event thread"
+/// shape), then returns the resulting rect as a JSON object string, or the literal string "null" on Esc/click-cancel.
+fn startRegionSelect(e: *webui.Event) void {
+    const allocator = gpa.allocator();
+
+    const instance = win32.GetModuleHandleA(null) orelse {
+        e.returnString("null");
+        return;
+    };
+    ensureRegionSelectClassRegistered(instance) catch |err| {
+        slog.err("Failed to register region select window class: {}", .{err});
+        e.returnString("null");
+        return;
+    };
+
+    const vx = win32.GetSystemMetrics(win32.SM_XVIRTUALSCREEN);
+    const vy = win32.GetSystemMetrics(win32.SM_YVIRTUALSCREEN);
+    const vw = win32.GetSystemMetrics(win32.SM_CXVIRTUALSCREEN);
+    const vh = win32.GetSystemMetrics(win32.SM_CYVIRTUALSCREEN);
+
+    g_region_select = .{};
+
+    const hwnd = win32.CreateWindowExA(
+        win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW,
+        REGION_SELECT_CLASS_NAME,
+        "",
+        win32.WS_POPUP,
+        vx,
+        vy,
+        vw,
+        vh,
+        null,
+        null,
+        instance,
+        null,
+    ) orelse {
+        slog.err("Failed to create region select window", .{});
+        e.returnString("null");
+        return;
+    };
+    defer _ = win32.DestroyWindow(hwnd);
+
+    const init_dc = win32.GetDC(null) orelse {
+        e.returnString("null");
+        return;
+    };
+    defer _ = win32.ReleaseDC(null, init_dc);
+    g_region_select.overlay = gdi_overlay.OverlayBitmap.create(init_dc, vw, vh) catch |err| {
+        slog.err("Failed to allocate region select overlay bitmap: {}", .{err});
+        e.returnString("null");
+        return;
+    };
+    defer if (g_region_select.overlay) |ov| ov.destroy();
+
+    redrawRegionSelect(hwnd);
+    _ = win32.ShowWindow(hwnd, win32.SW_SHOW);
+    _ = win32.SetForegroundWindow(hwnd);
+    _ = win32.SetFocus(hwnd);
+
+    var msg: win32.MSG = undefined;
+    while (win32.GetMessageA(&msg, null, 0, 0) > 0) {
+        _ = win32.TranslateMessage(&msg);
+        _ = win32.DispatchMessageA(&msg);
+        if (g_region_select.done) break;
+    }
+
+    if (g_region_select.result) |region| {
+        const json = std.fmt.allocPrint(
+            allocator,
+            "{{\"x\":{},\"y\":{},\"width\":{},\"height\":{}}}",
+            .{ region.x, region.y, region.width, region.height },
+        ) catch {
+            e.returnString("null");
+            return;
+        };
+        defer allocator.free(json);
+        const json_z = allocator.dupeZ(u8, json) catch {
+            e.returnString("null");
+            return;
+        };
+        defer allocator.free(json_z);
+        e.returnString(json_z);
+    } else {
+        e.returnString("null");
+    }
 }
 
 /// Bound to config_dialog.js's window.onerror/unhandledrejection handlers and its

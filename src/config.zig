@@ -2125,6 +2125,8 @@ pub const Config = struct {
         }
     };
 
+    pub const RegionRect = struct { x: i32, y: i32, width: i32, height: i32 };
+
     pub const DisplayConfig = struct {
         startX: i32 = 10,
         startY: i32 = 10,
@@ -2156,6 +2158,9 @@ pub const Config = struct {
 
         honorSavedPositions: bool = true,
 
+        /// Screen-absolute drag-selected region; when set, overrides layoutMode/gridRows/per-character size and saved positions with a grid auto-fit to this rect. See painter.zig's reflowThumbnailSpace.
+        thumbnailSpace: ?RegionRect = null,
+
         pub const START_X_MIN: i32 = -3840;
         pub const START_X_MAX: i32 = 7680;
         pub const START_Y_MIN: i32 = -2160;
@@ -2173,6 +2178,12 @@ pub const Config = struct {
         pub const LIST_VIEW_COLUMNS_MAX: u32 = 15;
         pub const LIST_VIEW_FONT_SIZE_MIN: i32 = 6;
         pub const LIST_VIEW_FONT_SIZE_MAX: i32 = 72;
+
+        pub const THUMBNAIL_SPACE_MIN_SIZE: i32 = 100;
+        pub const THUMBNAIL_SPACE_MAX_WIDTH: i32 = 7680;
+        pub const THUMBNAIL_SPACE_MAX_HEIGHT: i32 = 4320;
+        /// Hard floor for a derived cell size; thumbnailSpace deliberately allows shrinking below WIDTH_MIN/HEIGHT_MIN to fit the region, but SetWindowPos/DWM still need a positive dimension.
+        pub const THUMBNAIL_SPACE_CELL_FLOOR: i32 = 4;
 
         pub fn validate(self: *DisplayConfig) void {
             if (self.startX < START_X_MIN) self.startX = START_X_MIN;
@@ -2213,6 +2224,13 @@ pub const Config = struct {
 
             if (self.listViewColumns < LIST_VIEW_COLUMNS_MIN) self.listViewColumns = LIST_VIEW_COLUMNS_MIN;
             if (self.listViewColumns > LIST_VIEW_COLUMNS_MAX) self.listViewColumns = LIST_VIEW_COLUMNS_MAX;
+
+            if (self.thumbnailSpace) |*region| {
+                region.x = std.math.clamp(region.x, START_X_MIN, START_X_MAX);
+                region.y = std.math.clamp(region.y, START_Y_MIN, START_Y_MAX);
+                region.width = std.math.clamp(region.width, THUMBNAIL_SPACE_MIN_SIZE, THUMBNAIL_SPACE_MAX_WIDTH);
+                region.height = std.math.clamp(region.height, THUMBNAIL_SPACE_MIN_SIZE, THUMBNAIL_SPACE_MAX_HEIGHT);
+            }
 
             if (self.listViewFontSize < LIST_VIEW_FONT_SIZE_MIN) {
                 slog.warn("List view font size {} too small, clamping to {}", .{ self.listViewFontSize, LIST_VIEW_FONT_SIZE_MIN });
@@ -2791,6 +2809,24 @@ pub const Config = struct {
         if (obj.get("honorSavedPositions")) |v| {
             if (v == .bool) display.honorSavedPositions = v.bool;
         }
+        if (obj.get("thumbnailSpace")) |v| {
+            if (v == .object) {
+                const rx = v.object.get("x") orelse .null;
+                const ry = v.object.get("y") orelse .null;
+                const rw = v.object.get("width") orelse .null;
+                const rh = v.object.get("height") orelse .null;
+                if (rx == .integer and ry == .integer and rw == .integer and rh == .integer) {
+                    display.thumbnailSpace = RegionRect{
+                        .x = std.math.cast(i32, rx.integer) orelse 0,
+                        .y = std.math.cast(i32, ry.integer) orelse 0,
+                        .width = std.math.cast(i32, rw.integer) orelse ThumbnailConfig.WIDTH_MIN,
+                        .height = std.math.cast(i32, rh.integer) orelse ThumbnailConfig.HEIGHT_MIN,
+                    };
+                }
+            } else if (v == .null) {
+                display.thumbnailSpace = null;
+            }
+        }
         if (obj.get("viewMode")) |v| {
             if (v == .string) {
                 if (std.meta.stringToEnum(types.ViewMode, v.string)) |mode| {
@@ -3009,6 +3045,16 @@ pub const Config = struct {
         for (self.characters.items) |*char| {
             if (std.mem.eql(u8, char.name, name)) {
                 return char;
+            }
+        }
+        return null;
+    }
+
+    /// Index of `character_name` in the config dialog's (user-orderable) Character list, for Thumbnail Space's roster-order grid fill. Null if not yet in the list (e.g. a brand-new login).
+    pub fn getCharacterRosterIndex(self: *const Config, character_name: []const u8) ?usize {
+        for (self.characters.items, 0..) |char, i| {
+            if (std.mem.eql(u8, char.name, character_name)) {
+                return i;
             }
         }
         return null;
@@ -3371,6 +3417,7 @@ pub const Config = struct {
         const new_monitor_index = fresh.display.monitorIndex;
         const new_use_monitor_work_area = fresh.display.useMonitorWorkArea;
         const new_honor_saved_positions = fresh.display.honorSavedPositions;
+        const new_thumbnail_space = fresh.display.thumbnailSpace;
 
         // Restore per-character overrides by matching on name; displayName is duped before fresh.deinit() frees it, and characters with no match in `fresh` (created live but never saved) are removed entirely so reverting leaves no residue.
         var char_index: usize = self.characters.items.len;
@@ -3424,6 +3471,7 @@ pub const Config = struct {
         self.display.monitorIndex = new_monitor_index;
         self.display.useMonitorWorkArea = new_use_monitor_work_area;
         self.display.honorSavedPositions = new_honor_saved_positions;
+        self.display.thumbnailSpace = new_thumbnail_space;
     }
 
     /// Replace the system color override list from a JSON array of {systemName, color} objects, freeing the old entries only after the new list parses successfully.

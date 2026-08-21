@@ -764,6 +764,7 @@ fn mainImpl() !void {
     for (eve_windows) |*eve_window| {
         try g_painter.?.createThumbnail(eve_window, "");
     }
+    if (g_config.display.thumbnailSpace != null) g_painter.?.reflowThumbnailSpace();
 
     // Register with chatlog monitor after thumbnails are visible (deferred I/O)
     if (g_chatlog_monitor) |monitor| {
@@ -963,6 +964,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
                 };
             }
             slog.debug("Recreated {} thumbnail(s)", .{eve_windows.len});
+            if (g_config.display.thumbnailSpace != null) g_painter.?.reflowThumbnailSpace();
 
             if (keep_chatlog_monitor) {
                 if (g_chatlog_monitor) |monitor| {
@@ -1161,7 +1163,9 @@ fn applyThumbnailPreview(json_data: []const u8) !void {
 
     if (g_painter) |painter_ptr| {
         painter_ptr.refreshAllThumbnailVisuals();
-        if (layout_changed) painter_ptr.repositionAllThumbnails();
+        if (layout_changed) {
+            if (g_config.display.thumbnailSpace != null) painter_ptr.reflowThumbnailSpace() else painter_ptr.repositionAllThumbnails();
+        }
     }
 }
 
@@ -1174,6 +1178,6 @@ fn revertThumbnailPreview() void {
 
     if (g_painter) |painter_ptr| {
         painter_ptr.refreshAllThumbnailVisuals();
-        painter_ptr.repositionAllThumbnails();
+        if (g_config.display.thumbnailSpace != null) painter_ptr.reflowThumbnailSpace() else painter_ptr.repositionAllThumbnails();
     }
 }

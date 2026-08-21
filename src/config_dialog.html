@@ -341,6 +341,14 @@
                         </label>
                     </div>
 
+                    <div class="section advanced-section">
+                        <h3 data-i18n="tab.thumbnails.section.thumbnail-space.heading">Thumbnail Space</h3>
+                        <p class="hint" data-i18n="field.thumbnailSpace.hint">Drag out a screen region and thumbnails will auto-fill it in a grid (using Grid Columns above), resizing as characters log in/out. Overrides manual positions and per-character sizes while active.</p>
+                        <p id="thumbnailSpaceStatus" class="hint"></p>
+                        <button type="button" onclick="startRegionSelect()" style="width: auto; margin-right: 8px;" data-i18n="field.thumbnailSpace.defineButton">Define Thumbnail Space...</button>
+                        <button type="button" onclick="clearRegionSelect()" style="width: auto;" data-i18n="field.thumbnailSpace.clearButton">Clear</button>
+                    </div>
+
                     <div class="section">
                         <h3 data-i18n="tab.thumbnails.section.border-configuration.heading">Borders</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.thumbnails.section.border-configuration.hint">Draw a styled border around thumbnails based on their focus state.</p>
