@@ -584,7 +584,7 @@ label {
     display: block;
     margin-bottom: 3px;
     margin-top: 6px;
-    padding-left: 24px;
+    padding-left: 17px;
     position: relative;
 }
 
@@ -592,7 +592,7 @@ label::before {
     content: '» ';
     color: #ffffff;
     position: absolute;
-    left: 7px;
+    left: 0;
 }
 
 /* Remove prefix and padding for checkbox labels */
@@ -615,7 +615,7 @@ input[type="checkbox"] {
 
 input[type="checkbox"] + .label-body {
     position: relative;
-    padding-left: 24px;
+    padding-left: 20px;
     cursor: pointer;
     display: inline-block;
     color: #dddddd;
@@ -626,7 +626,7 @@ input[type="checkbox"] + .label-body::before {
     content: '';
     display: inline-block;
     position: absolute;
-    left: 4px;
+    left: 0;
     top: 1px;
     width: 14px;
     height: 14px;
