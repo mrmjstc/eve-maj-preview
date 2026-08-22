@@ -721,7 +721,7 @@ button:hover {
     background-color: #ffffff;
     color: #000000;
     border-color: #ffffff;
-    box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
     text-shadow: none;
 }
 
