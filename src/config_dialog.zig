@@ -111,7 +111,7 @@ pub fn main() !void {
 
     var win = webui.newWindow();
 
-    win.setSize(1200, 950);
+    win.setSize(1000, 950);
     win.setPosition(200, 100);
     win.setKiosk(false);
     win.setResizable(false);
@@ -627,11 +627,9 @@ fn resolveOreTypeIds(allocator: std.mem.Allocator, names: []const []const u8) !s
     defer allocator.free(body);
 
     const stdout = curlRun(allocator, &.{
-        "curl", "-s", "-X", "POST",
-        "-H",   "User-Agent: EVE-Maj-Preview",
-        "-H",   "Content-Type: application/json",
-        "--data-binary", body,
-        ESI_BASE ++ "/universe/ids/?datasource=tranquility",
+        "curl",          "-s",                          "-X",                                                "POST",
+        "-H",            "User-Agent: EVE-Maj-Preview", "-H",                                                "Content-Type: application/json",
+        "--data-binary", body,                          ESI_BASE ++ "/universe/ids/?datasource=tranquility",
     }) orelse return result;
     defer allocator.free(stdout);
 
