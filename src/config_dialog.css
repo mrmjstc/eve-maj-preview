@@ -377,7 +377,7 @@ p {
 }
 
 .notification-types-table thead tr:last-child th {
-    top: 28px;
+    top: calc(1.2em + 14px);
     font-weight: 500;
     color: #dddddd;
 }
