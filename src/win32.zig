@@ -370,6 +370,7 @@ pub extern "advapi32" fn RegOpenKeyExA(
 ) callconv(.c) LONG;
 pub extern "advapi32" fn RegCloseKey(hKey: HKEY) callconv(.c) LONG;
 pub extern "advapi32" fn RegDeleteTreeA(hKey: HKEY, lpSubKey: ?LPCSTR) callconv(.c) LONG;
+pub extern "advapi32" fn RegDeleteValueA(hKey: HKEY, lpValueName: ?LPCSTR) callconv(.c) LONG;
 pub extern "user32" fn BringWindowToTop(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn SetFocus(hWnd: HWND) callconv(.c) ?HWND;
 pub extern "user32" fn GetWindowPlacement(hWnd: HWND, lpwndpl: *WINDOWPLACEMENT) callconv(.c) BOOL;

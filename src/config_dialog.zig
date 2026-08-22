@@ -456,6 +456,60 @@ fn resumeHotkeysAfterRecording(e: *webui.Event) void {
     e.returnString("{\"success\": true}");
 }
 
+const STARTUP_RUN_KEY = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+const STARTUP_RUN_VALUE_NAME = "EVE-Maj Preview";
+
+/// Points the Run entry at eve-maj-preview.exe, which always ships alongside config.exe (see tray.zig's openConfigDialog for the reverse lookup).
+fn applyRunOnStartup(enabled: bool) bool {
+    if (!enabled) {
+        var hKey: win32.HKEY = undefined;
+        const open_result = win32.RegOpenKeyExA(win32.HKEY_CURRENT_USER, STARTUP_RUN_KEY, 0, win32.KEY_WRITE, &hKey);
+        if (open_result != win32.ERROR_SUCCESS) return true;
+        defer _ = win32.RegCloseKey(hKey);
+        _ = win32.RegDeleteValueA(hKey, STARTUP_RUN_VALUE_NAME);
+        return true;
+    }
+
+    var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const exe_dir = std.fs.selfExeDirPath(&exe_dir_buf) catch {
+        slog.err("Failed to determine executable directory for startup registration", .{});
+        return false;
+    };
+
+    var path_buf: [std.fs.max_path_bytes + 16]u8 = undefined;
+    const exe_path = std.fmt.bufPrintZ(&path_buf, "\"{s}\\eve-maj-preview.exe\"", .{exe_dir}) catch {
+        slog.err("Failed to build eve-maj-preview.exe path", .{});
+        return false;
+    };
+
+    var hKey: win32.HKEY = undefined;
+    var disposition: win32.DWORD = undefined;
+    const create_result = win32.RegCreateKeyExA(
+        win32.HKEY_CURRENT_USER,
+        STARTUP_RUN_KEY,
+        0,
+        null,
+        win32.REG_OPTION_NON_VOLATILE,
+        win32.KEY_WRITE,
+        null,
+        &hKey,
+        &disposition,
+    );
+    if (create_result != win32.ERROR_SUCCESS) {
+        slog.err("Failed to open startup registry key: error {}", .{create_result});
+        return false;
+    }
+    defer _ = win32.RegCloseKey(hKey);
+
+    const set_result = win32.RegSetValueExA(hKey, STARTUP_RUN_VALUE_NAME, 0, win32.REG_SZ, exe_path.ptr, @intCast(exe_path.len + 1));
+    if (set_result != win32.ERROR_SUCCESS) {
+        slog.err("Failed to set startup registry value: error {}", .{set_result});
+        return false;
+    }
+
+    return true;
+}
+
 const GLOBAL_SETTINGS_PATH = "profiles/global.settings.json";
 
 /// GlobalSettings only persists a price per ore (see OrePriceEntry); this rebuilds the full name/category/volumeM3/price view the dialog renders,
@@ -551,6 +605,10 @@ fn saveGlobalSettings(e: *webui.Event) void {
         e.returnString("{\"success\": false, \"error\": \"Failed to write file\"}");
         return;
     };
+
+    if (!applyRunOnStartup(settings.runOnStartup)) {
+        slog.warn("Failed to apply run-on-startup registry setting", .{});
+    }
 
     slog.info("Global settings saved successfully", .{});
     e.returnString("{\"success\": true}");

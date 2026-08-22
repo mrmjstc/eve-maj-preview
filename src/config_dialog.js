@@ -3231,6 +3231,7 @@ async function saveConfigurationImpl() {
         currentGlobalSettings.hotkeyCycleAllClientsForward = getFieldValue('hotkeyCycleAllClientsForward') || null;
         currentGlobalSettings.hotkeyCycleAllClientsBackward = getFieldValue('hotkeyCycleAllClientsBackward') || null;
         currentGlobalSettings.cycleAllClientsRespectExclusions = getFieldValue('cycleAllClientsRespectExclusions');
+        currentGlobalSettings.runOnStartup = getFieldValue('runOnStartup');
         currentGlobalSettings.hotkeyCycleNotLoggedInForward = getFieldValue('hotkeyCycleNotLoggedInForward') || null;
         currentGlobalSettings.hotkeyCycleNotLoggedInBackward = getFieldValue('hotkeyCycleNotLoggedInBackward') || null;
     }
@@ -5392,6 +5393,7 @@ async function loadGlobalSettingsFromBackend() {
     setFieldValue('hotkeyCycleAllClientsForward', vkHexToFriendly(currentGlobalSettings.hotkeyCycleAllClientsForward));
     setFieldValue('hotkeyCycleAllClientsBackward', vkHexToFriendly(currentGlobalSettings.hotkeyCycleAllClientsBackward));
     setCheckboxValue('cycleAllClientsRespectExclusions', currentGlobalSettings.cycleAllClientsRespectExclusions);
+    setCheckboxValue('runOnStartup', currentGlobalSettings.runOnStartup);
     setFieldValue('hotkeyCycleNotLoggedInForward', vkHexToFriendly(currentGlobalSettings.hotkeyCycleNotLoggedInForward));
     setFieldValue('hotkeyCycleNotLoggedInBackward', vkHexToFriendly(currentGlobalSettings.hotkeyCycleNotLoggedInBackward));
 
