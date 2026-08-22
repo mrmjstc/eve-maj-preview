@@ -551,6 +551,8 @@
   "tab.bounty.section.bounty-rate-overlay.heading": "Текстовые оверлеи",
   "tab.bounty.section.bounty-rate-overlay.hint": "Отображает выплаты наград ISK в минуту/час на каждой миниатюре, рассчитываемые из логов EVE. Требуется включенный мониторинг логов.",
   "tab.bounty.title": "оверлей наград",
+  "tab.characters.section.per-character-configuration.empty-detail": "Добавьте персонажа ниже или используйте «Заполнить из открытых клиентов», чтобы обнаружить его автоматически.",
+  "tab.characters.section.per-character-configuration.empty-roster": "Персонажей пока нет",
   "tab.characters.section.per-character-configuration.heading": "Список персонажей",
   "tab.characters.section.per-character-configuration.hint": "Настройте сохраненную позицию, размер, цвет рамки, отображаемое имя и горячую клавишу быстрого перехода для каждого персонажа. Персонажи добавляются автоматически при обнаружении.",
   "tab.characters.title": "персонажи",

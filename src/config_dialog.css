@@ -1551,6 +1551,15 @@ input[type="range"]::-moz-range-thumb {
     white-space: nowrap;
 }
 
+.roster-row.roster-row-empty {
+    cursor: default;
+}
+
+.roster-row.roster-row-empty:hover {
+    background: none;
+    color: #aaaaaa;
+}
+
 .roster-row.dragging {
     opacity: 0.4;
 }
@@ -1570,6 +1579,10 @@ input[type="range"]::-moz-range-thumb {
     border: 1px solid #444444;
     border-radius: 4px;
     padding: 10px;
+}
+
+.character-detail-stack-empty {
+    padding: 6px 8px;
 }
 
 .char-detail-panel {

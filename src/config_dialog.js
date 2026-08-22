@@ -4521,7 +4521,18 @@ function populateCharacters() {
     const chars = currentConfig.characters || [];
 
     if (chars.length === 0) {
-        container.innerHTML = '';
+        container.innerHTML = `
+            <div class="character-master-detail">
+                <div class="character-roster">
+                    <div class="roster-row roster-row-empty">
+                        <span class="hint">${t('tab.characters.section.per-character-configuration.empty-roster')}</span>
+                    </div>
+                </div>
+                <div class="character-detail-stack character-detail-stack-empty">
+                    <p class="hint">${t('tab.characters.section.per-character-configuration.empty-detail')}</p>
+                </div>
+            </div>
+        `;
         return;
     }
 

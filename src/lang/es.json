@@ -551,6 +551,8 @@
   "tab.bounty.section.bounty-rate-overlay.heading": "Superposiciones de texto",
   "tab.bounty.section.bounty-rate-overlay.hint": "Muestra los pagos de recompensas en ISK por minuto/hora en cada miniatura, calculados desde los registros de EVE. Requiere supervisión del registro de chat.",
   "tab.bounty.title": "superposición de recompensas",
+  "tab.characters.section.per-character-configuration.empty-detail": "Añade un personaje abajo, o usa «Rellenar desde clientes abiertos» para detectar uno automáticamente.",
+  "tab.characters.section.per-character-configuration.empty-roster": "Aún no hay personajes",
   "tab.characters.section.per-character-configuration.heading": "Lista de personajes",
   "tab.characters.section.per-character-configuration.hint": "Personaliza la posición guardada, el tamaño, el color del borde, el nombre para mostrar y el atajo para ir a cada personaje. Los personajes se añaden automáticamente cuando se detectan.",
   "tab.characters.title": "personajes",

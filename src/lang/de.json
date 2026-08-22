@@ -551,6 +551,8 @@
   "tab.bounty.section.bounty-rate-overlay.heading": "Text-Overlays",
   "tab.bounty.section.bounty-rate-overlay.hint": "Zeigt ISK-Kopfgeldauszahlungen pro Minute/Stunde auf jeder Miniaturansicht an, berechnet aus EVE-Gamelogs. Erfordert eine aktivierte Chatlog-Überwachung.",
   "tab.bounty.title": "Kopfgeld-Overlay",
+  "tab.characters.section.per-character-configuration.empty-detail": "Füge unten einen Charakter hinzu oder verwende „Aus offenen Clients befüllen“, um automatisch einen zu erkennen.",
+  "tab.characters.section.per-character-configuration.empty-roster": "Noch keine Charaktere",
   "tab.characters.section.per-character-configuration.heading": "Charakterliste",
   "tab.characters.section.per-character-configuration.hint": "Passe die gespeicherte Position, Größe, Rahmenfarbe, den Anzeigenamen und den Direkt-Hotkey jedes Charakters an. Charaktere werden automatisch hinzugefügt, wenn sie erkannt werden.",
   "tab.characters.title": "Charaktere",
