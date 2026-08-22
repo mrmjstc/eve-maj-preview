@@ -182,7 +182,7 @@ pub const NotifInfoWindow = struct {
     /// Notification text color for a history row: the notification type's configured color, else the thumbnail overlay's default text color.
     fn resolveNotifTextColor(self: *const NotifInfoWindow, ntype: types.NotificationType) u32 {
         const type_cfg = self.config.thumbnail.notifications.getTypeConfig(ntype);
-        return (type_cfg.text_color orelse self.config.thumbnail.textColor) & 0x00FF_FFFF;
+        return (type_cfg.text_color orelse self.config.thumbnail.characterNameColor) & 0x00FF_FFFF;
     }
 
     fn computeRenderSignature(self: *const NotifInfoWindow, painter: *const painter_mod.Painter) u64 {

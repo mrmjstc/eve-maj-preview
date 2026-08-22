@@ -919,7 +919,14 @@ pub const CombatConfig = struct {
     show_outgoing: bool = true,
     incoming_color: u32 = 0xFFFF4444,
     outgoing_color: u32 = 0xFF44FF44,
-    font_size: i32 = 11,
+    incoming_bg_color: u32 = 0xE6000000,
+    outgoing_bg_color: u32 = 0xE6000000,
+    incoming_font_size: i32 = 11,
+    incoming_font_name: []const u8 = DEFAULT_FONT_NAME,
+    incoming_font_weight: types.FontWeight = .Regular,
+    outgoing_font_size: i32 = 11,
+    outgoing_font_name: []const u8 = DEFAULT_FONT_NAME,
+    outgoing_font_weight: types.FontWeight = .Regular,
     update_interval_ms: u32 = 1000,
     incoming_position: types.TextPosition = .TopCenter,
     outgoing_position: types.TextPosition = .BottomCenter,
@@ -931,12 +938,6 @@ pub const CombatConfig = struct {
     damage_alert_repeat_seconds: u32 = 10,
     // Comma-separated, case-insensitive substring match against the parsed weapon name (see activity_tracker.parseCombatLine/isWeaponExcluded); matching hits still count toward DPS stats, just don't retrigger the Taking Damage alert.
     damage_alert_excluded_weapons: []const u8 = "",
-    icon_enabled: bool = false,
-    icon_color: u32 = 0xFFFF4444,
-    icon_position: types.TextPosition = .TopRight,
-    icon_offset_x: i32 = 0,
-    icon_offset_y: i32 = 0,
-    icon_font_size: i32 = 20,
 
     pub const WINDOW_SECONDS_MIN: u32 = 1;
     pub const WINDOW_SECONDS_MAX: u32 = 3600;
@@ -952,14 +953,14 @@ pub const CombatConfig = struct {
     pub fn validate(self: *CombatConfig) void {
         if (self.window_seconds == 0) self.window_seconds = 60;
         if (self.window_seconds > WINDOW_SECONDS_MAX) self.window_seconds = WINDOW_SECONDS_MAX;
-        if (self.font_size < FONT_SIZE_MIN) self.font_size = FONT_SIZE_MIN;
-        if (self.font_size > FONT_SIZE_MAX) self.font_size = FONT_SIZE_MAX;
+        if (self.incoming_font_size < FONT_SIZE_MIN) self.incoming_font_size = FONT_SIZE_MIN;
+        if (self.incoming_font_size > FONT_SIZE_MAX) self.incoming_font_size = FONT_SIZE_MAX;
+        if (self.outgoing_font_size < FONT_SIZE_MIN) self.outgoing_font_size = FONT_SIZE_MIN;
+        if (self.outgoing_font_size > FONT_SIZE_MAX) self.outgoing_font_size = FONT_SIZE_MAX;
         if (self.update_interval_ms < UPDATE_INTERVAL_MS_MIN) self.update_interval_ms = UPDATE_INTERVAL_MS_MIN;
         if (self.update_interval_ms > UPDATE_INTERVAL_MS_MAX) self.update_interval_ms = UPDATE_INTERVAL_MS_MAX;
         if (self.damage_alert_repeat_seconds == 0) self.damage_alert_repeat_seconds = 1;
         if (self.damage_alert_repeat_seconds > DAMAGE_ALERT_REPEAT_SECONDS_MAX) self.damage_alert_repeat_seconds = DAMAGE_ALERT_REPEAT_SECONDS_MAX;
-        if (self.icon_font_size < FONT_SIZE_MIN) self.icon_font_size = FONT_SIZE_MIN;
-        if (self.icon_font_size > FONT_SIZE_MAX) self.icon_font_size = FONT_SIZE_MAX;
 
         if (self.incoming_offset_x < OFFSET_MIN) self.incoming_offset_x = OFFSET_MIN;
         if (self.incoming_offset_x > OFFSET_MAX) self.incoming_offset_x = OFFSET_MAX;
@@ -969,14 +970,16 @@ pub const CombatConfig = struct {
         if (self.outgoing_offset_x > OFFSET_MAX) self.outgoing_offset_x = OFFSET_MAX;
         if (self.outgoing_offset_y < OFFSET_MIN) self.outgoing_offset_y = OFFSET_MIN;
         if (self.outgoing_offset_y > OFFSET_MAX) self.outgoing_offset_y = OFFSET_MAX;
-        if (self.icon_offset_x < OFFSET_MIN) self.icon_offset_x = OFFSET_MIN;
-        if (self.icon_offset_x > OFFSET_MAX) self.icon_offset_x = OFFSET_MAX;
-        if (self.icon_offset_y < OFFSET_MIN) self.icon_offset_y = OFFSET_MIN;
-        if (self.icon_offset_y > OFFSET_MAX) self.icon_offset_y = OFFSET_MAX;
     }
 
     pub fn deinit(self: *CombatConfig, allocator: std.mem.Allocator) void {
         allocator.free(self.damage_alert_excluded_weapons);
+        if (self.incoming_font_name.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.incoming_font_name);
+        }
+        if (self.outgoing_font_name.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.outgoing_font_name);
+        }
     }
 
     pub const Wire = struct {
@@ -986,7 +989,14 @@ pub const CombatConfig = struct {
         show_outgoing: bool = (CombatConfig{}).show_outgoing,
         incoming_color: Argb = .{ .value = (CombatConfig{}).incoming_color },
         outgoing_color: Argb = .{ .value = (CombatConfig{}).outgoing_color },
-        font_size: i32 = (CombatConfig{}).font_size,
+        incoming_bg_color: Argb = .{ .value = (CombatConfig{}).incoming_bg_color },
+        outgoing_bg_color: Argb = .{ .value = (CombatConfig{}).outgoing_bg_color },
+        incoming_font_size: i32 = (CombatConfig{}).incoming_font_size,
+        incoming_font_name: []const u8 = DEFAULT_FONT_NAME,
+        incoming_font_weight: types.FontWeight = (CombatConfig{}).incoming_font_weight,
+        outgoing_font_size: i32 = (CombatConfig{}).outgoing_font_size,
+        outgoing_font_name: []const u8 = DEFAULT_FONT_NAME,
+        outgoing_font_weight: types.FontWeight = (CombatConfig{}).outgoing_font_weight,
         update_interval_ms: u32 = (CombatConfig{}).update_interval_ms,
         incoming_position: types.TextPosition = (CombatConfig{}).incoming_position,
         outgoing_position: types.TextPosition = (CombatConfig{}).outgoing_position,
@@ -997,12 +1007,6 @@ pub const CombatConfig = struct {
         damage_alert_enabled: bool = (CombatConfig{}).damage_alert_enabled,
         damage_alert_repeat_seconds: u32 = (CombatConfig{}).damage_alert_repeat_seconds,
         damage_alert_excluded_weapons: []const u8 = (CombatConfig{}).damage_alert_excluded_weapons,
-        icon_enabled: bool = (CombatConfig{}).icon_enabled,
-        icon_color: Argb = .{ .value = (CombatConfig{}).icon_color },
-        icon_position: types.TextPosition = (CombatConfig{}).icon_position,
-        icon_offset_x: i32 = (CombatConfig{}).icon_offset_x,
-        icon_offset_y: i32 = (CombatConfig{}).icon_offset_y,
-        icon_font_size: i32 = (CombatConfig{}).icon_font_size,
     };
 
     pub fn toWire(self: CombatConfig) Wire {
@@ -1013,7 +1017,14 @@ pub const CombatConfig = struct {
             .show_outgoing = self.show_outgoing,
             .incoming_color = .{ .value = self.incoming_color },
             .outgoing_color = .{ .value = self.outgoing_color },
-            .font_size = self.font_size,
+            .incoming_bg_color = .{ .value = self.incoming_bg_color },
+            .outgoing_bg_color = .{ .value = self.outgoing_bg_color },
+            .incoming_font_size = self.incoming_font_size,
+            .incoming_font_name = self.incoming_font_name,
+            .incoming_font_weight = self.incoming_font_weight,
+            .outgoing_font_size = self.outgoing_font_size,
+            .outgoing_font_name = self.outgoing_font_name,
+            .outgoing_font_weight = self.outgoing_font_weight,
             .update_interval_ms = self.update_interval_ms,
             .incoming_position = self.incoming_position,
             .outgoing_position = self.outgoing_position,
@@ -1024,12 +1035,6 @@ pub const CombatConfig = struct {
             .damage_alert_enabled = self.damage_alert_enabled,
             .damage_alert_repeat_seconds = self.damage_alert_repeat_seconds,
             .damage_alert_excluded_weapons = self.damage_alert_excluded_weapons,
-            .icon_enabled = self.icon_enabled,
-            .icon_color = .{ .value = self.icon_color },
-            .icon_position = self.icon_position,
-            .icon_offset_x = self.icon_offset_x,
-            .icon_offset_y = self.icon_offset_y,
-            .icon_font_size = self.icon_font_size,
         };
     }
 
@@ -1041,7 +1046,14 @@ pub const CombatConfig = struct {
             .show_outgoing = w.show_outgoing,
             .incoming_color = w.incoming_color.value,
             .outgoing_color = w.outgoing_color.value,
-            .font_size = w.font_size,
+            .incoming_bg_color = w.incoming_bg_color.value,
+            .outgoing_bg_color = w.outgoing_bg_color.value,
+            .incoming_font_size = w.incoming_font_size,
+            .incoming_font_name = try allocator.dupe(u8, w.incoming_font_name),
+            .incoming_font_weight = w.incoming_font_weight,
+            .outgoing_font_size = w.outgoing_font_size,
+            .outgoing_font_name = try allocator.dupe(u8, w.outgoing_font_name),
+            .outgoing_font_weight = w.outgoing_font_weight,
             .update_interval_ms = w.update_interval_ms,
             .incoming_position = w.incoming_position,
             .outgoing_position = w.outgoing_position,
@@ -1052,12 +1064,6 @@ pub const CombatConfig = struct {
             .damage_alert_enabled = w.damage_alert_enabled,
             .damage_alert_repeat_seconds = w.damage_alert_repeat_seconds,
             .damage_alert_excluded_weapons = try allocator.dupe(u8, w.damage_alert_excluded_weapons),
-            .icon_enabled = w.icon_enabled,
-            .icon_color = w.icon_color.value,
-            .icon_position = w.icon_position,
-            .icon_offset_x = w.icon_offset_x,
-            .icon_offset_y = w.icon_offset_y,
-            .icon_font_size = w.icon_font_size,
         };
     }
 };
@@ -1068,7 +1074,10 @@ pub const MiningConfig = struct {
     enabled: bool = false,
     window_seconds: u32 = 60,
     color: u32 = 0xFF44AAFF,
+    bg_color: u32 = 0xE6000000,
     font_size: i32 = 11,
+    font_name: []const u8 = DEFAULT_FONT_NAME,
+    font_weight: types.FontWeight = .Regular,
     update_interval_ms: u32 = 1000,
     position: types.TextPosition = .BottomRight,
     offset_x: i32 = 0,
@@ -1114,11 +1123,20 @@ pub const MiningConfig = struct {
         if (self.idle_alert_threshold > IDLE_ALERT_THRESHOLD_MAX) self.idle_alert_threshold = IDLE_ALERT_THRESHOLD_MAX;
     }
 
+    pub fn deinit(self: *MiningConfig, allocator: std.mem.Allocator) void {
+        if (self.font_name.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.font_name);
+        }
+    }
+
     pub const Wire = struct {
         enabled: bool = (MiningConfig{}).enabled,
         window_seconds: u32 = (MiningConfig{}).window_seconds,
         color: Argb = .{ .value = (MiningConfig{}).color },
+        bg_color: Argb = .{ .value = (MiningConfig{}).bg_color },
         font_size: i32 = (MiningConfig{}).font_size,
+        font_name: []const u8 = DEFAULT_FONT_NAME,
+        font_weight: types.FontWeight = (MiningConfig{}).font_weight,
         update_interval_ms: u32 = (MiningConfig{}).update_interval_ms,
         position: types.TextPosition = (MiningConfig{}).position,
         offset_x: i32 = (MiningConfig{}).offset_x,
@@ -1137,7 +1155,10 @@ pub const MiningConfig = struct {
             .enabled = self.enabled,
             .window_seconds = self.window_seconds,
             .color = .{ .value = self.color },
+            .bg_color = .{ .value = self.bg_color },
             .font_size = self.font_size,
+            .font_name = self.font_name,
+            .font_weight = self.font_weight,
             .update_interval_ms = self.update_interval_ms,
             .position = self.position,
             .offset_x = self.offset_x,
@@ -1152,12 +1173,15 @@ pub const MiningConfig = struct {
         };
     }
 
-    pub fn fromWire(w: Wire) MiningConfig {
+    pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !MiningConfig {
         return .{
             .enabled = w.enabled,
             .window_seconds = w.window_seconds,
             .color = w.color.value,
+            .bg_color = w.bg_color.value,
             .font_size = w.font_size,
+            .font_name = try allocator.dupe(u8, w.font_name),
+            .font_weight = w.font_weight,
             .update_interval_ms = w.update_interval_ms,
             .position = w.position,
             .offset_x = w.offset_x,
@@ -1178,7 +1202,10 @@ pub const BountyConfig = struct {
     enabled: bool = false,
     window_seconds: u32 = 1200,
     color: u32 = 0xFFFFD700,
+    bg_color: u32 = 0xE6000000,
     font_size: i32 = 11,
+    font_name: []const u8 = DEFAULT_FONT_NAME,
+    font_weight: types.FontWeight = .Regular,
     update_interval_ms: u32 = 1000,
     position: types.TextPosition = .TopRight,
     offset_x: i32 = 0,
@@ -1208,11 +1235,20 @@ pub const BountyConfig = struct {
         if (self.offset_y > OFFSET_MAX) self.offset_y = OFFSET_MAX;
     }
 
+    pub fn deinit(self: *BountyConfig, allocator: std.mem.Allocator) void {
+        if (self.font_name.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.font_name);
+        }
+    }
+
     pub const Wire = struct {
         enabled: bool = (BountyConfig{}).enabled,
         window_seconds: u32 = (BountyConfig{}).window_seconds,
         color: Argb = .{ .value = (BountyConfig{}).color },
+        bg_color: Argb = .{ .value = (BountyConfig{}).bg_color },
         font_size: i32 = (BountyConfig{}).font_size,
+        font_name: []const u8 = DEFAULT_FONT_NAME,
+        font_weight: types.FontWeight = (BountyConfig{}).font_weight,
         update_interval_ms: u32 = (BountyConfig{}).update_interval_ms,
         position: types.TextPosition = (BountyConfig{}).position,
         offset_x: i32 = (BountyConfig{}).offset_x,
@@ -1225,7 +1261,10 @@ pub const BountyConfig = struct {
             .enabled = self.enabled,
             .window_seconds = self.window_seconds,
             .color = .{ .value = self.color },
+            .bg_color = .{ .value = self.bg_color },
             .font_size = self.font_size,
+            .font_name = self.font_name,
+            .font_weight = self.font_weight,
             .update_interval_ms = self.update_interval_ms,
             .position = self.position,
             .offset_x = self.offset_x,
@@ -1234,12 +1273,15 @@ pub const BountyConfig = struct {
         };
     }
 
-    pub fn fromWire(w: Wire) BountyConfig {
+    pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !BountyConfig {
         return .{
             .enabled = w.enabled,
             .window_seconds = w.window_seconds,
             .color = w.color.value,
+            .bg_color = w.bg_color.value,
             .font_size = w.font_size,
+            .font_name = try allocator.dupe(u8, w.font_name),
+            .font_weight = w.font_weight,
             .update_interval_ms = w.update_interval_ms,
             .position = w.position,
             .offset_x = w.offset_x,
@@ -1342,6 +1384,10 @@ pub const NotificationConfig = struct {
     position: types.TextPosition = .Center,
     offset_x: i32 = 0,
     offset_y: i32 = 0,
+    font_name: []const u8 = DEFAULT_FONT_NAME,
+    font_size: i32 = 12,
+    font_weight: types.FontWeight = .Regular,
+    bg_color: u32 = 0xE6000000,
 
     suppress_click_duration_ms: u32 = 5000,
 
@@ -1373,6 +1419,10 @@ pub const NotificationConfig = struct {
         position: types.TextPosition = NotificationConfig.init().position,
         offset_x: i32 = NotificationConfig.init().offset_x,
         offset_y: i32 = NotificationConfig.init().offset_y,
+        font_name: []const u8 = DEFAULT_FONT_NAME,
+        font_size: i32 = NotificationConfig.init().font_size,
+        font_weight: types.FontWeight = NotificationConfig.init().font_weight,
+        bg_color: Argb = .{ .value = NotificationConfig.init().bg_color },
         suppress_click_duration_ms: u32 = NotificationConfig.init().suppress_click_duration_ms,
         tts_enabled: bool = NotificationConfig.init().tts_enabled,
         tts_volume: u8 = NotificationConfig.init().tts_volume,
@@ -1394,6 +1444,10 @@ pub const NotificationConfig = struct {
             .position = self.position,
             .offset_x = self.offset_x,
             .offset_y = self.offset_y,
+            .font_name = self.font_name,
+            .font_size = self.font_size,
+            .font_weight = self.font_weight,
+            .bg_color = .{ .value = self.bg_color },
             .suppress_click_duration_ms = self.suppress_click_duration_ms,
             .tts_enabled = self.tts_enabled,
             .tts_volume = self.tts_volume,
@@ -1405,7 +1459,7 @@ pub const NotificationConfig = struct {
         };
     }
 
-    pub fn fromWire(w: Wire) NotificationConfig {
+    pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !NotificationConfig {
         var map: std.enums.EnumArray(types.NotificationType, NotificationTypeConfig) = .initFill(.{});
         inline for (std.meta.fields(types.NotificationType)) |f| {
             const ntype = @field(types.NotificationType, f.name);
@@ -1416,6 +1470,10 @@ pub const NotificationConfig = struct {
             .position = w.position,
             .offset_x = w.offset_x,
             .offset_y = w.offset_y,
+            .font_name = try allocator.dupe(u8, w.font_name),
+            .font_size = w.font_size,
+            .font_weight = w.font_weight,
+            .bg_color = w.bg_color.value,
             .suppress_click_duration_ms = w.suppress_click_duration_ms,
             .tts_enabled = w.tts_enabled,
             .tts_volume = w.tts_volume,
@@ -1632,7 +1690,7 @@ pub const Config = struct {
 
         cfg.thumbnail = try ThumbnailConfig.fromWire(w.thumbnail, allocator);
         cfg.timer = w.timer;
-        // DisplayConfig.listViewFontName/notifInfoPanelFontName would otherwise be left pointing into parsed_wire's arena (freed once buildConfigFromJson returns) — give them their own heap-owned copies, same as ThumbnailConfig.fromWire does for thumbnail.textFontName.
+        // Otherwise these dangle once parsed_wire's arena frees - dupe like ThumbnailConfig.fromWire does.
         cfg.display = w.display;
         cfg.display.listViewFontName = try allocator.dupe(u8, w.display.listViewFontName);
         cfg.display.notifInfoPanelFontName = try allocator.dupe(u8, w.display.notifInfoPanelFontName);
@@ -1643,8 +1701,8 @@ pub const Config = struct {
         cfg.exclusion = w.exclusion;
         cfg.closeAll = w.closeAll;
         cfg.combat = try CombatConfig.fromWire(w.combat, allocator);
-        cfg.mining = MiningConfig.fromWire(w.mining);
-        cfg.bounty = BountyConfig.fromWire(w.bounty);
+        cfg.mining = try MiningConfig.fromWire(w.mining, allocator);
+        cfg.bounty = try BountyConfig.fromWire(w.bounty, allocator);
         cfg.requireEveFocus = w.hotkeys.requireEveFocus;
         cfg.resetGroupIndexOnNonGroupFocus = w.hotkeys.resetGroupIndexOnNonGroupFocus;
         cfg.autoRegisterProtocol = w.hotkeys.autoRegisterProtocol;
@@ -1793,26 +1851,33 @@ pub const Config = struct {
         showText: bool = true,
         showCharacterName: bool = true,
         showSystemName: bool = false,
-        textColor: u32 = 0xFFFFFF,
+        characterNameColor: u32 = 0xFFFFFF,
+        characterNameBgColor: u32 = 0xE6000000,
         useUniqueCharacterNameColors: bool = false,
-        textBgColor: u32 = 0x80000000,
-        textBgColorInheritBorderColor: bool = false,
-        textFontName: []const u8 = DEFAULT_FONT_NAME,
-        textFontSize: i32 = 12,
-        textFontWeight: types.FontWeight = .Regular,
+        characterNameFontName: []const u8 = DEFAULT_FONT_NAME,
+        characterNameFontSize: i32 = 12,
+        characterNameFontWeight: types.FontWeight = .Regular,
         useUniqueSystemColors: bool = false,
         systemNameColor: u32 = 0xFFFFFF,
+        systemNameBgColor: u32 = 0xE6000000,
         characterNamePosition: types.TextPosition = .TopLeft,
         characterNameOffsetX: i32 = 0,
         characterNameOffsetY: i32 = 0,
         systemNamePosition: types.TextPosition = .BottomLeft,
         systemNameOffsetX: i32 = 0,
         systemNameOffsetY: i32 = 0,
-        showQuickGroupBadge: bool = true,
+        systemNameFontName: []const u8 = DEFAULT_FONT_NAME,
+        systemNameFontSize: i32 = 12,
+        systemNameFontWeight: types.FontWeight = .Regular,
+        showQuickGroupBadge: bool = false,
         quickGroupBadgeColor: u32 = 0xFF44FF44,
+        quickGroupBadgeBgColor: u32 = 0xE6000000,
         quickGroupBadgePosition: types.TextPosition = .RightCenter,
         quickGroupBadgeOffsetX: i32 = 0,
         quickGroupBadgeOffsetY: i32 = 0,
+        quickGroupBadgeFontName: []const u8 = DEFAULT_FONT_NAME,
+        quickGroupBadgeFontSize: i32 = 12,
+        quickGroupBadgeFontWeight: types.FontWeight = .Regular,
         exclusionOverlayStyle: types.ExclusionOverlayStyle = .X,
         exclusionOverlayColor: u32 = 0x33FF0000,
         notifications: NotificationConfig = NotificationConfig.init(),
@@ -1895,13 +1960,18 @@ pub const Config = struct {
                 self.inactiveBorderWidth = BORDER_WIDTH_MAX;
             }
 
-            if (self.textFontSize < FONT_SIZE_MIN) {
-                slog.warn("Font size {} too small, clamping to {}", .{ self.textFontSize, FONT_SIZE_MIN });
-                self.textFontSize = FONT_SIZE_MIN;
-            } else if (self.textFontSize > FONT_SIZE_MAX) {
-                slog.warn("Font size {} too large, clamping to {}", .{ self.textFontSize, FONT_SIZE_MAX });
-                self.textFontSize = FONT_SIZE_MAX;
+            if (self.characterNameFontSize < FONT_SIZE_MIN) {
+                slog.warn("Font size {} too small, clamping to {}", .{ self.characterNameFontSize, FONT_SIZE_MIN });
+                self.characterNameFontSize = FONT_SIZE_MIN;
+            } else if (self.characterNameFontSize > FONT_SIZE_MAX) {
+                slog.warn("Font size {} too large, clamping to {}", .{ self.characterNameFontSize, FONT_SIZE_MAX });
+                self.characterNameFontSize = FONT_SIZE_MAX;
             }
+
+            if (self.systemNameFontSize < FONT_SIZE_MIN) self.systemNameFontSize = FONT_SIZE_MIN;
+            if (self.systemNameFontSize > FONT_SIZE_MAX) self.systemNameFontSize = FONT_SIZE_MAX;
+            if (self.quickGroupBadgeFontSize < FONT_SIZE_MIN) self.quickGroupBadgeFontSize = FONT_SIZE_MIN;
+            if (self.quickGroupBadgeFontSize > FONT_SIZE_MAX) self.quickGroupBadgeFontSize = FONT_SIZE_MAX;
 
             if (self.thumbnailOpacity < OPACITY_MIN) {
                 slog.warn("Thumbnail opacity {} too low, clamping to {}", .{ self.thumbnailOpacity, OPACITY_MIN });
@@ -1925,6 +1995,8 @@ pub const Config = struct {
             if (self.notifications.offset_x > OFFSET_MAX) self.notifications.offset_x = OFFSET_MAX;
             if (self.notifications.offset_y < OFFSET_MIN) self.notifications.offset_y = OFFSET_MIN;
             if (self.notifications.offset_y > OFFSET_MAX) self.notifications.offset_y = OFFSET_MAX;
+            if (self.notifications.font_size < FONT_SIZE_MIN) self.notifications.font_size = FONT_SIZE_MIN;
+            if (self.notifications.font_size > FONT_SIZE_MAX) self.notifications.font_size = FONT_SIZE_MAX;
 
             if (self.notifications.tts_volume > TTS_VOLUME_MAX) self.notifications.tts_volume = TTS_VOLUME_MAX;
             if (self.notifications.tts_rate < TTS_RATE_MIN) self.notifications.tts_rate = TTS_RATE_MIN;
@@ -1972,26 +2044,33 @@ pub const Config = struct {
             showText: bool = (ThumbnailConfig{}).showText,
             showCharacterName: bool = (ThumbnailConfig{}).showCharacterName,
             showSystemName: bool = (ThumbnailConfig{}).showSystemName,
-            textColor: Argb = .{ .value = (ThumbnailConfig{}).textColor },
+            characterNameColor: Argb = .{ .value = (ThumbnailConfig{}).characterNameColor },
+            characterNameBgColor: Argb = .{ .value = (ThumbnailConfig{}).characterNameBgColor },
             useUniqueCharacterNameColors: bool = (ThumbnailConfig{}).useUniqueCharacterNameColors,
-            textBgColor: Argb = .{ .value = (ThumbnailConfig{}).textBgColor },
-            textBgColorInheritBorderColor: bool = (ThumbnailConfig{}).textBgColorInheritBorderColor,
-            textFontName: []const u8 = DEFAULT_FONT_NAME,
-            textFontSize: i32 = (ThumbnailConfig{}).textFontSize,
-            textFontWeight: types.FontWeight = (ThumbnailConfig{}).textFontWeight,
+            characterNameFontName: []const u8 = DEFAULT_FONT_NAME,
+            characterNameFontSize: i32 = (ThumbnailConfig{}).characterNameFontSize,
+            characterNameFontWeight: types.FontWeight = (ThumbnailConfig{}).characterNameFontWeight,
             useUniqueSystemColors: bool = (ThumbnailConfig{}).useUniqueSystemColors,
             systemNameColor: Argb = .{ .value = (ThumbnailConfig{}).systemNameColor },
+            systemNameBgColor: Argb = .{ .value = (ThumbnailConfig{}).systemNameBgColor },
             characterNamePosition: types.TextPosition = (ThumbnailConfig{}).characterNamePosition,
             characterNameOffsetX: i32 = (ThumbnailConfig{}).characterNameOffsetX,
             characterNameOffsetY: i32 = (ThumbnailConfig{}).characterNameOffsetY,
             systemNamePosition: types.TextPosition = (ThumbnailConfig{}).systemNamePosition,
             systemNameOffsetX: i32 = (ThumbnailConfig{}).systemNameOffsetX,
             systemNameOffsetY: i32 = (ThumbnailConfig{}).systemNameOffsetY,
+            systemNameFontName: []const u8 = DEFAULT_FONT_NAME,
+            systemNameFontSize: i32 = (ThumbnailConfig{}).systemNameFontSize,
+            systemNameFontWeight: types.FontWeight = (ThumbnailConfig{}).systemNameFontWeight,
             showQuickGroupBadge: bool = (ThumbnailConfig{}).showQuickGroupBadge,
             quickGroupBadgeColor: Argb = .{ .value = (ThumbnailConfig{}).quickGroupBadgeColor },
+            quickGroupBadgeBgColor: Argb = .{ .value = (ThumbnailConfig{}).quickGroupBadgeBgColor },
             quickGroupBadgePosition: types.TextPosition = (ThumbnailConfig{}).quickGroupBadgePosition,
             quickGroupBadgeOffsetX: i32 = (ThumbnailConfig{}).quickGroupBadgeOffsetX,
             quickGroupBadgeOffsetY: i32 = (ThumbnailConfig{}).quickGroupBadgeOffsetY,
+            quickGroupBadgeFontName: []const u8 = DEFAULT_FONT_NAME,
+            quickGroupBadgeFontSize: i32 = (ThumbnailConfig{}).quickGroupBadgeFontSize,
+            quickGroupBadgeFontWeight: types.FontWeight = (ThumbnailConfig{}).quickGroupBadgeFontWeight,
             exclusionOverlayStyle: types.ExclusionOverlayStyle = (ThumbnailConfig{}).exclusionOverlayStyle,
             exclusionOverlayColor: Argb = .{ .value = (ThumbnailConfig{}).exclusionOverlayColor },
             notifications: NotificationConfig.Wire = .{},
@@ -2024,26 +2103,33 @@ pub const Config = struct {
                 .showText = self.showText,
                 .showCharacterName = self.showCharacterName,
                 .showSystemName = self.showSystemName,
-                .textColor = .{ .value = self.textColor },
+                .characterNameColor = .{ .value = self.characterNameColor },
+                .characterNameBgColor = .{ .value = self.characterNameBgColor },
                 .useUniqueCharacterNameColors = self.useUniqueCharacterNameColors,
-                .textBgColor = .{ .value = self.textBgColor },
-                .textBgColorInheritBorderColor = self.textBgColorInheritBorderColor,
-                .textFontName = self.textFontName,
-                .textFontSize = self.textFontSize,
-                .textFontWeight = self.textFontWeight,
+                .characterNameFontName = self.characterNameFontName,
+                .characterNameFontSize = self.characterNameFontSize,
+                .characterNameFontWeight = self.characterNameFontWeight,
                 .useUniqueSystemColors = self.useUniqueSystemColors,
                 .systemNameColor = .{ .value = self.systemNameColor },
+                .systemNameBgColor = .{ .value = self.systemNameBgColor },
                 .characterNamePosition = self.characterNamePosition,
                 .characterNameOffsetX = self.characterNameOffsetX,
                 .characterNameOffsetY = self.characterNameOffsetY,
                 .systemNamePosition = self.systemNamePosition,
                 .systemNameOffsetX = self.systemNameOffsetX,
                 .systemNameOffsetY = self.systemNameOffsetY,
+                .systemNameFontName = self.systemNameFontName,
+                .systemNameFontSize = self.systemNameFontSize,
+                .systemNameFontWeight = self.systemNameFontWeight,
                 .showQuickGroupBadge = self.showQuickGroupBadge,
                 .quickGroupBadgeColor = .{ .value = self.quickGroupBadgeColor },
+                .quickGroupBadgeBgColor = .{ .value = self.quickGroupBadgeBgColor },
                 .quickGroupBadgePosition = self.quickGroupBadgePosition,
                 .quickGroupBadgeOffsetX = self.quickGroupBadgeOffsetX,
                 .quickGroupBadgeOffsetY = self.quickGroupBadgeOffsetY,
+                .quickGroupBadgeFontName = self.quickGroupBadgeFontName,
+                .quickGroupBadgeFontSize = self.quickGroupBadgeFontSize,
+                .quickGroupBadgeFontWeight = self.quickGroupBadgeFontWeight,
                 .exclusionOverlayStyle = self.exclusionOverlayStyle,
                 .exclusionOverlayColor = .{ .value = self.exclusionOverlayColor },
                 .notifications = self.notifications.toWire(),
@@ -2077,29 +2163,36 @@ pub const Config = struct {
                 .showText = w.showText,
                 .showCharacterName = w.showCharacterName,
                 .showSystemName = w.showSystemName,
-                .textColor = w.textColor.value,
+                .characterNameColor = w.characterNameColor.value,
+                .characterNameBgColor = w.characterNameBgColor.value,
                 .useUniqueCharacterNameColors = w.useUniqueCharacterNameColors,
-                .textBgColor = w.textBgColor.value,
-                .textBgColorInheritBorderColor = w.textBgColorInheritBorderColor,
-                .textFontName = try allocator.dupe(u8, w.textFontName),
-                .textFontSize = w.textFontSize,
-                .textFontWeight = w.textFontWeight,
+                .characterNameFontName = try allocator.dupe(u8, w.characterNameFontName),
+                .characterNameFontSize = w.characterNameFontSize,
+                .characterNameFontWeight = w.characterNameFontWeight,
                 .useUniqueSystemColors = w.useUniqueSystemColors,
                 .systemNameColor = w.systemNameColor.value,
+                .systemNameBgColor = w.systemNameBgColor.value,
                 .characterNamePosition = w.characterNamePosition,
                 .characterNameOffsetX = w.characterNameOffsetX,
                 .characterNameOffsetY = w.characterNameOffsetY,
                 .systemNamePosition = w.systemNamePosition,
                 .systemNameOffsetX = w.systemNameOffsetX,
                 .systemNameOffsetY = w.systemNameOffsetY,
+                .systemNameFontName = try allocator.dupe(u8, w.systemNameFontName),
+                .systemNameFontSize = w.systemNameFontSize,
+                .systemNameFontWeight = w.systemNameFontWeight,
                 .showQuickGroupBadge = w.showQuickGroupBadge,
                 .quickGroupBadgeColor = w.quickGroupBadgeColor.value,
+                .quickGroupBadgeBgColor = w.quickGroupBadgeBgColor.value,
                 .quickGroupBadgePosition = w.quickGroupBadgePosition,
                 .quickGroupBadgeOffsetX = w.quickGroupBadgeOffsetX,
                 .quickGroupBadgeOffsetY = w.quickGroupBadgeOffsetY,
+                .quickGroupBadgeFontName = try allocator.dupe(u8, w.quickGroupBadgeFontName),
+                .quickGroupBadgeFontSize = w.quickGroupBadgeFontSize,
+                .quickGroupBadgeFontWeight = w.quickGroupBadgeFontWeight,
                 .exclusionOverlayStyle = w.exclusionOverlayStyle,
                 .exclusionOverlayColor = w.exclusionOverlayColor.value,
-                .notifications = NotificationConfig.fromWire(w.notifications),
+                .notifications = try NotificationConfig.fromWire(w.notifications, allocator),
                 .thumbnailOpacity = w.thumbnailOpacity,
                 .applyOpacityToOverlayTexts = w.applyOpacityToOverlayTexts,
                 .activeThumbnailHidden = w.activeThumbnailHidden,
@@ -2567,33 +2660,31 @@ pub const Config = struct {
         if (obj.get("showSystemName")) |v| {
             if (v == .bool) thumb.showSystemName = v.bool;
         }
-        if (obj.get("textColor")) |v| {
-            if (v == .string) thumb.textColor = try parseHexColor(v.string);
+        if (obj.get("characterNameColor")) |v| {
+            if (v == .string) thumb.characterNameColor = try parseHexColor(v.string);
+        }
+        if (obj.get("characterNameBgColor")) |v| {
+            if (v == .string) thumb.characterNameBgColor = try parseHexColor(v.string);
         }
         if (obj.get("useUniqueCharacterNameColors")) |v| {
             if (v == .bool) thumb.useUniqueCharacterNameColors = v.bool;
         }
-        if (obj.get("textBgColor")) |v| {
-            if (v == .string) thumb.textBgColor = try parseHexColor(v.string);
-        }
-        if (obj.get("textBgColorInheritBorderColor")) |v| {
-            if (v == .bool) thumb.textBgColorInheritBorderColor = v.bool;
-        }
-        if (obj.get("textFontName")) |v| {
-            if (v == .string) {
-                const old_font = thumb.textFontName;
-                thumb.textFontName = try allocator.dupe(u8, v.string);
+        if (obj.get("characterNameFontName")) |v| {
+            // Skip if unchanged, or a no-op live-preview resend dangles Painter's borrowed cached_fonts pointer.
+            if (v == .string and !std.mem.eql(u8, thumb.characterNameFontName, v.string)) {
+                const old_font = thumb.characterNameFontName;
+                thumb.characterNameFontName = try allocator.dupe(u8, v.string);
                 if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
                     allocator.free(old_font);
                 }
             }
         }
-        if (obj.get("textFontSize")) |v| {
-            if (v == .integer) thumb.textFontSize = std.math.cast(i32, v.integer) orelse thumb.textFontSize;
+        if (obj.get("characterNameFontSize")) |v| {
+            if (v == .integer) thumb.characterNameFontSize = std.math.cast(i32, v.integer) orelse thumb.characterNameFontSize;
         }
-        if (obj.get("textFontWeight")) |v| {
+        if (obj.get("characterNameFontWeight")) |v| {
             if (v == .string) {
-                thumb.textFontWeight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
+                thumb.characterNameFontWeight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
             }
         }
         if (obj.get("useUniqueSystemColors")) |v| {
@@ -2601,6 +2692,27 @@ pub const Config = struct {
         }
         if (obj.get("systemNameColor")) |v| {
             if (v == .string) thumb.systemNameColor = try parseHexColor(v.string);
+        }
+        if (obj.get("systemNameBgColor")) |v| {
+            if (v == .string) thumb.systemNameBgColor = try parseHexColor(v.string);
+        }
+        if (obj.get("systemNameFontName")) |v| {
+            // See characterNameFontName above for why this guard matters.
+            if (v == .string and !std.mem.eql(u8, thumb.systemNameFontName, v.string)) {
+                const old_font = thumb.systemNameFontName;
+                thumb.systemNameFontName = try allocator.dupe(u8, v.string);
+                if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
+                    allocator.free(old_font);
+                }
+            }
+        }
+        if (obj.get("systemNameFontSize")) |v| {
+            if (v == .integer) thumb.systemNameFontSize = std.math.cast(i32, v.integer) orelse thumb.systemNameFontSize;
+        }
+        if (obj.get("systemNameFontWeight")) |v| {
+            if (v == .string) {
+                thumb.systemNameFontWeight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
+            }
         }
         if (obj.get("thumbnailOpacity")) |v| {
             if (v == .integer) {
@@ -2650,6 +2762,9 @@ pub const Config = struct {
         if (obj.get("quickGroupBadgeColor")) |v| {
             if (v == .string) thumb.quickGroupBadgeColor = try parseHexColor(v.string);
         }
+        if (obj.get("quickGroupBadgeBgColor")) |v| {
+            if (v == .string) thumb.quickGroupBadgeBgColor = try parseHexColor(v.string);
+        }
         if (obj.get("quickGroupBadgePosition")) |v| {
             if (v == .string) {
                 thumb.quickGroupBadgePosition = std.meta.stringToEnum(types.TextPosition, v.string) orelse .RightCenter;
@@ -2660,6 +2775,24 @@ pub const Config = struct {
         }
         if (obj.get("quickGroupBadgeOffsetY")) |v| {
             if (v == .integer) thumb.quickGroupBadgeOffsetY = std.math.cast(i32, v.integer) orelse thumb.quickGroupBadgeOffsetY;
+        }
+        if (obj.get("quickGroupBadgeFontName")) |v| {
+            // See characterNameFontName above for why this guard matters.
+            if (v == .string and !std.mem.eql(u8, thumb.quickGroupBadgeFontName, v.string)) {
+                const old_font = thumb.quickGroupBadgeFontName;
+                thumb.quickGroupBadgeFontName = try allocator.dupe(u8, v.string);
+                if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
+                    allocator.free(old_font);
+                }
+            }
+        }
+        if (obj.get("quickGroupBadgeFontSize")) |v| {
+            if (v == .integer) thumb.quickGroupBadgeFontSize = std.math.cast(i32, v.integer) orelse thumb.quickGroupBadgeFontSize;
+        }
+        if (obj.get("quickGroupBadgeFontWeight")) |v| {
+            if (v == .string) {
+                thumb.quickGroupBadgeFontWeight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
+            }
         }
         if (obj.get("exclusionOverlayStyle")) |v| {
             if (v == .string) {
@@ -2672,12 +2805,12 @@ pub const Config = struct {
 
         if (obj.get("notifications")) |notif_val| {
             if (notif_val == .object) {
-                try parseJsonNotificationConfig(&thumb.notifications, notif_val.object);
+                try parseJsonNotificationConfig(&thumb.notifications, notif_val.object, allocator);
             }
         }
     }
 
-    fn parseJsonNotificationConfig(notif: *NotificationConfig, obj: std.json.ObjectMap) !void {
+    fn parseJsonNotificationConfig(notif: *NotificationConfig, obj: std.json.ObjectMap, allocator: std.mem.Allocator) !void {
         if (obj.get("enabled")) |v| {
             if (v == .bool) notif.enabled = v.bool;
         }
@@ -2691,6 +2824,27 @@ pub const Config = struct {
         }
         if (obj.get("offset_y")) |v| {
             if (v == .integer) notif.offset_y = std.math.cast(i32, v.integer) orelse notif.offset_y;
+        }
+        if (obj.get("font_name")) |v| {
+            // See ThumbnailConfig's characterNameFontName parsing above for why this guard matters.
+            if (v == .string and !std.mem.eql(u8, notif.font_name, v.string)) {
+                const old_font = notif.font_name;
+                notif.font_name = try allocator.dupe(u8, v.string);
+                if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
+                    allocator.free(old_font);
+                }
+            }
+        }
+        if (obj.get("font_size")) |v| {
+            if (v == .integer) notif.font_size = std.math.cast(i32, v.integer) orelse notif.font_size;
+        }
+        if (obj.get("font_weight")) |v| {
+            if (v == .string) {
+                notif.font_weight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
+            }
+        }
+        if (obj.get("bg_color")) |v| {
+            if (v == .string) notif.bg_color = try parseHexColor(v.string);
         }
         if (obj.get("suppress_click_duration_ms")) |v| {
             if (v == .integer) notif.suppress_click_duration_ms = std.math.cast(u32, v.integer) orelse notif.suppress_click_duration_ms;
@@ -2874,7 +3028,8 @@ pub const Config = struct {
             }
         }
         if (obj.get("listViewFontName")) |v| {
-            if (v == .string) {
+            // Same guard as ThumbnailConfig's characterNameFontName parsing, and the same pre-existing bug.
+            if (v == .string and !std.mem.eql(u8, display.listViewFontName, v.string)) {
                 const old_font = display.listViewFontName;
                 display.listViewFontName = try allocator.dupe(u8, v.string);
                 if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
@@ -2911,7 +3066,8 @@ pub const Config = struct {
             }
         }
         if (obj.get("notifInfoPanelFontName")) |v| {
-            if (v == .string) {
+            // See listViewFontName above for why this guard matters.
+            if (v == .string and !std.mem.eql(u8, display.notifInfoPanelFontName, v.string)) {
                 const old_font = display.notifInfoPanelFontName;
                 display.notifInfoPanelFontName = try allocator.dupe(u8, v.string);
                 if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
@@ -3315,17 +3471,20 @@ pub const Config = struct {
             .@"thumbnail.height" = Range{ .min = ThumbnailConfig.HEIGHT_MIN, .max = ThumbnailConfig.HEIGHT_MAX },
             .@"thumbnail.borderWidth" = Range{ .min = ThumbnailConfig.BORDER_WIDTH_MIN, .max = ThumbnailConfig.BORDER_WIDTH_MAX },
             .@"thumbnail.inactiveBorderWidth" = Range{ .min = ThumbnailConfig.BORDER_WIDTH_MIN, .max = ThumbnailConfig.BORDER_WIDTH_MAX },
-            .@"thumbnail.textFontSize" = Range{ .min = ThumbnailConfig.FONT_SIZE_MIN, .max = ThumbnailConfig.FONT_SIZE_MAX },
+            .@"thumbnail.characterNameFontSize" = Range{ .min = ThumbnailConfig.FONT_SIZE_MIN, .max = ThumbnailConfig.FONT_SIZE_MAX },
             .@"thumbnail.characterNameOffsetX" = Range{ .min = ThumbnailConfig.OFFSET_MIN, .max = ThumbnailConfig.OFFSET_MAX },
             .@"thumbnail.characterNameOffsetY" = Range{ .min = ThumbnailConfig.OFFSET_MIN, .max = ThumbnailConfig.OFFSET_MAX },
             .@"thumbnail.systemNameOffsetX" = Range{ .min = ThumbnailConfig.OFFSET_MIN, .max = ThumbnailConfig.OFFSET_MAX },
             .@"thumbnail.systemNameOffsetY" = Range{ .min = ThumbnailConfig.OFFSET_MIN, .max = ThumbnailConfig.OFFSET_MAX },
+            .@"thumbnail.systemNameFontSize" = Range{ .min = ThumbnailConfig.FONT_SIZE_MIN, .max = ThumbnailConfig.FONT_SIZE_MAX },
             .@"thumbnail.quickGroupBadgeOffsetX" = Range{ .min = ThumbnailConfig.OFFSET_MIN, .max = ThumbnailConfig.OFFSET_MAX },
             .@"thumbnail.quickGroupBadgeOffsetY" = Range{ .min = ThumbnailConfig.OFFSET_MIN, .max = ThumbnailConfig.OFFSET_MAX },
+            .@"thumbnail.quickGroupBadgeFontSize" = Range{ .min = ThumbnailConfig.FONT_SIZE_MIN, .max = ThumbnailConfig.FONT_SIZE_MAX },
             .@"thumbnail.hideDebounceMs" = Range{ .min = 0, .max = ThumbnailConfig.HIDE_DEBOUNCE_MS_MAX },
             .@"thumbnail.thumbnailOpacity" = Range{ .min = ThumbnailConfig.OPACITY_MIN, .max = 255 },
             .@"thumbnail.notifications.offset_x" = Range{ .min = ThumbnailConfig.OFFSET_MIN, .max = ThumbnailConfig.OFFSET_MAX },
             .@"thumbnail.notifications.offset_y" = Range{ .min = ThumbnailConfig.OFFSET_MIN, .max = ThumbnailConfig.OFFSET_MAX },
+            .@"thumbnail.notifications.font_size" = Range{ .min = ThumbnailConfig.FONT_SIZE_MIN, .max = ThumbnailConfig.FONT_SIZE_MAX },
             .@"thumbnail.notifications.tts_volume" = Range{ .min = 0, .max = ThumbnailConfig.TTS_VOLUME_MAX },
             .@"thumbnail.notifications.tts_rate" = Range{ .min = ThumbnailConfig.TTS_RATE_MIN, .max = ThumbnailConfig.TTS_RATE_MAX },
             .@"thumbnail.notifications.notified_cycle_retention_seconds" = Range{ .min = ThumbnailConfig.CYCLE_RETENTION_MIN, .max = ThumbnailConfig.CYCLE_RETENTION_MAX },
@@ -3357,14 +3516,12 @@ pub const Config = struct {
             .@"combat.window_seconds" = Range{ .min = CombatConfig.WINDOW_SECONDS_MIN, .max = CombatConfig.WINDOW_SECONDS_MAX },
             .@"combat.update_interval_ms" = Range{ .min = CombatConfig.UPDATE_INTERVAL_MS_MIN, .max = CombatConfig.UPDATE_INTERVAL_MS_MAX },
             .@"combat.damage_alert_repeat_seconds" = Range{ .min = CombatConfig.DAMAGE_ALERT_REPEAT_SECONDS_MIN, .max = CombatConfig.DAMAGE_ALERT_REPEAT_SECONDS_MAX },
-            .@"combat.font_size" = Range{ .min = CombatConfig.FONT_SIZE_MIN, .max = CombatConfig.FONT_SIZE_MAX },
-            .@"combat.icon_font_size" = Range{ .min = CombatConfig.FONT_SIZE_MIN, .max = CombatConfig.FONT_SIZE_MAX },
+            .@"combat.incoming_font_size" = Range{ .min = CombatConfig.FONT_SIZE_MIN, .max = CombatConfig.FONT_SIZE_MAX },
+            .@"combat.outgoing_font_size" = Range{ .min = CombatConfig.FONT_SIZE_MIN, .max = CombatConfig.FONT_SIZE_MAX },
             .@"combat.incoming_offset_x" = Range{ .min = CombatConfig.OFFSET_MIN, .max = CombatConfig.OFFSET_MAX },
             .@"combat.incoming_offset_y" = Range{ .min = CombatConfig.OFFSET_MIN, .max = CombatConfig.OFFSET_MAX },
             .@"combat.outgoing_offset_x" = Range{ .min = CombatConfig.OFFSET_MIN, .max = CombatConfig.OFFSET_MAX },
             .@"combat.outgoing_offset_y" = Range{ .min = CombatConfig.OFFSET_MIN, .max = CombatConfig.OFFSET_MAX },
-            .@"combat.icon_offset_x" = Range{ .min = CombatConfig.OFFSET_MIN, .max = CombatConfig.OFFSET_MAX },
-            .@"combat.icon_offset_y" = Range{ .min = CombatConfig.OFFSET_MIN, .max = CombatConfig.OFFSET_MAX },
 
             .@"mining.window_seconds" = Range{ .min = MiningConfig.WINDOW_SECONDS_MIN, .max = MiningConfig.WINDOW_SECONDS_MAX },
             .@"mining.update_interval_ms" = Range{ .min = MiningConfig.UPDATE_INTERVAL_MS_MIN, .max = MiningConfig.UPDATE_INTERVAL_MS_MAX },
@@ -3394,9 +3551,18 @@ pub const Config = struct {
         }
         self.windowFilters.deinit(allocator);
 
-        // textFontName may still point at the DEFAULT_FONT_NAME literal; only heap-owned copies get freed.
-        if (self.thumbnail.textFontName.ptr != DEFAULT_FONT_NAME.ptr) {
-            allocator.free(self.thumbnail.textFontName);
+        // characterNameFontName may still point at the DEFAULT_FONT_NAME literal; only heap-owned copies get freed.
+        if (self.thumbnail.characterNameFontName.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.thumbnail.characterNameFontName);
+        }
+        if (self.thumbnail.systemNameFontName.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.thumbnail.systemNameFontName);
+        }
+        if (self.thumbnail.quickGroupBadgeFontName.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.thumbnail.quickGroupBadgeFontName);
+        }
+        if (self.thumbnail.notifications.font_name.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.thumbnail.notifications.font_name);
         }
         if (self.display.listViewFontName.ptr != DEFAULT_FONT_NAME.ptr) {
             allocator.free(self.display.listViewFontName);
@@ -3439,6 +3605,8 @@ pub const Config = struct {
 
         self.chatlog.deinit(allocator);
         self.combat.deinit(allocator);
+        self.mining.deinit(allocator);
+        self.bounty.deinit(allocator);
     }
 
     /// Discard the in-memory thumbnail appearance, layout, and system color overrides, replacing them with a fresh read of this profile from disk, to revert an unsaved live-preview patch (see PROTOCOL_REVERT_PREVIEW); startX/startY are left untouched.
@@ -3446,7 +3614,7 @@ pub const Config = struct {
         var fresh = try loadProfile(allocator, self.profile_name);
 
         const new_thumb = fresh.thumbnail;
-        // Detach the thumbnail we're keeping before fresh.deinit() runs, so its owned textFontName isn't freed out from under new_thumb.
+        // Detach before fresh.deinit() runs, or it frees new_thumb's owned strings out from under it.
         fresh.thumbnail = ThumbnailConfig{};
 
         const new_colors = fresh.systemColors;
@@ -3503,8 +3671,17 @@ pub const Config = struct {
 
         fresh.deinit();
 
-        if (self.thumbnail.textFontName.ptr != DEFAULT_FONT_NAME.ptr) {
-            allocator.free(self.thumbnail.textFontName);
+        if (self.thumbnail.characterNameFontName.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.thumbnail.characterNameFontName);
+        }
+        if (self.thumbnail.systemNameFontName.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.thumbnail.systemNameFontName);
+        }
+        if (self.thumbnail.quickGroupBadgeFontName.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.thumbnail.quickGroupBadgeFontName);
+        }
+        if (self.thumbnail.notifications.font_name.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.thumbnail.notifications.font_name);
         }
         self.thumbnail = new_thumb;
 

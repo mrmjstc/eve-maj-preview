@@ -193,25 +193,30 @@ const CONFIG_SCHEMA = [
     { id: 'systemNamePosition', path: 'thumbnail.systemNamePosition' },
     { id: 'systemNameOffsetX', path: 'thumbnail.systemNameOffsetX' },
     { id: 'systemNameOffsetY', path: 'thumbnail.systemNameOffsetY' },
+    { id: 'systemNameFontName', path: 'thumbnail.systemNameFontName' },
+    { id: 'systemNameFontSize', path: 'thumbnail.systemNameFontSize' },
+    { id: 'systemNameFontWeight', path: 'thumbnail.systemNameFontWeight' },
     { id: 'showQuickGroupBadge', path: 'thumbnail.showQuickGroupBadge' },
     { id: 'quickGroupBadgePosition', path: 'thumbnail.quickGroupBadgePosition' },
     { id: 'quickGroupBadgeOffsetX', path: 'thumbnail.quickGroupBadgeOffsetX' },
     { id: 'quickGroupBadgeOffsetY', path: 'thumbnail.quickGroupBadgeOffsetY' },
     { id: 'quickGroupBadgeColor', path: 'thumbnail.quickGroupBadgeColor' },
+    { id: 'quickGroupBadgeFontName', path: 'thumbnail.quickGroupBadgeFontName' },
+    { id: 'quickGroupBadgeFontSize', path: 'thumbnail.quickGroupBadgeFontSize' },
+    { id: 'quickGroupBadgeFontWeight', path: 'thumbnail.quickGroupBadgeFontWeight' },
     { id: 'exclusionOverlayStyle', path: 'thumbnail.exclusionOverlayStyle' },
     // exclusionOverlayColor/exclusionOverlayOpacity are special-cased below.
     { id: 'useUniqueSystemColors', path: 'thumbnail.useUniqueSystemColors' },
     { id: 'useUniqueCharacterNameColors', path: 'thumbnail.useUniqueCharacterNameColors' },
-    { id: 'textFontName', path: 'thumbnail.textFontName' },
-    { id: 'textFontSize', path: 'thumbnail.textFontSize' },
-    { id: 'textFontWeight', path: 'thumbnail.textFontWeight' },
+    { id: 'characterNameFontName', path: 'thumbnail.characterNameFontName' },
+    { id: 'characterNameFontSize', path: 'thumbnail.characterNameFontSize' },
+    { id: 'characterNameFontWeight', path: 'thumbnail.characterNameFontWeight' },
     { id: 'activeThumbnailHidden', path: 'thumbnail.activeThumbnailHidden' },
     { id: 'hideWhenNoEveFocus', path: 'thumbnail.hideWhenNoEveFocus' },
     { id: 'hideDebounceMs', path: 'thumbnail.hideDebounceMs', transform: 'ms' },
-    { id: 'textColor', path: 'thumbnail.textColor' },
+    { id: 'characterNameColor', path: 'thumbnail.characterNameColor' },
     { id: 'systemNameColor', path: 'thumbnail.systemNameColor' },
-    { id: 'textBgColorInheritBorderColor', path: 'thumbnail.textBgColorInheritBorderColor' },
-    // showBorderWhenFocused/showBorderWhenInactive/borderEnabled and textBgColor/textBgOpacity are special-cased below.
+    // showBorderWhenFocused/showBorderWhenInactive/borderEnabled and the *BgColor/*BgOpacity pairs (see BG_COLOR_FIELDS) are special-cased below.
 
     { id: 'spacing', path: 'display.spacing' },
     { id: 'spacingX', path: 'display.spacingX', transform: 'nullable' },
@@ -276,9 +281,12 @@ const CONFIG_SCHEMA = [
     { id: 'stateHiddenShow', path: 'thumbnail.hidden.showThumbnail' },
 
     { id: 'notificationsEnabled', path: 'thumbnail.notifications.enabled' },
-    { id: 'notifPosition', path: 'thumbnail.notifications.position' },
-    { id: 'notifOffsetX', path: 'thumbnail.notifications.offset_x' },
-    { id: 'notifOffsetY', path: 'thumbnail.notifications.offset_y' },
+    { id: 'notificationPosition', path: 'thumbnail.notifications.position' },
+    { id: 'notificationOffsetX', path: 'thumbnail.notifications.offset_x' },
+    { id: 'notificationOffsetY', path: 'thumbnail.notifications.offset_y' },
+    { id: 'notificationFontName', path: 'thumbnail.notifications.font_name' },
+    { id: 'notificationFontSize', path: 'thumbnail.notifications.font_size' },
+    { id: 'notificationFontWeight', path: 'thumbnail.notifications.font_weight' },
     { id: 'notifSuppressClickDuration', path: 'thumbnail.notifications.suppress_click_duration_ms', transform: 'ms' },
     { id: 'ttsEnabled', path: 'thumbnail.notifications.tts_enabled' },
     { id: 'ttsVolume', path: 'thumbnail.notifications.tts_volume', default: 100 },
@@ -304,7 +312,12 @@ const CONFIG_SCHEMA = [
     { id: 'combatOutgoingPosition', path: 'combat.outgoing_position' },
     { id: 'combatIncomingColor', path: 'combat.incoming_color' },
     { id: 'combatOutgoingColor', path: 'combat.outgoing_color' },
-    { id: 'combatFontSize', path: 'combat.font_size' },
+    { id: 'combatIncomingFontSize', path: 'combat.incoming_font_size' },
+    { id: 'combatIncomingFontName', path: 'combat.incoming_font_name' },
+    { id: 'combatIncomingFontWeight', path: 'combat.incoming_font_weight' },
+    { id: 'combatOutgoingFontSize', path: 'combat.outgoing_font_size' },
+    { id: 'combatOutgoingFontName', path: 'combat.outgoing_font_name' },
+    { id: 'combatOutgoingFontWeight', path: 'combat.outgoing_font_weight' },
     { id: 'combatIncomingOffsetX', path: 'combat.incoming_offset_x' },
     { id: 'combatIncomingOffsetY', path: 'combat.incoming_offset_y' },
     { id: 'combatOutgoingOffsetX', path: 'combat.outgoing_offset_x' },
@@ -312,12 +325,6 @@ const CONFIG_SCHEMA = [
     { id: 'combatDamageAlertEnabled', path: 'combat.damage_alert_enabled' },
     { id: 'combatDamageAlertRepeatSeconds', path: 'combat.damage_alert_repeat_seconds', default: 10 },
     { id: 'combatDamageAlertExcludedWeapons', path: 'combat.damage_alert_excluded_weapons', default: '' },
-    { id: 'combatIconEnabled', path: 'combat.icon_enabled' },
-    { id: 'combatIconPosition', path: 'combat.icon_position' },
-    { id: 'combatIconColor', path: 'combat.icon_color' },
-    { id: 'combatIconFontSize', path: 'combat.icon_font_size' },
-    { id: 'combatIconOffsetX', path: 'combat.icon_offset_x' },
-    { id: 'combatIconOffsetY', path: 'combat.icon_offset_y' },
 
     { id: 'miningEnabled', path: 'mining.enabled' },
     { id: 'miningWindowSeconds', path: 'mining.window_seconds' },
@@ -325,6 +332,8 @@ const CONFIG_SCHEMA = [
     { id: 'miningPosition', path: 'mining.position' },
     { id: 'miningColor', path: 'mining.color' },
     { id: 'miningFontSize', path: 'mining.font_size' },
+    { id: 'miningFontName', path: 'mining.font_name' },
+    { id: 'miningFontWeight', path: 'mining.font_weight' },
     { id: 'miningOffsetX', path: 'mining.offset_x' },
     { id: 'miningOffsetY', path: 'mining.offset_y' },
     { id: 'miningShowIskRate', path: 'mining.show_isk_rate' },
@@ -341,6 +350,8 @@ const CONFIG_SCHEMA = [
     { id: 'bountyPosition', path: 'bounty.position' },
     { id: 'bountyColor', path: 'bounty.color' },
     { id: 'bountyFontSize', path: 'bounty.font_size' },
+    { id: 'bountyFontName', path: 'bounty.font_name' },
+    { id: 'bountyFontWeight', path: 'bounty.font_weight' },
     { id: 'bountyOffsetX', path: 'bounty.offset_x' },
     { id: 'bountyOffsetY', path: 'bounty.offset_y' },
     { id: 'bountyIskRateUnit', path: 'bounty.isk_rate_unit' },
@@ -461,6 +472,18 @@ function flashClampedField(field) {
     field._clampFlashTimer = setTimeout(() => field.classList.remove('field-clamped'), 1500);
 }
 
+// Each element's background is one u32 (color + opacity packed into the alpha byte) split across two UI inputs.
+const BG_COLOR_FIELDS = [
+    { colorId: 'characterNameBgColor', opacityId: 'characterNameBgOpacity', path: 'thumbnail.characterNameBgColor' },
+    { colorId: 'systemNameBgColor', opacityId: 'systemNameBgOpacity', path: 'thumbnail.systemNameBgColor' },
+    { colorId: 'quickGroupBadgeBgColor', opacityId: 'quickGroupBadgeBgOpacity', path: 'thumbnail.quickGroupBadgeBgColor' },
+    { colorId: 'notificationBgColor', opacityId: 'notificationBgOpacity', path: 'thumbnail.notifications.bg_color' },
+    { colorId: 'combatIncomingBgColor', opacityId: 'combatIncomingBgOpacity', path: 'combat.incoming_bg_color' },
+    { colorId: 'combatOutgoingBgColor', opacityId: 'combatOutgoingBgOpacity', path: 'combat.outgoing_bg_color' },
+    { colorId: 'miningBgColor', opacityId: 'miningBgOpacity', path: 'mining.bg_color' },
+    { colorId: 'bountyBgColor', opacityId: 'bountyBgOpacity', path: 'bounty.bg_color' },
+];
+
 // Fields that can't be expressed as a single {id, path} pair: composite values, asymmetric load/save, or non-trivial defaults.
 function applySpecialFieldsToForm() {
     setFieldValue('startX', currentConfig.display?.startX);
@@ -471,9 +494,11 @@ function applySpecialFieldsToForm() {
     const hasBorder = currentConfig.thumbnail?.showBorderWhenFocused || currentConfig.thumbnail?.showBorderWhenInactive;
     setCheckboxValue('borderEnabled', hasBorder);
 
-    setFieldValue('textBgColor', currentConfig.thumbnail?.textBgColor);
-    const textBgOpacityPercent = opacityToPercent(zigColorAlpha(currentConfig.thumbnail?.textBgColor));
-    setFieldValue('textBgOpacity', textBgOpacityPercent);
+    BG_COLOR_FIELDS.forEach(({ colorId, opacityId, path }) => {
+        const value = getConfigPath(currentConfig, path);
+        setFieldValue(colorId, value);
+        setFieldValue(opacityId, opacityToPercent(zigColorAlpha(value)));
+    });
 
     setFieldValue('exclusionOverlayColor', currentConfig.thumbnail?.exclusionOverlayColor);
     const exclusionOverlayOpacityPercent = opacityToPercent(zigColorAlpha(currentConfig.thumbnail?.exclusionOverlayColor));
@@ -490,7 +515,9 @@ function applySpecialFieldsFromForm() {
     currentConfig.thumbnail.showBorderWhenFocused = borderEnabled && getFieldValue('showBorderWhenFocused');
     currentConfig.thumbnail.showBorderWhenInactive = borderEnabled && getFieldValue('showBorderWhenInactive');
 
-    currentConfig.thumbnail.textBgColor = zigColorWithAlpha(getFieldValue('textBgColor'), percentToOpacity(getFieldValue('textBgOpacity')));
+    BG_COLOR_FIELDS.forEach(({ colorId, opacityId, path }) => {
+        setConfigPath(currentConfig, path, zigColorWithAlpha(getFieldValue(colorId), percentToOpacity(getFieldValue(opacityId))));
+    });
 
     currentConfig.thumbnail.exclusionOverlayColor = zigColorWithAlpha(getFieldValue('exclusionOverlayColor'), percentToOpacity(getFieldValue('exclusionOverlayOpacity')));
 
@@ -575,16 +602,18 @@ function setupChangeDetection() {
 const THUMBNAIL_PREVIEW_FIELD_IDS = [
     'borderEnabled', 'showBorderWhenFocused', 'borderWidth', 'borderStyle', 'borderColor',
     'showBorderWhenInactive', 'inactiveBorderWidth', 'inactiveBorderStyle', 'inactiveBorderColor',
-    'textBgColorInheritBorderColor',
     'thumbOpacity', 'applyOpacityToOverlayTexts', 'activeThumbnailHidden',
     'showText', 'showCharacterName', 'showSystemName', 'useUniqueSystemColors',
-    'textFontName', 'textFontSize', 'textFontWeight',
-    'characterNamePosition', 'characterNameOffsetX', 'characterNameOffsetY', 'textColor',
+    'characterNameFontName', 'characterNameFontSize', 'characterNameFontWeight',
+    'characterNamePosition', 'characterNameOffsetX', 'characterNameOffsetY', 'characterNameColor',
     'useUniqueCharacterNameColors',
     'systemNamePosition', 'systemNameOffsetX', 'systemNameOffsetY', 'systemNameColor',
+    'systemNameFontName', 'systemNameFontSize', 'systemNameFontWeight',
     'showQuickGroupBadge', 'quickGroupBadgePosition', 'quickGroupBadgeOffsetX', 'quickGroupBadgeOffsetY', 'quickGroupBadgeColor',
+    'quickGroupBadgeFontName', 'quickGroupBadgeFontSize', 'quickGroupBadgeFontWeight',
     'exclusionOverlayStyle', 'exclusionOverlayColor', 'exclusionOverlayOpacity',
-    'textBgColor', 'textBgOpacity',
+    'characterNameBgColor', 'characterNameBgOpacity', 'systemNameBgColor', 'systemNameBgOpacity',
+    'quickGroupBadgeBgColor', 'quickGroupBadgeBgOpacity',
     'thumbWidth', 'thumbHeight', 'thumbSizeSlider', 'hideWhenNoEveFocus',
     'listViewOpacity', 'listViewFontName', 'listViewFontSize', 'listViewFontWeight',
     'notifInfoPanelWidth', 'notifInfoPanelHeight',
@@ -612,7 +641,6 @@ function buildThumbnailPreviewPatch(includePositions = false) {
         inactiveBorderWidth: getFieldValue('inactiveBorderWidth'),
         inactiveBorderStyle: getFieldValue('inactiveBorderStyle'),
         inactiveBorderColor: getFieldValue('inactiveBorderColor'),
-        textBgColorInheritBorderColor: getFieldValue('textBgColorInheritBorderColor'),
         thumbnailOpacity: percentToOpacity(getFieldValue('thumbOpacity')),
         applyOpacityToOverlayTexts: getFieldValue('applyOpacityToOverlayTexts'),
         activeThumbnailHidden: getFieldValue('activeThumbnailHidden'),
@@ -620,26 +648,34 @@ function buildThumbnailPreviewPatch(includePositions = false) {
         showCharacterName: getFieldValue('showCharacterName'),
         showSystemName: getFieldValue('showSystemName'),
         useUniqueSystemColors: getFieldValue('useUniqueSystemColors'),
-        textFontName: getFieldValue('textFontName'),
-        textFontSize: getFieldValue('textFontSize'),
-        textFontWeight: getFieldValue('textFontWeight'),
+        characterNameFontName: getFieldValue('characterNameFontName'),
+        characterNameFontSize: getFieldValue('characterNameFontSize'),
+        characterNameFontWeight: getFieldValue('characterNameFontWeight'),
         characterNamePosition: getFieldValue('characterNamePosition'),
         characterNameOffsetX: getFieldValue('characterNameOffsetX'),
         characterNameOffsetY: getFieldValue('characterNameOffsetY'),
-        textColor: getFieldValue('textColor'),
+        characterNameColor: getFieldValue('characterNameColor'),
+        characterNameBgColor: zigColorWithAlpha(getFieldValue('characterNameBgColor'), percentToOpacity(getFieldValue('characterNameBgOpacity'))),
         useUniqueCharacterNameColors: getFieldValue('useUniqueCharacterNameColors'),
         systemNamePosition: getFieldValue('systemNamePosition'),
         systemNameOffsetX: getFieldValue('systemNameOffsetX'),
         systemNameOffsetY: getFieldValue('systemNameOffsetY'),
         systemNameColor: getFieldValue('systemNameColor'),
+        systemNameBgColor: zigColorWithAlpha(getFieldValue('systemNameBgColor'), percentToOpacity(getFieldValue('systemNameBgOpacity'))),
+        systemNameFontName: getFieldValue('systemNameFontName'),
+        systemNameFontSize: getFieldValue('systemNameFontSize'),
+        systemNameFontWeight: getFieldValue('systemNameFontWeight'),
         showQuickGroupBadge: getFieldValue('showQuickGroupBadge'),
         quickGroupBadgePosition: getFieldValue('quickGroupBadgePosition'),
         quickGroupBadgeOffsetX: getFieldValue('quickGroupBadgeOffsetX'),
         quickGroupBadgeOffsetY: getFieldValue('quickGroupBadgeOffsetY'),
         quickGroupBadgeColor: getFieldValue('quickGroupBadgeColor'),
+        quickGroupBadgeBgColor: zigColorWithAlpha(getFieldValue('quickGroupBadgeBgColor'), percentToOpacity(getFieldValue('quickGroupBadgeBgOpacity'))),
+        quickGroupBadgeFontName: getFieldValue('quickGroupBadgeFontName'),
+        quickGroupBadgeFontSize: getFieldValue('quickGroupBadgeFontSize'),
+        quickGroupBadgeFontWeight: getFieldValue('quickGroupBadgeFontWeight'),
         exclusionOverlayStyle: getFieldValue('exclusionOverlayStyle'),
         exclusionOverlayColor: zigColorWithAlpha(getFieldValue('exclusionOverlayColor'), percentToOpacity(getFieldValue('exclusionOverlayOpacity'))),
-        textBgColor: zigColorWithAlpha(getFieldValue('textBgColor'), percentToOpacity(getFieldValue('textBgOpacity'))),
         systemColors: buildSystemColorsPreviewPatch(),
         width: getFieldValue('thumbWidth'),
         height: getFieldValue('thumbHeight'),
@@ -785,7 +821,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     populateSharedSelectOptions();
     setupChangeDetection();
     setupThumbnailPreview();
-    
+    initOverlayLayoutPreview();
+    initCombatShowRequiresEnabled();
+
     // Mark initially hidden tabs for search filter
     document.querySelectorAll('.tab-item').forEach(tab => {
         if (tab.style.display === 'none') {
@@ -851,6 +889,9 @@ function switchTab(panelId) {
     if (contentPanel) {
         contentPanel.scrollTop = 0;
     }
+
+    // Its stage size reads as 0 via getBoundingClientRect while the panel is display:none - recompute now that it's visible.
+    if (panelId === 'thumbnails') refreshOverlayLayoutPreview();
 
     updateActiveSectionHighlight();
 }
@@ -1082,15 +1123,21 @@ function applyBackendDefaultColors() {
     const map = {
         borderColor: defaultConfig.thumbnail?.borderColor,
         inactiveBorderColor: defaultConfig.thumbnail?.inactiveBorderColor,
-        textColor: defaultConfig.thumbnail?.textColor,
+        characterNameColor: defaultConfig.thumbnail?.characterNameColor,
         systemNameColor: defaultConfig.thumbnail?.systemNameColor,
-        textBgColor: defaultConfig.thumbnail?.textBgColor,
         exclusionOverlayColor: defaultConfig.thumbnail?.exclusionOverlayColor,
         combatIncomingColor: defaultConfig.combat?.incoming_color,
         combatOutgoingColor: defaultConfig.combat?.outgoing_color,
-        combatIconColor: defaultConfig.combat?.icon_color,
         miningColor: defaultConfig.mining?.color,
         bountyColor: defaultConfig.bounty?.color,
+        characterNameBgColor: defaultConfig.thumbnail?.characterNameBgColor,
+        systemNameBgColor: defaultConfig.thumbnail?.systemNameBgColor,
+        quickGroupBadgeBgColor: defaultConfig.thumbnail?.quickGroupBadgeBgColor,
+        notificationBgColor: defaultConfig.thumbnail?.notifications?.bg_color,
+        combatIncomingBgColor: defaultConfig.combat?.incoming_bg_color,
+        combatOutgoingBgColor: defaultConfig.combat?.outgoing_bg_color,
+        miningBgColor: defaultConfig.mining?.bg_color,
+        bountyBgColor: defaultConfig.bounty?.bg_color,
     };
     for (const [id, value] of Object.entries(map)) {
         if (value == null) continue;
@@ -1122,9 +1169,8 @@ function loadMockConfiguration() {
             applyOpacityToOverlayTexts: false,
             borderWidth: 2,
             borderColor: 0xFF606060,
-            textBgColorInheritBorderColor: false,
-            textBgColor: 0x80000000,
-            textColor: 0xFFFFFF
+            characterNameColor: 0xFFFFFF,
+            characterNameBgColor: 0xE6000000
         },
         display: {
             startX: 10,
@@ -1148,6 +1194,8 @@ function populateFormFields() {
     applyConfigSchemaToForm();
     applySpecialFieldsToForm();
 
+    if (document.getElementById('syncOverlayStyling')?.checked) syncOverlayStyleFromCharacterName();
+
     // Order-independent: each just reads fields already populated above and adjusts unrelated elements' disabled state.
     toggleSnappingOptions();
     toggleNotifInfoPanelOptions();
@@ -1162,7 +1210,6 @@ function populateFormFields() {
     toggleUniqueCharacterNameColors();
     toggleClientListOptions();
     toggleAutoMinimizeOptions();
-    toggleTextBgColorOptions();
     toggleTtsOptions();
     toggleNotificationOptions();
     toggleChatlogOptions();
@@ -1181,6 +1228,8 @@ function populateFormFields() {
     populateHotkeyGroups();
     populateQuickGroups();
     populateNotificationTypes();
+
+    refreshOverlayLayoutPreview();
 
     console.log('Form fields populated');
 }
@@ -1672,6 +1721,26 @@ function renderImportSections() {
     `).join('');
 }
 
+// Legacy formats only ever had one overlay font, applied everywhere by this app's old shared font.
+// Combat/Mining/Bounty are skipped - no legacy source value exists for them.
+function applyImportedFontToOtherOverlayElements(patch, fontName, fontSize) {
+    if (fontName) {
+        patch.systemNameFontName = fontName;
+        patch.quickGroupBadgeFontName = fontName;
+    }
+    if (fontSize !== null) {
+        patch.systemNameFontSize = fontSize;
+        patch.quickGroupBadgeFontSize = fontSize;
+    }
+    if (fontName || fontSize !== null) {
+        const existing = currentConfig.thumbnail?.notifications || {};
+        patch.notifications = Object.assign({}, existing, {
+            font_name: fontName || existing.font_name,
+            font_size: fontSize !== null ? fontSize : existing.font_size,
+        });
+    }
+}
+
 function extractThumbnailAppearance(oldProfile, oldGlobal) {
     const ts = oldProfile['Thumbnail Settings'] || {};
     const tsl = oldGlobal.ThumbnailStartLocation || {};
@@ -1690,9 +1759,10 @@ function extractThumbnailAppearance(oldProfile, oldGlobal) {
 
     if (typeof ts.ShowThumbnailTextOverlay !== 'undefined') patch.showText = !!ts.ShowThumbnailTextOverlay;
     const textColor = legacyColorToZig(ts.ThumbnailTextColor);
-    if (textColor) patch.textColor = textColor;
-    if (ts.ThumbnailTextFont) patch.textFontName = String(ts.ThumbnailTextFont);
-    if (num(ts.ThumbnailTextSize) !== null) patch.textFontSize = num(ts.ThumbnailTextSize);
+    if (textColor) patch.characterNameColor = textColor;
+    if (ts.ThumbnailTextFont) patch.characterNameFontName = String(ts.ThumbnailTextFont);
+    if (num(ts.ThumbnailTextSize) !== null) patch.characterNameFontSize = num(ts.ThumbnailTextSize);
+    applyImportedFontToOtherOverlayElements(patch, ts.ThumbnailTextFont ? String(ts.ThumbnailTextFont) : null, num(ts.ThumbnailTextSize));
 
     if (ts.ThumbnailTextMargins) {
         if (num(ts.ThumbnailTextMargins.x) !== null) patch.characterNameOffsetX = num(ts.ThumbnailTextMargins.x);
@@ -2041,7 +2111,7 @@ function apmExtractThumbnailAppearance(sections) {
     }
 
     const charColor = legacyColorToZig(overlay.characterNameColor);
-    if (charColor) patch.textColor = charColor;
+    if (charColor) patch.characterNameColor = charColor;
     const sysColor = legacyColorToZig(overlay.systemNameColor);
     if (sysColor) patch.systemNameColor = sysColor;
     if ('uniqueSystemNameColors' in overlay) patch.useUniqueSystemColors = parseQtBool(overlay.uniqueSystemNameColors);
@@ -2064,13 +2134,19 @@ function apmExtractThumbnailAppearance(sections) {
         const showBg = 'showBackground' in overlay ? parseQtBool(overlay.showBackground) : true;
         const bgOpacity = num(overlay.backgroundOpacity);
         const alpha255 = showBg ? (bgOpacity !== null ? bgOpacity * 2.55 : 255) : 0;
-        patch.textBgColor = zigColorWithAlpha(bgColor, alpha255);
+        // Legacy format has one shared background - seed it onto every element that still exists here today (see applyImportedFontToOtherOverlayElements for the same pattern with fonts).
+        const resolvedBgColor = zigColorWithAlpha(bgColor, alpha255);
+        patch.characterNameBgColor = resolvedBgColor;
+        patch.systemNameBgColor = resolvedBgColor;
+        patch.quickGroupBadgeBgColor = resolvedBgColor;
+        patch.notifications = Object.assign({}, currentConfig.thumbnail?.notifications, { bg_color: resolvedBgColor });
     }
 
     const font = parseQtFont(overlay.font);
     if (font) {
-        if (font.family) patch.textFontName = font.family;
-        if (font.size) patch.textFontSize = font.size;
+        if (font.family) patch.characterNameFontName = font.family;
+        if (font.size) patch.characterNameFontSize = font.size;
+        applyImportedFontToOtherOverlayElements(patch, font.family || null, font.size || null);
     }
 
     if (num(thumb.width) !== null) patch.width = num(thumb.width);
@@ -2472,10 +2548,13 @@ function eveoExtractThumbnailAppearance(data) {
 
     if (data.OverlayLabelColor) {
         const textColor = eveoColorToZig(data.OverlayLabelColor);
-        if (textColor) patch.textColor = textColor;
+        if (textColor) patch.characterNameColor = textColor;
         else notes.push(`Overlay label color "${data.OverlayLabelColor}" wasn't recognized and was skipped.`);
     }
-    if (typeof data.OverlayLabelSize === 'number') patch.textFontSize = data.OverlayLabelSize;
+    if (typeof data.OverlayLabelSize === 'number') {
+        patch.characterNameFontSize = data.OverlayLabelSize;
+        applyImportedFontToOtherOverlayElements(patch, null, data.OverlayLabelSize);
+    }
     if (typeof data.OverlayLabelAnchor === 'number') {
         // EVE-O Preview's ZoomAnchor enum is the same 3x3 grid/order as TextPosition, so APM_POSITION_MAP is reused here.
         const pos = APM_POSITION_MAP[data.OverlayLabelAnchor];
@@ -4514,7 +4593,7 @@ function populateCharacters() {
                     </div>
                 </div>
                 <div>
-                    <label>${t('field.textColor.label')}</label>
+                    <label>${t('field.characterNameColor.label')}</label>
                     <div class="swatch-wrap">
                         <input type="color" id="char_${index}_nameColor" data-optional-color="true" ${!char.nameColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.nameColor)}">
                     </div>
@@ -4614,6 +4693,12 @@ async function refreshWindowPositionSourceOptions() {
     try {
         const result = await webui.call('getOpenClients');
         const names = JSON.parse(result);
+        if (names.length === 0) {
+            select.innerHTML = `<option value="">${t('status.noOpenClients')}</option>`;
+            select.disabled = true;
+            return;
+        }
+        select.disabled = false;
         select.innerHTML = names.map(name => `<option value="${name}">${name}</option>`).join('');
         if (names.includes(previousValue)) select.value = previousValue;
     } catch (error) {
@@ -5673,7 +5758,7 @@ const NOTIFICATION_CATEGORY_LABEL_KEYS = {
 
 // Single source for the notification table's default swatch colors, falling back to '#FFFFFF'/'#606060' until defaultConfig loads. Border is an approximation - the true fallback is the Alert state's border color, which isn't wired up in this dialog yet.
 function notifDefaultTextColorHtml() {
-    return defaultConfig?.thumbnail?.textColor != null ? zigColorToHtml(defaultConfig.thumbnail.textColor) : '#FFFFFF';
+    return defaultConfig?.thumbnail?.characterNameColor != null ? zigColorToHtml(defaultConfig.thumbnail.characterNameColor) : '#FFFFFF';
 }
 function notifDefaultBorderColorHtml() {
     return defaultConfig?.thumbnail?.inactiveBorderColor != null ? zigColorToHtml(defaultConfig.thumbnail.inactiveBorderColor) : '#606060';
@@ -6071,13 +6156,573 @@ function toggleQuickGroupBadgeOptions() {
     applyOptionToggle('showQuickGroupBadge', 'quickGroupBadgeOptions');
 }
 
-function toggleTextBgColorOptions() {
-    const inherit = document.getElementById('textBgColorInheritBorderColor');
-    const textBgColor = document.getElementById('textBgColor');
+// Drives each element's real (hidden) Position/Offset inputs by dispatching their normal events,
+// so CONFIG_SCHEMA, getFieldValue/setFieldValue, and the live-preview pipeline don't need to know this exists.
+const OVERLAY_LAYOUT_ELEMENTS = [
+    { chipId: 'overlayChip_characterName', showId: 'showCharacterName', positionId: 'characterNamePosition', offsetXId: 'characterNameOffsetX', offsetYId: 'characterNameOffsetY', colorId: 'characterNameColor', alsoRequiresId: 'showText',
+        uniqueColorsId: 'useUniqueCharacterNameColors', fontNameId: 'characterNameFontName', fontWeightId: 'characterNameFontWeight', fontSizeId: 'characterNameFontSize',
+        bgColorId: 'characterNameBgColor', bgOpacityId: 'characterNameBgOpacity',
+        popoverTitle: 'Character Name', popoverFields: [
+            { type: 'checkbox', id: 'showCharacterName', label: 'Show Character Name' },
+            { type: 'checkbox', id: 'useUniqueCharacterNameColors', label: 'Unique Character Name Colors', disables: 'characterNameColor' },
+            { type: 'color', id: 'characterNameColor', label: 'Character Name Color' },
+            { type: 'font-name', id: 'characterNameFontName', label: 'Font Name' },
+            { type: 'number', id: 'characterNameFontSize', label: 'Font Size (px)', min: 6, max: 72 },
+            { type: 'font-weight', id: 'characterNameFontWeight', label: 'Font Weight' },
+            { type: 'color', id: 'characterNameBgColor', label: 'Background Color' },
+            { type: 'range', id: 'characterNameBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        ] },
+    { chipId: 'overlayChip_systemName', showId: 'showSystemName', positionId: 'systemNamePosition', offsetXId: 'systemNameOffsetX', offsetYId: 'systemNameOffsetY', colorId: 'systemNameColor', alsoRequiresId: 'showText',
+        uniqueColorsId: 'useUniqueSystemColors', fontNameId: 'systemNameFontName', fontWeightId: 'systemNameFontWeight', fontSizeId: 'systemNameFontSize',
+        bgColorId: 'systemNameBgColor', bgOpacityId: 'systemNameBgOpacity',
+        popoverTitle: 'System Name', popoverFields: [
+            { type: 'checkbox', id: 'showSystemName', label: 'Show System Name' },
+            { type: 'checkbox', id: 'useUniqueSystemColors', label: 'Unique System Colors', disables: 'systemNameColor' },
+            { type: 'color', id: 'systemNameColor', label: 'System Name Color' },
+            { type: 'font-name', id: 'systemNameFontName', label: 'Font Name' },
+            { type: 'number', id: 'systemNameFontSize', label: 'Font Size (px)', min: 6, max: 72 },
+            { type: 'font-weight', id: 'systemNameFontWeight', label: 'Font Weight' },
+            { type: 'color', id: 'systemNameBgColor', label: 'Background Color' },
+            { type: 'range', id: 'systemNameBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        ] },
+    { chipId: 'overlayChip_quickGroupBadge', showId: 'showQuickGroupBadge', positionId: 'quickGroupBadgePosition', offsetXId: 'quickGroupBadgeOffsetX', offsetYId: 'quickGroupBadgeOffsetY', colorId: 'quickGroupBadgeColor',
+        fontNameId: 'quickGroupBadgeFontName', fontWeightId: 'quickGroupBadgeFontWeight', fontSizeId: 'quickGroupBadgeFontSize',
+        bgColorId: 'quickGroupBadgeBgColor', bgOpacityId: 'quickGroupBadgeBgOpacity',
+        popoverTitle: 'Quick Group Badge', popoverFields: [
+            { type: 'checkbox', id: 'showQuickGroupBadge', label: 'Show Quick Group Badge' },
+            { type: 'color', id: 'quickGroupBadgeColor', label: 'Badge Color' },
+            { type: 'font-name', id: 'quickGroupBadgeFontName', label: 'Font Name' },
+            { type: 'number', id: 'quickGroupBadgeFontSize', label: 'Font Size (px)', min: 6, max: 72 },
+            { type: 'font-weight', id: 'quickGroupBadgeFontWeight', label: 'Font Weight' },
+            { type: 'color', id: 'quickGroupBadgeBgColor', label: 'Background Color' },
+            { type: 'range', id: 'quickGroupBadgeBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        ] },
+    { chipId: 'overlayChip_notification', showId: 'notificationsEnabled', positionId: 'notificationPosition', offsetXId: 'notificationOffsetX', offsetYId: 'notificationOffsetY', colorId: 'characterNameColor', alsoRequiresId: 'showText',
+        fontNameId: 'notificationFontName', fontWeightId: 'notificationFontWeight', fontSizeId: 'notificationFontSize',
+        bgColorId: 'notificationBgColor', bgOpacityId: 'notificationBgOpacity',
+        popoverTitle: 'Notification', popoverFields: [
+            { type: 'checkbox', id: 'notificationsEnabled', label: 'Show Notifications' },
+            { type: 'font-name', id: 'notificationFontName', label: 'Font Name' },
+            { type: 'number', id: 'notificationFontSize', label: 'Font Size (px)', min: 6, max: 72 },
+            { type: 'font-weight', id: 'notificationFontWeight', label: 'Font Weight' },
+            { type: 'color', id: 'notificationBgColor', label: 'Background Color' },
+            { type: 'range', id: 'notificationBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        ] },
+    { chipId: 'overlayChip_combatIncoming', showId: 'combatShowIncoming', positionId: 'combatIncomingPosition', offsetXId: 'combatIncomingOffsetX', offsetYId: 'combatIncomingOffsetY', colorId: 'combatIncomingColor', alsoRequiresId: 'combatEnabled',
+        fontNameId: 'combatIncomingFontName', fontWeightId: 'combatIncomingFontWeight', fontSizeId: 'combatIncomingFontSize',
+        bgColorId: 'combatIncomingBgColor', bgOpacityId: 'combatIncomingBgOpacity',
+        popoverTitle: 'Incoming DPS', popoverFields: [
+            { type: 'checkbox', id: 'combatEnabled', label: 'Enable Combat Overlays' },
+            { type: 'checkbox', id: 'combatShowIncoming', label: 'Show Incoming Damage' },
+            { type: 'color', id: 'combatIncomingColor', label: 'Color' },
+            { type: 'font-name', id: 'combatIncomingFontName', label: 'Font Name' },
+            { type: 'number', id: 'combatIncomingFontSize', label: 'Font Size', min: 6, max: 72 },
+            { type: 'font-weight', id: 'combatIncomingFontWeight', label: 'Font Weight' },
+            { type: 'color', id: 'combatIncomingBgColor', label: 'Background Color' },
+            { type: 'range', id: 'combatIncomingBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        ] },
+    { chipId: 'overlayChip_combatOutgoing', showId: 'combatShowOutgoing', positionId: 'combatOutgoingPosition', offsetXId: 'combatOutgoingOffsetX', offsetYId: 'combatOutgoingOffsetY', colorId: 'combatOutgoingColor', alsoRequiresId: 'combatEnabled',
+        fontNameId: 'combatOutgoingFontName', fontWeightId: 'combatOutgoingFontWeight', fontSizeId: 'combatOutgoingFontSize',
+        bgColorId: 'combatOutgoingBgColor', bgOpacityId: 'combatOutgoingBgOpacity',
+        popoverTitle: 'Outgoing DPS', popoverFields: [
+            { type: 'checkbox', id: 'combatEnabled', label: 'Enable Combat Overlays' },
+            { type: 'checkbox', id: 'combatShowOutgoing', label: 'Show Outgoing Damage' },
+            { type: 'color', id: 'combatOutgoingColor', label: 'Color' },
+            { type: 'font-name', id: 'combatOutgoingFontName', label: 'Font Name' },
+            { type: 'number', id: 'combatOutgoingFontSize', label: 'Font Size', min: 6, max: 72 },
+            { type: 'font-weight', id: 'combatOutgoingFontWeight', label: 'Font Weight' },
+            { type: 'color', id: 'combatOutgoingBgColor', label: 'Background Color' },
+            { type: 'range', id: 'combatOutgoingBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        ] },
+    { chipId: 'overlayChip_mining', showId: 'miningEnabled', positionId: 'miningPosition', offsetXId: 'miningOffsetX', offsetYId: 'miningOffsetY', colorId: 'miningColor',
+        fontNameId: 'miningFontName', fontWeightId: 'miningFontWeight', fontSizeId: 'miningFontSize',
+        bgColorId: 'miningBgColor', bgOpacityId: 'miningBgOpacity',
+        popoverTitle: 'Mining Rate', popoverFields: [
+            { type: 'checkbox', id: 'miningEnabled', label: 'Show Mining Rate' },
+            { type: 'color', id: 'miningColor', label: 'Text Color' },
+            { type: 'font-name', id: 'miningFontName', label: 'Font Name' },
+            { type: 'number', id: 'miningFontSize', label: 'Font Size', min: 6, max: 72 },
+            { type: 'font-weight', id: 'miningFontWeight', label: 'Font Weight' },
+            { type: 'color', id: 'miningBgColor', label: 'Background Color' },
+            { type: 'range', id: 'miningBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        ] },
+    { chipId: 'overlayChip_bounty', showId: 'bountyEnabled', positionId: 'bountyPosition', offsetXId: 'bountyOffsetX', offsetYId: 'bountyOffsetY', colorId: 'bountyColor',
+        fontNameId: 'bountyFontName', fontWeightId: 'bountyFontWeight', fontSizeId: 'bountyFontSize',
+        bgColorId: 'bountyBgColor', bgOpacityId: 'bountyBgOpacity',
+        popoverTitle: 'Bounty Rate', popoverFields: [
+            { type: 'checkbox', id: 'bountyEnabled', label: 'Show Bounty Rate' },
+            { type: 'color', id: 'bountyColor', label: 'Text Color' },
+            { type: 'font-name', id: 'bountyFontName', label: 'Font Name' },
+            { type: 'number', id: 'bountyFontSize', label: 'Font Size', min: 6, max: 72 },
+            { type: 'font-weight', id: 'bountyFontWeight', label: 'Font Weight' },
+            { type: 'color', id: 'bountyBgColor', label: 'Background Color' },
+            { type: 'range', id: 'bountyBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        ] },
+];
 
-    if (inherit && textBgColor) {
-        textBgColor.disabled = inherit.checked;
+// Distance (in stage pixels) within which a drag magnetically locks flush to the current anchor (offset 0,0).
+const OVERLAY_SNAP_THRESHOLD_PX = 5;
+
+// Distance (in stage pixels) within which a drag aligns to another chip's edge/center, independently per axis.
+const OVERLAY_ALIGN_THRESHOLD_PX = 3;
+
+function overlayChipRects() {
+    return OVERLAY_LAYOUT_ELEMENTS.map(def => {
+        const chip = document.getElementById(def.chipId);
+        if (!chip) return null;
+        return { chip, left: chip.offsetLeft, top: chip.offsetTop, width: chip.offsetWidth, height: chip.offsetHeight };
+    }).filter(Boolean);
+}
+
+// Matches both same-edge alignment and flush-adjacency (my bottom meets your top, etc.) so chips snap when stacked or side-by-side.
+function overlayFindAlignmentSnap(selfChipId, rawX, rawY, w, h) {
+    let bestX = null, bestXDist = OVERLAY_ALIGN_THRESHOLD_PX, guideX = null;
+    let bestY = null, bestYDist = OVERLAY_ALIGN_THRESHOLD_PX, guideY = null;
+
+    overlayChipRects().forEach(other => {
+        if (other.chip.id === selfChipId) return;
+        const oLeft = other.left, oRight = other.left + other.width, oCenterX = other.left + other.width / 2;
+        const oTop = other.top, oBottom = other.top + other.height, oCenterY = other.top + other.height / 2;
+
+        // [selfValue, otherValue (also the guide line position), resulting snapped position]
+        // Last two rows are flush-adjacency: my right edge to their left edge, and vice versa.
+        const xCandidates = [
+            [rawX, oLeft, oLeft],
+            [rawX + w, oRight, oRight - w],
+            [rawX + w / 2, oCenterX, oCenterX - w / 2],
+            [rawX, oRight, oRight],
+            [rawX + w, oLeft, oLeft - w],
+        ];
+        xCandidates.forEach(([selfVal, guideVal, snapVal]) => {
+            const dist = Math.abs(selfVal - guideVal);
+            if (dist < bestXDist) { bestXDist = dist; bestX = snapVal; guideX = guideVal; }
+        });
+
+        // Last two rows are flush-adjacency: my bottom edge to their top edge, and vice versa.
+        const yCandidates = [
+            [rawY, oTop, oTop],
+            [rawY + h, oBottom, oBottom - h],
+            [rawY + h / 2, oCenterY, oCenterY - h / 2],
+            [rawY, oBottom, oBottom],
+            [rawY + h, oTop, oTop - h],
+        ];
+        yCandidates.forEach(([selfVal, guideVal, snapVal]) => {
+            const dist = Math.abs(selfVal - guideVal);
+            if (dist < bestYDist) { bestYDist = dist; bestY = snapVal; guideY = guideVal; }
+        });
+    });
+
+    return { x: bestX, y: bestY, guideX, guideY };
+}
+
+function overlayShowAlignmentGuides(guideX, guideY) {
+    const guideXEl = document.getElementById('overlayGuideX');
+    const guideYEl = document.getElementById('overlayGuideY');
+    if (guideXEl) {
+        guideXEl.style.display = guideX === null ? 'none' : 'block';
+        if (guideX !== null) guideXEl.style.left = guideX + 'px';
     }
+    if (guideYEl) {
+        guideYEl.style.display = guideY === null ? 'none' : 'block';
+        if (guideY !== null) guideYEl.style.top = guideY + 'px';
+    }
+}
+
+function overlayAnchorBoxPos(anchor, w, h, W, H) {
+    switch (anchor) {
+        case 'TopLeft': return { x: 0, y: 0 };
+        case 'TopCenter': return { x: (W - w) / 2, y: 0 };
+        case 'TopRight': return { x: W - w, y: 0 };
+        case 'LeftCenter': return { x: 0, y: (H - h) / 2 };
+        case 'Center': return { x: (W - w) / 2, y: (H - h) / 2 };
+        case 'RightCenter': return { x: W - w, y: (H - h) / 2 };
+        case 'BottomLeft': return { x: 0, y: H - h };
+        case 'BottomCenter': return { x: (W - w) / 2, y: H - h };
+        case 'BottomRight': return { x: W - w, y: H - h };
+        default: return { x: 0, y: 0 };
+    }
+}
+
+// Invisible to the user - a drop just picks the nearest of these thirds as its stored anchor.
+function overlayZoneForPoint(px, py, W, H) {
+    const col = px < W / 3 ? 0 : px < (2 * W) / 3 ? 1 : 2;
+    const row = py < H / 3 ? 0 : py < (2 * H) / 3 ? 1 : 2;
+    return POSITION_OPTIONS[row * 3 + col][0];
+}
+
+function overlayClamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// Matches ThumbnailConfig.OFFSET_MIN/MAX in config.zig (+-500), not the old +-50 slider default.
+function overlayOffsetRange(fieldId) {
+    return FIELD_RANGES[fieldId] || { min: -500, max: 500 };
+}
+
+// Stage is drawn larger than the real thumbnail for grabbability, but offsetX/Y are stored in real pixels.
+function overlayStageScale(stage) {
+    if (!stage || stage.clientWidth === 0) return 1;
+    const realWidth = getFieldValue('thumbWidth');
+    return realWidth > 0 ? stage.clientWidth / realWidth : 1;
+}
+
+// Each element's own independent background color/opacity - not shared, and separate from its own text color.
+function overlayBackgroundCssFor(bgColorId, bgOpacityId) {
+    const colorField = document.getElementById(bgColorId);
+    const opacityField = document.getElementById(bgOpacityId);
+    const hex = (colorField ? colorField.value : '#000000').replace('#', '');
+    const r = parseInt(hex.slice(0, 2), 16) || 0;
+    const g = parseInt(hex.slice(2, 4), 16) || 0;
+    const b = parseInt(hex.slice(4, 6), 16) || 0;
+    const percent = opacityField ? parseFloat(opacityField.value) : 50;
+    const alpha = overlayClamp(isNaN(percent) ? 0.5 : percent / 100, 0, 1);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// Programmatic .value writes don't fire native events, so dispatch one explicitly for the rest of the dialog to see.
+function setOverlayFieldValue(fieldId, value) {
+    const field = document.getElementById(fieldId);
+    if (!field) return;
+    field.value = value;
+    field.dispatchEvent(new Event(isChangeEventType(field) ? 'change' : 'input', { bubbles: true }));
+}
+
+function setOverlayCheckboxValue(fieldId, checked) {
+    const field = document.getElementById(fieldId);
+    if (!field) return;
+    field.checked = checked;
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function placeOverlayChip(def) {
+    const stage = document.getElementById('overlayLayoutStage');
+    const chip = document.getElementById(def.chipId);
+    if (!stage || !chip) return;
+
+    const scale = overlayStageScale(stage);
+
+    const shown = getFieldValue(def.showId) && (!def.alsoRequiresId || getFieldValue(def.alsoRequiresId));
+    chip.classList.toggle('dim', !shown);
+
+    // Horizontal matches painter.zig's TEXT_PADDING_X (5px at real scale); vertical is bumped up a bit
+    // from the real TEXT_PADDING_Y (2px) purely for readability in this mockup.
+    chip.style.padding = `${4 * scale}px ${5 * scale}px`;
+
+    // Chip's own color is text color; background is this element's own independent bg color/opacity.
+    chip.style.backgroundColor = overlayBackgroundCssFor(def.bgColorId, def.bgOpacityId);
+    if (def.colorId) {
+        const colorField = document.getElementById(def.colorId);
+        if (colorField) chip.style.color = colorField.value;
+    }
+
+    if (def.fontNameId) {
+        const nameField = document.getElementById(def.fontNameId);
+        if (nameField && nameField.value) chip.style.fontFamily = `"${nameField.value}", monospace`;
+    }
+    if (def.fontWeightId) {
+        const weight = getFieldValue(def.fontWeightId);
+        chip.style.fontWeight = (weight === 'Bold' || weight === 'BoldItalic') ? '700' : '400';
+        chip.style.fontStyle = (weight === 'Italic' || weight === 'BoldItalic') ? 'italic' : 'normal';
+    }
+
+    const W = stage.clientWidth, H = stage.clientHeight;
+    const w = chip.offsetWidth, h = chip.offsetHeight;
+    const anchor = getFieldValue(def.positionId) || 'TopLeft';
+    const anchorPos = overlayAnchorBoxPos(anchor, w, h, W, H);
+    const ox = (getFieldValue(def.offsetXId) || 0) * scale;
+    const oy = (getFieldValue(def.offsetYId) || 0) * scale;
+
+    chip.style.left = overlayClamp(anchorPos.x + ox, 0, Math.max(0, W - w)) + 'px';
+    chip.style.top = overlayClamp(anchorPos.y + oy, 0, Math.max(0, H - h)) + 'px';
+}
+
+// Mock thumbnail tracks the real aspect ratio so anchor math (Center/TopRight/etc.) matches how it'll actually render.
+function refreshOverlayLayoutPreview() {
+    const stage = document.getElementById('overlayLayoutStage');
+    if (!stage) return;
+    const w = getFieldValue('thumbWidth') || 4;
+    const h = getFieldValue('thumbHeight') || 3;
+    stage.style.aspectRatio = `${w} / ${h}`;
+    OVERLAY_LAYOUT_ELEMENTS.forEach(placeOverlayChip);
+}
+
+// Mirrors toggleInverseOption()'s real-tab dimming (e.g. Unique Character Name Colors disabling the color picker).
+function applyPopoverInverseDisable(targetFieldId, disabled) {
+    const body = document.getElementById('overlayPopoverBody');
+    const input = body?.querySelector(`[data-popover-for="${targetFieldId}"]`);
+    if (!input) return;
+    input.parentElement.style.opacity = disabled ? '0.5' : '1';
+    input.style.pointerEvents = disabled ? 'none' : 'auto';
+}
+
+// Writes back through setOverlayFieldValue()/setOverlayCheckboxValue() so it behaves like editing the real tab.
+// Keys whose values get copied across every element when "Sync Fonts, Colors and Backgrounds" is on.
+const OVERLAY_STYLE_SYNC_KEYS = ['fontNameId', 'fontSizeId', 'fontWeightId', 'bgColorId', 'bgOpacityId'];
+
+// Copies sourceDef's current font/color/background fields onto every other element.
+function syncOverlayStyleFrom(sourceDef) {
+    OVERLAY_STYLE_SYNC_KEYS.forEach(key => {
+        const sourceId = sourceDef[key];
+        if (!sourceId) return;
+        const sourceField = document.getElementById(sourceId);
+        if (!sourceField) return;
+        // getFieldValue() converts color inputs to Zig's 0xAARRGGBB format, but a color <input>'s
+        // .value must stay '#rrggbb' - read the raw value directly for bgColorId.
+        const value = key === 'bgColorId' ? sourceField.value : getFieldValue(sourceId);
+        OVERLAY_LAYOUT_ELEMENTS.forEach(otherDef => {
+            const targetId = otherDef[key];
+            if (!targetId || targetId === sourceId) return;
+            setOverlayFieldValue(targetId, value);
+        });
+    });
+}
+
+function syncOverlayStyleFromCharacterName() {
+    const characterNameDef = OVERLAY_LAYOUT_ELEMENTS.find(d => d.chipId === 'overlayChip_characterName');
+    if (characterNameDef) syncOverlayStyleFrom(characterNameDef);
+}
+
+// After a synced-kind field is edited via its popover, re-propagate that element's full style to the rest.
+function maybeSyncOverlayStyle(def) {
+    if (document.getElementById('syncOverlayStyling')?.checked) syncOverlayStyleFrom(def);
+}
+
+function buildOverlayPopoverField(f, def) {
+    const wrap = document.createElement('div');
+    wrap.className = 'overlay-popover-field';
+    const real = document.getElementById(f.id);
+
+    if (f.type === 'checkbox') {
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = !!(real && real.checked);
+        input.addEventListener('change', () => {
+            setOverlayCheckboxValue(f.id, input.checked);
+            if (f.disables) applyPopoverInverseDisable(f.disables, input.checked);
+        });
+        const span = document.createElement('span');
+        span.className = 'label-body';
+        span.textContent = f.label;
+        label.appendChild(input);
+        label.appendChild(span);
+        wrap.appendChild(label);
+        return wrap;
+    }
+
+    const label = document.createElement('label');
+    label.textContent = f.label;
+    wrap.appendChild(label);
+
+    let input;
+    if (f.type === 'color') {
+        input = document.createElement('input');
+        input.type = 'color';
+        input.value = real ? real.value : '#ffffff';
+        if (real?.dataset.defaultColor) input.dataset.defaultColor = real.dataset.defaultColor;
+        input.dataset.popoverFor = f.id;
+        input.addEventListener('input', () => { setOverlayFieldValue(f.id, input.value); maybeSyncOverlayStyle(def); });
+    } else if (f.type === 'number') {
+        input = document.createElement('input');
+        input.type = 'number';
+        if (f.min !== undefined) input.min = f.min;
+        if (f.max !== undefined) input.max = f.max;
+        input.value = real ? real.value : '';
+        input.addEventListener('input', () => { setOverlayFieldValue(f.id, input.value); maybeSyncOverlayStyle(def); });
+    } else if (f.type === 'range') {
+        input = document.createElement('input');
+        input.type = 'range';
+        if (f.min !== undefined) input.min = f.min;
+        if (f.max !== undefined) input.max = f.max;
+        input.value = real ? real.value : (f.min ?? 0);
+        const valueSpan = document.createElement('span');
+        valueSpan.textContent = input.value + (f.unit || '');
+        valueSpan.style.marginLeft = '6px';
+        input.addEventListener('input', () => {
+            setOverlayFieldValue(f.id, input.value);
+            valueSpan.textContent = input.value + (f.unit || '');
+            maybeSyncOverlayStyle(def);
+        });
+        wrap.appendChild(input);
+        wrap.appendChild(valueSpan);
+        return wrap;
+    } else if (f.type === 'font-name') {
+        input = document.createElement('select');
+        FONT_OPTIONS.forEach(name => input.add(new Option(name, name)));
+        input.value = real ? real.value : FONT_OPTIONS[0];
+        input.addEventListener('change', () => { setOverlayFieldValue(f.id, input.value); maybeSyncOverlayStyle(def); });
+    } else if (f.type === 'font-weight') {
+        input = document.createElement('select');
+        [['Regular', t('common.fontWeightOption.regular')], ['Bold', t('common.fontWeightOption.bold')],
+         ['Italic', t('common.fontWeightOption.italic')], ['BoldItalic', t('common.fontWeightOption.boldItalic')]]
+            .forEach(([value, text]) => input.add(new Option(text, value)));
+        input.value = real ? real.value : 'Regular';
+        input.addEventListener('change', () => { setOverlayFieldValue(f.id, input.value); maybeSyncOverlayStyle(def); });
+    }
+
+    if (input) wrap.appendChild(input);
+    return wrap;
+}
+
+function closeOverlayPopover() {
+    const popover = document.getElementById('overlayPropertiesPopover');
+    if (popover) popover.style.display = 'none';
+}
+
+function openOverlayPopover(def, chip) {
+    const popover = document.getElementById('overlayPropertiesPopover');
+    const title = document.getElementById('overlayPopoverTitle');
+    const body = document.getElementById('overlayPopoverBody');
+    if (!popover || !title || !body || !def.popoverFields) return;
+
+    title.textContent = def.popoverTitle;
+    body.innerHTML = '';
+    def.popoverFields.forEach(f => body.appendChild(buildOverlayPopoverField(f, def)));
+    def.popoverFields.forEach(f => {
+        if (f.type === 'checkbox' && f.disables) {
+            applyPopoverInverseDisable(f.disables, !!document.getElementById(f.id)?.checked);
+        }
+    });
+
+    popover.style.display = 'block';
+    const chipRect = chip.getBoundingClientRect();
+    const popRect = popover.getBoundingClientRect();
+    let left = chipRect.right + 8;
+    let top = chipRect.top;
+    if (left + popRect.width > window.innerWidth) left = chipRect.left - popRect.width - 8;
+    if (top + popRect.height > window.innerHeight) top = window.innerHeight - popRect.height - 8;
+    popover.style.left = Math.max(8, left) + 'px';
+    popover.style.top = Math.max(8, top) + 'px';
+}
+
+function setupOverlayChipDrag(def) {
+    const chip = document.getElementById(def.chipId);
+    if (!chip) return;
+
+    let dragging = false;
+    let moved = false;
+    let startX = 0, startY = 0, originLeft = 0, originTop = 0;
+
+    chip.addEventListener('pointerdown', (e) => {
+        dragging = true;
+        moved = false;
+        chip.classList.add('dragging');
+        chip.classList.remove('settling');
+        chip.setPointerCapture(e.pointerId);
+        startX = e.clientX;
+        startY = e.clientY;
+        originLeft = chip.offsetLeft;
+        originTop = chip.offsetTop;
+        e.preventDefault();
+    });
+
+    chip.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        if (Math.hypot(e.clientX - startX, e.clientY - startY) > 4) moved = true;
+
+        const stage = document.getElementById('overlayLayoutStage');
+        const W = stage.clientWidth, H = stage.clientHeight;
+        const w = chip.offsetWidth, h = chip.offsetHeight;
+        const scale = overlayStageScale(stage);
+        const rangeX = overlayOffsetRange(def.offsetXId);
+        const rangeY = overlayOffsetRange(def.offsetYId);
+
+        const rawX = overlayClamp(originLeft + (e.clientX - startX), 0, Math.max(0, W - w));
+        const rawY = overlayClamp(originTop + (e.clientY - startY), 0, Math.max(0, H - h));
+        const anchor = overlayZoneForPoint(rawX + w / 2, rawY + h / 2, W, H);
+        const anchorPos = overlayAnchorBoxPos(anchor, w, h, W, H);
+
+        // Anchor snap takes priority over chip-to-chip alignment.
+        const snappedToAnchor = Math.hypot(rawX - anchorPos.x, rawY - anchorPos.y) < OVERLAY_SNAP_THRESHOLD_PX;
+        const align = snappedToAnchor ? { x: null, y: null, guideX: null, guideY: null } : overlayFindAlignmentSnap(chip.id, rawX, rawY, w, h);
+        const alignedToOther = align.x !== null || align.y !== null;
+        const targetX = snappedToAnchor ? anchorPos.x : (align.x !== null ? align.x : rawX);
+        const targetY = snappedToAnchor ? anchorPos.y : (align.y !== null ? align.y : rawY);
+
+        // Clamped live, not just at drop, or the chip would jump back once released.
+        const x = overlayClamp(targetX, Math.max(0, anchorPos.x + rangeX.min * scale), Math.min(W - w, anchorPos.x + rangeX.max * scale));
+        const y = overlayClamp(targetY, Math.max(0, anchorPos.y + rangeY.min * scale), Math.min(H - h, anchorPos.y + rangeY.max * scale));
+
+        chip.style.left = x + 'px';
+        chip.style.top = y + 'px';
+        chip.classList.toggle('snapped', snappedToAnchor || alignedToOther);
+        chip.classList.toggle('clamped', x !== targetX || y !== targetY);
+        overlayShowAlignmentGuides(snappedToAnchor ? null : align.guideX, snappedToAnchor ? null : align.guideY);
+    });
+
+    function endDrag() {
+        if (!dragging) return;
+        dragging = false;
+        chip.classList.remove('dragging', 'clamped', 'snapped');
+        chip.classList.add('settling');
+        overlayShowAlignmentGuides(null, null);
+
+        const stage = document.getElementById('overlayLayoutStage');
+        const W = stage.clientWidth, H = stage.clientHeight;
+        const w = chip.offsetWidth, h = chip.offsetHeight;
+        const scale = overlayStageScale(stage);
+        const x = chip.offsetLeft, y = chip.offsetTop;
+        const anchor = overlayZoneForPoint(x + w / 2, y + h / 2, W, H);
+        const anchorPos = overlayAnchorBoxPos(anchor, w, h, W, H);
+        const rangeX = overlayOffsetRange(def.offsetXId);
+        const rangeY = overlayOffsetRange(def.offsetYId);
+        const ox = overlayClamp((x - anchorPos.x) / scale, rangeX.min, rangeX.max);
+        const oy = overlayClamp((y - anchorPos.y) / scale, rangeY.min, rangeY.max);
+
+        setOverlayFieldValue(def.positionId, anchor);
+        setOverlayFieldValue(def.offsetXId, Math.round(ox));
+        setOverlayFieldValue(def.offsetYId, Math.round(oy));
+        placeOverlayChip(def);
+
+        // A click (no real movement) opens this element's properties popover instead of just re-placing it.
+        if (!moved && def.popoverFields) openOverlayPopover(def, chip);
+    }
+
+    chip.addEventListener('pointerup', endDrag);
+    chip.addEventListener('pointercancel', endDrag);
+}
+
+function initOverlayLayoutPreview() {
+    if (!document.getElementById('overlayLayoutStage')) return;
+
+    OVERLAY_LAYOUT_ELEMENTS.forEach(def => {
+        setupOverlayChipDrag(def);
+
+        // Refreshes live however the field gets edited - this tab, the popover, or the real tab.
+        const liveFieldIds = new Set([
+            def.positionId, def.showId, def.alsoRequiresId, def.colorId,
+            def.fontNameId, def.fontWeightId, def.uniqueColorsId,
+            def.bgColorId, def.bgOpacityId,
+            ...(def.popoverFields || []).map(f => f.id),
+        ].filter(Boolean));
+
+        liveFieldIds.forEach(id => {
+            const field = document.getElementById(id);
+            if (!field) return;
+            field.addEventListener(isChangeEventType(field) ? 'change' : 'input', refreshOverlayLayoutPreview);
+        });
+    });
+
+    document.getElementById('thumbWidth')?.addEventListener('input', refreshOverlayLayoutPreview);
+    document.getElementById('thumbHeight')?.addEventListener('input', refreshOverlayLayoutPreview);
+    window.addEventListener('resize', refreshOverlayLayoutPreview);
+
+    // Turning sync on (or loading a profile while it's already on) unifies every element to Character Name's current styling.
+    document.getElementById('syncOverlayStyling')?.addEventListener('change', function () {
+        if (this.checked) syncOverlayStyleFromCharacterName();
+    });
+
+    document.getElementById('overlayPopoverClose')?.addEventListener('click', closeOverlayPopover);
+    document.addEventListener('pointerdown', (e) => {
+        const popover = document.getElementById('overlayPropertiesPopover');
+        if (!popover || popover.style.display === 'none') return;
+        if (popover.contains(e.target)) return;
+        if (e.target.closest && e.target.closest('.overlay-chip')) return;
+        // Color picker popup lives outside this popover (appended to document.body) - don't treat it as "clicked outside".
+        if (e.target.closest && e.target.closest('#custom-color-picker')) return;
+        closeOverlayPopover();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeOverlayPopover();
+    });
 }
 
 // Opposite polarity of applyOptionToggle(): the target options are disabled when the checkbox IS checked.
@@ -6096,7 +6741,7 @@ function toggleUniqueSystemColors() {
 }
 
 function toggleUniqueCharacterNameColors() {
-    toggleInverseOption('useUniqueCharacterNameColors', 'textColorOption');
+    toggleInverseOption('useUniqueCharacterNameColors', 'characterNameColorOption');
 }
 
 function toggleAutoMinimizeOptions() {
@@ -6156,6 +6801,14 @@ function toggleTtsOptions() {
 
 function toggleChatlogOptions() {
     applyOptionToggle('chatlogEnabled', 'chatlogOptions');
+}
+
+function initCombatShowRequiresEnabled() {
+    ['combatShowIncoming', 'combatShowOutgoing'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', function () {
+            if (this.checked) setOverlayCheckboxValue('combatEnabled', true);
+        });
+    });
 }
 
 function toggleCombatOptions() {

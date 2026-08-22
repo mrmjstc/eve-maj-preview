@@ -97,24 +97,32 @@ const RenderSettings = struct {
     character_name: []const u8 = "",
     show_system_name: bool = false,
     system_name: []const u8 = "",
-    text_color: u32 = 0xFFFFFF,
+    character_name_color: u32 = 0xFFFFFF,
     system_name_color: u32 = 0xFFFFFF,
-    text_bg_color: u32 = 0x80000000,
-    text_font_name: []const u8 = "Segoe UI",
-    text_font_size: i32 = 14,
-    text_font_weight: types.FontWeight = .Regular,
+    character_name_bg_color: u32 = 0x80000000,
+    system_name_bg_color: u32 = 0x80000000,
+    character_name_font_name: []const u8 = "Segoe UI",
+    character_name_font_size: i32 = 14,
+    character_name_font_weight: types.FontWeight = .Regular,
     character_name_position: TextPosition = .TopLeft,
     character_name_offset_x: i32 = 0,
     character_name_offset_y: i32 = 0,
     system_name_position: TextPosition = .BottomLeft,
     system_name_offset_x: i32 = 0,
     system_name_offset_y: i32 = 0,
+    system_name_font_name: []const u8 = "Segoe UI",
+    system_name_font_size: i32 = 12,
+    system_name_font_weight: types.FontWeight = .Regular,
     show_notifications: bool = false,
     notification_lines: [MAX_STACKED_NOTIFICATIONS]NotificationLine = .{NotificationLine{}} ** MAX_STACKED_NOTIFICATIONS,
     notification_line_count: usize = 0,
     notifications_position: TextPosition = .Center,
     notifications_offset_x: i32 = 0,
     notifications_offset_y: i32 = 0,
+    notifications_font_name: []const u8 = "Segoe UI",
+    notifications_font_size: i32 = 12,
+    notifications_font_weight: types.FontWeight = .Regular,
+    notifications_bg_color: u32 = 0x80000000,
 
     show_border: bool = true,
     border_width: u8 = 2,
@@ -131,6 +139,14 @@ const RenderSettings = struct {
     quick_group_badge_position: TextPosition = .RightCenter,
     quick_group_badge_offset_x: i32 = 0,
     quick_group_badge_offset_y: i32 = 0,
+    quick_group_badge_font_name: []const u8 = "Segoe UI",
+    quick_group_badge_font_size: i32 = 12,
+    quick_group_badge_font_weight: types.FontWeight = .Regular,
+    quick_group_badge_bg_color: u32 = 0x80000000,
+    combat_incoming_bg_color: u32 = 0x80000000,
+    combat_outgoing_bg_color: u32 = 0x80000000,
+    mining_bg_color: u32 = 0x80000000,
+    bounty_bg_color: u32 = 0x80000000,
 
     show_thumbnail: bool = true,
     overlay_alpha: u8 = OVERLAY_ALPHA,
@@ -153,7 +169,6 @@ const RenderSettings = struct {
     dps_outgoing_color: u32 = 0xFF44FF44,
     mining_color: u32 = 0xFF44AAFF,
     bounty_color: u32 = 0xFFFFD700,
-    icon_color: u32 = 0xFFFF4444,
 };
 
 pub const ThumbnailWindow = struct {
@@ -202,11 +217,15 @@ pub const ThumbnailWindow = struct {
     cached_char_dims: ?TextDimensions = null,
     cached_sys_dims: ?TextDimensions = null,
     cached_qg_dims: ?TextDimensions = null,
-    cached_icon_dims: ?TextDimensions = null,
-    cached_icon_font_size: i32 = 0,
     cached_font_name: []const u8 = "",
     cached_font_size: i32 = 0,
     cached_font_weight: types.FontWeight = .Regular,
+    cached_sys_font_name: []const u8 = "",
+    cached_sys_font_size: i32 = 0,
+    cached_sys_font_weight: types.FontWeight = .Regular,
+    cached_qg_font_name: []const u8 = "",
+    cached_qg_font_size: i32 = 0,
+    cached_qg_font_weight: types.FontWeight = .Regular,
     cached_system_color: u32,
     // Auto-generated per-character name color, resolved from config; null when "Unique Character Name Colors" is disabled, and callers fall back to their own default.
     cached_character_color: ?u32,
@@ -255,11 +274,9 @@ pub const ThumbnailWindow = struct {
     }
 };
 
-/// Identifies which per-purpose font cache slot to use (see `Painter.cached_fonts`).
-pub const FontSlot = enum(u3) { main, combat, mining, icon, bounty };
-
-/// Fixed typeface for the combat icon glyph, unlike the other overlay fonts, since the user's chosen font typically lacks the glyph's Unicode symbol coverage.
-const ICON_FONT_NAME = "Segoe UI Symbol";
+/// Per-purpose font cache slot (see `Painter.cached_fonts`). Kept as u4 (not u3) so a future slot doesn't need a resize.
+/// `combat` is incoming DPS's slot; outgoing DPS has its own.
+pub const FontSlot = enum(u4) { main, combat, mining, bounty, system_name, quick_group_badge, notification, combat_outgoing };
 
 const FontCacheEntry = struct {
     font: ?win32.HFONT = null,
@@ -305,8 +322,8 @@ pub const Painter = struct {
     destroy_event_hook: ?win32.HANDLE = null,
     hide_debounce_timer_hwnd: ?win32.HWND = null,
     window_manager: manager_mod.WindowManager,
-    /// Fonts used per render (main text, combat DPS, mining, combat icon), each with its own cache slot so resolving one never deletes a handle still in use by another.
-    cached_fonts: [5]FontCacheEntry = .{ .{}, .{}, .{}, .{}, .{} },
+    /// One cache slot per FontSlot, so resolving one font never evicts a handle still in use by another.
+    cached_fonts: [8]FontCacheEntry = .{ .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{} },
     /// Non-null when viewMode == .ClientList; owns the compact list panel window.
     list_window: ?list_view.ListWindow = null,
     /// Non-null when display.showNotifInfoPanel is enabled; owns the notification-history/activity-totals panel.
@@ -515,21 +532,27 @@ pub const Painter = struct {
             (a.system_name.ptr == b.system_name.ptr and
                 a.system_name.len == b.system_name.len or
                 std.mem.eql(u8, a.system_name, b.system_name)) and
-            a.text_color == b.text_color and
+            a.character_name_color == b.character_name_color and
             a.system_name_color == b.system_name_color and
-            a.text_bg_color == b.text_bg_color and
+            a.character_name_bg_color == b.character_name_bg_color and
+            a.system_name_bg_color == b.system_name_bg_color and
             // Pointer fast-path: config/notif-owned slices are pointer+len identical every tick when unchanged.
-            (a.text_font_name.ptr == b.text_font_name.ptr and
-                a.text_font_name.len == b.text_font_name.len or
-                std.mem.eql(u8, a.text_font_name, b.text_font_name)) and
-            a.text_font_size == b.text_font_size and
-            a.text_font_weight == b.text_font_weight and
+            (a.character_name_font_name.ptr == b.character_name_font_name.ptr and
+                a.character_name_font_name.len == b.character_name_font_name.len or
+                std.mem.eql(u8, a.character_name_font_name, b.character_name_font_name)) and
+            a.character_name_font_size == b.character_name_font_size and
+            a.character_name_font_weight == b.character_name_font_weight and
             a.character_name_position == b.character_name_position and
             a.character_name_offset_x == b.character_name_offset_x and
             a.character_name_offset_y == b.character_name_offset_y and
             a.system_name_position == b.system_name_position and
             a.system_name_offset_x == b.system_name_offset_x and
             a.system_name_offset_y == b.system_name_offset_y and
+            (a.system_name_font_name.ptr == b.system_name_font_name.ptr and
+                a.system_name_font_name.len == b.system_name_font_name.len or
+                std.mem.eql(u8, a.system_name_font_name, b.system_name_font_name)) and
+            a.system_name_font_size == b.system_name_font_size and
+            a.system_name_font_weight == b.system_name_font_weight and
             a.show_notifications == b.show_notifications and
             a.notification_line_count == b.notification_line_count and
             (blk: {
@@ -545,6 +568,12 @@ pub const Painter = struct {
             a.notifications_position == b.notifications_position and
             a.notifications_offset_x == b.notifications_offset_x and
             a.notifications_offset_y == b.notifications_offset_y and
+            (a.notifications_font_name.ptr == b.notifications_font_name.ptr and
+                a.notifications_font_name.len == b.notifications_font_name.len or
+                std.mem.eql(u8, a.notifications_font_name, b.notifications_font_name)) and
+            a.notifications_font_size == b.notifications_font_size and
+            a.notifications_font_weight == b.notifications_font_weight and
+            a.notifications_bg_color == b.notifications_bg_color and
             a.show_border == b.show_border and
             a.border_width == b.border_width and
             a.border_color == b.border_color and
@@ -560,6 +589,12 @@ pub const Painter = struct {
             a.quick_group_badge_position == b.quick_group_badge_position and
             a.quick_group_badge_offset_x == b.quick_group_badge_offset_x and
             a.quick_group_badge_offset_y == b.quick_group_badge_offset_y and
+            (a.quick_group_badge_font_name.ptr == b.quick_group_badge_font_name.ptr and
+                a.quick_group_badge_font_name.len == b.quick_group_badge_font_name.len or
+                std.mem.eql(u8, a.quick_group_badge_font_name, b.quick_group_badge_font_name)) and
+            a.quick_group_badge_font_size == b.quick_group_badge_font_size and
+            a.quick_group_badge_font_weight == b.quick_group_badge_font_weight and
+            a.quick_group_badge_bg_color == b.quick_group_badge_bg_color and
             a.overlay_alpha == b.overlay_alpha and
             a.overlay_width == b.overlay_width and
             a.overlay_height == b.overlay_height and
@@ -575,7 +610,10 @@ pub const Painter = struct {
             a.dps_outgoing_color == b.dps_outgoing_color and
             a.mining_color == b.mining_color and
             a.bounty_color == b.bounty_color and
-            a.icon_color == b.icon_color;
+            a.combat_incoming_bg_color == b.combat_incoming_bg_color and
+            a.combat_outgoing_bg_color == b.combat_outgoing_bg_color and
+            a.mining_bg_color == b.mining_bg_color and
+            a.bounty_bg_color == b.bounty_bg_color;
     }
 
     fn renderSettingsEqual(a: RenderSettings, b: RenderSettings) bool {
@@ -2404,7 +2442,7 @@ pub const Painter = struct {
         const overlay = &self.ghost_overlay_bitmap.?;
         clearPixels(overlay.pixels, overlay.width * overlay.height);
 
-        const font = self.getCachedFont(.main, self.config.thumbnail.textFontName, self.config.thumbnail.textFontSize, self.config.thumbnail.textFontWeight) catch |err| {
+        const font = self.getCachedFont(.main, self.config.thumbnail.characterNameFontName, self.config.thumbnail.characterNameFontSize, self.config.thumbnail.characterNameFontWeight) catch |err| {
             slog.err("Failed to get font for ghost overlay: {}", .{err});
             return;
         };
@@ -2555,8 +2593,11 @@ fn fillTextBackground(pixels: [*]u32, width: usize, height: usize, x: i32, y: i3
     const end_x = @min(start_x + text_width, width);
     if (end_x <= start_x or end_y <= start_y) return;
     const span = end_x - start_x;
+    // Must be premultiplied, or fixTextAlphaRect's "alpha==0 but rgb!=0" heuristic mistakes a
+    // transparent non-black background for unfixed GDI text and forces it fully opaque.
+    const blended = premultiplyAlpha(color);
     for (start_y..end_y) |py| {
-        @memset(pixels[py * width + start_x .. py * width + start_x + span], color);
+        @memset(pixels[py * width + start_x .. py * width + start_x + span], blended);
     }
 }
 
@@ -2891,27 +2932,6 @@ fn renderText(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void 
     _ = win32.TextOutA(dc, x + TEXT_PADDING_X, y + TEXT_PADDING_Y, &text_buffer, @intCast(text_len));
 }
 
-/// Combat icon glyph: dagger (U+2020), rendered via the W (UTF-16) GDI APIs since measureText/renderText above are ANSI-only.
-/// Deliberately not crossed swords (U+2694): that codepoint's default emoji presentation gets color-font-linked, and color glyphs ignore SetTextColor entirely.
-const ICON_GLYPH = [_]u16{0x2020};
-
-/// Mirrors measureText but uses the W (UTF-16) API since the glyph is outside the ANSI codepage.
-fn measureIconGlyph(dc: win32.HDC) TextDimensions {
-    var text_size: win32.SIZE = undefined;
-    _ = win32.GetTextExtentPoint32W(dc, &ICON_GLYPH, ICON_GLYPH.len, &text_size);
-    return .{
-        .width = @intCast(text_size.cx + (TEXT_PADDING_X * 2)),
-        .height = @intCast(text_size.cy + (TEXT_PADDING_Y * 2)),
-    };
-}
-
-/// Mirrors renderText but uses the W (UTF-16) API; the correct font must already be selected into `dc` by the caller.
-fn renderIconGlyph(dc: win32.HDC, x: i32, y: i32, color: u32) void {
-    _ = win32.SetBkMode(dc, win32.TRANSPARENT);
-    _ = win32.SetTextColor(dc, gdi_overlay.toColorRef(color));
-    _ = win32.TextOutW(dc, x + TEXT_PADDING_X, y + TEXT_PADDING_Y, &ICON_GLYPH, ICON_GLYPH.len);
-}
-
 fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings, config: *const config_mod.Config) !void {
     const hwnd = thumbnail.text_hwnd;
     const character_name = thumbnail.character_name;
@@ -2946,9 +2966,9 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     const painter = g_painter_ptr orelse return error.NoPainter;
     const font = try painter.getCachedFont(
         .main,
-        settings.text_font_name,
-        settings.text_font_size,
-        settings.text_font_weight,
+        settings.character_name_font_name,
+        settings.character_name_font_size,
+        settings.character_name_font_weight,
     );
 
     // Select the main font once for all char/system/notification measure+render calls; restore the original object on function exit.
@@ -2961,11 +2981,11 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
 
     // Pointer fast-path: config strings are stable between ticks, so pointer equality avoids a byte-by-byte comparison on every render.
     const font_changed =
-        (thumbnail.cached_font_name.ptr != settings.text_font_name.ptr or
-            thumbnail.cached_font_name.len != settings.text_font_name.len) and
-        !std.mem.eql(u8, thumbnail.cached_font_name, settings.text_font_name) or
-        thumbnail.cached_font_size != settings.text_font_size or
-        thumbnail.cached_font_weight != settings.text_font_weight;
+        (thumbnail.cached_font_name.ptr != settings.character_name_font_name.ptr or
+            thumbnail.cached_font_name.len != settings.character_name_font_name.len) and
+        !std.mem.eql(u8, thumbnail.cached_font_name, settings.character_name_font_name) or
+        thumbnail.cached_font_size != settings.character_name_font_size or
+        thumbnail.cached_font_weight != settings.character_name_font_weight;
 
     var char_text_dims: TextDimensions = .{ .width = 0, .height = 0 };
     if (settings.show_character_name) {
@@ -2974,19 +2994,34 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         } else {
             char_text_dims = measureText(overlay.mem_dc, display_name);
             thumbnail.cached_char_dims = char_text_dims;
-            thumbnail.cached_font_name = settings.text_font_name;
-            thumbnail.cached_font_size = settings.text_font_size;
-            thumbnail.cached_font_weight = settings.text_font_weight;
+            thumbnail.cached_font_name = settings.character_name_font_name;
+            thumbnail.cached_font_size = settings.character_name_font_size;
+            thumbnail.cached_font_weight = settings.character_name_font_weight;
         }
     }
 
+    // Resolved once here and reused at the render phase below, same pattern as dps_in_font/mining_font/bounty_font.
     var system_text_dims: TextDimensions = .{ .width = 0, .height = 0 };
+    var sys_font: ?win32.HFONT = null;
     if (settings.show_system_name) {
-        if (thumbnail.cached_sys_dims != null and !font_changed) {
+        const sf = try painter.getCachedFont(.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
+        sys_font = sf;
+        const sys_font_changed =
+            (thumbnail.cached_sys_font_name.ptr != settings.system_name_font_name.ptr or
+                thumbnail.cached_sys_font_name.len != settings.system_name_font_name.len) and
+            !std.mem.eql(u8, thumbnail.cached_sys_font_name, settings.system_name_font_name) or
+            thumbnail.cached_sys_font_size != settings.system_name_font_size or
+            thumbnail.cached_sys_font_weight != settings.system_name_font_weight;
+        if (thumbnail.cached_sys_dims != null and !sys_font_changed) {
             system_text_dims = thumbnail.cached_sys_dims.?;
         } else {
+            _ = win32.SelectObject(overlay.mem_dc, sf);
             system_text_dims = measureText(overlay.mem_dc, system_name);
+            _ = win32.SelectObject(overlay.mem_dc, font);
             thumbnail.cached_sys_dims = system_text_dims;
+            thumbnail.cached_sys_font_name = settings.system_name_font_name;
+            thumbnail.cached_sys_font_size = settings.system_name_font_size;
+            thumbnail.cached_sys_font_weight = settings.system_name_font_weight;
         }
     }
 
@@ -2995,22 +3030,41 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     var notif_line_dims: [MAX_STACKED_NOTIFICATIONS]TextDimensions = undefined;
     var notifications_text_dims: TextDimensions = .{ .width = 0, .height = 0 };
     const has_notification_text = settings.notification_line_count > 0;
+    var notif_font: ?win32.HFONT = null;
     if (settings.show_notifications and has_notification_text) {
+        const nf = try painter.getCachedFont(.notification, settings.notifications_font_name, settings.notifications_font_size, settings.notifications_font_weight);
+        notif_font = nf;
+        _ = win32.SelectObject(overlay.mem_dc, nf);
         var idx: usize = 0;
         while (idx < settings.notification_line_count) : (idx += 1) {
             notif_line_dims[idx] = measureText(overlay.mem_dc, settings.notification_lines[idx].text);
             notifications_text_dims.width = @max(notifications_text_dims.width, notif_line_dims[idx].width);
             notifications_text_dims.height += notif_line_dims[idx].height;
         }
+        _ = win32.SelectObject(overlay.mem_dc, font);
     }
 
     var qg_badge_dims: TextDimensions = .{ .width = 0, .height = 0 };
+    var qg_font: ?win32.HFONT = null;
     if (settings.show_quick_group_badge) {
-        if (thumbnail.cached_qg_dims != null and !font_changed) {
+        const qf = try painter.getCachedFont(.quick_group_badge, settings.quick_group_badge_font_name, settings.quick_group_badge_font_size, settings.quick_group_badge_font_weight);
+        qg_font = qf;
+        const qg_font_changed =
+            (thumbnail.cached_qg_font_name.ptr != settings.quick_group_badge_font_name.ptr or
+                thumbnail.cached_qg_font_name.len != settings.quick_group_badge_font_name.len) and
+            !std.mem.eql(u8, thumbnail.cached_qg_font_name, settings.quick_group_badge_font_name) or
+            thumbnail.cached_qg_font_size != settings.quick_group_badge_font_size or
+            thumbnail.cached_qg_font_weight != settings.quick_group_badge_font_weight;
+        if (thumbnail.cached_qg_dims != null and !qg_font_changed) {
             qg_badge_dims = thumbnail.cached_qg_dims.?;
         } else {
+            _ = win32.SelectObject(overlay.mem_dc, qf);
             qg_badge_dims = measureText(overlay.mem_dc, settings.quick_group_badge_text);
+            _ = win32.SelectObject(overlay.mem_dc, font);
             thumbnail.cached_qg_dims = qg_badge_dims;
+            thumbnail.cached_qg_font_name = settings.quick_group_badge_font_name;
+            thumbnail.cached_qg_font_size = settings.quick_group_badge_font_size;
+            thumbnail.cached_qg_font_weight = settings.quick_group_badge_font_weight;
         }
     }
 
@@ -3075,7 +3129,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
             char_text_pos.y,
             char_text_dims.width,
             char_text_dims.height,
-            settings.text_bg_color,
+            settings.character_name_bg_color,
         );
     }
 
@@ -3088,7 +3142,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
             system_text_pos.y,
             system_text_dims.width,
             system_text_dims.height,
-            settings.text_bg_color,
+            settings.system_name_bg_color,
         );
     }
 
@@ -3101,7 +3155,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
             notifications_text_pos.y,
             notifications_text_dims.width,
             notifications_text_dims.height,
-            settings.text_bg_color,
+            settings.notifications_bg_color,
         );
     }
 
@@ -3114,11 +3168,11 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
             qg_badge_pos.y,
             qg_badge_dims.width,
             qg_badge_dims.height,
-            settings.text_bg_color,
+            settings.quick_group_badge_bg_color,
         );
     }
 
-    // Fill DPS text backgrounds before the border, matching char/system name draw order; dps_font is stashed for the render phase below to reuse.
+    // Fill DPS text backgrounds before the border, matching char/system name draw order.
     var dps_in_buf: [32]u8 = undefined;
     var dps_out_buf: [32]u8 = undefined;
     var dps_in_text: []const u8 = "";
@@ -3127,33 +3181,36 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     var dps_out_pos: TextPos = .{ .x = 0, .y = 0 };
     var dps_in_dims: TextDimensions = .{ .width = 0, .height = 0 };
     var dps_out_dims: TextDimensions = .{ .width = 0, .height = 0 };
-    var dps_font: ?win32.HFONT = null;
-    if (config.combat.enabled) {
+    var dps_in_font: ?win32.HFONT = null;
+    var dps_out_font: ?win32.HFONT = null;
+    if (config.combat.enabled and config.thumbnail.showText) {
         const combat_cfg = &config.combat;
-        const f = try painter.getCachedFont(.combat, settings.text_font_name, combat_cfg.font_size, settings.text_font_weight);
-        dps_font = f;
-        // Temporarily switch to DPS font for measurement (may differ in font_size).
-        _ = win32.SelectObject(overlay.mem_dc, f);
         if (combat_cfg.show_incoming and thumbnail.has_dps_data and (thumbnail.last_incoming_dps == null or thumbnail.last_incoming_dps.? > 0)) {
+            const f = try painter.getCachedFont(.combat, combat_cfg.incoming_font_name, combat_cfg.incoming_font_size, combat_cfg.incoming_font_weight);
+            dps_in_font = f;
+            _ = win32.SelectObject(overlay.mem_dc, f);
             dps_in_text = if (thumbnail.last_incoming_dps) |dps|
                 std.fmt.bufPrint(&dps_in_buf, "IN: {d:.0}", .{dps}) catch "IN: ---"
             else
                 "IN: ??";
             dps_in_dims = measureText(overlay.mem_dc, dps_in_text);
             dps_in_pos = calculateTextPosition(combat_cfg.incoming_position, dps_in_dims.width, dps_in_dims.height, overlay.width, overlay.height, combat_cfg.incoming_offset_x, combat_cfg.incoming_offset_y);
-            fillTextBackground(overlay.pixels, overlay.width, overlay.height, dps_in_pos.x, dps_in_pos.y, dps_in_dims.width, dps_in_dims.height, settings.text_bg_color);
+            fillTextBackground(overlay.pixels, overlay.width, overlay.height, dps_in_pos.x, dps_in_pos.y, dps_in_dims.width, dps_in_dims.height, settings.combat_incoming_bg_color);
+            _ = win32.SelectObject(overlay.mem_dc, font);
         }
         if (combat_cfg.show_outgoing and thumbnail.has_dps_data and (thumbnail.last_outgoing_dps == null or thumbnail.last_outgoing_dps.? > 0)) {
+            const f = try painter.getCachedFont(.combat_outgoing, combat_cfg.outgoing_font_name, combat_cfg.outgoing_font_size, combat_cfg.outgoing_font_weight);
+            dps_out_font = f;
+            _ = win32.SelectObject(overlay.mem_dc, f);
             dps_out_text = if (thumbnail.last_outgoing_dps) |dps|
                 std.fmt.bufPrint(&dps_out_buf, "OUT: {d:.0}", .{dps}) catch "OUT: ---"
             else
                 "OUT: ??";
             dps_out_dims = measureText(overlay.mem_dc, dps_out_text);
             dps_out_pos = calculateTextPosition(combat_cfg.outgoing_position, dps_out_dims.width, dps_out_dims.height, overlay.width, overlay.height, combat_cfg.outgoing_offset_x, combat_cfg.outgoing_offset_y);
-            fillTextBackground(overlay.pixels, overlay.width, overlay.height, dps_out_pos.x, dps_out_pos.y, dps_out_dims.width, dps_out_dims.height, settings.text_bg_color);
+            fillTextBackground(overlay.pixels, overlay.width, overlay.height, dps_out_pos.x, dps_out_pos.y, dps_out_dims.width, dps_out_dims.height, settings.combat_outgoing_bg_color);
+            _ = win32.SelectObject(overlay.mem_dc, font);
         }
-        // Restore main font for subsequent background fills and renders.
-        _ = win32.SelectObject(overlay.mem_dc, font);
     }
 
     // Measure and fill mining rate text background BEFORE the border so the border renders on top.
@@ -3169,9 +3226,9 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     var mining_block_x: i32 = 0;
     var mining_block_width: usize = 0;
     var mining_font: ?win32.HFONT = null;
-    if (config.mining.enabled and thumbnail.has_mining_data and (thumbnail.last_mining_rate == null or thumbnail.last_mining_rate.? > 0)) {
+    if (config.mining.enabled and config.thumbnail.showText and thumbnail.has_mining_data and (thumbnail.last_mining_rate == null or thumbnail.last_mining_rate.? > 0)) {
         const mining_cfg = &config.mining;
-        const mf = try painter.getCachedFont(.mining, settings.text_font_name, mining_cfg.font_size, settings.text_font_weight);
+        const mf = try painter.getCachedFont(.mining, mining_cfg.font_name, mining_cfg.font_size, mining_cfg.font_weight);
         mining_font = mf;
         _ = win32.SelectObject(overlay.mem_dc, mf);
         if (thumbnail.last_mining_rate) |rate| {
@@ -3213,9 +3270,9 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         mining_pos = .{ .x = alignedLineX(anchor.x, mining_block_width, mining_dims.width, h_align), .y = anchor.y };
         mining_isk_pos = .{ .x = alignedLineX(anchor.x, mining_block_width, mining_isk_dims.width, h_align), .y = anchor.y + @as(i32, @intCast(mining_dims.height)) };
 
-        fillTextBackground(overlay.pixels, overlay.width, overlay.height, mining_block_x, mining_pos.y, mining_block_width, mining_dims.height, settings.text_bg_color);
+        fillTextBackground(overlay.pixels, overlay.width, overlay.height, mining_block_x, mining_pos.y, mining_block_width, mining_dims.height, settings.mining_bg_color);
         if (mining_isk_text.len > 0) {
-            fillTextBackground(overlay.pixels, overlay.width, overlay.height, mining_block_x, mining_isk_pos.y, mining_block_width, mining_isk_dims.height, settings.text_bg_color);
+            fillTextBackground(overlay.pixels, overlay.width, overlay.height, mining_block_x, mining_isk_pos.y, mining_block_width, mining_isk_dims.height, settings.mining_bg_color);
         }
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
@@ -3226,9 +3283,9 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     var bounty_pos: TextPos = .{ .x = 0, .y = 0 };
     var bounty_dims: TextDimensions = .{ .width = 0, .height = 0 };
     var bounty_font: ?win32.HFONT = null;
-    if (config.bounty.enabled and thumbnail.has_bounty_data and (thumbnail.last_bounty_isk_rate == null or thumbnail.last_bounty_isk_rate.? > 0)) {
+    if (config.bounty.enabled and config.thumbnail.showText and thumbnail.has_bounty_data and (thumbnail.last_bounty_isk_rate == null or thumbnail.last_bounty_isk_rate.? > 0)) {
         const bounty_cfg = &config.bounty;
-        const bf = try painter.getCachedFont(.bounty, settings.text_font_name, bounty_cfg.font_size, settings.text_font_weight);
+        const bf = try painter.getCachedFont(.bounty, bounty_cfg.font_name, bounty_cfg.font_size, bounty_cfg.font_weight);
         bounty_font = bf;
         _ = win32.SelectObject(overlay.mem_dc, bf);
         const period_secs: f32 = if (bounty_cfg.isk_rate_unit == .hour) 3600.0 else 60.0;
@@ -3243,28 +3300,8 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         bounty_dims = measureText(overlay.mem_dc, bounty_text);
         bounty_pos = calculateTextPosition(bounty_cfg.position, bounty_dims.width, bounty_dims.height, overlay.width, overlay.height, bounty_cfg.offset_x, bounty_cfg.offset_y);
 
-        fillTextBackground(overlay.pixels, overlay.width, overlay.height, bounty_pos.x, bounty_pos.y, bounty_dims.width, bounty_dims.height, settings.text_bg_color);
+        fillTextBackground(overlay.pixels, overlay.width, overlay.height, bounty_pos.x, bounty_pos.y, bounty_dims.width, bounty_dims.height, settings.bounty_bg_color);
         _ = win32.SelectObject(overlay.mem_dc, font);
-    }
-
-    // No background fill, unlike DPS/mining text — the glyph sits directly on the thumbnail as an ambient "under fire" indicator, independent of the one-shot notification border override.
-    var icon_pos: TextPos = .{ .x = 0, .y = 0 };
-    var icon_dims: TextDimensions = .{ .width = 0, .height = 0 };
-    var icon_font: ?win32.HFONT = null;
-    if (config.combat.enabled and config.combat.icon_enabled and (thumbnail.last_incoming_dps orelse 0.0) > 0) {
-        const combat_cfg = &config.combat;
-        const icf = try painter.getCachedFont(.icon, ICON_FONT_NAME, combat_cfg.icon_font_size, .Regular);
-        icon_font = icf;
-        if (thumbnail.cached_icon_dims != null and thumbnail.cached_icon_font_size == combat_cfg.icon_font_size) {
-            icon_dims = thumbnail.cached_icon_dims.?;
-        } else {
-            _ = win32.SelectObject(overlay.mem_dc, icf);
-            icon_dims = measureIconGlyph(overlay.mem_dc);
-            _ = win32.SelectObject(overlay.mem_dc, font);
-            thumbnail.cached_icon_dims = icon_dims;
-            thumbnail.cached_icon_font_size = combat_cfg.icon_font_size;
-        }
-        icon_pos = calculateTextPosition(combat_cfg.icon_position, icon_dims.width, icon_dims.height, overlay.width, overlay.height, combat_cfg.icon_offset_x, combat_cfg.icon_offset_y);
     }
 
     if (settings.show_border) {
@@ -3280,12 +3317,17 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
 
     // Main font is already selected (hoisted at the top of this function).
     if (settings.show_character_name) {
-        renderText(overlay.mem_dc, display_name, char_text_pos.x, char_text_pos.y, settings.text_color);
+        renderText(overlay.mem_dc, display_name, char_text_pos.x, char_text_pos.y, settings.character_name_color);
     }
     if (settings.show_system_name) {
+        const sf = sys_font.?;
+        _ = win32.SelectObject(overlay.mem_dc, sf);
         renderText(overlay.mem_dc, system_name, system_text_pos.x, system_text_pos.y, settings.system_name_color);
+        _ = win32.SelectObject(overlay.mem_dc, font);
     }
     if (settings.show_notifications and has_notification_text) {
+        const nf = notif_font.?;
+        _ = win32.SelectObject(overlay.mem_dc, nf);
         var notif_line_y = notifications_text_pos.y;
         var idx: usize = 0;
         while (idx < settings.notification_line_count) : (idx += 1) {
@@ -3293,26 +3335,29 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
             renderText(overlay.mem_dc, line.text, notifications_text_pos.x, notif_line_y, line.color);
             notif_line_y += @as(i32, @intCast(notif_line_dims[idx].height));
         }
-    }
-    if (settings.show_quick_group_badge) {
-        renderText(overlay.mem_dc, settings.quick_group_badge_text, qg_badge_pos.x, qg_badge_pos.y, settings.quick_group_badge_color);
-    }
-    // Render DPS text — temporarily switch to the DPS font (already resolved above).
-    if (config.combat.enabled) {
-        const combat_cfg = &config.combat;
-        // dps_font is always non-null when config.combat.enabled.
-        const f = dps_font.?;
-        _ = win32.SelectObject(overlay.mem_dc, f);
-        if (combat_cfg.show_incoming and dps_in_text.len > 0) {
-            renderText(overlay.mem_dc, dps_in_text, dps_in_pos.x, dps_in_pos.y, combat_cfg.incoming_color);
-        }
-        if (combat_cfg.show_outgoing and dps_out_text.len > 0) {
-            renderText(overlay.mem_dc, dps_out_text, dps_out_pos.x, dps_out_pos.y, combat_cfg.outgoing_color);
-        }
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
+    if (settings.show_quick_group_badge) {
+        const qf = qg_font.?;
+        _ = win32.SelectObject(overlay.mem_dc, qf);
+        renderText(overlay.mem_dc, settings.quick_group_badge_text, qg_badge_pos.x, qg_badge_pos.y, settings.quick_group_badge_color);
+        _ = win32.SelectObject(overlay.mem_dc, font);
+    }
+    if (config.combat.enabled and config.thumbnail.showText) {
+        const combat_cfg = &config.combat;
+        if (combat_cfg.show_incoming and dps_in_text.len > 0) {
+            _ = win32.SelectObject(overlay.mem_dc, dps_in_font.?);
+            renderText(overlay.mem_dc, dps_in_text, dps_in_pos.x, dps_in_pos.y, combat_cfg.incoming_color);
+            _ = win32.SelectObject(overlay.mem_dc, font);
+        }
+        if (combat_cfg.show_outgoing and dps_out_text.len > 0) {
+            _ = win32.SelectObject(overlay.mem_dc, dps_out_font.?);
+            renderText(overlay.mem_dc, dps_out_text, dps_out_pos.x, dps_out_pos.y, combat_cfg.outgoing_color);
+            _ = win32.SelectObject(overlay.mem_dc, font);
+        }
+    }
 
-    if (config.mining.enabled and mining_text.len > 0) {
+    if (config.mining.enabled and config.thumbnail.showText and mining_text.len > 0) {
         const mf = mining_font.?;
         _ = win32.SelectObject(overlay.mem_dc, mf);
         renderText(overlay.mem_dc, mining_text, mining_pos.x, mining_pos.y, config.mining.color);
@@ -3322,16 +3367,10 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
 
-    if (config.bounty.enabled and bounty_text.len > 0) {
+    if (config.bounty.enabled and config.thumbnail.showText and bounty_text.len > 0) {
         const bf = bounty_font.?;
         _ = win32.SelectObject(overlay.mem_dc, bf);
         renderText(overlay.mem_dc, bounty_text, bounty_pos.x, bounty_pos.y, config.bounty.color);
-        _ = win32.SelectObject(overlay.mem_dc, font);
-    }
-
-    if (icon_font) |icf| {
-        _ = win32.SelectObject(overlay.mem_dc, icf);
-        renderIconGlyph(overlay.mem_dc, icon_pos.x, icon_pos.y, config.combat.icon_color);
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
 
@@ -3365,9 +3404,6 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     if (bounty_text.len > 0) {
         gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, bounty_pos.x, bounty_pos.y, bounty_dims.width, bounty_dims.height);
     }
-    if (icon_font != null) {
-        gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, icon_pos.x, icon_pos.y, icon_dims.width, icon_dims.height);
-    }
 
     const window_size = win32.SIZE{ .cx = width, .cy = height };
     const source_pos = win32.POINT{ .x = 0, .y = 0 };
@@ -3390,6 +3426,13 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         &blend,
         win32.ULW_ALPHA,
     );
+}
+
+// Per-state override (if any) wins, then opacity is forced fully opaque when the window's own
+// Opacity setting should apply instead, so it isn't compounded with this color's own alpha.
+fn resolveTextBgColor(state_cfg: config_mod.Config.StateVisualConfig, base_color: u32, force_opaque: bool) u32 {
+    const resolved = state_cfg.getTextBgColor(base_color);
+    return if (force_opaque) color_mod.withAlpha(resolved, 255) else resolved;
 }
 
 /// Builds RenderSettings from Painter config; the single point where the state machine determines all visual properties.
@@ -3463,6 +3506,13 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
     else
         (cfg.thumbnail.showText and cfg.thumbnail.notifications.enabled);
 
+    // Combat/Mining/Bounty are also gated by showText, but checked directly in the render function below,
+    // since they already bypass RenderSettings entirely for their enabled-checks.
+    const effective_show_quick_group_badge = if (should_hide_all)
+        false
+    else
+        (cfg.thumbnail.showText and cfg.thumbnail.showQuickGroupBadge);
+
     var final_border_color = state_cfg.getBorderColor(base_border_color);
 
     // When suppress_when_focused is true and the character is focused, the border falls back to normal Active appearance instead of the Alert override color.
@@ -3484,7 +3534,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
     }
 
     // Fallback color for stacked notification lines that don't carry their own text_color_override.
-    const notification_base_text_color = state_cfg.getTextColor(cfg.thumbnail.textColor);
+    const notification_base_text_color = state_cfg.getTextColor(cfg.thumbnail.characterNameColor);
 
     // Per-character border color has the highest precedence; a suppressed Alert is treated as Active for border purposes.
     if (cfg.getCharacterBorderColors(character_name)) |char_colors| {
@@ -3499,8 +3549,8 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         }
     }
 
-    // Unique Character Name Colors, when enabled, takes highest precedence over the per-state resolved textColor, same as the border color above.
-    var final_text_color = state_cfg.getTextColor(cfg.thumbnail.textColor);
+    // Unique Character Name Colors takes precedence over the per-state color, same as border color above.
+    var final_text_color = state_cfg.getTextColor(cfg.thumbnail.characterNameColor);
     if (thumbnail.cached_character_color) |unique_color| {
         final_text_color = unique_color;
     }
@@ -3533,35 +3583,37 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .character_name = character_name,
         .show_system_name = effective_show_system_name,
         .system_name = system_name,
-        .text_color = final_text_color,
+        .character_name_color = final_text_color,
         .system_name_color = system_color,
-        .text_bg_color = blk: {
-            const resolved_text_bg_color = state_cfg.getTextBgColor(cfg.thumbnail.textBgColor);
-            const base_color = if (cfg.thumbnail.textBgColorInheritBorderColor)
-                color_mod.withAlpha(final_border_color, @as(u8, @intCast((resolved_text_bg_color >> 24) & 0xFF)))
-            else
-                resolved_text_bg_color;
-            // The overlay window is already blended by thumbnail Opacity (see overlay_alpha below); force fully opaque here so it isn't compounded.
-            break :blk if (cfg.thumbnail.applyOpacityToOverlayTexts)
-                color_mod.withAlpha(base_color, 255)
-            else
-                base_color;
-        },
-        .text_font_name = cfg.thumbnail.textFontName,
-        .text_font_size = cfg.thumbnail.textFontSize,
-        .text_font_weight = cfg.thumbnail.textFontWeight,
+        .character_name_bg_color = resolveTextBgColor(state_cfg, cfg.thumbnail.characterNameBgColor, cfg.thumbnail.applyOpacityToOverlayTexts),
+        .system_name_bg_color = resolveTextBgColor(state_cfg, cfg.thumbnail.systemNameBgColor, cfg.thumbnail.applyOpacityToOverlayTexts),
+        .quick_group_badge_bg_color = resolveTextBgColor(state_cfg, cfg.thumbnail.quickGroupBadgeBgColor, cfg.thumbnail.applyOpacityToOverlayTexts),
+        .notifications_bg_color = resolveTextBgColor(state_cfg, cfg.thumbnail.notifications.bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
+        .combat_incoming_bg_color = resolveTextBgColor(state_cfg, cfg.combat.incoming_bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
+        .combat_outgoing_bg_color = resolveTextBgColor(state_cfg, cfg.combat.outgoing_bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
+        .mining_bg_color = resolveTextBgColor(state_cfg, cfg.mining.bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
+        .bounty_bg_color = resolveTextBgColor(state_cfg, cfg.bounty.bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
+        .character_name_font_name = cfg.thumbnail.characterNameFontName,
+        .character_name_font_size = cfg.thumbnail.characterNameFontSize,
+        .character_name_font_weight = cfg.thumbnail.characterNameFontWeight,
         .character_name_position = cfg.thumbnail.characterNamePosition,
         .character_name_offset_x = cfg.thumbnail.characterNameOffsetX,
         .character_name_offset_y = cfg.thumbnail.characterNameOffsetY,
         .system_name_position = cfg.thumbnail.systemNamePosition,
         .system_name_offset_x = cfg.thumbnail.systemNameOffsetX,
         .system_name_offset_y = cfg.thumbnail.systemNameOffsetY,
+        .system_name_font_name = cfg.thumbnail.systemNameFontName,
+        .system_name_font_size = cfg.thumbnail.systemNameFontSize,
+        .system_name_font_weight = cfg.thumbnail.systemNameFontWeight,
         .show_notifications = effective_show_notifications,
         .notification_lines = notification_lines,
         .notification_line_count = notification_line_count,
         .notifications_position = cfg.thumbnail.notifications.position,
         .notifications_offset_x = cfg.thumbnail.notifications.offset_x,
         .notifications_offset_y = cfg.thumbnail.notifications.offset_y,
+        .notifications_font_name = cfg.thumbnail.notifications.font_name,
+        .notifications_font_size = cfg.thumbnail.notifications.font_size,
+        .notifications_font_weight = cfg.thumbnail.notifications.font_weight,
         .show_border = effective_show_border,
         .border_width = state_cfg.getBorderWidth(base_border_width),
         .border_color = final_border_color,
@@ -3575,12 +3627,15 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         },
         .exclusion_overlay_style = cfg.thumbnail.exclusionOverlayStyle,
         .exclusion_overlay_color = cfg.thumbnail.exclusionOverlayColor,
-        .show_quick_group_badge = cfg.thumbnail.showQuickGroupBadge and thumbnail.cached_quick_group_label.len > 0 and is_visible,
+        .show_quick_group_badge = effective_show_quick_group_badge and thumbnail.cached_quick_group_label.len > 0 and is_visible,
         .quick_group_badge_text = thumbnail.cached_quick_group_label,
         .quick_group_badge_color = cfg.thumbnail.quickGroupBadgeColor,
         .quick_group_badge_position = cfg.thumbnail.quickGroupBadgePosition,
         .quick_group_badge_offset_x = cfg.thumbnail.quickGroupBadgeOffsetX,
         .quick_group_badge_offset_y = cfg.thumbnail.quickGroupBadgeOffsetY,
+        .quick_group_badge_font_name = cfg.thumbnail.quickGroupBadgeFontName,
+        .quick_group_badge_font_size = cfg.thumbnail.quickGroupBadgeFontSize,
+        .quick_group_badge_font_weight = cfg.thumbnail.quickGroupBadgeFontWeight,
         // visibility_state and per-character hideThumbnail take absolute priority over per-state showThumbnail config.
         .show_thumbnail = if (!is_visible or char_hidden) false else state_cfg.getShowThumbnail(base_show_thumbnail),
         .overlay_alpha = if (cfg.thumbnail.applyOpacityToOverlayTexts) cfg.thumbnail.thumbnailOpacity else OVERLAY_ALPHA,
@@ -3600,7 +3655,6 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .dps_outgoing_color = cfg.combat.outgoing_color,
         .mining_color = cfg.mining.color,
         .bounty_color = cfg.bounty.color,
-        .icon_color = cfg.combat.icon_color,
     };
 }
 
