@@ -833,7 +833,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     initializeTabs();
     buildSectionNav();
-    setupSectionScrollSpy();
 
     const ready = await waitForWebUI();
     if (ready) {
@@ -889,10 +888,10 @@ function switchTab(panelId) {
         contentPanel.scrollTop = 0;
     }
 
-    updateActiveSectionHighlight();
+    setActiveSection(null);
 }
 
-// Tabs whose sections are too few/short to be worth a sidebar sub-list; shared with updateActiveSectionHighlight() so scrollspy doesn't glow a section with no subheader.
+// Tabs whose sections are too few/short to be worth a sidebar sub-list.
 const TABS_WITHOUT_SUBHEADERS = ['about', 'characters', 'chatlog'];
 
 // IDs/labels are derived from each section's h3[data-i18n] rather than hand-maintained, so they can't drift out of sync as sections are added/removed.
@@ -930,8 +929,6 @@ function buildSectionNav() {
 
         tabItem.insertAdjacentElement('afterend', list);
     });
-
-    updateActiveSectionHighlight();
 }
 
 function jumpToSection(tabName, sectionId) {
@@ -943,7 +940,6 @@ function jumpToSection(tabName, sectionId) {
     requestAnimationFrame(() => {
         const section = document.getElementById(sectionId);
         if (!section) return;
-        suppressSectionScrollSpy();
         section.scrollIntoView({ behavior: 'smooth', block: 'start' });
         setActiveSection(section);
     });
@@ -958,75 +954,6 @@ function setActiveSection(section) {
     if (section._navItem) {
         section._navItem.classList.add('subheader-item-active');
     }
-}
-
-// Highlights whichever section's top has scrolled past #content-panel's top (plus a buffer), using the last section that qualifies so a short section can't out-rank a tall one.
-const SECTION_SCROLL_SPY_OFFSET = 40;
-
-function updateActiveSectionHighlight() {
-    const contentPanel = document.getElementById('content-panel');
-    const activePanel = document.querySelector('.panel-content.active');
-    if (!contentPanel || !activePanel) return;
-
-    if (TABS_WITHOUT_SUBHEADERS.includes(activePanel.getAttribute('data-panel'))) {
-        setActiveSection(null);
-        return;
-    }
-
-    const sections = Array.from(activePanel.querySelectorAll('.section')).filter(s => s.style.display !== 'none');
-    if (!sections.length) return;
-
-    // A short last section may never reach the threshold line if there's no room below it - once scrolled to the end, just assume it's selected.
-    const atBottom = contentPanel.scrollTop + contentPanel.clientHeight >= contentPanel.scrollHeight - 1;
-    if (atBottom) {
-        setActiveSection(sections[sections.length - 1]);
-        return;
-    }
-
-    const containerTop = contentPanel.getBoundingClientRect().top;
-    const threshold = containerTop + SECTION_SCROLL_SPY_OFFSET;
-
-    let current = null;
-    sections.forEach(section => {
-        if (section.getBoundingClientRect().top <= threshold) {
-            current = section;
-        }
-    });
-
-    setActiveSection(current);
-}
-
-// scrollIntoView's smooth-scroll fires 'scroll' on nearly every frame, which would fight the highlight jumpToSection() just set; suppress the spy until 'scrollend' (with a timeout fallback).
-let sectionScrollSpySuppressed = false;
-let sectionScrollSpySuppressTimer = null;
-
-function suppressSectionScrollSpy() {
-    sectionScrollSpySuppressed = true;
-    clearTimeout(sectionScrollSpySuppressTimer);
-    sectionScrollSpySuppressTimer = setTimeout(() => {
-        sectionScrollSpySuppressed = false;
-    }, 700);
-}
-
-function setupSectionScrollSpy() {
-    const contentPanel = document.getElementById('content-panel');
-    if (!contentPanel) return;
-
-    let ticking = false;
-    contentPanel.addEventListener('scroll', () => {
-        if (sectionScrollSpySuppressed) return;
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(() => {
-            updateActiveSectionHighlight();
-            ticking = false;
-        });
-    });
-
-    contentPanel.addEventListener('scrollend', () => {
-        sectionScrollSpySuppressed = false;
-        clearTimeout(sectionScrollSpySuppressTimer);
-    });
 }
 
 function closeDialog() {
