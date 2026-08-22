@@ -193,25 +193,30 @@ const CONFIG_SCHEMA = [
     { id: 'systemNamePosition', path: 'thumbnail.systemNamePosition' },
     { id: 'systemNameOffsetX', path: 'thumbnail.systemNameOffsetX' },
     { id: 'systemNameOffsetY', path: 'thumbnail.systemNameOffsetY' },
+    { id: 'systemNameFontName', path: 'thumbnail.systemNameFontName' },
+    { id: 'systemNameFontSize', path: 'thumbnail.systemNameFontSize' },
+    { id: 'systemNameFontWeight', path: 'thumbnail.systemNameFontWeight' },
     { id: 'showQuickGroupBadge', path: 'thumbnail.showQuickGroupBadge' },
     { id: 'quickGroupBadgePosition', path: 'thumbnail.quickGroupBadgePosition' },
     { id: 'quickGroupBadgeOffsetX', path: 'thumbnail.quickGroupBadgeOffsetX' },
     { id: 'quickGroupBadgeOffsetY', path: 'thumbnail.quickGroupBadgeOffsetY' },
     { id: 'quickGroupBadgeColor', path: 'thumbnail.quickGroupBadgeColor' },
+    { id: 'quickGroupBadgeFontName', path: 'thumbnail.quickGroupBadgeFontName' },
+    { id: 'quickGroupBadgeFontSize', path: 'thumbnail.quickGroupBadgeFontSize' },
+    { id: 'quickGroupBadgeFontWeight', path: 'thumbnail.quickGroupBadgeFontWeight' },
     { id: 'exclusionOverlayStyle', path: 'thumbnail.exclusionOverlayStyle' },
     // exclusionOverlayColor/exclusionOverlayOpacity are special-cased below.
     { id: 'useUniqueSystemColors', path: 'thumbnail.useUniqueSystemColors' },
     { id: 'useUniqueCharacterNameColors', path: 'thumbnail.useUniqueCharacterNameColors' },
-    { id: 'textFontName', path: 'thumbnail.textFontName' },
-    { id: 'textFontSize', path: 'thumbnail.textFontSize' },
-    { id: 'textFontWeight', path: 'thumbnail.textFontWeight' },
+    { id: 'characterNameFontName', path: 'thumbnail.characterNameFontName' },
+    { id: 'characterNameFontSize', path: 'thumbnail.characterNameFontSize' },
+    { id: 'characterNameFontWeight', path: 'thumbnail.characterNameFontWeight' },
     { id: 'activeThumbnailHidden', path: 'thumbnail.activeThumbnailHidden' },
     { id: 'hideWhenNoEveFocus', path: 'thumbnail.hideWhenNoEveFocus' },
     { id: 'hideDebounceMs', path: 'thumbnail.hideDebounceMs', transform: 'ms' },
-    { id: 'textColor', path: 'thumbnail.textColor' },
+    { id: 'characterNameColor', path: 'thumbnail.characterNameColor' },
     { id: 'systemNameColor', path: 'thumbnail.systemNameColor' },
-    { id: 'textBgColorInheritBorderColor', path: 'thumbnail.textBgColorInheritBorderColor' },
-    // showBorderWhenFocused/showBorderWhenInactive/borderEnabled and textBgColor/textBgOpacity are special-cased below.
+    // showBorderWhenFocused/showBorderWhenInactive/borderEnabled and the *BgColor/*BgOpacity pairs (see BG_COLOR_FIELDS) are special-cased below.
 
     { id: 'spacing', path: 'display.spacing' },
     { id: 'spacingX', path: 'display.spacingX', transform: 'nullable' },
@@ -276,9 +281,12 @@ const CONFIG_SCHEMA = [
     { id: 'stateHiddenShow', path: 'thumbnail.hidden.showThumbnail' },
 
     { id: 'notificationsEnabled', path: 'thumbnail.notifications.enabled' },
-    { id: 'notifPosition', path: 'thumbnail.notifications.position' },
-    { id: 'notifOffsetX', path: 'thumbnail.notifications.offset_x' },
-    { id: 'notifOffsetY', path: 'thumbnail.notifications.offset_y' },
+    { id: 'notificationPosition', path: 'thumbnail.notifications.position' },
+    { id: 'notificationOffsetX', path: 'thumbnail.notifications.offset_x' },
+    { id: 'notificationOffsetY', path: 'thumbnail.notifications.offset_y' },
+    { id: 'notificationFontName', path: 'thumbnail.notifications.font_name' },
+    { id: 'notificationFontSize', path: 'thumbnail.notifications.font_size' },
+    { id: 'notificationFontWeight', path: 'thumbnail.notifications.font_weight' },
     { id: 'notifSuppressClickDuration', path: 'thumbnail.notifications.suppress_click_duration_ms', transform: 'ms' },
     { id: 'ttsEnabled', path: 'thumbnail.notifications.tts_enabled' },
     { id: 'ttsVolume', path: 'thumbnail.notifications.tts_volume', default: 100 },
@@ -304,7 +312,12 @@ const CONFIG_SCHEMA = [
     { id: 'combatOutgoingPosition', path: 'combat.outgoing_position' },
     { id: 'combatIncomingColor', path: 'combat.incoming_color' },
     { id: 'combatOutgoingColor', path: 'combat.outgoing_color' },
-    { id: 'combatFontSize', path: 'combat.font_size' },
+    { id: 'combatIncomingFontSize', path: 'combat.incoming_font_size' },
+    { id: 'combatIncomingFontName', path: 'combat.incoming_font_name' },
+    { id: 'combatIncomingFontWeight', path: 'combat.incoming_font_weight' },
+    { id: 'combatOutgoingFontSize', path: 'combat.outgoing_font_size' },
+    { id: 'combatOutgoingFontName', path: 'combat.outgoing_font_name' },
+    { id: 'combatOutgoingFontWeight', path: 'combat.outgoing_font_weight' },
     { id: 'combatIncomingOffsetX', path: 'combat.incoming_offset_x' },
     { id: 'combatIncomingOffsetY', path: 'combat.incoming_offset_y' },
     { id: 'combatOutgoingOffsetX', path: 'combat.outgoing_offset_x' },
@@ -312,12 +325,6 @@ const CONFIG_SCHEMA = [
     { id: 'combatDamageAlertEnabled', path: 'combat.damage_alert_enabled' },
     { id: 'combatDamageAlertRepeatSeconds', path: 'combat.damage_alert_repeat_seconds', default: 10 },
     { id: 'combatDamageAlertExcludedWeapons', path: 'combat.damage_alert_excluded_weapons', default: '' },
-    { id: 'combatIconEnabled', path: 'combat.icon_enabled' },
-    { id: 'combatIconPosition', path: 'combat.icon_position' },
-    { id: 'combatIconColor', path: 'combat.icon_color' },
-    { id: 'combatIconFontSize', path: 'combat.icon_font_size' },
-    { id: 'combatIconOffsetX', path: 'combat.icon_offset_x' },
-    { id: 'combatIconOffsetY', path: 'combat.icon_offset_y' },
 
     { id: 'miningEnabled', path: 'mining.enabled' },
     { id: 'miningWindowSeconds', path: 'mining.window_seconds' },
@@ -325,6 +332,8 @@ const CONFIG_SCHEMA = [
     { id: 'miningPosition', path: 'mining.position' },
     { id: 'miningColor', path: 'mining.color' },
     { id: 'miningFontSize', path: 'mining.font_size' },
+    { id: 'miningFontName', path: 'mining.font_name' },
+    { id: 'miningFontWeight', path: 'mining.font_weight' },
     { id: 'miningOffsetX', path: 'mining.offset_x' },
     { id: 'miningOffsetY', path: 'mining.offset_y' },
     { id: 'miningShowIskRate', path: 'mining.show_isk_rate' },
@@ -341,6 +350,8 @@ const CONFIG_SCHEMA = [
     { id: 'bountyPosition', path: 'bounty.position' },
     { id: 'bountyColor', path: 'bounty.color' },
     { id: 'bountyFontSize', path: 'bounty.font_size' },
+    { id: 'bountyFontName', path: 'bounty.font_name' },
+    { id: 'bountyFontWeight', path: 'bounty.font_weight' },
     { id: 'bountyOffsetX', path: 'bounty.offset_x' },
     { id: 'bountyOffsetY', path: 'bounty.offset_y' },
     { id: 'bountyIskRateUnit', path: 'bounty.isk_rate_unit' },
@@ -461,6 +472,18 @@ function flashClampedField(field) {
     field._clampFlashTimer = setTimeout(() => field.classList.remove('field-clamped'), 1500);
 }
 
+// Each element's background is one u32 (color + opacity packed into the alpha byte) split across two UI inputs.
+const BG_COLOR_FIELDS = [
+    { colorId: 'characterNameBgColor', opacityId: 'characterNameBgOpacity', path: 'thumbnail.characterNameBgColor' },
+    { colorId: 'systemNameBgColor', opacityId: 'systemNameBgOpacity', path: 'thumbnail.systemNameBgColor' },
+    { colorId: 'quickGroupBadgeBgColor', opacityId: 'quickGroupBadgeBgOpacity', path: 'thumbnail.quickGroupBadgeBgColor' },
+    { colorId: 'notificationBgColor', opacityId: 'notificationBgOpacity', path: 'thumbnail.notifications.bg_color' },
+    { colorId: 'combatIncomingBgColor', opacityId: 'combatIncomingBgOpacity', path: 'combat.incoming_bg_color' },
+    { colorId: 'combatOutgoingBgColor', opacityId: 'combatOutgoingBgOpacity', path: 'combat.outgoing_bg_color' },
+    { colorId: 'miningBgColor', opacityId: 'miningBgOpacity', path: 'mining.bg_color' },
+    { colorId: 'bountyBgColor', opacityId: 'bountyBgOpacity', path: 'bounty.bg_color' },
+];
+
 // Fields that can't be expressed as a single {id, path} pair: composite values, asymmetric load/save, or non-trivial defaults.
 function applySpecialFieldsToForm() {
     setFieldValue('startX', currentConfig.display?.startX);
@@ -471,9 +494,11 @@ function applySpecialFieldsToForm() {
     const hasBorder = currentConfig.thumbnail?.showBorderWhenFocused || currentConfig.thumbnail?.showBorderWhenInactive;
     setCheckboxValue('borderEnabled', hasBorder);
 
-    setFieldValue('textBgColor', currentConfig.thumbnail?.textBgColor);
-    const textBgOpacityPercent = opacityToPercent(zigColorAlpha(currentConfig.thumbnail?.textBgColor));
-    setFieldValue('textBgOpacity', textBgOpacityPercent);
+    BG_COLOR_FIELDS.forEach(({ colorId, opacityId, path }) => {
+        const value = getConfigPath(currentConfig, path);
+        setFieldValue(colorId, value);
+        setFieldValue(opacityId, opacityToPercent(zigColorAlpha(value)));
+    });
 
     setFieldValue('exclusionOverlayColor', currentConfig.thumbnail?.exclusionOverlayColor);
     const exclusionOverlayOpacityPercent = opacityToPercent(zigColorAlpha(currentConfig.thumbnail?.exclusionOverlayColor));
@@ -490,7 +515,9 @@ function applySpecialFieldsFromForm() {
     currentConfig.thumbnail.showBorderWhenFocused = borderEnabled && getFieldValue('showBorderWhenFocused');
     currentConfig.thumbnail.showBorderWhenInactive = borderEnabled && getFieldValue('showBorderWhenInactive');
 
-    currentConfig.thumbnail.textBgColor = zigColorWithAlpha(getFieldValue('textBgColor'), percentToOpacity(getFieldValue('textBgOpacity')));
+    BG_COLOR_FIELDS.forEach(({ colorId, opacityId, path }) => {
+        setConfigPath(currentConfig, path, zigColorWithAlpha(getFieldValue(colorId), percentToOpacity(getFieldValue(opacityId))));
+    });
 
     currentConfig.thumbnail.exclusionOverlayColor = zigColorWithAlpha(getFieldValue('exclusionOverlayColor'), percentToOpacity(getFieldValue('exclusionOverlayOpacity')));
 
@@ -575,16 +602,18 @@ function setupChangeDetection() {
 const THUMBNAIL_PREVIEW_FIELD_IDS = [
     'borderEnabled', 'showBorderWhenFocused', 'borderWidth', 'borderStyle', 'borderColor',
     'showBorderWhenInactive', 'inactiveBorderWidth', 'inactiveBorderStyle', 'inactiveBorderColor',
-    'textBgColorInheritBorderColor',
     'thumbOpacity', 'applyOpacityToOverlayTexts', 'activeThumbnailHidden',
     'showText', 'showCharacterName', 'showSystemName', 'useUniqueSystemColors',
-    'textFontName', 'textFontSize', 'textFontWeight',
-    'characterNamePosition', 'characterNameOffsetX', 'characterNameOffsetY', 'textColor',
+    'characterNameFontName', 'characterNameFontSize', 'characterNameFontWeight',
+    'characterNamePosition', 'characterNameOffsetX', 'characterNameOffsetY', 'characterNameColor',
     'useUniqueCharacterNameColors',
     'systemNamePosition', 'systemNameOffsetX', 'systemNameOffsetY', 'systemNameColor',
+    'systemNameFontName', 'systemNameFontSize', 'systemNameFontWeight',
     'showQuickGroupBadge', 'quickGroupBadgePosition', 'quickGroupBadgeOffsetX', 'quickGroupBadgeOffsetY', 'quickGroupBadgeColor',
+    'quickGroupBadgeFontName', 'quickGroupBadgeFontSize', 'quickGroupBadgeFontWeight',
     'exclusionOverlayStyle', 'exclusionOverlayColor', 'exclusionOverlayOpacity',
-    'textBgColor', 'textBgOpacity',
+    'characterNameBgColor', 'characterNameBgOpacity', 'systemNameBgColor', 'systemNameBgOpacity',
+    'quickGroupBadgeBgColor', 'quickGroupBadgeBgOpacity',
     'thumbWidth', 'thumbHeight', 'thumbSizeSlider', 'hideWhenNoEveFocus',
     'listViewOpacity', 'listViewFontName', 'listViewFontSize', 'listViewFontWeight',
     'notifInfoPanelWidth', 'notifInfoPanelHeight',
@@ -612,7 +641,6 @@ function buildThumbnailPreviewPatch(includePositions = false) {
         inactiveBorderWidth: getFieldValue('inactiveBorderWidth'),
         inactiveBorderStyle: getFieldValue('inactiveBorderStyle'),
         inactiveBorderColor: getFieldValue('inactiveBorderColor'),
-        textBgColorInheritBorderColor: getFieldValue('textBgColorInheritBorderColor'),
         thumbnailOpacity: percentToOpacity(getFieldValue('thumbOpacity')),
         applyOpacityToOverlayTexts: getFieldValue('applyOpacityToOverlayTexts'),
         activeThumbnailHidden: getFieldValue('activeThumbnailHidden'),
@@ -620,26 +648,34 @@ function buildThumbnailPreviewPatch(includePositions = false) {
         showCharacterName: getFieldValue('showCharacterName'),
         showSystemName: getFieldValue('showSystemName'),
         useUniqueSystemColors: getFieldValue('useUniqueSystemColors'),
-        textFontName: getFieldValue('textFontName'),
-        textFontSize: getFieldValue('textFontSize'),
-        textFontWeight: getFieldValue('textFontWeight'),
+        characterNameFontName: getFieldValue('characterNameFontName'),
+        characterNameFontSize: getFieldValue('characterNameFontSize'),
+        characterNameFontWeight: getFieldValue('characterNameFontWeight'),
         characterNamePosition: getFieldValue('characterNamePosition'),
         characterNameOffsetX: getFieldValue('characterNameOffsetX'),
         characterNameOffsetY: getFieldValue('characterNameOffsetY'),
-        textColor: getFieldValue('textColor'),
+        characterNameColor: getFieldValue('characterNameColor'),
+        characterNameBgColor: zigColorWithAlpha(getFieldValue('characterNameBgColor'), percentToOpacity(getFieldValue('characterNameBgOpacity'))),
         useUniqueCharacterNameColors: getFieldValue('useUniqueCharacterNameColors'),
         systemNamePosition: getFieldValue('systemNamePosition'),
         systemNameOffsetX: getFieldValue('systemNameOffsetX'),
         systemNameOffsetY: getFieldValue('systemNameOffsetY'),
         systemNameColor: getFieldValue('systemNameColor'),
+        systemNameBgColor: zigColorWithAlpha(getFieldValue('systemNameBgColor'), percentToOpacity(getFieldValue('systemNameBgOpacity'))),
+        systemNameFontName: getFieldValue('systemNameFontName'),
+        systemNameFontSize: getFieldValue('systemNameFontSize'),
+        systemNameFontWeight: getFieldValue('systemNameFontWeight'),
         showQuickGroupBadge: getFieldValue('showQuickGroupBadge'),
         quickGroupBadgePosition: getFieldValue('quickGroupBadgePosition'),
         quickGroupBadgeOffsetX: getFieldValue('quickGroupBadgeOffsetX'),
         quickGroupBadgeOffsetY: getFieldValue('quickGroupBadgeOffsetY'),
         quickGroupBadgeColor: getFieldValue('quickGroupBadgeColor'),
+        quickGroupBadgeBgColor: zigColorWithAlpha(getFieldValue('quickGroupBadgeBgColor'), percentToOpacity(getFieldValue('quickGroupBadgeBgOpacity'))),
+        quickGroupBadgeFontName: getFieldValue('quickGroupBadgeFontName'),
+        quickGroupBadgeFontSize: getFieldValue('quickGroupBadgeFontSize'),
+        quickGroupBadgeFontWeight: getFieldValue('quickGroupBadgeFontWeight'),
         exclusionOverlayStyle: getFieldValue('exclusionOverlayStyle'),
         exclusionOverlayColor: zigColorWithAlpha(getFieldValue('exclusionOverlayColor'), percentToOpacity(getFieldValue('exclusionOverlayOpacity'))),
-        textBgColor: zigColorWithAlpha(getFieldValue('textBgColor'), percentToOpacity(getFieldValue('textBgOpacity'))),
         systemColors: buildSystemColorsPreviewPatch(),
         width: getFieldValue('thumbWidth'),
         height: getFieldValue('thumbHeight'),
@@ -785,7 +821,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     populateSharedSelectOptions();
     setupChangeDetection();
     setupThumbnailPreview();
-    
+    initCombatShowRequiresEnabled();
+
     // Mark initially hidden tabs for search filter
     document.querySelectorAll('.tab-item').forEach(tab => {
         if (tab.style.display === 'none') {
@@ -1082,15 +1119,21 @@ function applyBackendDefaultColors() {
     const map = {
         borderColor: defaultConfig.thumbnail?.borderColor,
         inactiveBorderColor: defaultConfig.thumbnail?.inactiveBorderColor,
-        textColor: defaultConfig.thumbnail?.textColor,
+        characterNameColor: defaultConfig.thumbnail?.characterNameColor,
         systemNameColor: defaultConfig.thumbnail?.systemNameColor,
-        textBgColor: defaultConfig.thumbnail?.textBgColor,
         exclusionOverlayColor: defaultConfig.thumbnail?.exclusionOverlayColor,
         combatIncomingColor: defaultConfig.combat?.incoming_color,
         combatOutgoingColor: defaultConfig.combat?.outgoing_color,
-        combatIconColor: defaultConfig.combat?.icon_color,
         miningColor: defaultConfig.mining?.color,
         bountyColor: defaultConfig.bounty?.color,
+        characterNameBgColor: defaultConfig.thumbnail?.characterNameBgColor,
+        systemNameBgColor: defaultConfig.thumbnail?.systemNameBgColor,
+        quickGroupBadgeBgColor: defaultConfig.thumbnail?.quickGroupBadgeBgColor,
+        notificationBgColor: defaultConfig.thumbnail?.notifications?.bg_color,
+        combatIncomingBgColor: defaultConfig.combat?.incoming_bg_color,
+        combatOutgoingBgColor: defaultConfig.combat?.outgoing_bg_color,
+        miningBgColor: defaultConfig.mining?.bg_color,
+        bountyBgColor: defaultConfig.bounty?.bg_color,
     };
     for (const [id, value] of Object.entries(map)) {
         if (value == null) continue;
@@ -1122,9 +1165,8 @@ function loadMockConfiguration() {
             applyOpacityToOverlayTexts: false,
             borderWidth: 2,
             borderColor: 0xFF606060,
-            textBgColorInheritBorderColor: false,
-            textBgColor: 0x80000000,
-            textColor: 0xFFFFFF
+            characterNameColor: 0xFFFFFF,
+            characterNameBgColor: 0xE6000000
         },
         display: {
             startX: 10,
@@ -1162,7 +1204,6 @@ function populateFormFields() {
     toggleUniqueCharacterNameColors();
     toggleClientListOptions();
     toggleAutoMinimizeOptions();
-    toggleTextBgColorOptions();
     toggleTtsOptions();
     toggleNotificationOptions();
     toggleChatlogOptions();
@@ -1672,6 +1713,26 @@ function renderImportSections() {
     `).join('');
 }
 
+// Legacy formats only ever had one overlay font, applied everywhere by this app's old shared font.
+// Combat/Mining/Bounty are skipped - no legacy source value exists for them.
+function applyImportedFontToOtherOverlayElements(patch, fontName, fontSize) {
+    if (fontName) {
+        patch.systemNameFontName = fontName;
+        patch.quickGroupBadgeFontName = fontName;
+    }
+    if (fontSize !== null) {
+        patch.systemNameFontSize = fontSize;
+        patch.quickGroupBadgeFontSize = fontSize;
+    }
+    if (fontName || fontSize !== null) {
+        const existing = currentConfig.thumbnail?.notifications || {};
+        patch.notifications = Object.assign({}, existing, {
+            font_name: fontName || existing.font_name,
+            font_size: fontSize !== null ? fontSize : existing.font_size,
+        });
+    }
+}
+
 function extractThumbnailAppearance(oldProfile, oldGlobal) {
     const ts = oldProfile['Thumbnail Settings'] || {};
     const tsl = oldGlobal.ThumbnailStartLocation || {};
@@ -1690,9 +1751,10 @@ function extractThumbnailAppearance(oldProfile, oldGlobal) {
 
     if (typeof ts.ShowThumbnailTextOverlay !== 'undefined') patch.showText = !!ts.ShowThumbnailTextOverlay;
     const textColor = legacyColorToZig(ts.ThumbnailTextColor);
-    if (textColor) patch.textColor = textColor;
-    if (ts.ThumbnailTextFont) patch.textFontName = String(ts.ThumbnailTextFont);
-    if (num(ts.ThumbnailTextSize) !== null) patch.textFontSize = num(ts.ThumbnailTextSize);
+    if (textColor) patch.characterNameColor = textColor;
+    if (ts.ThumbnailTextFont) patch.characterNameFontName = String(ts.ThumbnailTextFont);
+    if (num(ts.ThumbnailTextSize) !== null) patch.characterNameFontSize = num(ts.ThumbnailTextSize);
+    applyImportedFontToOtherOverlayElements(patch, ts.ThumbnailTextFont ? String(ts.ThumbnailTextFont) : null, num(ts.ThumbnailTextSize));
 
     if (ts.ThumbnailTextMargins) {
         if (num(ts.ThumbnailTextMargins.x) !== null) patch.characterNameOffsetX = num(ts.ThumbnailTextMargins.x);
@@ -2041,7 +2103,7 @@ function apmExtractThumbnailAppearance(sections) {
     }
 
     const charColor = legacyColorToZig(overlay.characterNameColor);
-    if (charColor) patch.textColor = charColor;
+    if (charColor) patch.characterNameColor = charColor;
     const sysColor = legacyColorToZig(overlay.systemNameColor);
     if (sysColor) patch.systemNameColor = sysColor;
     if ('uniqueSystemNameColors' in overlay) patch.useUniqueSystemColors = parseQtBool(overlay.uniqueSystemNameColors);
@@ -2064,13 +2126,19 @@ function apmExtractThumbnailAppearance(sections) {
         const showBg = 'showBackground' in overlay ? parseQtBool(overlay.showBackground) : true;
         const bgOpacity = num(overlay.backgroundOpacity);
         const alpha255 = showBg ? (bgOpacity !== null ? bgOpacity * 2.55 : 255) : 0;
-        patch.textBgColor = zigColorWithAlpha(bgColor, alpha255);
+        // Legacy format has one shared background - seed it onto every element that still exists here today (see applyImportedFontToOtherOverlayElements for the same pattern with fonts).
+        const resolvedBgColor = zigColorWithAlpha(bgColor, alpha255);
+        patch.characterNameBgColor = resolvedBgColor;
+        patch.systemNameBgColor = resolvedBgColor;
+        patch.quickGroupBadgeBgColor = resolvedBgColor;
+        patch.notifications = Object.assign({}, currentConfig.thumbnail?.notifications, { bg_color: resolvedBgColor });
     }
 
     const font = parseQtFont(overlay.font);
     if (font) {
-        if (font.family) patch.textFontName = font.family;
-        if (font.size) patch.textFontSize = font.size;
+        if (font.family) patch.characterNameFontName = font.family;
+        if (font.size) patch.characterNameFontSize = font.size;
+        applyImportedFontToOtherOverlayElements(patch, font.family || null, font.size || null);
     }
 
     if (num(thumb.width) !== null) patch.width = num(thumb.width);
@@ -2472,10 +2540,13 @@ function eveoExtractThumbnailAppearance(data) {
 
     if (data.OverlayLabelColor) {
         const textColor = eveoColorToZig(data.OverlayLabelColor);
-        if (textColor) patch.textColor = textColor;
+        if (textColor) patch.characterNameColor = textColor;
         else notes.push(`Overlay label color "${data.OverlayLabelColor}" wasn't recognized and was skipped.`);
     }
-    if (typeof data.OverlayLabelSize === 'number') patch.textFontSize = data.OverlayLabelSize;
+    if (typeof data.OverlayLabelSize === 'number') {
+        patch.characterNameFontSize = data.OverlayLabelSize;
+        applyImportedFontToOtherOverlayElements(patch, null, data.OverlayLabelSize);
+    }
     if (typeof data.OverlayLabelAnchor === 'number') {
         // EVE-O Preview's ZoomAnchor enum is the same 3x3 grid/order as TextPosition, so APM_POSITION_MAP is reused here.
         const pos = APM_POSITION_MAP[data.OverlayLabelAnchor];
@@ -4514,7 +4585,7 @@ function populateCharacters() {
                     </div>
                 </div>
                 <div>
-                    <label>${t('field.textColor.label')}</label>
+                    <label>${t('field.characterNameColor.label')}</label>
                     <div class="swatch-wrap">
                         <input type="color" id="char_${index}_nameColor" data-optional-color="true" ${!char.nameColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.nameColor)}">
                     </div>
@@ -4614,6 +4685,12 @@ async function refreshWindowPositionSourceOptions() {
     try {
         const result = await webui.call('getOpenClients');
         const names = JSON.parse(result);
+        if (names.length === 0) {
+            select.innerHTML = `<option value="">${t('status.noOpenClients')}</option>`;
+            select.disabled = true;
+            return;
+        }
+        select.disabled = false;
         select.innerHTML = names.map(name => `<option value="${name}">${name}</option>`).join('');
         if (names.includes(previousValue)) select.value = previousValue;
     } catch (error) {
@@ -5673,7 +5750,7 @@ const NOTIFICATION_CATEGORY_LABEL_KEYS = {
 
 // Single source for the notification table's default swatch colors, falling back to '#FFFFFF'/'#606060' until defaultConfig loads. Border is an approximation - the true fallback is the Alert state's border color, which isn't wired up in this dialog yet.
 function notifDefaultTextColorHtml() {
-    return defaultConfig?.thumbnail?.textColor != null ? zigColorToHtml(defaultConfig.thumbnail.textColor) : '#FFFFFF';
+    return defaultConfig?.thumbnail?.characterNameColor != null ? zigColorToHtml(defaultConfig.thumbnail.characterNameColor) : '#FFFFFF';
 }
 function notifDefaultBorderColorHtml() {
     return defaultConfig?.thumbnail?.inactiveBorderColor != null ? zigColorToHtml(defaultConfig.thumbnail.inactiveBorderColor) : '#606060';
@@ -6071,15 +6148,6 @@ function toggleQuickGroupBadgeOptions() {
     applyOptionToggle('showQuickGroupBadge', 'quickGroupBadgeOptions');
 }
 
-function toggleTextBgColorOptions() {
-    const inherit = document.getElementById('textBgColorInheritBorderColor');
-    const textBgColor = document.getElementById('textBgColor');
-
-    if (inherit && textBgColor) {
-        textBgColor.disabled = inherit.checked;
-    }
-}
-
 // Opposite polarity of applyOptionToggle(): the target options are disabled when the checkbox IS checked.
 function toggleInverseOption(checkboxId, optionsId) {
     const checkbox = document.getElementById(checkboxId);
@@ -6096,7 +6164,7 @@ function toggleUniqueSystemColors() {
 }
 
 function toggleUniqueCharacterNameColors() {
-    toggleInverseOption('useUniqueCharacterNameColors', 'textColorOption');
+    toggleInverseOption('useUniqueCharacterNameColors', 'characterNameColorOption');
 }
 
 function toggleAutoMinimizeOptions() {
@@ -6156,6 +6224,14 @@ function toggleTtsOptions() {
 
 function toggleChatlogOptions() {
     applyOptionToggle('chatlogEnabled', 'chatlogOptions');
+}
+
+function initCombatShowRequiresEnabled() {
+    ['combatShowIncoming', 'combatShowOutgoing'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', function () {
+            if (this.checked) setOverlayCheckboxValue('combatEnabled', true);
+        });
+    });
 }
 
 function toggleCombatOptions() {

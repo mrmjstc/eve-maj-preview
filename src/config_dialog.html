@@ -55,7 +55,7 @@
                     <span data-i18n="tab.thumbnails.title">thumbnails</span>
                 </div>
                 <div class="tab-item" data-tab="overlay-text">
-                    <span data-i18n="tab.overlay-text.title">overlay text</span>
+                    <span data-i18n="tab.overlay-text.title">text overlays</span>
                 </div>
                 <div class="tab-item" data-tab="characters">
                     <span data-i18n="tab.characters.title">characters</span>
@@ -505,6 +505,7 @@
                             </label>
                         </div>
                     </div>
+
                 </div>
 
                 <div class="panel-content" data-panel="overlay-text">
@@ -518,31 +519,6 @@
                         </label>
 
                         <div id="textDisplayOptions">
-                            <h4 style="margin-top: 16px;" data-i18n="tab.overlay-text.section.fonts.heading">Fonts</h4>
-                            <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.overlay-text.section.fonts.hint">Applies to both the character name and system name text.</p>
-
-                            <div class="text-settings">
-                                <div class="field">
-                                    <label for="textFontName" data-i18n="common.fontNameLabel">Font Name</label>
-                                    <select id="textFontName" class="font-options"></select>
-                                </div>
-
-                                <div class="field">
-                                    <label for="textFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
-                                    <input type="number" id="textFontSize" min="6" max="72">
-                                </div>
-
-                                <div class="field">
-                                    <label for="textFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
-                                    <select id="textFontWeight">
-                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
-                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
-                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
-                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
-                                    </select>
-                                </div>
-                            </div>
-
                             <div class="row" style="margin-top: 16px;">
                                 <div class="column">
                                     <h4 data-i18n="tab.overlay-text.section.character-name.heading">Character Name</h4>
@@ -553,22 +529,43 @@
                                     </label>
 
                                     <div id="characterNameOptions" style="margin-top: 8px;">
-                                        <label for="characterNamePosition" data-i18n="common.positionLabel">Position</label>
-                                        <select id="characterNamePosition" class="position-options"></select>
+                                        <div>
+                                            <label for="characterNamePosition" data-i18n="common.positionLabel">Position</label>
+                                            <select id="characterNamePosition" class="position-options"></select>
 
-                                        <label for="characterNameOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="characterNameOffsetXValue">0</span></label>
-                                        <input type="range" id="characterNameOffsetX" min="-50" max="50" value="0" data-value-target="characterNameOffsetXValue">
+                                            <label for="characterNameOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="characterNameOffsetXValue">0</span></label>
+                                            <input type="range" id="characterNameOffsetX" min="-50" max="50" value="0" data-value-target="characterNameOffsetXValue">
 
-                                        <label for="characterNameOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="characterNameOffsetYValue">0</span></label>
-                                        <input type="range" id="characterNameOffsetY" min="-50" max="50" value="0" data-value-target="characterNameOffsetYValue">
+                                            <label for="characterNameOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="characterNameOffsetYValue">0</span></label>
+                                            <input type="range" id="characterNameOffsetY" min="-50" max="50" value="0" data-value-target="characterNameOffsetYValue">
+
+                                            <label for="characterNameFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                            <select id="characterNameFontName" class="font-options"></select>
+
+                                            <label for="characterNameFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                            <input type="number" id="characterNameFontSize" min="6" max="72">
+
+                                            <label for="characterNameFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                            <select id="characterNameFontWeight">
+                                                <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                                <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                                <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                                <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                            </select>
+
+                                            <label for="characterNameBgColor" data-i18n="common.textBgColorLabel">Background Color</label>
+                                            <input type="color" id="characterNameBgColor" data-default-color="#000000">
+                                            <label for="characterNameBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="characterNameBgOpacityValue">90</span>%</label>
+                                            <input type="range" id="characterNameBgOpacity" min="0" max="100" value="90" data-value-target="characterNameBgOpacityValue">
+                                        </div>
 
                                         <label>
                                             <input type="checkbox" id="useUniqueCharacterNameColors" onchange="toggleUniqueCharacterNameColors()">
                                             <span class="label-body" data-i18n="field.useUniqueCharacterNameColors.label">Unique Character Name Colors</span>
                                         </label>
-                                        <div id="textColorOption" style="margin-top: 8px;">
-                                            <label for="textColor" data-i18n="field.textColor.label">Character Name Color</label>
-                                            <input type="color" id="textColor" data-default-color="#FFFFFF">
+                                        <div id="characterNameColorOption" style="margin-top: 8px;">
+                                            <label for="characterNameColor" data-i18n="field.characterNameColor.label">Character Name Color</label>
+                                            <input type="color" id="characterNameColor" data-default-color="#FFFFFF">
                                         </div>
                                     </div>
                                 </div>
@@ -582,14 +579,35 @@
                                     </label>
 
                                     <div id="systemNameOptions" style="margin-top: 8px;">
-                                        <label for="systemNamePosition" data-i18n="common.positionLabel">Position</label>
-                                        <select id="systemNamePosition" class="position-options"></select>
+                                        <div>
+                                            <label for="systemNamePosition" data-i18n="common.positionLabel">Position</label>
+                                            <select id="systemNamePosition" class="position-options"></select>
 
-                                        <label for="systemNameOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="systemNameOffsetXValue">0</span></label>
-                                        <input type="range" id="systemNameOffsetX" min="-50" max="50" value="0" data-value-target="systemNameOffsetXValue">
+                                            <label for="systemNameOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="systemNameOffsetXValue">0</span></label>
+                                            <input type="range" id="systemNameOffsetX" min="-50" max="50" value="0" data-value-target="systemNameOffsetXValue">
 
-                                        <label for="systemNameOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="systemNameOffsetYValue">0</span></label>
-                                        <input type="range" id="systemNameOffsetY" min="-50" max="50" value="0" data-value-target="systemNameOffsetYValue">
+                                            <label for="systemNameOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="systemNameOffsetYValue">0</span></label>
+                                            <input type="range" id="systemNameOffsetY" min="-50" max="50" value="0" data-value-target="systemNameOffsetYValue">
+
+                                            <label for="systemNameFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                            <select id="systemNameFontName" class="font-options"></select>
+
+                                            <label for="systemNameFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                            <input type="number" id="systemNameFontSize" min="6" max="72">
+
+                                            <label for="systemNameFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                            <select id="systemNameFontWeight">
+                                                <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                                <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                                <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                                <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                            </select>
+
+                                            <label for="systemNameBgColor" data-i18n="common.textBgColorLabel">Background Color</label>
+                                            <input type="color" id="systemNameBgColor" data-default-color="#000000">
+                                            <label for="systemNameBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="systemNameBgOpacityValue">90</span>%</label>
+                                            <input type="range" id="systemNameBgOpacity" min="0" max="100" value="90" data-value-target="systemNameBgOpacityValue">
+                                        </div>
 
                                         <label>
                                             <input type="checkbox" id="useUniqueSystemColors" onchange="toggleUniqueSystemColors()">
@@ -613,33 +631,41 @@
                                     </label>
 
                                     <div id="quickGroupBadgeOptions" style="margin-top: 8px;">
-                                        <label for="quickGroupBadgePosition" data-i18n="common.positionLabel">Position</label>
-                                        <select id="quickGroupBadgePosition" class="position-options"></select>
+                                        <div>
+                                            <label for="quickGroupBadgePosition" data-i18n="common.positionLabel">Position</label>
+                                            <select id="quickGroupBadgePosition" class="position-options"></select>
 
-                                        <label for="quickGroupBadgeOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="quickGroupBadgeOffsetXValue">0</span></label>
-                                        <input type="range" id="quickGroupBadgeOffsetX" min="-50" max="50" value="0" data-value-target="quickGroupBadgeOffsetXValue">
+                                            <label for="quickGroupBadgeOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="quickGroupBadgeOffsetXValue">0</span></label>
+                                            <input type="range" id="quickGroupBadgeOffsetX" min="-50" max="50" value="0" data-value-target="quickGroupBadgeOffsetXValue">
 
-                                        <label for="quickGroupBadgeOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="quickGroupBadgeOffsetYValue">0</span></label>
-                                        <input type="range" id="quickGroupBadgeOffsetY" min="-50" max="50" value="0" data-value-target="quickGroupBadgeOffsetYValue">
+                                            <label for="quickGroupBadgeOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="quickGroupBadgeOffsetYValue">0</span></label>
+                                            <input type="range" id="quickGroupBadgeOffsetY" min="-50" max="50" value="0" data-value-target="quickGroupBadgeOffsetYValue">
+
+                                            <label for="quickGroupBadgeFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                            <select id="quickGroupBadgeFontName" class="font-options"></select>
+
+                                            <label for="quickGroupBadgeFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                            <input type="number" id="quickGroupBadgeFontSize" min="6" max="72">
+
+                                            <label for="quickGroupBadgeFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                            <select id="quickGroupBadgeFontWeight">
+                                                <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                                <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                                <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                                <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                            </select>
+
+                                            <label for="quickGroupBadgeBgColor" data-i18n="common.textBgColorLabel">Background Color</label>
+                                            <input type="color" id="quickGroupBadgeBgColor" data-default-color="#000000">
+                                            <label for="quickGroupBadgeBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="quickGroupBadgeBgOpacityValue">90</span>%</label>
+                                            <input type="range" id="quickGroupBadgeBgOpacity" min="0" max="100" value="90" data-value-target="quickGroupBadgeBgOpacityValue">
+                                        </div>
 
                                         <label for="quickGroupBadgeColor" data-i18n="field.quickGroupBadgeColor.label">Badge Color</label>
                                         <input type="color" id="quickGroupBadgeColor" data-default-color="#44FF44">
                                     </div>
                                 </div>
                             </div>
-
-                            <h4 data-i18n="tab.overlay-text.section.text-background.heading">Text Background</h4>
-                            <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.overlay-text.section.text-background.hint">Overridden by the Opacity setting on the Thumbnails tab when "Apply opacity to overlay texts" is enabled there.</p>
-
-                            <label for="textBgOpacity"><span data-i18n="field.textBgOpacity.label">Text Background Opacity: </span><span id="textBgOpacityValue">50</span>%</label>
-                            <input type="range" id="textBgOpacity" min="0" max="100" value="50" data-value-target="textBgOpacityValue">
-
-                            <label style="margin-top: 8px;">
-                                <input type="checkbox" id="textBgColorInheritBorderColor" onchange="toggleTextBgColorOptions()">
-                                <span class="label-body" data-i18n="field.textBgColorInheritBorderColor.label">Inherit border color for text background</span>
-                            </label>
-                            <label for="textBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                            <input type="color" id="textBgColor" data-default-color="#000000">
                         </div>
                     </div>
 
@@ -1049,18 +1075,39 @@
                         </label>
 
                         <div id="notificationOptions">
-                            <label for="notifPosition" data-i18n="common.positionLabel">Position</label>
-                            <select id="notifPosition" class="position-options"></select>
+                            <div>
+                                <label for="notificationPosition" data-i18n="common.positionLabel">Position</label>
+                                <select id="notificationPosition" class="position-options"></select>
 
-                            <div class="row">
-                                <div class="column">
-                                    <label for="notifOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="notifOffsetXValue">0</span></label>
-                                    <input type="range" id="notifOffsetX" min="-50" max="50" value="0" data-value-target="notifOffsetXValue">
+                                <div class="row">
+                                    <div class="column">
+                                        <label for="notificationOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="notificationOffsetXValue">0</span></label>
+                                        <input type="range" id="notificationOffsetX" min="-50" max="50" value="0" data-value-target="notificationOffsetXValue">
+                                    </div>
+                                    <div class="column">
+                                        <label for="notificationOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="notificationOffsetYValue">0</span></label>
+                                        <input type="range" id="notificationOffsetY" min="-50" max="50" value="0" data-value-target="notificationOffsetYValue">
+                                    </div>
                                 </div>
-                                <div class="column">
-                                    <label for="notifOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="notifOffsetYValue">0</span></label>
-                                    <input type="range" id="notifOffsetY" min="-50" max="50" value="0" data-value-target="notifOffsetYValue">
-                                </div>
+
+                                <label for="notificationFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                <select id="notificationFontName" class="font-options"></select>
+
+                                <label for="notificationFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                <input type="number" id="notificationFontSize" min="6" max="72">
+
+                                <label for="notificationFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                <select id="notificationFontWeight">
+                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                </select>
+
+                                <label for="notificationBgColor" data-i18n="common.textBgColorLabel">Background Color</label>
+                                <input type="color" id="notificationBgColor" data-default-color="#000000">
+                                <label for="notificationBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="notificationBgOpacityValue">90</span>%</label>
+                                <input type="range" id="notificationBgOpacity" min="0" max="100" value="90" data-value-target="notificationBgOpacityValue">
                             </div>
 
                             <div class="row">
@@ -1264,7 +1311,7 @@
 
                         <label>
                             <input type="checkbox" id="combatEnabled" onchange="toggleCombatOptions()">
-                            <span class="label-body" data-i18n="field.combatEnabled.label">Enable Text Overlays</span>
+                            <span class="label-body" data-i18n="field.combatEnabled.label">Enable Combat Overlays</span>
                         </label>
 
                         <div id="combatOptions">
@@ -1295,6 +1342,25 @@
 
                                     <label for="combatIncomingColor" data-i18n="field.combatIncomingColor.label">Color</label>
                                     <input type="color" id="combatIncomingColor" data-default-color="#FF4444">
+
+                                    <label for="combatIncomingFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
+                                    <input type="number" id="combatIncomingFontSize" min="6" max="72">
+
+                                    <label for="combatIncomingFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                    <select id="combatIncomingFontName" class="font-options"></select>
+
+                                    <label for="combatIncomingFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                    <select id="combatIncomingFontWeight">
+                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                    </select>
+
+                                    <label for="combatIncomingBgColor" data-i18n="common.textBgColorLabel">Background Color</label>
+                                    <input type="color" id="combatIncomingBgColor" data-default-color="#000000">
+                                    <label for="combatIncomingBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="combatIncomingBgOpacityValue">90</span>%</label>
+                                    <input type="range" id="combatIncomingBgOpacity" min="0" max="100" value="90" data-value-target="combatIncomingBgOpacityValue">
                                 </div>
                                 <div class="column">
                                     <h4 data-i18n="tab.combat.section.outgoing-damage.heading">Outgoing Damage</h4>
@@ -1314,11 +1380,27 @@
 
                                     <label for="combatOutgoingColor" data-i18n="field.combatOutgoingColor.label">Color</label>
                                     <input type="color" id="combatOutgoingColor" data-default-color="#44FF44">
+
+                                    <label for="combatOutgoingFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
+                                    <input type="number" id="combatOutgoingFontSize" min="6" max="72">
+
+                                    <label for="combatOutgoingFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                    <select id="combatOutgoingFontName" class="font-options"></select>
+
+                                    <label for="combatOutgoingFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                    <select id="combatOutgoingFontWeight">
+                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                    </select>
+
+                                    <label for="combatOutgoingBgColor" data-i18n="common.textBgColorLabel">Background Color</label>
+                                    <input type="color" id="combatOutgoingBgColor" data-default-color="#000000">
+                                    <label for="combatOutgoingBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="combatOutgoingBgOpacityValue">90</span>%</label>
+                                    <input type="range" id="combatOutgoingBgOpacity" min="0" max="100" value="90" data-value-target="combatOutgoingBgOpacityValue">
                                 </div>
                             </div>
-
-                            <label for="combatFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
-                            <input type="number" id="combatFontSize" min="6" max="72">
                         </div>
                     </div>
 
@@ -1342,39 +1424,6 @@
                             <label for="combatDamageAlertExcludedWeapons" data-i18n="field.combatDamageAlertExcludedWeapons.label">Exclude Weapons</label>
                             <input type="text" id="combatDamageAlertExcludedWeapons" placeholder="e.g. Smartbomb, Warp Scrambler" data-i18n-placeholder="field.combatDamageAlertExcludedWeapons.placeholder">
                             <p class="hint" data-i18n="field.combatDamageAlertExcludedWeapons.hint">Comma-separated weapon/module names (case-insensitive, partial match). Matching hits still count toward the DPS overlay but won't trigger this alert.</p>
-
-                            <h4 data-i18n="tab.combat.section.combat-icon.heading">Combat Icon</h4>
-                            <p class="hint" data-i18n="tab.combat.section.combat-icon.hint">Shows a persistent crossed-swords icon on the thumbnail while incoming DPS is above zero.</p>
-
-                            <label>
-                                <input type="checkbox" id="combatIconEnabled">
-                                <span class="label-body" data-i18n="field.combatIconEnabled.label">Enable Combat Icon</span>
-                            </label>
-
-                            <div class="row">
-                                <div class="column">
-                                    <label for="combatIconPosition" data-i18n="common.positionLabel">Position</label>
-                                    <select id="combatIconPosition" class="position-options"></select>
-                                </div>
-                                <div class="column">
-                                    <label for="combatIconColor" data-i18n="field.combatIconColor.label">Icon Color</label>
-                                    <input type="color" id="combatIconColor" data-default-color="#FF4444">
-                                </div>
-                            </div>
-
-                            <div class="row">
-                                <div class="column">
-                                    <label for="combatIconOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="combatIconOffsetXValue">0</span></label>
-                                    <input type="range" id="combatIconOffsetX" min="-50" max="50" value="0" data-value-target="combatIconOffsetXValue">
-                                </div>
-                                <div class="column">
-                                    <label for="combatIconOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="combatIconOffsetYValue">0</span></label>
-                                    <input type="range" id="combatIconOffsetY" min="-50" max="50" value="0" data-value-target="combatIconOffsetYValue">
-                                </div>
-                            </div>
-
-                            <label for="combatIconFontSize" data-i18n="field.combatIconFontSize.label">Icon Size</label>
-                            <input type="number" id="combatIconFontSize" min="6" max="72">
                         </div>
                     </div>
 
@@ -1399,30 +1448,37 @@
                             <input type="number" id="miningUpdateIntervalMs" min="0.1" max="60" step="0.1">
                             <p class="hint" data-i18n="field.miningUpdateIntervalMs.hint">How often the display refreshes (0.1–60 s)</p>
 
-                            <div class="row">
-                                <div class="column">
-                                    <label for="miningPosition" data-i18n="common.positionLabel">Position</label>
-                                    <select id="miningPosition" class="position-options"></select>
-                                </div>
-                                <div class="column">
-                                    <label for="miningColor" data-i18n="common.textColorLabel">Text Color</label>
-                                    <input type="color" id="miningColor" data-default-color="#44AAFF">
-                                </div>
-                            </div>
+                            <div>
+                                <label for="miningPosition" data-i18n="common.positionLabel">Position</label>
+                                <select id="miningPosition" class="position-options"></select>
 
-                            <div class="row">
-                                <div class="column">
-                                    <label for="miningOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="miningOffsetXValue">0</span></label>
-                                    <input type="range" id="miningOffsetX" min="-50" max="50" value="0" data-value-target="miningOffsetXValue">
-                                </div>
-                                <div class="column">
-                                    <label for="miningOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="miningOffsetYValue">0</span></label>
-                                    <input type="range" id="miningOffsetY" min="-50" max="50" value="0" data-value-target="miningOffsetYValue">
-                                </div>
-                            </div>
+                                <label for="miningColor" data-i18n="common.textColorLabel">Text Color</label>
+                                <input type="color" id="miningColor" data-default-color="#44AAFF">
 
-                            <label for="miningFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
-                            <input type="number" id="miningFontSize" min="6" max="72">
+                                <label for="miningOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="miningOffsetXValue">0</span></label>
+                                <input type="range" id="miningOffsetX" min="-50" max="50" value="0" data-value-target="miningOffsetXValue">
+                                <label for="miningOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="miningOffsetYValue">0</span></label>
+                                <input type="range" id="miningOffsetY" min="-50" max="50" value="0" data-value-target="miningOffsetYValue">
+
+                                <label for="miningFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
+                                <input type="number" id="miningFontSize" min="6" max="72">
+
+                                <label for="miningFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                <select id="miningFontName" class="font-options"></select>
+
+                                <label for="miningFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                <select id="miningFontWeight">
+                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                </select>
+
+                                <label for="miningBgColor" data-i18n="common.textBgColorLabel">Background Color</label>
+                                <input type="color" id="miningBgColor" data-default-color="#000000">
+                                <label for="miningBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="miningBgOpacityValue">90</span>%</label>
+                                <input type="range" id="miningBgOpacity" min="0" max="100" value="90" data-value-target="miningBgOpacityValue">
+                            </div>
 
                             <label>
                                 <input type="checkbox" id="miningShowIskRate" onchange="toggleMiningOptions()">
@@ -1513,30 +1569,37 @@
                             <input type="number" id="bountyUpdateIntervalMs" min="0.1" max="60" step="0.1">
                             <p class="hint" data-i18n="field.bountyUpdateIntervalMs.hint">How often the display refreshes (0.1–60 s)</p>
 
-                            <div class="row">
-                                <div class="column">
-                                    <label for="bountyPosition" data-i18n="common.positionLabel">Position</label>
-                                    <select id="bountyPosition" class="position-options"></select>
-                                </div>
-                                <div class="column">
-                                    <label for="bountyColor" data-i18n="common.textColorLabel">Text Color</label>
-                                    <input type="color" id="bountyColor" data-default-color="#FFD700">
-                                </div>
-                            </div>
+                            <div>
+                                <label for="bountyPosition" data-i18n="common.positionLabel">Position</label>
+                                <select id="bountyPosition" class="position-options"></select>
 
-                            <div class="row">
-                                <div class="column">
-                                    <label for="bountyOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="bountyOffsetXValue">0</span></label>
-                                    <input type="range" id="bountyOffsetX" min="-50" max="50" value="0" data-value-target="bountyOffsetXValue">
-                                </div>
-                                <div class="column">
-                                    <label for="bountyOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="bountyOffsetYValue">0</span></label>
-                                    <input type="range" id="bountyOffsetY" min="-50" max="50" value="0" data-value-target="bountyOffsetYValue">
-                                </div>
-                            </div>
+                                <label for="bountyColor" data-i18n="common.textColorLabel">Text Color</label>
+                                <input type="color" id="bountyColor" data-default-color="#FFD700">
 
-                            <label for="bountyFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
-                            <input type="number" id="bountyFontSize" min="6" max="72">
+                                <label for="bountyOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="bountyOffsetXValue">0</span></label>
+                                <input type="range" id="bountyOffsetX" min="-50" max="50" value="0" data-value-target="bountyOffsetXValue">
+                                <label for="bountyOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="bountyOffsetYValue">0</span></label>
+                                <input type="range" id="bountyOffsetY" min="-50" max="50" value="0" data-value-target="bountyOffsetYValue">
+
+                                <label for="bountyFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
+                                <input type="number" id="bountyFontSize" min="6" max="72">
+
+                                <label for="bountyFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                <select id="bountyFontName" class="font-options"></select>
+
+                                <label for="bountyFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                <select id="bountyFontWeight">
+                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                </select>
+
+                                <label for="bountyBgColor" data-i18n="common.textBgColorLabel">Background Color</label>
+                                <input type="color" id="bountyBgColor" data-default-color="#000000">
+                                <label for="bountyBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="bountyBgOpacityValue">90</span>%</label>
+                                <input type="range" id="bountyBgOpacity" min="0" max="100" value="90" data-value-target="bountyBgOpacityValue">
+                            </div>
 
                             <label for="bountyIskRateUnit" data-i18n="field.bountyIskRateUnit.label">ISK Rate Unit</label>
                             <select id="bountyIskRateUnit">
