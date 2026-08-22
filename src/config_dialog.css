@@ -533,6 +533,16 @@ input.recording {
     box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
 }
 
+input.hotkey-input {
+    cursor: pointer;
+    caret-color: transparent;
+}
+
+input.hotkey-input.manual-editing {
+    cursor: text;
+    caret-color: auto;
+}
+
 /* Momentary highlight after a number input is clamped to its min/max on blur -
    warning-orange (not the danger-red used for .hotkey-conflict) since this is an
    auto-correction, not an error. Class is removed on a timer in JS; the transition

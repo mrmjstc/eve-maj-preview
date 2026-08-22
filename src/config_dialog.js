@@ -3435,9 +3435,8 @@ function vkHexToFriendly(str) {
 }
 
 function renderHotkeyInputHtml(fieldId, value, placeholder) {
-    return `<input type="text" id="${fieldId}" class="hotkey-input" value="${value}" placeholder="${placeholder}" readonly style="flex: 1; margin-bottom: 0;">
+    return `<input type="text" id="${fieldId}" class="hotkey-input" value="${value}" placeholder="${t('common.hotkeyClickToBind')}" title="${placeholder}" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('${fieldId}')" readonly style="flex: 1; margin-bottom: 0;">
 <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('${fieldId}')" title="${t('common.hotkeyClear')}" style="margin-bottom: 0;">×</button>
-<button type="button" class="hotkey-record-btn" onclick="recordHotkey('${fieldId}')" style="width: auto; margin-bottom: 0;">${t('common.hotkeyRecord')}</button>
 <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('${fieldId}')" title="${t('common.hotkeyTypeDirectly')}" style="margin-bottom: 0;">✎</button>`;
 }
 
@@ -3654,11 +3653,7 @@ function recordHotkey(fieldId) {
     input.value = 'Press keys...';
     input.dataset.originalPlaceholder = input.placeholder;
     input.placeholder = 'Waiting for input...';
-
-    const button = input.parentElement.querySelector('.hotkey-record-btn');
-    if (button) {
-        button.textContent = t('status.hotkeyStopLabel');
-    }
+    input.blur();
 
     // `wheel` listeners are passive by default, which would block captureWheel's preventDefault() (needed to stop the page scrolling under the modal).
     document.addEventListener('keydown', captureKeyDown, true);
@@ -3824,11 +3819,6 @@ function stopRecording() {
 
     const input = document.getElementById(recordingField);
     input.classList.remove('recording');
-
-    const button = input.parentElement.querySelector('.hotkey-record-btn');
-    if (button) {
-        button.textContent = t('common.hotkeyRecord');
-    }
 
     // Reset value and placeholder if no binding was set
     if (input.value === 'Press keys...') {

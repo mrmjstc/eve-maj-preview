@@ -852,9 +852,8 @@
                             <div class="field">
                                 <label for="hotkeyMinimizeAll" data-i18n="field.hotkeyMinimizeAll.label">Minimize All</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyMinimizeAll" class="hotkey-input" placeholder="e.g., LWin+M" data-i18n-placeholder="field.hotkeyMinimizeAll.placeholder" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyMinimizeAll" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+M" data-i18n-title="field.hotkeyMinimizeAll.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyMinimizeAll')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyMinimizeAll')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyMinimizeAll')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyMinimizeAll')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -862,9 +861,8 @@
                             <div class="field">
                                 <label for="hotkeyCloseAll" data-i18n="field.hotkeyCloseAll.label">Close All</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyCloseAll" class="hotkey-input" placeholder="e.g., LWin+Q" data-i18n-placeholder="field.hotkeyCloseAll.placeholder" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyCloseAll" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+Q" data-i18n-title="field.hotkeyCloseAll.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyCloseAll')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyCloseAll')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyCloseAll')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyCloseAll')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -872,9 +870,8 @@
                             <div class="field">
                                 <label for="hotkeyToggleVisibility" data-i18n="field.hotkeyToggleVisibility.label">Toggle Visibility</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyToggleVisibility" class="hotkey-input" placeholder="e.g., LWin+H" data-i18n-placeholder="field.hotkeyToggleVisibility.placeholder" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyToggleVisibility" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+H" data-i18n-title="field.hotkeyToggleVisibility.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyToggleVisibility')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyToggleVisibility')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyToggleVisibility')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyToggleVisibility')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -882,9 +879,8 @@
                             <div class="field">
                                 <label for="hotkeyToggleAutoMinimize" data-i18n="field.hotkeyToggleAutoMinimize.label">Toggle Auto-Minimize</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyToggleAutoMinimize" class="hotkey-input" placeholder="e.g., F15" data-i18n-placeholder="field.hotkeyToggleAutoMinimize.placeholder" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyToggleAutoMinimize" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., F15" data-i18n-title="field.hotkeyToggleAutoMinimize.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyToggleAutoMinimize')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyToggleAutoMinimize')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyToggleAutoMinimize')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyToggleAutoMinimize')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -892,9 +888,8 @@
                             <div class="field">
                                 <label for="hotkeyMoveToSavedPositions" data-i18n="field.hotkeyMoveToSavedPositions.label">Move to Saved Positions</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyMoveToSavedPositions" class="hotkey-input" placeholder="e.g., LWin+P" data-i18n-placeholder="field.hotkeyMoveToSavedPositions.placeholder" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyMoveToSavedPositions" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+P" data-i18n-title="field.hotkeyMoveToSavedPositions.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyMoveToSavedPositions')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyMoveToSavedPositions')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyMoveToSavedPositions')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyMoveToSavedPositions')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -906,9 +901,8 @@
                             <div class="field">
                                 <label for="hotkeyNextExcluded" data-i18n="field.hotkeyNextExcluded.label">Next Excluded</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyNextExcluded" class="hotkey-input" placeholder="e.g., LWin+]" data-i18n-placeholder="common.hotkeyExampleCloseBracket" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyNextExcluded" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+]" data-i18n-title="common.hotkeyExampleCloseBracket" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyNextExcluded')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyNextExcluded')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyNextExcluded')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyNextExcluded')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -916,9 +910,8 @@
                             <div class="field">
                                 <label for="hotkeyPreviousExcluded" data-i18n="field.hotkeyPreviousExcluded.label">Previous Excluded</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyPreviousExcluded" class="hotkey-input" placeholder="e.g., LWin+[" data-i18n-placeholder="common.hotkeyExampleOpenBracket" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyPreviousExcluded" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+[" data-i18n-title="common.hotkeyExampleOpenBracket" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyPreviousExcluded')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyPreviousExcluded')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyPreviousExcluded')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyPreviousExcluded')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -926,9 +919,8 @@
                             <div class="field">
                                 <label for="hotkeyToggleExclusion" data-i18n="field.hotkeyToggleExclusion.label">Toggle Focused Character Exclusion</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyToggleExclusion" class="hotkey-input" placeholder="e.g., LWin+E" data-i18n-placeholder="field.hotkeyToggleExclusion.placeholder" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyToggleExclusion" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+E" data-i18n-title="field.hotkeyToggleExclusion.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyToggleExclusion')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyToggleExclusion')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyToggleExclusion')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyToggleExclusion')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -940,9 +932,8 @@
                             <div class="field">
                                 <label for="hotkeyCycleNotified" data-i18n="field.hotkeyCycleNotified.label">Next Notified</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyCycleNotified" class="hotkey-input" placeholder="e.g., LWin+N" data-i18n-placeholder="field.hotkeyCycleNotified.placeholder" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyCycleNotified" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+N" data-i18n-title="field.hotkeyCycleNotified.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyCycleNotified')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyCycleNotified')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyCycleNotified')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyCycleNotified')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -950,9 +941,8 @@
                             <div class="field">
                                 <label for="hotkeyPreviousNotified" data-i18n="field.hotkeyPreviousNotified.label">Previous Notified</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyPreviousNotified" class="hotkey-input" placeholder="e.g., LWin+Shift+N" data-i18n-placeholder="field.hotkeyPreviousNotified.placeholder" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyPreviousNotified" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+Shift+N" data-i18n-title="field.hotkeyPreviousNotified.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyPreviousNotified')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyPreviousNotified')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyPreviousNotified')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyPreviousNotified')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -964,9 +954,8 @@
                             <div class="field">
                                 <label for="hotkeySuspend" data-i18n="field.hotkeySuspend.label">Toggle Suspend Hotkeys</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeySuspend" class="hotkey-input" placeholder="e.g., ScrollLock" data-i18n-placeholder="field.hotkeySuspend.placeholder" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeySuspend" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., ScrollLock" data-i18n-title="field.hotkeySuspend.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeySuspend')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeySuspend')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeySuspend')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeySuspend')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -984,9 +973,8 @@
                             <div class="field">
                                 <label for="hotkeyNextProfile" data-i18n="field.hotkeyNextProfile.label">Next Profile</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyNextProfile" class="hotkey-input" placeholder="e.g., LWin+PgDn" data-i18n-placeholder="field.hotkeyNextProfile.placeholder" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyNextProfile" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+PgDn" data-i18n-title="field.hotkeyNextProfile.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyNextProfile')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyNextProfile')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyNextProfile')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyNextProfile')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -994,9 +982,8 @@
                             <div class="field">
                                 <label for="hotkeyPreviousProfile" data-i18n="field.hotkeyPreviousProfile.label">Previous Profile</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyPreviousProfile" class="hotkey-input" placeholder="e.g., LWin+PgUp" data-i18n-placeholder="field.hotkeyPreviousProfile.placeholder" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyPreviousProfile" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+PgUp" data-i18n-title="field.hotkeyPreviousProfile.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyPreviousProfile')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyPreviousProfile')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyPreviousProfile')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyPreviousProfile')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -1015,9 +1002,8 @@
                             <div class="field">
                                 <label for="hotkeyCycleAllClientsForward" data-i18n="field.hotkeyCycleAllClientsForward.label">Next Logged-In Client</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyCycleAllClientsForward" class="hotkey-input" placeholder="e.g., LWin+]" data-i18n-placeholder="common.hotkeyExampleCloseBracket" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyCycleAllClientsForward" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+]" data-i18n-title="common.hotkeyExampleCloseBracket" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyCycleAllClientsForward')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyCycleAllClientsForward')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyCycleAllClientsForward')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyCycleAllClientsForward')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -1025,9 +1011,8 @@
                             <div class="field">
                                 <label for="hotkeyCycleAllClientsBackward" data-i18n="field.hotkeyCycleAllClientsBackward.label">Previous Logged-In Client</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyCycleAllClientsBackward" class="hotkey-input" placeholder="e.g., LWin+[" data-i18n-placeholder="common.hotkeyExampleOpenBracket" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyCycleAllClientsBackward" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+[" data-i18n-title="common.hotkeyExampleOpenBracket" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyCycleAllClientsBackward')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyCycleAllClientsBackward')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyCycleAllClientsBackward')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyCycleAllClientsBackward')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -1044,9 +1029,8 @@
                             <div class="field">
                                 <label for="hotkeyCycleNotLoggedInForward" data-i18n="field.hotkeyCycleNotLoggedInForward.label">Next Not Logged In</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyCycleNotLoggedInForward" class="hotkey-input" placeholder="e.g., LWin+Down" data-i18n-placeholder="field.hotkeyCycleNotLoggedInForward.placeholder" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyCycleNotLoggedInForward" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+Down" data-i18n-title="field.hotkeyCycleNotLoggedInForward.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyCycleNotLoggedInForward')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyCycleNotLoggedInForward')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyCycleNotLoggedInForward')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyCycleNotLoggedInForward')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
@@ -1054,9 +1038,8 @@
                             <div class="field">
                                 <label for="hotkeyCycleNotLoggedInBackward" data-i18n="field.hotkeyCycleNotLoggedInBackward.label">Previous Not Logged In</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyCycleNotLoggedInBackward" class="hotkey-input" placeholder="e.g., LWin+Up" data-i18n-placeholder="field.hotkeyCycleNotLoggedInBackward.placeholder" readonly style="flex: 1; margin-bottom: 0;">
+                                    <input type="text" id="hotkeyCycleNotLoggedInBackward" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+Up" data-i18n-title="field.hotkeyCycleNotLoggedInBackward.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyCycleNotLoggedInBackward')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyCycleNotLoggedInBackward')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-record-btn" onclick="recordHotkey('hotkeyCycleNotLoggedInBackward')" style="width: auto; margin-bottom: 0;" data-i18n="common.hotkeyRecord">Record</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyCycleNotLoggedInBackward')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
