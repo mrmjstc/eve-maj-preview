@@ -351,14 +351,14 @@ p {
     border-spacing: 0;
     border: 1px solid #888888;
     background: #1a1a1a;
-    font-size: 13px;
+    font-size: 12px;
     margin-top: 8px;
 }
 
 .notification-types-table th {
     background: #0f0f0f;
     border: 1px solid #888888;
-    padding: 6px 8px;
+    padding: 4px 6px;
     text-align: center;
     color: #ffffff;
     font-weight: 600;
@@ -377,7 +377,7 @@ p {
 }
 
 .notification-types-table thead tr:last-child:not(:first-child) th {
-    top: calc(1.2em + 14px);
+    top: calc(1.2em + 10px);
     font-weight: 500;
     color: #dddddd;
 }
@@ -387,7 +387,7 @@ p {
 }
 
 .notification-types-table th.event-type-col {
-    min-width: 180px;
+    min-width: 130px;
     text-align: left;
 }
 
@@ -397,14 +397,14 @@ p {
 
 .notification-types-table td {
     border: 1px solid #444444;
-    padding: 6px 4px;
+    padding: 4px 3px;
     vertical-align: middle;
     text-align: center;
 }
 
 .notification-types-table td.event-name-cell {
     text-align: left;
-    padding: 6px 8px;
+    padding: 4px 6px;
 }
 
 .notification-types-table tbody tr {
@@ -430,11 +430,11 @@ p {
 }
 
 .notification-types-table input[type="number"] {
-    width: 56px;
-    height: 24px;
-    padding: 2px 6px;
+    width: 42px;
+    height: 22px;
+    padding: 2px 4px;
     margin: 0;
-    font-size: 12px;
+    font-size: 11px;
 }
 
 .notification-types-table input[type="number"]::placeholder {
@@ -448,14 +448,14 @@ p {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 24px;
+    min-height: 22px;
     width: 100%;
 }
 
 .notification-types-table input[type="checkbox"] + .label-body {
     padding-left: 0;
-    width: 28px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -467,6 +467,11 @@ p {
     transform: none;
     left: auto;
     top: auto;
+}
+
+.notification-types-table .swatch-wrap {
+    width: 26px;
+    height: 22px;
 }
 
 /* Disabled state for notification table controls */
@@ -1090,7 +1095,7 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 }
 
 /* The ore table reuses .notification-types-table (see above) wholesale for identical visual/scrolling behavior - this is the one thing that table never needed. */
-/* Wider than the shared 56px number-input rule (sized for notifications' Duration/Throttle) - fetched ISK prices run up to 6+ digits. */
+/* Wider than the shared number-input rule (sized for notifications' Duration/Throttle) - fetched ISK prices run up to 6+ digits. */
 .notification-types-table input.ore-price-input {
     width: 90px;
 }
