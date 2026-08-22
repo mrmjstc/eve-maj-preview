@@ -376,7 +376,7 @@ p {
     z-index: 11;
 }
 
-.notification-types-table thead tr:last-child th {
+.notification-types-table thead tr:last-child:not(:first-child) th {
     top: calc(1.2em + 14px);
     font-weight: 500;
     color: #dddddd;
