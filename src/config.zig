@@ -626,6 +626,7 @@ pub const CharacterConfig = struct {
     windowPosition: ?Position = null,
     borderColors: ?CharacterBorderColors = null,
     nameColor: ?u32 = null,
+    ammoClipSize: ?u32 = null,
     thumbnailSize: ?CharacterThumbnailSize = null,
     displayName: ?[]const u8 = null,
     hotkey: ?u32 = null,
@@ -646,6 +647,7 @@ pub const CharacterConfig = struct {
         windowPosition: ?Position = null,
         borderColors: ?CharacterBorderColors.Wire = null,
         nameColor: ?Argb = null,
+        ammoClipSize: ?u32 = null,
         thumbnailSize: ?CharacterThumbnailSize = null,
         displayName: ?[]const u8 = null,
         hotkey: ?VkCode = null,
@@ -661,6 +663,7 @@ pub const CharacterConfig = struct {
             .windowPosition = self.windowPosition,
             .borderColors = if (self.borderColors) |bc| bc.toWire() else null,
             .nameColor = wrapColor(self.nameColor),
+            .ammoClipSize = self.ammoClipSize,
             .thumbnailSize = self.thumbnailSize,
             .displayName = self.displayName,
             .hotkey = wrapVk(self.hotkey),
@@ -677,6 +680,7 @@ pub const CharacterConfig = struct {
             .windowPosition = w.windowPosition,
             .borderColors = if (w.borderColors) |bc| CharacterBorderColors.fromWire(bc) else null,
             .nameColor = unwrapColor(w.nameColor),
+            .ammoClipSize = w.ammoClipSize,
             .thumbnailSize = w.thumbnailSize,
             .displayName = if (w.displayName) |dn| try allocator.dupe(u8, dn) else null,
             .hotkey = unwrapVk(w.hotkey),
@@ -1306,6 +1310,86 @@ pub const BountyConfig = struct {
     }
 };
 
+pub const AmmoCountdownConfig = struct {
+    enabled: bool = false,
+    color: u32 = 0xFFFFFFFF,
+    bg_color: u32 = 0xE6000000,
+    font_size: i32 = 11,
+    font_name: []const u8 = DEFAULT_FONT_NAME,
+    font_weight: types.FontWeight = .Regular,
+    position: types.TextPosition = .LeftCenter,
+    offset_x: i32 = 0,
+    offset_y: i32 = 0,
+    // Comma-separated, case-insensitive substring match against the parsed weapon/drone name (see
+    // activity_tracker.parseOutgoingCombatShot/isWeaponExcluded); matching hits still land but don't
+    // decrement the clip, so drone damage can be excluded from the countdown.
+    excluded_weapons: []const u8 = "",
+
+    pub const FONT_SIZE_MIN: i32 = 6;
+    pub const FONT_SIZE_MAX: i32 = 72;
+    pub const OFFSET_MIN: i32 = -50;
+    pub const OFFSET_MAX: i32 = 50;
+
+    pub fn validate(self: *AmmoCountdownConfig) void {
+        if (self.font_size < FONT_SIZE_MIN) self.font_size = FONT_SIZE_MIN;
+        if (self.font_size > FONT_SIZE_MAX) self.font_size = FONT_SIZE_MAX;
+        if (self.offset_x < OFFSET_MIN) self.offset_x = OFFSET_MIN;
+        if (self.offset_x > OFFSET_MAX) self.offset_x = OFFSET_MAX;
+        if (self.offset_y < OFFSET_MIN) self.offset_y = OFFSET_MIN;
+        if (self.offset_y > OFFSET_MAX) self.offset_y = OFFSET_MAX;
+    }
+
+    pub fn deinit(self: *AmmoCountdownConfig, allocator: std.mem.Allocator) void {
+        allocator.free(self.excluded_weapons);
+        if (self.font_name.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.font_name);
+        }
+    }
+
+    pub const Wire = struct {
+        enabled: bool = (AmmoCountdownConfig{}).enabled,
+        color: Argb = .{ .value = (AmmoCountdownConfig{}).color },
+        bg_color: Argb = .{ .value = (AmmoCountdownConfig{}).bg_color },
+        font_size: i32 = (AmmoCountdownConfig{}).font_size,
+        font_name: []const u8 = DEFAULT_FONT_NAME,
+        font_weight: types.FontWeight = (AmmoCountdownConfig{}).font_weight,
+        position: types.TextPosition = (AmmoCountdownConfig{}).position,
+        offset_x: i32 = (AmmoCountdownConfig{}).offset_x,
+        offset_y: i32 = (AmmoCountdownConfig{}).offset_y,
+        excluded_weapons: []const u8 = (AmmoCountdownConfig{}).excluded_weapons,
+    };
+
+    pub fn toWire(self: AmmoCountdownConfig) Wire {
+        return .{
+            .enabled = self.enabled,
+            .color = .{ .value = self.color },
+            .bg_color = .{ .value = self.bg_color },
+            .font_size = self.font_size,
+            .font_name = self.font_name,
+            .font_weight = self.font_weight,
+            .position = self.position,
+            .offset_x = self.offset_x,
+            .offset_y = self.offset_y,
+            .excluded_weapons = self.excluded_weapons,
+        };
+    }
+
+    pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !AmmoCountdownConfig {
+        return .{
+            .enabled = w.enabled,
+            .color = w.color.value,
+            .bg_color = w.bg_color.value,
+            .font_size = w.font_size,
+            .font_name = try allocator.dupe(u8, w.font_name),
+            .font_weight = w.font_weight,
+            .position = w.position,
+            .offset_x = w.offset_x,
+            .offset_y = w.offset_y,
+            .excluded_weapons = try allocator.dupe(u8, w.excluded_weapons),
+        };
+    }
+};
+
 pub const NotificationTypeConfig = struct {
     enabled: bool = true,
     duration_ms: u32 = 10000,
@@ -1570,6 +1654,7 @@ pub const Config = struct {
     combat: CombatConfig,
     mining: MiningConfig,
     bounty: BountyConfig,
+    ammoCountdown: AmmoCountdownConfig,
 
     windowFilters: std.ArrayList(WindowFilter),
 
@@ -1616,6 +1701,7 @@ pub const Config = struct {
         combat: CombatConfig.Wire = .{},
         mining: MiningConfig.Wire = .{},
         bounty: BountyConfig.Wire = .{},
+        ammoCountdown: AmmoCountdownConfig.Wire = .{},
         windowFilters: []const WindowFilter = &.{WindowFilter.DEFAULT},
         characters: []const CharacterConfig.Wire = &.{},
         systemColors: []const SystemColor.Wire = &.{},
@@ -1674,6 +1760,7 @@ pub const Config = struct {
             .combat = self.combat.toWire(),
             .mining = self.mining.toWire(),
             .bounty = self.bounty.toWire(),
+            .ammoCountdown = self.ammoCountdown.toWire(),
             .windowFilters = window_filters,
             .characters = chars,
             .systemColors = sys_colors,
@@ -1718,6 +1805,7 @@ pub const Config = struct {
         cfg.combat = try CombatConfig.fromWire(w.combat, allocator);
         cfg.mining = try MiningConfig.fromWire(w.mining, allocator);
         cfg.bounty = try BountyConfig.fromWire(w.bounty, allocator);
+        cfg.ammoCountdown = try AmmoCountdownConfig.fromWire(w.ammoCountdown, allocator);
         cfg.requireEveFocus = w.hotkeys.requireEveFocus;
         cfg.resetGroupIndexOnNonGroupFocus = w.hotkeys.resetGroupIndexOnNonGroupFocus;
         cfg.autoRegisterProtocol = w.hotkeys.autoRegisterProtocol;
@@ -3279,6 +3367,7 @@ pub const Config = struct {
             .combat = .{},
             .mining = .{},
             .bounty = .{},
+            .ammoCountdown = .{},
             .windowFilters = default_filters,
             .characters = std.ArrayList(CharacterConfig).empty,
             .systemColors = std.ArrayList(SystemColor).empty,
@@ -3357,6 +3446,13 @@ pub const Config = struct {
     pub fn getCharacterBorderColors(self: *const Config, character_name: []const u8) ?CharacterBorderColors {
         if (self.findCharacterConst(character_name)) |char| {
             return char.borderColors;
+        }
+        return null;
+    }
+
+    pub fn getCharacterAmmoClipSize(self: *const Config, character_name: []const u8) ?u32 {
+        if (self.findCharacterConst(character_name)) |char| {
+            return char.ammoClipSize;
         }
         return null;
     }
@@ -3511,6 +3607,7 @@ pub const Config = struct {
         self.combat.validate();
         self.mining.validate();
         self.bounty.validate();
+        self.ammoCountdown.validate();
 
         // Per-character thumbnail size overrides live on CharacterConfig, not ThumbnailConfig, so they bypass validate() above and need clamping here too.
         for (self.characters.items) |*char| {
@@ -3594,6 +3691,10 @@ pub const Config = struct {
             .@"bounty.font_size" = Range{ .min = BountyConfig.FONT_SIZE_MIN, .max = BountyConfig.FONT_SIZE_MAX },
             .@"bounty.offset_x" = Range{ .min = BountyConfig.OFFSET_MIN, .max = BountyConfig.OFFSET_MAX },
             .@"bounty.offset_y" = Range{ .min = BountyConfig.OFFSET_MIN, .max = BountyConfig.OFFSET_MAX },
+
+            .@"ammoCountdown.font_size" = Range{ .min = AmmoCountdownConfig.FONT_SIZE_MIN, .max = AmmoCountdownConfig.FONT_SIZE_MAX },
+            .@"ammoCountdown.offset_x" = Range{ .min = AmmoCountdownConfig.OFFSET_MIN, .max = AmmoCountdownConfig.OFFSET_MAX },
+            .@"ammoCountdown.offset_y" = Range{ .min = AmmoCountdownConfig.OFFSET_MIN, .max = AmmoCountdownConfig.OFFSET_MAX },
         };
 
         return std.json.Stringify.valueAlloc(allocator, ranges, .{});
@@ -3664,6 +3765,7 @@ pub const Config = struct {
         self.combat.deinit(allocator);
         self.mining.deinit(allocator);
         self.bounty.deinit(allocator);
+        self.ammoCountdown.deinit(allocator);
     }
 
     /// Discard the in-memory thumbnail appearance, layout, and system color overrides, replacing them with a fresh read of this profile from disk, to revert an unsaved live-preview patch (see PROTOCOL_REVERT_PREVIEW); startX/startY are left untouched.
@@ -3715,6 +3817,7 @@ pub const Config = struct {
                 char.thumbnailSize = fresh_char.thumbnailSize;
                 char.borderColors = fresh_char.borderColors;
                 char.nameColor = fresh_char.nameColor;
+                char.ammoClipSize = fresh_char.ammoClipSize;
                 char.hideThumbnail = fresh_char.hideThumbnail;
                 char.position = fresh_char.position;
 
@@ -3854,6 +3957,14 @@ pub const Config = struct {
                     char.nameColor = try parseHexColor(v.string);
                 } else {
                     char.nameColor = null;
+                }
+            }
+
+            if (obj.get("ammoClipSize")) |v| {
+                if (v == .integer) {
+                    char.ammoClipSize = std.math.cast(u32, v.integer);
+                } else {
+                    char.ammoClipSize = null;
                 }
             }
 

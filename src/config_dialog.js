@@ -355,6 +355,16 @@ const CONFIG_SCHEMA = [
     { id: 'bountyOffsetX', path: 'bounty.offset_x' },
     { id: 'bountyOffsetY', path: 'bounty.offset_y' },
     { id: 'bountyIskRateUnit', path: 'bounty.isk_rate_unit' },
+
+    { id: 'ammoCountdownEnabled', path: 'ammoCountdown.enabled' },
+    { id: 'ammoCountdownPosition', path: 'ammoCountdown.position' },
+    { id: 'ammoCountdownColor', path: 'ammoCountdown.color' },
+    { id: 'ammoCountdownFontSize', path: 'ammoCountdown.font_size' },
+    { id: 'ammoCountdownFontName', path: 'ammoCountdown.font_name' },
+    { id: 'ammoCountdownFontWeight', path: 'ammoCountdown.font_weight' },
+    { id: 'ammoCountdownOffsetX', path: 'ammoCountdown.offset_x' },
+    { id: 'ammoCountdownOffsetY', path: 'ammoCountdown.offset_y' },
+    { id: 'ammoCountdownExcludedWeapons', path: 'ammoCountdown.excluded_weapons', default: '' },
 ];
 
 function getConfigPath(obj, path) {
@@ -482,6 +492,7 @@ const BG_COLOR_FIELDS = [
     { colorId: 'combatOutgoingBgColor', opacityId: 'combatOutgoingBgOpacity', path: 'combat.outgoing_bg_color' },
     { colorId: 'miningBgColor', opacityId: 'miningBgOpacity', path: 'mining.bg_color' },
     { colorId: 'bountyBgColor', opacityId: 'bountyBgOpacity', path: 'bounty.bg_color' },
+    { colorId: 'ammoCountdownBgColor', opacityId: 'ammoCountdownBgOpacity', path: 'ammoCountdown.bg_color' },
 ];
 
 // Fields that can't be expressed as a single {id, path} pair: composite values, asymmetric load/save, or non-trivial defaults.
@@ -744,9 +755,10 @@ function buildCharacterOverridesPreviewPatch(includePositions = false) {
         const activeColor = document.getElementById(`char_${index}_activeColor`);
         const inactiveColor = document.getElementById(`char_${index}_inactiveColor`);
         const nameColor = document.getElementById(`char_${index}_nameColor`);
+        const ammoClipSizeField = document.getElementById(`char_${index}_ammoClipSize`);
         const displayNameField = document.getElementById(`char_${index}_displayName`);
         const hideThumbnailField = document.getElementById(`char_${index}_hideThumbnail`);
-        if (!width && !height && !activeColor && !inactiveColor && !nameColor && !displayNameField && !hideThumbnailField) return;
+        if (!width && !height && !activeColor && !inactiveColor && !nameColor && !ammoClipSizeField && !displayNameField && !hideThumbnailField) return;
 
         const displayName = displayNameField ? (displayNameField.value.trim() || null) : null;
         const hideThumbnail = hideThumbnailField ? hideThumbnailField.checked : false;
@@ -762,8 +774,9 @@ function buildCharacterOverridesPreviewPatch(includePositions = false) {
             : null;
 
         const nameColorOut = resolveOptionalCharacterColor(nameColor, !!char.nameColor);
+        const ammoClipSize = ammoClipSizeField ? (parseInt(ammoClipSizeField.value) > 0 ? parseInt(ammoClipSizeField.value) : null) : null;
 
-        const entry = { name: char.name, displayName, hideThumbnail, thumbnailSize, borderColors, nameColor: nameColorOut };
+        const entry = { name: char.name, displayName, hideThumbnail, thumbnailSize, borderColors, nameColor: nameColorOut, ammoClipSize };
         if (includePositions && char.position) entry.position = char.position;
         result.push(entry);
     });
@@ -803,7 +816,7 @@ function setupThumbnailPreview() {
     // Per-character override fields are regenerated per accordion row by populateCharacters(), so listen on the container, same as above.
     const charactersList = document.getElementById('charactersList');
     if (charactersList) {
-        const isPreviewableCharField = (id) => /^char_\d+_(width|height|activeColor|inactiveColor|nameColor|displayName|hideThumbnail)$/.test(id);
+        const isPreviewableCharField = (id) => /^char_\d+_(width|height|activeColor|inactiveColor|nameColor|ammoClipSize|displayName|hideThumbnail)$/.test(id);
         charactersList.addEventListener('input', (e) => {
             if (isPreviewableCharField(e.target.id)) scheduleThumbnailPreview();
         });
@@ -1053,6 +1066,7 @@ function applyBackendDefaultColors() {
         combatOutgoingColor: defaultConfig.combat?.outgoing_color,
         miningColor: defaultConfig.mining?.color,
         bountyColor: defaultConfig.bounty?.color,
+        ammoCountdownColor: defaultConfig.ammoCountdown?.color,
         characterNameBgColor: defaultConfig.thumbnail?.characterNameBgColor,
         systemNameBgColor: defaultConfig.thumbnail?.systemNameBgColor,
         quickGroupBadgeBgColor: defaultConfig.thumbnail?.quickGroupBadgeBgColor,
@@ -1061,6 +1075,7 @@ function applyBackendDefaultColors() {
         combatOutgoingBgColor: defaultConfig.combat?.outgoing_bg_color,
         miningBgColor: defaultConfig.mining?.bg_color,
         bountyBgColor: defaultConfig.bounty?.bg_color,
+        ammoCountdownBgColor: defaultConfig.ammoCountdown?.bg_color,
     };
     for (const [id, value] of Object.entries(map)) {
         if (value == null) continue;
@@ -1137,6 +1152,7 @@ function populateFormFields() {
     toggleCombatOptions();
     toggleMiningOptions();
     toggleBountyOptions();
+    toggleAmmoOptions();
 
     populateWindowFilters();
 
@@ -4520,6 +4536,11 @@ function populateCharacters() {
                     </div>
                 </div>
             </div>
+            <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.ammoCountdownHeading')}</h4>
+            <div>
+                <label for="char_${index}_ammoClipSize">${t('dynamic.character.ammoClipSizeLabel')}</label>
+                <input type="number" id="char_${index}_ammoClipSize" value="${char.ammoClipSize || ''}" placeholder="${t('dynamic.character.ammoClipSizePlaceholder')}" min="0" max="9999">
+            </div>
             <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.behaviorHeading')}</h4>
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
                 <label>
@@ -4919,6 +4940,7 @@ function saveCharacters() {
         const activeColor = document.getElementById(`char_${index}_activeColor`);
         const inactiveColor = document.getElementById(`char_${index}_inactiveColor`);
         const nameColor = document.getElementById(`char_${index}_nameColor`);
+        const ammoClipSize = document.getElementById(`char_${index}_ammoClipSize`);
         const excludeMinimize = document.getElementById(`char_${index}_excludeMinimize`);
         const excludeCloseAll = document.getElementById(`char_${index}_excludeCloseAll`);
         const hideThumbnail = document.getElementById(`char_${index}_hideThumbnail`);
@@ -4946,6 +4968,11 @@ function saveCharacters() {
             : null;
 
         char.nameColor = resolveOptionalCharacterColor(nameColor, !!char.nameColor);
+
+        if (ammoClipSize) {
+            const raw = parseInt(ammoClipSize.value);
+            char.ammoClipSize = (raw > 0) ? raw : null;
+        }
     });
 }
 
@@ -6177,6 +6204,10 @@ function toggleMiningOptions() {
 
 function toggleBountyOptions() {
     applyOptionToggle('bountyEnabled', 'bountyOptions');
+}
+
+function toggleAmmoOptions() {
+    applyOptionToggle('ammoCountdownEnabled', 'ammoCountdownOptions');
 }
 
 async function browseChatlogDir() {

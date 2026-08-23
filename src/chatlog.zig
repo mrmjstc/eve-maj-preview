@@ -171,6 +171,7 @@ pub const ChatlogMonitor = struct {
     combat_tracker: ?*activity_mod.CombatTracker = null,
     mining_tracker: ?*activity_mod.MiningTracker = null,
     bounty_tracker: ?*activity_mod.BountyTracker = null,
+    ammo_tracker: ?*activity_mod.AmmoTracker = null,
     idle_poll_threshold: u32 = 20,
     max_poll_multiplier: u8 = 8,
     poll_interval_ms: u32 = 50,
@@ -216,6 +217,7 @@ pub const ChatlogMonitor = struct {
         monitor.combat_tracker = null;
         monitor.mining_tracker = null;
         monitor.bounty_tracker = null;
+        monitor.ammo_tracker = null;
         monitor.idle_poll_threshold = idle_poll_threshold;
         monitor.max_poll_multiplier = max_poll_multiplier;
 
@@ -479,6 +481,10 @@ pub const ChatlogMonitor = struct {
                 }
 
                 if (self.bounty_tracker) |tracker| {
+                    tracker.removeCharacter(character_name);
+                }
+
+                if (self.ammo_tracker) |tracker| {
                     tracker.removeCharacter(character_name);
                 }
 
@@ -1282,6 +1288,21 @@ pub const ChatlogMonitor = struct {
                 tracker.addEntry(state.character_name, parsed.amount, parsed.is_incoming, std.time.milliTimestamp(), counts_for_alert) catch |err| {
                     slog.warn("Failed to record combat entry for {s}: {}", .{ state.character_name, err });
                 };
+            }
+        }
+
+        // Ammo countdown tracking (independent of DPS tracking and notification settings).
+        if (self.ammo_tracker) |tracker| {
+            if (activity_mod.isAmmoReloadLine(event_text)) {
+                tracker.onReload(state.character_name);
+            } else {
+                var ammo_weapon_buf: [64]u8 = undefined;
+                if (activity_mod.parseOutgoingCombatShot(event_text, &ammo_weapon_buf)) |weapon| {
+                    const excluded_weapons = if (self.painter) |p| p.config.ammoCountdown.excluded_weapons else "";
+                    if (!activity_mod.isWeaponExcluded(weapon, excluded_weapons)) {
+                        tracker.onOutgoingShot(state.character_name);
+                    }
+                }
             }
         }
 

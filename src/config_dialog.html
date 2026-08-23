@@ -81,6 +81,9 @@
                 <div class="tab-item" data-tab="bounty">
                     <span data-i18n="tab.bounty.title">bounty overlay</span>
                 </div>
+                <div class="tab-item" data-tab="ammo">
+                    <span data-i18n="tab.ammo.title">ammo countdown</span>
+                </div>
                 <div class="tab-item" data-tab="advanced" style="display: none;">
                     <span data-i18n="tab.advanced.title">advanced</span>
                 </div>
@@ -1599,6 +1602,57 @@
                                 <option value="minute" data-i18n="field.miningIskRateUnit.minute">Per Minute</option>
                                 <option value="hour" data-i18n="field.miningIskRateUnit.hour">Per Hour</option>
                             </select>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="panel-content" data-panel="ammo">
+                    <div class="section">
+                        <h3 data-i18n="tab.ammo.section.ammo-countdown-overlay.heading">Text Overlay</h3>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.ammo.section.ammo-countdown-overlay.hint">Displays remaining rounds in the current clip on each thumbnail. Set a clip size per character on the Characters tab; requires chatlog monitoring to be enabled.</p>
+
+                        <label>
+                            <input type="checkbox" id="ammoCountdownEnabled" onchange="toggleAmmoOptions()">
+                            <span class="label-body" data-i18n="field.ammoCountdownEnabled.label">Enable Text Overlay</span>
+                        </label>
+
+                        <div id="ammoCountdownOptions">
+                            <div>
+                                <label for="ammoCountdownPosition" data-i18n="common.positionLabel">Position</label>
+                                <select id="ammoCountdownPosition" class="position-options"></select>
+
+                                <label for="ammoCountdownColor" data-i18n="common.textColorLabel">Text Color</label>
+                                <input type="color" id="ammoCountdownColor" data-default-color="#FFFFFF">
+
+                                <label for="ammoCountdownOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="ammoCountdownOffsetXValue">0</span></label>
+                                <input type="range" id="ammoCountdownOffsetX" min="-50" max="50" value="0" data-value-target="ammoCountdownOffsetXValue">
+                                <label for="ammoCountdownOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="ammoCountdownOffsetYValue">0</span></label>
+                                <input type="range" id="ammoCountdownOffsetY" min="-50" max="50" value="0" data-value-target="ammoCountdownOffsetYValue">
+
+                                <label for="ammoCountdownFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
+                                <input type="number" id="ammoCountdownFontSize" min="6" max="72">
+
+                                <label for="ammoCountdownFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                <select id="ammoCountdownFontName" class="font-options"></select>
+
+                                <label for="ammoCountdownFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                <select id="ammoCountdownFontWeight">
+                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                </select>
+
+                                <label for="ammoCountdownBgColor" data-i18n="common.textBgColorLabel">Background Color</label>
+                                <input type="color" id="ammoCountdownBgColor" data-default-color="#000000">
+                                <label for="ammoCountdownBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="ammoCountdownBgOpacityValue">90</span>%</label>
+                                <input type="range" id="ammoCountdownBgOpacity" min="0" max="100" value="90" data-value-target="ammoCountdownBgOpacityValue">
+                            </div>
+
+                            <label for="ammoCountdownExcludedWeapons" data-i18n="field.ammoCountdownExcludedWeapons.label">Exclude Weapons</label>
+                            <input type="text" id="ammoCountdownExcludedWeapons" placeholder="e.g. Hobgoblin, Hammerhead" data-i18n-placeholder="field.ammoCountdownExcludedWeapons.placeholder">
+                            <p class="hint" data-i18n="field.ammoCountdownExcludedWeapons.hint">Comma-separated weapon/drone names (case-insensitive, partial match). Matching hits still land but won't decrement the clip - use this to exclude drone damage.</p>
                         </div>
                     </div>
 

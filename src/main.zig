@@ -33,6 +33,7 @@ var g_chatlog_monitor: ?*chatlog.ChatlogMonitor = null;
 var g_combat_tracker: ?*activity_mod.CombatTracker = null;
 var g_mining_tracker: ?*activity_mod.MiningTracker = null;
 var g_bounty_tracker: ?*activity_mod.BountyTracker = null;
+var g_ammo_tracker: ?*activity_mod.AmmoTracker = null;
 pub var g_config: config_mod.Config = undefined;
 var g_global_settings: config_mod.GlobalSettings = undefined;
 var g_tray_icon: ?tray.TrayIcon = null;
@@ -285,6 +286,21 @@ fn onTimerTick() void {
             interval_ms,
             scout_result.windows,
         );
+    }
+
+    // No refreshAll/throttling here (unlike the trackers above) - ammo has no rate to recompute, just a
+    // per-character clip size to keep in sync with config; setClipSize/updateAmmoForCharacter are both
+    // no-ops unless something actually changed, so running this every tick is cheap.
+    if (g_ammo_tracker) |tracker| {
+        for (scout_result.windows) |eve_window| {
+            const clip_size = g_config.getCharacterAmmoClipSize(eve_window.character_name) orelse 0;
+            tracker.setClipSize(eve_window.character_name, clip_size) catch |err| {
+                slog.warn("Failed to sync ammo clip size for {s}: {}", .{ eve_window.character_name, err });
+            };
+            const state = tracker.getState(eve_window.character_name);
+            if (g_painter) |painter_ptr| painter_ptr.updateAmmoForCharacter(eve_window.hwnd, state.remaining, state.visible);
+        }
+        if (g_painter) |painter_ptr| painter_ptr.processDirtyDpsOverlays();
     }
 }
 
@@ -679,6 +695,24 @@ fn mainImpl() !void {
         }
     }
 
+    if (g_config.ammoCountdown.enabled) {
+        g_ammo_tracker = try createTracker(activity_mod.AmmoTracker, g_allocator, 0);
+
+        if (g_chatlog_monitor) |monitor| {
+            monitor.ammo_tracker = g_ammo_tracker.?;
+        }
+
+        slog.debug("Ammo countdown tracking enabled", .{});
+    }
+
+    defer {
+        if (g_ammo_tracker) |tracker| {
+            tracker.deinit();
+            g_allocator.destroy(tracker);
+            g_ammo_tracker = null;
+        }
+    }
+
     // Registered after the tracker defers so it runs first (LIFO): the worker thread must stop before combat/mining trackers are freed, since it may be mid-iteration reading them.
     defer {
         if (g_chatlog_monitor) |monitor| {
@@ -862,6 +896,13 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         g_allocator.destroy(tracker);
         g_bounty_tracker = null;
         slog.debug("Cleaned up bounty tracker", .{});
+    }
+
+    if (g_ammo_tracker) |tracker| {
+        tracker.deinit();
+        g_allocator.destroy(tracker);
+        g_ammo_tracker = null;
+        slog.debug("Cleaned up ammo tracker", .{});
     }
 
     if (g_hotkey_manager) |manager| {
@@ -1059,6 +1100,25 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         } else {
             if (g_chatlog_monitor) |monitor| monitor.bounty_tracker = null;
             slog.debug("Bounty rate tracking disabled in new profile", .{});
+        }
+
+        if (g_config.ammoCountdown.enabled) {
+            if (createTracker(activity_mod.AmmoTracker, g_allocator, 0)) |tracker_ptr| {
+                g_ammo_tracker = tracker_ptr;
+
+                if (g_chatlog_monitor) |monitor| {
+                    monitor.ammo_tracker = tracker_ptr;
+                }
+
+                slog.debug("Ammo countdown tracking enabled in new profile", .{});
+            } else |err| {
+                slog.err("Failed to create ammo tracker: {}", .{err});
+                g_ammo_tracker = null;
+                if (g_chatlog_monitor) |monitor| monitor.ammo_tracker = null;
+            }
+        } else {
+            if (g_chatlog_monitor) |monitor| monitor.ammo_tracker = null;
+            slog.debug("Ammo countdown tracking disabled in new profile", .{});
         }
 
         // Resume the paused worker only now that combat/mining trackers above are repointed (or nulled) - resuming any earlier risks it processing a queued event against trackers just destroyed.

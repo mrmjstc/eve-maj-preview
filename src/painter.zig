@@ -148,6 +148,7 @@ const RenderSettings = struct {
     combat_outgoing_bg_color: u32 = 0x80000000,
     mining_bg_color: u32 = 0x80000000,
     bounty_bg_color: u32 = 0x80000000,
+    ammo_bg_color: u32 = 0x80000000,
 
     show_thumbnail: bool = true,
     overlay_alpha: u8 = OVERLAY_ALPHA,
@@ -160,6 +161,8 @@ const RenderSettings = struct {
     mining_rate: f32 = 0.0,
     mining_isk_rate: f32 = 0.0,
     bounty_isk_rate: f32 = 0.0,
+    ammo_remaining: u32 = 0,
+    ammo_visible: bool = false,
     // Included so the false->true transition on first tracker push invalidates the cache even when the (sentineled) rate value itself didn't change.
     has_dps_data: bool = false,
     has_mining_data: bool = false,
@@ -170,6 +173,7 @@ const RenderSettings = struct {
     dps_outgoing_color: u32 = 0xFF44FF44,
     mining_color: u32 = 0xFF44AAFF,
     bounty_color: u32 = 0xFFFFD700,
+    ammo_color: u32 = 0xFFFFFFFF,
 };
 
 pub const ThumbnailWindow = struct {
@@ -198,6 +202,8 @@ pub const ThumbnailWindow = struct {
     last_mining_rate: ?f32 = null,
     last_mining_isk_rate: ?f32 = null,
     last_bounty_isk_rate: ?f32 = null,
+    last_ammo_remaining: u32 = 0,
+    last_ammo_visible: bool = false,
 
     // False until the tracker's first push actually arrives; distinguishes "never heard from the tracker yet" (show nothing) from a genuine null rate the tracker reported (show "??"), since both look identical as `null` otherwise.
     has_dps_data: bool = false,
@@ -277,7 +283,7 @@ pub const ThumbnailWindow = struct {
 
 /// Per-purpose font cache slot (see `Painter.cached_fonts`). Kept as u4 (not u3) so a future slot doesn't need a resize.
 /// `combat` is incoming DPS's slot; outgoing DPS has its own.
-pub const FontSlot = enum(u4) { main, combat, mining, bounty, system_name, quick_group_badge, notification, combat_outgoing };
+pub const FontSlot = enum(u4) { main, combat, mining, bounty, system_name, quick_group_badge, notification, combat_outgoing, ammo };
 
 const FontCacheEntry = struct {
     font: ?win32.HFONT = null,
@@ -323,7 +329,7 @@ pub const Painter = struct {
     destroy_event_hook: ?win32.HANDLE = null,
     hide_debounce_timer_hwnd: ?win32.HWND = null,
     /// One cache slot per FontSlot, so resolving one font never evicts a handle still in use by another.
-    cached_fonts: [8]FontCacheEntry = .{ .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{} },
+    cached_fonts: [9]FontCacheEntry = .{ .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{} },
     /// Non-null when viewMode == .ClientList; owns the compact list panel window.
     list_window: ?list_view.ListWindow = null,
     /// Non-null when display.showNotifInfoPanel is enabled; owns the notification-history/activity-totals panel.
@@ -582,6 +588,8 @@ pub const Painter = struct {
             a.mining_rate == b.mining_rate and
             a.mining_isk_rate == b.mining_isk_rate and
             a.bounty_isk_rate == b.bounty_isk_rate and
+            a.ammo_remaining == b.ammo_remaining and
+            a.ammo_visible == b.ammo_visible and
             a.has_dps_data == b.has_dps_data and
             a.has_mining_data == b.has_mining_data and
             a.has_bounty_data == b.has_bounty_data and
@@ -589,10 +597,12 @@ pub const Painter = struct {
             a.dps_outgoing_color == b.dps_outgoing_color and
             a.mining_color == b.mining_color and
             a.bounty_color == b.bounty_color and
+            a.ammo_color == b.ammo_color and
             a.combat_incoming_bg_color == b.combat_incoming_bg_color and
             a.combat_outgoing_bg_color == b.combat_outgoing_bg_color and
             a.mining_bg_color == b.mining_bg_color and
-            a.bounty_bg_color == b.bounty_bg_color;
+            a.bounty_bg_color == b.bounty_bg_color and
+            a.ammo_bg_color == b.ammo_bg_color;
     }
 
     fn renderSettingsEqual(a: RenderSettings, b: RenderSettings) bool {
@@ -1383,6 +1393,16 @@ pub const Painter = struct {
             thumbnail.has_bounty_data = true;
             if (first_update or thumbnail.last_bounty_isk_rate != isk_rate) {
                 thumbnail.last_bounty_isk_rate = isk_rate;
+                thumbnail.needs_render = true;
+            }
+        }
+    }
+
+    pub fn updateAmmoForCharacter(self: *Painter, source_hwnd: win32.HWND, remaining: u32, visible: bool) void {
+        if (self.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
+            if (thumbnail.last_ammo_remaining != remaining or thumbnail.last_ammo_visible != visible) {
+                thumbnail.last_ammo_remaining = remaining;
+                thumbnail.last_ammo_visible = visible;
                 thumbnail.needs_render = true;
             }
         }
@@ -3341,6 +3361,24 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
 
+    // Measure and fill ammo countdown text background BEFORE the border, same as the bounty block above.
+    var ammo_buf: [24]u8 = undefined;
+    var ammo_text: []const u8 = "";
+    var ammo_pos: TextPos = .{ .x = 0, .y = 0 };
+    var ammo_dims: TextDimensions = .{ .width = 0, .height = 0 };
+    var ammo_font: ?win32.HFONT = null;
+    if (config.ammoCountdown.enabled and config.thumbnail.showText and thumbnail.last_ammo_visible) {
+        const ammo_cfg = &config.ammoCountdown;
+        const af = try painter.getCachedFont(.ammo, ammo_cfg.font_name, ammo_cfg.font_size, ammo_cfg.font_weight);
+        ammo_font = af;
+        _ = win32.SelectObject(overlay.mem_dc, af);
+        ammo_text = std.fmt.bufPrint(&ammo_buf, "Ammo: {d}", .{thumbnail.last_ammo_remaining}) catch "Ammo: ---";
+        ammo_dims = measureText(overlay.mem_dc, ammo_text);
+        ammo_pos = calculateTextPosition(ammo_cfg.position, ammo_dims.width, ammo_dims.height, overlay.width, overlay.height, ammo_cfg.offset_x, ammo_cfg.offset_y);
+        fillTextBackground(overlay.pixels, overlay.width, overlay.height, ammo_pos.x, ammo_pos.y, ammo_dims.width, ammo_dims.height, settings.ammo_bg_color);
+        _ = win32.SelectObject(overlay.mem_dc, font);
+    }
+
     if (settings.show_border) {
         drawBorder(
             overlay.pixels,
@@ -3411,6 +3449,13 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
 
+    if (config.ammoCountdown.enabled and config.thumbnail.showText and ammo_text.len > 0) {
+        const af = ammo_font.?;
+        _ = win32.SelectObject(overlay.mem_dc, af);
+        renderText(overlay.mem_dc, ammo_text, ammo_pos.x, ammo_pos.y, config.ammoCountdown.color);
+        _ = win32.SelectObject(overlay.mem_dc, font);
+    }
+
     // Bounded to the rects text/glyphs were actually drawn into instead of scanning the whole overlay.
     if (settings.show_character_name) {
         gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, char_text_pos.x, char_text_pos.y, char_text_dims.width, char_text_dims.height);
@@ -3440,6 +3485,9 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     }
     if (bounty_text.len > 0) {
         gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, bounty_pos.x, bounty_pos.y, bounty_dims.width, bounty_dims.height);
+    }
+    if (ammo_text.len > 0) {
+        gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, ammo_pos.x, ammo_pos.y, ammo_dims.width, ammo_dims.height);
     }
 
     const window_size = win32.SIZE{ .cx = width, .cy = height };
@@ -3630,6 +3678,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .combat_outgoing_bg_color = resolveTextBgColor(state_cfg, cfg.combat.outgoing_bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
         .mining_bg_color = resolveTextBgColor(state_cfg, cfg.mining.bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
         .bounty_bg_color = resolveTextBgColor(state_cfg, cfg.bounty.bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
+        .ammo_bg_color = resolveTextBgColor(state_cfg, cfg.ammoCountdown.bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
         .character_name_font_name = cfg.thumbnail.characterNameFontName,
         .character_name_font_size = cfg.thumbnail.characterNameFontSize,
         .character_name_font_weight = cfg.thumbnail.characterNameFontWeight,
@@ -3685,6 +3734,8 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .mining_rate = if (cfg.mining.enabled) (thumbnail.last_mining_rate orelse -1.0) else 0.0,
         .mining_isk_rate = if (cfg.mining.enabled and cfg.mining.show_isk_rate) (thumbnail.last_mining_isk_rate orelse -1.0) else 0.0,
         .bounty_isk_rate = if (cfg.bounty.enabled) (thumbnail.last_bounty_isk_rate orelse -1.0) else 0.0,
+        .ammo_remaining = thumbnail.last_ammo_remaining,
+        .ammo_visible = cfg.ammoCountdown.enabled and thumbnail.last_ammo_visible,
         .has_dps_data = thumbnail.has_dps_data,
         .has_mining_data = thumbnail.has_mining_data,
         .has_bounty_data = thumbnail.has_bounty_data,
@@ -3692,6 +3743,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .dps_outgoing_color = cfg.combat.outgoing_color,
         .mining_color = cfg.mining.color,
         .bounty_color = cfg.bounty.color,
+        .ammo_color = cfg.ammoCountdown.color,
     };
 }
 

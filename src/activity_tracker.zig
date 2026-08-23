@@ -314,6 +314,183 @@ pub fn parseCombatLine(line: []const u8, weapon_buf: []u8) ?struct { amount: u32
     return .{ .amount = amount, .is_incoming = is_incoming, .weapon = weapon };
 }
 
+/// True if `segment` (text after the last " - ") is a "<word> (<N> <word>)" annotation like "Hits (3192 deflected)"
+/// rather than an actual weapon/quality name, so callers can strip it and re-search for the real weapon segment.
+fn looksLikeQualityNoise(segment: []const u8) bool {
+    const trimmed = std.mem.trim(u8, segment, " \t");
+    if (!std.mem.endsWith(u8, trimmed, ")")) return false;
+    const paren = std.mem.indexOfScalar(u8, trimmed, '(') orelse return false;
+    for (trimmed[paren + 1 .. trimmed.len - 1]) |c| {
+        if (c >= '0' and c <= '9') return true;
+    }
+    return false;
+}
+
+/// Real EVE combat lines sometimes append a repeated quality word + mitigation note after the normal
+/// "<weapon> - <quality>" tail, e.g. "... - Caldari Navy Nova Torpedo - Hits - Hits (3192 deflected)".
+/// Strips that trailing noise so the weapon/quality split below sees a plain two-segment tail.
+fn stripQualityNoise(rest: []const u8) []const u8 {
+    if (std.mem.lastIndexOf(u8, rest, " - ")) |dash| {
+        if (looksLikeQualityNoise(rest[dash + 3 ..])) {
+            return rest[0..dash];
+        }
+    }
+    return rest;
+}
+
+/// Returns the weapon/drone name for an outgoing `(combat)` hit or miss, or null if the line isn't an
+/// outgoing shot at all. Unlike parseCombatLine (which discards misses entirely - see its doc comment),
+/// this also recognizes outgoing misses so the ammo counter can decrement on every shot fired.
+pub fn parseOutgoingCombatShot(line: []const u8, weapon_buf: []u8) ?[]const u8 {
+    const combat_prefix = "(combat)";
+    const combat_pos = std.mem.indexOf(u8, line, combat_prefix) orelse return null;
+    const payload = std.mem.trimLeft(u8, line[combat_pos + combat_prefix.len ..], " \t");
+
+    if (std.mem.indexOf(u8, payload, "boosts your") != null or
+        std.mem.indexOf(u8, payload, "shields your") != null or
+        std.mem.indexOf(u8, payload, "repairs your") != null or
+        std.mem.indexOf(u8, payload, "transfers") != null)
+    {
+        return null;
+    }
+
+    var stripped_buf: [512]u8 = undefined;
+    const stripped = stripHtml(payload, &stripped_buf);
+
+    if (std.mem.indexOf(u8, stripped, "misses you") != null and !std.mem.startsWith(u8, stripped, "You ")) {
+        return null;
+    }
+
+    if (std.mem.indexOf(u8, stripped, "Your ") != null and std.mem.indexOf(u8, stripped, " misses ") != null) {
+        const your_pos = std.mem.indexOf(u8, stripped, "Your ").?;
+        const misses_pos = std.mem.indexOf(u8, stripped, " misses ") orelse return "";
+        if (misses_pos <= your_pos) return "";
+        const w = std.mem.trim(u8, stripped[your_pos + 5 .. misses_pos], " \t");
+        const n = @min(w.len, weapon_buf.len);
+        @memcpy(weapon_buf[0..n], w[0..n]);
+        return weapon_buf[0..n];
+    }
+    if (std.mem.startsWith(u8, stripped, "You miss")) {
+        return "";
+    }
+
+    var digits_end: usize = 0;
+    var found_digit = false;
+    for (stripped, 0..) |c, i| {
+        if (c >= '0' and c <= '9') {
+            digits_end = i + 1;
+            found_digit = true;
+        } else if (found_digit) {
+            break;
+        } else if (c != ' ' and c != '\t') {
+            return null;
+        }
+    }
+    if (!found_digit) return null;
+
+    const rest = stripped[digits_end..];
+    if (std.mem.indexOf(u8, rest, " to ") == null) return null;
+
+    const trimmed_rest = stripQualityNoise(rest);
+    var weapon: []const u8 = "";
+    if (std.mem.lastIndexOf(u8, trimmed_rest, " - ")) |quality_dash| {
+        const before_quality = trimmed_rest[0..quality_dash];
+        if (std.mem.lastIndexOf(u8, before_quality, " - ")) |weapon_dash| {
+            const w = std.mem.trim(u8, before_quality[weapon_dash + 3 ..], " \t");
+            const n = @min(w.len, weapon_buf.len);
+            @memcpy(weapon_buf[0..n], w[0..n]);
+            weapon = weapon_buf[0..n];
+        }
+    }
+    return weapon;
+}
+
+/// True if `(notify)` payload reports an ammo reload; matches the "Loading the X into the Y" line EVE
+/// emits when a reload starts (confirmed against a real gamelog capture, e.g. "Loading the Torpedo into
+/// the Missile Launcher Torpedo; this will take approximately 10 seconds.").
+pub fn isAmmoReloadLine(line: []const u8) bool {
+    const notify_prefix = "(notify)";
+    const notify_pos = std.mem.indexOf(u8, line, notify_prefix) orelse return false;
+    const payload = std.mem.trimLeft(u8, line[notify_pos + notify_prefix.len ..], " \t");
+
+    var stripped_buf: [512]u8 = undefined;
+    const stripped = stripHtml(payload, &stripped_buf);
+
+    if (std.mem.indexOf(u8, stripped, "Loading the") != null and std.mem.indexOf(u8, stripped, " into the") != null) {
+        return true;
+    }
+    return std.mem.indexOf(u8, stripped, "is currently being reloaded") != null;
+}
+
+/// Per-character ammo-countdown state; clip_size == 0 means tracking is disabled (shots/reloads ignored, never painted).
+pub const AmmoState = struct {
+    clip_size: u32 = 0,
+    remaining: u32 = 0,
+    armed: bool = false,
+
+    fn init(window_seconds: u32) AmmoState {
+        _ = window_seconds;
+        return .{};
+    }
+};
+
+/// Multi-character ammo-countdown tracker. No refresh/refreshAll: unlike DPS/mining/bounty, ammo has no
+/// periodic value to recompute, it's purely event-driven from setClipSize/onOutgoingShot/onReload.
+pub const AmmoTracker = struct {
+    base: TrackerBase(AmmoState),
+
+    pub fn init(allocator: std.mem.Allocator, window_seconds: u32) AmmoTracker {
+        return .{ .base = TrackerBase(AmmoState).init(allocator, window_seconds) };
+    }
+
+    pub fn deinit(self: *AmmoTracker) void {
+        self.base.deinit();
+    }
+
+    pub fn removeCharacter(self: *AmmoTracker, character_name: []const u8) void {
+        self.base.removeCharacter(character_name);
+    }
+
+    /// Idempotent - safe to call every tick with the current config value. Only applies the clip-size
+    /// transition (refill + un-arm, or disable) when clip_size actually changes.
+    pub fn setClipSize(self: *AmmoTracker, character_name: []const u8, clip_size: u32) !void {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        const state = try self.base.getOrCreate(character_name);
+        if (state.clip_size == clip_size) return;
+        state.clip_size = clip_size;
+        state.remaining = clip_size;
+        state.armed = false;
+    }
+
+    pub fn onOutgoingShot(self: *AmmoTracker, character_name: []const u8) void {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        const state = self.base.windows.getPtr(character_name) orelse return;
+        if (state.clip_size == 0) return;
+        state.armed = true;
+        state.remaining -|= 1;
+    }
+
+    /// Resets remaining to clip_size; never arms a hidden counter.
+    pub fn onReload(self: *AmmoTracker, character_name: []const u8) void {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        const state = self.base.windows.getPtr(character_name) orelse return;
+        if (state.clip_size == 0) return;
+        state.remaining = state.clip_size;
+    }
+
+    pub fn getState(self: *AmmoTracker, character_name: []const u8) struct { remaining: u32, visible: bool } {
+        self.base.mutex.lock();
+        defer self.base.mutex.unlock();
+        if (self.base.windows.get(character_name)) |state| {
+            return .{ .remaining = state.remaining, .visible = state.armed and state.clip_size > 0 };
+        }
+        return .{ .remaining = 0, .visible = false };
+    }
+};
+
 /// True if `weapon` case-insensitively contains any comma-separated entry of `excluded_csv`; empty entries are skipped so trailing/stray commas don't match everything.
 pub fn isWeaponExcluded(weapon: []const u8, excluded_csv: []const u8) bool {
     if (weapon.len == 0 or excluded_csv.len == 0) return false;
