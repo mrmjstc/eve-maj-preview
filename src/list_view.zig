@@ -6,8 +6,6 @@ const types = @import("types.zig");
 const gdi_overlay = @import("gdi_overlay.zig");
 const log = @import("log.zig");
 const slog = log.scoped("list_view");
-
-// Pointer/var-only use keeps the painter <-> list_view import cycle safe from struct-size issues.
 const painter_mod = @import("painter.zig");
 const ThumbnailWindow = painter_mod.ThumbnailWindow;
 
