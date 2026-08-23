@@ -11,6 +11,8 @@ var g_bindings: std.AutoHashMap(u32, c_int) = undefined;
 var g_initialized = false;
 var g_hook: ?win32.HHOOK = null;
 var g_target_hwnd: ?win32.HWND = null;
+var g_swallow_xbutton1_up = false;
+var g_swallow_xbutton2_up = false;
 
 fn ensureInit(allocator: std.mem.Allocator) void {
     if (g_initialized) return;
@@ -67,6 +69,8 @@ fn uninstallHook() void {
         g_hook = null;
         slog.debug("Low-level mouse hook removed", .{});
     }
+    g_swallow_xbutton1_up = false;
+    g_swallow_xbutton2_up = false;
 }
 
 fn currentModifiers() u32 {
@@ -95,14 +99,36 @@ fn lowLevelMouseProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) c
     if (nCode >= 0) {
         if (wParam == win32.WM_XBUTTONDOWN) {
             const info = win32.lparamToPtr(win32.MSLLHOOKSTRUCT, lParam);
-            const button_vk: ?u32 = switch (win32.getXButton(info.mouseData)) {
+            const button = win32.getXButton(info.mouseData);
+            const button_vk: ?u32 = switch (button) {
                 win32.XBUTTON1 => vk.VK_XBUTTON1,
                 win32.XBUTTON2 => vk.VK_XBUTTON2,
                 else => null,
             };
             // Swallow the click, matching RegisterHotKey's exclusive-capture semantics.
             if (button_vk) |base_vk| {
-                if (dispatchIfBound(base_vk)) return 1;
+                if (dispatchIfBound(base_vk)) {
+                    // Arm the matching release swallow so the newly-focused client doesn't see a phantom button-up.
+                    switch (button) {
+                        win32.XBUTTON1 => g_swallow_xbutton1_up = true,
+                        win32.XBUTTON2 => g_swallow_xbutton2_up = true,
+                        else => {},
+                    }
+                    return 1;
+                }
+            }
+        } else if (wParam == win32.WM_XBUTTONUP) {
+            const info = win32.lparamToPtr(win32.MSLLHOOKSTRUCT, lParam);
+            switch (win32.getXButton(info.mouseData)) {
+                win32.XBUTTON1 => if (g_swallow_xbutton1_up) {
+                    g_swallow_xbutton1_up = false;
+                    return 1;
+                },
+                win32.XBUTTON2 => if (g_swallow_xbutton2_up) {
+                    g_swallow_xbutton2_up = false;
+                    return 1;
+                },
+                else => {},
             }
         } else if (wParam == win32.WM_MOUSEWHEEL) {
             const info = win32.lparamToPtr(win32.MSLLHOOKSTRUCT, lParam);

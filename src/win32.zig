@@ -68,6 +68,7 @@ pub const WM_RBUTTONDOWN = 0x0204;
 pub const WM_RBUTTONUP = 0x0205;
 pub const WM_MOUSEWHEEL = 0x020A;
 pub const WM_XBUTTONDOWN = 0x020B;
+pub const WM_XBUTTONUP = 0x020C;
 pub const WM_ENTERSIZEMOVE = 0x0231;
 pub const WM_EXITSIZEMOVE = 0x0232;
 pub const WM_HOTKEY = 0x0312;
