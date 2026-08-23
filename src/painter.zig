@@ -1487,16 +1487,26 @@ pub const Painter = struct {
             thumbnail.cached_active_border_override = if (self.config.getCharacterBorderColors(new_char_dup)) |c| c.activeBorderColor else null;
             thumbnail.cached_character_color = self.config.getCharacterNameColor(new_char_dup);
 
-            // If character logged in (changed from "EVE" to actual name), move to saved position
+            // If character logged in (changed from "EVE" to actual name), move the thumbnail box to its remembered spot
             if (was_generic and now_specific) {
                 if (thumbnail.win32_enabled) {
                     if (self.config.getCharacterPosition(change.new_name)) |saved_pos| {
                         const thumb_size = self.getThumbnailSize(change.new_name);
                         _ = win32.SetWindowPos(thumbnail.hwnd, win32.HWND_NOTOPMOST, saved_pos.x, saved_pos.y, thumb_size.width, thumb_size.height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
                         _ = win32.SetWindowPos(thumbnail.text_hwnd, win32.HWND_TOPMOST, saved_pos.x, saved_pos.y, thumb_size.width, thumb_size.height, win32.SWP_NOACTIVATE);
-                        slog.info("Moved {s} to saved position: ({}, {})", .{ change.new_name, saved_pos.x, saved_pos.y });
+                        slog.info("Moved {s} thumbnail to saved position: ({}, {})", .{ change.new_name, saved_pos.x, saved_pos.y });
                     } else {
-                        slog.debug("No saved position for {s}, keeping current location", .{change.new_name});
+                        slog.debug("No saved thumbnail position for {s}, keeping current location", .{change.new_name});
+                    }
+                }
+
+                // Auto-move-on-login setting: same action as the hotkey, but for the real EVE client window
+                if (self.config.autoMovePosition.enabled) {
+                    if (self.config.getCharacterWindowPosition(change.new_name)) |window_pos| {
+                        manager_mod.moveClientToPosition(thumbnail.source_hwnd, window_pos);
+                        slog.info("Auto-moved {s} client window to saved position: ({}, {})", .{ change.new_name, window_pos.x, window_pos.y });
+                    } else {
+                        slog.debug("No saved window position for {s}, auto-move-on-login skipped", .{change.new_name});
                     }
                 }
             }
