@@ -103,6 +103,7 @@ pub const SW_MINIMIZE = 6;
 pub const SW_SHOWMINIMIZED = 2;
 pub const SW_SHOWMAXIMIZED = 3;
 pub const SW_RESTORE = 9;
+pub const SW_FORCEMINIMIZE = 11;
 pub const TRUE = 1;
 pub const FALSE = 0;
 pub const DWM_TNP_VISIBLE = 0x8;
@@ -598,8 +599,7 @@ pub const VK_MENU = 0x12;
 pub const VK_LWIN = 0x5B;
 pub const VK_RWIN = 0x5C;
 
-// Identifies which side button triggered a WM_XBUTTONDOWN/UP message or MSLLHOOKSTRUCT event
-// (packed into the high word of wParam/mouseData respectively)
+// Identifies which side button triggered a WM_XBUTTONDOWN/UP message or MSLLHOOKSTRUCT event (packed into the high word of wParam/mouseData respectively).
 pub const XBUTTON1: WORD = 0x0001;
 pub const XBUTTON2: WORD = 0x0002;
 
@@ -753,8 +753,8 @@ pub const BITMAPINFOHEADER = extern struct {
 
 pub const RGBQUAD = extern struct {
     rgbBlue: BYTE,
-    rgbRed: BYTE,
     rgbGreen: BYTE,
+    rgbRed: BYTE,
     rgbReserved: BYTE,
 };
 
@@ -833,7 +833,6 @@ pub const CTRL_SHUTDOWN_EVENT: DWORD = 6;
 pub const PHANDLER_ROUTINE = *const fn (DWORD) callconv(.c) BOOL;
 pub extern "kernel32" fn SetConsoleCtrlHandler(HandlerRoutine: PHANDLER_ROUTINE, Add: BOOL) callconv(.c) BOOL;
 
-/// Get window title as a dynamically allocated string
 pub fn getWindowTitle(hwnd: HWND, allocator: std.mem.Allocator) ![]const u8 {
     var title_buffer: [64:0]u8 = undefined;
     const title_len = GetWindowTextA(hwnd, &title_buffer, title_buffer.len);
@@ -841,7 +840,6 @@ pub fn getWindowTitle(hwnd: HWND, allocator: std.mem.Allocator) ![]const u8 {
     return allocator.dupe(u8, title_buffer[0..@intCast(title_len)]);
 }
 
-/// Get window title into a provided buffer (stack-allocated)
 pub fn getWindowTitleBuf(hwnd: HWND, buffer: []u8) ![]const u8 {
     if (buffer.len == 0) return error.BufferTooSmall;
     const buf_ptr: [*:0]u8 = @ptrCast(buffer.ptr);
@@ -856,11 +854,10 @@ pub fn queryProcessExePath(process_id: DWORD, exe_path_buf: *[260:0]u8) ?[]const
     const handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id) orelse return null;
     defer _ = CloseHandle(handle);
     const path_len = GetModuleFileNameExA(handle, null, exe_path_buf, exe_path_buf.len);
-    if (path_len <= 0) return null;
+    if (path_len == 0) return null;
     return exe_path_buf[0..@intCast(path_len)];
 }
 
-// Boolean helper functions to avoid verbose comparisons
 pub inline fn isWindowVisible(hwnd: HWND) bool {
     return IsWindowVisible(hwnd) != 0;
 }
@@ -881,7 +878,6 @@ pub inline fn hwndToUserData(hwnd: HWND) isize {
     return @as(isize, @bitCast(@intFromPtr(hwnd)));
 }
 
-// Returns null when user_data is 0
 pub inline fn userDataToHwnd(user_data: isize) ?HWND {
     if (user_data == 0) return null;
     return @ptrFromInt(@as(usize, @bitCast(user_data)));
@@ -892,7 +888,7 @@ pub inline fn ptrToLparam(ptr: anytype) LPARAM {
 }
 
 pub inline fn lparamToPtr(comptime T: type, lparam: LPARAM) *T {
-    return @ptrFromInt(@as(usize, @intCast(lparam)));
+    return @ptrFromInt(@as(usize, @bitCast(lparam)));
 }
 
 /// Extract the triggering virtual-key code from a WM_HOTKEY message's lParam.
@@ -902,26 +898,26 @@ pub inline fn hotkeyVkFromLparam(lparam: LPARAM) u32 {
     return bits >> 16;
 }
 
+const VK_DOWN_FLAG: c_short = @bitCast(@as(c_ushort, 0x8000));
+
 pub inline fn isCtrlPressed() bool {
-    return (GetAsyncKeyState(VK_CONTROL) & @as(c_short, @bitCast(@as(c_ushort, 0x8000)))) != 0;
+    return (GetAsyncKeyState(VK_CONTROL) & VK_DOWN_FLAG) != 0;
 }
 
 pub inline fn isAltPressed() bool {
-    return (GetAsyncKeyState(VK_MENU) & @as(c_short, @bitCast(@as(c_ushort, 0x8000)))) != 0;
+    return (GetAsyncKeyState(VK_MENU) & VK_DOWN_FLAG) != 0;
 }
 
 pub inline fn isShiftPressed() bool {
-    return (GetAsyncKeyState(VK_SHIFT) & @as(c_short, @bitCast(@as(c_ushort, 0x8000)))) != 0;
+    return (GetAsyncKeyState(VK_SHIFT) & VK_DOWN_FLAG) != 0;
 }
 
-/// Check if either Windows key is currently pressed
+// Two physical Win keys, no single VK code covers both.
 pub inline fn isWinPressed() bool {
-    return (GetAsyncKeyState(VK_LWIN) & @as(c_short, @bitCast(@as(c_ushort, 0x8000)))) != 0 or
-        (GetAsyncKeyState(VK_RWIN) & @as(c_short, @bitCast(@as(c_ushort, 0x8000)))) != 0;
+    return (GetAsyncKeyState(VK_LWIN) & VK_DOWN_FLAG) != 0 or
+        (GetAsyncKeyState(VK_RWIN) & VK_DOWN_FLAG) != 0;
 }
 
-/// Extract which X button (XBUTTON1/XBUTTON2) triggered a WM_XBUTTONDOWN message or
-/// MSLLHOOKSTRUCT event from the high word of wParam/mouseData
 pub inline fn getXButton(mouse_data: DWORD) WORD {
     return @truncate(mouse_data >> 16);
 }

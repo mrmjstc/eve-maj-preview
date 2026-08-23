@@ -113,8 +113,3 @@ pub fn tryTransitionVisibility(
 ) VisibilityState {
     return transitionVisibility(current, next, context_name) catch current;
 }
-
-/// Deprecated: Use visibility_state.isVisible() directly.
-pub fn isVisible(_: ThumbnailState, is_hidden: bool) bool {
-    return !is_hidden;
-}

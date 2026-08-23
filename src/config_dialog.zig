@@ -243,9 +243,7 @@ fn closeDialog(e: *webui.Event) void {
     revertThumbnailPreviewInMainApp();
     // Safety net: ensure hotkeys aren't left suspended if the dialog closes mid-recording.
     if (findMainAppWindow()) |hwnd| {
-        protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogResumeHotkeys = {} }) catch |err| {
-            slog.warn("Failed to send dialog resume hotkeys on close: {}", .{err});
-        };
+        protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogResumeHotkeys = {} });
     }
     const win = e.getWindow();
     win.close();
@@ -392,10 +390,7 @@ fn sendProfileSwitchToMainApp(profile_name: []const u8) void {
         defer allocator.free(profile_name_copy);
 
         const cmd = protocol.Command{ .Profile = profile_name_copy };
-        protocol.sendCommandToInstance(hwnd, cmd) catch |err| {
-            slog.warn("Failed to send profile switch command: {}", .{err});
-            return;
-        };
+        protocol.sendCommandToInstance(hwnd, cmd);
 
         slog.debug("Successfully sent profile switch command to main application", .{});
     } else {
@@ -419,9 +414,7 @@ fn previewThumbnailConfig(e: *webui.Event) void {
     const json_data = e.getString();
 
     if (findMainAppWindow()) |hwnd| {
-        protocol.sendCommandToInstance(hwnd, protocol.Command{ .PreviewThumbnail = json_data }) catch |err| {
-            slog.warn("Failed to send thumbnail preview: {}", .{err});
-        };
+        protocol.sendCommandToInstance(hwnd, protocol.Command{ .PreviewThumbnail = json_data });
     }
 
     e.returnString("{\"success\": true}");
@@ -430,18 +423,14 @@ fn previewThumbnailConfig(e: *webui.Event) void {
 /// Tell the running main app to discard any live preview and reload thumbnail appearance from disk; called on dialog close, a no-op if the profile was saved first.
 fn revertThumbnailPreviewInMainApp() void {
     if (findMainAppWindow()) |hwnd| {
-        protocol.sendCommandToInstance(hwnd, protocol.Command{ .RevertPreview = {} }) catch |err| {
-            slog.warn("Failed to send revert preview: {}", .{err});
-        };
+        protocol.sendCommandToInstance(hwnd, protocol.Command{ .RevertPreview = {} });
     }
 }
 
 /// Suspend the main app's global hotkeys during a Record capture so a bound key (e.g. cycle-client) doesn't fire while just being captured; called by config_dialog.js's recordHotkey().
 fn suspendHotkeysForRecording(e: *webui.Event) void {
     if (findMainAppWindow()) |hwnd| {
-        protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogSuspendHotkeys = {} }) catch |err| {
-            slog.warn("Failed to send dialog suspend hotkeys: {}", .{err});
-        };
+        protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogSuspendHotkeys = {} });
     }
     e.returnString("{\"success\": true}");
 }
@@ -449,9 +438,7 @@ fn suspendHotkeysForRecording(e: *webui.Event) void {
 /// Resume hotkeys suspended by suspendHotkeysForRecording(); called by config_dialog.js's stopRecording() and unconditionally on dialog close as a safety net.
 fn resumeHotkeysAfterRecording(e: *webui.Event) void {
     if (findMainAppWindow()) |hwnd| {
-        protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogResumeHotkeys = {} }) catch |err| {
-            slog.warn("Failed to send dialog resume hotkeys: {}", .{err});
-        };
+        protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogResumeHotkeys = {} });
     }
     e.returnString("{\"success\": true}");
 }
@@ -1173,9 +1160,21 @@ fn enumRunningWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.
 }
 
 fn appendJsonEscaped(allocator: std.mem.Allocator, response: *std.ArrayList(u8), s: []const u8) void {
+    const hex_digits = "0123456789abcdef";
     for (s) |c| {
-        if (c == '"' or c == '\\') response.append(allocator, '\\') catch return;
-        response.append(allocator, c) catch return;
+        switch (c) {
+            '"' => response.appendSlice(allocator, "\\\"") catch return,
+            '\\' => response.appendSlice(allocator, "\\\\") catch return,
+            '\n' => response.appendSlice(allocator, "\\n") catch return,
+            '\r' => response.appendSlice(allocator, "\\r") catch return,
+            '\t' => response.appendSlice(allocator, "\\t") catch return,
+            0x00...0x08, 0x0B, 0x0C, 0x0E...0x1F => {
+                response.appendSlice(allocator, "\\u00") catch return;
+                response.append(allocator, hex_digits[c >> 4]) catch return;
+                response.append(allocator, hex_digits[c & 0xF]) catch return;
+            },
+            else => response.append(allocator, c) catch return,
+        }
     }
 }
 
@@ -1240,7 +1239,7 @@ fn getConfigData(e: *webui.Event) void {
     const allocator = gpa.allocator();
     const response = std.fmt.allocPrintSentinel(allocator,
         \\{{
-        \\  "configPath": "profiles/default.json",
+        \\  "configPath": "{s}",
         \\  "version": "{s}",
         \\  "categories": [
         \\    {{"id": "general", "name": "General"}},
@@ -1254,7 +1253,7 @@ fn getConfigData(e: *webui.Event) void {
         \\    {{"id": "characters", "name": "Characters"}}
         \\  ]
         \\}}
-    , .{build_options.version}, 0) catch {
+    , .{ config_path, build_options.version }, 0) catch {
         e.returnString("{}");
         return;
     };
@@ -1307,7 +1306,7 @@ fn listProfiles(e: *webui.Event) void {
             response.append(allocator, ',') catch break;
         }
         response.append(allocator, '\"') catch break;
-        response.appendSlice(allocator, profile) catch break;
+        appendJsonEscaped(allocator, &response, profile);
         response.append(allocator, '\"') catch break;
     }
 
@@ -1315,10 +1314,7 @@ fn listProfiles(e: *webui.Event) void {
         e.returnString("{\"error\": \"Failed to build response\"}");
         return;
     };
-    response.appendSlice(allocator, current_profile) catch {
-        e.returnString("{\"error\": \"Failed to build response\"}");
-        return;
-    };
+    appendJsonEscaped(allocator, &response, current_profile);
     response.appendSlice(allocator, "\"}") catch {
         e.returnString("{\"error\": \"Failed to build response\"}");
         return;
@@ -1379,13 +1375,6 @@ fn createProfile(e: *webui.Event) void {
         return;
     };
     defer allocator.free(profile_path);
-
-    std.fs.cwd().access(profile_path, .{}) catch |err| {
-        if (err != error.FileNotFound) {
-            e.returnString("{\"success\": false, \"error\": \"Failed to check file\"}");
-            return;
-        }
-    };
 
     const file = std.fs.cwd().openFile(profile_path, .{}) catch |err| {
         if (err == error.FileNotFound) {
@@ -1464,13 +1453,6 @@ fn copyProfile(e: *webui.Event) void {
         return;
     };
     defer allocator.free(target_path);
-
-    std.fs.cwd().access(target_path, .{}) catch |err| {
-        if (err != error.FileNotFound) {
-            e.returnString("{\"success\": false, \"error\": \"Failed to check target file\"}");
-            return;
-        }
-    };
 
     const check_file = std.fs.cwd().openFile(target_path, .{}) catch |err| {
         if (err == error.FileNotFound) {
@@ -1625,13 +1607,10 @@ const IFileOpenDialog = extern struct {
     vtable: *const IFileOpenDialogVtbl,
 
     const IFileOpenDialogVtbl = extern struct {
-        // IUnknown methods
         QueryInterface: *const fn (*IFileOpenDialog, *const windows.GUID, *?*anyopaque) callconv(.c) c_long,
         AddRef: *const fn (*IFileOpenDialog) callconv(.c) u32,
         Release: *const fn (*IFileOpenDialog) callconv(.c) u32,
-        // IModalWindow methods
         Show: *const fn (*IFileOpenDialog, ?windows.HWND) callconv(.c) c_long,
-        // IFileDialog methods
         SetFileTypes: *const fn (*IFileOpenDialog, u32, ?*const anyopaque) callconv(.c) c_long,
         SetFileTypeIndex: *const fn (*IFileOpenDialog, u32) callconv(.c) c_long,
         GetFileTypeIndex: *const fn (*IFileOpenDialog, *u32) callconv(.c) c_long,

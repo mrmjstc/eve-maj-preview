@@ -5,10 +5,10 @@ const painter = @import("painter.zig");
 const input = @import("input.zig");
 const config_mod = @import("config.zig");
 const hotkeys = @import("hotkeys.zig");
+const mouse_hook = @import("mouse_hook.zig");
 const chatlog = @import("chatlog.zig");
 const activity_mod = @import("activity_tracker.zig");
 const tts = @import("tts.zig");
-const types = @import("types.zig");
 const tray = @import("tray.zig");
 const protocol = @import("protocol.zig");
 const update = @import("update.zig");
@@ -48,15 +48,12 @@ var g_scan_tick_counter: u32 = 0;
 // 20 ticks at 50ms/tick is roughly 1 second between scans.
 const SCAN_INTERVAL_TICKS: u32 = 20;
 
-// DPS update throttling: track last time DPS values were pushed to painter
+// Throttles how often each activity stat is pushed to painter.
 var g_last_dps_update_ms: i64 = 0;
-// Mining update throttling: track last time mining rate was pushed to painter
 var g_last_mining_update_ms: i64 = 0;
-// Bounty update throttling: track last time bounty rate was pushed to painter
 var g_last_bounty_update_ms: i64 = 0;
 
-// Reused across timer ticks to avoid a heap allocation every tick just to pass
-// character names into the chatlog monitor; borrowed slices only, no ownership.
+// Reused across timer ticks to avoid a per-tick alloc; borrowed slices only, no ownership.
 var g_chatlog_char_names: std.ArrayList([]const u8) = .empty;
 var g_chatlog_logged_out_names: std.ArrayList([]const u8) = .empty;
 
@@ -85,7 +82,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             } else if (wParam == 2) {
                 // Auto-minimize timer fired (ID 2)
                 if (g_painter) |painter_ptr| {
-                    painter_ptr.minimizeInactiveWindows();
+                    painter_ptr.minimizeInactiveWindows(hwnd);
                 }
             }
             return 0;
@@ -126,43 +123,49 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         win32.WM_COPYDATA => {
             const cds = @as(*const win32.COPYDATASTRUCT, @ptrFromInt(@as(usize, @bitCast(lParam))));
 
-            if (cds.dwData == win32.PROTOCOL_SWITCH_CHARACTER) {
-                if (cds.lpData) |data_ptr| {
-                    const char_name = @as([*]const u8, @ptrCast(data_ptr))[0..cds.cbData];
-                    slog.info("Protocol handler: switch to character: {s}", .{char_name});
-                    if (g_scout) |scout_ptr| {
-                        if (scout_ptr.getHwndByName(char_name)) |target_hwnd| {
-                            input.handleThumbnailClick(target_hwnd);
-                        } else {
-                            slog.warn("Character '{s}' not found", .{char_name});
+            switch (cds.dwData) {
+                win32.PROTOCOL_SWITCH_CHARACTER => {
+                    if (cds.lpData) |data_ptr| {
+                        const char_name = @as([*]const u8, @ptrCast(data_ptr))[0..cds.cbData];
+                        slog.info("Protocol handler: switch to character: {s}", .{char_name});
+                        if (g_scout) |scout_ptr| {
+                            if (scout_ptr.getHwndByName(char_name)) |target_hwnd| {
+                                input.handleThumbnailClick(target_hwnd);
+                            } else {
+                                slog.warn("Character '{s}' not found", .{char_name});
+                            }
                         }
                     }
-                }
-            } else if (cds.dwData == win32.PROTOCOL_SWITCH_PROFILE) {
-                if (cds.lpData) |data_ptr| {
-                    const profile_name = @as([*]const u8, @ptrCast(data_ptr))[0..cds.cbData];
-                    slog.info("Protocol handler: switch to profile: {s}", .{profile_name});
-                    reloadWithProfile(profile_name) catch |err| {
-                        slog.err("Failed to switch profile to {s}: {}", .{ profile_name, err });
-                    };
-                }
-            } else if (cds.dwData == win32.PROTOCOL_PREVIEW_THUMBNAIL) {
-                if (cds.lpData) |data_ptr| {
-                    const json_data = @as([*]const u8, @ptrCast(data_ptr))[0..cds.cbData];
-                    applyThumbnailPreview(json_data) catch |err| {
-                        slog.err("Failed to apply thumbnail preview: {}", .{err});
-                    };
-                }
-            } else if (cds.dwData == win32.PROTOCOL_REVERT_PREVIEW) {
-                revertThumbnailPreview();
-            } else if (cds.dwData == win32.PROTOCOL_DIALOG_SUSPEND_HOTKEYS) {
-                if (g_hotkey_manager) |manager| {
-                    manager.dialogSuspendHotkeys(hwnd);
-                }
-            } else if (cds.dwData == win32.PROTOCOL_DIALOG_RESUME_HOTKEYS) {
-                if (g_hotkey_manager) |manager| {
-                    manager.dialogResumeHotkeys(hwnd);
-                }
+                },
+                win32.PROTOCOL_SWITCH_PROFILE => {
+                    if (cds.lpData) |data_ptr| {
+                        const profile_name = @as([*]const u8, @ptrCast(data_ptr))[0..cds.cbData];
+                        slog.info("Protocol handler: switch to profile: {s}", .{profile_name});
+                        reloadWithProfile(profile_name) catch |err| {
+                            slog.err("Failed to switch profile to {s}: {}", .{ profile_name, err });
+                        };
+                    }
+                },
+                win32.PROTOCOL_PREVIEW_THUMBNAIL => {
+                    if (cds.lpData) |data_ptr| {
+                        const json_data = @as([*]const u8, @ptrCast(data_ptr))[0..cds.cbData];
+                        applyThumbnailPreview(json_data) catch |err| {
+                            slog.err("Failed to apply thumbnail preview: {}", .{err});
+                        };
+                    }
+                },
+                win32.PROTOCOL_REVERT_PREVIEW => revertThumbnailPreview(),
+                win32.PROTOCOL_DIALOG_SUSPEND_HOTKEYS => {
+                    if (g_hotkey_manager) |manager| {
+                        manager.dialogSuspendHotkeys(hwnd);
+                    }
+                },
+                win32.PROTOCOL_DIALOG_RESUME_HOTKEYS => {
+                    if (g_hotkey_manager) |manager| {
+                        manager.dialogResumeHotkeys(hwnd);
+                    }
+                },
+                else => {},
             }
             return 0;
         },
@@ -229,12 +232,18 @@ fn onTimerTick() void {
         g_chatlog_logged_out_names.clearRetainingCapacity();
 
         for (scout_result.windows) |eve_window| {
-            g_chatlog_char_names.append(g_allocator, eve_window.character_name) catch continue;
+            g_chatlog_char_names.append(g_allocator, eve_window.character_name) catch |err| {
+                slog.warn("Failed to track {s} for chatlog update: {}", .{ eve_window.character_name, err });
+                continue;
+            };
         }
 
         for (scout_result.name_changes.items) |change| {
             if (scout.isGenericCharacterName(change.new_name) and !scout.isGenericCharacterName(change.old_name)) {
-                g_chatlog_logged_out_names.append(g_allocator, change.old_name) catch continue;
+                g_chatlog_logged_out_names.append(g_allocator, change.old_name) catch |err| {
+                    slog.warn("Failed to track logged-out name {s} for chatlog update: {}", .{ change.old_name, err });
+                    continue;
+                };
             }
         }
 
@@ -366,8 +375,7 @@ fn consoleCtrlHandler(ctrl_type: win32.DWORD) callconv(.c) win32.BOOL {
         },
         else => {},
     }
-    // Never claim to have handled it: this only flushes, the OS's default
-    // behavior for the event (e.g. terminating the process) still applies.
+    // Never claim to have handled it: this only flushes, the OS's default behavior for the event (e.g. terminating the process) still applies.
     return win32.FALSE;
 }
 
@@ -383,8 +391,7 @@ fn handlePanic(msg: []const u8, ret_addr: ?usize) noreturn {
 // Overwritten on every crash - only the latest is kept, so a crash loop can't fill the disk.
 const MINIDUMP_FILE_NAME = std.unicode.utf8ToUtf16LeStringLiteral("eve-maj-crash.dmp");
 
-// dbghelp.dll (MiniDumpWriteDump) isn't safe to call from more than one thread at a time;
-// this flag serializes writes and resets after each attempt so a later crash can still dump.
+// dbghelp.dll (MiniDumpWriteDump) isn't thread-safe; this flag serializes writes and resets after each attempt so a later crash can still dump.
 var dump_write_in_progress = std.atomic.Value(bool).init(false);
 
 fn writeMinidump(info: *win32.EXCEPTION_POINTERS) void {
@@ -406,8 +413,7 @@ fn writeMinidump(info: *win32.EXCEPTION_POINTERS) void {
     }
 }
 
-// Runs before Zig's segfault handler rewrites OS faults into an indistinguishable @breakpoint();
-// logs only the fault types Zig treats specially, passing everything else through silently.
+// Runs before Zig's segfault handler rewrites OS faults into an indistinguishable @breakpoint(); logs only the fault types Zig treats specially, passing everything else through silently.
 fn firstChanceExceptionHandler(info: *win32.EXCEPTION_POINTERS) callconv(.c) win32.LONG {
     const rec = info.ExceptionRecord orelse return win32.EXCEPTION_CONTINUE_SEARCH;
     switch (rec.ExceptionCode) {
@@ -427,8 +433,7 @@ fn firstChanceExceptionHandler(info: *win32.EXCEPTION_POINTERS) callconv(.c) win
     return win32.EXCEPTION_CONTINUE_SEARCH;
 }
 
-// Last handler in the chain, after Zig's own panic/segfault handling already ran (if any);
-// returns EXCEPTION_CONTINUE_SEARCH so Windows' normal handling still runs after.
+// Last handler in the chain, after Zig's own panic/segfault handling already ran (if any); returns EXCEPTION_CONTINUE_SEARCH so Windows' normal handling still runs after.
 fn unhandledExceptionFilter(info: *win32.EXCEPTION_POINTERS) callconv(.c) win32.LONG {
     const base: usize = if (win32.GetModuleHandleA(null)) |h| @intFromPtr(h) else 0;
     if (info.ExceptionRecord) |rec| {
@@ -457,8 +462,7 @@ pub fn main() void {
 }
 
 fn mainImpl() !void {
-    // Handle protocol invocation before the mutex check, so commands work even
-    // when another instance is already running.
+    // Handle protocol invocation before the mutex check, so commands work even when another instance is already running.
     var gpa_early = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa_early.deinit();
     const early_allocator = gpa_early.allocator();
@@ -480,10 +484,7 @@ fn mainImpl() !void {
                 else => {},
             };
 
-            protocol.sendCommandToInstance(existing_hwnd, cmd) catch |err| {
-                slog.err("Failed to send protocol command: {}", .{err});
-                return err;
-            };
+            protocol.sendCommandToInstance(existing_hwnd, cmd);
 
             slog.info("Protocol command sent successfully", .{});
             return;
@@ -580,13 +581,15 @@ fn mainImpl() !void {
     // Allocate console in debug mode (Windows GUI subsystem doesn't create one by default)
     if (g_global_settings.logLevel == .debug) {
         _ = win32.AllocConsole();
-        // Closing the console window kills the process before any `defer` can run,
-        // so flush buffered log lines from here instead of relying on shutdown cleanup.
+        // Closing the console window kills the process before any `defer` can run, so flush buffered log lines from here instead of relying on shutdown cleanup.
         _ = win32.SetConsoleCtrlHandler(consoleCtrlHandler, win32.TRUE);
     }
 
     g_scout = try g_allocator.create(scout.Scout);
-    g_scout.?.* = try scout.Scout.init(g_allocator, &g_config);
+    {
+        errdefer g_allocator.destroy(g_scout.?);
+        g_scout.?.* = try scout.Scout.init(g_allocator, &g_config);
+    }
     g_scout.?.setGlobalInstance();
     g_scout_ptr = g_scout;
     defer {
@@ -596,7 +599,10 @@ fn mainImpl() !void {
     }
 
     g_painter = try g_allocator.create(painter.Painter);
-    g_painter.?.* = try painter.Painter.init(g_allocator, &g_config);
+    {
+        errdefer g_allocator.destroy(g_painter.?);
+        g_painter.?.* = try painter.Painter.init(g_allocator, &g_config);
+    }
     painter.g_painter_ptr = g_painter;
     input.g_painter_ptr = g_painter;
 
@@ -630,7 +636,6 @@ fn mainImpl() !void {
     if (g_config.combat.enabled) {
         g_combat_tracker = try createTracker(activity_mod.CombatTracker, g_allocator, g_config.combat.window_seconds);
 
-        // Wire tracker into chatlog monitor so combat events are accumulated
         if (g_chatlog_monitor) |monitor| {
             monitor.combat_tracker = g_combat_tracker.?;
         }
@@ -649,7 +654,6 @@ fn mainImpl() !void {
     if (g_config.mining.enabled) {
         g_mining_tracker = try createTracker(activity_mod.MiningTracker, g_allocator, g_config.mining.window_seconds);
 
-        // Wire tracker into chatlog monitor so mining events are accumulated
         if (g_chatlog_monitor) |monitor| {
             monitor.mining_tracker = g_mining_tracker.?;
         }
@@ -668,7 +672,6 @@ fn mainImpl() !void {
     if (g_config.bounty.enabled) {
         g_bounty_tracker = try createTracker(activity_mod.BountyTracker, g_allocator, g_config.bounty.window_seconds);
 
-        // Wire tracker into chatlog monitor so bounty events are accumulated
         if (g_chatlog_monitor) |monitor| {
             monitor.bounty_tracker = g_bounty_tracker.?;
         }
@@ -684,8 +687,7 @@ fn mainImpl() !void {
         }
     }
 
-    // Registered after the tracker defers so it runs first (LIFO): the worker thread must
-    // stop before combat/mining trackers are freed, since it may be mid-iteration reading them.
+    // Registered after the tracker defers so it runs first (LIFO): the worker thread must stop before combat/mining trackers are freed, since it may be mid-iteration reading them.
     defer {
         if (g_chatlog_monitor) |monitor| {
             monitor.deinit();
@@ -693,8 +695,7 @@ fn mainImpl() !void {
         }
     }
 
-    // Start the worker thread only now that combat/mining trackers are wired in, so it
-    // never observes combat_tracker/mining_tracker as null when they should be set.
+    // Start the worker thread only now that combat/mining trackers are wired in, so it never observes combat_tracker/mining_tracker as null when they should be set.
     if (g_chatlog_monitor) |monitor| {
         if (g_config.chatlog.useThreading) {
             try monitor.startWorkerThread();
@@ -775,7 +776,10 @@ fn mainImpl() !void {
     }
 
     g_hotkey_manager = try g_allocator.create(hotkeys.HotkeyManager);
-    g_hotkey_manager.?.* = try hotkeys.HotkeyManager.init(g_allocator, &g_config, &g_global_settings, g_scout.?, g_painter.?);
+    {
+        errdefer g_allocator.destroy(g_hotkey_manager.?);
+        g_hotkey_manager.?.* = try hotkeys.HotkeyManager.init(g_allocator, &g_config, &g_global_settings, g_scout.?, g_painter.?);
+    }
     painter.g_hotkey_manager_ptr = g_hotkey_manager;
     defer {
         if (g_hotkey_manager) |manager| {
@@ -784,6 +788,8 @@ fn mainImpl() !void {
             g_allocator.destroy(manager);
         }
         painter.g_hotkey_manager_ptr = null;
+        mouse_hook.deinit();
+        input.deinitHotkeyTracking();
     }
 
     g_hotkey_manager.?.registerHotkeys(timer_hwnd) catch |err| {
@@ -874,8 +880,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         slog.debug("Cleaned up hotkey manager", .{});
     }
 
-    // Snapshot last-known system names before the painter tears down thumbnails, so new ones
-    // can be seeded instead of going blank; keyed by source_hwnd, which stays stable across teardown/recreate.
+    // Snapshot last-known system names before the painter tears down thumbnails, so new ones can be seeded instead of going blank; keyed by source_hwnd, stable across teardown/recreate.
     var last_known_systems = std.AutoHashMap(win32.HWND, []const u8).init(g_allocator);
     defer {
         var it = last_known_systems.valueIterator();
@@ -910,8 +915,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     slog.info("Loaded new config: {s}", .{new_profile_name});
     g_config.logSettings();
 
-    // Picks up hotkey/profile-switch/log-level edits made via the config dialog while
-    // running, since g_global_settings is otherwise only loaded once at startup.
+    // Picks up hotkey/profile-switch/log-level edits made via the config dialog while running, since g_global_settings is otherwise only loaded once at startup.
     if (config_mod.GlobalSettings.load(g_allocator)) |reloaded| {
         g_global_settings.deinit();
         g_global_settings = reloaded;
@@ -990,8 +994,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
                     };
 
                     if (g_chatlog_monitor) |monitor| {
-                        // Start the worker thread before adding characters, so addCharacter()
-                        // queues work instead of blocking the message loop with log I/O.
+                        // Start the worker thread before adding characters, so addCharacter() queues work instead of blocking the message loop with log I/O.
                         if (g_config.chatlog.useThreading) {
                             monitor.startWorkerThread() catch |err| {
                                 slog.warn("Failed to start chatlog worker thread: {}", .{err});
@@ -1015,7 +1018,6 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
             if (createTracker(activity_mod.CombatTracker, g_allocator, g_config.combat.window_seconds)) |tracker_ptr| {
                 g_combat_tracker = tracker_ptr;
 
-                // Wire tracker into chatlog monitor so combat events are accumulated
                 if (g_chatlog_monitor) |monitor| {
                     monitor.combat_tracker = tracker_ptr;
                 }
@@ -1035,7 +1037,6 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
             if (createTracker(activity_mod.MiningTracker, g_allocator, g_config.mining.window_seconds)) |tracker_ptr| {
                 g_mining_tracker = tracker_ptr;
 
-                // Wire tracker into chatlog monitor so mining events are accumulated
                 if (g_chatlog_monitor) |monitor| {
                     monitor.mining_tracker = tracker_ptr;
                 }
@@ -1055,7 +1056,6 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
             if (createTracker(activity_mod.BountyTracker, g_allocator, g_config.bounty.window_seconds)) |tracker_ptr| {
                 g_bounty_tracker = tracker_ptr;
 
-                // Wire tracker into chatlog monitor so bounty events are accumulated
                 if (g_chatlog_monitor) |monitor| {
                     monitor.bounty_tracker = tracker_ptr;
                 }
@@ -1071,8 +1071,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
             slog.debug("Bounty rate tracking disabled in new profile", .{});
         }
 
-        // Resume the paused worker only now that combat/mining trackers above are repointed
-        // (or nulled) - resuming any earlier risks it processing a queued event against trackers just destroyed.
+        // Resume the paused worker only now that combat/mining trackers above are repointed (or nulled) - resuming any earlier risks it processing a queued event against trackers just destroyed.
         if (keep_chatlog_monitor) {
             if (g_chatlog_monitor) |monitor| {
                 if (g_config.chatlog.useThreading) {
@@ -1126,8 +1125,7 @@ fn applyThumbnailPreview(json_data: []const u8) !void {
     try config_mod.Config.parseJsonThumbnailConfig(&g_config.thumbnail, obj, g_allocator);
     g_config.thumbnail.validate();
 
-    // System color overrides live outside ThumbnailConfig (a top-level Config field),
-    // so they ride along in the same patch object instead of going through parseJsonThumbnailConfig.
+    // System color overrides live outside ThumbnailConfig (a top-level Config field), so they ride along in the same patch object instead of going through parseJsonThumbnailConfig.
     if (obj.get("systemColors")) |colors_val| {
         if (colors_val == .array) {
             g_config.replaceSystemColorsFromJson(g_allocator, colors_val.array.items) catch |err| {
@@ -1136,8 +1134,7 @@ fn applyThumbnailPreview(json_data: []const u8) !void {
         }
     }
 
-    // List View's own opacity/font settings live in DisplayConfig, not ThumbnailConfig -
-    // parsed separately from a nested "display" object in the same patch.
+    // List View's own opacity/font settings live in DisplayConfig, not ThumbnailConfig - parsed separately from a nested "display" object in the same patch.
     // startX/startY are deliberately never sent here, since they can be live-dragged in the running app.
     var layout_changed = false;
     if (obj.get("display")) |display_val| {

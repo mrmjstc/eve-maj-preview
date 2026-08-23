@@ -11,6 +11,7 @@ const list_view = @import("list_view.zig");
 const notif_info_view = @import("notif_info_view.zig");
 const activity_tracker = @import("activity_tracker.zig");
 const gdi_overlay = @import("gdi_overlay.zig");
+const main_mod = @import("main.zig");
 const log = @import("log.zig");
 const slog = log.scoped("painter");
 const tts = @import("tts.zig");
@@ -488,7 +489,6 @@ pub const Painter = struct {
             self.notif_info_window = null;
         }
 
-        const main_mod = @import("main.zig");
         if (main_mod.g_timer_hwnd) |timer_hwnd| {
             self.window_manager.cancelAutoMinimizeTimer(timer_hwnd);
         }
@@ -886,7 +886,6 @@ pub const Painter = struct {
 
     /// Returns the live scout's tracked EVE windows, or logs and returns null if scout isn't available.
     fn getEveWindowsOrLog(action: []const u8) ?[]const scout_mod.EveWindow {
-        const main_mod = @import("main.zig");
         const scout_ptr = main_mod.g_scout_ptr orelse {
             slog.err("Scout not available for {s}", .{action});
             return null;
@@ -895,7 +894,8 @@ pub const Painter = struct {
     }
 
     /// Minimize all inactive windows (called when auto-minimize timer fires)
-    pub fn minimizeInactiveWindows(self: *Painter) void {
+    pub fn minimizeInactiveWindows(self: *Painter, timer_owner_hwnd: win32.HWND) void {
+        self.window_manager.cancelAutoMinimizeTimer(timer_owner_hwnd);
         const eve_windows = getEveWindowsOrLog("minimize inactive windows") orelse return;
         self.window_manager.minimizeInactiveWindows(eve_windows, self.config);
     }

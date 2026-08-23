@@ -4,6 +4,8 @@ const log = @import("log.zig");
 const types = @import("types.zig");
 const activity_mod = @import("activity_tracker.zig");
 const scout_mod = @import("scout.zig");
+const painter_mod = @import("painter.zig");
+const config_mod = @import("config.zig");
 const slog = log.scoped("chatlog");
 
 /// Event sent from worker thread to main thread: apply a system-name update.
@@ -102,8 +104,7 @@ pub fn EventQueue(comptime T: type) type {
     };
 }
 
-/// Maximum line length to process (prevent memory issues with malformed logs)
-/// EVE combat logs with color tags can be 2-3KB, so allow up to 4KB
+/// Caps memory use on malformed logs; 4KB covers combat logs with color tags (up to 2-3KB).
 const MAX_LINE_LENGTH = 4000;
 
 /// Minimum line length to consider (timestamp + space = ~20 chars)
@@ -164,9 +165,9 @@ pub const ChatlogMonitor = struct {
     chatlog_watcher: win32.HANDLE,
     gamelog_watcher: win32.HANDLE,
     enabled: bool = true,
-    painter: ?*@import("painter.zig").Painter = null,
+    painter: ?*painter_mod.Painter = null,
     scout: ?*scout_mod.Scout = null,
-    global_settings: ?*@import("config.zig").GlobalSettings = null,
+    global_settings: ?*config_mod.GlobalSettings = null,
     combat_tracker: ?*activity_mod.CombatTracker = null,
     mining_tracker: ?*activity_mod.MiningTracker = null,
     bounty_tracker: ?*activity_mod.BountyTracker = null,
@@ -185,7 +186,7 @@ pub const ChatlogMonitor = struct {
     threading_enabled: bool = false,
     pending_characters: std.StringHashMap(void),
 
-    pub fn init(allocator: std.mem.Allocator, chatlog_dir: []const u8, gamelog_dir: []const u8, painter_ref: ?*@import("painter.zig").Painter, scout_ref: ?*scout_mod.Scout, global_settings_ref: ?*@import("config.zig").GlobalSettings, idle_poll_threshold: u32, max_poll_multiplier: u8, poll_interval_ms: u32) !*ChatlogMonitor {
+    pub fn init(allocator: std.mem.Allocator, chatlog_dir: []const u8, gamelog_dir: []const u8, painter_ref: ?*painter_mod.Painter, scout_ref: ?*scout_mod.Scout, global_settings_ref: ?*config_mod.GlobalSettings, idle_poll_threshold: u32, max_poll_multiplier: u8, poll_interval_ms: u32) !*ChatlogMonitor {
         if (!std.unicode.utf8ValidateSlice(chatlog_dir)) {
             slog.err("Chatlog directory path contains invalid UTF-8", .{});
             return error.InvalidUtf8;
@@ -493,39 +494,47 @@ pub const ChatlogMonitor = struct {
             return;
         }
 
-        const duped_path = try self.allocator.dupe(u8, file_path);
-        errdefer self.allocator.free(duped_path);
+        {
+            const duped_path = try self.allocator.dupe(u8, file_path);
+            errdefer self.allocator.free(duped_path);
+            const character_name_copy = try self.allocator.dupe(u8, character_name);
+            errdefer self.allocator.free(character_name_copy);
 
-        const state: LogFileState = .{
-            .file_path = duped_path,
-            .character_name = try self.allocator.dupe(u8, character_name),
-            .is_chatlog = is_chatlog,
-            .utf8_buffer = .{
-                .items = &.{},
-                .capacity = 0,
-            },
-            .line_buffer = .{
-                .items = &.{},
-                .capacity = 0,
-            },
-            .u16_buffer = .{
-                .items = &.{},
-                .capacity = 0,
-            },
-            .system_name_buffer = .{
-                .items = &.{},
-                .capacity = 0,
-            },
-        };
+            const state: LogFileState = .{
+                .file_path = duped_path,
+                .character_name = character_name_copy,
+                .is_chatlog = is_chatlog,
+                .utf8_buffer = .{
+                    .items = &.{},
+                    .capacity = 0,
+                },
+                .line_buffer = .{
+                    .items = &.{},
+                    .capacity = 0,
+                },
+                .u16_buffer = .{
+                    .items = &.{},
+                    .capacity = 0,
+                },
+                .system_name_buffer = .{
+                    .items = &.{},
+                    .capacity = 0,
+                },
+            };
 
-        try self.log_files.append(self.allocator, state);
+            try self.log_files.append(self.allocator, state);
+        }
 
-        // Must dupe again since HashMap owns the key
-        const hashmap_key = try self.allocator.dupe(u8, duped_path);
-        errdefer self.allocator.free(hashmap_key);
-        try self.monitored_paths.put(hashmap_key, {});
+        const new_entry = &self.log_files.items[self.log_files.items.len - 1];
 
-        try self.readInitialState(&self.log_files.items[self.log_files.items.len - 1]);
+        {
+            // Must dupe again since HashMap owns the key
+            const hashmap_key = try self.allocator.dupe(u8, new_entry.file_path);
+            errdefer self.allocator.free(hashmap_key);
+            try self.monitored_paths.put(hashmap_key, {});
+        }
+
+        try self.readInitialState(new_entry);
 
         slog.info("Monitoring {s} for {s}: {s}", .{
             if (is_chatlog) "chatlog" else "gamelog",
@@ -634,7 +643,6 @@ pub const ChatlogMonitor = struct {
                     elapsed,
                     max_time_ns,
                 });
-                // More work pending
                 return true;
             }
 
@@ -676,7 +684,6 @@ pub const ChatlogMonitor = struct {
         self.pending_scan_index = 0;
 
         slog.debug("Log file scan completed", .{});
-        // All work complete
         return false;
     }
 
@@ -757,8 +764,6 @@ pub const ChatlogMonitor = struct {
             slog.err("Failed to allocate character name for system update: {}", .{err});
             return;
         };
-        errdefer self.allocator.free(character_name_copy);
-
         const system_name_copy = self.allocator.dupe(u8, system_name) catch |err| {
             slog.err("Failed to allocate system name for system update: {}", .{err});
             self.allocator.free(character_name_copy);
@@ -784,8 +789,6 @@ pub const ChatlogMonitor = struct {
             slog.err("Failed to allocate character name for notification: {}", .{err});
             return;
         };
-        errdefer self.allocator.free(character_name_copy);
-
         const text_copy = self.allocator.dupe(u8, text) catch |err| {
             slog.err("Failed to allocate text for notification: {}", .{err});
             self.allocator.free(character_name_copy);
@@ -938,7 +941,7 @@ pub const ChatlogMonitor = struct {
         return null;
     }
 
-    pub fn containsUtf16Pattern(data: []const u8, pattern: []const u8) bool {
+    fn containsUtf16Pattern(data: []const u8, pattern: []const u8) bool {
         if (data.len < pattern.len * 2) return false;
 
         // Search for pattern in UTF-16 LE (each char = 2 bytes, low byte first)
@@ -1162,7 +1165,6 @@ pub const ChatlogMonitor = struct {
         // Skip timestamp: "[ YYYY.MM.DD HH:MM:SS ] " (~28 chars)
         var search_start: usize = 0;
         if (std.mem.indexOf(u8, clean_line, "] ")) |close_bracket| {
-            // Skip "] "
             search_start = close_bracket + 2;
         }
 
@@ -1700,7 +1702,7 @@ pub const ChatlogMonitor = struct {
     /// Chatlogs: Local_YYYYMMDD_HHMMSS_[character_id].txt -> YYYYMMDDHHMMSS
     /// Gamelogs: YYYYMMDD_HHMMSS_[charactern_id].txt -> YYYYMMDDHHMMSS
     /// Returns 0 if parsing fails
-    pub fn parseLogTimestamp(filename: []const u8, is_chatlog: bool) u64 {
+    fn parseLogTimestamp(filename: []const u8, is_chatlog: bool) u64 {
         const name_no_ext = if (std.mem.endsWith(u8, filename, ".txt"))
             filename[0 .. filename.len - 4]
         else
@@ -1708,7 +1710,6 @@ pub const ChatlogMonitor = struct {
 
         const timestamp_part = if (is_chatlog) blk: {
             if (std.mem.startsWith(u8, name_no_ext, "Local_")) {
-                // Skip "Local_"
                 break :blk name_no_ext[6..];
             } else {
                 // Invalid chatlog filename
@@ -1737,7 +1738,7 @@ pub const ChatlogMonitor = struct {
     /// Chatlogs: Local_YYYYMMDD_HHMMSS_1234567890.txt -> "1234567890"
     /// Gamelogs: YYYYMMDD_HHMMSS_1234567890.txt -> "1234567890"
     /// Returns null if extraction fails
-    pub fn extractCharacterId(filename: []const u8) ?[]const u8 {
+    fn extractCharacterId(filename: []const u8) ?[]const u8 {
         const name = if (std.mem.endsWith(u8, filename, ".txt"))
             filename[0 .. filename.len - 4]
         else
@@ -1747,7 +1748,7 @@ pub const ChatlogMonitor = struct {
             const character_id = name[last_underscore + 1 ..];
             if (character_id.len >= 8 and character_id.len <= 13) {
                 for (character_id) |c| {
-                    if (c < '0' or c > '9') return null;
+                    if (!std.ascii.isDigit(c)) return null;
                 }
                 return character_id;
             }
@@ -1935,7 +1936,7 @@ pub const ChatlogMonitor = struct {
                 u16_buffer[i] = @as(u16, buffer[byte_idx]) | (@as(u16, buffer[byte_idx + 1]) << 8);
             }
 
-            const utf8_len = u16_count * 2;
+            const utf8_len = u16_count * 3;
             const text = try self.allocator.alloc(u8, utf8_len);
             defer self.allocator.free(text);
 
@@ -1944,8 +1945,6 @@ pub const ChatlogMonitor = struct {
         } else {
             return try self.extractListenerName(buffer[0..bytes_read]);
         }
-
-        return null;
     }
 
     /// Extract "Listener: CharacterName" from log header

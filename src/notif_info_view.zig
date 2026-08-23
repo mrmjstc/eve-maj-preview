@@ -176,7 +176,7 @@ pub const NotifInfoWindow = struct {
 
     /// Character-name color for a history row: per-character override, else the auto-generated unique color (if enabled), else the default label color.
     fn resolveCharColor(self: *const NotifInfoWindow, name: []const u8) u32 {
-        return (self.config.getCharacterNameColor(name) orelse (ARGB_CHAR_NAME & 0x00FF_FFFF)) & 0x00FF_FFFF;
+        return (self.config.getCharacterNameColor(name) orelse ARGB_CHAR_NAME) & 0x00FF_FFFF;
     }
 
     /// Notification text color for a history row: the notification type's configured color, else the thumbnail overlay's default text color.
@@ -245,6 +245,7 @@ pub const NotifInfoWindow = struct {
 
         if (needs_bmp) {
             if (self.overlay) |o| o.destroy();
+            self.overlay = null;
             const sdc = win32.GetDC(null) orelse return error.GetDCFailed;
             defer _ = win32.ReleaseDC(null, sdc);
             self.overlay = try gdi_overlay.OverlayBitmap.create(sdc, win_w, win_h);
@@ -394,6 +395,10 @@ fn registerClass(instance: win32.HINSTANCE) !void {
     g_class_registered = true;
 }
 
+fn hiwordSigned(lParam: win32.LPARAM) i32 {
+    return @as(i32, @intCast(@as(i16, @truncate(lParam >> 16))));
+}
+
 fn notifInfoWindowProc(
     hwnd: win32.HWND,
     msg: win32.UINT,
@@ -402,14 +407,13 @@ fn notifInfoWindowProc(
 ) callconv(.c) win32.LRESULT {
     switch (msg) {
         win32.WM_NCHITTEST => {
-            const sy: i32 = @as(i32, @intCast(@as(i16, @truncate(lParam >> 16))));
+            const sy: i32 = hiwordSigned(lParam);
 
             var wr: win32.RECT = undefined;
             _ = win32.GetWindowRect(hwnd, &wr);
             const cy = sy - wr.top;
 
-            const painter_ptr_mod = @import("painter.zig");
-            const dragging_enabled = if (painter_ptr_mod.g_painter_ptr) |p| p.config.interaction.enableDragging else true;
+            const dragging_enabled = if (painter_mod.g_painter_ptr) |p| p.config.interaction.enableDragging else true;
 
             if (dragging_enabled and cy < HEADER_HEIGHT) return HTCAPTION;
             return HTCLIENT;
@@ -419,8 +423,7 @@ fn notifInfoWindowProc(
             _ = win32.GetCursorPos(&g_drag_anchor_cursor);
             _ = win32.GetWindowRect(hwnd, &g_drag_anchor_rect);
 
-            const painter_ptr_mod = @import("painter.zig");
-            if (painter_ptr_mod.g_painter_ptr) |p| {
+            if (painter_mod.g_painter_ptr) |p| {
                 // No single character owns this panel, so nothing is excluded - every saved position shows as a ghost.
                 p.showGhostOverlay("");
             }
@@ -448,8 +451,7 @@ fn notifInfoWindowProc(
         },
 
         win32.WM_EXITSIZEMOVE => {
-            const painter_ptr_mod = @import("painter.zig");
-            if (painter_ptr_mod.g_painter_ptr) |p| {
+            if (painter_mod.g_painter_ptr) |p| {
                 p.hideGhostOverlay();
                 if (p.notif_info_window) |*niw| {
                     niw.saveWindowPosition();
@@ -459,15 +461,14 @@ fn notifInfoWindowProc(
         },
 
         win32.WM_LBUTTONDOWN => {
-            const cy: i32 = @as(i32, @intCast(@as(i16, @truncate(lParam >> 16))));
+            const cy: i32 = hiwordSigned(lParam);
             if (cy < HEADER_HEIGHT) return 0;
 
             const row_i = @divTrunc(cy - HEADER_HEIGHT, ROW_HEIGHT);
             if (row_i < 0) return 0;
             const row: usize = @intCast(row_i);
 
-            const painter_ptr_mod = @import("painter.zig");
-            if (painter_ptr_mod.g_painter_ptr) |p| {
+            if (painter_mod.g_painter_ptr) |p| {
                 if (p.notif_info_window) |*niw| {
                     if (row < niw.history_row_count) {
                         if (g_activate_fn) |activate| {
@@ -495,32 +496,34 @@ fn fillRect(pixels: [*]u32, stride: usize, x: usize, y: usize, w: usize, h: usiz
     }
 }
 
-fn drawText(dc: win32.HDC, text: []const u8, x: i32, y: i32, rgb: u32) void {
-    _ = win32.SetBkMode(dc, win32.TRANSPARENT);
+fn toBufZ(text: []const u8) [TEXT_BUF:0]u8 {
     var buf: [TEXT_BUF:0]u8 = undefined;
     const n = @min(text.len, TEXT_BUF - 1);
     @memcpy(buf[0..n], text[0..n]);
     buf[n] = 0;
+    return buf;
+}
+
+fn drawText(dc: win32.HDC, text: []const u8, x: i32, y: i32, rgb: u32) void {
+    _ = win32.SetBkMode(dc, win32.TRANSPARENT);
+    const buf = toBufZ(text);
+    const n = @min(text.len, TEXT_BUF - 1);
 
     _ = win32.SetTextColor(dc, gdi_overlay.toColorRef(rgb & 0x00FF_FFFF));
     _ = win32.TextOutA(dc, x, y, &buf, @intCast(n));
 }
 
 fn measureTextWidth(dc: win32.HDC, text: []const u8) usize {
-    var buf: [TEXT_BUF:0]u8 = undefined;
+    const buf = toBufZ(text);
     const n = @min(text.len, TEXT_BUF - 1);
-    @memcpy(buf[0..n], text[0..n]);
-    buf[n] = 0;
     var sz: win32.SIZE = undefined;
     _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(n), &sz);
     return @intCast(@max(0, sz.cx));
 }
 
 fn measureTextHeight(dc: win32.HDC, text: []const u8) i32 {
-    var buf: [TEXT_BUF:0]u8 = undefined;
+    const buf = toBufZ(text);
     const n = @min(text.len, TEXT_BUF - 1);
-    @memcpy(buf[0..n], text[0..n]);
-    buf[n] = 0;
     var sz: win32.SIZE = undefined;
     _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(n), &sz);
     return @max(0, sz.cy);

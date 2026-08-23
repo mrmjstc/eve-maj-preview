@@ -1,6 +1,3 @@
-const std = @import("std");
-
-/// Border rendering styles for thumbnails
 pub const BorderStyle = enum {
     Solid,
     Dashed,
@@ -28,13 +25,11 @@ pub const AnimationStyle = enum {
     NoAnimation,
 };
 
-/// Click trigger behavior for thumbnail activation
 pub const ClickTrigger = enum {
     MouseDown,
     MouseUp,
 };
 
-/// Text positioning within thumbnail overlay
 pub const TextPosition = enum {
     TopLeft,
     TopCenter,
@@ -47,7 +42,6 @@ pub const TextPosition = enum {
     BottomRight,
 };
 
-/// Font weight for text rendering
 pub const FontWeight = enum {
     Regular,
     Bold,
@@ -102,7 +96,6 @@ pub const NotificationType = enum {
     Generic,
 };
 
-/// Thumbnail arrangement layout mode
 pub const LayoutMode = enum {
     Grid,
     VerticalStack,

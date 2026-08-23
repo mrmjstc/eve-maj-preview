@@ -3,11 +3,11 @@ const win32 = @import("win32.zig");
 const types = @import("types.zig");
 const log = @import("log.zig");
 const slog = log.scoped("input");
-
-// Forward declare Painter types (avoid circular dependency)
-const ThumbnailWindow = @import("painter.zig").ThumbnailWindow;
+const painter_mod = @import("painter.zig");
+const ThumbnailWindow = painter_mod.ThumbnailWindow;
 const ThumbnailState = @import("state.zig").ThumbnailState;
-const Painter = @import("painter.zig").Painter;
+const Painter = painter_mod.Painter;
+const main_mod = @import("main.zig");
 
 pub var g_painter_ptr: ?*Painter = null;
 
@@ -105,7 +105,6 @@ pub fn forceSetForegroundWindow(target_hwnd: win32.HWND) void {
 
 /// Activates and focuses the EVE client window when its thumbnail is clicked, handling minimized/maximized states.
 pub fn handleThumbnailClick(source_hwnd: win32.HWND) void {
-    const main_mod = @import("main.zig");
     const config = &main_mod.g_config;
     handleThumbnailClickWithAnimation(source_hwnd, config.interaction.animationStyle);
 }
@@ -175,7 +174,6 @@ fn handleThumbnailClickWithAnimation(source_hwnd: win32.HWND, animation_style: t
 
     updateHotkeyCyclePosition(source_hwnd);
 
-    const main_mod = @import("main.zig");
     if (main_mod.g_manager_ptr) |manager| {
         if (main_mod.g_config_ptr) |cfg| {
             if (main_mod.g_timer_hwnd) |timer_hwnd| {
@@ -195,9 +193,7 @@ fn ensureHotkeyTrackingInit(allocator: std.mem.Allocator) void {
     g_hotkey_tracking_initialized = true;
 }
 
-/// Records `vk_code` as down so a later repeat WM_HOTKEY can be told apart from a new press.
-/// Returns false for a repeat (ignore it), true for a new press.
-/// Swallow-on-release is decided later via markHotkeySwallowRelease, once we know the action moved focus.
+/// Marks vk_code down to distinguish a repeat WM_HOTKEY from a new press; swallow-on-release is decided later in markHotkeySwallowRelease.
 pub fn trackHotkeyPress(allocator: std.mem.Allocator, vk_code: u32) bool {
     // Mouse-button hotkeys route through here with lparam=0.
     if (vk_code == 0) return true;
@@ -214,8 +210,7 @@ pub fn trackHotkeyPress(allocator: std.mem.Allocator, vk_code: u32) bool {
     return true;
 }
 
-/// Arms release-swallowing for `vk_code` once its hotkey's action is confirmed to have moved focus.
-/// Swallowing keeps the previously-focused client believing the key is still held; only safe once focus actually moved.
+/// Arms release-swallowing for vk_code once its action has moved focus, so the previously-focused client still believes the key is held.
 pub fn markHotkeySwallowRelease(vk_code: u32) void {
     if (vk_code == 0) return;
     if (!g_hotkey_tracking_initialized) return;
@@ -241,6 +236,13 @@ pub fn uninstallHotkeyReleaseHook() void {
         g_hotkey_release_hook = null;
         slog.debug("Low-level keyboard release hook removed", .{});
     }
+}
+
+/// Frees g_hotkey_tracked; call only once at true process shutdown, never from a reload path that may track again.
+pub fn deinitHotkeyTracking() void {
+    if (!g_hotkey_tracking_initialized) return;
+    g_hotkey_tracked.deinit();
+    g_hotkey_tracking_initialized = false;
 }
 
 fn lowLevelHotkeyReleaseProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
@@ -273,7 +275,6 @@ pub fn resolveThumbnailUnderCursor() ?*ThumbnailWindow {
 
 /// Toggles character exclusion from hotkey cycling on Shift+Click, with visual feedback via a semi-transparent overlay.
 pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
-    const painter_mod = @import("painter.zig");
     const painter = g_painter_ptr orelse return;
     const hotkey_manager = painter_mod.g_hotkey_manager_ptr orelse return;
 
@@ -323,7 +324,6 @@ pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
 
 /// Lets cycling resume from a manually-selected character's position
 fn updateHotkeyCyclePosition(focused_hwnd: win32.HWND) void {
-    const painter_mod = @import("painter.zig");
     const painter = g_painter_ptr orelse return;
     const hotkey_manager = painter_mod.g_hotkey_manager_ptr orelse return;
 
@@ -356,7 +356,7 @@ fn updateThumbnailStatesAfterFocus(focused_hwnd: win32.HWND) void {
 }
 
 /// Start dragging a window (thumbnail or text overlay)
-pub fn startDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
+fn startDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
     if (g_painter_ptr) |painter| {
         if (!painter.config.interaction.enableDragging) {
             return;
@@ -385,7 +385,7 @@ pub fn startDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
 }
 
 /// End dragging and save the thumbnail position
-pub fn endDrag(hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
+fn endDrag(hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
     if (g_drag_state.is_dragging and g_drag_state.hwnd == hwnd) {
         if (g_painter_ptr) |painter| {
             if (painter.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
@@ -428,7 +428,7 @@ pub fn endDrag(hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
 }
 
 /// Handles mouse move during drag; thumbnail and text-overlay windows are linked and moved together.
-pub fn handleDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
+fn handleDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
     if (!g_drag_state.is_dragging or g_drag_state.hwnd != hwnd) return;
 
     if (!win32.isWindow(hwnd)) {
@@ -436,6 +436,13 @@ pub fn handleDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
         g_drag_state.is_dragging = false;
         g_drag_state.hwnd = null;
         _ = win32.ReleaseCapture();
+
+        if (g_painter_ptr) |painter| {
+            painter.hideGhostOverlay();
+            if (painter.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
+                thumbnail.setState(.Inactive);
+            }
+        }
         return;
     }
 
@@ -481,8 +488,7 @@ pub fn handleDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
         const snapped = applySnapping(new_x, new_y, width, height, hwnd);
 
         if (getLinkedWindow(hwnd)) |other_hwnd| {
-            // Z-order is keyed by identity (text overlay always TOPMOST above thumbnail), not by which window
-            // was grabbed, or the live thumbnail could hide the name/border until refocus.
+            // Z-order is keyed by identity (text overlay always TOPMOST above thumbnail), not by which window was grabbed, or the live thumbnail could hide the name/border until refocus.
             const dragged = if (g_painter_ptr) |painter| painter.getThumbnailByOverlayHwnd(hwnd) else null;
             const thumb_hwnd = if (dragged) |t| t.hwnd else hwnd;
             const text_hwnd = if (dragged) |t| t.text_hwnd else other_hwnd;
@@ -493,7 +499,7 @@ pub fn handleDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
 }
 
 /// Returns the linked window stored in GWLP_USERDATA, or null if none is valid.
-pub fn getLinkedWindow(hwnd: win32.HWND) ?win32.HWND {
+fn getLinkedWindow(hwnd: win32.HWND) ?win32.HWND {
     const linked_ptr = win32.GetWindowLongPtrA(hwnd, win32.GWLP_USERDATA);
     const linked_hwnd = win32.userDataToHwnd(linked_ptr);
 
@@ -514,8 +520,7 @@ fn applyScreenEdgeSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i
     const right = x + width;
     const bottom = y + height;
 
-    // GetSystemMetrics(SM_CXSCREEN/CYSCREEN) only reports the primary monitor, so snapping uses the bounds
-    // of the monitor nearest the dragged window instead, falling back to primary metrics if that lookup fails.
+    // GetSystemMetrics(SM_CXSCREEN/CYSCREEN) only reports the primary monitor, so snapping uses the bounds of the monitor nearest the dragged window instead, falling back to primary metrics if that lookup fails.
     var bounds = win32.RECT{
         .left = 0,
         .top = 0,
@@ -644,9 +649,10 @@ fn applyThumbnailEdgeSnapping(
     return .{ .x = snapped_x, .y = snapped_y };
 }
 
-/// Snaps against every other saved position in the profile: first docks directly onto a ghost's exact saved (x, y) when the dragged window's top-left is within `threshold` px of it (Chebyshev distance, works from any approach angle), then aligns edges against ghost rects the same way applyThumbnailEdgeSnapping does for live thumbnails.
+/// Snaps to a ghost's exact saved position when within `threshold` px (Chebyshev distance), else aligns edges against ghost rects like applyThumbnailEdgeSnapping does for live thumbnails.
 fn applyGhostSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i32, dragging_hwnd: win32.HWND, painter: *Painter) SnapPosition {
-    const character_name = if (painter.getThumbnailByOverlayHwnd(dragging_hwnd)) |t| t.character_name else return .{ .x = x, .y = y };
+    // Non-thumbnail draggers (e.g. the notification history panel) own no character, so nothing is excluded from the ghost set.
+    const character_name = if (painter.getThumbnailByOverlayHwnd(dragging_hwnd)) |t| t.character_name else "";
 
     const groups = painter.collectGhostGroups(painter.allocator, character_name) catch return .{ .x = x, .y = y };
     defer {
@@ -708,8 +714,6 @@ pub fn applySnapping(x: i32, y: i32, width: i32, height: i32, dragging_hwnd: win
     return result;
 }
 
-// Window procedures (formerly in painter.zig)
-
 const HIDE_DEBOUNCE_TIMER_ID: usize = 1;
 
 /// Window procedure for thumbnail windows: handles input events and the auto-hide timer when no EVE window has focus.
@@ -739,10 +743,8 @@ fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: w
         },
         win32.WM_LBUTTONDOWN => {
             if (win32.GetPropA(hwnd, "SOURCE_HWND")) |source_hwnd| {
-                const main_mod = @import("main.zig");
                 const config = &main_mod.g_config;
-                const vkeys = @import("virtual_keys.zig");
-                const shift_pressed = (win32.GetAsyncKeyState(@intCast(vkeys.VK_SHIFT)) & @as(c_short, @bitCast(@as(c_ushort, 0x8000)))) != 0;
+                const shift_pressed = win32.isShiftPressed();
 
                 if (config.interaction.clickTrigger == .MouseDown) {
                     if (shift_pressed) {
@@ -762,7 +764,6 @@ fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: w
             return 0;
         },
         win32.WM_LBUTTONUP => {
-            const main_mod = @import("main.zig");
             const config = &main_mod.g_config;
 
             if (config.interaction.clickTrigger == .MouseUp and g_click_state.pending) {
@@ -813,10 +814,8 @@ fn textWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPara
     switch (msg) {
         win32.WM_LBUTTONDOWN => {
             if (win32.GetPropA(hwnd, "SOURCE_HWND")) |source_hwnd| {
-                const main_mod = @import("main.zig");
                 const config = &main_mod.g_config;
-                const vkeys = @import("virtual_keys.zig");
-                const shift_pressed = (win32.GetAsyncKeyState(@intCast(vkeys.VK_SHIFT)) & @as(c_short, @bitCast(@as(c_ushort, 0x8000)))) != 0;
+                const shift_pressed = win32.isShiftPressed();
 
                 if (config.interaction.clickTrigger == .MouseDown) {
                     if (shift_pressed) {
@@ -836,7 +835,6 @@ fn textWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPara
             return 0;
         },
         win32.WM_LBUTTONUP => {
-            const main_mod = @import("main.zig");
             const config = &main_mod.g_config;
 
             if (config.interaction.clickTrigger == .MouseUp and g_click_state.pending) {

@@ -29,13 +29,9 @@ pub const Command = union(enum) {
     Switch: []const u8,
     Profile: []const u8,
     Hotkey: HotkeyAction,
-    /// Config dialog only: JSON of unsaved thumbnail-appearance fields to merge into the running config and repaint, without persisting to disk.
     PreviewThumbnail: []const u8,
-    /// Config dialog only: discard the live preview and reload thumbnail appearance from disk (no-op if already saved).
     RevertPreview: void,
-    /// Config dialog only: suspend global hotkeys while recording a new combo, so a still-bound key doesn't fire its action mid-recording.
     DialogSuspendHotkeys: void,
-    /// Config dialog only: resume hotkeys suspended by DialogSuspendHotkeys.
     DialogResumeHotkeys: void,
 };
 
@@ -95,7 +91,6 @@ fn urlDecode(allocator: std.mem.Allocator, encoded: []const u8) ![]const u8 {
         if (encoded[i] == '%' and i + 2 < encoded.len) {
             const hex = encoded[i + 1 .. i + 3];
             const value = std.fmt.parseInt(u8, hex, 16) catch {
-                // Invalid hex, keep literal
                 try result.append(allocator, encoded[i]);
                 i += 1;
                 continue;
@@ -118,10 +113,9 @@ pub fn findExistingInstance(class_name: [*:0]const u8) ?win32.HWND {
     return win32.FindWindowA(class_name, null);
 }
 
-pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) !void {
+pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
     switch (cmd) {
         .Switch => |char_name| {
-            // WM_COPYDATA sends string data across process boundaries
             const cds = win32.COPYDATASTRUCT{
                 .dwData = win32.PROTOCOL_SWITCH_CHARACTER,
                 .cbData = @intCast(char_name.len),
@@ -191,7 +185,7 @@ pub fn checkCommandLine(allocator: std.mem.Allocator) !?[]const u8 {
     while (i < args.len) : (i += 1) {
         if (std.mem.eql(u8, args[i], "--protocol")) {
             if (i + 1 < args.len) {
-                // Must duplicate before argsFree() invalidates args
+                // Must duplicate before argsFree() invalidates args.
                 return try allocator.dupe(u8, args[i + 1]);
             }
         }
@@ -225,7 +219,7 @@ pub fn register(allocator: std.mem.Allocator) !bool {
     var hKey: win32.HKEY = undefined;
     var disposition: win32.DWORD = undefined;
 
-    // Uses the per-user classes hive (HKCU) instead of HKEY_CLASSES_ROOT, since that falls back to HKLM and requires admin rights for new keys.
+    // HKCU rather than HKEY_CLASSES_ROOT: the latter falls back to HKLM for new keys, which requires admin rights.
     var result = win32.RegCreateKeyExA(
         win32.HKEY_CURRENT_USER,
         "Software\\Classes\\evemajpreview",
@@ -293,6 +287,7 @@ pub fn register(allocator: std.mem.Allocator) !bool {
     }
     defer _ = win32.RegCloseKey(hCommandKey);
 
+    // \x00 is embedded in the format string itself, so command.len already covers the terminator (unlike description/url_protocol above, which need +1).
     const command = try std.fmt.allocPrint(allocator, "\"{s}\" --protocol \"%1\"\x00", .{exe_path});
     defer allocator.free(command);
 
@@ -315,14 +310,13 @@ pub fn register(allocator: std.mem.Allocator) !bool {
 }
 
 pub fn unregister() bool {
-    // Recursively deletes the whole evemajpreview key subtree
     const result = win32.RegDeleteTreeA(win32.HKEY_CURRENT_USER, "Software\\Classes\\evemajpreview");
 
     if (result == win32.ERROR_SUCCESS) {
         slog.info("Protocol handler unregistered successfully", .{});
         return true;
     } else if (result == 2) {
-        // ERROR_FILE_NOT_FOUND
+        // 2 is ERROR_FILE_NOT_FOUND.
         slog.debug("Protocol handler was not registered", .{});
         return true;
     } else {

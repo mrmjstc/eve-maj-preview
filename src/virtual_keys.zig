@@ -153,14 +153,10 @@ pub fn writeVirtualKey(writer: anytype, combined: u32) !void {
 /// Parse a single modifier token ("Ctrl", "Control", "Alt", "Shift", "Win", "LWin", "RWin").
 /// Returns null if the token isn't a recognized modifier name.
 fn parseModifierToken(token: []const u8) ?u32 {
-    var lower_buf: [16]u8 = undefined;
-    if (token.len == 0 or token.len > lower_buf.len) return null;
-    const lower = std.ascii.lowerString(lower_buf[0..token.len], token);
-
-    if (std.mem.eql(u8, lower, "ctrl") or std.mem.eql(u8, lower, "control")) return MOD_CONTROL;
-    if (std.mem.eql(u8, lower, "alt")) return MOD_ALT;
-    if (std.mem.eql(u8, lower, "shift")) return MOD_SHIFT;
-    if (std.mem.eql(u8, lower, "win") or std.mem.eql(u8, lower, "lwin") or std.mem.eql(u8, lower, "rwin")) return MOD_WIN;
+    if (std.ascii.eqlIgnoreCase(token, "ctrl") or std.ascii.eqlIgnoreCase(token, "control")) return MOD_CONTROL;
+    if (std.ascii.eqlIgnoreCase(token, "alt")) return MOD_ALT;
+    if (std.ascii.eqlIgnoreCase(token, "shift")) return MOD_SHIFT;
+    if (std.ascii.eqlIgnoreCase(token, "win") or std.ascii.eqlIgnoreCase(token, "lwin") or std.ascii.eqlIgnoreCase(token, "rwin")) return MOD_WIN;
     return null;
 }
 
@@ -180,7 +176,7 @@ fn parseBaseKey(key_str: []const u8) ?u32 {
             return ch;
         }
 
-        // OEM punctuation keys - see the VK_OEM_* comments above for why '+' is excluded.
+        // '+' itself is never a valid base key here since it's the modifier-combo delimiter (see splitScalar below); only '=' maps to VK_OEM_PLUS.
         const oem_vk: ?u32 = switch (key_str[0]) {
             ';', ':' => VK_OEM_1,
             '=' => VK_OEM_PLUS,
@@ -206,44 +202,37 @@ fn parseBaseKey(key_str: []const u8) ?u32 {
         }
     }
 
-    var lower_buf: [32]u8 = undefined;
-    if (key_str.len > lower_buf.len) {
-        slog.warn("Key name too long: '{s}'", .{key_str});
-        return null;
-    }
-    const lower = std.ascii.lowerString(lower_buf[0..key_str.len], key_str);
+    if (std.ascii.eqlIgnoreCase(key_str, "tab")) return VK_TAB;
+    if (std.ascii.eqlIgnoreCase(key_str, "pause")) return VK_PAUSE;
+    if (std.ascii.eqlIgnoreCase(key_str, "capslock")) return VK_CAPITAL;
+    if (std.ascii.eqlIgnoreCase(key_str, "numlock")) return VK_NUMLOCK;
+    if (std.ascii.eqlIgnoreCase(key_str, "scrolllock")) return VK_SCROLL;
+    if (std.ascii.eqlIgnoreCase(key_str, "space")) return VK_SPACE;
+    if (std.ascii.eqlIgnoreCase(key_str, "pageup")) return VK_PRIOR;
+    if (std.ascii.eqlIgnoreCase(key_str, "pagedown")) return VK_NEXT;
+    if (std.ascii.eqlIgnoreCase(key_str, "end")) return VK_END;
+    if (std.ascii.eqlIgnoreCase(key_str, "home")) return VK_HOME;
+    if (std.ascii.eqlIgnoreCase(key_str, "left")) return VK_LEFT;
+    if (std.ascii.eqlIgnoreCase(key_str, "up")) return VK_UP;
+    if (std.ascii.eqlIgnoreCase(key_str, "right")) return VK_RIGHT;
+    if (std.ascii.eqlIgnoreCase(key_str, "down")) return VK_DOWN;
+    if (std.ascii.eqlIgnoreCase(key_str, "insert")) return VK_INSERT;
+    if (std.ascii.eqlIgnoreCase(key_str, "delete")) return VK_DELETE;
+    if (std.ascii.eqlIgnoreCase(key_str, "xbutton1")) return VK_XBUTTON1;
+    if (std.ascii.eqlIgnoreCase(key_str, "xbutton2")) return VK_XBUTTON2;
+    if (std.ascii.eqlIgnoreCase(key_str, "wheelup")) return VK_WHEELUP;
+    if (std.ascii.eqlIgnoreCase(key_str, "wheeldown")) return VK_WHEELDOWN;
 
-    if (std.mem.eql(u8, lower, "tab")) return VK_TAB;
-    if (std.mem.eql(u8, lower, "pause")) return VK_PAUSE;
-    if (std.mem.eql(u8, lower, "capslock")) return VK_CAPITAL;
-    if (std.mem.eql(u8, lower, "numlock")) return VK_NUMLOCK;
-    if (std.mem.eql(u8, lower, "scrolllock")) return VK_SCROLL;
-    if (std.mem.eql(u8, lower, "space")) return VK_SPACE;
-    if (std.mem.eql(u8, lower, "pageup")) return VK_PRIOR;
-    if (std.mem.eql(u8, lower, "pagedown")) return VK_NEXT;
-    if (std.mem.eql(u8, lower, "end")) return VK_END;
-    if (std.mem.eql(u8, lower, "home")) return VK_HOME;
-    if (std.mem.eql(u8, lower, "left")) return VK_LEFT;
-    if (std.mem.eql(u8, lower, "up")) return VK_UP;
-    if (std.mem.eql(u8, lower, "right")) return VK_RIGHT;
-    if (std.mem.eql(u8, lower, "down")) return VK_DOWN;
-    if (std.mem.eql(u8, lower, "insert")) return VK_INSERT;
-    if (std.mem.eql(u8, lower, "delete")) return VK_DELETE;
-    if (std.mem.eql(u8, lower, "xbutton1")) return VK_XBUTTON1;
-    if (std.mem.eql(u8, lower, "xbutton2")) return VK_XBUTTON2;
-    if (std.mem.eql(u8, lower, "wheelup")) return VK_WHEELUP;
-    if (std.mem.eql(u8, lower, "wheeldown")) return VK_WHEELDOWN;
-
-    if (std.mem.startsWith(u8, lower, "numpad")) {
-        const rest = lower["numpad".len..];
+    if (key_str.len > "numpad".len and std.ascii.eqlIgnoreCase(key_str[0.."numpad".len], "numpad")) {
+        const rest = key_str["numpad".len..];
         if (rest.len == 1 and rest[0] >= '0' and rest[0] <= '9') {
             return VK_NUMPAD0 + (rest[0] - '0');
         }
-        if (std.mem.eql(u8, rest, "multiply")) return VK_MULTIPLY;
-        if (std.mem.eql(u8, rest, "add")) return VK_ADD;
-        if (std.mem.eql(u8, rest, "subtract")) return VK_SUBTRACT;
-        if (std.mem.eql(u8, rest, "decimal")) return VK_DECIMAL;
-        if (std.mem.eql(u8, rest, "divide")) return VK_DIVIDE;
+        if (std.ascii.eqlIgnoreCase(rest, "multiply")) return VK_MULTIPLY;
+        if (std.ascii.eqlIgnoreCase(rest, "add")) return VK_ADD;
+        if (std.ascii.eqlIgnoreCase(rest, "subtract")) return VK_SUBTRACT;
+        if (std.ascii.eqlIgnoreCase(rest, "decimal")) return VK_DECIMAL;
+        if (std.ascii.eqlIgnoreCase(rest, "divide")) return VK_DIVIDE;
     }
 
     slog.warn("Unrecognized key format: '{s}'", .{key_str});

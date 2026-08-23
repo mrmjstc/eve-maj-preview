@@ -77,7 +77,6 @@ pub const UpdateChecker = struct {
         g_update_status.deinit();
     }
 
-    /// Check for updates against GitHub releases
     pub fn checkForUpdates(self: *UpdateChecker) !?UpdateInfo {
         slog.info("Checking for updates (current: {s})", .{self.current_version});
 

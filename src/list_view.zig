@@ -1,7 +1,6 @@
 const std = @import("std");
 const win32 = @import("win32.zig");
 const config_mod = @import("config.zig");
-const state_mod = @import("state.zig");
 const types = @import("types.zig");
 const gdi_overlay = @import("gdi_overlay.zig");
 const log = @import("log.zig");
@@ -537,6 +536,7 @@ pub const ListWindow = struct {
 
         if (needs_bmp) {
             if (self.overlay) |o| o.destroy();
+            self.overlay = null;
             const sdc = win32.GetDC(null) orelse return error.GetDCFailed;
             defer _ = win32.ReleaseDC(null, sdc);
             self.overlay = try gdi_overlay.OverlayBitmap.create(sdc, win_w, win_h);
@@ -636,7 +636,7 @@ pub const ListWindow = struct {
                 if (name_w <= max_name_w) {
                     drawText(ov.mem_dc, display_name, text_left, text_y, name_col);
                 } else {
-                    drawTextTruncated(ov.mem_dc, ov.pixels, W, H, display_name, text_left, text_y, name_col, max_name_w);
+                    drawTextTruncated(ov.mem_dc, display_name, text_left, text_y, name_col, max_name_w);
                 }
 
                 var stat_buf: [64]u8 = undefined;
@@ -769,7 +769,6 @@ fn listWindowProc(
     switch (msg) {
         win32.WM_NCHITTEST => {
             const sy: i32 = @as(i32, @intCast(@as(i16, @truncate(lParam >> 16))));
-            _ = @as(i32, @intCast(@as(i16, @truncate(lParam))));
 
             var wr: win32.RECT = undefined;
             _ = win32.GetWindowRect(hwnd, &wr);
@@ -1019,18 +1018,12 @@ fn drawTextRight(dc: win32.HDC, text: []const u8, right_x: i32, y: i32, rgb: u32
 /// Draw text truncated with "..." so it fits within max_w pixels.
 fn drawTextTruncated(
     dc: win32.HDC,
-    pixels: [*]u32,
-    W: usize,
-    H: usize,
     text: []const u8,
     x: i32,
     y: i32,
     rgb: u32,
     max_w: usize,
 ) void {
-    _ = pixels;
-    _ = W;
-    _ = H;
     var buf: [TEXT_BUF:0]u8 = undefined;
     // -4 leaves room for the "..." suffix.
     const orig_n = @min(text.len, TEXT_BUF - 4);

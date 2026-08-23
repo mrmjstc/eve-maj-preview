@@ -4,12 +4,14 @@ const config_mod = @import("config.zig");
 const log = @import("log.zig");
 const update = @import("update.zig");
 const manager_mod = @import("manager.zig");
+const hotkeys_mod = @import("hotkeys.zig");
+const painter_mod = @import("painter.zig");
+const main_mod = @import("main.zig");
 const slog = log.scoped("tray");
 
 // Global state for pending profile switch (accessed by menu handler)
 pub var g_pending_profile_name: ?[]const u8 = null;
 var g_profile_list_cache: ?std.ArrayList([]const u8) = null;
-var g_allocator_cache: ?std.mem.Allocator = null;
 
 pub const TrayIcon = struct {
     hwnd: win32.HWND,
@@ -24,8 +26,6 @@ pub const TrayIcon = struct {
             .allocator = allocator,
             .owns_icon = false,
         };
-
-        g_allocator_cache = allocator;
 
         tray.nid.cbSize = @sizeOf(win32.NOTIFYICONDATAA);
         tray.nid.hWnd = hwnd;
@@ -52,6 +52,10 @@ pub const TrayIcon = struct {
                 slog.err("Failed to load application icon", .{});
                 return error.LoadIconFailed;
             };
+        };
+
+        errdefer if (tray.owns_icon) {
+            _ = win32.DestroyIcon(tray.nid.hIcon);
         };
 
         const tip = "EVE-Maj Preview";
@@ -81,7 +85,6 @@ pub const TrayIcon = struct {
             profiles.deinit(self.allocator);
             g_profile_list_cache = null;
         }
-        g_allocator_cache = null;
 
         slog.debug("System tray icon removed", .{});
     }
@@ -104,7 +107,7 @@ pub const TrayIcon = struct {
         }
     }
 
-    pub fn handleTrayMessage(self: *TrayIcon, lParam: win32.LPARAM, current_profile: []const u8, config: *const config_mod.Config, hotkey_manager: ?*@import("hotkeys.zig").HotkeyManager, painter: ?*@import("painter.zig").Painter) void {
+    pub fn handleTrayMessage(self: *TrayIcon, lParam: win32.LPARAM, current_profile: []const u8, config: *const config_mod.Config, hotkey_manager: ?*hotkeys_mod.HotkeyManager, painter: ?*painter_mod.Painter) void {
         if (lParam == win32.WM_RBUTTONUP) {
             self.showContextMenu(current_profile, config, hotkey_manager, painter);
         } else if (lParam == win32.WM_LBUTTONDBLCLK) {
@@ -113,7 +116,7 @@ pub const TrayIcon = struct {
         }
     }
 
-    pub fn showContextMenu(self: *TrayIcon, current_profile: []const u8, config: *const config_mod.Config, hotkey_manager: ?*@import("hotkeys.zig").HotkeyManager, painter: ?*@import("painter.zig").Painter) void {
+    fn showContextMenu(self: *TrayIcon, current_profile: []const u8, config: *const config_mod.Config, hotkey_manager: ?*hotkeys_mod.HotkeyManager, painter: ?*painter_mod.Painter) void {
         var cursor_pos: win32.POINT = undefined;
         if (win32.GetCursorPos(&cursor_pos) == 0) {
             slog.err("Failed to get cursor position", .{});
@@ -237,7 +240,7 @@ pub const TrayIcon = struct {
         );
     }
 
-    pub fn handleMenuCommand(command_id: u16, config: *config_mod.Config, allocator: std.mem.Allocator, hotkey_manager: ?*@import("hotkeys.zig").HotkeyManager) bool {
+    pub fn handleMenuCommand(command_id: u16, config: *config_mod.Config, allocator: std.mem.Allocator, hotkey_manager: ?*hotkeys_mod.HotkeyManager) bool {
         if (command_id == win32.IDM_EXIT) {
             slog.info("Exit requested from system tray", .{});
             win32.PostQuitMessage(0);
@@ -278,7 +281,6 @@ pub const TrayIcon = struct {
 
         if (command_id == win32.IDM_TOGGLE_VISIBILITY) {
             slog.info("Toggle visibility requested from system tray", .{});
-            const main_mod = @import("main.zig");
             if (main_mod.g_timer_hwnd) |hwnd| {
                 _ = win32.PostMessageA(hwnd, win32.WM_TOGGLE_VISIBILITY, 0, 0);
             } else {
@@ -289,7 +291,6 @@ pub const TrayIcon = struct {
 
         if (command_id == win32.IDM_TOGGLE_NOTIF_HISTORY) {
             slog.info("Toggle history panel requested from system tray", .{});
-            const painter_mod = @import("painter.zig");
             if (painter_mod.g_painter_ptr) |painter_ptr| {
                 painter_ptr.toggleNotifInfoPanel();
 
@@ -310,7 +311,6 @@ pub const TrayIcon = struct {
 
         if (command_id == win32.IDM_CLEAR_NOTIF_HISTORY) {
             slog.info("Clear notification history requested from system tray", .{});
-            const painter_mod = @import("painter.zig");
             if (painter_mod.g_painter_ptr) |painter_ptr| {
                 painter_ptr.clearNotificationHistory();
             } else {
@@ -328,7 +328,6 @@ pub const TrayIcon = struct {
 
         if (command_id == win32.IDM_CLOSE_ALL_CLIENTS) {
             slog.info("Close all clients requested from system tray", .{});
-            const main_mod = @import("main.zig");
             if (main_mod.g_scout_ptr) |scout_ptr| {
                 manager_mod.closeAllClients(scout_ptr.getWindows(), config);
             } else {
@@ -353,7 +352,6 @@ pub const TrayIcon = struct {
 
                     g_pending_profile_name = selected_profile;
 
-                    const main_mod = @import("main.zig");
                     if (main_mod.g_timer_hwnd) |hwnd| {
                         _ = win32.PostMessageA(hwnd, win32.WM_SWITCH_PROFILE, 0, 0);
                     } else {

@@ -1,9 +1,3 @@
-// Drives SAPI (SAPI.SpVoice) via late-bound IDispatch::Invoke rather than a hand-rolled
-// ISpVoice vtable, since IDispatch's layout is fixed and simple while SAPI's true vtable
-// order is easy to mis-transcribe.
-// Speak blocks until the utterance finishes, so the engine runs on its own worker thread
-// with a dedicated STA apartment; the main thread only pushes Commands onto a thread-safe
-// queue, since COM objects are apartment-affine.
 const std = @import("std");
 const windows = std.os.windows;
 const log = @import("log.zig");
@@ -74,6 +68,7 @@ const DISPPARAMS = extern struct {
     cNamedArgs: u32,
 };
 
+// Driven via late-bound Invoke rather than a hand-rolled ISpVoice vtable, since IDispatch's layout is fixed while SAPI's real vtable order is easy to mis-transcribe.
 const IDispatch = extern struct {
     vtable: *const IDispatchVtbl,
 
@@ -125,6 +120,7 @@ const IDispatch = extern struct {
     }
 };
 
+// COM objects are apartment-affine, so every method here (not just speak) must run on the same STA thread that created dispatch.
 const TtsEngine = struct {
     dispatch: *IDispatch,
     speak_dispid: i32,
@@ -205,6 +201,7 @@ const TtsEngine = struct {
 };
 
 const Command = union(enum) {
+    // Must be page_allocator-owned; the worker frees it after speaking (or shutdown() frees it if still queued).
     speak: []const u8,
     set_volume: u8,
     set_rate: i8,
@@ -309,4 +306,8 @@ pub fn shutdown() void {
     g_should_exit.store(true, .release);
     thread.join();
     g_thread = null;
+
+    while (g_queue.pop()) |cmd| {
+        if (cmd == .speak) std.heap.page_allocator.free(cmd.speak);
+    }
 }

@@ -23,7 +23,12 @@ pub fn register(allocator: std.mem.Allocator, target_hwnd: win32.HWND, combined_
     ensureInit(allocator);
     g_target_hwnd = target_hwnd;
     try g_bindings.put(combined_vk, id);
-    if (g_hook == null) try installHook();
+    if (g_hook == null) {
+        installHook() catch |err| {
+            _ = g_bindings.remove(combined_vk);
+            return err;
+        };
+    }
 }
 
 pub fn unregister(combined_vk: u32) void {
@@ -37,6 +42,13 @@ pub fn unregisterAll() void {
     if (!g_initialized) return;
     g_bindings.clearRetainingCapacity();
     uninstallHook();
+}
+
+/// Frees g_bindings; call only once at true process shutdown, never from a reload path that may register() again.
+pub fn deinit() void {
+    if (!g_initialized) return;
+    g_bindings.deinit();
+    g_initialized = false;
 }
 
 fn installHook() !void {

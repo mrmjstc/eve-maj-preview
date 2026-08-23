@@ -1,6 +1,4 @@
 const std = @import("std");
-const log = @import("log.zig");
-const slog = log.scoped("activity_tracker");
 
 /// A single parsed combat event (one damage hit, incoming or outgoing).
 pub const CombatEvent = struct {
@@ -41,7 +39,7 @@ pub const CombatWindow = struct {
     last_incoming_activity_ms: i64 = 0,
     last_outgoing_activity_ms: i64 = 0,
 
-    // Cached last-computed values, updated by refresh(). Null means not enough span yet to trust a rate.
+    // Null means not enough span yet to trust a rate.
     last_incoming_dps: ?f32 = null,
     last_outgoing_dps: ?f32 = null,
 
@@ -346,7 +344,7 @@ pub const MiningWindow = struct {
     window_ms: i64,
     last_hit_ms: i64 = 0,
 
-    // Cached last-computed values, updated by refresh(). Null means not enough span yet to trust a rate.
+    // Null means not enough span yet to trust a rate.
     last_m3_per_sec: ?f32 = null,
     last_isk_per_sec: ?f32 = null,
     // Timestamp of the last idle-alert fired for this window (ms). 0 = never.

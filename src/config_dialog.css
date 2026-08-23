@@ -357,7 +357,9 @@ p {
 
 .notification-types-table th {
     background: #0f0f0f;
-    border: 1px solid #888888;
+    border-top: 1px solid #888888;
+    border-right: 1px solid #888888;
+    border-bottom: 1px solid #888888;
     padding: 4px 6px;
     text-align: center;
     color: #ffffff;

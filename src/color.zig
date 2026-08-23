@@ -1,7 +1,7 @@
 const std = @import("std");
 
 /// Convert HSV color to RGB (0xRRGGBB format).
-pub fn hsvToRgb(h: u32, s: u8, val: u8) u32 {
+fn hsvToRgb(h: u32, s: u8, val: u8) u32 {
     const s_norm = @as(f32, @floatFromInt(s)) / 255.0;
     const v_norm = @as(f32, @floatFromInt(val)) / 255.0;
 
@@ -56,7 +56,7 @@ pub fn hsvToRgb(h: u32, s: u8, val: u8) u32 {
 }
 
 /// Uses golden ratio for even color distribution across the spectrum.
-pub fn generateUniqueColor(seed_string: []const u8) u32 {
+fn generateUniqueColor(seed_string: []const u8) u32 {
     if (seed_string.len == 0) return 0xFFFFFF;
 
     const hash = std.hash.Wyhash.hash(0, seed_string);
@@ -64,7 +64,6 @@ pub fn generateUniqueColor(seed_string: []const u8) u32 {
     const max_hash = @as(f64, @floatFromInt(std.math.maxInt(u64)));
     const normalized = @as(f64, @floatFromInt(hash)) / max_hash;
 
-    // Golden ratio conjugate for even distribution across color wheel
     const golden_ratio: f64 = 0.618033988749895;
     const hue_fraction = @mod(normalized + golden_ratio, 1.0);
     const hue = @as(u32, @intFromFloat(hue_fraction * 360.0));
@@ -76,7 +75,7 @@ pub fn generateUniqueColor(seed_string: []const u8) u32 {
     return hsvToRgb(hue, saturation, value);
 }
 
-pub const RgbColor = struct {
+const RgbColor = struct {
     r: u8,
     g: u8,
     b: u8,
@@ -90,13 +89,13 @@ pub const RgbColor = struct {
     }
 };
 
-pub const HsvColor = struct {
+const HsvColor = struct {
     h: u32,
     s: u8,
     v: u8,
 };
 
-pub fn rgbToHsv(rgb: u32) HsvColor {
+fn rgbToHsv(rgb: u32) HsvColor {
     const color = RgbColor.fromU32(rgb);
     const r = @as(f32, @floatFromInt(color.r)) / 255.0;
     const g = @as(f32, @floatFromInt(color.g)) / 255.0;
@@ -130,7 +129,7 @@ pub fn rgbToHsv(rgb: u32) HsvColor {
 }
 
 /// Returns a value from 0.0 (identical) to ~1.0 (very different).
-pub fn colorDistance(color1: u32, color2: u32) f32 {
+fn colorDistance(color1: u32, color2: u32) f32 {
     const hsv1 = rgbToHsv(color1);
     const hsv2 = rgbToHsv(color2);
 
@@ -151,7 +150,7 @@ pub fn colorDistance(color1: u32, color2: u32) f32 {
     return weighted_distance;
 }
 
-pub fn isTooSimilar(new_color: u32, recent_colors: []const u32, threshold: f32) bool {
+fn isTooSimilar(new_color: u32, recent_colors: []const u32, threshold: f32) bool {
     for (recent_colors) |recent_color| {
         const distance = colorDistance(new_color, recent_color);
         if (distance < threshold) {
@@ -191,6 +190,6 @@ pub fn generateUniqueColorWithAvoidance(seed_string: []const u8, recent_colors: 
     return hsvToRgb(opposite_hue, hsv.s, hsv.v);
 }
 
-pub fn withAlpha(argb: u32, alpha: u8) u32 {
-    return (@as(u32, alpha) << 24) | (argb & 0x00FF_FFFF);
+pub fn withAlpha(rgb: u32, alpha: u8) u32 {
+    return (@as(u32, alpha) << 24) | (rgb & 0x00FF_FFFF);
 }

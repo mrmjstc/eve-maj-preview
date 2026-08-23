@@ -7,6 +7,9 @@ const vk = @import("virtual_keys.zig");
 const mouse_hook = @import("mouse_hook.zig");
 const log = @import("log.zig");
 const slog = log.scoped("hotkeys");
+const painter_mod = @import("painter.zig");
+const tray_mod = @import("tray.zig");
+const main_mod = @import("main.zig");
 
 // Static buffers for profile names; must stay valid until the async WM_SWITCH_PROFILE handler runs.
 var g_profile_cycle_buffer: [256]u8 = undefined;
@@ -108,7 +111,7 @@ pub const HotkeyManager = struct {
     config: *const config_mod.Config,
     global_settings: *const config_mod.GlobalSettings,
     scout: *scout.Scout,
-    painter: *@import("painter.zig").Painter,
+    painter: *painter_mod.Painter,
     hotkey_map: std.AutoHashMap(c_int, HotkeyAction),
     /// List of successfully registered hotkey IDs for cleanup
     registered_ids: std.ArrayList(c_int),
@@ -127,7 +130,7 @@ pub const HotkeyManager = struct {
     /// Fallback exclusion list for shift-click-excluded characters that belong to no hotkey group; checked by isCharacterExcluded().
     manually_excluded_characters: std.ArrayList([]const u8) = .empty,
 
-    pub fn init(allocator: std.mem.Allocator, cfg: *const config_mod.Config, gs: *const config_mod.GlobalSettings, s: *scout.Scout, p: *@import("painter.zig").Painter) !HotkeyManager {
+    pub fn init(allocator: std.mem.Allocator, cfg: *const config_mod.Config, gs: *const config_mod.GlobalSettings, s: *scout.Scout, p: *painter_mod.Painter) !HotkeyManager {
         return HotkeyManager{
             .allocator = allocator,
             .config = cfg,
@@ -264,7 +267,8 @@ pub const HotkeyManager = struct {
         if (has_previous_not_logged_in) expected_count += 1;
         if (has_move_to_saved) expected_count += 1;
 
-        errdefer self.unregisterAll(hwnd);
+        // PartialHotkeyRegistrationFailure is a deliberate summary return, not a failure to clean up after; the hotkeys that did register should stay live.
+        errdefer |err| if (err != error.PartialHotkeyRegistrationFailure) self.unregisterAll(hwnd);
 
         for (self.config.hotkeyGroups.items, 0..) |*group, group_index| {
             const char_name = if (group.characters.items.len > 0)
@@ -291,7 +295,7 @@ pub const HotkeyManager = struct {
                 const backward_action = HotkeyAction{ .CycleGroup = .{ .group_index = group_index, .forward = false } };
                 const desc2 = std.fmt.bufPrint(&desc_buf, "group {} [{s}...] backward", .{ group_index, char_name }) catch "group backward";
                 self.registerAndTrackHotkey(hwnd, backward_id, backward_vk, backward_action, desc2) catch |err| {
-                    var key_name_buf: [64]u8 = undefined;
+                    var key_name_buf: [32]u8 = undefined;
                     const key_name = formatKeyName(backward_vk, &key_name_buf);
                     slog.err("Failed to register backward hotkey {s} for group {} [{s}...]: {}", .{ key_name, group_index, char_name, err });
                     failed_count += 1;
@@ -575,10 +579,9 @@ pub const HotkeyManager = struct {
         _ = self;
         const base_vk: win32.UINT = @intCast(vk.extractVk(virtual_key));
         const key_modifiers: win32.UINT = @intCast(vk.extractModifiers(virtual_key));
-        const modifiers: win32.UINT = key_modifiers;
 
         // Deliberately not MOD_NOREPEAT; handleHotkeyPress suppresses repeats itself via input.trackHotkeyPress.
-        if (!win32.toBool(win32.RegisterHotKey(hwnd, id, modifiers, base_vk))) {
+        if (!win32.toBool(win32.RegisterHotKey(hwnd, id, key_modifiers, base_vk))) {
             // Likely already in use by another application
             return error.HotkeyRegistrationFailed;
         }
@@ -862,10 +865,8 @@ pub const HotkeyManager = struct {
         const profile_name_slice = g_profile_cycle_buffer[0..target_profile.len];
 
         // Safe because it points into g_profile_cycle_buffer (static storage); tray.zig's takePendingProfileName() doesn't dupe it.
-        const tray_mod = @import("tray.zig");
         tray_mod.g_pending_profile_name = profile_name_slice;
 
-        const main_mod = @import("main.zig");
         if (main_mod.g_timer_hwnd) |hwnd| {
             _ = win32.PostMessageA(hwnd, win32.WM_SWITCH_PROFILE, 0, 0);
         } else {
@@ -891,10 +892,8 @@ pub const HotkeyManager = struct {
         @memcpy(g_profile_switch_buffer[0..target_profile.len], target_profile);
         const profile_name_slice = g_profile_switch_buffer[0..target_profile.len];
 
-        const tray_mod = @import("tray.zig");
         tray_mod.g_pending_profile_name = profile_name_slice;
 
-        const main_mod = @import("main.zig");
         if (main_mod.g_timer_hwnd) |hwnd| {
             _ = win32.PostMessageA(hwnd, win32.WM_SWITCH_PROFILE, 0, 0);
         } else {
@@ -950,8 +949,6 @@ pub const HotkeyManager = struct {
         const state = if (self.hotkeys_suspended) "suspended" else "resumed";
         slog.info("Hotkeys {s}", .{state});
 
-        // Update tray menu to reflect new state
-        const main_mod = @import("main.zig");
         if (main_mod.g_timer_hwnd) |hwnd| {
             _ = win32.PostMessageA(hwnd, win32.WM_HOTKEYS_STATE_CHANGED, 0, 0);
         }
@@ -984,7 +981,6 @@ pub const HotkeyManager = struct {
         };
     }
 
-    /// Activate (focus) a specific character's EVE window by its index in config.characters
     fn activateCharacterByIndex(self: *HotkeyManager, character_index: usize) void {
         if (character_index >= self.config.characters.items.len) {
             slog.err("Invalid character index {}", .{character_index});
@@ -1007,7 +1003,6 @@ pub const HotkeyManager = struct {
             return;
         }
 
-        // Try up to num_chars times to find an available character
         const start_index = group.currentIndex;
         // null/stale index starts just before the first element (forward) or just after the last (backward).
         const valid_current = if (group.currentIndex) |ci| (if (ci < num_chars) ci else null) else null;
@@ -1296,7 +1291,6 @@ pub const HotkeyManager = struct {
             return;
         }
 
-        // Try up to num_excluded times to find a running character
         const start_index = self.excluded_cycle_index;
         // null/stale index starts just before the first element (forward) or just after the last (backward).
         const valid_current = if (self.excluded_cycle_index) |ci| (if (ci < num_excluded) ci else null) else null;
@@ -1567,7 +1561,6 @@ pub const HotkeyManager = struct {
         }
     }
 
-    /// Update excluded cycle index when a character is manually focused
     fn updateExcludedCycleIndex(self: *HotkeyManager, character_name: []const u8) void {
         var excluded_list = self.buildExcludedList();
         defer excluded_list.deinit(self.allocator);

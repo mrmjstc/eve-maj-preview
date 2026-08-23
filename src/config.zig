@@ -17,8 +17,6 @@ const MAX_CONFIG_FILE_SIZE: u64 = 30 * 1024;
 pub const PROFILE_FORMAT_IDENTIFIER = "eve-maj-preview";
 pub const PROFILE_FORMAT_VERSION: u32 = 1;
 
-// Each `*Config`/etc. struct below nests a `pub const Wire = struct {...}` mirroring its persisted fields, giving std.json's reflection-based (de)serializer a JSON-native shape for values the runtime struct stores differently (e.g. raw integers).
-
 /// ARGB color, serialized as an 8-digit hex string, e.g. "0xFF606060".
 pub const Argb = struct {
     value: u32,
@@ -905,10 +903,15 @@ pub const ChatlogConfig = struct {
     }
 
     pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !ChatlogConfig {
+        const chatlog_dir = try Config.expandEnvironmentVariables(allocator, w.chatlogDir);
+        errdefer allocator.free(chatlog_dir);
+        const gamelog_dir = try Config.expandEnvironmentVariables(allocator, w.gamelogDir);
+        errdefer allocator.free(gamelog_dir);
+
         return .{
             .enabled = w.enabled,
-            .chatlogDir = try Config.expandEnvironmentVariables(allocator, w.chatlogDir),
-            .gamelogDir = try Config.expandEnvironmentVariables(allocator, w.gamelogDir),
+            .chatlogDir = chatlog_dir,
+            .gamelogDir = gamelog_dir,
             .pollIntervalMs = w.pollIntervalMs,
             .idlePollThreshold = w.idlePollThreshold,
             .maxPollMultiplier = w.maxPollMultiplier,
@@ -1044,6 +1047,13 @@ pub const CombatConfig = struct {
     }
 
     pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !CombatConfig {
+        const incoming_font_name = try allocator.dupe(u8, w.incoming_font_name);
+        errdefer allocator.free(incoming_font_name);
+        const outgoing_font_name = try allocator.dupe(u8, w.outgoing_font_name);
+        errdefer allocator.free(outgoing_font_name);
+        const damage_alert_excluded_weapons = try allocator.dupe(u8, w.damage_alert_excluded_weapons);
+        errdefer allocator.free(damage_alert_excluded_weapons);
+
         return .{
             .enabled = w.enabled,
             .window_seconds = w.window_seconds,
@@ -1054,10 +1064,10 @@ pub const CombatConfig = struct {
             .incoming_bg_color = w.incoming_bg_color.value,
             .outgoing_bg_color = w.outgoing_bg_color.value,
             .incoming_font_size = w.incoming_font_size,
-            .incoming_font_name = try allocator.dupe(u8, w.incoming_font_name),
+            .incoming_font_name = incoming_font_name,
             .incoming_font_weight = w.incoming_font_weight,
             .outgoing_font_size = w.outgoing_font_size,
-            .outgoing_font_name = try allocator.dupe(u8, w.outgoing_font_name),
+            .outgoing_font_name = outgoing_font_name,
             .outgoing_font_weight = w.outgoing_font_weight,
             .update_interval_ms = w.update_interval_ms,
             .incoming_position = w.incoming_position,
@@ -1068,7 +1078,7 @@ pub const CombatConfig = struct {
             .outgoing_offset_y = w.outgoing_offset_y,
             .damage_alert_enabled = w.damage_alert_enabled,
             .damage_alert_repeat_seconds = w.damage_alert_repeat_seconds,
-            .damage_alert_excluded_weapons = try allocator.dupe(u8, w.damage_alert_excluded_weapons),
+            .damage_alert_excluded_weapons = damage_alert_excluded_weapons,
         };
     }
 };
@@ -1743,11 +1753,28 @@ pub const Config = struct {
         try cfg.windowFilters.ensureTotalCapacity(allocator, w.windowFilters.len);
         for (w.windowFilters) |wf| {
             const class_names = try allocator.alloc([]const u8, wf.class_names.len);
-            for (wf.class_names, 0..) |cn, i| class_names[i] = try allocator.dupe(u8, cn);
+            errdefer allocator.free(class_names);
+            var class_names_filled: usize = 0;
+            errdefer for (class_names[0..class_names_filled]) |cn| allocator.free(cn);
+            for (wf.class_names, 0..) |cn, i| {
+                class_names[i] = try allocator.dupe(u8, cn);
+                class_names_filled += 1;
+            }
+
             const exe_names = try allocator.alloc([]const u8, wf.executable_names.len);
-            for (wf.executable_names, 0..) |en, i| exe_names[i] = try allocator.dupe(u8, en);
+            errdefer allocator.free(exe_names);
+            var exe_names_filled: usize = 0;
+            errdefer for (exe_names[0..exe_names_filled]) |en| allocator.free(en);
+            for (wf.executable_names, 0..) |en, i| {
+                exe_names[i] = try allocator.dupe(u8, en);
+                exe_names_filled += 1;
+            }
+
+            const name = try allocator.dupe(u8, wf.name);
+            errdefer allocator.free(name);
+
             cfg.windowFilters.appendAssumeCapacity(.{
-                .name = try allocator.dupe(u8, wf.name),
+                .name = name,
                 .class_names = class_names,
                 .executable_names = exe_names,
                 .enabled = wf.enabled,
@@ -3187,22 +3214,47 @@ pub const Config = struct {
         };
         defer allocator.free(documents_dir);
 
-        return .{
-            .chatlog = try std.fmt.allocPrint(allocator, "{s}/EVE/logs/Chatlogs", .{documents_dir}),
-            .gamelog = try std.fmt.allocPrint(allocator, "{s}/EVE/logs/Gamelogs", .{documents_dir}),
-        };
+        const chatlog = try std.fmt.allocPrint(allocator, "{s}/EVE/logs/Chatlogs", .{documents_dir});
+        errdefer allocator.free(chatlog);
+        const gamelog = try std.fmt.allocPrint(allocator, "{s}/EVE/logs/Gamelogs", .{documents_dir});
+        errdefer allocator.free(gamelog);
+
+        return .{ .chatlog = chatlog, .gamelog = gamelog };
     }
 
     pub fn getDefaultsWithProfile(allocator: std.mem.Allocator, profile_name: []const u8) !Config {
+        const owned_profile_name = try allocator.dupe(u8, profile_name);
+        errdefer allocator.free(owned_profile_name);
+
         const log_dirs = try defaultLogDirs(allocator);
+        errdefer allocator.free(log_dirs.chatlog);
+        errdefer allocator.free(log_dirs.gamelog);
 
         var default_filters = std.ArrayList(WindowFilter).empty;
+
         const eve_class_names = try allocator.alloc([]const u8, WindowFilter.DEFAULT.class_names.len);
-        for (WindowFilter.DEFAULT.class_names, 0..) |cn, i| eve_class_names[i] = try allocator.dupe(u8, cn);
+        errdefer allocator.free(eve_class_names);
+        var eve_class_names_filled: usize = 0;
+        errdefer for (eve_class_names[0..eve_class_names_filled]) |cn| allocator.free(cn);
+        for (WindowFilter.DEFAULT.class_names, 0..) |cn, i| {
+            eve_class_names[i] = try allocator.dupe(u8, cn);
+            eve_class_names_filled += 1;
+        }
+
         const eve_exe_names = try allocator.alloc([]const u8, WindowFilter.DEFAULT.executable_names.len);
-        for (WindowFilter.DEFAULT.executable_names, 0..) |en, i| eve_exe_names[i] = try allocator.dupe(u8, en);
+        errdefer allocator.free(eve_exe_names);
+        var eve_exe_names_filled: usize = 0;
+        errdefer for (eve_exe_names[0..eve_exe_names_filled]) |en| allocator.free(en);
+        for (WindowFilter.DEFAULT.executable_names, 0..) |en, i| {
+            eve_exe_names[i] = try allocator.dupe(u8, en);
+            eve_exe_names_filled += 1;
+        }
+
+        const eve_filter_name = try allocator.dupe(u8, WindowFilter.DEFAULT.name);
+        errdefer allocator.free(eve_filter_name);
+
         try default_filters.append(allocator, .{
-            .name = try allocator.dupe(u8, WindowFilter.DEFAULT.name),
+            .name = eve_filter_name,
             .class_names = eve_class_names,
             .executable_names = eve_exe_names,
             .enabled = WindowFilter.DEFAULT.enabled,
@@ -3210,7 +3262,7 @@ pub const Config = struct {
 
         return Config{
             .allocator = allocator,
-            .profile_name = try allocator.dupe(u8, profile_name),
+            .profile_name = owned_profile_name,
             .thumbnail = .{},
             .timer = .{},
             .display = .{},
@@ -3617,6 +3669,7 @@ pub const Config = struct {
     /// Discard the in-memory thumbnail appearance, layout, and system color overrides, replacing them with a fresh read of this profile from disk, to revert an unsaved live-preview patch (see PROTOCOL_REVERT_PREVIEW); startX/startY are left untouched.
     pub fn reloadThumbnailConfigFromDisk(self: *Config, allocator: std.mem.Allocator) !void {
         var fresh = try loadProfile(allocator, self.profile_name);
+        errdefer fresh.deinit();
 
         const new_thumb = fresh.thumbnail;
         // Detach before fresh.deinit() runs, or it frees new_thumb's owned strings out from under it.

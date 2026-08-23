@@ -1,6 +1,7 @@
 const std = @import("std");
 const win32 = @import("win32.zig");
 const log = @import("log.zig");
+const config_mod = @import("config.zig");
 const slog = log.scoped("scout");
 
 pub const EveWindow = struct {
@@ -23,7 +24,7 @@ pub const ClosedWindow = struct {
 };
 
 /// character_name before login or after logout while the client window stays open.
-pub const GENERIC_CHARACTER_NAME = "EVE";
+const GENERIC_CHARACTER_NAME = "EVE";
 
 pub fn isGenericCharacterName(name: []const u8) bool {
     return std.mem.eql(u8, name, GENERIC_CHARACTER_NAME);
@@ -50,7 +51,7 @@ pub const UpdateResult = struct {
 
 pub const Scout = struct {
     allocator: std.mem.Allocator,
-    config: *const @import("config.zig").Config,
+    config: *const config_mod.Config,
     windows: std.ArrayList(EveWindow),
     name_to_hwnd: std.StringHashMap(win32.HWND),
     // O(1) window lookups by HWND
@@ -67,7 +68,7 @@ pub const Scout = struct {
     name_change_hook: ?win32.HANDLE,
     destroy_event_hook: ?win32.HANDLE,
 
-    pub fn init(allocator: std.mem.Allocator, config: *const @import("config.zig").Config) !Scout {
+    pub fn init(allocator: std.mem.Allocator, config: *const config_mod.Config) !Scout {
         var scout_instance = Scout{
             .allocator = allocator,
             .config = config,
@@ -137,7 +138,6 @@ pub const Scout = struct {
         return scout_instance;
     }
 
-    /// Set the global Scout pointer for event callbacks
     pub fn setGlobalInstance(self: *Scout) void {
         g_scout_ptr = self;
     }
@@ -329,7 +329,6 @@ pub const Scout = struct {
             self.cleanupStalePids();
         }
 
-        // Scan when a create event fired (pending_scan) or the caller forces a periodic scan.
         if (self.pending_scan or force_scan) {
             try self.scanForEveWindows();
             self.pending_scan = false;
@@ -440,7 +439,7 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
         return win32.TRUE;
     }
 
-    var matching_filter: ?*const @import("config.zig").WindowFilter = null;
+    var matching_filter: ?*const config_mod.WindowFilter = null;
     for (scout.config.windowFilters.items) |*filter| {
         if (filter.matchesClass(class_slice)) {
             matching_filter = filter;
@@ -520,7 +519,6 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
     const new_index = scout.windows.items.len - 1;
     scout.hwnd_to_index.put(hwnd, new_index) catch |err| {
         slog.err("Failed to add HWND to index: {}", .{err});
-        // Remove the window we just added since indexing failed
         const removed = scout.windows.pop().?;
         scout.allocator.free(removed.title);
         scout.allocator.free(removed.character_name);
@@ -530,7 +528,6 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
     // Note: character_name pointer is now owned by windows[] and also used as HashMap key
     scout.name_to_hwnd.put(character_name, hwnd) catch |err| {
         slog.err("Failed to map character name to hwnd: {}", .{err});
-        // Remove the window and index entry we just added since mapping failed
         _ = scout.hwnd_to_index.remove(hwnd);
         const removed = scout.windows.pop().?;
         scout.allocator.free(removed.title);

@@ -144,40 +144,29 @@ inline fn writeToFile(comptime level: LogLevel, ts: []const u8, comptime scope: 
 
 pub fn scoped(comptime scope: []const u8) type {
     return struct {
-        pub inline fn debug(comptime fmt: []const u8, args: anytype) void {
-            if (shouldLog(.debug)) {
+        inline fn logImpl(comptime level: LogLevel, comptime fmt: []const u8, args: anytype) void {
+            if (shouldLog(level)) {
                 var ts_buf: [23]u8 = undefined;
                 const ts = formatTimestamp(&ts_buf);
-                writeToFile(.debug, ts, scope, fmt, args);
-                std.debug.print("[{s}][{s}][{s}] " ++ fmt ++ "\n", .{ ts, LogLevel.debug.asString(), scope } ++ args);
+                writeToFile(level, ts, scope, fmt, args);
+                std.debug.print("[{s}][{s}][{s}] " ++ fmt ++ "\n", .{ ts, level.asString(), scope } ++ args);
             }
+        }
+
+        pub inline fn debug(comptime fmt: []const u8, args: anytype) void {
+            logImpl(.debug, fmt, args);
         }
 
         pub inline fn info(comptime fmt: []const u8, args: anytype) void {
-            if (shouldLog(.info)) {
-                var ts_buf: [23]u8 = undefined;
-                const ts = formatTimestamp(&ts_buf);
-                writeToFile(.info, ts, scope, fmt, args);
-                std.debug.print("[{s}][{s}][{s}] " ++ fmt ++ "\n", .{ ts, LogLevel.info.asString(), scope } ++ args);
-            }
+            logImpl(.info, fmt, args);
         }
 
         pub inline fn warn(comptime fmt: []const u8, args: anytype) void {
-            if (shouldLog(.warn)) {
-                var ts_buf: [23]u8 = undefined;
-                const ts = formatTimestamp(&ts_buf);
-                writeToFile(.warn, ts, scope, fmt, args);
-                std.debug.print("[{s}][{s}][{s}] " ++ fmt ++ "\n", .{ ts, LogLevel.warn.asString(), scope } ++ args);
-            }
+            logImpl(.warn, fmt, args);
         }
 
         pub inline fn err(comptime fmt: []const u8, args: anytype) void {
-            if (shouldLog(.err)) {
-                var ts_buf: [23]u8 = undefined;
-                const ts = formatTimestamp(&ts_buf);
-                writeToFile(.err, ts, scope, fmt, args);
-                std.debug.print("[{s}][{s}][{s}] " ++ fmt ++ "\n", .{ ts, LogLevel.err.asString(), scope } ++ args);
-            }
+            logImpl(.err, fmt, args);
         }
     };
 }

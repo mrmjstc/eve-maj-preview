@@ -2,7 +2,6 @@ const std = @import("std");
 const win32 = @import("win32.zig");
 const config_mod = @import("config.zig");
 const scout_mod = @import("scout.zig");
-const types = @import("types.zig");
 const input = @import("input.zig");
 const log = @import("log.zig");
 const slog = log.scoped("manager");
@@ -18,7 +17,6 @@ pub const WindowManager = struct {
         return .{};
     }
 
-    /// Start auto-minimize timer when a window is activated
     pub fn startAutoMinimizeTimer(
         self: *WindowManager,
         hwnd_to_keep: win32.HWND,
@@ -48,14 +46,12 @@ pub const WindowManager = struct {
         }
     }
 
-    /// Minimize all inactive windows (called when auto-minimize timer fires)
+    /// Minimize all inactive windows (called when auto-minimize timer fires); caller must have already cancelled the timer.
     pub fn minimizeInactiveWindows(
         self: *WindowManager,
         eve_windows: []const scout_mod.EveWindow,
         config: *const config_mod.Config,
     ) void {
-        self.minimize_timer_id = 0;
-
         const hwnd_to_keep = self.hwnd_to_activate orelse return;
 
         var minimized_count: usize = 0;
@@ -66,8 +62,7 @@ pub const WindowManager = struct {
                 continue;
             }
 
-            // SW_FORCEMINIMIZE
-            _ = win32.ShowWindowAsync(eve_window.hwnd, 11);
+            _ = win32.ShowWindowAsync(eve_window.hwnd, win32.SW_FORCEMINIMIZE);
             minimized_count += 1;
         }
 
@@ -80,7 +75,6 @@ pub const WindowManager = struct {
         self.hwnd_to_activate = null;
     }
 
-    /// Cancel auto-minimize timer if active (used during cleanup)
     pub fn cancelAutoMinimizeTimer(self: *WindowManager, timer_owner_hwnd: win32.HWND) void {
         if (self.minimize_timer_id != 0) {
             _ = win32.KillTimer(timer_owner_hwnd, self.minimize_timer_id);
@@ -97,8 +91,7 @@ pub fn minimizeAllClients(eve_windows: []const scout_mod.EveWindow) void {
     for (eve_windows) |eve_window| {
         if (!win32.isWindow(eve_window.hwnd)) continue;
 
-        // SW_FORCEMINIMIZE
-        _ = win32.ShowWindowAsync(eve_window.hwnd, 11);
+        _ = win32.ShowWindowAsync(eve_window.hwnd, win32.SW_FORCEMINIMIZE);
         minimized_count += 1;
         slog.debug("Minimized: {s}", .{eve_window.character_name});
     }

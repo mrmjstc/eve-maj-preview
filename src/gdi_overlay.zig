@@ -29,7 +29,7 @@ pub const OverlayBitmap = struct {
         errdefer _ = win32.DeleteObject(bitmap);
 
         const pixel_data: [*]u32 = @ptrCast(@alignCast(pixels.?));
-        const old_bitmap = win32.SelectObject(mem_dc, bitmap).?;
+        const old_bitmap = win32.SelectObject(mem_dc, bitmap) orelse return error.SelectObjectFailed;
 
         return .{
             .mem_dc = mem_dc,
