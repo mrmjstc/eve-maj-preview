@@ -1389,14 +1389,13 @@ fn createProfile(e: *webui.Event) void {
 
     const file = std.fs.cwd().openFile(profile_path, .{}) catch |err| {
         if (err == error.FileNotFound) {
-            const Config = @import("config.zig").Config;
-            var defaults = Config.getDefaultsWithProfile(allocator, profile_filename) catch {
+            var defaults = config_mod.Config.getDefaultsWithProfile(allocator, profile_filename) catch {
                 e.returnString("{\"success\": false, \"error\": \"Failed to create defaults\"}");
                 return;
             };
             defer defaults.deinit();
 
-            Config.saveToJsonFile(&defaults, allocator, profile_path) catch {
+            config_mod.Config.saveToJsonFile(&defaults, allocator, profile_path) catch {
                 e.returnString("{\"success\": false, \"error\": \"Failed to save profile\"}");
                 return;
             };
@@ -1534,14 +1533,13 @@ fn resetProfile(e: *webui.Event) void {
     };
     defer allocator.free(profile_path);
 
-    const Config = @import("config.zig").Config;
-    var defaults = Config.getDefaultsWithProfile(allocator, profile_name) catch {
+    var defaults = config_mod.Config.getDefaultsWithProfile(allocator, profile_name) catch {
         e.returnString("{\"success\": false, \"error\": \"Failed to create defaults\"}");
         return;
     };
     defer defaults.deinit();
 
-    Config.saveToJsonFile(&defaults, allocator, profile_path) catch {
+    config_mod.Config.saveToJsonFile(&defaults, allocator, profile_path) catch {
         e.returnString("{\"success\": false, \"error\": \"Failed to save profile\"}");
         return;
     };

@@ -1553,7 +1553,7 @@ pub const Painter = struct {
     }
 
     /// Synchronizes thumbnails with Scout's window list, creating thumbnails for new windows; returns true if any were created.
-    fn syncThumbnailsWithWindows(self: *Painter, eve_windows: []const @import("scout.zig").EveWindow) bool {
+    fn syncThumbnailsWithWindows(self: *Painter, eve_windows: []const scout_mod.EveWindow) bool {
         var created_new = false;
 
         for (eve_windows) |eve_window| {
@@ -2100,6 +2100,8 @@ pub const Painter = struct {
             errdefer self.allocator.free(char_name_copy);
             const sys_name_copy = try self.allocator.dupe(u8, initial_system_name);
             errdefer self.allocator.free(sys_name_copy);
+            const quick_group_label_copy = try self.allocator.dupe(u8, "");
+            errdefer self.allocator.free(quick_group_label_copy);
 
             // Sentinel HWND, never passed to Win32 APIs since win32_enabled is false.
             const sentinel: win32.HWND = @ptrFromInt(1);
@@ -2115,7 +2117,7 @@ pub const Painter = struct {
                 .cached_character_color = self.config.getCharacterNameColor(char_name_copy),
                 .cached_display_name = self.config.getDisplayName(char_name_copy),
                 .cached_active_border_override = if (self.config.getCharacterBorderColors(char_name_copy)) |c| c.activeBorderColor else null,
-                .cached_quick_group_label = try self.allocator.dupe(u8, ""),
+                .cached_quick_group_label = quick_group_label_copy,
                 .current_state = initial.state,
                 .visibility_state = initial.visibility,
                 .is_excluded_from_cycle = is_excluded,
@@ -2248,6 +2250,9 @@ pub const Painter = struct {
         const system_name_copy = try self.allocator.dupe(u8, initial_system_name);
         errdefer self.allocator.free(system_name_copy);
 
+        const quick_group_label_copy = try self.allocator.dupe(u8, "");
+        errdefer self.allocator.free(quick_group_label_copy);
+
         var thumbnail = ThumbnailWindow{
             .hwnd = hwnd,
             .text_hwnd = text_hwnd,
@@ -2260,7 +2265,7 @@ pub const Painter = struct {
             .cached_character_color = self.config.getCharacterNameColor(char_name_copy),
             .cached_display_name = self.config.getDisplayName(char_name_copy),
             .cached_active_border_override = if (self.config.getCharacterBorderColors(char_name_copy)) |c| c.activeBorderColor else null,
-            .cached_quick_group_label = try self.allocator.dupe(u8, ""),
+            .cached_quick_group_label = quick_group_label_copy,
             .current_state = initial.state,
             .visibility_state = initial.visibility,
             .is_excluded_from_cycle = is_excluded,

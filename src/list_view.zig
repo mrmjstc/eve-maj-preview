@@ -7,8 +7,9 @@ const gdi_overlay = @import("gdi_overlay.zig");
 const log = @import("log.zig");
 const slog = log.scoped("list_view");
 
-// Only used by const-pointer/slice params so the painter ↔ list_view import cycle stays invisible at struct-size level; Zig's lazy type resolution handles it.
-const ThumbnailWindow = @import("painter.zig").ThumbnailWindow;
+// Pointer/var-only use keeps the painter <-> list_view import cycle safe from struct-size issues.
+const painter_mod = @import("painter.zig");
+const ThumbnailWindow = painter_mod.ThumbnailWindow;
 
 pub const LIST_WIDTH: i32 = 230;
 const HEADER_HEIGHT: i32 = 24;
@@ -776,7 +777,6 @@ fn listWindowProc(
             _ = win32.GetWindowRect(hwnd, &wr);
             const cy = sy - wr.top;
 
-            const painter_mod = @import("painter.zig");
             const dragging_enabled = if (painter_mod.g_painter_ptr) |p| p.config.interaction.enableDragging else true;
 
             if (dragging_enabled and cy < HEADER_HEIGHT) return HTCAPTION;
@@ -811,7 +811,6 @@ fn listWindowProc(
         },
 
         win32.WM_EXITSIZEMOVE => {
-            const painter_mod = @import("painter.zig");
             if (painter_mod.g_painter_ptr) |p| {
                 if (p.list_window) |*lv| {
                     lv.saveWindowPosition();
@@ -830,7 +829,6 @@ fn listWindowProc(
             const vkeys = @import("virtual_keys.zig");
             const shift_pressed = (win32.GetAsyncKeyState(@intCast(vkeys.VK_SHIFT)) & @as(c_short, @bitCast(@as(c_ushort, 0x8000)))) != 0;
 
-            const painter_mod = @import("painter.zig");
             if (painter_mod.g_painter_ptr) |p| {
                 if (p.list_window) |*lv| {
                     const columns: i32 = effectiveColumns(lv.config.display.listViewColumns, lv.row_source_hwnds.items.len);

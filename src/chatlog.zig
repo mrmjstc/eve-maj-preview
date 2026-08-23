@@ -165,7 +165,7 @@ pub const ChatlogMonitor = struct {
     gamelog_watcher: win32.HANDLE,
     enabled: bool = true,
     painter: ?*@import("painter.zig").Painter = null,
-    scout: ?*@import("scout.zig").Scout = null,
+    scout: ?*scout_mod.Scout = null,
     global_settings: ?*@import("config.zig").GlobalSettings = null,
     combat_tracker: ?*activity_mod.CombatTracker = null,
     mining_tracker: ?*activity_mod.MiningTracker = null,
@@ -185,7 +185,7 @@ pub const ChatlogMonitor = struct {
     threading_enabled: bool = false,
     pending_characters: std.StringHashMap(void),
 
-    pub fn init(allocator: std.mem.Allocator, chatlog_dir: []const u8, gamelog_dir: []const u8, painter_ref: ?*@import("painter.zig").Painter, scout_ref: ?*@import("scout.zig").Scout, global_settings_ref: ?*@import("config.zig").GlobalSettings, idle_poll_threshold: u32, max_poll_multiplier: u8, poll_interval_ms: u32) !*ChatlogMonitor {
+    pub fn init(allocator: std.mem.Allocator, chatlog_dir: []const u8, gamelog_dir: []const u8, painter_ref: ?*@import("painter.zig").Painter, scout_ref: ?*scout_mod.Scout, global_settings_ref: ?*@import("config.zig").GlobalSettings, idle_poll_threshold: u32, max_poll_multiplier: u8, poll_interval_ms: u32) !*ChatlogMonitor {
         if (!std.unicode.utf8ValidateSlice(chatlog_dir)) {
             slog.err("Chatlog directory path contains invalid UTF-8", .{});
             return error.InvalidUtf8;
