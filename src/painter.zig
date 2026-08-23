@@ -1253,10 +1253,12 @@ pub const Painter = struct {
 
     pub fn repositionAllThumbnails(self: *Painter) void {
         var hdwp = self.beginDeferForEnabledThumbnails() orelse return;
+        const cfg = &self.config.display;
+        const monitor_bounds = if (cfg.monitorIndex) |monitor_idx| getMonitorBounds(monitor_idx, cfg.useMonitorWorkArea) else null;
         for (self.thumbnails.items, 0..) |thumbnail, index| {
             if (!thumbnail.win32_enabled) continue;
             const thumb_size = self.getThumbnailSize(thumbnail.character_name);
-            const pos = self.calculateThumbnailPosition(thumbnail.character_name, thumb_size.width, thumb_size.height, index);
+            const pos = self.calculateThumbnailPosition(thumbnail.character_name, thumb_size.width, thumb_size.height, index, monitor_bounds);
             hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_NOTOPMOST, pos.x, pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE) orelse return;
             hdwp = win32.DeferWindowPos(hdwp, thumbnail.text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOACTIVATE) orelse return;
         }
@@ -1801,6 +1803,7 @@ pub const Painter = struct {
         thumb_width: i32,
         thumb_height: i32,
         index: usize,
+        monitor_bounds: ?win32.RECT,
     ) config_mod.Position {
         const cfg = &self.config.display;
 
@@ -1832,13 +1835,11 @@ pub const Painter = struct {
         };
 
         var bounds_for_clamping: ?win32.RECT = null;
-        if (cfg.monitorIndex) |monitor_idx| {
-            if (getMonitorBounds(monitor_idx, cfg.useMonitorWorkArea)) |bounds| {
-                // Position is relative to monitor's top-left corner
-                pos.x += bounds.left;
-                pos.y += bounds.top;
-                bounds_for_clamping = bounds;
-            }
+        if (monitor_bounds) |bounds| {
+            // Position is relative to monitor's top-left corner
+            pos.x += bounds.left;
+            pos.y += bounds.top;
+            bounds_for_clamping = bounds;
         }
 
         // Clamp to keep thumbnails from spawning fully off-screen, while still allowing edge placement.
@@ -2152,7 +2153,9 @@ pub const Painter = struct {
         defer self.allocator.free(char_name_z);
 
         const thumb_size = self.getThumbnailSize(eve_window.character_name);
-        const pos = self.calculateThumbnailPosition(eve_window.character_name, thumb_size.width, thumb_size.height, self.thumbnails.items.len);
+        const cfg = &self.config.display;
+        const monitor_bounds = if (cfg.monitorIndex) |monitor_idx| getMonitorBounds(monitor_idx, cfg.useMonitorWorkArea) else null;
+        const pos = self.calculateThumbnailPosition(eve_window.character_name, thumb_size.width, thumb_size.height, self.thumbnails.items.len, monitor_bounds);
 
         // Create thumbnail window (borderless, layered for transparency)
         const hwnd = win32.CreateWindowExA(
@@ -2292,22 +2295,19 @@ pub const Painter = struct {
     pub fn saveThumbnailPosition(self: *Painter, hwnd: win32.HWND) void {
         if (!win32.isWindow(hwnd)) return;
 
-        for (self.thumbnails.items) |thumbnail| {
-            if (thumbnail.hwnd == hwnd) {
-                var rect: win32.RECT = undefined;
-                _ = win32.GetWindowRect(hwnd, &rect);
+        const thumbnail = self.getThumbnailByOverlayHwnd(hwnd) orelse return;
 
-                const pos = config_mod.Position{
-                    .x = rect.left,
-                    .y = rect.top,
-                };
+        var rect: win32.RECT = undefined;
+        _ = win32.GetWindowRect(hwnd, &rect);
 
-                self.config.saveCharacterPosition(self.allocator, thumbnail.character_name, pos) catch |err| {
-                    slog.err("Failed to save position for {s}: {}", .{ thumbnail.character_name, err });
-                };
-                return;
-            }
-        }
+        const pos = config_mod.Position{
+            .x = rect.left,
+            .y = rect.top,
+        };
+
+        self.config.saveCharacterPosition(self.allocator, thumbnail.character_name, pos) catch |err| {
+            slog.err("Failed to save position for {s}: {}", .{ thumbnail.character_name, err });
+        };
     }
 
     /// Saved positions for every other character in the profile, grouped by exact rect match (identical x/y/w/h counts as "stacked"). Caller owns the returned slice and each group's `names`.
@@ -2515,6 +2515,25 @@ fn alignedLineX(block_x: i32, block_width: usize, line_width: usize, alignment: 
     };
 }
 
+const VerticalAlign = enum { top, middle, bottom };
+
+fn verticalAlignOf(position: TextPosition) VerticalAlign {
+    return switch (position) {
+        .TopLeft, .TopCenter, .TopRight => .top,
+        .LeftCenter, .Center, .RightCenter => .middle,
+        .BottomLeft, .BottomCenter, .BottomRight => .bottom,
+    };
+}
+
+/// y for a line of `line_height` so it sits flush against whichever edge `alignment` anchors to, within a block of `block_height` starting at `block_y`; same shape as alignedLineX for the vertical axis.
+fn alignedLineY(block_y: i32, block_height: usize, line_height: usize, alignment: VerticalAlign) i32 {
+    return switch (alignment) {
+        .top => block_y,
+        .middle => block_y + @as(i32, @intCast((block_height -| line_height) / 2)),
+        .bottom => block_y + @as(i32, @intCast(block_height -| line_height)),
+    };
+}
+
 fn calculateTextPosition(
     position: TextPosition,
     text_width: usize,
@@ -2524,47 +2543,8 @@ fn calculateTextPosition(
     offset_x: i32,
     offset_y: i32,
 ) TextPos {
-    var x: i32 = 0;
-    var y: i32 = 0;
-
-    switch (position) {
-        .TopLeft => {
-            x = 0;
-            y = 0;
-        },
-        .TopCenter => {
-            x = @intCast(@divTrunc(@as(i32, @intCast(overlay_width)) - @as(i32, @intCast(text_width)), 2));
-            y = 0;
-        },
-        .TopRight => {
-            x = @intCast(@as(i32, @intCast(overlay_width)) - @as(i32, @intCast(text_width)));
-            y = 0;
-        },
-        .LeftCenter => {
-            x = 0;
-            y = @intCast(@divTrunc(@as(i32, @intCast(overlay_height)) - @as(i32, @intCast(text_height)), 2));
-        },
-        .Center => {
-            x = @intCast(@divTrunc(@as(i32, @intCast(overlay_width)) - @as(i32, @intCast(text_width)), 2));
-            y = @intCast(@divTrunc(@as(i32, @intCast(overlay_height)) - @as(i32, @intCast(text_height)), 2));
-        },
-        .RightCenter => {
-            x = @intCast(@as(i32, @intCast(overlay_width)) - @as(i32, @intCast(text_width)));
-            y = @intCast(@divTrunc(@as(i32, @intCast(overlay_height)) - @as(i32, @intCast(text_height)), 2));
-        },
-        .BottomLeft => {
-            x = 0;
-            y = @intCast(@as(i32, @intCast(overlay_height)) - @as(i32, @intCast(text_height)));
-        },
-        .BottomCenter => {
-            x = @intCast(@divTrunc(@as(i32, @intCast(overlay_width)) - @as(i32, @intCast(text_width)), 2));
-            y = @intCast(@as(i32, @intCast(overlay_height)) - @as(i32, @intCast(text_height)));
-        },
-        .BottomRight => {
-            x = @intCast(@as(i32, @intCast(overlay_width)) - @as(i32, @intCast(text_width)));
-            y = @intCast(@as(i32, @intCast(overlay_height)) - @as(i32, @intCast(text_height)));
-        },
-    }
+    var x = alignedLineX(0, overlay_width, text_width, horizontalAlignOf(position));
+    var y = alignedLineY(0, overlay_height, text_height, verticalAlignOf(position));
 
     x += offset_x;
     y += offset_y;
