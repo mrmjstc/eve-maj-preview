@@ -322,7 +322,6 @@ pub const Painter = struct {
     focus_event_hook: ?win32.HANDLE = null,
     destroy_event_hook: ?win32.HANDLE = null,
     hide_debounce_timer_hwnd: ?win32.HWND = null,
-    window_manager: manager_mod.WindowManager,
     /// One cache slot per FontSlot, so resolving one font never evicts a handle still in use by another.
     cached_fonts: [8]FontCacheEntry = .{ .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{} },
     /// Non-null when viewMode == .ClientList; owns the compact list panel window.
@@ -420,7 +419,6 @@ pub const Painter = struct {
             .text_hwnd_to_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
             .instance = instance,
             .config = cfg,
-            .window_manager = manager_mod.WindowManager.init(),
         };
 
         try painter.registerWindowClass();
@@ -487,10 +485,6 @@ pub const Painter = struct {
         if (self.notif_info_window) |*niw| {
             niw.deinit();
             self.notif_info_window = null;
-        }
-
-        if (main_mod.g_timer_hwnd) |timer_hwnd| {
-            self.window_manager.cancelAutoMinimizeTimer(timer_hwnd);
         }
 
         for (&self.cached_fonts) |*entry| {
@@ -885,11 +879,40 @@ pub const Painter = struct {
         return scout_ptr.getWindows();
     }
 
-    /// Minimize all inactive windows (called when auto-minimize timer fires)
-    pub fn minimizeInactiveWindows(self: *Painter, timer_owner_hwnd: win32.HWND) void {
-        self.window_manager.cancelAutoMinimizeTimer(timer_owner_hwnd);
-        const eve_windows = getEveWindowsOrLog("minimize inactive windows") orelse return;
-        self.window_manager.minimizeInactiveWindows(eve_windows, self.config);
+    /// Minimizes each inactive EVE window `autoMinimize.delayMs` after it individually went inactive, per thumbnail.state_change_time; call once per tick.
+    fn checkAutoMinimize(self: *Painter) void {
+        if (!self.config.autoMinimize.enabled) return;
+        if (self.thumbnails.items.len == 0) return;
+
+        const now = std.time.milliTimestamp();
+        const delay_ms: i64 = self.config.autoMinimize.delayMs;
+        var minimized_any = false;
+
+        for (self.thumbnails.items) |*thumbnail| {
+            const base_state = if (thumbnail.current_state == .Alert)
+                (thumbnail.pre_notification_state orelse thumbnail.current_state)
+            else
+                thumbnail.current_state;
+
+            if (base_state != .Inactive) continue;
+            if (now - thumbnail.state_change_time < delay_ms) continue;
+            if (self.config.isExcludedFromMinimize(thumbnail.character_name)) continue;
+            if (!win32.isWindow(thumbnail.source_hwnd)) continue;
+
+            _ = win32.ShowWindowAsync(thumbnail.source_hwnd, win32.SW_FORCEMINIMIZE);
+            minimized_any = true;
+            slog.info("Auto-minimized {s} (inactive {}ms)", .{ thumbnail.character_name, now - thumbnail.state_change_time });
+        }
+
+        if (minimized_any) {
+            for (self.thumbnails.items) |*thumbnail| {
+                if (thumbnail.current_state == .Active and win32.isWindow(thumbnail.source_hwnd)) {
+                    // Minimizing the other windows can transiently steal focus from the active one.
+                    input.forceSetForegroundWindow(thumbnail.source_hwnd);
+                    break;
+                }
+            }
+        }
     }
 
     /// Minimize all EVE client windows regardless of their current state (hotkey action).
@@ -1550,6 +1573,7 @@ pub const Painter = struct {
     pub fn update(self: *Painter, eve_windows: []const scout_mod.EveWindow, closed_windows: []const scout_mod.ClosedWindow, name_changes: []const scout_mod.NameChange) !void {
         self.cleanupClosedThumbnails(closed_windows);
         self.updateThumbnailStates();
+        self.checkAutoMinimize();
         self.applyNameChanges(name_changes, eve_windows);
         self.syncThumbnailTitles(eve_windows);
 
@@ -2125,6 +2149,7 @@ pub const Painter = struct {
                 .cached_active_border_override = cache_fields.active_border_override,
                 .cached_quick_group_label = strings.quick_group_label,
                 .current_state = initial.state,
+                .state_change_time = std.time.milliTimestamp(),
                 .visibility_state = initial.visibility,
                 .is_excluded_from_cycle = is_excluded,
                 .win32_enabled = false,
@@ -2255,6 +2280,7 @@ pub const Painter = struct {
             .cached_active_border_override = cache_fields.active_border_override,
             .cached_quick_group_label = strings.quick_group_label,
             .current_state = initial.state,
+            .state_change_time = std.time.milliTimestamp(),
             .visibility_state = initial.visibility,
             .is_excluded_from_cycle = is_excluded,
         };

@@ -39,7 +39,6 @@ var g_tray_icon: ?tray.TrayIcon = null;
 var g_update_checker: ?update.UpdateChecker = null;
 // Exported for other modules (mainly input.zig) to reach these without threading them through every call.
 pub var g_timer_hwnd: ?win32.HWND = null;
-pub var g_manager_ptr: ?*@import("manager.zig").WindowManager = null;
 pub var g_config_ptr: ?*config_mod.Config = null;
 pub var g_scout_ptr: ?*scout.Scout = null;
 
@@ -79,11 +78,6 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         win32.WM_TIMER => {
             if (wParam == TIMER_ID) {
                 onTimerTick();
-            } else if (wParam == 2) {
-                // Auto-minimize timer fired (ID 2)
-                if (g_painter) |painter_ptr| {
-                    painter_ptr.minimizeInactiveWindows(hwnd);
-                }
             }
             return 0;
         },
@@ -606,14 +600,12 @@ fn mainImpl() !void {
     painter.g_painter_ptr = g_painter;
     input.g_painter_ptr = g_painter;
 
-    // Export manager and config for direct access by input module
-    g_manager_ptr = &g_painter.?.window_manager;
+    // Export config for direct access by input module
     g_config_ptr = &g_config;
 
     defer {
         g_painter.?.deinit();
         g_allocator.destroy(g_painter.?);
-        g_manager_ptr = null;
         g_config_ptr = null;
     }
 
@@ -902,7 +894,6 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         g_painter = null;
         painter.g_painter_ptr = null;
         input.g_painter_ptr = null;
-        g_manager_ptr = null;
         g_config_ptr = null;
         slog.debug("Cleaned up painter", .{});
     }
@@ -942,7 +933,6 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     };
     painter.g_painter_ptr = g_painter;
     input.g_painter_ptr = g_painter;
-    g_manager_ptr = &g_painter.?.window_manager;
     g_config_ptr = &g_config;
     slog.debug("Reinitialized painter", .{});
 

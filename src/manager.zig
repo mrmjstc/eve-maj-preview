@@ -2,86 +2,8 @@ const std = @import("std");
 const win32 = @import("win32.zig");
 const config_mod = @import("config.zig");
 const scout_mod = @import("scout.zig");
-const input = @import("input.zig");
 const log = @import("log.zig");
 const slog = log.scoped("manager");
-
-/// Owns timer state for the auto-minimize feature.
-pub const WindowManager = struct {
-    /// 0 means no active timer.
-    minimize_timer_id: usize = 0,
-    /// Window that should not be minimized when the timer fires.
-    hwnd_to_activate: ?win32.HWND = null,
-
-    pub fn init() WindowManager {
-        return .{};
-    }
-
-    pub fn startAutoMinimizeTimer(
-        self: *WindowManager,
-        hwnd_to_keep: win32.HWND,
-        timer_owner_hwnd: win32.HWND,
-        config: *const config_mod.Config,
-    ) void {
-        if (!config.autoMinimize.enabled) return;
-
-        if (self.minimize_timer_id != 0) {
-            _ = win32.KillTimer(timer_owner_hwnd, self.minimize_timer_id);
-            self.minimize_timer_id = 0;
-        }
-
-        self.hwnd_to_activate = hwnd_to_keep;
-
-        // Timer ID 1 is reserved for the main loop, so use 2 here.
-        const timer_id: usize = 2;
-        self.minimize_timer_id = win32.SetTimer(
-            timer_owner_hwnd,
-            timer_id,
-            config.autoMinimize.delayMs,
-            null,
-        );
-
-        if (self.minimize_timer_id == 0) {
-            slog.err("Failed to start auto-minimize timer", .{});
-        }
-    }
-
-    /// Minimize all inactive windows (called when auto-minimize timer fires); caller must have already cancelled the timer.
-    pub fn minimizeInactiveWindows(
-        self: *WindowManager,
-        eve_windows: []const scout_mod.EveWindow,
-        config: *const config_mod.Config,
-    ) void {
-        const hwnd_to_keep = self.hwnd_to_activate orelse return;
-
-        var minimized_count: usize = 0;
-        for (eve_windows) |eve_window| {
-            if (eve_window.hwnd == hwnd_to_keep) continue;
-            if (!win32.isWindow(eve_window.hwnd)) continue;
-            if (config.isExcludedFromMinimize(eve_window.character_name)) {
-                continue;
-            }
-
-            _ = win32.ShowWindowAsync(eve_window.hwnd, win32.SW_FORCEMINIMIZE);
-            minimized_count += 1;
-        }
-
-        if (minimized_count > 0) {
-            slog.info("Auto-minimized {} inactive window(s)", .{minimized_count});
-            // Batch-minimizing other windows can transiently steal focus.
-            if (win32.isWindow(hwnd_to_keep)) input.forceSetForegroundWindow(hwnd_to_keep);
-        }
-
-        self.hwnd_to_activate = null;
-    }
-
-    pub fn cancelAutoMinimizeTimer(self: *WindowManager, timer_owner_hwnd: win32.HWND) void {
-        if (self.minimize_timer_id != 0) {
-            _ = win32.KillTimer(timer_owner_hwnd, self.minimize_timer_id);
-            self.minimize_timer_id = 0;
-        }
-    }
-};
 
 /// Minimize all EVE client windows (hotkey action), regardless of their current state
 pub fn minimizeAllClients(eve_windows: []const scout_mod.EveWindow) void {

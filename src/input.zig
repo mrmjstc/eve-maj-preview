@@ -173,14 +173,6 @@ fn handleThumbnailClickWithAnimation(source_hwnd: win32.HWND, animation_style: t
     }
 
     updateHotkeyCyclePosition(source_hwnd);
-
-    if (main_mod.g_manager_ptr) |manager| {
-        if (main_mod.g_config_ptr) |cfg| {
-            if (main_mod.g_timer_hwnd) |timer_hwnd| {
-                manager.startAutoMinimizeTimer(source_hwnd, timer_hwnd, cfg);
-            }
-        }
-    }
 }
 
 var g_hotkey_tracked: std.AutoHashMap(u32, bool) = undefined;
@@ -293,8 +285,7 @@ pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
         thumbnail.is_excluded_from_cycle = hotkey_manager.isCharacterExcluded(char_name);
 
         if (thumbnail.is_excluded_from_cycle and painter.config.exclusion.autoMinimizeExcluded) {
-            // SW_FORCEMINIMIZE
-            _ = win32.ShowWindowAsync(source_hwnd, 11);
+            _ = win32.ShowWindowAsync(source_hwnd, win32.SW_FORCEMINIMIZE);
         }
 
         const notification_text = if (thumbnail.is_excluded_from_cycle) "Excluded" else "Included";
