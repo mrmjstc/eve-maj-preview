@@ -68,11 +68,10 @@ pub const CombatWindow = struct {
         }
     }
 
-    /// Fires when incoming damage has landed since the last alert, debounced to at most once per `repeat_ms`; stays silent once combat stops instead of repeating on a timer.
-    pub fn checkDamageAlert(self: *CombatWindow, now_ms: i64, repeat_ms: i64) bool {
+    /// Fires when incoming damage has landed since the last alert; repeat-rate is the Notifications tab's throttle, not this. Stays silent once combat stops instead of repeating on a timer.
+    pub fn checkDamageAlert(self: *CombatWindow, now_ms: i64) bool {
         if (self.last_incoming_hit_ms == 0) return false;
         if (self.last_incoming_hit_ms <= self.last_damage_alert_ms) return false;
-        if (self.last_damage_alert_ms != 0 and now_ms - self.last_damage_alert_ms < repeat_ms) return false;
         self.last_damage_alert_ms = now_ms;
         return true;
     }
@@ -239,11 +238,11 @@ pub const CombatTracker = struct {
     }
 
     /// See CombatWindow.checkDamageAlert. Returns false if character_name has no window yet.
-    pub fn checkDamageAlert(self: *CombatTracker, character_name: []const u8, now_ms: i64, repeat_ms: i64) bool {
+    pub fn checkDamageAlert(self: *CombatTracker, character_name: []const u8, now_ms: i64) bool {
         self.base.mutex.lock();
         defer self.base.mutex.unlock();
         const window = self.base.windows.getPtr(character_name) orelse return false;
-        return window.checkDamageAlert(now_ms, repeat_ms);
+        return window.checkDamageAlert(now_ms);
     }
 };
 

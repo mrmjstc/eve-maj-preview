@@ -314,13 +314,10 @@ fn pushDpsUpdate(tracker: *activity_mod.CombatTracker, painter_ptr: *painter.Pai
 
     painter_ptr.updateDpsForCharacter(eve_window.hwnd, dps.incoming, dps.outgoing);
 
-    if (g_config.combat.damage_alert_enabled) {
-        const repeat_ms: i64 = @as(i64, g_config.combat.damage_alert_repeat_seconds) * std.time.ms_per_s;
-        if (tracker.checkDamageAlert(eve_window.character_name, now_ms, repeat_ms)) {
-            painter_ptr.showNotification(eve_window.hwnd, "Taking damage", .TakingDamage) catch |err| {
-                slog.warn("Failed to show taking-damage notification: {}", .{err});
-            };
-        }
+    if (tracker.checkDamageAlert(eve_window.character_name, now_ms)) {
+        painter_ptr.showNotification(eve_window.hwnd, "Taking damage", .TakingDamage) catch |err| {
+            slog.warn("Failed to show taking-damage notification: {}", .{err});
+        };
     }
 }
 
@@ -330,22 +327,18 @@ fn pushMiningUpdate(tracker: *activity_mod.MiningTracker, painter_ptr: *painter.
 
     painter_ptr.updateMiningForCharacter(eve_window.hwnd, rate, isk_rate);
 
-    if (g_config.mining.idle_alert_enabled) {
-        const alert_window_ms: i64 = @as(i64, g_config.mining.idle_alert_window_seconds) * std.time.ms_per_s;
-        if (tracker.checkIdleAlert(eve_window.character_name, now_ms, alert_window_ms, g_config.mining.idle_alert_threshold)) {
-            painter_ptr.showNotification(eve_window.hwnd, "Laser idle", .MiningIdle) catch |err| {
-                slog.warn("Failed to show mining idle notification: {}", .{err});
-            };
-        }
+    const alert_window_ms: i64 = @as(i64, g_config.mining.idle_alert_window_seconds) * std.time.ms_per_s;
+    if (tracker.checkIdleAlert(eve_window.character_name, now_ms, alert_window_ms, g_config.mining.idle_alert_threshold)) {
+        painter_ptr.showNotification(eve_window.hwnd, "Laser idle", .MiningIdle) catch |err| {
+            slog.warn("Failed to show mining idle notification: {}", .{err});
+        };
     }
 
-    if (g_config.mining.stopped_alert_enabled) {
-        const stopped_window_ms: i64 = @as(i64, g_config.mining.stopped_alert_window_seconds) * std.time.ms_per_s;
-        if (tracker.checkStoppedAlert(eve_window.character_name, now_ms, stopped_window_ms)) {
-            painter_ptr.showNotification(eve_window.hwnd, "Mining stopped", .MiningStopped) catch |err| {
-                slog.warn("Failed to show mining stopped notification: {}", .{err});
-            };
-        }
+    const stopped_window_ms: i64 = @as(i64, g_config.mining.stopped_alert_window_seconds) * std.time.ms_per_s;
+    if (tracker.checkStoppedAlert(eve_window.character_name, now_ms, stopped_window_ms)) {
+        painter_ptr.showNotification(eve_window.hwnd, "Mining stopped", .MiningStopped) catch |err| {
+            slog.warn("Failed to show mining stopped notification: {}", .{err});
+        };
     }
 }
 
@@ -548,7 +541,8 @@ fn mainImpl() !void {
     g_config = try config_mod.Config.loadProfile(g_allocator, profile_name);
     defer g_config.deinit();
 
-    try g_global_settings.updateLastUsed(profile_name);
+    // Not profile_name: loadProfile() may have fallen back to default, and this heals global settings to match.
+    try g_global_settings.updateLastUsed(g_config.profile_name);
 
     g_config.logSettings();
 
@@ -951,7 +945,8 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
 
             const eve_windows = scout_ptr.getWindows();
             for (eve_windows) |eve_window| {
-                const initial_system_name = last_known_systems.get(eve_window.hwnd) orelse "";
+                // Only if monitoring stays on to refresh it, or a stale name would freeze on screen forever.
+                const initial_system_name = if (g_config.chatlog.enabled) (last_known_systems.get(eve_window.hwnd) orelse "") else "";
                 g_painter.?.createThumbnail(&eve_window, initial_system_name) catch |err| {
                     slog.err("Failed to create thumbnail for {s}: {}", .{ eve_window.character_name, err });
                 };

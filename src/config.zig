@@ -942,8 +942,6 @@ pub const CombatConfig = struct {
     incoming_offset_y: i32 = 0,
     outgoing_offset_x: i32 = 0,
     outgoing_offset_y: i32 = 0,
-    damage_alert_enabled: bool = false,
-    damage_alert_repeat_seconds: u32 = 10,
     // Comma-separated, case-insensitive substring match against the parsed weapon name (see activity_tracker.parseCombatLine/isWeaponExcluded); matching hits still count toward DPS stats, just don't retrigger the Taking Damage alert.
     damage_alert_excluded_weapons: []const u8 = "",
 
@@ -953,8 +951,6 @@ pub const CombatConfig = struct {
     pub const FONT_SIZE_MAX: i32 = 72;
     pub const UPDATE_INTERVAL_MS_MIN: u32 = 100;
     pub const UPDATE_INTERVAL_MS_MAX: u32 = 60000;
-    pub const DAMAGE_ALERT_REPEAT_SECONDS_MIN: u32 = 1;
-    pub const DAMAGE_ALERT_REPEAT_SECONDS_MAX: u32 = 3600;
     pub const OFFSET_MIN: i32 = -50;
     pub const OFFSET_MAX: i32 = 50;
 
@@ -967,8 +963,6 @@ pub const CombatConfig = struct {
         if (self.outgoing_font_size > FONT_SIZE_MAX) self.outgoing_font_size = FONT_SIZE_MAX;
         if (self.update_interval_ms < UPDATE_INTERVAL_MS_MIN) self.update_interval_ms = UPDATE_INTERVAL_MS_MIN;
         if (self.update_interval_ms > UPDATE_INTERVAL_MS_MAX) self.update_interval_ms = UPDATE_INTERVAL_MS_MAX;
-        if (self.damage_alert_repeat_seconds == 0) self.damage_alert_repeat_seconds = 1;
-        if (self.damage_alert_repeat_seconds > DAMAGE_ALERT_REPEAT_SECONDS_MAX) self.damage_alert_repeat_seconds = DAMAGE_ALERT_REPEAT_SECONDS_MAX;
 
         if (self.incoming_offset_x < OFFSET_MIN) self.incoming_offset_x = OFFSET_MIN;
         if (self.incoming_offset_x > OFFSET_MAX) self.incoming_offset_x = OFFSET_MAX;
@@ -1012,8 +1006,6 @@ pub const CombatConfig = struct {
         incoming_offset_y: i32 = (CombatConfig{}).incoming_offset_y,
         outgoing_offset_x: i32 = (CombatConfig{}).outgoing_offset_x,
         outgoing_offset_y: i32 = (CombatConfig{}).outgoing_offset_y,
-        damage_alert_enabled: bool = (CombatConfig{}).damage_alert_enabled,
-        damage_alert_repeat_seconds: u32 = (CombatConfig{}).damage_alert_repeat_seconds,
         damage_alert_excluded_weapons: []const u8 = (CombatConfig{}).damage_alert_excluded_weapons,
     };
 
@@ -1040,8 +1032,6 @@ pub const CombatConfig = struct {
             .incoming_offset_y = self.incoming_offset_y,
             .outgoing_offset_x = self.outgoing_offset_x,
             .outgoing_offset_y = self.outgoing_offset_y,
-            .damage_alert_enabled = self.damage_alert_enabled,
-            .damage_alert_repeat_seconds = self.damage_alert_repeat_seconds,
             .damage_alert_excluded_weapons = self.damage_alert_excluded_weapons,
         };
     }
@@ -1076,8 +1066,6 @@ pub const CombatConfig = struct {
             .incoming_offset_y = w.incoming_offset_y,
             .outgoing_offset_x = w.outgoing_offset_x,
             .outgoing_offset_y = w.outgoing_offset_y,
-            .damage_alert_enabled = w.damage_alert_enabled,
-            .damage_alert_repeat_seconds = w.damage_alert_repeat_seconds,
             .damage_alert_excluded_weapons = damage_alert_excluded_weapons,
         };
     }
@@ -1097,10 +1085,8 @@ pub const MiningConfig = struct {
     position: types.TextPosition = .BottomRight,
     offset_x: i32 = 0,
     offset_y: i32 = 0,
-    idle_alert_enabled: bool = false,
     idle_alert_window_seconds: u32 = 30,
     idle_alert_threshold: u32 = 1,
-    stopped_alert_enabled: bool = false,
     stopped_alert_window_seconds: u32 = 60,
     show_isk_rate: bool = true,
     isk_rate_unit: IskRateUnit = .hour,
@@ -1156,10 +1142,8 @@ pub const MiningConfig = struct {
         position: types.TextPosition = (MiningConfig{}).position,
         offset_x: i32 = (MiningConfig{}).offset_x,
         offset_y: i32 = (MiningConfig{}).offset_y,
-        idle_alert_enabled: bool = (MiningConfig{}).idle_alert_enabled,
         idle_alert_window_seconds: u32 = (MiningConfig{}).idle_alert_window_seconds,
         idle_alert_threshold: u32 = (MiningConfig{}).idle_alert_threshold,
-        stopped_alert_enabled: bool = (MiningConfig{}).stopped_alert_enabled,
         stopped_alert_window_seconds: u32 = (MiningConfig{}).stopped_alert_window_seconds,
         show_isk_rate: bool = (MiningConfig{}).show_isk_rate,
         isk_rate_unit: IskRateUnit = (MiningConfig{}).isk_rate_unit,
@@ -1178,10 +1162,8 @@ pub const MiningConfig = struct {
             .position = self.position,
             .offset_x = self.offset_x,
             .offset_y = self.offset_y,
-            .idle_alert_enabled = self.idle_alert_enabled,
             .idle_alert_window_seconds = self.idle_alert_window_seconds,
             .idle_alert_threshold = self.idle_alert_threshold,
-            .stopped_alert_enabled = self.stopped_alert_enabled,
             .stopped_alert_window_seconds = self.stopped_alert_window_seconds,
             .show_isk_rate = self.show_isk_rate,
             .isk_rate_unit = self.isk_rate_unit,
@@ -1201,10 +1183,8 @@ pub const MiningConfig = struct {
             .position = w.position,
             .offset_x = w.offset_x,
             .offset_y = w.offset_y,
-            .idle_alert_enabled = w.idle_alert_enabled,
             .idle_alert_window_seconds = w.idle_alert_window_seconds,
             .idle_alert_threshold = w.idle_alert_threshold,
-            .stopped_alert_enabled = w.stopped_alert_enabled,
             .stopped_alert_window_seconds = w.stopped_alert_window_seconds,
             .show_isk_rate = w.show_isk_rate,
             .isk_rate_unit = w.isk_rate_unit,
@@ -3159,7 +3139,14 @@ pub const Config = struct {
         defer allocator.free(profile_path);
 
         slog.info("Loading JSON config from: {s}", .{profile_path});
-        return loadProfileFromJson(allocator, profile_path, profile_name);
+        return loadProfileFromJson(allocator, profile_path, profile_name) catch |err| {
+            // ensureProfilesDir() above guarantees DEFAULT_PROFILE exists, so this can't recurse forever.
+            if (err == error.FileNotFound and !std.mem.eql(u8, profile_name, DEFAULT_PROFILE)) {
+                slog.warn("Profile '{s}' not found, falling back to default profile", .{profile_name});
+                return loadProfile(allocator, DEFAULT_PROFILE);
+            }
+            return err;
+        };
     }
 
     pub fn load(allocator: std.mem.Allocator) !Config {
@@ -3572,7 +3559,6 @@ pub const Config = struct {
 
             .@"combat.window_seconds" = Range{ .min = CombatConfig.WINDOW_SECONDS_MIN, .max = CombatConfig.WINDOW_SECONDS_MAX },
             .@"combat.update_interval_ms" = Range{ .min = CombatConfig.UPDATE_INTERVAL_MS_MIN, .max = CombatConfig.UPDATE_INTERVAL_MS_MAX },
-            .@"combat.damage_alert_repeat_seconds" = Range{ .min = CombatConfig.DAMAGE_ALERT_REPEAT_SECONDS_MIN, .max = CombatConfig.DAMAGE_ALERT_REPEAT_SECONDS_MAX },
             .@"combat.incoming_font_size" = Range{ .min = CombatConfig.FONT_SIZE_MIN, .max = CombatConfig.FONT_SIZE_MAX },
             .@"combat.outgoing_font_size" = Range{ .min = CombatConfig.FONT_SIZE_MIN, .max = CombatConfig.FONT_SIZE_MAX },
             .@"combat.incoming_offset_x" = Range{ .min = CombatConfig.OFFSET_MIN, .max = CombatConfig.OFFSET_MAX },

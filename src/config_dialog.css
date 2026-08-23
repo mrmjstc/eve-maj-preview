@@ -1120,6 +1120,128 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     gap: 20px;
 }
 
+/* Overlay Text tab: drag-to-position Layout Preview, replaces raw offset sliders */
+#overlayLayoutStage {
+    position: relative;
+    width: 100%;
+    max-width: 540px;
+    margin: 0 auto;
+    aspect-ratio: 4 / 3;
+    background-color: #050505;
+    background-image: url('http://i.mjst.cc/gSQie1O0wp.png');
+    background-size: cover;
+    background-position: center;
+    border: 1px solid #888888;
+    overflow: hidden;
+}
+
+.overlay-chip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: #000000;
+    background-color: #ffffff;
+    border: 1px solid #888888;
+    padding: 5px 10px;
+    white-space: nowrap;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.overlay-chip:focus-visible {
+    outline: 2px solid var(--color-success);
+    outline-offset: 1px;
+}
+
+.overlay-chip.dragging {
+    cursor: grabbing;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.7);
+    z-index: 2;
+}
+
+.overlay-chip.settling {
+    transition: left 0.15s ease-out, top 0.15s ease-out;
+}
+
+.overlay-chip.clamped {
+    box-shadow: 0 0 8px rgba(var(--color-warning-rgb), 0.6);
+}
+
+/* Offset resets to 0 while this glow shows - magnetically snapped to the anchor. */
+.overlay-chip.snapped {
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.9);
+}
+
+.overlay-chip.dim {
+    opacity: 0.55;
+}
+
+/* Shown while a dragged chip aligns with another chip's edge/center. */
+.overlay-guide {
+    position: absolute;
+    background-color: var(--color-success);
+    opacity: 0.7;
+    pointer-events: none;
+    display: none;
+    z-index: 1;
+}
+
+.overlay-guide-x {
+    top: 0;
+    bottom: 0;
+    width: 1px;
+}
+
+.overlay-guide-y {
+    left: 0;
+    right: 0;
+    height: 1px;
+}
+
+.overlay-popover {
+    position: fixed;
+    z-index: 500;
+    background-color: #0f0f0f;
+    border: 1px solid #888888;
+    padding: 10px 12px;
+    min-width: 220px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.overlay-popover-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-weight: 700;
+}
+
+.overlay-popover-header button {
+    background: none;
+    border: none;
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 4px;
+    width: auto;
+}
+
+.overlay-popover-field {
+    margin-bottom: 8px;
+}
+
+.overlay-popover-field:last-child {
+    margin-bottom: 0;
+}
+
+.overlay-popover-field label {
+    margin-top: 0;
+}
+
 /* Grid for two-column key binding layouts */
 .key-bindings {
     display: grid;
