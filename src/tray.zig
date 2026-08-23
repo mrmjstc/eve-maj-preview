@@ -187,12 +187,13 @@ pub const TrayIcon = struct {
         const visibility_flags: u32 = if (config.display.viewMode == .Nothing)
             win32.MF_STRING | win32.MF_GRAYED
         else if (painter) |p| blk: {
-            // Check if thumbnails are currently visible (check first thumbnail)
-            const is_visible = if (p.thumbnails.items.len > 0)
-                p.thumbnails.items[0].visibility_state == .Visible
-            else
-                // No thumbnails: default to visible state.
-                true;
+            // Check if thumbnails are currently visible (check first real thumbnail, skipping the config dialog's simulated preview).
+            var is_visible = true;
+            for (p.thumbnails.items) |t| {
+                if (t.is_preview) continue;
+                is_visible = t.visibility_state == .Visible;
+                break;
+            }
             break :blk if (is_visible) win32.MF_STRING | win32.MF_CHECKED else win32.MF_STRING;
         } else win32.MF_STRING;
         _ = win32.AppendMenuA(menu, visibility_flags, win32.IDM_TOGGLE_VISIBILITY, "Show Thumbnails");

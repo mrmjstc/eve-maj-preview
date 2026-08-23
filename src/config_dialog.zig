@@ -140,6 +140,7 @@ pub fn main() !void {
     _ = try win.bind("saveGlobalSettings", saveGlobalSettings);
     _ = try win.bind("fetchOrePrices", fetchOrePrices);
     _ = try win.bind("previewThumbnailConfig", previewThumbnailConfig);
+    _ = try win.bind("togglePreviewThumbnail", togglePreviewThumbnail);
     _ = try win.bind("suspendHotkeysForRecording", suspendHotkeysForRecording);
     _ = try win.bind("resumeHotkeysAfterRecording", resumeHotkeysAfterRecording);
     _ = try win.bind("switchProfileLive", switchProfileLive);
@@ -241,6 +242,7 @@ fn loadLastUsedProfile(allocator: std.mem.Allocator) ![]const u8 {
 fn closeDialog(e: *webui.Event) void {
     slog.debug("Close dialog requested", .{});
     revertThumbnailPreviewInMainApp();
+    destroySimulatedPreviewIfActive();
     // Safety net: ensure hotkeys aren't left suspended if the dialog closes mid-recording.
     if (findMainAppWindow()) |hwnd| {
         protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogResumeHotkeys = {} });
@@ -425,6 +427,35 @@ fn revertThumbnailPreviewInMainApp() void {
     if (findMainAppWindow()) |hwnd| {
         protocol.sendCommandToInstance(hwnd, protocol.Command{ .RevertPreview = {} });
     }
+}
+
+// A real, draggable thumbnail against fake "Preview Pilot" data, rendered by the running main app
+// using its own real Painter (real window classes, real WndProcs, real message loop) - not a
+// second rendering path inside config.exe. Requires eve-maj-preview.exe to be running, same as
+// previewThumbnailConfig()/PreviewThumbnail above; SendMessageA's WM_COPYDATA is synchronous, so
+// the LRESULT painter_ptr.toggleSimulatedThumbnail() returns comes straight back as the reply.
+fn sendSimulatedThumbnailCommand(dwData: usize) ?win32.LRESULT {
+    const hwnd = findMainAppWindow() orelse return null;
+    const cds = win32.COPYDATASTRUCT{
+        .dwData = dwData,
+        .cbData = 0,
+        .lpData = null,
+    };
+    return win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
+}
+
+/// Bound to the Thumbnails tab's "Live Preview" button.
+fn togglePreviewThumbnail(e: *webui.Event) void {
+    const result = sendSimulatedThumbnailCommand(win32.PROTOCOL_TOGGLE_SIMULATED_THUMBNAIL) orelse {
+        e.returnString("{\"active\": false, \"error\": \"Main app is not running\"}");
+        return;
+    };
+    e.returnString(if (result != 0) "{\"active\": true}" else "{\"active\": false}");
+}
+
+/// Force-removes the simulated preview thumbnail if the main app has one; called on dialog close so toggling it on doesn't leave it stuck until the app restarts. A no-op (not an error) if the main app isn't running.
+fn destroySimulatedPreviewIfActive() void {
+    _ = sendSimulatedThumbnailCommand(win32.PROTOCOL_DESTROY_SIMULATED_THUMBNAIL);
 }
 
 /// Suspend the main app's global hotkeys during a Record capture so a bound key (e.g. cycle-client) doesn't fire while just being captured; called by config_dialog.js's recordHotkey().

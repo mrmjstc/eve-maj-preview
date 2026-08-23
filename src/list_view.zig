@@ -472,10 +472,10 @@ pub const ListWindow = struct {
     pub fn render(self: *ListWindow, all_thumbnails: []const ThumbnailWindow) !void {
         self.ensureFont();
 
-        // Drop per-character hidden entries entirely so they don't leave a blank row.
+        // Drop per-character hidden entries and the config dialog's simulated preview thumbnail entirely so they don't leave a blank/stray row.
         self.visible_thumbnails.clearRetainingCapacity();
         for (all_thumbnails) |t| {
-            if (!self.config.isThumbnailHidden(t.character_name)) {
+            if (!t.is_preview and !self.config.isThumbnailHidden(t.character_name)) {
                 try self.visible_thumbnails.append(self.allocator, t);
             }
         }

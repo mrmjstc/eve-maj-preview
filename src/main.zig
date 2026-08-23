@@ -159,6 +159,21 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
                         manager.dialogResumeHotkeys(hwnd);
                     }
                 },
+                win32.PROTOCOL_TOGGLE_SIMULATED_THUMBNAIL => {
+                    if (g_painter) |painter_ptr| {
+                        const active = painter_ptr.toggleSimulatedThumbnail() catch |err| blk: {
+                            slog.err("Failed to toggle simulated preview thumbnail: {}", .{err});
+                            break :blk false;
+                        };
+                        return if (active) 1 else 0;
+                    }
+                    return 0;
+                },
+                win32.PROTOCOL_DESTROY_SIMULATED_THUMBNAIL => {
+                    if (g_painter) |painter_ptr| {
+                        painter_ptr.destroySimulatedThumbnail();
+                    }
+                },
                 else => {},
             }
             return 0;

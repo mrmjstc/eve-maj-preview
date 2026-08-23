@@ -755,6 +755,19 @@ button:active {
     box-shadow: 0 0 10px rgba(255, 68, 68, 0.4);
 }
 
+.button-preview-active {
+    color: var(--color-success);
+    border-color: var(--color-success);
+    background: rgba(var(--color-success-rgb), 0.1);
+}
+
+.button-preview-active:hover {
+    background-color: #1a1a1a;
+    color: var(--color-success);
+    border-color: var(--color-success);
+    box-shadow: 0 0 10px rgba(var(--color-success-rgb), 0.4);
+}
+
 /* Fixed footer */
 /* Profile Header */
 #profile-header {

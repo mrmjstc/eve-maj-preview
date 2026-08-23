@@ -773,12 +773,36 @@ function buildCharacterOverridesPreviewPatch(includePositions = false) {
 async function sendThumbnailPreview(includePositions = false) {
     if (typeof webui === 'undefined' || !webuiReady || !currentConfig) return;
     // Never push a preview onto a profile the dialog hasn't confirmed is actually running - see switchProfile()'s live-switch modal.
+    // This also covers the simulated preview thumbnail: it's a real thumbnail in the running app's
+    // own list, so it rides along on this same patch instead of needing a call of its own.
     if (!dialogEditingProfile || dialogEditingProfile !== liveConfirmedProfile) return;
     try {
         await webui.call('previewThumbnailConfig', JSON.stringify(buildThumbnailPreviewPatch(includePositions)));
     } catch (error) {
         logWarn('Failed to send thumbnail preview:', error);
     }
+}
+
+let simulatedPreviewActive = false;
+
+async function toggleSimulatedPreview() {
+    if (typeof webui === 'undefined' || !webuiReady) return;
+    try {
+        const data = JSON.parse(await webui.call('togglePreviewThumbnail'));
+        simulatedPreviewActive = !!data.active;
+        updateSimulatedPreviewButton();
+        if (data.error) logWarn('Simulated preview:', data.error);
+        if (simulatedPreviewActive) await sendThumbnailPreview();
+    } catch (error) {
+        logWarn('Failed to toggle simulated preview:', error);
+    }
+}
+
+function updateSimulatedPreviewButton() {
+    const btn = document.getElementById('simulatedPreviewToggle');
+    if (!btn) return;
+    btn.classList.toggle('button-preview-active', simulatedPreviewActive);
+    btn.textContent = t(simulatedPreviewActive ? 'button.simulatedPreviewToggle.labelOn' : 'button.simulatedPreviewToggle.labelOff');
 }
 
 function setupThumbnailPreview() {

@@ -191,6 +191,10 @@ pub const ThumbnailWindow = struct {
     is_excluded_from_cycle: bool = false,
     needs_render: bool = false,
     win32_enabled: bool = true,
+    // The config dialog's simulated preview thumbnail: a real window, drawn with the real code, but
+    // backed by no actual EVE process. Excluded from position-saving, hideWhenNoEveFocus, tray icon
+    // state, and the ClientList panel; see the call sites gated on this flag for why each matters.
+    is_preview: bool = false,
 
     // Null means not enough span yet to trust a rate (see activity_tracker.zig).
     last_incoming_dps: ?f32 = null,
@@ -607,42 +611,7 @@ pub const Painter = struct {
     pub fn renderThumbnail(self: *const Painter, thumbnail: *ThumbnailWindow) !void {
         // ClientList mode renders via ListWindow.render() instead; Nothing mode renders nothing
         if (!thumbnail.win32_enabled) return;
-        const settings = createRenderSettings(self.config, thumbnail);
-
-        if (thumbnail.cached_render_settings) |cached| {
-            if (renderSettingsEqual(cached, settings)) {
-                return;
-            }
-
-            // Only visibility changed? Just show/hide windows without re-rendering
-            if (renderSettingsOnlyVisibilityChanged(cached, settings)) {
-                if (settings.show_thumbnail) {
-                    _ = win32.ShowWindow(thumbnail.hwnd, win32.SW_SHOW);
-                    _ = win32.ShowWindow(thumbnail.text_hwnd, win32.SW_SHOW);
-                } else {
-                    _ = win32.ShowWindow(thumbnail.hwnd, win32.SW_HIDE);
-                    _ = win32.ShowWindow(thumbnail.text_hwnd, win32.SW_HIDE);
-                }
-                thumbnail.cached_render_settings = settings;
-                return;
-            }
-        }
-
-        if (settings.show_thumbnail) {
-            _ = win32.ShowWindow(thumbnail.hwnd, win32.SW_SHOW);
-            _ = win32.ShowWindow(thumbnail.text_hwnd, win32.SW_SHOW);
-
-            try renderThumbnailOverlay(
-                thumbnail,
-                settings,
-                self.config,
-            );
-        } else {
-            _ = win32.ShowWindow(thumbnail.hwnd, win32.SW_HIDE);
-            _ = win32.ShowWindow(thumbnail.text_hwnd, win32.SW_HIDE);
-        }
-
-        thumbnail.cached_render_settings = settings;
+        try renderThumbnailStandalone(thumbnail, self.config);
     }
 
     /// renderThumbnail, logging (not propagating) a failure with context folded into the message.
@@ -1238,7 +1207,9 @@ pub const Painter = struct {
         for (self.thumbnails.items) |*thumbnail| {
             if (!thumbnail.win32_enabled) continue;
 
-            if (self.config.thumbnail.hideWhenNoEveFocus and !any_eve_has_focus) {
+            // The simulated preview is meant to stay visible while the config dialog (which steals
+            // EVE's focus) is open, so hideWhenNoEveFocus must never apply to it.
+            if (self.config.thumbnail.hideWhenNoEveFocus and !any_eve_has_focus and !thumbnail.is_preview) {
                 if (thumbnail.visibility_state == .Visible) thumbnail.setVisibility(.HiddenAutomatic);
             } else if (thumbnail.visibility_state == .HiddenAutomatic) {
                 thumbnail.setVisibility(.Visible);
@@ -2328,10 +2299,183 @@ pub const Painter = struct {
         slog.info("Created thumbnail for {s}", .{eve_window.character_name});
     }
 
+    fn findSimulatedThumbnailIndex(self: *const Painter) ?usize {
+        for (self.thumbnails.items, 0..) |t, i| {
+            if (t.is_preview) return i;
+        }
+        return null;
+    }
+
+    /// Toggled by the config dialog's "Live Preview" button (PROTOCOL_TOGGLE_SIMULATED_THUMBNAIL); creates or removes the fake "Preview Pilot" thumbnail. Returns whether it's now shown.
+    pub fn toggleSimulatedThumbnail(self: *Painter) !bool {
+        if (self.findSimulatedThumbnailIndex()) |index| {
+            self.destroySimulatedThumbnailAt(index);
+            return false;
+        }
+        try self.createSimulatedThumbnail();
+        return true;
+    }
+
+    /// Force-removes the simulated preview thumbnail if present; a no-op otherwise. Called when the config dialog closes (PROTOCOL_DESTROY_SIMULATED_THUMBNAIL), since leaving it toggled on would otherwise persist until the app restarts.
+    pub fn destroySimulatedThumbnail(self: *Painter) void {
+        if (self.findSimulatedThumbnailIndex()) |index| {
+            self.destroySimulatedThumbnailAt(index);
+        }
+    }
+
+    /// Builds a fake, always-populated pilot ("Preview Pilot" in "Jita") so every overlay element (border, name, system, quick-group badge, DPS/mining/bounty, a stacked notification) is visible at once. A real window, created via the same classes/WndProcs as a real thumbnail (so dragging, hover, and click-suppression all work normally) but never backed by DwmRegisterThumbnail, since there's no real game window behind it.
+    fn createSimulatedThumbnail(self: *Painter) !void {
+        if (self.findSimulatedThumbnailIndex() != null) return;
+
+        const char_name_z = "Preview Pilot";
+        const thumb_size = self.getThumbnailSize(char_name_z);
+        const cfg = &self.config.display;
+        const monitor_bounds = if (cfg.monitorIndex) |monitor_idx| getMonitorBounds(monitor_idx, cfg.useMonitorWorkArea) else null;
+        const pos = self.calculateThumbnailPosition(char_name_z, thumb_size.width, thumb_size.height, self.thumbnails.items.len, monitor_bounds);
+
+        const hwnd = win32.CreateWindowExA(
+            win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_LAYERED | win32.WS_EX_NOACTIVATE,
+            WINDOW_CLASS_NAME,
+            char_name_z,
+            win32.WS_POPUP | win32.WS_VISIBLE,
+            pos.x,
+            pos.y,
+            thumb_size.width,
+            thumb_size.height,
+            null,
+            null,
+            self.instance,
+            null,
+        ) orelse return error.CreateWindowFailed;
+
+        _ = win32.SetLayeredWindowAttributes(hwnd, 0, self.config.thumbnail.thumbnailOpacity, win32.LWA_ALPHA);
+        _ = win32.ShowWindow(hwnd, win32.SW_SHOW);
+        _ = win32.UpdateWindow(hwnd);
+
+        const text_hwnd = win32.CreateWindowExA(
+            win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_NOACTIVATE,
+            TEXT_WINDOW_CLASS_NAME,
+            char_name_z,
+            win32.WS_POPUP,
+            pos.x,
+            pos.y,
+            thumb_size.width,
+            thumb_size.height,
+            null,
+            null,
+            self.instance,
+            null,
+        ) orelse {
+            _ = win32.DestroyWindow(hwnd);
+            return error.CreateTextWindowFailed;
+        };
+        errdefer {
+            _ = win32.DestroyWindow(text_hwnd);
+            _ = win32.DestroyWindow(hwnd);
+        }
+
+        const title = try self.allocator.dupe(u8, "Preview Pilot - EVE");
+        errdefer self.allocator.free(title);
+        const character_name = try self.allocator.dupe(u8, char_name_z);
+        errdefer self.allocator.free(character_name);
+        const system_name = try self.allocator.dupe(u8, "Jita");
+        errdefer self.allocator.free(system_name);
+        const quick_group_label = try self.allocator.dupe(u8, "1, 2");
+        errdefer self.allocator.free(quick_group_label);
+        const notif_text = try self.allocator.dupe(u8, "Fleet Invite from Fleet Commander");
+        errdefer self.allocator.free(notif_text);
+
+        const cache_fields = self.resolveThumbnailCacheFields(character_name, system_name);
+        const sentinel_thumb_id: win32.HTHUMBNAIL = @ptrFromInt(1);
+
+        var thumbnail = ThumbnailWindow{
+            .hwnd = hwnd,
+            .text_hwnd = text_hwnd,
+            .thumbnail_id = sentinel_thumb_id,
+            .source_hwnd = hwnd,
+            .title = title,
+            .character_name = character_name,
+            .system_name = system_name,
+            .cached_system_color = cache_fields.system_color,
+            .cached_character_color = cache_fields.character_color,
+            .cached_display_name = cache_fields.display_name,
+            .cached_active_border_override = cache_fields.active_border_override,
+            .cached_quick_group_label = quick_group_label,
+            .current_state = .Alert,
+            .pre_notification_state = .Active,
+            .state_change_time = std.time.milliTimestamp(),
+            .is_preview = true,
+            .has_dps_data = true,
+            .last_incoming_dps = 245.7,
+            .last_outgoing_dps = 312.4,
+            .has_mining_data = true,
+            .last_mining_rate = 850.0,
+            .last_mining_isk_rate = 1_250_000,
+            .has_bounty_data = true,
+            .last_bounty_isk_rate = 3_400_000,
+            .active_notifications = .{
+                ActiveNotification{
+                    .text = notif_text,
+                    .notification_type = .FleetInvite,
+                    .start_time = win32.GetTickCount64() -| 10_000,
+                    .duration_ms = 3_600_000,
+                    .suppress_when_focused = false,
+                    .suppress_when_clicked = false,
+                },
+                null,
+                null,
+            },
+        };
+        try self.renderThumbnail(&thumbnail);
+
+        _ = win32.SetPropA(hwnd, "SOURCE_HWND", hwnd);
+        _ = win32.SetPropA(text_hwnd, "SOURCE_HWND", hwnd);
+        _ = win32.SetWindowLongPtrA(hwnd, win32.GWLP_USERDATA, win32.hwndToUserData(text_hwnd));
+        _ = win32.SetWindowLongPtrA(text_hwnd, win32.GWLP_USERDATA, win32.hwndToUserData(hwnd));
+        _ = win32.SetWindowPos(text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, thumb_size.width, thumb_size.height, win32.SWP_NOACTIVATE);
+        _ = win32.ShowWindow(text_hwnd, win32.SW_SHOW);
+        _ = win32.UpdateWindow(text_hwnd);
+
+        try self.thumbnails.append(self.allocator, thumbnail);
+        const new_index = self.thumbnails.items.len - 1;
+        try self.hwnd_to_thumbnail_index.put(hwnd, new_index);
+        try self.thumbnail_hwnd_to_index.put(hwnd, new_index);
+        try self.text_hwnd_to_index.put(text_hwnd, new_index);
+
+        slog.info("Created simulated preview thumbnail", .{});
+    }
+
+    /// Mirrors destroyThumbnailResources's real-window cleanup, minus the DwmUnregisterThumbnail call - this entry's thumbnail_id is a sentinel, never a real DWM registration.
+    fn destroySimulatedThumbnailAt(self: *Painter, index: usize) void {
+        const thumbnail = self.thumbnails.items[index];
+
+        if (thumbnail.cached_overlay) |o| o.destroy();
+        _ = win32.DestroyWindow(thumbnail.text_hwnd);
+        _ = win32.DestroyWindow(thumbnail.hwnd);
+
+        self.allocator.free(thumbnail.title);
+        self.allocator.free(thumbnail.character_name);
+        self.allocator.free(thumbnail.system_name);
+        self.allocator.free(thumbnail.cached_quick_group_label);
+        for (thumbnail.active_notifications) |maybe_notif| {
+            if (maybe_notif) |notif| self.allocator.free(notif.text);
+        }
+
+        _ = self.hwnd_to_thumbnail_index.remove(thumbnail.hwnd);
+        _ = self.thumbnail_hwnd_to_index.remove(thumbnail.hwnd);
+        _ = self.text_hwnd_to_index.remove(thumbnail.text_hwnd);
+        _ = self.thumbnails.orderedRemove(index);
+        self.rebuildHwndIndex(true);
+
+        slog.info("Removed simulated preview thumbnail", .{});
+    }
+
     pub fn saveThumbnailPosition(self: *Painter, hwnd: win32.HWND) void {
         if (!win32.isWindow(hwnd)) return;
 
         const thumbnail = self.getThumbnailByOverlayHwnd(hwnd) orelse return;
+        // The simulated preview isn't a real character; never let it write a "Preview Pilot" entry into the saved profile.
+        if (thumbnail.is_preview) return;
 
         var rect: win32.RECT = undefined;
         _ = win32.GetWindowRect(hwnd, &rect);
@@ -2962,6 +3106,46 @@ fn renderText(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void 
     const text_len = @min(text.len, text_buffer.len - 1);
 
     _ = win32.TextOutA(dc, x + TEXT_PADDING_X, y + TEXT_PADDING_Y, &text_buffer, @intCast(text_len));
+}
+
+/// Renders one thumbnail's border/text overlay; the actual show/hide + diff-against-cache logic behind Painter.renderThumbnail.
+fn renderThumbnailStandalone(thumbnail: *ThumbnailWindow, config: *config_mod.Config) !void {
+    const settings = createRenderSettings(config, thumbnail);
+
+    if (thumbnail.cached_render_settings) |cached| {
+        if (Painter.renderSettingsEqual(cached, settings)) {
+            return;
+        }
+
+        // Only visibility changed? Just show/hide windows without re-rendering
+        if (Painter.renderSettingsOnlyVisibilityChanged(cached, settings)) {
+            if (settings.show_thumbnail) {
+                _ = win32.ShowWindow(thumbnail.hwnd, win32.SW_SHOW);
+                _ = win32.ShowWindow(thumbnail.text_hwnd, win32.SW_SHOW);
+            } else {
+                _ = win32.ShowWindow(thumbnail.hwnd, win32.SW_HIDE);
+                _ = win32.ShowWindow(thumbnail.text_hwnd, win32.SW_HIDE);
+            }
+            thumbnail.cached_render_settings = settings;
+            return;
+        }
+    }
+
+    if (settings.show_thumbnail) {
+        _ = win32.ShowWindow(thumbnail.hwnd, win32.SW_SHOW);
+        _ = win32.ShowWindow(thumbnail.text_hwnd, win32.SW_SHOW);
+
+        try renderThumbnailOverlay(
+            thumbnail,
+            settings,
+            config,
+        );
+    } else {
+        _ = win32.ShowWindow(thumbnail.hwnd, win32.SW_HIDE);
+        _ = win32.ShowWindow(thumbnail.text_hwnd, win32.SW_HIDE);
+    }
+
+    thumbnail.cached_render_settings = settings;
 }
 
 fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings, config: *const config_mod.Config) !void {

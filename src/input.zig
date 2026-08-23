@@ -405,10 +405,12 @@ fn endDrag(hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
         if (g_painter_ptr) |painter| {
             painter.hideGhostOverlay();
 
-            // Ctrl held during drag means all thumbnails moved together
+            // Ctrl held during drag means all thumbnails moved together; the simulated preview is
+            // never persisted (it isn't a real character, and it disappears once the dialog closes).
             const ctrl_pressed = win32.isCtrlPressed();
             if (ctrl_pressed) {
                 for (painter.thumbnails.items) |*saved_thumbnail| {
+                    if (saved_thumbnail.is_preview) continue;
                     painter.saveThumbnailPosition(saved_thumbnail.hwnd);
                 }
             } else {
@@ -718,9 +720,10 @@ fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: w
 
                     slog.debug("Hide debounce timer fired, hiding all thumbnails", .{});
 
-                    // Hide all thumbnails automatically (can be auto-shown when EVE gets focus)
+                    // Hide all thumbnails automatically (can be auto-shown when EVE gets focus); the config
+                    // dialog's simulated preview is exempt, same reasoning as refreshAllThumbnailVisuals.
                     for (painter.thumbnails.items) |*thumbnail| {
-                        if (thumbnail.visibility_state == .Visible) {
+                        if (thumbnail.visibility_state == .Visible and !thumbnail.is_preview) {
                             thumbnail.setVisibility(.HiddenAutomatic);
                             painter.renderThumbnail(thumbnail) catch |err| {
                                 slog.err("Failed to hide thumbnail: {}", .{err});
