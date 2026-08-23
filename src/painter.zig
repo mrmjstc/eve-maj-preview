@@ -525,21 +525,14 @@ pub const Painter = struct {
     fn renderSettingsVisualEqual(a: RenderSettings, b: RenderSettings) bool {
         return a.show_text == b.show_text and
             a.show_character_name == b.show_character_name and
-            (a.character_name.ptr == b.character_name.ptr and
-                a.character_name.len == b.character_name.len or
-                std.mem.eql(u8, a.character_name, b.character_name)) and
+            stringsEqualFast(a.character_name, b.character_name) and
             a.show_system_name == b.show_system_name and
-            (a.system_name.ptr == b.system_name.ptr and
-                a.system_name.len == b.system_name.len or
-                std.mem.eql(u8, a.system_name, b.system_name)) and
+            stringsEqualFast(a.system_name, b.system_name) and
             a.character_name_color == b.character_name_color and
             a.system_name_color == b.system_name_color and
             a.character_name_bg_color == b.character_name_bg_color and
             a.system_name_bg_color == b.system_name_bg_color and
-            // Pointer fast-path: config/notif-owned slices are pointer+len identical every tick when unchanged.
-            (a.character_name_font_name.ptr == b.character_name_font_name.ptr and
-                a.character_name_font_name.len == b.character_name_font_name.len or
-                std.mem.eql(u8, a.character_name_font_name, b.character_name_font_name)) and
+            stringsEqualFast(a.character_name_font_name, b.character_name_font_name) and
             a.character_name_font_size == b.character_name_font_size and
             a.character_name_font_weight == b.character_name_font_weight and
             a.character_name_position == b.character_name_position and
@@ -548,9 +541,7 @@ pub const Painter = struct {
             a.system_name_position == b.system_name_position and
             a.system_name_offset_x == b.system_name_offset_x and
             a.system_name_offset_y == b.system_name_offset_y and
-            (a.system_name_font_name.ptr == b.system_name_font_name.ptr and
-                a.system_name_font_name.len == b.system_name_font_name.len or
-                std.mem.eql(u8, a.system_name_font_name, b.system_name_font_name)) and
+            stringsEqualFast(a.system_name_font_name, b.system_name_font_name) and
             a.system_name_font_size == b.system_name_font_size and
             a.system_name_font_weight == b.system_name_font_weight and
             a.show_notifications == b.show_notifications and
@@ -561,16 +552,14 @@ pub const Painter = struct {
                     const al = a.notification_lines[idx];
                     const bl = b.notification_lines[idx];
                     if (al.color != bl.color) break :blk false;
-                    if (!(al.text.ptr == bl.text.ptr and al.text.len == bl.text.len or std.mem.eql(u8, al.text, bl.text))) break :blk false;
+                    if (!stringsEqualFast(al.text, bl.text)) break :blk false;
                 }
                 break :blk true;
             }) and
             a.notifications_position == b.notifications_position and
             a.notifications_offset_x == b.notifications_offset_x and
             a.notifications_offset_y == b.notifications_offset_y and
-            (a.notifications_font_name.ptr == b.notifications_font_name.ptr and
-                a.notifications_font_name.len == b.notifications_font_name.len or
-                std.mem.eql(u8, a.notifications_font_name, b.notifications_font_name)) and
+            stringsEqualFast(a.notifications_font_name, b.notifications_font_name) and
             a.notifications_font_size == b.notifications_font_size and
             a.notifications_font_weight == b.notifications_font_weight and
             a.notifications_bg_color == b.notifications_bg_color and
@@ -582,16 +571,12 @@ pub const Painter = struct {
             a.exclusion_overlay_style == b.exclusion_overlay_style and
             a.exclusion_overlay_color == b.exclusion_overlay_color and
             a.show_quick_group_badge == b.show_quick_group_badge and
-            (a.quick_group_badge_text.ptr == b.quick_group_badge_text.ptr and
-                a.quick_group_badge_text.len == b.quick_group_badge_text.len or
-                std.mem.eql(u8, a.quick_group_badge_text, b.quick_group_badge_text)) and
+            stringsEqualFast(a.quick_group_badge_text, b.quick_group_badge_text) and
             a.quick_group_badge_color == b.quick_group_badge_color and
             a.quick_group_badge_position == b.quick_group_badge_position and
             a.quick_group_badge_offset_x == b.quick_group_badge_offset_x and
             a.quick_group_badge_offset_y == b.quick_group_badge_offset_y and
-            (a.quick_group_badge_font_name.ptr == b.quick_group_badge_font_name.ptr and
-                a.quick_group_badge_font_name.len == b.quick_group_badge_font_name.len or
-                std.mem.eql(u8, a.quick_group_badge_font_name, b.quick_group_badge_font_name)) and
+            stringsEqualFast(a.quick_group_badge_font_name, b.quick_group_badge_font_name) and
             a.quick_group_badge_font_size == b.quick_group_badge_font_size and
             a.quick_group_badge_font_weight == b.quick_group_badge_font_weight and
             a.quick_group_badge_bg_color == b.quick_group_badge_bg_color and
@@ -664,6 +649,13 @@ pub const Painter = struct {
         }
 
         thumbnail.cached_render_settings = settings;
+    }
+
+    /// renderThumbnail, logging (not propagating) a failure with context folded into the message.
+    fn renderThumbnailLogged(self: *const Painter, thumbnail: *ThumbnailWindow, context: []const u8) void {
+        self.renderThumbnail(thumbnail) catch |err| {
+            slog.err("Failed to render thumbnail for {s} ({s}): {}", .{ thumbnail.character_name, context, err });
+        };
     }
 
     /// Destroys all resources for a single thumbnail; child windows and the DWM thumbnail must go before the parent window.
@@ -937,9 +929,7 @@ pub const Painter = struct {
         for (self.thumbnails.items) |*thumbnail| {
             thumbnail.setVisibility(new_visibility);
 
-            self.renderThumbnail(thumbnail) catch |err| {
-                slog.err("Failed to render thumbnail {s} after visibility toggle: {}", .{ thumbnail.character_name, err });
-            };
+            self.renderThumbnailLogged(thumbnail, "visibility toggle");
         }
     }
 
@@ -1246,21 +1236,23 @@ pub const Painter = struct {
             // Force re-measurement: a display-name-only edit changes the string without touching the font, which is otherwise the only re-measure trigger.
             thumbnail.cached_char_dims = null;
             thumbnail.cached_sys_dims = null;
-            self.renderThumbnail(thumbnail) catch |err| {
-                slog.err("Failed to refresh thumbnail visuals for {s}: {}", .{ thumbnail.character_name, err });
-            };
+            self.renderThumbnailLogged(thumbnail, "visuals refresh");
         }
     }
 
     /// Re-applies every thumbnail's on-screen position from the current display config, for config-dialog live preview; never touches startX/startY since those can be live-dragged in the running app.
-    pub fn repositionAllThumbnails(self: *Painter) void {
+    /// Starts a batched DeferWindowPos sized for every win32_enabled thumbnail (2 windows each: hwnd + text_hwnd); null if there's nothing to move or BeginDeferWindowPos itself fails.
+    fn beginDeferForEnabledThumbnails(self: *const Painter) ?win32.HDWP {
         var window_count: c_int = 0;
         for (self.thumbnails.items) |thumbnail| {
             if (thumbnail.win32_enabled) window_count += 2;
         }
-        if (window_count == 0) return;
+        if (window_count == 0) return null;
+        return win32.BeginDeferWindowPos(window_count);
+    }
 
-        var hdwp = win32.BeginDeferWindowPos(window_count) orelse return;
+    pub fn repositionAllThumbnails(self: *Painter) void {
+        var hdwp = self.beginDeferForEnabledThumbnails() orelse return;
         for (self.thumbnails.items, 0..) |thumbnail, index| {
             if (!thumbnail.win32_enabled) continue;
             const thumb_size = self.getThumbnailSize(thumbnail.character_name);
@@ -1284,14 +1276,7 @@ pub const Painter = struct {
         // HWND_NOTOPMOST, not HWND_TOP (a zero-valued sentinel the non-allowzero HWND type can't represent); SWP_NOZORDER makes the value irrelevant anyway.
         _ = win32.SetWindowPos(thumbnail.hwnd, win32.HWND_NOTOPMOST, 0, 0, target.width, target.height, win32.SWP_NOMOVE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
 
-        const props = win32.DWM_THUMBNAIL_PROPERTIES{
-            .dwFlags = win32.DWM_TNP_RECTDESTINATION,
-            .rcDestination = win32.RECT{ .left = 0, .top = 0, .right = @intCast(target.width), .bottom = @intCast(target.height) },
-            .rcSource = win32.RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
-            .opacity = 255,
-            .fVisible = win32.TRUE,
-            .fSourceClientAreaOnly = win32.TRUE,
-        };
+        const props = makeThumbnailProps(@intCast(target.width), @intCast(target.height), win32.DWM_TNP_RECTDESTINATION);
         _ = win32.DwmUpdateThumbnailProperties(thumbnail.thumbnail_id, &props);
     }
 
@@ -1315,9 +1300,7 @@ pub const Painter = struct {
 
         for (self.thumbnails.items) |*thumbnail| {
             if (thumbnail.needs_render) {
-                self.renderThumbnail(thumbnail) catch |err| {
-                    slog.err("Failed to render dirty thumbnail for {s}: {}", .{ thumbnail.character_name, err });
-                };
+                self.renderThumbnailLogged(thumbnail, "dirty thumbnail");
                 thumbnail.needs_render = false;
             }
         }
@@ -1326,13 +1309,7 @@ pub const Painter = struct {
     /// Re-asserts HWND_TOPMOST z-order for all thumbnail/text windows when another app's topmost window steals it from us.
     fn reassertTopmost(self: *Painter) void {
         // Batched via DeferWindowPos/EndDeferWindowPos so DWM applies the whole z-order change atomically, instead of compositing each intermediate SetWindowPos and flashing thumbnails.
-        var window_count: c_int = 0;
-        for (self.thumbnails.items) |thumbnail| {
-            if (thumbnail.win32_enabled) window_count += 2;
-        }
-        if (window_count == 0) return;
-
-        var hdwp = win32.BeginDeferWindowPos(window_count) orelse return;
+        var hdwp = self.beginDeferForEnabledThumbnails() orelse return;
         for (self.thumbnails.items) |thumbnail| {
             if (!thumbnail.win32_enabled) continue;
             hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_TOPMOST, 0, 0, 0, 0, win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE) orelse return;
@@ -1529,9 +1506,7 @@ pub const Painter = struct {
                 }
             }
 
-            self.renderThumbnail(thumbnail) catch |err| {
-                slog.err("Failed to render thumbnail for {s}: {}", .{ thumbnail.character_name, err });
-            };
+            self.renderThumbnailLogged(thumbnail, "name change");
 
             slog.info("Updated thumbnail for {s}", .{thumbnail.character_name});
         }
@@ -1809,6 +1784,17 @@ pub const Painter = struct {
         return if (use_work_area) monitor_info.rcWork else monitor_info.rcMonitor;
     }
 
+    /// Clamps *value into [min, max], warning with axis_label/low_word/high_word/context worked into the message on either bound.
+    fn clampAxisWithWarn(value: *i32, min: i32, max: i32, axis_label: []const u8, low_word: []const u8, high_word: []const u8, context: []const u8) void {
+        if (value.* < min) {
+            slog.warn("Thumbnail {s} position {} too far {s}{s}, clamping to {}", .{ axis_label, value.*, low_word, context, min });
+            value.* = min;
+        } else if (value.* > max) {
+            slog.warn("Thumbnail {s} position {} too far {s}{s}, clamping to {}", .{ axis_label, value.*, high_word, context, max });
+            value.* = max;
+        }
+    }
+
     fn calculateThumbnailPosition(
         self: *const Painter,
         character_name: []const u8,
@@ -1864,42 +1850,16 @@ pub const Painter = struct {
             const min_y = bounds.top - clamp_margin;
             const max_y = bounds.bottom - thumb_height + clamp_margin;
 
-            if (pos.x < min_x) {
-                slog.warn("Thumbnail X position {} too far left for monitor, clamping to {}", .{ pos.x, min_x });
-                pos.x = min_x;
-            } else if (pos.x > max_x) {
-                slog.warn("Thumbnail X position {} too far right for monitor, clamping to {}", .{ pos.x, max_x });
-                pos.x = max_x;
-            }
-
-            if (pos.y < min_y) {
-                slog.warn("Thumbnail Y position {} too far up for monitor, clamping to {}", .{ pos.y, min_y });
-                pos.y = min_y;
-            } else if (pos.y > max_y) {
-                slog.warn("Thumbnail Y position {} too far down for monitor, clamping to {}", .{ pos.y, max_y });
-                pos.y = max_y;
-            }
+            clampAxisWithWarn(&pos.x, min_x, max_x, "X", "left", "right", " for monitor");
+            clampAxisWithWarn(&pos.y, min_y, max_y, "Y", "up", "down", " for monitor");
         } else {
             const min_x = -3840 - clamp_margin;
             const max_x = 7680 - thumb_width + clamp_margin;
             const min_y = -2160 - clamp_margin;
             const max_y = 4320 - thumb_height + clamp_margin;
 
-            if (pos.x < min_x) {
-                slog.warn("Thumbnail X position {} too far left, clamping to {}", .{ pos.x, min_x });
-                pos.x = min_x;
-            } else if (pos.x > max_x) {
-                slog.warn("Thumbnail X position {} too far right, clamping to {}", .{ pos.x, max_x });
-                pos.x = max_x;
-            }
-
-            if (pos.y < min_y) {
-                slog.warn("Thumbnail Y position {} too far up, clamping to {}", .{ pos.y, min_y });
-                pos.y = min_y;
-            } else if (pos.y > max_y) {
-                slog.warn("Thumbnail Y position {} too far down, clamping to {}", .{ pos.y, max_y });
-                pos.y = max_y;
-            }
+            clampAxisWithWarn(&pos.x, min_x, max_x, "X", "left", "right", "");
+            clampAxisWithWarn(&pos.y, min_y, max_y, "Y", "up", "down", "");
         }
 
         return pos;
@@ -2082,6 +2042,56 @@ pub const Painter = struct {
         return .{ .state = state, .visibility = visibility };
     }
 
+    const ThumbnailStrings = struct {
+        title: []const u8,
+        character_name: []const u8,
+        system_name: []const u8,
+        quick_group_label: []const u8,
+
+        fn free(self: ThumbnailStrings, allocator: std.mem.Allocator) void {
+            allocator.free(self.title);
+            allocator.free(self.character_name);
+            allocator.free(self.system_name);
+            allocator.free(self.quick_group_label);
+        }
+    };
+
+    /// Dupes the four owned strings a ThumbnailWindow needs; on partial failure, whatever already succeeded is freed before the error propagates.
+    fn dupeThumbnailStrings(allocator: std.mem.Allocator, title: []const u8, character_name: []const u8, system_name: []const u8) !ThumbnailStrings {
+        const title_copy = try allocator.dupe(u8, title);
+        errdefer allocator.free(title_copy);
+        const char_name_copy = try allocator.dupe(u8, character_name);
+        errdefer allocator.free(char_name_copy);
+        const sys_name_copy = try allocator.dupe(u8, system_name);
+        errdefer allocator.free(sys_name_copy);
+        const quick_group_label_copy = try allocator.dupe(u8, "");
+        errdefer allocator.free(quick_group_label_copy);
+
+        return .{
+            .title = title_copy,
+            .character_name = char_name_copy,
+            .system_name = sys_name_copy,
+            .quick_group_label = quick_group_label_copy,
+        };
+    }
+
+    const ThumbnailCacheFields = struct {
+        system_color: u32,
+        character_color: ?u32,
+        display_name: []const u8,
+        active_border_override: ?u32,
+    };
+
+    /// Resolves the four config-derived cache fields a freshly-created ThumbnailWindow needs.
+    fn resolveThumbnailCacheFields(self: *const Painter, character_name: []const u8, system_name: []const u8) ThumbnailCacheFields {
+        return .{
+            .system_color = if (system_name.len > 0) self.config.getSystemNameColor(system_name) else self.config.thumbnail.systemNameColor,
+            .character_color = self.config.getCharacterNameColor(character_name),
+            .display_name = self.config.getDisplayName(character_name),
+            .active_border_override = if (self.config.getCharacterBorderColors(character_name)) |c| c.activeBorderColor else null,
+        };
+    }
+
     pub fn createThumbnail(self: *Painter, eve_window: *const scout_mod.EveWindow, initial_system_name: []const u8) !void {
         if (self.config.autoMovePosition.enabled) {
             if (self.config.getCharacterWindowPosition(eve_window.character_name)) |pos| {
@@ -2094,14 +2104,9 @@ pub const Painter = struct {
             const initial = self.determineInitialThumbnailState(eve_window.hwnd);
             const is_excluded = if (g_hotkey_manager_ptr) |mgr| mgr.isCharacterExcluded(eve_window.character_name) else false;
 
-            const title_copy = try self.allocator.dupe(u8, eve_window.title);
-            errdefer self.allocator.free(title_copy);
-            const char_name_copy = try self.allocator.dupe(u8, eve_window.character_name);
-            errdefer self.allocator.free(char_name_copy);
-            const sys_name_copy = try self.allocator.dupe(u8, initial_system_name);
-            errdefer self.allocator.free(sys_name_copy);
-            const quick_group_label_copy = try self.allocator.dupe(u8, "");
-            errdefer self.allocator.free(quick_group_label_copy);
+            const strings = try dupeThumbnailStrings(self.allocator, eve_window.title, eve_window.character_name, initial_system_name);
+            errdefer strings.free(self.allocator);
+            const cache_fields = self.resolveThumbnailCacheFields(strings.character_name, strings.system_name);
 
             // Sentinel HWND, never passed to Win32 APIs since win32_enabled is false.
             const sentinel: win32.HWND = @ptrFromInt(1);
@@ -2110,14 +2115,14 @@ pub const Painter = struct {
                 .text_hwnd = sentinel,
                 .thumbnail_id = sentinel,
                 .source_hwnd = eve_window.hwnd,
-                .title = title_copy,
-                .character_name = char_name_copy,
-                .system_name = sys_name_copy,
-                .cached_system_color = if (initial_system_name.len > 0) self.config.getSystemNameColor(initial_system_name) else self.config.thumbnail.systemNameColor,
-                .cached_character_color = self.config.getCharacterNameColor(char_name_copy),
-                .cached_display_name = self.config.getDisplayName(char_name_copy),
-                .cached_active_border_override = if (self.config.getCharacterBorderColors(char_name_copy)) |c| c.activeBorderColor else null,
-                .cached_quick_group_label = quick_group_label_copy,
+                .title = strings.title,
+                .character_name = strings.character_name,
+                .system_name = strings.system_name,
+                .cached_system_color = cache_fields.system_color,
+                .cached_character_color = cache_fields.character_color,
+                .cached_display_name = cache_fields.display_name,
+                .cached_active_border_override = cache_fields.active_border_override,
+                .cached_quick_group_label = strings.quick_group_label,
                 .current_state = initial.state,
                 .visibility_state = initial.visibility,
                 .is_excluded_from_cycle = is_excluded,
@@ -2178,19 +2183,7 @@ pub const Painter = struct {
         var client_rect: win32.RECT = undefined;
         _ = win32.GetClientRect(hwnd, &client_rect);
 
-        const props = win32.DWM_THUMBNAIL_PROPERTIES{
-            .dwFlags = win32.DWM_TNP_VISIBLE | win32.DWM_TNP_RECTDESTINATION | win32.DWM_TNP_SOURCECLIENTAREAONLY,
-            .rcDestination = win32.RECT{
-                .left = 0,
-                .top = 0,
-                .right = client_rect.right,
-                .bottom = client_rect.bottom,
-            },
-            .rcSource = win32.RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
-            .opacity = 255,
-            .fVisible = win32.TRUE,
-            .fSourceClientAreaOnly = win32.TRUE,
-        };
+        const props = makeThumbnailProps(client_rect.right, client_rect.bottom, win32.DWM_TNP_VISIBLE | win32.DWM_TNP_RECTDESTINATION | win32.DWM_TNP_SOURCECLIENTAREAONLY);
 
         const update_hr = win32.DwmUpdateThumbnailProperties(thumbnail_id, &props);
         if (update_hr != 0) {
@@ -2241,31 +2234,23 @@ pub const Painter = struct {
             break :blk false;
         };
 
-        const title_copy = try self.allocator.dupe(u8, eve_window.title);
-        errdefer self.allocator.free(title_copy);
-
-        const char_name_copy = try self.allocator.dupe(u8, eve_window.character_name);
-        errdefer self.allocator.free(char_name_copy);
-
-        const system_name_copy = try self.allocator.dupe(u8, initial_system_name);
-        errdefer self.allocator.free(system_name_copy);
-
-        const quick_group_label_copy = try self.allocator.dupe(u8, "");
-        errdefer self.allocator.free(quick_group_label_copy);
+        const strings = try dupeThumbnailStrings(self.allocator, eve_window.title, eve_window.character_name, initial_system_name);
+        errdefer strings.free(self.allocator);
+        const cache_fields = self.resolveThumbnailCacheFields(strings.character_name, strings.system_name);
 
         var thumbnail = ThumbnailWindow{
             .hwnd = hwnd,
             .text_hwnd = text_hwnd,
             .thumbnail_id = thumbnail_id,
             .source_hwnd = eve_window.hwnd,
-            .title = title_copy,
-            .character_name = char_name_copy,
-            .system_name = system_name_copy,
-            .cached_system_color = if (initial_system_name.len > 0) self.config.getSystemNameColor(initial_system_name) else self.config.thumbnail.systemNameColor,
-            .cached_character_color = self.config.getCharacterNameColor(char_name_copy),
-            .cached_display_name = self.config.getDisplayName(char_name_copy),
-            .cached_active_border_override = if (self.config.getCharacterBorderColors(char_name_copy)) |c| c.activeBorderColor else null,
-            .cached_quick_group_label = quick_group_label_copy,
+            .title = strings.title,
+            .character_name = strings.character_name,
+            .system_name = strings.system_name,
+            .cached_system_color = cache_fields.system_color,
+            .cached_character_color = cache_fields.character_color,
+            .cached_display_name = cache_fields.display_name,
+            .cached_active_border_override = cache_fields.active_border_override,
+            .cached_quick_group_label = strings.quick_group_label,
             .current_state = initial.state,
             .visibility_state = initial.visibility,
             .is_excluded_from_cycle = is_excluded,
@@ -2898,6 +2883,18 @@ fn formatIskAbbrev(buf: []u8, value: f32) []const u8 {
     }
 }
 
+/// Builds a DWM_THUMBNAIL_PROPERTIES sized to (width, height); rcSource stays zeroed (whole source window) on every caller.
+fn makeThumbnailProps(width: i32, height: i32, flags: u32) win32.DWM_THUMBNAIL_PROPERTIES {
+    return .{
+        .dwFlags = flags,
+        .rcDestination = win32.RECT{ .left = 0, .top = 0, .right = width, .bottom = height },
+        .rcSource = win32.RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
+        .opacity = 255,
+        .fVisible = win32.TRUE,
+        .fSourceClientAreaOnly = win32.TRUE,
+    };
+}
+
 pub const TextDimensions = struct {
     width: usize,
     height: usize,
@@ -2908,12 +2905,28 @@ const TextPos = struct {
     y: i32,
 };
 
+/// Pointer+len fast path before falling back to a byte compare; config/notif-owned slices are pointer+len identical every tick when unchanged.
+fn stringsEqualFast(a: []const u8, b: []const u8) bool {
+    return (a.ptr == b.ptr and a.len == b.len) or std.mem.eql(u8, a, b);
+}
+
+/// Whether a cached font's name/size/weight differ from the settings that would be used to render now.
+fn fontSettingsChanged(cached_name: []const u8, cached_size: i32, cached_weight: types.FontWeight, new_name: []const u8, new_size: i32, new_weight: types.FontWeight) bool {
+    return !stringsEqualFast(cached_name, new_name) or cached_size != new_size or cached_weight != new_weight;
+}
+
+fn toBufZ(text: []const u8) [TEXT_BUFFER_SIZE:0]u8 {
+    var buf: [TEXT_BUFFER_SIZE:0]u8 = undefined;
+    const n = @min(text.len, buf.len - 1);
+    @memcpy(buf[0..n], text[0..n]);
+    buf[n] = 0;
+    return buf;
+}
+
 /// Measures text dimensions without rendering; the correct font must already be selected into `dc` by the caller.
 fn measureText(dc: win32.HDC, text: []const u8) TextDimensions {
-    var text_buffer: [TEXT_BUFFER_SIZE:0]u8 = undefined;
+    const text_buffer = toBufZ(text);
     const text_len = @min(text.len, text_buffer.len - 1);
-    @memcpy(text_buffer[0..text_len], text[0..text_len]);
-    text_buffer[text_len] = 0;
 
     var text_size: win32.SIZE = undefined;
     _ = win32.GetTextExtentPoint32A(dc, &text_buffer, @intCast(text_len), &text_size);
@@ -2929,10 +2942,8 @@ fn renderText(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void 
     _ = win32.SetBkMode(dc, win32.TRANSPARENT);
     _ = win32.SetTextColor(dc, gdi_overlay.toColorRef(color));
 
-    var text_buffer: [TEXT_BUFFER_SIZE:0]u8 = undefined;
+    const text_buffer = toBufZ(text);
     const text_len = @min(text.len, text_buffer.len - 1);
-    @memcpy(text_buffer[0..text_len], text[0..text_len]);
-    text_buffer[text_len] = 0;
 
     _ = win32.TextOutA(dc, x + TEXT_PADDING_X, y + TEXT_PADDING_Y, &text_buffer, @intCast(text_len));
 }
@@ -2984,13 +2995,14 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
 
     const display_name = config.getDisplayName(character_name);
 
-    // Pointer fast-path: config strings are stable between ticks, so pointer equality avoids a byte-by-byte comparison on every render.
-    const font_changed =
-        (thumbnail.cached_font_name.ptr != settings.character_name_font_name.ptr or
-            thumbnail.cached_font_name.len != settings.character_name_font_name.len) and
-        !std.mem.eql(u8, thumbnail.cached_font_name, settings.character_name_font_name) or
-        thumbnail.cached_font_size != settings.character_name_font_size or
-        thumbnail.cached_font_weight != settings.character_name_font_weight;
+    const font_changed = fontSettingsChanged(
+        thumbnail.cached_font_name,
+        thumbnail.cached_font_size,
+        thumbnail.cached_font_weight,
+        settings.character_name_font_name,
+        settings.character_name_font_size,
+        settings.character_name_font_weight,
+    );
 
     var char_text_dims: TextDimensions = .{ .width = 0, .height = 0 };
     if (settings.show_character_name) {
@@ -3011,12 +3023,14 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     if (settings.show_system_name) {
         const sf = try painter.getCachedFont(.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
         sys_font = sf;
-        const sys_font_changed =
-            (thumbnail.cached_sys_font_name.ptr != settings.system_name_font_name.ptr or
-                thumbnail.cached_sys_font_name.len != settings.system_name_font_name.len) and
-            !std.mem.eql(u8, thumbnail.cached_sys_font_name, settings.system_name_font_name) or
-            thumbnail.cached_sys_font_size != settings.system_name_font_size or
-            thumbnail.cached_sys_font_weight != settings.system_name_font_weight;
+        const sys_font_changed = fontSettingsChanged(
+            thumbnail.cached_sys_font_name,
+            thumbnail.cached_sys_font_size,
+            thumbnail.cached_sys_font_weight,
+            settings.system_name_font_name,
+            settings.system_name_font_size,
+            settings.system_name_font_weight,
+        );
         if (thumbnail.cached_sys_dims != null and !sys_font_changed) {
             system_text_dims = thumbnail.cached_sys_dims.?;
         } else {
@@ -3054,12 +3068,14 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     if (settings.show_quick_group_badge) {
         const qf = try painter.getCachedFont(.quick_group_badge, settings.quick_group_badge_font_name, settings.quick_group_badge_font_size, settings.quick_group_badge_font_weight);
         qg_font = qf;
-        const qg_font_changed =
-            (thumbnail.cached_qg_font_name.ptr != settings.quick_group_badge_font_name.ptr or
-                thumbnail.cached_qg_font_name.len != settings.quick_group_badge_font_name.len) and
-            !std.mem.eql(u8, thumbnail.cached_qg_font_name, settings.quick_group_badge_font_name) or
-            thumbnail.cached_qg_font_size != settings.quick_group_badge_font_size or
-            thumbnail.cached_qg_font_weight != settings.quick_group_badge_font_weight;
+        const qg_font_changed = fontSettingsChanged(
+            thumbnail.cached_qg_font_name,
+            thumbnail.cached_qg_font_size,
+            thumbnail.cached_qg_font_weight,
+            settings.quick_group_badge_font_name,
+            settings.quick_group_badge_font_size,
+            settings.quick_group_badge_font_weight,
+        );
         if (thumbnail.cached_qg_dims != null and !qg_font_changed) {
             qg_badge_dims = thumbnail.cached_qg_dims.?;
         } else {
