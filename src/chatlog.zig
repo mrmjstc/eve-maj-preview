@@ -82,13 +82,6 @@ pub fn EventQueue(comptime T: type) type {
             try self.events.append(self.allocator, event);
         }
 
-        pub fn pop(self: *Self) ?T {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-            if (self.events.items.len == 0) return null;
-            return self.events.orderedRemove(0);
-        }
-
         pub fn drain(self: *Self, out_list: *std.ArrayList(T)) !void {
             self.mutex.lock();
             defer self.mutex.unlock();
@@ -200,10 +193,7 @@ pub const ChatlogMonitor = struct {
         errdefer allocator.destroy(monitor);
 
         monitor.allocator = allocator;
-        monitor.log_files = .{
-            .items = &.{},
-            .capacity = 0,
-        };
+        monitor.log_files = .empty;
         monitor.monitored_paths = std.StringHashMap(void).init(allocator);
         monitor.chatlog_dir = try allocator.dupe(u8, chatlog_dir);
         errdefer allocator.free(monitor.chatlog_dir);
@@ -317,13 +307,14 @@ pub const ChatlogMonitor = struct {
 
     /// Process commands from main thread (add/remove characters, shutdown)
     fn processCommands(self: *ChatlogMonitor) !void {
-        var processed: u32 = 0;
-        while (self.command_queue.pop()) |cmd| {
-            var mutable_cmd = cmd;
-            defer mutable_cmd.deinit(self.allocator);
-            processed += 1;
+        var commands = std.ArrayList(ChatlogCommand).empty;
+        defer commands.deinit(self.allocator);
+        try self.command_queue.drain(&commands);
 
-            switch (mutable_cmd) {
+        for (commands.items) |*mutable_cmd| {
+            defer mutable_cmd.deinit(self.allocator);
+
+            switch (mutable_cmd.*) {
                 .add_character => |data| {
                     slog.debug("Worker: Add character {s}", .{data.name});
 
@@ -348,13 +339,12 @@ pub const ChatlogMonitor = struct {
                 .shutdown => {
                     slog.info("Worker: Shutdown command received", .{});
                     self.should_exit.store(true, .release);
-                    break;
                 },
             }
         }
 
-        if (processed > 0) {
-            slog.debug("Worker: Processed {} commands", .{processed});
+        if (commands.items.len > 0) {
+            slog.debug("Worker: Processed {} commands", .{commands.items.len});
         }
     }
 
@@ -374,17 +364,23 @@ pub const ChatlogMonitor = struct {
     pub fn deinit(self: *ChatlogMonitor) void {
         self.stopWorkerThread();
 
-        while (self.command_queue.pop()) |cmd| {
-            var mutable_cmd = cmd;
-            mutable_cmd.deinit(self.allocator);
+        {
+            var commands = std.ArrayList(ChatlogCommand).empty;
+            defer commands.deinit(self.allocator);
+            self.command_queue.drain(&commands) catch {};
+            for (commands.items) |*cmd| cmd.deinit(self.allocator);
         }
-        while (self.result_queue.pop()) |event| {
-            var mutable_event = event;
-            mutable_event.deinit(self.allocator);
+        {
+            var events = std.ArrayList(SystemUpdateEvent).empty;
+            defer events.deinit(self.allocator);
+            self.result_queue.drain(&events) catch {};
+            for (events.items) |*event| event.deinit(self.allocator);
         }
-        while (self.notification_queue.pop()) |event| {
-            var mutable_event = event;
-            mutable_event.deinit(self.allocator);
+        {
+            var events = std.ArrayList(NotificationEvent).empty;
+            defer events.deinit(self.allocator);
+            self.notification_queue.drain(&events) catch {};
+            for (events.items) |*event| event.deinit(self.allocator);
         }
         self.command_queue.deinit();
         self.result_queue.deinit();
@@ -504,22 +500,10 @@ pub const ChatlogMonitor = struct {
                 .file_path = duped_path,
                 .character_name = character_name_copy,
                 .is_chatlog = is_chatlog,
-                .utf8_buffer = .{
-                    .items = &.{},
-                    .capacity = 0,
-                },
-                .line_buffer = .{
-                    .items = &.{},
-                    .capacity = 0,
-                },
-                .u16_buffer = .{
-                    .items = &.{},
-                    .capacity = 0,
-                },
-                .system_name_buffer = .{
-                    .items = &.{},
-                    .capacity = 0,
-                },
+                .utf8_buffer = .empty,
+                .line_buffer = .empty,
+                .u16_buffer = .empty,
+                .system_name_buffer = .empty,
             };
 
             try self.log_files.append(self.allocator, state);
@@ -554,23 +538,25 @@ pub const ChatlogMonitor = struct {
             }
             state.cycle_counter = 0;
 
-            const file = std.fs.cwd().openFile(state.file_path, .{}) catch |err| {
-                if (err == error.FileNotFound) {
+            const file = std.fs.cwd().openFile(state.file_path, .{}) catch |err| switch (err) {
+                error.FileNotFound => {
                     // Temporary failure - reset state but keep trying
                     state.position = 0;
                     state.last_size = 0;
                     state.partial_line_len = 0;
                     continue;
-                }
-                if (err == error.InvalidWtf8) {
+                },
+                error.InvalidWtf8 => {
                     // Permanent failure - disable this state forever
                     slog.warn("Disabling log file {s} due to InvalidWtf8", .{state.character_name});
                     state.disabled = true;
                     continue;
-                }
-                // Other errors - skip this iteration but keep trying
-                slog.warn("Failed to open {s}: {}", .{ state.file_path, err });
-                continue;
+                },
+                else => {
+                    // Other errors - skip this iteration but keep trying
+                    slog.warn("Failed to open {s}: {}", .{ state.file_path, err });
+                    continue;
+                },
             };
             defer file.close();
 
@@ -1022,13 +1008,16 @@ pub const ChatlogMonitor = struct {
 
     /// Decode UTF-16 LE to UTF-8 using pooled buffers (zero heap allocations)
     fn decodeUtf16Le(self: *ChatlogMonitor, state: *LogFileState, data: []const u8) !?[]u8 {
-        // UTF-16 LE requires even number of bytes
-        if (data.len < 2 or data.len % 2 != 0) return null;
+        // Odd length: caught file mid-write, bytes unrecoverable.
+        if (data.len % 2 != 0) {
+            slog.warn("Dropping {} odd-length byte(s) mid-write for {s}", .{ data.len, state.character_name });
+            return null;
+        }
+        if (data.len < 2) return null;
 
         const u16_count = data.len / 2;
 
         state.u16_buffer.clearRetainingCapacity();
-        try state.u16_buffer.ensureTotalCapacity(self.allocator, u16_count);
         try state.u16_buffer.resize(self.allocator, u16_count);
 
         var i: usize = 0;
@@ -1042,7 +1031,6 @@ pub const ChatlogMonitor = struct {
         const utf8_len = u16_count * 3;
 
         state.utf8_buffer.clearRetainingCapacity();
-        try state.utf8_buffer.ensureTotalCapacity(self.allocator, utf8_len);
         try state.utf8_buffer.resize(self.allocator, utf8_len);
 
         const bytes_written = std.unicode.utf16LeToUtf8(state.utf8_buffer.items, state.u16_buffer.items) catch {
@@ -1259,7 +1247,9 @@ pub const ChatlogMonitor = struct {
             // Only jumps pop a .SystemChange notification - undock and the chatlog's Local
             // detection race the same event, so notifying on both would double-fire it.
             if (std.mem.eql(u8, event_type, "jump")) {
-                self.queueNotification(state.character_name, system, .SystemChange);
+                var buf: [64]u8 = undefined;
+                const text = std.fmt.bufPrint(&buf, "Jumped to {s}", .{system}) catch system;
+                self.queueNotification(state.character_name, text, .SystemChange);
             }
 
             // event_ts=0: live tailing has no timestamp but doesn't need one - lines are strictly ordered
