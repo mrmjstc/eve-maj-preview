@@ -819,7 +819,7 @@ pub const ChatlogConfig = struct {
     gamelogDir: []const u8,
     pollIntervalMs: u32 = 500,
     idlePollThreshold: u32 = 600,
-    maxPollMultiplier: u8 = 4,
+    maxPollMultiplier: u8 = 2,
     useThreading: bool = true,
 
     pub fn deinit(self: *ChatlogConfig, allocator: std.mem.Allocator) void {
@@ -886,7 +886,7 @@ pub const ChatlogConfig = struct {
         gamelogDir: []const u8 = "",
         pollIntervalMs: u32 = 500,
         idlePollThreshold: u32 = 600,
-        maxPollMultiplier: u8 = 4,
+        maxPollMultiplier: u8 = 2,
         useThreading: bool = true,
     };
 

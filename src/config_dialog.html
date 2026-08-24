@@ -1295,23 +1295,25 @@
                             </div>
                             <p class="hint" data-i18n="field.gamelogDir.hint">Folder EVE writes combat/mining/system gamelogs to. Defaults to Documents\EVE\logs\Gamelogs.</p>
 
-                            <h4 data-i18n="tab.chatlog.section.polling-performance.heading">Polling &amp; Performance</h4>
+                            <div class="advanced-section">
+                                <h4 data-i18n="tab.chatlog.section.polling-performance.heading">Polling &amp; Performance</h4>
 
-                            <label>
-                                <input type="checkbox" id="chatlogUseThreading">
-                                <span class="label-body" data-i18n="field.chatlogUseThreading.label">Use Threading</span>
-                            </label>
-                            <label for="chatlogPollInterval" style="margin-top: 8px;" data-i18n="field.chatlogPollInterval.label">Poll Interval (s)</label>
-                            <input type="number" id="chatlogPollInterval" min="0.1" max="5" step="0.1">
-                            <p class="hint" data-i18n="field.chatlogPollInterval.hint">How often to check each log file for new lines. Lower is more responsive but uses more CPU; clamped to 0.1-5s.</p>
+                                <label>
+                                    <input type="checkbox" id="chatlogUseThreading">
+                                    <span class="label-body" data-i18n="field.chatlogUseThreading.label">Use Threading</span>
+                                </label>
+                                <label for="chatlogPollInterval" style="margin-top: 8px;" data-i18n="field.chatlogPollInterval.label">Poll Interval (s)</label>
+                                <input type="number" id="chatlogPollInterval" min="0.1" max="5" step="0.1">
+                                <p class="hint" data-i18n="field.chatlogPollInterval.hint">How often to check each log file for new lines. Lower is more responsive but uses more CPU; clamped to 0.1-5s.</p>
 
-                            <label for="chatlogIdleThreshold" data-i18n="field.chatlogIdleThreshold.label">Idle Threshold (polls)</label>
-                            <input type="number" id="chatlogIdleThreshold" min="1" max="1000" step="1">
-                            <p class="hint" data-i18n="field.chatlogIdleThreshold.hint">Consecutive quiet polls before a log is considered idle and polled less often to save CPU. New activity resets it to full speed.</p>
+                                <label for="chatlogIdleThreshold" data-i18n="field.chatlogIdleThreshold.label">Idle Threshold (polls)</label>
+                                <input type="number" id="chatlogIdleThreshold" min="1" max="1000" step="1">
+                                <p class="hint" data-i18n="field.chatlogIdleThreshold.hint">Consecutive quiet polls before a log is considered idle and polled less often to save CPU. New activity resets it to full speed.</p>
 
-                            <label for="chatlogMaxPollMultiplier" data-i18n="field.chatlogMaxPollMultiplier.label">Max Poll Multiplier</label>
-                            <input type="number" id="chatlogMaxPollMultiplier" min="1" max="32">
-                            <p class="hint" data-i18n="field.chatlogMaxPollMultiplier.hint">Cap on how much idle logs slow down (e.g. 8x = checked 8x less often). Higher saves CPU for AFK characters but delays detecting new activity.</p>
+                                <label for="chatlogMaxPollMultiplier" data-i18n="field.chatlogMaxPollMultiplier.label">Max Poll Multiplier</label>
+                                <input type="number" id="chatlogMaxPollMultiplier" min="1" max="32">
+                                <p class="hint" data-i18n="field.chatlogMaxPollMultiplier.hint">Cap on how much idle logs slow down (e.g. 8x = checked 8x less often). Higher saves CPU for AFK characters but delays detecting new activity.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
