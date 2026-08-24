@@ -445,8 +445,7 @@ pub const ChatlogMonitor = struct {
             return;
         }
 
-        // Sync mode: Do I/O on main thread (original behavior)
-        // Only added if exact character name match found
+        // Sync mode: I/O on main thread, added only on an exact character name match.
         if (self.findChatlogForCharacter(character_name)) |chatlog_path| {
             try self.addLogFile(chatlog_path, character_name, true);
             self.allocator.free(chatlog_path);
@@ -703,8 +702,7 @@ pub const ChatlogMonitor = struct {
     pub fn update(self: *ChatlogMonitor, character_names: []const []const u8, closed_windows: []const scout_mod.ClosedWindow, logged_out_names: []const []const u8) !void {
         // In Phase 1 (synchronous mode), handle I/O directly on main thread
         if (!self.threading_enabled) {
-            // pollLogFiles()'s per-file backoff assumes fixed-interval calls, which this
-            // UI-tick-driven sync path doesn't guarantee, so throttle explicitly here too.
+            // pollLogFiles()'s per-file backoff assumes fixed-interval calls, which this UI-tick-driven path doesn't guarantee.
             const now_ms = std.time.milliTimestamp();
             const interval_ms: i64 = @intCast(self.poll_interval_ms);
             if (now_ms - self.last_sync_poll_ms >= interval_ms) {
@@ -1173,9 +1171,7 @@ pub const ChatlogMonitor = struct {
             return;
         }
 
-        // Gamelog format: "[ timestamp ] (type) message" or "[ timestamp ] message".
-        // Dispatch on the first character after the timestamp to avoid multiple full scans.
-
+        // Gamelog lines are "[ timestamp ] (type) message"; dispatch on the first character after the timestamp to avoid multiple full scans.
         // Skip timestamp: "[ YYYY.MM.DD HH:MM:SS ] " (~28 chars)
         var search_start: usize = 0;
         if (std.mem.indexOf(u8, clean_line, "] ")) |close_bracket| {
@@ -1270,8 +1266,7 @@ pub const ChatlogMonitor = struct {
         if (is_different) {
             state.last_system_hash = system_hash;
 
-            // Only jumps pop a .SystemChange notification - undock and the chatlog's Local
-            // detection race the same event, so notifying on both would double-fire it.
+            // Only jumps pop a .SystemChange notification: undock and the chatlog's Local detection race the same event and would double-fire it.
             if (std.mem.eql(u8, event_type, "jump")) {
                 var buf: [64]u8 = undefined;
                 const text = std.fmt.bufPrint(&buf, "Jumped to {s}", .{system}) catch system;
@@ -1294,8 +1289,7 @@ pub const ChatlogMonitor = struct {
         // Combat DPS tracking (independent of notification settings)
         if (self.combat_tracker) |tracker| {
             if (activity_mod.parseCombatLine(stripped_text)) |parsed| {
-                // Weapon-filtered incoming hits still count toward DPS stats (below) but
-                // shouldn't retrigger the Taking Damage alert - see CombatWindow.addEntry.
+                // Weapon-filtered incoming hits still count toward DPS stats but shouldn't retrigger the Taking Damage alert (see CombatWindow.addEntry).
                 const excluded_weapons = if (self.painter) |p| p.config.combat.damage_alert_excluded_weapons else "";
                 const counts_for_alert = !activity_mod.isWeaponExcluded(parsed.weapon, excluded_weapons);
                 tracker.addEntry(state.character_name, parsed.amount, parsed.is_incoming, std.time.milliTimestamp(), counts_for_alert) catch |err| {
@@ -1312,8 +1306,7 @@ pub const ChatlogMonitor = struct {
         // Skip empty notification text (e.g., system jumps, hint messages)
         if (notification_data.text.len == 0) return;
 
-        // Enabled/type/throttle gating happens in Painter.showNotification itself, on
-        // drain (main thread only) - queueing here doesn't need to duplicate those checks.
+        // Enabled/type/throttle gating happens in Painter.showNotification itself on drain, so it isn't duplicated here.
         self.queueNotification(state.character_name, notification_data.text, notification_data.ntype);
 
         slog.debug("Combat event: {s} -> {s}", .{ state.character_name, event_text });
@@ -1497,8 +1490,6 @@ pub const ChatlogMonitor = struct {
         _ = self;
 
         // EVE gamelog format: "[ timestamp ] (type) message"
-        // Example: "[ 2026.02.01 20:29:48 ] (question) <a href=...>Mr Majestic</a> wants you to join their fleet..."
-
         var text_start: usize = 0;
         if (std.mem.indexOf(u8, event_text, "]")) |close_bracket| {
             text_start = close_bracket + 1;
@@ -1607,8 +1598,7 @@ pub const ChatlogMonitor = struct {
             return .{ .text = "Bomb Launcher Empty", .ntype = .BombLauncherEmpty };
         }
 
-        // Self-destruct: "Your Capsule will self-destruct in" or "You have aborted the self-destruct"
-        // Must check for "Your" to avoid triggering on other players' self-destructs
+        // Checks for "Your" to avoid triggering on other players' self-destructs.
         if (std.mem.indexOf(u8, trimmed, "Your") != null and std.mem.indexOf(u8, trimmed, "will self-destruct in") != null) {
             return .{ .text = "Self-Destruct", .ntype = .SelfDestruct };
         }
@@ -1648,9 +1638,7 @@ pub const ChatlogMonitor = struct {
             return .{ .text = "Can't Jump: Aggression", .ntype = .AggressionCantJump };
         }
 
-        // Conduit Field jump: passengers see "...jumps you to SystemName.", but the activating
-        // character sees "...to SystemName, bringing along N passengers." - the comma must also
-        // terminate the system name in that case.
+        // Same comma-termination quirk as parseConduitJumpFromGamelog (activating character's line ends in "...N passengers." instead of a period).
         if (std.mem.indexOf(u8, trimmed, "Conduit Field") != null and
             std.mem.indexOf(u8, trimmed, "jumps you to") != null)
         {
@@ -1677,18 +1665,14 @@ pub const ChatlogMonitor = struct {
     fn parseCombatEvent(message: []const u8) NotificationResult {
         const trimmed = std.mem.trim(u8, message, " \t\r\n");
 
-        // Warp scramble landing on you: "Warp scramble attempt from [attacker] to you!"
-        // Must end in "to you!" - a scramble you land on someone else reads
-        // "... to [target name]!" instead and must not trigger this.
+        // Must end in "to you!" - a scramble landing on someone else instead reads "...to [target name]!".
         if (std.mem.indexOf(u8, trimmed, "Warp scramble attempt") != null and
             std.mem.endsWith(u8, trimmed, "to you!"))
         {
             return .{ .text = "Warp Scrambled", .ntype = .WarpScrambled };
         }
 
-        // Warp disruptor ("point") landing on you: "Warp disruption attempt from
-        // [attacker] to you!" - same "to you!" requirement as scramble above, so a
-        // disruption landing on someone else nearby doesn't trigger this.
+        // Same "to you!" requirement as the scramble check above.
         if (std.mem.indexOf(u8, trimmed, "Warp disruption attempt") != null and
             std.mem.endsWith(u8, trimmed, "to you!"))
         {
@@ -1735,9 +1719,7 @@ pub const ChatlogMonitor = struct {
             }
         } else name_no_ext;
 
-        // Expected format: YYYYMMDD_HHMMSS (gamelogs may have _characterid suffix, ignored)
-        // Parse as single number: YYYYMMDDHHMMSS (for easy comparison)
-        // Need at least "YYYYMMDD_HHMMSS"
+        // 15 = length of "YYYYMMDD_HHMMSS"
         if (timestamp_part.len < 15) return 0;
 
         const date_part = timestamp_part[0..8];
@@ -1877,9 +1859,7 @@ pub const ChatlogMonitor = struct {
             }
         }
 
-        // Slow path: character ID unknown or stale. Collect every candidate, sort
-        // newest-first, then open files newest-to-oldest checking the "Listener:"
-        // header until a match is found.
+        // Slow path: ID unknown or stale, so check every candidate's "Listener:" header, newest first.
         var candidates: std.ArrayList([]const u8) = .empty;
         defer {
             for (candidates.items) |candidate| {
