@@ -249,23 +249,20 @@ pub const CombatTracker = struct {
 /// Parse a `(combat)` gamelog line and extract damage amount + direction.
 /// Incoming misses return a zero-amount incoming hit (counts for the Taking Damage alert but not DPS); outgoing misses are ignored entirely.
 /// Direction: " from " → incoming, " to " → outgoing, matched against the text following the damage number.
-/// `weapon_buf` receives the weapon/module name copied out of the function-local stripped-HTML buffer; empty if the line has no weapon segment or the buffer is too small.
-pub fn parseCombatLine(line: []const u8, weapon_buf: []u8) ?struct { amount: u32, is_incoming: bool, weapon: []const u8 } {
+/// `stripped_line` must already have HTML stripped by the caller; the returned `weapon` slice borrows from it.
+pub fn parseCombatLine(stripped_line: []const u8) ?struct { amount: u32, is_incoming: bool, weapon: []const u8 } {
     const combat_prefix = "(combat)";
-    const combat_pos = std.mem.indexOf(u8, line, combat_prefix) orelse return null;
-    const payload = std.mem.trimLeft(u8, line[combat_pos + combat_prefix.len ..], " \t");
+    const combat_pos = std.mem.indexOf(u8, stripped_line, combat_prefix) orelse return null;
+    const stripped = std.mem.trimLeft(u8, stripped_line[combat_pos + combat_prefix.len ..], " \t");
 
     // Skip remote-rep / cap-transfer lines (these are not damage hits)
-    if (std.mem.indexOf(u8, payload, "boosts your") != null or
-        std.mem.indexOf(u8, payload, "shields your") != null or
-        std.mem.indexOf(u8, payload, "repairs your") != null or
-        std.mem.indexOf(u8, payload, "transfers") != null)
+    if (std.mem.indexOf(u8, stripped, "boosts your") != null or
+        std.mem.indexOf(u8, stripped, "shields your") != null or
+        std.mem.indexOf(u8, stripped, "repairs your") != null or
+        std.mem.indexOf(u8, stripped, "transfers") != null)
     {
         return null;
     }
-
-    var stripped_buf: [512]u8 = undefined;
-    const stripped = stripHtml(payload, &stripped_buf);
 
     if (std.mem.indexOf(u8, stripped, "misses you") != null and !std.mem.startsWith(u8, stripped, "You ")) {
         return .{ .amount = 0, .is_incoming = true, .weapon = "" };
@@ -303,10 +300,7 @@ pub fn parseCombatLine(line: []const u8, weapon_buf: []u8) ?struct { amount: u32
     if (std.mem.lastIndexOf(u8, rest, " - ")) |quality_dash| {
         const before_quality = rest[0..quality_dash];
         if (std.mem.lastIndexOf(u8, before_quality, " - ")) |weapon_dash| {
-            const w = std.mem.trim(u8, before_quality[weapon_dash + 3 ..], " \t");
-            const n = @min(w.len, weapon_buf.len);
-            @memcpy(weapon_buf[0..n], w[0..n]);
-            weapon = weapon_buf[0..n];
+            weapon = std.mem.trim(u8, before_quality[weapon_dash + 3 ..], " \t");
         }
     }
 

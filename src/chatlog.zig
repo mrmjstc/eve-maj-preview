@@ -1287,10 +1287,13 @@ pub const ChatlogMonitor = struct {
 
     /// Handle combat event and update painter notification
     fn handleCombatEvent(self: *ChatlogMonitor, state: *LogFileState, event_text: []const u8) void {
+        // Stripped once and shared below - re-stripping per call would double the cost on this, the highest-volume line type.
+        var stripped_buf: [512]u8 = undefined;
+        const stripped_text = activity_mod.stripHtml(event_text, &stripped_buf);
+
         // Combat DPS tracking (independent of notification settings)
         if (self.combat_tracker) |tracker| {
-            var weapon_buf: [128]u8 = undefined;
-            if (activity_mod.parseCombatLine(event_text, &weapon_buf)) |parsed| {
+            if (activity_mod.parseCombatLine(stripped_text)) |parsed| {
                 // Weapon-filtered incoming hits still count toward DPS stats (below) but
                 // shouldn't retrigger the Taking Damage alert - see CombatWindow.addEntry.
                 const excluded_weapons = if (self.painter) |p| p.config.combat.damage_alert_excluded_weapons else "";
@@ -1302,7 +1305,7 @@ pub const ChatlogMonitor = struct {
         }
 
         var notify_buf: [64]u8 = undefined;
-        const notification_data = self.formatCombatNotificationWithType(event_text, &notify_buf) catch {
+        const notification_data = self.formatCombatNotificationWithType(stripped_text, &notify_buf) catch {
             return;
         };
 
@@ -1487,7 +1490,7 @@ pub const ChatlogMonitor = struct {
 
     const NotificationResult = struct { text: []const u8, ntype: types.NotificationType };
 
-    /// Format combat notification from raw event text and classify type.
+    /// Format combat notification from HTML-stripped event text and classify type.
     /// Returns slices borrowed from `event_text` - caller must keep it valid;
     /// Painter.showNotification() copies before storing.
     fn formatCombatNotificationWithType(self: *ChatlogMonitor, event_text: []const u8, buf: *[64]u8) !NotificationResult {
@@ -1670,10 +1673,9 @@ pub const ChatlogMonitor = struct {
     /// Parse (combat) type events for the rare cases worth a popup (e.g. being
     /// scrambled). Plain damage/miss lines are handled by the DPS tracker
     /// elsewhere and are intentionally skipped here to avoid popup spam.
+    /// `message` must already have HTML stripped by the caller.
     fn parseCombatEvent(message: []const u8) NotificationResult {
-        var stripped_buf: [512]u8 = undefined;
-        const stripped = activity_mod.stripHtml(message, &stripped_buf);
-        const trimmed = std.mem.trim(u8, stripped, " \t\r\n");
+        const trimmed = std.mem.trim(u8, message, " \t\r\n");
 
         // Warp scramble landing on you: "Warp scramble attempt from [attacker] to you!"
         // Must end in "to you!" - a scramble you land on someone else reads
