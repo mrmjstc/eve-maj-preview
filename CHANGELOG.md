@@ -7,6 +7,9 @@
 - "Constrain aspect ratio" now defaults to on in the config dialog.
 - Combat/Mining/Bounty overlay tabs are now hidden behind Advanced Mode, like the General tab.
 
+### Changed
+- Default build optimize mode is now `ReleaseFast` instead of `ReleaseSafe`.
+
 ### Fixed
 - Deleting the last-used profile no longer crashes the app on next launch; it falls back to the default profile and heals `global.settings.json`.
 - Disabling chatlog monitoring while System Name display is on no longer leaves a stale system name frozen on the thumbnail until restart.
