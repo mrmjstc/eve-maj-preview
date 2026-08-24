@@ -1175,8 +1175,20 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     box-shadow: 0 0 10px rgba(255, 255, 255, 0.9);
 }
 
-.overlay-chip.dim {
-    opacity: 0.55;
+/* Matches .swatch-wrap's cleared-color slash (see below) rather than dimming the chip. */
+.overlay-chip.dim::after {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    pointer-events: none;
+    opacity: 0.45;
+    background: linear-gradient(
+        to top right,
+        transparent calc(50% - 1.5px),
+        var(--color-danger) calc(50% - 1.5px),
+        var(--color-danger) calc(50% + 1.5px),
+        transparent calc(50% + 1.5px)
+    );
 }
 
 /* Shown while a dragged chip aligns with another chip's edge/center. */

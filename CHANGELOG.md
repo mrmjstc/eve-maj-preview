@@ -9,6 +9,7 @@
 
 ### Changed
 - Default build optimize mode is now `ReleaseFast` instead of `ReleaseSafe`.
+- Layout preview: disabled chips now show a diagonal strike (matching the swatch cleared-color style) instead of fading via opacity.
 
 ### Fixed
 - Deleting the last-used profile no longer crashes the app on next launch; it falls back to the default profile and heals `global.settings.json`.
