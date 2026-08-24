@@ -6404,8 +6404,8 @@ function placeOverlayChip(def) {
 function refreshOverlayLayoutPreview() {
     const stage = document.getElementById('overlayLayoutStage');
     if (!stage) return;
-    const w = getFieldValue('thumbWidth') || 4;
-    const h = getFieldValue('thumbHeight') || 3;
+    const w = getFieldValue('thumbWidth') || 16;
+    const h = getFieldValue('thumbHeight') || 9;
     stage.style.aspectRatio = `${w} / ${h}`;
     OVERLAY_LAYOUT_ELEMENTS.forEach(placeOverlayChip);
 }

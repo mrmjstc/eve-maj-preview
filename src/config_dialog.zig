@@ -11,6 +11,7 @@ const slog = log.scoped("config_dialog");
 const config_html = @embedFile("config_dialog.html");
 const config_css = @embedFile("config_dialog.css");
 const config_js = @embedFile("config_dialog.js");
+const layout_preview_jpg = @embedFile("assets/layout_preview.jpg");
 
 const catalog_en = @embedFile("lang/en.json");
 const catalog_de = @embedFile("lang/de.json");
@@ -1801,6 +1802,17 @@ fn injectResources(allocator: std.mem.Allocator, lang: SupportedLang) ![:0]u8 {
     if (std.mem.indexOf(u8, html, css_placeholder)) |_| {
         allocator.free(html);
         html = try std.mem.replaceOwned(u8, allocator, config_html, css_placeholder, config_css);
+    }
+
+    const layout_preview_placeholder = "LAYOUT_PREVIEW_IMAGE_PLACEHOLDER";
+    if (std.mem.indexOf(u8, html, layout_preview_placeholder)) |_| {
+        const encoder = std.base64.standard.Encoder;
+        const encoded = try allocator.alloc(u8, encoder.calcSize(layout_preview_jpg.len));
+        defer allocator.free(encoded);
+        _ = encoder.encode(encoded, layout_preview_jpg);
+        const temp = html;
+        html = try std.mem.replaceOwned(u8, allocator, temp, layout_preview_placeholder, encoded);
+        allocator.free(temp);
     }
 
     const js_placeholder = "// Script will be injected here by WebUI";

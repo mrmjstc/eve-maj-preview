@@ -1126,9 +1126,9 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     width: 100%;
     max-width: 540px;
     margin: 0 auto;
-    aspect-ratio: 4 / 3;
+    aspect-ratio: 16 / 9;
     background-color: #050505;
-    background-image: url('http://i.mjst.cc/gSQie1O0wp.png');
+    background-image: url('data:image/jpeg;base64,LAYOUT_PREVIEW_IMAGE_PLACEHOLDER');
     background-size: cover;
     background-position: center;
     border: 1px solid #888888;
