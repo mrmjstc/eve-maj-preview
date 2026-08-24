@@ -4157,6 +4157,7 @@ function toggleWindowFilterAccordion(index) {
 }
 
 function addWindowFilter() {
+    if (!currentConfig) return;
     if (!currentConfig.windowFilters) currentConfig.windowFilters = [];
     saveWindowFilters();
     currentConfig.windowFilters.push({
@@ -4743,6 +4744,7 @@ function generateUniqueColor(index) {
 }
 
 function addCharacter() {
+    if (!currentConfig) return;
     if (!currentConfig.characters) currentConfig.characters = [];
     saveCharacters();
 
@@ -5081,6 +5083,7 @@ function addHotkeyGroupCharacter(groupIndex) {
 }
 
 function addHotkeyGroup() {
+    if (!currentConfig) return;
     if (!currentConfig.hotkeyGroups) currentConfig.hotkeyGroups = [];
     saveHotkeyGroups();
     currentConfig.hotkeyGroups.push({
@@ -5280,6 +5283,7 @@ function populateQuickGroups() {
 }
 
 function addQuickGroup() {
+    if (!currentConfig) return;
     if (!currentConfig.quickGroups) currentConfig.quickGroups = [];
     saveQuickGroups();
 
