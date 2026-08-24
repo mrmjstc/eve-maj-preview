@@ -850,8 +850,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         liveConfirmedProfile = initialProfile;
     } else {
         showStatus(t('status.webuiInitFailed'), 'error');
-        logWarn('Using mock configuration');
-        loadMockConfiguration();
     }
 });
 
@@ -1018,8 +1016,7 @@ async function loadConfigurationFromBackend() {
             showStatus(t('status.loaded'), 'success');
             setTimeout(() => hideStatus(), 3000);
         } else {
-            logWarn('WebUI not available, using mock data');
-            loadMockConfiguration();
+            logWarn('WebUI not available');
         }
     } catch (error) {
         logError('Failed to load configuration:', error);
@@ -1080,35 +1077,6 @@ function refreshNotificationColorDefaults() {
     document.querySelectorAll('input[id$="_borderColor"][data-optional-color]').forEach(el => {
         el.dataset.defaultColor = borderDefault;
     });
-}
-
-function loadMockConfiguration() {
-    currentConfig = {
-        timer: { scanIntervalMs: 1000 },
-        thumbnail: {
-            width: 200,
-            height: 112,
-            thumbnailOpacity: 255,
-            applyOpacityToOverlayTexts: false,
-            borderWidth: 2,
-            borderColor: 0xFF606060,
-            characterNameColor: 0xFFFFFF,
-            characterNameBgColor: 0xE6000000
-        },
-        display: {
-            startX: 10,
-            startY: 10,
-            spacing: 10,
-            listViewOrder: 'Tracked',
-            rememberListViewPosition: true,
-            listViewOpacity: 255
-        },
-        notifications: {
-            position: 'TopRight'
-        }
-    };
-    populateFormFields();
-    markAsSaved();
 }
 
 function populateFormFields() {
