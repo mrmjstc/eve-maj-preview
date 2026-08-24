@@ -171,6 +171,8 @@ pub const ChatlogMonitor = struct {
     pending_scan_index: usize = 0,
     pending_chatlog_signaled: bool = false,
     pending_gamelog_signaled: bool = false,
+    // Owned snapshot of character names for the in-progress scan; immune to Scout.windows reordering mid-scan.
+    pending_scan_names: std.ArrayList([]u8) = .empty,
     worker_thread: ?std.Thread = null,
     command_queue: EventQueue(ChatlogCommand),
     result_queue: EventQueue(SystemUpdateEvent),
@@ -208,6 +210,11 @@ pub const ChatlogMonitor = struct {
         monitor.bounty_tracker = null;
         monitor.idle_poll_threshold = idle_poll_threshold;
         monitor.max_poll_multiplier = max_poll_multiplier;
+        monitor.last_sync_poll_ms = 0;
+        monitor.pending_scan_index = 0;
+        monitor.pending_chatlog_signaled = false;
+        monitor.pending_gamelog_signaled = false;
+        monitor.pending_scan_names = .empty;
 
         monitor.worker_thread = null;
         monitor.command_queue = EventQueue(ChatlogCommand).init(allocator);
@@ -391,6 +398,9 @@ pub const ChatlogMonitor = struct {
             self.allocator.free(key.*);
         }
         self.pending_characters.deinit();
+
+        self.clearPendingScanNames();
+        self.pending_scan_names.deinit(self.allocator);
 
         if (self.chatlog_watcher != win32.INVALID_HANDLE_VALUE) {
             _ = win32.FindCloseChangeNotification(self.chatlog_watcher);
@@ -590,6 +600,12 @@ pub const ChatlogMonitor = struct {
         return handle;
     }
 
+    /// Free and clear the owned scan-name snapshot (call on scan completion or teardown).
+    fn clearPendingScanNames(self: *ChatlogMonitor) void {
+        for (self.pending_scan_names.items) |name| self.allocator.free(name);
+        self.pending_scan_names.clearRetainingCapacity();
+    }
+
     /// Check for new log files using file system watchers with time budget (non-blocking)
     /// This handles both new character logins AND log rotation for existing characters
     /// Returns true if more work is pending (exceeded time budget), false if complete
@@ -616,23 +632,32 @@ pub const ChatlogMonitor = struct {
             self.pending_gamelog_signaled = gamelog_signaled;
             self.pending_scan_index = 0;
 
+            // Snapshot into owned memory: character_names aliases Scout.windows, which orderedRemove() can reshuffle mid-scan.
+            self.clearPendingScanNames();
+            for (character_names) |name| {
+                const copy = try self.allocator.dupe(u8, name);
+                try self.pending_scan_names.append(self.allocator, copy);
+            }
+
             slog.debug("New log file scan started (chatlog={}, gamelog={})", .{ chatlog_signaled, gamelog_signaled });
         }
 
+        const scan_names = self.pending_scan_names.items;
+
         // Process characters incrementally with time budget
-        while (self.pending_scan_index < character_names.len) : (self.pending_scan_index += 1) {
+        while (self.pending_scan_index < scan_names.len) : (self.pending_scan_index += 1) {
             const elapsed = std.time.nanoTimestamp() - start_time;
             if (elapsed > max_time_ns) {
                 slog.debug("Time budget exceeded at character {}/{} ({}ns > {}ns), deferring remaining work", .{
                     self.pending_scan_index,
-                    character_names.len,
+                    scan_names.len,
                     elapsed,
                     max_time_ns,
                 });
                 return true;
             }
 
-            const char_name = character_names[self.pending_scan_index];
+            const char_name = scan_names[self.pending_scan_index];
 
             // Skip generic "EVE" name (logged out or loading windows)
             if (scout_mod.isGenericCharacterName(char_name)) continue;
@@ -667,6 +692,7 @@ pub const ChatlogMonitor = struct {
             }
             self.pending_gamelog_signaled = false;
         }
+        self.clearPendingScanNames();
         self.pending_scan_index = 0;
 
         slog.debug("Log file scan completed", .{});
