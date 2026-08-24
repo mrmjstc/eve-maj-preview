@@ -1261,14 +1261,14 @@ async function loadProfileList() {
 }
 
 // deferLivePush skips the immediate switchProfileLive call for a profile runImport() just created (still empty) - runImport() does the actual live push once it has real data to save.
-async function switchProfile(deferLivePush = false) {
+async function switchProfile(deferLivePush = false, forceLive = false) {
     const profileSelect = document.getElementById('profile-select');
     const selectedProfile = profileSelect.value;
     let liveChoice = null;
 
     // Ask before making it live, since that means an immediate thumbnail/hotkey/chatlog reload in the running app.
     if (dialogEditingProfile && selectedProfile !== dialogEditingProfile) {
-        const choice = await showLiveSwitchModal(selectedProfile);
+        const choice = forceLive ? 'live' : await showLiveSwitchModal(selectedProfile);
         liveChoice = choice;
         if (choice === 'cancel') {
             profileSelect.value = dialogEditingProfile;
@@ -3134,7 +3134,7 @@ function deleteCurrentProfile() {
                 
                 if (result.success) {
                     profileSelect.value = 'default.json';
-                    await switchProfile();
+                    await switchProfile(false, true);
                     await loadProfileList();
 
                     showStatus(t('status.profileDeletedSuccess'), 'success');
