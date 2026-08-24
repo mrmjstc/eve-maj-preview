@@ -10,6 +10,7 @@
 ### Changed
 - Default build optimize mode is now `ReleaseFast` instead of `ReleaseSafe`.
 - Layout preview: disabled chips now show a diagonal strike (matching the swatch cleared-color style) instead of fading via opacity.
+- Merged the overlay tab's "Preview" and "Layout Preview" sections into one "Text Overlays and Layout" section with a combined hint and checkboxes.
 
 ### Fixed
 - Deleting the last-used profile no longer crashes the app on next launch; it falls back to the default profile and heals `global.settings.json`.
