@@ -355,7 +355,7 @@ function New-GamelogFile {
 }
 
 function Add-GamelogEvent {
-    param([string]$Path, [string]$Kind)
+    param([string]$Path, [string]$Kind, [string]$Destination = 'Jita')
 
     $ts = (Get-Date).ToString('yyyy.MM.dd HH:mm:ss')
     $line = switch ($Kind) {
@@ -453,7 +453,7 @@ function Add-GamelogEvent {
             "[ $ts ] (notify) The stargate denies you permission to jump for the moment due to your recent acts of aggression."
         }
         'ConduitJump' {
-            "[ $ts ] (notify) A Conduit Field jumps you to Jita."
+            "[ $ts ] (notify) A Conduit Field jumps you to $Destination."
         }
         'ConversationInvite' {
             "[ $ts ] (None) Some Pilot is inviting you to a conversation"
@@ -467,6 +467,7 @@ function Add-GamelogEvent {
 
 # One-shot NotificationType kinds fireable via Add-GamelogEvent - excludes TakingDamage/MiningIdle/MiningStopped
 # (tracker-driven, use the b/m/c bursts or 'x' instead) and SystemChange (fired by the j/r jump commands instead).
+# ConduitJump is included here but, like a real conduit, also moves the character - see the 'e' menu handler.
 $script:NotificationTypeKinds = @(
     'FleetInvite', 'FleetFollow', 'FleetRegroup', 'FleetDisband',
     'MiningCompression', 'AsteroidDepleted', 'CargoFull', 'CrystalBroke',
@@ -854,7 +855,17 @@ try {
             $name = Select-Character
             if ($name) {
                 $kind = Select-NotificationTypeKind
-                if ($kind) { Write-Host (Add-GamelogEvent -Path $clients[$name].Gamelog -Kind $kind) }
+                if ($kind -eq 'ConduitJump') {
+                    $c = $clients[$name]
+                    $dest = Get-Random -InputObject ($script:EveSystemNames | Where-Object { $_ -ne $c.System })
+                    Write-Host (Add-GamelogEvent -Path $c.Gamelog -Kind $kind -Destination $dest)
+                    Add-ChatlogJump -Path $c.Chatlog -System $dest | Out-Null
+                    $c.System = $dest
+                    Save-CharacterState -CharName $name -ChatlogPath $c.Chatlog -GamelogPath $c.Gamelog -System $c.System
+                    Write-Host "$name conduit-jumped to $dest." -ForegroundColor Green
+                } elseif ($kind) {
+                    Write-Host (Add-GamelogEvent -Path $clients[$name].Gamelog -Kind $kind)
+                }
             }
         }
         'x' {
