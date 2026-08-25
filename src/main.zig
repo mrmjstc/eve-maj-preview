@@ -52,6 +52,10 @@ var g_last_dps_update_ms: i64 = 0;
 var g_last_mining_update_ms: i64 = 0;
 var g_last_bounty_update_ms: i64 = 0;
 
+// Throttles the characterIdMap backfill sweep - a directory scan, so it shouldn't run every tick.
+var g_last_id_backfill_ms: i64 = 0;
+const ID_BACKFILL_INTERVAL_MS: i64 = 5 * 60 * std.time.ms_per_s;
+
 // Reused across timer ticks to avoid a per-tick alloc; borrowed slices only, no ownership.
 var g_chatlog_char_names: std.ArrayList([]const u8) = .empty;
 var g_chatlog_logged_out_names: std.ArrayList([]const u8) = .empty;
@@ -247,6 +251,18 @@ fn onTimerTick() void {
     }
 
     const now_ms = std.time.milliTimestamp();
+
+    // Backfills characterIdMap for known characters missed while offline or before monitoring was enabled; characterIdMap itself stays worker-thread-only.
+    if (g_chatlog_monitor) |monitor| {
+        if (now_ms - g_last_id_backfill_ms >= ID_BACKFILL_INTERVAL_MS) {
+            g_last_id_backfill_ms = now_ms;
+            for (g_config.characters.items) |char_config| {
+                monitor.resolveCharacterId(char_config.name) catch |err| {
+                    slog.warn("Failed to queue ID backfill for {s}: {}", .{ char_config.name, err });
+                };
+            }
+        }
+    }
 
     if (g_combat_tracker) |tracker| {
         const interval_ms: i64 = @intCast(g_config.combat.update_interval_ms);

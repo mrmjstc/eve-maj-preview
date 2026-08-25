@@ -44,12 +44,17 @@ pub const ChatlogCommand = union(enum) {
     },
     // Owned by command, must be freed by receiver
     remove_character: []const u8,
+    // Owned by command, must be freed by receiver
+    resolve_character_id: struct {
+        name: []const u8,
+    },
     shutdown: void,
 
     pub fn deinit(self: *ChatlogCommand, allocator: std.mem.Allocator) void {
         switch (self.*) {
             .add_character => |data| allocator.free(data.name),
             .remove_character => |name| allocator.free(name),
+            .resolve_character_id => |data| allocator.free(data.name),
             .shutdown => {},
         }
     }
@@ -343,6 +348,17 @@ pub const ChatlogMonitor = struct {
                     slog.debug("Worker: Remove character {s}", .{char_name});
                     self.removeCharacter(char_name);
                 },
+                .resolve_character_id => |data| {
+                    const needs_lookup = if (self.global_settings) |gs| !gs.characterIdMap.contains(data.name) else false;
+                    if (!needs_lookup) continue;
+
+                    slog.debug("Worker: Resolving character ID for {s}", .{data.name});
+                    if (self.findChatlogForCharacter(data.name)) |path| {
+                        self.allocator.free(path);
+                    } else if (self.findGamelogForCharacter(data.name)) |path| {
+                        self.allocator.free(path);
+                    }
+                },
                 .shutdown => {
                     slog.info("Worker: Shutdown command received", .{});
                     self.should_exit.store(true, .release);
@@ -455,6 +471,18 @@ pub const ChatlogMonitor = struct {
             try self.addLogFile(gamelog_path, character_name, false);
             self.allocator.free(gamelog_path);
         }
+    }
+
+    /// Backfills a character's ID from existing log files without monitoring them (unlike addCharacter); worker-thread only.
+    pub fn resolveCharacterId(self: *ChatlogMonitor, character_name: []const u8) !void {
+        if (!self.threading_enabled) return;
+
+        const cmd = ChatlogCommand{
+            .resolve_character_id = .{
+                .name = try self.allocator.dupe(u8, character_name),
+            },
+        };
+        try self.command_queue.push(cmd);
     }
 
     /// Remove all log files for a character (called when character logs out)
