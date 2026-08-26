@@ -1693,6 +1693,9 @@ pub const Painter = struct {
 
         const cursor = win32.LoadCursorA(null, win32.IDC_ARROW);
 
+        // Black, not white COLOR_WINDOW: shows through whenever DWM has no live thumbnail frame to composite.
+        const thumbnail_bg_brush = win32.CreateSolidBrush(0x00000000) orelse return error.CreateBrushFailed;
+
         const wc = win32.WNDCLASSEXA{
             .cbSize = @sizeOf(win32.WNDCLASSEXA),
             .style = 0,
@@ -1702,7 +1705,7 @@ pub const Painter = struct {
             .hInstance = self.instance,
             .hIcon = null,
             .hCursor = cursor,
-            .hbrBackground = @ptrFromInt(win32.COLOR_WINDOW + 1),
+            .hbrBackground = thumbnail_bg_brush,
             .lpszMenuName = null,
             .lpszClassName = WINDOW_CLASS_NAME,
             .hIconSm = null,
