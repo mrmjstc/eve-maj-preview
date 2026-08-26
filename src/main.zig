@@ -640,6 +640,7 @@ fn mainImpl() !void {
 
         if (g_chatlog_monitor) |monitor| {
             monitor.combat_tracker = g_combat_tracker.?;
+            monitor.damage_alert_excluded_weapons = g_config.combat.damage_alert_excluded_weapons;
         }
 
         slog.debug("Combat DPS tracking enabled ({d}s window)", .{g_config.combat.window_seconds});
@@ -1021,6 +1022,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
 
                 if (g_chatlog_monitor) |monitor| {
                     monitor.combat_tracker = tracker_ptr;
+                    monitor.damage_alert_excluded_weapons = g_config.combat.damage_alert_excluded_weapons;
                 }
 
                 slog.debug("Combat DPS tracking enabled ({d}s window)", .{g_config.combat.window_seconds});

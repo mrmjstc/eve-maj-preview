@@ -169,6 +169,8 @@ pub const ChatlogMonitor = struct {
     combat_tracker: ?*activity_mod.CombatTracker = null,
     mining_tracker: ?*activity_mod.MiningTracker = null,
     bounty_tracker: ?*activity_mod.BountyTracker = null,
+    // Borrowed from Config, not Painter - set only while the worker is stopped, like combat_tracker.
+    damage_alert_excluded_weapons: []const u8 = "",
     idle_poll_threshold: u32 = 20,
     max_poll_multiplier: u8 = 8,
     poll_interval_ms: u32 = 50,
@@ -1318,8 +1320,7 @@ pub const ChatlogMonitor = struct {
         if (self.combat_tracker) |tracker| {
             if (activity_mod.parseCombatLine(stripped_text)) |parsed| {
                 // Weapon-filtered incoming hits still count toward DPS stats but shouldn't retrigger the Taking Damage alert (see CombatWindow.addEntry).
-                const excluded_weapons = if (self.painter) |p| p.config.combat.damage_alert_excluded_weapons else "";
-                const counts_for_alert = !activity_mod.isWeaponExcluded(parsed.weapon, excluded_weapons);
+                const counts_for_alert = !activity_mod.isWeaponExcluded(parsed.weapon, self.damage_alert_excluded_weapons);
                 tracker.addEntry(state.character_name, parsed.amount, parsed.is_incoming, std.time.milliTimestamp(), counts_for_alert) catch |err| {
                     slog.warn("Failed to record combat entry for {s}: {}", .{ state.character_name, err });
                 };
