@@ -344,6 +344,7 @@ pub extern "dbghelp" fn MiniDumpWriteDump(
     CallbackParam: ?*anyopaque,
 ) callconv(.c) BOOL;
 
+pub extern "kernel32" fn SetCurrentDirectoryA(lpPathName: LPCSTR) callconv(.c) BOOL;
 pub extern "advapi32" fn RegCreateKeyExA(
     hKey: HKEY,
     lpSubKey: LPCSTR,

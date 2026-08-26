@@ -448,7 +448,20 @@ pub fn main() void {
     };
 }
 
+/// Run-key startup entries launch with an arbitrary working directory, not the exe's folder.
+fn setCwdToExeDir() void {
+    var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const exe_dir = std.fs.selfExeDirPath(&exe_dir_buf) catch return;
+
+    var dir_z_buf: [std.fs.max_path_bytes + 1]u8 = undefined;
+    const exe_dir_z = std.fmt.bufPrintZ(&dir_z_buf, "{s}", .{exe_dir}) catch return;
+
+    _ = win32.SetCurrentDirectoryA(exe_dir_z);
+}
+
 fn mainImpl() !void {
+    setCwdToExeDir();
+
     // Handle protocol invocation before the mutex check, so commands work even when another instance is already running.
     var gpa_early = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa_early.deinit();
