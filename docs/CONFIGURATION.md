@@ -814,6 +814,8 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
 {
   "hotkeys": {
     "requireEveFocus": false,
+    "resetGroupIndexOnNonGroupFocus": false,
+    "repeatCycleOnHold": false,
     "autoRegisterProtocol": true,
     "hotkeyMinimizeAll": null,
     "hotkeyCloseAll": null,
@@ -828,6 +830,12 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
   }
 }
 ```
+
+**requireEveFocus**: Only trigger hotkeys while an EVE client window has focus
+
+**resetGroupIndexOnNonGroupFocus**: Reset a hotkey group's cycle position when focus leaves that group
+
+**repeatCycleOnHold**: When enabled, cycling hotkeys (group cycling, per-character cycling, quick-group cycling, excluded/notified/all-clients/not-logged-in cycling) keep advancing for as long as the key is held, repeating at the OS keyboard repeat rate. Toggle hotkeys and one-shot commands (minimize/close all, suspend, etc.) always fire once per press regardless of this setting.
 
 **Global Hotkeys**: Set to a virtual key code string (e.g., `"F9"`, `"F10"`, `"0x70"`), a modifier combo (e.g., `"Ctrl+F9"`, `"Alt+Shift+F1"`, `"LWin+M"`), or `null` to disable
 - **hotkeyMinimizeAll**: Minimize all EVE client windows

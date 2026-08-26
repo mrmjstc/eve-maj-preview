@@ -260,6 +260,7 @@ const CONFIG_SCHEMA = [
 
     { id: 'requireEveFocus', path: 'hotkeys.requireEveFocus' },
     { id: 'resetGroupIndexOnNonGroupFocus', path: 'hotkeys.resetGroupIndexOnNonGroupFocus' },
+    { id: 'repeatCycleOnHold', path: 'hotkeys.repeatCycleOnHold' },
     { id: 'autoRegisterProtocol', path: 'hotkeys.autoRegisterProtocol' },
     { id: 'hotkeyMinimizeAll', path: 'hotkeys.hotkeyMinimizeAll', transform: 'vkhex' },
     { id: 'hotkeyCloseAll', path: 'hotkeys.hotkeyCloseAll', transform: 'vkhex' },

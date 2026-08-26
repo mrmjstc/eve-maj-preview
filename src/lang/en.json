@@ -293,6 +293,7 @@
   "field.profile-name-input.placeholder": "Profile name",
   "field.quickGroupBadgeColor.label": "Badge Color",
   "field.rememberListViewPosition.label": "Remember Client List Position",
+  "field.repeatCycleOnHold.label": "Keep Cycling While Holding the Hotkey",
   "field.requireEveFocus.label": "Require EVE Focus",
   "field.resetGroupIndexOnNonGroupFocus.label": "Reset Cycling When Leaving a Group",
   "field.runOnStartup.label": "Run on Startup",
