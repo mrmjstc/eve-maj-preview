@@ -3396,6 +3396,10 @@ function hotkeyFieldLabel(input) {
     return input.id || 'Hotkey';
 }
 
+function isCharacterHotkeyInput(input) {
+    return /^char_\d+_hotkey$/.test(input.id);
+}
+
 function findHotkeyConflicts() {
     const byKey = new Map();
     getAllHotkeyInputs().forEach(input => {
@@ -3405,7 +3409,8 @@ function findHotkeyConflicts() {
         byKey.get(norm).push(input);
     });
 
-    return Array.from(byKey.values()).filter(inputs => inputs.length > 1);
+    // Characters sharing a hotkey cycle instead of conflicting - only flag groups reaching outside the character roster.
+    return Array.from(byKey.values()).filter(inputs => inputs.length > 1 && inputs.some(input => !isCharacterHotkeyInput(input)));
 }
 
 // Returns the conflict groups so callers can report them.

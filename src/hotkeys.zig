@@ -74,7 +74,8 @@ pub const HotkeyAction = union(HotkeyActionType) {
         forward: bool,
     },
     ActivateCharacter: struct {
-        character_index: usize,
+        character_indices: []const usize,
+        current_index: ?usize = null,
     },
     AssignQuickGroup: struct {
         group_index: usize,
@@ -195,13 +196,33 @@ pub const HotkeyManager = struct {
         const has_next_not_logged_in = self.global_settings.hotkeyCycleNotLoggedInForward != null;
         const has_previous_not_logged_in = self.global_settings.hotkeyCycleNotLoggedInBackward != null;
         const has_move_to_saved = self.config.hotkeyMoveToSavedPositions != null;
-        var has_per_character_hotkeys = false;
-        for (self.config.characters.items) |char| {
-            if (char.hotkey != null) {
-                has_per_character_hotkeys = true;
-                break;
+        const PerCharacterHotkeyGroup = struct {
+            vk: u32,
+            indices: std.ArrayList(usize),
+        };
+        var per_character_groups: std.ArrayList(PerCharacterHotkeyGroup) = .empty;
+        defer {
+            for (per_character_groups.items) |*group| group.indices.deinit(self.allocator);
+            per_character_groups.deinit(self.allocator);
+        }
+        for (self.config.characters.items, 0..) |char, char_index| {
+            const char_vk = char.hotkey orelse continue;
+            var existing: ?*PerCharacterHotkeyGroup = null;
+            for (per_character_groups.items) |*group| {
+                if (group.vk == char_vk) {
+                    existing = group;
+                    break;
+                }
+            }
+            if (existing) |group| {
+                try group.indices.append(self.allocator, char_index);
+            } else {
+                var new_group = PerCharacterHotkeyGroup{ .vk = char_vk, .indices = .empty };
+                try new_group.indices.append(self.allocator, char_index);
+                try per_character_groups.append(self.allocator, new_group);
             }
         }
+        const has_per_character_hotkeys = per_character_groups.items.len > 0;
         var has_profile_switch_hotkeys = false;
         for (self.global_settings.profileSwitchHotkeys.items) |psh| {
             if (psh.hotkey != null) {
@@ -216,10 +237,7 @@ pub const HotkeyManager = struct {
         }
 
         const global_count: usize = @as(usize, if (has_minimize) 1 else 0) + @as(usize, if (has_close) 1 else 0) + @as(usize, if (has_toggle_vis) 1 else 0) + @as(usize, if (has_next_profile) 1 else 0) + @as(usize, if (has_previous_profile) 1 else 0) + @as(usize, if (has_toggle_exclusion) 1 else 0) + @as(usize, if (has_next_excluded) 1 else 0) + @as(usize, if (has_previous_excluded) 1 else 0) + @as(usize, if (has_suspend) 1 else 0) + @as(usize, if (has_cycle_notified) 1 else 0) + @as(usize, if (has_previous_notified) 1 else 0) + @as(usize, if (has_next_all_clients) 1 else 0) + @as(usize, if (has_previous_all_clients) 1 else 0) + @as(usize, if (has_next_not_logged_in) 1 else 0) + @as(usize, if (has_previous_not_logged_in) 1 else 0) + @as(usize, if (has_move_to_saved) 1 else 0);
-        var per_character_count: usize = 0;
-        for (self.config.characters.items) |char| {
-            if (char.hotkey != null) per_character_count += 1;
-        }
+        const per_character_count = per_character_groups.items.len;
         var profile_switch_count: usize = 0;
         for (self.global_settings.profileSwitchHotkeys.items) |psh| {
             if (psh.hotkey != null) profile_switch_count += 1;
@@ -343,19 +361,30 @@ pub const HotkeyManager = struct {
             }
         }
 
-        for (self.config.characters.items, 0..) |*char, char_index| {
-            if (char.hotkey) |char_vk| {
-                const char_id: c_int = HOTKEY_ID_PER_CHARACTER_BASE + @as(c_int, @intCast(char_index));
-                const char_action = HotkeyAction{ .ActivateCharacter = .{ .character_index = char_index } };
-                var char_desc_buf: [128]u8 = undefined;
-                const char_desc = std.fmt.bufPrint(&char_desc_buf, "activate character [{s}]", .{char.name}) catch "activate character";
-                self.registerAndTrackHotkey(hwnd, char_id, char_vk, char_action, char_desc) catch |err| {
-                    var key_name_buf: [32]u8 = undefined;
-                    const key_name = formatKeyName(char_vk, &key_name_buf);
-                    slog.err("Failed to register hotkey {s} for character [{s}]: {}", .{ key_name, char.name, err });
-                    failed_count += 1;
-                };
-            }
+        for (per_character_groups.items, 0..) |*group, group_index| {
+            const char_id: c_int = HOTKEY_ID_PER_CHARACTER_BASE + @as(c_int, @intCast(group_index));
+            const first_name = self.config.characters.items[group.indices.items[0]].name;
+
+            var char_desc_buf: [128]u8 = undefined;
+            const char_desc = if (group.indices.items.len == 1)
+                std.fmt.bufPrint(&char_desc_buf, "activate character [{s}]", .{first_name}) catch "activate character"
+            else
+                std.fmt.bufPrint(&char_desc_buf, "activate character [{s}...] ({} sharing hotkey)", .{ first_name, group.indices.items.len }) catch "activate character group";
+
+            const owned_indices = self.allocator.dupe(usize, group.indices.items) catch {
+                slog.err("Failed to allocate memory for per-character hotkey group [{s}...]", .{first_name});
+                failed_count += 1;
+                continue;
+            };
+            const char_action = HotkeyAction{ .ActivateCharacter = .{ .character_indices = owned_indices } };
+
+            self.registerAndTrackHotkey(hwnd, char_id, group.vk, char_action, char_desc) catch |err| {
+                self.allocator.free(owned_indices);
+                var key_name_buf: [32]u8 = undefined;
+                const key_name = formatKeyName(group.vk, &key_name_buf);
+                slog.err("Failed to register hotkey {s} for character [{s}...]: {}", .{ key_name, first_name, err });
+                failed_count += 1;
+            };
         }
 
         for (self.global_settings.profileSwitchHotkeys.items, 0..) |*psh, psh_index| {
@@ -597,7 +626,17 @@ pub const HotkeyManager = struct {
         mouse_hook.unregisterAll();
         input.uninstallHotkeyReleaseHook();
 
-        if (self.registered_ids.items.len == 0) return;
+        var action_it = self.hotkey_map.valueIterator();
+        while (action_it.next()) |action| {
+            if (std.meta.activeTag(action.*) == .ActivateCharacter) {
+                self.allocator.free(action.ActivateCharacter.character_indices);
+            }
+        }
+
+        if (self.registered_ids.items.len == 0) {
+            self.hotkey_map.clearRetainingCapacity();
+            return;
+        }
 
         slog.debug("Unregistering {} hotkey(s)...", .{self.registered_ids.items.len});
         for (self.registered_ids.items) |id| {
@@ -659,8 +698,8 @@ pub const HotkeyManager = struct {
                 const group = &self.config.hotkeyGroups.items[cycle.group_index];
                 self.cycleGroup(group, cycle.forward);
             },
-            .ActivateCharacter => |activate| {
-                self.activateCharacterByIndex(activate.character_index);
+            .ActivateCharacter => {
+                self.activatePerCharacterGroup(hotkey_id);
             },
             .AssignQuickGroup => |assign| {
                 self.handleAssignQuickGroup(assign.group_index);
@@ -981,19 +1020,36 @@ pub const HotkeyManager = struct {
         };
     }
 
-    fn activateCharacterByIndex(self: *HotkeyManager, character_index: usize) void {
-        if (character_index >= self.config.characters.items.len) {
-            slog.err("Invalid character index {}", .{character_index});
-            return;
+    /// Cycles to the next running character sharing this hotkey.
+    fn activatePerCharacterGroup(self: *HotkeyManager, hotkey_id: c_int) void {
+        const action = self.hotkey_map.getPtr(hotkey_id) orelse return;
+        if (std.meta.activeTag(action.*) != .ActivateCharacter) return;
+        const group = &action.ActivateCharacter;
+
+        const num = group.character_indices.len;
+        if (num == 0) return;
+
+        const start_index = group.current_index;
+        const valid_current = if (group.current_index) |ci| (if (ci < num) ci else null) else null;
+        var idx: usize = valid_current orelse (num - 1);
+        var attempts: usize = 0;
+
+        while (attempts < num) : (attempts += 1) {
+            idx = (idx + 1) % num;
+            const char_index = group.character_indices[idx];
+            if (char_index >= self.config.characters.items.len) continue;
+            const char_name = self.config.characters.items[char_index].name;
+
+            if (self.scout.getHwndByName(char_name)) |hwnd| {
+                group.current_index = idx;
+                slog.info("Activating character: {s} ({}/{})", .{ char_name, idx + 1, num });
+                input.handleThumbnailClick(hwnd);
+                return;
+            }
         }
 
-        const char_name = self.config.characters.items[character_index].name;
-        if (self.scout.getHwndByName(char_name)) |hwnd| {
-            slog.info("Activating character: {s}", .{char_name});
-            input.handleThumbnailClick(hwnd);
-        } else {
-            slog.warn("Character '{s}' is not currently running", .{char_name});
-        }
+        group.current_index = start_index;
+        slog.warn("No character sharing this hotkey is currently running", .{});
     }
 
     fn cycleGroup(self: *HotkeyManager, group: *config_mod.HotkeyGroup, forward: bool) void {
@@ -1517,6 +1573,20 @@ pub const HotkeyManager = struct {
         }
 
         self.updateExcludedCycleIndex(character_name);
+
+        var pc_it = self.hotkey_map.valueIterator();
+        while (pc_it.next()) |action| {
+            if (std.meta.activeTag(action.*) != .ActivateCharacter) continue;
+            const group = &action.ActivateCharacter;
+            for (group.character_indices, 0..) |char_index, idx| {
+                if (char_index < self.config.characters.items.len and std.mem.eql(u8, self.config.characters.items[char_index].name, character_name)) {
+                    if (group.current_index == null or group.current_index.? != idx) {
+                        group.current_index = idx;
+                    }
+                    break;
+                }
+            }
+        }
 
         var found_in_hotkey_group = false;
         for (self.config.hotkeyGroups.items) |*group| {
