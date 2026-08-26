@@ -1719,58 +1719,6 @@
                             <div class="accordion-header" onclick="this.parentElement.classList.toggle('expanded')">
                                 <div class="accordion-title">
                                     <span class="accordion-toggle"></span>
-                                    <span class="accordion-name" data-i18n="tab.advanced.section.hover-state.heading">Hover State</span>
-                                </div>
-                            </div>
-                            <div class="accordion-content">
-                                <label>
-                                    <input type="checkbox" id="stateHoverShow">
-                                    <span class="label-body" data-i18n="common.showThumbnailLabel">Show Thumbnail</span>
-                                </label>
-
-                                <label>
-                                    <input type="checkbox" id="stateHoverShowBorder">
-                                    <span class="label-body" data-i18n="common.showBorderLabel">Show Border</span>
-                                </label>
-
-                                <div class="row">
-                                    <div class="column">
-                                        <label for="stateHoverBorderWidth" data-i18n="common.borderWidthLabel">Border Width (px)</label>
-                                        <input type="number" id="stateHoverBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateHoverBorderWidth.placeholder">
-                                    </div>
-                                    <div class="column">
-                                        <label for="stateHoverOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
-                                        <input type="number" id="stateHoverOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateHoverOpacity.placeholder">
-                                    </div>
-                                </div>
-
-                                <label for="stateHoverBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
-                                <select id="stateHoverBorderStyle">
-                                    <option value="" data-i18n="field.stateHoverBorderStyle.option.default">Default</option>
-                                    <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
-                                    <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
-                                    <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
-                                    <option value="Double" data-i18n="common.borderStyle.double">Double</option>
-                                    <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
-                                    <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
-                                    <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
-                                </select>
-
-                                <label for="stateHoverBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
-                                <input type="color" id="stateHoverBorderColor">
-
-                                <label for="stateHoverTextColor" data-i18n="common.textColorLabel">Text Color</label>
-                                <input type="color" id="stateHoverTextColor">
-
-                                <label for="stateHoverTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                <input type="color" id="stateHoverTextBgColor">
-                            </div>
-                        </div>
-
-                        <div class="accordion">
-                            <div class="accordion-header" onclick="this.parentElement.classList.toggle('expanded')">
-                                <div class="accordion-title">
-                                    <span class="accordion-toggle"></span>
                                     <span class="accordion-name" data-i18n="tab.advanced.section.alert-state.heading">Alert State</span>
                                 </div>
                             </div>
@@ -1923,57 +1871,6 @@
                             </div>
                         </div>
 
-                        <div class="accordion">
-                            <div class="accordion-header" onclick="this.parentElement.classList.toggle('expanded')">
-                                <div class="accordion-title">
-                                    <span class="accordion-toggle"></span>
-                                    <span class="accordion-name" data-i18n="tab.advanced.section.hidden-state.heading">Hidden State</span>
-                                </div>
-                            </div>
-                            <div class="accordion-content">
-                                <label>
-                                    <input type="checkbox" id="stateHiddenShow">
-                                    <span class="label-body" data-i18n="common.showThumbnailLabel">Show Thumbnail</span>
-                                </label>
-
-                                <label>
-                                    <input type="checkbox" id="stateHiddenShowBorder">
-                                    <span class="label-body" data-i18n="common.showBorderLabel">Show Border</span>
-                                </label>
-
-                                <div class="row">
-                                    <div class="column">
-                                        <label for="stateHiddenBorderWidth" data-i18n="common.borderWidthLabel">Border Width (px)</label>
-                                        <input type="number" id="stateHiddenBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateHiddenBorderWidth.placeholder">
-                                    </div>
-                                    <div class="column">
-                                        <label for="stateHiddenOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
-                                        <input type="number" id="stateHiddenOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateHiddenOpacity.placeholder">
-                                    </div>
-                                </div>
-
-                                <label for="stateHiddenBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
-                                <select id="stateHiddenBorderStyle">
-                                    <option value="" data-i18n="field.stateHiddenBorderStyle.option.default">Default</option>
-                                    <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
-                                    <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
-                                    <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
-                                    <option value="Double" data-i18n="common.borderStyle.double">Double</option>
-                                    <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
-                                    <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
-                                    <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
-                                </select>
-
-                                <label for="stateHiddenBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
-                                <input type="color" id="stateHiddenBorderColor">
-
-                                <label for="stateHiddenTextColor" data-i18n="common.textColorLabel">Text Color</label>
-                                <input type="color" id="stateHiddenTextColor">
-
-                                <label for="stateHiddenTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                <input type="color" id="stateHiddenTextBgColor">
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>

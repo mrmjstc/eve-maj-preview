@@ -274,11 +274,9 @@ const CONFIG_SCHEMA = [
 
     // "active" is intentionally not here - unchecking it must write null (defer to activeThumbnailHidden), not false; see applySpecialFields*.
     { id: 'stateInactiveShow', path: 'thumbnail.inactive.showThumbnail' },
-    { id: 'stateHoverShow', path: 'thumbnail.hover.showThumbnail' },
     { id: 'stateAlertShow', path: 'thumbnail.alert.showThumbnail' },
     { id: 'stateMinimizedShow', path: 'thumbnail.minimized.showThumbnail' },
     { id: 'stateDraggingShow', path: 'thumbnail.dragging.showThumbnail' },
-    { id: 'stateHiddenShow', path: 'thumbnail.hidden.showThumbnail' },
 
     { id: 'notificationsEnabled', path: 'thumbnail.notifications.enabled' },
     { id: 'notificationPosition', path: 'thumbnail.notifications.position' },

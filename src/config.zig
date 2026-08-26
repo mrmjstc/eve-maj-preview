@@ -1902,21 +1902,17 @@ pub const Config = struct {
         // Defaults set here (not at declaration alone) so null on `active` means "use activeThumbnailHidden" instead of a fixed true/false.
         active: StateVisualConfig = .{ .showThumbnail = null },
         inactive: StateVisualConfig = .{ .showThumbnail = true },
-        hover: StateVisualConfig = .{ .showThumbnail = true },
         alert: StateVisualConfig = .{ .showThumbnail = true },
         minimized: StateVisualConfig = .{ .showThumbnail = true },
         dragging: StateVisualConfig = .{ .showThumbnail = true },
-        hidden: StateVisualConfig = .{ .showThumbnail = false },
 
         pub fn getStateConfig(self: *const ThumbnailConfig, state: state_mod.ThumbnailState) StateVisualConfig {
             return switch (state) {
                 .Active => self.active,
                 .Inactive => self.inactive,
-                .Hover => self.hover,
                 .Alert => self.alert,
                 .Minimized => self.minimized,
                 .Dragging => self.dragging,
-                .Hidden => self.hidden,
             };
         }
 
@@ -2093,11 +2089,9 @@ pub const Config = struct {
             hideDebounceMs: u32 = (ThumbnailConfig{}).hideDebounceMs,
             active: StateVisualConfig.Wire = .{ .showThumbnail = null },
             inactive: StateVisualConfig.Wire = .{ .showThumbnail = true },
-            hover: StateVisualConfig.Wire = .{ .showThumbnail = true },
             alert: StateVisualConfig.Wire = .{ .showThumbnail = true },
             minimized: StateVisualConfig.Wire = .{ .showThumbnail = true },
             dragging: StateVisualConfig.Wire = .{ .showThumbnail = true },
-            hidden: StateVisualConfig.Wire = .{ .showThumbnail = false },
         };
 
         pub fn toWire(self: *const ThumbnailConfig) ThumbnailConfig.Wire {
@@ -2152,11 +2146,9 @@ pub const Config = struct {
                 .hideDebounceMs = self.hideDebounceMs,
                 .active = self.active.toWire(),
                 .inactive = self.inactive.toWire(),
-                .hover = self.hover.toWire(),
                 .alert = self.alert.toWire(),
                 .minimized = self.minimized.toWire(),
                 .dragging = self.dragging.toWire(),
-                .hidden = self.hidden.toWire(),
             };
         }
 
@@ -2212,11 +2204,9 @@ pub const Config = struct {
                 .hideDebounceMs = w.hideDebounceMs,
                 .active = StateVisualConfig.fromWire(w.active),
                 .inactive = StateVisualConfig.fromWire(w.inactive),
-                .hover = StateVisualConfig.fromWire(w.hover),
                 .alert = StateVisualConfig.fromWire(w.alert),
                 .minimized = StateVisualConfig.fromWire(w.minimized),
                 .dragging = StateVisualConfig.fromWire(w.dragging),
-                .hidden = StateVisualConfig.fromWire(w.hidden),
             };
         }
     };
