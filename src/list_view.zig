@@ -327,7 +327,7 @@ pub const ListWindow = struct {
     }
 
     /// Cheap O(n) hash over everything that affects the rendered pixels (row-count/order settings plus each row's name/state/notification/system); used to skip the GDI redraw when nothing changed.
-    fn computeRenderSignature(self: *const ListWindow, thumbnails: []const ThumbnailWindow) u64 {
+    fn computeRenderSignature(self: *const ListWindow, thumbnails: []const ThumbnailWindow, active_source_hwnd: ?win32.HWND) u64 {
         var h = std.hash.Wyhash.init(0);
         h.update(std.mem.asBytes(&thumbnails.len));
         h.update(std.mem.asBytes(&self.config.display.listViewColumns));
@@ -348,11 +348,12 @@ pub const ListWindow = struct {
         h.update(std.mem.asBytes(&self.config.bounty.color));
 
         for (thumbnails) |*t| {
+            const render_state = t.effectiveRenderState(active_source_hwnd);
             h.update(t.character_name);
             // cached_display_name mirrors cached_system_color below — resolved by painter.zig on rename instead of re-scanning config.characters every tick.
             h.update(t.cached_display_name);
             h.update(t.system_name);
-            h.update(std.mem.asBytes(&t.current_state));
+            h.update(std.mem.asBytes(&render_state));
             h.update(std.mem.asBytes(&t.is_excluded_from_cycle));
             h.update(std.mem.asBytes(&t.last_incoming_dps));
             h.update(std.mem.asBytes(&t.last_outgoing_dps));
@@ -368,7 +369,8 @@ pub const ListWindow = struct {
             if (t.cached_character_color) |cc| {
                 h.update(std.mem.asBytes(&cc));
             }
-            if (self.resolveActiveBadgeColorIfActive(t)) |badge_color| {
+            if (render_state == .Active) {
+                const badge_color = self.resolveActiveBadgeColor(t);
                 h.update(std.mem.asBytes(&badge_color));
             }
             for (t.active_notifications) |maybe_notif| {
@@ -380,11 +382,6 @@ pub const ListWindow = struct {
         }
 
         return h.final();
-    }
-
-    fn resolveActiveBadgeColorIfActive(self: *const ListWindow, thumb: *const ThumbnailWindow) ?u32 {
-        if (thumb.current_state != .Active) return null;
-        return self.resolveActiveBadgeColor(thumb);
     }
 
     /// Abbreviates an ISK value with k/m suffixes; mirrors painter.zig's own formatIskAbbrev for the thumbnail overlay text.
@@ -469,7 +466,7 @@ pub const ListWindow = struct {
     }
 
     /// Re-render the list window with the current thumbnail state; called every painter update tick (~50 ms) and skips the GDI redraw when the render signature matches the previous tick's.
-    pub fn render(self: *ListWindow, all_thumbnails: []const ThumbnailWindow) !void {
+    pub fn render(self: *ListWindow, all_thumbnails: []const ThumbnailWindow, active_source_hwnd: ?win32.HWND) !void {
         self.ensureFont();
 
         // Drop per-character hidden entries entirely so they don't leave a blank row.
@@ -499,7 +496,7 @@ pub const ListWindow = struct {
             return;
         }
 
-        const signature = self.computeRenderSignature(thumbnails);
+        const signature = self.computeRenderSignature(thumbnails, active_source_hwnd);
         if (self.overlay != null and self.last_render_signature != null and self.last_render_signature.? == signature) {
             _ = win32.ShowWindow(self.hwnd, win32.SW_SHOWNOACTIVATE);
             return;
@@ -576,8 +573,9 @@ pub const ListWindow = struct {
             const row_top_u: usize = @intCast(row_top);
             const col_left: i32 = col * LIST_WIDTH;
             const col_left_u: usize = @intCast(col_left);
-            const is_active = (thumb.current_state == .Active);
-            const is_alert = (thumb.current_state == .Alert);
+            const render_state = thumb.effectiveRenderState(active_source_hwnd);
+            const is_active = (render_state == .Active);
+            const is_alert = (render_state == .Alert);
 
             const row_bg: u32 = if (is_active)
                 self.withListAlpha(RGB_ROW_INACTIVE)
@@ -610,7 +608,7 @@ pub const ListWindow = struct {
                     self.resolveActiveBadgeColor(thumb)
                 else if (is_alert)
                     BADGE_ALERT
-                else if (thumb.current_state == .Minimized)
+                else if (render_state == .Minimized)
                     BADGE_MINIMIZED
                 else
                     BADGE_INACTIVE;

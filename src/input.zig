@@ -5,14 +5,10 @@ const log = @import("log.zig");
 const slog = log.scoped("input");
 const painter_mod = @import("painter.zig");
 const ThumbnailWindow = painter_mod.ThumbnailWindow;
-const ThumbnailState = @import("state.zig").ThumbnailState;
 const Painter = painter_mod.Painter;
 const main_mod = @import("main.zig");
 
 pub var g_painter_ptr: ?*Painter = null;
-
-// Window restoration delay (ms) - prevents input issues where clicks are ignored
-const RESTORE_DELAY_MS: u32 = 30;
 
 // Click state for mouse-up triggered clicks (left-click only; right-click uses DragState)
 const ClickState = struct {
@@ -32,6 +28,11 @@ const DragState = struct {
 };
 
 var g_drag_state: DragState = .{};
+
+/// Whether this thumbnail (by either its overlay or text-overlay hwnd) is the one currently being dragged.
+pub fn isThumbnailDragging(thumbnail: *const ThumbnailWindow) bool {
+    return g_drag_state.is_dragging and (g_drag_state.hwnd == thumbnail.hwnd or g_drag_state.hwnd == thumbnail.text_hwnd);
+}
 
 const SnapPosition = struct { x: i32, y: i32 };
 
@@ -95,12 +96,7 @@ fn restoreAnimation() void {
 
 pub fn forceSetForegroundWindow(target_hwnd: win32.HWND) void {
     _ = win32.SetForegroundWindow(target_hwnd);
-
-    if (win32.GetForegroundWindow() != target_hwnd) {
-        _ = win32.BringWindowToTop(target_hwnd);
-        _ = win32.SetWindowPos(target_hwnd, win32.HWND_NOTOPMOST, 0, 0, 0, 0, win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_SHOWWINDOW);
-        _ = win32.SetForegroundWindow(target_hwnd);
-    }
+    _ = win32.SetFocus(target_hwnd);
 }
 
 /// Activates and focuses the EVE client window when its thumbnail is clicked, handling minimized/maximized states.
@@ -123,36 +119,21 @@ fn handleThumbnailClickWithAnimation(source_hwnd: win32.HWND, animation_style: t
     }
 
     const was_minimized = (placement.showCmd == win32.SW_SHOWMINIMIZED);
-    const was_maximized = (placement.showCmd == win32.SW_SHOWMAXIMIZED);
-
-    if (was_minimized) {
-        // SW_SHOWNOACTIVATE restores without activating, to avoid a taskbar flash
-        switch (animation_style) {
-            .NoAnimation => {
-                turnOffAnimation();
-                _ = win32.ShowWindowAsync(source_hwnd, win32.SW_SHOWNOACTIVATE);
-                restoreAnimation();
-            },
-            .OriginalAnimation => {
-                _ = win32.ShowWindowAsync(source_hwnd, win32.SW_SHOWNOACTIVATE);
-            },
-        }
-        // Shorter delay when animations are disabled
-        const delay = if (animation_style == .NoAnimation) 10 else RESTORE_DELAY_MS;
-        win32.Sleep(delay);
-    }
 
     forceSetForegroundWindow(source_hwnd);
 
-    // Let focus land before proceeding; matters most for hotkey-triggered clicks
-    if (!was_minimized) {
-        const delay = if (animation_style == .NoAnimation) 10 else RESTORE_DELAY_MS;
-        win32.Sleep(delay);
-    }
-
-    // Restore to proper state only after it has focus, so no taskbar flash occurs
+    // SW_RESTORE returns a maximized window to maximized, so no need to track was_maximized separately.
     if (was_minimized) {
-        _ = win32.ShowWindowAsync(source_hwnd, if (was_maximized) win32.SW_SHOWMAXIMIZED else win32.SW_RESTORE);
+        switch (animation_style) {
+            .NoAnimation => {
+                turnOffAnimation();
+                _ = win32.ShowWindowAsync(source_hwnd, win32.SW_RESTORE);
+                restoreAnimation();
+            },
+            .OriginalAnimation => {
+                _ = win32.ShowWindowAsync(source_hwnd, win32.SW_RESTORE);
+            },
+        }
     }
 
     // Update thumbnail states immediately so the active border shows without waiting for the event hook.
@@ -364,7 +345,6 @@ fn startDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
 
     if (g_painter_ptr) |painter| {
         if (painter.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
-            thumbnail.setState(.Dragging);
             painter.renderThumbnail(thumbnail) catch |err| {
                 slog.err("Failed to render dragging thumbnail for {s}: {}", .{ thumbnail.character_name, err });
             };
@@ -378,31 +358,18 @@ fn startDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
 /// End dragging and save the thumbnail position
 fn endDrag(hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
     if (g_drag_state.is_dragging and g_drag_state.hwnd == hwnd) {
-        if (g_painter_ptr) |painter| {
-            if (painter.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
-                const foreground_hwnd = win32.GetForegroundWindow();
-                const is_active = (thumbnail.source_hwnd == foreground_hwnd);
-                const is_minimized = win32.isWindowIconic(thumbnail.source_hwnd);
-
-                const new_state: ThumbnailState = if (is_minimized)
-                    .Minimized
-                else if (is_active)
-                    .Active
-                else
-                    .Inactive;
-                thumbnail.setState(new_state);
-
-                painter.renderThumbnail(thumbnail) catch |err| {
-                    slog.err("Failed to render thumbnail after drag for {s}: {}", .{ thumbnail.character_name, err });
-                };
-            }
-        }
-
+        // Cleared before rendering so effectiveRenderState sees the drag as already over.
         g_drag_state.is_dragging = false;
         g_drag_state.hwnd = null;
         _ = win32.ReleaseCapture();
 
         if (g_painter_ptr) |painter| {
+            if (painter.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
+                painter.renderThumbnail(thumbnail) catch |err| {
+                    slog.err("Failed to render thumbnail after drag for {s}: {}", .{ thumbnail.character_name, err });
+                };
+            }
+
             painter.hideGhostOverlay();
 
             // Ctrl held during drag means all thumbnails moved together
@@ -430,9 +397,6 @@ fn handleDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
 
         if (g_painter_ptr) |painter| {
             painter.hideGhostOverlay();
-            if (painter.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
-                thumbnail.setState(.Inactive);
-            }
         }
         return;
     }

@@ -207,12 +207,11 @@ pub const ThumbnailWindow = struct {
     // Cached overlay bitmap — kept alive between renders, recreated only on resize
     cached_overlay: ?gdi_overlay.OverlayBitmap = null,
 
-    current_state: ThumbnailState = .Inactive,
-    previous_state: ThumbnailState = .Inactive,
-    state_change_time: i64 = 0,
     visibility_state: state_mod.VisibilityState = .Visible,
-    /// Focus state (Active/Inactive/Minimized) in effect before entering Alert; set by showNotification, cleared by updateNotifications on expiry.
-    pre_notification_state: ?ThumbnailState = null,
+    /// When checkAutoMinimize's delay should count from; refreshed every tick this thumbnail is Active or Minimized, left untouched otherwise so its frozen value is the moment it last became eligible.
+    inactive_since: i64 = 0,
+    /// Edge-detector so a minimize/restore with no accompanying focus change still marks this dirty for repaint.
+    was_minimized: bool = false,
 
     cached_render_settings: ?RenderSettings = null,
     cached_char_dims: ?TextDimensions = null,
@@ -236,28 +235,26 @@ pub const ThumbnailWindow = struct {
     // Owned, comma-joined quick-group membership label ("1, 3"); "" = none.
     cached_quick_group_label: []const u8,
 
-    /// Transitions to a new state, silently keeping the current one if the transition is invalid.
-    pub fn setState(self: *ThumbnailWindow, new_state: ThumbnailState) void {
-        const transitioned_state = state_mod.tryTransitionState(
-            self.current_state,
-            new_state,
-            self.character_name,
-        );
+    /// Whether this thumbnail's source_hwnd is the live "who's focused" pointer.
+    pub fn isFocused(self: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) bool {
+        return self.source_hwnd == active_source_hwnd;
+    }
 
-        if (transitioned_state != self.current_state) {
-            self.previous_state = self.current_state;
-            self.current_state = transitioned_state;
-            self.state_change_time = std.time.milliTimestamp();
-        }
+    /// The single canonical "what should this render/style as" computation. The returned ThumbnailState
+    /// is used purely as a style-lookup key (config.zig's getStateConfig) - never stored back onto the thumbnail.
+    pub fn effectiveRenderState(self: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) ThumbnailState {
+        if (input.isThumbnailDragging(self)) return .Dragging;
+        if (self.active_notifications[0] != null) return .Alert;
+        if (self.isFocused(active_source_hwnd)) return .Active;
+        if (win32.isWindowIconic(self.source_hwnd)) return .Minimized;
+        return .Inactive;
     }
 
     /// Sets visibility state, silently failing via tryTransitionVisibility if invalid.
     pub fn setVisibility(self: *ThumbnailWindow, new_visibility: state_mod.VisibilityState) void {
-        if (new_visibility != .Visible and !self.current_state.canBeHidden()) {
-            slog.warn("Cannot hide {s} in state {} (only Active, Inactive, Minimized can be hidden)", .{
-                self.character_name,
-                self.current_state,
-            });
+        const blocks_hiding = self.active_notifications[0] != null or input.isThumbnailDragging(self);
+        if (new_visibility != .Visible and blocks_hiding) {
+            slog.warn("Cannot hide {s} while alerting/dragging", .{self.character_name});
             return;
         }
 
@@ -341,6 +338,8 @@ pub const Painter = struct {
     /// Transient overlay shown only while dragging, outlining other characters' saved positions; created lazily, hidden (not destroyed) between drags.
     ghost_overlay_hwnd: ?win32.HWND = null,
     ghost_overlay_bitmap: ?gdi_overlay.OverlayBitmap = null,
+    /// Sole "who's focused" source of truth; write only via reconcileThumbnailStates.
+    active_source_hwnd: ?win32.HWND = null,
 
     fn getThumbnailSize(self: *const Painter, character_name: []const u8) struct { width: i32, height: i32 } {
         if (self.config.getCharacterSize(character_name)) |char_size| {
@@ -607,7 +606,7 @@ pub const Painter = struct {
     pub fn renderThumbnail(self: *const Painter, thumbnail: *ThumbnailWindow) !void {
         // ClientList mode renders via ListWindow.render() instead; Nothing mode renders nothing
         if (!thumbnail.win32_enabled) return;
-        const settings = createRenderSettings(self.config, thumbnail);
+        const settings = createRenderSettings(self.config, thumbnail, self.active_source_hwnd);
 
         if (thumbnail.cached_render_settings) |cached| {
             if (renderSettingsEqual(cached, settings)) {
@@ -823,49 +822,26 @@ pub const Painter = struct {
         thumbnail.cached_qg_dims = null;
     }
 
-    /// Updates thumbnail states based on EVE window states (minimized, restored, etc.); call periodically from the timer.
+    /// Reconciles focus, then refreshes minimized-state bookkeeping (inactive_since, dirty-on-minimize-change); call periodically from the timer.
     pub fn updateThumbnailStates(self: *Painter) void {
         if (self.thumbnails.items.len == 0) return;
 
-        for (self.thumbnails.items) |*thumbnail| {
-            // Don't interrupt an active drag operation
-            if (thumbnail.current_state == .Dragging) continue;
+        self.reconcileThumbnailStates(win32.GetForegroundWindow());
 
+        const now = std.time.milliTimestamp();
+        for (self.thumbnails.items) |*thumbnail| {
+            if (input.isThumbnailDragging(thumbnail)) continue;
+
+            const is_active = thumbnail.isFocused(self.active_source_hwnd);
             const is_minimized = win32.isWindowIconic(thumbnail.source_hwnd);
 
-            // In Alert, the base focus state lives in pre_notification_state; use it here to avoid clobbering the Alert state.
-            const base_state = if (thumbnail.current_state == .Alert)
-                (thumbnail.pre_notification_state orelse thumbnail.current_state)
-            else
-                thumbnail.current_state;
-            const was_minimized = (base_state == .Minimized);
+            if (is_active or is_minimized) {
+                thumbnail.inactive_since = now;
+            }
 
-            if (is_minimized and !was_minimized) {
-                if (thumbnail.current_state == .Alert) {
-                    // Don't exit Alert — just update where we'll return to on expiry.
-                    if (thumbnail.pre_notification_state != .Minimized) {
-                        thumbnail.pre_notification_state = .Minimized;
-                        thumbnail.needs_render = true;
-                    }
-                } else {
-                    thumbnail.setState(.Minimized);
-                    thumbnail.needs_render = true;
-                }
-            } else if (!is_minimized and was_minimized) {
-                if (thumbnail.current_state == .Alert) {
-                    // Don't exit Alert — update return-to state to Active or Inactive.
-                    const foreground_hwnd = win32.GetForegroundWindow();
-                    const restore_state: ThumbnailState = if (thumbnail.source_hwnd == foreground_hwnd) .Active else .Inactive;
-                    if (thumbnail.pre_notification_state != restore_state) {
-                        thumbnail.pre_notification_state = restore_state;
-                        thumbnail.needs_render = true;
-                    }
-                } else {
-                    const foreground_hwnd = win32.GetForegroundWindow();
-                    const now_active = (thumbnail.source_hwnd == foreground_hwnd);
-                    thumbnail.setState(if (now_active) .Active else .Inactive);
-                    thumbnail.needs_render = true;
-                }
+            if (is_minimized != thumbnail.was_minimized) {
+                thumbnail.was_minimized = is_minimized;
+                thumbnail.needs_render = true;
             }
         }
     }
@@ -879,7 +855,7 @@ pub const Painter = struct {
         return scout_ptr.getWindows();
     }
 
-    /// Minimizes each inactive EVE window `autoMinimize.delayMs` after it individually went inactive, per thumbnail.state_change_time; call once per tick.
+    /// Minimizes each EVE window `autoMinimize.delayMs` after it last stopped being Active/Minimized (see ThumbnailWindow.inactive_since); call once per tick.
     fn checkAutoMinimize(self: *Painter) void {
         if (!self.config.autoMinimize.enabled) return;
         if (self.thumbnails.items.len == 0) return;
@@ -889,24 +865,21 @@ pub const Painter = struct {
         var minimized_any = false;
 
         for (self.thumbnails.items) |*thumbnail| {
-            const base_state = if (thumbnail.current_state == .Alert)
-                (thumbnail.pre_notification_state orelse thumbnail.current_state)
-            else
-                thumbnail.current_state;
-
-            if (base_state != .Inactive) continue;
-            if (now - thumbnail.state_change_time < delay_ms) continue;
+            if (input.isThumbnailDragging(thumbnail)) continue;
+            if (thumbnail.isFocused(self.active_source_hwnd)) continue;
+            if (win32.isWindowIconic(thumbnail.source_hwnd)) continue;
+            if (now - thumbnail.inactive_since < delay_ms) continue;
             if (self.config.isExcludedFromMinimize(thumbnail.character_name)) continue;
             if (!win32.isWindow(thumbnail.source_hwnd)) continue;
 
             _ = win32.ShowWindowAsync(thumbnail.source_hwnd, win32.SW_FORCEMINIMIZE);
             minimized_any = true;
-            slog.info("Auto-minimized {s} (inactive {}ms)", .{ thumbnail.character_name, now - thumbnail.state_change_time });
+            slog.info("Auto-minimized {s} (inactive {}ms)", .{ thumbnail.character_name, now - thumbnail.inactive_since });
         }
 
         if (minimized_any) {
             for (self.thumbnails.items) |*thumbnail| {
-                if (thumbnail.current_state == .Active and win32.isWindow(thumbnail.source_hwnd)) {
+                if (thumbnail.isFocused(self.active_source_hwnd) and win32.isWindow(thumbnail.source_hwnd)) {
                     // Minimizing the other windows can transiently steal focus from the active one.
                     input.forceSetForegroundWindow(thumbnail.source_hwnd);
                     break;
@@ -963,8 +936,12 @@ pub const Painter = struct {
         slog.info("Auto-minimize toggled: {s}", .{state});
     }
 
-    /// Single source of truth for active-state management; ensures only one thumbnail is Active, call instead of setting Active directly.
+    /// Sole writer of active_source_hwnd, the single source of truth for who's focused; call instead of setting it directly.
     pub fn reconcileThumbnailStates(self: *Painter, should_be_active_hwnd: ?win32.HWND) void {
+        const old_active = self.active_source_hwnd;
+        self.active_source_hwnd = should_be_active_hwnd;
+        const active_changed = old_active != should_be_active_hwnd;
+
         for (self.thumbnails.items) |*thumbnail| {
             // Unhide automatically-hidden thumbnails when EVE gains focus; manual hiding persists until the user toggles visibility.
             if (thumbnail.visibility_state == .HiddenAutomatic and should_be_active_hwnd != null) {
@@ -972,29 +949,7 @@ pub const Painter = struct {
                 thumbnail.needs_render = true;
             }
 
-            const should_be_active = if (should_be_active_hwnd) |active_hwnd|
-                thumbnail.source_hwnd == active_hwnd
-            else
-                false;
-
-            const desired_state: ThumbnailState = if (should_be_active)
-                .Active
-            else switch (thumbnail.current_state) {
-                .Minimized => .Minimized,
-                .Dragging => .Dragging,
-                else => .Inactive,
-            };
-
-            // While a notification is active (Alert state), track focus changes in pre_notification_state instead of transitioning away from Alert.
-            if (thumbnail.current_state == .Alert) {
-                const focus_state: ThumbnailState = if (should_be_active) .Active else .Inactive;
-                if (thumbnail.pre_notification_state != focus_state) {
-                    thumbnail.pre_notification_state = focus_state;
-                    // Re-render in case suppress_when_focused changes the displayed text.
-                    thumbnail.needs_render = true;
-                }
-            } else if (thumbnail.current_state != desired_state) {
-                thumbnail.setState(desired_state);
+            if (active_changed and (thumbnail.source_hwnd == old_active or thumbnail.source_hwnd == should_be_active_hwnd)) {
                 thumbnail.needs_render = true;
             }
         }
@@ -1051,9 +1006,7 @@ pub const Painter = struct {
 
             if (!type_config.enabled) return;
 
-            // When already in Alert, the effective focus is stored in pre_notification_state.
-            const is_focused = thumbnail.current_state == .Active or
-                (thumbnail.current_state == .Alert and thumbnail.pre_notification_state == .Active);
+            const is_focused = thumbnail.isFocused(self.active_source_hwnd);
             if (type_config.suppress_when_focused and is_focused) {
                 return;
             }
@@ -1072,13 +1025,6 @@ pub const Painter = struct {
                 }
             }
             thumbnail.last_notification_time_by_type.set(notification_type, win32.GetTickCount64());
-
-            // Save focus state only on the first notification; a second Alert shouldn't overwrite the saved state.
-            if (thumbnail.current_state != .Alert) {
-                thumbnail.pre_notification_state = thumbnail.current_state;
-            }
-
-            thumbnail.setState(.Alert);
 
             self.pushNotification(thumbnail, .{
                 .text = try self.allocator.dupe(u8, notification_text),
@@ -1173,12 +1119,6 @@ pub const Painter = struct {
         }
 
         if (removed_any) {
-            if (thumbnail.active_notifications[0] == null) {
-                if (thumbnail.pre_notification_state) |restore_state| {
-                    thumbnail.pre_notification_state = null;
-                    thumbnail.setState(restore_state);
-                }
-            }
             thumbnail.needs_render = true;
         }
         return removed_any;
@@ -1310,24 +1250,19 @@ pub const Painter = struct {
     }
 
     /// Renders every thumbnail with needs_render set. If max_immediate is given and more thumbnails
-    /// than that are dirty, defers all of them to the next timer tick instead of rendering any now.
+    /// than that are dirty, renders only up to the cap now and leaves the rest dirty for the timer.
     pub fn renderDirtyThumbnails(self: *Painter, max_immediate: ?usize) void {
-        if (max_immediate) |cap| {
-            var dirty_count: usize = 0;
-            for (self.thumbnails.items) |*thumbnail| {
-                if (thumbnail.needs_render) dirty_count += 1;
-            }
-            if (dirty_count > cap) {
-                slog.debug("Deferring {} thumbnail renders to timer (exceeds threshold of {})", .{ dirty_count, cap });
-                return;
-            }
-        }
-
+        var rendered: usize = 0;
         for (self.thumbnails.items) |*thumbnail| {
-            if (thumbnail.needs_render) {
-                self.renderThumbnailLogged(thumbnail, "dirty thumbnail");
-                thumbnail.needs_render = false;
+            if (!thumbnail.needs_render) continue;
+
+            if (max_immediate) |cap| {
+                if (rendered >= cap) continue;
             }
+
+            self.renderThumbnailLogged(thumbnail, "dirty thumbnail");
+            thumbnail.needs_render = false;
+            rendered += 1;
         }
     }
 
@@ -1388,7 +1323,7 @@ pub const Painter = struct {
         }
     }
 
-    /// Unconditionally clears the entire notification stack (e.g. on character logout) and restores pre_notification_state, same as a full natural expiry.
+    /// Unconditionally clears the entire notification stack (e.g. on character logout), same as a full natural expiry.
     fn clearAllNotifications(self: *Painter, thumbnail: *ThumbnailWindow) void {
         var had_any = false;
         for (&thumbnail.active_notifications) |*slot| {
@@ -1399,12 +1334,6 @@ pub const Painter = struct {
             }
         }
         if (!had_any) return;
-
-        // Restore prior focus state, but only if we entered Alert via showNotification; direct-set notifications (e.g. input.zig) leave pre_notification_state null.
-        if (thumbnail.pre_notification_state) |restore_state| {
-            thumbnail.pre_notification_state = null;
-            thumbnail.setState(restore_state);
-        }
 
         thumbnail.needs_render = true;
     }
@@ -1434,13 +1363,6 @@ pub const Painter = struct {
                     thumbnail.active_notifications[write_idx] = null;
                 }
                 thumbnail.needs_render = true;
-
-                if (thumbnail.active_notifications[0] == null) {
-                    if (thumbnail.pre_notification_state) |restore_state| {
-                        thumbnail.pre_notification_state = null;
-                        thumbnail.setState(restore_state);
-                    }
-                }
             }
 
             // Force a render each tick so the newest entry's alternating on/off flash phases actually paint.
@@ -1594,7 +1516,7 @@ pub const Painter = struct {
         try self.processDirtyThumbnails();
 
         if (self.list_window) |*lw| {
-            lw.render(self.thumbnails.items) catch |err| {
+            lw.render(self.thumbnails.items, self.active_source_hwnd) catch |err| {
                 slog.err("Failed to render list window: {}", .{err});
             };
         }
@@ -2053,14 +1975,13 @@ pub const Painter = struct {
         }
     }
 
-    fn determineInitialThumbnailState(
+    fn determineInitialVisibility(
         self: *const Painter,
         source_hwnd: win32.HWND,
-    ) struct { state: ThumbnailState, visibility: state_mod.VisibilityState } {
+    ) state_mod.VisibilityState {
         const foreground_hwnd = win32.GetForegroundWindow();
-        const is_focused = (source_hwnd == foreground_hwnd);
 
-        var any_eve_has_focus = is_focused;
+        var any_eve_has_focus = (source_hwnd == foreground_hwnd);
         if (!any_eve_has_focus) {
             for (self.thumbnails.items) |existing_thumbnail| {
                 if (existing_thumbnail.source_hwnd == foreground_hwnd) {
@@ -2070,14 +1991,10 @@ pub const Painter = struct {
             }
         }
 
-        const state: ThumbnailState = if (is_focused) .Active else .Inactive;
-
-        const visibility: state_mod.VisibilityState = if (self.config.thumbnail.hideWhenNoEveFocus and !any_eve_has_focus)
+        return if (self.config.thumbnail.hideWhenNoEveFocus and !any_eve_has_focus)
             .HiddenAutomatic
         else
             .Visible;
-
-        return .{ .state = state, .visibility = visibility };
     }
 
     const ThumbnailStrings = struct {
@@ -2139,7 +2056,7 @@ pub const Painter = struct {
 
         // ClientList and Nothing modes only need a data record, not real Win32 windows.
         if (self.config.display.viewMode != .Thumbnails) {
-            const initial = self.determineInitialThumbnailState(eve_window.hwnd);
+            const initial_visibility = self.determineInitialVisibility(eve_window.hwnd);
             const is_excluded = if (g_hotkey_manager_ptr) |mgr| mgr.isCharacterExcluded(eve_window.character_name) else false;
 
             const strings = try dupeThumbnailStrings(self.allocator, eve_window.title, eve_window.character_name, initial_system_name);
@@ -2161,9 +2078,8 @@ pub const Painter = struct {
                 .cached_display_name = cache_fields.display_name,
                 .cached_active_border_override = cache_fields.active_border_override,
                 .cached_quick_group_label = strings.quick_group_label,
-                .current_state = initial.state,
-                .state_change_time = std.time.milliTimestamp(),
-                .visibility_state = initial.visibility,
+                .inactive_since = std.time.milliTimestamp(),
+                .visibility_state = initial_visibility,
                 .is_excluded_from_cycle = is_excluded,
                 .win32_enabled = false,
             };
@@ -2173,7 +2089,7 @@ pub const Painter = struct {
             // Only register source HWND, since thumbnail/text HWNDs are sentinels.
             try self.hwnd_to_thumbnail_index.put(eve_window.hwnd, new_index);
 
-            // A foreground event may have fired before this window was tracked, leaving a stale .Active thumbnail elsewhere; re-check against real focus now.
+            // This window may already be the real foreground window; reconcile now instead of waiting for the next tick.
             const foreground_hwnd = win32.GetForegroundWindow();
             self.reconcileThumbnailStates(foreground_hwnd);
             if (foreground_hwnd == eve_window.hwnd) {
@@ -2261,7 +2177,7 @@ pub const Painter = struct {
             _ = win32.DestroyWindow(hwnd);
         }
 
-        const initial = self.determineInitialThumbnailState(eve_window.hwnd);
+        const initial_visibility = self.determineInitialVisibility(eve_window.hwnd);
 
         // Check if character is excluded from hotkey cycling (restore exclusion state after restart)
         const is_excluded = if (g_hotkey_manager_ptr) |manager| blk: {
@@ -2292,9 +2208,8 @@ pub const Painter = struct {
             .cached_display_name = cache_fields.display_name,
             .cached_active_border_override = cache_fields.active_border_override,
             .cached_quick_group_label = strings.quick_group_label,
-            .current_state = initial.state,
-            .state_change_time = std.time.milliTimestamp(),
-            .visibility_state = initial.visibility,
+            .inactive_since = std.time.milliTimestamp(),
+            .visibility_state = initial_visibility,
             .is_excluded_from_cycle = is_excluded,
         };
         try self.renderThumbnail(&thumbnail);
@@ -2319,7 +2234,7 @@ pub const Painter = struct {
         try self.thumbnail_hwnd_to_index.put(hwnd, new_index);
         try self.text_hwnd_to_index.put(text_hwnd, new_index);
 
-        // A foreground event may have fired before this window was tracked, leaving a stale .Active thumbnail elsewhere; re-check against real focus now.
+        // This window may already be the real foreground window; reconcile now instead of waiting for the next tick.
         const foreground_hwnd = win32.GetForegroundWindow();
         self.reconcileThumbnailStates(foreground_hwnd);
         if (foreground_hwnd == eve_window.hwnd) {
@@ -3475,9 +3390,9 @@ fn resolveTextBgColor(state_cfg: config_mod.Config.StateVisualConfig, base_color
     return if (force_opaque) color_mod.withAlpha(resolved, 255) else resolved;
 }
 
-/// Builds RenderSettings from Painter config; the single point where the state machine determines all visual properties.
-fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWindow) RenderSettings {
-    const state = thumbnail.current_state;
+/// Builds RenderSettings from Painter config; the single point where a thumbnail's effective render state determines all visual properties.
+fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) RenderSettings {
+    const state = thumbnail.effectiveRenderState(active_source_hwnd);
     const character_name = thumbnail.character_name;
     const system_name = thumbnail.system_name;
     const cached_system_color = thumbnail.cached_system_color;
@@ -3510,7 +3425,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
     const should_hide_all = !is_visible or char_hidden or (state == .Active and cfg.thumbnail.activeThumbnailHidden);
 
     // Whether this thumbnail belongs to the character focused when the notification fired; notification border effects must not fight with that character's always-on active border.
-    const notif_on_focused_char = thumbnail.pre_notification_state == .Active;
+    const notif_on_focused_char = thumbnail.isFocused(active_source_hwnd);
 
     // Border color/flash effects are governed solely by the newest (index 0) stacked notification; older entries only add text lines.
     // Per-type "show_border: false" forces the border off during Alert, skipped for the focused character so it can't also hide that character's active border.
@@ -3558,7 +3473,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
     // When suppress_when_focused is true and the character is focused, the border falls back to normal Active appearance instead of the Alert override color.
     const is_suppressed_alert = if (state == .Alert) blk: {
         if (thumbnail.active_notifications[0]) |notif| {
-            const notif_is_focused = thumbnail.pre_notification_state == .Active;
+            const notif_is_focused = thumbnail.isFocused(active_source_hwnd);
             break :blk notif.suppress_when_focused and notif_is_focused;
         }
         break :blk false;
@@ -3604,8 +3519,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
     var notification_lines: [MAX_STACKED_NOTIFICATIONS]NotificationLine = .{NotificationLine{}} ** MAX_STACKED_NOTIFICATIONS;
     var notification_line_count: usize = 0;
     if (effective_show_notifications) {
-        const notif_is_focused = state == .Active or
-            (state == .Alert and thumbnail.pre_notification_state == .Active);
+        const notif_is_focused = thumbnail.isFocused(active_source_hwnd);
         for (thumbnail.active_notifications) |maybe_notif| {
             const notif = maybe_notif orelse break;
             if (notif.suppress_when_focused and notif_is_focused) continue;
@@ -3807,24 +3721,21 @@ fn winEventProc(
         slog.debug("Cancelled hide debounce timer (EVE window focused)", .{});
     }
 
-    painter.reconcileThumbnailStates(if (is_eve_window) hwnd else null);
+    // WINEVENT_OUTOFCONTEXT delivery can lag well behind the actual focus change; during rapid
+    // cycling a stale event can arrive after focus has already moved on again, so drop it rather
+    // than reconciling the active border back to a target that's no longer current.
+    const current_foreground = win32.GetForegroundWindow();
+    if (current_foreground != hwnd) {
+        slog.debug("Ignoring stale focus event (event hwnd={*}, current foreground={*})", .{ hwnd, current_foreground });
+        return;
+    }
 
-    if (is_eve_window) {
-        if (painter.getThumbnailBySourceHwnd(hwnd)) |thumbnail| {
-            // Verify this window is still the actual foreground window
-            const current_foreground = win32.GetForegroundWindow();
-            if (current_foreground == hwnd) {
-                slog.debug("EVE window focused: {s}", .{thumbnail.character_name});
-                if (g_hotkey_manager_ptr) |manager| {
-                    manager.updateFocusedCharacter(thumbnail.character_name);
-                }
-            } else {
-                slog.debug("Ignoring stale focus event for {s} (event hwnd={*}, current foreground={*})", .{
-                    thumbnail.character_name,
-                    hwnd,
-                    current_foreground,
-                });
-            }
+    painter.reconcileThumbnailStates(hwnd);
+
+    if (painter.getThumbnailBySourceHwnd(hwnd)) |thumbnail| {
+        slog.debug("EVE window focused: {s}", .{thumbnail.character_name});
+        if (g_hotkey_manager_ptr) |manager| {
+            manager.updateFocusedCharacter(thumbnail.character_name);
         }
     }
 }
