@@ -142,15 +142,14 @@ Drawn on a thumbnail whenever its character is excluded from hotkey cycling (see
 
 ## State-Specific Visual Overrides
 
-Each thumbnail has one of these states at any time: `active`, `inactive`, `hover`, `alert`, `minimized`, `dragging`, `hidden`. Internally, each state can override `borderWidth`, `borderColor`, `borderStyle`, `textColor`, `textBgColor`, and `showBorder`/`showThumbnail`, falling back to the base thumbnail settings above when unset.
+Each thumbnail has one of these states at any time: `active`, `inactive`, `alert`, `minimized`, `dragging`. Internally, each state can override `borderWidth`, `borderColor`, `borderStyle`, `textColor`, `textBgColor`, and `showBorder`/`showThumbnail`, falling back to the base thumbnail settings above when unset.
 
 **Current built-in defaults:**
 
 | State | `showThumbnail` |
 |---|---|
 | `active` | Follows `activeThumbnailHidden` |
-| `inactive`, `hover`, `alert`, `minimized`, `dragging` | `true` |
-| `hidden` | `false` |
+| `inactive`, `alert`, `minimized`, `dragging` | `true` |
 
 > **Note:** These per-state overrides are not currently exposed as editable profile JSON keys - they exist as fixed built-in defaults used at render time. `alert` state visuals (border color/width) are driven separately via the per-notification-type `border_color` override - see [Notification System](#notification-system).
 

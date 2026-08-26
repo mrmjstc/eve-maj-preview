@@ -24,7 +24,7 @@ Both binaries import `config.zig` as a shared model layer for profile JSON - nei
 3. Acquire a named mutex (`Global\EVE-Maj-Preview-SingleInstance`) to enforce single instance.
 4. Load `GlobalSettings`, then the per-profile `Config` (default or `--profile`/`-p`).
 5. Auto-register the `evemajpreview://` protocol handler if configured.
-6. Construct subsystems in dependency order: `Scout` → `Painter` (which owns a `WindowManager` internally) → `ChatlogMonitor` → `CombatTracker`/`MiningTracker` (wired into the monitor) → **then** start the chatlog worker thread, only once the trackers exist for it to feed.
+6. Construct subsystems in dependency order: `Scout` → `Painter` → `ChatlogMonitor` → `CombatTracker`/`MiningTracker` (wired into the monitor) → **then** start the chatlog worker thread, only once the trackers exist for it to feed.
 7. Register the hidden timer window (`WndProc` = `timerWindowProc`), `TrayIcon`, and a detached background thread for `UpdateChecker`.
 8. Initial window scan and thumbnail creation, `HotkeyManager` setup, `SetTimer` at `config.timer.scanIntervalMs`.
 9. Enter the classic `GetMessageA`/`TranslateMessage`/`DispatchMessageA` loop.
@@ -33,9 +33,9 @@ Both binaries import `config.zig` as a shared model layer for profile JSON - nei
 
 ## The central state owner: `Painter`, not `state.zig`
 
-Despite the name, `state.zig` is not an app-state struct - it's ~120 lines defining two enums (`VisibilityState`, `ThumbnailState`) and the legal-transition tables/helpers (`transitionState`, `transitionVisibility`) that enforce them. Likewise `manager.zig`'s `WindowManager` is narrowly scoped to the auto-minimize timer plus a few standalone actions (`minimizeAllClients`, `closeAllClients`, `moveAllClientsToSavedPositions`) - it is not a main-loop orchestrator.
+Despite the name, `state.zig` is not an app-state struct - it's ~70 lines defining two enums (`VisibilityState`, `ThumbnailState`) plus the legal-transition helpers (`transitionVisibility`/`tryTransitionVisibility`) that enforce them for `VisibilityState`; `ThumbnailState` is a plain style-lookup key with no transition logic of its own (see `ThumbnailWindow.effectiveRenderState` below). Likewise `manager.zig` is just a handful of standalone window actions (`minimizeAllClients`, `closeAllClients`, `moveAllClientsToSavedPositions`, `moveClientToPosition`) - it holds no state and is not a main-loop orchestrator.
 
-The actual central mutable-state owner is **`Painter`** (`painter.zig`, 3400+ lines - the largest file in the project). It embeds a `WindowManager` as a field and owns:
+The actual central mutable-state owner is **`Painter`** (`painter.zig`, 3700+ lines - the largest file in the project). It owns:
 
 - The thumbnail collection: `thumbnails: ArrayList(ThumbnailWindow)` plus HWND→index hashmaps for O(1) lookup.
 - The full thumbnail lifecycle: `createThumbnail`, `destroyThumbnailResources`, `cleanupClosedThumbnails`.
@@ -44,7 +44,7 @@ The actual central mutable-state owner is **`Painter`** (`painter.zig`, 3400+ li
 - Actual pixel rendering: `renderThumbnail` (diffs cached `RenderSettings` to skip redundant redraws) → `renderThumbnailOverlay` → a family of private GDI-drawing helpers (`drawBorder`, `drawExclusionOverlay`, `drawSparkLine`, `renderText`, ...) that make up roughly the other third of the file.
 - DPS/mining chart data feeding into the overlay, and drag-snap "ghost group" preview overlays.
 
-Each tracked character is a `ThumbnailWindow`: `hwnd`/`text_hwnd`/`thumbnail_id`, `source_hwnd`, cached display strings/colors, `current_state: ThumbnailState`, `visibility_state`, and the `cached_render_settings` used for render skipping. In `ClientList`/`Nothing` view modes, `hwnd`/`text_hwnd` are sentinel values rather than real windows - see [list_view.zig](#other-subsystems).
+Each tracked character is a `ThumbnailWindow`: `hwnd`/`text_hwnd`/`thumbnail_id`, `source_hwnd`, cached display strings/colors, `visibility_state`, and the `cached_render_settings` used for render skipping. Its render state (Active/Inactive/Alert/Minimized/Dragging) isn't stored - `effectiveRenderState()` derives it live on each render from focus (`Painter.active_source_hwnd`), `isWindowIconic`, active notifications, and drag state. In `ClientList`/`Nothing` view modes, `hwnd`/`text_hwnd` are sentinel values rather than real windows - see [list_view.zig](#other-subsystems).
 
 ## Window discovery → rendering pipeline
 
@@ -66,7 +66,7 @@ Rendering is split three ways:
 
 - **`hotkeys.zig`** - `HotkeyManager` owns a single `hotkey_map: AutoHashMap(c_int, HotkeyAction)`. Hotkey IDs are banded by range (cycle-groups, global actions, per-character, profile-switch, quick-groups) so a single `WM_HOTKEY` ID reverse-maps to an action. `handleHotkeyPress()` is the one dispatch point, gating on suspend/focus-requirement state before switching on the `HotkeyAction` union.
 - **`mouse_hook.zig`** - a `WH_MOUSE_LL` hook mapping mouse-button chords to hotkey IDs and re-posting them as synthetic `WM_HOTKEY` messages, so `hotkeys.zig` doesn't need a separate input path for mouse buttons.
-- **`input.zig`** - client activation (`handleThumbnailClick` - restore, foreground, dismiss suppressible notifications, start auto-minimize timer), shift-click exclusion toggling, the thumbnail/text-window `WndProc`s (drag, edge/thumbnail/ghost-position snapping), and a low-level keyboard hook that swallows a hotkey's key-up after a successful cycle action.
+- **`input.zig`** - client activation (`handleThumbnailClick` - restore, foreground, dismiss suppressible notifications, reconcile focus state), shift-click exclusion toggling, the thumbnail/text-window `WndProc`s (drag, edge/thumbnail/ghost-position snapping), and a low-level keyboard hook that swallows a hotkey's key-up after a successful cycle action.
 - **`protocol.zig` and cross-process control** - parses `evemajpreview://action/params` URLs, handles registry registration/unregistration, and implements the actual IPC transport (`sendCommandToInstance`, `findExistingInstance`) used both by external protocol invocations and by `config.exe`.
 
 **Call chain, hotkey press → character switch:**
