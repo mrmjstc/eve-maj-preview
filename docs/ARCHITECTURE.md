@@ -70,7 +70,7 @@ Rendering is split three ways:
 - **`protocol.zig` and cross-process control** - parses `evemajpreview://action/params` URLs, handles registry registration/unregistration, and implements the actual IPC transport (`sendCommandToInstance`, `findExistingInstance`) used both by external protocol invocations and by `config.exe`.
 
 **Call chain, hotkey press → character switch:**
-`WM_HOTKEY` → `timerWindowProc` → `HotkeyManager.handleHotkeyPress` → an action handler (`cycleGroup`, `activateCharacterByIndex`, `cycleExcluded`, `cycleNotified`, ...) → `Scout.getHwndByName` → `input.handleThumbnailClick` → `SetForegroundWindow`/`BringWindowToTop`.
+`WM_HOTKEY` → `timerWindowProc` → `HotkeyManager.handleHotkeyPress` → an action handler (`cycleGroup`, `activatePerCharacterGroup`, `cycleExcluded`, `cycleNotified`, ...) → `Scout.getHwndByName` → `input.handleThumbnailClick` → `SetForegroundWindow`/`BringWindowToTop`.
 
 **Call chain, protocol URL → character switch:**
 second process invocation with `--protocol "evemajpreview://switch/Name"` → `protocol.parseUrl` + `findExistingInstance` + `sendCommandToInstance` → running instance's `timerWindowProc` receives `WM_COPYDATA` → `Scout.getHwndByName` → `input.handleThumbnailClick` (same tail as above).

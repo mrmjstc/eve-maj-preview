@@ -939,7 +939,7 @@ Membership is **never persisted** - it lives only in memory and resets every tim
 
 ### Per-Character Hotkeys (Direct Activation)
 
-In addition to hotkey groups, each character can have its own dedicated hotkey that jumps straight to that character's window - no cycling, no group membership required. Configured via the `hotkey` field on a character entry (see [Per-Character Configuration](#per-character-configuration)):
+In addition to hotkey groups, each character can have its own dedicated hotkey that jumps straight to that character's window - no group membership required. Configured via the `hotkey` field on a character entry (see [Per-Character Configuration](#per-character-configuration)):
 
 ```json
 {
@@ -953,6 +953,8 @@ In addition to hotkey groups, each character can have its own dedicated hotkey t
 ```
 
 Uses the same [supported keys](#hotkey-groups-character-cycling) as hotkey groups. Set to `null` to disable.
+
+Assigning the same hotkey to more than one character turns it into an implicit cycling group - each press jumps to the next running character sharing that key, in profile order.
 
 ### Notified-Character Cycling
 
