@@ -340,6 +340,8 @@ pub const Painter = struct {
     ghost_overlay_bitmap: ?gdi_overlay.OverlayBitmap = null,
     /// Sole "who's focused" source of truth; write only via reconcileThumbnailStates.
     active_source_hwnd: ?win32.HWND = null,
+    /// Last EVE thumbnail hwnd that held focus; used by checkAutoMinimize's exemptLastActiveOnFocusLoss option to identify which client to spare once EVE itself has no window focused.
+    last_focused_source_hwnd: ?win32.HWND = null,
 
     fn getThumbnailSize(self: *const Painter, character_name: []const u8) struct { width: i32, height: i32 } {
         if (self.config.getCharacterSize(character_name)) |char_size| {
@@ -864,10 +866,16 @@ pub const Painter = struct {
         const delay_ms: i64 = self.config.autoMinimize.delayMs;
         var minimized_any = false;
 
+        // active_source_hwnd is the literal foreground window, so it's non-null even on a non-EVE app.
+        const eve_has_focus = if (self.active_source_hwnd) |hwnd| self.hwnd_to_thumbnail_index.contains(hwnd) else false;
+
         for (self.thumbnails.items) |*thumbnail| {
             if (input.isThumbnailDragging(thumbnail)) continue;
             if (thumbnail.isFocused(self.active_source_hwnd)) continue;
             if (win32.isWindowIconic(thumbnail.source_hwnd)) continue;
+            if (self.config.autoMinimize.exemptLastActiveOnFocusLoss and
+                !eve_has_focus and
+                thumbnail.source_hwnd == self.last_focused_source_hwnd) continue;
             if (now - thumbnail.inactive_since < delay_ms) continue;
             if (self.config.isExcludedFromMinimize(thumbnail.character_name)) continue;
             if (!win32.isWindow(thumbnail.source_hwnd)) continue;
@@ -941,6 +949,9 @@ pub const Painter = struct {
         const old_active = self.active_source_hwnd;
         self.active_source_hwnd = should_be_active_hwnd;
         const active_changed = old_active != should_be_active_hwnd;
+        if (should_be_active_hwnd) |hwnd| {
+            if (self.hwnd_to_thumbnail_index.contains(hwnd)) self.last_focused_source_hwnd = hwnd;
+        }
 
         for (self.thumbnails.items) |*thumbnail| {
             // Unhide automatically-hidden thumbnails when EVE gains focus; manual hiding persists until the user toggles visibility.

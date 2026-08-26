@@ -750,7 +750,7 @@
 
                     <div class="section">
                         <h3 data-i18n="tab.behavior.section.auto-minimize-all-clients.heading">Auto-Minimize</h3>
-                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.behavior.section.auto-minimize-all-clients.hint">Minimizes an EVE client window after it's been unfocused for the configured delay. Toggle at runtime with the Toggle Auto-Minimize hotkey.</p>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.behavior.section.auto-minimize-all-clients.hint">Minimizes an EVE client window after it's been unfocused for the configured delay.</p>
 
                         <label>
                             <input type="checkbox" id="autoMinimizeEnabled" onchange="toggleAutoMinimizeOptions()">
@@ -758,6 +758,11 @@
                         </label>
 
                         <div id="autoMinimizeOptions">
+                            <label style="margin-bottom: 8px;">
+                                <input type="checkbox" id="autoMinimizeExemptLastActive">
+                                <span class="label-body" data-i18n="field.autoMinimizeExemptLastActive.label">Keep Last-Active Client Visible</span>
+                            </label>
+
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                                 <div>
                                     <label for="autoMinimizeDelay" data-i18n="field.autoMinimizeDelay.label">Delay (s)</label>

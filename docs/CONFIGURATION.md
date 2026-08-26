@@ -521,12 +521,15 @@ Automatically minimize inactive EVE clients after a delay:
 {
   "autoMinimize": {
     "enabled": false,
-    "delayMs": 5000
+    "delayMs": 5000,
+    "exemptLastActiveOnFocusLoss": false
   }
 }
 ```
 
 `delayMs` is clamped between `0` and `10000`.
+
+`exemptLastActiveOnFocusLoss` (default: `false`) keeps the last-focused client visible when EVE itself loses focus entirely (e.g. switching to another app), instead of minimizing it along with the rest once its delay elapses.
 
 Exclusions are configured per character, not here - set `excludeFromMinimize` on the character entry (see [Per-Character Configuration](#per-character-configuration)).
 
