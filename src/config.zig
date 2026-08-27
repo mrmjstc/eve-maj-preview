@@ -1,4 +1,5 @@
 const std = @import("std");
+const win32 = @import("win32.zig");
 const log = @import("log.zig");
 const vk = @import("virtual_keys.zig");
 const state_mod = @import("state.zig");
@@ -6,6 +7,13 @@ const types = @import("types.zig");
 const color = @import("color.zig");
 
 const slog = log.scoped("config");
+
+var g_io: std.Io = undefined;
+
+/// Must be called once before any Config/GlobalSettings load/save function is used.
+pub fn setIo(io: std.Io) void {
+    g_io = io;
+}
 
 pub const PROFILES_DIR = "profiles";
 pub const DEFAULT_PROFILE = "default.json";
@@ -359,25 +367,20 @@ pub const GlobalSettings = struct {
 
     /// Load global settings from file, falling back to defaults on any missing/unreadable/malformed input, matching Config's load policy (see loadProfileFromJson).
     pub fn load(allocator: std.mem.Allocator) !GlobalSettings {
-        const file = std.fs.cwd().openFile(GLOBAL_SETTINGS_FILE, .{}) catch |err| {
+        const content = std.Io.Dir.cwd().readFileAlloc(g_io, GLOBAL_SETTINGS_FILE, allocator, .limited(MAX_CONFIG_FILE_SIZE)) catch |err| {
             if (err == error.FileNotFound) {
                 slog.debug("No global settings file, using defaults", .{});
                 return GlobalSettings.fromWire(.{}, allocator);
             }
-            return err;
-        };
-        defer file.close();
-
-        const content = file.readToEndAlloc(allocator, MAX_CONFIG_FILE_SIZE) catch |err| {
             slog.err("Failed to read global settings file: {}", .{err});
-            std.fs.cwd().deleteFile(GLOBAL_SETTINGS_FILE) catch {};
+            std.Io.Dir.cwd().deleteFile(g_io, GLOBAL_SETTINGS_FILE) catch {};
             return GlobalSettings.fromWire(.{}, allocator);
         };
         defer allocator.free(content);
 
         const settings = loadFromJson(allocator, content) catch |err| {
             slog.warn("Failed to parse global settings file ({}), using defaults and deleting corrupted file", .{err});
-            std.fs.cwd().deleteFile(GLOBAL_SETTINGS_FILE) catch {};
+            std.Io.Dir.cwd().deleteFile(g_io, GLOBAL_SETTINGS_FILE) catch {};
             return GlobalSettings.fromWire(.{}, allocator);
         };
 
@@ -478,17 +481,17 @@ pub const GlobalSettings = struct {
             profiles.deinit(allocator);
         }
 
-        var dir = std.fs.cwd().openDir(PROFILES_DIR, .{ .iterate = true }) catch |err| {
+        var dir = std.Io.Dir.cwd().openDir(g_io, PROFILES_DIR, .{ .iterate = true }) catch |err| {
             if (err == error.FileNotFound) {
                 slog.debug("Profiles directory not found", .{});
                 return profiles;
             }
             return err;
         };
-        defer dir.close();
+        defer dir.close(g_io);
 
         var iter = dir.iterate();
-        while (try iter.next()) |entry| {
+        while (try iter.next(g_io)) |entry| {
             if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".json")) {
                 if (std.mem.eql(u8, entry.name, "global.settings.json")) {
                     continue;
@@ -864,7 +867,7 @@ pub const ChatlogConfig = struct {
             if (self.chatlogDir.len == 0) {
                 slog.warn("Chatlog monitoring enabled but chatlogDir is empty", .{});
             } else {
-                std.fs.cwd().access(self.chatlogDir, .{}) catch |err| {
+                std.Io.Dir.cwd().access(g_io, self.chatlogDir, .{}) catch |err| {
                     slog.warn("Chatlog directory '{s}' does not exist or is not accessible: {}", .{ self.chatlogDir, err });
                 };
             }
@@ -872,7 +875,7 @@ pub const ChatlogConfig = struct {
             if (self.gamelogDir.len == 0) {
                 slog.warn("Chatlog monitoring enabled but gamelogDir is empty", .{});
             } else {
-                std.fs.cwd().access(self.gamelogDir, .{}) catch |err| {
+                std.Io.Dir.cwd().access(g_io, self.gamelogDir, .{}) catch |err| {
                     slog.warn("Gamelog directory '{s}' does not exist or is not accessible: {}", .{ self.gamelogDir, err });
                 };
             }
@@ -2516,7 +2519,7 @@ pub const Config = struct {
                     continue;
                 }
 
-                const var_value = std.process.getEnvVarOwned(allocator, var_name) catch |err| {
+                const var_value = win32.getEnvVarOwned(allocator, var_name) catch |err| {
                     slog.warn("Failed to expand environment variable '{s}': {}", .{ var_name, err });
                     try result.appendSlice(allocator, path[i .. end + 1]);
                     i = end + 1;
@@ -2539,9 +2542,9 @@ pub const Config = struct {
     }
 
     fn ensureProfilesDir(allocator: std.mem.Allocator) !void {
-        const cwd = std.fs.cwd();
+        const cwd = std.Io.Dir.cwd();
 
-        cwd.makeDir(PROFILES_DIR) catch |err| switch (err) {
+        cwd.createDir(g_io, PROFILES_DIR, .default_dir) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return err,
         };
@@ -2549,7 +2552,7 @@ pub const Config = struct {
         const profile_path = try std.fs.path.join(allocator, &[_][]const u8{ PROFILES_DIR, DEFAULT_PROFILE });
         defer allocator.free(profile_path);
 
-        cwd.access(profile_path, .{}) catch |err| switch (err) {
+        cwd.access(g_io, profile_path, .{}) catch |err| switch (err) {
             error.FileNotFound => {
                 slog.debug("Default profile not found, creating: {s}", .{profile_path});
                 try createDefaultProfile(allocator, profile_path);
@@ -2568,27 +2571,31 @@ pub const Config = struct {
     /// Writes via a temp file + rename so a failed write can't corrupt the profile.
     fn atomicWriteFile(allocator: std.mem.Allocator, path: []const u8, content: []const u8) !void {
         // Unique per call so overlapping saves of the same profile can't share a temp file.
-        const unique = std.crypto.random.int(u64);
+        const unique = blk: {
+            var rand_bytes: [8]u8 = undefined;
+            g_io.random(&rand_bytes);
+            break :blk std.mem.readInt(u64, &rand_bytes, .little);
+        };
         const temp_path = try std.fmt.allocPrint(allocator, "{s}.{x}.tmp", .{ path, unique });
         defer allocator.free(temp_path);
 
-        const temp_file = std.fs.cwd().createFile(temp_path, .{}) catch |err| {
+        const temp_file = std.Io.Dir.cwd().createFile(g_io, temp_path, .{}) catch |err| {
             slog.err("Failed to create temp file '{s}' ({} bytes): {}", .{ temp_path, content.len, err });
             return err;
         };
-        defer temp_file.close();
+        defer temp_file.close(g_io);
 
-        temp_file.writeAll(content) catch |err| {
+        temp_file.writeStreamingAll(g_io, content) catch |err| {
             slog.err("Failed to write {} bytes to temp file '{s}': {}", .{ content.len, temp_path, err });
-            std.fs.cwd().deleteFile(temp_path) catch |cleanup_err| {
+            std.Io.Dir.cwd().deleteFile(g_io, temp_path) catch |cleanup_err| {
                 slog.err("Failed to cleanup temp file '{s}' after write failure (original error: {}): {}", .{ temp_path, err, cleanup_err });
             };
             return err;
         };
 
-        std.fs.cwd().rename(temp_path, path) catch |err| {
+        std.Io.Dir.cwd().rename(temp_path, std.Io.Dir.cwd(), path, g_io) catch |err| {
             slog.err("Failed to rename temp file '{s}' to '{s}' ({} bytes): {}", .{ temp_path, path, content.len, err });
-            std.fs.cwd().deleteFile(temp_path) catch |cleanup_err| {
+            std.Io.Dir.cwd().deleteFile(g_io, temp_path) catch |cleanup_err| {
                 slog.err("Failed to cleanup temp file '{s}' after rename failure (original error: {}): {}", .{ temp_path, err, cleanup_err });
             };
             return err;
@@ -2616,19 +2623,20 @@ pub const Config = struct {
 
     /// A parse failure anywhere in the tree (syntax error or a hard-required field failure, e.g. a character entry missing "name") logs and falls back to defaults for this profile rather than propagating the error.
     fn loadProfileFromJson(allocator: std.mem.Allocator, profile_path: []const u8, profile_name: []const u8) !Config {
-        const file = try std.fs.cwd().openFile(profile_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(g_io, profile_path, .{});
+        defer file.close(g_io);
 
-        const file_size = try file.getEndPos();
+        const file_size = try file.length(g_io);
         if (file_size > MAX_CONFIG_FILE_SIZE) {
             slog.err("Config file '{s}' too large: {} bytes (max: {} bytes)", .{ profile_path, file_size, MAX_CONFIG_FILE_SIZE });
             return error.ConfigFileTooLarge;
         }
 
-        const content = try file.readToEndAlloc(allocator, file_size);
+        const content = try allocator.alloc(u8, file_size);
         defer allocator.free(content);
+        const bytes_read = try file.readPositionalAll(g_io, content, 0);
 
-        return buildConfigFromJson(allocator, content, profile_name) catch |err| {
+        return buildConfigFromJson(allocator, content[0..bytes_read], profile_name) catch |err| {
             slog.err("Failed to parse config file '{s}' ({}), falling back to defaults", .{ profile_path, err });
             return getDefaultsWithProfile(allocator, profile_name);
         };
@@ -3215,7 +3223,7 @@ pub const Config = struct {
     fn defaultLogDirs(allocator: std.mem.Allocator) !struct { chatlog: []u8, gamelog: []u8 } {
         const documents_dir = getDocumentsDir(allocator) catch blk: {
             slog.warn("Failed to resolve Documents known folder, falling back to USERPROFILE/Documents", .{});
-            const userprofile = std.process.getEnvVarOwned(allocator, "USERPROFILE") catch |err| {
+            const userprofile = win32.getEnvVarOwned(allocator, "USERPROFILE") catch |err| {
                 slog.warn("Failed to get USERPROFILE env var: {}", .{err});
                 return error.MissingEnvironmentVariable;
             };

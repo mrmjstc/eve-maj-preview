@@ -4,9 +4,16 @@ const log = @import("log.zig");
 const build_options = @import("build_options");
 const slog = log.scoped("update");
 
+var g_io: std.Io = undefined;
+
+/// Must be called once before any update-checking function is used.
+pub fn setIo(io: std.Io) void {
+    g_io = io;
+}
+
 /// Mutex-guarded holder for the latest known update result, written by the background check thread and read by the tray menu on the main thread.
 pub const UpdateStatus = struct {
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.Io.Mutex = .init,
     version: ?[]const u8 = null,
     url: ?[]const u8 = null,
     allocator: ?std.mem.Allocator = null,
@@ -18,8 +25,8 @@ pub const UpdateStatus = struct {
         const url_copy = try allocator.dupe(u8, url);
         errdefer allocator.free(url_copy);
 
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        try self.mutex.lock(g_io);
+        defer self.mutex.unlock(g_io);
         self.freeLocked();
         self.version = version_copy;
         self.url = url_copy;
@@ -33,23 +40,23 @@ pub const UpdateStatus = struct {
     }
 
     pub fn deinit(self: *UpdateStatus) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        self.mutex.lock(g_io) catch return;
+        defer self.mutex.unlock(g_io);
         self.freeLocked();
         self.version = null;
         self.url = null;
     }
 
     pub fn isAvailable(self: *UpdateStatus) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        self.mutex.lock(g_io) catch return false;
+        defer self.mutex.unlock(g_io);
         return self.version != null;
     }
 
     /// Copies the stored release URL, null-terminated, into `buf`; returns null if no update is available or the URL doesn't fit.
     pub fn copyUrlZ(self: *UpdateStatus, buf: []u8) ?[:0]const u8 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        self.mutex.lock(g_io) catch return null;
+        defer self.mutex.unlock(g_io);
         const url = self.url orelse return null;
         if (url.len >= buf.len) return null;
         @memcpy(buf[0..url.len], url);
@@ -80,41 +87,26 @@ pub const UpdateChecker = struct {
     pub fn checkForUpdates(self: *UpdateChecker) !?UpdateInfo {
         slog.info("Checking for updates (current: {s})", .{self.current_version});
 
-        var child = std.process.Child.init(&.{
-            "curl",
-            "-s",
-            "-H",
-            "User-Agent: EVE-Maj-Preview",
-            "-H",
-            "Accept: application/vnd.github+json",
-            "https://api.github.com/repos/mrmjstc/eve-maj-preview/releases/latest",
-        }, self.allocator);
-        child.stdin_behavior = .Ignore;
-        child.stdout_behavior = .Pipe;
-        child.stderr_behavior = .Pipe;
         // Prevent a console window flash when spawning curl.exe from this GUI-subsystem process.
-        child.create_no_window = true;
-
-        var stdout: std.ArrayList(u8) = .empty;
-        defer stdout.deinit(self.allocator);
-        var stderr: std.ArrayList(u8) = .empty;
-        defer stderr.deinit(self.allocator);
-
-        try child.spawn();
-        errdefer _ = child.kill() catch {};
-        try child.collectOutput(self.allocator, &stdout, &stderr, 50 * 1024);
-        const term = try child.wait();
-
-        const result = .{
-            .stdout = try stdout.toOwnedSlice(self.allocator),
-            .stderr = try stderr.toOwnedSlice(self.allocator),
-            .term = term,
-        };
+        const result = try std.process.run(self.allocator, g_io, .{
+            .argv = &.{
+                "curl",
+                "-s",
+                "-H",
+                "User-Agent: EVE-Maj-Preview",
+                "-H",
+                "Accept: application/vnd.github+json",
+                "https://api.github.com/repos/mrmjstc/eve-maj-preview/releases/latest",
+            },
+            .stdout_limit = .limited(50 * 1024),
+            .stderr_limit = .limited(50 * 1024),
+            .create_no_window = true,
+        });
         defer self.allocator.free(result.stdout);
         defer self.allocator.free(result.stderr);
 
         switch (result.term) {
-            .Exited => |code| {
+            .exited => |code| {
                 if (code != 0) {
                     slog.warn("curl command failed with exit code: {d}", .{code});
                     return null;

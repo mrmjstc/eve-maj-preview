@@ -26,6 +26,7 @@ const TIMER_ID: usize = 1;
 const TIMER_CLASS_NAME = "EVE_TIMER_CLASS";
 
 var g_allocator: std.mem.Allocator = undefined;
+var g_io: std.Io = undefined;
 var g_scout: ?*scout.Scout = null;
 var g_painter: ?*painter.Painter = null;
 var g_hotkey_manager: ?*hotkeys.HotkeyManager = null;
@@ -167,7 +168,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         },
         win32.WM_PROTOCOL_HOTKEY => {
             // wParam identifies which hotkey action the protocol handler requested
-            const action = std.meta.intToEnum(protocol.HotkeyAction, wParam) catch {
+            const action = std.enums.fromInt(protocol.HotkeyAction, wParam) orelse {
                 slog.warn("Unknown protocol hotkey action: {}", .{wParam});
                 return 0;
             };
@@ -248,7 +249,7 @@ fn onTimerTick() void {
         };
     }
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = win32.nowMs(g_io);
 
     if (g_combat_tracker) |tracker| {
         const interval_ms: i64 = @intCast(g_config.combat.update_interval_ms);
@@ -358,9 +359,9 @@ fn pushBountyUpdate(tracker: *activity_mod.BountyTracker, painter_ptr: *painter.
     painter_ptr.updateBountyForCharacter(eve_window.hwnd, isk_rate);
 }
 
-fn createTracker(comptime T: type, allocator: std.mem.Allocator, window_seconds: u32) !*T {
+fn createTracker(comptime T: type, allocator: std.mem.Allocator, io: std.Io, window_seconds: u32) !*T {
     const ptr = try allocator.create(T);
-    ptr.* = T.init(allocator, window_seconds);
+    ptr.* = T.init(allocator, io, window_seconds);
     return ptr;
 }
 
@@ -453,7 +454,7 @@ pub fn main() void {
     mainImpl() catch |err| {
         slog.err("Fatal error: {}", .{err});
         if (@errorReturnTrace()) |trace| {
-            std.debug.dumpStackTrace(trace.*);
+            std.debug.dumpErrorReturnTrace(trace);
         }
         std.process.exit(1);
     };
@@ -462,7 +463,7 @@ pub fn main() void {
 /// Run-key startup entries launch with an arbitrary working directory, not the exe's folder.
 fn setCwdToExeDir() void {
     var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const exe_dir = std.fs.selfExeDirPath(&exe_dir_buf) catch return;
+    const exe_dir = win32.selfExeDirPath(&exe_dir_buf) catch return;
 
     var dir_z_buf: [std.fs.max_path_bytes + 1]u8 = undefined;
     const exe_dir_z = std.fmt.bufPrintZ(&dir_z_buf, "{s}", .{exe_dir}) catch return;
@@ -471,10 +472,19 @@ fn setCwdToExeDir() void {
 }
 
 fn mainImpl() !void {
+    // Without an explicit environ, spawned children (curl.exe) get an empty environment block instead of ours.
+    var io_threaded: std.Io.Threaded = .init(std.heap.page_allocator, .{ .environ = .{ .block = .global } });
+    defer io_threaded.deinit();
+    g_io = io_threaded.io();
+    log.setIo(g_io);
+    tts.setIo(g_io);
+    update.setIo(g_io);
+    config_mod.setIo(g_io);
+
     setCwdToExeDir();
 
     // Handle protocol invocation before the mutex check, so commands work even when another instance is already running.
-    var gpa_early = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa_early = std.heap.DebugAllocator(.{}){};
     defer _ = gpa_early.deinit();
     const early_allocator = gpa_early.allocator();
 
@@ -520,7 +530,7 @@ fn mainImpl() !void {
         return error.AlreadyRunning;
     }
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     g_allocator = gpa.allocator();
     defer g_chatlog_char_names.deinit(g_allocator);
@@ -538,8 +548,10 @@ fn mainImpl() !void {
     else
         config_mod.DEFAULT_PROFILE;
 
-    const args2 = try std.process.argsAlloc(g_allocator);
-    defer std.process.argsFree(g_allocator, args2);
+    // toSlice's result references several internal allocations, so it requires an arena rather than a plain allocator.
+    var args_arena = std.heap.ArenaAllocator.init(g_allocator);
+    defer args_arena.deinit();
+    const args2 = try win32.processArgs().toSlice(args_arena.allocator());
 
     var j: usize = 1;
     while (j < args2.len) : (j += 1) {
@@ -593,6 +605,7 @@ fn mainImpl() !void {
     // Allocate console in debug mode (Windows GUI subsystem doesn't create one by default)
     if (g_global_settings.logLevel == .debug) {
         _ = win32.AllocConsole();
+        log.setConsoleReady(true);
         // Closing the console window kills the process before any `defer` can run, so flush buffered log lines from here instead of relying on shutdown cleanup.
         _ = win32.SetConsoleCtrlHandler(consoleCtrlHandler, win32.TRUE);
     }
@@ -613,7 +626,7 @@ fn mainImpl() !void {
     g_painter = try g_allocator.create(painter.Painter);
     {
         errdefer g_allocator.destroy(g_painter.?);
-        g_painter.?.* = try painter.Painter.init(g_allocator, &g_config);
+        g_painter.?.* = try painter.Painter.init(g_allocator, g_io, &g_config);
     }
     painter.g_painter_ptr = g_painter;
     input.g_painter_ptr = g_painter;
@@ -630,6 +643,7 @@ fn mainImpl() !void {
     if (g_config.chatlog.enabled) {
         g_chatlog_monitor = try chatlog.ChatlogMonitor.init(
             g_allocator,
+            g_io,
             g_config.chatlog.chatlogDir,
             g_config.chatlog.gamelogDir,
             g_painter.?,
@@ -644,7 +658,7 @@ fn mainImpl() !void {
     }
 
     if (g_config.combat.enabled) {
-        g_combat_tracker = try createTracker(activity_mod.CombatTracker, g_allocator, g_config.combat.window_seconds);
+        g_combat_tracker = try createTracker(activity_mod.CombatTracker, g_allocator, g_io, g_config.combat.window_seconds);
 
         if (g_chatlog_monitor) |monitor| {
             monitor.combat_tracker = g_combat_tracker.?;
@@ -663,7 +677,7 @@ fn mainImpl() !void {
     }
 
     if (g_config.mining.enabled) {
-        g_mining_tracker = try createTracker(activity_mod.MiningTracker, g_allocator, g_config.mining.window_seconds);
+        g_mining_tracker = try createTracker(activity_mod.MiningTracker, g_allocator, g_io, g_config.mining.window_seconds);
 
         if (g_chatlog_monitor) |monitor| {
             monitor.mining_tracker = g_mining_tracker.?;
@@ -681,7 +695,7 @@ fn mainImpl() !void {
     }
 
     if (g_config.bounty.enabled) {
-        g_bounty_tracker = try createTracker(activity_mod.BountyTracker, g_allocator, g_config.bounty.window_seconds);
+        g_bounty_tracker = try createTracker(activity_mod.BountyTracker, g_allocator, g_io, g_config.bounty.window_seconds);
 
         if (g_chatlog_monitor) |monitor| {
             monitor.bounty_tracker = g_bounty_tracker.?;
@@ -950,7 +964,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         slog.err("Failed to create painter: {}", .{err});
         return err;
     };
-    g_painter.?.* = painter.Painter.init(g_allocator, &g_config) catch |err| {
+    g_painter.?.* = painter.Painter.init(g_allocator, g_io, &g_config) catch |err| {
         g_allocator.destroy(g_painter.?);
         g_painter = null;
         slog.err("Failed to initialize painter: {}", .{err});
@@ -995,6 +1009,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
                 chatlog_blk: {
                     g_chatlog_monitor = chatlog.ChatlogMonitor.init(
                         g_allocator,
+                        g_io,
                         g_config.chatlog.chatlogDir,
                         g_config.chatlog.gamelogDir,
                         g_painter.?,
@@ -1031,7 +1046,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         }
 
         if (g_config.combat.enabled) {
-            if (createTracker(activity_mod.CombatTracker, g_allocator, g_config.combat.window_seconds)) |tracker_ptr| {
+            if (createTracker(activity_mod.CombatTracker, g_allocator, g_io, g_config.combat.window_seconds)) |tracker_ptr| {
                 g_combat_tracker = tracker_ptr;
 
                 if (g_chatlog_monitor) |monitor| {
@@ -1051,7 +1066,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         }
 
         if (g_config.mining.enabled) {
-            if (createTracker(activity_mod.MiningTracker, g_allocator, g_config.mining.window_seconds)) |tracker_ptr| {
+            if (createTracker(activity_mod.MiningTracker, g_allocator, g_io, g_config.mining.window_seconds)) |tracker_ptr| {
                 g_mining_tracker = tracker_ptr;
 
                 if (g_chatlog_monitor) |monitor| {
@@ -1070,7 +1085,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         }
 
         if (g_config.bounty.enabled) {
-            if (createTracker(activity_mod.BountyTracker, g_allocator, g_config.bounty.window_seconds)) |tracker_ptr| {
+            if (createTracker(activity_mod.BountyTracker, g_allocator, g_io, g_config.bounty.window_seconds)) |tracker_ptr| {
                 g_bounty_tracker = tracker_ptr;
 
                 if (g_chatlog_monitor) |monitor| {

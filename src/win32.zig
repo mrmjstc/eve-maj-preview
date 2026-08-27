@@ -611,6 +611,8 @@ pub extern "kernel32" fn GetModuleHandleA(lpModuleName: ?LPCSTR) callconv(.c) ?H
 pub extern "kernel32" fn OpenProcess(dwDesiredAccess: DWORD, bInheritHandle: BOOL, dwProcessId: DWORD) callconv(.c) ?HANDLE;
 pub extern "kernel32" fn CloseHandle(hObject: HANDLE) callconv(.c) BOOL;
 pub extern "kernel32" fn GetModuleFileNameExA(hProcess: HANDLE, hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;
+pub extern "kernel32" fn GetModuleFileNameA(hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;
+pub extern "kernel32" fn GetEnvironmentVariableA(lpName: LPCSTR, lpBuffer: ?LPSTR, nSize: DWORD) callconv(.c) DWORD;
 
 pub const FILETIME = extern struct {
     dwLowDateTime: DWORD,
@@ -872,6 +874,46 @@ pub fn queryProcessExePath(process_id: DWORD, exe_path_buf: *[260:0]u8) ?[]const
     const path_len = GetModuleFileNameExA(handle, null, exe_path_buf, exe_path_buf.len);
     if (path_len == 0) return null;
     return exe_path_buf[0..@intCast(path_len)];
+}
+
+/// Full path of the current process's own executable. Replaces std.fs.selfExePath, removed in Zig 0.16.
+pub fn selfExePath(buf: []u8) ![]const u8 {
+    const len = GetModuleFileNameA(null, @ptrCast(buf.ptr), @intCast(buf.len));
+    if (len == 0) return error.Unexpected;
+    if (len == buf.len) return error.NameTooLong;
+    return buf[0..@intCast(len)];
+}
+
+/// Directory containing the current process's own executable. Replaces std.fs.selfExeDirPath, removed in Zig 0.16.
+pub fn selfExeDirPath(buf: []u8) ![]const u8 {
+    const full_path = try selfExePath(buf);
+    return std.fs.path.dirname(full_path) orelse return error.NoDirname;
+}
+
+/// Command-line arguments for this process. Zig 0.16 no longer offers a plain
+/// std.process.argsAlloc/argsWithAllocator; the process's raw command line must be
+/// read from the PEB and wrapped in a std.process.Args first.
+pub fn processArgs() std.process.Args {
+    return .{ .vector = std.os.windows.peb().ProcessParameters.CommandLine.slice() };
+}
+
+/// Current wall-clock time in milliseconds since the Unix epoch. Replaces std.time.milliTimestamp, removed in Zig 0.16.
+pub fn nowMs(io: std.Io) i64 {
+    return std.Io.Timestamp.now(io, .real).toMilliseconds();
+}
+
+/// Replaces std.process.getEnvVarOwned, removed in Zig 0.16.
+pub fn getEnvVarOwned(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
+    var name_buf: [128:0]u8 = undefined;
+    if (name.len >= name_buf.len) return error.NameTooLong;
+    @memcpy(name_buf[0..name.len], name);
+    name_buf[name.len] = 0;
+
+    var buf: [1024:0]u8 = undefined;
+    const len = GetEnvironmentVariableA(&name_buf, &buf, buf.len);
+    if (len == 0) return error.EnvironmentVariableNotFound;
+    if (len >= buf.len) return error.ValueTooLong;
+    return try allocator.dupe(u8, buf[0..len]);
 }
 
 pub inline fn isWindowVisible(hwnd: HWND) bool {

@@ -44,7 +44,8 @@ const SupportedLang = enum {
     }
 };
 
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+var gpa = std.heap.DebugAllocator(.{}){};
+var g_io: std.Io = undefined;
 var config_path: []const u8 = "profiles/default.json";
 // Non-null when config_path was heap-allocated and must be freed before reassignment.
 var config_path_allocated: ?[]const u8 = null;
@@ -63,6 +64,13 @@ fn currentProfileFilename() []const u8 {
 }
 
 pub fn main() !void {
+    // Without an explicit environ, spawned children (curl.exe) get an empty environment block instead of ours.
+    var io_threaded: std.Io.Threaded = .init(std.heap.page_allocator, .{ .environ = .{ .block = .global } });
+    defer io_threaded.deinit();
+    g_io = io_threaded.io();
+    log.setIo(g_io);
+    config_mod.setIo(g_io);
+
     // Single-instance enforcement: if another instance already holds the mutex, focus its window and exit.
     const mutex_name = std.unicode.utf8ToUtf16LeStringLiteral("Global\\EVE-Maj-Preview-ConfigDialog-SingleInstance");
     const instance_mutex = win32.CreateMutexW(null, win32.TRUE, mutex_name);
@@ -81,7 +89,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var args = try std.process.argsWithAllocator(allocator);
+    var args = try win32.processArgs().iterateAllocator(allocator);
     defer args.deinit();
     _ = args.skip();
 
@@ -177,11 +185,11 @@ fn focusExistingDialog() void {
 
 /// Moves the window slightly after a brief delay to trigger layout recalculation
 fn moveWindowWorkaround(win: anytype) void {
-    std.Thread.sleep(10 * std.time.ns_per_ms);
+    std.Io.sleep(g_io, .fromMilliseconds(10), .awake) catch {};
 
     win.setPosition(201, 100);
 
-    std.Thread.sleep(20 * std.time.ns_per_ms);
+    std.Io.sleep(g_io, .fromMilliseconds(20), .awake) catch {};
     win.setPosition(200, 100);
 
     // Make window visible now that layout is fixed
@@ -201,15 +209,9 @@ fn moveWindowWorkaround(win: anytype) void {
 fn loadLastUsedProfile(allocator: std.mem.Allocator) ![]const u8 {
     const settings_path = "profiles/global.settings.json";
 
-    const file = std.fs.cwd().openFile(settings_path, .{}) catch |err| {
-        slog.debug("Could not open {s}: {}", .{ settings_path, err });
+    const content = std.Io.Dir.cwd().readFileAlloc(g_io, settings_path, allocator, .limited(1024 * 1024)) catch |err| {
+        slog.debug("Could not read {s}: {}", .{ settings_path, err });
         return error.SettingsNotFound;
-    };
-    defer file.close();
-
-    const content = file.readToEndAllocOptions(allocator, 1024 * 1024, null, .@"1", 0) catch |err| {
-        slog.warn("Failed to read {s}: {}", .{ settings_path, err });
-        return error.ReadFailed;
     };
     defer allocator.free(content);
 
@@ -459,7 +461,7 @@ fn applyRunOnStartup(enabled: bool) bool {
     }
 
     var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const exe_dir = std.fs.selfExeDirPath(&exe_dir_buf) catch {
+    const exe_dir = win32.selfExeDirPath(&exe_dir_buf) catch {
         slog.err("Failed to determine executable directory for startup registration", .{});
         return false;
     };
@@ -534,14 +536,14 @@ fn loadGlobalSettings(e: *webui.Event) void {
         var display_ore = std.json.Array.init(arena_allocator);
         for (config_mod.DEFAULT_ORE_TABLE) |default_entry| {
             const price = settings.orePrice(default_entry.name) orelse default_entry.price;
-            var obj = std.json.ObjectMap.init(arena_allocator);
-            obj.put("name", .{ .string = default_entry.name }) catch continue;
-            obj.put("category", .{ .string = default_entry.category }) catch continue;
-            obj.put("volumeM3", .{ .float = default_entry.volumeM3 }) catch continue;
-            obj.put("price", .{ .float = price }) catch continue;
+            var obj: std.json.ObjectMap = .empty;
+            obj.put(arena_allocator, "name", .{ .string = default_entry.name }) catch continue;
+            obj.put(arena_allocator, "category", .{ .string = default_entry.category }) catch continue;
+            obj.put(arena_allocator, "volumeM3", .{ .float = default_entry.volumeM3 }) catch continue;
+            obj.put(arena_allocator, "price", .{ .float = price }) catch continue;
             display_ore.append(.{ .object = obj }) catch continue;
         }
-        parsed.value.object.put("oreTable", .{ .array = display_ore }) catch {};
+        parsed.value.object.put(arena_allocator, "oreTable", .{ .array = display_ore }) catch {};
     }
 
     const merged_json = std.json.Stringify.valueAlloc(allocator, parsed.value, .{}) catch |err| {
@@ -608,49 +610,31 @@ const ESI_JITA_STATION_ID: i64 = 60003760;
 
 /// Spawns curl with the given args and returns captured stdout (caller frees) if it exits 0, else null.
 fn curlRun(allocator: std.mem.Allocator, args: []const []const u8) ?[]u8 {
-    var child = std.process.Child.init(args, allocator);
-    child.stdin_behavior = .Ignore;
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
-    child.create_no_window = true;
-
-    var stdout: std.ArrayList(u8) = .empty;
-    var stderr: std.ArrayList(u8) = .empty;
-    defer stderr.deinit(allocator);
-
-    child.spawn() catch |err| {
-        slog.warn("Failed to spawn curl: {}", .{err});
+    const result = std.process.run(allocator, g_io, .{
+        .argv = args,
+        .stdout_limit = .limited(4 * 1024 * 1024),
+        .stderr_limit = .limited(4 * 1024 * 1024),
+        .create_no_window = true,
+    }) catch |err| {
+        slog.warn("Failed to run curl: {}", .{err});
         return null;
     };
-    child.collectOutput(allocator, &stdout, &stderr, 4 * 1024 * 1024) catch |err| {
-        slog.warn("Failed to read curl output: {}", .{err});
-        _ = child.kill() catch {};
-        stdout.deinit(allocator);
-        return null;
-    };
-    const term = child.wait() catch |err| {
-        slog.warn("Failed to wait for curl: {}", .{err});
-        stdout.deinit(allocator);
-        return null;
-    };
+    defer allocator.free(result.stderr);
 
-    switch (term) {
-        .Exited => |code| if (code != 0) {
-            slog.warn("curl exited with code {d}: {s}", .{ code, stderr.items });
-            stdout.deinit(allocator);
+    switch (result.term) {
+        .exited => |code| if (code != 0) {
+            slog.warn("curl exited with code {d}: {s}", .{ code, result.stderr });
+            allocator.free(result.stdout);
             return null;
         },
         else => {
             slog.warn("curl terminated abnormally", .{});
-            stdout.deinit(allocator);
+            allocator.free(result.stdout);
             return null;
         },
     }
 
-    return stdout.toOwnedSlice(allocator) catch {
-        stdout.deinit(allocator);
-        return null;
-    };
+    return result.stdout;
 }
 
 /// Resolves "Compressed <name>" -> ESI type_id for each ore name via the public (no-auth) ESI name resolver.
@@ -685,9 +669,18 @@ fn resolveOreTypeIds(allocator: std.mem.Allocator, names: []const []const u8) !s
     };
     defer parsed.deinit();
 
-    if (parsed.value != .object) return result;
-    const inventory_types = parsed.value.object.get("inventory_types") orelse return result;
-    if (inventory_types != .array) return result;
+    if (parsed.value != .object) {
+        slog.warn("ESI universe/ids response was not a JSON object: {s}", .{stdout});
+        return result;
+    }
+    const inventory_types = parsed.value.object.get("inventory_types") orelse {
+        slog.warn("ESI universe/ids response had no inventory_types field: {s}", .{stdout});
+        return result;
+    };
+    if (inventory_types != .array) {
+        slog.warn("ESI universe/ids inventory_types was not an array: {s}", .{stdout});
+        return result;
+    }
 
     for (inventory_types.array.items) |item| {
         if (item != .object) continue;
@@ -749,7 +742,7 @@ const PriceFetchContext = struct {
     allocator: std.mem.Allocator,
     lookups: []const PriceLookup,
     next_index: std.atomic.Value(usize),
-    results_mutex: std.Thread.Mutex = .{},
+    results_mutex: std.Io.Mutex = .init,
     results: *std.json.ObjectMap,
 };
 
@@ -762,9 +755,9 @@ fn priceFetchWorker(ctx: *PriceFetchContext) void {
         const lookup = ctx.lookups[i];
         const price = fetchJitaBuyPrice(ctx.allocator, lookup.type_id) orelse continue;
 
-        ctx.results_mutex.lock();
-        defer ctx.results_mutex.unlock();
-        ctx.results.put(lookup.name, .{ .float = price }) catch {};
+        ctx.results_mutex.lock(g_io) catch continue;
+        defer ctx.results_mutex.unlock(g_io);
+        ctx.results.put(ctx.allocator, lookup.name, .{ .float = price }) catch {};
     }
 }
 
@@ -792,8 +785,8 @@ fn fetchOrePrices(e: *webui.Event) void {
         type_ids.deinit();
     }
 
-    var results = std.json.ObjectMap.init(allocator);
-    defer results.deinit();
+    var results: std.json.ObjectMap = .empty;
+    defer results.deinit(allocator);
 
     const lookups = allocator.alloc(PriceLookup, type_ids.count()) catch {
         e.returnString("{}");
@@ -1274,15 +1267,15 @@ fn listProfiles(e: *webui.Event) void {
         profiles.deinit(allocator);
     }
 
-    var dir = std.fs.cwd().openDir("profiles", .{ .iterate = true }) catch |err| {
+    var dir = std.Io.Dir.cwd().openDir(g_io, "profiles", .{ .iterate = true }) catch |err| {
         slog.err("Failed to open profiles directory: {}", .{err});
         e.returnString("{\"profiles\": [], \"current\": \"default.json\"}");
         return;
     };
-    defer dir.close();
+    defer dir.close(g_io);
 
     var iter = dir.iterate();
-    while (iter.next() catch null) |entry| {
+    while (iter.next(g_io) catch null) |entry| {
         if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".json")) {
             if (std.mem.eql(u8, entry.name, "global.settings.json")) {
                 continue;
@@ -1377,7 +1370,7 @@ fn createProfile(e: *webui.Event) void {
     };
     defer allocator.free(profile_path);
 
-    const file = std.fs.cwd().openFile(profile_path, .{}) catch |err| {
+    const file = std.Io.Dir.cwd().openFile(g_io, profile_path, .{}) catch |err| {
         if (err == error.FileNotFound) {
             var defaults = config_mod.Config.getDefaultsWithProfile(allocator, profile_filename) catch {
                 e.returnString("{\"success\": false, \"error\": \"Failed to create defaults\"}");
@@ -1396,7 +1389,7 @@ fn createProfile(e: *webui.Event) void {
         e.returnString("{\"success\": false, \"error\": \"Failed to check file\"}");
         return;
     };
-    file.close();
+    file.close(g_io);
 
     e.returnString("{\"success\": false, \"error\": \"Profile already exists\"}");
 }
@@ -1455,9 +1448,9 @@ fn copyProfile(e: *webui.Event) void {
     };
     defer allocator.free(target_path);
 
-    const check_file = std.fs.cwd().openFile(target_path, .{}) catch |err| {
+    const check_file = std.Io.Dir.cwd().openFile(g_io, target_path, .{}) catch |err| {
         if (err == error.FileNotFound) {
-            std.fs.cwd().copyFile(source_path, std.fs.cwd(), target_path, .{}) catch {
+            std.Io.Dir.cwd().copyFile(source_path, std.Io.Dir.cwd(), target_path, g_io, .{}) catch {
                 e.returnString("{\"success\": false, \"error\": \"Failed to copy file\"}");
                 return;
             };
@@ -1468,7 +1461,7 @@ fn copyProfile(e: *webui.Event) void {
         e.returnString("{\"success\": false, \"error\": \"Failed to check target file\"}");
         return;
     };
-    check_file.close();
+    check_file.close(g_io);
 
     e.returnString("{\"success\": false, \"error\": \"Target profile already exists\"}");
 }
@@ -1488,7 +1481,7 @@ fn deleteProfile(e: *webui.Event) void {
     };
     defer allocator.free(profile_path);
 
-    std.fs.cwd().deleteFile(profile_path) catch |err| {
+    std.Io.Dir.cwd().deleteFile(g_io, profile_path) catch |err| {
         const error_msg = std.fmt.allocPrint(allocator, "{{\"success\": false, \"error\": \"Failed to delete: {}\"}}", .{err}) catch {
             e.returnString("{\"success\": false, \"error\": \"Failed to delete profile\"}");
             return;
@@ -1740,10 +1733,7 @@ fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8) !?[]const u
 
 /// Read icon.ico from disk and build a base64 data-URI <link> favicon tag.
 fn loadFaviconTag(allocator: std.mem.Allocator) ![]u8 {
-    const file = try std.fs.cwd().openFile("icon.ico", .{});
-    defer file.close();
-
-    const icon_data = try file.readToEndAlloc(allocator, 1024 * 1024);
+    const icon_data = try std.Io.Dir.cwd().readFileAlloc(g_io, "icon.ico", allocator, .limited(1024 * 1024));
     defer allocator.free(icon_data);
 
     const encoder = std.base64.standard.Encoder;

@@ -152,13 +152,13 @@ pub const HotkeyManager = struct {
     }
 
     fn formatKeyName(virtual_key: u32, buffer: []u8) []const u8 {
-        var fbs = std.io.fixedBufferStream(buffer);
-        vk.writeVirtualKey(fbs.writer(), virtual_key) catch |err| {
+        var writer: std.Io.Writer = .fixed(buffer);
+        vk.writeVirtualKey(&writer, virtual_key) catch |err| {
             slog.warn("Failed to format virtual key 0x{X}: {}", .{ virtual_key, err });
             const fallback = std.fmt.bufPrint(buffer, "VK{X}", .{virtual_key}) catch "VK?";
             return fallback;
         };
-        return fbs.getWritten();
+        return writer.buffered();
     }
 
     /// Layered errdefer: each step's cleanup only runs if a later step in registration fails.

@@ -400,7 +400,7 @@ pub const TrayIcon = struct {
 /// Launch config.exe, which is installed alongside the main executable
 fn openConfigDialog() void {
     var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const exe_dir = std.fs.selfExeDirPath(&exe_dir_buf) catch {
+    const exe_dir = win32.selfExeDirPath(&exe_dir_buf) catch {
         slog.err("Failed to determine executable directory", .{});
         return;
     };

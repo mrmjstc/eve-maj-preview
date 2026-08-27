@@ -178,14 +178,16 @@ pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
 
 /// Returns the protocol URL if --protocol was passed (caller must free), otherwise null.
 pub fn checkCommandLine(allocator: std.mem.Allocator) !?[]const u8 {
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    // toSlice's result references several internal allocations, so it requires an arena rather than a plain allocator.
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    defer arena_state.deinit();
+    const args = try win32.processArgs().toSlice(arena_state.allocator());
 
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
         if (std.mem.eql(u8, args[i], "--protocol")) {
             if (i + 1 < args.len) {
-                // Must duplicate before argsFree() invalidates args.
+                // Must duplicate before the arena is freed.
                 return try allocator.dupe(u8, args[i + 1]);
             }
         }
@@ -214,7 +216,7 @@ pub fn isRegistered() bool {
 
 pub fn register(allocator: std.mem.Allocator) !bool {
     var exe_path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const exe_path = try std.fs.selfExePath(&exe_path_buf);
+    const exe_path = try win32.selfExePath(&exe_path_buf);
 
     var hKey: win32.HKEY = undefined;
     var disposition: win32.DWORD = undefined;

@@ -408,8 +408,7 @@ pub const ListWindow = struct {
 
     /// Compact combined DPS in/out + mining rate string for the list row's right-side slot; empty when neither stat is active. Mirrors the thumbnail overlay's own formatting (painter.renderThumbnail).
     fn buildStatText(self: *const ListWindow, buf: []u8, thumb: *const ThumbnailWindow) []const u8 {
-        var stream = std.io.fixedBufferStream(buf);
-        const writer = stream.writer();
+        var writer: std.Io.Writer = .fixed(buf);
         const combat_cfg = &self.config.combat;
         const mining_cfg = &self.config.mining;
         const bounty_cfg = &self.config.bounty;
@@ -459,7 +458,7 @@ pub const ListWindow = struct {
             }
         }
 
-        return stream.getWritten();
+        return writer.buffered();
     }
 
     /// Text color for buildStatText's output; incoming DPS takes priority (most urgent), then outgoing, then mining, then bounty.

@@ -12,10 +12,11 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
 
     const version = blk: {
-        const version_file = std.fs.cwd().readFileAlloc(
-            b.allocator,
+        const version_file = std.Io.Dir.cwd().readFileAlloc(
+            b.graph.io,
             "VERSION",
-            1024,
+            b.allocator,
+            .limited(1024),
         ) catch "0.0.0";
         break :blk std.mem.trim(u8, version_file, &std.ascii.whitespace);
     };
@@ -52,7 +53,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.linkSystemLibrary("dbghelp", .{});
     exe.root_module.linkSystemLibrary("shcore", .{});
 
-    exe.addWin32ResourceFile(.{
+    exe.root_module.addWin32ResourceFile(.{
         .file = b.path("app.rc"),
     });
 
@@ -91,7 +92,7 @@ pub fn build(b: *std.Build) void {
     config_dialog.subsystem = .Windows;
 
     // Resource file includes the app icon, so the taskbar shows the tray icon instead of the default exe icon.
-    config_dialog.addWin32ResourceFile(.{
+    config_dialog.root_module.addWin32ResourceFile(.{
         .file = b.path("app.rc"),
     });
 

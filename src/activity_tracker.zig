@@ -136,15 +136,17 @@ pub const CombatWindow = struct {
 fn TrackerBase(comptime WindowT: type) type {
     return struct {
         allocator: std.mem.Allocator,
-        mutex: std.Thread.Mutex = .{},
+        io: std.Io,
+        mutex: std.Io.Mutex = .init,
         windows: std.StringHashMap(WindowT),
         window_seconds: u32,
 
         const Self = @This();
 
-        fn init(allocator: std.mem.Allocator, window_seconds: u32) Self {
+        fn init(allocator: std.mem.Allocator, io: std.Io, window_seconds: u32) Self {
             return .{
                 .allocator = allocator,
+                .io = io,
                 .windows = std.StringHashMap(WindowT).init(allocator),
                 .window_seconds = window_seconds,
             };
@@ -160,16 +162,16 @@ fn TrackerBase(comptime WindowT: type) type {
         }
 
         fn removeCharacter(self: *Self, character_name: []const u8) void {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            self.mutex.lock(self.io) catch return;
+            defer self.mutex.unlock(self.io);
             if (self.windows.fetchRemove(character_name)) |entry| {
                 self.allocator.free(entry.key);
             }
         }
 
         fn refreshAll(self: *Self, now_ms: i64) bool {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            self.mutex.lock(self.io) catch return false;
+            defer self.mutex.unlock(self.io);
             var any_changed = false;
             var iter = self.windows.valueIterator();
             while (iter.next()) |window| {
@@ -194,8 +196,8 @@ fn TrackerBase(comptime WindowT: type) type {
 pub const CombatTracker = struct {
     base: TrackerBase(CombatWindow),
 
-    pub fn init(allocator: std.mem.Allocator, window_seconds: u32) CombatTracker {
-        return .{ .base = TrackerBase(CombatWindow).init(allocator, window_seconds) };
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, window_seconds: u32) CombatTracker {
+        return .{ .base = TrackerBase(CombatWindow).init(allocator, io, window_seconds) };
     }
 
     pub fn deinit(self: *CombatTracker) void {
@@ -211,8 +213,8 @@ pub const CombatTracker = struct {
         timestamp_ms: i64,
         counts_for_alert: bool,
     ) !void {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
+        try self.base.mutex.lock(self.base.io);
+        defer self.base.mutex.unlock(self.base.io);
         const window = try self.base.getOrCreate(character_name);
         window.addEntry(amount, is_incoming, timestamp_ms, counts_for_alert);
     }
@@ -224,8 +226,8 @@ pub const CombatTracker = struct {
 
     /// Return the last-refreshed DPS values for character_name. Null means not enough span yet to trust a rate.
     pub fn getDps(self: *CombatTracker, character_name: []const u8) struct { incoming: ?f32, outgoing: ?f32 } {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
+        self.base.mutex.lock(self.base.io) catch return .{ .incoming = 0.0, .outgoing = 0.0 };
+        defer self.base.mutex.unlock(self.base.io);
         if (self.base.windows.get(character_name)) |window| {
             return .{ .incoming = window.last_incoming_dps, .outgoing = window.last_outgoing_dps };
         }
@@ -239,8 +241,8 @@ pub const CombatTracker = struct {
 
     /// See CombatWindow.checkDamageAlert. Returns false if character_name has no window yet.
     pub fn checkDamageAlert(self: *CombatTracker, character_name: []const u8, now_ms: i64) bool {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
+        self.base.mutex.lock(self.base.io) catch return false;
+        defer self.base.mutex.unlock(self.base.io);
         const window = self.base.windows.getPtr(character_name) orelse return false;
         return window.checkDamageAlert(now_ms);
     }
@@ -253,7 +255,7 @@ pub const CombatTracker = struct {
 pub fn parseCombatLine(stripped_line: []const u8) ?struct { amount: u32, is_incoming: bool, weapon: []const u8 } {
     const combat_prefix = "(combat)";
     const combat_pos = std.mem.indexOf(u8, stripped_line, combat_prefix) orelse return null;
-    const stripped = std.mem.trimLeft(u8, stripped_line[combat_pos + combat_prefix.len ..], " \t");
+    const stripped = std.mem.trimStart(u8, stripped_line[combat_pos + combat_prefix.len ..], " \t");
 
     // Skip remote-rep / cap-transfer lines (these are not damage hits)
     if (std.mem.indexOf(u8, stripped, "boosts your") != null or
@@ -457,8 +459,8 @@ pub const MiningWindow = struct {
 pub const MiningTracker = struct {
     base: TrackerBase(MiningWindow),
 
-    pub fn init(allocator: std.mem.Allocator, window_seconds: u32) MiningTracker {
-        return .{ .base = TrackerBase(MiningWindow).init(allocator, window_seconds) };
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, window_seconds: u32) MiningTracker {
+        return .{ .base = TrackerBase(MiningWindow).init(allocator, io, window_seconds) };
     }
 
     pub fn deinit(self: *MiningTracker) void {
@@ -473,8 +475,8 @@ pub const MiningTracker = struct {
         isk: f32,
         timestamp_ms: i64,
     ) !void {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
+        try self.base.mutex.lock(self.base.io);
+        defer self.base.mutex.unlock(self.base.io);
         const window = try self.base.getOrCreate(character_name);
         window.addEntry(m3, isk, timestamp_ms);
     }
@@ -486,8 +488,8 @@ pub const MiningTracker = struct {
 
     /// Return the last-refreshed mining rate for character_name (m3/sec). Null means not enough span yet to trust a rate.
     pub fn getRate(self: *MiningTracker, character_name: []const u8) ?f32 {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
+        self.base.mutex.lock(self.base.io) catch return 0.0;
+        defer self.base.mutex.unlock(self.base.io);
         if (self.base.windows.get(character_name)) |window| {
             return window.last_m3_per_sec;
         }
@@ -496,8 +498,8 @@ pub const MiningTracker = struct {
 
     /// Return the last-refreshed ISK rate for character_name (ISK/sec). Null means not enough span yet to trust a rate.
     pub fn getIskRate(self: *MiningTracker, character_name: []const u8) ?f32 {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
+        self.base.mutex.lock(self.base.io) catch return 0.0;
+        defer self.base.mutex.unlock(self.base.io);
         if (self.base.windows.get(character_name)) |window| {
             return window.last_isk_per_sec;
         }
@@ -517,8 +519,8 @@ pub const MiningTracker = struct {
         alert_window_ms: i64,
         threshold: u32,
     ) bool {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
+        self.base.mutex.lock(self.base.io) catch return false;
+        defer self.base.mutex.unlock(self.base.io);
         const window = self.base.windows.getPtr(character_name) orelse return false;
         // Only alert if the character has mined at least once (avoids false positives on start-up).
         if (window.last_hit_ms == 0) return false;
@@ -543,8 +545,8 @@ pub const MiningTracker = struct {
         now_ms: i64,
         stopped_window_ms: i64,
     ) bool {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
+        self.base.mutex.lock(self.base.io) catch return false;
+        defer self.base.mutex.unlock(self.base.io);
         const window = self.base.windows.getPtr(character_name) orelse return false;
         // Only alert if the character has mined at least once.
         if (window.last_hit_ms == 0) return false;
@@ -637,8 +639,8 @@ pub const BountyWindow = struct {
 pub const BountyTracker = struct {
     base: TrackerBase(BountyWindow),
 
-    pub fn init(allocator: std.mem.Allocator, window_seconds: u32) BountyTracker {
-        return .{ .base = TrackerBase(BountyWindow).init(allocator, window_seconds) };
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, window_seconds: u32) BountyTracker {
+        return .{ .base = TrackerBase(BountyWindow).init(allocator, io, window_seconds) };
     }
 
     pub fn deinit(self: *BountyTracker) void {
@@ -652,8 +654,8 @@ pub const BountyTracker = struct {
         isk: f32,
         timestamp_ms: i64,
     ) !void {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
+        try self.base.mutex.lock(self.base.io);
+        defer self.base.mutex.unlock(self.base.io);
         const window = try self.base.getOrCreate(character_name);
         window.addEntry(isk, timestamp_ms);
     }
@@ -665,8 +667,8 @@ pub const BountyTracker = struct {
 
     /// Return the last-refreshed ISK rate for character_name (ISK/sec). Null means not enough span yet to trust a rate.
     pub fn getIskRate(self: *BountyTracker, character_name: []const u8) ?f32 {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
+        self.base.mutex.lock(self.base.io) catch return 0.0;
+        defer self.base.mutex.unlock(self.base.io);
         if (self.base.windows.get(character_name)) |window| {
             return window.last_isk_per_sec;
         }
@@ -684,7 +686,7 @@ pub const BountyTracker = struct {
 pub fn parseBountyLine(line: []const u8) ?f32 {
     const bounty_prefix = "(bounty)";
     const bounty_pos = std.mem.indexOf(u8, line, bounty_prefix) orelse return null;
-    const payload = std.mem.trimLeft(u8, line[bounty_pos + bounty_prefix.len ..], " \t");
+    const payload = std.mem.trimStart(u8, line[bounty_pos + bounty_prefix.len ..], " \t");
 
     var stripped_buf: [512]u8 = undefined;
     const stripped = stripHtml(payload, &stripped_buf);
@@ -722,7 +724,7 @@ pub const ParsedMiningEvent = struct {
 pub fn parseMiningLine(line: []const u8) ?ParsedMiningEvent {
     const mining_prefix = "(mining)";
     const mining_pos = std.mem.indexOf(u8, line, mining_prefix) orelse return null;
-    const payload = std.mem.trimLeft(u8, line[mining_pos + mining_prefix.len ..], " \t");
+    const payload = std.mem.trimStart(u8, line[mining_pos + mining_prefix.len ..], " \t");
 
     var stripped_buf: [512]u8 = undefined;
     const stripped = stripHtml(payload, &stripped_buf);
@@ -735,7 +737,7 @@ pub fn parseMiningLine(line: []const u8) ?ParsedMiningEvent {
     // Find "You mined" which appears in both normal and critical lines.
     const mined_kw = "You mined";
     const mined_pos = std.mem.indexOf(u8, stripped, mined_kw) orelse return null;
-    var cursor = std.mem.trimLeft(u8, stripped[mined_pos + mined_kw.len ..], " \t");
+    var cursor = std.mem.trimStart(u8, stripped[mined_pos + mined_kw.len ..], " \t");
 
     // Skip optional "an additional " prefix (critical yield)
     const additional_kw = "an additional ";

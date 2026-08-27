@@ -208,28 +208,34 @@ const Command = union(enum) {
 };
 
 const CommandQueue = struct {
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.Io.Mutex = .init,
     items: std.ArrayList(Command) = .empty,
 
     fn push(self: *CommandQueue, cmd: Command) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        try self.mutex.lock(g_io);
+        defer self.mutex.unlock(g_io);
         try self.items.append(std.heap.page_allocator, cmd);
     }
 
     fn pop(self: *CommandQueue) ?Command {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        self.mutex.lock(g_io) catch return null;
+        defer self.mutex.unlock(g_io);
         if (self.items.items.len == 0) return null;
         return self.items.orderedRemove(0);
     }
 };
 
+var g_io: std.Io = undefined;
 var g_queue: CommandQueue = .{};
 var g_thread: ?std.Thread = null;
 var g_thread_failed: bool = false;
 var g_should_exit = std.atomic.Value(bool).init(false);
 var g_worker_dead = std.atomic.Value(bool).init(false);
+
+/// Must be called once before any TTS function is used.
+pub fn setIo(io: std.Io) void {
+    g_io = io;
+}
 
 const WORKER_POLL_MS: u64 = 50;
 
@@ -244,7 +250,7 @@ fn workerMain() void {
 
     while (!g_should_exit.load(.acquire)) {
         const cmd = g_queue.pop() orelse {
-            std.Thread.sleep(WORKER_POLL_MS * std.time.ns_per_ms);
+            std.Io.sleep(g_io, .fromMilliseconds(@intCast(WORKER_POLL_MS)), .awake) catch {};
             continue;
         };
         switch (cmd) {

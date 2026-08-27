@@ -323,6 +323,7 @@ fn ghostRectsEqual(a: win32.RECT, b: win32.RECT) bool {
 
 pub const Painter = struct {
     allocator: std.mem.Allocator,
+    io: std.Io,
     thumbnails: std.ArrayList(ThumbnailWindow),
     hwnd_to_thumbnail_index: std.AutoHashMap(win32.HWND, usize),
     // thumbnail.hwnd → index, for O(1) lookups.
@@ -432,11 +433,12 @@ pub const Painter = struct {
         return font.?;
     }
 
-    pub fn init(allocator: std.mem.Allocator, cfg: *config_mod.Config) !Painter {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, cfg: *config_mod.Config) !Painter {
         const instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
 
         var painter: Painter = .{
             .allocator = allocator,
+            .io = io,
             .thumbnails = .empty,
             .hwnd_to_thumbnail_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
             .thumbnail_hwnd_to_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
@@ -857,7 +859,7 @@ pub const Painter = struct {
 
         self.reconcileThumbnailStates(win32.GetForegroundWindow());
 
-        const now = std.time.milliTimestamp();
+        const now = win32.nowMs(self.io);
         for (self.thumbnails.items) |*thumbnail| {
             if (input.isThumbnailDragging(thumbnail)) continue;
 
@@ -889,7 +891,7 @@ pub const Painter = struct {
         if (!self.config.autoMinimize.enabled) return;
         if (self.thumbnails.items.len == 0) return;
 
-        const now = std.time.milliTimestamp();
+        const now = win32.nowMs(self.io);
         const delay_ms: i64 = self.config.autoMinimize.delayMs;
         var minimized_any = false;
 
@@ -1028,7 +1030,7 @@ pub const Painter = struct {
         slog.debug("System '{s}' color resolved to: 0x{X:0>6}", .{ system_name, thumbnail.cached_system_color & 0xFFFFFF });
 
         if (is_jump) {
-            thumbnail.last_jump_ms = std.time.milliTimestamp();
+            thumbnail.last_jump_ms = win32.nowMs(self.io);
             thumbnail.travel_alert_fired = false;
         }
 
@@ -2232,7 +2234,7 @@ pub const Painter = struct {
                 .cached_display_name = cache_fields.display_name,
                 .cached_active_border_override = cache_fields.active_border_override,
                 .cached_quick_group_label = strings.quick_group_label,
-                .inactive_since = std.time.milliTimestamp(),
+                .inactive_since = win32.nowMs(self.io),
                 .visibility_state = initial_visibility,
                 .is_excluded_from_cycle = is_excluded,
                 .win32_enabled = false,
@@ -2368,7 +2370,7 @@ pub const Painter = struct {
             .cached_display_name = cache_fields.display_name,
             .cached_active_border_override = cache_fields.active_border_override,
             .cached_quick_group_label = strings.quick_group_label,
-            .inactive_since = std.time.milliTimestamp(),
+            .inactive_since = win32.nowMs(self.io),
             .visibility_state = initial_visibility,
             .is_excluded_from_cycle = is_excluded,
         };
