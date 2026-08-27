@@ -1,6 +1,6 @@
 # Building from Source
 
-Requires [Zig 0.15.2](https://ziglang.org/download/). The project targets `x86_64-windows-gnu` and is Windows-only; Zig bundles its own mingw headers/libs, so no separate Windows SDK or MSVC install is needed.
+Requires [Zig 0.16.0](https://ziglang.org/download/). The project targets `x86_64-windows-gnu` and is Windows-only; Zig bundles its own mingw headers/libs, so no separate Windows SDK or MSVC install is needed.
 
 ## Build
 
