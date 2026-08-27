@@ -122,6 +122,7 @@ pub fn main(init: std.process.Init) !void {
     win.setPosition(200, 100);
     win.setKiosk(false);
     win.setResizable(false);
+    win.setFrameless(true);
 
     _ = try win.bind("closeDialog", closeDialog);
     _ = try win.bind("minimizeDialog", minimizeDialog);
@@ -157,11 +158,11 @@ pub fn main(init: std.process.Init) !void {
     const html_with_resources = try injectResources(allocator, active_lang);
     defer allocator.free(html_with_resources);
 
-    slog.debug("Opening configuration dialog in browser mode", .{});
-    _ = try win.show(html_with_resources);
+    slog.debug("Opening configuration dialog in WebView2 mode", .{});
+    _ = try win.showWv(html_with_resources);
 
-    const move_thread = try std.Thread.spawn(.{}, moveWindowWorkaround, .{win});
-    move_thread.detach();
+    const reveal_thread = try std.Thread.spawn(.{}, revealDialogWindow, .{win});
+    reveal_thread.detach();
 
     webui.wait();
 
@@ -181,19 +182,10 @@ fn focusExistingDialog() void {
     _ = win32.SetForegroundWindow(hwnd);
 }
 
-/// Moves the window slightly after a brief delay to trigger layout recalculation
-fn moveWindowWorkaround(win: anytype) void {
-    std.Io.sleep(g_io, .fromMilliseconds(10), .awake) catch {};
-
-    win.setPosition(201, 100);
-
-    std.Io.sleep(g_io, .fromMilliseconds(20), .awake) catch {};
-    win.setPosition(200, 100);
-
-    // Make window visible now that layout is fixed
+fn revealDialogWindow(win: anytype) void {
     win.run("document.documentElement.classList.remove('pre-init');");
 
-    slog.debug("Window position workaround applied and window visible", .{});
+    slog.debug("Configuration dialog window visible", .{});
 
     // Keep the dialog reachable above the main app / EVE clients.
     if (win.win32GetHwnd()) |hwnd| {
