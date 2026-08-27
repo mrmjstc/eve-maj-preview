@@ -44,7 +44,7 @@ const SupportedLang = enum {
     }
 };
 
-var gpa = std.heap.DebugAllocator(.{}){};
+var g_allocator: std.mem.Allocator = undefined;
 var g_io: std.Io = undefined;
 var config_path: []const u8 = "profiles/default.json";
 // Non-null when config_path was heap-allocated and must be freed before reassignment.
@@ -63,13 +63,12 @@ fn currentProfileFilename() []const u8 {
         config_path;
 }
 
-pub fn main() !void {
-    // Without an explicit environ, Io.Threaded defaults to an empty one rather than the real process environment.
-    var io_threaded: std.Io.Threaded = .init(std.heap.page_allocator, .{ .environ = .{ .block = .global } });
-    defer io_threaded.deinit();
-    g_io = io_threaded.io();
+pub fn main(init: std.process.Init) !void {
+    g_io = init.io;
     log.setIo(g_io);
     config_mod.setIo(g_io);
+    config_mod.setEnvironMap(init.environ_map);
+    g_allocator = init.gpa;
 
     // Single-instance enforcement: if another instance already holds the mutex, focus its window and exit.
     const mutex_name = std.unicode.utf8ToUtf16LeStringLiteral("Global\\EVE-Maj-Preview-ConfigDialog-SingleInstance");
@@ -86,10 +85,9 @@ pub fn main() !void {
         return;
     }
 
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
-    var args = try win32.processArgs().iterateAllocator(allocator);
+    var args = try init.minimal.args.iterateAllocator(allocator);
     defer args.deinit();
     _ = args.skip();
 
@@ -259,7 +257,7 @@ fn minimizeDialog(e: *webui.Event) void {
 }
 
 fn loadConfig(e: *webui.Event) void {
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     slog.debug("Loading config from: {s}", .{config_path});
 
@@ -293,7 +291,7 @@ fn loadConfig(e: *webui.Event) void {
 
 // Returns the app's built-in factory defaults as JSON (not tied to a saved profile), used by the "Clear to Default" button so reset values live in one place instead of being duplicated in config_dialog.js/html.
 fn getDefaultConfig(e: *webui.Event) void {
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     var defaults = config_mod.Config.getDefaultsWithProfile(allocator, currentProfileFilename()) catch |err| {
         slog.err("Failed to build default config: {}", .{err});
@@ -322,7 +320,7 @@ fn getDefaultConfig(e: *webui.Event) void {
 // Routes the save through Config.buildConfigFromJson + validate() + toJsonString rather than writing JS-sent JSON straight to disk, so out-of-range values get clamped on save (not just on next load) and malformed payloads are rejected instead of corrupting the file.
 fn saveConfig(e: *webui.Event) void {
     const json_data = e.getString();
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
     const profile_name = currentProfileFilename();
 
     var cfg = config_mod.Config.buildConfigFromJson(allocator, json_data, profile_name) catch |err| {
@@ -360,7 +358,7 @@ fn getMainAppStatus(e: *webui.Event) void {
 
 /// Hands the dialog the same min/max bounds Config.validate() enforces (keyed by the dotted config path config_dialog.js's CONFIG_SCHEMA uses) so bounds aren't hand-copied into JS; called once on dialog init.
 fn getValidationRanges(e: *webui.Event) void {
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     const json = config_mod.Config.buildValidationRangesJson(allocator) catch |err| {
         slog.err("Failed to build validation ranges: {}", .{err});
@@ -381,7 +379,7 @@ fn getValidationRanges(e: *webui.Event) void {
 
 /// Tell the running main app to fully reload onto `profile_name` (the same heavy teardown/rebuild used by Save); shared by the post-Save reload and the "Make It Live" action.
 fn sendProfileSwitchToMainApp(profile_name: []const u8) void {
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     slog.debug("Attempting to switch profile in main app: {s}", .{profile_name});
 
@@ -505,7 +503,7 @@ const GLOBAL_SETTINGS_PATH = "profiles/global.settings.json";
 /// GlobalSettings only persists a price per ore (see OrePriceEntry); this rebuilds the full name/category/volumeM3/price view the dialog renders,
 /// filling each row's price from the persisted override if present or DEFAULT_ORE_TABLE's snapshot otherwise.
 fn loadGlobalSettings(e: *webui.Event) void {
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     slog.debug("Loading global settings from: {s}", .{GLOBAL_SETTINGS_PATH});
 
@@ -567,7 +565,7 @@ fn loadGlobalSettings(e: *webui.Event) void {
 /// entry (ignore_unknown_fields drops category/volumeM3) - so only prices ever reach disk, not the fixed defaults sent along for display.
 fn saveGlobalSettings(e: *webui.Event) void {
     const json_data = e.getString();
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     const parsed_value = std.json.parseFromSlice(std.json.Value, allocator, json_data, .{}) catch |err| {
         slog.err("Failed to parse global settings JSON: {}", .{err});
@@ -771,7 +769,7 @@ fn priceFetchWorker(ctx: *PriceFetchContext) void {
 /// Looks up each ore name's Jita buy price via its compressed variant (readily liquid there) using the public ESI API - no key required.
 /// Request body: JSON array of ore names. Response: JSON object of {name: price}, omitting names with no market match.
 fn fetchOrePrices(e: *webui.Event) void {
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
     const json_data = e.getString();
 
     var client: std.http.Client = .{ .allocator = allocator, .io = g_io };
@@ -955,7 +953,7 @@ fn loadCurrentProfileOrRespond(e: *webui.Event, allocator: std.mem.Allocator) ?c
 /// Saves `character_name`'s live window's current position as its saved game-window position.
 fn setCharacterWindowPosition(e: *webui.Event) void {
     const character_name = e.getString();
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     slog.debug("setCharacterWindowPosition requested for '{s}'", .{character_name});
 
@@ -985,7 +983,7 @@ fn setCharacterWindowPosition(e: *webui.Event) void {
 /// Clears `character_name`'s saved game-window position.
 fn clearCharacterWindowPosition(e: *webui.Event) void {
     const character_name = e.getString();
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     slog.debug("clearCharacterWindowPosition requested for '{s}'", .{character_name});
 
@@ -1004,7 +1002,7 @@ fn clearCharacterWindowPosition(e: *webui.Event) void {
 /// Overwrites every character's saved game-window position with `source_character_name`'s live window's current position.
 fn setAllCharacterWindowPositions(e: *webui.Event) void {
     const source_character_name = e.getString();
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     slog.debug("setAllCharacterWindowPositions requested, source '{s}'", .{source_character_name});
 
@@ -1033,7 +1031,7 @@ fn setAllCharacterWindowPositions(e: *webui.Event) void {
 
 /// Clears every character's saved game-window position.
 fn clearAllCharacterWindowPositions(e: *webui.Event) void {
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     slog.debug("clearAllCharacterWindowPositions requested", .{});
 
@@ -1051,7 +1049,7 @@ fn clearAllCharacterWindowPositions(e: *webui.Event) void {
 
 /// Return a JSON array of character names from open EVE clients, used by the dialog JS to populate character/hotkey-group fields.
 fn getOpenClients(e: *webui.Event) void {
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     var ctx = ClientScanContext{
         .allocator = allocator,
@@ -1185,7 +1183,7 @@ fn appendJsonEscaped(allocator: std.mem.Allocator, response: *std.ArrayList(u8),
 
 /// Return a JSON array of {class, exe, title} for visible top-level windows, used by the dialog JS to let the user pick a running program for a Window Filter instead of typing class/executable names by hand.
 fn getRunningWindows(e: *webui.Event) void {
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     var ctx = RunningWindowScanContext{
         .allocator = allocator,
@@ -1241,7 +1239,7 @@ fn getRunningWindows(e: *webui.Event) void {
 }
 
 fn getConfigData(e: *webui.Event) void {
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
     const response = std.fmt.allocPrintSentinel(allocator,
         \\{{
         \\  "configPath": "{s}",
@@ -1268,7 +1266,7 @@ fn getConfigData(e: *webui.Event) void {
 }
 
 fn listProfiles(e: *webui.Event) void {
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     var profiles = std.ArrayList([]const u8).empty;
     defer {
@@ -1336,7 +1334,7 @@ fn switchProfile(e: *webui.Event) void {
     const profile_name = e.getString();
     slog.debug("Switching to profile: {s}", .{profile_name});
 
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
     const new_path = std.fmt.allocPrint(allocator, "profiles/{s}", .{profile_name}) catch {
         e.returnString("{\"success\": false, \"error\": \"Failed to allocate path\"}");
         return;
@@ -1367,7 +1365,7 @@ fn switchProfile(e: *webui.Event) void {
 
 fn createProfile(e: *webui.Event) void {
     const profile_name = e.getString();
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     const profile_filename = std.fmt.allocPrint(allocator, "{s}.json", .{profile_name}) catch {
         e.returnString("{\"success\": false, \"error\": \"Memory allocation failed\"}");
@@ -1407,7 +1405,7 @@ fn createProfile(e: *webui.Event) void {
 
 fn copyProfile(e: *webui.Event) void {
     const json_str = e.getString();
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     const parsed = std.json.parseFromSlice(std.json.Value, allocator, json_str, .{}) catch {
         e.returnString("{\"success\": false, \"error\": \"Invalid JSON\"}");
@@ -1479,7 +1477,7 @@ fn copyProfile(e: *webui.Event) void {
 
 fn deleteProfile(e: *webui.Event) void {
     const profile_name = e.getString();
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     if (std.mem.eql(u8, profile_name, "default.json")) {
         e.returnString("{\"success\": false, \"error\": \"Cannot delete default profile\"}");
@@ -1512,7 +1510,7 @@ fn deleteProfile(e: *webui.Event) void {
 
 fn resetProfile(e: *webui.Event) void {
     const profile_name = e.getString();
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     const profile_path = std.fmt.allocPrint(allocator, "profiles/{s}", .{profile_name}) catch {
         e.returnString("{\"success\": false, \"error\": \"Memory allocation failed\"}");
@@ -1535,7 +1533,7 @@ fn resetProfile(e: *webui.Event) void {
 }
 
 fn browseDirAndReturn(e: *webui.Event, title: []const u8) void {
-    const allocator = gpa.allocator();
+    const allocator = g_allocator;
 
     const selected_path = showFolderPicker(allocator, title) catch {
         e.returnString("");

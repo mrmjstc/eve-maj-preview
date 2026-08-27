@@ -1,5 +1,4 @@
 const std = @import("std");
-const win32 = @import("win32.zig");
 const log = @import("log.zig");
 const vk = @import("virtual_keys.zig");
 const state_mod = @import("state.zig");
@@ -9,10 +8,16 @@ const color = @import("color.zig");
 const slog = log.scoped("config");
 
 var g_io: std.Io = undefined;
+var g_environ_map: *const std.process.Environ.Map = undefined;
 
 /// Must be called once before any Config/GlobalSettings load/save function is used.
 pub fn setIo(io: std.Io) void {
     g_io = io;
+}
+
+/// Must be called once before any function that reads environment variables (path %VAR% expansion, USERPROFILE fallback).
+pub fn setEnvironMap(environ_map: *const std.process.Environ.Map) void {
+    g_environ_map = environ_map;
 }
 
 pub const PROFILES_DIR = "profiles";
@@ -2519,13 +2524,12 @@ pub const Config = struct {
                     continue;
                 }
 
-                const var_value = win32.getEnvVarOwned(allocator, var_name) catch |err| {
-                    slog.warn("Failed to expand environment variable '{s}': {}", .{ var_name, err });
+                const var_value = g_environ_map.get(var_name) orelse {
+                    slog.warn("Environment variable '{s}' not found", .{var_name});
                     try result.appendSlice(allocator, path[i .. end + 1]);
                     i = end + 1;
                     continue;
                 };
-                defer allocator.free(var_value);
 
                 for (var_value) |c| {
                     try result.append(allocator, if (c == '\\') '/' else c);
@@ -3223,10 +3227,11 @@ pub const Config = struct {
     fn defaultLogDirs(allocator: std.mem.Allocator) !struct { chatlog: []u8, gamelog: []u8 } {
         const documents_dir = getDocumentsDir(allocator) catch blk: {
             slog.warn("Failed to resolve Documents known folder, falling back to USERPROFILE/Documents", .{});
-            const userprofile = win32.getEnvVarOwned(allocator, "USERPROFILE") catch |err| {
-                slog.warn("Failed to get USERPROFILE env var: {}", .{err});
+            const userprofile_raw = g_environ_map.get("USERPROFILE") orelse {
+                slog.warn("USERPROFILE environment variable not found", .{});
                 return error.MissingEnvironmentVariable;
             };
+            const userprofile = try allocator.dupe(u8, userprofile_raw);
             defer allocator.free(userprofile);
             for (userprofile) |*c| {
                 if (c.* == '\\') c.* = '/';

@@ -177,11 +177,11 @@ pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
 }
 
 /// Returns the protocol URL if --protocol was passed (caller must free), otherwise null.
-pub fn checkCommandLine(allocator: std.mem.Allocator) !?[]const u8 {
+pub fn checkCommandLine(process_args: std.process.Args, allocator: std.mem.Allocator) !?[]const u8 {
     // toSlice's result references several internal allocations, so it requires an arena rather than a plain allocator.
     var arena_state = std.heap.ArenaAllocator.init(allocator);
     defer arena_state.deinit();
-    const args = try win32.processArgs().toSlice(arena_state.allocator());
+    const args = try process_args.toSlice(arena_state.allocator());
 
     var i: usize = 1;
     while (i < args.len) : (i += 1) {

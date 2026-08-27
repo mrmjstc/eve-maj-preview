@@ -444,14 +444,14 @@ fn unhandledExceptionFilter(info: *win32.EXCEPTION_POINTERS) callconv(.c) win32.
     return win32.EXCEPTION_CONTINUE_SEARCH;
 }
 
-pub fn main() void {
+pub fn main(init: std.process.Init) void {
     // Must precede any window/monitor API call, or Windows bitmap-stretches our windows on scaled monitors.
     _ = win32.SetProcessDpiAwarenessContext(win32.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     _ = win32.AddVectoredExceptionHandler(1, firstChanceExceptionHandler);
     _ = win32.SetUnhandledExceptionFilter(unhandledExceptionFilter);
     defer log.deinitFile();
 
-    mainImpl() catch |err| {
+    mainImpl(init) catch |err| {
         slog.err("Fatal error: {}", .{err});
         if (@errorReturnTrace()) |trace| {
             std.debug.dumpErrorReturnTrace(trace);
@@ -471,37 +471,32 @@ fn setCwdToExeDir() void {
     _ = win32.SetCurrentDirectoryA(exe_dir_z);
 }
 
-fn mainImpl() !void {
-    // Without an explicit environ, Io.Threaded defaults to an empty one rather than the real process environment.
-    var io_threaded: std.Io.Threaded = .init(std.heap.page_allocator, .{ .environ = .{ .block = .global } });
-    defer io_threaded.deinit();
-    g_io = io_threaded.io();
+fn mainImpl(init: std.process.Init) !void {
+    g_io = init.io;
     log.setIo(g_io);
     tts.setIo(g_io);
     update.setIo(g_io);
     config_mod.setIo(g_io);
+    config_mod.setEnvironMap(init.environ_map);
+    g_allocator = init.gpa;
 
     setCwdToExeDir();
 
     // Handle protocol invocation before the mutex check, so commands work even when another instance is already running.
-    var gpa_early = std.heap.DebugAllocator(.{}){};
-    defer _ = gpa_early.deinit();
-    const early_allocator = gpa_early.allocator();
-
-    const protocol_url = try protocol.checkCommandLine(early_allocator);
-    defer if (protocol_url) |url| early_allocator.free(url);
+    const protocol_url = try protocol.checkCommandLine(init.minimal.args, g_allocator);
+    defer if (protocol_url) |url| g_allocator.free(url);
 
     if (protocol_url) |url| {
         slog.info("Protocol handler invoked: {s}", .{url});
 
         if (protocol.findExistingInstance(TIMER_CLASS_NAME)) |existing_hwnd| {
-            const cmd = protocol.parseUrl(url, early_allocator) catch |err| {
+            const cmd = protocol.parseUrl(url, g_allocator) catch |err| {
                 slog.err("Failed to parse protocol URL: {}", .{err});
                 return err;
             };
             defer switch (cmd) {
-                .Switch => |s| early_allocator.free(s),
-                .Profile => |p| early_allocator.free(p),
+                .Switch => |s| g_allocator.free(s),
+                .Profile => |p| g_allocator.free(p),
                 else => {},
             };
 
@@ -530,9 +525,6 @@ fn mainImpl() !void {
         return error.AlreadyRunning;
     }
 
-    var gpa = std.heap.DebugAllocator(.{}){};
-    defer _ = gpa.deinit();
-    g_allocator = gpa.allocator();
     defer g_chatlog_char_names.deinit(g_allocator);
     defer g_chatlog_logged_out_names.deinit(g_allocator);
 
@@ -551,7 +543,7 @@ fn mainImpl() !void {
     // toSlice's result references several internal allocations, so it requires an arena rather than a plain allocator.
     var args_arena = std.heap.ArenaAllocator.init(g_allocator);
     defer args_arena.deinit();
-    const args2 = try win32.processArgs().toSlice(args_arena.allocator());
+    const args2 = try init.minimal.args.toSlice(args_arena.allocator());
 
     var j: usize = 1;
     while (j < args2.len) : (j += 1) {

@@ -612,7 +612,6 @@ pub extern "kernel32" fn OpenProcess(dwDesiredAccess: DWORD, bInheritHandle: BOO
 pub extern "kernel32" fn CloseHandle(hObject: HANDLE) callconv(.c) BOOL;
 pub extern "kernel32" fn GetModuleFileNameExA(hProcess: HANDLE, hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;
 pub extern "kernel32" fn GetModuleFileNameA(hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;
-pub extern "kernel32" fn GetEnvironmentVariableA(lpName: LPCSTR, lpBuffer: ?LPSTR, nSize: DWORD) callconv(.c) DWORD;
 
 pub const FILETIME = extern struct {
     dwLowDateTime: DWORD,
@@ -890,30 +889,9 @@ pub fn selfExeDirPath(buf: []u8) ![]const u8 {
     return std.fs.path.dirname(full_path) orelse return error.NoDirname;
 }
 
-/// Command-line arguments for this process. Zig 0.16 no longer offers a plain
-/// std.process.argsAlloc/argsWithAllocator; the process's raw command line must be
-/// read from the PEB and wrapped in a std.process.Args first.
-pub fn processArgs() std.process.Args {
-    return .{ .vector = std.os.windows.peb().ProcessParameters.CommandLine.slice() };
-}
-
 /// Current wall-clock time in milliseconds since the Unix epoch. Replaces std.time.milliTimestamp, removed in Zig 0.16.
 pub fn nowMs(io: std.Io) i64 {
     return std.Io.Timestamp.now(io, .real).toMilliseconds();
-}
-
-/// Replaces std.process.getEnvVarOwned, removed in Zig 0.16.
-pub fn getEnvVarOwned(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
-    var name_buf: [128:0]u8 = undefined;
-    if (name.len >= name_buf.len) return error.NameTooLong;
-    @memcpy(name_buf[0..name.len], name);
-    name_buf[name.len] = 0;
-
-    var buf: [1024:0]u8 = undefined;
-    const len = GetEnvironmentVariableA(&name_buf, &buf, buf.len);
-    if (len == 0) return error.EnvironmentVariableNotFound;
-    if (len >= buf.len) return error.ValueTooLong;
-    return try allocator.dupe(u8, buf[0..len]);
 }
 
 pub inline fn isWindowVisible(hwnd: HWND) bool {
