@@ -396,6 +396,10 @@ pub const Painter = struct {
         const font_name_z = try self.allocator.dupeZ(u8, font_name);
         defer self.allocator.free(font_name_z);
 
+        // Owns a copy rather than borrowing font_name, which may be freed/replaced out from under a cached entry.
+        const name_copy = try self.allocator.dupe(u8, font_name);
+        errdefer self.allocator.free(name_copy);
+
         const font = win32.CreateFontA(
             -font_size,
             0,
@@ -417,8 +421,9 @@ pub const Painter = struct {
             return error.CreateFontFailed;
         }
 
+        self.allocator.free(entry.name);
         entry.font = font;
-        entry.name = font_name;
+        entry.name = name_copy;
         entry.size = font_size;
         entry.weight = font_weight;
 
@@ -513,6 +518,7 @@ pub const Painter = struct {
                 _ = win32.DeleteObject(font);
                 entry.font = null;
             }
+            self.allocator.free(entry.name);
         }
         self.cached_fonts.deinit();
 

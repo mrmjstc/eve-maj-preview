@@ -73,7 +73,7 @@ pub const ListWindow = struct {
     config: *config_mod.Config,
     font: ?win32.HFONT = null,
     // Tracks the settings `font` was created from so ensureFont() can detect a live-previewed change and recreate it.
-    // cached_font_name aliases config.display.listViewFontName (no dupe) — safe since config always replaces the whole string rather than mutating in place.
+    // Owns a copy rather than aliasing config.display.listViewFontName, which config frees/replaces on a genuine rename.
     cached_font_name: []const u8 = "",
     cached_font_size: i32 = 0,
     cached_font_weight: types.FontWeight = .Regular,
@@ -116,6 +116,9 @@ pub const ListWindow = struct {
         const font_name_z = try allocator.dupeZ(u8, cfg.display.listViewFontName);
         defer allocator.free(font_name_z);
 
+        const cached_font_name = try allocator.dupe(u8, cfg.display.listViewFontName);
+        errdefer allocator.free(cached_font_name);
+
         const font = win32.CreateFontA(
             -cfg.display.listViewFontSize,
             0,
@@ -139,7 +142,7 @@ pub const ListWindow = struct {
             .allocator = allocator,
             .config = cfg,
             .font = font,
-            .cached_font_name = cfg.display.listViewFontName,
+            .cached_font_name = cached_font_name,
             .cached_font_size = cfg.display.listViewFontSize,
             .cached_font_weight = cfg.display.listViewFontWeight,
         };
@@ -151,6 +154,7 @@ pub const ListWindow = struct {
         self.sort_indices.deinit(self.allocator);
         self.visible_thumbnails.deinit(self.allocator);
         if (self.font) |f| _ = win32.DeleteObject(f);
+        self.allocator.free(self.cached_font_name);
         _ = win32.DestroyWindow(self.hwnd);
     }
 
@@ -172,6 +176,11 @@ pub const ListWindow = struct {
         };
         defer self.allocator.free(font_name_z);
 
+        const name_copy = self.allocator.dupe(u8, cfg.listViewFontName) catch |err| {
+            slog.err("Failed to allocate List View font name: {}", .{err});
+            return;
+        };
+
         self.font = win32.CreateFontA(
             -cfg.listViewFontSize,
             0,
@@ -188,7 +197,8 @@ pub const ListWindow = struct {
             win32.DEFAULT_PITCH,
             font_name_z,
         );
-        self.cached_font_name = cfg.listViewFontName;
+        self.allocator.free(self.cached_font_name);
+        self.cached_font_name = name_copy;
         self.cached_font_size = cfg.listViewFontSize;
         self.cached_font_weight = cfg.listViewFontWeight;
     }

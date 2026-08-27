@@ -42,6 +42,7 @@ pub const NotifInfoWindow = struct {
     allocator: std.mem.Allocator,
     config: *config_mod.Config,
     font: ?win32.HFONT = null,
+    // Owns a copy rather than aliasing config.display.notifInfoPanelFontName, which config frees/replaces on a genuine rename.
     cached_font_name: []const u8 = "",
     cached_font_size: i32 = 0,
     cached_font_weight: types.FontWeight = .Regular,
@@ -80,6 +81,9 @@ pub const NotifInfoWindow = struct {
         const font_name_z = try allocator.dupeZ(u8, cfg.display.notifInfoPanelFontName);
         defer allocator.free(font_name_z);
 
+        const cached_font_name = try allocator.dupe(u8, cfg.display.notifInfoPanelFontName);
+        errdefer allocator.free(cached_font_name);
+
         const font = win32.CreateFontA(
             -cfg.display.notifInfoPanelFontSize,
             0,
@@ -103,7 +107,7 @@ pub const NotifInfoWindow = struct {
             .allocator = allocator,
             .config = cfg,
             .font = font,
-            .cached_font_name = cfg.display.notifInfoPanelFontName,
+            .cached_font_name = cached_font_name,
             .cached_font_size = cfg.display.notifInfoPanelFontSize,
             .cached_font_weight = cfg.display.notifInfoPanelFontWeight,
         };
@@ -112,6 +116,7 @@ pub const NotifInfoWindow = struct {
     pub fn deinit(self: *NotifInfoWindow) void {
         if (self.overlay) |o| o.destroy();
         if (self.font) |f| _ = win32.DeleteObject(f);
+        self.allocator.free(self.cached_font_name);
         _ = win32.DestroyWindow(self.hwnd);
     }
 
@@ -137,6 +142,11 @@ pub const NotifInfoWindow = struct {
         };
         defer self.allocator.free(font_name_z);
 
+        const name_copy = self.allocator.dupe(u8, cfg.notifInfoPanelFontName) catch |err| {
+            slog.err("Failed to allocate notification history panel font name: {}", .{err});
+            return;
+        };
+
         self.font = win32.CreateFontA(
             -cfg.notifInfoPanelFontSize,
             0,
@@ -153,7 +163,8 @@ pub const NotifInfoWindow = struct {
             win32.DEFAULT_PITCH,
             font_name_z,
         );
-        self.cached_font_name = cfg.notifInfoPanelFontName;
+        self.allocator.free(self.cached_font_name);
+        self.cached_font_name = name_copy;
         self.cached_font_size = cfg.notifInfoPanelFontSize;
         self.cached_font_weight = cfg.notifInfoPanelFontWeight;
     }
