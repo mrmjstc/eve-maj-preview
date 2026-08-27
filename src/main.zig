@@ -472,7 +472,7 @@ fn setCwdToExeDir() void {
 }
 
 fn mainImpl() !void {
-    // Without an explicit environ, spawned children (curl.exe) get an empty environment block instead of ours.
+    // Without an explicit environ, Io.Threaded defaults to an empty one rather than the real process environment.
     var io_threaded: std.Io.Threaded = .init(std.heap.page_allocator, .{ .environ = .{ .block = .global } });
     defer io_threaded.deinit();
     g_io = io_threaded.io();

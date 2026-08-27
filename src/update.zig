@@ -87,38 +87,28 @@ pub const UpdateChecker = struct {
     pub fn checkForUpdates(self: *UpdateChecker) !?UpdateInfo {
         slog.info("Checking for updates (current: {s})", .{self.current_version});
 
-        // Prevent a console window flash when spawning curl.exe from this GUI-subsystem process.
-        const result = try std.process.run(self.allocator, g_io, .{
-            .argv = &.{
-                "curl",
-                "-s",
-                "-H",
-                "User-Agent: EVE-Maj-Preview",
-                "-H",
-                "Accept: application/vnd.github+json",
-                "https://api.github.com/repos/mrmjstc/eve-maj-preview/releases/latest",
-            },
-            .stdout_limit = .limited(50 * 1024),
-            .stderr_limit = .limited(50 * 1024),
-            .create_no_window = true,
-        });
-        defer self.allocator.free(result.stdout);
-        defer self.allocator.free(result.stderr);
+        var client: std.http.Client = .{ .allocator = self.allocator, .io = g_io };
+        defer client.deinit();
 
-        switch (result.term) {
-            .exited => |code| {
-                if (code != 0) {
-                    slog.warn("curl command failed with exit code: {d}", .{code});
-                    return null;
-                }
-            },
-            else => {
-                slog.warn("curl command terminated abnormally", .{});
-                return null;
-            },
+        var response_buf: std.Io.Writer.Allocating = .init(self.allocator);
+        defer response_buf.deinit();
+
+        const result = client.fetch(.{
+            .location = .{ .url = "https://api.github.com/repos/mrmjstc/eve-maj-preview/releases/latest" },
+            .headers = .{ .user_agent = .{ .override = "EVE-Maj-Preview" } },
+            .extra_headers = &.{.{ .name = "Accept", .value = "application/vnd.github+json" }},
+            .response_writer = &response_buf.writer,
+        }) catch |err| {
+            slog.warn("Failed to fetch update info: {}", .{err});
+            return null;
+        };
+
+        if (result.status != .ok) {
+            slog.warn("GitHub API returned status {}", .{result.status});
+            return null;
         }
 
-        const body = result.stdout;
+        const body = response_buf.written();
 
         slog.debug("GitHub API response: {s}", .{body});
 

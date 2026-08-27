@@ -64,7 +64,7 @@ fn currentProfileFilename() []const u8 {
 }
 
 pub fn main() !void {
-    // Without an explicit environ, spawned children (curl.exe) get an empty environment block instead of ours.
+    // Without an explicit environ, Io.Threaded defaults to an empty one rather than the real process environment.
     var io_threaded: std.Io.Threaded = .init(std.heap.page_allocator, .{ .environ = .{ .block = .global } });
     defer io_threaded.deinit();
     g_io = io_threaded.io();
@@ -608,38 +608,45 @@ const ESI_BASE = "https://esi.evetech.net/latest";
 const ESI_JITA_REGION_ID = 10000002;
 const ESI_JITA_STATION_ID: i64 = 60003760;
 
-/// Spawns curl with the given args and returns captured stdout (caller frees) if it exits 0, else null.
-fn curlRun(allocator: std.mem.Allocator, args: []const []const u8) ?[]u8 {
-    const result = std.process.run(allocator, g_io, .{
-        .argv = args,
-        .stdout_limit = .limited(4 * 1024 * 1024),
-        .stderr_limit = .limited(4 * 1024 * 1024),
-        .create_no_window = true,
+const HttpFetchOptions = struct {
+    content_type: ?[]const u8 = null,
+    payload: ?[]const u8 = null,
+};
+
+/// Issues a GET (or, with a payload, POST) request and returns the response body (caller frees) if it got a 200, else null.
+fn httpFetch(allocator: std.mem.Allocator, client: *std.http.Client, url: []const u8, options: HttpFetchOptions) ?[]u8 {
+    var response_buf: std.Io.Writer.Allocating = .init(allocator);
+    errdefer response_buf.deinit();
+
+    const result = client.fetch(.{
+        .location = .{ .url = url },
+        .headers = .{
+            .user_agent = .{ .override = "EVE-Maj-Preview" },
+            .content_type = if (options.content_type) |ct| .{ .override = ct } else .default,
+        },
+        .payload = options.payload,
+        .response_writer = &response_buf.writer,
     }) catch |err| {
-        slog.warn("Failed to run curl: {}", .{err});
+        slog.warn("HTTP request to {s} failed: {}", .{ url, err });
+        response_buf.deinit();
         return null;
     };
-    defer allocator.free(result.stderr);
 
-    switch (result.term) {
-        .exited => |code| if (code != 0) {
-            slog.warn("curl exited with code {d}: {s}", .{ code, result.stderr });
-            allocator.free(result.stdout);
-            return null;
-        },
-        else => {
-            slog.warn("curl terminated abnormally", .{});
-            allocator.free(result.stdout);
-            return null;
-        },
+    if (result.status != .ok) {
+        slog.warn("HTTP request to {s} returned status {}: {s}", .{ url, result.status, response_buf.written() });
+        response_buf.deinit();
+        return null;
     }
 
-    return result.stdout;
+    return response_buf.toOwnedSlice() catch {
+        response_buf.deinit();
+        return null;
+    };
 }
 
 /// Resolves "Compressed <name>" -> ESI type_id for each ore name via the public (no-auth) ESI name resolver.
 /// Names with no market match are simply absent from the result. Caller frees both the keys and the map.
-fn resolveOreTypeIds(allocator: std.mem.Allocator, names: []const []const u8) !std.StringHashMap(i64) {
+fn resolveOreTypeIds(allocator: std.mem.Allocator, client: *std.http.Client, names: []const []const u8) !std.StringHashMap(i64) {
     var result = std.StringHashMap(i64).init(allocator);
     errdefer result.deinit();
     if (names.len == 0) return result;
@@ -656,10 +663,9 @@ fn resolveOreTypeIds(allocator: std.mem.Allocator, names: []const []const u8) !s
     const body = try std.json.Stringify.valueAlloc(allocator, prefixed, .{});
     defer allocator.free(body);
 
-    const stdout = curlRun(allocator, &.{
-        "curl",          "-s",                          "-X",                                                "POST",
-        "-H",            "User-Agent: EVE-Maj-Preview", "-H",                                                "Content-Type: application/json",
-        "--data-binary", body,                          ESI_BASE ++ "/universe/ids/?datasource=tranquility",
+    const stdout = httpFetch(allocator, client, ESI_BASE ++ "/universe/ids/?datasource=tranquility", .{
+        .content_type = "application/json",
+        .payload = body,
     }) orelse return result;
     defer allocator.free(stdout);
 
@@ -702,11 +708,11 @@ fn resolveOreTypeIds(allocator: std.mem.Allocator, names: []const []const u8) !s
 
 /// Highest current Jita 4-4 buy order price for type_id (what a seller would instantly receive), or null if unavailable/illiquid.
 /// Only reads page 1 of the region's buy orders - fine for these commodity ore types, whose buy-order counts stay well under the 1000-order page size in practice.
-fn fetchJitaBuyPrice(allocator: std.mem.Allocator, type_id: i64) ?f64 {
+fn fetchJitaBuyPrice(allocator: std.mem.Allocator, client: *std.http.Client, type_id: i64) ?f64 {
     const url = std.fmt.allocPrint(allocator, ESI_BASE ++ "/markets/{d}/orders/?datasource=tranquility&order_type=buy&type_id={d}", .{ ESI_JITA_REGION_ID, type_id }) catch return null;
     defer allocator.free(url);
 
-    const stdout = curlRun(allocator, &.{ "curl", "-s", "-H", "User-Agent: EVE-Maj-Preview", url }) orelse return null;
+    const stdout = httpFetch(allocator, client, url, .{}) orelse return null;
     defer allocator.free(stdout);
 
     const parsed = std.json.parseFromSlice(std.json.Value, allocator, stdout, .{}) catch return null;
@@ -730,7 +736,7 @@ fn fetchJitaBuyPrice(allocator: std.mem.Allocator, type_id: i64) ?f64 {
     return best;
 }
 
-/// Caps how many curl requests run at once for a price fetch - bounded so this stays polite to ESI rather than opening dozens of connections at once.
+/// Caps how many HTTP requests run at once for a price fetch - bounded so this stays polite to ESI rather than opening dozens of connections at once.
 const MAX_CONCURRENT_PRICE_REQUESTS = 8;
 
 const PriceLookup = struct {
@@ -740,6 +746,7 @@ const PriceLookup = struct {
 
 const PriceFetchContext = struct {
     allocator: std.mem.Allocator,
+    client: *std.http.Client,
     lookups: []const PriceLookup,
     next_index: std.atomic.Value(usize),
     results_mutex: std.Io.Mutex = .init,
@@ -753,7 +760,7 @@ fn priceFetchWorker(ctx: *PriceFetchContext) void {
         if (i >= ctx.lookups.len) return;
 
         const lookup = ctx.lookups[i];
-        const price = fetchJitaBuyPrice(ctx.allocator, lookup.type_id) orelse continue;
+        const price = fetchJitaBuyPrice(ctx.allocator, ctx.client, lookup.type_id) orelse continue;
 
         ctx.results_mutex.lock(g_io) catch continue;
         defer ctx.results_mutex.unlock(g_io);
@@ -767,6 +774,9 @@ fn fetchOrePrices(e: *webui.Event) void {
     const allocator = gpa.allocator();
     const json_data = e.getString();
 
+    var client: std.http.Client = .{ .allocator = allocator, .io = g_io };
+    defer client.deinit();
+
     const parsed_names = std.json.parseFromSlice([]const []const u8, allocator, json_data, .{}) catch |err| {
         slog.warn("Failed to parse fetchOrePrices request: {}", .{err});
         e.returnString("{}");
@@ -774,7 +784,7 @@ fn fetchOrePrices(e: *webui.Event) void {
     };
     defer parsed_names.deinit();
 
-    var type_ids = resolveOreTypeIds(allocator, parsed_names.value) catch |err| {
+    var type_ids = resolveOreTypeIds(allocator, &client, parsed_names.value) catch |err| {
         slog.warn("Failed to resolve ore type ids via ESI: {}", .{err});
         e.returnString("{}");
         return;
@@ -804,6 +814,7 @@ fn fetchOrePrices(e: *webui.Event) void {
     if (lookups.len > 0) {
         var ctx = PriceFetchContext{
             .allocator = allocator,
+            .client = &client,
             .lookups = lookups,
             .next_index = std.atomic.Value(usize).init(0),
             .results = &results,
