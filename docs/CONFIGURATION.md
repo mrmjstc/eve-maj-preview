@@ -645,6 +645,7 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `WarpBubble`: Caught in a warp disruption zone, unable to warp
 - `ConduitJump`: Jumped via Conduit Field to a new system
 - `SystemChange`: Jumped to new solar system
+- `TravelLeftBehind`: Character hasn't jumped with the group within Travel Mode's configured window - see [Travel Mode](#travel-mode)
 - `Generic`: Other game events
 
 ## Chatlog Monitoring
@@ -807,6 +808,40 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
 **Mining Stopped Alert** (`MiningStopped` notification type): Fires once when no `(mining)` events have occurred for `stoppedAlertWindowSeconds` seconds, after the character was previously mining. Re-arms automatically when mining resumes.
 
 **Cargo Full** (`CargoFull` notification type): Fires when the gamelog contains `"Ship's cargo hold is full"` - e.g. `Your Modulated Strip Miner II has completed operations. Ship's cargo hold is full.` This is a `(notify)` event and requires no extra configuration beyond enabling the notification type.
+
+## Travel Mode
+
+Detects a tracked character falling behind while the rest of the group jumps together between solar systems, and fires a `TravelLeftBehind` notification. There is no manual on/off toggle beyond `enabled` - detection is entirely automatic, based on which system each character currently occupies.
+
+```json
+{
+  "travel": {
+    "enabled": false,
+    "window_seconds": 30,
+    "threshold_mode": "percent",
+    "threshold_percent": 50.0,
+    "threshold_count": 2
+  }
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `enabled` | `false` | Enable Travel Mode detection |
+| `window_seconds` | `30` | Grace period (1–3600 s): how long a straggler has to jump into the group's current system before being flagged |
+| `threshold_mode` | `percent` | `percent` or `count` - which of the two fields below decides how large the co-located group must be before it counts as "the group is traveling" |
+| `threshold_percent` | `50.0` | Used when `threshold_mode` is `percent`: minimum percentage (1–100) of eligible characters that must share the group's current system |
+| `threshold_count` | `2` | Used when `threshold_mode` is `count`: minimum fixed number (1–50) of eligible characters that must share the group's current system |
+
+> **Note**: Requires `chatlog.enabled: true` and a valid `gamelogDir`/`chatlogDir` to detect jumps.
+
+**Eligibility**: A character only participates in Travel Mode once it has jumped (stargate or Conduit Field - not undock) at least once in the current session, and only if it isn't excluded via the existing shift-click character exclusion used elsewhere in the app (Hotkeys tab).
+
+**Detection logic** (evaluated roughly every 2 seconds):
+1. Among eligible characters, find the "group system" - whichever current solar system the largest number of them share.
+2. If fewer than `threshold_percent`/`threshold_count` of eligible characters are in that system, this isn't treated as a real group trip (e.g. one character jumping around alone) and nothing fires.
+3. Otherwise, any eligible character in a *different* system is a straggler. Once that character has been away for longer than `window_seconds` (measured from when the last group member arrived), a `TravelLeftBehind` notification fires once for that character.
+4. The alert re-arms the moment that character jumps - whether they catch up to the group's system (clearing the alert) or jump elsewhere (re-evaluated against the group next tick). Because "caught up" is based on current system rather than jump order, a straggler who jumps in late never causes the characters who arrived first to be flagged.
 
 ## Hotkey Configuration
 

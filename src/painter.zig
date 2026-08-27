@@ -183,6 +183,10 @@ pub const ThumbnailWindow = struct {
     system_name: []const u8,
     // In-game timestamp of the event that set system_name (YYYYMMDD*1000000+HHMMSS); 0 = untimestamped source (e.g. live tailing), which always applies.
     system_name_event_ts: u64 = 0,
+    // Wall-clock ms of last stargate/conduit jump; 0 = hasn't jumped this session.
+    last_jump_ms: i64 = 0,
+    // Guards the left-behind alert to one-per-episode; cleared on jump.
+    travel_alert_fired: bool = false,
     // Packed newest-first at the front (no gaps); see Painter.pushNotification.
     active_notifications: [MAX_STACKED_NOTIFICATIONS]?ActiveNotification = .{@as(?ActiveNotification, null)} ** MAX_STACKED_NOTIFICATIONS,
     last_click_time: u64 = 0,
@@ -285,6 +289,13 @@ const FontCacheEntry = struct {
 
 pub var g_painter_ptr: ?*Painter = null;
 pub var g_hotkey_manager_ptr: ?*@import("hotkeys.zig").HotkeyManager = null;
+
+fn isCharacterTravelExcluded(character_name: []const u8) bool {
+    if (g_hotkey_manager_ptr) |mgr| {
+        return mgr.isCharacterExcluded(character_name);
+    }
+    return false;
+}
 
 // Global so registration persists across Painter instances, not just one.
 var g_window_class_registered: bool = false;
@@ -966,8 +977,8 @@ pub const Painter = struct {
         }
     }
 
-    /// Updates system name for a character using HWND (O(1) lookup); `event_ts` — see ThumbnailWindow.system_name_event_ts.
-    pub fn updateSystemNameByHwnd(self: *Painter, source_hwnd: win32.HWND, system_name: []const u8, event_ts: u64) !void {
+    /// Updates system name for a character using HWND (O(1) lookup); see ThumbnailWindow.system_name_event_ts and .last_jump_ms for `event_ts`/`is_jump`.
+    pub fn updateSystemNameByHwnd(self: *Painter, source_hwnd: win32.HWND, system_name: []const u8, event_ts: u64, is_jump: bool) !void {
         const thumbnail = self.getThumbnailBySourceHwnd(source_hwnd) orelse blk: {
             // Window not found on first attempt - defensively rebuild HWND index and retry
             slog.debug("Window 0x{x} not found for system update, rebuilding HWND index...", .{@intFromPtr(source_hwnd)});
@@ -999,6 +1010,11 @@ pub const Painter = struct {
         thumbnail.cached_system_color = self.config.getSystemNameColor(system_name);
         thumbnail.cached_sys_dims = null;
         slog.debug("System '{s}' color resolved to: 0x{X:0>6}", .{ system_name, thumbnail.cached_system_color & 0xFFFFFF });
+
+        if (is_jump) {
+            thumbnail.last_jump_ms = std.time.milliTimestamp();
+            thumbnail.travel_alert_fired = false;
+        }
 
         thumbnail.needs_render = true;
         slog.debug("Updated system for {s}: {s}", .{ thumbnail.character_name, system_name });
@@ -1075,6 +1091,65 @@ pub const Painter = struct {
 
         // Window not found - this can happen if thumbnail hasn't been created yet
         slog.debug("Window 0x{x} not found for notification update (thumbnail may not exist yet)", .{@intFromPtr(source_hwnd)});
+    }
+
+    /// Flags characters behind the group's current system by more than config.travel.window_seconds.
+    pub fn checkTravelLeftBehind(self: *Painter, now_ms: i64) void {
+        const cfg = self.config.travel;
+        if (!cfg.enabled) return;
+
+        var eligible_count: usize = 0;
+        for (self.thumbnails.items) |*thumb| {
+            if (thumb.last_jump_ms == 0 or isCharacterTravelExcluded(thumb.character_name)) continue;
+            eligible_count += 1;
+        }
+        if (eligible_count < 2) return;
+
+        var group_system: []const u8 = "";
+        var group_count: usize = 0;
+        var group_arrival_ms: i64 = 0;
+
+        for (self.thumbnails.items) |*candidate| {
+            if (candidate.last_jump_ms == 0 or isCharacterTravelExcluded(candidate.character_name)) continue;
+
+            var count: usize = 0;
+            var arrival_ms: i64 = 0;
+            for (self.thumbnails.items) |*other| {
+                if (other.last_jump_ms == 0 or isCharacterTravelExcluded(other.character_name)) continue;
+                if (!std.mem.eql(u8, other.system_name, candidate.system_name)) continue;
+                count += 1;
+                if (other.last_jump_ms > arrival_ms) arrival_ms = other.last_jump_ms;
+            }
+
+            if (count > group_count) {
+                group_count = count;
+                group_system = candidate.system_name;
+                group_arrival_ms = arrival_ms;
+            }
+        }
+        if (group_count == 0) return;
+
+        const required: usize = switch (cfg.threshold_mode) {
+            .percent => @intFromFloat(@ceil(cfg.threshold_percent / 100.0 * @as(f32, @floatFromInt(eligible_count)))),
+            .count => cfg.threshold_count,
+        };
+        if (group_count < required) return;
+
+        const window_ms: i64 = @as(i64, cfg.window_seconds) * 1000;
+        if (now_ms - group_arrival_ms < window_ms) return;
+
+        for (self.thumbnails.items) |*thumb| {
+            if (thumb.last_jump_ms == 0 or isCharacterTravelExcluded(thumb.character_name)) continue;
+            if (std.mem.eql(u8, thumb.system_name, group_system)) continue;
+            if (thumb.travel_alert_fired) continue;
+
+            thumb.travel_alert_fired = true;
+            var buf: [96]u8 = undefined;
+            const text = std.fmt.bufPrint(&buf, "Left behind in {s}", .{thumb.system_name}) catch "Left behind";
+            self.showNotification(thumb.source_hwnd, text, .TravelLeftBehind) catch |err| {
+                slog.err("Failed to show travel left-behind notification for {s}: {}", .{ thumb.character_name, err });
+            };
+        }
     }
 
     /// Inserts `entry` at the front of thumbnail's notification stack (newest first). Replaces any existing entry of the

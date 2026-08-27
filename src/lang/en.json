@@ -674,5 +674,18 @@
   "tab.thumbnails.section.visibility.heading": "Visibility",
   "tab.thumbnails.section.visibility.hint": "Control thumbnail transparency and when thumbnails are automatically hidden.",
   "tab.overlay-text.title": "text overlays",
-  "tab.thumbnails.title": "thumbnails"
+  "tab.thumbnails.title": "thumbnails",
+  "tab.travel.title": "travel mode",
+  "tab.travel.section.detection.hint": "Detects when a tracked character falls behind while the rest of the group jumps together, and fires a notification. Runs automatically once enabled below - no manual start/stop needed. Border color, duration, and TTS for the alert are configured on the Notifications tab under \"Left Behind\".",
+  "field.travelEnabled.label": "Enable Travel Mode",
+  "field.travelWindowSeconds.label": "Catch-Up Window (seconds)",
+  "field.travelWindowSeconds.hint": "How long a straggler has to jump into the group's current system before being flagged as left behind",
+  "field.travelThresholdMode.label": "Group Size Threshold",
+  "field.travelThresholdMode.hint": "How many characters must already share a system before stragglers there count as \"left behind\" - avoids false alerts from a single character jumping around alone",
+  "field.travelThresholdMode.percent": "Percentage of characters",
+  "field.travelThresholdMode.count": "Fixed number of characters",
+  "field.travelThresholdPercent.label": "Minimum Percentage",
+  "field.travelThresholdCount.label": "Minimum Count",
+  "notification.TravelLeftBehind.label": "Left Behind",
+  "notification.TravelLeftBehind.description": "Character hasn't jumped with the group within the configured window"
 }

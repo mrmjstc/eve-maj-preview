@@ -17,6 +17,8 @@ pub const SystemUpdateEvent = struct {
     system_name: []const u8,
     // 0 = no staleness check (live-tail lines are already strictly ordered)
     event_ts: u64,
+    // True only for stargate/conduit jumps; feeds Travel Mode's last-jump tracking.
+    is_jump: bool = false,
 
     pub fn deinit(self: *SystemUpdateEvent, allocator: std.mem.Allocator) void {
         allocator.free(self.character_name);
@@ -799,7 +801,7 @@ pub const ChatlogMonitor = struct {
 
     /// Push a system-name update to the main thread. Safe to call from either thread -
     /// resolution against Painter/Scout happens on drain, on the main thread only.
-    fn queueSystemUpdate(self: *ChatlogMonitor, character_name: []const u8, system_name: []const u8, event_ts: u64) void {
+    fn queueSystemUpdate(self: *ChatlogMonitor, character_name: []const u8, system_name: []const u8, event_ts: u64, is_jump: bool) void {
         const character_name_copy = self.allocator.dupe(u8, character_name) catch |err| {
             slog.err("Failed to allocate character name for system update: {}", .{err});
             return;
@@ -814,6 +816,7 @@ pub const ChatlogMonitor = struct {
             .character_name = character_name_copy,
             .system_name = system_name_copy,
             .event_ts = event_ts,
+            .is_jump = is_jump,
         };
         self.result_queue.push(event) catch |err| {
             var mutable_event = event;
@@ -865,7 +868,7 @@ pub const ChatlogMonitor = struct {
             };
 
             if (self.painter) |painter_ptr| {
-                painter_ptr.updateSystemNameByHwnd(hwnd, event.system_name, event.event_ts) catch |err| {
+                painter_ptr.updateSystemNameByHwnd(hwnd, event.system_name, event.event_ts, event.is_jump) catch |err| {
                     slog.err("Failed to update system name for {s}: {}", .{ event.character_name, err });
                     scout_ptr.clearHwndForCharacter(event.character_name);
                 };
@@ -924,7 +927,8 @@ pub const ChatlogMonitor = struct {
         if (match) |m| {
             slog.debug("Initial system for {s}: {s} (event_ts={})", .{ state.character_name, m.system, m.event_ts });
 
-            self.queueSystemUpdate(state.character_name, m.system, m.event_ts);
+            // is_jump=false: this seeds initial state, it isn't a live jump.
+            self.queueSystemUpdate(state.character_name, m.system, m.event_ts, false);
 
             // No need to free - m.system is a borrowed slice from system_name_buffer
         }
@@ -1303,8 +1307,11 @@ pub const ChatlogMonitor = struct {
                 self.queueNotification(state.character_name, text, .SystemChange);
             }
 
+            // Undock/chatlog-detect are same-system confirmations, not travel.
+            const is_jump = std.mem.eql(u8, event_type, "jump") or std.mem.eql(u8, event_type, "conduit");
+
             // event_ts=0: live tailing has no timestamp but doesn't need one - lines are strictly ordered
-            self.queueSystemUpdate(state.character_name, system, 0);
+            self.queueSystemUpdate(state.character_name, system, 0, is_jump);
 
             slog.info("System change ({s}): {s} -> {s}", .{ event_type, state.character_name, system });
         }

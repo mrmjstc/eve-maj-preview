@@ -41,6 +41,7 @@ The actual central mutable-state owner is **`Painter`** (`painter.zig`, 3700+ li
 - The full thumbnail lifecycle: `createThumbnail`, `destroyThumbnailResources`, `cleanupClosedThumbnails`.
 - Per-tick reconciliation of scan results into thumbnail state: `update()`.
 - Notifications, including triggering TTS: `showNotification`, `updateNotifications`.
+- Travel Mode's left-behind detection: `checkTravelLeftBehind`, called on a throttled ~2s cadence from `onTimerTick`. Compares each `ThumbnailWindow.system_name` (not jump-timestamp order) to find the group's current system, so a straggler who catches up is never mistakenly flagged just because their jump landed last - see [CONFIGURATION.md](CONFIGURATION.md#travel-mode).
 - Actual pixel rendering: `renderThumbnail` (diffs cached `RenderSettings` to skip redundant redraws) → `renderThumbnailOverlay` → a family of private GDI-drawing helpers (`drawBorder`, `drawExclusionOverlay`, `drawSparkLine`, `renderText`, ...) that make up roughly the other third of the file.
 - DPS/mining chart data feeding into the overlay, and drag-snap "ghost group" preview overlays.
 

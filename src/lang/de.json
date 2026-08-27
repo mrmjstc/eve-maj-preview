@@ -674,5 +674,18 @@
   "tab.thumbnails.section.visibility.heading": "Sichtbarkeit",
   "tab.thumbnails.section.visibility.hint": "Steuere die Transparenz und das automatische Ausblenden von Miniaturansichten.",
   "tab.overlay-text.title": "Text-Overlays",
-  "tab.thumbnails.title": "Miniaturansichten"
+  "tab.thumbnails.title": "Miniaturansichten",
+  "tab.travel.title": "Reisemodus",
+  "tab.travel.section.detection.hint": "Erkennt, wenn ein verfolgter Charakter zurückbleibt, während der Rest der Gruppe gemeinsam springt, und löst eine Benachrichtigung aus. Läuft nach Aktivierung unten automatisch - kein manuelles Starten/Stoppen nötig. Rahmenfarbe, Dauer und TTS für die Benachrichtigung werden im Tab \"Benachrichtigungen\" unter \"Zurückgeblieben\" festgelegt.",
+  "field.travelEnabled.label": "Reisemodus aktivieren",
+  "field.travelWindowSeconds.label": "Aufholfenster (Sekunden)",
+  "field.travelWindowSeconds.hint": "Wie lange ein Nachzügler Zeit hat, in das aktuelle System der Gruppe zu springen, bevor er als zurückgeblieben markiert wird",
+  "field.travelThresholdMode.label": "Schwellenwert für Gruppengröße",
+  "field.travelThresholdMode.hint": "Wie viele Charaktere sich bereits im selben System befinden müssen, bevor Nachzügler dort als \"zurückgeblieben\" gelten - verhindert Fehlalarme, wenn nur ein einzelner Charakter herumspringt",
+  "field.travelThresholdMode.percent": "Prozentsatz der Charaktere",
+  "field.travelThresholdMode.count": "Feste Anzahl an Charakteren",
+  "field.travelThresholdPercent.label": "Mindestprozentsatz",
+  "field.travelThresholdCount.label": "Mindestanzahl",
+  "notification.TravelLeftBehind.label": "Zurückgeblieben",
+  "notification.TravelLeftBehind.description": "Charakter ist nicht innerhalb des konfigurierten Zeitfensters mit der Gruppe gesprungen"
 }

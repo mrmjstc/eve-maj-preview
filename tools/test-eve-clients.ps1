@@ -706,6 +706,29 @@ function Select-Character {
     return $null
 }
 
+# For Travel Mode testing: comma-separated indices/names from Show-Status, or "all".
+function Select-MultipleCharacters {
+    Show-Status
+    if ($clients.Count -eq 0) { return @() }
+    $names = @($clients.Keys)
+    $sel = Read-Host 'Character numbers or names, comma-separated (or "all")'
+    if (-not $sel) { return @() }
+    if ($sel.Trim().ToLower() -eq 'all') { return $names }
+
+    $result = @()
+    foreach ($token in ($sel -split ',')) {
+        $t = $token.Trim()
+        if ($t -match '^\d+$' -and [int]$t -ge 1 -and [int]$t -le $names.Count) {
+            $result += $names[[int]$t - 1]
+        } elseif ($clients.Contains($t)) {
+            $result += $t
+        } else {
+            Write-Warning "No such character: $t"
+        }
+    }
+    return $result
+}
+
 function Start-CharacterBurst {
     param([string]$CharName, [string]$Kind, [int]$DurationSeconds = 60)
 
@@ -758,6 +781,30 @@ function Start-CharacterJumpSequence {
     Write-Host "$CharName jump route: $($systems -join ' -> ') (10s apart)." -ForegroundColor Green
 }
 
+# Jumps everyone but $StragglerName to one new system, for testing Travel Mode's left-behind alert.
+function Start-TravelModeTest {
+    param([string[]]$CharNames, [string]$StragglerName)
+
+    $straggler = $clients[$StragglerName]
+    $dest = Get-Random -InputObject ($script:EveSystemNames | Where-Object { $_ -ne $straggler.System })
+
+    $movers = @()
+    foreach ($name in $CharNames) {
+        if ($name -eq $StragglerName) { continue }
+        $c = $clients[$name]
+        Add-GamelogJump -Path $c.Gamelog -From $c.System -To $dest | Out-Null
+        Add-ChatlogJump -Path $c.Chatlog -System $dest | Out-Null
+        $c.System = $dest
+        Save-CharacterState -CharName $name -ChatlogPath $c.Chatlog -GamelogPath $c.Gamelog -System $c.System
+        $movers += $name
+    }
+
+    Write-Host "Jumped $($movers -join ', ') to $dest." -ForegroundColor Green
+    Write-Host "$StragglerName stayed behind in $($straggler.System)." -ForegroundColor Yellow
+    Write-Host "Wait for Travel Mode's Catch-Up Window to elapse, then check $StragglerName's thumbnail for the Left Behind notification." -ForegroundColor DarkYellow
+    Write-Host "Then use 'j' to jump $StragglerName to $dest and confirm the alert clears." -ForegroundColor DarkYellow
+}
+
 Write-Host ''
 Write-Host '=== EVE-Zig Preview client simulator ===' -ForegroundColor Cyan
 Write-Host "Chatlog dir: $ChatlogDir"
@@ -776,6 +823,7 @@ $menu = @'
   [i] log back IN            [k] kill (crash) client    [b] bounty burst (60s)
   [m] mining burst (60s)     [c] combat burst (60s)     [j] jump to system
   [r] random 3-system route  [e] fire event type...     [x] notification storm (multi-alert test)
+  [t] travel mode test (group jump, leave one behind)
   [q] quit (stops everyone)
 '@
 
@@ -871,6 +919,29 @@ try {
         'x' {
             $name = Select-Character
             if ($name) { Start-NotificationStorm -CharName $name }
+        }
+        't' {
+            $group = Select-MultipleCharacters
+            if ($group.Count -lt 2) {
+                Write-Warning 'Travel Mode test needs at least 2 characters.'
+            } else {
+                Write-Host ''
+                for ($idx = 0; $idx -lt $group.Count; $idx++) {
+                    Write-Host ("{0,2}) {1}" -f ($idx + 1), $group[$idx])
+                }
+                $stragglerSel = Read-Host 'Which one gets left behind? (number or name)'
+                $straggler = $null
+                if ($stragglerSel -match '^\d+$' -and [int]$stragglerSel -ge 1 -and [int]$stragglerSel -le $group.Count) {
+                    $straggler = $group[[int]$stragglerSel - 1]
+                } elseif ($group -contains $stragglerSel) {
+                    $straggler = $stragglerSel
+                }
+                if (-not $straggler) {
+                    Write-Warning 'No such character in the group.'
+                } else {
+                    Start-TravelModeTest -CharNames $group -StragglerName $straggler
+                }
+            }
         }
         'q' {
             break mainLoop

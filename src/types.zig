@@ -93,6 +93,7 @@ pub const NotificationType = enum {
     WarpBubble,
     ConduitJump,
     SystemChange,
+    TravelLeftBehind,
     Generic,
 };
 

@@ -184,6 +184,12 @@ pub const TrayIcon = struct {
             win32.MF_STRING;
         _ = win32.AppendMenuA(menu, auto_minimize_flags, win32.IDM_TOGGLE_AUTO_MINIMIZE, "Enable Auto-Minimize");
 
+        const travel_mode_flags: u32 = if (config.travel.enabled)
+            win32.MF_STRING | win32.MF_CHECKED
+        else
+            win32.MF_STRING;
+        _ = win32.AppendMenuA(menu, travel_mode_flags, win32.IDM_TOGGLE_TRAVEL_MODE, "Enable Travel Mode");
+
         const visibility_flags: u32 = if (config.display.viewMode == .Nothing)
             win32.MF_STRING | win32.MF_GRAYED
         else if (painter) |p| blk: {
@@ -276,6 +282,24 @@ pub const TrayIcon = struct {
             config.autoMinimize.enabled = !config.autoMinimize.enabled;
             const state = if (config.autoMinimize.enabled) "enabled" else "disabled";
             slog.info("Auto-minimize toggled: {s}", .{state});
+            return true;
+        }
+
+        if (command_id == win32.IDM_TOGGLE_TRAVEL_MODE) {
+            config.travel.enabled = !config.travel.enabled;
+            const state = if (config.travel.enabled) "enabled" else "disabled";
+            slog.info("Travel Mode toggled: {s}", .{state});
+
+            const profile_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, config.profile_name }) catch |err| {
+                slog.err("Failed to build profile path for save: {}", .{err});
+                return true;
+            };
+            defer allocator.free(profile_path);
+
+            config_mod.Config.saveToJsonFile(config, allocator, profile_path) catch |err| {
+                slog.err("Failed to save config after toggling Travel Mode: {}", .{err});
+            };
+
             return true;
         }
 

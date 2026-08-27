@@ -1286,6 +1286,32 @@ pub const BountyConfig = struct {
     }
 };
 
+pub const TravelThresholdMode = enum { percent, count };
+
+pub const TravelConfig = struct {
+    enabled: bool = false,
+    window_seconds: u32 = 30,
+    threshold_mode: TravelThresholdMode = .percent,
+    threshold_percent: f32 = 50.0,
+    threshold_count: u32 = 2,
+
+    pub const WINDOW_SECONDS_MIN: u32 = 1;
+    pub const WINDOW_SECONDS_MAX: u32 = 3600;
+    pub const THRESHOLD_PERCENT_MIN: f32 = 1.0;
+    pub const THRESHOLD_PERCENT_MAX: f32 = 100.0;
+    pub const THRESHOLD_COUNT_MIN: u32 = 1;
+    pub const THRESHOLD_COUNT_MAX: u32 = 50;
+
+    pub fn validate(self: *TravelConfig) void {
+        if (self.window_seconds == 0) self.window_seconds = 30;
+        if (self.window_seconds > WINDOW_SECONDS_MAX) self.window_seconds = WINDOW_SECONDS_MAX;
+        if (self.threshold_percent < THRESHOLD_PERCENT_MIN) self.threshold_percent = THRESHOLD_PERCENT_MIN;
+        if (self.threshold_percent > THRESHOLD_PERCENT_MAX) self.threshold_percent = THRESHOLD_PERCENT_MAX;
+        if (self.threshold_count < THRESHOLD_COUNT_MIN) self.threshold_count = THRESHOLD_COUNT_MIN;
+        if (self.threshold_count > THRESHOLD_COUNT_MAX) self.threshold_count = THRESHOLD_COUNT_MAX;
+    }
+};
+
 pub const NotificationTypeConfig = struct {
     enabled: bool = true,
     duration_ms: u32 = 10000,
@@ -1550,6 +1576,7 @@ pub const Config = struct {
     combat: CombatConfig,
     mining: MiningConfig,
     bounty: BountyConfig,
+    travel: TravelConfig,
 
     windowFilters: std.ArrayList(WindowFilter),
 
@@ -1597,6 +1624,7 @@ pub const Config = struct {
         combat: CombatConfig.Wire = .{},
         mining: MiningConfig.Wire = .{},
         bounty: BountyConfig.Wire = .{},
+        travel: TravelConfig = .{},
         windowFilters: []const WindowFilter = &.{WindowFilter.DEFAULT},
         characters: []const CharacterConfig.Wire = &.{},
         systemColors: []const SystemColor.Wire = &.{},
@@ -1656,6 +1684,7 @@ pub const Config = struct {
             .combat = self.combat.toWire(),
             .mining = self.mining.toWire(),
             .bounty = self.bounty.toWire(),
+            .travel = self.travel,
             .windowFilters = window_filters,
             .characters = chars,
             .systemColors = sys_colors,
@@ -1701,6 +1730,7 @@ pub const Config = struct {
         cfg.combat = try CombatConfig.fromWire(w.combat, allocator);
         cfg.mining = try MiningConfig.fromWire(w.mining, allocator);
         cfg.bounty = try BountyConfig.fromWire(w.bounty, allocator);
+        cfg.travel = w.travel;
         cfg.requireEveFocus = w.hotkeys.requireEveFocus;
         cfg.resetGroupIndexOnNonGroupFocus = w.hotkeys.resetGroupIndexOnNonGroupFocus;
         cfg.repeatCycleOnHold = w.hotkeys.repeatCycleOnHold;
@@ -3262,6 +3292,7 @@ pub const Config = struct {
             .combat = .{},
             .mining = .{},
             .bounty = .{},
+            .travel = .{},
             .windowFilters = default_filters,
             .characters = std.ArrayList(CharacterConfig).empty,
             .systemColors = std.ArrayList(SystemColor).empty,
@@ -3494,6 +3525,7 @@ pub const Config = struct {
         self.combat.validate();
         self.mining.validate();
         self.bounty.validate();
+        self.travel.validate();
 
         // Per-character thumbnail size overrides live on CharacterConfig, not ThumbnailConfig, so they bypass validate() above and need clamping here too.
         for (self.characters.items) |*char| {
@@ -3570,6 +3602,9 @@ pub const Config = struct {
             .@"mining.offset_x" = Range{ .min = MiningConfig.OFFSET_MIN, .max = MiningConfig.OFFSET_MAX },
             .@"mining.offset_y" = Range{ .min = MiningConfig.OFFSET_MIN, .max = MiningConfig.OFFSET_MAX },
             .@"mining.idle_alert_threshold" = Range{ .min = MiningConfig.IDLE_ALERT_THRESHOLD_MIN, .max = MiningConfig.IDLE_ALERT_THRESHOLD_MAX },
+
+            .@"travel.window_seconds" = Range{ .min = TravelConfig.WINDOW_SECONDS_MIN, .max = TravelConfig.WINDOW_SECONDS_MAX },
+            .@"travel.threshold_count" = Range{ .min = TravelConfig.THRESHOLD_COUNT_MIN, .max = TravelConfig.THRESHOLD_COUNT_MAX },
 
             .@"bounty.window_seconds" = Range{ .min = BountyConfig.WINDOW_SECONDS_MIN, .max = BountyConfig.WINDOW_SECONDS_MAX },
             .@"bounty.update_interval_ms" = Range{ .min = BountyConfig.UPDATE_INTERVAL_MS_MIN, .max = BountyConfig.UPDATE_INTERVAL_MS_MAX },

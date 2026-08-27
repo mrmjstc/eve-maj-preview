@@ -51,6 +51,8 @@ const SCAN_INTERVAL_TICKS: u32 = 20;
 var g_last_dps_update_ms: i64 = 0;
 var g_last_mining_update_ms: i64 = 0;
 var g_last_bounty_update_ms: i64 = 0;
+var g_last_travel_check_ms: i64 = 0;
+const TRAVEL_CHECK_INTERVAL_MS: i64 = 2000;
 
 // Reused across timer ticks to avoid a per-tick alloc; borrowed slices only, no ownership.
 var g_chatlog_char_names: std.ArrayList([]const u8) = .empty;
@@ -285,6 +287,13 @@ fn onTimerTick() void {
             interval_ms,
             scout_result.windows,
         );
+    }
+
+    if (g_painter) |painter_ptr| {
+        if (now_ms - g_last_travel_check_ms >= TRAVEL_CHECK_INTERVAL_MS) {
+            g_last_travel_check_ms = now_ms;
+            painter_ptr.checkTravelLeftBehind(now_ms);
+        }
     }
 }
 

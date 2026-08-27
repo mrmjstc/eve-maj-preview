@@ -674,5 +674,18 @@
   "tab.thumbnails.section.visibility.heading": "Visibilidad",
   "tab.thumbnails.section.visibility.hint": "Controla la transparencia y cuándo se ocultan las miniaturas automáticamente.",
   "tab.overlay-text.title": "superposiciones de texto",
-  "tab.thumbnails.title": "miniaturas"
+  "tab.thumbnails.title": "miniaturas",
+  "tab.travel.title": "modo de viaje",
+  "tab.travel.section.detection.hint": "Detecta cuando un personaje seguido se queda atrás mientras el resto del grupo salta junto, y muestra una notificación. Funciona automáticamente al activarse abajo - sin inicio/parada manual. El color de borde, la duración y el TTS de la alerta se configuran en la pestaña Notificaciones bajo \"Rezagado\".",
+  "field.travelEnabled.label": "Activar modo de viaje",
+  "field.travelWindowSeconds.label": "Ventana para alcanzar al grupo (segundos)",
+  "field.travelWindowSeconds.hint": "Cuánto tiempo tiene un rezagado para saltar al sistema actual del grupo antes de ser marcado como rezagado",
+  "field.travelThresholdMode.label": "Umbral de tamaño de grupo",
+  "field.travelThresholdMode.hint": "Cuántos personajes deben compartir ya un sistema antes de que los rezagados allí cuenten como \"rezagados\" - evita falsas alertas por un solo personaje saltando solo",
+  "field.travelThresholdMode.percent": "Porcentaje de personajes",
+  "field.travelThresholdMode.count": "Número fijo de personajes",
+  "field.travelThresholdPercent.label": "Porcentaje mínimo",
+  "field.travelThresholdCount.label": "Cantidad mínima",
+  "notification.TravelLeftBehind.label": "Rezagado",
+  "notification.TravelLeftBehind.description": "El personaje no ha saltado con el grupo dentro del tiempo configurado"
 }

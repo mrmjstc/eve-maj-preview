@@ -674,5 +674,18 @@
   "tab.thumbnails.section.visibility.heading": "Видимость",
   "tab.thumbnails.section.visibility.hint": "Управляйте прозрачностью миниатюр и условиями их автоматического скрытия.",
   "tab.overlay-text.title": "текстовые оверлеи",
-  "tab.thumbnails.title": "миниатюры"
+  "tab.thumbnails.title": "миниатюры",
+  "tab.travel.title": "режим путешествия",
+  "tab.travel.section.detection.hint": "Обнаруживает, когда отслеживаемый персонаж отстаёт, пока остальная группа прыгает вместе, и показывает уведомление. Работает автоматически после включения ниже - без ручного запуска/остановки. Цвет рамки, длительность и TTS для уведомления настраиваются на вкладке «Уведомления» в разделе «Отстал».",
+  "field.travelEnabled.label": "Включить режим путешествия",
+  "field.travelWindowSeconds.label": "Окно для догона (секунды)",
+  "field.travelWindowSeconds.hint": "Сколько времени есть у отставшего, чтобы прыгнуть в текущую систему группы, прежде чем он будет отмечен как отставший",
+  "field.travelThresholdMode.label": "Порог размера группы",
+  "field.travelThresholdMode.hint": "Сколько персонажей должны уже находиться в одной системе, прежде чем отставшие там считаются «отставшими» - предотвращает ложные срабатывания от одного прыгающего персонажа",
+  "field.travelThresholdMode.percent": "Процент персонажей",
+  "field.travelThresholdMode.count": "Фиксированное число персонажей",
+  "field.travelThresholdPercent.label": "Минимальный процент",
+  "field.travelThresholdCount.label": "Минимальное количество",
+  "notification.TravelLeftBehind.label": "Отстал",
+  "notification.TravelLeftBehind.description": "Персонаж не прыгнул вместе с группой в заданное время"
 }

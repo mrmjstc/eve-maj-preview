@@ -351,6 +351,12 @@ const CONFIG_SCHEMA = [
     { id: 'bountyOffsetX', path: 'bounty.offset_x' },
     { id: 'bountyOffsetY', path: 'bounty.offset_y' },
     { id: 'bountyIskRateUnit', path: 'bounty.isk_rate_unit' },
+
+    { id: 'travelEnabled', path: 'travel.enabled' },
+    { id: 'travelWindowSeconds', path: 'travel.window_seconds' },
+    { id: 'travelThresholdMode', path: 'travel.threshold_mode' },
+    { id: 'travelThresholdPercent', path: 'travel.threshold_percent' },
+    { id: 'travelThresholdCount', path: 'travel.threshold_count' },
 ];
 
 function getConfigPath(obj, path) {
@@ -1108,6 +1114,7 @@ function populateFormFields() {
     toggleCombatOptions();
     toggleMiningOptions();
     toggleBountyOptions();
+    toggleTravelOptions();
 
     populateWindowFilters();
 
@@ -5658,6 +5665,7 @@ const NOTIFICATION_TYPES = [
     { key: 'ConduitJump', category: 'navigation' },
     { key: 'JumpCloning', category: 'navigation' },
     { key: 'SystemChange', category: 'navigation' },
+    { key: 'TravelLeftBehind', category: 'navigation' },
     { key: 'ConversationInvite', category: 'general' },
     { key: 'Generic', category: 'general' }
 ];
@@ -6778,6 +6786,19 @@ function toggleMiningOptions() {
 
 function toggleBountyOptions() {
     applyOptionToggle('bountyEnabled', 'bountyOptions');
+}
+
+function toggleTravelOptions() {
+    applyOptionToggle('travelEnabled', 'travelOptions');
+
+    const mode = document.getElementById('travelThresholdMode');
+    const percentRow = document.getElementById('travelThresholdPercentRow');
+    const countRow = document.getElementById('travelThresholdCountRow');
+    if (!mode || !percentRow || !countRow) return;
+
+    const isPercent = mode.value === 'percent';
+    percentRow.style.display = isPercent ? '' : 'none';
+    countRow.style.display = isPercent ? 'none' : '';
 }
 
 async function browseChatlogDir() {
