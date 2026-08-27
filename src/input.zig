@@ -878,6 +878,28 @@ fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: w
             }
             return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
+        win32.WM_DPICHANGED => {
+            // Position only; resizeThumbnailIfNeeded below re-derives size from our own scale formula.
+            const suggested = win32.lparamToPtr(win32.RECT, lParam);
+            _ = win32.SetWindowPos(hwnd, win32.HWND_NOTOPMOST, suggested.left, suggested.top, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
+
+            if (g_painter_ptr) |painter| {
+                if (painter.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
+                    painter.resizeThumbnailIfNeeded(thumbnail);
+
+                    if (getLinkedWindow(hwnd)) |text_hwnd| {
+                        var rect: win32.RECT = undefined;
+                        _ = win32.GetWindowRect(hwnd, &rect);
+                        _ = win32.SetWindowPos(text_hwnd, win32.HWND_TOPMOST, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, win32.SWP_NOACTIVATE);
+                    }
+
+                    painter.renderThumbnail(thumbnail) catch |err| {
+                        slog.err("Failed to render thumbnail after DPI change for {s}: {}", .{ thumbnail.character_name, err });
+                    };
+                }
+            }
+            return 0;
+        },
         win32.WM_CLOSE => {
             _ = win32.DestroyWindow(hwnd);
             return 0;

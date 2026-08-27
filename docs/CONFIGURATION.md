@@ -251,6 +251,8 @@ Target specific monitors by index (0-based):
 - `useMonitorWorkArea`: Respect taskbar when true, use full screen when false
 - `startX`/`startY`: When `monitorIndex` is set, these are **offsets within that monitor**
 
+All pixel-based values here (thumbnail size, `startX`/`startY`, spacing, font sizes) are logical (96 DPI) units — the app is per-monitor DPI aware and scales them to whichever monitor a thumbnail actually lands on, so the same config looks the same size on monitors with different display scaling.
+
 **Grid Configuration:**
 
 ```json

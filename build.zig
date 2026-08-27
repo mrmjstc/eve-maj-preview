@@ -50,6 +50,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.linkSystemLibrary("ole32", .{});
     exe.root_module.linkSystemLibrary("oleaut32", .{});
     exe.root_module.linkSystemLibrary("dbghelp", .{});
+    exe.root_module.linkSystemLibrary("shcore", .{});
 
     exe.addWin32ResourceFile(.{
         .file = b.path("app.rc"),

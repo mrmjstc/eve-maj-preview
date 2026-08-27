@@ -444,6 +444,8 @@ fn unhandledExceptionFilter(info: *win32.EXCEPTION_POINTERS) callconv(.c) win32.
 }
 
 pub fn main() void {
+    // Must precede any window/monitor API call, or Windows bitmap-stretches our windows on scaled monitors.
+    _ = win32.SetProcessDpiAwarenessContext(win32.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     _ = win32.AddVectoredExceptionHandler(1, firstChanceExceptionHandler);
     _ = win32.SetUnhandledExceptionFilter(unhandledExceptionFilter);
     defer log.deinitFile();

@@ -72,6 +72,7 @@ pub const WM_XBUTTONUP = 0x020C;
 pub const WM_ENTERSIZEMOVE = 0x0231;
 pub const WM_EXITSIZEMOVE = 0x0232;
 pub const WM_HOTKEY = 0x0312;
+pub const WM_DPICHANGED = 0x02E0;
 pub const WM_DWMSENDICONICTHUMBNAIL = 0x0323;
 pub const WM_DWMSENDICONICLIVEPREVIEWBITMAP = 0x0326;
 pub const WM_COPYDATA = 0x004A;
@@ -824,6 +825,18 @@ pub extern "user32" fn MonitorFromWindow(
     hwnd: HWND,
     dwFlags: DWORD,
 ) callconv(.c) ?HMONITOR;
+
+pub const HRESULT = i32;
+pub const MDT_EFFECTIVE_DPI: c_int = 0;
+pub extern "shcore" fn GetDpiForMonitor(hMonitor: HMONITOR, dpiType: c_int, dpiX: *UINT, dpiY: *UINT) callconv(.c) HRESULT;
+
+pub extern "user32" fn GetDpiForWindow(hWnd: HWND) callconv(.c) UINT;
+pub extern "user32" fn GetDpiForSystem() callconv(.c) UINT;
+
+// Sentinel pointer value, not a real pointer, matching HWND_TOPMOST/HWND_NOTOPMOST below.
+pub const DPI_AWARENESS_CONTEXT = *opaque {};
+pub const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2: DPI_AWARENESS_CONTEXT = @ptrFromInt(@as(usize, @bitCast(@as(isize, -4))));
+pub extern "user32" fn SetProcessDpiAwarenessContext(value: DPI_AWARENESS_CONTEXT) callconv(.c) BOOL;
 
 pub extern "kernel32" fn GetConsoleWindow() callconv(.c) ?HWND;
 pub extern "kernel32" fn AllocConsole() callconv(.c) BOOL;

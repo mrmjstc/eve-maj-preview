@@ -287,6 +287,11 @@ const FontCacheEntry = struct {
     weight: types.FontWeight = .Regular,
 };
 
+/// dpi realistically never exceeds ~480 (5x scale), well under the 16 bits reserved here.
+fn fontCacheKey(slot: FontSlot, dpi: u32) u32 {
+    return (@as(u32, @intFromEnum(slot)) << 16) | (dpi & 0xFFFF);
+}
+
 pub var g_painter_ptr: ?*Painter = null;
 pub var g_hotkey_manager_ptr: ?*@import("hotkeys.zig").HotkeyManager = null;
 
@@ -330,8 +335,8 @@ pub const Painter = struct {
     focus_event_hook: ?win32.HANDLE = null,
     destroy_event_hook: ?win32.HANDLE = null,
     hide_debounce_timer_hwnd: ?win32.HWND = null,
-    /// One cache slot per FontSlot, so resolving one font never evicts a handle still in use by another.
-    cached_fonts: [8]FontCacheEntry = .{ .{}, .{}, .{}, .{}, .{}, .{}, .{}, .{} },
+    /// Keyed by (FontSlot, DPI) via fontCacheKey, so different-DPI monitors don't evict each other's fonts every render.
+    cached_fonts: std.AutoHashMap(u32, FontCacheEntry),
     /// Non-null when viewMode == .ClientList; owns the compact list panel window.
     list_window: ?list_view.ListWindow = null,
     /// Non-null when display.showNotifInfoPanel is enabled; owns the notification-history/activity-totals panel.
@@ -367,9 +372,11 @@ pub const Painter = struct {
         };
     }
 
-    /// Gets or creates the cached font for the given slot, recreating it only if its settings changed.
-    fn getCachedFont(self: *Painter, slot: FontSlot, font_name: []const u8, font_size: i32, font_weight: types.FontWeight) !win32.HFONT {
-        const entry = &self.cached_fonts[@intFromEnum(slot)];
+    /// Gets or creates the cached font for the given (slot, dpi), recreating it only if its settings changed.
+    fn getCachedFont(self: *Painter, slot: FontSlot, dpi: u32, font_name: []const u8, font_size: i32, font_weight: types.FontWeight) !win32.HFONT {
+        const gop = try self.cached_fonts.getOrPut(fontCacheKey(slot, dpi));
+        if (!gop.found_existing) gop.value_ptr.* = .{};
+        const entry = gop.value_ptr;
 
         const cache_valid = entry.font != null and
             std.mem.eql(u8, entry.name, font_name) and
@@ -383,7 +390,7 @@ pub const Painter = struct {
         if (entry.font) |old_font| {
             _ = win32.DeleteObject(old_font);
             entry.font = null;
-            slog.debug("Font cache invalidated for slot {} (settings changed)", .{slot});
+            slog.debug("Font cache invalidated for slot {} @ {} DPI (settings changed)", .{ slot, dpi });
         }
 
         const font_name_z = try self.allocator.dupeZ(u8, font_name);
@@ -415,7 +422,7 @@ pub const Painter = struct {
         entry.size = font_size;
         entry.weight = font_weight;
 
-        slog.debug("Created cached font for slot {}: {s} size={} weight={}", .{ slot, font_name, font_size, font_weight });
+        slog.debug("Created cached font for slot {} @ {} DPI: {s} size={} weight={}", .{ slot, dpi, font_name, font_size, font_weight });
 
         return font.?;
     }
@@ -429,6 +436,7 @@ pub const Painter = struct {
             .hwnd_to_thumbnail_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
             .thumbnail_hwnd_to_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
             .text_hwnd_to_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
+            .cached_fonts = std.AutoHashMap(u32, FontCacheEntry).init(allocator),
             .instance = instance,
             .config = cfg,
         };
@@ -499,12 +507,14 @@ pub const Painter = struct {
             self.notif_info_window = null;
         }
 
-        for (&self.cached_fonts) |*entry| {
+        var font_it = self.cached_fonts.valueIterator();
+        while (font_it.next()) |entry| {
             if (entry.font) |font| {
                 _ = win32.DeleteObject(font);
                 entry.font = null;
             }
         }
+        self.cached_fonts.deinit();
 
         if (self.focus_event_hook) |hook| {
             _ = win32.UnhookWinEvent(hook);
@@ -1303,31 +1313,38 @@ pub const Painter = struct {
     pub fn repositionAllThumbnails(self: *Painter) void {
         var hdwp = self.beginDeferForEnabledThumbnails() orelse return;
         const cfg = &self.config.display;
-        const monitor_bounds = if (cfg.monitorIndex) |monitor_idx| getMonitorBounds(monitor_idx, cfg.useMonitorWorkArea) else null;
+        const monitor_placement = resolveMonitorPlacement(cfg);
+        const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
+        const scale = dpiToScale(if (monitor_placement) |mp| getMonitorDpi(mp.monitor) else defaultDpi());
         for (self.thumbnails.items, 0..) |thumbnail, index| {
             if (!thumbnail.win32_enabled) continue;
             const thumb_size = self.getThumbnailSize(thumbnail.character_name);
-            const pos = self.calculateThumbnailPosition(thumbnail.character_name, thumb_size.width, thumb_size.height, index, monitor_bounds);
+            const scaled_width = scalePixels(thumb_size.width, scale);
+            const scaled_height = scalePixels(thumb_size.height, scale);
+            const pos = self.calculateThumbnailPosition(thumbnail.character_name, scaled_width, scaled_height, index, monitor_bounds, scale);
             hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_NOTOPMOST, pos.x, pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE) orelse return;
             hdwp = win32.DeferWindowPos(hdwp, thumbnail.text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOACTIVATE) orelse return;
         }
         _ = win32.EndDeferWindowPos(hdwp);
     }
 
-    /// Resizes a thumbnail's window and DWM live-thumbnail rect to the configured size if changed; text_hwnd resizes separately as a side effect of UpdateLayeredWindow in renderThumbnailOverlay.
-    fn resizeThumbnailIfNeeded(self: *Painter, thumbnail: *ThumbnailWindow) void {
-        const target = self.getThumbnailSize(thumbnail.character_name);
+    /// Resizes a thumbnail's window and DWM rect to the DPI-scaled configured size if changed; text_hwnd resizes separately via UpdateLayeredWindow.
+    pub fn resizeThumbnailIfNeeded(self: *Painter, thumbnail: *ThumbnailWindow) void {
+        const logical = self.getThumbnailSize(thumbnail.character_name);
+        const scale = dpiToScale(getWindowDpi(thumbnail.hwnd));
+        const target_width = scalePixels(logical.width, scale);
+        const target_height = scalePixels(logical.height, scale);
 
         var current_rect: win32.RECT = undefined;
         if (win32.GetClientRect(thumbnail.hwnd, &current_rect) == 0) return;
         const current_width: i32 = @intCast(current_rect.right);
         const current_height: i32 = @intCast(current_rect.bottom);
-        if (current_width == target.width and current_height == target.height) return;
+        if (current_width == target_width and current_height == target_height) return;
 
         // HWND_NOTOPMOST, not HWND_TOP (a zero-valued sentinel the non-allowzero HWND type can't represent); SWP_NOZORDER makes the value irrelevant anyway.
-        _ = win32.SetWindowPos(thumbnail.hwnd, win32.HWND_NOTOPMOST, 0, 0, target.width, target.height, win32.SWP_NOMOVE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
+        _ = win32.SetWindowPos(thumbnail.hwnd, win32.HWND_NOTOPMOST, 0, 0, target_width, target_height, win32.SWP_NOMOVE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
 
-        const props = makeThumbnailProps(@intCast(target.width), @intCast(target.height), win32.DWM_TNP_RECTDESTINATION);
+        const props = makeThumbnailProps(target_width, target_height, win32.DWM_TNP_RECTDESTINATION);
         _ = win32.DwmUpdateThumbnailProperties(thumbnail.thumbnail_id, &props);
     }
 
@@ -1793,8 +1810,13 @@ pub const Painter = struct {
         return win32.TRUE;
     }
 
-    /// Get monitor bounds by 0-based index; null if out of range.
-    fn getMonitorBounds(monitor_index: u32, use_work_area: bool) ?win32.RECT {
+    const MonitorPlacement = struct {
+        bounds: win32.RECT,
+        monitor: win32.HMONITOR,
+    };
+
+    /// Get monitor bounds and handle by 0-based index; null if out of range.
+    fn getMonitorPlacement(monitor_index: u32, use_work_area: bool) ?MonitorPlacement {
         var enum_data = MonitorEnumData{
             .target_index = monitor_index,
             .current_index = 0,
@@ -1827,8 +1849,37 @@ pub const Painter = struct {
             return null;
         }
 
-        // Return work area (excludes taskbar) or full monitor bounds
-        return if (use_work_area) monitor_info.rcWork else monitor_info.rcMonitor;
+        return .{
+            // Work area (excludes taskbar) or full monitor bounds
+            .bounds = if (use_work_area) monitor_info.rcWork else monitor_info.rcMonitor,
+            .monitor = enum_data.found_monitor.?,
+        };
+    }
+
+    /// DPI for a specific monitor; used before a window exists on it yet.
+    fn getMonitorDpi(hmonitor: win32.HMONITOR) u32 {
+        var dpi_x: win32.UINT = 96;
+        var dpi_y: win32.UINT = 96;
+        _ = win32.GetDpiForMonitor(hmonitor, win32.MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y);
+        return dpi_x;
+    }
+
+    /// DPI of whichever monitor a window currently sits on; queried live, nothing to invalidate.
+    fn getWindowDpi(hwnd: win32.HWND) u32 {
+        return win32.GetDpiForWindow(hwnd);
+    }
+
+    /// DPI for the system default monitor; used as a fallback when no target monitor is configured.
+    fn defaultDpi() u32 {
+        return win32.GetDpiForSystem();
+    }
+
+    fn dpiToScale(dpi: u32) f32 {
+        return @as(f32, @floatFromInt(dpi)) / 96.0;
+    }
+
+    fn resolveMonitorPlacement(cfg: *const config_mod.Config.DisplayConfig) ?MonitorPlacement {
+        return if (cfg.monitorIndex) |monitor_idx| getMonitorPlacement(monitor_idx, cfg.useMonitorWorkArea) else null;
     }
 
     /// Clamps *value into [min, max], warning with axis_label/low_word/high_word/context worked into the message on either bound.
@@ -1849,6 +1900,7 @@ pub const Painter = struct {
         thumb_height: i32,
         index: usize,
         monitor_bounds: ?win32.RECT,
+        scale: f32,
     ) config_mod.Position {
         const cfg = &self.config.display;
 
@@ -1858,6 +1910,7 @@ pub const Painter = struct {
             self.config.getCharacterPosition(character_name) != null;
 
         if (use_saved_position) {
+            // Saved positions are absolute physical pixels (see saveThumbnailPosition), so scaling doesn't apply.
             const saved_pos = self.config.getCharacterPosition(character_name).?;
             slog.debug("Using saved position for {s}: ({}, {})", .{ character_name, saved_pos.x, saved_pos.y });
             return .{ .x = saved_pos.x, .y = saved_pos.y };
@@ -1866,17 +1919,17 @@ pub const Painter = struct {
         var pos = switch (cfg.layoutMode) {
             .Custom => blk: {
                 slog.debug("Custom layout mode, no saved position, using origin", .{});
-                break :blk config_mod.Position{ .x = cfg.startX, .y = cfg.startY };
+                break :blk config_mod.Position{ .x = scalePixels(cfg.startX, scale), .y = scalePixels(cfg.startY, scale) };
             },
             .Overlay => blk: {
                 slog.debug("Overlay mode, spawning thumbnail #{} at ({}, {})", .{ index, cfg.startX, cfg.startY });
-                break :blk config_mod.Position{ .x = cfg.startX, .y = cfg.startY };
+                break :blk config_mod.Position{ .x = scalePixels(cfg.startX, scale), .y = scalePixels(cfg.startY, scale) };
             },
-            .Grid => self.calculateGridPosition(index, thumb_width, thumb_height),
-            .VerticalStack => self.calculateStackPosition(index, thumb_width, thumb_height, true),
-            .HorizontalStack => self.calculateStackPosition(index, thumb_width, thumb_height, false),
-            .VerticalList => self.calculateListPosition(index, thumb_width, thumb_height, true),
-            .HorizontalList => self.calculateListPosition(index, thumb_width, thumb_height, false),
+            .Grid => self.calculateGridPosition(index, thumb_width, thumb_height, scale),
+            .VerticalStack => self.calculateStackPosition(index, thumb_width, thumb_height, true, scale),
+            .HorizontalStack => self.calculateStackPosition(index, thumb_width, thumb_height, false, scale),
+            .VerticalList => self.calculateListPosition(index, thumb_width, thumb_height, true, scale),
+            .HorizontalList => self.calculateListPosition(index, thumb_width, thumb_height, false, scale),
         };
 
         var bounds_for_clamping: ?win32.RECT = null;
@@ -1916,10 +1969,11 @@ pub const Painter = struct {
         index: usize,
         thumb_width: i32,
         thumb_height: i32,
+        scale: f32,
     ) config_mod.Position {
         const cfg = &self.config.display;
-        const spacing_x = cfg.getSpacingX();
-        const spacing_y = cfg.getSpacingY();
+        const spacing_x = scalePixels(cfg.getSpacingX(), scale);
+        const spacing_y = scalePixels(cfg.getSpacingY(), scale);
         const columns = cfg.gridColumns;
 
         var col: i32 = undefined;
@@ -1969,8 +2023,10 @@ pub const Painter = struct {
             },
         }
 
-        const x = col * (thumb_width + spacing_x) + cfg.startX;
-        const y = row * (thumb_height + spacing_y) + cfg.startY;
+        const start_x = scalePixels(cfg.startX, scale);
+        const start_y = scalePixels(cfg.startY, scale);
+        const x = col * (thumb_width + spacing_x) + start_x;
+        const y = row * (thumb_height + spacing_y) + start_y;
 
         slog.debug("Grid layout: thumbnail #{} at ({}, {}) [col={}, row={}]", .{ index, x, y, col, row });
         return .{ .x = x, .y = y };
@@ -1982,26 +2038,29 @@ pub const Painter = struct {
         thumb_width: i32,
         thumb_height: i32,
         is_vertical: bool,
+        scale: f32,
     ) config_mod.Position {
         const cfg = &self.config.display;
-        const offset = cfg.stackOffset;
+        const start_x = scalePixels(cfg.startX, scale);
+        const start_y = scalePixels(cfg.startY, scale);
+        const offset = scalePixels(cfg.stackOffset, scale);
         const idx = @as(i32, @intCast(index));
         const alignment = cfg.stackAlignment;
 
         if (is_vertical) {
             // Vertical stack - align on secondary axis (horizontal/X)
-            const y = cfg.startY + (idx * (thumb_height + offset));
-            var x = cfg.startX;
+            const y = start_y + (idx * (thumb_height + offset));
+            var x = start_x;
 
             switch (alignment) {
                 .TopLeft, .LeftCenter, .BottomLeft => {
-                    x = cfg.startX;
+                    x = start_x;
                 },
                 .TopCenter, .Center, .BottomCenter => {
-                    x = cfg.startX - @divTrunc(thumb_width, 2);
+                    x = start_x - @divTrunc(thumb_width, 2);
                 },
                 .TopRight, .RightCenter, .BottomRight => {
-                    x = cfg.startX - thumb_width;
+                    x = start_x - thumb_width;
                 },
             }
 
@@ -2009,18 +2068,18 @@ pub const Painter = struct {
             return .{ .x = x, .y = y };
         } else {
             // Horizontal stack - align on secondary axis (vertical/Y)
-            const x = cfg.startX + (idx * (thumb_width + offset));
-            var y = cfg.startY;
+            const x = start_x + (idx * (thumb_width + offset));
+            var y = start_y;
 
             switch (alignment) {
                 .TopLeft, .TopCenter, .TopRight => {
-                    y = cfg.startY;
+                    y = start_y;
                 },
                 .LeftCenter, .Center, .RightCenter => {
-                    y = cfg.startY - @divTrunc(thumb_height, 2);
+                    y = start_y - @divTrunc(thumb_height, 2);
                 },
                 .BottomLeft, .BottomCenter, .BottomRight => {
-                    y = cfg.startY - thumb_height;
+                    y = start_y - thumb_height;
                 },
             }
 
@@ -2035,18 +2094,21 @@ pub const Painter = struct {
         thumb_width: i32,
         thumb_height: i32,
         is_vertical: bool,
+        scale: f32,
     ) config_mod.Position {
         const cfg = &self.config.display;
-        const spacing_x = cfg.getSpacingX();
-        const spacing_y = cfg.getSpacingY();
+        const spacing_x = scalePixels(cfg.getSpacingX(), scale);
+        const spacing_y = scalePixels(cfg.getSpacingY(), scale);
+        const start_x = scalePixels(cfg.startX, scale);
+        const start_y = scalePixels(cfg.startY, scale);
 
         if (is_vertical) {
             // Vertical list (multiple columns, fill top-to-bottom first)
             const rows = cfg.gridRows orelse 999;
             const col = @as(i32, @intCast(index / rows));
             const row = @as(i32, @intCast(index % rows));
-            const x = col * (thumb_width + spacing_x) + cfg.startX;
-            const y = row * (thumb_height + spacing_y) + cfg.startY;
+            const x = col * (thumb_width + spacing_x) + start_x;
+            const y = row * (thumb_height + spacing_y) + start_y;
             slog.debug("Vertical list: thumbnail #{} at ({}, {}) [col={}, row={}]", .{ index, x, y, col, row });
             return .{ .x = x, .y = y };
         } else {
@@ -2054,8 +2116,8 @@ pub const Painter = struct {
             const cols = cfg.gridColumns;
             const col = @as(i32, @intCast(index % cols));
             const row = @as(i32, @intCast(index / cols));
-            const x = col * (thumb_width + spacing_x) + cfg.startX;
-            const y = row * (thumb_height + spacing_y) + cfg.startY;
+            const x = col * (thumb_width + spacing_x) + start_x;
+            const y = row * (thumb_height + spacing_y) + start_y;
             slog.debug("Horizontal list: thumbnail #{} at ({}, {}) [col={}, row={}]", .{ index, x, y, col, row });
             return .{ .x = x, .y = y };
         }
@@ -2192,10 +2254,16 @@ pub const Painter = struct {
         const char_name_z = try self.allocator.dupeZ(u8, eve_window.character_name);
         defer self.allocator.free(char_name_z);
 
-        const thumb_size = self.getThumbnailSize(eve_window.character_name);
+        const logical_size = self.getThumbnailSize(eve_window.character_name);
         const cfg = &self.config.display;
-        const monitor_bounds = if (cfg.monitorIndex) |monitor_idx| getMonitorBounds(monitor_idx, cfg.useMonitorWorkArea) else null;
-        const pos = self.calculateThumbnailPosition(eve_window.character_name, thumb_size.width, thumb_size.height, self.thumbnails.items.len, monitor_bounds);
+        const monitor_placement = resolveMonitorPlacement(cfg);
+        const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
+        const scale = dpiToScale(if (monitor_placement) |mp| getMonitorDpi(mp.monitor) else defaultDpi());
+        const thumb_size = .{
+            .width = scalePixels(logical_size.width, scale),
+            .height = scalePixels(logical_size.height, scale),
+        };
+        const pos = self.calculateThumbnailPosition(eve_window.character_name, thumb_size.width, thumb_size.height, self.thumbnails.items.len, monitor_bounds, scale);
 
         // Create thumbnail window (borderless, layered for transparency)
         const hwnd = win32.CreateWindowExA(
@@ -2472,7 +2540,9 @@ pub const Painter = struct {
         const overlay = &self.ghost_overlay_bitmap.?;
         clearPixels(overlay.pixels, overlay.width * overlay.height);
 
-        const font = self.getCachedFont(.main, self.config.thumbnail.characterNameFontName, self.config.thumbnail.characterNameFontSize, self.config.thumbnail.characterNameFontWeight) catch |err| {
+        const ghost_dpi = getWindowDpi(hwnd);
+        const ghost_scale = dpiToScale(ghost_dpi);
+        const font = self.getCachedFont(.main, ghost_dpi, self.config.thumbnail.characterNameFontName, scalePixels(self.config.thumbnail.characterNameFontSize, ghost_scale), self.config.thumbnail.characterNameFontWeight) catch |err| {
             slog.err("Failed to get font for ghost overlay: {}", .{err});
             return;
         };
@@ -2530,6 +2600,12 @@ pub const Painter = struct {
         }
     }
 };
+
+/// Scales a logical (96-DPI) pixel value to the given monitor scale factor, rounding to nearest.
+fn scalePixels(value: i32, scale: f32) i32 {
+    if (scale == 1.0) return value;
+    return @intFromFloat(@round(@as(f32, @floatFromInt(value)) * scale));
+}
 
 /// Clears all pixels to transparent via @memset on the typed slice.
 fn clearPixels(pixels: [*]u32, count: usize) void {
@@ -3000,8 +3076,12 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     }
 
     const painter = g_painter_ptr orelse return error.NoPainter;
+    const dpi = Painter.getWindowDpi(thumbnail.hwnd);
+    // Combat/mining/bounty font sizes bypass RenderSettings (see createRenderSettings), so they're scaled here instead.
+    const dpi_scale = Painter.dpiToScale(dpi);
     const font = try painter.getCachedFont(
         .main,
+        dpi,
         settings.character_name_font_name,
         settings.character_name_font_size,
         settings.character_name_font_weight,
@@ -3041,7 +3121,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     var system_text_dims: TextDimensions = .{ .width = 0, .height = 0 };
     var sys_font: ?win32.HFONT = null;
     if (settings.show_system_name) {
-        const sf = try painter.getCachedFont(.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
+        const sf = try painter.getCachedFont(.system_name, dpi, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
         sys_font = sf;
         const sys_font_changed = fontSettingsChanged(
             thumbnail.cached_sys_font_name,
@@ -3071,7 +3151,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     const has_notification_text = settings.notification_line_count > 0;
     var notif_font: ?win32.HFONT = null;
     if (settings.show_notifications and has_notification_text) {
-        const nf = try painter.getCachedFont(.notification, settings.notifications_font_name, settings.notifications_font_size, settings.notifications_font_weight);
+        const nf = try painter.getCachedFont(.notification, dpi, settings.notifications_font_name, settings.notifications_font_size, settings.notifications_font_weight);
         notif_font = nf;
         _ = win32.SelectObject(overlay.mem_dc, nf);
         var idx: usize = 0;
@@ -3086,7 +3166,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     var qg_badge_dims: TextDimensions = .{ .width = 0, .height = 0 };
     var qg_font: ?win32.HFONT = null;
     if (settings.show_quick_group_badge) {
-        const qf = try painter.getCachedFont(.quick_group_badge, settings.quick_group_badge_font_name, settings.quick_group_badge_font_size, settings.quick_group_badge_font_weight);
+        const qf = try painter.getCachedFont(.quick_group_badge, dpi, settings.quick_group_badge_font_name, settings.quick_group_badge_font_size, settings.quick_group_badge_font_weight);
         qg_font = qf;
         const qg_font_changed = fontSettingsChanged(
             thumbnail.cached_qg_font_name,
@@ -3227,7 +3307,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     if (config.combat.enabled and config.thumbnail.showText) {
         const combat_cfg = &config.combat;
         if (combat_cfg.show_incoming and thumbnail.has_dps_data and (thumbnail.last_incoming_dps == null or thumbnail.last_incoming_dps.? > 0)) {
-            const f = try painter.getCachedFont(.combat, combat_cfg.incoming_font_name, combat_cfg.incoming_font_size, combat_cfg.incoming_font_weight);
+            const f = try painter.getCachedFont(.combat, dpi, combat_cfg.incoming_font_name, scalePixels(combat_cfg.incoming_font_size, dpi_scale), combat_cfg.incoming_font_weight);
             dps_in_font = f;
             _ = win32.SelectObject(overlay.mem_dc, f);
             dps_in_text = if (thumbnail.last_incoming_dps) |dps|
@@ -3240,7 +3320,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
             _ = win32.SelectObject(overlay.mem_dc, font);
         }
         if (combat_cfg.show_outgoing and thumbnail.has_dps_data and (thumbnail.last_outgoing_dps == null or thumbnail.last_outgoing_dps.? > 0)) {
-            const f = try painter.getCachedFont(.combat_outgoing, combat_cfg.outgoing_font_name, combat_cfg.outgoing_font_size, combat_cfg.outgoing_font_weight);
+            const f = try painter.getCachedFont(.combat_outgoing, dpi, combat_cfg.outgoing_font_name, scalePixels(combat_cfg.outgoing_font_size, dpi_scale), combat_cfg.outgoing_font_weight);
             dps_out_font = f;
             _ = win32.SelectObject(overlay.mem_dc, f);
             dps_out_text = if (thumbnail.last_outgoing_dps) |dps|
@@ -3269,7 +3349,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     var mining_font: ?win32.HFONT = null;
     if (config.mining.enabled and config.thumbnail.showText and thumbnail.has_mining_data and (thumbnail.last_mining_rate == null or thumbnail.last_mining_rate.? > 0)) {
         const mining_cfg = &config.mining;
-        const mf = try painter.getCachedFont(.mining, mining_cfg.font_name, mining_cfg.font_size, mining_cfg.font_weight);
+        const mf = try painter.getCachedFont(.mining, dpi, mining_cfg.font_name, scalePixels(mining_cfg.font_size, dpi_scale), mining_cfg.font_weight);
         mining_font = mf;
         _ = win32.SelectObject(overlay.mem_dc, mf);
         if (thumbnail.last_mining_rate) |rate| {
@@ -3326,7 +3406,7 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     var bounty_font: ?win32.HFONT = null;
     if (config.bounty.enabled and config.thumbnail.showText and thumbnail.has_bounty_data and (thumbnail.last_bounty_isk_rate == null or thumbnail.last_bounty_isk_rate.? > 0)) {
         const bounty_cfg = &config.bounty;
-        const bf = try painter.getCachedFont(.bounty, bounty_cfg.font_name, bounty_cfg.font_size, bounty_cfg.font_weight);
+        const bf = try painter.getCachedFont(.bounty, dpi, bounty_cfg.font_name, scalePixels(bounty_cfg.font_size, dpi_scale), bounty_cfg.font_weight);
         bounty_font = bf;
         _ = win32.SelectObject(overlay.mem_dc, bf);
         const period_secs: f32 = if (bounty_cfg.isk_rate_unit == .hour) 3600.0 else 60.0;
@@ -3483,6 +3563,8 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
     const system_name = thumbnail.system_name;
     const cached_system_color = thumbnail.cached_system_color;
     const is_visible = thumbnail.visibility_state.isVisible();
+    // Read live rather than cached, so fonts/geometry track whichever monitor this window is on right now.
+    const dpi_scale = Painter.dpiToScale(Painter.getWindowDpi(thumbnail.hwnd));
 
     const state_cfg = cfg.thumbnail.getStateConfig(state);
 
@@ -3597,8 +3679,10 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
     }
 
     const char_size = cfg.getCharacterSize(character_name);
-    const overlay_width = if (char_size) |cs| cs.width orelse cfg.thumbnail.width else cfg.thumbnail.width;
-    const overlay_height = if (char_size) |cs| cs.height orelse cfg.thumbnail.height else cfg.thumbnail.height;
+    const logical_width = if (char_size) |cs| cs.width orelse cfg.thumbnail.width else cfg.thumbnail.width;
+    const logical_height = if (char_size) |cs| cs.height orelse cfg.thumbnail.height else cfg.thumbnail.height;
+    const overlay_width = scalePixels(logical_width, dpi_scale);
+    const overlay_height = scalePixels(logical_height, dpi_scale);
 
     // Builds the visible stack, newest first: each entry keeps its own suppress_when_focused/text_color_override,
     // so different notification types can be filtered and colored independently within the same stack.
@@ -3634,7 +3718,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .mining_bg_color = resolveTextBgColor(state_cfg, cfg.mining.bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
         .bounty_bg_color = resolveTextBgColor(state_cfg, cfg.bounty.bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
         .character_name_font_name = cfg.thumbnail.characterNameFontName,
-        .character_name_font_size = cfg.thumbnail.characterNameFontSize,
+        .character_name_font_size = scalePixels(cfg.thumbnail.characterNameFontSize, dpi_scale),
         .character_name_font_weight = cfg.thumbnail.characterNameFontWeight,
         .character_name_position = cfg.thumbnail.characterNamePosition,
         .character_name_offset_x = cfg.thumbnail.characterNameOffsetX,
@@ -3643,7 +3727,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .system_name_offset_x = cfg.thumbnail.systemNameOffsetX,
         .system_name_offset_y = cfg.thumbnail.systemNameOffsetY,
         .system_name_font_name = cfg.thumbnail.systemNameFontName,
-        .system_name_font_size = cfg.thumbnail.systemNameFontSize,
+        .system_name_font_size = scalePixels(cfg.thumbnail.systemNameFontSize, dpi_scale),
         .system_name_font_weight = cfg.thumbnail.systemNameFontWeight,
         .show_notifications = effective_show_notifications,
         .notification_lines = notification_lines,
@@ -3652,7 +3736,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .notifications_offset_x = cfg.thumbnail.notifications.offset_x,
         .notifications_offset_y = cfg.thumbnail.notifications.offset_y,
         .notifications_font_name = cfg.thumbnail.notifications.font_name,
-        .notifications_font_size = cfg.thumbnail.notifications.font_size,
+        .notifications_font_size = scalePixels(cfg.thumbnail.notifications.font_size, dpi_scale),
         .notifications_font_weight = cfg.thumbnail.notifications.font_weight,
         .show_border = effective_show_border,
         .border_width = state_cfg.getBorderWidth(base_border_width),
@@ -3674,7 +3758,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .quick_group_badge_offset_x = cfg.thumbnail.quickGroupBadgeOffsetX,
         .quick_group_badge_offset_y = cfg.thumbnail.quickGroupBadgeOffsetY,
         .quick_group_badge_font_name = cfg.thumbnail.quickGroupBadgeFontName,
-        .quick_group_badge_font_size = cfg.thumbnail.quickGroupBadgeFontSize,
+        .quick_group_badge_font_size = scalePixels(cfg.thumbnail.quickGroupBadgeFontSize, dpi_scale),
         .quick_group_badge_font_weight = cfg.thumbnail.quickGroupBadgeFontWeight,
         // visibility_state and per-character hideThumbnail take absolute priority over per-state showThumbnail config.
         .show_thumbnail = if (!is_visible or char_hidden) false else state_cfg.getShowThumbnail(base_show_thumbnail),
