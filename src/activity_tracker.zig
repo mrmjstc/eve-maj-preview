@@ -504,16 +504,6 @@ pub const MiningTracker = struct {
         return 0.0;
     }
 
-    /// Session totals (m3, ISK) for character_name since their window was created; zero if never mined this session.
-    pub fn getTotals(self: *MiningTracker, character_name: []const u8) struct { m3: f64, isk: f64 } {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
-        if (self.base.windows.get(character_name)) |window| {
-            return .{ .m3 = window.total_m3, .isk = window.total_isk };
-        }
-        return .{ .m3 = 0, .isk = 0 };
-    }
-
     /// Re-evaluate all windows against now_ms. Returns true if any rate changed by >= 0.1.
     pub fn refreshAll(self: *MiningTracker, now_ms: i64) bool {
         return self.base.refreshAll(now_ms);
@@ -681,16 +671,6 @@ pub const BountyTracker = struct {
             return window.last_isk_per_sec;
         }
         return 0.0;
-    }
-
-    /// Session bounty ISK total for character_name since their window was created; zero if never paid out this session.
-    pub fn getTotal(self: *BountyTracker, character_name: []const u8) f64 {
-        self.base.mutex.lock();
-        defer self.base.mutex.unlock();
-        if (self.base.windows.get(character_name)) |window| {
-            return window.total_isk;
-        }
-        return 0;
     }
 
     /// Re-evaluate all windows against now_ms. Returns true if any rate changed by >= 0.1.
