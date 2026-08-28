@@ -52,8 +52,8 @@ const SCAN_INTERVAL_TICKS: u32 = 20;
 var g_last_dps_update_ms: i64 = 0;
 var g_last_mining_update_ms: i64 = 0;
 var g_last_bounty_update_ms: i64 = 0;
-var g_last_travel_check_ms: i64 = 0;
-const TRAVEL_CHECK_INTERVAL_MS: i64 = 2000;
+var g_last_travel_check_ms: win32.Ticks = .{};
+const TRAVEL_CHECK_INTERVAL_MS: u64 = 2000;
 
 // Reused across timer ticks to avoid a per-tick alloc; borrowed slices only, no ownership.
 var g_chatlog_char_names: std.ArrayList([]const u8) = .empty;
@@ -249,7 +249,9 @@ fn onTimerTick() void {
         };
     }
 
-    const now_ms = win32.nowMs(g_io);
+    // Unwrapped to i64 below since activity_tracker.zig's windows still do plain i64 arithmetic.
+    const now = win32.Ticks.now();
+    const now_ms: i64 = @intCast(now.ms);
 
     if (g_combat_tracker) |tracker| {
         const interval_ms: i64 = @intCast(g_config.combat.update_interval_ms);
@@ -291,9 +293,9 @@ fn onTimerTick() void {
     }
 
     if (g_painter) |painter_ptr| {
-        if (now_ms - g_last_travel_check_ms >= TRAVEL_CHECK_INTERVAL_MS) {
-            g_last_travel_check_ms = now_ms;
-            painter_ptr.checkTravelLeftBehind(now_ms);
+        if (now.elapsedSince(g_last_travel_check_ms) >= TRAVEL_CHECK_INTERVAL_MS) {
+            g_last_travel_check_ms = now;
+            painter_ptr.checkTravelLeftBehind(now);
         }
     }
 }

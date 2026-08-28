@@ -119,6 +119,11 @@ const SCAN_CHUNK_SIZE = 8192;
 /// synchronously on the main thread by default, so it's bounded, not unbounded.
 const MAX_BACKWARD_SCAN_BYTES: u64 = 8 * 1024 * 1024;
 
+/// win32.Ticks unwrapped to i64, for activity trackers' plain integer arithmetic.
+fn trackerNowMs() i64 {
+    return @intCast(win32.Ticks.now().ms);
+}
+
 /// Maximum size for partial line buffer (combat logs with color tags can be long)
 const MAX_PARTIAL_LINE_SIZE = 1024;
 
@@ -176,7 +181,7 @@ pub const ChatlogMonitor = struct {
     idle_poll_threshold: u32 = 20,
     max_poll_multiplier: u8 = 8,
     poll_interval_ms: u32 = 50,
-    last_sync_poll_ms: i64 = 0,
+    last_sync_poll_ms: win32.Ticks = .{},
     pending_scan_index: usize = 0,
     pending_chatlog_signaled: bool = false,
     pending_gamelog_signaled: bool = false,
@@ -220,7 +225,7 @@ pub const ChatlogMonitor = struct {
         monitor.bounty_tracker = null;
         monitor.idle_poll_threshold = idle_poll_threshold;
         monitor.max_poll_multiplier = max_poll_multiplier;
-        monitor.last_sync_poll_ms = 0;
+        monitor.last_sync_poll_ms = .{};
         monitor.pending_scan_index = 0;
         monitor.pending_chatlog_signaled = false;
         monitor.pending_gamelog_signaled = false;
@@ -725,10 +730,9 @@ pub const ChatlogMonitor = struct {
         // In Phase 1 (synchronous mode), handle I/O directly on main thread
         if (!self.threading_enabled) {
             // pollLogFiles()'s per-file backoff assumes fixed-interval calls, which this UI-tick-driven path doesn't guarantee.
-            const now_ms = win32.nowMs(self.io);
-            const interval_ms: i64 = @intCast(self.poll_interval_ms);
-            if (now_ms - self.last_sync_poll_ms >= interval_ms) {
-                self.last_sync_poll_ms = now_ms;
+            const now = win32.Ticks.now();
+            if (now.elapsedSince(self.last_sync_poll_ms) >= self.poll_interval_ms) {
+                self.last_sync_poll_ms = now;
                 try self.pollLogFiles();
             }
 
@@ -1314,7 +1318,7 @@ pub const ChatlogMonitor = struct {
             if (activity_mod.parseCombatLine(stripped_text)) |parsed| {
                 // Weapon-filtered incoming hits still count toward DPS stats but shouldn't retrigger the Taking Damage alert (see CombatWindow.addEntry).
                 const counts_for_alert = !activity_mod.isWeaponExcluded(parsed.weapon, self.damage_alert_excluded_weapons);
-                tracker.addEntry(state.character_name, parsed.amount, parsed.is_incoming, win32.nowMs(self.io), counts_for_alert) catch |err| {
+                tracker.addEntry(state.character_name, parsed.amount, parsed.is_incoming, trackerNowMs(), counts_for_alert) catch |err| {
                     slog.warn("Failed to record combat entry for {s}: {}", .{ state.character_name, err });
                 };
             }
@@ -1348,7 +1352,7 @@ pub const ChatlogMonitor = struct {
         const amount_f: f32 = @floatFromInt(parsed.amount);
         const m3 = amount_f * @as(f32, @floatCast(volume_per_unit));
         const isk = amount_f * @as(f32, @floatCast(price_per_unit));
-        tracker.addEntry(state.character_name, m3, isk, win32.nowMs(self.io)) catch |err| {
+        tracker.addEntry(state.character_name, m3, isk, trackerNowMs()) catch |err| {
             slog.warn("Failed to record mining entry for {s}: {}", .{ state.character_name, err });
         };
     }
@@ -1356,7 +1360,7 @@ pub const ChatlogMonitor = struct {
     fn handleBountyEvent(self: *ChatlogMonitor, state: *LogFileState, event_text: []const u8) void {
         const tracker = self.bounty_tracker orelse return;
         const isk = activity_mod.parseBountyLine(event_text) orelse return;
-        tracker.addEntry(state.character_name, isk, win32.nowMs(self.io)) catch |err| {
+        tracker.addEntry(state.character_name, isk, trackerNowMs()) catch |err| {
             slog.warn("Failed to record bounty entry for {s}: {}", .{ state.character_name, err });
         };
     }

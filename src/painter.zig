@@ -32,7 +32,7 @@ pub const ThumbnailState = state_mod.ThumbnailState;
 pub const ActiveNotification = struct {
     text: []const u8,
     notification_type: types.NotificationType,
-    start_time: u64,
+    start_time: win32.Ticks,
     duration_ms: u32,
     suppress_when_focused: bool,
     suppress_when_clicked: bool,
@@ -53,7 +53,7 @@ pub const NotificationHistoryEntry = struct {
     character_name_len: u8 = 0,
     text_buf: [96]u8 = undefined,
     text_len: u8 = 0,
-    timestamp_ms: u64 = 0,
+    timestamp_ms: win32.Ticks = .{},
 
     pub fn characterName(self: *const NotificationHistoryEntry) []const u8 {
         return self.character_name_buf[0..self.character_name_len];
@@ -78,9 +78,9 @@ const NOTIFICATION_FLASH_CYCLES: u64 = 4;
 const NOTIFICATION_FLASH_TOTAL_MS: u64 = NOTIFICATION_FLASH_PHASE_MS * NOTIFICATION_FLASH_CYCLES * 2;
 
 /// Whether a flashing notification's border should currently be hidden; returns false once the flash sequence has finished and the border settles steady-on.
-fn isNotificationFlashOff(notif: ActiveNotification, now: u64) bool {
+fn isNotificationFlashOff(notif: ActiveNotification, now: win32.Ticks) bool {
     if (!notif.show_border or !notif.flash_border) return false;
-    const elapsed = now - notif.start_time;
+    const elapsed = now.elapsedSince(notif.start_time);
     if (elapsed >= NOTIFICATION_FLASH_TOTAL_MS) return false;
     const phase = (elapsed / NOTIFICATION_FLASH_PHASE_MS) % 2;
     return phase == 1;
@@ -183,15 +183,15 @@ pub const ThumbnailWindow = struct {
     system_name: []const u8,
     // In-game timestamp of the event that set system_name (YYYYMMDD*1000000+HHMMSS); 0 = untimestamped source (e.g. live tailing), which always applies.
     system_name_event_ts: u64 = 0,
-    // Wall-clock ms of last stargate/conduit jump; 0 = hasn't jumped this session.
-    last_jump_ms: i64 = 0,
+    // Tick of last stargate/conduit jump; zero = hasn't jumped this session.
+    last_jump_ms: win32.Ticks = .{},
     // Guards the left-behind alert to one-per-episode; cleared on jump.
     travel_alert_fired: bool = false,
     // Packed newest-first at the front (no gaps); see Painter.pushNotification.
     active_notifications: [MAX_STACKED_NOTIFICATIONS]?ActiveNotification = .{@as(?ActiveNotification, null)} ** MAX_STACKED_NOTIFICATIONS,
-    last_click_time: u64 = 0,
-    // GetTickCount64() of the last notification actually shown per type; suppressed attempts don't update this, so throttle_ms anchors to the last one actually displayed.
-    last_notification_time_by_type: std.enums.EnumArray(types.NotificationType, u64) = .initFill(0),
+    last_click_time: win32.Ticks = .{},
+    // Tick of the last notification actually shown per type; suppressed attempts don't update this, so throttle_ms anchors to the last one actually displayed.
+    last_notification_time_by_type: std.enums.EnumArray(types.NotificationType, win32.Ticks) = .initFill(.{}),
     is_excluded_from_cycle: bool = false,
     needs_render: bool = false,
     win32_enabled: bool = true,
@@ -213,7 +213,7 @@ pub const ThumbnailWindow = struct {
 
     visibility_state: state_mod.VisibilityState = .Visible,
     /// When checkAutoMinimize's delay should count from; refreshed every tick this thumbnail is Active or Minimized, left untouched otherwise so its frozen value is the moment it last became eligible.
-    inactive_since: i64 = 0,
+    inactive_since: win32.Ticks = .{},
     /// Edge-detector so a minimize/restore with no accompanying focus change still marks this dirty for repaint.
     was_minimized: bool = false,
 
@@ -308,7 +308,7 @@ var g_window_class_registered: bool = false;
 /// One entry in the "recently notified" FIFO queue; owns a copy of the name since it must outlive ThumbnailWindow.character_name, which is freed on window close.
 const NotifiedCharacterEntry = struct {
     character_name: []const u8,
-    notified_at_ms: u64,
+    notified_at_ms: win32.Ticks,
 };
 
 /// One saved-position outline for the drag-time ghost overlay; `names` is the comma-joined list of every character sharing that exact rect.
@@ -330,7 +330,7 @@ pub const Painter = struct {
     thumbnail_hwnd_to_index: std.AutoHashMap(win32.HWND, usize),
     // thumbnail.text_hwnd → index, for O(1) lookups.
     text_hwnd_to_index: std.AutoHashMap(win32.HWND, usize),
-    last_hwnd_index_rebuild: u64 = 0,
+    last_hwnd_index_rebuild: win32.Ticks = .{},
     instance: win32.HINSTANCE,
     config: *config_mod.Config,
     focus_event_hook: ?win32.HANDLE = null,
@@ -736,9 +736,9 @@ pub const Painter = struct {
 
     /// Rebuilds all HWND → index mappings; call after removing thumbnails to keep indices consistent. `force` bypasses the rate limit when the caller needs a correct index immediately.
     fn rebuildHwndIndex(self: *Painter, force: bool) void {
-        const now = win32.GetTickCount64();
-        if (!force and now - self.last_hwnd_index_rebuild < 100) {
-            slog.debug("Skipping HWND index rebuild (rate limited: {}ms since last rebuild)", .{now - self.last_hwnd_index_rebuild});
+        const now = win32.Ticks.now();
+        if (!force and now.elapsedSince(self.last_hwnd_index_rebuild) < 100) {
+            slog.debug("Skipping HWND index rebuild (rate limited: {}ms since last rebuild)", .{now.elapsedSince(self.last_hwnd_index_rebuild)});
             return;
         }
 
@@ -859,7 +859,7 @@ pub const Painter = struct {
 
         self.reconcileThumbnailStates(win32.GetForegroundWindow());
 
-        const now = win32.nowMs(self.io);
+        const now = win32.Ticks.now();
         for (self.thumbnails.items) |*thumbnail| {
             if (input.isThumbnailDragging(thumbnail)) continue;
 
@@ -891,8 +891,8 @@ pub const Painter = struct {
         if (!self.config.autoMinimize.enabled) return;
         if (self.thumbnails.items.len == 0) return;
 
-        const now = win32.nowMs(self.io);
-        const delay_ms: i64 = self.config.autoMinimize.delayMs;
+        const now = win32.Ticks.now();
+        const delay_ms: u64 = self.config.autoMinimize.delayMs;
         var minimized_any = false;
 
         // active_source_hwnd is the literal foreground window, so it's non-null even on a non-EVE app.
@@ -905,13 +905,13 @@ pub const Painter = struct {
             if (self.config.autoMinimize.exemptLastActiveOnFocusLoss and
                 !eve_has_focus and
                 thumbnail.source_hwnd == self.last_focused_source_hwnd) continue;
-            if (now - thumbnail.inactive_since < delay_ms) continue;
+            if (now.elapsedSince(thumbnail.inactive_since) < delay_ms) continue;
             if (self.config.isExcludedFromMinimize(thumbnail.character_name)) continue;
             if (!win32.isWindow(thumbnail.source_hwnd)) continue;
 
             _ = win32.ShowWindowAsync(thumbnail.source_hwnd, win32.SW_FORCEMINIMIZE);
             minimized_any = true;
-            slog.info("Auto-minimized {s} (inactive {}ms)", .{ thumbnail.character_name, now - thumbnail.inactive_since });
+            slog.info("Auto-minimized {s} (inactive {}ms)", .{ thumbnail.character_name, now.elapsedSince(thumbnail.inactive_since) });
         }
 
         if (minimized_any) {
@@ -1030,7 +1030,7 @@ pub const Painter = struct {
         slog.debug("System '{s}' color resolved to: 0x{X:0>6}", .{ system_name, thumbnail.cached_system_color & 0xFFFFFF });
 
         if (is_jump) {
-            thumbnail.last_jump_ms = win32.nowMs(self.io);
+            thumbnail.last_jump_ms = win32.Ticks.now();
             thumbnail.travel_alert_fired = false;
         }
 
@@ -1056,25 +1056,26 @@ pub const Painter = struct {
                 return;
             }
 
+            const now = win32.Ticks.now();
+
             if (type_config.suppress_when_clicked) {
-                const now = win32.GetTickCount64();
-                if (now - thumbnail.last_click_time < self.config.thumbnail.notifications.suppress_click_duration_ms) {
+                if (now.elapsedSince(thumbnail.last_click_time) < self.config.thumbnail.notifications.suppress_click_duration_ms) {
                     return;
                 }
             }
 
             if (type_config.throttle_ms > 0) {
                 const last = thumbnail.last_notification_time_by_type.get(notification_type);
-                if (last != 0 and win32.GetTickCount64() - last < type_config.throttle_ms) {
+                if (!last.isZero() and now.elapsedSince(last) < type_config.throttle_ms) {
                     return;
                 }
             }
-            thumbnail.last_notification_time_by_type.set(notification_type, win32.GetTickCount64());
+            thumbnail.last_notification_time_by_type.set(notification_type, now);
 
             self.pushNotification(thumbnail, .{
                 .text = try self.allocator.dupe(u8, notification_text),
                 .notification_type = notification_type,
-                .start_time = win32.GetTickCount64(),
+                .start_time = now,
                 .duration_ms = type_config.duration_ms,
                 .suppress_when_focused = type_config.suppress_when_focused,
                 .suppress_when_clicked = type_config.suppress_when_clicked,
@@ -1112,31 +1113,31 @@ pub const Painter = struct {
     }
 
     /// Flags characters behind the group's current system by more than config.travel.window_seconds.
-    pub fn checkTravelLeftBehind(self: *Painter, now_ms: i64) void {
+    pub fn checkTravelLeftBehind(self: *Painter, now: win32.Ticks) void {
         const cfg = self.config.travel;
         if (!cfg.enabled) return;
 
         var eligible_count: usize = 0;
         for (self.thumbnails.items) |*thumb| {
-            if (thumb.last_jump_ms == 0 or isCharacterTravelExcluded(thumb.character_name)) continue;
+            if (thumb.last_jump_ms.isZero() or isCharacterTravelExcluded(thumb.character_name)) continue;
             eligible_count += 1;
         }
         if (eligible_count < 2) return;
 
         var group_system: []const u8 = "";
         var group_count: usize = 0;
-        var group_arrival_ms: i64 = 0;
+        var group_arrival_ms: win32.Ticks = .{};
 
         for (self.thumbnails.items) |*candidate| {
-            if (candidate.last_jump_ms == 0 or isCharacterTravelExcluded(candidate.character_name)) continue;
+            if (candidate.last_jump_ms.isZero() or isCharacterTravelExcluded(candidate.character_name)) continue;
 
             var count: usize = 0;
-            var arrival_ms: i64 = 0;
+            var arrival_ms: win32.Ticks = .{};
             for (self.thumbnails.items) |*other| {
-                if (other.last_jump_ms == 0 or isCharacterTravelExcluded(other.character_name)) continue;
+                if (other.last_jump_ms.isZero() or isCharacterTravelExcluded(other.character_name)) continue;
                 if (!std.mem.eql(u8, other.system_name, candidate.system_name)) continue;
                 count += 1;
-                if (other.last_jump_ms > arrival_ms) arrival_ms = other.last_jump_ms;
+                if (other.last_jump_ms.ms > arrival_ms.ms) arrival_ms = other.last_jump_ms;
             }
 
             if (count > group_count) {
@@ -1153,11 +1154,11 @@ pub const Painter = struct {
         };
         if (group_count < required) return;
 
-        const window_ms: i64 = @as(i64, cfg.window_seconds) * 1000;
-        if (now_ms - group_arrival_ms < window_ms) return;
+        const window_ms: u64 = @as(u64, cfg.window_seconds) * 1000;
+        if (now.elapsedSince(group_arrival_ms) < window_ms) return;
 
         for (self.thumbnails.items) |*thumb| {
-            if (thumb.last_jump_ms == 0 or isCharacterTravelExcluded(thumb.character_name)) continue;
+            if (thumb.last_jump_ms.isZero() or isCharacterTravelExcluded(thumb.character_name)) continue;
             if (std.mem.eql(u8, thumb.system_name, group_system)) continue;
             if (thumb.travel_alert_fired) continue;
 
@@ -1230,7 +1231,7 @@ pub const Painter = struct {
 
     /// Pushes/bumps character_name into the "recently notified" FIFO used by the cycle-to-notified-character hotkey; re-notifying bumps to the back instead of duplicating.
     fn trackNotifiedCharacter(self: *Painter, character_name: []const u8) void {
-        const now = win32.GetTickCount64();
+        const now = win32.Ticks.now();
 
         for (self.notified_queue.items, 0..) |entry, i| {
             if (std.mem.eql(u8, entry.character_name, character_name)) {
@@ -1259,12 +1260,12 @@ pub const Painter = struct {
     /// Caller-owned snapshot of "recently notified" entries within retention_ms, oldest first; returned strings borrow Painter's storage and are valid only until the next trackNotifiedCharacter call.
     /// Caller frees the returned ArrayList itself (not the strings) with out_allocator.
     pub fn getNotifiedCharacterNames(self: *Painter, out_allocator: std.mem.Allocator, retention_ms: u64) !std.ArrayList([]const u8) {
-        const now = win32.GetTickCount64();
+        const now = win32.Ticks.now();
         var result: std.ArrayList([]const u8) = .empty;
         errdefer result.deinit(out_allocator);
 
         for (self.notified_queue.items) |entry| {
-            if (now - entry.notified_at_ms <= retention_ms) {
+            if (now.elapsedSince(entry.notified_at_ms) <= retention_ms) {
                 try result.append(out_allocator, entry.character_name);
             }
         }
@@ -1456,7 +1457,7 @@ pub const Painter = struct {
 
     /// Clear expired notifications (call from update loop)
     pub fn updateNotifications(self: *Painter) void {
-        const now = win32.GetTickCount64();
+        const now = win32.Ticks.now();
 
         for (self.thumbnails.items) |*thumbnail| {
             var write_idx: usize = 0;
@@ -1465,7 +1466,7 @@ pub const Painter = struct {
             while (read_idx < MAX_STACKED_NOTIFICATIONS) : (read_idx += 1) {
                 const notif = thumbnail.active_notifications[read_idx] orelse break;
                 // duration_ms == 0 means the notification is permanent.
-                if (notif.duration_ms > 0 and (now - notif.start_time) >= notif.duration_ms) {
+                if (notif.duration_ms > 0 and now.elapsedSince(notif.start_time) >= notif.duration_ms) {
                     self.allocator.free(notif.text);
                     any_expired = true;
                     continue;
@@ -1483,7 +1484,7 @@ pub const Painter = struct {
 
             // Force a render each tick so the newest entry's alternating on/off flash phases actually paint.
             if (thumbnail.active_notifications[0]) |notif| {
-                if (notif.flash_border and (now - notif.start_time) < NOTIFICATION_FLASH_TOTAL_MS) {
+                if (notif.flash_border and now.elapsedSince(notif.start_time) < NOTIFICATION_FLASH_TOTAL_MS) {
                     thumbnail.needs_render = true;
                 }
             }
@@ -1711,7 +1712,7 @@ pub const Painter = struct {
 
     /// Appends a notification to the history ring buffer (overwrites the oldest entry once full); called from showNotification for every notification actually shown.
     fn pushNotificationHistory(self: *Painter, source_hwnd: win32.HWND, character_name: []const u8, notification_text: []const u8, notification_type: types.NotificationType) void {
-        var entry: NotificationHistoryEntry = .{ .source_hwnd = source_hwnd, .notification_type = notification_type, .timestamp_ms = win32.GetTickCount64() };
+        var entry: NotificationHistoryEntry = .{ .source_hwnd = source_hwnd, .notification_type = notification_type, .timestamp_ms = win32.Ticks.now() };
 
         const name_n = @min(character_name.len, entry.character_name_buf.len);
         @memcpy(entry.character_name_buf[0..name_n], character_name[0..name_n]);
@@ -2239,7 +2240,7 @@ pub const Painter = struct {
                 .cached_display_name = cache_fields.display_name,
                 .cached_active_border_override = cache_fields.active_border_override,
                 .cached_quick_group_label = strings.quick_group_label,
-                .inactive_since = win32.nowMs(self.io),
+                .inactive_since = win32.Ticks.now(),
                 .visibility_state = initial_visibility,
                 .is_excluded_from_cycle = is_excluded,
                 .win32_enabled = false,
@@ -2375,7 +2376,7 @@ pub const Painter = struct {
             .cached_display_name = cache_fields.display_name,
             .cached_active_border_override = cache_fields.active_border_override,
             .cached_quick_group_label = strings.quick_group_label,
-            .inactive_since = win32.nowMs(self.io),
+            .inactive_since = win32.Ticks.now(),
             .visibility_state = initial_visibility,
             .is_excluded_from_cycle = is_excluded,
         };
@@ -3617,7 +3618,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
 
     // Blinks the border off for alternating phases at Alert start (see isNotificationFlashOff), skipped for the focused character for the same reason as notif_hides_border.
     const notif_flash_hides_border = state == .Alert and !notif_on_focused_char and
-        if (thumbnail.active_notifications[0]) |notif| isNotificationFlashOff(notif, win32.GetTickCount64()) else false;
+        if (thumbnail.active_notifications[0]) |notif| isNotificationFlashOff(notif, win32.Ticks.now()) else false;
 
     const effective_show_border = if (should_hide_all or notif_hides_border or notif_flash_hides_border)
         false

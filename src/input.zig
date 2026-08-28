@@ -142,7 +142,7 @@ fn handleThumbnailClickWithAnimation(source_hwnd: win32.HWND, animation_style: t
     // Dismiss any active notification with suppress_when_clicked set; must run after state is reconciled above.
     if (g_painter_ptr) |painter| {
         if (painter.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
-            thumbnail.last_click_time = win32.GetTickCount64();
+            thumbnail.last_click_time = win32.Ticks.now();
 
             if (painter.dismissClickSuppressedNotifications(thumbnail)) {
                 painter.renderThumbnail(thumbnail) catch |err| {
@@ -277,7 +277,7 @@ pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
                 return;
             },
             .notification_type = .Generic,
-            .start_time = win32.GetTickCount64(),
+            .start_time = win32.Ticks.now(),
             .duration_ms = 5000,
             .suppress_when_focused = false,
             .suppress_when_clicked = false,

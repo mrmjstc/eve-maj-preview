@@ -889,10 +889,24 @@ pub fn selfExeDirPath(buf: []u8) ![]const u8 {
     return std.fs.path.dirname(full_path) orelse return error.NoDirname;
 }
 
-/// Current wall-clock time in milliseconds since the Unix epoch. Replaces std.time.milliTimestamp, removed in Zig 0.16.
-pub fn nowMs(io: std.Io) i64 {
-    return std.Io.Timestamp.now(io, .real).toMilliseconds();
-}
+/// Monotonic milliseconds since boot (GetTickCount64) — for elapsed-time/duration comparisons only, never wall-clock/calendar time.
+/// A distinct type (not a bare u64/i64) so a timestamp from a different clock source can't be silently compared against one of these.
+pub const Ticks = struct {
+    ms: u64 = 0,
+
+    pub fn now() Ticks {
+        return .{ .ms = GetTickCount64() };
+    }
+
+    /// Elapsed ms from `earlier` to `self`; saturates at 0 rather than underflowing if `earlier` is somehow later.
+    pub fn elapsedSince(self: Ticks, earlier: Ticks) u64 {
+        return self.ms -| earlier.ms;
+    }
+
+    pub fn isZero(self: Ticks) bool {
+        return self.ms == 0;
+    }
+};
 
 pub inline fn isWindowVisible(hwnd: HWND) bool {
     return IsWindowVisible(hwnd) != 0;
