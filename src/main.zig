@@ -1,5 +1,6 @@
 const std = @import("std");
 const win32 = @import("win32.zig");
+const gdi_overlay = @import("gdi_overlay.zig");
 const scout = @import("scout.zig");
 const painter = @import("painter.zig");
 const input = @import("input.zig");
@@ -367,6 +368,59 @@ fn createTracker(comptime T: type, allocator: std.mem.Allocator, io: std.Io, win
     return ptr;
 }
 
+/// Logs only when `kind` is given, so a mainImpl teardown defer racing process exit can opt out.
+fn destroyTracker(comptime T: type, tracker_global: *?*T, kind: ?[]const u8) void {
+    if (tracker_global.*) |tracker| {
+        tracker.deinit();
+        g_allocator.destroy(tracker);
+        tracker_global.* = null;
+        if (kind) |k| slog.debug("Cleaned up {s} tracker", .{k});
+    }
+}
+
+/// Startup path: creates and wires the T tracker if enabled, propagating creation failure (fail-fast).
+fn createAndWireTracker(
+    comptime T: type,
+    comptime monitor_field: []const u8,
+    tracker_global: *?*T,
+    enabled: bool,
+    window_seconds: u32,
+    label: []const u8,
+) !void {
+    if (!enabled) return;
+    tracker_global.* = try createTracker(T, g_allocator, g_io, window_seconds);
+    if (g_chatlog_monitor) |monitor| @field(monitor, monitor_field) = tracker_global.*.?;
+    slog.debug("{s} tracking enabled ({d}s window)", .{ label, window_seconds });
+}
+
+/// Like createAndWireTracker, but fail-soft: a reload shouldn't abort the app over one tracker. Returns whether it's now active.
+fn recreateTracker(
+    comptime T: type,
+    comptime monitor_field: []const u8,
+    tracker_global: *?*T,
+    enabled: bool,
+    window_seconds: u32,
+    label: []const u8,
+    lower_name: []const u8,
+) bool {
+    if (!enabled) {
+        if (g_chatlog_monitor) |monitor| @field(monitor, monitor_field) = null;
+        slog.debug("{s} tracking disabled in new profile", .{label});
+        return false;
+    }
+    if (createTracker(T, g_allocator, g_io, window_seconds)) |tracker_ptr| {
+        tracker_global.* = tracker_ptr;
+        if (g_chatlog_monitor) |monitor| @field(monitor, monitor_field) = tracker_ptr;
+        slog.debug("{s} tracking enabled ({d}s window)", .{ label, window_seconds });
+        return true;
+    } else |err| {
+        slog.err("Failed to create {s} tracker: {}", .{ lower_name, err });
+        tracker_global.* = null;
+        if (g_chatlog_monitor) |monitor| @field(monitor, monitor_field) = null;
+        return false;
+    }
+}
+
 fn consoleCtrlHandler(ctrl_type: win32.DWORD) callconv(.c) win32.BOOL {
     switch (ctrl_type) {
         win32.CTRL_C_EVENT, win32.CTRL_BREAK_EVENT, win32.CTRL_CLOSE_EVENT, win32.CTRL_LOGOFF_EVENT, win32.CTRL_SHUTDOWN_EVENT => {
@@ -651,60 +705,17 @@ fn mainImpl(init: std.process.Init) !void {
         slog.info("Chatlog monitoring disabled", .{});
     }
 
+    try createAndWireTracker(activity_mod.CombatTracker, "combat_tracker", &g_combat_tracker, g_config.combat.enabled, g_config.combat.window_seconds, "Combat DPS");
     if (g_config.combat.enabled) {
-        g_combat_tracker = try createTracker(activity_mod.CombatTracker, g_allocator, g_io, g_config.combat.window_seconds);
-
-        if (g_chatlog_monitor) |monitor| {
-            monitor.combat_tracker = g_combat_tracker.?;
-            monitor.damage_alert_excluded_weapons = g_config.combat.damage_alert_excluded_weapons;
-        }
-
-        slog.debug("Combat DPS tracking enabled ({d}s window)", .{g_config.combat.window_seconds});
+        if (g_chatlog_monitor) |monitor| monitor.damage_alert_excluded_weapons = g_config.combat.damage_alert_excluded_weapons;
     }
+    defer destroyTracker(activity_mod.CombatTracker, &g_combat_tracker, null);
 
-    defer {
-        if (g_combat_tracker) |tracker| {
-            tracker.deinit();
-            g_allocator.destroy(tracker);
-            g_combat_tracker = null;
-        }
-    }
+    try createAndWireTracker(activity_mod.MiningTracker, "mining_tracker", &g_mining_tracker, g_config.mining.enabled, g_config.mining.window_seconds, "Mining rate");
+    defer destroyTracker(activity_mod.MiningTracker, &g_mining_tracker, null);
 
-    if (g_config.mining.enabled) {
-        g_mining_tracker = try createTracker(activity_mod.MiningTracker, g_allocator, g_io, g_config.mining.window_seconds);
-
-        if (g_chatlog_monitor) |monitor| {
-            monitor.mining_tracker = g_mining_tracker.?;
-        }
-
-        slog.debug("Mining rate tracking enabled ({d}s window)", .{g_config.mining.window_seconds});
-    }
-
-    defer {
-        if (g_mining_tracker) |tracker| {
-            tracker.deinit();
-            g_allocator.destroy(tracker);
-            g_mining_tracker = null;
-        }
-    }
-
-    if (g_config.bounty.enabled) {
-        g_bounty_tracker = try createTracker(activity_mod.BountyTracker, g_allocator, g_io, g_config.bounty.window_seconds);
-
-        if (g_chatlog_monitor) |monitor| {
-            monitor.bounty_tracker = g_bounty_tracker.?;
-        }
-
-        slog.debug("Bounty rate tracking enabled ({d}s window)", .{g_config.bounty.window_seconds});
-    }
-
-    defer {
-        if (g_bounty_tracker) |tracker| {
-            tracker.deinit();
-            g_allocator.destroy(tracker);
-            g_bounty_tracker = null;
-        }
-    }
+    try createAndWireTracker(activity_mod.BountyTracker, "bounty_tracker", &g_bounty_tracker, g_config.bounty.enabled, g_config.bounty.window_seconds, "Bounty rate");
+    defer destroyTracker(activity_mod.BountyTracker, &g_bounty_tracker, null);
 
     // Registered after the tracker defers so it runs first (LIFO): the worker thread must stop before combat/mining trackers are freed, since it may be mid-iteration reading them.
     defer {
@@ -730,24 +741,8 @@ fn mainImpl(init: std.process.Init) !void {
 
     const instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
 
-    const wc = win32.WNDCLASSEXA{
-        .cbSize = @sizeOf(win32.WNDCLASSEXA),
-        .style = 0,
-        .lpfnWndProc = timerWindowProc,
-        .cbClsExtra = 0,
-        .cbWndExtra = 0,
-        .hInstance = instance,
-        .hIcon = null,
-        .hCursor = null,
-        .hbrBackground = null,
-        .lpszMenuName = null,
-        .lpszClassName = TIMER_CLASS_NAME,
-        .hIconSm = null,
-    };
-
-    if (win32.RegisterClassExA(&wc) == 0) {
-        return error.RegisterClassFailed;
-    }
+    // Never shown (0x0, no ShowWindow), so the class's cursor is never actually displayed.
+    try gdi_overlay.registerWindowClass(instance, timerWindowProc, TIMER_CLASS_NAME, null);
 
     const timer_hwnd = win32.CreateWindowExA(
         0,
@@ -814,7 +809,7 @@ fn mainImpl(init: std.process.Init) !void {
         }
         painter.g_hotkey_manager_ptr = null;
         mouse_hook.deinit();
-        input.deinitHotkeyTracking();
+        hotkeys.deinitHotkeyTracking();
     }
 
     g_hotkey_manager.?.registerHotkeys(timer_hwnd) catch |err| {
@@ -874,28 +869,9 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     }
 
     // Must run after chatlog monitor teardown.
-    if (g_combat_tracker) |tracker| {
-        tracker.deinit();
-        g_allocator.destroy(tracker);
-        g_combat_tracker = null;
-        slog.debug("Cleaned up combat tracker", .{});
-    }
-
-    // Must run after chatlog monitor teardown.
-    if (g_mining_tracker) |tracker| {
-        tracker.deinit();
-        g_allocator.destroy(tracker);
-        g_mining_tracker = null;
-        slog.debug("Cleaned up mining tracker", .{});
-    }
-
-    // Must run after chatlog monitor teardown.
-    if (g_bounty_tracker) |tracker| {
-        tracker.deinit();
-        g_allocator.destroy(tracker);
-        g_bounty_tracker = null;
-        slog.debug("Cleaned up bounty tracker", .{});
-    }
+    destroyTracker(activity_mod.CombatTracker, &g_combat_tracker, "combat");
+    destroyTracker(activity_mod.MiningTracker, &g_mining_tracker, "mining");
+    destroyTracker(activity_mod.BountyTracker, &g_bounty_tracker, "bounty");
 
     if (g_hotkey_manager) |manager| {
         manager.deinit();
@@ -1039,63 +1015,14 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
             }
         }
 
-        if (g_config.combat.enabled) {
-            if (createTracker(activity_mod.CombatTracker, g_allocator, g_io, g_config.combat.window_seconds)) |tracker_ptr| {
-                g_combat_tracker = tracker_ptr;
-
-                if (g_chatlog_monitor) |monitor| {
-                    monitor.combat_tracker = tracker_ptr;
-                    monitor.damage_alert_excluded_weapons = g_config.combat.damage_alert_excluded_weapons;
-                }
-
-                slog.debug("Combat DPS tracking enabled ({d}s window)", .{g_config.combat.window_seconds});
-            } else |err| {
-                slog.err("Failed to create combat tracker: {}", .{err});
-                g_combat_tracker = null;
-                if (g_chatlog_monitor) |monitor| monitor.combat_tracker = null;
-            }
-        } else {
-            if (g_chatlog_monitor) |monitor| monitor.combat_tracker = null;
-            slog.debug("Combat DPS tracking disabled in new profile", .{});
+        const combat_active = recreateTracker(activity_mod.CombatTracker, "combat_tracker", &g_combat_tracker, g_config.combat.enabled, g_config.combat.window_seconds, "Combat DPS", "combat");
+        if (combat_active) {
+            if (g_chatlog_monitor) |monitor| monitor.damage_alert_excluded_weapons = g_config.combat.damage_alert_excluded_weapons;
         }
 
-        if (g_config.mining.enabled) {
-            if (createTracker(activity_mod.MiningTracker, g_allocator, g_io, g_config.mining.window_seconds)) |tracker_ptr| {
-                g_mining_tracker = tracker_ptr;
+        _ = recreateTracker(activity_mod.MiningTracker, "mining_tracker", &g_mining_tracker, g_config.mining.enabled, g_config.mining.window_seconds, "Mining rate", "mining");
 
-                if (g_chatlog_monitor) |monitor| {
-                    monitor.mining_tracker = tracker_ptr;
-                }
-
-                slog.debug("Mining rate tracking enabled ({d}s window)", .{g_config.mining.window_seconds});
-            } else |err| {
-                slog.err("Failed to create mining tracker: {}", .{err});
-                g_mining_tracker = null;
-                if (g_chatlog_monitor) |monitor| monitor.mining_tracker = null;
-            }
-        } else {
-            if (g_chatlog_monitor) |monitor| monitor.mining_tracker = null;
-            slog.debug("Mining rate tracking disabled in new profile", .{});
-        }
-
-        if (g_config.bounty.enabled) {
-            if (createTracker(activity_mod.BountyTracker, g_allocator, g_io, g_config.bounty.window_seconds)) |tracker_ptr| {
-                g_bounty_tracker = tracker_ptr;
-
-                if (g_chatlog_monitor) |monitor| {
-                    monitor.bounty_tracker = tracker_ptr;
-                }
-
-                slog.debug("Bounty rate tracking enabled ({d}s window)", .{g_config.bounty.window_seconds});
-            } else |err| {
-                slog.err("Failed to create bounty tracker: {}", .{err});
-                g_bounty_tracker = null;
-                if (g_chatlog_monitor) |monitor| monitor.bounty_tracker = null;
-            }
-        } else {
-            if (g_chatlog_monitor) |monitor| monitor.bounty_tracker = null;
-            slog.debug("Bounty rate tracking disabled in new profile", .{});
-        }
+        _ = recreateTracker(activity_mod.BountyTracker, "bounty_tracker", &g_bounty_tracker, g_config.bounty.enabled, g_config.bounty.window_seconds, "Bounty rate", "bounty");
 
         // Resume the paused worker only now that combat/mining trackers above are repointed (or nulled) - resuming any earlier risks it processing a queued event against trackers just destroyed.
         if (keep_chatlog_monitor) {

@@ -23,6 +23,39 @@ fn idleDecayFactor(now_ms: i64, last_activity_ms: i64, window_ms: i64) f32 {
     return 1.0 - @as(f32, @floatFromInt(over_ms)) / @as(f32, @floatFromInt(decay_span_ms));
 }
 
+/// Sums `@field(entry, field)` over the window ending at now_ms, decayed by idleDecayFactor. Null means not enough span yet to trust a rate.
+fn computeWindowRate(
+    comptime T: type,
+    comptime field: []const u8,
+    entries: []const T,
+    head: usize,
+    count: usize,
+    window_ms: i64,
+    last_hit_ms: i64,
+    now_ms: i64,
+) ?f32 {
+    if (last_hit_ms == 0 or now_ms - last_hit_ms >= window_ms) return 0.0;
+    const cutoff = now_ms - window_ms;
+    var total: f32 = 0;
+    var newest_ms: i64 = 0;
+    var oldest_ms: i64 = 0;
+
+    var i: usize = 0;
+    while (i < count) : (i += 1) {
+        const idx = (head + entries.len - 1 - i) % entries.len;
+        const entry = &entries[idx];
+        if (entry.timestamp_ms < cutoff) break;
+        if (i == 0) newest_ms = entry.timestamp_ms;
+        oldest_ms = entry.timestamp_ms;
+        total += @field(entry, field);
+    }
+    const span_ms = newest_ms - oldest_ms;
+    if (span_ms < MIN_RATE_SPAN_MS) return null;
+
+    const window_secs = @as(f32, @floatFromInt(@min(window_ms, span_ms))) / 1000.0;
+    return (total / window_secs) * idleDecayFactor(now_ms, last_hit_ms, window_ms);
+}
+
 /// Per-character sliding-window DPS accumulator with zero heap allocations after init.
 pub const CombatWindow = struct {
     entries: [RING_CAPACITY]CombatEvent = undefined,
@@ -389,55 +422,12 @@ pub const MiningWindow = struct {
 
     /// Compute m3-per-second over the sliding window ending at now_ms. Null means not enough span yet to trust a rate.
     pub fn computeRate(self: *const MiningWindow, now_ms: i64) ?f32 {
-        // Short-circuit: if the newest yield is already outside the window, skip the O(n) walk over stale entries.
-        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) {
-            return 0.0;
-        }
-        const cutoff = now_ms - self.window_ms;
-        var total: f32 = 0;
-        var newest_ms: i64 = 0;
-        var oldest_ms: i64 = 0;
-
-        var i: usize = 0;
-        while (i < self.count) : (i += 1) {
-            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
-            const entry = &self.entries[idx];
-            if (entry.timestamp_ms < cutoff) break;
-            if (i == 0) newest_ms = entry.timestamp_ms;
-            oldest_ms = entry.timestamp_ms;
-            total += entry.m3;
-        }
-        const span_ms = newest_ms - oldest_ms;
-        if (span_ms < MIN_RATE_SPAN_MS) return null;
-
-        const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
-        return (total / window_secs) * idleDecayFactor(now_ms, self.last_hit_ms, self.window_ms);
+        return computeWindowRate(MiningEvent, "m3", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, now_ms);
     }
 
     /// Compute ISK-per-second over the sliding window ending at now_ms; same walk as computeRate but summing isk instead of m3. Null means not enough span yet to trust a rate.
     pub fn computeIskRate(self: *const MiningWindow, now_ms: i64) ?f32 {
-        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) {
-            return 0.0;
-        }
-        const cutoff = now_ms - self.window_ms;
-        var total: f32 = 0;
-        var newest_ms: i64 = 0;
-        var oldest_ms: i64 = 0;
-
-        var i: usize = 0;
-        while (i < self.count) : (i += 1) {
-            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
-            const entry = &self.entries[idx];
-            if (entry.timestamp_ms < cutoff) break;
-            if (i == 0) newest_ms = entry.timestamp_ms;
-            oldest_ms = entry.timestamp_ms;
-            total += entry.isk;
-        }
-        const span_ms = newest_ms - oldest_ms;
-        if (span_ms < MIN_RATE_SPAN_MS) return null;
-
-        const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
-        return (total / window_secs) * idleDecayFactor(now_ms, self.last_hit_ms, self.window_ms);
+        return computeWindowRate(MiningEvent, "isk", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, now_ms);
     }
 
     /// Recompute m3 and ISK rates, updating both cached values. Returns true if the m3 rate changed by >= 0.1 or crossed to/from null -
@@ -598,28 +588,7 @@ pub const BountyWindow = struct {
 
     /// Compute ISK-per-second over the sliding window ending at now_ms. Null means not enough span yet to trust a rate.
     pub fn computeIskRate(self: *const BountyWindow, now_ms: i64) ?f32 {
-        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) {
-            return 0.0;
-        }
-        const cutoff = now_ms - self.window_ms;
-        var total: f32 = 0;
-        var newest_ms: i64 = 0;
-        var oldest_ms: i64 = 0;
-
-        var i: usize = 0;
-        while (i < self.count) : (i += 1) {
-            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
-            const entry = &self.entries[idx];
-            if (entry.timestamp_ms < cutoff) break;
-            if (i == 0) newest_ms = entry.timestamp_ms;
-            oldest_ms = entry.timestamp_ms;
-            total += entry.isk;
-        }
-        const span_ms = newest_ms - oldest_ms;
-        if (span_ms < MIN_RATE_SPAN_MS) return null;
-
-        const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
-        return (total / window_secs) * idleDecayFactor(now_ms, self.last_hit_ms, self.window_ms);
+        return computeWindowRate(BountyEvent, "isk", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, now_ms);
     }
 
     /// Recompute the ISK rate. Returns true if it changed by >= 0.1 or crossed to/from null.

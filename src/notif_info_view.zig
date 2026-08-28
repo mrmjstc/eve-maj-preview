@@ -3,6 +3,7 @@ const win32 = @import("win32.zig");
 const config_mod = @import("config.zig");
 const types = @import("types.zig");
 const gdi_overlay = @import("gdi_overlay.zig");
+const color_mod = @import("color.zig");
 const log = @import("log.zig");
 const slog = log.scoped("notif_info_view");
 
@@ -59,7 +60,7 @@ pub const NotifInfoWindow = struct {
         cfg: *config_mod.Config,
         instance: win32.HINSTANCE,
     ) !NotifInfoWindow {
-        try registerClass(instance);
+        try registerWindowClass(instance);
 
         const hwnd = win32.CreateWindowExA(
             win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW |
@@ -127,46 +128,17 @@ pub const NotifInfoWindow = struct {
     /// Recreates `font` if the panel's own font settings changed since last built (e.g. a live-previewed edit); mirrors list_view.zig's ensureFont, but tracks display.notifInfoPanelFont* rather than List View's own font settings.
     fn ensureFont(self: *NotifInfoWindow) void {
         const cfg = self.config.display;
-        const unchanged = self.font != null and
-            std.mem.eql(u8, self.cached_font_name, cfg.notifInfoPanelFontName) and
-            self.cached_font_size == cfg.notifInfoPanelFontSize and
-            self.cached_font_weight == cfg.notifInfoPanelFontWeight;
-        if (unchanged) return;
-
-        if (self.font) |old| _ = win32.DeleteObject(old);
-        self.font = null;
-
-        const font_name_z = self.allocator.dupeZ(u8, cfg.notifInfoPanelFontName) catch |err| {
-            slog.err("Failed to allocate notification history panel font name: {}", .{err});
-            return;
-        };
-        defer self.allocator.free(font_name_z);
-
-        const name_copy = self.allocator.dupe(u8, cfg.notifInfoPanelFontName) catch |err| {
-            slog.err("Failed to allocate notification history panel font name: {}", .{err});
-            return;
-        };
-
-        self.font = win32.CreateFontA(
-            -cfg.notifInfoPanelFontSize,
-            0,
-            0,
-            0,
-            cfg.notifInfoPanelFontWeight.toWin32Weight(),
-            if (cfg.notifInfoPanelFontWeight.isItalic()) 1 else 0,
-            0,
-            0,
-            win32.DEFAULT_CHARSET,
-            win32.OUT_DEFAULT_PRECIS,
-            win32.CLIP_DEFAULT_PRECIS,
-            win32.CLEARTYPE_QUALITY,
-            win32.DEFAULT_PITCH,
-            font_name_z,
+        gdi_overlay.ensureFont(
+            self.allocator,
+            "notification history panel",
+            &self.font,
+            &self.cached_font_name,
+            &self.cached_font_size,
+            &self.cached_font_weight,
+            cfg.notifInfoPanelFontName,
+            cfg.notifInfoPanelFontSize,
+            cfg.notifInfoPanelFontWeight,
         );
-        self.allocator.free(self.cached_font_name);
-        self.cached_font_name = name_copy;
-        self.cached_font_size = cfg.notifInfoPanelFontSize;
-        self.cached_font_weight = cfg.notifInfoPanelFontWeight;
     }
 
     fn saveWindowPosition(self: *NotifInfoWindow) void {
@@ -268,8 +240,8 @@ pub const NotifInfoWindow = struct {
 
         @memset(ov.pixels[0 .. W * H], 0);
 
-        fillRect(ov.pixels, W, 0, 0, W, @intCast(HEADER_HEIGHT), self.withAlpha(RGB_HEADER));
-        fillRect(ov.pixels, W, 0, @intCast(HEADER_HEIGHT), W, H - @as(usize, @intCast(HEADER_HEIGHT)), self.withAlpha(RGB_BODY));
+        gdi_overlay.fillRect(ov.pixels, W, 0, 0, W, @intCast(HEADER_HEIGHT), self.withAlpha(RGB_HEADER));
+        gdi_overlay.fillRect(ov.pixels, W, 0, @intCast(HEADER_HEIGHT), W, H - @as(usize, @intCast(HEADER_HEIGHT)), self.withAlpha(RGB_BODY));
 
         const history_area_h: i32 = @max(0, win_h - HEADER_HEIGHT);
         const history_rows_fit: usize = @intCast(@max(0, @divTrunc(history_area_h, ROW_HEIGHT)));
@@ -305,14 +277,14 @@ pub const NotifInfoWindow = struct {
             }
         }
 
-        fillRect(ov.pixels, W, 0, @intCast(HEADER_HEIGHT - 1), W, 1, ARGB_SEPARATOR);
+        gdi_overlay.fillRect(ov.pixels, W, 0, @intCast(HEADER_HEIGHT - 1), W, 1, ARGB_SEPARATOR);
 
         {
             const frame_col = self.withAlpha(RGB_FRAME);
-            fillRect(ov.pixels, W, 0, 0, W, 1, frame_col);
-            fillRect(ov.pixels, W, 0, H - 1, W, 1, frame_col);
-            fillRect(ov.pixels, W, 0, 0, 1, H, frame_col);
-            fillRect(ov.pixels, W, W - 1, 0, 1, H, frame_col);
+            gdi_overlay.fillRect(ov.pixels, W, 0, 0, W, 1, frame_col);
+            gdi_overlay.fillRect(ov.pixels, W, 0, H - 1, W, 1, frame_col);
+            gdi_overlay.fillRect(ov.pixels, W, 0, 0, 1, H, frame_col);
+            gdi_overlay.fillRect(ov.pixels, W, W - 1, 0, 1, H, frame_col);
         }
 
         gdi_overlay.fixTextAlpha(ov.pixels, W, H);
@@ -346,8 +318,7 @@ pub const NotifInfoWindow = struct {
     }
 
     fn withAlpha(self: *const NotifInfoWindow, rgb: u32) u32 {
-        const a: u32 = self.config.display.notifInfoPanelOpacity;
-        return (a << 24) | (rgb & 0x00FF_FFFF);
+        return color_mod.withAlpha(rgb, self.config.display.notifInfoPanelOpacity);
     }
 };
 
@@ -380,28 +351,10 @@ fn drawHistoryRow(dc: win32.HDC, name: []const u8, msg: []const u8, x: i32, y: i
     }
 }
 
-fn registerClass(instance: win32.HINSTANCE) !void {
+fn registerWindowClass(instance: win32.HINSTANCE) !void {
     if (g_class_registered) return;
 
-    const cursor = win32.LoadCursorA(null, win32.IDC_ARROW);
-    const wc = win32.WNDCLASSEXA{
-        .cbSize = @sizeOf(win32.WNDCLASSEXA),
-        .style = 0,
-        .lpfnWndProc = notifInfoWindowProc,
-        .cbClsExtra = 0,
-        .cbWndExtra = 0,
-        .hInstance = instance,
-        .hIcon = null,
-        .hCursor = cursor,
-        .hbrBackground = null,
-        .lpszMenuName = null,
-        .lpszClassName = NOTIF_INFO_WINDOW_CLASS,
-        .hIconSm = null,
-    };
-
-    if (win32.RegisterClassExA(&wc) == 0) {
-        return error.RegisterClassFailed;
-    }
+    try gdi_overlay.registerWindowClass(instance, notifInfoWindowProc, NOTIF_INFO_WINDOW_CLASS, null);
 
     g_class_registered = true;
 }
@@ -497,22 +450,8 @@ fn notifInfoWindowProc(
     }
 }
 
-fn fillRect(pixels: [*]u32, stride: usize, x: usize, y: usize, w: usize, h: usize, argb: u32) void {
-    const end_y = y + h;
-    const end_x = x + w;
-    if (end_x > stride) return;
-    var py = y;
-    while (py < end_y) : (py += 1) {
-        @memset(pixels[py * stride + x .. py * stride + end_x], argb);
-    }
-}
-
 fn toBufZ(text: []const u8) [TEXT_BUF:0]u8 {
-    var buf: [TEXT_BUF:0]u8 = undefined;
-    const n = @min(text.len, TEXT_BUF - 1);
-    @memcpy(buf[0..n], text[0..n]);
-    buf[n] = 0;
-    return buf;
+    return gdi_overlay.toBufZ(TEXT_BUF, text);
 }
 
 fn drawText(dc: win32.HDC, text: []const u8, x: i32, y: i32, rgb: u32) void {
@@ -525,11 +464,7 @@ fn drawText(dc: win32.HDC, text: []const u8, x: i32, y: i32, rgb: u32) void {
 }
 
 fn measureTextWidth(dc: win32.HDC, text: []const u8) usize {
-    const buf = toBufZ(text);
-    const n = @min(text.len, TEXT_BUF - 1);
-    var sz: win32.SIZE = undefined;
-    _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(n), &sz);
-    return @intCast(@max(0, sz.cx));
+    return gdi_overlay.measureTextWidth(TEXT_BUF, dc, text);
 }
 
 fn measureTextHeight(dc: win32.HDC, text: []const u8) i32 {

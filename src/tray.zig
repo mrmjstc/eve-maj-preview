@@ -246,6 +246,19 @@ pub const TrayIcon = struct {
         );
     }
 
+    /// Builds the current profile's path and saves `config` to it, logging (but not propagating) any failure.
+    fn saveCurrentProfile(config: *const config_mod.Config, allocator: std.mem.Allocator, context: []const u8) void {
+        const profile_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, config.profile_name }) catch |err| {
+            slog.err("Failed to build profile path for save: {}", .{err});
+            return;
+        };
+        defer allocator.free(profile_path);
+
+        config_mod.Config.saveToJsonFile(config, allocator, profile_path) catch |err| {
+            slog.err("Failed to save config after toggling {s}: {}", .{ context, err });
+        };
+    }
+
     pub fn handleMenuCommand(command_id: u16, config: *config_mod.Config, allocator: std.mem.Allocator, hotkey_manager: ?*hotkeys_mod.HotkeyManager) bool {
         if (command_id == win32.IDM_EXIT) {
             slog.info("Exit requested from system tray", .{});
@@ -257,17 +270,7 @@ pub const TrayIcon = struct {
             config.interaction.enableDragging = !config.interaction.enableDragging;
             const state = if (config.interaction.enableDragging) "enabled" else "disabled";
             slog.info("Thumbnail dragging toggled: {s}", .{state});
-
-            const profile_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, config.profile_name }) catch |err| {
-                slog.err("Failed to build profile path for save: {}", .{err});
-                return true;
-            };
-            defer allocator.free(profile_path);
-
-            config_mod.Config.saveToJsonFile(config, allocator, profile_path) catch |err| {
-                slog.err("Failed to save config after toggling dragging: {}", .{err});
-            };
-
+            saveCurrentProfile(config, allocator, "dragging");
             return true;
         }
 
@@ -289,17 +292,7 @@ pub const TrayIcon = struct {
             config.travel.enabled = !config.travel.enabled;
             const state = if (config.travel.enabled) "enabled" else "disabled";
             slog.info("Travel Mode toggled: {s}", .{state});
-
-            const profile_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, config.profile_name }) catch |err| {
-                slog.err("Failed to build profile path for save: {}", .{err});
-                return true;
-            };
-            defer allocator.free(profile_path);
-
-            config_mod.Config.saveToJsonFile(config, allocator, profile_path) catch |err| {
-                slog.err("Failed to save config after toggling Travel Mode: {}", .{err});
-            };
-
+            saveCurrentProfile(config, allocator, "Travel Mode");
             return true;
         }
 
@@ -317,16 +310,7 @@ pub const TrayIcon = struct {
             slog.info("Toggle history panel requested from system tray", .{});
             if (painter_mod.g_painter_ptr) |painter_ptr| {
                 painter_ptr.toggleNotifInfoPanel();
-
-                const profile_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, config.profile_name }) catch |err| {
-                    slog.err("Failed to build profile path for save: {}", .{err});
-                    return true;
-                };
-                defer allocator.free(profile_path);
-
-                config_mod.Config.saveToJsonFile(config, allocator, profile_path) catch |err| {
-                    slog.err("Failed to save config after toggling history panel: {}", .{err});
-                };
+                saveCurrentProfile(config, allocator, "history panel");
             } else {
                 slog.err("Painter not available for toggle history panel", .{});
             }
@@ -419,16 +403,7 @@ fn openConfigDialog() void {
 
     slog.info("Launching configuration dialog: {s}", .{config_exe_path});
 
-    const result = win32.ShellExecuteA(
-        null,
-        "open",
-        config_exe_path.ptr,
-        null,
-        exe_dir_z.ptr,
-        win32.SW_SHOW,
-    );
-
-    if (@intFromPtr(result) <= 32) {
-        slog.err("Failed to launch config.exe, error code: {}", .{@intFromPtr(result)});
+    if (!win32.shellOpen(config_exe_path.ptr, exe_dir_z.ptr)) {
+        slog.err("Failed to launch config.exe", .{});
     }
 }

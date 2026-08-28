@@ -199,6 +199,14 @@ pub const RECT = extern struct {
     bottom: LONG,
 };
 
+pub fn rectWidth(rect: RECT) LONG {
+    return rect.right - rect.left;
+}
+
+pub fn rectHeight(rect: RECT) LONG {
+    return rect.bottom - rect.top;
+}
+
 pub const MSG = extern struct {
     hwnd: ?HWND,
     message: UINT,
@@ -865,6 +873,14 @@ pub fn getWindowTitleBuf(hwnd: HWND, buffer: []u8) ![]const u8 {
     return buffer[0..@intCast(title_len)];
 }
 
+pub fn getClassNameBuf(hwnd: HWND, buffer: []u8) ?[]const u8 {
+    if (buffer.len == 0) return null;
+    const buf_ptr: [*:0]u8 = @ptrCast(buffer.ptr);
+    const class_len = GetClassNameA(hwnd, buf_ptr, @intCast(buffer.len));
+    if (class_len <= 0) return null;
+    return buffer[0..@intCast(class_len)];
+}
+
 /// Full executable path of process_id's owning process, or null if it can't be opened or queried.
 /// exe_path_buf must be MAX_PATH-sized; the returned slice borrows it.
 pub fn queryProcessExePath(process_id: DWORD, exe_path_buf: *[260:0]u8) ?[]const u8 {
@@ -889,6 +905,199 @@ pub fn selfExeDirPath(buf: []u8) ![]const u8 {
     return std.fs.path.dirname(full_path) orelse return error.NoDirname;
 }
 
+/// Opens `target` (a file path or URL) with its default handler via ShellExecuteA. Returns false on failure.
+pub fn shellOpen(target: [*:0]const u8, workdir: ?[*:0]const u8) bool {
+    const result = ShellExecuteA(null, "open", target, null, workdir, SW_SHOW);
+    return @intFromPtr(result) > 32;
+}
+
+pub const GUID = extern struct {
+    Data1: u32,
+    Data2: u16,
+    Data3: u16,
+    Data4: [8]u8,
+};
+
+const CLSID_FileOpenDialog = GUID{
+    .Data1 = 0xDC1C5A9C,
+    .Data2 = 0xE88A,
+    .Data3 = 0x4dde,
+    .Data4 = [8]u8{ 0xA5, 0xA1, 0x60, 0xF8, 0x2A, 0x20, 0xAE, 0xF7 },
+};
+
+const IID_IFileOpenDialog = GUID{
+    .Data1 = 0xD57C7288,
+    .Data2 = 0xD4AD,
+    .Data3 = 0x4768,
+    .Data4 = [8]u8{ 0xBE, 0x02, 0x9D, 0x96, 0x95, 0x32, 0xD9, 0x60 },
+};
+
+const FOS_PICKFOLDERS: u32 = 0x00000020;
+const SIGDN_FILESYSPATH: u32 = 0x80058000;
+
+extern "ole32" fn CoInitializeEx(pvReserved: ?*anyopaque, dwCoInit: u32) callconv(.c) c_long;
+extern "ole32" fn CoUninitialize() callconv(.c) void;
+extern "ole32" fn CoCreateInstance(
+    rclsid: *const GUID,
+    pUnkOuter: ?*anyopaque,
+    dwClsContext: u32,
+    riid: *const GUID,
+    ppv: *?*anyopaque,
+) callconv(.c) c_long;
+extern "ole32" fn CoTaskMemFree(pv: ?*anyopaque) callconv(.c) void;
+
+const IFileOpenDialog = extern struct {
+    vtable: *const IFileOpenDialogVtbl,
+
+    const IFileOpenDialogVtbl = extern struct {
+        QueryInterface: *const fn (*IFileOpenDialog, *const GUID, *?*anyopaque) callconv(.c) c_long,
+        AddRef: *const fn (*IFileOpenDialog) callconv(.c) u32,
+        Release: *const fn (*IFileOpenDialog) callconv(.c) u32,
+        Show: *const fn (*IFileOpenDialog, ?HWND) callconv(.c) c_long,
+        SetFileTypes: *const fn (*IFileOpenDialog, u32, ?*const anyopaque) callconv(.c) c_long,
+        SetFileTypeIndex: *const fn (*IFileOpenDialog, u32) callconv(.c) c_long,
+        GetFileTypeIndex: *const fn (*IFileOpenDialog, *u32) callconv(.c) c_long,
+        Advise: *const fn (*IFileOpenDialog, ?*anyopaque, *u32) callconv(.c) c_long,
+        Unadvise: *const fn (*IFileOpenDialog, u32) callconv(.c) c_long,
+        SetOptions: *const fn (*IFileOpenDialog, u32) callconv(.c) c_long,
+        GetOptions: *const fn (*IFileOpenDialog, *u32) callconv(.c) c_long,
+        SetDefaultFolder: *const fn (*IFileOpenDialog, ?*anyopaque) callconv(.c) c_long,
+        SetFolder: *const fn (*IFileOpenDialog, ?*anyopaque) callconv(.c) c_long,
+        GetFolder: *const fn (*IFileOpenDialog, *?*anyopaque) callconv(.c) c_long,
+        GetCurrentSelection: *const fn (*IFileOpenDialog, *?*anyopaque) callconv(.c) c_long,
+        SetFileName: *const fn (*IFileOpenDialog, [*:0]const u16) callconv(.c) c_long,
+        GetFileName: *const fn (*IFileOpenDialog, *[*:0]u16) callconv(.c) c_long,
+        SetTitle: *const fn (*IFileOpenDialog, [*:0]const u16) callconv(.c) c_long,
+        SetOkButtonLabel: *const fn (*IFileOpenDialog, [*:0]const u16) callconv(.c) c_long,
+        SetFileNameLabel: *const fn (*IFileOpenDialog, [*:0]const u16) callconv(.c) c_long,
+        GetResult: *const fn (*IFileOpenDialog, *?*IShellItem) callconv(.c) c_long,
+        AddPlace: *const fn (*IFileOpenDialog, ?*anyopaque, u32) callconv(.c) c_long,
+        SetDefaultExtension: *const fn (*IFileOpenDialog, [*:0]const u16) callconv(.c) c_long,
+        Close: *const fn (*IFileOpenDialog, c_long) callconv(.c) c_long,
+        SetClientGuid: *const fn (*IFileOpenDialog, *const GUID) callconv(.c) c_long,
+        ClearClientData: *const fn (*IFileOpenDialog) callconv(.c) c_long,
+        SetFilter: *const fn (*IFileOpenDialog, ?*anyopaque) callconv(.c) c_long,
+    };
+
+    fn release(self: *IFileOpenDialog) void {
+        _ = self.vtable.Release(self);
+    }
+
+    fn setOptions(self: *IFileOpenDialog, options: u32) c_long {
+        return self.vtable.SetOptions(self, options);
+    }
+
+    fn setTitle(self: *IFileOpenDialog, title: [*:0]const u16) c_long {
+        return self.vtable.SetTitle(self, title);
+    }
+
+    fn show(self: *IFileOpenDialog, hwnd: ?HWND) c_long {
+        return self.vtable.Show(self, hwnd);
+    }
+
+    fn getResult(self: *IFileOpenDialog) ?*IShellItem {
+        var result: ?*IShellItem = null;
+        const hr = self.vtable.GetResult(self, &result);
+        if (hr < 0) return null;
+        return result;
+    }
+};
+
+const IShellItem = extern struct {
+    vtable: *const IShellItemVtbl,
+
+    const IShellItemVtbl = extern struct {
+        QueryInterface: *const fn (*IShellItem, *const GUID, *?*anyopaque) callconv(.c) c_long,
+        AddRef: *const fn (*IShellItem) callconv(.c) u32,
+        Release: *const fn (*IShellItem) callconv(.c) u32,
+        BindToHandler: *const fn (*IShellItem, ?*anyopaque, *const GUID, *const GUID, *?*anyopaque) callconv(.c) c_long,
+        GetParent: *const fn (*IShellItem, *?*IShellItem) callconv(.c) c_long,
+        GetDisplayName: *const fn (*IShellItem, u32, *[*:0]u16) callconv(.c) c_long,
+        GetAttributes: *const fn (*IShellItem, u32, *u32) callconv(.c) c_long,
+        Compare: *const fn (*IShellItem, *IShellItem, u32, *i32) callconv(.c) c_long,
+    };
+
+    fn release(self: *IShellItem) void {
+        _ = self.vtable.Release(self);
+    }
+
+    fn getDisplayName(self: *IShellItem, sigdnName: u32) ?[*:0]u16 {
+        var name: [*:0]u16 = undefined;
+        const hr = self.vtable.GetDisplayName(self, sigdnName, &name);
+        if (hr < 0) return null;
+        return name;
+    }
+};
+
+/// Shows the Win32 "Select Folder" dialog with `title`, returning the chosen path (caller frees) or null if cancelled.
+pub fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8) !?[]const u8 {
+    const COINIT_APARTMENTTHREADED: u32 = 0x2;
+    const COINIT_DISABLE_OLE1DDE: u32 = 0x4;
+    const hr = CoInitializeEx(null, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    // 0x00000001 is S_FALSE (already initialized), which is OK.
+    if (hr < 0 and hr != 0x00000001) {
+        return error.ComInitFailed;
+    }
+    defer CoUninitialize();
+
+    const CLSCTX_INPROC_SERVER: u32 = 0x1;
+    var dialog_ptr: ?*anyopaque = null;
+    const create_hr = CoCreateInstance(
+        &CLSID_FileOpenDialog,
+        null,
+        CLSCTX_INPROC_SERVER,
+        &IID_IFileOpenDialog,
+        &dialog_ptr,
+    );
+
+    if (create_hr < 0 or dialog_ptr == null) {
+        return error.CreateDialogFailed;
+    }
+
+    const dialog: *IFileOpenDialog = @ptrCast(@alignCast(dialog_ptr.?));
+    defer dialog.release();
+
+    _ = dialog.setOptions(FOS_PICKFOLDERS);
+
+    const title_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, title);
+    defer allocator.free(title_w);
+    _ = dialog.setTitle(title_w.ptr);
+
+    const show_hr = dialog.show(null);
+    if (show_hr < 0) {
+        return null;
+    }
+
+    const result_item = dialog.getResult() orelse return null;
+    defer result_item.release();
+
+    const path_w = result_item.getDisplayName(SIGDN_FILESYSPATH) orelse return null;
+    defer CoTaskMemFree(path_w);
+
+    const path_len = std.mem.indexOfSentinel(u16, 0, path_w);
+    const path_slice = path_w[0..path_len :0];
+    const path = try std.unicode.utf16LeToUtf8Alloc(allocator, path_slice);
+
+    return path;
+}
+
+extern "shell32" fn SHGetKnownFolderPath(
+    rfid: *const GUID,
+    dwFlags: u32,
+    hToken: ?HANDLE,
+    ppszPath: *?[*:0]u16,
+) callconv(.c) c_long;
+
+/// Resolves a shell known-folder (e.g. Documents) to its current real path, backslash-separated as returned by Windows.
+pub fn getKnownFolderPath(allocator: std.mem.Allocator, folder_id: GUID) ![]u8 {
+    var path_ptr: ?[*:0]u16 = null;
+    const hr = SHGetKnownFolderPath(&folder_id, 0, null, &path_ptr);
+    if (hr < 0 or path_ptr == null) return error.KnownFolderUnavailable;
+    defer CoTaskMemFree(path_ptr);
+
+    return std.unicode.utf16LeToUtf8Alloc(allocator, std.mem.span(path_ptr.?));
+}
+
 /// Monotonic milliseconds since boot (GetTickCount64) — for elapsed-time/duration comparisons only, never wall-clock/calendar time.
 /// A distinct type (not a bare u64/i64) so a timestamp from a different clock source can't be silently compared against one of these.
 pub const Ticks = struct {
@@ -908,20 +1117,20 @@ pub const Ticks = struct {
     }
 };
 
+pub inline fn toBool(value: BOOL) bool {
+    return value != 0;
+}
+
 pub inline fn isWindowVisible(hwnd: HWND) bool {
-    return IsWindowVisible(hwnd) != 0;
+    return toBool(IsWindowVisible(hwnd));
 }
 
 pub inline fn isWindowIconic(hwnd: HWND) bool {
-    return IsIconic(hwnd) != 0;
+    return toBool(IsIconic(hwnd));
 }
 
 pub inline fn isWindow(hwnd: HWND) bool {
-    return IsWindow(hwnd) != 0;
-}
-
-pub inline fn toBool(value: BOOL) bool {
-    return value != 0;
+    return toBool(IsWindow(hwnd));
 }
 
 pub inline fn hwndToUserData(hwnd: HWND) isize {

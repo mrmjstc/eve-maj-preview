@@ -1730,68 +1730,15 @@ pub const Painter = struct {
     fn registerWindowClass(self: *Painter) !void {
         if (g_window_class_registered) return;
 
-        const cursor = win32.LoadCursorA(null, win32.IDC_ARROW);
-
         // Black, not white COLOR_WINDOW: shows through whenever DWM has no live thumbnail frame to composite.
         const thumbnail_bg_brush = win32.CreateSolidBrush(0x00000000) orelse return error.CreateBrushFailed;
 
-        const wc = win32.WNDCLASSEXA{
-            .cbSize = @sizeOf(win32.WNDCLASSEXA),
-            .style = 0,
-            .lpfnWndProc = input.getWindowProc(),
-            .cbClsExtra = 0,
-            .cbWndExtra = 0,
-            .hInstance = self.instance,
-            .hIcon = null,
-            .hCursor = cursor,
-            .hbrBackground = thumbnail_bg_brush,
-            .lpszMenuName = null,
-            .lpszClassName = WINDOW_CLASS_NAME,
-            .hIconSm = null,
-        };
+        gdi_overlay.registerWindowClass(self.instance, input.getWindowProc(), WINDOW_CLASS_NAME, thumbnail_bg_brush) catch return error.RegisterClassFailed;
 
-        if (win32.RegisterClassExA(&wc) == 0) {
-            return error.RegisterClassFailed;
-        }
+        // No background brush for a layered window.
+        gdi_overlay.registerWindowClass(self.instance, input.getTextWindowProc(), TEXT_WINDOW_CLASS_NAME, null) catch return error.RegisterTextClassFailed;
 
-        const text_wc = win32.WNDCLASSEXA{
-            .cbSize = @sizeOf(win32.WNDCLASSEXA),
-            .style = 0,
-            .lpfnWndProc = input.getTextWindowProc(),
-            .cbClsExtra = 0,
-            .cbWndExtra = 0,
-            .hInstance = self.instance,
-            .hIcon = null,
-            .hCursor = cursor,
-            // No background brush for a layered window.
-            .hbrBackground = null,
-            .lpszMenuName = null,
-            .lpszClassName = TEXT_WINDOW_CLASS_NAME,
-            .hIconSm = null,
-        };
-
-        if (win32.RegisterClassExA(&text_wc) == 0) {
-            return error.RegisterTextClassFailed;
-        }
-
-        const ghost_wc = win32.WNDCLASSEXA{
-            .cbSize = @sizeOf(win32.WNDCLASSEXA),
-            .style = 0,
-            .lpfnWndProc = win32.DefWindowProcA,
-            .cbClsExtra = 0,
-            .cbWndExtra = 0,
-            .hInstance = self.instance,
-            .hIcon = null,
-            .hCursor = cursor,
-            .hbrBackground = null,
-            .lpszMenuName = null,
-            .lpszClassName = GHOST_WINDOW_CLASS_NAME,
-            .hIconSm = null,
-        };
-
-        if (win32.RegisterClassExA(&ghost_wc) == 0) {
-            return error.RegisterGhostClassFailed;
-        }
+        gdi_overlay.registerWindowClass(self.instance, win32.DefWindowProcA, GHOST_WINDOW_CLASS_NAME, null) catch return error.RegisterGhostClassFailed;
 
         g_window_class_registered = true;
     }
@@ -2919,26 +2866,18 @@ fn drawBorder(pixels: [*]u32, width: usize, height: usize, border_width: usize, 
             const arm_length = @min(border_width * 4, @min(width, height) / 3);
 
             // Top-left
-            fillRect(pixels, width, 0, 0, arm_length, border_width, color);
-            fillRect(pixels, width, 0, 0, border_width, arm_length, color);
+            gdi_overlay.fillRect(pixels, width, 0, 0, arm_length, border_width, color);
+            gdi_overlay.fillRect(pixels, width, 0, 0, border_width, arm_length, color);
             // Top-right
-            fillRect(pixels, width, width - arm_length, 0, arm_length, border_width, color);
-            fillRect(pixels, width, width - border_width, 0, border_width, arm_length, color);
+            gdi_overlay.fillRect(pixels, width, width - arm_length, 0, arm_length, border_width, color);
+            gdi_overlay.fillRect(pixels, width, width - border_width, 0, border_width, arm_length, color);
             // Bottom-left
-            fillRect(pixels, width, 0, height - border_width, arm_length, border_width, color);
-            fillRect(pixels, width, 0, height - arm_length, border_width, arm_length, color);
+            gdi_overlay.fillRect(pixels, width, 0, height - border_width, arm_length, border_width, color);
+            gdi_overlay.fillRect(pixels, width, 0, height - arm_length, border_width, arm_length, color);
             // Bottom-right
-            fillRect(pixels, width, width - arm_length, height - border_width, arm_length, border_width, color);
-            fillRect(pixels, width, width - border_width, height - arm_length, border_width, arm_length, color);
+            gdi_overlay.fillRect(pixels, width, width - arm_length, height - border_width, arm_length, border_width, color);
+            gdi_overlay.fillRect(pixels, width, width - border_width, height - arm_length, border_width, arm_length, color);
         },
-    }
-}
-
-/// Fills an axis-aligned `w`x`h` rectangle at (`x`, `y`) with `color`; shared by CornerBrackets, which draws eight of these (two arms per corner).
-fn fillRect(pixels: [*]u32, width: usize, x: usize, y: usize, w: usize, h: usize, color: u32) void {
-    for (y..y + h) |row_y| {
-        const row = row_y * width;
-        @memset(pixels[row + x .. row + x + w], color);
     }
 }
 
@@ -2951,10 +2890,10 @@ fn drawRectOutline(pixels: [*]u32, buf_width: usize, buf_height: usize, x: i32, 
     if (right <= left or bottom <= top) return;
 
     const t = @min(thickness, @min(right - left, bottom - top));
-    fillRect(pixels, buf_width, left, top, right - left, t, color);
-    fillRect(pixels, buf_width, left, bottom - t, right - left, t, color);
-    fillRect(pixels, buf_width, left, top, t, bottom - top, color);
-    fillRect(pixels, buf_width, right - t, top, t, bottom - top, color);
+    gdi_overlay.fillRect(pixels, buf_width, left, top, right - left, t, color);
+    gdi_overlay.fillRect(pixels, buf_width, left, bottom - t, right - left, t, color);
+    gdi_overlay.fillRect(pixels, buf_width, left, top, t, bottom - top, color);
+    gdi_overlay.fillRect(pixels, buf_width, right - t, top, t, bottom - top, color);
 }
 
 /// Inserts comma thousands-separators into the leading run of ASCII digits in `text` (e.g. "12405.3 m3/min" -> "12,405.3 m3/min").
@@ -3028,11 +2967,7 @@ fn fontSettingsChanged(cached_name: []const u8, cached_size: i32, cached_weight:
 }
 
 fn toBufZ(text: []const u8) [TEXT_BUFFER_SIZE:0]u8 {
-    var buf: [TEXT_BUFFER_SIZE:0]u8 = undefined;
-    const n = @min(text.len, buf.len - 1);
-    @memcpy(buf[0..n], text[0..n]);
-    buf[n] = 0;
-    return buf;
+    return gdi_overlay.toBufZ(TEXT_BUFFER_SIZE, text);
 }
 
 /// Measures text dimensions without rendering; the correct font must already be selected into `dc` by the caller.
@@ -3837,14 +3772,8 @@ fn isExplorerOwned(hwnd: win32.HWND) bool {
     _ = win32.GetWindowThreadProcessId(hwnd, &process_id);
     if (process_id == 0) return false;
 
-    const process_handle = win32.OpenProcess(win32.PROCESS_QUERY_LIMITED_INFORMATION, win32.FALSE, process_id) orelse return false;
-    defer _ = win32.CloseHandle(process_handle);
-
     var exe_path: [260:0]u8 = undefined;
-    const path_len = win32.GetModuleFileNameExA(process_handle, null, &exe_path, exe_path.len);
-    if (path_len == 0) return false;
-
-    const path_slice = exe_path[0..@intCast(path_len)];
+    const path_slice = win32.queryProcessExePath(process_id, &exe_path) orelse return false;
     const suffix = "\\explorer.exe";
     if (path_slice.len < suffix.len) return false;
     return std.ascii.eqlIgnoreCase(path_slice[path_slice.len - suffix.len ..], suffix);

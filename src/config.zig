@@ -1,4 +1,5 @@
 const std = @import("std");
+const win32 = @import("win32.zig");
 const log = @import("log.zig");
 const vk = @import("virtual_keys.zig");
 const state_mod = @import("state.zig");
@@ -22,7 +23,7 @@ pub fn setEnvironMap(environ_map: *const std.process.Environ.Map) void {
 
 pub const PROFILES_DIR = "profiles";
 pub const DEFAULT_PROFILE = "default.json";
-const GLOBAL_SETTINGS_FILE = "profiles/global.settings.json";
+pub const GLOBAL_SETTINGS_FILE = "profiles/global.settings.json";
 const DEFAULT_FONT_NAME = "Segoe UI";
 const MAX_CONFIG_FILE_SIZE: u64 = 30 * 1024;
 
@@ -2716,14 +2717,7 @@ pub const Config = struct {
             if (v == .bool) thumb.useUniqueCharacterNameColors = v.bool;
         }
         if (obj.get("characterNameFontName")) |v| {
-            // Skip if unchanged, or a no-op live-preview resend dangles Painter's borrowed cached_fonts pointer.
-            if (v == .string and !std.mem.eql(u8, thumb.characterNameFontName, v.string)) {
-                const old_font = thumb.characterNameFontName;
-                thumb.characterNameFontName = try allocator.dupe(u8, v.string);
-                if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
-                    allocator.free(old_font);
-                }
-            }
+            try updateOwnedFontName(allocator, &thumb.characterNameFontName, v);
         }
         if (obj.get("characterNameFontSize")) |v| {
             if (v == .integer) thumb.characterNameFontSize = std.math.cast(i32, v.integer) orelse thumb.characterNameFontSize;
@@ -2743,14 +2737,7 @@ pub const Config = struct {
             if (v == .string) thumb.systemNameBgColor = try parseHexColor(v.string);
         }
         if (obj.get("systemNameFontName")) |v| {
-            // See characterNameFontName above for why this guard matters.
-            if (v == .string and !std.mem.eql(u8, thumb.systemNameFontName, v.string)) {
-                const old_font = thumb.systemNameFontName;
-                thumb.systemNameFontName = try allocator.dupe(u8, v.string);
-                if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
-                    allocator.free(old_font);
-                }
-            }
+            try updateOwnedFontName(allocator, &thumb.systemNameFontName, v);
         }
         if (obj.get("systemNameFontSize")) |v| {
             if (v == .integer) thumb.systemNameFontSize = std.math.cast(i32, v.integer) orelse thumb.systemNameFontSize;
@@ -2823,14 +2810,7 @@ pub const Config = struct {
             if (v == .integer) thumb.quickGroupBadgeOffsetY = std.math.cast(i32, v.integer) orelse thumb.quickGroupBadgeOffsetY;
         }
         if (obj.get("quickGroupBadgeFontName")) |v| {
-            // See characterNameFontName above for why this guard matters.
-            if (v == .string and !std.mem.eql(u8, thumb.quickGroupBadgeFontName, v.string)) {
-                const old_font = thumb.quickGroupBadgeFontName;
-                thumb.quickGroupBadgeFontName = try allocator.dupe(u8, v.string);
-                if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
-                    allocator.free(old_font);
-                }
-            }
+            try updateOwnedFontName(allocator, &thumb.quickGroupBadgeFontName, v);
         }
         if (obj.get("quickGroupBadgeFontSize")) |v| {
             if (v == .integer) thumb.quickGroupBadgeFontSize = std.math.cast(i32, v.integer) orelse thumb.quickGroupBadgeFontSize;
@@ -2872,14 +2852,7 @@ pub const Config = struct {
             if (v == .integer) notif.offset_y = std.math.cast(i32, v.integer) orelse notif.offset_y;
         }
         if (obj.get("font_name")) |v| {
-            // See ThumbnailConfig's characterNameFontName parsing above for why this guard matters.
-            if (v == .string and !std.mem.eql(u8, notif.font_name, v.string)) {
-                const old_font = notif.font_name;
-                notif.font_name = try allocator.dupe(u8, v.string);
-                if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
-                    allocator.free(old_font);
-                }
-            }
+            try updateOwnedFontName(allocator, &notif.font_name, v);
         }
         if (obj.get("font_size")) |v| {
             if (v == .integer) notif.font_size = std.math.cast(i32, v.integer) orelse notif.font_size;
@@ -3074,14 +3047,7 @@ pub const Config = struct {
             }
         }
         if (obj.get("listViewFontName")) |v| {
-            // Same guard as ThumbnailConfig's characterNameFontName parsing, and the same pre-existing bug.
-            if (v == .string and !std.mem.eql(u8, display.listViewFontName, v.string)) {
-                const old_font = display.listViewFontName;
-                display.listViewFontName = try allocator.dupe(u8, v.string);
-                if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
-                    allocator.free(old_font);
-                }
-            }
+            try updateOwnedFontName(allocator, &display.listViewFontName, v);
         }
         if (obj.get("listViewFontSize")) |v| {
             if (v == .integer) display.listViewFontSize = std.math.cast(i32, v.integer) orelse display.listViewFontSize;
@@ -3112,14 +3078,7 @@ pub const Config = struct {
             }
         }
         if (obj.get("notifInfoPanelFontName")) |v| {
-            // See listViewFontName above for why this guard matters.
-            if (v == .string and !std.mem.eql(u8, display.notifInfoPanelFontName, v.string)) {
-                const old_font = display.notifInfoPanelFontName;
-                display.notifInfoPanelFontName = try allocator.dupe(u8, v.string);
-                if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
-                    allocator.free(old_font);
-                }
-            }
+            try updateOwnedFontName(allocator, &display.notifInfoPanelFontName, v);
         }
         if (obj.get("notifInfoPanelFontSize")) |v| {
             if (v == .integer) display.notifInfoPanelFontSize = std.math.cast(i32, v.integer) orelse display.notifInfoPanelFontSize;
@@ -3166,6 +3125,16 @@ pub const Config = struct {
         return std.fmt.parseInt(u32, hex_str, 16) catch error.InvalidColorFormat;
     }
 
+    /// Skips no-op updates - a live-preview resend of the same font name would otherwise dangle Painter's borrowed cached_fonts pointer.
+    fn updateOwnedFontName(allocator: std.mem.Allocator, field: *[]const u8, v: std.json.Value) !void {
+        if (v != .string or std.mem.eql(u8, field.*, v.string)) return;
+        const old_font = field.*;
+        field.* = try allocator.dupe(u8, v.string);
+        if (old_font.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(old_font);
+        }
+    }
+
     pub fn loadProfile(allocator: std.mem.Allocator, profile_name: []const u8) !Config {
         try ensureProfilesDir(allocator);
 
@@ -3187,32 +3156,16 @@ pub const Config = struct {
         return loadProfile(allocator, DEFAULT_PROFILE);
     }
 
-    const windows = std.os.windows;
-
-    const FOLDERID_Documents = windows.GUID{
+    const FOLDERID_Documents = win32.GUID{
         .Data1 = 0xFDD39AD0,
         .Data2 = 0x238F,
         .Data3 = 0x46AF,
         .Data4 = [8]u8{ 0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7 },
     };
 
-    extern "shell32" fn SHGetKnownFolderPath(
-        rfid: *const windows.GUID,
-        dwFlags: u32,
-        hToken: ?windows.HANDLE,
-        ppszPath: *?[*:0]u16,
-    ) callconv(.c) c_long;
-
-    extern "ole32" fn CoTaskMemFree(pv: ?*anyopaque) callconv(.c) void;
-
     /// Resolves the real Documents folder via the shell known-folder API rather than assuming `%USERPROFILE%/Documents`, since OneDrive's Known Folder Move can silently redirect it and EVE itself writes logs to wherever this API resolves.
     fn getDocumentsDir(allocator: std.mem.Allocator) ![]u8 {
-        var path_ptr: ?[*:0]u16 = null;
-        const hr = SHGetKnownFolderPath(&FOLDERID_Documents, 0, null, &path_ptr);
-        if (hr < 0 or path_ptr == null) return error.KnownFolderUnavailable;
-        defer CoTaskMemFree(path_ptr);
-
-        const path_utf8 = try std.unicode.utf16LeToUtf8Alloc(allocator, std.mem.span(path_ptr.?));
+        const path_utf8 = try win32.getKnownFolderPath(allocator, FOLDERID_Documents);
         for (path_utf8) |*c| {
             if (c.* == '\\') c.* = '/';
         }

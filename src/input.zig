@@ -156,83 +156,6 @@ fn handleThumbnailClickWithAnimation(source_hwnd: win32.HWND, animation_style: t
     updateHotkeyCyclePosition(source_hwnd);
 }
 
-var g_hotkey_tracked: std.AutoHashMap(u32, bool) = undefined;
-var g_hotkey_tracking_initialized = false;
-var g_hotkey_release_hook: ?win32.HHOOK = null;
-
-fn ensureHotkeyTrackingInit(allocator: std.mem.Allocator) void {
-    if (g_hotkey_tracking_initialized) return;
-    g_hotkey_tracked = std.AutoHashMap(u32, bool).init(allocator);
-    g_hotkey_tracking_initialized = true;
-}
-
-/// Marks vk_code down to distinguish a repeat WM_HOTKEY from a new press; swallow-on-release is decided later in markHotkeySwallowRelease.
-pub fn trackHotkeyPress(allocator: std.mem.Allocator, vk_code: u32) bool {
-    // Mouse-button hotkeys route through here with lparam=0.
-    if (vk_code == 0) return true;
-    ensureHotkeyTrackingInit(allocator);
-
-    const gop = g_hotkey_tracked.getOrPut(vk_code) catch |err| {
-        slog.warn("Failed to track hotkey press for vk 0x{X}: {}", .{ vk_code, err });
-        return true;
-    };
-    if (gop.found_existing) return false;
-
-    gop.value_ptr.* = false;
-    if (g_hotkey_release_hook == null) installHotkeyReleaseHook();
-    return true;
-}
-
-/// Arms release-swallowing for vk_code once its action has moved focus, so the previously-focused client still believes the key is held.
-pub fn markHotkeySwallowRelease(vk_code: u32) void {
-    if (vk_code == 0) return;
-    if (!g_hotkey_tracking_initialized) return;
-    if (g_hotkey_tracked.getPtr(vk_code)) |swallow| swallow.* = true;
-}
-
-fn installHotkeyReleaseHook() void {
-    const hmod = win32.GetModuleHandleA(null);
-    g_hotkey_release_hook = win32.SetWindowsHookExA(win32.WH_KEYBOARD_LL, lowLevelHotkeyReleaseProc, hmod, 0);
-    if (g_hotkey_release_hook == null) {
-        slog.err("Failed to install low-level keyboard release hook", .{});
-        return;
-    }
-    slog.debug("Low-level keyboard release hook installed", .{});
-}
-
-/// Clear all tracked keys and uninstall the hook. Safe to call even if nothing was tracked.
-pub fn uninstallHotkeyReleaseHook() void {
-    if (!g_hotkey_tracking_initialized) return;
-    g_hotkey_tracked.clearRetainingCapacity();
-    if (g_hotkey_release_hook) |hook| {
-        _ = win32.UnhookWindowsHookEx(hook);
-        g_hotkey_release_hook = null;
-        slog.debug("Low-level keyboard release hook removed", .{});
-    }
-}
-
-/// Frees g_hotkey_tracked; call only once at true process shutdown, never from a reload path that may track again.
-pub fn deinitHotkeyTracking() void {
-    if (!g_hotkey_tracking_initialized) return;
-    g_hotkey_tracked.deinit();
-    g_hotkey_tracking_initialized = false;
-}
-
-fn lowLevelHotkeyReleaseProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
-    if (nCode == win32.HC_ACTION and (wParam == win32.WM_KEYUP or wParam == win32.WM_SYSKEYUP)) {
-        const info = win32.lparamToPtr(win32.KBDLLHOOKSTRUCT, lParam);
-
-        if ((info.flags & win32.LLKHF_INJECTED) == 0) {
-            if (g_hotkey_tracked.fetchRemove(info.vkCode)) |entry| {
-                if (entry.value) {
-                    return 1;
-                }
-            }
-        }
-    }
-    return win32.CallNextHookEx(null, nCode, wParam, lParam);
-}
-
 /// Resolves the thumbnail under the cursor, polled on demand since hotkey presses carry no SOURCE_HWND message.
 pub fn resolveThumbnailUnderCursor() ?*ThumbnailWindow {
     const painter = g_painter_ptr orelse return null;
@@ -410,8 +333,8 @@ fn handleDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
     const new_x = rect.left + cursor_x - g_drag_state.offset_x;
     const new_y = rect.top + cursor_y - g_drag_state.offset_y;
 
-    const width = rect.right - rect.left;
-    const height = rect.bottom - rect.top;
+    const width = win32.rectWidth(rect);
+    const height = win32.rectHeight(rect);
 
     const ctrl_pressed = win32.isCtrlPressed();
 
@@ -429,8 +352,8 @@ fn handleDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
                 var thumb_rect: win32.RECT = undefined;
                 _ = win32.GetWindowRect(thumbnail.hwnd, &thumb_rect);
 
-                const thumb_width = thumb_rect.right - thumb_rect.left;
-                const thumb_height = thumb_rect.bottom - thumb_rect.top;
+                const thumb_width = win32.rectWidth(thumb_rect);
+                const thumb_height = win32.rectHeight(thumb_rect);
                 const new_thumb_x = thumb_rect.left + delta_x;
                 const new_thumb_y = thumb_rect.top + delta_y;
 
@@ -671,6 +594,47 @@ pub fn applySnapping(x: i32, y: i32, width: i32, height: i32, dragging_hwnd: win
 
 const HIDE_DEBOUNCE_TIMER_ID: usize = 1;
 
+/// Shared WM_LBUTTONDOWN handling for both the thumbnail and text overlay window procs.
+fn handleOverlayLButtonDown(hwnd: win32.HWND) void {
+    if (win32.GetPropA(hwnd, "SOURCE_HWND")) |source_hwnd| {
+        const config = &main_mod.g_config;
+        const shift_pressed = win32.isShiftPressed();
+
+        if (config.interaction.clickTrigger == .MouseDown) {
+            if (shift_pressed) {
+                handleThumbnailShiftClick(source_hwnd);
+            } else {
+                handleThumbnailClick(source_hwnd);
+            }
+        } else {
+            g_click_state = .{
+                .pending = true,
+                .hwnd = hwnd,
+                .source_hwnd = source_hwnd,
+                .shift_pressed = shift_pressed,
+            };
+        }
+    }
+}
+
+/// Shared WM_LBUTTONUP handling for both the thumbnail and text overlay window procs.
+fn handleOverlayLButtonUp(hwnd: win32.HWND) void {
+    const config = &main_mod.g_config;
+
+    if (config.interaction.clickTrigger == .MouseUp and g_click_state.pending) {
+        if (g_click_state.hwnd == hwnd) {
+            if (g_click_state.source_hwnd) |source_hwnd| {
+                if (g_click_state.shift_pressed) {
+                    handleThumbnailShiftClick(source_hwnd);
+                } else {
+                    handleThumbnailClick(source_hwnd);
+                }
+            }
+        }
+    }
+    g_click_state = .{};
+}
+
 /// Window procedure for thumbnail windows: handles input events and the auto-hide timer when no EVE window has focus.
 fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
@@ -697,42 +661,11 @@ fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: w
             return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         win32.WM_LBUTTONDOWN => {
-            if (win32.GetPropA(hwnd, "SOURCE_HWND")) |source_hwnd| {
-                const config = &main_mod.g_config;
-                const shift_pressed = win32.isShiftPressed();
-
-                if (config.interaction.clickTrigger == .MouseDown) {
-                    if (shift_pressed) {
-                        handleThumbnailShiftClick(source_hwnd);
-                    } else {
-                        handleThumbnailClick(source_hwnd);
-                    }
-                } else {
-                    g_click_state = .{
-                        .pending = true,
-                        .hwnd = hwnd,
-                        .source_hwnd = source_hwnd,
-                        .shift_pressed = shift_pressed,
-                    };
-                }
-            }
+            handleOverlayLButtonDown(hwnd);
             return 0;
         },
         win32.WM_LBUTTONUP => {
-            const config = &main_mod.g_config;
-
-            if (config.interaction.clickTrigger == .MouseUp and g_click_state.pending) {
-                if (g_click_state.hwnd == hwnd) {
-                    if (g_click_state.source_hwnd) |source_hwnd| {
-                        if (g_click_state.shift_pressed) {
-                            handleThumbnailShiftClick(source_hwnd);
-                        } else {
-                            handleThumbnailClick(source_hwnd);
-                        }
-                    }
-                }
-            }
-            g_click_state = .{};
+            handleOverlayLButtonUp(hwnd);
             return 0;
         },
         win32.WM_RBUTTONDOWN => {
@@ -790,42 +723,11 @@ fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: w
 fn textWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
         win32.WM_LBUTTONDOWN => {
-            if (win32.GetPropA(hwnd, "SOURCE_HWND")) |source_hwnd| {
-                const config = &main_mod.g_config;
-                const shift_pressed = win32.isShiftPressed();
-
-                if (config.interaction.clickTrigger == .MouseDown) {
-                    if (shift_pressed) {
-                        handleThumbnailShiftClick(source_hwnd);
-                    } else {
-                        handleThumbnailClick(source_hwnd);
-                    }
-                } else {
-                    g_click_state = .{
-                        .pending = true,
-                        .hwnd = hwnd,
-                        .source_hwnd = source_hwnd,
-                        .shift_pressed = shift_pressed,
-                    };
-                }
-            }
+            handleOverlayLButtonDown(hwnd);
             return 0;
         },
         win32.WM_LBUTTONUP => {
-            const config = &main_mod.g_config;
-
-            if (config.interaction.clickTrigger == .MouseUp and g_click_state.pending) {
-                if (g_click_state.hwnd == hwnd) {
-                    if (g_click_state.source_hwnd) |source_hwnd| {
-                        if (g_click_state.shift_pressed) {
-                            handleThumbnailShiftClick(source_hwnd);
-                        } else {
-                            handleThumbnailClick(source_hwnd);
-                        }
-                    }
-                }
-            }
-            g_click_state = .{};
+            handleOverlayLButtonUp(hwnd);
             return 0;
         },
         win32.WM_RBUTTONDOWN => {

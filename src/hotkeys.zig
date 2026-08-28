@@ -15,6 +15,83 @@ const main_mod = @import("main.zig");
 var g_profile_cycle_buffer: [256]u8 = undefined;
 var g_profile_switch_buffer: [256]u8 = undefined;
 
+var g_hotkey_tracked: std.AutoHashMap(u32, bool) = undefined;
+var g_hotkey_tracking_initialized = false;
+var g_hotkey_release_hook: ?win32.HHOOK = null;
+
+fn ensureHotkeyTrackingInit(allocator: std.mem.Allocator) void {
+    if (g_hotkey_tracking_initialized) return;
+    g_hotkey_tracked = std.AutoHashMap(u32, bool).init(allocator);
+    g_hotkey_tracking_initialized = true;
+}
+
+/// Marks vk_code down to distinguish a repeat WM_HOTKEY from a new press; swallow-on-release is decided later in markHotkeySwallowRelease.
+pub fn trackHotkeyPress(allocator: std.mem.Allocator, vk_code: u32) bool {
+    // Mouse-button hotkeys route through here with lparam=0.
+    if (vk_code == 0) return true;
+    ensureHotkeyTrackingInit(allocator);
+
+    const gop = g_hotkey_tracked.getOrPut(vk_code) catch |err| {
+        slog.warn("Failed to track hotkey press for vk 0x{X}: {}", .{ vk_code, err });
+        return true;
+    };
+    if (gop.found_existing) return false;
+
+    gop.value_ptr.* = false;
+    if (g_hotkey_release_hook == null) installHotkeyReleaseHook();
+    return true;
+}
+
+/// Arms release-swallowing for vk_code once its action has moved focus, so the previously-focused client still believes the key is held.
+pub fn markHotkeySwallowRelease(vk_code: u32) void {
+    if (vk_code == 0) return;
+    if (!g_hotkey_tracking_initialized) return;
+    if (g_hotkey_tracked.getPtr(vk_code)) |swallow| swallow.* = true;
+}
+
+fn installHotkeyReleaseHook() void {
+    const hmod = win32.GetModuleHandleA(null);
+    g_hotkey_release_hook = win32.SetWindowsHookExA(win32.WH_KEYBOARD_LL, lowLevelHotkeyReleaseProc, hmod, 0);
+    if (g_hotkey_release_hook == null) {
+        slog.err("Failed to install low-level keyboard release hook", .{});
+        return;
+    }
+    slog.debug("Low-level keyboard release hook installed", .{});
+}
+
+/// Clear all tracked keys and uninstall the hook. Safe to call even if nothing was tracked.
+pub fn uninstallHotkeyReleaseHook() void {
+    if (!g_hotkey_tracking_initialized) return;
+    g_hotkey_tracked.clearRetainingCapacity();
+    if (g_hotkey_release_hook) |hook| {
+        _ = win32.UnhookWindowsHookEx(hook);
+        g_hotkey_release_hook = null;
+        slog.debug("Low-level keyboard release hook removed", .{});
+    }
+}
+
+/// Frees g_hotkey_tracked; call only once at true process shutdown, never from a reload path that may track again.
+pub fn deinitHotkeyTracking() void {
+    if (!g_hotkey_tracking_initialized) return;
+    g_hotkey_tracked.deinit();
+    g_hotkey_tracking_initialized = false;
+}
+
+fn lowLevelHotkeyReleaseProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
+    if (nCode == win32.HC_ACTION and (wParam == win32.WM_KEYUP or wParam == win32.WM_SYSKEYUP)) {
+        const info = win32.lparamToPtr(win32.KBDLLHOOKSTRUCT, lParam);
+
+        if ((info.flags & win32.LLKHF_INJECTED) == 0) {
+            if (g_hotkey_tracked.fetchRemove(info.vkCode)) |entry| {
+                if (entry.value) {
+                    return 1;
+                }
+            }
+        }
+    }
+    return win32.CallNextHookEx(null, nCode, wParam, lParam);
+}
+
 // Hotkey IDs are banded to avoid collisions: 0-999 groups, 1000s global, 2000s per-character, 3000s profile switch, 4000s+ quick groups.
 const HOTKEY_ID_CYCLE_GROUP_BASE: c_int = 0;
 const HOTKEY_ID_GLOBAL_ACTION_BASE: c_int = 1000;
@@ -252,6 +329,8 @@ pub const HotkeyManager = struct {
 
         var expected_count: usize = 0;
         var failed_count: usize = 0;
+        // Shared across every catch block below - each only reads it right after a fresh formatKeyName call, never across two.
+        var key_name_buf: [32]u8 = undefined;
 
         for (self.config.hotkeyGroups.items) |*group| {
             // Every group has a forward key; only backward is optional.
@@ -301,7 +380,6 @@ pub const HotkeyManager = struct {
                 const forward_action = HotkeyAction{ .CycleGroup = .{ .group_index = group_index, .forward = true } };
                 const desc = std.fmt.bufPrint(&desc_buf, "group {} [{s}...] forward", .{ group_index, char_name }) catch "group forward";
                 self.registerAndTrackHotkey(hwnd, forward_id, forward_vk, forward_action, desc) catch |err| {
-                    var key_name_buf: [32]u8 = undefined;
                     const key_name = formatKeyName(forward_vk, &key_name_buf);
                     slog.err("Failed to register forward hotkey {s} for group {} [{s}...]: {}", .{ key_name, group_index, char_name, err });
                     failed_count += 1;
@@ -313,7 +391,6 @@ pub const HotkeyManager = struct {
                 const backward_action = HotkeyAction{ .CycleGroup = .{ .group_index = group_index, .forward = false } };
                 const desc2 = std.fmt.bufPrint(&desc_buf, "group {} [{s}...] backward", .{ group_index, char_name }) catch "group backward";
                 self.registerAndTrackHotkey(hwnd, backward_id, backward_vk, backward_action, desc2) catch |err| {
-                    var key_name_buf: [32]u8 = undefined;
                     const key_name = formatKeyName(backward_vk, &key_name_buf);
                     slog.err("Failed to register backward hotkey {s} for group {} [{s}...]: {}", .{ key_name, group_index, char_name, err });
                     failed_count += 1;
@@ -329,7 +406,6 @@ pub const HotkeyManager = struct {
                 const assign_action = HotkeyAction{ .AssignQuickGroup = .{ .group_index = group_index } };
                 const desc = std.fmt.bufPrint(&desc_buf, "quick group {} [{s}] assign", .{ group_index, group.name }) catch "quick group assign";
                 self.registerAndTrackHotkey(hwnd, assign_id, assign_vk, assign_action, desc) catch |err| {
-                    var key_name_buf: [32]u8 = undefined;
                     const key_name = formatKeyName(assign_vk, &key_name_buf);
                     slog.err("Failed to register assign hotkey {s} for quick group {} [{s}]: {}", .{ key_name, group_index, group.name, err });
                     failed_count += 1;
@@ -341,7 +417,6 @@ pub const HotkeyManager = struct {
                 const forward_action = HotkeyAction{ .CycleQuickGroup = .{ .group_index = group_index, .forward = true } };
                 const desc = std.fmt.bufPrint(&desc_buf, "quick group {} [{s}] forward", .{ group_index, group.name }) catch "quick group forward";
                 self.registerAndTrackHotkey(hwnd, forward_id, forward_vk, forward_action, desc) catch |err| {
-                    var key_name_buf: [32]u8 = undefined;
                     const key_name = formatKeyName(forward_vk, &key_name_buf);
                     slog.err("Failed to register forward hotkey {s} for quick group {} [{s}]: {}", .{ key_name, group_index, group.name, err });
                     failed_count += 1;
@@ -353,7 +428,6 @@ pub const HotkeyManager = struct {
                 const backward_action = HotkeyAction{ .CycleQuickGroup = .{ .group_index = group_index, .forward = false } };
                 const desc = std.fmt.bufPrint(&desc_buf, "quick group {} [{s}] backward", .{ group_index, group.name }) catch "quick group backward";
                 self.registerAndTrackHotkey(hwnd, backward_id, backward_vk, backward_action, desc) catch |err| {
-                    var key_name_buf: [32]u8 = undefined;
                     const key_name = formatKeyName(backward_vk, &key_name_buf);
                     slog.err("Failed to register backward hotkey {s} for quick group {} [{s}]: {}", .{ key_name, group_index, group.name, err });
                     failed_count += 1;
@@ -380,7 +454,6 @@ pub const HotkeyManager = struct {
 
             self.registerAndTrackHotkey(hwnd, char_id, group.vk, char_action, char_desc) catch |err| {
                 self.allocator.free(owned_indices);
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(group.vk, &key_name_buf);
                 slog.err("Failed to register hotkey {s} for character [{s}...]: {}", .{ key_name, first_name, err });
                 failed_count += 1;
@@ -394,7 +467,6 @@ pub const HotkeyManager = struct {
                 var sp_desc_buf: [128]u8 = undefined;
                 const sp_desc = std.fmt.bufPrint(&sp_desc_buf, "switch to profile [{s}]", .{psh.targetProfile}) catch "switch to profile";
                 self.registerAndTrackHotkey(hwnd, sp_id, sp_vk, sp_action, sp_desc) catch |err| {
-                    var key_name_buf: [32]u8 = undefined;
                     const key_name = formatKeyName(sp_vk, &key_name_buf);
                     slog.err("Failed to register hotkey {s} for switching to profile [{s}]: {}", .{ key_name, psh.targetProfile, err });
                     failed_count += 1;
@@ -406,7 +478,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.MinimizeAll);
             const action = HotkeyAction{ .MinimizeAll = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "minimize all clients") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register minimize all hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -417,7 +488,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.CloseAll);
             const action = HotkeyAction{ .CloseAll = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "close all clients") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register close all hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -428,7 +498,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.ToggleVisibility);
             const action = HotkeyAction{ .ToggleVisibility = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "toggle thumbnails visibility") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register toggle visibility hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -439,7 +508,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.NextProfile);
             const action = HotkeyAction{ .NextProfile = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "cycle to next profile") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register next profile hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -450,7 +518,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.PreviousProfile);
             const action = HotkeyAction{ .PreviousProfile = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "cycle to previous profile") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register previous profile hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -461,7 +528,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.ToggleExclusion);
             const action = HotkeyAction{ .ToggleExclusion = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "toggle character exclusion from cycling") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register toggle exclusion hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -472,7 +538,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.NextExcluded);
             const action = HotkeyAction{ .NextExcluded = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "cycle to next excluded character") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register next excluded hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -483,7 +548,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.PreviousExcluded);
             const action = HotkeyAction{ .PreviousExcluded = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "cycle to previous excluded character") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register previous excluded hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -494,7 +558,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.SuspendHotkeys);
             const action = HotkeyAction{ .SuspendHotkeys = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "suspend/resume all hotkeys") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register suspend hotkeys {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -505,7 +568,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.ToggleAutoMinimize);
             const action = HotkeyAction{ .ToggleAutoMinimize = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "toggle auto-minimize mode") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register toggle auto-minimize hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -516,7 +578,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.CycleNotified);
             const action = HotkeyAction{ .CycleNotified = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "cycle to most recently notified character") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register cycle notified hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -527,7 +588,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.PreviousNotified);
             const action = HotkeyAction{ .PreviousNotified = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "cycle backward through notified characters") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register previous notified hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -538,7 +598,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.NextAllClients);
             const action = HotkeyAction{ .NextAllClients = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "cycle forward through all logged-in clients") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register next all-clients hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -549,7 +608,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.PreviousAllClients);
             const action = HotkeyAction{ .PreviousAllClients = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "cycle backward through all logged-in clients") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register previous all-clients hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -560,7 +618,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.NextNotLoggedIn);
             const action = HotkeyAction{ .NextNotLoggedIn = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "cycle forward through not-logged-in clients") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register next not-logged-in hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -571,7 +628,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.PreviousNotLoggedIn);
             const action = HotkeyAction{ .PreviousNotLoggedIn = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "cycle backward through not-logged-in clients") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register previous not-logged-in hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -582,7 +638,6 @@ pub const HotkeyManager = struct {
             const id = @intFromEnum(GlobalActionId.MoveToSavedPositions);
             const action = HotkeyAction{ .MoveToSavedPositions = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "move all clients to saved positions") catch |err| {
-                var key_name_buf: [32]u8 = undefined;
                 const key_name = formatKeyName(vk_code, &key_name_buf);
                 slog.err("Failed to register move to saved positions hotkey {s}: {}", .{ key_name, err });
                 failed_count += 1;
@@ -609,7 +664,7 @@ pub const HotkeyManager = struct {
         const base_vk: win32.UINT = @intCast(vk.extractVk(virtual_key));
         const key_modifiers: win32.UINT = @intCast(vk.extractModifiers(virtual_key));
 
-        // Deliberately not MOD_NOREPEAT; handleHotkeyPress suppresses repeats itself via input.trackHotkeyPress.
+        // Deliberately not MOD_NOREPEAT; handleHotkeyPress suppresses repeats itself via trackHotkeyPress.
         if (!win32.toBool(win32.RegisterHotKey(hwnd, id, key_modifiers, base_vk))) {
             // Likely already in use by another application
             return error.HotkeyRegistrationFailed;
@@ -624,7 +679,7 @@ pub const HotkeyManager = struct {
     pub fn unregisterAll(self: *HotkeyManager, hwnd: win32.HWND) void {
         // Always clear mouse-button bindings too; cheap no-op if none were registered.
         mouse_hook.unregisterAll();
-        input.uninstallHotkeyReleaseHook();
+        uninstallHotkeyReleaseHook();
 
         var action_it = self.hotkey_map.valueIterator();
         while (action_it.next()) |action| {
@@ -658,7 +713,7 @@ pub const HotkeyManager = struct {
 
         // No MOD_NOREPEAT (see registerSingleHotkey), so this must run before every early return or held keys would re-fire.
         const vk_code = win32.hotkeyVkFromLparam(lparam);
-        if (!input.trackHotkeyPress(self.allocator, vk_code)) {
+        if (!trackHotkeyPress(self.allocator, vk_code)) {
             slog.debug("Hotkey {} ignored - key-repeat re-fire while held", .{hotkey_id});
             return;
         }
@@ -770,7 +825,7 @@ pub const HotkeyManager = struct {
         }
 
         if (win32.GetForegroundWindow() != foreground_before) {
-            input.markHotkeySwallowRelease(vk_code);
+            markHotkeySwallowRelease(vk_code);
         }
     }
 
@@ -885,12 +940,7 @@ pub const HotkeyManager = struct {
             }
         }
 
-        const target_index = if (current_index) |idx|
-            (if (forward) (idx + 1) % profiles.items.len else if (idx == 0) profiles.items.len - 1 else idx - 1)
-        else if (forward)
-            0
-        else
-            profiles.items.len - 1;
+        const target_index = cycleStartIndex(current_index, profiles.items.len, forward);
 
         const target_profile = profiles.items[target_index];
         slog.info("Cycling to {s} profile: {s} -> {s}", .{ if (forward) "next" else "previous", current_profile, target_profile });
@@ -1020,6 +1070,24 @@ pub const HotkeyManager = struct {
         };
     }
 
+    /// Advances idx by one position within [0, num), wrapping at either end.
+    fn stepCycleIndex(idx: usize, num: usize, forward: bool) usize {
+        if (forward) return (idx + 1) % num;
+        return if (idx == 0) num - 1 else idx - 1;
+    }
+
+    /// Returns the index to step *from*, not the index to check first - for a loop that steps once before its first check, so a stale/absent cursor resolves one-before-the-start.
+    fn cycleIndexBeforeStart(current: ?usize, num: usize, forward: bool) usize {
+        const valid_current = if (current) |ci| (if (ci < num) ci else null) else null;
+        return valid_current orelse (if (forward) num - 1 else 0);
+    }
+
+    /// Like cycleIndexBeforeStart, but for a loop that checks its cursor directly with no pre-step.
+    fn cycleStartIndex(found_index: ?usize, num: usize, forward: bool) usize {
+        if (found_index) |i| return stepCycleIndex(i, num, forward);
+        return if (forward) 0 else num - 1;
+    }
+
     /// Cycles to the next running character sharing this hotkey.
     fn activatePerCharacterGroup(self: *HotkeyManager, hotkey_id: c_int) void {
         const action = self.hotkey_map.getPtr(hotkey_id) orelse return;
@@ -1030,12 +1098,11 @@ pub const HotkeyManager = struct {
         if (num == 0) return;
 
         const start_index = group.current_index;
-        const valid_current = if (group.current_index) |ci| (if (ci < num) ci else null) else null;
-        var idx: usize = valid_current orelse (num - 1);
+        var idx: usize = cycleIndexBeforeStart(group.current_index, num, true);
         var attempts: usize = 0;
 
         while (attempts < num) : (attempts += 1) {
-            idx = (idx + 1) % num;
+            idx = stepCycleIndex(idx, num, true);
             const char_index = group.character_indices[idx];
             if (char_index >= self.config.characters.items.len) continue;
             const char_name = self.config.characters.items[char_index].name;
@@ -1060,17 +1127,11 @@ pub const HotkeyManager = struct {
         }
 
         const start_index = group.currentIndex;
-        // null/stale index starts just before the first element (forward) or just after the last (backward).
-        const valid_current = if (group.currentIndex) |ci| (if (ci < num_chars) ci else null) else null;
-        var idx: usize = valid_current orelse (if (forward) num_chars - 1 else 0);
+        var idx: usize = cycleIndexBeforeStart(group.currentIndex, num_chars, forward);
         var attempts: usize = 0;
 
         while (attempts < num_chars) : (attempts += 1) {
-            if (forward) {
-                idx = (idx + 1) % num_chars;
-            } else {
-                idx = if (idx == 0) num_chars - 1 else idx - 1;
-            }
+            idx = stepCycleIndex(idx, num_chars, forward);
 
             const char_name = group.characters.items[idx];
 
@@ -1105,17 +1166,11 @@ pub const HotkeyManager = struct {
         }
 
         const start_index = group.currentIndex;
-        // null/stale index starts just before the first element (forward) or just after the last (backward).
-        const valid_current = if (group.currentIndex) |ci| (if (ci < num_chars) ci else null) else null;
-        var idx: usize = valid_current orelse (if (forward) num_chars - 1 else 0);
+        var idx: usize = cycleIndexBeforeStart(group.currentIndex, num_chars, forward);
         var attempts: usize = 0;
 
         while (attempts < num_chars) : (attempts += 1) {
-            if (forward) {
-                idx = (idx + 1) % num_chars;
-            } else {
-                idx = if (idx == 0) num_chars - 1 else idx - 1;
-            }
+            idx = stepCycleIndex(idx, num_chars, forward);
 
             const char_name = group.characters.items[idx];
 
@@ -1151,29 +1206,14 @@ pub const HotkeyManager = struct {
         const group = &self.config.quickGroups.items[group_index];
         const char_name = thumbnail.character_name;
 
-        var removed_index: ?usize = null;
-        for (group.characters.items, 0..) |existing, i| {
-            if (std.mem.eql(u8, existing, char_name)) {
-                removed_index = i;
-                break;
-            }
-        }
-
-        if (removed_index) |i| {
-            self.allocator.free(group.characters.items[i]);
-            _ = group.characters.orderedRemove(i);
-            slog.info("Removed {s} from quick group {} [{s}]", .{ char_name, group_index, group.name });
-        } else {
-            const owned_name = self.allocator.dupe(u8, char_name) catch {
-                slog.err("Failed to allocate character name for quick group assignment", .{});
-                return;
-            };
-            group.characters.append(self.allocator, owned_name) catch {
-                slog.err("Failed to add character to quick group", .{});
-                self.allocator.free(owned_name);
-                return;
-            };
+        const added = toggleStringMembership(self.allocator, &group.characters, char_name) catch {
+            slog.err("Failed to toggle {s} in quick group {} [{s}]", .{ char_name, group_index, group.name });
+            return;
+        };
+        if (added) {
             slog.info("Added {s} to quick group {} [{s}]", .{ char_name, group_index, group.name });
+        } else {
+            slog.info("Removed {s} from quick group {} [{s}]", .{ char_name, group_index, group.name });
         }
 
         // Membership changed - old index may now point at a shifted member
@@ -1185,31 +1225,38 @@ pub const HotkeyManager = struct {
         };
     }
 
-    fn isCharacterExcludedInGroup(group: *const config_mod.HotkeyGroup, character_name: []const u8) bool {
-        for (group.excluded_characters.items) |excluded| {
-            if (std.mem.eql(u8, excluded, character_name)) {
-                return true;
-            }
+    /// Index of the first slice in `list` equal to `name`, or null.
+    fn findStringIndex(list: []const []const u8, name: []const u8) ?usize {
+        for (list, 0..) |item, i| {
+            if (std.mem.eql(u8, item, name)) return i;
         }
-        return false;
+        return null;
+    }
+
+    /// Toggles name's membership in list: removes+frees if present (returns false), else dupes+appends (returns true).
+    fn toggleStringMembership(allocator: std.mem.Allocator, list: *std.ArrayList([]const u8), name: []const u8) !bool {
+        if (findStringIndex(list.items, name)) |index| {
+            const removed = list.orderedRemove(index);
+            allocator.free(removed);
+            return false;
+        }
+        const duped = try allocator.dupe(u8, name);
+        errdefer allocator.free(duped);
+        try list.append(allocator, duped);
+        return true;
+    }
+
+    fn isCharacterExcludedInGroup(group: *const config_mod.HotkeyGroup, character_name: []const u8) bool {
+        return findStringIndex(group.excluded_characters.items, character_name) != null;
     }
 
     pub fn isCharacterExcluded(self: *HotkeyManager, character_name: []const u8) bool {
-        for (self.manually_excluded_characters.items) |excluded| {
-            if (std.mem.eql(u8, excluded, character_name)) {
-                return true;
-            }
+        if (findStringIndex(self.manually_excluded_characters.items, character_name) != null) {
+            return true;
         }
 
         for (self.config.hotkeyGroups.items) |*group| {
-            var in_group = false;
-            for (group.characters.items) |char_name| {
-                if (std.mem.eql(u8, char_name, character_name)) {
-                    in_group = true;
-                    break;
-                }
-            }
-
+            const in_group = findStringIndex(group.characters.items, character_name) != null;
             if (in_group and isCharacterExcludedInGroup(group, character_name)) {
                 return true;
             }
@@ -1222,40 +1269,17 @@ pub const HotkeyManager = struct {
         var found_in_group = false;
 
         for (self.config.hotkeyGroups.items) |*group| {
-            var in_group = false;
-            for (group.characters.items) |char_name| {
-                if (std.mem.eql(u8, char_name, character_name)) {
-                    in_group = true;
-                    break;
-                }
-            }
-
-            if (!in_group) continue;
+            if (findStringIndex(group.characters.items, character_name) == null) continue;
             found_in_group = true;
 
-            var excluded_index: ?usize = null;
-            for (group.excluded_characters.items, 0..) |excluded, i| {
-                if (std.mem.eql(u8, excluded, character_name)) {
-                    excluded_index = i;
-                    break;
-                }
-            }
-
-            if (excluded_index) |index| {
-                const removed = group.excluded_characters.orderedRemove(index);
-                self.allocator.free(removed);
-                slog.debug("Removed {s} from exclusion list", .{character_name});
-            } else {
-                const duped = self.allocator.dupe(u8, character_name) catch {
-                    slog.err("Failed to allocate memory for excluded character", .{});
-                    return;
-                };
-                group.excluded_characters.append(self.allocator, duped) catch {
-                    self.allocator.free(duped);
-                    slog.err("Failed to add character to exclusion list", .{});
-                    return;
-                };
+            const added = toggleStringMembership(self.allocator, &group.excluded_characters, character_name) catch {
+                slog.err("Failed to toggle exclusion for {s}", .{character_name});
+                return;
+            };
+            if (added) {
                 slog.debug("Added {s} to exclusion list", .{character_name});
+            } else {
+                slog.debug("Removed {s} from exclusion list", .{character_name});
             }
         }
 
@@ -1269,29 +1293,14 @@ pub const HotkeyManager = struct {
 
     /// Toggles membership in manually_excluded_characters, the fallback list for characters in no hotkey group.
     fn toggleManualExclusion(self: *HotkeyManager, character_name: []const u8) void {
-        var excluded_index: ?usize = null;
-        for (self.manually_excluded_characters.items, 0..) |excluded, i| {
-            if (std.mem.eql(u8, excluded, character_name)) {
-                excluded_index = i;
-                break;
-            }
-        }
-
-        if (excluded_index) |index| {
-            const removed = self.manually_excluded_characters.orderedRemove(index);
-            self.allocator.free(removed);
-            slog.debug("Removed {s} from manual exclusion list", .{character_name});
-        } else {
-            const duped = self.allocator.dupe(u8, character_name) catch {
-                slog.err("Failed to allocate memory for manually excluded character", .{});
-                return;
-            };
-            self.manually_excluded_characters.append(self.allocator, duped) catch {
-                self.allocator.free(duped);
-                slog.err("Failed to add character to manual exclusion list", .{});
-                return;
-            };
+        const added = toggleStringMembership(self.allocator, &self.manually_excluded_characters, character_name) catch {
+            slog.err("Failed to toggle manual exclusion for {s}", .{character_name});
+            return;
+        };
+        if (added) {
             slog.debug("Added {s} to manual exclusion list", .{character_name});
+        } else {
+            slog.debug("Removed {s} from manual exclusion list", .{character_name});
         }
     }
 
@@ -1348,17 +1357,11 @@ pub const HotkeyManager = struct {
         }
 
         const start_index = self.excluded_cycle_index;
-        // null/stale index starts just before the first element (forward) or just after the last (backward).
-        const valid_current = if (self.excluded_cycle_index) |ci| (if (ci < num_excluded) ci else null) else null;
-        var idx: usize = valid_current orelse (if (forward) num_excluded - 1 else 0);
+        var idx: usize = cycleIndexBeforeStart(self.excluded_cycle_index, num_excluded, forward);
         var attempts: usize = 0;
 
         while (attempts < num_excluded) : (attempts += 1) {
-            if (forward) {
-                idx = (idx + 1) % num_excluded;
-            } else {
-                idx = if (idx == 0) num_excluded - 1 else idx - 1;
-            }
+            idx = stepCycleIndex(idx, num_excluded, forward);
 
             const char_name = excluded_list.items[idx];
 
@@ -1402,20 +1405,16 @@ pub const HotkeyManager = struct {
             return;
         }
 
-        var start_index: usize = if (forward) 0 else num_notified - 1;
+        var found_index: ?usize = null;
         if (self.last_notified_cycle_name) |last_name| {
             for (names.items, 0..) |name, i| {
                 if (std.mem.eql(u8, name, last_name)) {
-                    start_index = if (forward)
-                        (i + 1) % num_notified
-                    else if (i == 0)
-                        num_notified - 1
-                    else
-                        i - 1;
+                    found_index = i;
                     break;
                 }
             }
         }
+        const start_index = cycleStartIndex(found_index, num_notified, forward);
 
         var index = start_index;
         var attempts: usize = 0;
@@ -1430,20 +1429,24 @@ pub const HotkeyManager = struct {
             }
 
             slog.debug("Notified character {s} is not currently running, skipping", .{char_name});
-            index = if (forward) (index + 1) % num_notified else if (index == 0) num_notified - 1 else index - 1;
+            index = stepCycleIndex(index, num_notified, forward);
         }
 
         slog.warn("No recently-notified characters are currently running", .{});
     }
 
-    /// Replaces last_notified_cycle_name with an owned copy of name, freeing the previous one.
-    fn setLastNotifiedCycleName(self: *HotkeyManager, name: []const u8) void {
+    /// Replaces `field.*` with an owned copy of name, freeing the previous value.
+    fn setOwnedCursorName(self: *HotkeyManager, field: *?[]const u8, name: []const u8, context: []const u8) void {
         const duped = self.allocator.dupe(u8, name) catch |err| {
-            slog.err("Failed to remember notified cycle cursor for {s}: {}", .{ name, err });
+            slog.err("Failed to remember {s} cycle cursor for {s}: {}", .{ context, name, err });
             return;
         };
-        if (self.last_notified_cycle_name) |old| self.allocator.free(old);
-        self.last_notified_cycle_name = duped;
+        if (field.*) |old| self.allocator.free(old);
+        field.* = duped;
+    }
+
+    fn setLastNotifiedCycleName(self: *HotkeyManager, name: []const u8) void {
+        self.setOwnedCursorName(&self.last_notified_cycle_name, name, "notified");
     }
 
     fn handleCycleAllClients(self: *HotkeyManager, forward: bool) void {
@@ -1465,20 +1468,16 @@ pub const HotkeyManager = struct {
             return;
         }
 
-        var start_index: usize = if (forward) 0 else num - 1;
+        var found_index: ?usize = null;
         if (self.last_all_clients_cycle_name) |last_name| {
             for (windows, 0..) |w, i| {
                 if (std.mem.eql(u8, w.character_name, last_name)) {
-                    start_index = if (forward)
-                        (i + 1) % num
-                    else if (i == 0)
-                        num - 1
-                    else
-                        i - 1;
+                    found_index = i;
                     break;
                 }
             }
         }
+        const start_index = cycleStartIndex(found_index, num, forward);
 
         const respect_exclusions = self.global_settings.cycleAllClientsRespectExclusions;
         var index = start_index;
@@ -1487,7 +1486,7 @@ pub const HotkeyManager = struct {
             const w = windows[index];
 
             if (respect_exclusions and self.isCharacterExcluded(w.character_name)) {
-                index = if (forward) (index + 1) % num else if (index == 0) num - 1 else index - 1;
+                index = stepCycleIndex(index, num, forward);
                 continue;
             }
 
@@ -1500,14 +1499,8 @@ pub const HotkeyManager = struct {
         slog.warn("No logged-in clients are eligible to cycle to (all excluded)", .{});
     }
 
-    /// Replaces last_all_clients_cycle_name with an owned copy of name, freeing the previous one.
     fn setLastAllClientsCycleName(self: *HotkeyManager, name: []const u8) void {
-        const duped = self.allocator.dupe(u8, name) catch |err| {
-            slog.err("Failed to remember all-clients cycle cursor for {s}: {}", .{ name, err });
-            return;
-        };
-        if (self.last_all_clients_cycle_name) |old| self.allocator.free(old);
-        self.last_all_clients_cycle_name = duped;
+        self.setOwnedCursorName(&self.last_all_clients_cycle_name, name, "all-clients");
     }
 
     fn handleCycleNotLoggedIn(self: *HotkeyManager, forward: bool) void {
@@ -1540,25 +1533,43 @@ pub const HotkeyManager = struct {
             return;
         }
 
-        var start_index: usize = if (forward) 0 else num - 1;
+        var found_index: ?usize = null;
         if (self.last_not_logged_in_cycle_hwnd) |last_hwnd| {
             for (candidates.items, 0..) |hwnd, i| {
                 if (hwnd == last_hwnd) {
-                    start_index = if (forward)
-                        (i + 1) % num
-                    else if (i == 0)
-                        num - 1
-                    else
-                        i - 1;
+                    found_index = i;
                     break;
                 }
             }
         }
+        const start_index = cycleStartIndex(found_index, num, forward);
 
         const hwnd = candidates.items[start_index];
         slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ if (forward) "forward" else "backward", start_index + 1, num });
         input.handleThumbnailClick(hwnd);
         self.last_not_logged_in_cycle_hwnd = hwnd;
+    }
+
+    /// Syncs currentIndex on every group in `groups` containing character_name; returns whether any did. HotkeyGroup and QuickGroup both expose the fields this needs.
+    fn syncGroupCycleIndex(comptime GroupT: type, groups: []GroupT, character_name: []const u8, kind: []const u8) bool {
+        var found = false;
+        for (groups) |*group| {
+            const index = findStringIndex(group.characters.items, character_name) orelse continue;
+            if (group.currentIndex == null or group.currentIndex.? != index) {
+                slog.debug("Updated {s} index: {s} now at position {}/{}", .{ kind, character_name, index + 1, group.characters.items.len });
+                group.currentIndex = index;
+            }
+            found = true;
+        }
+        return found;
+    }
+
+    /// Clears currentIndex on every group in `groups`; used when character_name isn't in any of them.
+    fn resetGroupIndices(comptime GroupT: type, groups: []GroupT, character_name: []const u8, kind: []const u8) void {
+        for (groups) |*group| {
+            group.currentIndex = null;
+        }
+        slog.debug("Reset {s} cycle indices - {s} is not in any {s}", .{ kind, character_name, kind });
     }
 
     /// Update currentIndex for hotkey groups when a character is manually focused
@@ -1588,46 +1599,15 @@ pub const HotkeyManager = struct {
             }
         }
 
-        var found_in_hotkey_group = false;
-        for (self.config.hotkeyGroups.items) |*group| {
-            for (group.characters.items, 0..) |char_name, index| {
-                if (std.mem.eql(u8, char_name, character_name)) {
-                    if (group.currentIndex == null or group.currentIndex.? != index) {
-                        slog.debug("Updated hotkey group index: {s} now at position {}/{}", .{ character_name, index + 1, group.characters.items.len });
-                        group.currentIndex = index;
-                    }
-                    found_in_hotkey_group = true;
-                    break;
-                }
-            }
-        }
-
-        var found_in_quick_group = false;
-        for (self.config.quickGroups.items) |*group| {
-            for (group.characters.items, 0..) |char_name, index| {
-                if (std.mem.eql(u8, char_name, character_name)) {
-                    if (group.currentIndex == null or group.currentIndex.? != index) {
-                        slog.debug("Updated quick group index: {s} now at position {}/{}", .{ character_name, index + 1, group.characters.items.len });
-                        group.currentIndex = index;
-                    }
-                    found_in_quick_group = true;
-                    break;
-                }
-            }
-        }
+        const found_in_hotkey_group = syncGroupCycleIndex(config_mod.HotkeyGroup, self.config.hotkeyGroups.items, character_name, "hotkey group");
+        const found_in_quick_group = syncGroupCycleIndex(config_mod.QuickGroup, self.config.quickGroups.items, character_name, "quick group");
 
         // Each group kind resets independently; being in a hotkey group shouldn't block a quick-group reset or vice versa.
         if (self.config.resetGroupIndexOnNonGroupFocus and !found_in_hotkey_group) {
-            for (self.config.hotkeyGroups.items) |*group| {
-                group.currentIndex = null;
-            }
-            slog.debug("Reset hotkey group cycle indices - {s} is not in any hotkey group", .{character_name});
+            resetGroupIndices(config_mod.HotkeyGroup, self.config.hotkeyGroups.items, character_name, "hotkey group");
         }
         if (self.config.resetGroupIndexOnNonGroupFocus and !found_in_quick_group) {
-            for (self.config.quickGroups.items) |*group| {
-                group.currentIndex = null;
-            }
-            slog.debug("Reset quick group cycle indices - {s} is not in any quick group", .{character_name});
+            resetGroupIndices(config_mod.QuickGroup, self.config.quickGroups.items, character_name, "quick group");
         }
     }
 

@@ -382,18 +382,10 @@ pub const Scout = struct {
     /// unlike enumWindowsCallback's class-first fast path which only applies to new windows.
     fn matchesCurrentFilters(self: *Scout, hwnd: win32.HWND, process_id: win32.DWORD) bool {
         var class_name: [64:0]u8 = undefined;
-        const class_len = win32.GetClassNameA(hwnd, &class_name, class_name.len);
-        if (class_len <= 0) return false;
-        const class_slice = class_name[0..@intCast(class_len)];
-
-        const process_handle = win32.OpenProcess(win32.PROCESS_QUERY_LIMITED_INFORMATION, win32.FALSE, process_id);
-        const handle = process_handle orelse return false;
-        defer _ = win32.CloseHandle(handle);
+        const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return false;
 
         var exe_path: [260:0]u8 = undefined;
-        const path_len = win32.GetModuleFileNameExA(handle, null, &exe_path, exe_path.len);
-        if (path_len <= 0) return false;
-        const path_slice = exe_path[0..@intCast(path_len)];
+        const path_slice = win32.queryProcessExePath(process_id, &exe_path) orelse return false;
 
         for (self.config.windowFilters.items) |*filter| {
             if (filter.matchesClass(class_slice) and filter.matchesExecutable(path_slice)) return true;
@@ -430,14 +422,8 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
     }
 
     // Fast filter: Check window class name first (much faster than OpenProcess)
-    var class_name: [32:0]u8 = undefined;
-    const class_len = win32.GetClassNameA(hwnd, &class_name, class_name.len);
-    var class_slice: []const u8 = "";
-    if (class_len > 0) {
-        class_slice = class_name[0..@intCast(class_len)];
-    } else {
-        return win32.TRUE;
-    }
+    var class_name: [64:0]u8 = undefined;
+    const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return win32.TRUE;
 
     var matching_filter: ?*const config_mod.WindowFilter = null;
     for (scout.config.windowFilters.items) |*filter| {
@@ -569,14 +555,9 @@ fn nameChangeCallback(
     }
 
     // Kept as safety check in case PID cache is stale or process reuses PID
-    var class_name: [32:0]u8 = undefined;
-    const class_len = win32.GetClassNameA(hwnd, &class_name, class_name.len);
-    if (class_len > 0) {
-        const class_slice = class_name[0..@intCast(class_len)];
-        if (!std.mem.eql(u8, class_slice, "trinityWindow")) {
-            return;
-        }
-    } else {
+    var class_name: [64:0]u8 = undefined;
+    const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return;
+    if (!std.mem.eql(u8, class_slice, "trinityWindow")) {
         return;
     }
 

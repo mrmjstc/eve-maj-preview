@@ -124,6 +124,15 @@ fn trackerNowMs() i64 {
     return @intCast(win32.Ticks.now().ms);
 }
 
+/// Packs little-endian byte pairs from `src` into `dst` (dst.len == src.len / 2).
+fn packUtf16LeBytes(dst: []u16, src: []const u8) void {
+    var i: usize = 0;
+    while (i < dst.len) : (i += 1) {
+        const byte_idx = i * 2;
+        dst[i] = @as(u16, src[byte_idx]) | (@as(u16, src[byte_idx + 1]) << 8);
+    }
+}
+
 /// Maximum size for partial line buffer (combat logs with color tags can be long)
 const MAX_PARTIAL_LINE_SIZE = 1024;
 
@@ -1068,12 +1077,7 @@ pub const ChatlogMonitor = struct {
         state.u16_buffer.clearRetainingCapacity();
         try state.u16_buffer.resize(self.allocator, u16_count);
 
-        var i: usize = 0;
-        while (i < u16_count) : (i += 1) {
-            const byte_idx = i * 2;
-            // Little endian: low byte first, high byte second
-            state.u16_buffer.items[i] = @as(u16, data[byte_idx]) | (@as(u16, data[byte_idx + 1]) << 8);
-        }
+        packUtf16LeBytes(state.u16_buffer.items, data);
 
         // UTF-16 can be up to 3 bytes per code unit in UTF-8 (worst case for non-BMP characters)
         const utf8_len = u16_count * 3;
@@ -1951,14 +1955,10 @@ pub const ChatlogMonitor = struct {
             const u16_count = bytes_read / 2;
             if (u16_count == 0) return null;
 
-            var u16_buffer = try self.allocator.alloc(u16, u16_count);
+            const u16_buffer = try self.allocator.alloc(u16, u16_count);
             defer self.allocator.free(u16_buffer);
 
-            var i: usize = 0;
-            while (i < u16_count) : (i += 1) {
-                const byte_idx = i * 2;
-                u16_buffer[i] = @as(u16, buffer[byte_idx]) | (@as(u16, buffer[byte_idx + 1]) << 8);
-            }
+            packUtf16LeBytes(u16_buffer, buffer[0 .. u16_count * 2]);
 
             const utf8_len = u16_count * 3;
             const text = try self.allocator.alloc(u8, utf8_len);

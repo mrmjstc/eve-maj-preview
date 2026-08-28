@@ -1,5 +1,6 @@
 const std = @import("std");
 const win32 = @import("win32.zig");
+const http_client = @import("http_client.zig");
 const log = @import("log.zig");
 const build_options = @import("build_options");
 const slog = log.scoped("update");
@@ -90,25 +91,10 @@ pub const UpdateChecker = struct {
         var client: std.http.Client = .{ .allocator = self.allocator, .io = g_io };
         defer client.deinit();
 
-        var response_buf: std.Io.Writer.Allocating = .init(self.allocator);
-        defer response_buf.deinit();
-
-        const result = client.fetch(.{
-            .location = .{ .url = "https://api.github.com/repos/mrmjstc/eve-maj-preview/releases/latest" },
-            .headers = .{ .user_agent = .{ .override = "EVE-Maj-Preview" } },
+        const body = http_client.fetch(self.allocator, &client, "https://api.github.com/repos/mrmjstc/eve-maj-preview/releases/latest", .{
             .extra_headers = &.{.{ .name = "Accept", .value = "application/vnd.github+json" }},
-            .response_writer = &response_buf.writer,
-        }) catch |err| {
-            slog.warn("Failed to fetch update info: {}", .{err});
-            return null;
-        };
-
-        if (result.status != .ok) {
-            slog.warn("GitHub API returned status {}", .{result.status});
-            return null;
-        }
-
-        const body = response_buf.written();
+        }) orelse return null;
+        defer self.allocator.free(body);
 
         slog.debug("GitHub API response: {s}", .{body});
 
@@ -220,16 +206,7 @@ pub fn openReleasesPage() void {
 
     slog.info("Opening releases page: {s}", .{url});
 
-    const result = win32.ShellExecuteA(
-        null,
-        "open",
-        url.ptr,
-        null,
-        null,
-        win32.SW_SHOW,
-    );
-
-    if (@intFromPtr(result) <= 32) {
+    if (!win32.shellOpen(url.ptr, null)) {
         slog.err("Failed to open URL in browser", .{});
     }
 }

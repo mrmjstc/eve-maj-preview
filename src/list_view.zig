@@ -3,6 +3,7 @@ const win32 = @import("win32.zig");
 const config_mod = @import("config.zig");
 const types = @import("types.zig");
 const gdi_overlay = @import("gdi_overlay.zig");
+const color_mod = @import("color.zig");
 const log = @import("log.zig");
 const slog = log.scoped("list_view");
 const painter_mod = @import("painter.zig");
@@ -93,7 +94,7 @@ pub const ListWindow = struct {
         cfg: *config_mod.Config,
         instance: win32.HINSTANCE,
     ) !ListWindow {
-        try registerClass(instance);
+        try registerWindowClass(instance);
 
         const hwnd = win32.CreateWindowExA(
             win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW |
@@ -161,46 +162,17 @@ pub const ListWindow = struct {
     /// Recreates `font` if name/size/weight changed since last built (e.g. a live-previewed edit, see PROTOCOL_PREVIEW_THUMBNAIL); mirrors Painter.getCachedFont's dirty-check for List View's single shared font.
     fn ensureFont(self: *ListWindow) void {
         const cfg = self.config.display;
-        const unchanged = self.font != null and
-            std.mem.eql(u8, self.cached_font_name, cfg.listViewFontName) and
-            self.cached_font_size == cfg.listViewFontSize and
-            self.cached_font_weight == cfg.listViewFontWeight;
-        if (unchanged) return;
-
-        if (self.font) |old| _ = win32.DeleteObject(old);
-        self.font = null;
-
-        const font_name_z = self.allocator.dupeZ(u8, cfg.listViewFontName) catch |err| {
-            slog.err("Failed to allocate List View font name: {}", .{err});
-            return;
-        };
-        defer self.allocator.free(font_name_z);
-
-        const name_copy = self.allocator.dupe(u8, cfg.listViewFontName) catch |err| {
-            slog.err("Failed to allocate List View font name: {}", .{err});
-            return;
-        };
-
-        self.font = win32.CreateFontA(
-            -cfg.listViewFontSize,
-            0,
-            0,
-            0,
-            cfg.listViewFontWeight.toWin32Weight(),
-            if (cfg.listViewFontWeight.isItalic()) 1 else 0,
-            0,
-            0,
-            win32.DEFAULT_CHARSET,
-            win32.OUT_DEFAULT_PRECIS,
-            win32.CLIP_DEFAULT_PRECIS,
-            win32.CLEARTYPE_QUALITY,
-            win32.DEFAULT_PITCH,
-            font_name_z,
+        gdi_overlay.ensureFont(
+            self.allocator,
+            "List View",
+            &self.font,
+            &self.cached_font_name,
+            &self.cached_font_size,
+            &self.cached_font_weight,
+            cfg.listViewFontName,
+            cfg.listViewFontSize,
+            cfg.listViewFontWeight,
         );
-        self.allocator.free(self.cached_font_name);
-        self.cached_font_name = name_copy;
-        self.cached_font_size = cfg.listViewFontSize;
-        self.cached_font_weight = cfg.listViewFontWeight;
     }
 
     fn saveWindowPosition(self: *ListWindow) void {
@@ -231,8 +203,7 @@ pub const ListWindow = struct {
     }
 
     fn withListAlpha(self: *const ListWindow, rgb: u32) u32 {
-        const a: u32 = self.config.display.listViewOpacity;
-        return (a << 24) | (rgb & 0x00FF_FFFF);
+        return color_mod.withAlpha(rgb, self.config.display.listViewOpacity);
     }
 
     fn prepareRenderOrder(self: *ListWindow, thumbnails: []const ThumbnailWindow) ![]const usize {
@@ -555,7 +526,7 @@ pub const ListWindow = struct {
         // Clear to fully transparent
         @memset(ov.pixels[0 .. W * H], 0);
 
-        fillRect(ov.pixels, W, 0, 0, W, @intCast(HEADER_HEIGHT), self.withListAlpha(RGB_HEADER));
+        gdi_overlay.fillRect(ov.pixels, W, 0, 0, W, @intCast(HEADER_HEIGHT), self.withListAlpha(RGB_HEADER));
 
         if (self.font) |f| {
             const old = win32.SelectObject(ov.mem_dc, f);
@@ -572,7 +543,7 @@ pub const ListWindow = struct {
             drawText(ov.mem_dc, hdr, 8, 5, ARGB_HDR_TEXT & 0xFFFFFF);
         }
 
-        fillRect(ov.pixels, W, 0, @intCast(HEADER_HEIGHT - 1), W, 1, ARGB_SEPARATOR);
+        gdi_overlay.fillRect(ov.pixels, W, 0, @intCast(HEADER_HEIGHT - 1), W, 1, ARGB_SEPARATOR);
 
         for (render_order, 0..) |thumb_index, i| {
             const thumb = &thumbnails[thumb_index];
@@ -601,11 +572,11 @@ pub const ListWindow = struct {
                 break :blk self.withListAlpha(RGB_ROW_ALERT);
             } else self.withListAlpha(RGB_ROW_INACTIVE);
 
-            fillRect(ov.pixels, W, col_left_u, row_top_u, @intCast(LIST_WIDTH), @intCast(ROW_HEIGHT), row_bg);
+            gdi_overlay.fillRect(ov.pixels, W, col_left_u, row_top_u, @intCast(LIST_WIDTH), @intCast(ROW_HEIGHT), row_bg);
 
             // Separator below this cell only when the next row has an item in this column (avoids drawing over an empty cell).
             if (row + 1 < itemsInColumn(n, columns, col)) {
-                fillRect(ov.pixels, W, col_left_u, row_top_u + @as(usize, @intCast(ROW_HEIGHT)) - 1, @intCast(LIST_WIDTH), 1, ARGB_SEPARATOR);
+                gdi_overlay.fillRect(ov.pixels, W, col_left_u, row_top_u + @as(usize, @intCast(ROW_HEIGHT)) - 1, @intCast(LIST_WIDTH), 1, ARGB_SEPARATOR);
             }
 
             const badge_cx: i32 = col_left + BADGE_LEFT + BADGE_RADIUS;
@@ -684,28 +655,28 @@ pub const ListWindow = struct {
             const right_items = itemsInColumn(n, columns, sep_col);
             const sep_rows = @max(left_items, right_items);
             const sep_h: usize = @intCast(sep_rows * ROW_HEIGHT);
-            fillRect(ov.pixels, W, x, @intCast(HEADER_HEIGHT), 1, sep_h, ARGB_SEPARATOR);
+            gdi_overlay.fillRect(ov.pixels, W, x, @intCast(HEADER_HEIGHT), 1, sep_h, ARGB_SEPARATOR);
         }
 
         // Outer frame staircased per-column so it hugs each column's content instead of the full (possibly taller) window rect.
         {
             const frame_col = self.withListAlpha(RGB_FRAME);
             // Top spans the full width since the header always does.
-            fillRect(ov.pixels, W, 0, 0, W, 1, frame_col);
+            gdi_overlay.fillRect(ov.pixels, W, 0, 0, W, 1, frame_col);
             // Left spans the full height since column 0 is always the tallest.
-            fillRect(ov.pixels, W, 0, 0, 1, H, frame_col);
+            gdi_overlay.fillRect(ov.pixels, W, 0, 0, 1, H, frame_col);
 
             var frame_c: i32 = 0;
             while (frame_c < columns) : (frame_c += 1) {
                 const items = itemsInColumn(n, columns, frame_c);
                 const bottom_y: usize = @intCast(HEADER_HEIGHT + items * ROW_HEIGHT - 1);
                 const seg_left: usize = @intCast(frame_c * LIST_WIDTH);
-                fillRect(ov.pixels, W, seg_left, bottom_y, @intCast(LIST_WIDTH), 1, frame_col);
+                gdi_overlay.fillRect(ov.pixels, W, seg_left, bottom_y, @intCast(LIST_WIDTH), 1, frame_col);
             }
 
             const last_items = itemsInColumn(n, columns, columns - 1);
             const right_h: usize = @intCast(HEADER_HEIGHT + last_items * ROW_HEIGHT);
-            fillRect(ov.pixels, W, W - 1, 0, 1, right_h, frame_col);
+            gdi_overlay.fillRect(ov.pixels, W, W - 1, 0, 1, right_h, frame_col);
         }
 
         gdi_overlay.fixTextAlpha(ov.pixels, W, H);
@@ -741,28 +712,10 @@ pub const ListWindow = struct {
     }
 };
 
-fn registerClass(instance: win32.HINSTANCE) !void {
+fn registerWindowClass(instance: win32.HINSTANCE) !void {
     if (g_class_registered) return;
 
-    const cursor = win32.LoadCursorA(null, win32.IDC_ARROW);
-    const wc = win32.WNDCLASSEXA{
-        .cbSize = @sizeOf(win32.WNDCLASSEXA),
-        .style = 0,
-        .lpfnWndProc = listWindowProc,
-        .cbClsExtra = 0,
-        .cbWndExtra = 0,
-        .hInstance = instance,
-        .hIcon = null,
-        .hCursor = cursor,
-        .hbrBackground = null,
-        .lpszMenuName = null,
-        .lpszClassName = LIST_WINDOW_CLASS,
-        .hIconSm = null,
-    };
-
-    if (win32.RegisterClassExA(&wc) == 0) {
-        return error.RegisterClassFailed;
-    }
+    try gdi_overlay.registerWindowClass(instance, listWindowProc, LIST_WINDOW_CLASS, null);
 
     g_class_registered = true;
 }
@@ -861,16 +814,6 @@ fn listWindowProc(
         win32.WM_ERASEBKGND => return 1,
 
         else => return win32.DefWindowProcA(hwnd, msg, wParam, lParam),
-    }
-}
-
-fn fillRect(pixels: [*]u32, stride: usize, x: usize, y: usize, w: usize, h: usize, argb: u32) void {
-    const end_y = y + h;
-    const end_x = x + w;
-    if (end_x > stride) return;
-    var py = y;
-    while (py < end_y) : (py += 1) {
-        @memset(pixels[py * stride + x .. py * stride + end_x], argb);
     }
 }
 
@@ -983,10 +926,8 @@ fn applyVignette(pixels: [*]u32, W: usize, H: usize) void {
 /// Draw text at (x, y) in client coordinates of the mem_dc.
 fn drawText(dc: win32.HDC, text: []const u8, x: i32, y: i32, rgb: u32) void {
     _ = win32.SetBkMode(dc, win32.TRANSPARENT);
-    var buf: [TEXT_BUF:0]u8 = undefined;
+    const buf = gdi_overlay.toBufZ(TEXT_BUF, text);
     const n = @min(text.len, TEXT_BUF - 1);
-    @memcpy(buf[0..n], text[0..n]);
-    buf[n] = 0;
 
     const base = rgb & 0x00FF_FFFF;
     const glow = scaleRgb(base, 108);
@@ -999,22 +940,14 @@ fn drawText(dc: win32.HDC, text: []const u8, x: i32, y: i32, rgb: u32) void {
 
 /// Measure text width in pixels using the currently selected font.
 fn measureTextWidth(dc: win32.HDC, text: []const u8) usize {
-    var buf: [TEXT_BUF:0]u8 = undefined;
-    const n = @min(text.len, TEXT_BUF - 1);
-    @memcpy(buf[0..n], text[0..n]);
-    buf[n] = 0;
-    var sz: win32.SIZE = undefined;
-    _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(n), &sz);
-    return @intCast(@max(0, sz.cx));
+    return gdi_overlay.measureTextWidth(TEXT_BUF, dc, text);
 }
 
 /// Draw text right-aligned so its right edge is at pixel `right_x`.
 /// `min_x` is the leftmost pixel the text may start at (to avoid overlapping the name text).
 fn drawTextRight(dc: win32.HDC, text: []const u8, right_x: i32, y: i32, rgb: u32, min_x: i32) void {
-    var buf: [TEXT_BUF:0]u8 = undefined;
+    const buf = gdi_overlay.toBufZ(TEXT_BUF, text);
     const n = @min(text.len, TEXT_BUF - 1);
-    @memcpy(buf[0..n], text[0..n]);
-    buf[n] = 0;
     var sz: win32.SIZE = undefined;
     _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(n), &sz);
     const x = right_x - sz.cx;

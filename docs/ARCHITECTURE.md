@@ -53,9 +53,9 @@ Each tracked character is a `ThumbnailWindow`: `hwnd`/`text_hwnd`/`thumbnail_id`
 
 Rendering is split three ways:
 
-- **`win32.zig`** - pure bindings. Win32 constants, `extern` declarations (including the `DwmRegisterThumbnail`/`DwmUpdateThumbnailProperties` family), struct layouts. No logic.
+- **`win32.zig`** - Win32 constants, `extern` declarations (including the `DwmRegisterThumbnail`/`DwmUpdateThumbnailProperties` family), struct layouts, plus small helpers built directly on those bindings with no app-specific knowledge (window title/class/exe-path lookups, `shellOpen`, the COM `showFolderPicker`). No EVE- or config-aware logic.
 - **`painter.zig`** - the DWM integration and orchestration (above). `createThumbnail()` creates a borderless layered popup window, calls `DwmRegisterThumbnail` to bind the EVE client's live DWM thumbnail into it, then creates a *second* layered window stacked on top for GDI-drawn overlay content (border, text, notifications). Each visible thumbnail is therefore two HWNDs, not one.
-- **`gdi_overlay.zig`** - a small generic GDI leaf module: `OverlayBitmap` (a top-down DIBSection selected into a memory DC) and alpha-fixup helpers for GDI text output. Used by both `painter.zig` and `list_view.zig`.
+- **`gdi_overlay.zig`** - the shared GDI leaf module: `OverlayBitmap` (a top-down DIBSection selected into a memory DC), alpha-fixup helpers for GDI text output, pixel-buffer `fillRect`, buffer-truncating `toBufZ`, and `registerWindowClass` (the common `WNDCLASSEXA` registration boilerplate). Used by `painter.zig`, `list_view.zig`, `notif_info_view.zig`, and `main.zig`.
 
 ## Log monitoring and activity tracking
 
@@ -65,9 +65,9 @@ Rendering is split three ways:
 
 ## Input & control surfaces
 
-- **`hotkeys.zig`** - `HotkeyManager` owns a single `hotkey_map: AutoHashMap(c_int, HotkeyAction)`. Hotkey IDs are banded by range (cycle-groups, global actions, per-character, profile-switch, quick-groups) so a single `WM_HOTKEY` ID reverse-maps to an action. `handleHotkeyPress()` is the one dispatch point, gating on suspend/focus-requirement state before switching on the `HotkeyAction` union.
+- **`hotkeys.zig`** - `HotkeyManager` owns a single `hotkey_map: AutoHashMap(c_int, HotkeyAction)`. Hotkey IDs are banded by range (cycle-groups, global actions, per-character, profile-switch, quick-groups) so a single `WM_HOTKEY` ID reverse-maps to an action. `handleHotkeyPress()` is the one dispatch point, gating on suspend/focus-requirement state before switching on the `HotkeyAction` union. It also owns a `WH_KEYBOARD_LL` hook that swallows a hotkey's key-up after a successful cycle action, mirroring `mouse_hook.zig`'s hook-lifecycle shape.
 - **`mouse_hook.zig`** - a `WH_MOUSE_LL` hook mapping mouse-button chords to hotkey IDs and re-posting them as synthetic `WM_HOTKEY` messages, so `hotkeys.zig` doesn't need a separate input path for mouse buttons.
-- **`input.zig`** - client activation (`handleThumbnailClick` - restore, foreground, dismiss suppressible notifications, reconcile focus state), shift-click exclusion toggling, the thumbnail/text-window `WndProc`s (drag, edge/thumbnail/ghost-position snapping), and a low-level keyboard hook that swallows a hotkey's key-up after a successful cycle action.
+- **`input.zig`** - client activation (`handleThumbnailClick` - restore, foreground, dismiss suppressible notifications, reconcile focus state), shift-click exclusion toggling, and the thumbnail/text-window `WndProc`s (drag, edge/thumbnail/ghost-position snapping).
 - **`protocol.zig` and cross-process control** - parses `evemajpreview://action/params` URLs, handles registry registration/unregistration, and implements the actual IPC transport (`sendCommandToInstance`, `findExistingInstance`) used both by external protocol invocations and by `config.exe`.
 
 **Call chain, hotkey press → character switch:**
