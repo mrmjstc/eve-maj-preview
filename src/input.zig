@@ -201,9 +201,10 @@ pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
             },
             .notification_type = .Generic,
             .start_time = win32.Ticks.now(),
-            .duration_ms = 5000,
+            .duration_ms = 3000,
             .suppress_when_focused = false,
             .suppress_when_clicked = false,
+            .show_border = false,
         });
 
         painter.renderThumbnail(thumbnail) catch |err| {
