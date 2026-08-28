@@ -922,9 +922,10 @@ pub const Painter = struct {
             if (input.isThumbnailDragging(thumbnail)) continue;
             if (thumbnail.isFocused(self.active_source_hwnd)) continue;
             if (win32.isWindowIconic(thumbnail.source_hwnd)) continue;
+            // Before any EVE window has been genuinely focused this session, last_focused_source_hwnd is null; exempt everyone rather than minimize all clients with no known "last active".
             if (self.config.autoMinimize.exemptLastActiveOnFocusLoss and
                 !eve_has_focus and
-                thumbnail.source_hwnd == self.last_focused_source_hwnd) continue;
+                (self.last_focused_source_hwnd == null or thumbnail.source_hwnd == self.last_focused_source_hwnd)) continue;
             if (now.elapsedSince(thumbnail.inactive_since) < delay_ms) continue;
             if (self.config.isExcludedFromMinimize(thumbnail.character_name)) continue;
             if (!win32.isWindow(thumbnail.source_hwnd)) continue;
