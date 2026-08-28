@@ -1599,7 +1599,6 @@ pub const Config = struct {
     quickGroups: std.ArrayList(QuickGroup),
     requireEveFocus: bool = false,
     resetGroupIndexOnNonGroupFocus: bool = false,
-    repeatCycleOnHold: bool = false,
 
     autoRegisterProtocol: bool = true,
 
@@ -1645,7 +1644,6 @@ pub const Config = struct {
     pub const HotkeysWire = struct {
         requireEveFocus: bool = false,
         resetGroupIndexOnNonGroupFocus: bool = false,
-        repeatCycleOnHold: bool = false,
         autoRegisterProtocol: bool = true,
         hotkeyMinimizeAll: ?VkCode = null,
         hotkeyCloseAll: ?VkCode = null,
@@ -1701,7 +1699,6 @@ pub const Config = struct {
             .hotkeys = .{
                 .requireEveFocus = self.requireEveFocus,
                 .resetGroupIndexOnNonGroupFocus = self.resetGroupIndexOnNonGroupFocus,
-                .repeatCycleOnHold = self.repeatCycleOnHold,
                 .autoRegisterProtocol = self.autoRegisterProtocol,
                 .hotkeyMinimizeAll = wrapVk(self.hotkeyMinimizeAll),
                 .hotkeyCloseAll = wrapVk(self.hotkeyCloseAll),
@@ -1741,7 +1738,6 @@ pub const Config = struct {
         cfg.travel = w.travel;
         cfg.requireEveFocus = w.hotkeys.requireEveFocus;
         cfg.resetGroupIndexOnNonGroupFocus = w.hotkeys.resetGroupIndexOnNonGroupFocus;
-        cfg.repeatCycleOnHold = w.hotkeys.repeatCycleOnHold;
         cfg.autoRegisterProtocol = w.hotkeys.autoRegisterProtocol;
         cfg.hotkeyMinimizeAll = unwrapVk(w.hotkeys.hotkeyMinimizeAll);
         cfg.hotkeyCloseAll = unwrapVk(w.hotkeys.hotkeyCloseAll);

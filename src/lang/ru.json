@@ -293,7 +293,6 @@
   "field.profile-name-input.placeholder": "Название профиля",
   "field.quickGroupBadgeColor.label": "Цвет значка",
   "field.rememberListViewPosition.label": "Запоминать позицию списка клиентов",
-  "field.repeatCycleOnHold.label": "Продолжать переключение при удержании клавиши",
   "field.requireEveFocus.label": "Требовать фокус на EVE",
   "field.resetGroupIndexOnNonGroupFocus.label": "Сбрасывать переключение при выходе из группы",
   "field.runOnStartup.label": "Запускать при старте Windows",

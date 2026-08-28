@@ -293,7 +293,6 @@
   "field.profile-name-input.placeholder": "Profilname",
   "field.quickGroupBadgeColor.label": "Badge-Farbe",
   "field.rememberListViewPosition.label": "Position der Client-Liste merken",
-  "field.repeatCycleOnHold.label": "Beim Halten der Taste weiter wechseln",
   "field.requireEveFocus.label": "EVE-Fokus erforderlich",
   "field.resetGroupIndexOnNonGroupFocus.label": "Wechsel beim Verlassen einer Gruppe zurücksetzen",
   "field.runOnStartup.label": "Beim Systemstart ausführen",

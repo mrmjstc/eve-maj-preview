@@ -106,14 +106,6 @@ pub const HotkeyAction = union(HotkeyActionType) {
     MoveToSavedPositions: void,
 };
 
-/// Only cycle-style actions are safe to re-fire on OS key-repeat; toggles and one-shot commands are not.
-fn isRepeatableCycleAction(action: HotkeyAction) bool {
-    return switch (std.meta.activeTag(action)) {
-        .CycleGroup, .ActivateCharacter, .CycleQuickGroup, .NextExcluded, .PreviousExcluded, .CycleNotified, .PreviousNotified, .NextAllClients, .PreviousAllClients, .NextNotLoggedIn, .PreviousNotLoggedIn => true,
-        .AssignQuickGroup, .MinimizeAll, .CloseAll, .ToggleVisibility, .NextProfile, .PreviousProfile, .SwitchToProfile, .ToggleExclusion, .SuspendHotkeys, .ToggleAutoMinimize, .MoveToSavedPositions => false,
-    };
-}
-
 /// Manages system-wide hotkey registration and character cycling
 pub const HotkeyManager = struct {
     allocator: std.mem.Allocator,
@@ -666,9 +658,7 @@ pub const HotkeyManager = struct {
 
         // No MOD_NOREPEAT (see registerSingleHotkey), so this must run before every early return or held keys would re-fire.
         const vk_code = win32.hotkeyVkFromLparam(lparam);
-        const repeat_while_held = self.config.repeatCycleOnHold and isRepeatableCycleAction(action);
-        const is_new_press = input.trackHotkeyPress(self.allocator, vk_code, hotkey_id, repeat_while_held);
-        if (!is_new_press and !repeat_while_held) {
+        if (!input.trackHotkeyPress(self.allocator, vk_code)) {
             slog.debug("Hotkey {} ignored - key-repeat re-fire while held", .{hotkey_id});
             return;
         }

@@ -934,32 +934,24 @@ pub inline fn hotkeyVkFromLparam(lparam: LPARAM) u32 {
     return bits >> 16;
 }
 
-/// Packs a vk code into a synthetic WM_HOTKEY lParam; inverse of hotkeyVkFromLparam.
-pub inline fn hotkeyLparamFromVk(vk_code: u32) LPARAM {
-    return @bitCast(@as(usize, vk_code) << 16);
-}
-
-pub const VK_DOWN_FLAG: c_short = @bitCast(@as(c_ushort, 0x8000));
-
-pub inline fn isKeyDown(vk_code: c_int) bool {
-    return (GetAsyncKeyState(vk_code) & VK_DOWN_FLAG) != 0;
-}
+const VK_DOWN_FLAG: c_short = @bitCast(@as(c_ushort, 0x8000));
 
 pub inline fn isCtrlPressed() bool {
-    return isKeyDown(VK_CONTROL);
+    return (GetAsyncKeyState(VK_CONTROL) & VK_DOWN_FLAG) != 0;
 }
 
 pub inline fn isAltPressed() bool {
-    return isKeyDown(VK_MENU);
+    return (GetAsyncKeyState(VK_MENU) & VK_DOWN_FLAG) != 0;
 }
 
 pub inline fn isShiftPressed() bool {
-    return isKeyDown(VK_SHIFT);
+    return (GetAsyncKeyState(VK_SHIFT) & VK_DOWN_FLAG) != 0;
 }
 
 // Two physical Win keys, no single VK code covers both.
 pub inline fn isWinPressed() bool {
-    return isKeyDown(VK_LWIN) or isKeyDown(VK_RWIN);
+    return (GetAsyncKeyState(VK_LWIN) & VK_DOWN_FLAG) != 0 or
+        (GetAsyncKeyState(VK_RWIN) & VK_DOWN_FLAG) != 0;
 }
 
 pub inline fn getXButton(mouse_data: DWORD) WORD {

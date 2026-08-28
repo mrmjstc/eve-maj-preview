@@ -293,7 +293,6 @@
   "field.profile-name-input.placeholder": "Nombre de perfil",
   "field.quickGroupBadgeColor.label": "Color de la insignia",
   "field.rememberListViewPosition.label": "Recordar posición de la lista de clientes",
-  "field.repeatCycleOnHold.label": "Seguir cambiando mientras se mantiene la tecla",
   "field.requireEveFocus.label": "Requerir foco en EVE",
   "field.resetGroupIndexOnNonGroupFocus.label": "Reiniciar ciclo al salir de un grupo",
   "field.runOnStartup.label": "Ejecutar al iniciar Windows",

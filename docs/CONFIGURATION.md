@@ -851,8 +851,6 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 {
   "hotkeys": {
     "requireEveFocus": false,
-    "resetGroupIndexOnNonGroupFocus": false,
-    "repeatCycleOnHold": false,
     "autoRegisterProtocol": true,
     "hotkeyMinimizeAll": null,
     "hotkeyCloseAll": null,
@@ -871,8 +869,6 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 **requireEveFocus**: Only trigger hotkeys while an EVE client window has focus
 
 **resetGroupIndexOnNonGroupFocus**: Reset a hotkey group's cycle position when focus leaves that group
-
-**repeatCycleOnHold**: When enabled, cycling hotkeys (group cycling, per-character cycling, quick-group cycling, excluded/notified/all-clients/not-logged-in cycling) keep advancing for as long as the key is held. A physically held key repeats at the OS keyboard repeat rate; a hotkey held via joystick/gamepad key-mapping software (e.g. JoyToKey) is polled and re-fired directly, since those don't generate OS key-repeat. Toggle hotkeys and one-shot commands (minimize/close all, suspend, etc.) always fire once per press regardless of this setting.
 
 **Global Hotkeys**: Set to a virtual key code string (e.g., `"F9"`, `"F10"`, `"0x70"`), a modifier combo (e.g., `"Ctrl+F9"`, `"Alt+Shift+F1"`, `"LWin+M"`), or `null` to disable
 - **hotkeyMinimizeAll**: Minimize all EVE client windows

@@ -156,123 +156,18 @@ fn handleThumbnailClickWithAnimation(source_hwnd: win32.HWND, animation_style: t
     updateHotkeyCyclePosition(source_hwnd);
 }
 
-const TrackedHotkey = struct {
-    swallow_release: bool,
-    synthetic: bool,
-    hotkey_id: c_int,
-    repeat_while_held: bool,
-    first_press_tick: u64,
-    last_repeat_tick: u64,
-};
-
-const HOLD_POLL_TIMER_ID: usize = 2;
-const HOLD_POLL_INTERVAL_MS: win32.UINT = 50;
-const HOLD_REPEAT_DELAY_MS: u64 = 400;
-const HOLD_REPEAT_INTERVAL_MS: u64 = 50;
-
-var g_hotkey_tracked: std.AutoHashMap(u32, TrackedHotkey) = undefined;
+var g_hotkey_tracked: std.AutoHashMap(u32, bool) = undefined;
 var g_hotkey_tracking_initialized = false;
 var g_hotkey_release_hook: ?win32.HHOOK = null;
-var g_hold_poll_timer_armed = false;
-var g_synthetic_down: [256]bool = [_]bool{false} ** 256;
 
 fn ensureHotkeyTrackingInit(allocator: std.mem.Allocator) void {
     if (g_hotkey_tracking_initialized) return;
-    g_hotkey_tracked = std.AutoHashMap(u32, TrackedHotkey).init(allocator);
+    g_hotkey_tracked = std.AutoHashMap(u32, bool).init(allocator);
     g_hotkey_tracking_initialized = true;
 }
 
-fn setSyntheticDown(vk_code: u32, down: bool) void {
-    if (vk_code > 0 and vk_code < g_synthetic_down.len) {
-        g_synthetic_down[vk_code] = down;
-    }
-}
-
-fn wasSyntheticDown(vk_code: u32) bool {
-    if (vk_code > 0 and vk_code < g_synthetic_down.len) return g_synthetic_down[vk_code];
-    return false;
-}
-
-fn anySyntheticRepeatTracked() bool {
-    var it = g_hotkey_tracked.valueIterator();
-    while (it.next()) |tracked| {
-        if (tracked.synthetic and tracked.repeat_while_held) return true;
-    }
-    return false;
-}
-
-fn holdPollTimerProc(hwnd: win32.HWND, msg: win32.UINT, id_event: usize, dw_time: win32.DWORD) callconv(.c) void {
-    _ = msg;
-    _ = id_event;
-    _ = dw_time;
-    pollHeldHotkeys(hwnd);
-}
-
-fn startHoldPollTimer() void {
-    if (g_hold_poll_timer_armed) return;
-    const hwnd = main_mod.g_timer_hwnd orelse return;
-    if (win32.SetTimer(hwnd, HOLD_POLL_TIMER_ID, HOLD_POLL_INTERVAL_MS, @ptrCast(&holdPollTimerProc)) == 0) {
-        slog.warn("Failed to start synthetic-hotkey hold poll timer", .{});
-        return;
-    }
-    g_hold_poll_timer_armed = true;
-}
-
-fn stopHoldPollTimer() void {
-    if (!g_hold_poll_timer_armed) return;
-    if (main_mod.g_timer_hwnd) |hwnd| {
-        _ = win32.KillTimer(hwnd, HOLD_POLL_TIMER_ID);
-    }
-    g_hold_poll_timer_armed = false;
-}
-
-fn stopHoldPollTimerIfIdle() void {
-    if (!anySyntheticRepeatTracked()) stopHoldPollTimer();
-}
-
-/// Re-fires held synthetic hotkeys, which get no OS auto-repeat WM_HOTKEY the way physical keys do.
-fn pollHeldHotkeys(hwnd: win32.HWND) void {
-    if (!g_hotkey_tracking_initialized) return;
-    if (g_hotkey_tracked.count() == 0) {
-        stopHoldPollTimer();
-        return;
-    }
-
-    const now = win32.GetTickCount64();
-    // Hashmap removal mid-iteration is unsafe, so releases are batched and applied after the loop.
-    var remove_buf: [32]u32 = undefined;
-    var remove_n: usize = 0;
-
-    var it = g_hotkey_tracked.iterator();
-    while (it.next()) |kv| {
-        const vk = kv.key_ptr.*;
-        const tracked = kv.value_ptr;
-
-        if (!win32.isKeyDown(@intCast(vk))) {
-            if (remove_n < remove_buf.len) {
-                remove_buf[remove_n] = vk;
-                remove_n += 1;
-            }
-            continue;
-        }
-
-        if (!tracked.synthetic or !tracked.repeat_while_held) continue;
-        if (now - tracked.first_press_tick < HOLD_REPEAT_DELAY_MS) continue;
-        if (tracked.last_repeat_tick != 0 and now - tracked.last_repeat_tick < HOLD_REPEAT_INTERVAL_MS) continue;
-
-        tracked.last_repeat_tick = now;
-        _ = win32.PostMessageA(hwnd, win32.WM_HOTKEY, @intCast(tracked.hotkey_id), win32.hotkeyLparamFromVk(vk));
-    }
-
-    for (remove_buf[0..remove_n]) |vk| {
-        setSyntheticDown(vk, false);
-        _ = g_hotkey_tracked.remove(vk);
-    }
-    stopHoldPollTimerIfIdle();
-}
-
 /// Marks vk_code down to distinguish a repeat WM_HOTKEY from a new press; swallow-on-release is decided later in markHotkeySwallowRelease.
-pub fn trackHotkeyPress(allocator: std.mem.Allocator, vk_code: u32, hotkey_id: c_int, repeat_while_held: bool) bool {
+pub fn trackHotkeyPress(allocator: std.mem.Allocator, vk_code: u32) bool {
     // Mouse-button hotkeys route through here with lparam=0.
     if (vk_code == 0) return true;
     ensureHotkeyTrackingInit(allocator);
@@ -283,17 +178,8 @@ pub fn trackHotkeyPress(allocator: std.mem.Allocator, vk_code: u32, hotkey_id: c
     };
     if (gop.found_existing) return false;
 
-    const synthetic = wasSyntheticDown(vk_code);
-    gop.value_ptr.* = .{
-        .swallow_release = false,
-        .synthetic = synthetic,
-        .hotkey_id = hotkey_id,
-        .repeat_while_held = repeat_while_held,
-        .first_press_tick = win32.GetTickCount64(),
-        .last_repeat_tick = 0,
-    };
+    gop.value_ptr.* = false;
     if (g_hotkey_release_hook == null) installHotkeyReleaseHook();
-    if (synthetic and repeat_while_held) startHoldPollTimer();
     return true;
 }
 
@@ -301,12 +187,12 @@ pub fn trackHotkeyPress(allocator: std.mem.Allocator, vk_code: u32, hotkey_id: c
 pub fn markHotkeySwallowRelease(vk_code: u32) void {
     if (vk_code == 0) return;
     if (!g_hotkey_tracking_initialized) return;
-    if (g_hotkey_tracked.getPtr(vk_code)) |tracked| tracked.swallow_release = true;
+    if (g_hotkey_tracked.getPtr(vk_code)) |swallow| swallow.* = true;
 }
 
 fn installHotkeyReleaseHook() void {
     const hmod = win32.GetModuleHandleA(null);
-    g_hotkey_release_hook = win32.SetWindowsHookExA(win32.WH_KEYBOARD_LL, lowLevelHotkeyProc, hmod, 0);
+    g_hotkey_release_hook = win32.SetWindowsHookExA(win32.WH_KEYBOARD_LL, lowLevelHotkeyReleaseProc, hmod, 0);
     if (g_hotkey_release_hook == null) {
         slog.err("Failed to install low-level keyboard release hook", .{});
         return;
@@ -318,8 +204,6 @@ fn installHotkeyReleaseHook() void {
 pub fn uninstallHotkeyReleaseHook() void {
     if (!g_hotkey_tracking_initialized) return;
     g_hotkey_tracked.clearRetainingCapacity();
-    @memset(&g_synthetic_down, false);
-    stopHoldPollTimer();
     if (g_hotkey_release_hook) |hook| {
         _ = win32.UnhookWindowsHookEx(hook);
         g_hotkey_release_hook = null;
@@ -330,27 +214,18 @@ pub fn uninstallHotkeyReleaseHook() void {
 /// Frees g_hotkey_tracked; call only once at true process shutdown, never from a reload path that may track again.
 pub fn deinitHotkeyTracking() void {
     if (!g_hotkey_tracking_initialized) return;
-    stopHoldPollTimer();
     g_hotkey_tracked.deinit();
     g_hotkey_tracking_initialized = false;
 }
 
-fn lowLevelHotkeyProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
-    if (nCode == win32.HC_ACTION) {
+fn lowLevelHotkeyReleaseProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
+    if (nCode == win32.HC_ACTION and (wParam == win32.WM_KEYUP or wParam == win32.WM_SYSKEYUP)) {
         const info = win32.lparamToPtr(win32.KBDLLHOOKSTRUCT, lParam);
-        const synthetic = (info.flags & win32.LLKHF_INJECTED) != 0;
 
-        if (wParam == win32.WM_KEYDOWN or wParam == win32.WM_SYSKEYDOWN) {
-            setSyntheticDown(info.vkCode, synthetic);
-        } else if (wParam == win32.WM_KEYUP or wParam == win32.WM_SYSKEYUP) {
-            setSyntheticDown(info.vkCode, false);
-            // Synthetic key-ups must clear tracking too, or the hotkey stays stuck "held".
-            if (g_hotkey_tracking_initialized) {
-                if (g_hotkey_tracked.fetchRemove(info.vkCode)) |entry| {
-                    stopHoldPollTimerIfIdle();
-                    if (entry.value.swallow_release) {
-                        return 1;
-                    }
+        if ((info.flags & win32.LLKHF_INJECTED) == 0) {
+            if (g_hotkey_tracked.fetchRemove(info.vkCode)) |entry| {
+                if (entry.value) {
+                    return 1;
                 }
             }
         }
