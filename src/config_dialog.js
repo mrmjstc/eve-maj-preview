@@ -6080,7 +6080,7 @@ function toggleQuickGroupBadgeOptions() {
 // Drives each element's real (hidden) Position/Offset inputs by dispatching their normal events,
 // so CONFIG_SCHEMA, getFieldValue/setFieldValue, and the live-preview pipeline don't need to know this exists.
 const OVERLAY_LAYOUT_ELEMENTS = [
-    { chipId: 'overlayChip_characterName', showId: 'showCharacterName', positionId: 'characterNamePosition', offsetXId: 'characterNameOffsetX', offsetYId: 'characterNameOffsetY', colorId: 'characterNameColor', alsoRequiresId: 'showText',
+    { chipId: 'overlayChip_characterName', showId: 'showCharacterName', positionId: 'characterNamePosition', offsetXId: 'characterNameOffsetX', offsetYId: 'characterNameOffsetY', colorId: 'characterNameColor', alsoRequiresIds: ['showText'],
         uniqueColorsId: 'useUniqueCharacterNameColors', fontNameId: 'characterNameFontName', fontWeightId: 'characterNameFontWeight', fontSizeId: 'characterNameFontSize',
         bgColorId: 'characterNameBgColor', bgOpacityId: 'characterNameBgOpacity',
         popoverTitle: 'Character Name', popoverFields: [
@@ -6093,7 +6093,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
             { type: 'color', id: 'characterNameBgColor', label: 'Background Color' },
             { type: 'range', id: 'characterNameBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
         ] },
-    { chipId: 'overlayChip_systemName', showId: 'showSystemName', positionId: 'systemNamePosition', offsetXId: 'systemNameOffsetX', offsetYId: 'systemNameOffsetY', colorId: 'systemNameColor', alsoRequiresId: 'showText',
+    { chipId: 'overlayChip_systemName', showId: 'showSystemName', positionId: 'systemNamePosition', offsetXId: 'systemNameOffsetX', offsetYId: 'systemNameOffsetY', colorId: 'systemNameColor', alsoRequiresIds: ['showText'],
         uniqueColorsId: 'useUniqueSystemColors', fontNameId: 'systemNameFontName', fontWeightId: 'systemNameFontWeight', fontSizeId: 'systemNameFontSize',
         bgColorId: 'systemNameBgColor', bgOpacityId: 'systemNameBgOpacity',
         popoverTitle: 'System Name', popoverFields: [
@@ -6107,6 +6107,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
             { type: 'range', id: 'systemNameBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
         ] },
     { chipId: 'overlayChip_quickGroupBadge', showId: 'showQuickGroupBadge', positionId: 'quickGroupBadgePosition', offsetXId: 'quickGroupBadgeOffsetX', offsetYId: 'quickGroupBadgeOffsetY', colorId: 'quickGroupBadgeColor',
+        alsoRequiresIds: ['showText'],
         fontNameId: 'quickGroupBadgeFontName', fontWeightId: 'quickGroupBadgeFontWeight', fontSizeId: 'quickGroupBadgeFontSize',
         bgColorId: 'quickGroupBadgeBgColor', bgOpacityId: 'quickGroupBadgeBgOpacity',
         popoverTitle: 'Quick Group Badge', popoverFields: [
@@ -6118,7 +6119,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
             { type: 'color', id: 'quickGroupBadgeBgColor', label: 'Background Color' },
             { type: 'range', id: 'quickGroupBadgeBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
         ] },
-    { chipId: 'overlayChip_notification', showId: 'notificationsEnabled', positionId: 'notificationPosition', offsetXId: 'notificationOffsetX', offsetYId: 'notificationOffsetY', colorId: 'characterNameColor', alsoRequiresId: 'showText',
+    { chipId: 'overlayChip_notification', showId: 'notificationsEnabled', positionId: 'notificationPosition', offsetXId: 'notificationOffsetX', offsetYId: 'notificationOffsetY', colorId: 'characterNameColor', alsoRequiresIds: ['showText'],
         fontNameId: 'notificationFontName', fontWeightId: 'notificationFontWeight', fontSizeId: 'notificationFontSize',
         bgColorId: 'notificationBgColor', bgOpacityId: 'notificationBgOpacity',
         popoverTitle: 'Notification', popoverFields: [
@@ -6129,7 +6130,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
             { type: 'color', id: 'notificationBgColor', label: 'Background Color' },
             { type: 'range', id: 'notificationBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
         ] },
-    { chipId: 'overlayChip_combatIncoming', showId: 'combatShowIncoming', positionId: 'combatIncomingPosition', offsetXId: 'combatIncomingOffsetX', offsetYId: 'combatIncomingOffsetY', colorId: 'combatIncomingColor', alsoRequiresId: 'combatEnabled',
+    { chipId: 'overlayChip_combatIncoming', showId: 'combatShowIncoming', positionId: 'combatIncomingPosition', offsetXId: 'combatIncomingOffsetX', offsetYId: 'combatIncomingOffsetY', colorId: 'combatIncomingColor', alsoRequiresIds: ['combatEnabled', 'showText'],
         fontNameId: 'combatIncomingFontName', fontWeightId: 'combatIncomingFontWeight', fontSizeId: 'combatIncomingFontSize',
         bgColorId: 'combatIncomingBgColor', bgOpacityId: 'combatIncomingBgOpacity',
         popoverTitle: 'Incoming DPS', popoverFields: [
@@ -6142,7 +6143,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
             { type: 'color', id: 'combatIncomingBgColor', label: 'Background Color' },
             { type: 'range', id: 'combatIncomingBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
         ] },
-    { chipId: 'overlayChip_combatOutgoing', showId: 'combatShowOutgoing', positionId: 'combatOutgoingPosition', offsetXId: 'combatOutgoingOffsetX', offsetYId: 'combatOutgoingOffsetY', colorId: 'combatOutgoingColor', alsoRequiresId: 'combatEnabled',
+    { chipId: 'overlayChip_combatOutgoing', showId: 'combatShowOutgoing', positionId: 'combatOutgoingPosition', offsetXId: 'combatOutgoingOffsetX', offsetYId: 'combatOutgoingOffsetY', colorId: 'combatOutgoingColor', alsoRequiresIds: ['combatEnabled', 'showText'],
         fontNameId: 'combatOutgoingFontName', fontWeightId: 'combatOutgoingFontWeight', fontSizeId: 'combatOutgoingFontSize',
         bgColorId: 'combatOutgoingBgColor', bgOpacityId: 'combatOutgoingBgOpacity',
         popoverTitle: 'Outgoing DPS', popoverFields: [
@@ -6156,6 +6157,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
             { type: 'range', id: 'combatOutgoingBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
         ] },
     { chipId: 'overlayChip_mining', showId: 'miningEnabled', positionId: 'miningPosition', offsetXId: 'miningOffsetX', offsetYId: 'miningOffsetY', colorId: 'miningColor',
+        alsoRequiresIds: ['showText'],
         fontNameId: 'miningFontName', fontWeightId: 'miningFontWeight', fontSizeId: 'miningFontSize',
         bgColorId: 'miningBgColor', bgOpacityId: 'miningBgOpacity',
         popoverTitle: 'Mining Rate', popoverFields: [
@@ -6168,6 +6170,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
             { type: 'range', id: 'miningBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
         ] },
     { chipId: 'overlayChip_bounty', showId: 'bountyEnabled', positionId: 'bountyPosition', offsetXId: 'bountyOffsetX', offsetYId: 'bountyOffsetY', colorId: 'bountyColor',
+        alsoRequiresIds: ['showText'],
         fontNameId: 'bountyFontName', fontWeightId: 'bountyFontWeight', fontSizeId: 'bountyFontSize',
         bgColorId: 'bountyBgColor', bgOpacityId: 'bountyBgOpacity',
         popoverTitle: 'Bounty Rate', popoverFields: [
@@ -6343,7 +6346,7 @@ function placeOverlayChip(def) {
 
     const scale = overlayStageScale(stage);
 
-    const shown = getFieldValue(def.showId) && (!def.alsoRequiresId || getFieldValue(def.alsoRequiresId));
+    const shown = getFieldValue(def.showId) && (def.alsoRequiresIds || []).every(id => getFieldValue(id));
     chip.classList.toggle('dim', !shown);
 
     // Horizontal matches painter.zig's TEXT_PADDING_X (5px at real scale); vertical is bumped up a bit
@@ -6648,7 +6651,7 @@ function initOverlayLayoutPreview() {
 
         // Refreshes live however the field gets edited - this tab, the popover, or the real tab.
         const liveFieldIds = new Set([
-            def.positionId, def.showId, def.alsoRequiresId, def.colorId,
+            def.positionId, def.showId, ...(def.alsoRequiresIds || []), def.colorId,
             def.fontNameId, def.fontWeightId, def.uniqueColorsId,
             def.bgColorId, def.bgOpacityId,
             ...(def.popoverFields || []).map(f => f.id),
