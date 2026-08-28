@@ -63,6 +63,8 @@ Rendering is split three ways:
 
 **`activity_tracker.zig`** is the DPS/mining-rate math, fed by log lines parsed on the chatlog worker thread. `CombatWindow`/`MiningWindow` are fixed-capacity ring buffers (no heap allocation after init) computing trailing-window sums and per-bucket spark-chart data. Both trackers are explicitly cross-thread: the chatlog worker calls `addEntry`/`removeCharacter` while the main thread calls `refreshAll`/`getDps`/`getRate`, serialized by each tracker's own mutex.
 
+**`resource_tracker.zig`**'s `ResourceTracker` is unrelated to the chatlog pipeline above - it samples per-process CPU%/RAM/VRAM directly from the OS (`GetProcessTimes`, `GetProcessMemoryInfo`, and a PDH "GPU Process Memory" query for VRAM), keyed by `scout.EveWindow.process_id`. Main-thread only, no locking: `main.zig`'s `onTimerTick` calls `sampleAll` on its own throttled interval (`config.resources.update_interval_ms`) and pushes the result into `Painter.updateResourceStatsForCharacter`, the same push-then-`processDirtyDpsOverlays` shape combat/mining/bounty use, just without their cross-thread queue. See [CONFIGURATION.md](CONFIGURATION.md#resource-usage-overlay).
+
 ## Input & control surfaces
 
 - **`hotkeys.zig`** - `HotkeyManager` owns a single `hotkey_map: AutoHashMap(c_int, HotkeyAction)`. Hotkey IDs are banded by range (cycle-groups, global actions, per-character, profile-switch, quick-groups) so a single `WM_HOTKEY` ID reverse-maps to an action. `handleHotkeyPress()` is the one dispatch point, gating on suspend/focus-requirement state before switching on the `HotkeyAction` union. It also owns a `WH_KEYBOARD_LL` hook that swallows a hotkey's key-up after a successful cycle action, mirroring `mouse_hook.zig`'s hook-lifecycle shape.

@@ -811,6 +811,46 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
 
 **Cargo Full** (`CargoFull` notification type): Fires when the gamelog contains `"Ship's cargo hold is full"` - e.g. `Your Modulated Strip Miner II has completed operations. Ship's cargo hold is full.` This is a `(notify)` event and requires no extra configuration beyond enabling the notification type.
 
+## Resource Usage Overlay
+
+Display each client's CPU%, RAM, and dedicated VRAM usage as a single combined text label on its thumbnail, sampled directly from the OS rather than from EVE's logs:
+
+```json
+{
+  "resources": {
+    "enabled": false,
+    "show_cpu": true,
+    "show_ram": true,
+    "show_vram": true,
+    "color": "0xFFFFFFFF",
+    "bg_color": "0xE6000000",
+    "font_size": 11,
+    "font_name": "Segoe UI",
+    "font_weight": "Regular",
+    "update_interval_ms": 10000,
+    "position": "LeftCenter",
+    "offset_x": 0,
+    "offset_y": 0
+  }
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `enabled` | `false` | Enable the resource usage overlay |
+| `show_cpu` | `true` | Include the CPU% segment |
+| `show_ram` | `true` | Include the RAM segment (process working-set memory, in MB) |
+| `show_vram` | `true` | Include the VRAM segment (dedicated GPU memory, in MB) - see note below |
+| `update_interval_ms` | `10000` | How often CPU/RAM/VRAM are resampled (500-60000 ms); shared by all three since VRAM sampling is the most expensive of the three |
+| `position` | `LeftCenter` | Position of the label on the thumbnail (see [Text Positions](#text-overlay-settings)) |
+| `offset_x`/`offset_y` | `0` | Fine-tune label position (pixels) |
+
+**CPU%**: Process CPU time (kernel + user) sampled via `GetProcessTimes`, normalized by elapsed wall time and logical processor count - the same basis Task Manager uses, clamped to 0-100%. The first sample after a character logs in or a profile reload has nothing to diff against, so it reads 0% until the second sample.
+
+**RAM**: The process's current working-set size via `GetProcessMemoryInfo`.
+
+**VRAM**: Dedicated GPU memory via the Windows "GPU Process Memory" performance counter (the same source Task Manager's GPU column uses). This requires the `pdh.dll` perf counter subsystem to be available and the counter category to exist; if either is missing, `show_vram` silently has no effect and the label falls back to just CPU/RAM. VRAM segments are omitted from the label until a value is actually available for that process, even with `show_vram: true`.
+
 ## Travel Mode
 
 Detects a tracked character falling behind while the rest of the group jumps together between solar systems, and fires a `TravelLeftBehind` notification. There is no manual on/off toggle beyond `enabled` - detection is entirely automatic, based on which system each character currently occupies.

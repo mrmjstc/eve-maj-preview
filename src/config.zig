@@ -1295,6 +1295,100 @@ pub const BountyConfig = struct {
     }
 };
 
+/// Per-process CPU/RAM/VRAM overlay; single combined label like BountyConfig, no alert machinery - see resource_tracker.zig.
+pub const ResourcesConfig = struct {
+    enabled: bool = false,
+    show_cpu: bool = true,
+    show_ram: bool = true,
+    show_vram: bool = true,
+    color: u32 = 0xFFFFFFFF,
+    bg_color: u32 = 0xE6000000,
+    font_size: i32 = 11,
+    font_name: []const u8 = DEFAULT_FONT_NAME,
+    font_weight: types.FontWeight = .Regular,
+    update_interval_ms: u32 = 10000,
+    position: types.TextPosition = .LeftCenter,
+    offset_x: i32 = 0,
+    offset_y: i32 = 0,
+
+    pub const FONT_SIZE_MIN: i32 = 6;
+    pub const FONT_SIZE_MAX: i32 = 72;
+    pub const UPDATE_INTERVAL_MS_MIN: u32 = 500;
+    pub const UPDATE_INTERVAL_MS_MAX: u32 = 60000;
+    pub const OFFSET_MIN: i32 = -50;
+    pub const OFFSET_MAX: i32 = 50;
+
+    pub fn validate(self: *ResourcesConfig) void {
+        if (self.font_size < FONT_SIZE_MIN) self.font_size = FONT_SIZE_MIN;
+        if (self.font_size > FONT_SIZE_MAX) self.font_size = FONT_SIZE_MAX;
+        if (self.update_interval_ms < UPDATE_INTERVAL_MS_MIN) self.update_interval_ms = UPDATE_INTERVAL_MS_MIN;
+        if (self.update_interval_ms > UPDATE_INTERVAL_MS_MAX) self.update_interval_ms = UPDATE_INTERVAL_MS_MAX;
+
+        if (self.offset_x < OFFSET_MIN) self.offset_x = OFFSET_MIN;
+        if (self.offset_x > OFFSET_MAX) self.offset_x = OFFSET_MAX;
+        if (self.offset_y < OFFSET_MIN) self.offset_y = OFFSET_MIN;
+        if (self.offset_y > OFFSET_MAX) self.offset_y = OFFSET_MAX;
+    }
+
+    pub fn deinit(self: *ResourcesConfig, allocator: std.mem.Allocator) void {
+        if (self.font_name.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.font_name);
+        }
+    }
+
+    pub const Wire = struct {
+        enabled: bool = (ResourcesConfig{}).enabled,
+        show_cpu: bool = (ResourcesConfig{}).show_cpu,
+        show_ram: bool = (ResourcesConfig{}).show_ram,
+        show_vram: bool = (ResourcesConfig{}).show_vram,
+        color: Argb = .{ .value = (ResourcesConfig{}).color },
+        bg_color: Argb = .{ .value = (ResourcesConfig{}).bg_color },
+        font_size: i32 = (ResourcesConfig{}).font_size,
+        font_name: []const u8 = DEFAULT_FONT_NAME,
+        font_weight: types.FontWeight = (ResourcesConfig{}).font_weight,
+        update_interval_ms: u32 = (ResourcesConfig{}).update_interval_ms,
+        position: types.TextPosition = (ResourcesConfig{}).position,
+        offset_x: i32 = (ResourcesConfig{}).offset_x,
+        offset_y: i32 = (ResourcesConfig{}).offset_y,
+    };
+
+    pub fn toWire(self: ResourcesConfig) Wire {
+        return .{
+            .enabled = self.enabled,
+            .show_cpu = self.show_cpu,
+            .show_ram = self.show_ram,
+            .show_vram = self.show_vram,
+            .color = .{ .value = self.color },
+            .bg_color = .{ .value = self.bg_color },
+            .font_size = self.font_size,
+            .font_name = self.font_name,
+            .font_weight = self.font_weight,
+            .update_interval_ms = self.update_interval_ms,
+            .position = self.position,
+            .offset_x = self.offset_x,
+            .offset_y = self.offset_y,
+        };
+    }
+
+    pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !ResourcesConfig {
+        return .{
+            .enabled = w.enabled,
+            .show_cpu = w.show_cpu,
+            .show_ram = w.show_ram,
+            .show_vram = w.show_vram,
+            .color = w.color.value,
+            .bg_color = w.bg_color.value,
+            .font_size = w.font_size,
+            .font_name = try allocator.dupe(u8, w.font_name),
+            .font_weight = w.font_weight,
+            .update_interval_ms = w.update_interval_ms,
+            .position = w.position,
+            .offset_x = w.offset_x,
+            .offset_y = w.offset_y,
+        };
+    }
+};
+
 pub const TravelThresholdMode = enum { percent, count };
 
 pub const TravelConfig = struct {
@@ -1585,6 +1679,7 @@ pub const Config = struct {
     combat: CombatConfig,
     mining: MiningConfig,
     bounty: BountyConfig,
+    resources: ResourcesConfig,
     travel: TravelConfig,
 
     windowFilters: std.ArrayList(WindowFilter),
@@ -1632,6 +1727,7 @@ pub const Config = struct {
         combat: CombatConfig.Wire = .{},
         mining: MiningConfig.Wire = .{},
         bounty: BountyConfig.Wire = .{},
+        resources: ResourcesConfig.Wire = .{},
         travel: TravelConfig = .{},
         windowFilters: []const WindowFilter = &.{WindowFilter.DEFAULT},
         characters: []const CharacterConfig.Wire = &.{},
@@ -1691,6 +1787,7 @@ pub const Config = struct {
             .combat = self.combat.toWire(),
             .mining = self.mining.toWire(),
             .bounty = self.bounty.toWire(),
+            .resources = self.resources.toWire(),
             .travel = self.travel,
             .windowFilters = window_filters,
             .characters = chars,
@@ -1736,6 +1833,7 @@ pub const Config = struct {
         cfg.combat = try CombatConfig.fromWire(w.combat, allocator);
         cfg.mining = try MiningConfig.fromWire(w.mining, allocator);
         cfg.bounty = try BountyConfig.fromWire(w.bounty, allocator);
+        cfg.resources = try ResourcesConfig.fromWire(w.resources, allocator);
         cfg.travel = w.travel;
         cfg.requireEveFocus = w.hotkeys.requireEveFocus;
         cfg.resetGroupIndexOnNonGroupFocus = w.hotkeys.resetGroupIndexOnNonGroupFocus;
@@ -3254,6 +3352,7 @@ pub const Config = struct {
             .combat = .{},
             .mining = .{},
             .bounty = .{},
+            .resources = .{},
             .travel = .{},
             .windowFilters = default_filters,
             .characters = std.ArrayList(CharacterConfig).empty,
@@ -3487,6 +3586,7 @@ pub const Config = struct {
         self.combat.validate();
         self.mining.validate();
         self.bounty.validate();
+        self.resources.validate();
         self.travel.validate();
 
         // Per-character thumbnail size overrides live on CharacterConfig, not ThumbnailConfig, so they bypass validate() above and need clamping here too.
@@ -3573,6 +3673,11 @@ pub const Config = struct {
             .@"bounty.font_size" = Range{ .min = BountyConfig.FONT_SIZE_MIN, .max = BountyConfig.FONT_SIZE_MAX },
             .@"bounty.offset_x" = Range{ .min = BountyConfig.OFFSET_MIN, .max = BountyConfig.OFFSET_MAX },
             .@"bounty.offset_y" = Range{ .min = BountyConfig.OFFSET_MIN, .max = BountyConfig.OFFSET_MAX },
+
+            .@"resources.update_interval_ms" = Range{ .min = ResourcesConfig.UPDATE_INTERVAL_MS_MIN, .max = ResourcesConfig.UPDATE_INTERVAL_MS_MAX },
+            .@"resources.font_size" = Range{ .min = ResourcesConfig.FONT_SIZE_MIN, .max = ResourcesConfig.FONT_SIZE_MAX },
+            .@"resources.offset_x" = Range{ .min = ResourcesConfig.OFFSET_MIN, .max = ResourcesConfig.OFFSET_MAX },
+            .@"resources.offset_y" = Range{ .min = ResourcesConfig.OFFSET_MIN, .max = ResourcesConfig.OFFSET_MAX },
         };
 
         return std.json.Stringify.valueAlloc(allocator, ranges, .{});
@@ -3643,6 +3748,7 @@ pub const Config = struct {
         self.combat.deinit(allocator);
         self.mining.deinit(allocator);
         self.bounty.deinit(allocator);
+        self.resources.deinit(allocator);
     }
 
     /// Discard the in-memory thumbnail appearance, layout, and system color overrides, replacing them with a fresh read of this profile from disk, to revert an unsaved live-preview patch (see PROTOCOL_REVERT_PREVIEW); startX/startY are left untouched.

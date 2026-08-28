@@ -81,6 +81,9 @@
                 <div class="tab-item advanced-tab" data-tab="bounty">
                     <span data-i18n="tab.bounty.title">bounty overlay</span>
                 </div>
+                <div class="tab-item advanced-tab" data-tab="resources">
+                    <span data-i18n="tab.resources.title">resource usage</span>
+                </div>
                 <div class="tab-item" data-tab="advanced" style="display: none;">
                     <span data-i18n="tab.advanced.title">advanced</span>
                 </div>
@@ -242,6 +245,7 @@
                             <div class="overlay-chip" id="overlayChip_combatOutgoing" data-key="combatOutgoing">Outgoing DPS</div>
                             <div class="overlay-chip" id="overlayChip_mining" data-key="mining">Mining Rate</div>
                             <div class="overlay-chip" id="overlayChip_bounty" data-key="bounty">Bounty Rate</div>
+                            <div class="overlay-chip" id="overlayChip_resources" data-key="resources">Resource Usage</div>
                         </div>
 
                         <div id="overlayPropertiesPopover" class="overlay-popover" style="display: none;">
@@ -1643,6 +1647,71 @@
                                 <option value="minute" data-i18n="field.miningIskRateUnit.minute">Per Minute</option>
                                 <option value="hour" data-i18n="field.miningIskRateUnit.hour">Per Hour</option>
                             </select>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="panel-content advanced-tab-panel" data-panel="resources">
+                    <div class="section">
+                        <h3 data-i18n="tab.resources.section.resource-usage-overlay.heading">Text Overlays</h3>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.resources.section.resource-usage-overlay.hint">Displays each client's CPU%, RAM, and VRAM usage on its thumbnail, sampled directly from Windows rather than from EVE's logs.</p>
+
+                        <label>
+                            <input type="checkbox" id="resourcesEnabled" onchange="toggleResourcesOptions()">
+                            <span class="label-body" data-i18n="field.resourcesEnabled.label">Enable Text Overlays</span>
+                        </label>
+
+                        <div id="resourcesOptions">
+                            <label>
+                                <input type="checkbox" id="resourcesShowCpu">
+                                <span class="label-body" data-i18n="field.resourcesShowCpu.label">Show CPU %</span>
+                            </label>
+                            <label>
+                                <input type="checkbox" id="resourcesShowRam">
+                                <span class="label-body" data-i18n="field.resourcesShowRam.label">Show RAM</span>
+                            </label>
+                            <label>
+                                <input type="checkbox" id="resourcesShowVram">
+                                <span class="label-body" data-i18n="field.resourcesShowVram.label">Show VRAM</span>
+                            </label>
+                            <p class="hint" data-i18n="field.resourcesShowVram.hint">VRAM requires the Windows GPU performance counters; if unavailable, the label falls back to just CPU/RAM.</p>
+
+                            <label for="resourcesUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
+                            <input type="number" id="resourcesUpdateIntervalMs" min="0.5" max="60" step="0.1">
+                            <p class="hint" data-i18n="field.resourcesUpdateIntervalMs.hint">How often CPU/RAM/VRAM are resampled (0.5–60 s); shared by all three since VRAM sampling is the most expensive</p>
+
+                            <div class="hidden-by-layout-preview" style="display: none;">
+                                <label for="resourcesPosition" data-i18n="common.positionLabel">Position</label>
+                                <select id="resourcesPosition" class="position-options"></select>
+
+                                <label for="resourcesColor" data-i18n="common.textColorLabel">Text Color</label>
+                                <input type="color" id="resourcesColor" data-default-color="#FFFFFF">
+
+                                <label for="resourcesOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="resourcesOffsetXValue">0</span></label>
+                                <input type="range" id="resourcesOffsetX" min="-50" max="50" value="0" data-value-target="resourcesOffsetXValue">
+                                <label for="resourcesOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="resourcesOffsetYValue">0</span></label>
+                                <input type="range" id="resourcesOffsetY" min="-50" max="50" value="0" data-value-target="resourcesOffsetYValue">
+
+                                <label for="resourcesFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
+                                <input type="number" id="resourcesFontSize" min="6" max="72">
+
+                                <label for="resourcesFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                <select id="resourcesFontName" class="font-options"></select>
+
+                                <label for="resourcesFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                <select id="resourcesFontWeight">
+                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                </select>
+
+                                <label for="resourcesBgColor" data-i18n="common.textBgColorLabel">Background Color</label>
+                                <input type="color" id="resourcesBgColor" data-default-color="#000000">
+                                <label for="resourcesBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="resourcesBgOpacityValue">90</span>%</label>
+                                <input type="range" id="resourcesBgOpacity" min="0" max="100" value="90" data-value-target="resourcesBgOpacityValue">
+                            </div>
                         </div>
                     </div>
 

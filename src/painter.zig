@@ -148,6 +148,7 @@ const RenderSettings = struct {
     combat_outgoing_bg_color: u32 = 0x80000000,
     mining_bg_color: u32 = 0x80000000,
     bounty_bg_color: u32 = 0x80000000,
+    resources_bg_color: u32 = 0x80000000,
 
     show_thumbnail: bool = true,
     overlay_alpha: u8 = OVERLAY_ALPHA,
@@ -160,16 +161,22 @@ const RenderSettings = struct {
     mining_rate: f32 = 0.0,
     mining_isk_rate: f32 = 0.0,
     bounty_isk_rate: f32 = 0.0,
+    resource_cpu_percent: f32 = 0.0,
+    resource_ram_mb: f32 = 0.0,
+    resource_vram_mb: f32 = 0.0,
     // Included so the false->true transition on first tracker push invalidates the cache even when the (sentineled) rate value itself didn't change.
     has_dps_data: bool = false,
     has_mining_data: bool = false,
     has_bounty_data: bool = false,
+    has_resource_data: bool = false,
+    has_vram_data: bool = false,
 
     // Included so a config-only color change still invalidates renderThumbnail's cache even when the DPS/rate value itself hasn't moved.
     dps_incoming_color: u32 = 0xFFFF4444,
     dps_outgoing_color: u32 = 0xFF44FF44,
     mining_color: u32 = 0xFF44AAFF,
     bounty_color: u32 = 0xFFFFD700,
+    resources_color: u32 = 0xFFFFFFFF,
 };
 
 pub const ThumbnailWindow = struct {
@@ -202,11 +209,17 @@ pub const ThumbnailWindow = struct {
     last_mining_rate: ?f32 = null,
     last_mining_isk_rate: ?f32 = null,
     last_bounty_isk_rate: ?f32 = null,
+    last_cpu_percent: f32 = 0.0,
+    last_ram_mb: f32 = 0.0,
+    last_vram_mb: f32 = 0.0,
 
     // False until the tracker's first push actually arrives; distinguishes "never heard from the tracker yet" (show nothing) from a genuine null rate the tracker reported (show "??"), since both look identical as `null` otherwise.
     has_dps_data: bool = false,
     has_mining_data: bool = false,
     has_bounty_data: bool = false,
+    // has_vram_data is separate: VRAM can stay unavailable (no PDH support, no matching GPU instance) even once CPU/RAM are known.
+    has_resource_data: bool = false,
+    has_vram_data: bool = false,
 
     // Cached overlay bitmap — kept alive between renders, recreated only on resize
     cached_overlay: ?gdi_overlay.OverlayBitmap = null,
@@ -278,7 +291,7 @@ pub const ThumbnailWindow = struct {
 
 /// Per-purpose font cache slot (see `Painter.cached_fonts`). Kept as u4 (not u3) so a future slot doesn't need a resize.
 /// `combat` is incoming DPS's slot; outgoing DPS has its own.
-pub const FontSlot = enum(u4) { main, combat, mining, bounty, system_name, quick_group_badge, notification, combat_outgoing };
+pub const FontSlot = enum(u4) { main, combat, mining, bounty, system_name, quick_group_badge, notification, combat_outgoing, resources };
 
 const FontCacheEntry = struct {
     font: ?win32.HFONT = null,
@@ -612,17 +625,24 @@ pub const Painter = struct {
             a.mining_rate == b.mining_rate and
             a.mining_isk_rate == b.mining_isk_rate and
             a.bounty_isk_rate == b.bounty_isk_rate and
+            a.resource_cpu_percent == b.resource_cpu_percent and
+            a.resource_ram_mb == b.resource_ram_mb and
+            a.resource_vram_mb == b.resource_vram_mb and
             a.has_dps_data == b.has_dps_data and
             a.has_mining_data == b.has_mining_data and
             a.has_bounty_data == b.has_bounty_data and
+            a.has_resource_data == b.has_resource_data and
+            a.has_vram_data == b.has_vram_data and
             a.dps_incoming_color == b.dps_incoming_color and
             a.dps_outgoing_color == b.dps_outgoing_color and
             a.mining_color == b.mining_color and
             a.bounty_color == b.bounty_color and
+            a.resources_color == b.resources_color and
             a.combat_incoming_bg_color == b.combat_incoming_bg_color and
             a.combat_outgoing_bg_color == b.combat_outgoing_bg_color and
             a.mining_bg_color == b.mining_bg_color and
-            a.bounty_bg_color == b.bounty_bg_color;
+            a.bounty_bg_color == b.bounty_bg_color and
+            a.resources_bg_color == b.resources_bg_color;
     }
 
     fn renderSettingsEqual(a: RenderSettings, b: RenderSettings) bool {
@@ -1435,6 +1455,26 @@ pub const Painter = struct {
             thumbnail.has_bounty_data = true;
             if (first_update or thumbnail.last_bounty_isk_rate != isk_rate) {
                 thumbnail.last_bounty_isk_rate = isk_rate;
+                thumbnail.needs_render = true;
+            }
+        }
+    }
+
+    /// Updates per-process CPU%/RAM/VRAM for a character's overlay; `has_vram` is false when VRAM sampling isn't available.
+    pub fn updateResourceStatsForCharacter(self: *Painter, source_hwnd: win32.HWND, cpu_percent: f32, ram_mb: f32, vram_mb: f32, has_vram: bool) void {
+        if (self.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
+            const first_update = !thumbnail.has_resource_data;
+            thumbnail.has_resource_data = true;
+            if (first_update or
+                thumbnail.last_cpu_percent != cpu_percent or
+                thumbnail.last_ram_mb != ram_mb or
+                thumbnail.last_vram_mb != vram_mb or
+                thumbnail.has_vram_data != has_vram)
+            {
+                thumbnail.last_cpu_percent = cpu_percent;
+                thumbnail.last_ram_mb = ram_mb;
+                thumbnail.last_vram_mb = vram_mb;
+                thumbnail.has_vram_data = has_vram;
                 thumbnail.needs_render = true;
             }
         }
@@ -3376,6 +3416,59 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
 
+    // Measure and fill resource-usage text background BEFORE the border, one stacked line per enabled metric, same as the mining block above.
+    var resources_line_bufs: [3][32]u8 = undefined;
+    var resources_texts: [3][]const u8 = .{ "", "", "" };
+    var resources_dims: [3]TextDimensions = .{TextDimensions{ .width = 0, .height = 0 }} ** 3;
+    var resources_positions: [3]TextPos = .{TextPos{ .x = 0, .y = 0 }} ** 3;
+    var resources_line_count: usize = 0;
+    var resources_block_x: i32 = 0;
+    var resources_block_width: usize = 0;
+    var resources_font: ?win32.HFONT = null;
+    if (config.resources.enabled and config.thumbnail.showText and thumbnail.has_resource_data) {
+        const resources_cfg = &config.resources;
+        const rf = try painter.getCachedFont(.resources, dpi, resources_cfg.font_name, scalePixels(resources_cfg.font_size, dpi_scale), resources_cfg.font_weight);
+        resources_font = rf;
+        _ = win32.SelectObject(overlay.mem_dc, rf);
+
+        if (resources_cfg.show_cpu) {
+            resources_texts[resources_line_count] = std.fmt.bufPrint(&resources_line_bufs[resources_line_count], "CPU: {d:.0}%", .{thumbnail.last_cpu_percent}) catch "";
+            resources_dims[resources_line_count] = measureText(overlay.mem_dc, resources_texts[resources_line_count]);
+            resources_line_count += 1;
+        }
+        if (resources_cfg.show_ram) {
+            resources_texts[resources_line_count] = std.fmt.bufPrint(&resources_line_bufs[resources_line_count], "RAM: {d:.0}MB", .{thumbnail.last_ram_mb}) catch "";
+            resources_dims[resources_line_count] = measureText(overlay.mem_dc, resources_texts[resources_line_count]);
+            resources_line_count += 1;
+        }
+        if (resources_cfg.show_vram and thumbnail.has_vram_data) {
+            resources_texts[resources_line_count] = std.fmt.bufPrint(&resources_line_bufs[resources_line_count], "VRAM: {d:.0}MB", .{thumbnail.last_vram_mb}) catch "";
+            resources_dims[resources_line_count] = measureText(overlay.mem_dc, resources_texts[resources_line_count]);
+            resources_line_count += 1;
+        }
+
+        if (resources_line_count > 0) {
+            var combined_height: usize = 0;
+            var i: usize = 0;
+            while (i < resources_line_count) : (i += 1) {
+                resources_block_width = @max(resources_block_width, resources_dims[i].width);
+                combined_height += resources_dims[i].height;
+            }
+            const anchor = calculateTextPosition(resources_cfg.position, resources_block_width, combined_height, overlay.width, overlay.height, resources_cfg.offset_x, resources_cfg.offset_y);
+            resources_block_x = anchor.x;
+            const h_align = horizontalAlignOf(resources_cfg.position);
+
+            var y = anchor.y;
+            i = 0;
+            while (i < resources_line_count) : (i += 1) {
+                resources_positions[i] = .{ .x = alignedLineX(anchor.x, resources_block_width, resources_dims[i].width, h_align), .y = y };
+                fillTextBackground(overlay.pixels, overlay.width, overlay.height, resources_block_x, y, resources_block_width, resources_dims[i].height, settings.resources_bg_color);
+                y += @as(i32, @intCast(resources_dims[i].height));
+            }
+        }
+        _ = win32.SelectObject(overlay.mem_dc, font);
+    }
+
     if (settings.show_border) {
         drawBorder(
             overlay.pixels,
@@ -3446,6 +3539,16 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
 
+    if (config.resources.enabled and config.thumbnail.showText and resources_line_count > 0) {
+        const rf = resources_font.?;
+        _ = win32.SelectObject(overlay.mem_dc, rf);
+        var i: usize = 0;
+        while (i < resources_line_count) : (i += 1) {
+            renderText(overlay.mem_dc, resources_texts[i], resources_positions[i].x, resources_positions[i].y, config.resources.color);
+        }
+        _ = win32.SelectObject(overlay.mem_dc, font);
+    }
+
     // Bounded to the rects text/glyphs were actually drawn into instead of scanning the whole overlay.
     if (settings.show_character_name) {
         gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, char_text_pos.x, char_text_pos.y, char_text_dims.width, char_text_dims.height);
@@ -3475,6 +3578,12 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     }
     if (bounty_text.len > 0) {
         gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, bounty_pos.x, bounty_pos.y, bounty_dims.width, bounty_dims.height);
+    }
+    if (resources_line_count > 0) {
+        var resources_fixup_i: usize = 0;
+        while (resources_fixup_i < resources_line_count) : (resources_fixup_i += 1) {
+            gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, resources_block_x, resources_positions[resources_fixup_i].y, resources_block_width, resources_dims[resources_fixup_i].height);
+        }
     }
 
     const window_size = win32.SIZE{ .cx = width, .cy = height };
@@ -3668,6 +3777,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .combat_outgoing_bg_color = resolveTextBgColor(state_cfg, cfg.combat.outgoing_bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
         .mining_bg_color = resolveTextBgColor(state_cfg, cfg.mining.bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
         .bounty_bg_color = resolveTextBgColor(state_cfg, cfg.bounty.bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
+        .resources_bg_color = resolveTextBgColor(state_cfg, cfg.resources.bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
         .character_name_font_name = cfg.thumbnail.characterNameFontName,
         .character_name_font_size = scalePixels(cfg.thumbnail.characterNameFontSize, dpi_scale),
         .character_name_font_weight = cfg.thumbnail.characterNameFontWeight,
@@ -3723,13 +3833,19 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .mining_rate = if (cfg.mining.enabled) (thumbnail.last_mining_rate orelse -1.0) else 0.0,
         .mining_isk_rate = if (cfg.mining.enabled and cfg.mining.show_isk_rate) (thumbnail.last_mining_isk_rate orelse -1.0) else 0.0,
         .bounty_isk_rate = if (cfg.bounty.enabled) (thumbnail.last_bounty_isk_rate orelse -1.0) else 0.0,
+        .resource_cpu_percent = if (cfg.resources.enabled) thumbnail.last_cpu_percent else 0.0,
+        .resource_ram_mb = if (cfg.resources.enabled) thumbnail.last_ram_mb else 0.0,
+        .resource_vram_mb = if (cfg.resources.enabled) thumbnail.last_vram_mb else 0.0,
         .has_dps_data = thumbnail.has_dps_data,
         .has_mining_data = thumbnail.has_mining_data,
         .has_bounty_data = thumbnail.has_bounty_data,
+        .has_resource_data = cfg.resources.enabled and thumbnail.has_resource_data,
+        .has_vram_data = thumbnail.has_vram_data,
         .dps_incoming_color = cfg.combat.incoming_color,
         .dps_outgoing_color = cfg.combat.outgoing_color,
         .mining_color = cfg.mining.color,
         .bounty_color = cfg.bounty.color,
+        .resources_color = cfg.resources.color,
     };
 }
 

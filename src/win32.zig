@@ -621,6 +621,51 @@ pub extern "kernel32" fn CloseHandle(hObject: HANDLE) callconv(.c) BOOL;
 pub extern "kernel32" fn GetModuleFileNameExA(hProcess: HANDLE, hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;
 pub extern "kernel32" fn GetModuleFileNameA(hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;
 
+pub const ALL_PROCESSOR_GROUPS: WORD = 0xFFFF;
+pub extern "kernel32" fn GetActiveProcessorCount(GroupNumber: WORD) callconv(.c) DWORD;
+
+/// resource_tracker.zig only reads WorkingSetSize; the rest exists so the extern struct matches the real Win32 layout.
+pub const PROCESS_MEMORY_COUNTERS = extern struct {
+    cb: DWORD,
+    PageFaultCount: DWORD,
+    PeakWorkingSetSize: usize,
+    WorkingSetSize: usize,
+    QuotaPeakPagedPoolUsage: usize,
+    QuotaPagedPoolUsage: usize,
+    QuotaPeakNonPagedPoolUsage: usize,
+    QuotaNonPagedPoolUsage: usize,
+    PagefileUsage: usize,
+    PeakPagefileUsage: usize,
+};
+pub extern "psapi" fn GetProcessMemoryInfo(hProcess: HANDLE, ppsmemCounters: *PROCESS_MEMORY_COUNTERS, cb: DWORD) callconv(.c) BOOL;
+
+// PDH (Performance Data Helper) - per-process VRAM has no simpler API than its "GPU Process Memory" counter.
+pub const PDH_HQUERY = ?*anyopaque;
+pub const PDH_HCOUNTER = ?*anyopaque;
+pub const PDH_STATUS = LONG;
+pub const PDH_MORE_DATA: PDH_STATUS = @bitCast(@as(u32, 0x800007D2));
+pub const PDH_FMT_LARGE: DWORD = 0x00000400;
+
+pub const PDH_FMT_COUNTERVALUE = extern struct {
+    CStatus: DWORD,
+    value: extern union {
+        longValue: LONG,
+        doubleValue: f64,
+        largeValue: i64,
+    },
+};
+pub const PDH_FMT_COUNTERVALUE_ITEM_A = extern struct {
+    szName: LPSTR,
+    FmtValue: PDH_FMT_COUNTERVALUE,
+};
+
+pub extern "pdh" fn PdhOpenQueryA(szDataSource: ?LPCSTR, dwUserData: usize, phQuery: *PDH_HQUERY) callconv(.c) PDH_STATUS;
+// English variant deliberately: PdhAddCounterA expects OS-localized counter names, which would break VRAM_COUNTER_PATH on non-English Windows.
+pub extern "pdh" fn PdhAddEnglishCounterA(hQuery: PDH_HQUERY, szFullCounterPath: LPCSTR, dwUserData: usize, phCounter: *PDH_HCOUNTER) callconv(.c) PDH_STATUS;
+pub extern "pdh" fn PdhCollectQueryData(hQuery: PDH_HQUERY) callconv(.c) PDH_STATUS;
+pub extern "pdh" fn PdhGetFormattedCounterArrayA(hCounter: PDH_HCOUNTER, dwFormat: DWORD, lpdwBufferSize: *DWORD, lpdwItemCount: *DWORD, ItemBuffer: ?[*]u8) callconv(.c) PDH_STATUS;
+pub extern "pdh" fn PdhCloseQuery(hQuery: PDH_HQUERY) callconv(.c) PDH_STATUS;
+
 pub const FILETIME = extern struct {
     dwLowDateTime: DWORD,
     dwHighDateTime: DWORD,

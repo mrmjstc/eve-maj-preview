@@ -351,6 +351,19 @@ const CONFIG_SCHEMA = [
     { id: 'bountyOffsetY', path: 'bounty.offset_y' },
     { id: 'bountyIskRateUnit', path: 'bounty.isk_rate_unit' },
 
+    { id: 'resourcesEnabled', path: 'resources.enabled' },
+    { id: 'resourcesShowCpu', path: 'resources.show_cpu' },
+    { id: 'resourcesShowRam', path: 'resources.show_ram' },
+    { id: 'resourcesShowVram', path: 'resources.show_vram' },
+    { id: 'resourcesUpdateIntervalMs', path: 'resources.update_interval_ms', transform: 'ms' },
+    { id: 'resourcesPosition', path: 'resources.position' },
+    { id: 'resourcesColor', path: 'resources.color' },
+    { id: 'resourcesFontSize', path: 'resources.font_size' },
+    { id: 'resourcesFontName', path: 'resources.font_name' },
+    { id: 'resourcesFontWeight', path: 'resources.font_weight' },
+    { id: 'resourcesOffsetX', path: 'resources.offset_x' },
+    { id: 'resourcesOffsetY', path: 'resources.offset_y' },
+
     { id: 'travelEnabled', path: 'travel.enabled' },
     { id: 'travelWindowSeconds', path: 'travel.window_seconds' },
     { id: 'travelThresholdMode', path: 'travel.threshold_mode' },
@@ -483,6 +496,7 @@ const BG_COLOR_FIELDS = [
     { colorId: 'combatOutgoingBgColor', opacityId: 'combatOutgoingBgOpacity', path: 'combat.outgoing_bg_color' },
     { colorId: 'miningBgColor', opacityId: 'miningBgOpacity', path: 'mining.bg_color' },
     { colorId: 'bountyBgColor', opacityId: 'bountyBgOpacity', path: 'bounty.bg_color' },
+    { colorId: 'resourcesBgColor', opacityId: 'resourcesBgOpacity', path: 'resources.bg_color' },
 ];
 
 // Fields that can't be expressed as a single {id, path} pair: composite values, asymmetric load/save, or non-trivial defaults.
@@ -1055,6 +1069,7 @@ function applyBackendDefaultColors() {
         combatOutgoingColor: defaultConfig.combat?.outgoing_color,
         miningColor: defaultConfig.mining?.color,
         bountyColor: defaultConfig.bounty?.color,
+        resourcesColor: defaultConfig.resources?.color,
         characterNameBgColor: defaultConfig.thumbnail?.characterNameBgColor,
         systemNameBgColor: defaultConfig.thumbnail?.systemNameBgColor,
         quickGroupBadgeBgColor: defaultConfig.thumbnail?.quickGroupBadgeBgColor,
@@ -1063,6 +1078,7 @@ function applyBackendDefaultColors() {
         combatOutgoingBgColor: defaultConfig.combat?.outgoing_bg_color,
         miningBgColor: defaultConfig.mining?.bg_color,
         bountyBgColor: defaultConfig.bounty?.bg_color,
+        resourcesBgColor: defaultConfig.resources?.bg_color,
     };
     for (const [id, value] of Object.entries(map)) {
         if (value == null) continue;
@@ -1113,6 +1129,7 @@ function populateFormFields() {
     toggleCombatOptions();
     toggleMiningOptions();
     toggleBountyOptions();
+    toggleResourcesOptions();
     toggleTravelOptions();
 
     populateWindowFilters();
@@ -2603,6 +2620,7 @@ const MAJ_SECTIONS = [
     { id: 'combat', title: 'Combat Tracker', hint: 'Combat log parsing', kind: 'object' },
     { id: 'mining', title: 'Mining Tracker', hint: 'Mining log parsing', kind: 'object' },
     { id: 'bounty', title: 'Bounty Tracker', hint: 'Bounty log parsing', kind: 'object' },
+    { id: 'resources', title: 'Resource Usage', hint: 'Per-client CPU/RAM/VRAM overlay', kind: 'object' },
     { id: 'hotkeys', title: 'Global Hotkeys', hint: 'App-wide hotkeys', kind: 'object' },
     { id: 'characters', title: 'Characters', hint: 'Positions, sizes, colors, hotkeys', kind: 'array' },
     { id: 'systemColors', title: 'System Colors', hint: 'Per-system border colors', kind: 'array' },
@@ -6182,6 +6200,22 @@ const OVERLAY_LAYOUT_ELEMENTS = [
             { type: 'color', id: 'bountyBgColor', label: 'Background Color' },
             { type: 'range', id: 'bountyBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
         ] },
+    { chipId: 'overlayChip_resources', showId: 'resourcesEnabled', positionId: 'resourcesPosition', offsetXId: 'resourcesOffsetX', offsetYId: 'resourcesOffsetY', colorId: 'resourcesColor',
+        alsoRequiresIds: ['showText'],
+        fontNameId: 'resourcesFontName', fontWeightId: 'resourcesFontWeight', fontSizeId: 'resourcesFontSize',
+        bgColorId: 'resourcesBgColor', bgOpacityId: 'resourcesBgOpacity',
+        popoverTitle: 'Resource Usage', popoverFields: [
+            { type: 'checkbox', id: 'resourcesEnabled', label: 'Show Resource Usage' },
+            { type: 'checkbox', id: 'resourcesShowCpu', label: 'Show CPU %' },
+            { type: 'checkbox', id: 'resourcesShowRam', label: 'Show RAM' },
+            { type: 'checkbox', id: 'resourcesShowVram', label: 'Show VRAM' },
+            { type: 'color', id: 'resourcesColor', label: 'Text Color' },
+            { type: 'font-name', id: 'resourcesFontName', label: 'Font Name' },
+            { type: 'number', id: 'resourcesFontSize', label: 'Font Size', min: 6, max: 72 },
+            { type: 'font-weight', id: 'resourcesFontWeight', label: 'Font Weight' },
+            { type: 'color', id: 'resourcesBgColor', label: 'Background Color' },
+            { type: 'range', id: 'resourcesBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        ] },
 ];
 
 // Distance (in stage pixels) within which a drag magnetically locks flush to the current anchor (offset 0,0).
@@ -6788,6 +6822,10 @@ function toggleMiningOptions() {
 
 function toggleBountyOptions() {
     applyOptionToggle('bountyEnabled', 'bountyOptions');
+}
+
+function toggleResourcesOptions() {
+    applyOptionToggle('resourcesEnabled', 'resourcesOptions');
 }
 
 function toggleTravelOptions() {

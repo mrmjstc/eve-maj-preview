@@ -9,6 +9,7 @@ const hotkeys = @import("hotkeys.zig");
 const mouse_hook = @import("mouse_hook.zig");
 const chatlog = @import("chatlog.zig");
 const activity_mod = @import("activity_tracker.zig");
+const resource_tracker_mod = @import("resource_tracker.zig");
 const tts = @import("tts.zig");
 const tray = @import("tray.zig");
 const protocol = @import("protocol.zig");
@@ -35,6 +36,7 @@ var g_chatlog_monitor: ?*chatlog.ChatlogMonitor = null;
 var g_combat_tracker: ?*activity_mod.CombatTracker = null;
 var g_mining_tracker: ?*activity_mod.MiningTracker = null;
 var g_bounty_tracker: ?*activity_mod.BountyTracker = null;
+var g_resource_tracker: ?*resource_tracker_mod.ResourceTracker = null;
 pub var g_config: config_mod.Config = undefined;
 var g_global_settings: config_mod.GlobalSettings = undefined;
 var g_tray_icon: ?tray.TrayIcon = null;
@@ -53,6 +55,7 @@ const SCAN_INTERVAL_TICKS: u32 = 20;
 var g_last_dps_update_ms: i64 = 0;
 var g_last_mining_update_ms: i64 = 0;
 var g_last_bounty_update_ms: i64 = 0;
+var g_last_resource_update_ms: i64 = 0;
 var g_last_travel_check_ms: win32.Ticks = .{};
 const TRAVEL_CHECK_INTERVAL_MS: u64 = 2000;
 
@@ -293,6 +296,14 @@ fn onTimerTick() void {
         );
     }
 
+    if (g_resource_tracker != null) {
+        const interval_ms: i64 = @intCast(g_config.resources.update_interval_ms);
+        if (now_ms - g_last_resource_update_ms >= interval_ms) {
+            g_last_resource_update_ms = now_ms;
+            sampleAndPushResourceStats(now_ms);
+        }
+    }
+
     if (g_painter) |painter_ptr| {
         if (now.elapsedSince(g_last_travel_check_ms) >= TRAVEL_CHECK_INTERVAL_MS) {
             g_last_travel_check_ms = now;
@@ -366,6 +377,45 @@ fn createTracker(comptime T: type, allocator: std.mem.Allocator, io: std.Io, win
     const ptr = try allocator.create(T);
     ptr.* = T.init(allocator, io, window_seconds);
     return ptr;
+}
+
+/// Doesn't fit createAndWireTracker/recreateTracker (no chatlog_monitor field, no window_seconds); fail-soft like recreateTracker.
+fn ensureResourceTracker() void {
+    if (!g_config.resources.enabled) {
+        teardownResourceTracker();
+        return;
+    }
+    if (g_resource_tracker != null) return;
+    const ptr = g_allocator.create(resource_tracker_mod.ResourceTracker) catch |err| {
+        slog.err("Failed to create resource tracker: {}", .{err});
+        return;
+    };
+    ptr.* = resource_tracker_mod.ResourceTracker.init(g_allocator);
+    g_resource_tracker = ptr;
+    slog.debug("Resource usage tracking enabled", .{});
+}
+
+fn teardownResourceTracker() void {
+    if (g_resource_tracker) |ptr| {
+        ptr.deinit();
+        g_allocator.destroy(ptr);
+        g_resource_tracker = null;
+    }
+}
+
+/// Uses Scout's retained window list rather than a fresh scan, so it's cheap enough to call from a live-preview handler too.
+fn sampleAndPushResourceStats(now_ms: i64) void {
+    const tracker = g_resource_tracker orelse return;
+    const scout_ptr = g_scout orelse return;
+    const windows = scout_ptr.windows.items;
+    tracker.sampleAll(windows, now_ms);
+
+    const painter_ptr = g_painter orelse return;
+    for (windows) |eve_window| {
+        const stats = tracker.getStats(eve_window.process_id);
+        painter_ptr.updateResourceStatsForCharacter(eve_window.hwnd, stats.cpu_percent, stats.ram_mb, stats.vram_mb, stats.has_vram);
+    }
+    painter_ptr.processDirtyDpsOverlays();
 }
 
 /// Logs only when `kind` is given, so a mainImpl teardown defer racing process exit can opt out.
@@ -717,6 +767,9 @@ fn mainImpl(init: std.process.Init) !void {
     try createAndWireTracker(activity_mod.BountyTracker, "bounty_tracker", &g_bounty_tracker, g_config.bounty.enabled, g_config.bounty.window_seconds, "Bounty rate");
     defer destroyTracker(activity_mod.BountyTracker, &g_bounty_tracker, null);
 
+    ensureResourceTracker();
+    defer teardownResourceTracker();
+
     // Registered after the tracker defers so it runs first (LIFO): the worker thread must stop before combat/mining trackers are freed, since it may be mid-iteration reading them.
     defer {
         if (g_chatlog_monitor) |monitor| {
@@ -1023,6 +1076,8 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         _ = recreateTracker(activity_mod.MiningTracker, "mining_tracker", &g_mining_tracker, g_config.mining.enabled, g_config.mining.window_seconds, "Mining rate", "mining");
 
         _ = recreateTracker(activity_mod.BountyTracker, "bounty_tracker", &g_bounty_tracker, g_config.bounty.enabled, g_config.bounty.window_seconds, "Bounty rate", "bounty");
+
+        ensureResourceTracker();
 
         // Resume the paused worker only now that combat/mining trackers above are repointed (or nulled) - resuming any earlier risks it processing a queued event against trackers just destroyed.
         if (keep_chatlog_monitor) {

@@ -47,6 +47,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.linkSystemLibrary("gdi32", .{});
     exe.root_module.linkSystemLibrary("dwmapi", .{});
     exe.root_module.linkSystemLibrary("psapi", .{});
+    exe.root_module.linkSystemLibrary("pdh", .{});
     exe.root_module.linkSystemLibrary("shell32", .{});
     exe.root_module.linkSystemLibrary("ole32", .{});
     exe.root_module.linkSystemLibrary("oleaut32", .{});
