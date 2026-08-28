@@ -1303,6 +1303,11 @@ pub const Painter = struct {
             // Force re-measurement: a display-name-only edit changes the string without touching the font, which is otherwise the only re-measure trigger.
             thumbnail.cached_char_dims = null;
             thumbnail.cached_sys_dims = null;
+            thumbnail.cached_qg_dims = null;
+            // These borrow from Config's font-name buffers, which a preview edit may have just freed.
+            thumbnail.cached_font_name = "";
+            thumbnail.cached_sys_font_name = "";
+            thumbnail.cached_qg_font_name = "";
             self.renderThumbnailLogged(thumbnail, "visuals refresh");
         }
     }
@@ -2390,6 +2395,8 @@ pub const Painter = struct {
         _ = win32.UpdateWindow(text_hwnd);
 
         try self.thumbnails.append(self.allocator, thumbnail);
+        // Keeps a failed put() below from leaving a freed/destroyed entry behind in the list.
+        errdefer _ = self.thumbnails.pop();
         // Add to HWND indices for O(1) lookups by all window handles
         const new_index = self.thumbnails.items.len - 1;
         try self.hwnd_to_thumbnail_index.put(eve_window.hwnd, new_index);
