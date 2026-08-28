@@ -3884,7 +3884,7 @@ fn winEventProc(
 
     if (!is_eve_window) {
         if (painter.config.thumbnail.hideWhenNoEveFocus) {
-            slog.debug("Non-EVE window focused (hwnd={*}), starting {}ms debounce timer (hideWhenNoEveFocus=true)", .{ hwnd, painter.config.thumbnail.hideDebounceMs });
+            slog.debug("Untracked window focused (hwnd={*}), starting {}ms debounce timer (hideWhenNoEveFocus=true)", .{ hwnd, painter.config.thumbnail.hideDebounceMs });
             // Only use thumbnail HWNDs in thumbnail mode (list mode has no valid thumbnail HWNDs)
             if (painter.thumbnails.items.len > 0 and painter.thumbnails.items[0].win32_enabled) {
                 const timer_hwnd = painter.thumbnails.items[0].hwnd;
@@ -3895,7 +3895,7 @@ fn winEventProc(
                 }
             }
         } else {
-            slog.debug("Non-EVE window focused (hwnd={*}), ignoring (hideWhenNoEveFocus=false)", .{hwnd});
+            slog.debug("Untracked window focused (hwnd={*}), ignoring (hideWhenNoEveFocus=false)", .{hwnd});
         }
         return;
     }
@@ -3904,7 +3904,7 @@ fn winEventProc(
     if (painter.hide_debounce_timer_hwnd) |timer_hwnd| {
         _ = win32.KillTimer(timer_hwnd, HIDE_DEBOUNCE_TIMER_ID);
         painter.hide_debounce_timer_hwnd = null;
-        slog.debug("Cancelled hide debounce timer (EVE window focused)", .{});
+        slog.debug("Cancelled hide debounce timer (tracked window focused)", .{});
     }
 
     // WINEVENT_OUTOFCONTEXT delivery can lag well behind the actual focus change; during rapid
@@ -3919,7 +3919,7 @@ fn winEventProc(
     painter.reconcileThumbnailStates(hwnd);
 
     if (painter.getThumbnailBySourceHwnd(hwnd)) |thumbnail| {
-        slog.debug("EVE window focused: {s}", .{thumbnail.character_name});
+        slog.debug("Tracked window focused: {s}", .{thumbnail.character_name});
         if (g_hotkey_manager_ptr) |manager| {
             manager.updateFocusedCharacter(thumbnail.character_name);
         }
