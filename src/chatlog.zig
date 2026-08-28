@@ -133,15 +133,12 @@ pub const LogFileState = struct {
     // true for chatlog (UTF-16 LE), false for gamelog (UTF-8)
     is_chatlog: bool,
     had_activity: bool = false,
-    // Permanently disabled after an unrecoverable error
     disabled: bool = false,
     has_bom: bool = false,
     last_system_hash: u64 = 0,
     idle_checks: u32 = 0,
     cycle_counter: u32 = 0,
-    // 1x, 2x, 4x, 8x backoff multiplier
     poll_interval_multiplier: u8 = 1,
-    // Pooled buffers, reused across polls to avoid per-line heap allocations
     utf8_buffer: std.ArrayList(u8),
     line_buffer: std.ArrayList(u8),
     u16_buffer: std.ArrayList(u16),
@@ -306,17 +303,6 @@ pub const ChatlogMonitor = struct {
             _ = monitor.checkNewLogFiles(characters.items, time_budget_ns) catch |err| {
                 slog.err("Worker thread scan error: {}", .{err});
             };
-
-            if (loop_count % 1000 == 0) {
-                const cmd_queue_len = monitor.command_queue.len();
-                const result_queue_len = monitor.result_queue.len();
-                slog.debug("Worker thread stats: loop={}, cmd_queue={}, result_queue={}, log_files={}", .{
-                    loop_count,
-                    cmd_queue_len,
-                    result_queue_len,
-                    monitor.log_files.items.len,
-                });
-            }
 
             // Sleep briefly to avoid busy-wait
             win32.Sleep(monitor.poll_interval_ms);
