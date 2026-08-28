@@ -1,6 +1,7 @@
 .{
     .name = .EVE_Maj_Preview,
     .version = "0.15.2",
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .zig_webui = .{
             .url = "https://github.com/webui-dev/zig-webui/archive/refs/heads/main.tar.gz",
