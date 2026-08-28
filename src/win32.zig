@@ -1030,7 +1030,8 @@ const IShellItem = extern struct {
 };
 
 /// Shows the Win32 "Select Folder" dialog with `title`, returning the chosen path (caller frees) or null if cancelled.
-pub fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8) !?[]const u8 {
+/// `owner`, when given, keeps the picker above a topmost owner window (an owned window always draws above its owner, even a HWND_TOPMOST one).
+pub fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8, owner: ?HWND) !?[]const u8 {
     const COINIT_APARTMENTTHREADED: u32 = 0x2;
     const COINIT_DISABLE_OLE1DDE: u32 = 0x4;
     const hr = CoInitializeEx(null, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -1063,7 +1064,7 @@ pub fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8) !?[]con
     defer allocator.free(title_w);
     _ = dialog.setTitle(title_w.ptr);
 
-    const show_hr = dialog.show(null);
+    const show_hr = dialog.show(owner);
     if (show_hr < 0) {
         return null;
     }

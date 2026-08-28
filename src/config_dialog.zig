@@ -1239,7 +1239,8 @@ fn resetProfile(e: *webui.Event) void {
 fn browseDirAndReturn(e: *webui.Event, title: []const u8) void {
     const allocator = g_allocator;
 
-    const selected_path = win32.showFolderPicker(allocator, title) catch {
+    const owner: ?win32.HWND = if (e.getWindow().win32GetHwnd()) |hwnd| @ptrCast(hwnd) else |_| null;
+    const selected_path = win32.showFolderPicker(allocator, title, owner) catch {
         e.returnString("");
         return;
     };
