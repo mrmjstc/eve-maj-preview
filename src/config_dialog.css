@@ -1173,16 +1173,41 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     width: auto;
 }
 
-.overlay-popover-field {
-    margin-bottom: 8px;
+#overlayPopoverBody {
+    display: grid;
+    grid-template-columns: auto minmax(70px, 1fr);
+    align-items: center;
+    gap: 8px 12px;
 }
 
-.overlay-popover-field:last-child {
-    margin-bottom: 0;
+/* Lets each field's label/control pair become direct grid items of #overlayPopoverBody, so labels align into one column across all rows. */
+.overlay-popover-field {
+    display: contents;
 }
 
 .overlay-popover-field label {
     margin-top: 0;
+    white-space: nowrap;
+}
+
+.overlay-popover-field select,
+.overlay-popover-field input[type="number"] {
+    width: 100%;
+}
+
+.overlay-popover-checkbox-row {
+    grid-column: 1 / -1;
+}
+
+.overlay-popover-range-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.overlay-popover-range-control input[type="range"] {
+    flex: 1;
+    min-width: 0;
 }
 
 /* Grid for two-column key binding layouts */

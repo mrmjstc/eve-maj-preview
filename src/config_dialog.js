@@ -6533,11 +6533,12 @@ function refreshOverlayLayoutPreview() {
 }
 
 // Mirrors toggleInverseOption()'s real-tab dimming (e.g. Unique Character Name Colors disabling the color picker).
+// Dims the label/input pair directly rather than their wrap div, which is display:contents and renders no box of its own to fade.
 function applyPopoverInverseDisable(targetFieldId, disabled) {
     const body = document.getElementById('overlayPopoverBody');
     const input = body?.querySelector(`[data-popover-for="${targetFieldId}"]`);
     if (!input) return;
-    input.parentElement.style.opacity = disabled ? '0.5' : '1';
+    Array.from(input.parentElement.children).forEach(el => { el.style.opacity = disabled ? '0.5' : '1'; });
     input.style.pointerEvents = disabled ? 'none' : 'auto';
 }
 
@@ -6580,6 +6581,7 @@ function buildOverlayPopoverField(f, def) {
 
     if (f.type === 'checkbox') {
         const label = document.createElement('label');
+        label.className = 'overlay-popover-checkbox-row';
         const input = document.createElement('input');
         input.type = 'checkbox';
         input.checked = !!(real && real.checked);
@@ -6623,14 +6625,16 @@ function buildOverlayPopoverField(f, def) {
         input.value = real ? real.value : (f.min ?? 0);
         const valueSpan = document.createElement('span');
         valueSpan.textContent = input.value + (f.unit || '');
-        valueSpan.style.marginLeft = '6px';
         input.addEventListener('input', () => {
             setOverlayFieldValue(f.id, input.value);
             valueSpan.textContent = input.value + (f.unit || '');
             maybeSyncOverlayStyle(def);
         });
-        wrap.appendChild(input);
-        wrap.appendChild(valueSpan);
+        const control = document.createElement('div');
+        control.className = 'overlay-popover-range-control';
+        control.appendChild(input);
+        control.appendChild(valueSpan);
+        wrap.appendChild(control);
         return wrap;
     } else if (f.type === 'font-name') {
         input = document.createElement('select');
