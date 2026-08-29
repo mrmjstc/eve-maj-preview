@@ -1302,24 +1302,14 @@ pub const Painter = struct {
             false;
 
         for (self.thumbnails.items) |*thumbnail| {
-            if (!thumbnail.win32_enabled) continue;
-
-            if (self.config.thumbnail.hideWhenNoEveFocus and !any_eve_has_focus) {
-                if (thumbnail.visibility_state == .Visible) thumbnail.setVisibility(.HiddenAutomatic);
-            } else if (thumbnail.visibility_state == .HiddenAutomatic) {
-                thumbnail.setVisibility(.Visible);
-            }
-
-            // thumbnailOpacity is otherwise only applied once, at window creation time.
-            _ = win32.SetLayeredWindowAttributes(thumbnail.hwnd, 0, self.config.thumbnail.thumbnailOpacity, win32.LWA_ALPHA);
-            // Re-resolve here too (normally only done on system-name change) so live-previewed color edits show up immediately.
+            // Must run for every thumbnail, not just win32_enabled ones: list_view.zig reads these cache fields directly.
             thumbnail.cached_system_color = if (thumbnail.system_name.len > 0)
                 self.config.getSystemNameColor(thumbnail.system_name)
             else
                 self.config.thumbnail.systemNameColor;
             thumbnail.cached_character_color = self.config.getCharacterNameColor(thumbnail.character_name);
             thumbnail.cached_display_name = self.config.getDisplayName(thumbnail.character_name);
-            self.resizeThumbnailIfNeeded(thumbnail);
+            thumbnail.cached_active_border_override = if (self.config.getCharacterBorderColors(thumbnail.character_name)) |c| c.activeBorderColor else null;
             // RenderSettings' equality check only compares character_name, so it can miss a change to one of the resolved fields above; force the full-render path since this only runs on debounced (~120ms) preview edits.
             thumbnail.cached_render_settings = null;
             // Force re-measurement: a display-name-only edit changes the string without touching the font, which is otherwise the only re-measure trigger.
@@ -1330,6 +1320,18 @@ pub const Painter = struct {
             thumbnail.cached_font_name = "";
             thumbnail.cached_sys_font_name = "";
             thumbnail.cached_qg_font_name = "";
+
+            if (!thumbnail.win32_enabled) continue;
+
+            if (self.config.thumbnail.hideWhenNoEveFocus and !any_eve_has_focus) {
+                if (thumbnail.visibility_state == .Visible) thumbnail.setVisibility(.HiddenAutomatic);
+            } else if (thumbnail.visibility_state == .HiddenAutomatic) {
+                thumbnail.setVisibility(.Visible);
+            }
+
+            // thumbnailOpacity is otherwise only applied once, at window creation time.
+            _ = win32.SetLayeredWindowAttributes(thumbnail.hwnd, 0, self.config.thumbnail.thumbnailOpacity, win32.LWA_ALPHA);
+            self.resizeThumbnailIfNeeded(thumbnail);
             self.renderThumbnailLogged(thumbnail, "visuals refresh");
         }
     }
