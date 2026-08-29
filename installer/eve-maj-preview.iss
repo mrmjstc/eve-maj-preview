@@ -4,6 +4,8 @@
 #define MyAppExeName "eve-maj-preview.exe"
 #define MyConfigExeName "config.exe"
 #define BinDir "..\zig-out\bin"
+#define AppMutexName "Global\EVE-Maj-Preview-SingleInstance"
+#define ConfigMutexName "Global\EVE-Maj-Preview-ConfigDialog-SingleInstance"
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
@@ -23,6 +25,12 @@ DisableProgramGroupPage=yes
 ; Files, since the app reads/writes profiles, settings, and its log next to
 ; the exe.
 PrivilegesRequired=lowest
+; Detect the running app/config dialog via their single-instance mutexes and
+; prompt to close them, and also let Setup auto-close anything still holding
+; a lock on the exes it's about to overwrite (Restart Manager).
+AppMutex={#AppMutexName},{#ConfigMutexName}
+CloseApplications=yes
+RestartApplications=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
