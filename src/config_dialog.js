@@ -636,6 +636,28 @@ const THUMBNAIL_PREVIEW_FIELD_IDS = [
     'spacing', 'spacingX', 'spacingY', 'layoutMode', 'layoutDirection',
     'gridColumns', 'gridRows', 'stackOffset', 'stackAlignment',
     'monitorIndex', 'useMonitorWorkArea', 'honorSavedPositions',
+    'notificationsEnabled', 'notificationPosition', 'notificationOffsetX', 'notificationOffsetY',
+    'notificationFontName', 'notificationFontSize', 'notificationFontWeight',
+    'notificationBgColor', 'notificationBgOpacity',
+    'combatEnabled', 'combatWindowSeconds', 'combatUpdateIntervalMs',
+    'combatShowIncoming', 'combatShowOutgoing',
+    'combatIncomingPosition', 'combatOutgoingPosition',
+    'combatIncomingColor', 'combatOutgoingColor',
+    'combatIncomingBgColor', 'combatIncomingBgOpacity', 'combatOutgoingBgColor', 'combatOutgoingBgOpacity',
+    'combatIncomingFontSize', 'combatIncomingFontName', 'combatIncomingFontWeight',
+    'combatOutgoingFontSize', 'combatOutgoingFontName', 'combatOutgoingFontWeight',
+    'combatIncomingOffsetX', 'combatIncomingOffsetY', 'combatOutgoingOffsetX', 'combatOutgoingOffsetY',
+    'combatDamageAlertExcludedWeapons',
+    'miningEnabled', 'miningWindowSeconds', 'miningUpdateIntervalMs', 'miningPosition', 'miningColor',
+    'miningFontSize', 'miningFontName', 'miningFontWeight', 'miningOffsetX', 'miningOffsetY',
+    'miningBgColor', 'miningBgOpacity', 'miningShowIskRate', 'miningIskRateUnit',
+    'miningIdleAlertWindowSeconds', 'miningIdleAlertThreshold', 'miningStoppedAlertWindowSeconds',
+    'bountyEnabled', 'bountyWindowSeconds', 'bountyUpdateIntervalMs', 'bountyPosition', 'bountyColor',
+    'bountyFontSize', 'bountyFontName', 'bountyFontWeight', 'bountyOffsetX', 'bountyOffsetY',
+    'bountyBgColor', 'bountyBgOpacity', 'bountyIskRateUnit',
+    'resourcesEnabled', 'resourcesShowCpu', 'resourcesShowRam', 'resourcesShowVram', 'resourcesUpdateIntervalMs',
+    'resourcesPosition', 'resourcesColor', 'resourcesFontSize', 'resourcesFontName', 'resourcesFontWeight',
+    'resourcesOffsetX', 'resourcesOffsetY', 'resourcesBgColor', 'resourcesBgOpacity',
 ];
 
 let thumbnailPreviewDebounceTimer = null;
@@ -721,6 +743,87 @@ function buildThumbnailPreviewPatch(includePositions = false) {
             honorSavedPositions: getFieldValue('honorSavedPositions'),
         },
         characterOverrides: buildCharacterOverridesPreviewPatch(includePositions),
+        notifications: {
+            enabled: getFieldValue('notificationsEnabled'),
+            position: getFieldValue('notificationPosition'),
+            offset_x: getFieldValue('notificationOffsetX'),
+            offset_y: getFieldValue('notificationOffsetY'),
+            font_name: getFieldValue('notificationFontName'),
+            font_size: getFieldValue('notificationFontSize'),
+            font_weight: getFieldValue('notificationFontWeight'),
+            bg_color: zigColorWithAlpha(getFieldValue('notificationBgColor'), percentToOpacity(getFieldValue('notificationBgOpacity'))),
+        },
+        combat: {
+            enabled: getFieldValue('combatEnabled'),
+            window_seconds: getFieldValue('combatWindowSeconds'),
+            update_interval_ms: msFieldValue('combatUpdateIntervalMs'),
+            show_incoming: getFieldValue('combatShowIncoming'),
+            show_outgoing: getFieldValue('combatShowOutgoing'),
+            incoming_position: getFieldValue('combatIncomingPosition'),
+            outgoing_position: getFieldValue('combatOutgoingPosition'),
+            incoming_color: getFieldValue('combatIncomingColor'),
+            outgoing_color: getFieldValue('combatOutgoingColor'),
+            incoming_bg_color: zigColorWithAlpha(getFieldValue('combatIncomingBgColor'), percentToOpacity(getFieldValue('combatIncomingBgOpacity'))),
+            outgoing_bg_color: zigColorWithAlpha(getFieldValue('combatOutgoingBgColor'), percentToOpacity(getFieldValue('combatOutgoingBgOpacity'))),
+            incoming_font_size: getFieldValue('combatIncomingFontSize'),
+            incoming_font_name: getFieldValue('combatIncomingFontName'),
+            incoming_font_weight: getFieldValue('combatIncomingFontWeight'),
+            outgoing_font_size: getFieldValue('combatOutgoingFontSize'),
+            outgoing_font_name: getFieldValue('combatOutgoingFontName'),
+            outgoing_font_weight: getFieldValue('combatOutgoingFontWeight'),
+            incoming_offset_x: getFieldValue('combatIncomingOffsetX'),
+            incoming_offset_y: getFieldValue('combatIncomingOffsetY'),
+            outgoing_offset_x: getFieldValue('combatOutgoingOffsetX'),
+            outgoing_offset_y: getFieldValue('combatOutgoingOffsetY'),
+            damage_alert_excluded_weapons: getFieldValue('combatDamageAlertExcludedWeapons'),
+        },
+        mining: {
+            enabled: getFieldValue('miningEnabled'),
+            window_seconds: getFieldValue('miningWindowSeconds'),
+            update_interval_ms: msFieldValue('miningUpdateIntervalMs'),
+            color: getFieldValue('miningColor'),
+            bg_color: zigColorWithAlpha(getFieldValue('miningBgColor'), percentToOpacity(getFieldValue('miningBgOpacity'))),
+            font_size: getFieldValue('miningFontSize'),
+            font_name: getFieldValue('miningFontName'),
+            font_weight: getFieldValue('miningFontWeight'),
+            position: getFieldValue('miningPosition'),
+            offset_x: getFieldValue('miningOffsetX'),
+            offset_y: getFieldValue('miningOffsetY'),
+            show_isk_rate: getFieldValue('miningShowIskRate'),
+            isk_rate_unit: getFieldValue('miningIskRateUnit'),
+            idle_alert_window_seconds: getFieldValue('miningIdleAlertWindowSeconds'),
+            idle_alert_threshold: getFieldValue('miningIdleAlertThreshold'),
+            stopped_alert_window_seconds: getFieldValue('miningStoppedAlertWindowSeconds'),
+        },
+        bounty: {
+            enabled: getFieldValue('bountyEnabled'),
+            window_seconds: getFieldValue('bountyWindowSeconds'),
+            update_interval_ms: msFieldValue('bountyUpdateIntervalMs'),
+            color: getFieldValue('bountyColor'),
+            bg_color: zigColorWithAlpha(getFieldValue('bountyBgColor'), percentToOpacity(getFieldValue('bountyBgOpacity'))),
+            font_size: getFieldValue('bountyFontSize'),
+            font_name: getFieldValue('bountyFontName'),
+            font_weight: getFieldValue('bountyFontWeight'),
+            position: getFieldValue('bountyPosition'),
+            offset_x: getFieldValue('bountyOffsetX'),
+            offset_y: getFieldValue('bountyOffsetY'),
+            isk_rate_unit: getFieldValue('bountyIskRateUnit'),
+        },
+        resources: {
+            enabled: getFieldValue('resourcesEnabled'),
+            show_cpu: getFieldValue('resourcesShowCpu'),
+            show_ram: getFieldValue('resourcesShowRam'),
+            show_vram: getFieldValue('resourcesShowVram'),
+            update_interval_ms: msFieldValue('resourcesUpdateIntervalMs'),
+            color: getFieldValue('resourcesColor'),
+            bg_color: zigColorWithAlpha(getFieldValue('resourcesBgColor'), percentToOpacity(getFieldValue('resourcesBgOpacity'))),
+            font_size: getFieldValue('resourcesFontSize'),
+            font_name: getFieldValue('resourcesFontName'),
+            font_weight: getFieldValue('resourcesFontWeight'),
+            position: getFieldValue('resourcesPosition'),
+            offset_x: getFieldValue('resourcesOffsetX'),
+            offset_y: getFieldValue('resourcesOffsetY'),
+        },
     };
 }
 
@@ -1177,6 +1280,12 @@ function opacityToPercent(value) {
 
 function percentToOpacity(percent) {
     return Math.round(Math.max(0, Math.min(100, percent)) / 100 * 255);
+}
+
+// Mirrors applyConfigSchemaFromForm()'s 'ms' transform, for fields (e.g. update_interval_ms) whose DOM value is fractional seconds.
+function msFieldValue(fieldId) {
+    const raw = parseFloat(document.getElementById(fieldId)?.value);
+    return Math.round((isNaN(raw) ? 0 : raw) * 1000);
 }
 
 function getFieldValue(fieldId) {

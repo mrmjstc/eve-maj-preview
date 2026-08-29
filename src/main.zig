@@ -1164,6 +1164,40 @@ fn applyThumbnailPreview(json_data: []const u8) !void {
         }
     }
 
+    // Combat/Mining/Bounty/Resources overlays each live outside ThumbnailConfig, so they ride along as their own top-level keys in the same patch object.
+    if (obj.get("combat")) |combat_val| {
+        if (combat_val == .object) {
+            config_mod.Config.parseJsonCombatConfig(&g_config.combat, combat_val.object, g_allocator) catch |err| {
+                slog.err("Failed to apply combat overlay preview: {}", .{err});
+            };
+            g_config.combat.validate();
+        }
+    }
+    if (obj.get("mining")) |mining_val| {
+        if (mining_val == .object) {
+            config_mod.Config.parseJsonMiningConfig(&g_config.mining, mining_val.object, g_allocator) catch |err| {
+                slog.err("Failed to apply mining overlay preview: {}", .{err});
+            };
+            g_config.mining.validate();
+        }
+    }
+    if (obj.get("bounty")) |bounty_val| {
+        if (bounty_val == .object) {
+            config_mod.Config.parseJsonBountyConfig(&g_config.bounty, bounty_val.object, g_allocator) catch |err| {
+                slog.err("Failed to apply bounty overlay preview: {}", .{err});
+            };
+            g_config.bounty.validate();
+        }
+    }
+    if (obj.get("resources")) |resources_val| {
+        if (resources_val == .object) {
+            config_mod.Config.parseJsonResourcesConfig(&g_config.resources, resources_val.object, g_allocator) catch |err| {
+                slog.err("Failed to apply resources overlay preview: {}", .{err});
+            };
+            g_config.resources.validate();
+        }
+    }
+
     if (g_painter) |painter_ptr| {
         painter_ptr.refreshAllThumbnailVisuals();
         if (layout_changed) painter_ptr.repositionAllThumbnails();

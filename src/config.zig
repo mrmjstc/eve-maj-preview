@@ -3044,6 +3044,238 @@ pub const Config = struct {
         }
     }
 
+    fn updateOwnedString(allocator: std.mem.Allocator, field: *[]const u8, v: std.json.Value) !void {
+        if (v != .string or std.mem.eql(u8, field.*, v.string)) return;
+        const old = field.*;
+        field.* = try allocator.dupe(u8, v.string);
+        allocator.free(old);
+    }
+
+    pub fn parseJsonCombatConfig(combat: *CombatConfig, obj: std.json.ObjectMap, allocator: std.mem.Allocator) !void {
+        if (obj.get("enabled")) |v| {
+            if (v == .bool) combat.enabled = v.bool;
+        }
+        if (obj.get("window_seconds")) |v| {
+            if (v == .integer) combat.window_seconds = std.math.cast(u32, v.integer) orelse combat.window_seconds;
+        }
+        if (obj.get("show_incoming")) |v| {
+            if (v == .bool) combat.show_incoming = v.bool;
+        }
+        if (obj.get("show_outgoing")) |v| {
+            if (v == .bool) combat.show_outgoing = v.bool;
+        }
+        if (obj.get("incoming_color")) |v| {
+            if (v == .string) combat.incoming_color = try parseHexColor(v.string);
+        }
+        if (obj.get("outgoing_color")) |v| {
+            if (v == .string) combat.outgoing_color = try parseHexColor(v.string);
+        }
+        if (obj.get("incoming_bg_color")) |v| {
+            if (v == .string) combat.incoming_bg_color = try parseHexColor(v.string);
+        }
+        if (obj.get("outgoing_bg_color")) |v| {
+            if (v == .string) combat.outgoing_bg_color = try parseHexColor(v.string);
+        }
+        if (obj.get("incoming_font_size")) |v| {
+            if (v == .integer) combat.incoming_font_size = std.math.cast(i32, v.integer) orelse combat.incoming_font_size;
+        }
+        if (obj.get("incoming_font_name")) |v| {
+            try updateOwnedFontName(allocator, &combat.incoming_font_name, v);
+        }
+        if (obj.get("incoming_font_weight")) |v| {
+            if (v == .string) {
+                combat.incoming_font_weight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
+            }
+        }
+        if (obj.get("outgoing_font_size")) |v| {
+            if (v == .integer) combat.outgoing_font_size = std.math.cast(i32, v.integer) orelse combat.outgoing_font_size;
+        }
+        if (obj.get("outgoing_font_name")) |v| {
+            try updateOwnedFontName(allocator, &combat.outgoing_font_name, v);
+        }
+        if (obj.get("outgoing_font_weight")) |v| {
+            if (v == .string) {
+                combat.outgoing_font_weight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
+            }
+        }
+        if (obj.get("update_interval_ms")) |v| {
+            if (v == .integer) combat.update_interval_ms = std.math.cast(u32, v.integer) orelse combat.update_interval_ms;
+        }
+        if (obj.get("incoming_position")) |v| {
+            if (v == .string) {
+                combat.incoming_position = std.meta.stringToEnum(types.TextPosition, v.string) orelse .TopCenter;
+            }
+        }
+        if (obj.get("outgoing_position")) |v| {
+            if (v == .string) {
+                combat.outgoing_position = std.meta.stringToEnum(types.TextPosition, v.string) orelse .BottomCenter;
+            }
+        }
+        if (obj.get("incoming_offset_x")) |v| {
+            if (v == .integer) combat.incoming_offset_x = std.math.cast(i32, v.integer) orelse combat.incoming_offset_x;
+        }
+        if (obj.get("incoming_offset_y")) |v| {
+            if (v == .integer) combat.incoming_offset_y = std.math.cast(i32, v.integer) orelse combat.incoming_offset_y;
+        }
+        if (obj.get("outgoing_offset_x")) |v| {
+            if (v == .integer) combat.outgoing_offset_x = std.math.cast(i32, v.integer) orelse combat.outgoing_offset_x;
+        }
+        if (obj.get("outgoing_offset_y")) |v| {
+            if (v == .integer) combat.outgoing_offset_y = std.math.cast(i32, v.integer) orelse combat.outgoing_offset_y;
+        }
+        if (obj.get("damage_alert_excluded_weapons")) |v| {
+            try updateOwnedString(allocator, &combat.damage_alert_excluded_weapons, v);
+        }
+    }
+
+    pub fn parseJsonMiningConfig(mining: *MiningConfig, obj: std.json.ObjectMap, allocator: std.mem.Allocator) !void {
+        if (obj.get("enabled")) |v| {
+            if (v == .bool) mining.enabled = v.bool;
+        }
+        if (obj.get("window_seconds")) |v| {
+            if (v == .integer) mining.window_seconds = std.math.cast(u32, v.integer) orelse mining.window_seconds;
+        }
+        if (obj.get("color")) |v| {
+            if (v == .string) mining.color = try parseHexColor(v.string);
+        }
+        if (obj.get("bg_color")) |v| {
+            if (v == .string) mining.bg_color = try parseHexColor(v.string);
+        }
+        if (obj.get("font_size")) |v| {
+            if (v == .integer) mining.font_size = std.math.cast(i32, v.integer) orelse mining.font_size;
+        }
+        if (obj.get("font_name")) |v| {
+            try updateOwnedFontName(allocator, &mining.font_name, v);
+        }
+        if (obj.get("font_weight")) |v| {
+            if (v == .string) {
+                mining.font_weight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
+            }
+        }
+        if (obj.get("update_interval_ms")) |v| {
+            if (v == .integer) mining.update_interval_ms = std.math.cast(u32, v.integer) orelse mining.update_interval_ms;
+        }
+        if (obj.get("position")) |v| {
+            if (v == .string) {
+                mining.position = std.meta.stringToEnum(types.TextPosition, v.string) orelse .BottomRight;
+            }
+        }
+        if (obj.get("offset_x")) |v| {
+            if (v == .integer) mining.offset_x = std.math.cast(i32, v.integer) orelse mining.offset_x;
+        }
+        if (obj.get("offset_y")) |v| {
+            if (v == .integer) mining.offset_y = std.math.cast(i32, v.integer) orelse mining.offset_y;
+        }
+        if (obj.get("idle_alert_window_seconds")) |v| {
+            if (v == .integer) mining.idle_alert_window_seconds = std.math.cast(u32, v.integer) orelse mining.idle_alert_window_seconds;
+        }
+        if (obj.get("idle_alert_threshold")) |v| {
+            if (v == .integer) mining.idle_alert_threshold = std.math.cast(u32, v.integer) orelse mining.idle_alert_threshold;
+        }
+        if (obj.get("stopped_alert_window_seconds")) |v| {
+            if (v == .integer) mining.stopped_alert_window_seconds = std.math.cast(u32, v.integer) orelse mining.stopped_alert_window_seconds;
+        }
+        if (obj.get("show_isk_rate")) |v| {
+            if (v == .bool) mining.show_isk_rate = v.bool;
+        }
+        if (obj.get("isk_rate_unit")) |v| {
+            if (v == .string) {
+                mining.isk_rate_unit = std.meta.stringToEnum(IskRateUnit, v.string) orelse .hour;
+            }
+        }
+    }
+
+    pub fn parseJsonBountyConfig(bounty: *BountyConfig, obj: std.json.ObjectMap, allocator: std.mem.Allocator) !void {
+        if (obj.get("enabled")) |v| {
+            if (v == .bool) bounty.enabled = v.bool;
+        }
+        if (obj.get("window_seconds")) |v| {
+            if (v == .integer) bounty.window_seconds = std.math.cast(u32, v.integer) orelse bounty.window_seconds;
+        }
+        if (obj.get("color")) |v| {
+            if (v == .string) bounty.color = try parseHexColor(v.string);
+        }
+        if (obj.get("bg_color")) |v| {
+            if (v == .string) bounty.bg_color = try parseHexColor(v.string);
+        }
+        if (obj.get("font_size")) |v| {
+            if (v == .integer) bounty.font_size = std.math.cast(i32, v.integer) orelse bounty.font_size;
+        }
+        if (obj.get("font_name")) |v| {
+            try updateOwnedFontName(allocator, &bounty.font_name, v);
+        }
+        if (obj.get("font_weight")) |v| {
+            if (v == .string) {
+                bounty.font_weight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
+            }
+        }
+        if (obj.get("update_interval_ms")) |v| {
+            if (v == .integer) bounty.update_interval_ms = std.math.cast(u32, v.integer) orelse bounty.update_interval_ms;
+        }
+        if (obj.get("position")) |v| {
+            if (v == .string) {
+                bounty.position = std.meta.stringToEnum(types.TextPosition, v.string) orelse .TopRight;
+            }
+        }
+        if (obj.get("offset_x")) |v| {
+            if (v == .integer) bounty.offset_x = std.math.cast(i32, v.integer) orelse bounty.offset_x;
+        }
+        if (obj.get("offset_y")) |v| {
+            if (v == .integer) bounty.offset_y = std.math.cast(i32, v.integer) orelse bounty.offset_y;
+        }
+        if (obj.get("isk_rate_unit")) |v| {
+            if (v == .string) {
+                bounty.isk_rate_unit = std.meta.stringToEnum(IskRateUnit, v.string) orelse .hour;
+            }
+        }
+    }
+
+    pub fn parseJsonResourcesConfig(resources: *ResourcesConfig, obj: std.json.ObjectMap, allocator: std.mem.Allocator) !void {
+        if (obj.get("enabled")) |v| {
+            if (v == .bool) resources.enabled = v.bool;
+        }
+        if (obj.get("show_cpu")) |v| {
+            if (v == .bool) resources.show_cpu = v.bool;
+        }
+        if (obj.get("show_ram")) |v| {
+            if (v == .bool) resources.show_ram = v.bool;
+        }
+        if (obj.get("show_vram")) |v| {
+            if (v == .bool) resources.show_vram = v.bool;
+        }
+        if (obj.get("color")) |v| {
+            if (v == .string) resources.color = try parseHexColor(v.string);
+        }
+        if (obj.get("bg_color")) |v| {
+            if (v == .string) resources.bg_color = try parseHexColor(v.string);
+        }
+        if (obj.get("font_size")) |v| {
+            if (v == .integer) resources.font_size = std.math.cast(i32, v.integer) orelse resources.font_size;
+        }
+        if (obj.get("font_name")) |v| {
+            try updateOwnedFontName(allocator, &resources.font_name, v);
+        }
+        if (obj.get("font_weight")) |v| {
+            if (v == .string) {
+                resources.font_weight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
+            }
+        }
+        if (obj.get("update_interval_ms")) |v| {
+            if (v == .integer) resources.update_interval_ms = std.math.cast(u32, v.integer) orelse resources.update_interval_ms;
+        }
+        if (obj.get("position")) |v| {
+            if (v == .string) {
+                resources.position = std.meta.stringToEnum(types.TextPosition, v.string) orelse .LeftCenter;
+            }
+        }
+        if (obj.get("offset_x")) |v| {
+            if (v == .integer) resources.offset_x = std.math.cast(i32, v.integer) orelse resources.offset_x;
+        }
+        if (obj.get("offset_y")) |v| {
+            if (v == .integer) resources.offset_y = std.math.cast(i32, v.integer) orelse resources.offset_y;
+        }
+    }
+
     pub fn parseJsonDisplayConfig(display: *DisplayConfig, obj: std.json.ObjectMap, allocator: std.mem.Allocator) !void {
         if (obj.get("startX")) |v| {
             if (v == .integer) display.startX = std.math.cast(i32, v.integer) orelse display.startX;
@@ -3763,6 +3995,19 @@ pub const Config = struct {
         const new_colors = fresh.systemColors;
         fresh.systemColors = .empty;
 
+        // Combat/Mining/Bounty/Resources overlay previews ride along in the same live-preview patch (see PROTOCOL_PREVIEW_THUMBNAIL); same detach dance for their owned font/string fields.
+        const new_combat = fresh.combat;
+        fresh.combat = CombatConfig{};
+
+        const new_mining = fresh.mining;
+        fresh.mining = MiningConfig{};
+
+        const new_bounty = fresh.bounty;
+        fresh.bounty = BountyConfig{};
+
+        const new_resources = fresh.resources;
+        fresh.resources = ResourcesConfig{};
+
         // Same detach dance for the List View opacity/font fields, which ride along in the same live-preview patch (see PROTOCOL_PREVIEW_THUMBNAIL).
         const new_list_view_opacity = fresh.display.listViewOpacity;
         const new_list_view_font_name = fresh.display.listViewFontName;
@@ -3827,6 +4072,30 @@ pub const Config = struct {
             allocator.free(self.thumbnail.notifications.font_name);
         }
         self.thumbnail = new_thumb;
+
+        if (self.combat.incoming_font_name.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.combat.incoming_font_name);
+        }
+        if (self.combat.outgoing_font_name.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.combat.outgoing_font_name);
+        }
+        allocator.free(self.combat.damage_alert_excluded_weapons);
+        self.combat = new_combat;
+
+        if (self.mining.font_name.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.mining.font_name);
+        }
+        self.mining = new_mining;
+
+        if (self.bounty.font_name.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.bounty.font_name);
+        }
+        self.bounty = new_bounty;
+
+        if (self.resources.font_name.ptr != DEFAULT_FONT_NAME.ptr) {
+            allocator.free(self.resources.font_name);
+        }
+        self.resources = new_resources;
 
         for (self.systemColors.items) |*sc| sc.deinit(allocator);
         self.systemColors.deinit(allocator);
