@@ -77,14 +77,12 @@ body::after {
     z-index: 999;
 }
 
-/* Frameless window */
 #window-container {
     height: 100vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     background: #000000;
-    border: 1px solid #ffffff;
     box-shadow: inset 0 0 100px rgba(255, 255, 255, 0.05);
 }
 
@@ -92,81 +90,6 @@ body::after {
     #window-container {
         animation: flicker 14s infinite;
     }
-}
-
-/* Custom titlebar */
-#titlebar {
-    height: 32px;
-    background: #1a1a1a;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 4px 10px;
-    border-bottom: 1px solid #ffffff;
-    -webkit-app-region: drag;
-    flex-shrink: 0;
-}
-
-#title {
-    font-size: 13px;
-    font-weight: 400;
-    color: #ffffff;
-    letter-spacing: 0.5px;
-    font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
-}
-
-#title::before {
-    content: 'eve@config:~$ ';
-    color: #dddddd;
-}
-
-#window-controls {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    -webkit-app-region: no-drag;
-}
-
-.window-btn {
-    width: 22px;
-    height: 22px;
-    border: 1px solid #888888;
-    background: #1a1a1a;
-    cursor: pointer;
-    transition: all 0.2s;
-    padding: 0;
-    font-family: 'Cascadia Code', 'Consolas', monospace;
-    font-size: 11px;
-    font-weight: 500;
-    color: #ffffff;
-    position: relative;
-    line-height: 1.4;
-    text-align: center;
-}
-
-.window-btn:hover {
-    background: #ffffff;
-    color: #000000;
-    border-color: #ffffff;
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
-}
-
-.window-btn:active {
-    transform: scale(0.98);
-}
-.btn-close::after { 
-    content: 'X'; 
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-}
-.btn-minimize::after { 
-    content: '_'; 
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
 }
 
 /* Main layout */

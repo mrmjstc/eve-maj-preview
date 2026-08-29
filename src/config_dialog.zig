@@ -126,10 +126,8 @@ pub fn main(init: std.process.Init) !void {
     win.setPosition(200, 100);
     win.setKiosk(false);
     win.setResizable(false);
-    win.setFrameless(true);
 
     _ = try win.bind("closeDialog", closeDialog);
-    _ = try win.bind("minimizeDialog", minimizeDialog);
     _ = try win.bind("loadConfig", loadConfig);
     _ = try win.bind("getDefaultConfig", getDefaultConfig);
     _ = try win.bind("saveConfig", saveConfig);
@@ -170,6 +168,12 @@ pub fn main(init: std.process.Init) !void {
 
     webui.wait();
 
+    revertThumbnailPreviewInMainApp();
+    // Safety net: ensure hotkeys aren't left suspended if the dialog closes mid-recording.
+    if (findMainAppWindow()) |hwnd| {
+        protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogResumeHotkeys = {} });
+    }
+
     slog.info("Configuration dialog closed", .{});
 }
 
@@ -194,19 +198,8 @@ fn revealDialogWindow(win: anytype) void {
 
 fn closeDialog(e: *webui.Event) void {
     slog.debug("Close dialog requested", .{});
-    revertThumbnailPreviewInMainApp();
-    // Safety net: ensure hotkeys aren't left suspended if the dialog closes mid-recording.
-    if (findMainAppWindow()) |hwnd| {
-        protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogResumeHotkeys = {} });
-    }
     const win = e.getWindow();
     win.close();
-}
-
-fn minimizeDialog(e: *webui.Event) void {
-    slog.debug("Minimize dialog requested", .{});
-    const win = e.getWindow();
-    win.minimize();
 }
 
 fn loadConfig(e: *webui.Event) void {

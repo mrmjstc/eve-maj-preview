@@ -974,16 +974,8 @@ function setActiveSection(section) {
 }
 
 function closeDialog() {
-    console.log('Closing configuration terminal');
     if (typeof webui !== 'undefined') {
         webui.call('closeDialog');
-    }
-}
-
-function minimizeDialog() {
-    console.log('Minimizing configuration terminal');
-    if (typeof webui !== 'undefined') {
-        webui.call('minimizeDialog');
     }
 }
 
