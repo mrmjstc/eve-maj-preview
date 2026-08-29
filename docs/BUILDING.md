@@ -39,3 +39,15 @@ The build reads the app version from the `VERSION` file at the repo root and emb
 ## Dependencies
 
 [zig-webui](https://github.com/webui-dev/zig-webui) is fetched automatically by the Zig package manager per `build.zig.zon` and statically linked into `config.exe` for its UI.
+
+`config.exe` renders that UI via WebView2, which needs `WebView2Loader.dll` next to the exe at runtime (the target machine's WebView2 Runtime itself is preinstalled on Windows 10/11). `build.zig` installs `src/WebView2Loader.dll` into `zig-out\bin` alongside `config.exe`, the same way it installs `icon.ico`. It's redistributed under the terms in `WebView2Loader-LICENSE.txt` (BSD-style, from the `Microsoft.Web.WebView2` NuGet package), which ships alongside `config.exe` in release packages.
+
+## Installer
+
+`installer\eve-maj-preview.iss` is an [Inno Setup](https://jrsoftware.org/isinfo.php) script that packages `zig-out\bin` into a Windows installer with Start Menu shortcuts, an optional desktop icon, and toggles on the finish page to launch the app and/or the configuration dialog. It always installs per-user under `%LocalAppData%\Programs` (no admin, never Program Files) since the app reads/writes its profiles, settings, and log file next to the exe.
+
+`build-release.ps1` builds it automatically if `ISCC.exe` (the Inno Setup compiler) is on `PATH` or in its default install location, and attaches the resulting setup exe to the GitHub release alongside the zip. To build it manually:
+
+```powershell
+iscc /DMyAppVersion=0.95.0 installer\eve-maj-preview.iss
+```

@@ -107,6 +107,9 @@ pub fn build(b: *std.Build) void {
 
     config_dialog.root_module.addOptions("build_options", options);
 
+    const webview2_loader = b.addInstallBinFile(b.path("src/WebView2Loader.dll"), "WebView2Loader.dll");
+    config_dialog.step.dependOn(&webview2_loader.step);
+
     b.installArtifact(config_dialog);
 
     const config_dialog_run = b.addRunArtifact(config_dialog);
