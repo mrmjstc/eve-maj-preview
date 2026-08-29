@@ -190,14 +190,6 @@ fn revealDialogWindow(win: anytype) void {
     win.run("document.documentElement.classList.remove('pre-init');");
 
     slog.debug("Configuration dialog window visible", .{});
-
-    // Keep the dialog reachable above the main app / EVE clients.
-    if (win.win32GetHwnd()) |hwnd| {
-        _ = win32.SetWindowPos(@ptrCast(hwnd), win32.HWND_TOPMOST, 0, 0, 0, 0, win32.SWP_NOMOVE | win32.SWP_NOSIZE);
-        slog.debug("Configuration dialog set to always-on-top", .{});
-    } else |err| {
-        slog.warn("Failed to get window handle for always-on-top: {}", .{err});
-    }
 }
 
 fn closeDialog(e: *webui.Event) void {
@@ -949,6 +941,15 @@ fn getRunningWindows(e: *webui.Event) void {
 
 fn getConfigData(e: *webui.Event) void {
     const allocator = g_allocator;
+
+    // config_path comes from std.fs.path.join, which uses '\' on Windows; that breaks the JSON below since '\' only introduces valid escapes there.
+    const display_path = allocator.dupe(u8, config_path) catch {
+        e.returnString("{}");
+        return;
+    };
+    defer allocator.free(display_path);
+    std.mem.replaceScalar(u8, display_path, '\\', '/');
+
     const response = std.fmt.allocPrintSentinel(allocator,
         \\{{
         \\  "configPath": "{s}",
@@ -965,7 +966,7 @@ fn getConfigData(e: *webui.Event) void {
         \\    {{"id": "characters", "name": "Characters"}}
         \\  ]
         \\}}
-    , .{ config_path, build_options.version }, 0) catch {
+    , .{ display_path, build_options.version }, 0) catch {
         e.returnString("{}");
         return;
     };
