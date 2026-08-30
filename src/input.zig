@@ -225,7 +225,7 @@ fn updateHotkeyCyclePosition(focused_hwnd: win32.HWND) void {
 
     // Painter's lookup helper is O(1) and includes safety checks
     if (painter.getThumbnailBySourceHwnd(focused_hwnd)) |thumbnail| {
-        hotkey_manager.updateFocusedCharacter(thumbnail.character_name);
+        hotkey_manager.updateFocusedCharacter(thumbnail.character_name, focused_hwnd);
     }
 }
 

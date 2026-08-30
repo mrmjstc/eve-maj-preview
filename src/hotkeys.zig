@@ -1513,41 +1513,67 @@ pub const HotkeyManager = struct {
         self.handleCycleNotLoggedIn(forward);
     }
 
-    /// Cycles windows still at the login screen ("EVE" title); cursor must be HWND since they all share that name.
+    /// Cycles windows still at the login screen ("EVE" title), in the order they logged out; cursor must be HWND since they all share that name.
     fn cycleNotLoggedIn(self: *HotkeyManager, forward: bool) void {
-        const windows = self.scout.getWindows();
+        var hwnds = self.scout.getNotLoggedInHwnds(self.allocator) catch |err| {
+            slog.err("Failed to build not-logged-in window list: {}", .{err});
+            return;
+        };
+        defer hwnds.deinit(self.allocator);
 
-        var candidates: std.ArrayList(win32.HWND) = .empty;
-        defer candidates.deinit(self.allocator);
-        for (windows) |w| {
-            if (scout.isGenericCharacterName(w.character_name)) {
-                candidates.append(self.allocator, w.hwnd) catch |err| {
-                    slog.err("Failed to collect not-logged-in candidate window: {}", .{err});
-                };
-            }
-        }
-
-        const num = candidates.items.len;
+        const num = hwnds.items.len;
         if (num == 0) {
             slog.info("No not-logged-in clients to cycle through", .{});
             return;
         }
 
+        // Prefers the real foreground window over the remembered cursor, since logging out while already focused fires no OS focus event to update it.
         var found_index: ?usize = null;
-        if (self.last_not_logged_in_cycle_hwnd) |last_hwnd| {
-            for (candidates.items, 0..) |hwnd, i| {
-                if (hwnd == last_hwnd) {
-                    found_index = i;
-                    break;
+        const foreground_hwnd = win32.GetForegroundWindow();
+        for (hwnds.items, 0..) |hwnd, i| {
+            if (hwnd == foreground_hwnd) {
+                found_index = i;
+                break;
+            }
+        }
+        if (found_index == null) {
+            if (self.last_not_logged_in_cycle_hwnd) |last_hwnd| {
+                for (hwnds.items, 0..) |hwnd, i| {
+                    if (hwnd == last_hwnd) {
+                        found_index = i;
+                        break;
+                    }
                 }
             }
         }
         const start_index = cycleStartIndex(found_index, num, forward);
 
-        const hwnd = candidates.items[start_index];
-        slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ if (forward) "forward" else "backward", start_index + 1, num });
-        input.handleThumbnailClick(hwnd);
-        self.last_not_logged_in_cycle_hwnd = hwnd;
+        const windows = self.scout.getWindows();
+        var index = start_index;
+        var attempts: usize = 0;
+        while (attempts < num) : (attempts += 1) {
+            const hwnd = hwnds.items[index];
+
+            var still_not_logged_in = false;
+            for (windows) |w| {
+                if (w.hwnd == hwnd and scout.isGenericCharacterName(w.character_name)) {
+                    still_not_logged_in = true;
+                    break;
+                }
+            }
+
+            if (still_not_logged_in) {
+                slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ if (forward) "forward" else "backward", index + 1, num });
+                input.handleThumbnailClick(hwnd);
+                self.last_not_logged_in_cycle_hwnd = hwnd;
+                return;
+            }
+
+            slog.debug("Queued not-logged-in window {*} is no longer at the login screen, skipping", .{hwnd});
+            index = stepCycleIndex(index, num, forward);
+        }
+
+        slog.warn("No queued not-logged-in clients are still at the login screen", .{});
     }
 
     /// Syncs currentIndex on every group in `groups` containing character_name; returns whether any did. HotkeyGroup and QuickGroup both expose the fields this needs.
@@ -1572,14 +1598,19 @@ pub const HotkeyManager = struct {
         slog.debug("Reset {s} cycle indices - {s} is not in any {s}", .{ kind, character_name, kind });
     }
 
-    /// Update currentIndex for hotkey groups when a character is manually focused
-    pub fn updateFocusedCharacter(self: *HotkeyManager, character_name: []const u8) void {
+    /// Update currentIndex for hotkey groups (and the not-logged-in cycle cursor) when a character is manually focused
+    pub fn updateFocusedCharacter(self: *HotkeyManager, character_name: []const u8, hwnd: win32.HWND) void {
         // Verify the window actually has focus first, to avoid stale updates during rapid cycling.
-        const character_hwnd = self.scout.getHwndByName(character_name);
         const foreground_hwnd = win32.GetForegroundWindow();
 
-        if (character_hwnd != foreground_hwnd) {
+        if (hwnd != foreground_hwnd) {
             slog.debug("Ignoring updateFocusedCharacter for {s} - not the foreground window", .{character_name});
+            return;
+        }
+
+        // Every not-logged-in window shares the name "EVE", so hwnd (not name) is the cursor; skip the by-name syncing below, which doesn't apply.
+        if (scout.isGenericCharacterName(character_name)) {
+            self.last_not_logged_in_cycle_hwnd = hwnd;
             return;
         }
 

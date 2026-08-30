@@ -62,6 +62,8 @@ pub const Scout = struct {
     pending_closed: std.ArrayList(ClosedWindow),
     // Pending name changes detected by title change event hook
     pending_name_changes: std.ArrayList(NameChange),
+    /// FIFO queue of windows currently not logged in, oldest-logged-out first; fed by updateWindowTitle/enumWindowsCallback, consumed by HotkeyManager.cycleNotLoggedIn via getNotLoggedInHwnds.
+    not_logged_in_queue: std.ArrayList(win32.HWND),
     // Flag set by create event hook to trigger immediate scan
     pending_scan: bool,
     create_event_hook: ?win32.HANDLE,
@@ -78,6 +80,7 @@ pub const Scout = struct {
             .eve_pids = std.AutoHashMap(win32.DWORD, void).init(allocator),
             .pending_closed = .empty,
             .pending_name_changes = .empty,
+            .not_logged_in_queue = .empty,
             .pending_scan = false,
             .create_event_hook = null,
             .name_change_hook = null,
@@ -168,6 +171,31 @@ pub const Scout = struct {
         self.name_to_hwnd.deinit();
         self.hwnd_to_index.deinit();
         self.eve_pids.deinit();
+        self.not_logged_in_queue.deinit(self.allocator);
+    }
+
+    /// Bumps hwnd to the back of the not-logged-in FIFO used by the cycle-not-logged-in hotkey; re-logout bumps instead of duplicating.
+    fn trackNotLoggedIn(self: *Scout, hwnd: win32.HWND) void {
+        for (self.not_logged_in_queue.items, 0..) |existing, i| {
+            if (existing == hwnd) {
+                _ = self.not_logged_in_queue.orderedRemove(i);
+                break;
+            }
+        }
+        self.not_logged_in_queue.append(self.allocator, hwnd) catch |err| {
+            slog.err("Failed to queue not-logged-in window: {}", .{err});
+        };
+    }
+
+    /// Caller-owned snapshot of the not-logged-in FIFO, oldest first. Caller frees with out_allocator.
+    pub fn getNotLoggedInHwnds(self: *Scout, out_allocator: std.mem.Allocator) !std.ArrayList(win32.HWND) {
+        var result: std.ArrayList(win32.HWND) = .empty;
+        errdefer result.deinit(out_allocator);
+
+        for (self.not_logged_in_queue.items) |hwnd| {
+            try result.append(out_allocator, hwnd);
+        }
+        return result;
     }
 
     pub fn scanForEveWindows(self: *Scout) !void {
@@ -266,6 +294,10 @@ pub const Scout = struct {
             self.name_to_hwnd.put(new_char_dup, eve_window.hwnd) catch |err| {
                 slog.err("Failed to map character name '{s}' to hwnd: {}", .{ new_char_name, err });
             };
+
+            if (isGenericCharacterName(new_char_dup)) {
+                self.trackNotLoggedIn(eve_window.hwnd);
+            }
 
             slog.info("Character changed: {s} -> {s}", .{ old_name_copy, new_char_name });
 
@@ -408,6 +440,13 @@ pub const Scout = struct {
             _ = self.eve_pids.remove(removed.process_id);
             self.allocator.free(removed.title);
             self.allocator.free(removed.character_name);
+
+            for (self.not_logged_in_queue.items, 0..) |queued_hwnd, j| {
+                if (queued_hwnd == removed.hwnd) {
+                    _ = self.not_logged_in_queue.orderedRemove(j);
+                    break;
+                }
+            }
         }
         self.rebuildHwndIndex();
     }
@@ -521,6 +560,11 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
         return win32.TRUE;
     };
 
+    // Window was already not-logged-in when first discovered (e.g. app launch), so no name-change transition fires for it; queue it here instead.
+    if (isGenericCharacterName(character_name)) {
+        scout.trackNotLoggedIn(hwnd);
+    }
+
     return win32.TRUE;
 }
 
@@ -609,6 +653,13 @@ fn windowDestroyCallback(
     _ = scout_ptr.hwnd_to_index.remove(removed.hwnd);
     scout_ptr.allocator.free(removed.title);
     scout_ptr.allocator.free(removed.character_name);
+
+    for (scout_ptr.not_logged_in_queue.items, 0..) |queued_hwnd, i| {
+        if (queued_hwnd == removed.hwnd) {
+            _ = scout_ptr.not_logged_in_queue.orderedRemove(i);
+            break;
+        }
+    }
 
     // Rebuild hwnd_to_index since removal shifts array indices
     scout_ptr.rebuildHwndIndex();

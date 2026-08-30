@@ -2246,7 +2246,7 @@ pub const Painter = struct {
             self.reconcileThumbnailStates(foreground_hwnd);
             if (foreground_hwnd == eve_window.hwnd) {
                 if (g_hotkey_manager_ptr) |manager| {
-                    manager.updateFocusedCharacter(eve_window.character_name);
+                    manager.updateFocusedCharacter(eve_window.character_name, eve_window.hwnd);
                 }
             }
 
@@ -2399,7 +2399,7 @@ pub const Painter = struct {
         self.reconcileThumbnailStates(foreground_hwnd);
         if (foreground_hwnd == eve_window.hwnd) {
             if (g_hotkey_manager_ptr) |manager| {
-                manager.updateFocusedCharacter(eve_window.character_name);
+                manager.updateFocusedCharacter(eve_window.character_name, eve_window.hwnd);
             }
         }
 
@@ -3969,7 +3969,7 @@ fn winEventProc(
     if (painter.getThumbnailBySourceHwnd(hwnd)) |thumbnail| {
         slog.debug("Tracked window focused: {s}", .{thumbnail.character_name});
         if (g_hotkey_manager_ptr) |manager| {
-            manager.updateFocusedCharacter(thumbnail.character_name);
+            manager.updateFocusedCharacter(thumbnail.character_name, hwnd);
         }
     }
 }
