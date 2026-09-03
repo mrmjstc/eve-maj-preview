@@ -1513,7 +1513,7 @@ pub const NotificationConfig = struct {
     font_weight: types.FontWeight = .Regular,
     bg_color: u32 = 0xE6000000,
 
-    suppress_click_duration_ms: u32 = 5000,
+    suppress_click_duration_ms: u32 = 2000,
 
     // A given alert only speaks when this master switch AND its NotificationTypeConfig.tts_enabled are both true.
     tts_enabled: bool = false,

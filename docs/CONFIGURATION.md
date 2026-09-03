@@ -556,7 +556,7 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
       "position": "Center",
       "offset_x": 0,
       "offset_y": 0,
-      "suppress_click_duration_ms": 5000,
+      "suppress_click_duration_ms": 2000,
       "tts_enabled": false,
       "tts_volume": 100,
       "tts_rate": 0,
@@ -598,7 +598,7 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `enabled`: Master switch for notification system
 - `position`: Where notifications appear on thumbnails (see Text Positions above)
 - `offset_x`/`offset_y`: Fine-tune notification position (pixels)
-- `suppress_click_duration_ms`: How long to suppress after click, applies per-type when that type's `suppress_when_clicked` is `true` (milliseconds, default: `5000`)
+- `suppress_click_duration_ms`: How long to suppress after click, applies per-type when that type's `suppress_when_clicked` is `true` (milliseconds, default: `2000`)
 - `tts_enabled`: Master switch for text-to-speech - a given alert only speaks when this **and** its own `tts_enabled` are both `true` (default: `false`)
 - `tts_volume`: Speech volume, 0–100 (default: `100`)
 - `tts_rate`: Speech rate, native SAPI range -10 (slowest) to 10 (fastest) (default: `0`)
