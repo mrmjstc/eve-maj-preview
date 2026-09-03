@@ -5112,6 +5112,10 @@ function populateHotkeyGroups() {
                     <button type="button" onclick="addHotkeyGroupCharacter(${index})" style="width: auto; margin-bottom: 0; white-space: nowrap;">${t('dynamic.hotkeyGroup.addBtnLabel')}</button>
                     <button type="button" id="hkgroup_${index}_fillBtn" onclick="fillHotkeyGroupFromClients(${index})" style="width: auto; margin-bottom: 0; white-space: nowrap;">${t('status.fillFromClientsLabel')}</button>
                 </div>
+                <label style="display: block; margin-top: 8px;">
+                    <input type="checkbox" id="hkgroup_${index}_includeNotLoggedIn" ${group.includeNotLoggedIn ? 'checked' : ''}>
+                    <span class="label-body">${t('dynamic.hotkeyGroup.includeNotLoggedInLabel')}</span>
+                </label>
             </div>
         `;
         container.appendChild(groupDiv);
@@ -5220,6 +5224,7 @@ function addHotkeyGroup() {
         name: '',
         forwardKey: '',
         backwardKey: null,
+        includeNotLoggedIn: false,
         characters: []
     });
     markAsChanged();
@@ -5255,6 +5260,7 @@ async function addHotkeyGroupFromClients() {
             name: '',
             forwardKey: null,
             backwardKey: null,
+            includeNotLoggedIn: false,
             characters: names
         });
         markAsChanged();
@@ -5341,11 +5347,13 @@ function saveHotkeyGroups() {
         const name = document.getElementById(`hkgroup_${index}_name`);
         const forward = document.getElementById(`hkgroup_${index}_forward`);
         const backward = document.getElementById(`hkgroup_${index}_backward`);
+        const includeNotLoggedIn = document.getElementById(`hkgroup_${index}_includeNotLoggedIn`);
         const charsList = document.getElementById(`hkgroup_${index}_charsList`);
 
         if (name) group.name = name.value || '';
         if (forward) group.forwardKey = forward.value || null;
         if (backward) group.backwardKey = backward.value || null;
+        if (includeNotLoggedIn) group.includeNotLoggedIn = includeNotLoggedIn.checked;
         if (charsList) {
             group.characters = Array.from(charsList.querySelectorAll('.hkgroup-char-input'))
                 .map(input => input.value.trim())

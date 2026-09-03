@@ -110,6 +110,7 @@
   "dynamic.hotkeyGroup.defaultNamePrefix": "Grupo de atajos",
   "dynamic.hotkeyGroup.forwardKeyLabel": "Tecla de avance",
   "dynamic.hotkeyGroup.forwardPlaceholder": "p. ej., F15",
+  "dynamic.hotkeyGroup.includeNotLoggedInLabel": "Incluir clientes sin sesión iniciada",
   "dynamic.hotkeyGroup.nameLabel": "Nombre del grupo",
   "dynamic.hotkeyGroup.namePlaceholder": "p. ej., Mineros principales, Escuadrón PvP, Personajes de ratting",
   "dynamic.profileSwitchHotkey.defaultLabelPrefix": "Cambio de perfil ",

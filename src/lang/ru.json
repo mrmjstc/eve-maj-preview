@@ -110,6 +110,7 @@
   "dynamic.hotkeyGroup.defaultNamePrefix": "Группа горячих клавиш",
   "dynamic.hotkeyGroup.forwardKeyLabel": "Клавиша «Вперед»",
   "dynamic.hotkeyGroup.forwardPlaceholder": "например, F15",
+  "dynamic.hotkeyGroup.includeNotLoggedInLabel": "Включать незапущенных клиентов",
   "dynamic.hotkeyGroup.nameLabel": "Название группы",
   "dynamic.hotkeyGroup.namePlaceholder": "например, Шахтеры, ПВП-отряд, Раттинг",
   "dynamic.profileSwitchHotkey.defaultLabelPrefix": "Переключение профиля ",

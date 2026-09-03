@@ -970,12 +970,14 @@ Some settings persist across all profiles and are configured in `profiles\global
       "name": "Main Fleet",
       "forwardKey": "F22",
       "backwardKey": null,
+      "includeNotLoggedIn": false,
       "characters": ["Main Character", "Alt 1", "Alt 2"]
     },
     {
       "name": "Mining Fleet",
       "forwardKey": "F15",
       "backwardKey": "F16",
+      "includeNotLoggedIn": true,
       "characters": ["Mining Hulk 1", "Mining Hulk 2", "Orca"]
     }
   ]
@@ -983,6 +985,7 @@ Some settings persist across all profiles and are configured in `profiles\global
 ```
 
 - **name**: Optional user-facing name for the group (default: empty string)
+- **includeNotLoggedIn**: When `true`, cycling this group appends still-queued not-logged-in clients (the same windows the `next_not_logged_in`/`previous_not_logged_in` hotkeys cycle) after the group's characters, in the order they logged out (default: `false`)
 
 **Supported Keys:**
 - **Function Keys**: F1-F24

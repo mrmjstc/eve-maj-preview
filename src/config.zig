@@ -725,6 +725,8 @@ pub const HotkeyGroup = struct {
     excluded_characters: std.ArrayList([]const u8),
     forwardKey: ?u32,
     backwardKey: ?u32,
+    /// When true, cycling appends still-queued not-logged-in clients (see HotkeyManager.cycleNotLoggedIn) to the end of this group's cycle order.
+    includeNotLoggedIn: bool = false,
     /// null = not yet cycled; see cycleGroup.
     currentIndex: ?usize = null,
 
@@ -746,6 +748,7 @@ pub const HotkeyGroup = struct {
         characters: []const []const u8 = &.{},
         forwardKey: ?VkCode = null,
         backwardKey: ?VkCode = null,
+        includeNotLoggedIn: bool = false,
     };
 
     pub fn toWire(self: HotkeyGroup) Wire {
@@ -754,6 +757,7 @@ pub const HotkeyGroup = struct {
             .characters = self.characters.items,
             .forwardKey = wrapVk(self.forwardKey),
             .backwardKey = wrapVk(self.backwardKey),
+            .includeNotLoggedIn = self.includeNotLoggedIn,
         };
     }
 
@@ -765,6 +769,7 @@ pub const HotkeyGroup = struct {
             .excluded_characters = std.ArrayList([]const u8).empty,
             .forwardKey = unwrapVk(w.forwardKey),
             .backwardKey = unwrapVk(w.backwardKey),
+            .includeNotLoggedIn = w.includeNotLoggedIn,
         };
         errdefer group.deinit();
         try group.characters.ensureTotalCapacity(allocator, w.characters.len);

@@ -187,6 +187,16 @@ pub const Scout = struct {
         };
     }
 
+    /// Removes hwnd from the not-logged-in FIFO when its title changes away from "EVE", so a stale entry doesn't keep matching a since-logged-in character.
+    fn untrackNotLoggedIn(self: *Scout, hwnd: win32.HWND) void {
+        for (self.not_logged_in_queue.items, 0..) |existing, i| {
+            if (existing == hwnd) {
+                _ = self.not_logged_in_queue.orderedRemove(i);
+                return;
+            }
+        }
+    }
+
     /// Caller-owned snapshot of the not-logged-in FIFO, oldest first. Caller frees with out_allocator.
     pub fn getNotLoggedInHwnds(self: *Scout, out_allocator: std.mem.Allocator) !std.ArrayList(win32.HWND) {
         var result: std.ArrayList(win32.HWND) = .empty;
@@ -297,6 +307,8 @@ pub const Scout = struct {
 
             if (isGenericCharacterName(new_char_dup)) {
                 self.trackNotLoggedIn(eve_window.hwnd);
+            } else {
+                self.untrackNotLoggedIn(eve_window.hwnd);
             }
 
             slog.info("Character changed: {s} -> {s}", .{ old_name_copy, new_char_name });

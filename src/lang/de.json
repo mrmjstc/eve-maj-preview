@@ -110,6 +110,7 @@
   "dynamic.hotkeyGroup.defaultNamePrefix": "Hotkey-Gruppe",
   "dynamic.hotkeyGroup.forwardKeyLabel": "Vorwärts-Taste",
   "dynamic.hotkeyGroup.forwardPlaceholder": "z. B. F15",
+  "dynamic.hotkeyGroup.includeNotLoggedInLabel": "Nicht angemeldete Clients einbeziehen",
   "dynamic.hotkeyGroup.nameLabel": "Gruppenname",
   "dynamic.hotkeyGroup.namePlaceholder": "z. B. Haupt-Miner, PvP-Squad, Ratting-Chars",
   "dynamic.profileSwitchHotkey.defaultLabelPrefix": "Profilwechsel ",
