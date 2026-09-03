@@ -313,6 +313,7 @@ p {
     top: calc(1.2em + 10px);
     font-weight: 500;
     color: #dddddd;
+    border-top: none;
 }
 
 .notification-types-table th:hover {
