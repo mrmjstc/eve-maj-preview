@@ -119,7 +119,7 @@ The expensive full `EnumWindows` rescan is itself throttled to roughly every 20 
 
 - **`tray.zig`** - system tray icon, right-click menu (profiles, dragging/auto-minimize/visibility/suspend-hotkeys toggles, Close All, update notice), launches `config.exe`.
 - **`tts.zig`** - Windows SAPI via late-bound `IDispatch::Invoke` on its own STA-COM thread; `speakAlert()` is the fire-and-forget public API.
-- **`update.zig`** - checks GitHub Releases via `std.http.Client` on a background thread; opens the release page in a browser.
+- **`update.zig`** - checks GitHub Releases via `std.http.Client` on a background thread, run independently by both `main.zig` and `config_dialog.zig` since they're separate processes, each with its own `UpdateStatus`; opens the release page in a browser.
 - **`list_view.zig`** - the compact `ClientList` view mode: a single custom-drawn panel (badge/name/system/notification per row) as an alternative to per-window DWM thumbnails, wired to `input.zig` via function pointers to avoid a circular import.
 - **`notif_info_view.zig`** - the History Panel: an always-available, resizable panel (`display.showNotifInfoPanel`/`notifInfoPanelWidth`/`notifInfoPanelHeight`, independent of `viewMode`), structurally a near-twin of `list_view.zig`: notification history (newest-first, click a row to jump to that character), each row colored by the notifying character's name color and that notification type's configured text color. History lives in a fixed-capacity ring buffer on `Painter` (`notification_history`, pushed from `showNotification`).
 - **`color.zig`** - color math (`hsvToRgb` and related) behind the auto-generated system/character name colors.
