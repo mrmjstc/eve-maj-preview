@@ -124,11 +124,16 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.about.section.advanced-mode.heading">Advanced Mode</h3>
+                        <h3 data-i18n="tab.about.section.preferences.heading">Preferences</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.about.section.advanced-mode.hint">Reveals power-user settings across the app — extra tabs, position/spacing parameters, snapping, layout system, and more. This preference is global and applies across all profiles.</p>
                         <label>
                             <input type="checkbox" id="advancedModeToggle" onchange="toggleAdvancedMode()">
                             <span class="label-body" data-i18n="field.advancedModeToggle.label">Advanced mode</span>
+                        </label>
+
+                        <label style="margin-top: 8px;">
+                            <input type="checkbox" id="alwaysOnTopToggle" onchange="toggleAlwaysOnTop()">
+                            <span class="label-body" data-i18n="field.alwaysOnTopToggle.label">Always on Top</span>
                         </label>
                     </div>
 

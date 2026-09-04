@@ -5534,6 +5534,8 @@ async function loadGlobalSettingsFromBackend() {
     document.body.classList.toggle('advanced-mode', advancedModeEnabled);
     buildSectionNav();
 
+    setCheckboxValue('alwaysOnTopToggle', currentGlobalSettings.alwaysOnTop);
+
     refreshCharacterPortraits();
 }
 
@@ -5553,6 +5555,16 @@ function toggleAdvancedMode() {
             switchTab('about');
         }
     }
+}
+
+// Preference lives in global.settings.json so it applies across all profiles.
+function toggleAlwaysOnTop() {
+    const enabled = document.getElementById('alwaysOnTopToggle').checked;
+
+    if (!currentGlobalSettings) currentGlobalSettings = {};
+    currentGlobalSettings.alwaysOnTop = enabled;
+
+    webui.call('setAlwaysOnTop', enabled).catch(() => {});
 }
 
 async function getAvailableProfileNames() {

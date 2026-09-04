@@ -291,6 +291,7 @@ pub const GlobalSettings = struct {
     characterIdMap: std.StringHashMap([]const u8),
     disableUpdateChecks: bool,
     runOnStartup: bool,
+    alwaysOnTop: bool,
     language: []const u8,
     oreTable: std.ArrayList(OrePriceEntry),
     needs_free: bool,
@@ -311,6 +312,7 @@ pub const GlobalSettings = struct {
             .characterIdMap = std.StringHashMap([]const u8).init(allocator),
             .disableUpdateChecks = false,
             .runOnStartup = false,
+            .alwaysOnTop = true,
             .language = "en",
             .oreTable = std.ArrayList(OrePriceEntry).empty,
             .needs_free = false,
@@ -525,6 +527,7 @@ pub const GlobalSettings = struct {
         characterIdMap: StringMapWire = .{},
         disableUpdateChecks: bool = false,
         runOnStartup: bool = false,
+        alwaysOnTop: bool = true,
         language: []const u8 = "en",
         oreTable: []const OrePriceEntry.Wire = &.{},
     };
@@ -557,6 +560,7 @@ pub const GlobalSettings = struct {
             .characterIdMap = .{ .entries = entries },
             .disableUpdateChecks = self.disableUpdateChecks,
             .runOnStartup = self.runOnStartup,
+            .alwaysOnTop = self.alwaysOnTop,
             .language = self.language,
             .oreTable = ore,
         };
@@ -580,6 +584,7 @@ pub const GlobalSettings = struct {
         settings.hotkeyCycleNotLoggedInBackward = unwrapVk(w.hotkeyCycleNotLoggedInBackward);
         settings.disableUpdateChecks = w.disableUpdateChecks;
         settings.runOnStartup = w.runOnStartup;
+        settings.alwaysOnTop = w.alwaysOnTop;
 
         for (w.profileSwitchHotkeys) |item_wire| {
             try settings.profileSwitchHotkeys.append(allocator, try ProfileSwitchHotkey.fromWire(item_wire, allocator));

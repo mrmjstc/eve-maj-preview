@@ -54,6 +54,9 @@ var config_path_allocated: ?[]const u8 = null;
 /// Window title used to find an already-open dialog instance and as the browser app-window's title (set via config_dialog.html's <title>).
 const DIALOG_WINDOW_TITLE = "EVE-Maj Preview Configuration";
 
+/// Set once by revealDialogWindow, once the WebView2 host window exists; consumed by setAlwaysOnTop.
+var g_dialog_hwnd: ?win32.HWND = null;
+
 /// Extract the profile filename (e.g. "default.json") from config_path, which is always "profiles/<name>.json".
 fn currentProfileFilename() []const u8 {
     return if (std.mem.lastIndexOfScalar(u8, config_path, '/')) |idx|
@@ -156,6 +159,7 @@ pub fn main(init: std.process.Init) !void {
     _ = try win.bind("logClientMessage", logClientMessage);
     _ = try win.bind("getMainAppStatus", getMainAppStatus);
     _ = try win.bind("getValidationRanges", getValidationRanges);
+    _ = try win.bind("setAlwaysOnTop", setAlwaysOnTop);
 
     const html_with_resources = try injectResources(allocator, active_lang);
     defer allocator.free(html_with_resources);
@@ -163,7 +167,8 @@ pub fn main(init: std.process.Init) !void {
     slog.debug("Opening configuration dialog in WebView2 mode", .{});
     _ = try win.showWv(html_with_resources);
 
-    const reveal_thread = try std.Thread.spawn(.{}, revealDialogWindow, .{win});
+    const initial_always_on_top = if (startup_settings) |s| s.alwaysOnTop else false;
+    const reveal_thread = try std.Thread.spawn(.{}, revealDialogWindow, .{ win, initial_always_on_top });
     reveal_thread.detach();
 
     webui.wait();
@@ -190,10 +195,28 @@ fn focusExistingDialog() void {
     _ = win32.SetForegroundWindow(hwnd);
 }
 
-fn revealDialogWindow(win: anytype) void {
+fn revealDialogWindow(win: anytype, initial_always_on_top: bool) void {
     win.run("document.documentElement.classList.remove('pre-init');");
 
+    if (win.getHwnd()) |hwnd| {
+        g_dialog_hwnd = hwnd;
+        if (initial_always_on_top) applyAlwaysOnTop(true);
+    } else |err| {
+        slog.warn("Failed to get configuration dialog HWND: {}", .{err});
+    }
+
     slog.debug("Configuration dialog window visible", .{});
+}
+
+/// Sets or clears WS_EX_TOPMOST on the dialog window; a no-op if the HWND isn't available yet (e.g. called before revealDialogWindow captures it).
+fn applyAlwaysOnTop(enabled: bool) void {
+    const hwnd = g_dialog_hwnd orelse return;
+    const insert_after = if (enabled) win32.HWND_TOPMOST else win32.HWND_NOTOPMOST;
+    _ = win32.SetWindowPos(hwnd, insert_after, 0, 0, 0, 0, win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
+}
+
+fn setAlwaysOnTop(e: *webui.Event) void {
+    applyAlwaysOnTop(e.getBool());
 }
 
 fn closeDialog(e: *webui.Event) void {
