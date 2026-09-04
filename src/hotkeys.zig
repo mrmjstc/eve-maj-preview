@@ -81,11 +81,11 @@ fn lowLevelHotkeyReleaseProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.L
     if (nCode == win32.HC_ACTION and (wParam == win32.WM_KEYUP or wParam == win32.WM_SYSKEYUP)) {
         const info = win32.lparamToPtr(win32.KBDLLHOOKSTRUCT, lParam);
 
-        if ((info.flags & win32.LLKHF_INJECTED) == 0) {
-            if (g_hotkey_tracked.fetchRemove(info.vkCode)) |entry| {
-                if (entry.value) {
-                    return 1;
-                }
+        // Untrack physical and injected (joystick/SendInput) releases alike; skipping injected
+        // key-ups left the vk marked held forever, so the next joystick press was dropped as a repeat.
+        if (g_hotkey_tracked.fetchRemove(info.vkCode)) |entry| {
+            if (entry.value) {
+                return 1;
             }
         }
     }
