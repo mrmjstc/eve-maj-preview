@@ -97,6 +97,25 @@ pub const NotificationType = enum {
     Generic,
 };
 
+/// Mirrors the 5 categories config_dialog.js's NOTIFICATION_TYPES groups these into, for the History Panel's category filter buttons.
+pub const NotificationCategory = enum {
+    Fleet,
+    Mining,
+    Combat,
+    Navigation,
+    General,
+};
+
+pub fn notificationCategory(t: NotificationType) NotificationCategory {
+    return switch (t) {
+        .FleetInvite, .FleetFollow, .FleetRegroup, .FleetDisband => .Fleet,
+        .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .CrystalBroke => .Mining,
+        .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .BombLauncherEmpty, .SelfDestruct, .WarpBubble => .Combat,
+        .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind => .Navigation,
+        .ConversationInvite, .Generic => .General,
+    };
+}
+
 pub const LayoutMode = enum {
     Grid,
     VerticalStack,

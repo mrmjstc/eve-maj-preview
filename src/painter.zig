@@ -42,8 +42,8 @@ pub const ActiveNotification = struct {
     flash_border: bool = false,
 };
 
-/// Ring-buffer capacity for Painter.notification_history, feeding the History Panel's history list.
-pub const NOTIF_HISTORY_CAPACITY = 15;
+/// Ring-buffer capacity for Painter.notification_history, feeding the History Panel's history list. Mirrors config.zig's DisplayConfig.NOTIF_PANEL_MAX_ROWS_MAX.
+pub const NOTIF_HISTORY_CAPACITY = 30;
 
 /// One past notification retained for the History Panel; fixed-size buffers avoid a heap allocation per notification.
 pub const NotificationHistoryEntry = struct {

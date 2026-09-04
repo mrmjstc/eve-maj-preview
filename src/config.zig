@@ -2396,6 +2396,14 @@ pub const Config = struct {
         notifInfoPanelFontName: []const u8 = DEFAULT_FONT_NAME,
         notifInfoPanelFontSize: i32 = 13,
         notifInfoPanelFontWeight: types.FontWeight = .Regular,
+        notifInfoPanelMaxRows: i32 = 15,
+        notifInfoPanelShowTimestamp: bool = false,
+        notifInfoPanelShowCategoryFilters: bool = true,
+        notifInfoPanelShowFleet: bool = true,
+        notifInfoPanelShowMining: bool = true,
+        notifInfoPanelShowCombat: bool = true,
+        notifInfoPanelShowNavigation: bool = true,
+        notifInfoPanelShowGeneral: bool = true,
 
         layoutMode: types.LayoutMode = .HorizontalList,
         layoutDirection: types.LayoutDirection = .RowFirst_LTR_TTB,
@@ -2424,6 +2432,9 @@ pub const Config = struct {
         pub const NOTIF_PANEL_HEIGHT_MAX: i32 = 2160;
         pub const NOTIF_PANEL_FONT_SIZE_MIN: i32 = 6;
         pub const NOTIF_PANEL_FONT_SIZE_MAX: i32 = 72;
+        // Mirrors painter.NOTIF_HISTORY_CAPACITY, the ring buffer's actual size.
+        pub const NOTIF_PANEL_MAX_ROWS_MIN: i32 = 1;
+        pub const NOTIF_PANEL_MAX_ROWS_MAX: i32 = 30;
         pub const SPACING_MIN: i32 = 0;
         pub const SPACING_MAX: i32 = 500;
         pub const GRID_COLUMNS_MIN: u32 = 1;
@@ -2454,6 +2465,8 @@ pub const Config = struct {
             if (self.notifInfoPanelWidth > NOTIF_PANEL_WIDTH_MAX) self.notifInfoPanelWidth = NOTIF_PANEL_WIDTH_MAX;
             if (self.notifInfoPanelHeight < NOTIF_PANEL_HEIGHT_MIN) self.notifInfoPanelHeight = NOTIF_PANEL_HEIGHT_MIN;
             if (self.notifInfoPanelHeight > NOTIF_PANEL_HEIGHT_MAX) self.notifInfoPanelHeight = NOTIF_PANEL_HEIGHT_MAX;
+            if (self.notifInfoPanelMaxRows < NOTIF_PANEL_MAX_ROWS_MIN) self.notifInfoPanelMaxRows = NOTIF_PANEL_MAX_ROWS_MIN;
+            if (self.notifInfoPanelMaxRows > NOTIF_PANEL_MAX_ROWS_MAX) self.notifInfoPanelMaxRows = NOTIF_PANEL_MAX_ROWS_MAX;
 
             if (self.spacing < SPACING_MIN) self.spacing = SPACING_MIN;
             if (self.spacing > SPACING_MAX) {
@@ -3423,6 +3436,30 @@ pub const Config = struct {
                 display.notifInfoPanelFontWeight = std.meta.stringToEnum(types.FontWeight, v.string) orelse .Regular;
             }
         }
+        if (obj.get("notifInfoPanelMaxRows")) |v| {
+            if (v == .integer) display.notifInfoPanelMaxRows = std.math.cast(i32, v.integer) orelse display.notifInfoPanelMaxRows;
+        }
+        if (obj.get("notifInfoPanelShowTimestamp")) |v| {
+            if (v == .bool) display.notifInfoPanelShowTimestamp = v.bool;
+        }
+        if (obj.get("notifInfoPanelShowCategoryFilters")) |v| {
+            if (v == .bool) display.notifInfoPanelShowCategoryFilters = v.bool;
+        }
+        if (obj.get("notifInfoPanelShowFleet")) |v| {
+            if (v == .bool) display.notifInfoPanelShowFleet = v.bool;
+        }
+        if (obj.get("notifInfoPanelShowMining")) |v| {
+            if (v == .bool) display.notifInfoPanelShowMining = v.bool;
+        }
+        if (obj.get("notifInfoPanelShowCombat")) |v| {
+            if (v == .bool) display.notifInfoPanelShowCombat = v.bool;
+        }
+        if (obj.get("notifInfoPanelShowNavigation")) |v| {
+            if (v == .bool) display.notifInfoPanelShowNavigation = v.bool;
+        }
+        if (obj.get("notifInfoPanelShowGeneral")) |v| {
+            if (v == .bool) display.notifInfoPanelShowGeneral = v.bool;
+        }
     }
 
     /// CharacterConfig.thumbnailSize isn't covered by ThumbnailConfig.validate(), and std.math.cast at the JSON parse site only rejects values too large for i32, not e.g. -5, which would still panic when narrowed to usize downstream — this closes that gap.
@@ -3873,6 +3910,7 @@ pub const Config = struct {
             .@"display.notifInfoPanelWidth" = Range{ .min = DisplayConfig.NOTIF_PANEL_WIDTH_MIN, .max = DisplayConfig.NOTIF_PANEL_WIDTH_MAX },
             .@"display.notifInfoPanelHeight" = Range{ .min = DisplayConfig.NOTIF_PANEL_HEIGHT_MIN, .max = DisplayConfig.NOTIF_PANEL_HEIGHT_MAX },
             .@"display.notifInfoPanelFontSize" = Range{ .min = DisplayConfig.NOTIF_PANEL_FONT_SIZE_MIN, .max = DisplayConfig.NOTIF_PANEL_FONT_SIZE_MAX },
+            .@"display.notifInfoPanelMaxRows" = Range{ .min = DisplayConfig.NOTIF_PANEL_MAX_ROWS_MIN, .max = DisplayConfig.NOTIF_PANEL_MAX_ROWS_MAX },
             .@"display.listViewOpacity" = Range{ .min = DisplayConfig.OPACITY_MIN, .max = 255 },
             .@"display.notifInfoPanelOpacity" = Range{ .min = DisplayConfig.OPACITY_MIN, .max = 255 },
 
@@ -4025,6 +4063,9 @@ pub const Config = struct {
         const new_notif_panel_font_name = fresh.display.notifInfoPanelFontName;
         const new_notif_panel_font_size = fresh.display.notifInfoPanelFontSize;
         const new_notif_panel_font_weight = fresh.display.notifInfoPanelFontWeight;
+        const new_notif_panel_max_rows = fresh.display.notifInfoPanelMaxRows;
+        const new_notif_panel_show_timestamp = fresh.display.notifInfoPanelShowTimestamp;
+        const new_notif_panel_show_category_filters = fresh.display.notifInfoPanelShowCategoryFilters;
         fresh.display.notifInfoPanelFontName = DEFAULT_FONT_NAME;
 
         // Grid/stack/list layout fields ride along too, but never startX/startY - those can be live-dragged in the running app.
@@ -4121,6 +4162,9 @@ pub const Config = struct {
         self.display.notifInfoPanelOpacity = new_notif_panel_opacity;
         self.display.notifInfoPanelFontSize = new_notif_panel_font_size;
         self.display.notifInfoPanelFontWeight = new_notif_panel_font_weight;
+        self.display.notifInfoPanelMaxRows = new_notif_panel_max_rows;
+        self.display.notifInfoPanelShowTimestamp = new_notif_panel_show_timestamp;
+        self.display.notifInfoPanelShowCategoryFilters = new_notif_panel_show_category_filters;
 
         self.display.spacing = new_spacing;
         self.display.spacingX = new_spacing_x;
@@ -4325,5 +4369,10 @@ pub const Config = struct {
 
         try self.saveCurrentProfile(allocator);
         slog.debug("Saved notification/info panel position for profile '{s}': ({}, {})", .{ self.profile_name, pos.x, pos.y });
+    }
+
+    pub fn saveNotifInfoPanelCategoryFilter(self: *Config, allocator: std.mem.Allocator) !void {
+        try self.saveCurrentProfile(allocator);
+        slog.debug("Saved notification history panel category filter for profile '{s}'", .{self.profile_name});
     }
 };

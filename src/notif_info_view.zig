@@ -11,6 +11,7 @@ const slog = log.scoped("notif_info_view");
 const painter_mod = @import("painter.zig");
 
 const HEADER_HEIGHT: i32 = 18;
+const FOOTER_HEIGHT: i32 = 18;
 const ROW_HEIGHT: i32 = 16;
 const TEXT_LEFT: i32 = 6;
 const RIGHT_MARGIN: i32 = 6;
@@ -22,7 +23,47 @@ const ARGB_SEPARATOR: u32 = 0xFF888888;
 const ARGB_HDR_TEXT: u32 = 0xFFFFFFFF;
 const ARGB_CHAR_NAME: u32 = 0xFFCCCCCC;
 const ARGB_EMPTY_TEXT: u32 = 0xFF666666;
+const ARGB_TIMESTAMP: u32 = 0xFF666666;
 const RGB_FRAME: u32 = 0x00888888;
+// Neutral gray, not an accent color, to match the panel's existing monochrome palette.
+const RGB_BUTTON_ACTIVE_BG: u32 = 0x00404040;
+const ARGB_BUTTON_ACTIVE_TEXT: u32 = ARGB_HDR_TEXT;
+const ARGB_BUTTON_INACTIVE_TEXT: u32 = ARGB_EMPTY_TEXT;
+
+// Granularity of the timestamp text baked into the render signature, so it doesn't redraw every scan tick.
+const TIMESTAMP_BUCKET_MS: u64 = 15_000;
+
+// Order and labels for the footer's category filter buttons; index-paired with each other and with NotifInfoWindow.category_button_rects.
+const CATEGORY_ORDER = [_]types.NotificationCategory{ .Fleet, .Mining, .Combat, .Navigation, .General };
+const CATEGORY_LABELS = [_][]const u8{ "FLT", "MIN", "CBT", "NAV", "GEN" };
+
+const ButtonRect = struct { left: i32 = 0, right: i32 = 0 };
+
+fn categoryEnabled(cfg: *const config_mod.Config, cat: types.NotificationCategory) bool {
+    return switch (cat) {
+        .Fleet => cfg.display.notifInfoPanelShowFleet,
+        .Mining => cfg.display.notifInfoPanelShowMining,
+        .Combat => cfg.display.notifInfoPanelShowCombat,
+        .Navigation => cfg.display.notifInfoPanelShowNavigation,
+        .General => cfg.display.notifInfoPanelShowGeneral,
+    };
+}
+
+fn setCategoryEnabled(cfg: *config_mod.Config, cat: types.NotificationCategory, value: bool) void {
+    switch (cat) {
+        .Fleet => cfg.display.notifInfoPanelShowFleet = value,
+        .Mining => cfg.display.notifInfoPanelShowMining = value,
+        .Combat => cfg.display.notifInfoPanelShowCombat = value,
+        .Navigation => cfg.display.notifInfoPanelShowNavigation = value,
+        .General => cfg.display.notifInfoPanelShowGeneral = value,
+    }
+}
+
+/// With the filter buttons hidden (notifInfoPanelShowCategoryFilters off), notifications aren't silently dropped by a filter state the user can't see or change - everything shows.
+fn effectiveCategoryEnabled(cfg: *const config_mod.Config, cat: types.NotificationCategory) bool {
+    if (!cfg.display.notifInfoPanelShowCategoryFilters) return true;
+    return categoryEnabled(cfg, cat);
+}
 
 const HTCAPTION: win32.LRESULT = 2;
 const HTCLIENT: win32.LRESULT = 1;
@@ -54,6 +95,8 @@ pub const NotifInfoWindow = struct {
     // Row index -> source hwnd for the history rows actually drawn this render, consumed by WM_LBUTTONDOWN.
     history_row_hwnds: [painter_mod.NOTIF_HISTORY_CAPACITY]win32.HWND = undefined,
     history_row_count: usize = 0,
+    // Index-paired with CATEGORY_ORDER; recomputed every render, consumed by WM_LBUTTONDOWN's footer hit-test.
+    category_button_rects: [CATEGORY_ORDER.len]ButtonRect = undefined,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -168,6 +211,29 @@ pub const NotifInfoWindow = struct {
         return (type_cfg.text_color orelse self.config.thumbnail.characterNameColor) & 0x00FF_FFFF;
     }
 
+    fn updateCategoryButtonRects(self: *NotifInfoWindow, win_w: i32) void {
+        const n: i64 = @intCast(CATEGORY_ORDER.len);
+        for (0..CATEGORY_ORDER.len) |i| {
+            const left: i32 = @intCast(@divTrunc(@as(i64, win_w) * @as(i64, @intCast(i)), n));
+            const right: i32 = @intCast(@divTrunc(@as(i64, win_w) * @as(i64, @intCast(i + 1)), n));
+            self.category_button_rects[i] = .{ .left = left, .right = right };
+        }
+    }
+
+    fn handleFooterClick(self: *NotifInfoWindow, cx: i32) void {
+        for (CATEGORY_ORDER, 0..) |cat, i| {
+            const rect = self.category_button_rects[i];
+            if (cx < rect.left or cx >= rect.right) continue;
+
+            setCategoryEnabled(self.config, cat, !categoryEnabled(self.config, cat));
+            self.config.saveNotifInfoPanelCategoryFilter(self.allocator) catch |err| {
+                slog.err("Failed to save notification history panel category filter: {}", .{err});
+            };
+            self.last_render_signature = null;
+            return;
+        }
+    }
+
     fn computeRenderSignature(self: *const NotifInfoWindow, painter: *const painter_mod.Painter) u64 {
         var h = std.hash.Wyhash.init(0);
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelWidth));
@@ -176,8 +242,18 @@ pub const NotifInfoWindow = struct {
         h.update(self.config.display.notifInfoPanelFontName);
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelFontSize));
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelFontWeight));
+        h.update(std.mem.asBytes(&self.config.display.notifInfoPanelMaxRows));
+        h.update(std.mem.asBytes(&self.config.display.notifInfoPanelShowTimestamp));
+        h.update(std.mem.asBytes(&self.config.display.notifInfoPanelShowCategoryFilters));
+        for (CATEGORY_ORDER) |cat| {
+            const enabled = categoryEnabled(self.config, cat);
+            h.update(std.mem.asBytes(&enabled));
+        }
         h.update(std.mem.asBytes(&painter.notification_history_count));
         h.update(std.mem.asBytes(&painter.notification_history_head));
+
+        const show_timestamp = self.config.display.notifInfoPanelShowTimestamp;
+        const now = win32.Ticks.now();
 
         var entries: [painter_mod.NOTIF_HISTORY_CAPACITY]painter_mod.NotificationHistoryEntry = undefined;
         const hist = painter.getNotificationHistory(&entries);
@@ -188,6 +264,10 @@ pub const NotifInfoWindow = struct {
             const text_color = self.resolveNotifTextColor(e.notification_type);
             h.update(std.mem.asBytes(&char_color));
             h.update(std.mem.asBytes(&text_color));
+            if (show_timestamp) {
+                const bucket = now.elapsedSince(e.timestamp_ms) / TIMESTAMP_BUCKET_MS;
+                h.update(std.mem.asBytes(&bucket));
+            }
         }
 
         return h.final();
@@ -240,11 +320,34 @@ pub const NotifInfoWindow = struct {
 
         @memset(ov.pixels[0 .. W * H], 0);
 
+        const show_filters = self.config.display.notifInfoPanelShowCategoryFilters;
+        const footer_top: i32 = if (show_filters) @max(HEADER_HEIGHT, win_h - FOOTER_HEIGHT) else win_h;
+
         gdi_overlay.fillRect(ov.pixels, W, 0, 0, W, @intCast(HEADER_HEIGHT), self.withAlpha(RGB_HEADER));
         gdi_overlay.fillRect(ov.pixels, W, 0, @intCast(HEADER_HEIGHT), W, H - @as(usize, @intCast(HEADER_HEIGHT)), self.withAlpha(RGB_BODY));
 
-        const history_area_h: i32 = @max(0, win_h - HEADER_HEIGHT);
+        if (show_filters) {
+            gdi_overlay.fillRect(ov.pixels, W, 0, @intCast(footer_top), W, @intCast(win_h - footer_top), self.withAlpha(RGB_HEADER));
+
+            self.updateCategoryButtonRects(win_w);
+            for (CATEGORY_ORDER, 0..) |cat, i| {
+                if (!categoryEnabled(self.config, cat)) continue;
+                const rect = self.category_button_rects[i];
+                gdi_overlay.fillRect(ov.pixels, W, @intCast(rect.left), @intCast(footer_top), @intCast(rect.right - rect.left), @intCast(win_h - footer_top), self.withAlpha(RGB_BUTTON_ACTIVE_BG));
+            }
+
+            gdi_overlay.fillRect(ov.pixels, W, 0, @intCast(footer_top), W, 1, ARGB_SEPARATOR);
+            for (1..CATEGORY_ORDER.len) |i| {
+                const x: usize = @intCast(self.category_button_rects[i].left);
+                gdi_overlay.fillRect(ov.pixels, W, x, @intCast(footer_top), 1, @intCast(win_h - footer_top), ARGB_SEPARATOR);
+            }
+        }
+
+        const history_area_h: i32 = @max(0, footer_top - HEADER_HEIGHT);
         const history_rows_fit: usize = @intCast(@max(0, @divTrunc(history_area_h, ROW_HEIGHT)));
+        const configured_max_rows: usize = @intCast(@max(1, self.config.display.notifInfoPanelMaxRows));
+        const show_timestamp = self.config.display.notifInfoPanelShowTimestamp;
+        const now = win32.Ticks.now();
 
         if (self.font) |f| {
             const old = win32.SelectObject(ov.mem_dc, f);
@@ -259,21 +362,44 @@ pub const NotifInfoWindow = struct {
 
             var entries: [painter_mod.NOTIF_HISTORY_CAPACITY]painter_mod.NotificationHistoryEntry = undefined;
             const hist = painter.getNotificationHistory(&entries);
-            const shown = @min(hist.len, history_rows_fit);
-            self.history_row_count = shown;
-
-            if (shown == 0) {
-                drawText(ov.mem_dc, "No notifications yet", TEXT_LEFT, HEADER_HEIGHT + 2, ARGB_EMPTY_TEXT);
-            }
+            const cap = @min(history_rows_fit, configured_max_rows);
 
             const max_w: usize = @intCast(@max(0, win_w - TEXT_LEFT - RIGHT_MARGIN));
-            for (hist[0..shown], 0..) |*entry, i| {
-                const row_top = HEADER_HEIGHT + @as(i32, @intCast(i)) * ROW_HEIGHT;
-                self.history_row_hwnds[i] = entry.source_hwnd;
+            var shown: usize = 0;
+            for (hist) |*entry| {
+                if (shown >= cap) break;
+                if (!effectiveCategoryEnabled(self.config, types.notificationCategory(entry.notification_type))) continue;
+
+                const row_top = HEADER_HEIGHT + @as(i32, @intCast(shown)) * ROW_HEIGHT;
+                self.history_row_hwnds[shown] = entry.source_hwnd;
 
                 const char_color = self.resolveCharColor(entry.characterName());
                 const text_color = self.resolveNotifTextColor(entry.notification_type);
-                drawHistoryRow(ov.mem_dc, entry.characterName(), entry.text(), TEXT_LEFT, row_top + 1, char_color, text_color, max_w);
+                var ts_buf: [24]u8 = undefined;
+                const timestamp = if (show_timestamp) formatRelativeTime(&ts_buf, now, entry.timestamp_ms) else null;
+                drawHistoryRow(ov.mem_dc, entry.characterName(), entry.text(), TEXT_LEFT, row_top + 1, char_color, text_color, max_w, timestamp);
+                shown += 1;
+            }
+            self.history_row_count = shown;
+
+            if (shown == 0) {
+                const empty_text = if (hist.len == 0) "No notifications yet" else "All notifications filtered";
+                drawText(ov.mem_dc, empty_text, TEXT_LEFT, HEADER_HEIGHT + 2, ARGB_EMPTY_TEXT);
+            }
+
+            if (show_filters) {
+                for (CATEGORY_ORDER, 0..) |cat, i| {
+                    const rect = self.category_button_rects[i];
+                    const label = CATEGORY_LABELS[i];
+                    const active = categoryEnabled(self.config, cat);
+                    const label_color = if (active) ARGB_BUTTON_ACTIVE_TEXT else ARGB_BUTTON_INACTIVE_TEXT;
+                    const label_w = measureTextWidth(ov.mem_dc, label);
+                    const cell_w: usize = @intCast(@max(0, rect.right - rect.left));
+                    const label_x = rect.left + @as(i32, @intCast((cell_w -| label_w) / 2));
+                    const label_h = measureTextHeight(ov.mem_dc, label);
+                    const label_y = footer_top + @max(0, @divTrunc(FOOTER_HEIGHT - label_h, 2));
+                    drawText(ov.mem_dc, label, label_x, label_y, label_color);
+                }
             }
         }
 
@@ -322,16 +448,35 @@ pub const NotifInfoWindow = struct {
     }
 };
 
-/// Draws "CharacterName: message" with the name and message independently colored, truncating the message (then the name, if needed) to fit max_w.
-fn drawHistoryRow(dc: win32.HDC, name: []const u8, msg: []const u8, x: i32, y: i32, name_color: u32, msg_color: u32, max_w: usize) void {
+/// Formats how long ago `entry_ts` was relative to `now` as e.g. "just now", "5m ago", "2h ago".
+fn formatRelativeTime(buf: *[24]u8, now: win32.Ticks, entry_ts: win32.Ticks) []const u8 {
+    const elapsed_s = now.elapsedSince(entry_ts) / 1000;
+    if (elapsed_s < 60) return "just now";
+    if (elapsed_s < 3600) {
+        return std.fmt.bufPrint(buf, "{d}m ago", .{elapsed_s / 60}) catch "?m ago";
+    }
+    return std.fmt.bufPrint(buf, "{d}h ago", .{elapsed_s / 3600}) catch "?h ago";
+}
+
+/// Draws "CharacterName: message" (name/message truncated to make room) followed by a right-aligned "timestamp" suffix, which is never dropped, even if it's all that fits.
+fn drawHistoryRow(dc: win32.HDC, name: []const u8, msg: []const u8, x: i32, y: i32, name_color: u32, msg_color: u32, max_w: usize, timestamp: ?[]const u8) void {
+    var remaining = max_w;
+
+    if (timestamp) |ts| {
+        const ts_w = @min(measureTextWidth(dc, ts), max_w);
+        const gap_w = measureTextWidth(dc, " ");
+        remaining = max_w -| (ts_w + gap_w);
+        drawText(dc, ts, x + @as(i32, @intCast(max_w - ts_w)), y, ARGB_TIMESTAMP);
+    }
+
     const name_w = measureTextWidth(dc, name);
-    if (name_w > max_w) {
-        drawTextTruncated(dc, name, x, y, name_color, max_w);
+    if (name_w > remaining) {
+        drawTextTruncated(dc, name, x, y, name_color, remaining);
         return;
     }
     drawText(dc, name, x, y, name_color);
 
-    const remaining_after_name = max_w -| name_w;
+    const remaining_after_name = remaining -| name_w;
     if (remaining_after_name == 0) return;
 
     const sep = ": ";
@@ -361,6 +506,10 @@ fn registerWindowClass(instance: win32.HINSTANCE) !void {
 
 fn hiwordSigned(lParam: win32.LPARAM) i32 {
     return @as(i32, @intCast(@as(i16, @truncate(lParam >> 16))));
+}
+
+fn lowordSigned(lParam: win32.LPARAM) i32 {
+    return @as(i32, @intCast(@as(i16, @truncate(lParam))));
 }
 
 fn notifInfoWindowProc(
@@ -428,12 +577,20 @@ fn notifInfoWindowProc(
             const cy: i32 = hiwordSigned(lParam);
             if (cy < HEADER_HEIGHT) return 0;
 
-            const row_i = @divTrunc(cy - HEADER_HEIGHT, ROW_HEIGHT);
-            if (row_i < 0) return 0;
-            const row: usize = @intCast(row_i);
-
             if (painter_mod.g_painter_ptr) |p| {
                 if (p.notif_info_window) |*niw| {
+                    const show_filters = niw.config.display.notifInfoPanelShowCategoryFilters;
+                    const footer_top = if (show_filters) niw.last_win_h - FOOTER_HEIGHT else niw.last_win_h;
+                    if (show_filters and cy >= footer_top) {
+                        const cx: i32 = lowordSigned(lParam);
+                        niw.handleFooterClick(cx);
+                        return 0;
+                    }
+
+                    const row_i = @divTrunc(cy - HEADER_HEIGHT, ROW_HEIGHT);
+                    if (row_i < 0) return 0;
+                    const row: usize = @intCast(row_i);
+
                     if (row < niw.history_row_count) {
                         if (g_activate_fn) |activate| {
                             activate(niw.history_row_hwnds[row]);

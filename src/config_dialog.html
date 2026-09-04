@@ -1229,6 +1229,10 @@
                                 </div>
                             </div>
 
+                            <label for="notifInfoPanelMaxRows" data-i18n="field.notifInfoPanelMaxRows.label">Max History Rows</label>
+                            <input type="number" id="notifInfoPanelMaxRows" min="1" max="30">
+                            <p class="hint" data-i18n="field.notifInfoPanelMaxRows.hint">Caps how many recent notifications are shown, even if the panel is tall enough for more</p>
+
                             <label for="notifInfoPanelOpacity" style="margin-top: 8px;"><span data-i18n="field.notifInfoPanelOpacity.label">Panel Opacity: </span><span id="notifInfoPanelOpacityValue">100</span>%</label>
                             <input type="range" id="notifInfoPanelOpacity" min="20" max="100" value="100" data-value-target="notifInfoPanelOpacityValue">
                             <p class="hint" data-i18n="field.notifInfoPanelOpacity.hint">Transparency level of the History panel</p>
@@ -1267,6 +1271,16 @@
                             <label>
                                 <input type="checkbox" id="hideNotifInfoPanelWhenNoCharacters">
                                 <span class="label-body" data-i18n="field.hideNotifInfoPanelWhenNoCharacters.label">Hide Panel When No Characters Are Logged In</span>
+                            </label>
+
+                            <label>
+                                <input type="checkbox" id="notifInfoPanelShowTimestamp">
+                                <span class="label-body" data-i18n="field.notifInfoPanelShowTimestamp.label">Show Relative Timestamps</span>
+                            </label>
+
+                            <label>
+                                <input type="checkbox" id="notifInfoPanelShowCategoryFilters">
+                                <span class="label-body" data-i18n="field.notifInfoPanelShowCategoryFilters.label">Show Category Filters</span>
                             </label>
                         </div>
                     </div>
