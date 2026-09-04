@@ -96,7 +96,7 @@
 
                         <div style="margin: 12px 0;">
                             <p><strong data-i18n="misc.version-label">Version:</strong> <span id="app-version">0.0.2</span></p>
-                            <p><strong data-i18n="misc.repository-label">Repository:</strong> <a href="https://github.com/mrmjstc/eve-maj-preview" target="_blank" style="color: #4a9eff; text-decoration: none;">github.com/mrmjstc/eve-maj-preview</a></p>
+                            <p><strong data-i18n="misc.repository-label">Repository:</strong> <a href="https://github.com/mrmjstc/eve-maj-preview" onclick="return openExternalLink(event)" style="color: #4a9eff; text-decoration: none;">github.com/mrmjstc/eve-maj-preview</a></p>
                         </div>
                     </div>
 
@@ -2049,6 +2049,20 @@
             <p id="hotkey-conflict-message" style="margin: 0 0 12px 0; white-space: pre-line;"></p>
             <div class="modal-buttons">
                 <button id="hotkey-conflict-modal-ok" data-i18n="common.ok">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="update-available-modal" class="modal">
+        <div class="modal-content modal-wide">
+            <h3 data-i18n="misc.update-available-heading">Update Available!</h3>
+            <p style="margin: 0 0 12px 0;">
+                <span data-i18n="misc.update-available-body">A new version is available:</span>
+                <a id="update-available-link" href="#" onclick="return openExternalLink(event)" style="color: #4a9eff; text-decoration: none;"></a>
+            </p>
+            <div id="update-available-notes" style="display: none; white-space: pre-wrap; text-align: left; margin: 0 0 12px 0;"></div>
+            <div class="modal-buttons">
+                <button id="update-available-modal-close" class="button-outline" data-i18n="common.close">Close</button>
             </div>
         </div>
     </div>

@@ -17,20 +17,25 @@ pub const UpdateStatus = struct {
     mutex: std.Io.Mutex = .init,
     version: ?[]const u8 = null,
     url: ?[]const u8 = null,
+    /// Release notes body from the GitHub API; null if the release had none.
+    notes: ?[]const u8 = null,
     allocator: ?std.mem.Allocator = null,
 
-    /// Stores a fresh update result, freeing any previous one first; copies `version`/`url` rather than taking ownership of the passed-in slices.
-    pub fn set(self: *UpdateStatus, allocator: std.mem.Allocator, version: []const u8, url: []const u8) !void {
+    /// Stores a fresh update result, freeing any previous one first; copies `version`/`url`/`notes` rather than taking ownership of the passed-in slices.
+    pub fn set(self: *UpdateStatus, allocator: std.mem.Allocator, version: []const u8, url: []const u8, notes: ?[]const u8) !void {
         const version_copy = try allocator.dupe(u8, version);
         errdefer allocator.free(version_copy);
         const url_copy = try allocator.dupe(u8, url);
         errdefer allocator.free(url_copy);
+        const notes_copy = if (notes) |n| try allocator.dupe(u8, n) else null;
+        errdefer if (notes_copy) |n| allocator.free(n);
 
         try self.mutex.lock(g_io);
         defer self.mutex.unlock(g_io);
         self.freeLocked();
         self.version = version_copy;
         self.url = url_copy;
+        self.notes = notes_copy;
         self.allocator = allocator;
     }
 
@@ -38,6 +43,7 @@ pub const UpdateStatus = struct {
         const allocator = self.allocator orelse return;
         if (self.version) |v| allocator.free(v);
         if (self.url) |u| allocator.free(u);
+        if (self.notes) |n| allocator.free(n);
     }
 
     pub fn deinit(self: *UpdateStatus) void {
@@ -46,6 +52,7 @@ pub const UpdateStatus = struct {
         self.freeLocked();
         self.version = null;
         self.url = null;
+        self.notes = null;
     }
 
     pub fn isAvailable(self: *UpdateStatus) bool {
@@ -63,6 +70,25 @@ pub const UpdateStatus = struct {
         @memcpy(buf[0..url.len], url);
         buf[url.len] = 0;
         return buf[0..url.len :0];
+    }
+
+    /// Copies the stored latest version, null-terminated, into `buf`; returns null if no update is available or the version doesn't fit.
+    pub fn copyVersionZ(self: *UpdateStatus, buf: []u8) ?[:0]const u8 {
+        self.mutex.lock(g_io) catch return null;
+        defer self.mutex.unlock(g_io);
+        const version = self.version orelse return null;
+        if (version.len >= buf.len) return null;
+        @memcpy(buf[0..version.len], version);
+        buf[version.len] = 0;
+        return buf[0..version.len :0];
+    }
+
+    /// Returns an allocator-owned copy of the stored release notes (caller frees); null if unavailable, since notes are unbounded unlike the other fixed-buffer fields.
+    pub fn dupeNotes(self: *UpdateStatus, allocator: std.mem.Allocator) ?[]const u8 {
+        self.mutex.lock(g_io) catch return null;
+        defer self.mutex.unlock(g_io);
+        const notes = self.notes orelse return null;
+        return allocator.dupe(u8, notes) catch null;
     }
 };
 
@@ -135,6 +161,10 @@ pub const UpdateChecker = struct {
 
         const latest_version = tag_name.string;
         const release_url = html_url.string;
+        const release_notes = if (root.get("body")) |body_value|
+            (if (body_value == .string) body_value.string else null)
+        else
+            null;
 
         const normalized_current = if (std.mem.startsWith(u8, self.current_version, "v"))
             self.current_version[1..]
@@ -167,6 +197,7 @@ pub const UpdateChecker = struct {
             return UpdateInfo{
                 .version = try self.allocator.dupe(u8, latest_version),
                 .url = try self.allocator.dupe(u8, release_url),
+                .notes = if (release_notes) |n| try self.allocator.dupe(u8, n) else null,
             };
         }
 
@@ -185,8 +216,9 @@ pub const UpdateChecker = struct {
         if (update_info) |info| {
             defer allocator.free(info.version);
             defer allocator.free(info.url);
+            defer if (info.notes) |n| allocator.free(n);
 
-            g_update_status.set(allocator, info.version, info.url) catch |err| {
+            g_update_status.set(allocator, info.version, info.url, info.notes) catch |err| {
                 slog.warn("Failed to store update status: {}", .{err});
                 return;
             };
@@ -198,6 +230,7 @@ pub const UpdateChecker = struct {
 pub const UpdateInfo = struct {
     version: []const u8,
     url: []const u8,
+    notes: ?[]const u8,
 };
 
 pub fn openReleasesPage() void {

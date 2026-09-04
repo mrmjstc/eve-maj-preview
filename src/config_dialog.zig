@@ -5,6 +5,7 @@ const win32 = @import("win32.zig");
 const build_options = @import("build_options");
 const config_mod = @import("config.zig");
 const esi_prices = @import("esi_prices.zig");
+const update = @import("update.zig");
 const log = @import("log.zig");
 
 const slog = log.scoped("config_dialog");
@@ -72,6 +73,7 @@ pub fn main(init: std.process.Init) !void {
     log.setIo(g_io);
     config_mod.setIo(g_io);
     config_mod.setEnvironMap(init.environ_map);
+    update.setIo(g_io);
     g_allocator = init.gpa;
     esi_prices.init(g_allocator, g_io);
 
@@ -105,6 +107,16 @@ pub fn main(init: std.process.Init) !void {
         active_lang = std.meta.stringToEnum(SupportedLang, loaded.language) orelse .en;
     } else |_| {}
     defer if (startup_settings) |*s| s.deinit();
+
+    // config.exe is a separate executable (see build.zig) with its own g_update_status, so it can't reuse main.zig's check result.
+    const update_checks_disabled = if (startup_settings) |s| s.disableUpdateChecks else false;
+    if (!update_checks_disabled) {
+        if (std.Thread.spawn(.{}, update.UpdateChecker.checkForUpdatesBackground, .{g_allocator})) |update_thread| {
+            update_thread.detach();
+        } else |err| {
+            slog.warn("Failed to start update check thread: {}", .{err});
+        }
+    }
 
     if (args.next()) |path| {
         config_path = path;
@@ -158,6 +170,8 @@ pub fn main(init: std.process.Init) !void {
     _ = try win.bind("switchProfileLive", switchProfileLive);
     _ = try win.bind("logClientMessage", logClientMessage);
     _ = try win.bind("getMainAppStatus", getMainAppStatus);
+    _ = try win.bind("getUpdateStatus", getUpdateStatus);
+    _ = try win.bind("openUrlInBrowser", openUrlInBrowser);
     _ = try win.bind("getValidationRanges", getValidationRanges);
     _ = try win.bind("setAlwaysOnTop", setAlwaysOnTop);
 
@@ -323,6 +337,66 @@ fn findMainAppWindow() ?win32.HWND {
 fn getMainAppStatus(e: *webui.Event) void {
     const running = findMainAppWindow() != null;
     e.returnString(if (running) "{\"running\": true}" else "{\"running\": false}");
+}
+
+fn getUpdateStatus(e: *webui.Event) void {
+    var version_buf: [128]u8 = undefined;
+    var url_buf: [512]u8 = undefined;
+    const version = update.g_update_status.copyVersionZ(&version_buf) orelse {
+        e.returnString("{\"available\": false}");
+        return;
+    };
+    const url = update.g_update_status.copyUrlZ(&url_buf) orelse {
+        e.returnString("{\"available\": false}");
+        return;
+    };
+
+    const allocator = g_allocator;
+    const notes = update.g_update_status.dupeNotes(allocator);
+    defer if (notes) |n| allocator.free(n);
+
+    var response: std.ArrayList(u8) = .empty;
+    defer response.deinit(allocator);
+
+    response.appendSlice(allocator, "{\"available\": true, \"version\": \"") catch {
+        e.returnString("{\"available\": false}");
+        return;
+    };
+    appendJsonEscaped(allocator, &response, version);
+    response.appendSlice(allocator, "\", \"url\": \"") catch {
+        e.returnString("{\"available\": false}");
+        return;
+    };
+    appendJsonEscaped(allocator, &response, url);
+    response.appendSlice(allocator, "\", \"notes\": \"") catch {
+        e.returnString("{\"available\": false}");
+        return;
+    };
+    if (notes) |n| appendJsonEscaped(allocator, &response, n);
+    response.appendSlice(allocator, "\"}") catch {
+        e.returnString("{\"available\": false}");
+        return;
+    };
+
+    const result = allocator.dupeZ(u8, response.items) catch {
+        e.returnString("{\"available\": false}");
+        return;
+    };
+    defer allocator.free(result);
+    e.returnString(result);
+}
+
+/// Opens a URL in the OS default browser rather than a WebView2 popup, which is what a plain `<a target="_blank">` would spawn instead.
+fn openUrlInBrowser(e: *webui.Event) void {
+    const url = e.getString();
+    var buf: [1024]u8 = undefined;
+    const url_z = std.fmt.bufPrintZ(&buf, "{s}", .{url}) catch {
+        slog.warn("URL too long to open in browser: {s}", .{url});
+        return;
+    };
+    if (!win32.shellOpen(url_z.ptr, null)) {
+        slog.err("Failed to open URL in browser: {s}", .{url});
+    }
 }
 
 /// Hands the dialog the same min/max bounds Config.validate() enforces (keyed by the dotted config path config_dialog.js's CONFIG_SCHEMA uses) so bounds aren't hand-copied into JS; called once on dialog init.

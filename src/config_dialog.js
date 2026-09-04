@@ -964,7 +964,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Fire independent calls immediately instead of serializing a round trip each - only loadProfileList()'s completion is needed below.
         const profileListLoaded = loadProfileList();
         loadConfigurationFromBackend();
-        loadGlobalSettingsFromBackend();
+        const globalSettingsLoaded = loadGlobalSettingsFromBackend();
         loadAppVersion();
         loadDefaultConfig();
         loadValidationRanges();
@@ -976,6 +976,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         const initialProfile = document.getElementById('profile-select').value;
         dialogEditingProfile = initialProfile;
         liveConfirmedProfile = initialProfile;
+
+        await globalSettingsLoaded;
+        checkForUpdateNotification();
     } else {
         showStatus(t('status.webuiInitFailed'), 'error');
     }
@@ -3623,6 +3626,78 @@ function showHotkeyConflictModal(message) {
     okBtn.addEventListener('click', handleClose);
     modal.addEventListener('click', handleClickOutside);
     document.addEventListener('keydown', handleKeyDown);
+}
+
+// The dialog's own update check (config_dialog.zig main()) is a background HTTP request that may still be in flight on the first call.
+const UPDATE_STATUS_RETRY_DELAY_MS = 4000;
+
+async function checkForUpdateNotification(isRetry) {
+    if (currentGlobalSettings && currentGlobalSettings.disableUpdateChecks) return;
+
+    try {
+        if (typeof webui === 'undefined') return;
+        const json = await webui.call('getUpdateStatus');
+        const status = JSON.parse(json);
+        if (status.available) {
+            showUpdateAvailableModal(status.version, status.url, status.notes);
+        } else if (!isRetry) {
+            setTimeout(() => checkForUpdateNotification(true), UPDATE_STATUS_RETRY_DELAY_MS);
+        }
+    } catch (error) {
+        logError('Failed to check update status:', error);
+    }
+}
+
+function showUpdateAvailableModal(version, url, notes) {
+    const modal = document.getElementById('update-available-modal');
+    const linkEl = document.getElementById('update-available-link');
+    const notesEl = document.getElementById('update-available-notes');
+    const closeBtn = document.getElementById('update-available-modal-close');
+
+    linkEl.href = url;
+    linkEl.textContent = version || url;
+
+    if (notes) {
+        notesEl.textContent = notes;
+        notesEl.style.display = '';
+    } else {
+        notesEl.textContent = '';
+        notesEl.style.display = 'none';
+    }
+
+    modal.classList.add('show');
+
+    const handleClose = () => {
+        modal.classList.remove('show');
+        closeBtn.removeEventListener('click', handleClose);
+        modal.removeEventListener('click', handleClickOutside);
+        document.removeEventListener('keydown', handleKeyDown);
+    };
+
+    const handleClickOutside = (e) => {
+        if (e.target === modal) handleClose();
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter' || e.key === 'Escape') {
+            e.preventDefault();
+            handleClose();
+        }
+    };
+
+    closeBtn.addEventListener('click', handleClose);
+    modal.addEventListener('click', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+}
+
+// Opens in the OS default browser via the backend instead of letting the WebView2 host spawn a popup for a plain target="_blank" link.
+function openExternalLink(event) {
+    event.preventDefault();
+    if (typeof webui !== 'undefined') {
+        webui.call('openUrlInBrowser', event.currentTarget.href)
+            .catch(error => logError('Failed to open release URL:', error));
+    }
+    return false;
 }
 
 let recordingField = null;
