@@ -225,6 +225,8 @@
   "field.hotkeyPreviousNotified.placeholder": "например, LWin+Shift+N",
   "field.hotkeyPreviousProfile.label": "Предыдущий профиль",
   "field.hotkeyPreviousProfile.placeholder": "например, LWin+PgUp",
+  "field.hotkeyReturnToLastApp.label": "Вернуться к последнему приложению",
+  "field.hotkeyReturnToLastApp.placeholder": "например, LWin+Z",
   "field.hotkeySuspend.label": "Включить/выключить горячие клавиши",
   "field.hotkeySuspend.placeholder": "например, ScrollLock",
   "field.hotkeyToggleAutoMinimize.label": "Переключить автосворачивание",

@@ -269,6 +269,7 @@ const CONFIG_SCHEMA = [
     { id: 'hotkeyToggleVisibility', path: 'hotkeys.hotkeyToggleVisibility', transform: 'vkhex' },
     { id: 'hotkeyToggleAutoMinimize', path: 'hotkeys.hotkeyToggleAutoMinimize', transform: 'vkhex' },
     { id: 'hotkeyMoveToSavedPositions', path: 'hotkeys.hotkeyMoveToSavedPositions', transform: 'vkhex' },
+    { id: 'hotkeyReturnToLastApp', path: 'hotkeys.hotkeyReturnToLastApp', transform: 'vkhex' },
     { id: 'hotkeyToggleExclusion', path: 'hotkeys.hotkeyToggleExclusion', transform: 'vkhex' },
     { id: 'hotkeyNextExcluded', path: 'hotkeys.hotkeyNextExcluded', transform: 'vkhex' },
     { id: 'hotkeyPreviousExcluded', path: 'hotkeys.hotkeyPreviousExcluded', transform: 'vkhex' },

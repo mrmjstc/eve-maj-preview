@@ -225,6 +225,8 @@
   "field.hotkeyPreviousNotified.placeholder": "p. ej., LWin+Shift+N",
   "field.hotkeyPreviousProfile.label": "Anterior perfil",
   "field.hotkeyPreviousProfile.placeholder": "p. ej., LWin+RePag",
+  "field.hotkeyReturnToLastApp.label": "Volver a la última aplicación",
+  "field.hotkeyReturnToLastApp.placeholder": "p. ej., LWin+Z",
   "field.hotkeySuspend.label": "Activar/Desactivar suspensión de atajos",
   "field.hotkeySuspend.placeholder": "p. ej., BloqDespl",
   "field.hotkeyToggleAutoMinimize.label": "Activar/Desactivar minimización automática",

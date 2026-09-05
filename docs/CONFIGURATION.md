@@ -901,7 +901,9 @@ Detects a tracked character falling behind while the rest of the group jumps tog
     "hotkeyPreviousExcluded": null,
     "hotkeySuspend": null,
     "hotkeyCycleNotified": null,
-    "hotkeyPreviousNotified": null
+    "hotkeyPreviousNotified": null,
+    "hotkeyMoveToSavedPositions": null,
+    "hotkeyReturnToLastApp": null
   }
 }
 ```
@@ -921,6 +923,8 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 - **hotkeySuspend**: Suspend/resume all other hotkeys at once
 - **hotkeyCycleNotified**: Cycle forward to the character that most recently triggered a notification (see [Notified-Character Cycling](#notified-character-cycling))
 - **hotkeyPreviousNotified**: Cycle backward through recently notified characters
+- **hotkeyMoveToSavedPositions**: Move all EVE client windows to their saved positions
+- **hotkeyReturnToLastApp**: Refocus whichever non-EVE window last held focus (e.g. jump back to your browser or Discord after switching into EVE)
 **Virtual Key Codes**: See [virtual_keys.zig](src/virtual_keys.zig) for full list
 
 **Modifier Combos**: Any global hotkey field, hotkey group key, per-character hotkey, or profile-switch hotkey can be prefixed with one or more modifiers, combined with `+`: `Ctrl`/`Control`, `Alt`, `Shift`, `Win`/`LWin`/`RWin` (e.g. `"Ctrl+Alt+F9"`).

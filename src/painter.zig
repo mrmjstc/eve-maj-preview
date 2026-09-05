@@ -372,6 +372,8 @@ pub const Painter = struct {
     active_source_hwnd: ?win32.HWND = null,
     /// Last EVE thumbnail hwnd that held focus; used by checkAutoMinimize's exemptLastActiveOnFocusLoss option to identify which client to spare once EVE itself has no window focused.
     last_focused_source_hwnd: ?win32.HWND = null,
+    /// Most recent foreground window that belongs to neither an EVE client nor this process; used by HotkeyAction.ReturnToLastApp.
+    last_non_eve_foreground: ?win32.HWND = null,
 
     fn getThumbnailSize(self: *const Painter, character_name: []const u8) struct { width: i32, height: i32 } {
         if (self.config.getCharacterSize(character_name)) |char_size| {
@@ -3885,6 +3887,20 @@ fn windowDestroyProc(
     painter.rebuildHwndIndex(false);
 }
 
+/// True if hwnd belongs to this process, so its own dialogs/panels never get recorded as a "last non-EVE app".
+fn isOwnProcessWindow(hwnd: win32.HWND) bool {
+    var process_id: win32.DWORD = 0;
+    _ = win32.GetWindowThreadProcessId(hwnd, &process_id);
+    return process_id != 0 and process_id == win32.GetCurrentProcessId();
+}
+
+/// True if hwnd is the desktop shell (Progman or a WorkerW), which isn't a real "app" to return focus to.
+fn isDesktopShellWindow(hwnd: win32.HWND) bool {
+    var class_buf: [32]u8 = undefined;
+    const class_name = win32.getClassNameBuf(hwnd, &class_buf) orelse return false;
+    return std.mem.eql(u8, class_name, "Progman") or std.mem.eql(u8, class_name, "WorkerW");
+}
+
 /// True if hwnd belongs to explorer.exe (taskbar, tray, Start menu, etc.), which should always be able to sit above our thumbnails.
 fn isExplorerOwned(hwnd: win32.HWND) bool {
     var process_id: win32.DWORD = 0;
@@ -3931,6 +3947,10 @@ fn winEventProc(
     const is_eve_window = painter.hwnd_to_thumbnail_index.contains(hwnd);
 
     if (!is_eve_window) {
+        if (!isOwnProcessWindow(hwnd) and !isDesktopShellWindow(hwnd)) {
+            painter.last_non_eve_foreground = hwnd;
+        }
+
         if (painter.config.thumbnail.hideWhenNoEveFocus) {
             slog.debug("Untracked window focused (hwnd={*}), starting {}ms debounce timer (hideWhenNoEveFocus=true)", .{ hwnd, painter.config.thumbnail.hideDebounceMs });
             // Only use thumbnail HWNDs in thumbnail mode (list mode has no valid thumbnail HWNDs)

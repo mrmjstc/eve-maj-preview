@@ -23,6 +23,7 @@ pub const HotkeyAction = enum(usize) {
     next_not_logged_in,
     previous_not_logged_in,
     move_to_saved_positions,
+    return_to_last_app,
 };
 
 pub const Command = union(enum) {

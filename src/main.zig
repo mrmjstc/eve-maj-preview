@@ -196,6 +196,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
                     .next_not_logged_in => manager.handleCycleNotLoggedInRequest(true),
                     .previous_not_logged_in => manager.handleCycleNotLoggedInRequest(false),
                     .move_to_saved_positions => manager.handleMoveToSavedPositionsRequest(),
+                    .return_to_last_app => manager.handleReturnToLastAppRequest(),
                 }
             }
             return 0;

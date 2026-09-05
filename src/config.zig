@@ -1719,6 +1719,7 @@ pub const Config = struct {
     hotkeyCycleNotified: ?u32 = null,
     hotkeyPreviousNotified: ?u32 = null,
     hotkeyMoveToSavedPositions: ?u32 = null,
+    hotkeyReturnToLastApp: ?u32 = null,
 
     // profile_name/allocator/generatedColorCache/generatedCharacterColorCache are deliberately absent — either derived from the profile filename or pure runtime state, never persisted.
     pub const Wire = struct {
@@ -1763,6 +1764,7 @@ pub const Config = struct {
         hotkeyCycleNotified: ?VkCode = null,
         hotkeyPreviousNotified: ?VkCode = null,
         hotkeyMoveToSavedPositions: ?VkCode = null,
+        hotkeyReturnToLastApp: ?VkCode = null,
     };
 
     pub fn toWire(self: *const Config, allocator: std.mem.Allocator) !Wire {
@@ -1819,6 +1821,7 @@ pub const Config = struct {
                 .hotkeyCycleNotified = wrapVk(self.hotkeyCycleNotified),
                 .hotkeyPreviousNotified = wrapVk(self.hotkeyPreviousNotified),
                 .hotkeyMoveToSavedPositions = wrapVk(self.hotkeyMoveToSavedPositions),
+                .hotkeyReturnToLastApp = wrapVk(self.hotkeyReturnToLastApp),
             },
         };
     }
@@ -1859,6 +1862,7 @@ pub const Config = struct {
         cfg.hotkeyCycleNotified = unwrapVk(w.hotkeys.hotkeyCycleNotified);
         cfg.hotkeyPreviousNotified = unwrapVk(w.hotkeys.hotkeyPreviousNotified);
         cfg.hotkeyMoveToSavedPositions = unwrapVk(w.hotkeys.hotkeyMoveToSavedPositions);
+        cfg.hotkeyReturnToLastApp = unwrapVk(w.hotkeys.hotkeyReturnToLastApp);
 
         cfg.chatlog.deinit(allocator);
         cfg.chatlog = try ChatlogConfig.fromWire(w.chatlog, allocator);
@@ -3652,6 +3656,7 @@ pub const Config = struct {
             .hotkeyCycleNotified = null,
             .hotkeyPreviousNotified = null,
             .hotkeyMoveToSavedPositions = null,
+            .hotkeyReturnToLastApp = null,
         };
     }
 

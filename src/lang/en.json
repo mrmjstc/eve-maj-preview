@@ -225,6 +225,8 @@
   "field.hotkeyPreviousNotified.placeholder": "e.g., LWin+Shift+N",
   "field.hotkeyPreviousProfile.label": "Previous Profile",
   "field.hotkeyPreviousProfile.placeholder": "e.g., LWin+PgUp",
+  "field.hotkeyReturnToLastApp.label": "Return to Last App",
+  "field.hotkeyReturnToLastApp.placeholder": "e.g., LWin+Z",
   "field.hotkeySuspend.label": "Toggle Suspend Hotkeys",
   "field.hotkeySuspend.placeholder": "e.g., ScrollLock",
   "field.hotkeyToggleAutoMinimize.label": "Toggle Auto-Minimize",

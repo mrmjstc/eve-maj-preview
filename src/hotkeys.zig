@@ -115,6 +115,7 @@ const GlobalActionId = enum(c_int) {
     NextNotLoggedIn = HOTKEY_ID_GLOBAL_ACTION_BASE + 14,
     PreviousNotLoggedIn = HOTKEY_ID_GLOBAL_ACTION_BASE + 15,
     MoveToSavedPositions = HOTKEY_ID_GLOBAL_ACTION_BASE + 16,
+    ReturnToLastApp = HOTKEY_ID_GLOBAL_ACTION_BASE + 17,
     _,
 };
 
@@ -141,6 +142,7 @@ pub const HotkeyActionType = enum {
     NextNotLoggedIn,
     PreviousNotLoggedIn,
     MoveToSavedPositions,
+    ReturnToLastApp,
 };
 
 pub const HotkeyAction = union(HotkeyActionType) {
@@ -179,6 +181,7 @@ pub const HotkeyAction = union(HotkeyActionType) {
     NextNotLoggedIn: void,
     PreviousNotLoggedIn: void,
     MoveToSavedPositions: void,
+    ReturnToLastApp: void,
 };
 
 /// Manages system-wide hotkey registration and character cycling
@@ -271,6 +274,7 @@ pub const HotkeyManager = struct {
         const has_next_not_logged_in = self.global_settings.hotkeyCycleNotLoggedInForward != null;
         const has_previous_not_logged_in = self.global_settings.hotkeyCycleNotLoggedInBackward != null;
         const has_move_to_saved = self.config.hotkeyMoveToSavedPositions != null;
+        const has_return_to_last_app = self.config.hotkeyReturnToLastApp != null;
         const PerCharacterHotkeyGroup = struct {
             vk: u32,
             indices: std.ArrayList(usize),
@@ -306,12 +310,12 @@ pub const HotkeyManager = struct {
             }
         }
 
-        if (!has_groups and !has_quick_groups and !has_minimize and !has_close and !has_toggle_vis and !has_toggle_auto_min and !has_next_profile and !has_previous_profile and !has_toggle_exclusion and !has_next_excluded and !has_previous_excluded and !has_suspend and !has_cycle_notified and !has_previous_notified and !has_next_all_clients and !has_previous_all_clients and !has_next_not_logged_in and !has_previous_not_logged_in and !has_move_to_saved and !has_per_character_hotkeys and !has_profile_switch_hotkeys) {
+        if (!has_groups and !has_quick_groups and !has_minimize and !has_close and !has_toggle_vis and !has_toggle_auto_min and !has_next_profile and !has_previous_profile and !has_toggle_exclusion and !has_next_excluded and !has_previous_excluded and !has_suspend and !has_cycle_notified and !has_previous_notified and !has_next_all_clients and !has_previous_all_clients and !has_next_not_logged_in and !has_previous_not_logged_in and !has_move_to_saved and !has_return_to_last_app and !has_per_character_hotkeys and !has_profile_switch_hotkeys) {
             slog.debug("No hotkeys configured", .{});
             return;
         }
 
-        const global_count: usize = @as(usize, if (has_minimize) 1 else 0) + @as(usize, if (has_close) 1 else 0) + @as(usize, if (has_toggle_vis) 1 else 0) + @as(usize, if (has_next_profile) 1 else 0) + @as(usize, if (has_previous_profile) 1 else 0) + @as(usize, if (has_toggle_exclusion) 1 else 0) + @as(usize, if (has_next_excluded) 1 else 0) + @as(usize, if (has_previous_excluded) 1 else 0) + @as(usize, if (has_suspend) 1 else 0) + @as(usize, if (has_cycle_notified) 1 else 0) + @as(usize, if (has_previous_notified) 1 else 0) + @as(usize, if (has_next_all_clients) 1 else 0) + @as(usize, if (has_previous_all_clients) 1 else 0) + @as(usize, if (has_next_not_logged_in) 1 else 0) + @as(usize, if (has_previous_not_logged_in) 1 else 0) + @as(usize, if (has_move_to_saved) 1 else 0);
+        const global_count: usize = @as(usize, if (has_minimize) 1 else 0) + @as(usize, if (has_close) 1 else 0) + @as(usize, if (has_toggle_vis) 1 else 0) + @as(usize, if (has_next_profile) 1 else 0) + @as(usize, if (has_previous_profile) 1 else 0) + @as(usize, if (has_toggle_exclusion) 1 else 0) + @as(usize, if (has_next_excluded) 1 else 0) + @as(usize, if (has_previous_excluded) 1 else 0) + @as(usize, if (has_suspend) 1 else 0) + @as(usize, if (has_cycle_notified) 1 else 0) + @as(usize, if (has_previous_notified) 1 else 0) + @as(usize, if (has_next_all_clients) 1 else 0) + @as(usize, if (has_previous_all_clients) 1 else 0) + @as(usize, if (has_next_not_logged_in) 1 else 0) + @as(usize, if (has_previous_not_logged_in) 1 else 0) + @as(usize, if (has_move_to_saved) 1 else 0) + @as(usize, if (has_return_to_last_app) 1 else 0);
         const per_character_count = per_character_groups.items.len;
         var profile_switch_count: usize = 0;
         for (self.global_settings.profileSwitchHotkeys.items) |psh| {
@@ -361,6 +365,7 @@ pub const HotkeyManager = struct {
         if (has_next_not_logged_in) expected_count += 1;
         if (has_previous_not_logged_in) expected_count += 1;
         if (has_move_to_saved) expected_count += 1;
+        if (has_return_to_last_app) expected_count += 1;
 
         // PartialHotkeyRegistrationFailure is a deliberate summary return, not a failure to clean up after; the hotkeys that did register should stay live.
         errdefer |err| if (err != error.PartialHotkeyRegistrationFailure) self.unregisterAll(hwnd);
@@ -642,6 +647,16 @@ pub const HotkeyManager = struct {
             };
         }
 
+        if (self.config.hotkeyReturnToLastApp) |vk_code| {
+            const id = @intFromEnum(GlobalActionId.ReturnToLastApp);
+            const action = HotkeyAction{ .ReturnToLastApp = {} };
+            self.registerAndTrackHotkey(hwnd, id, vk_code, action, "return focus to the last non-EVE app") catch |err| {
+                const key_name = formatKeyName(vk_code, &key_name_buf);
+                slog.err("Failed to register return to last app hotkey {s}: {}", .{ key_name, err });
+                failed_count += 1;
+            };
+        }
+
         const success_count = self.registered_ids.items.len;
         if (failed_count > 0) {
             if (success_count == 0) {
@@ -820,6 +835,9 @@ pub const HotkeyManager = struct {
             .MoveToSavedPositions => {
                 self.handleMoveToSavedPositions();
             },
+            .ReturnToLastApp => {
+                self.handleReturnToLastApp();
+            },
         }
 
         if (win32.GetForegroundWindow() != foreground_before) {
@@ -869,6 +887,30 @@ pub const HotkeyManager = struct {
     pub fn handleMoveToSavedPositionsRequest(self: *HotkeyManager) void {
         slog.debug("Protocol handler move to saved positions request", .{});
         self.handleMoveToSavedPositions();
+    }
+
+    fn handleReturnToLastApp(self: *HotkeyManager) void {
+        const target = self.painter.last_non_eve_foreground orelse {
+            slog.debug("Return to last app hotkey pressed - no previous non-EVE window recorded", .{});
+            return;
+        };
+
+        if (!win32.isWindow(target)) {
+            slog.debug("Return to last app hotkey pressed - previous window no longer exists", .{});
+            self.painter.last_non_eve_foreground = null;
+            return;
+        }
+
+        slog.info("Return to last app hotkey pressed", .{});
+        if (win32.isWindowIconic(target)) {
+            _ = win32.ShowWindowAsync(target, win32.SW_RESTORE);
+        }
+        input.forceSetForegroundWindow(target);
+    }
+
+    pub fn handleReturnToLastAppRequest(self: *HotkeyManager) void {
+        slog.debug("Protocol handler return to last app request", .{});
+        self.handleReturnToLastApp();
     }
 
     fn handleToggleVisibility(self: *HotkeyManager) void {

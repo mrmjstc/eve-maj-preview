@@ -930,6 +930,15 @@
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyMoveToSavedPositions')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
+
+                            <div class="field">
+                                <label for="hotkeyReturnToLastApp" data-i18n="field.hotkeyReturnToLastApp.label">Return to Last App</label>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <input type="text" id="hotkeyReturnToLastApp" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+Z" data-i18n-title="field.hotkeyReturnToLastApp.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyReturnToLastApp')" readonly style="flex: 1; margin-bottom: 0;">
+                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyReturnToLastApp')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
+                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyReturnToLastApp')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
+                                </div>
+                            </div>
                         </div>
 
                         <h4 data-i18n="tab.hotkeys.section.exclusion-cycling.heading">Exclusion Cycling</h4>
