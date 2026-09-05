@@ -958,11 +958,15 @@ pub fn shellOpen(target: [*:0]const u8, workdir: ?[*:0]const u8) bool {
 
 pub extern "user32" fn OpenClipboard(hWndNewOwner: ?HWND) callconv(.c) BOOL;
 pub extern "user32" fn CloseClipboard() callconv(.c) BOOL;
+pub extern "user32" fn EmptyClipboard() callconv(.c) BOOL;
 pub extern "user32" fn GetClipboardData(uFormat: UINT) callconv(.c) ?HANDLE;
+pub extern "user32" fn SetClipboardData(uFormat: UINT, hMem: HANDLE) callconv(.c) ?HANDLE;
+pub extern "kernel32" fn GlobalAlloc(uFlags: UINT, dwBytes: usize) callconv(.c) ?HANDLE;
 pub extern "kernel32" fn GlobalLock(hMem: HANDLE) callconv(.c) ?*anyopaque;
 pub extern "kernel32" fn GlobalUnlock(hMem: HANDLE) callconv(.c) BOOL;
 
 pub const CF_TEXT: UINT = 1;
+const GMEM_MOVEABLE: UINT = 0x0002;
 
 /// Caller-owned copy of the clipboard's CF_TEXT (ANSI, matching this app's Win32 surface) content, or null if unavailable/non-text.
 pub fn getClipboardText(allocator: std.mem.Allocator) ?[]u8 {
@@ -975,6 +979,22 @@ pub fn getClipboardText(allocator: std.mem.Allocator) ?[]u8 {
 
     const text: [*:0]const u8 = @ptrCast(ptr);
     return allocator.dupe(u8, std.mem.span(text)) catch null;
+}
+
+/// Replaces the clipboard contents with `text` as CF_TEXT. Ownership of the GlobalAlloc'd handle passes to the clipboard on success, per SetClipboardData's contract.
+pub fn setClipboardText(text: []const u8) bool {
+    if (!toBool(OpenClipboard(null))) return false;
+    defer _ = CloseClipboard();
+
+    const handle = GlobalAlloc(GMEM_MOVEABLE, text.len + 1) orelse return false;
+    const ptr = GlobalLock(handle) orelse return false;
+    const dest: [*]u8 = @ptrCast(ptr);
+    @memcpy(dest[0..text.len], text);
+    dest[text.len] = 0;
+    _ = GlobalUnlock(handle);
+
+    _ = EmptyClipboard();
+    return SetClipboardData(CF_TEXT, handle) != null;
 }
 
 pub const GUID = extern struct {

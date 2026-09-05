@@ -108,6 +108,9 @@ fn uploadClipboardAndOpen(allocator: std.mem.Allocator, url: []const u8) void {
     defer allocator.free(final_url);
 
     slog.info("Uploaded clipboard, opening {s}", .{final_url});
+    if (!win32.setClipboardText(final_url)) {
+        slog.warn("Failed to copy paste URL to clipboard: {s}", .{final_url});
+    }
     if (!win32.shellOpen(final_url.ptr, null)) {
         slog.err("Failed to open uploaded paste URL: {s}", .{final_url});
     }
