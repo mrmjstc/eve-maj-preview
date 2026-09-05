@@ -17,7 +17,7 @@ pub const UpdateStatus = struct {
     mutex: std.Io.Mutex = .init,
     version: ?[]const u8 = null,
     url: ?[]const u8 = null,
-    /// Release notes body from the GitHub API; null if the release had none.
+    /// Combined release notes for every release newer than the installed version (each prefixed with its tag name); null if none had notes.
     notes: ?[]const u8 = null,
     allocator: ?std.mem.Allocator = null,
 
@@ -111,13 +111,20 @@ pub const UpdateChecker = struct {
         g_update_status.deinit();
     }
 
+    /// Strips a leading "v" (GitHub tag convention) and parses the rest as semver.
+    fn parseTagVersion(tag: []const u8) ?std.SemanticVersion {
+        const normalized = if (std.mem.startsWith(u8, tag, "v")) tag[1..] else tag;
+        return std.SemanticVersion.parse(normalized) catch null;
+    }
+
     pub fn checkForUpdates(self: *UpdateChecker) !?UpdateInfo {
         slog.info("Checking for updates (current: {s})", .{self.current_version});
 
         var client: std.http.Client = .{ .allocator = self.allocator, .io = g_io };
         defer client.deinit();
 
-        const body = http_client.fetch(self.allocator, &client, "https://api.github.com/repos/mrmjstc/eve-maj-preview/releases/latest", .{
+        // per_page=100 covers skipping many releases at once; unauthenticated requests only ever see published (non-draft) releases anyway.
+        const body = http_client.fetch(self.allocator, &client, "https://api.github.com/repos/mrmjstc/eve-maj-preview/releases?per_page=100", .{
             .extra_headers = &.{.{ .name = "Accept", .value = "application/vnd.github+json" }},
         }) orelse return null;
         defer self.allocator.free(body);
@@ -132,77 +139,81 @@ pub const UpdateChecker = struct {
         );
         defer parsed.deinit();
 
-        if (parsed.value != .object) {
-            slog.debug("GitHub API response is not a JSON object", .{});
+        // Check for GitHub API errors (e.g., private repo, rate limit, 404) - the list endpoint returns an error object instead of an array in that case.
+        if (parsed.value == .object) {
+            if (parsed.value.object.get("message")) |message| {
+                if (message == .string) {
+                    slog.debug("GitHub API returned error: {s} (this is normal for private repos)", .{message.string});
+                }
+            }
             return null;
         }
-        const root = parsed.value.object;
 
-        // Check for GitHub API errors (e.g., private repo, rate limit, 404)
-        if (root.get("message")) |message| {
-            if (message == .string) {
-                slog.debug("GitHub API returned error: {s} (this is normal for private repos)", .{message.string});
-                return null;
+        if (parsed.value != .array) {
+            slog.debug("GitHub API response is not a JSON array", .{});
+            return null;
+        }
+        const releases = parsed.value.array.items;
+
+        const current_semver = parseTagVersion(self.current_version) orelse {
+            slog.warn("Failed to parse current version: {s}", .{self.current_version});
+            return null;
+        };
+
+        var latest_version: ?[]const u8 = null;
+        var latest_url: ?[]const u8 = null;
+
+        var notes_buf: std.ArrayList(u8) = .empty;
+        defer notes_buf.deinit(self.allocator);
+
+        // GitHub lists releases newest-first, so this walks down from latest until it reaches (or passes) the installed version.
+        for (releases) |release_value| {
+            if (release_value != .object) continue;
+            const release = release_value.object;
+
+            if (release.get("draft")) |d| if (d == .bool and d.bool) continue;
+            if (release.get("prerelease")) |p| if (p == .bool and p.bool) continue;
+
+            const tag_name = release.get("tag_name") orelse continue;
+            const html_url = release.get("html_url") orelse continue;
+            if (tag_name != .string or html_url != .string) continue;
+
+            const release_semver = parseTagVersion(tag_name.string) orelse {
+                slog.warn("Skipping release with unparsable tag: {s}", .{tag_name.string});
+                continue;
+            };
+
+            if (release_semver.order(current_semver) != .gt) continue;
+
+            if (latest_version == null) {
+                latest_version = tag_name.string;
+                latest_url = html_url.string;
+            }
+
+            const release_notes = if (release.get("body")) |body_value|
+                (if (body_value == .string) body_value.string else null)
+            else
+                null;
+
+            if (release_notes) |n| {
+                const entry = try std.fmt.allocPrint(self.allocator, "{s}\n\n{s}", .{ tag_name.string, n });
+                defer self.allocator.free(entry);
+                if (notes_buf.items.len > 0) try notes_buf.appendSlice(self.allocator, "\n\n");
+                try notes_buf.appendSlice(self.allocator, entry);
             }
         }
 
-        const tag_name = root.get("tag_name") orelse {
-            slog.debug("No tag_name in GitHub API response", .{});
-            return null;
-        };
-        const html_url = root.get("html_url") orelse {
-            slog.debug("No html_url in GitHub API response", .{});
-            return null;
-        };
-        if (tag_name != .string or html_url != .string) {
-            slog.debug("tag_name/html_url in GitHub API response are not strings", .{});
-            return null;
-        }
-
-        const latest_version = tag_name.string;
-        const release_url = html_url.string;
-        const release_notes = if (root.get("body")) |body_value|
-            (if (body_value == .string) body_value.string else null)
-        else
-            null;
-
-        const normalized_current = if (std.mem.startsWith(u8, self.current_version, "v"))
-            self.current_version[1..]
-        else
-            self.current_version;
-
-        const normalized_latest = if (std.mem.startsWith(u8, latest_version, "v"))
-            latest_version[1..]
-        else
-            latest_version;
-
-        if (std.mem.eql(u8, normalized_current, normalized_latest)) {
+        if (latest_version == null) {
             slog.info("Already on latest version: {s}", .{self.current_version});
             return null;
         }
 
-        const current_semver = std.SemanticVersion.parse(normalized_current) catch {
-            slog.warn("Failed to parse current version: {s}", .{normalized_current});
-            return null;
+        slog.info("Update available: {s} -> {s}", .{ self.current_version, latest_version.? });
+        return UpdateInfo{
+            .version = try self.allocator.dupe(u8, latest_version.?),
+            .url = try self.allocator.dupe(u8, latest_url.?),
+            .notes = if (notes_buf.items.len > 0) try self.allocator.dupe(u8, notes_buf.items) else null,
         };
-
-        const latest_semver = std.SemanticVersion.parse(normalized_latest) catch {
-            slog.warn("Failed to parse latest version: {s}", .{normalized_latest});
-            return null;
-        };
-
-        const order = current_semver.order(latest_semver);
-        if (order == .lt) {
-            slog.info("Update available: {s} -> {s}", .{ self.current_version, latest_version });
-            return UpdateInfo{
-                .version = try self.allocator.dupe(u8, latest_version),
-                .url = try self.allocator.dupe(u8, release_url),
-                .notes = if (release_notes) |n| try self.allocator.dupe(u8, n) else null,
-            };
-        }
-
-        slog.info("Current version is up to date or newer", .{});
-        return null;
     }
 
     pub fn checkForUpdatesBackground(allocator: std.mem.Allocator) void {
