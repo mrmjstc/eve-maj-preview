@@ -1,6 +1,7 @@
 const std = @import("std");
 const win32 = @import("win32.zig");
 const input = @import("input.zig");
+const paste_upload = @import("paste_upload.zig");
 const scout = @import("scout.zig");
 const config_mod = @import("config.zig");
 const vk = @import("virtual_keys.zig");
@@ -1076,6 +1077,12 @@ pub const HotkeyManager = struct {
         }
         const url_hotkey = self.global_settings.urlHotkeys.items[url_index];
         if (url_hotkey.url.len == 0) return;
+
+        if (url_hotkey.uploadClipboard) {
+            slog.info("Open URL hotkey pressed (uploading clipboard): {s}", .{url_hotkey.url});
+            paste_upload.uploadClipboardAndOpenAsync(self.allocator, url_hotkey.url);
+            return;
+        }
 
         var url_buf: [1024]u8 = undefined;
         const url_z = std.fmt.bufPrintZ(&url_buf, "{s}", .{url_hotkey.url}) catch {

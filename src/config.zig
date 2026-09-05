@@ -299,10 +299,11 @@ pub const AppHotkey = struct {
     }
 };
 
-/// Binding of a hotkey to a URL, opened in the OS default browser via ShellExecute at press time.
+/// Binding of a hotkey to a URL, opened via ShellExecute (or, with uploadClipboard, POSTed as a paste upload first - see paste_upload.zig).
 pub const UrlHotkey = struct {
     hotkey: ?u32,
     url: []const u8,
+    uploadClipboard: bool = false,
 
     pub fn deinit(self: *UrlHotkey, allocator: std.mem.Allocator) void {
         allocator.free(self.url);
@@ -311,14 +312,15 @@ pub const UrlHotkey = struct {
     pub const Wire = struct {
         hotkey: ?VkCode = null,
         url: []const u8 = "",
+        uploadClipboard: bool = false,
     };
 
     pub fn toWire(self: UrlHotkey) Wire {
-        return .{ .hotkey = wrapVk(self.hotkey), .url = self.url };
+        return .{ .hotkey = wrapVk(self.hotkey), .url = self.url, .uploadClipboard = self.uploadClipboard };
     }
 
     pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !UrlHotkey {
-        return .{ .hotkey = unwrapVk(w.hotkey), .url = try allocator.dupe(u8, w.url) };
+        return .{ .hotkey = unwrapVk(w.hotkey), .url = try allocator.dupe(u8, w.url), .uploadClipboard = w.uploadClipboard };
     }
 };
 

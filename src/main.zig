@@ -14,6 +14,7 @@ const tts = @import("tts.zig");
 const tray = @import("tray.zig");
 const protocol = @import("protocol.zig");
 const update = @import("update.zig");
+const paste_upload = @import("paste_upload.zig");
 const log = @import("log.zig");
 const slog = log.scoped("main");
 const build_options = @import("build_options");
@@ -583,6 +584,7 @@ fn mainImpl(init: std.process.Init) !void {
     log.setIo(g_io);
     tts.setIo(g_io);
     update.setIo(g_io);
+    paste_upload.setIo(g_io);
     config_mod.setIo(g_io);
     config_mod.setEnvironMap(init.environ_map);
     g_allocator = init.gpa;

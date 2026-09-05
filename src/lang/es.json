@@ -139,6 +139,8 @@
   "dynamic.urlHotkey.defaultLabelPrefix": "Atajo de URL ",
   "dynamic.urlHotkey.hotkeyPlaceholder": "p. ej., LWin+M",
   "dynamic.urlHotkey.targetLabel": "URL",
+  "dynamic.urlHotkey.uploadClipboardBadge": "[Portapapeles]",
+  "dynamic.urlHotkey.uploadClipboardLabel": "Subir Contenido del Portapapeles (dscan/local)",
   "dynamic.urlHotkey.urlPlaceholder": "https://example.com",
   "dynamic.windowFilter.classesLabel": "Nombres de clase de ventana (opcional, separados por comas)",
   "dynamic.windowFilter.classesPlaceholder": "p. ej., trinityWindow",

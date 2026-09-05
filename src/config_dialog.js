@@ -5948,6 +5948,15 @@ function urlHotkeyLabel(url, index) {
     }
 }
 
+// uploadClipboard's POST body shape (Paste+anything/submit=new) is specific to aDashboard's paste-intake form, so the checkbox only makes sense for that host.
+function isAdashboardUrl(url) {
+    try {
+        return new URL(url).hostname.toLowerCase() === 'adashboard.info';
+    } catch {
+        return false;
+    }
+}
+
 function populateUrlHotkeys() {
     const container = document.getElementById('urlHotkeysList');
     if (!container) return;
@@ -5967,6 +5976,7 @@ function populateUrlHotkeys() {
                     <span class="accordion-name" id="urlhotkey_${index}_header_name">${escapeHtml(urlHotkeyLabel(entry.url, index))}</span>
                 </div>
                 <div class="accordion-header-actions">
+                    <span class="accordion-hotkey-badge" id="urlhotkey_${index}_uploadBadge" style="${entry.uploadClipboard ? '' : 'display:none'}">${t('dynamic.urlHotkey.uploadClipboardBadge')}</span>
                     <span class="accordion-hotkey-badge" id="urlhotkey_${index}_hotkeyBadge" style="${hotkeyDisplay ? '' : 'display:none'}">[${hotkeyDisplay}]</span>
                     <button type="button" id="urlhotkey_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('urlhotkey_${index}_removeBtn', () => removeUrlHotkey(${index}))" style="margin-bottom: 0;">${t('common.remove')}</button>
                 </div>
@@ -5975,13 +5985,17 @@ function populateUrlHotkeys() {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                     <div>
                         <label>${t('dynamic.urlHotkey.targetLabel')}</label>
-                        <input type="text" id="urlhotkey_${index}_url" value="${escapeHtml(entry.url || '')}" placeholder="${t('dynamic.urlHotkey.urlPlaceholder')}" oninput="updateUrlHotkeyHeaderName(${index})">
+                        <input type="text" id="urlhotkey_${index}_url" value="${escapeHtml(entry.url || '')}" placeholder="${t('dynamic.urlHotkey.urlPlaceholder')}" oninput="updateUrlHotkeyHeaderName(${index}); updateUrlHotkeyUploadClipboardVisibility(${index})">
                     </div>
                     <div>
                         <label>${t('common.hotkeyLabel')}</label>
                         <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`urlhotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.urlHotkey.hotkeyPlaceholder'))}</div>
                     </div>
                 </div>
+                <label id="urlhotkey_${index}_uploadClipboardRow" style="display: ${isAdashboardUrl(entry.url) ? 'block' : 'none'}; margin-top: 8px;">
+                    <input type="checkbox" id="urlhotkey_${index}_uploadClipboard" ${entry.uploadClipboard ? 'checked' : ''} onchange="refreshUrlHotkeyBadges()">
+                    <span class="label-body">${t('dynamic.urlHotkey.uploadClipboardLabel')}</span>
+                </label>
             </div>
         `;
         container.appendChild(row);
@@ -5997,7 +6011,8 @@ function addUrlHotkey(presetUrl) {
 
     currentGlobalSettings.urlHotkeys.push({
         hotkey: null,
-        url: presetUrl || ''
+        url: presetUrl || '',
+        uploadClipboard: false
     });
     markAsChanged();
 
@@ -6031,6 +6046,19 @@ function updateUrlHotkeyHeaderName(index) {
     }
 }
 
+// Hides the upload-clipboard checkbox (and unchecks it) once the URL is edited away from aDashboard, so a stale checked box can't silently apply to an incompatible URL.
+function updateUrlHotkeyUploadClipboardVisibility(index) {
+    const urlInput = document.getElementById(`urlhotkey_${index}_url`);
+    const row = document.getElementById(`urlhotkey_${index}_uploadClipboardRow`);
+    const checkbox = document.getElementById(`urlhotkey_${index}_uploadClipboard`);
+    if (!urlInput || !row || !checkbox) return;
+
+    const eligible = isAdashboardUrl(urlInput.value);
+    row.style.display = eligible ? 'block' : 'none';
+    if (!eligible) checkbox.checked = false;
+    refreshUrlHotkeyBadges();
+}
+
 function toggleUrlHotkeyAccordion(index) {
     toggleAccordion('#urlHotkeysList', index);
 }
@@ -6041,9 +6069,11 @@ function saveUrlHotkeys() {
     currentGlobalSettings.urlHotkeys.forEach((entry, index) => {
         const url = document.getElementById(`urlhotkey_${index}_url`);
         const hotkey = document.getElementById(`urlhotkey_${index}_hotkey`);
+        const uploadClipboard = document.getElementById(`urlhotkey_${index}_uploadClipboard`);
 
         if (url) entry.url = url.value.trim();
         if (hotkey) entry.hotkey = hotkey.value || null;
+        if (uploadClipboard) entry.uploadClipboard = uploadClipboard.checked && isAdashboardUrl(entry.url);
     });
 }
 
@@ -6053,12 +6083,18 @@ function refreshUrlHotkeyBadges() {
         const index = accordion.dataset.index;
         const input = document.getElementById(`urlhotkey_${index}_hotkey`);
         const badge = document.getElementById(`urlhotkey_${index}_hotkeyBadge`);
-        if (!input || !badge) return;
+        if (input && badge) {
+            const value = input.value.trim();
+            const display = value && value !== 'Press keys...' && value !== 'Waiting for input...' ? value : '';
+            badge.textContent = display ? `[${display}]` : '';
+            badge.style.display = display ? '' : 'none';
+        }
 
-        const value = input.value.trim();
-        const display = value && value !== 'Press keys...' && value !== 'Waiting for input...' ? value : '';
-        badge.textContent = display ? `[${display}]` : '';
-        badge.style.display = display ? '' : 'none';
+        const uploadCheckbox = document.getElementById(`urlhotkey_${index}_uploadClipboard`);
+        const uploadBadge = document.getElementById(`urlhotkey_${index}_uploadBadge`);
+        if (uploadCheckbox && uploadBadge) {
+            uploadBadge.style.display = uploadCheckbox.checked ? '' : 'none';
+        }
     });
 }
 

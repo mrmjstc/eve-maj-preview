@@ -139,6 +139,8 @@
   "dynamic.urlHotkey.defaultLabelPrefix": "Горячая клавиша URL ",
   "dynamic.urlHotkey.hotkeyPlaceholder": "например, LWin+M",
   "dynamic.urlHotkey.targetLabel": "URL-адрес",
+  "dynamic.urlHotkey.uploadClipboardBadge": "[Буфер обмена]",
+  "dynamic.urlHotkey.uploadClipboardLabel": "Загрузить содержимое буфера обмена (dscan/local)",
   "dynamic.urlHotkey.urlPlaceholder": "https://example.com",
   "dynamic.windowFilter.classesLabel": "Классы окон (необязательно, через запятую)",
   "dynamic.windowFilter.classesPlaceholder": "например, trinityWindow",

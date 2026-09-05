@@ -956,6 +956,27 @@ pub fn shellOpen(target: [*:0]const u8, workdir: ?[*:0]const u8) bool {
     return @intFromPtr(result) > 32;
 }
 
+pub extern "user32" fn OpenClipboard(hWndNewOwner: ?HWND) callconv(.c) BOOL;
+pub extern "user32" fn CloseClipboard() callconv(.c) BOOL;
+pub extern "user32" fn GetClipboardData(uFormat: UINT) callconv(.c) ?HANDLE;
+pub extern "kernel32" fn GlobalLock(hMem: HANDLE) callconv(.c) ?*anyopaque;
+pub extern "kernel32" fn GlobalUnlock(hMem: HANDLE) callconv(.c) BOOL;
+
+pub const CF_TEXT: UINT = 1;
+
+/// Caller-owned copy of the clipboard's CF_TEXT (ANSI, matching this app's Win32 surface) content, or null if unavailable/non-text.
+pub fn getClipboardText(allocator: std.mem.Allocator) ?[]u8 {
+    if (!toBool(OpenClipboard(null))) return null;
+    defer _ = CloseClipboard();
+
+    const handle = GetClipboardData(CF_TEXT) orelse return null;
+    const ptr = GlobalLock(handle) orelse return null;
+    defer _ = GlobalUnlock(handle);
+
+    const text: [*:0]const u8 = @ptrCast(ptr);
+    return allocator.dupe(u8, std.mem.span(text)) catch null;
+}
+
 pub const GUID = extern struct {
     Data1: u32,
     Data2: u16,

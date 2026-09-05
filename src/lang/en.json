@@ -139,6 +139,8 @@
   "dynamic.urlHotkey.defaultLabelPrefix": "URL Hotkey ",
   "dynamic.urlHotkey.hotkeyPlaceholder": "e.g., LWin+M",
   "dynamic.urlHotkey.targetLabel": "URL",
+  "dynamic.urlHotkey.uploadClipboardBadge": "[Clipboard]",
+  "dynamic.urlHotkey.uploadClipboardLabel": "Upload Clipboard Content (dscan/local)",
   "dynamic.urlHotkey.urlPlaceholder": "https://example.com",
   "dynamic.windowFilter.classesLabel": "Window Class Names (optional, comma-separated)",
   "dynamic.windowFilter.classesPlaceholder": "e.g., trinityWindow",

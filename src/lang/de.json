@@ -139,6 +139,8 @@
   "dynamic.urlHotkey.defaultLabelPrefix": "URL-Hotkey ",
   "dynamic.urlHotkey.hotkeyPlaceholder": "z. B. LWin+M",
   "dynamic.urlHotkey.targetLabel": "URL",
+  "dynamic.urlHotkey.uploadClipboardBadge": "[Zwischenablage]",
+  "dynamic.urlHotkey.uploadClipboardLabel": "Zwischenablage hochladen (dscan/local)",
   "dynamic.urlHotkey.urlPlaceholder": "https://example.com",
   "dynamic.windowFilter.classesLabel": "Fensterklassen-Namen (optional, kommagetrennt)",
   "dynamic.windowFilter.classesPlaceholder": "z. B. trinityWindow",

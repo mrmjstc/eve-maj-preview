@@ -945,7 +945,7 @@ Some settings persist across all profiles and are configured in `profiles\global
   ],
   "urlHotkeys": [
     { "hotkey": "LWin+M", "url": "https://evemaps.dotlan.net/" },
-    { "hotkey": "LWin+I", "url": "https://adashboard.info/intel" }
+    { "hotkey": "LWin+I", "url": "https://adashboard.info/intel", "uploadClipboard": true }
   ],
   "hotkeyCycleAllClientsForward": "F22",
   "hotkeyCycleAllClientsBackward": "F23",
@@ -962,6 +962,7 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **profileSwitchHotkeys**: List of hotkeys bound directly to a specific target profile (`targetProfile` is the profile's filename, e.g. `"pvp.json"`). Unlike `hotkeyNextProfile`/`hotkeyPreviousProfile`, each binding jumps straight to its configured profile instead of cycling. These stay active regardless of which profile is currently loaded, and can be edited from the config dialog's Hotkeys tab ("Profile Switch Hotkeys" section).
 - **appHotkeys**: List of hotkeys bound to an external (non-EVE) application, matched by its executable name (e.g. `"Discord.exe"`) at press time. Picked from a dropdown of currently running windows in the config dialog's Hotkeys tab ("App Hotkeys" section, uses the same window picker as Window Filters). If more than one window matches the executable, the frontmost one is activated; if none match, the hotkey is a no-op.
 - **urlHotkeys**: List of hotkeys that open a URL in the OS default browser (via `ShellExecute`, same as clicking a link). Editable from the config dialog's Hotkeys tab ("URL Hotkeys" section), which also offers one-click presets for [Dotlan](https://evemaps.dotlan.net/) and [aDashboard Intel](https://adashboard.info/intel) alongside free-form custom URLs.
+  - **uploadClipboard**: If `true`, instead of just opening `url`, the current clipboard text is POSTed to it first as `application/x-www-form-urlencoded` (field `Paste anything`, matching aDashboard's paste-intake form and ShareX's custom uploader for it), and the page it redirects to is opened instead. Falls back to opening the plain `url` if the clipboard has no text or the upload fails. Runs on a background thread so the app doesn't freeze during the request; a second press while one is still in flight is ignored rather than starting an overlapping upload. The config dialog's checkbox for this only appears when `url`'s host is `adashboard.info`, since the POST body shape is specific to that site's form.
 - **hotkeyCycleAllClientsForward** / **hotkeyCycleAllClientsBackward**: Cycle through every currently logged-in EVE client, ordered by the profile's Characters list (any client not yet added there follows after, in detection order), regardless of which profile is loaded or how hotkey groups are defined. Editable from the config dialog's Hotkeys tab ("Global Client Cycling" section).
 - **cycleAllClientsRespectExclusions**: If `true`, characters excluded via Shift+Click (or `hotkeyToggleExclusion`) are skipped when cycling all clients, whether or not they belong to a hotkey group (default: `false`, cycles through every client)
 - **hotkeyReturnToLastApp**: Refocus whichever non-EVE window last held focus (e.g. jump back to your browser or Discord after switching into EVE). Stays active regardless of which profile is loaded; editable from the config dialog's Hotkeys tab ("Window Focus" section).
