@@ -902,8 +902,7 @@ Detects a tracked character falling behind while the rest of the group jumps tog
     "hotkeySuspend": null,
     "hotkeyCycleNotified": null,
     "hotkeyPreviousNotified": null,
-    "hotkeyMoveToSavedPositions": null,
-    "hotkeyReturnToLastApp": null
+    "hotkeyMoveToSavedPositions": null
   }
 }
 ```
@@ -924,7 +923,6 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 - **hotkeyCycleNotified**: Cycle forward to the character that most recently triggered a notification (see [Notified-Character Cycling](#notified-character-cycling))
 - **hotkeyPreviousNotified**: Cycle backward through recently notified characters
 - **hotkeyMoveToSavedPositions**: Move all EVE client windows to their saved positions
-- **hotkeyReturnToLastApp**: Refocus whichever non-EVE window last held focus (e.g. jump back to your browser or Discord after switching into EVE)
 **Virtual Key Codes**: See [virtual_keys.zig](src/virtual_keys.zig) for full list
 
 **Modifier Combos**: Any global hotkey field, hotkey group key, per-character hotkey, or profile-switch hotkey can be prefixed with one or more modifiers, combined with `+`: `Ctrl`/`Control`, `Alt`, `Shift`, `Win`/`LWin`/`RWin` (e.g. `"Ctrl+Alt+F9"`).
@@ -942,9 +940,17 @@ Some settings persist across all profiles and are configured in `profiles\global
     { "hotkey": "F13", "targetProfile": "pvp.json" },
     { "hotkey": "F14", "targetProfile": "mining.json" }
   ],
+  "appHotkeys": [
+    { "hotkey": "LWin+D", "executableName": "Discord.exe" }
+  ],
+  "urlHotkeys": [
+    { "hotkey": "LWin+M", "url": "https://evemaps.dotlan.net/" },
+    { "hotkey": "LWin+I", "url": "https://adashboard.info/intel" }
+  ],
   "hotkeyCycleAllClientsForward": "F22",
   "hotkeyCycleAllClientsBackward": "F23",
   "cycleAllClientsRespectExclusions": false,
+  "hotkeyReturnToLastApp": "LWin+Z",
   "disableUpdateChecks": false
 }
 ```
@@ -954,8 +960,11 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **hotkeyNextProfile**: Hotkey to cycle to next profile (in directory enumeration order - typically alphabetical, but not guaranteed)
 - **hotkeyPreviousProfile**: Hotkey to cycle to previous profile
 - **profileSwitchHotkeys**: List of hotkeys bound directly to a specific target profile (`targetProfile` is the profile's filename, e.g. `"pvp.json"`). Unlike `hotkeyNextProfile`/`hotkeyPreviousProfile`, each binding jumps straight to its configured profile instead of cycling. These stay active regardless of which profile is currently loaded, and can be edited from the config dialog's Hotkeys tab ("Profile Switch Hotkeys" section).
-- **hotkeyCycleAllClientsForward** / **hotkeyCycleAllClientsBackward**: Cycle through every currently logged-in EVE client, in the order they were detected, regardless of which profile is loaded or how hotkey groups are defined. Editable from the config dialog's Hotkeys tab ("Cycle All Clients" section).
+- **appHotkeys**: List of hotkeys bound to an external (non-EVE) application, matched by its executable name (e.g. `"Discord.exe"`) at press time. Picked from a dropdown of currently running windows in the config dialog's Hotkeys tab ("App Hotkeys" section, uses the same window picker as Window Filters). If more than one window matches the executable, the frontmost one is activated; if none match, the hotkey is a no-op.
+- **urlHotkeys**: List of hotkeys that open a URL in the OS default browser (via `ShellExecute`, same as clicking a link). Editable from the config dialog's Hotkeys tab ("URL Hotkeys" section), which also offers one-click presets for [Dotlan](https://evemaps.dotlan.net/) and [aDashboard Intel](https://adashboard.info/intel) alongside free-form custom URLs.
+- **hotkeyCycleAllClientsForward** / **hotkeyCycleAllClientsBackward**: Cycle through every currently logged-in EVE client, ordered by the profile's Characters list (any client not yet added there follows after, in detection order), regardless of which profile is loaded or how hotkey groups are defined. Editable from the config dialog's Hotkeys tab ("Global Client Cycling" section).
 - **cycleAllClientsRespectExclusions**: If `true`, characters excluded via Shift+Click (or `hotkeyToggleExclusion`) are skipped when cycling all clients, whether or not they belong to a hotkey group (default: `false`, cycles through every client)
+- **hotkeyReturnToLastApp**: Refocus whichever non-EVE window last held focus (e.g. jump back to your browser or Discord after switching into EVE). Stays active regardless of which profile is loaded; editable from the config dialog's Hotkeys tab ("Window Focus" section).
 - **disableUpdateChecks**: Set to `true` to disable automatic update checks on startup (default: `false`)
 - **characterIdMap**: Internal mapping of character names to session IDs (managed automatically)
 

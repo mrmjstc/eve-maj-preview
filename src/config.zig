@@ -276,6 +276,52 @@ pub const ProfileSwitchHotkey = struct {
     }
 };
 
+/// Binding of a hotkey to an external application, matched by executable name at press time (mirrors AutoHotkey's ahk_exe).
+pub const AppHotkey = struct {
+    hotkey: ?u32,
+    executableName: []const u8,
+
+    pub fn deinit(self: *AppHotkey, allocator: std.mem.Allocator) void {
+        allocator.free(self.executableName);
+    }
+
+    pub const Wire = struct {
+        hotkey: ?VkCode = null,
+        executableName: []const u8 = "",
+    };
+
+    pub fn toWire(self: AppHotkey) Wire {
+        return .{ .hotkey = wrapVk(self.hotkey), .executableName = self.executableName };
+    }
+
+    pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !AppHotkey {
+        return .{ .hotkey = unwrapVk(w.hotkey), .executableName = try allocator.dupe(u8, w.executableName) };
+    }
+};
+
+/// Binding of a hotkey to a URL, opened in the OS default browser via ShellExecute at press time.
+pub const UrlHotkey = struct {
+    hotkey: ?u32,
+    url: []const u8,
+
+    pub fn deinit(self: *UrlHotkey, allocator: std.mem.Allocator) void {
+        allocator.free(self.url);
+    }
+
+    pub const Wire = struct {
+        hotkey: ?VkCode = null,
+        url: []const u8 = "",
+    };
+
+    pub fn toWire(self: UrlHotkey) Wire {
+        return .{ .hotkey = wrapVk(self.hotkey), .url = self.url };
+    }
+
+    pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !UrlHotkey {
+        return .{ .hotkey = unwrapVk(w.hotkey), .url = try allocator.dupe(u8, w.url) };
+    }
+};
+
 pub const GlobalSettings = struct {
     allocator: std.mem.Allocator,
     lastUsedProfile: []const u8,
@@ -283,11 +329,14 @@ pub const GlobalSettings = struct {
     hotkeyNextProfile: ?u32,
     hotkeyPreviousProfile: ?u32,
     profileSwitchHotkeys: std.ArrayList(ProfileSwitchHotkey),
+    appHotkeys: std.ArrayList(AppHotkey),
+    urlHotkeys: std.ArrayList(UrlHotkey),
     hotkeyCycleAllClientsForward: ?u32,
     hotkeyCycleAllClientsBackward: ?u32,
     cycleAllClientsRespectExclusions: bool,
     hotkeyCycleNotLoggedInForward: ?u32,
     hotkeyCycleNotLoggedInBackward: ?u32,
+    hotkeyReturnToLastApp: ?u32,
     characterIdMap: std.StringHashMap([]const u8),
     disableUpdateChecks: bool,
     runOnStartup: bool,
@@ -304,11 +353,14 @@ pub const GlobalSettings = struct {
             .hotkeyNextProfile = null,
             .hotkeyPreviousProfile = null,
             .profileSwitchHotkeys = std.ArrayList(ProfileSwitchHotkey).empty,
+            .appHotkeys = std.ArrayList(AppHotkey).empty,
+            .urlHotkeys = std.ArrayList(UrlHotkey).empty,
             .hotkeyCycleAllClientsForward = null,
             .hotkeyCycleAllClientsBackward = null,
             .cycleAllClientsRespectExclusions = false,
             .hotkeyCycleNotLoggedInForward = null,
             .hotkeyCycleNotLoggedInBackward = null,
+            .hotkeyReturnToLastApp = null,
             .characterIdMap = std.StringHashMap([]const u8).init(allocator),
             .disableUpdateChecks = false,
             .runOnStartup = false,
@@ -330,6 +382,16 @@ pub const GlobalSettings = struct {
             psh.deinit(self.allocator);
         }
         self.profileSwitchHotkeys.deinit(self.allocator);
+
+        for (self.appHotkeys.items) |*ah| {
+            ah.deinit(self.allocator);
+        }
+        self.appHotkeys.deinit(self.allocator);
+
+        for (self.urlHotkeys.items) |*uh| {
+            uh.deinit(self.allocator);
+        }
+        self.urlHotkeys.deinit(self.allocator);
 
         for (self.oreTable.items) |*entry| {
             entry.deinit(self.allocator);
@@ -523,7 +585,10 @@ pub const GlobalSettings = struct {
         cycleAllClientsRespectExclusions: bool = false,
         hotkeyCycleNotLoggedInForward: ?VkCode = null,
         hotkeyCycleNotLoggedInBackward: ?VkCode = null,
+        hotkeyReturnToLastApp: ?VkCode = null,
         profileSwitchHotkeys: []const ProfileSwitchHotkey.Wire = &.{},
+        appHotkeys: []const AppHotkey.Wire = &.{},
+        urlHotkeys: []const UrlHotkey.Wire = &.{},
         characterIdMap: StringMapWire = .{},
         disableUpdateChecks: bool = false,
         runOnStartup: bool = false,
@@ -535,6 +600,12 @@ pub const GlobalSettings = struct {
     pub fn toWire(self: *const GlobalSettings, allocator: std.mem.Allocator) !Wire {
         const psh = try allocator.alloc(ProfileSwitchHotkey.Wire, self.profileSwitchHotkeys.items.len);
         for (self.profileSwitchHotkeys.items, 0..) |item, i| psh[i] = item.toWire();
+
+        const app_hotkeys = try allocator.alloc(AppHotkey.Wire, self.appHotkeys.items.len);
+        for (self.appHotkeys.items, 0..) |item, i| app_hotkeys[i] = item.toWire();
+
+        const url_hotkeys = try allocator.alloc(UrlHotkey.Wire, self.urlHotkeys.items.len);
+        for (self.urlHotkeys.items, 0..) |item, i| url_hotkeys[i] = item.toWire();
 
         const ore = try allocator.alloc(OrePriceEntry.Wire, self.oreTable.items.len);
         for (self.oreTable.items, 0..) |item, i| ore[i] = item.toWire();
@@ -556,7 +627,10 @@ pub const GlobalSettings = struct {
             .cycleAllClientsRespectExclusions = self.cycleAllClientsRespectExclusions,
             .hotkeyCycleNotLoggedInForward = wrapVk(self.hotkeyCycleNotLoggedInForward),
             .hotkeyCycleNotLoggedInBackward = wrapVk(self.hotkeyCycleNotLoggedInBackward),
+            .hotkeyReturnToLastApp = wrapVk(self.hotkeyReturnToLastApp),
             .profileSwitchHotkeys = psh,
+            .appHotkeys = app_hotkeys,
+            .urlHotkeys = url_hotkeys,
             .characterIdMap = .{ .entries = entries },
             .disableUpdateChecks = self.disableUpdateChecks,
             .runOnStartup = self.runOnStartup,
@@ -582,12 +656,21 @@ pub const GlobalSettings = struct {
         settings.cycleAllClientsRespectExclusions = w.cycleAllClientsRespectExclusions;
         settings.hotkeyCycleNotLoggedInForward = unwrapVk(w.hotkeyCycleNotLoggedInForward);
         settings.hotkeyCycleNotLoggedInBackward = unwrapVk(w.hotkeyCycleNotLoggedInBackward);
+        settings.hotkeyReturnToLastApp = unwrapVk(w.hotkeyReturnToLastApp);
         settings.disableUpdateChecks = w.disableUpdateChecks;
         settings.runOnStartup = w.runOnStartup;
         settings.alwaysOnTop = w.alwaysOnTop;
 
         for (w.profileSwitchHotkeys) |item_wire| {
             try settings.profileSwitchHotkeys.append(allocator, try ProfileSwitchHotkey.fromWire(item_wire, allocator));
+        }
+
+        for (w.appHotkeys) |item_wire| {
+            try settings.appHotkeys.append(allocator, try AppHotkey.fromWire(item_wire, allocator));
+        }
+
+        for (w.urlHotkeys) |item_wire| {
+            try settings.urlHotkeys.append(allocator, try UrlHotkey.fromWire(item_wire, allocator));
         }
 
         for (w.oreTable) |item_wire| {
@@ -1719,7 +1802,6 @@ pub const Config = struct {
     hotkeyCycleNotified: ?u32 = null,
     hotkeyPreviousNotified: ?u32 = null,
     hotkeyMoveToSavedPositions: ?u32 = null,
-    hotkeyReturnToLastApp: ?u32 = null,
 
     // profile_name/allocator/generatedColorCache/generatedCharacterColorCache are deliberately absent — either derived from the profile filename or pure runtime state, never persisted.
     pub const Wire = struct {
@@ -1764,7 +1846,6 @@ pub const Config = struct {
         hotkeyCycleNotified: ?VkCode = null,
         hotkeyPreviousNotified: ?VkCode = null,
         hotkeyMoveToSavedPositions: ?VkCode = null,
-        hotkeyReturnToLastApp: ?VkCode = null,
     };
 
     pub fn toWire(self: *const Config, allocator: std.mem.Allocator) !Wire {
@@ -1821,7 +1902,6 @@ pub const Config = struct {
                 .hotkeyCycleNotified = wrapVk(self.hotkeyCycleNotified),
                 .hotkeyPreviousNotified = wrapVk(self.hotkeyPreviousNotified),
                 .hotkeyMoveToSavedPositions = wrapVk(self.hotkeyMoveToSavedPositions),
-                .hotkeyReturnToLastApp = wrapVk(self.hotkeyReturnToLastApp),
             },
         };
     }
@@ -1862,7 +1942,6 @@ pub const Config = struct {
         cfg.hotkeyCycleNotified = unwrapVk(w.hotkeys.hotkeyCycleNotified);
         cfg.hotkeyPreviousNotified = unwrapVk(w.hotkeys.hotkeyPreviousNotified);
         cfg.hotkeyMoveToSavedPositions = unwrapVk(w.hotkeys.hotkeyMoveToSavedPositions);
-        cfg.hotkeyReturnToLastApp = unwrapVk(w.hotkeys.hotkeyReturnToLastApp);
 
         cfg.chatlog.deinit(allocator);
         cfg.chatlog = try ChatlogConfig.fromWire(w.chatlog, allocator);
@@ -3656,7 +3735,6 @@ pub const Config = struct {
             .hotkeyCycleNotified = null,
             .hotkeyPreviousNotified = null,
             .hotkeyMoveToSavedPositions = null,
-            .hotkeyReturnToLastApp = null,
         };
     }
 

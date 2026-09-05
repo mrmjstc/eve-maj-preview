@@ -68,6 +68,8 @@ function refreshDynamicSections() {
     saveQuickGroups();
     saveNotificationTypes();
     saveProfileSwitchHotkeys();
+    saveAppHotkeys();
+    saveUrlHotkeys();
     saveOreTable();
 
     populateWindowFilters();
@@ -77,6 +79,8 @@ function refreshDynamicSections() {
     populateQuickGroups();
     populateNotificationTypes();
     populateProfileSwitchHotkeys();
+    populateAppHotkeys();
+    populateUrlHotkeys();
     populateOreTable();
 }
 
@@ -269,7 +273,6 @@ const CONFIG_SCHEMA = [
     { id: 'hotkeyToggleVisibility', path: 'hotkeys.hotkeyToggleVisibility', transform: 'vkhex' },
     { id: 'hotkeyToggleAutoMinimize', path: 'hotkeys.hotkeyToggleAutoMinimize', transform: 'vkhex' },
     { id: 'hotkeyMoveToSavedPositions', path: 'hotkeys.hotkeyMoveToSavedPositions', transform: 'vkhex' },
-    { id: 'hotkeyReturnToLastApp', path: 'hotkeys.hotkeyReturnToLastApp', transform: 'vkhex' },
     { id: 'hotkeyToggleExclusion', path: 'hotkeys.hotkeyToggleExclusion', transform: 'vkhex' },
     { id: 'hotkeyNextExcluded', path: 'hotkeys.hotkeyNextExcluded', transform: 'vkhex' },
     { id: 'hotkeyPreviousExcluded', path: 'hotkeys.hotkeyPreviousExcluded', transform: 'vkhex' },
@@ -3329,6 +3332,8 @@ async function saveConfigurationImpl() {
         saveQuickGroups();
         saveNotificationTypes();
         saveProfileSwitchHotkeys();
+        saveAppHotkeys();
+        saveUrlHotkeys();
         saveOreTable();
 
         if (!currentGlobalSettings) currentGlobalSettings = {};
@@ -3342,6 +3347,7 @@ async function saveConfigurationImpl() {
         currentGlobalSettings.runOnStartup = getFieldValue('runOnStartup');
         currentGlobalSettings.hotkeyCycleNotLoggedInForward = getFieldValue('hotkeyCycleNotLoggedInForward') || null;
         currentGlobalSettings.hotkeyCycleNotLoggedInBackward = getFieldValue('hotkeyCycleNotLoggedInBackward') || null;
+        currentGlobalSettings.hotkeyReturnToLastApp = getFieldValue('hotkeyReturnToLastApp') || null;
     }
 
     const hotkeyConflicts = updateHotkeyConflictHighlights();
@@ -3557,6 +3563,8 @@ function updateHotkeyConflictHighlights() {
     refreshCharacterHotkeyBadges();
     refreshHotkeyGroupBadges();
     refreshQuickGroupBadges();
+    refreshAppHotkeyBadges();
+    refreshUrlHotkeyBadges();
     return conflicts;
 }
 
@@ -3566,6 +3574,21 @@ function refreshCharacterHotkeyBadges() {
         const index = row.dataset.index;
         const input = document.getElementById(`char_${index}_hotkey`);
         const badge = document.getElementById(`char_${index}_hotkeyBadge`);
+        if (!input || !badge) return;
+
+        const value = input.value.trim();
+        const display = value && value !== 'Press keys...' && value !== 'Waiting for input...' ? value : '';
+        badge.textContent = display ? `[${display}]` : '';
+        badge.style.display = display ? '' : 'none';
+    });
+}
+
+// Mirrors each app hotkey's input into the badge shown on its (possibly collapsed) accordion header.
+function refreshAppHotkeyBadges() {
+    document.querySelectorAll('#appHotkeysList > .accordion').forEach(accordion => {
+        const index = accordion.dataset.index;
+        const input = document.getElementById(`apphotkey_${index}_hotkey`);
+        const badge = document.getElementById(`apphotkey_${index}_hotkeyBadge`);
         if (!input || !badge) return;
 
         const value = input.value.trim();
@@ -5590,6 +5613,12 @@ async function loadGlobalSettingsFromBackend() {
     if (!currentGlobalSettings.profileSwitchHotkeys) currentGlobalSettings.profileSwitchHotkeys = [];
     await populateProfileSwitchHotkeys();
 
+    if (!currentGlobalSettings.appHotkeys) currentGlobalSettings.appHotkeys = [];
+    populateAppHotkeys();
+
+    if (!currentGlobalSettings.urlHotkeys) currentGlobalSettings.urlHotkeys = [];
+    populateUrlHotkeys();
+
     if (!currentGlobalSettings.oreTable) currentGlobalSettings.oreTable = [];
     populateOreTable();
 
@@ -5603,6 +5632,7 @@ async function loadGlobalSettingsFromBackend() {
     setCheckboxValue('runOnStartup', currentGlobalSettings.runOnStartup);
     setFieldValue('hotkeyCycleNotLoggedInForward', vkHexToFriendly(currentGlobalSettings.hotkeyCycleNotLoggedInForward));
     setFieldValue('hotkeyCycleNotLoggedInBackward', vkHexToFriendly(currentGlobalSettings.hotkeyCycleNotLoggedInBackward));
+    setFieldValue('hotkeyReturnToLastApp', vkHexToFriendly(currentGlobalSettings.hotkeyReturnToLastApp));
 
     const advancedModeEnabled = !!currentGlobalSettings.advancedMode;
     const advancedToggle = document.getElementById('advancedModeToggle');
@@ -5756,6 +5786,279 @@ function saveProfileSwitchHotkeys() {
 
         if (target) entry.targetProfile = target.value || '';
         if (hotkey) entry.hotkey = hotkey.value || null;
+    });
+}
+
+function appHotkeyLabel(executableName, index) {
+    return executableName ? executableName.replace(/\.exe$/i, '') : `${t('dynamic.appHotkey.defaultLabelPrefix')}${index + 1}`;
+}
+
+function populateAppHotkeys() {
+    const container = document.getElementById('appHotkeysList');
+    if (!container) return;
+
+    const entries = currentGlobalSettings?.appHotkeys || [];
+
+    container.innerHTML = '';
+    entries.forEach((entry, index) => {
+        const hotkeyDisplay = vkHexToFriendly(entry.hotkey) || '';
+        const row = document.createElement('div');
+        row.className = 'accordion';
+        row.dataset.index = index;
+        row.innerHTML = `
+            <div class="accordion-header" onclick="toggleAppHotkeyAccordion(${index})">
+                <div class="accordion-title">
+                    <span class="accordion-toggle"></span>
+                    <span class="accordion-name" id="apphotkey_${index}_header_name">${escapeHtml(appHotkeyLabel(entry.executableName, index))}</span>
+                </div>
+                <div class="accordion-header-actions">
+                    <span class="accordion-hotkey-badge" id="apphotkey_${index}_hotkeyBadge" style="${hotkeyDisplay ? '' : 'display:none'}">[${hotkeyDisplay}]</span>
+                    <button type="button" id="apphotkey_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('apphotkey_${index}_removeBtn', () => removeAppHotkey(${index}))" style="margin-bottom: 0;">${t('common.remove')}</button>
+                </div>
+            </div>
+            <div class="accordion-content">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <div>
+                        <label>${t('dynamic.appHotkey.targetLabel')}</label>
+                        <input type="text" id="apphotkey_${index}_exe" value="${escapeHtml(entry.executableName || '')}" placeholder="${t('dynamic.appHotkey.exePlaceholder')}" oninput="updateAppHotkeyHeaderName(${index})">
+                    </div>
+                    <div>
+                        <label>${t('common.hotkeyLabel')}</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`apphotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.appHotkey.hotkeyPlaceholder'))}</div>
+                    </div>
+                </div>
+                <button type="button" id="apphotkey_${index}_pickBtn" onclick="pickRunningWindowForAppHotkey(${index})" style="width: 100%; margin-top: 8px;">${t('button.pick-running-window.label')}</button>
+                <select id="apphotkey_${index}_picker" style="display: none; width: 100%; margin-top: 8px;" onchange="applyPickedWindowForAppHotkey(${index})"></select>
+            </div>
+        `;
+        container.appendChild(row);
+    });
+
+    updateHotkeyConflictHighlights();
+}
+
+function addAppHotkey() {
+    if (!currentGlobalSettings) currentGlobalSettings = {};
+    if (!currentGlobalSettings.appHotkeys) currentGlobalSettings.appHotkeys = [];
+    saveAppHotkeys();
+
+    currentGlobalSettings.appHotkeys.push({
+        hotkey: null,
+        executableName: ''
+    });
+    markAsChanged();
+
+    populateAppHotkeys();
+    const newIndex = currentGlobalSettings.appHotkeys.length - 1;
+    toggleAppHotkeyAccordion(newIndex);
+
+    const contentPanel = document.getElementById('content-panel');
+    if (contentPanel) {
+        setTimeout(() => {
+            contentPanel.scrollTop = contentPanel.scrollHeight;
+        }, 100);
+    }
+}
+
+function removeAppHotkey(index) {
+    if (currentGlobalSettings?.appHotkeys && currentGlobalSettings.appHotkeys[index]) {
+        saveAppHotkeys();
+        currentGlobalSettings.appHotkeys.splice(index, 1);
+        markAsChanged();
+        populateAppHotkeys();
+    }
+}
+
+function updateAppHotkeyHeaderName(index) {
+    const exeInput = document.getElementById(`apphotkey_${index}_exe`);
+    const headerName = document.getElementById(`apphotkey_${index}_header_name`);
+
+    if (exeInput && headerName) {
+        headerName.textContent = appHotkeyLabel(exeInput.value, index);
+    }
+}
+
+function toggleAppHotkeyAccordion(index) {
+    toggleAccordion('#appHotkeysList', index);
+}
+
+function saveAppHotkeys() {
+    if (!currentGlobalSettings?.appHotkeys) return;
+
+    currentGlobalSettings.appHotkeys.forEach((entry, index) => {
+        const exe = document.getElementById(`apphotkey_${index}_exe`);
+        const hotkey = document.getElementById(`apphotkey_${index}_hotkey`);
+
+        if (exe) entry.executableName = exe.value.trim();
+        if (hotkey) entry.hotkey = hotkey.value || null;
+    });
+}
+
+async function pickRunningWindowForAppHotkey(index) {
+    const btn = document.getElementById(`apphotkey_${index}_pickBtn`);
+    const select = document.getElementById(`apphotkey_${index}_picker`);
+    if (btn) { btn.disabled = true; btn.textContent = t('status.scanningLabel'); }
+
+    try {
+        let windows = [];
+        if (typeof webui !== 'undefined') {
+            const result = await webui.call('getRunningWindows');
+            windows = JSON.parse(result);
+        }
+
+        if (windows.length === 0) {
+            showStatus(t('status.noRunningWindows'), 'error');
+            return;
+        }
+
+        select.innerHTML = `<option value="">${escapeHtml(t('dynamic.windowFilter.pickerDefaultOption'))}</option>` +
+            windows.map((w, i) => `<option value="${i}">${escapeHtml(w.title)} — ${escapeHtml(w.exe)}</option>`).join('');
+        select.dataset.windows = JSON.stringify(windows);
+        select.style.display = '';
+    } catch (error) {
+        logError('Failed to scan running windows:', error);
+        showStatus(t('status.scanClientsFailedPrefix') + error.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = t('button.pick-running-window.label'); }
+    }
+}
+
+function applyPickedWindowForAppHotkey(index) {
+    const select = document.getElementById(`apphotkey_${index}_picker`);
+    if (!select || select.value === '') return;
+    const windows = JSON.parse(select.dataset.windows || '[]');
+    const chosen = windows[parseInt(select.value, 10)];
+    if (!chosen) return;
+
+    const exeInput = document.getElementById(`apphotkey_${index}_exe`);
+    if (exeInput) exeInput.value = chosen.exe;
+
+    updateAppHotkeyHeaderName(index);
+    select.style.display = 'none';
+    select.value = '';
+}
+
+function urlHotkeyLabel(url, index) {
+    if (!url) return `${t('dynamic.urlHotkey.defaultLabelPrefix')}${index + 1}`;
+    try {
+        const parsed = new URL(url);
+        return parsed.hostname + (parsed.pathname !== '/' ? parsed.pathname : '');
+    } catch {
+        return url;
+    }
+}
+
+function populateUrlHotkeys() {
+    const container = document.getElementById('urlHotkeysList');
+    if (!container) return;
+
+    const entries = currentGlobalSettings?.urlHotkeys || [];
+
+    container.innerHTML = '';
+    entries.forEach((entry, index) => {
+        const hotkeyDisplay = vkHexToFriendly(entry.hotkey) || '';
+        const row = document.createElement('div');
+        row.className = 'accordion';
+        row.dataset.index = index;
+        row.innerHTML = `
+            <div class="accordion-header" onclick="toggleUrlHotkeyAccordion(${index})">
+                <div class="accordion-title">
+                    <span class="accordion-toggle"></span>
+                    <span class="accordion-name" id="urlhotkey_${index}_header_name">${escapeHtml(urlHotkeyLabel(entry.url, index))}</span>
+                </div>
+                <div class="accordion-header-actions">
+                    <span class="accordion-hotkey-badge" id="urlhotkey_${index}_hotkeyBadge" style="${hotkeyDisplay ? '' : 'display:none'}">[${hotkeyDisplay}]</span>
+                    <button type="button" id="urlhotkey_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('urlhotkey_${index}_removeBtn', () => removeUrlHotkey(${index}))" style="margin-bottom: 0;">${t('common.remove')}</button>
+                </div>
+            </div>
+            <div class="accordion-content">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <div>
+                        <label>${t('dynamic.urlHotkey.targetLabel')}</label>
+                        <input type="text" id="urlhotkey_${index}_url" value="${escapeHtml(entry.url || '')}" placeholder="${t('dynamic.urlHotkey.urlPlaceholder')}" oninput="updateUrlHotkeyHeaderName(${index})">
+                    </div>
+                    <div>
+                        <label>${t('common.hotkeyLabel')}</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`urlhotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.urlHotkey.hotkeyPlaceholder'))}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.appendChild(row);
+    });
+
+    updateHotkeyConflictHighlights();
+}
+
+function addUrlHotkey(presetUrl) {
+    if (!currentGlobalSettings) currentGlobalSettings = {};
+    if (!currentGlobalSettings.urlHotkeys) currentGlobalSettings.urlHotkeys = [];
+    saveUrlHotkeys();
+
+    currentGlobalSettings.urlHotkeys.push({
+        hotkey: null,
+        url: presetUrl || ''
+    });
+    markAsChanged();
+
+    populateUrlHotkeys();
+    const newIndex = currentGlobalSettings.urlHotkeys.length - 1;
+    toggleUrlHotkeyAccordion(newIndex);
+
+    const contentPanel = document.getElementById('content-panel');
+    if (contentPanel) {
+        setTimeout(() => {
+            contentPanel.scrollTop = contentPanel.scrollHeight;
+        }, 100);
+    }
+}
+
+function removeUrlHotkey(index) {
+    if (currentGlobalSettings?.urlHotkeys && currentGlobalSettings.urlHotkeys[index]) {
+        saveUrlHotkeys();
+        currentGlobalSettings.urlHotkeys.splice(index, 1);
+        markAsChanged();
+        populateUrlHotkeys();
+    }
+}
+
+function updateUrlHotkeyHeaderName(index) {
+    const urlInput = document.getElementById(`urlhotkey_${index}_url`);
+    const headerName = document.getElementById(`urlhotkey_${index}_header_name`);
+
+    if (urlInput && headerName) {
+        headerName.textContent = urlHotkeyLabel(urlInput.value, index);
+    }
+}
+
+function toggleUrlHotkeyAccordion(index) {
+    toggleAccordion('#urlHotkeysList', index);
+}
+
+function saveUrlHotkeys() {
+    if (!currentGlobalSettings?.urlHotkeys) return;
+
+    currentGlobalSettings.urlHotkeys.forEach((entry, index) => {
+        const url = document.getElementById(`urlhotkey_${index}_url`);
+        const hotkey = document.getElementById(`urlhotkey_${index}_hotkey`);
+
+        if (url) entry.url = url.value.trim();
+        if (hotkey) entry.hotkey = hotkey.value || null;
+    });
+}
+
+// Mirrors each URL hotkey's input into the badge shown on its (possibly collapsed) accordion header.
+function refreshUrlHotkeyBadges() {
+    document.querySelectorAll('#urlHotkeysList > .accordion').forEach(accordion => {
+        const index = accordion.dataset.index;
+        const input = document.getElementById(`urlhotkey_${index}_hotkey`);
+        const badge = document.getElementById(`urlhotkey_${index}_hotkeyBadge`);
+        if (!input || !badge) return;
+
+        const value = input.value.trim();
+        const display = value && value !== 'Press keys...' && value !== 'Waiting for input...' ? value : '';
+        badge.textContent = display ? `[${display}]` : '';
+        badge.style.display = display ? '' : 'none';
     });
 }
 

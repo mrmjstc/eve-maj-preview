@@ -880,7 +880,7 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.hotkeys.section.key-bindings.heading">Key Bindings</h3>
+                        <h3 data-i18n="tab.hotkeys.section.key-bindings.heading">Local Hotkeys</h3>
                         <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.hotkeys.section.key-bindings.hint">These hotkeys are local to this profile only — they change when you switch profiles.</p>
 
                         <h4 style="margin-top: 16px;" data-i18n="tab.hotkeys.section.window-actions.heading">Window Actions</h4>
@@ -928,15 +928,6 @@
                                     <input type="text" id="hotkeyMoveToSavedPositions" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+P" data-i18n-title="field.hotkeyMoveToSavedPositions.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyMoveToSavedPositions')" readonly style="flex: 1; margin-bottom: 0;">
                                     <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyMoveToSavedPositions')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyMoveToSavedPositions')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
-                                </div>
-                            </div>
-
-                            <div class="field">
-                                <label for="hotkeyReturnToLastApp" data-i18n="field.hotkeyReturnToLastApp.label">Return to Last App</label>
-                                <div style="display: flex; gap: 8px; align-items: center;">
-                                    <input type="text" id="hotkeyReturnToLastApp" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+Z" data-i18n-title="field.hotkeyReturnToLastApp.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyReturnToLastApp')" readonly style="flex: 1; margin-bottom: 0;">
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyReturnToLastApp')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyReturnToLastApp')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
                         </div>
@@ -1009,11 +1000,8 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.hotkeys.section.global-hotkeys.heading">Global Key Bindings</h3>
-                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.hotkeys.section.global-hotkeys.hint">These hotkeys are global and stay active regardless of the loaded profile.</p>
-
-                        <h4 data-i18n="tab.hotkeys.section.profile-switch-hotkeys.heading">Profile Switch Hotkeys</h4>
-                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.hotkeys.section.profile-switch-hotkeys.hint">Bind hotkeys to jump to a specific profile or cycle through all profiles.</p>
+                        <h3 data-i18n="tab.hotkeys.section.profile-hotkeys.heading">Profile Hotkeys</h3>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.hotkeys.section.profile-hotkeys.hint">Bind hotkeys to jump to a specific profile or cycle through all profiles. Stays active regardless of which profile is loaded.</p>
 
                         <div class="key-bindings" style="margin-bottom: 8px;">
                             <div class="field">
@@ -1040,9 +1028,14 @@
                         </div>
 
                         <button type="button" onclick="addProfileSwitchHotkey()" style="width: 100%;" data-i18n="button.add-profile-switch-hotkey.label">+ Add Profile Switch Hotkey</button>
+                    </div>
 
-                        <h4 style="margin-top: 16px;" data-i18n="tab.hotkeys.section.cycle-all-clients.heading">Cycle All Clients</h4>
-                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.hotkeys.section.cycle-all-clients.hint">Bind hotkeys to cycle through every logged-in EVE client, in the order they were detected, regardless of which profile is loaded or how hotkey groups are defined.</p>
+                    <div class="section">
+                        <h3 data-i18n="tab.hotkeys.section.client-cycling.heading">Global Client Cycling</h3>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.hotkeys.section.client-cycling.hint">Cycle through EVE client windows across every profile, regardless of hotkey groups.</p>
+
+                        <h4 data-i18n="tab.hotkeys.section.cycle-all-clients.heading">Cycle All Clients</h4>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.hotkeys.section.cycle-all-clients.hint">Bind hotkeys to cycle through every logged-in EVE client, ordered by the Characters list (any not yet added there follow after, in detection order), regardless of which profile is loaded or how hotkey groups are defined.</p>
 
                         <div class="key-bindings" style="margin-bottom: 8px;">
                             <div class="field">
@@ -1089,6 +1082,47 @@
                                     <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyCycleNotLoggedInBackward')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h3 data-i18n="tab.hotkeys.section.desktop-apps.heading">External App Hotkeys</h3>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.hotkeys.section.desktop-apps.hint">Jump to things outside EVE: the last app you had focused, a specific running application, or a URL in your browser.</p>
+
+                        <h4 data-i18n="tab.hotkeys.section.window-focus.heading">Window Focus</h4>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.hotkeys.section.window-focus.hint">Bind a hotkey to jump back to whichever non-EVE window last had focus before you switched into EVE.</p>
+
+                        <div class="key-bindings" style="margin-bottom: 8px;">
+                            <div class="field">
+                                <label for="hotkeyReturnToLastApp" data-i18n="field.hotkeyReturnToLastApp.label">Return to Last App</label>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <input type="text" id="hotkeyReturnToLastApp" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+Z" data-i18n-title="field.hotkeyReturnToLastApp.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyReturnToLastApp')" readonly style="flex: 1; margin-bottom: 0;">
+                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyReturnToLastApp')" title="Clear" data-i18n-title="common.hotkeyClear" style="margin-bottom: 0;">×</button>
+                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyReturnToLastApp')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly" style="margin-bottom: 0;">✎</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h4 style="margin-top: 16px;" data-i18n="tab.hotkeys.section.app-hotkeys.heading">App Hotkeys</h4>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.hotkeys.section.app-hotkeys.hint">Bind a hotkey to jump straight to a specific running application (e.g. your browser or Discord), picked from a list of open windows.</p>
+
+                        <div id="appHotkeysList" style="margin-bottom: 8px;">
+                            <!-- App hotkeys will be dynamically populated here -->
+                        </div>
+
+                        <button type="button" onclick="addAppHotkey()" style="width: 100%;" data-i18n="button.add-app-hotkey.label">+ Add App Hotkey</button>
+
+                        <h4 style="margin-top: 16px;" data-i18n="tab.hotkeys.section.url-hotkeys.heading">URL Hotkeys</h4>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.hotkeys.section.url-hotkeys.hint">Bind a hotkey to open a URL in your default browser.</p>
+
+                        <div id="urlHotkeysList" style="margin-bottom: 8px;">
+                            <!-- URL hotkeys will be dynamically populated here -->
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                            <button type="button" onclick="addUrlHotkey()" data-i18n="button.add-url-hotkey.label">+ Add URL Hotkey</button>
+                            <button type="button" onclick="addUrlHotkey('https://evemaps.dotlan.net/')" data-i18n="button.add-dotlan-hotkey.label">+ Dotlan</button>
+                            <button type="button" onclick="addUrlHotkey('https://adashboard.info/intel')" data-i18n="button.add-adashboard-hotkey.label">+ aDashboard Intel</button>
                         </div>
                     </div>
                 </div>

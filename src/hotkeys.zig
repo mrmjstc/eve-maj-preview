@@ -90,12 +90,14 @@ fn lowLevelHotkeyReleaseProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.L
     return win32.CallNextHookEx(null, nCode, wParam, lParam);
 }
 
-// Hotkey IDs are banded to avoid collisions: 0-999 groups, 1000s global, 2000s per-character, 3000s profile switch, 4000s+ quick groups.
+// Hotkey IDs are banded to avoid collisions: 0-999 groups, 1000s global, 2000s per-character, 3000s profile switch, 4000s+ quick groups, 5000s app hotkeys, 6000s URL hotkeys.
 const HOTKEY_ID_CYCLE_GROUP_BASE: c_int = 0;
 const HOTKEY_ID_GLOBAL_ACTION_BASE: c_int = 1000;
 const HOTKEY_ID_PER_CHARACTER_BASE: c_int = 2000;
 const HOTKEY_ID_PROFILE_SWITCH_BASE: c_int = 3000;
 const HOTKEY_ID_QUICK_GROUP_BASE: c_int = 4000;
+const HOTKEY_ID_APP_HOTKEY_BASE: c_int = 5000;
+const HOTKEY_ID_URL_HOTKEY_BASE: c_int = 6000;
 
 const GlobalActionId = enum(c_int) {
     MinimizeAll = HOTKEY_ID_GLOBAL_ACTION_BASE + 0,
@@ -143,6 +145,8 @@ pub const HotkeyActionType = enum {
     PreviousNotLoggedIn,
     MoveToSavedPositions,
     ReturnToLastApp,
+    ActivateApp,
+    OpenUrl,
 };
 
 pub const HotkeyAction = union(HotkeyActionType) {
@@ -182,7 +186,80 @@ pub const HotkeyAction = union(HotkeyActionType) {
     PreviousNotLoggedIn: void,
     MoveToSavedPositions: void,
     ReturnToLastApp: void,
+    ActivateApp: struct {
+        app_index: usize,
+    },
+    OpenUrl: struct {
+        url_index: usize,
+    },
 };
+
+const FindByExecutableContext = struct {
+    executable_name: []const u8,
+    found: ?win32.HWND = null,
+};
+
+fn findByExecutableCallback(hwnd: win32.HWND, lparam: win32.LPARAM) callconv(.c) win32.BOOL {
+    const ctx: *FindByExecutableContext = win32.lparamToPtr(FindByExecutableContext, lparam);
+    if (!win32.isWindowVisible(hwnd)) return win32.TRUE;
+
+    var process_id: win32.DWORD = 0;
+    _ = win32.GetWindowThreadProcessId(hwnd, &process_id);
+    if (process_id == 0) return win32.TRUE;
+
+    var exe_path: [260:0]u8 = undefined;
+    const exe_path_slice = win32.queryProcessExePath(process_id, &exe_path) orelse return win32.TRUE;
+    const exe_name = std.fs.path.basename(exe_path_slice);
+    if (!std.ascii.eqlIgnoreCase(exe_name, ctx.executable_name)) return win32.TRUE;
+
+    ctx.found = hwnd;
+    return win32.FALSE;
+}
+
+/// First visible top-level window (in Z-order, so effectively the frontmost) owned by executable_name.
+fn findWindowByExecutable(executable_name: []const u8) ?win32.HWND {
+    var ctx = FindByExecutableContext{ .executable_name = executable_name };
+    _ = win32.EnumWindows(findByExecutableCallback, win32.ptrToLparam(&ctx));
+    return ctx.found;
+}
+
+fn characterOrderIndex(cfg: *const config_mod.Config, character_name: []const u8) ?usize {
+    for (cfg.characters.items, 0..) |char, i| {
+        if (std.mem.eql(u8, char.name, character_name)) return i;
+    }
+    return null;
+}
+
+/// Caller owns the returned slice; mirrors list_view.zig's ConfiguredCharacters ordering, so windows for unconfigured characters sort after configured ones, keeping discovery order among themselves.
+fn buildCharacterOrderedIndices(allocator: std.mem.Allocator, cfg: *const config_mod.Config, windows: []const scout.EveWindow) ![]usize {
+    const indices = try allocator.alloc(usize, windows.len);
+    for (indices, 0..) |*slot, i| slot.* = i;
+
+    const Ctx = struct {
+        cfg: *const config_mod.Config,
+        windows: []const scout.EveWindow,
+
+        fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
+            const a_order = characterOrderIndex(ctx.cfg, ctx.windows[a_index].character_name);
+            const b_order = characterOrderIndex(ctx.cfg, ctx.windows[b_index].character_name);
+
+            if (a_order) |ao| {
+                if (b_order) |bo| {
+                    if (ao != bo) return ao < bo;
+                } else {
+                    return true;
+                }
+            } else if (b_order != null) {
+                return false;
+            }
+
+            return a_index < b_index;
+        }
+    };
+
+    std.sort.pdq(usize, indices, Ctx{ .cfg = cfg, .windows = windows }, Ctx.lessThan);
+    return indices;
+}
 
 /// Manages system-wide hotkey registration and character cycling
 pub const HotkeyManager = struct {
@@ -274,7 +351,7 @@ pub const HotkeyManager = struct {
         const has_next_not_logged_in = self.global_settings.hotkeyCycleNotLoggedInForward != null;
         const has_previous_not_logged_in = self.global_settings.hotkeyCycleNotLoggedInBackward != null;
         const has_move_to_saved = self.config.hotkeyMoveToSavedPositions != null;
-        const has_return_to_last_app = self.config.hotkeyReturnToLastApp != null;
+        const has_return_to_last_app = self.global_settings.hotkeyReturnToLastApp != null;
         const PerCharacterHotkeyGroup = struct {
             vk: u32,
             indices: std.ArrayList(usize),
@@ -309,8 +386,22 @@ pub const HotkeyManager = struct {
                 break;
             }
         }
+        var has_app_hotkeys = false;
+        for (self.global_settings.appHotkeys.items) |ah| {
+            if (ah.hotkey != null) {
+                has_app_hotkeys = true;
+                break;
+            }
+        }
+        var has_url_hotkeys = false;
+        for (self.global_settings.urlHotkeys.items) |uh| {
+            if (uh.hotkey != null) {
+                has_url_hotkeys = true;
+                break;
+            }
+        }
 
-        if (!has_groups and !has_quick_groups and !has_minimize and !has_close and !has_toggle_vis and !has_toggle_auto_min and !has_next_profile and !has_previous_profile and !has_toggle_exclusion and !has_next_excluded and !has_previous_excluded and !has_suspend and !has_cycle_notified and !has_previous_notified and !has_next_all_clients and !has_previous_all_clients and !has_next_not_logged_in and !has_previous_not_logged_in and !has_move_to_saved and !has_return_to_last_app and !has_per_character_hotkeys and !has_profile_switch_hotkeys) {
+        if (!has_groups and !has_quick_groups and !has_minimize and !has_close and !has_toggle_vis and !has_toggle_auto_min and !has_next_profile and !has_previous_profile and !has_toggle_exclusion and !has_next_excluded and !has_previous_excluded and !has_suspend and !has_cycle_notified and !has_previous_notified and !has_next_all_clients and !has_previous_all_clients and !has_next_not_logged_in and !has_previous_not_logged_in and !has_move_to_saved and !has_return_to_last_app and !has_per_character_hotkeys and !has_profile_switch_hotkeys and !has_app_hotkeys and !has_url_hotkeys) {
             slog.debug("No hotkeys configured", .{});
             return;
         }
@@ -321,12 +412,22 @@ pub const HotkeyManager = struct {
         for (self.global_settings.profileSwitchHotkeys.items) |psh| {
             if (psh.hotkey != null) profile_switch_count += 1;
         }
-        slog.debug("Registering hotkeys: {} group(s), {} quick group(s), {} global action(s), {} per-character hotkey(s), {} profile-switch hotkey(s)...", .{
+        var app_hotkey_count: usize = 0;
+        for (self.global_settings.appHotkeys.items) |ah| {
+            if (ah.hotkey != null) app_hotkey_count += 1;
+        }
+        var url_hotkey_count: usize = 0;
+        for (self.global_settings.urlHotkeys.items) |uh| {
+            if (uh.hotkey != null) url_hotkey_count += 1;
+        }
+        slog.debug("Registering hotkeys: {} group(s), {} quick group(s), {} global action(s), {} per-character hotkey(s), {} profile-switch hotkey(s), {} app hotkey(s), {} url hotkey(s)...", .{
             self.config.hotkeyGroups.items.len,
             self.config.quickGroups.items.len,
             global_count,
             per_character_count,
             profile_switch_count,
+            app_hotkey_count,
+            url_hotkey_count,
         });
 
         var expected_count: usize = 0;
@@ -348,6 +449,8 @@ pub const HotkeyManager = struct {
 
         expected_count += per_character_count;
         expected_count += profile_switch_count;
+        expected_count += app_hotkey_count;
+        expected_count += url_hotkey_count;
 
         if (has_minimize) expected_count += 1;
         if (has_close) expected_count += 1;
@@ -472,6 +575,34 @@ pub const HotkeyManager = struct {
                 self.registerAndTrackHotkey(hwnd, sp_id, sp_vk, sp_action, sp_desc) catch |err| {
                     const key_name = formatKeyName(sp_vk, &key_name_buf);
                     slog.err("Failed to register hotkey {s} for switching to profile [{s}]: {}", .{ key_name, psh.targetProfile, err });
+                    failed_count += 1;
+                };
+            }
+        }
+
+        for (self.global_settings.appHotkeys.items, 0..) |*ah, ah_index| {
+            if (ah.hotkey) |ah_vk| {
+                const ah_id: c_int = HOTKEY_ID_APP_HOTKEY_BASE + @as(c_int, @intCast(ah_index));
+                const ah_action = HotkeyAction{ .ActivateApp = .{ .app_index = ah_index } };
+                var ah_desc_buf: [128]u8 = undefined;
+                const ah_desc = std.fmt.bufPrint(&ah_desc_buf, "activate app [{s}]", .{ah.executableName}) catch "activate app";
+                self.registerAndTrackHotkey(hwnd, ah_id, ah_vk, ah_action, ah_desc) catch |err| {
+                    const key_name = formatKeyName(ah_vk, &key_name_buf);
+                    slog.err("Failed to register hotkey {s} for app [{s}]: {}", .{ key_name, ah.executableName, err });
+                    failed_count += 1;
+                };
+            }
+        }
+
+        for (self.global_settings.urlHotkeys.items, 0..) |*uh, uh_index| {
+            if (uh.hotkey) |uh_vk| {
+                const uh_id: c_int = HOTKEY_ID_URL_HOTKEY_BASE + @as(c_int, @intCast(uh_index));
+                const uh_action = HotkeyAction{ .OpenUrl = .{ .url_index = uh_index } };
+                var uh_desc_buf: [160]u8 = undefined;
+                const uh_desc = std.fmt.bufPrint(&uh_desc_buf, "open url [{s}]", .{uh.url}) catch "open url";
+                self.registerAndTrackHotkey(hwnd, uh_id, uh_vk, uh_action, uh_desc) catch |err| {
+                    const key_name = formatKeyName(uh_vk, &key_name_buf);
+                    slog.err("Failed to register hotkey {s} for url [{s}]: {}", .{ key_name, uh.url, err });
                     failed_count += 1;
                 };
             }
@@ -647,7 +778,7 @@ pub const HotkeyManager = struct {
             };
         }
 
-        if (self.config.hotkeyReturnToLastApp) |vk_code| {
+        if (self.global_settings.hotkeyReturnToLastApp) |vk_code| {
             const id = @intFromEnum(GlobalActionId.ReturnToLastApp);
             const action = HotkeyAction{ .ReturnToLastApp = {} };
             self.registerAndTrackHotkey(hwnd, id, vk_code, action, "return focus to the last non-EVE app") catch |err| {
@@ -838,6 +969,12 @@ pub const HotkeyManager = struct {
             .ReturnToLastApp => {
                 self.handleReturnToLastApp();
             },
+            .ActivateApp => |activate| {
+                self.handleActivateApp(activate.app_index);
+            },
+            .OpenUrl => |open_url| {
+                self.handleOpenUrl(open_url.url_index);
+            },
         }
 
         if (win32.GetForegroundWindow() != foreground_before) {
@@ -911,6 +1048,45 @@ pub const HotkeyManager = struct {
     pub fn handleReturnToLastAppRequest(self: *HotkeyManager) void {
         slog.debug("Protocol handler return to last app request", .{});
         self.handleReturnToLastApp();
+    }
+
+    fn handleActivateApp(self: *HotkeyManager, app_index: usize) void {
+        if (app_index >= self.global_settings.appHotkeys.items.len) {
+            slog.err("Invalid app hotkey index {}", .{app_index});
+            return;
+        }
+        const app_hotkey = self.global_settings.appHotkeys.items[app_index];
+
+        const target = findWindowByExecutable(app_hotkey.executableName) orelse {
+            slog.debug("Activate app hotkey pressed - no running window found for {s}", .{app_hotkey.executableName});
+            return;
+        };
+
+        slog.info("Activate app hotkey pressed: {s}", .{app_hotkey.executableName});
+        if (win32.isWindowIconic(target)) {
+            _ = win32.ShowWindowAsync(target, win32.SW_RESTORE);
+        }
+        input.forceSetForegroundWindow(target);
+    }
+
+    fn handleOpenUrl(self: *HotkeyManager, url_index: usize) void {
+        if (url_index >= self.global_settings.urlHotkeys.items.len) {
+            slog.err("Invalid url hotkey index {}", .{url_index});
+            return;
+        }
+        const url_hotkey = self.global_settings.urlHotkeys.items[url_index];
+        if (url_hotkey.url.len == 0) return;
+
+        var url_buf: [1024]u8 = undefined;
+        const url_z = std.fmt.bufPrintZ(&url_buf, "{s}", .{url_hotkey.url}) catch {
+            slog.warn("URL too long to open: {s}", .{url_hotkey.url});
+            return;
+        };
+
+        slog.info("Open URL hotkey pressed: {s}", .{url_hotkey.url});
+        if (!win32.shellOpen(url_z.ptr, null)) {
+            slog.err("Failed to open URL: {s}", .{url_hotkey.url});
+        }
     }
 
     fn handleToggleVisibility(self: *HotkeyManager) void {
@@ -1560,7 +1736,7 @@ pub const HotkeyManager = struct {
         self.handleCycleAllClients(forward);
     }
 
-    /// Cycles every logged-in client in Scout's discovery order; unlike other cycles, every entry is guaranteed running.
+    /// Cycles every logged-in client in Characters-list order (unconfigured ones follow, in Scout's discovery order); unlike other cycles, every entry is guaranteed running.
     fn cycleAllClients(self: *HotkeyManager, forward: bool) void {
         const windows = self.scout.getWindows();
         const num = windows.len;
@@ -1569,10 +1745,16 @@ pub const HotkeyManager = struct {
             return;
         }
 
+        const order = buildCharacterOrderedIndices(self.allocator, self.config, windows) catch |err| {
+            slog.err("Failed to build character-ordered client list: {}", .{err});
+            return;
+        };
+        defer self.allocator.free(order);
+
         var found_index: ?usize = null;
         if (self.last_all_clients_cycle_name) |last_name| {
-            for (windows, 0..) |w, i| {
-                if (std.mem.eql(u8, w.character_name, last_name)) {
+            for (order, 0..) |window_index, i| {
+                if (std.mem.eql(u8, windows[window_index].character_name, last_name)) {
                     found_index = i;
                     break;
                 }
@@ -1584,7 +1766,7 @@ pub const HotkeyManager = struct {
         var index = start_index;
         var attempts: usize = 0;
         while (attempts < num) : (attempts += 1) {
-            const w = windows[index];
+            const w = windows[order[index]];
 
             if (respect_exclusions and self.isCharacterExcluded(w.character_name)) {
                 index = stepCycleIndex(index, num, forward);
