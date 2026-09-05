@@ -273,6 +273,7 @@ pre {
 p {
     margin: 6px 0;
     line-height: 1.4;
+    font-size: 13px;
 }
 
 /* Notification types table */
@@ -592,7 +593,7 @@ label:hover input[type="checkbox"] + .label-body::before {
 }
 
 .hint {
-    color: #bbbbbb;
+    color: #ffffff;
     font-size: 12px;
     font-style: italic;
     margin: 2px 0;
@@ -991,6 +992,20 @@ input.manual-editing {
    bottom gap bigger than the top. Zeroing it makes both sides match. */
 .panel-content[data-panel="about"] .section > *:last-child {
     margin-bottom: 0 !important;
+}
+
+.panel-content[data-panel="about"] li::marker {
+    content: '» ';
+    color: #ffffff;
+}
+
+a.external-link {
+    color: #ffffff;
+    text-decoration: underline;
+}
+
+a.external-link:hover {
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
 }
 
 /* Advanced-only sections: hidden unless Advanced Mode is enabled */

@@ -92,40 +92,42 @@
 |_____|  \_/  |_____|    |_|  |_|\__,_|/ | |_|   |_|  \___| \_/ |_|\___| \_/\_/  
                                       |__/                                        </pre>
                         <h3 data-i18n="tab.about.section.app-name.heading">EVE-Maj Preview</h3>
-                        <p style="margin: 8px 0;" data-i18n="misc.app-description">A modern, lightweight window preview tool for EVE Online, built with Zig.</p>
+                        <p class="hint" style="margin: 8px 0;" data-i18n="misc.app-description">A modern, lightweight window preview tool for EVE Online, built with Zig.</p>
 
                         <div style="margin: 12px 0;">
-                            <p><strong data-i18n="misc.version-label">Version:</strong> <span id="app-version">0.0.2</span></p>
-                            <p><strong data-i18n="misc.repository-label">Repository:</strong> <a href="https://github.com/mrmjstc/eve-maj-preview" onclick="return openExternalLink(event)" style="color: #4a9eff; text-decoration: none;">github.com/mrmjstc/eve-maj-preview</a></p>
+                            <p class="hint"><strong data-i18n="misc.version-label">Version:</strong> <span id="app-version">0.0.2</span></p>
+                            <p class="hint"><strong data-i18n="misc.repository-label">Repository:</strong> <a href="https://github.com/mrmjstc/eve-maj-preview" onclick="return openExternalLink(event)" class="external-link">github.com/mrmjstc/eve-maj-preview</a></p>
+                            <p class="hint"><strong data-i18n="misc.discord-label">Discord:</strong> <a href="https://discord.gg/w7Gjnjr7uM" onclick="return openExternalLink(event)" class="external-link">discord.gg/w7Gjnjr7uM</a></p>
                         </div>
                     </div>
 
                     <div class="section">
                         <h3 data-i18n="tab.about.section.credits.heading">Credits</h3>
-                        <p style="margin: 8px 0;" data-i18n="misc.credits-made-by">Made by Mr Majestic for the APM special interest group in Goonswarm.</p>
-                        <p style="margin: 8px 0;" data-i18n="misc.credits-inspired-by">Heavily inspired by the original EVE-O Preview and related tools.</p>
+                        <p class="hint" style="margin: 8px 0;" data-i18n="misc.credits-made-by">Made by Mr Majestic for the APM special interest group in Goonswarm.</p>
+                        <p class="hint" style="margin: 8px 0;" data-i18n="misc.credits-inspired-by">Heavily inspired by the original EVE-O Preview and related tools.</p>
                     </div>
 
                     <div class="section">
                         <h3 data-i18n="tab.about.section.thanks.heading">Thanks</h3>
-                        <ul style="margin: 8px 0; padding-left: 20px; line-height: 1.8; display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 16px; row-gap: 0;">
+                        <ul class="hint" style="margin: 8px 0; padding-left: 20px; line-height: 1.8; display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 16px; row-gap: 0;">
                             <li style="grid-column: 1 / -1;" data-i18n="misc.thanks-sig-feedback">Everyone in the APM SIG for their feedback</li>
                             <li>Aulis</li>
                             <li>Cy</li>
                             <li>Amaliana</li>
                             <li>Technoprobe</li>
                             <li>Yabu Kusanagi</li>
+                            <li>Sevey</li>
                         </ul>
                     </div>
 
                     <div class="section">
                         <h3 data-i18n="tab.about.section.license.heading">License</h3>
-                        <p style="margin: 8px 0;" data-i18n="misc.license-text">This project is open source. Released under the MIT license, a copy of this was included with the application. The tl;dr: you can do almost anything with this code as long as you include the original license and copyright notice.</p>
+                        <p class="hint" style="margin: 8px 0;" data-i18n="misc.license-text">This project is open source. Released under the MIT license, a copy of this was included with the application. The tl;dr: you can do almost anything with this code as long as you include the original license and copyright notice.</p>
                     </div>
 
                     <div class="section">
                         <h3 data-i18n="tab.about.section.preferences.heading">Preferences</h3>
-                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.about.section.advanced-mode.hint">Reveals power-user settings across the app — extra tabs, position/spacing parameters, snapping, layout system, and more. This preference is global and applies across all profiles.</p>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.about.section.preferences.hint">Global, applies across all profiles.</p>
                         <label>
                             <input type="checkbox" id="advancedModeToggle" onchange="toggleAdvancedMode()">
                             <span class="label-body" data-i18n="field.advancedModeToggle.label">Advanced mode</span>
@@ -135,11 +137,8 @@
                             <input type="checkbox" id="alwaysOnTopToggle" onchange="toggleAlwaysOnTop()">
                             <span class="label-body" data-i18n="field.alwaysOnTopToggle.label">Always on Top</span>
                         </label>
-                    </div>
 
-                    <div class="section">
-                        <h3 data-i18n="tab.about.section.language.heading">Language</h3>
-                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.about.section.language.hint">Choose the display language for this configuration window. This preference is global and applies across all profiles.</p>
+                        <label for="languageSelect" style="margin-top: 8px;" data-i18n="tab.about.section.language.heading">Language</label>
                         <select id="languageSelect" onchange="switchLanguage(this.value)"></select>
                     </div>
 
@@ -2058,7 +2057,7 @@
             <h3 data-i18n="misc.update-available-heading">Update Available!</h3>
             <p style="margin: 0 0 12px 0;">
                 <span data-i18n="misc.update-available-body">A new version is available:</span>
-                <a id="update-available-link" href="#" onclick="return openExternalLink(event)" style="color: #4a9eff; text-decoration: none;"></a>
+                <a id="update-available-link" href="#" onclick="return openExternalLink(event)" class="external-link"></a>
             </p>
             <div id="update-available-notes" style="display: none; white-space: pre-wrap; text-align: left; margin: 0 0 12px 0;"></div>
             <div class="modal-buttons">
