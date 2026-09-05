@@ -441,14 +441,34 @@ fn sendProfileSwitchToMainApp(profile_name: []const u8) void {
     }
 }
 
+/// Runs sendProfileSwitchToMainApp on a detached thread so the blocking WM_COPYDATA round-trip - which the main app doesn't answer until its full profile reload (thumbnail teardown/rebuild, window rescan, hotkey re-registration) finishes - doesn't stall the caller's response to the dialog. Shared by the post-Save reload and "Make It Live".
+fn sendProfileSwitchToMainAppAsync(profile_name: []const u8) void {
+    const allocator = g_allocator;
+    const profile_name_copy = allocator.dupe(u8, profile_name) catch {
+        slog.err("Failed to allocate memory for async profile switch", .{});
+        return;
+    };
+    const thread = std.Thread.spawn(.{}, profileSwitchThreadMain, .{ allocator, profile_name_copy }) catch |err| {
+        slog.warn("Failed to start profile switch thread: {}", .{err});
+        allocator.free(profile_name_copy);
+        return;
+    };
+    thread.detach();
+}
+
+fn profileSwitchThreadMain(allocator: std.mem.Allocator, profile_name: []const u8) void {
+    defer allocator.free(profile_name);
+    sendProfileSwitchToMainApp(profile_name);
+}
+
 fn reloadProfileInMainApp() void {
-    sendProfileSwitchToMainApp(currentProfileFilename());
+    sendProfileSwitchToMainAppAsync(currentProfileFilename());
 }
 
 /// Bound to the dialog's "Make It Live" choice (see showLiveSwitchModal() in config_dialog.js); switches the running main app onto a profile that may differ from the one open for editing.
 fn switchProfileLive(e: *webui.Event) void {
     const profile_name = e.getString();
-    sendProfileSwitchToMainApp(profile_name);
+    sendProfileSwitchToMainAppAsync(profile_name);
     e.returnString("{\"success\": true}");
 }
 
