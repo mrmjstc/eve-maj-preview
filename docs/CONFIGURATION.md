@@ -1069,7 +1069,7 @@ Bound via `hotkeyCycleNotified` and `hotkeyPreviousNotified` (see [Hotkey Config
 
 ## Per-Character Configuration
 
-Customize individual characters with position, size, border colors, display names, a dedicated hotkey, auto-minimize/Close All exclusions, and hiding the thumbnail entirely:
+Customize individual characters with position, size, border colors, display names, a dedicated hotkey, opacity, auto-minimize/Close All exclusions, and hiding the thumbnail entirely:
 
 ```json
 {
@@ -1087,6 +1087,7 @@ Customize individual characters with position, size, border colors, display name
       },
       "displayName": "Main",
       "hotkey": "F1",
+      "opacity": 255,
       "excludeFromMinimize": true,
       "excludeFromCloseAll": true,
       "hideThumbnail": false
@@ -1104,6 +1105,7 @@ Customize individual characters with position, size, border colors, display name
 ```
 
 - **hotkey**: Optional. Virtual key code string (same format as [hotkey groups](#hotkey-groups-character-cycling)) that directly activates this character's window. `null`/omitted to disable. See [Per-Character Hotkeys](#per-character-hotkeys-direct-activation).
+- **opacity**: Optional per-character override for `thumbnailOpacity` (default: `null`, inherits the global value; clamped to the same 51–255 minimum).
 - **excludeFromMinimize**: Skip this character when auto-minimize fires (default: `false`). See [Auto-Minimize](#auto-minimize).
 - **excludeFromCloseAll**: Skip this character when the Close All hotkey fires (default: `false`). See [Close All](#close-all).
 - **hideThumbnail**: Hide this character's thumbnail (and its row in list view) entirely, regardless of state (default: `false`).

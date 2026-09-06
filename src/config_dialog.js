@@ -861,6 +861,13 @@ function resolveOptionalCharacterColor(input, hadValue) {
     return (hadValue || changed) ? htmlColorToZig(input.value) : null;
 }
 
+// No separate "override enabled" toggle - a slider left at the current global opacity reads as "inherit" (null); moving it away from that value is what marks it as a per-character override.
+function resolveCharacterOpacity(field) {
+    if (!field) return null;
+    const percent = parseInt(field.value);
+    return (percent !== opacityToPercent(currentConfig.thumbnail.thumbnailOpacity)) ? percentToOpacity(percent) : null;
+}
+
 // Reads straight from the accordion DOM using the same "set OR changed from #000000 default" convention as saveCharacters(), so live preview and Save agree on what counts as "set".
 function buildCharacterOverridesPreviewPatch(includePositions = false) {
     if (!currentConfig || !currentConfig.characters) return [];
@@ -875,10 +882,12 @@ function buildCharacterOverridesPreviewPatch(includePositions = false) {
         const nameColor = document.getElementById(`char_${index}_nameColor`);
         const displayNameField = document.getElementById(`char_${index}_displayName`);
         const hideThumbnailField = document.getElementById(`char_${index}_hideThumbnail`);
-        if (!width && !height && !activeColor && !inactiveColor && !nameColor && !displayNameField && !hideThumbnailField) return;
+        const opacityField = document.getElementById(`char_${index}_opacity`);
+        if (!width && !height && !activeColor && !inactiveColor && !nameColor && !displayNameField && !hideThumbnailField && !opacityField) return;
 
         const displayName = displayNameField ? (displayNameField.value.trim() || null) : null;
         const hideThumbnail = hideThumbnailField ? hideThumbnailField.checked : false;
+        const opacity = resolveCharacterOpacity(opacityField);
 
         const w = width ? (parseInt(width.value) || null) : null;
         const h = height ? (parseInt(height.value) || null) : null;
@@ -892,7 +901,7 @@ function buildCharacterOverridesPreviewPatch(includePositions = false) {
 
         const nameColorOut = resolveOptionalCharacterColor(nameColor, !!char.nameColor);
 
-        const entry = { name: char.name, displayName, hideThumbnail, thumbnailSize, borderColors, nameColor: nameColorOut };
+        const entry = { name: char.name, displayName, hideThumbnail, thumbnailSize, borderColors, nameColor: nameColorOut, opacity };
         if (includePositions && char.position) entry.position = char.position;
         result.push(entry);
     });
@@ -932,7 +941,7 @@ function setupThumbnailPreview() {
     // Per-character override fields are regenerated per accordion row by populateCharacters(), so listen on the container, same as above.
     const charactersList = document.getElementById('charactersList');
     if (charactersList) {
-        const isPreviewableCharField = (id) => /^char_\d+_(width|height|activeColor|inactiveColor|nameColor|displayName|hideThumbnail)$/.test(id);
+        const isPreviewableCharField = (id) => /^char_\d+_(width|height|activeColor|inactiveColor|nameColor|displayName|hideThumbnail|opacity)$/.test(id);
         charactersList.addEventListener('input', (e) => {
             if (isPreviewableCharField(e.target.id)) scheduleThumbnailPreview();
         });
@@ -4769,6 +4778,13 @@ function populateCharacters() {
                     </div>
                 </div>
                 <div class="detail-field">
+                    <label for="char_${index}_opacity">${t('dynamic.character.opacityLabel')}</label>
+                    <div class="field-row">
+                        <input type="range" id="char_${index}_opacity" min="20" max="100" value="${char.opacity != null ? opacityToPercent(char.opacity) : opacityToPercent(currentConfig.thumbnail.thumbnailOpacity)}" data-value-target="char_${index}_opacityValue">
+                        <span id="char_${index}_opacityValue">${char.opacity != null ? opacityToPercent(char.opacity) : opacityToPercent(currentConfig.thumbnail.thumbnailOpacity)}</span>%
+                    </div>
+                </div>
+                <div class="detail-field">
                     <label for="char_${index}_activeColor">${t('dynamic.character.activeBorderColorLabel')}</label>
                     <div class="swatch-wrap">
                         <input type="color" id="char_${index}_activeColor" data-optional-color="true" ${!char.borderColors?.activeBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.activeBorderColor) || '#FFFF00'}">
@@ -5284,6 +5300,7 @@ function saveCharacters() {
         const excludeMinimize = document.getElementById(`char_${index}_excludeMinimize`);
         const excludeCloseAll = document.getElementById(`char_${index}_excludeCloseAll`);
         const hideThumbnail = document.getElementById(`char_${index}_hideThumbnail`);
+        const opacity = document.getElementById(`char_${index}_opacity`);
 
         if (name) char.name = name.value;
         if (displayName) char.displayName = displayName.value || null;
@@ -5291,6 +5308,7 @@ function saveCharacters() {
         if (excludeMinimize) char.excludeFromMinimize = excludeMinimize.checked;
         if (excludeCloseAll) char.excludeFromCloseAll = excludeCloseAll.checked;
         if (hideThumbnail) char.hideThumbnail = hideThumbnail.checked;
+        char.opacity = resolveCharacterOpacity(opacity);
         // Position is saved automatically when thumbnails are dragged, don't overwrite from dialog
 
         const w = width ? parseInt(width.value) : null;

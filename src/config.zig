@@ -735,6 +735,7 @@ pub const CharacterConfig = struct {
     excludeFromMinimize: bool = false,
     excludeFromCloseAll: bool = false,
     hideThumbnail: bool = false,
+    opacity: ?u8 = null,
 
     pub fn deinit(self: *CharacterConfig, allocator: std.mem.Allocator) void {
         allocator.free(self.name);
@@ -755,6 +756,7 @@ pub const CharacterConfig = struct {
         excludeFromMinimize: bool = false,
         excludeFromCloseAll: bool = false,
         hideThumbnail: bool = false,
+        opacity: ?u8 = null,
     };
 
     pub fn toWire(self: CharacterConfig) Wire {
@@ -770,6 +772,7 @@ pub const CharacterConfig = struct {
             .excludeFromMinimize = self.excludeFromMinimize,
             .excludeFromCloseAll = self.excludeFromCloseAll,
             .hideThumbnail = self.hideThumbnail,
+            .opacity = self.opacity,
         };
     }
 
@@ -786,6 +789,7 @@ pub const CharacterConfig = struct {
             .excludeFromMinimize = w.excludeFromMinimize,
             .excludeFromCloseAll = w.excludeFromCloseAll,
             .hideThumbnail = w.hideThumbnail,
+            .opacity = w.opacity,
         };
     }
 };
@@ -3563,6 +3567,10 @@ pub const Config = struct {
         if (size.height) |*h| h.* = std.math.clamp(h.*, ThumbnailConfig.HEIGHT_MIN, ThumbnailConfig.HEIGHT_MAX);
     }
 
+    fn clampCharacterOpacity(opacity: *u8) void {
+        if (opacity.* < ThumbnailConfig.OPACITY_MIN) opacity.* = ThumbnailConfig.OPACITY_MIN;
+    }
+
     pub fn parseJsonSystemColor(allocator: std.mem.Allocator, obj: std.json.ObjectMap) !SystemColor {
         const name_val = obj.get("systemName") orelse return error.MissingSystemName;
         const color_val = obj.get("color") orelse return error.MissingSystemColor;
@@ -3833,6 +3841,13 @@ pub const Config = struct {
         return false;
     }
 
+    pub fn getCharacterOpacity(self: *const Config, character_name: []const u8) u8 {
+        if (self.findCharacterConst(character_name)) |char| {
+            if (char.opacity) |opacity| return opacity;
+        }
+        return self.thumbnail.thumbnailOpacity;
+    }
+
     pub fn getDisplayName(self: *const Config, character_name: []const u8) []const u8 {
         if (self.findCharacterConst(character_name)) |char| {
             if (char.displayName) |dn| {
@@ -3958,9 +3973,10 @@ pub const Config = struct {
         self.resources.validate();
         self.travel.validate();
 
-        // Per-character thumbnail size overrides live on CharacterConfig, not ThumbnailConfig, so they bypass validate() above and need clamping here too.
+        // Per-character thumbnail size/opacity overrides live on CharacterConfig, not ThumbnailConfig, so they bypass validate() above and need clamping here too.
         for (self.characters.items) |*char| {
             if (char.thumbnailSize) |*size| clampCharacterThumbnailSize(size);
+            if (char.opacity) |*opacity| clampCharacterOpacity(opacity);
         }
     }
 
@@ -4357,6 +4373,18 @@ pub const Config = struct {
 
             if (obj.get("hideThumbnail")) |v| {
                 if (v == .bool) char.hideThumbnail = v.bool;
+            }
+
+            if (obj.get("opacity")) |v| {
+                if (v == .integer) {
+                    if (std.math.cast(u8, v.integer)) |val| {
+                        var opacity = val;
+                        clampCharacterOpacity(&opacity);
+                        char.opacity = opacity;
+                    }
+                } else {
+                    char.opacity = null;
+                }
             }
 
             // Only sent by the post-import preview (see buildCharacterOverridesPreviewPatch in config_dialog.js), never the general per-edit debounce.

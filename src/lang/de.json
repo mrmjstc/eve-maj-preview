@@ -105,6 +105,7 @@
   "dynamic.character.hideThumbnailLabel": "Miniaturansicht ausblenden",
   "dynamic.character.hotkeyPlaceholder": "z. B. F1",
   "dynamic.character.inactiveBorderColorLabel": "Inaktive Rahmenfarbe",
+  "dynamic.character.opacityLabel": "Deckkraft (%)",
   "dynamic.character.setWindowPositionButton": "Position speichern",
   "dynamic.character.setWindowPositionHint": "Bewege das EVE-Client-Fenster des Charakters an die gewünschte Stelle und klicke dann auf „Position speichern“.",
   "dynamic.character.thumbnailSizeHeading": "Größe der Miniaturansicht",

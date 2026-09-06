@@ -105,6 +105,7 @@
   "dynamic.character.hideThumbnailLabel": "Скрыть миниатюру",
   "dynamic.character.hotkeyPlaceholder": "например, F1",
   "dynamic.character.inactiveBorderColorLabel": "Цвет рамки неактивного окна",
+  "dynamic.character.opacityLabel": "Непрозрачность (%)",
   "dynamic.character.setWindowPositionButton": "Сохранить позицию",
   "dynamic.character.setWindowPositionHint": "Переместите окно клиента EVE туда, куда вам нужно, затем нажмите «Сохранить позицию».",
   "dynamic.character.thumbnailSizeHeading": "Размер миниатюры",

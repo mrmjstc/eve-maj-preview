@@ -1338,7 +1338,7 @@ pub const Painter = struct {
             }
 
             // thumbnailOpacity is otherwise only applied once, at window creation time.
-            _ = win32.SetLayeredWindowAttributes(thumbnail.hwnd, 0, self.config.thumbnail.thumbnailOpacity, win32.LWA_ALPHA);
+            _ = win32.SetLayeredWindowAttributes(thumbnail.hwnd, 0, self.config.getCharacterOpacity(thumbnail.character_name), win32.LWA_ALPHA);
             self.resizeThumbnailIfNeeded(thumbnail);
             self.renderThumbnailLogged(thumbnail, "visuals refresh");
         }
@@ -2293,7 +2293,7 @@ pub const Painter = struct {
             null,
         ) orelse return error.CreateWindowFailed;
 
-        _ = win32.SetLayeredWindowAttributes(hwnd, 0, self.config.thumbnail.thumbnailOpacity, win32.LWA_ALPHA);
+        _ = win32.SetLayeredWindowAttributes(hwnd, 0, self.config.getCharacterOpacity(eve_window.character_name), win32.LWA_ALPHA);
 
         var thumbnail_id: win32.HTHUMBNAIL = undefined;
         const hr = win32.DwmRegisterThumbnail(hwnd, eve_window.hwnd, &thumbnail_id);
@@ -3964,7 +3964,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .quick_group_badge_font_weight = cfg.thumbnail.quickGroupBadgeFontWeight,
         // visibility_state and per-character hideThumbnail take absolute priority over per-state showThumbnail config.
         .show_thumbnail = if (!is_visible or char_hidden) false else state_cfg.getShowThumbnail(base_show_thumbnail),
-        .overlay_alpha = if (cfg.thumbnail.applyOpacityToOverlayTexts) cfg.thumbnail.thumbnailOpacity else OVERLAY_ALPHA,
+        .overlay_alpha = if (cfg.thumbnail.applyOpacityToOverlayTexts) cfg.getCharacterOpacity(character_name) else OVERLAY_ALPHA,
         .overlay_width = overlay_width,
         .overlay_height = overlay_height,
         // -1.0 stands in for "calculating" (null) here — no real rate is negative, and this struct only needs
