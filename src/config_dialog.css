@@ -1991,11 +1991,6 @@ input[type="range"]::-moz-range-thumb {
     font-variant-numeric: tabular-nums;
 }
 
-/* Width and height read as one control rather than two unrelated fields. */
-.detail-size {
-    max-width: 220px;
-}
-
 .detail-size-x {
     color: var(--color-muted);
     flex: none;
