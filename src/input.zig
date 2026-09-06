@@ -272,7 +272,9 @@ fn startDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
             painter.renderThumbnail(thumbnail) catch |err| {
                 slog.err("Failed to render dragging thumbnail for {s}: {}", .{ thumbnail.character_name, err });
             };
-            painter.showGhostOverlay(thumbnail.character_name);
+            if (painter.config.snapping.showGhostPositionBorders) {
+                painter.showGhostOverlay(thumbnail.character_name);
+            }
         }
     }
 

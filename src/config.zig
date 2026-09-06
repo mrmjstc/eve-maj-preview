@@ -2659,6 +2659,7 @@ pub const Config = struct {
         screenEdges: bool = true,
         thumbnailEdges: bool = true,
         ghostPositions: bool = true,
+        showGhostPositionBorders: bool = true,
 
         pub const THRESHOLD_MIN: i32 = 0;
         pub const THRESHOLD_MAX: i32 = 100;

@@ -412,10 +412,15 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
     "enabled": true,
     "threshold": 10,
     "screenEdges": true,
-    "thumbnailEdges": true
+    "thumbnailEdges": true,
+    "ghostPositions": true,
+    "showGhostPositionBorders": true
   }
 }
 ```
+
+- `ghostPositions`: While dragging, snap to other characters' saved positions
+- `showGhostPositionBorders`: While dragging, outline every other saved position (default: `true`; automatically disabled after importing settings, since imported positions belong to a different setup)
 
 ## User Interaction
 

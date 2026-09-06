@@ -433,30 +433,6 @@
                     </div>
 
                     <div class="section advanced-section">
-                        <h3 data-i18n="tab.thumbnails.section.snapping-system.heading">Snapping System</h3>
-                        <p class="hint" data-i18n="tab.thumbnails.section.snapping-system.hint">Configure the snapping behavior for window edges.</p>
-
-                        <label>
-                            <input type="checkbox" id="snappingEnabled" onchange="toggleSnappingOptions()">
-                            <span class="label-body" data-i18n="field.snappingEnabled.label">Enable Snapping</span>
-                        </label>
-
-                        <div id="snappingOptions">
-                            <label>
-                                <input type="checkbox" id="snappingScreenEdges">
-                                <span class="label-body" data-i18n="field.snappingScreenEdges.label">Snap to Screen Edges</span>
-                            </label>
-                            <label>
-                                <input type="checkbox" id="snappingThumbnailEdges">
-                                <span class="label-body" data-i18n="field.snappingThumbnailEdges.label">Snap to Thumbnail Edges</span>
-                            </label>
-                            <label for="snappingThreshold" data-i18n="field.snappingThreshold.label">Snapping Threshold (px)</label>
-                            <input type="number" id="snappingThreshold" min="0" max="100">
-                            <p class="hint" data-i18n="field.snappingThreshold.hint">Distance in pixels within which windows snap together</p>
-                        </div>
-                    </div>
-
-                    <div class="section advanced-section">
                         <h3 data-i18n="tab.thumbnails.section.layout-system.heading">Layout System</h3>
                         <p class="hint" data-i18n="tab.thumbnails.section.layout-system.hint">Controls how thumbnails are automatically arranged relative to each other.</p>
 
@@ -621,6 +597,34 @@
                         <label for="hideDebounceMs" data-i18n="field.hideDebounceMs.label">Hide Debounce (s)</label>
                         <input type="number" id="hideDebounceMs" min="0" max="5" step="0.1">
                         <p class="hint" data-i18n="field.hideDebounceMs.hint">Delay before hiding thumbnails when focus is lost</p>
+                    </div>
+
+                    <div class="section">
+                        <h3 data-i18n="tab.thumbnails.section.snapping-system.heading">Snapping</h3>
+                        <p class="hint" data-i18n="tab.thumbnails.section.snapping-system.hint">Configure the snapping behavior for window edges.</p>
+
+                        <label>
+                            <input type="checkbox" id="snappingEnabled" onchange="toggleSnappingOptions()">
+                            <span class="label-body" data-i18n="field.snappingEnabled.label">Enable Snapping</span>
+                        </label>
+
+                        <div id="snappingOptions">
+                            <label>
+                                <input type="checkbox" id="snappingScreenEdges">
+                                <span class="label-body" data-i18n="field.snappingScreenEdges.label">Snap to Screen Edges</span>
+                            </label>
+                            <label>
+                                <input type="checkbox" id="snappingThumbnailEdges">
+                                <span class="label-body" data-i18n="field.snappingThumbnailEdges.label">Snap to Thumbnail Edges</span>
+                            </label>
+                            <label>
+                                <input type="checkbox" id="snappingShowGhostBorders">
+                                <span class="label-body" data-i18n="field.snappingShowGhostBorders.label">Show Ghost Position Borders</span>
+                            </label>
+                            <label for="snappingThreshold" data-i18n="field.snappingThreshold.label">Snapping Threshold (px)</label>
+                            <input type="number" id="snappingThreshold" min="0" max="100">
+                            <p class="hint" data-i18n="field.snappingThreshold.hint">Distance in pixels within which windows snap together</p>
+                        </div>
                     </div>
 
                     <div class="section">

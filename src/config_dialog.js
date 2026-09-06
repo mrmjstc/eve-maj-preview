@@ -177,6 +177,7 @@ const CONFIG_SCHEMA = [
     { id: 'snappingThreshold', path: 'snapping.threshold' },
     { id: 'snappingScreenEdges', path: 'snapping.screenEdges' },
     { id: 'snappingThumbnailEdges', path: 'snapping.thumbnailEdges' },
+    { id: 'snappingShowGhostBorders', path: 'snapping.showGhostPositionBorders' },
 
     { id: 'thumbWidth', path: 'thumbnail.width' },
     { id: 'thumbHeight', path: 'thumbnail.height' },
@@ -3165,6 +3166,9 @@ async function runImport() {
         } else {
             applyApmImport(checked, allNotes);
         }
+
+        // Imported positions belong to a different setup, so the ghost overlay would just clutter drags with irrelevant saved positions.
+        if (currentConfig.snapping) currentConfig.snapping.showGhostPositionBorders = false;
 
         populateFormFields();
         markAsChanged();
