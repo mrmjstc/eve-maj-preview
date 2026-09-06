@@ -1846,26 +1846,20 @@ pub const HotkeyManager = struct {
         slog.warn("No queued not-logged-in clients are still at the login screen", .{});
     }
 
-    /// Syncs currentIndex on every group in `groups` containing character_name; returns whether any did. HotkeyGroup and QuickGroup both expose the fields this needs.
-    fn syncGroupCycleIndex(comptime GroupT: type, groups: []GroupT, character_name: []const u8, kind: []const u8) bool {
-        var found = false;
+    /// Syncs currentIndex on every group in `groups` containing character_name. When reset_on_leave is set,
+    /// clears currentIndex on groups character_name isn't in. HotkeyGroup and QuickGroup both expose the fields this needs.
+    fn syncGroupCycleIndex(comptime GroupT: type, groups: []GroupT, character_name: []const u8, kind: []const u8, reset_on_leave: bool) void {
         for (groups) |*group| {
-            const index = findStringIndex(group.characters.items, character_name) orelse continue;
-            if (group.currentIndex == null or group.currentIndex.? != index) {
-                slog.debug("Updated {s} index: {s} now at position {}/{}", .{ kind, character_name, index + 1, group.characters.items.len });
-                group.currentIndex = index;
+            if (findStringIndex(group.characters.items, character_name)) |index| {
+                if (group.currentIndex == null or group.currentIndex.? != index) {
+                    slog.debug("Updated {s} index: {s} now at position {}/{}", .{ kind, character_name, index + 1, group.characters.items.len });
+                    group.currentIndex = index;
+                }
+            } else if (reset_on_leave and group.currentIndex != null) {
+                slog.debug("Reset {s} cycle index - {s} left this {s}", .{ kind, character_name, kind });
+                group.currentIndex = null;
             }
-            found = true;
         }
-        return found;
-    }
-
-    /// Clears currentIndex on every group in `groups`; used when character_name isn't in any of them.
-    fn resetGroupIndices(comptime GroupT: type, groups: []GroupT, character_name: []const u8, kind: []const u8) void {
-        for (groups) |*group| {
-            group.currentIndex = null;
-        }
-        slog.debug("Reset {s} cycle indices - {s} is not in any {s}", .{ kind, character_name, kind });
     }
 
     /// Update currentIndex for hotkey groups (and the not-logged-in cycle cursor) when a character is manually focused
@@ -1900,16 +1894,8 @@ pub const HotkeyManager = struct {
             }
         }
 
-        const found_in_hotkey_group = syncGroupCycleIndex(config_mod.HotkeyGroup, self.config.hotkeyGroups.items, character_name, "hotkey group");
-        const found_in_quick_group = syncGroupCycleIndex(config_mod.QuickGroup, self.config.quickGroups.items, character_name, "quick group");
-
-        // Each group kind resets independently; being in a hotkey group shouldn't block a quick-group reset or vice versa.
-        if (self.config.resetGroupIndexOnNonGroupFocus and !found_in_hotkey_group) {
-            resetGroupIndices(config_mod.HotkeyGroup, self.config.hotkeyGroups.items, character_name, "hotkey group");
-        }
-        if (self.config.resetGroupIndexOnNonGroupFocus and !found_in_quick_group) {
-            resetGroupIndices(config_mod.QuickGroup, self.config.quickGroups.items, character_name, "quick group");
-        }
+        syncGroupCycleIndex(config_mod.HotkeyGroup, self.config.hotkeyGroups.items, character_name, "hotkey group", self.config.resetGroupIndexOnNonGroupFocus);
+        syncGroupCycleIndex(config_mod.QuickGroup, self.config.quickGroups.items, character_name, "quick group", self.config.resetGroupIndexOnNonGroupFocus);
     }
 
     fn updateExcludedCycleIndex(self: *HotkeyManager, character_name: []const u8) void {
