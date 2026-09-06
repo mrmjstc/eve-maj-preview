@@ -70,6 +70,8 @@ fn currentProfileFilename() []const u8 {
 }
 
 pub fn main(init: std.process.Init) !void {
+    // Must precede any window/monitor API call, or captured window rects land in a virtualized 96-DPI space that doesn't match main.zig's per-monitor-aware coordinates.
+    _ = win32.SetProcessDpiAwarenessContext(win32.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     g_io = init.io;
     log.setIo(g_io);
     config_mod.setIo(g_io);
