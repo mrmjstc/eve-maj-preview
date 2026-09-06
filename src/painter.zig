@@ -1007,13 +1007,12 @@ pub const Painter = struct {
         const old_active = self.active_source_hwnd;
         self.active_source_hwnd = should_be_active_hwnd;
         const active_changed = old_active != should_be_active_hwnd;
-        if (should_be_active_hwnd) |hwnd| {
-            if (self.hwnd_to_thumbnail_index.contains(hwnd)) self.last_focused_source_hwnd = hwnd;
-        }
+        const any_eve_has_focus = if (should_be_active_hwnd) |hwnd| self.hwnd_to_thumbnail_index.contains(hwnd) else false;
+        if (any_eve_has_focus) self.last_focused_source_hwnd = should_be_active_hwnd.?;
 
         for (self.thumbnails.items) |*thumbnail| {
             // Unhide automatically-hidden thumbnails when EVE gains focus; manual hiding persists until the user toggles visibility.
-            if (thumbnail.visibility_state == .HiddenAutomatic and should_be_active_hwnd != null) {
+            if (thumbnail.visibility_state == .HiddenAutomatic and any_eve_has_focus) {
                 thumbnail.setVisibility(.Visible);
                 thumbnail.needs_render = true;
             }
