@@ -134,16 +134,16 @@ const RenderSettings = struct {
     exclusion_overlay_style: types.ExclusionOverlayStyle = .X,
     exclusion_overlay_color: u32 = 0x33FF0000,
 
-    show_quick_group_badge: bool = false,
-    quick_group_badge_text: []const u8 = "",
-    quick_group_badge_color: u32 = 0xFF44FF44,
-    quick_group_badge_position: TextPosition = .RightCenter,
-    quick_group_badge_offset_x: i32 = 0,
-    quick_group_badge_offset_y: i32 = 0,
-    quick_group_badge_font_name: []const u8 = "Segoe UI",
-    quick_group_badge_font_size: i32 = 12,
-    quick_group_badge_font_weight: types.FontWeight = .Regular,
-    quick_group_badge_bg_color: u32 = 0x80000000,
+    show_group_badge: bool = false,
+    group_badge_text: []const u8 = "",
+    group_badge_color: u32 = 0xFF44FF44,
+    group_badge_position: TextPosition = .RightCenter,
+    group_badge_offset_x: i32 = 0,
+    group_badge_offset_y: i32 = 0,
+    group_badge_font_name: []const u8 = "Segoe UI",
+    group_badge_font_size: i32 = 12,
+    group_badge_font_weight: types.FontWeight = .Regular,
+    group_badge_bg_color: u32 = 0x80000000,
     combat_incoming_bg_color: u32 = 0x80000000,
     combat_outgoing_bg_color: u32 = 0x80000000,
     mining_bg_color: u32 = 0x80000000,
@@ -233,24 +233,24 @@ pub const ThumbnailWindow = struct {
     cached_render_settings: ?RenderSettings = null,
     cached_char_dims: ?TextDimensions = null,
     cached_sys_dims: ?TextDimensions = null,
-    cached_qg_dims: ?TextDimensions = null,
+    cached_badge_dims: ?TextDimensions = null,
     cached_font_name: []const u8 = "",
     cached_font_size: i32 = 0,
     cached_font_weight: types.FontWeight = .Regular,
     cached_sys_font_name: []const u8 = "",
     cached_sys_font_size: i32 = 0,
     cached_sys_font_weight: types.FontWeight = .Regular,
-    cached_qg_font_name: []const u8 = "",
-    cached_qg_font_size: i32 = 0,
-    cached_qg_font_weight: types.FontWeight = .Regular,
+    cached_badge_font_name: []const u8 = "",
+    cached_badge_font_size: i32 = 0,
+    cached_badge_font_weight: types.FontWeight = .Regular,
     cached_system_color: u32,
     // Auto-generated per-character name color, resolved from config; null when "Unique Character Name Colors" is disabled, and callers fall back to their own default.
     cached_character_color: ?u32,
     // Display name and per-character active-border override, resolved from config on character_name change or (re)creation rather than every tick (list_view.zig hashes these every ~50ms per thumbnail).
     cached_display_name: []const u8,
     cached_active_border_override: ?u32,
-    // Owned, comma-joined quick-group membership label ("1, 3"); "" = none.
-    cached_quick_group_label: []const u8,
+    // Owned, comma-joined label of the badge-enabled groups this character is in ("1, 3"); "" = none.
+    cached_group_badge_label: []const u8,
 
     /// Whether this thumbnail's source_hwnd is the live "who's focused" pointer.
     pub fn isFocused(self: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) bool {
@@ -291,7 +291,7 @@ pub const ThumbnailWindow = struct {
 
 /// Per-purpose font cache slot (see `Painter.cached_fonts`). Kept as u4 (not u3) so a future slot doesn't need a resize.
 /// `combat` is incoming DPS's slot; outgoing DPS has its own.
-pub const FontSlot = enum(u4) { main, combat, mining, bounty, system_name, quick_group_badge, notification, combat_outgoing, resources };
+pub const FontSlot = enum(u4) { main, combat, mining, bounty, system_name, group_badge, notification, combat_outgoing, resources };
 
 const FontCacheEntry = struct {
     font: ?win32.HFONT = null,
@@ -615,16 +615,16 @@ pub const Painter = struct {
             a.show_exclusion_overlay == b.show_exclusion_overlay and
             a.exclusion_overlay_style == b.exclusion_overlay_style and
             a.exclusion_overlay_color == b.exclusion_overlay_color and
-            a.show_quick_group_badge == b.show_quick_group_badge and
-            stringsEqualFast(a.quick_group_badge_text, b.quick_group_badge_text) and
-            a.quick_group_badge_color == b.quick_group_badge_color and
-            a.quick_group_badge_position == b.quick_group_badge_position and
-            a.quick_group_badge_offset_x == b.quick_group_badge_offset_x and
-            a.quick_group_badge_offset_y == b.quick_group_badge_offset_y and
-            stringsEqualFast(a.quick_group_badge_font_name, b.quick_group_badge_font_name) and
-            a.quick_group_badge_font_size == b.quick_group_badge_font_size and
-            a.quick_group_badge_font_weight == b.quick_group_badge_font_weight and
-            a.quick_group_badge_bg_color == b.quick_group_badge_bg_color and
+            a.show_group_badge == b.show_group_badge and
+            stringsEqualFast(a.group_badge_text, b.group_badge_text) and
+            a.group_badge_color == b.group_badge_color and
+            a.group_badge_position == b.group_badge_position and
+            a.group_badge_offset_x == b.group_badge_offset_x and
+            a.group_badge_offset_y == b.group_badge_offset_y and
+            stringsEqualFast(a.group_badge_font_name, b.group_badge_font_name) and
+            a.group_badge_font_size == b.group_badge_font_size and
+            a.group_badge_font_weight == b.group_badge_font_weight and
+            a.group_badge_bg_color == b.group_badge_bg_color and
             a.overlay_alpha == b.overlay_alpha and
             a.overlay_width == b.overlay_width and
             a.overlay_height == b.overlay_height and
@@ -725,7 +725,7 @@ pub const Painter = struct {
         self.allocator.free(thumbnail.title);
         self.allocator.free(thumbnail.character_name);
         self.allocator.free(thumbnail.system_name);
-        self.allocator.free(thumbnail.cached_quick_group_label);
+        self.allocator.free(thumbnail.cached_group_badge_label);
         for (thumbnail.active_notifications) |maybe_notif| {
             if (maybe_notif) |notif| self.allocator.free(notif.text);
         }
@@ -848,15 +848,17 @@ pub const Painter = struct {
         return null;
     }
 
-    /// Recompute and cache a thumbnail's quick-group badge label after its membership changed.
-    pub fn refreshQuickGroupBadge(self: *Painter, thumbnail: *ThumbnailWindow) void {
+    /// Comma-joined names of the badge-enabled groups `character_name` belongs to; "" when none.
+    fn buildGroupBadgeLabel(self: *Painter, character_name: []const u8) ![]const u8 {
         var label_buf = std.ArrayList(u8).empty;
         defer label_buf.deinit(self.allocator);
 
-        for (self.config.quickGroups.items, 0..) |*group, index| {
+        for (self.config.hotkeyGroups.items, 0..) |*group, index| {
+            if (!group.showBadge) continue;
+
             var is_member = false;
             for (group.characters.items) |char_name| {
-                if (std.mem.eql(u8, char_name, thumbnail.character_name)) {
+                if (std.mem.eql(u8, char_name, character_name)) {
                     is_member = true;
                     break;
                 }
@@ -864,21 +866,26 @@ pub const Painter = struct {
             if (!is_member) continue;
 
             if (label_buf.items.len > 0) {
-                label_buf.appendSlice(self.allocator, ", ") catch return;
+                try label_buf.appendSlice(self.allocator, ", ");
             }
             if (group.name.len > 0) {
-                label_buf.appendSlice(self.allocator, group.name) catch return;
+                try label_buf.appendSlice(self.allocator, group.name);
             } else {
                 var index_buf: [20]u8 = undefined;
-                const index_str = std.fmt.bufPrint(&index_buf, "{}", .{index + 1}) catch return;
-                label_buf.appendSlice(self.allocator, index_str) catch return;
+                const index_str = try std.fmt.bufPrint(&index_buf, "{}", .{index + 1});
+                try label_buf.appendSlice(self.allocator, index_str);
             }
         }
 
-        const new_label = self.allocator.dupe(u8, label_buf.items) catch return;
-        self.allocator.free(thumbnail.cached_quick_group_label);
-        thumbnail.cached_quick_group_label = new_label;
-        thumbnail.cached_qg_dims = null;
+        return self.allocator.dupe(u8, label_buf.items);
+    }
+
+    /// Recompute and cache a thumbnail's group badge label after its membership changed.
+    pub fn refreshGroupBadge(self: *Painter, thumbnail: *ThumbnailWindow) void {
+        const new_label = self.buildGroupBadgeLabel(thumbnail.character_name) catch return;
+        self.allocator.free(thumbnail.cached_group_badge_label);
+        thumbnail.cached_group_badge_label = new_label;
+        thumbnail.cached_badge_dims = null;
     }
 
     /// Reconciles focus, then refreshes minimized-state bookkeeping (inactive_since, dirty-on-minimize-change); call periodically from the timer.
@@ -1318,16 +1325,17 @@ pub const Painter = struct {
             thumbnail.cached_character_color = self.config.getCharacterNameColor(thumbnail.character_name);
             thumbnail.cached_display_name = self.config.getDisplayName(thumbnail.character_name);
             thumbnail.cached_active_border_override = if (self.config.getCharacterBorderColors(thumbnail.character_name)) |c| c.activeBorderColor else null;
+            self.refreshGroupBadge(thumbnail);
             // RenderSettings' equality check only compares character_name, so it can miss a change to one of the resolved fields above; force the full-render path since this only runs on debounced (~120ms) preview edits.
             thumbnail.cached_render_settings = null;
             // Force re-measurement: a display-name-only edit changes the string without touching the font, which is otherwise the only re-measure trigger.
             thumbnail.cached_char_dims = null;
             thumbnail.cached_sys_dims = null;
-            thumbnail.cached_qg_dims = null;
+            thumbnail.cached_badge_dims = null;
             // These borrow from Config's font-name buffers, which a preview edit may have just freed.
             thumbnail.cached_font_name = "";
             thumbnail.cached_sys_font_name = "";
-            thumbnail.cached_qg_font_name = "";
+            thumbnail.cached_badge_font_name = "";
 
             if (!thumbnail.win32_enabled) continue;
 
@@ -1576,6 +1584,7 @@ pub const Painter = struct {
             thumbnail.cached_display_name = self.config.getDisplayName(new_char_dup);
             thumbnail.cached_active_border_override = if (self.config.getCharacterBorderColors(new_char_dup)) |c| c.activeBorderColor else null;
             thumbnail.cached_character_color = self.config.getCharacterNameColor(new_char_dup);
+            self.refreshGroupBadge(thumbnail);
 
             // If character logged in (changed from "EVE" to actual name), move the thumbnail box to its remembered spot
             if (was_generic and now_specific) {
@@ -2161,32 +2170,33 @@ pub const Painter = struct {
         title: []const u8,
         character_name: []const u8,
         system_name: []const u8,
-        quick_group_label: []const u8,
+        group_badge_label: []const u8,
 
         fn free(self: ThumbnailStrings, allocator: std.mem.Allocator) void {
             allocator.free(self.title);
             allocator.free(self.character_name);
             allocator.free(self.system_name);
-            allocator.free(self.quick_group_label);
+            allocator.free(self.group_badge_label);
         }
     };
 
     /// Dupes the four owned strings a ThumbnailWindow needs; on partial failure, whatever already succeeded is freed before the error propagates.
-    fn dupeThumbnailStrings(allocator: std.mem.Allocator, title: []const u8, character_name: []const u8, system_name: []const u8) !ThumbnailStrings {
+    fn dupeThumbnailStrings(self: *Painter, title: []const u8, character_name: []const u8, system_name: []const u8) !ThumbnailStrings {
+        const allocator = self.allocator;
         const title_copy = try allocator.dupe(u8, title);
         errdefer allocator.free(title_copy);
         const char_name_copy = try allocator.dupe(u8, character_name);
         errdefer allocator.free(char_name_copy);
         const sys_name_copy = try allocator.dupe(u8, system_name);
         errdefer allocator.free(sys_name_copy);
-        const quick_group_label_copy = try allocator.dupe(u8, "");
-        errdefer allocator.free(quick_group_label_copy);
+        const group_badge_label_copy = try self.buildGroupBadgeLabel(character_name);
+        errdefer allocator.free(group_badge_label_copy);
 
         return .{
             .title = title_copy,
             .character_name = char_name_copy,
             .system_name = sys_name_copy,
-            .quick_group_label = quick_group_label_copy,
+            .group_badge_label = group_badge_label_copy,
         };
     }
 
@@ -2219,7 +2229,7 @@ pub const Painter = struct {
             const initial_visibility = self.determineInitialVisibility(eve_window.hwnd);
             const is_excluded = if (g_hotkey_manager_ptr) |mgr| mgr.isCharacterExcluded(eve_window.character_name) else false;
 
-            const strings = try dupeThumbnailStrings(self.allocator, eve_window.title, eve_window.character_name, initial_system_name);
+            const strings = try self.dupeThumbnailStrings(eve_window.title, eve_window.character_name, initial_system_name);
             errdefer strings.free(self.allocator);
             const cache_fields = self.resolveThumbnailCacheFields(strings.character_name, strings.system_name);
 
@@ -2237,7 +2247,7 @@ pub const Painter = struct {
                 .cached_character_color = cache_fields.character_color,
                 .cached_display_name = cache_fields.display_name,
                 .cached_active_border_override = cache_fields.active_border_override,
-                .cached_quick_group_label = strings.quick_group_label,
+                .cached_group_badge_label = strings.group_badge_label,
                 .inactive_since = win32.Ticks.now(),
                 .visibility_state = initial_visibility,
                 .is_excluded_from_cycle = is_excluded,
@@ -2357,7 +2367,7 @@ pub const Painter = struct {
             break :blk false;
         };
 
-        const strings = try dupeThumbnailStrings(self.allocator, eve_window.title, eve_window.character_name, initial_system_name);
+        const strings = try self.dupeThumbnailStrings(eve_window.title, eve_window.character_name, initial_system_name);
         errdefer strings.free(self.allocator);
         const cache_fields = self.resolveThumbnailCacheFields(strings.character_name, strings.system_name);
 
@@ -2373,7 +2383,7 @@ pub const Painter = struct {
             .cached_character_color = cache_fields.character_color,
             .cached_display_name = cache_fields.display_name,
             .cached_active_border_override = cache_fields.active_border_override,
-            .cached_quick_group_label = strings.quick_group_label,
+            .cached_group_badge_label = strings.group_badge_label,
             .inactive_since = win32.Ticks.now(),
             .visibility_state = initial_visibility,
             .is_excluded_from_cycle = is_excluded,
@@ -3295,29 +3305,29 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
 
-    var qg_badge_dims: TextDimensions = .{ .width = 0, .height = 0 };
-    var qg_font: ?win32.HFONT = null;
-    if (settings.show_quick_group_badge) {
-        const qf = try painter.getCachedFont(.quick_group_badge, dpi, settings.quick_group_badge_font_name, settings.quick_group_badge_font_size, settings.quick_group_badge_font_weight);
-        qg_font = qf;
-        const qg_font_changed = fontSettingsChanged(
-            thumbnail.cached_qg_font_name,
-            thumbnail.cached_qg_font_size,
-            thumbnail.cached_qg_font_weight,
-            settings.quick_group_badge_font_name,
-            settings.quick_group_badge_font_size,
-            settings.quick_group_badge_font_weight,
+    var badge_dims: TextDimensions = .{ .width = 0, .height = 0 };
+    var badge_font: ?win32.HFONT = null;
+    if (settings.show_group_badge) {
+        const badge_hfont = try painter.getCachedFont(.group_badge, dpi, settings.group_badge_font_name, settings.group_badge_font_size, settings.group_badge_font_weight);
+        badge_font = badge_hfont;
+        const badge_font_changed = fontSettingsChanged(
+            thumbnail.cached_badge_font_name,
+            thumbnail.cached_badge_font_size,
+            thumbnail.cached_badge_font_weight,
+            settings.group_badge_font_name,
+            settings.group_badge_font_size,
+            settings.group_badge_font_weight,
         );
-        if (thumbnail.cached_qg_dims != null and !qg_font_changed) {
-            qg_badge_dims = thumbnail.cached_qg_dims.?;
+        if (thumbnail.cached_badge_dims != null and !badge_font_changed) {
+            badge_dims = thumbnail.cached_badge_dims.?;
         } else {
-            _ = win32.SelectObject(overlay.mem_dc, qf);
-            qg_badge_dims = measureText(overlay.mem_dc, settings.quick_group_badge_text);
+            _ = win32.SelectObject(overlay.mem_dc, badge_hfont);
+            badge_dims = measureText(overlay.mem_dc, settings.group_badge_text);
             _ = win32.SelectObject(overlay.mem_dc, font);
-            thumbnail.cached_qg_dims = qg_badge_dims;
-            thumbnail.cached_qg_font_name = settings.quick_group_badge_font_name;
-            thumbnail.cached_qg_font_size = settings.quick_group_badge_font_size;
-            thumbnail.cached_qg_font_weight = settings.quick_group_badge_font_weight;
+            thumbnail.cached_badge_dims = badge_dims;
+            thumbnail.cached_badge_font_name = settings.group_badge_font_name;
+            thumbnail.cached_badge_font_size = settings.group_badge_font_size;
+            thumbnail.cached_badge_font_weight = settings.group_badge_font_weight;
         }
     }
 
@@ -3360,15 +3370,15 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     else
         TextPos{ .x = 0, .y = 0 };
 
-    const qg_badge_pos: TextPos = if (settings.show_quick_group_badge)
+    const badge_pos: TextPos = if (settings.show_group_badge)
         calculateTextPosition(
-            settings.quick_group_badge_position,
-            qg_badge_dims.width,
-            qg_badge_dims.height,
+            settings.group_badge_position,
+            badge_dims.width,
+            badge_dims.height,
             overlay.width,
             overlay.height,
-            settings.quick_group_badge_offset_x,
-            settings.quick_group_badge_offset_y,
+            settings.group_badge_offset_x,
+            settings.group_badge_offset_y,
         )
     else
         TextPos{ .x = 0, .y = 0 };
@@ -3412,16 +3422,16 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         );
     }
 
-    if (settings.show_quick_group_badge) {
+    if (settings.show_group_badge) {
         fillTextBackground(
             overlay.pixels,
             overlay.width,
             overlay.height,
-            qg_badge_pos.x,
-            qg_badge_pos.y,
-            qg_badge_dims.width,
-            qg_badge_dims.height,
-            settings.quick_group_badge_bg_color,
+            badge_pos.x,
+            badge_pos.y,
+            badge_dims.width,
+            badge_dims.height,
+            settings.group_badge_bg_color,
         );
     }
 
@@ -3643,10 +3653,10 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         }
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
-    if (settings.show_quick_group_badge) {
-        const qf = qg_font.?;
-        _ = win32.SelectObject(overlay.mem_dc, qf);
-        renderText(overlay.mem_dc, settings.quick_group_badge_text, qg_badge_pos.x, qg_badge_pos.y, settings.quick_group_badge_color);
+    if (settings.show_group_badge) {
+        const badge_hfont = badge_font.?;
+        _ = win32.SelectObject(overlay.mem_dc, badge_hfont);
+        renderText(overlay.mem_dc, settings.group_badge_text, badge_pos.x, badge_pos.y, settings.group_badge_color);
         _ = win32.SelectObject(overlay.mem_dc, font);
     }
     if (config.combat.enabled and config.thumbnail.showText) {
@@ -3700,8 +3710,8 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     if (settings.show_notifications and has_notification_text) {
         gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, notifications_text_pos.x, notifications_text_pos.y, notifications_text_dims.width, notifications_text_dims.height);
     }
-    if (settings.show_quick_group_badge) {
-        gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, qg_badge_pos.x, qg_badge_pos.y, qg_badge_dims.width, qg_badge_dims.height);
+    if (settings.show_group_badge) {
+        gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, badge_pos.x, badge_pos.y, badge_dims.width, badge_dims.height);
     }
     if (config.combat.enabled) {
         if (dps_in_text.len > 0) {
@@ -3832,7 +3842,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
 
     // Combat/Mining/Bounty are also gated by showText, but checked directly in the render function below,
     // since they already bypass RenderSettings entirely for their enabled-checks.
-    const effective_show_quick_group_badge = if (should_hide_all)
+    const effective_show_group_badge = if (should_hide_all)
         false
     else
         (cfg.thumbnail.showText and cfg.thumbnail.showQuickGroupBadge);
@@ -3912,7 +3922,7 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         .system_name_color = system_color,
         .character_name_bg_color = resolveTextBgColor(state_cfg, cfg.thumbnail.characterNameBgColor, cfg.thumbnail.applyOpacityToOverlayTexts),
         .system_name_bg_color = resolveTextBgColor(state_cfg, cfg.thumbnail.systemNameBgColor, cfg.thumbnail.applyOpacityToOverlayTexts),
-        .quick_group_badge_bg_color = resolveTextBgColor(state_cfg, cfg.thumbnail.quickGroupBadgeBgColor, cfg.thumbnail.applyOpacityToOverlayTexts),
+        .group_badge_bg_color = resolveTextBgColor(state_cfg, cfg.thumbnail.quickGroupBadgeBgColor, cfg.thumbnail.applyOpacityToOverlayTexts),
         .notifications_bg_color = resolveTextBgColor(state_cfg, cfg.thumbnail.notifications.bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
         .combat_incoming_bg_color = resolveTextBgColor(state_cfg, cfg.combat.incoming_bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
         .combat_outgoing_bg_color = resolveTextBgColor(state_cfg, cfg.combat.outgoing_bg_color, cfg.thumbnail.applyOpacityToOverlayTexts),
@@ -3953,15 +3963,15 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         },
         .exclusion_overlay_style = cfg.thumbnail.exclusionOverlayStyle,
         .exclusion_overlay_color = cfg.thumbnail.exclusionOverlayColor,
-        .show_quick_group_badge = effective_show_quick_group_badge and thumbnail.cached_quick_group_label.len > 0 and is_visible,
-        .quick_group_badge_text = thumbnail.cached_quick_group_label,
-        .quick_group_badge_color = cfg.thumbnail.quickGroupBadgeColor,
-        .quick_group_badge_position = cfg.thumbnail.quickGroupBadgePosition,
-        .quick_group_badge_offset_x = cfg.thumbnail.quickGroupBadgeOffsetX,
-        .quick_group_badge_offset_y = cfg.thumbnail.quickGroupBadgeOffsetY,
-        .quick_group_badge_font_name = cfg.thumbnail.quickGroupBadgeFontName,
-        .quick_group_badge_font_size = scalePixels(cfg.thumbnail.quickGroupBadgeFontSize, dpi_scale),
-        .quick_group_badge_font_weight = cfg.thumbnail.quickGroupBadgeFontWeight,
+        .show_group_badge = effective_show_group_badge and thumbnail.cached_group_badge_label.len > 0 and is_visible,
+        .group_badge_text = thumbnail.cached_group_badge_label,
+        .group_badge_color = cfg.thumbnail.quickGroupBadgeColor,
+        .group_badge_position = cfg.thumbnail.quickGroupBadgePosition,
+        .group_badge_offset_x = cfg.thumbnail.quickGroupBadgeOffsetX,
+        .group_badge_offset_y = cfg.thumbnail.quickGroupBadgeOffsetY,
+        .group_badge_font_name = cfg.thumbnail.quickGroupBadgeFontName,
+        .group_badge_font_size = scalePixels(cfg.thumbnail.quickGroupBadgeFontSize, dpi_scale),
+        .group_badge_font_weight = cfg.thumbnail.quickGroupBadgeFontWeight,
         // visibility_state and per-character hideThumbnail take absolute priority over per-state showThumbnail config.
         .show_thumbnail = if (!is_visible or char_hidden) false else state_cfg.getShowThumbnail(base_show_thumbnail),
         .overlay_alpha = if (cfg.thumbnail.applyOpacityToOverlayTexts) cfg.getCharacterOpacity(character_name) else OVERLAY_ALPHA,

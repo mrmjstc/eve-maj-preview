@@ -102,7 +102,7 @@ Set `textBgColorInheritBorderColor` to `true` to reuse the current border color 
 }
 ```
 
-### Quick Group Badge
+### Group Badge
 
 ```json
 {
@@ -116,7 +116,7 @@ Set `textBgColorInheritBorderColor` to `true` to reuse the current border color 
 }
 ```
 
-Drawn on a thumbnail whenever its character is a current member of any [Quick Group](#quick-groups-hover-assigned-temporary-cycling). `quickGroupBadgePosition` uses the same values as [Text Positions](#text-overlay-settings).
+Drawn on a thumbnail whenever its character is a member of a [Hotkey Group](#hotkey-groups-character-cycling) with `showBadge` set. `quickGroupBadgePosition` uses the same values as [Text Positions](#text-overlay-settings).
 
 ### Exclusion Overlay
 
@@ -993,18 +993,26 @@ Some settings persist across all profiles and are configured in `profiles\global
       "characters": ["Main Character", "Alt 1", "Alt 2"]
     },
     {
-      "name": "Mining Fleet",
+      "name": "Scouts",
       "forwardKey": "F15",
       "backwardKey": "F16",
-      "includeNotLoggedIn": true,
-      "characters": ["Mining Hulk 1", "Mining Hulk 2", "Orca"]
+      "assignKey": "Ctrl+1",
+      "temporaryMembership": true,
+      "showBadge": true,
+      "characters": []
     }
   ]
 }
 ```
 
 - **name**: Optional user-facing name for the group (default: empty string)
+- **forwardKey**/**backwardKey**: Cycle forward/backward through the group's members; both optional, so a group can be assign-only
+- **assignKey**: Hovering a thumbnail and pressing this key toggles that character's membership in the group - added if not already a member, removed if it is
+- **temporaryMembership**: When `true`, membership is runtime-only: assign-key edits are never written back to the profile and the group starts empty every launch. When `false`, assign-key edits change the profile's own character list (default: `false`)
+- **showBadge**: Draws the group's name on its members' thumbnails, styled by the [Group Badge](#group-badge) settings (default: `false`)
 - **includeNotLoggedIn**: When `true`, cycling this group appends still-queued not-logged-in clients (the same windows the `next_not_logged_in`/`previous_not_logged_in` hotkeys cycle) after the group's characters, in the order they logged out (default: `false`)
+
+Profiles written by an older build carry a separate `quickGroups` array; it is folded into `hotkeyGroups` on load (as groups with `temporaryMembership` and `showBadge` set) and written back empty.
 
 **Supported Keys:**
 - **Function Keys**: F1-F24
@@ -1015,30 +1023,6 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **Numpad**: Numpad0-Numpad9, NumpadAdd, NumpadSubtract, NumpadMultiply, NumpadDivide, NumpadDecimal
 - **Special**: Space
 - **Modifiers**: Any of the above can be combined with `Ctrl`/`Alt`/`Shift`/`Win` - see [Modifier Combos](#hotkey-configuration)
-
-### Quick Groups (Hover-Assigned Temporary Cycling)
-
-An alternative to hotkey groups for ad-hoc fleets: instead of pre-listing characters in the profile, hover a thumbnail and press the group's assign key to toggle that character in or out.
-
-```json
-{
-  "quickGroups": [
-    {
-      "name": "Scouts",
-      "assignKey": "Ctrl+1",
-      "forwardKey": "F15",
-      "backwardKey": "F16"
-    }
-  ]
-}
-```
-
-- **name**: Optional user-facing name for the group (default: empty string)
-- **assignKey**: Hovering a thumbnail and pressing this key toggles that character's membership in the group - added if not already a member, removed if it is
-- **forwardKey**/**backwardKey**: Cycle forward/backward through the group's current members, same as hotkey group cycling but without exclusion-list support
-- Uses the same [supported keys](#hotkey-groups-character-cycling) as hotkey groups
-
-Membership is **never persisted** - it lives only in memory and resets every time the application restarts, unlike hotkey groups which are defined statically in the profile. Members currently in a quick group are marked with a badge on their thumbnail, configurable under `thumbnail` in profile JSON: `showQuickGroupBadge`, `quickGroupBadgeColor`, `quickGroupBadgePosition`, `quickGroupBadgeOffsetX`/`quickGroupBadgeOffsetY` (same position values as [Text Positions](#text-overlay-settings)).
 
 ### Per-Character Hotkeys (Direct Activation)
 

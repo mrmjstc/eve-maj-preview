@@ -65,7 +65,6 @@ function refreshDynamicSections() {
     saveSystemColors();
     saveCharacters();
     saveHotkeyGroups();
-    saveQuickGroups();
     saveNotificationTypes();
     saveProfileSwitchHotkeys();
     saveAppHotkeys();
@@ -76,7 +75,6 @@ function refreshDynamicSections() {
     populateSystemColors();
     populateCharacters();
     populateHotkeyGroups();
-    populateQuickGroups();
     populateNotificationTypes();
     populateProfileSwitchHotkeys();
     populateAppHotkeys();
@@ -722,6 +720,7 @@ function buildThumbnailPreviewPatch(includePositions = false) {
         exclusionOverlayStyle: getFieldValue('exclusionOverlayStyle'),
         exclusionOverlayColor: zigColorWithAlpha(getFieldValue('exclusionOverlayColor'), percentToOpacity(getFieldValue('exclusionOverlayOpacity'))),
         systemColors: buildSystemColorsPreviewPatch(),
+        hotkeyGroupBadges: buildHotkeyGroupBadgesPreviewPatch(),
         width: getFieldValue('thumbWidth'),
         height: getFieldValue('thumbHeight'),
         hideWhenNoEveFocus: getFieldValue('hideWhenNoEveFocus'),
@@ -852,6 +851,15 @@ function buildSystemColorsPreviewPatch() {
         result.push({ systemName, color: htmlColorToZig(colorField.value) });
     });
     return result;
+}
+
+// Badge flags only, in group order - the running app keeps its own membership, which for a temporary group exists nowhere else.
+function buildHotkeyGroupBadgesPreviewPatch() {
+    if (!currentConfig || !currentConfig.hotkeyGroups) return [];
+    return currentConfig.hotkeyGroups.map((group, index) => {
+        const field = document.getElementById(`hkgroup_${index}_showBadge`);
+        return field ? field.checked : !!group.showBadge;
+    });
 }
 
 // A color counts as "set" if it was already set on load, or the user changed it from the #000000 default; "Clear to Default" sets dataset.cleared to override this.
@@ -1063,14 +1071,18 @@ function switchTab(panelId) {
         contentPanel.scrollTop = 0;
     }
 
-    // Its stage size reads as 0 via getBoundingClientRect while the panel is display:none - recompute now that it's visible.
+    // Both read as 0 via getBoundingClientRect while the panel is display:none - recompute now that it's visible.
     if (panelId === 'thumbnails') refreshOverlayLayoutPreview();
+    if (panelId === 'hotkey-groups') {
+        alignHotkeyGroupNameLabel();
+        fitHotkeyGroupCharsList(selectedHotkeyGroupIndex);
+    }
 
     setActiveSection(null);
 }
 
 // Tabs whose sections are too few/short to be worth a sidebar sub-list.
-const TABS_WITHOUT_SUBHEADERS = ['about', 'characters', 'chatlog', 'resources'];
+const TABS_WITHOUT_SUBHEADERS = ['about', 'characters', 'chatlog', 'hotkey-groups', 'resources'];
 
 // IDs/labels are derived from each section's h3[data-i18n] rather than hand-maintained, so they can't drift out of sync as sections are added/removed.
 function buildSectionNav() {
@@ -1294,7 +1306,6 @@ function populateFormFields() {
     populateSystemColors();
     populateCharacters();
     populateHotkeyGroups();
-    populateQuickGroups();
     populateNotificationTypes();
 
     refreshOverlayLayoutPreview();
@@ -3396,7 +3407,6 @@ async function saveConfigurationImpl() {
         saveSystemColors();
         saveCharacters();
         saveHotkeyGroups();
-        saveQuickGroups();
         saveNotificationTypes();
         saveProfileSwitchHotkeys();
         saveAppHotkeys();
@@ -3419,7 +3429,8 @@ async function saveConfigurationImpl() {
 
     const hotkeyConflicts = updateHotkeyConflictHighlights();
     if (hotkeyConflicts.length > 0) {
-        switchTab('hotkeys');
+        // A conflicting key can live on the characters or hotkey-groups tab as easily as the hotkeys one, so the first one decides where to land.
+        switchTab(hotkeyConflicts[0][0]?.closest('.panel-content')?.dataset.panel || 'hotkeys');
         showHotkeyConflictModal(describeHotkeyConflicts(hotkeyConflicts));
         return;
     }
@@ -3584,7 +3595,7 @@ function hotkeyFieldLabel(input) {
 
         // Groups can be renamed to anything, so the base name alone wouldn't tell the user this is a cycling key rather than a character/profile switch hotkey.
         if (input.id.startsWith('hkgroup_')) {
-            const direction = input.id.endsWith('_forward') ? 'Forward' : input.id.endsWith('_backward') ? 'Backward' : null;
+            const direction = input.id.endsWith('_forward') ? 'Forward' : input.id.endsWith('_backward') ? 'Backward' : input.id.endsWith('_assign') ? 'Assign' : null;
             return direction ? `Hotkey Group "${base}" (${direction})` : `Hotkey Group "${base}"`;
         }
 
@@ -3595,11 +3606,6 @@ function hotkeyFieldLabel(input) {
     if (accordion) {
         const nameEl = accordion.querySelector('.accordion-name');
         const base = (nameEl && nameEl.textContent.trim()) || 'Item';
-
-        if (input.id.startsWith('qg_')) {
-            const direction = input.id.endsWith('_forward') ? 'Forward' : input.id.endsWith('_backward') ? 'Backward' : input.id.endsWith('_assign') ? 'Assign' : null;
-            return direction ? `Quick Group "${base}" (${direction})` : `Quick Group "${base}"`;
-        }
 
         return base;
     }
@@ -3630,8 +3636,6 @@ function updateHotkeyConflictHighlights() {
     const conflicts = findHotkeyConflicts();
     conflicts.forEach(inputs => inputs.forEach(input => input.classList.add('hotkey-conflict')));
     refreshCharacterHotkeyBadges();
-    refreshHotkeyGroupBadges();
-    refreshQuickGroupBadges();
     refreshAppHotkeyBadges();
     refreshUrlHotkeyBadges();
     return conflicts;
@@ -3664,30 +3668,6 @@ function refreshAppHotkeyBadges() {
         const display = value && value !== 'Press keys...' && value !== 'Waiting for input...' ? value : '';
         badge.textContent = display ? `[${display}]` : '';
         badge.style.display = display ? '' : 'none';
-    });
-}
-
-// Mirrors each hotkey group's forward/backward inputs into the badges shown on its roster row, whose detail panel may not be the open one.
-function refreshHotkeyGroupBadges() {
-    document.querySelectorAll('#hotkeyGroupsList .roster-row').forEach(row => {
-        const index = row.dataset.index;
-        let anyBound = false;
-
-        [['forward', '→'], ['backward', '←']].forEach(([direction, arrow]) => {
-            const input = document.getElementById(`hkgroup_${index}_${direction}`);
-            const badge = document.getElementById(`hkgroup_${index}_${direction}Badge`);
-            if (!input || !badge) return;
-
-            const value = input.value.trim();
-            const display = value && value !== 'Press keys...' && value !== 'Waiting for input...' ? value : '';
-            badge.textContent = display ? `${arrow}[${display}]` : '';
-            badge.style.display = display ? '' : 'none';
-            if (display) anyBound = true;
-        });
-
-        // Collapse the second line entirely when neither key is bound, so its row gap doesn't show as a stray band under the name.
-        const keysLine = row.querySelector('.roster-row-keys');
-        if (keysLine) keysLine.style.display = anyBound ? '' : 'none';
     });
 }
 
@@ -4333,14 +4313,73 @@ function initSnakeGame(canvas) {
     snakeGameLoop = requestAnimationFrame(loop);
 }
 // Shared by setupCharacterDragAndDrop and setupHotkeyGroupCharDragAndDrop, which were previously near-identical ~60-line blocks differing only in selectors and the reorder callback.
-function setupDragReorder(container, itemSelector, handleSelector, getIndex, onReorder) {
+// Nearest ancestor that actually scrolls - not always the element holding the rows, since #charactersList wraps the .roster that carries the overflow.
+function nearestScrollableAncestor(el) {
+    for (let node = el.parentElement; node; node = node.parentElement) {
+        const overflowY = getComputedStyle(node).overflowY;
+        if (overflowY === 'auto' || overflowY === 'scroll') return node;
+    }
+    return null;
+}
+
+// Drag-to-reorder for a list or grid of rows. The insertion point is measured against every row at once rather than
+// whichever one the pointer happens to be over, so the gaps between rows and the empty space past the last one drop
+// as sensibly as the rows do. options: wholeRow (drag from anywhere on the row), grid (rows sit side by side).
+function setupDragReorder(container, itemSelector, handleSelector, getIndex, onReorder, options = {}) {
     if (!container) return;
+    // A container that outlives its rows (the member list re-renders in place) would otherwise stack a second set of handlers on every call, and keep the last set alive after its rows are gone.
+    container.dragReorderAbort?.abort();
+
     const items = Array.from(container.querySelectorAll(itemSelector));
+    if (items.length === 0) return;
+
+    const abort = new AbortController();
+    container.dragReorderAbort = abort;
+    const signal = abort.signal;
+
+    const scroller = nearestScrollableAncestor(items[0]);
     let draggedIndex = null;
 
+    // Rows sitting side by side need the pointer's x to tell which side of one it's on; a single column only cares about y.
+    const insertionIndexAt = (x, y) => {
+        let index = 0;
+        for (const item of items) {
+            const rect = item.getBoundingClientRect();
+            const isPast = options.grid
+                ? (y > rect.bottom || (y >= rect.top && x > rect.left + rect.width / 2))
+                : (y > rect.top + rect.height / 2);
+            if (!isPast) break;
+            index++;
+        }
+        return index;
+    };
+
+    const clearMarkers = () => items.forEach(i => i.classList.remove('drag-over-top', 'drag-over-bottom'));
+
+    const markInsertion = (index) => {
+        clearMarkers();
+        // Dropping on either side of where it started changes nothing, so neither position is marked.
+        if (index === draggedIndex || index === draggedIndex + 1) return;
+        if (index < items.length) items[index].classList.add('drag-over-top');
+        else items[items.length - 1].classList.add('drag-over-bottom');
+    };
+
+    // A row can only be dragged past the end of a scrolled-off list if the drag itself scrolls.
+    const autoScroll = (y) => {
+        if (!scroller || scroller.scrollHeight <= scroller.clientHeight) return;
+        const rect = scroller.getBoundingClientRect();
+        const EDGE = 36;
+        const fromTop = y - rect.top;
+        const fromBottom = rect.bottom - y;
+        if (fromTop < EDGE) scroller.scrollTop -= (EDGE - fromTop) / 3;
+        else if (fromBottom < EDGE) scroller.scrollTop += (EDGE - fromBottom) / 3;
+    };
+
     items.forEach(item => {
-        const handle = handleSelector ? item.querySelector(handleSelector) : item;
+        // Rows carrying a text input keep the index chip as their handle, so dragging can't fight with selecting text in the input.
+        const handle = options.wholeRow ? item : (handleSelector ? item.querySelector(handleSelector) : item);
         if (!handle) return;
+        if (options.wholeRow) item.draggable = true;
 
         handle.addEventListener('dragstart', (e) => {
             draggedIndex = getIndex(item);
@@ -4349,46 +4388,37 @@ function setupDragReorder(container, itemSelector, handleSelector, getIndex, onR
             e.dataTransfer.setData('text/plain', String(draggedIndex));
             // Drag the whole item, not just the small handle glyph
             e.dataTransfer.setDragImage(item, 10, 10);
-        });
+        }, { signal });
 
         handle.addEventListener('dragend', () => {
             item.classList.remove('dragging');
-            items.forEach(i => i.classList.remove('drag-over-top', 'drag-over-bottom'));
+            clearMarkers();
             draggedIndex = null;
-        });
-
-        item.addEventListener('dragover', (e) => {
-            if (draggedIndex === null) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-
-            const targetIndex = getIndex(item);
-            if (targetIndex === draggedIndex) return;
-
-            const rect = item.getBoundingClientRect();
-            const isAfter = (e.clientY - rect.top) > rect.height / 2;
-            item.classList.toggle('drag-over-bottom', isAfter);
-            item.classList.toggle('drag-over-top', !isAfter);
-        });
-
-        item.addEventListener('dragleave', () => {
-            item.classList.remove('drag-over-top', 'drag-over-bottom');
-        });
-
-        item.addEventListener('drop', (e) => {
-            e.preventDefault();
-            item.classList.remove('drag-over-top', 'drag-over-bottom');
-            if (draggedIndex === null) return;
-
-            const targetIndex = getIndex(item);
-            if (targetIndex === draggedIndex) return;
-
-            const rect = item.getBoundingClientRect();
-            const isAfter = (e.clientY - rect.top) > rect.height / 2;
-            onReorder(draggedIndex, isAfter ? targetIndex + 1 : targetIndex);
-            markAsChanged();
-        });
+        }, { signal });
     });
+
+    container.addEventListener('dragover', (e) => {
+        if (draggedIndex === null) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        autoScroll(e.clientY);
+        markInsertion(insertionIndexAt(e.clientX, e.clientY));
+    }, { signal });
+
+    container.addEventListener('dragleave', (e) => {
+        if (!container.contains(e.relatedTarget)) clearMarkers();
+    }, { signal });
+
+    container.addEventListener('drop', (e) => {
+        e.preventDefault();
+        clearMarkers();
+        if (draggedIndex === null) return;
+
+        const index = insertionIndexAt(e.clientX, e.clientY);
+        if (index === draggedIndex || index === draggedIndex + 1) return;
+        onReorder(draggedIndex, index);
+        markAsChanged();
+    }, { signal });
 }
 
 // The .expanded class is what CSS reads and aria-expanded is what screen readers
@@ -4776,7 +4806,7 @@ function populateCharacters() {
         return `
             <div class="roster-row ${index === selectedCharacterIndex ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${index === selectedCharacterIndex}" data-index="${index}" onclick="selectCharacter(${index})">
                 <span class="drag-index-chip character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(index + 1).padStart(2, '0')}</span>
-                <img class="character-portrait" id="char_${index}_portrait" src="${portraitUrl || ''}" alt="" style="${portraitUrl ? '' : 'display:none'}" onerror="this.style.display='none'">
+                <img class="character-portrait" id="char_${index}_portrait" src="${portraitUrl || ''}" alt="" draggable="false" style="${portraitUrl ? '' : 'display:none'}" onerror="this.style.display='none'">
                 <span class="roster-name" id="char_${index}_header_name">${char.name || t('dynamic.character.defaultNamePrefix') + ' ' + (index + 1)}</span>
                 <span class="roster-hotkey-badge" id="char_${index}_hotkeyBadge" style="${hotkeyDisplay ? '' : 'display:none'}">[${hotkeyDisplay}]</span>
             </div>
@@ -5102,7 +5132,8 @@ function setupCharacterDragAndDrop() {
         '.roster-row',
         '.character-drag-handle',
         (item) => parseInt(item.dataset.index, 10),
-        reorderCharacters
+        reorderCharacters,
+        { wholeRow: true }
     );
 }
 
@@ -5388,11 +5419,11 @@ function populateHotkeyGroups() {
             <div class="master-detail">
                 <div class="roster">
                     <div class="roster-row roster-row-empty">
-                        <span class="hint">${t('tab.hotkeys.section.hotkey-groups.empty-roster')}</span>
+                        <span class="hint">${t('tab.hotkey-groups.section.groups.empty-roster')}</span>
                     </div>
                 </div>
                 <div class="detail-stack">
-                    <p class="hint">${t('tab.hotkeys.section.hotkey-groups.empty-detail')}</p>
+                    <p class="hint">${t('tab.hotkey-groups.section.groups.empty-detail')}</p>
                 </div>
             </div>
         `;
@@ -5403,22 +5434,11 @@ function populateHotkeyGroups() {
     if (selectedHotkeyGroupIndex < 0) selectedHotkeyGroupIndex = 0;
 
     const rosterRows = groups.map((group, index) => {
-        const forwardDisplay = vkHexToFriendly(group.forwardKey) || '';
-        const backwardDisplay = vkHexToFriendly(group.backwardKey) || '';
         const groupName = group.name || t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (index + 1);
         return `
             <div class="roster-row ${index === selectedHotkeyGroupIndex ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${index === selectedHotkeyGroupIndex}" data-index="${index}" onclick="selectHotkeyGroup(${index})">
                 <span class="drag-index-chip hkgroup-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(index + 1).padStart(2, '0')}</span>
-                <div class="roster-row-body">
-                    <div class="roster-row-line">
-                        <span class="roster-name" id="hkgroup_${index}_header_name">${groupName}</span>
-                        <span class="roster-count-badge" id="hkgroup_${index}_countBadge">(${(group.characters || []).length})</span>
-                    </div>
-                    <div class="roster-row-keys" style="${forwardDisplay || backwardDisplay ? '' : 'display:none'}">
-                        <span class="roster-hotkey-badge" id="hkgroup_${index}_forwardBadge" style="${forwardDisplay ? '' : 'display:none'}">→[${forwardDisplay}]</span>
-                        <span class="roster-hotkey-badge" id="hkgroup_${index}_backwardBadge" style="${backwardDisplay ? '' : 'display:none'}">←[${backwardDisplay}]</span>
-                    </div>
-                </div>
+                <span class="roster-name" id="hkgroup_${index}_header_name">${groupName}</span>
             </div>
         `;
     }).join('');
@@ -5426,14 +5446,11 @@ function populateHotkeyGroups() {
     const detailPanels = groups.map((group, index) => `
         <div class="detail-panel ${index === selectedHotkeyGroupIndex ? 'active' : ''}" data-index="${index}">
             <div class="detail-panel-header">
-                <span class="detail-panel-name" id="hkgroup_${index}_detail_name">${group.name || t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (index + 1)}</span>
+                <label class="detail-panel-name-label" for="hkgroup_${index}_name">${t('dynamic.hotkeyGroup.nameLabel')}</label>
+                <input type="text" class="detail-panel-name-input" id="hkgroup_${index}_name" value="${group.name || ''}" placeholder="${t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (index + 1)}" oninput="updateHotkeyGroupHeaderName(${index})">
                 <button type="button" id="hkgroup_${index}_removeBtn" onclick="confirmRemove('hkgroup_${index}_removeBtn', () => removeHotkeyGroup(${index}))">${t('common.remove')}</button>
             </div>
             <div class="detail-form">
-                <div class="detail-field">
-                    <label for="hkgroup_${index}_name">${t('dynamic.hotkeyGroup.nameLabel')}</label>
-                    <input type="text" id="hkgroup_${index}_name" value="${group.name || ''}" placeholder="${t('dynamic.hotkeyGroup.namePlaceholder')}" oninput="updateHotkeyGroupHeaderName(${index})">
-                </div>
                 <div class="detail-field">
                     <label for="hkgroup_${index}_forward">${t('dynamic.hotkeyGroup.forwardKeyLabel')}</label>
                     <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.hotkeyGroup.forwardPlaceholder'))}</div>
@@ -5442,6 +5459,10 @@ function populateHotkeyGroups() {
                     <label for="hkgroup_${index}_backward">${t('dynamic.hotkeyGroup.backwardKeyLabel')}</label>
                     <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_backward`, vkHexToFriendly(group.backwardKey) || '', t('dynamic.hotkeyGroup.backwardPlaceholder'))}</div>
                 </div>
+                <div class="detail-field">
+                    <label for="hkgroup_${index}_assign">${t('dynamic.hotkeyGroup.assignKeyLabel')}</label>
+                    <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_assign`, vkHexToFriendly(group.assignKey) || '', t('dynamic.hotkeyGroup.assignPlaceholder'))}</div>
+                </div>
                 <div class="detail-field detail-field-top">
                     <label>${t('dynamic.hotkeyGroup.behaviorHeading')}</label>
                     <div class="detail-checks">
@@ -5449,39 +5470,43 @@ function populateHotkeyGroups() {
                             <input type="checkbox" id="hkgroup_${index}_includeNotLoggedIn" ${group.includeNotLoggedIn ? 'checked' : ''}>
                             <span class="label-body">${t('dynamic.hotkeyGroup.includeNotLoggedInLabel')}</span>
                         </label>
+                        <label>
+                            <input type="checkbox" id="hkgroup_${index}_temporaryMembership" ${group.temporaryMembership ? 'checked' : ''} onchange="toggleHotkeyGroupMembershipEditor(${index})">
+                            <span class="label-body">${t('dynamic.hotkeyGroup.temporaryMembershipLabel')}</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" id="hkgroup_${index}_showBadge" ${group.showBadge ? 'checked' : ''} onchange="scheduleThumbnailPreview()">
+                            <span class="label-body">${t('dynamic.hotkeyGroup.showBadgeLabel')}</span>
+                        </label>
                     </div>
                 </div>
-                <div class="detail-field-full">
-                    <label for="hkgroup_${index}_addChar">${t('dynamic.hotkeyGroup.charactersLabel')}</label>
-                    <div class="hkgroup-chars-list" id="hkgroup_${index}_charsList" data-group-index="${index}">${renderHotkeyGroupCharRows(index, group.characters)}</div>
-                    <div class="field-row" style="margin-top: 4px;">
-                        <input type="text" id="hkgroup_${index}_addChar" list="hkgroupCharOptions" placeholder="${t('dynamic.hotkeyGroup.addCharPlaceholder')}" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addHotkeyGroupCharacter(${index}); }">
-                        <button type="button" onclick="addHotkeyGroupCharacter(${index})" style="white-space: nowrap;">${t('dynamic.hotkeyGroup.addBtnLabel')}</button>
-                        <button type="button" id="hkgroup_${index}_fillBtn" onclick="fillHotkeyGroupFromClients(${index})" style="white-space: nowrap;">${t('status.fillFromClientsLabel')}</button>
-                    </div>
+            </div>
+            <p class="hint" id="hkgroup_${index}_tempHint" style="${group.temporaryMembership ? '' : 'display:none'}">${t('dynamic.hotkeyGroup.temporaryMembershipHint')}</p>
+            <div class="detail-members" id="hkgroup_${index}_charsField" style="${group.temporaryMembership ? 'display:none' : ''}">
+                <label for="hkgroup_${index}_addChar">${t('dynamic.hotkeyGroup.charactersLabel')}</label>
+                <div class="hkgroup-chars-list" id="hkgroup_${index}_charsList" data-group-index="${index}">${renderHotkeyGroupCharRows(index, group.characters)}</div>
+                <div class="field-row" style="margin-top: 4px;">
+                    <input type="text" id="hkgroup_${index}_addChar" autocomplete="off" placeholder="${t('dynamic.hotkeyGroup.addCharPlaceholder')}" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addHotkeyGroupCharacter(${index}); }">
+                    <button type="button" onclick="addHotkeyGroupCharacter(${index})" style="white-space: nowrap;">${t('dynamic.hotkeyGroup.addBtnLabel')}</button>
+                    <button type="button" id="hkgroup_${index}_fillBtn" onclick="fillHotkeyGroupFromClients(${index})" style="white-space: nowrap;">${t('status.fillFromClientsLabel')}</button>
                 </div>
             </div>
         </div>
     `).join('');
-
-    // One shared datalist for every group's add field - the roster is the same list of known names whichever group is open.
-    const knownCharacters = (currentConfig.characters || [])
-        .map(char => (char.name || '').trim())
-        .filter(Boolean)
-        .map(name => `<option value="${escapeHtml(name)}">`)
-        .join('');
 
     container.innerHTML = `
         <div class="master-detail">
             <div class="roster" role="tablist" aria-orientation="vertical">${rosterRows}</div>
             <div class="detail-stack">${detailPanels}</div>
         </div>
-        <datalist id="hkgroupCharOptions">${knownCharacters}</datalist>
     `;
 
     setupHotkeyGroupDragAndDrop();
     setupHotkeyGroupCharDragAndDrop();
     updateHotkeyConflictHighlights();
+    // innerHTML above replaced the elements the last measuring pass sized.
+    alignHotkeyGroupNameLabel();
+    fitHotkeyGroupCharsList(selectedHotkeyGroupIndex);
 }
 
 // Every group's fields stay mounted (just hidden) so hotkey-conflict detection, which scans all input.hotkey-input elements at once, keeps seeing every group.
@@ -5495,6 +5520,44 @@ function selectHotkeyGroup(index) {
     document.querySelectorAll('#hotkeyGroupsList .detail-panel').forEach(panel => {
         panel.classList.toggle('active', parseInt(panel.dataset.index, 10) === index);
     });
+    // This group's list could only be measured once its panel became the visible one.
+    fitHotkeyGroupCharsList(index);
+}
+
+// The title row sits outside .detail-form's grid, so no CSS rule can give its label the same width as the label column below it. Every group panel carries the same field labels, so the open one's column measures for all of them.
+function alignHotkeyGroupNameLabel() {
+    const railLabel = document.querySelector('#hotkeyGroupsList .detail-panel.active .detail-form > .detail-field > label');
+    if (!railLabel) return;
+
+    const columnWidth = railLabel.getBoundingClientRect().width;
+    if (!columnWidth) return;
+
+    document.querySelectorAll('#hotkeyGroupsList .detail-panel-name-label').forEach(label => {
+        // min-width, so a label longer than the column still shows in full rather than spilling over the field.
+        label.style.minWidth = `${Math.round(columnWidth)}px`;
+    });
+}
+
+// A list that runs a row or two past the fold packs its cards tighter instead of scrolling; past what that buys, the scrollbar comes back.
+function fitHotkeyGroupCharsList(groupIndex) {
+    const list = document.getElementById(`hkgroup_${groupIndex}_charsList`);
+    if (!list) return;
+
+    list.classList.remove('chars-compact');
+    // Zero while the panel or tab is hidden, when nothing can be measured; the next populate or tab switch re-runs this.
+    if (!list.clientHeight) return;
+
+    if (list.scrollHeight > list.clientHeight) list.classList.add('chars-compact');
+}
+
+// Temporary membership is hover-assigned at runtime, so its character list isn't editable here.
+function toggleHotkeyGroupMembershipEditor(index) {
+    const isTemporary = document.getElementById(`hkgroup_${index}_temporaryMembership`)?.checked;
+    const charsField = document.getElementById(`hkgroup_${index}_charsField`);
+    const hint = document.getElementById(`hkgroup_${index}_tempHint`);
+    if (charsField) charsField.style.display = isTemporary ? 'none' : 'flex';
+    if (hint) hint.style.display = isTemporary ? '' : 'none';
+    markAsChanged();
 }
 
 function setupHotkeyGroupDragAndDrop() {
@@ -5503,7 +5566,8 @@ function setupHotkeyGroupDragAndDrop() {
         '.roster-row',
         '.hkgroup-drag-handle',
         (item) => parseInt(item.dataset.index, 10),
-        reorderHotkeyGroups
+        reorderHotkeyGroups,
+        { wholeRow: true }
     );
 }
 
@@ -5525,7 +5589,11 @@ function reorderHotkeyGroups(fromIndex, insertBeforeIndex) {
 }
 
 function renderHotkeyGroupCharRows(groupIndex, characters) {
-    return (characters || []).map((name, charIndex) => `
+    if (!characters || characters.length === 0) {
+        return `<p class="hint hkgroup-chars-empty">${t('tab.hotkey-groups.section.groups.empty-members')}</p>`;
+    }
+
+    return characters.map((name, charIndex) => `
         <div class="hkgroup-char-row" data-char-index="${charIndex}">
             <span class="drag-index-chip character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(charIndex + 1).padStart(2, '0')}</span>
             <input type="text" class="hkgroup-char-input" value="${name}" placeholder="${t('common.characterName')}">
@@ -5542,15 +5610,7 @@ function refreshHotkeyGroupCharsList(groupIndex) {
 
     list.innerHTML = renderHotkeyGroupCharRows(groupIndex, group.characters);
     setupHotkeyGroupCharDragAndDrop(list, groupIndex);
-    updateHotkeyGroupHeaderCount(groupIndex);
-}
-
-function updateHotkeyGroupHeaderCount(groupIndex) {
-    const group = currentConfig.hotkeyGroups && currentConfig.hotkeyGroups[groupIndex];
-    const badge = document.getElementById(`hkgroup_${groupIndex}_countBadge`);
-    if (!group || !badge) return;
-
-    badge.textContent = `(${(group.characters || []).length})`;
+    fitHotkeyGroupCharsList(groupIndex);
 }
 
 // Called with no arguments to wire up every group's list, or with a specific list/groupIndex to wire up just that one. Each list gets its own independent setupDragReorder closure, so there's no cross-group drag state to guard against.
@@ -5564,7 +5624,8 @@ function setupHotkeyGroupCharDragAndDrop(onlyList, onlyGroupIndex) {
             '.hkgroup-char-row',
             '.character-drag-handle',
             (item) => parseInt(item.dataset.charIndex, 10),
-            (fromIndex, insertBeforeIndex) => reorderHotkeyGroupChars(groupIndex, fromIndex, insertBeforeIndex)
+            (fromIndex, insertBeforeIndex) => reorderHotkeyGroupChars(groupIndex, fromIndex, insertBeforeIndex),
+            { grid: true }
         );
     });
 }
@@ -5610,9 +5671,17 @@ function addHotkeyGroupCharacter(groupIndex) {
     group.characters.push(name);
     markAsChanged();
     refreshHotkeyGroupCharsList(groupIndex);
+    scrollHotkeyGroupCharsToEnd(groupIndex);
 
     input.value = '';
     input.focus();
+}
+
+// New members are appended, which since the list scrolls on its own can be below the fold.
+function scrollHotkeyGroupCharsToEnd(groupIndex) {
+    const list = document.getElementById(`hkgroup_${groupIndex}_charsList`);
+    if (!list) return;
+    list.scrollTo({ top: list.scrollHeight, behavior: scrollBehavior() });
 }
 
 function scrollHotkeyGroupRosterToEnd() {
@@ -5631,6 +5700,9 @@ function addHotkeyGroup() {
         name: '',
         forwardKey: '',
         backwardKey: null,
+        assignKey: null,
+        temporaryMembership: false,
+        showBadge: false,
         includeNotLoggedIn: false,
         characters: []
     });
@@ -5669,6 +5741,7 @@ async function fillHotkeyGroupFromClients(index) {
             if (!group.characters) group.characters = [];
             group.characters.push(...toAdd);
             refreshHotkeyGroupCharsList(index);
+            scrollHotkeyGroupCharsToEnd(index);
             showStatus(t('status.addedCharactersToGroup').replace('{n}', toAdd.length), 'success');
         }
         setTimeout(() => hideStatus(), 3000);
@@ -5698,7 +5771,6 @@ function removeHotkeyGroup(index) {
 
 function updateHotkeyGroupHeaderName(index) {
     syncAccordionHeaderName(`hkgroup_${index}_name`, `hkgroup_${index}_header_name`, 'Hotkey Group', index);
-    syncAccordionHeaderName(`hkgroup_${index}_name`, `hkgroup_${index}_detail_name`, 'Hotkey Group', index);
 }
 
 function saveHotkeyGroups() {
@@ -5708,148 +5780,24 @@ function saveHotkeyGroups() {
         const name = document.getElementById(`hkgroup_${index}_name`);
         const forward = document.getElementById(`hkgroup_${index}_forward`);
         const backward = document.getElementById(`hkgroup_${index}_backward`);
+        const assign = document.getElementById(`hkgroup_${index}_assign`);
         const includeNotLoggedIn = document.getElementById(`hkgroup_${index}_includeNotLoggedIn`);
+        const temporaryMembership = document.getElementById(`hkgroup_${index}_temporaryMembership`);
+        const showBadge = document.getElementById(`hkgroup_${index}_showBadge`);
         const charsList = document.getElementById(`hkgroup_${index}_charsList`);
 
         if (name) group.name = name.value || '';
         if (forward) group.forwardKey = forward.value || null;
         if (backward) group.backwardKey = backward.value || null;
+        if (assign) group.assignKey = assign.value || null;
         if (includeNotLoggedIn) group.includeNotLoggedIn = includeNotLoggedIn.checked;
+        if (temporaryMembership) group.temporaryMembership = temporaryMembership.checked;
+        if (showBadge) group.showBadge = showBadge.checked;
         if (charsList) {
             group.characters = Array.from(charsList.querySelectorAll('.hkgroup-char-input'))
                 .map(input => input.value.trim())
                 .filter(s => s);
         }
-    });
-}
-
-// Quick Groups: membership is hover-driven and never persisted, so there's no character-list editor here.
-function populateQuickGroups() {
-    const container = document.getElementById('quickGroupsList');
-    if (!container) return;
-
-    container.innerHTML = '';
-    const groups = currentConfig.quickGroups || [];
-
-    groups.forEach((group, index) => {
-        const groupDiv = document.createElement('div');
-        groupDiv.className = 'accordion';
-        groupDiv.id = `qg_${index}_accordion`;
-        groupDiv.dataset.index = index;
-        const assignDisplay = vkHexToFriendly(group.assignKey) || '';
-        const forwardDisplay = vkHexToFriendly(group.forwardKey) || '';
-        const backwardDisplay = vkHexToFriendly(group.backwardKey) || '';
-        groupDiv.innerHTML = `
-            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleQuickGroupAccordion(${index})">
-                <div class="accordion-title">
-                    <span class="accordion-toggle"></span>
-                    <span class="accordion-name" id="qg_${index}_header_name">${group.name || t('dynamic.quickGroup.defaultNamePrefix') + ' ' + (index + 1)}</span>
-                </div>
-                <div class="accordion-header-actions">
-                    <span class="accordion-hotkey-badge" id="qg_${index}_assignBadge" style="${assignDisplay ? '' : 'display:none'}">[${assignDisplay}]</span>
-                    <span class="accordion-hotkey-badge" id="qg_${index}_forwardBadge" style="${forwardDisplay ? '' : 'display:none'}">→[${forwardDisplay}]</span>
-                    <span class="accordion-hotkey-badge" id="qg_${index}_backwardBadge" style="${backwardDisplay ? '' : 'display:none'}">←[${backwardDisplay}]</span>
-                    <button type="button" id="qg_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('qg_${index}_removeBtn', () => removeQuickGroup(${index}))">${t('common.remove')}</button>
-                </div>
-            </div>
-            <div class="accordion-content">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
-                    <div>
-                        <label>${t('dynamic.quickGroup.nameLabel')}</label>
-                        <input type="text" id="qg_${index}_name" value="${group.name || ''}" placeholder="${t('dynamic.quickGroup.namePlaceholder')}" oninput="updateQuickGroupHeaderName(${index})">
-                    </div>
-                    <div>
-                        <label>${t('dynamic.quickGroup.assignKeyLabel')}</label>
-                        <div class="field-row">${renderHotkeyInputHtml(`qg_${index}_assign`, vkHexToFriendly(group.assignKey) || '', t('dynamic.quickGroup.assignPlaceholder'))}</div>
-                    </div>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
-                    <div>
-                        <label>${t('dynamic.quickGroup.forwardKeyLabel')}</label>
-                        <div class="field-row">${renderHotkeyInputHtml(`qg_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.quickGroup.forwardPlaceholder'))}</div>
-                    </div>
-                    <div>
-                        <label>${t('dynamic.quickGroup.backwardKeyLabel')}</label>
-                        <div class="field-row">${renderHotkeyInputHtml(`qg_${index}_backward`, vkHexToFriendly(group.backwardKey) || '', t('dynamic.quickGroup.backwardPlaceholder'))}</div>
-                    </div>
-                </div>
-            </div>
-        `;
-        container.appendChild(groupDiv);
-    });
-
-    updateHotkeyConflictHighlights();
-}
-
-function addQuickGroup() {
-    if (!currentConfig) return;
-    if (!currentConfig.quickGroups) currentConfig.quickGroups = [];
-    saveQuickGroups();
-
-    currentConfig.quickGroups.push({
-        name: '',
-        assignKey: null,
-        forwardKey: null,
-        backwardKey: null
-    });
-    markAsChanged();
-    populateQuickGroups();
-
-    const newIndex = currentConfig.quickGroups.length - 1;
-    toggleQuickGroupAccordion(newIndex);
-
-    setTimeout(() => {
-        document.getElementById(`qg_${newIndex}_accordion`)?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
-    }, 100);
-}
-
-function removeQuickGroup(index) {
-    if (currentConfig.quickGroups && currentConfig.quickGroups[index]) {
-        saveQuickGroups();
-        currentConfig.quickGroups.splice(index, 1);
-        markAsChanged();
-        populateQuickGroups();
-    }
-}
-
-function updateQuickGroupHeaderName(index) {
-    syncAccordionHeaderName(`qg_${index}_name`, `qg_${index}_header_name`, 'Quick Group', index);
-}
-
-function toggleQuickGroupAccordion(index) {
-    toggleAccordion('#quickGroupsList', index);
-}
-
-function saveQuickGroups() {
-    if (!currentConfig.quickGroups) return;
-
-    currentConfig.quickGroups.forEach((group, index) => {
-        const name = document.getElementById(`qg_${index}_name`);
-        const assign = document.getElementById(`qg_${index}_assign`);
-        const forward = document.getElementById(`qg_${index}_forward`);
-        const backward = document.getElementById(`qg_${index}_backward`);
-
-        if (name) group.name = name.value || '';
-        if (assign) group.assignKey = assign.value || null;
-        if (forward) group.forwardKey = forward.value || null;
-        if (backward) group.backwardKey = backward.value || null;
-    });
-}
-
-// Mirrors each quick group's assign/forward/backward inputs into its accordion header badges.
-function refreshQuickGroupBadges() {
-    document.querySelectorAll('#quickGroupsList > .accordion').forEach(accordion => {
-        const index = accordion.dataset.index;
-        [['assign', ''], ['forward', '→'], ['backward', '←']].forEach(([direction, arrow]) => {
-            const input = document.getElementById(`qg_${index}_${direction}`);
-            const badge = document.getElementById(`qg_${index}_${direction}Badge`);
-            if (!input || !badge) return;
-
-            const value = input.value.trim();
-            const display = value && value !== 'Press keys...' && value !== 'Waiting for input...' ? value : '';
-            badge.textContent = display ? `${arrow}[${display}]` : '';
-            badge.style.display = display ? '' : 'none';
-        });
     });
 }
 
@@ -6917,8 +6865,8 @@ const OVERLAY_LAYOUT_ELEMENTS = [
         alsoRequiresIds: ['showText'],
         fontNameId: 'quickGroupBadgeFontName', fontWeightId: 'quickGroupBadgeFontWeight', fontSizeId: 'quickGroupBadgeFontSize',
         bgColorId: 'quickGroupBadgeBgColor', bgOpacityId: 'quickGroupBadgeBgOpacity',
-        popoverTitle: 'Quick Group Badge', popoverFields: [
-            { type: 'checkbox', id: 'showQuickGroupBadge', label: 'Show Quick Group Badge' },
+        popoverTitle: 'Group Badge', popoverFields: [
+            { type: 'checkbox', id: 'showQuickGroupBadge', label: 'Show Group Badge' },
             { type: 'color', id: 'quickGroupBadgeColor', label: 'Badge Color' },
             { type: 'font-name', id: 'quickGroupBadgeFontName', label: 'Font Name' },
             { type: 'number', id: 'quickGroupBadgeFontSize', label: 'Font Size (px)', min: 6, max: 72 },
@@ -7494,6 +7442,7 @@ function initOverlayLayoutPreview() {
     document.getElementById('thumbHeight')?.addEventListener('input', refreshOverlayLayoutPreview);
     document.getElementById('thumbSizeSlider')?.addEventListener('input', refreshOverlayLayoutPreview);
     window.addEventListener('resize', refreshOverlayLayoutPreview);
+    window.addEventListener('resize', () => fitHotkeyGroupCharsList(selectedHotkeyGroupIndex));
 
     // Turning sync on (or loading a profile while it's already on) unifies every element to Character Name's current styling.
     document.getElementById('syncOverlayStyling')?.addEventListener('change', function () {

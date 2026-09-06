@@ -1158,6 +1158,11 @@ fn applyThumbnailPreview(json_data: []const u8) !void {
         }
     }
 
+    // Only the badge flags ride along; membership stays whatever the running app has, since a temporary group's members exist only here.
+    if (obj.get("hotkeyGroupBadges")) |badges_val| {
+        if (badges_val == .array) g_config.applyGroupBadgePreviewFromJson(badges_val.array.items);
+    }
+
     // Matched by character name against the running character list.
     if (obj.get("characterOverrides")) |overrides_val| {
         if (overrides_val == .array) {

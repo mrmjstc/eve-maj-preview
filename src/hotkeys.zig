@@ -91,12 +91,11 @@ fn lowLevelHotkeyReleaseProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.L
     return win32.CallNextHookEx(null, nCode, wParam, lParam);
 }
 
-// Hotkey IDs are banded to avoid collisions: 0-999 groups, 1000s global, 2000s per-character, 3000s profile switch, 4000s+ quick groups, 5000s app hotkeys, 6000s URL hotkeys.
+// Hotkey IDs are banded to avoid collisions: 0-999 groups (3 per group), 1000s global, 2000s per-character, 3000s profile switch, 5000s app hotkeys, 6000s URL hotkeys.
 const HOTKEY_ID_CYCLE_GROUP_BASE: c_int = 0;
 const HOTKEY_ID_GLOBAL_ACTION_BASE: c_int = 1000;
 const HOTKEY_ID_PER_CHARACTER_BASE: c_int = 2000;
 const HOTKEY_ID_PROFILE_SWITCH_BASE: c_int = 3000;
-const HOTKEY_ID_QUICK_GROUP_BASE: c_int = 4000;
 const HOTKEY_ID_APP_HOTKEY_BASE: c_int = 5000;
 const HOTKEY_ID_URL_HOTKEY_BASE: c_int = 6000;
 
@@ -125,8 +124,7 @@ const GlobalActionId = enum(c_int) {
 pub const HotkeyActionType = enum {
     CycleGroup,
     ActivateCharacter,
-    AssignQuickGroup,
-    CycleQuickGroup,
+    AssignGroup,
     MinimizeAll,
     CloseAll,
     ToggleVisibility,
@@ -159,12 +157,8 @@ pub const HotkeyAction = union(HotkeyActionType) {
         character_indices: []const usize,
         current_index: ?usize = null,
     },
-    AssignQuickGroup: struct {
+    AssignGroup: struct {
         group_index: usize,
-    },
-    CycleQuickGroup: struct {
-        group_index: usize,
-        forward: bool,
     },
     MinimizeAll: void,
     CloseAll: void,
@@ -334,7 +328,6 @@ pub const HotkeyManager = struct {
 
     pub fn registerHotkeys(self: *HotkeyManager, hwnd: win32.HWND) !void {
         const has_groups = self.config.hotkeyGroups.items.len > 0;
-        const has_quick_groups = self.config.quickGroups.items.len > 0;
         const has_minimize = self.config.hotkeyMinimizeAll != null;
         const has_close = self.config.hotkeyCloseAll != null;
         const has_toggle_vis = self.config.hotkeyToggleVisibility != null;
@@ -402,7 +395,7 @@ pub const HotkeyManager = struct {
             }
         }
 
-        if (!has_groups and !has_quick_groups and !has_minimize and !has_close and !has_toggle_vis and !has_toggle_auto_min and !has_next_profile and !has_previous_profile and !has_toggle_exclusion and !has_next_excluded and !has_previous_excluded and !has_suspend and !has_cycle_notified and !has_previous_notified and !has_next_all_clients and !has_previous_all_clients and !has_next_not_logged_in and !has_previous_not_logged_in and !has_move_to_saved and !has_return_to_last_app and !has_per_character_hotkeys and !has_profile_switch_hotkeys and !has_app_hotkeys and !has_url_hotkeys) {
+        if (!has_groups and !has_minimize and !has_close and !has_toggle_vis and !has_toggle_auto_min and !has_next_profile and !has_previous_profile and !has_toggle_exclusion and !has_next_excluded and !has_previous_excluded and !has_suspend and !has_cycle_notified and !has_previous_notified and !has_next_all_clients and !has_previous_all_clients and !has_next_not_logged_in and !has_previous_not_logged_in and !has_move_to_saved and !has_return_to_last_app and !has_per_character_hotkeys and !has_profile_switch_hotkeys and !has_app_hotkeys and !has_url_hotkeys) {
             slog.debug("No hotkeys configured", .{});
             return;
         }
@@ -421,9 +414,8 @@ pub const HotkeyManager = struct {
         for (self.global_settings.urlHotkeys.items) |uh| {
             if (uh.hotkey != null) url_hotkey_count += 1;
         }
-        slog.debug("Registering hotkeys: {} group(s), {} quick group(s), {} global action(s), {} per-character hotkey(s), {} profile-switch hotkey(s), {} app hotkey(s), {} url hotkey(s)...", .{
+        slog.debug("Registering hotkeys: {} group(s), {} global action(s), {} per-character hotkey(s), {} profile-switch hotkey(s), {} app hotkey(s), {} url hotkey(s)...", .{
             self.config.hotkeyGroups.items.len,
-            self.config.quickGroups.items.len,
             global_count,
             per_character_count,
             profile_switch_count,
@@ -437,15 +429,9 @@ pub const HotkeyManager = struct {
         var key_name_buf: [32]u8 = undefined;
 
         for (self.config.hotkeyGroups.items) |*group| {
-            // Every group has a forward key; only backward is optional.
-            expected_count += 1;
-            if (group.backwardKey != null) expected_count += 1;
-        }
-
-        for (self.config.quickGroups.items) |*group| {
-            if (group.assignKey != null) expected_count += 1;
             if (group.forwardKey != null) expected_count += 1;
             if (group.backwardKey != null) expected_count += 1;
+            if (group.assignKey != null) expected_count += 1;
         }
 
         expected_count += per_character_count;
@@ -483,7 +469,7 @@ pub const HotkeyManager = struct {
             var desc_buf: [128]u8 = undefined;
 
             if (group.forwardKey) |forward_vk| {
-                const forward_id: c_int = HOTKEY_ID_CYCLE_GROUP_BASE + @as(c_int, @intCast(group_index * 2));
+                const forward_id: c_int = HOTKEY_ID_CYCLE_GROUP_BASE + @as(c_int, @intCast(group_index * 3));
                 const forward_action = HotkeyAction{ .CycleGroup = .{ .group_index = group_index, .forward = true } };
                 const desc = std.fmt.bufPrint(&desc_buf, "group {} [{s}...] forward", .{ group_index, char_name }) catch "group forward";
                 self.registerAndTrackHotkey(hwnd, forward_id, forward_vk, forward_action, desc) catch |err| {
@@ -494,7 +480,7 @@ pub const HotkeyManager = struct {
             }
 
             if (group.backwardKey) |backward_vk| {
-                const backward_id: c_int = HOTKEY_ID_CYCLE_GROUP_BASE + @as(c_int, @intCast(group_index * 2 + 1));
+                const backward_id: c_int = HOTKEY_ID_CYCLE_GROUP_BASE + @as(c_int, @intCast(group_index * 3 + 1));
                 const backward_action = HotkeyAction{ .CycleGroup = .{ .group_index = group_index, .forward = false } };
                 const desc2 = std.fmt.bufPrint(&desc_buf, "group {} [{s}...] backward", .{ group_index, char_name }) catch "group backward";
                 self.registerAndTrackHotkey(hwnd, backward_id, backward_vk, backward_action, desc2) catch |err| {
@@ -503,40 +489,14 @@ pub const HotkeyManager = struct {
                     failed_count += 1;
                 };
             }
-        }
-
-        for (self.config.quickGroups.items, 0..) |*group, group_index| {
-            var desc_buf: [128]u8 = undefined;
 
             if (group.assignKey) |assign_vk| {
-                const assign_id: c_int = HOTKEY_ID_QUICK_GROUP_BASE + @as(c_int, @intCast(group_index * 3));
-                const assign_action = HotkeyAction{ .AssignQuickGroup = .{ .group_index = group_index } };
-                const desc = std.fmt.bufPrint(&desc_buf, "quick group {} [{s}] assign", .{ group_index, group.name }) catch "quick group assign";
-                self.registerAndTrackHotkey(hwnd, assign_id, assign_vk, assign_action, desc) catch |err| {
+                const assign_id: c_int = HOTKEY_ID_CYCLE_GROUP_BASE + @as(c_int, @intCast(group_index * 3 + 2));
+                const assign_action = HotkeyAction{ .AssignGroup = .{ .group_index = group_index } };
+                const desc3 = std.fmt.bufPrint(&desc_buf, "group {} [{s}] assign", .{ group_index, group.name }) catch "group assign";
+                self.registerAndTrackHotkey(hwnd, assign_id, assign_vk, assign_action, desc3) catch |err| {
                     const key_name = formatKeyName(assign_vk, &key_name_buf);
-                    slog.err("Failed to register assign hotkey {s} for quick group {} [{s}]: {}", .{ key_name, group_index, group.name, err });
-                    failed_count += 1;
-                };
-            }
-
-            if (group.forwardKey) |forward_vk| {
-                const forward_id: c_int = HOTKEY_ID_QUICK_GROUP_BASE + @as(c_int, @intCast(group_index * 3 + 1));
-                const forward_action = HotkeyAction{ .CycleQuickGroup = .{ .group_index = group_index, .forward = true } };
-                const desc = std.fmt.bufPrint(&desc_buf, "quick group {} [{s}] forward", .{ group_index, group.name }) catch "quick group forward";
-                self.registerAndTrackHotkey(hwnd, forward_id, forward_vk, forward_action, desc) catch |err| {
-                    const key_name = formatKeyName(forward_vk, &key_name_buf);
-                    slog.err("Failed to register forward hotkey {s} for quick group {} [{s}]: {}", .{ key_name, group_index, group.name, err });
-                    failed_count += 1;
-                };
-            }
-
-            if (group.backwardKey) |backward_vk| {
-                const backward_id: c_int = HOTKEY_ID_QUICK_GROUP_BASE + @as(c_int, @intCast(group_index * 3 + 2));
-                const backward_action = HotkeyAction{ .CycleQuickGroup = .{ .group_index = group_index, .forward = false } };
-                const desc = std.fmt.bufPrint(&desc_buf, "quick group {} [{s}] backward", .{ group_index, group.name }) catch "quick group backward";
-                self.registerAndTrackHotkey(hwnd, backward_id, backward_vk, backward_action, desc) catch |err| {
-                    const key_name = formatKeyName(backward_vk, &key_name_buf);
-                    slog.err("Failed to register backward hotkey {s} for quick group {} [{s}]: {}", .{ key_name, group_index, group.name, err });
+                    slog.err("Failed to register assign hotkey {s} for group {} [{s}]: {}", .{ key_name, group_index, group.name, err });
                     failed_count += 1;
                 };
             }
@@ -901,16 +861,8 @@ pub const HotkeyManager = struct {
             .ActivateCharacter => {
                 self.activatePerCharacterGroup(hotkey_id);
             },
-            .AssignQuickGroup => |assign| {
-                self.handleAssignQuickGroup(assign.group_index);
-            },
-            .CycleQuickGroup => |cycle| {
-                if (cycle.group_index >= self.config.quickGroups.items.len) {
-                    slog.err("Invalid quick group index {} for hotkey ID {}", .{ cycle.group_index, hotkey_id });
-                    return;
-                }
-                const group = &self.config.quickGroups.items[cycle.group_index];
-                self.cycleQuickGroup(group, cycle.forward);
+            .AssignGroup => |assign| {
+                self.handleAssignGroup(assign.group_index);
             },
             .MinimizeAll => {
                 self.handleMinimizeAll();
@@ -1441,71 +1393,37 @@ pub const HotkeyManager = struct {
         slog.warn("No characters from hotkey group are currently running (or all are excluded)", .{});
     }
 
-    /// Like cycleGroup, but quick groups have no exclusion list to skip.
-    fn cycleQuickGroup(self: *HotkeyManager, group: *config_mod.QuickGroup, forward: bool) void {
-        const num_chars = group.characters.items.len;
-        if (num_chars == 0) {
-            slog.warn("Attempted to cycle empty quick group", .{});
-            return;
-        }
-
-        const start_index = group.currentIndex;
-        var idx: usize = cycleIndexBeforeStart(group.currentIndex, num_chars, forward);
-        var attempts: usize = 0;
-
-        while (attempts < num_chars) : (attempts += 1) {
-            idx = stepCycleIndex(idx, num_chars, forward);
-
-            const char_name = group.characters.items[idx];
-
-            if (self.scout.getHwndByName(char_name)) |hwnd| {
-                group.currentIndex = idx;
-                slog.info("Cycling quick group {s} to: {s} ({}/{})", .{
-                    if (forward) "forward" else "backward",
-                    char_name,
-                    idx + 1,
-                    num_chars,
-                });
-                input.handleThumbnailClick(hwnd);
-                return;
-            }
-        }
-
-        group.currentIndex = start_index;
-        slog.warn("No characters from quick group are currently running", .{});
-    }
-
-    /// Toggle the thumbnail currently under the cursor in/out of a quick group; no-op if nothing's hovered.
-    fn handleAssignQuickGroup(self: *HotkeyManager, group_index: usize) void {
-        if (group_index >= self.config.quickGroups.items.len) {
-            slog.err("Invalid quick group index {}", .{group_index});
+    /// Toggle the thumbnail currently under the cursor in/out of a group; no-op if nothing's hovered.
+    fn handleAssignGroup(self: *HotkeyManager, group_index: usize) void {
+        if (group_index >= self.config.hotkeyGroups.items.len) {
+            slog.err("Invalid group index {}", .{group_index});
             return;
         }
 
         const thumbnail = input.resolveThumbnailUnderCursor() orelse {
-            slog.debug("Quick group {} assign pressed but no thumbnail is under the cursor", .{group_index});
+            slog.debug("Group {} assign pressed but no thumbnail is under the cursor", .{group_index});
             return;
         };
 
-        const group = &self.config.quickGroups.items[group_index];
+        const group = &self.config.hotkeyGroups.items[group_index];
         const char_name = thumbnail.character_name;
 
         const added = toggleStringMembership(self.allocator, &group.characters, char_name) catch {
-            slog.err("Failed to toggle {s} in quick group {} [{s}]", .{ char_name, group_index, group.name });
+            slog.err("Failed to toggle {s} in group {} [{s}]", .{ char_name, group_index, group.name });
             return;
         };
         if (added) {
-            slog.info("Added {s} to quick group {} [{s}]", .{ char_name, group_index, group.name });
+            slog.info("Added {s} to group {} [{s}]", .{ char_name, group_index, group.name });
         } else {
-            slog.info("Removed {s} from quick group {} [{s}]", .{ char_name, group_index, group.name });
+            slog.info("Removed {s} from group {} [{s}]", .{ char_name, group_index, group.name });
         }
 
         // Membership changed - old index may now point at a shifted member
         group.currentIndex = null;
 
-        self.painter.refreshQuickGroupBadge(thumbnail);
+        self.painter.refreshGroupBadge(thumbnail);
         self.painter.renderThumbnail(thumbnail) catch |err| {
-            slog.err("Failed to render thumbnail after quick group assignment: {}", .{err});
+            slog.err("Failed to render thumbnail after group assignment: {}", .{err});
         };
     }
 
@@ -1847,16 +1765,16 @@ pub const HotkeyManager = struct {
     }
 
     /// Syncs currentIndex on every group in `groups` containing character_name. When reset_on_leave is set,
-    /// clears currentIndex on groups character_name isn't in. HotkeyGroup and QuickGroup both expose the fields this needs.
-    fn syncGroupCycleIndex(comptime GroupT: type, groups: []GroupT, character_name: []const u8, kind: []const u8, reset_on_leave: bool) void {
+    /// clears currentIndex on groups character_name isn't in.
+    fn syncGroupCycleIndex(groups: []config_mod.HotkeyGroup, character_name: []const u8, reset_on_leave: bool) void {
         for (groups) |*group| {
             if (findStringIndex(group.characters.items, character_name)) |index| {
                 if (group.currentIndex == null or group.currentIndex.? != index) {
-                    slog.debug("Updated {s} index: {s} now at position {}/{}", .{ kind, character_name, index + 1, group.characters.items.len });
+                    slog.debug("Updated hotkey group index: {s} now at position {}/{}", .{ character_name, index + 1, group.characters.items.len });
                     group.currentIndex = index;
                 }
             } else if (reset_on_leave and group.currentIndex != null) {
-                slog.debug("Reset {s} cycle index - {s} left this {s}", .{ kind, character_name, kind });
+                slog.debug("Reset hotkey group cycle index - {s} left this group", .{character_name});
                 group.currentIndex = null;
             }
         }
@@ -1894,8 +1812,7 @@ pub const HotkeyManager = struct {
             }
         }
 
-        syncGroupCycleIndex(config_mod.HotkeyGroup, self.config.hotkeyGroups.items, character_name, "hotkey group", self.config.resetGroupIndexOnNonGroupFocus);
-        syncGroupCycleIndex(config_mod.QuickGroup, self.config.quickGroups.items, character_name, "quick group", self.config.resetGroupIndexOnNonGroupFocus);
+        syncGroupCycleIndex(self.config.hotkeyGroups.items, character_name, self.config.resetGroupIndexOnNonGroupFocus);
     }
 
     fn updateExcludedCycleIndex(self: *HotkeyManager, character_name: []const u8) void {
