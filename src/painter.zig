@@ -1591,7 +1591,7 @@ pub const Painter = struct {
                 }
 
                 // Auto-move-on-login setting: same action as the hotkey, but for the real EVE client window
-                if (self.config.autoMovePosition.enabled) {
+                if (self.config.autoMovePosition.enabled and !self.config.isExcludedFromAutoMove(change.new_name)) {
                     if (self.config.getCharacterWindowPosition(change.new_name)) |window_pos| {
                         manager_mod.moveClientToPosition(thumbnail.source_hwnd, window_pos);
                         slog.info("Auto-moved {s} client window to saved position: ({}, {})", .{ change.new_name, window_pos.x, window_pos.y });
@@ -2208,7 +2208,7 @@ pub const Painter = struct {
     }
 
     pub fn createThumbnail(self: *Painter, eve_window: *const scout_mod.EveWindow, initial_system_name: []const u8) !void {
-        if (self.config.autoMovePosition.enabled) {
+        if (self.config.autoMovePosition.enabled and !self.config.isExcludedFromAutoMove(eve_window.character_name)) {
             if (self.config.getCharacterWindowPosition(eve_window.character_name)) |pos| {
                 manager_mod.moveClientToPosition(eve_window.hwnd, pos);
             }

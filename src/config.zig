@@ -734,6 +734,7 @@ pub const CharacterConfig = struct {
     hotkey: ?u32 = null,
     excludeFromMinimize: bool = false,
     excludeFromCloseAll: bool = false,
+    excludeFromAutoMove: bool = false,
     hideThumbnail: bool = false,
     opacity: ?u8 = null,
 
@@ -755,6 +756,7 @@ pub const CharacterConfig = struct {
         hotkey: ?VkCode = null,
         excludeFromMinimize: bool = false,
         excludeFromCloseAll: bool = false,
+        excludeFromAutoMove: bool = false,
         hideThumbnail: bool = false,
         opacity: ?u8 = null,
     };
@@ -771,6 +773,7 @@ pub const CharacterConfig = struct {
             .hotkey = wrapVk(self.hotkey),
             .excludeFromMinimize = self.excludeFromMinimize,
             .excludeFromCloseAll = self.excludeFromCloseAll,
+            .excludeFromAutoMove = self.excludeFromAutoMove,
             .hideThumbnail = self.hideThumbnail,
             .opacity = self.opacity,
         };
@@ -788,6 +791,7 @@ pub const CharacterConfig = struct {
             .hotkey = unwrapVk(w.hotkey),
             .excludeFromMinimize = w.excludeFromMinimize,
             .excludeFromCloseAll = w.excludeFromCloseAll,
+            .excludeFromAutoMove = w.excludeFromAutoMove,
             .hideThumbnail = w.hideThumbnail,
             .opacity = w.opacity,
         };
@@ -3837,6 +3841,13 @@ pub const Config = struct {
     pub fn isThumbnailHidden(self: *const Config, character_name: []const u8) bool {
         if (self.findCharacterConst(character_name)) |char| {
             return char.hideThumbnail;
+        }
+        return false;
+    }
+
+    pub fn isExcludedFromAutoMove(self: *const Config, character_name: []const u8) bool {
+        if (self.findCharacterConst(character_name)) |char| {
+            return char.excludeFromAutoMove;
         }
         return false;
     }

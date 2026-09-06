@@ -99,6 +99,7 @@
   "dynamic.character.defaultNamePrefix": "Персонаж",
   "dynamic.character.displayNameLabel": "Отображаемое имя (необязательно)",
   "dynamic.character.displayNamePlaceholder": "Оставьте пустым, чтобы использовать имя персонажа",
+  "dynamic.character.excludeAutoMoveLabel": "Исключить из автоперемещения на сохранённую позицию",
   "dynamic.character.excludeCloseAllLabel": "Исключить из \"Закрыть все\"",
   "dynamic.character.excludeMinimizeLabel": "Исключить из автосворачивания",
   "dynamic.character.heightPlaceholder": "По умолчанию",

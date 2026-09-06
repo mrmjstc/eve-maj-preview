@@ -66,6 +66,7 @@ pub fn moveAllClientsToSavedPositions(eve_windows: []const scout_mod.EveWindow, 
 
     var moved_count: usize = 0;
     for (eve_windows) |eve_window| {
+        if (config.isExcludedFromAutoMove(eve_window.character_name)) continue;
         const pos = config.getCharacterWindowPosition(eve_window.character_name) orelse continue;
         moveClientToPosition(eve_window.hwnd, pos);
         moved_count += 1;

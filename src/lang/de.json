@@ -99,6 +99,7 @@
   "dynamic.character.defaultNamePrefix": "Charakter",
   "dynamic.character.displayNameLabel": "Anzeigename (optional)",
   "dynamic.character.displayNamePlaceholder": "Leer lassen, um Charakternamen zu verwenden",
+  "dynamic.character.excludeAutoMoveLabel": "Von „Automatisch an gespeicherte Position verschieben“ ausschließen",
   "dynamic.character.excludeCloseAllLabel": "Von „Alle schließen“ ausschließen",
   "dynamic.character.excludeMinimizeLabel": "Von „Auto-Minimieren“ ausschließen",
   "dynamic.character.heightPlaceholder": "Standard",

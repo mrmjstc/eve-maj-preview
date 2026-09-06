@@ -927,7 +927,7 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 - **hotkeySuspend**: Suspend/resume all other hotkeys at once
 - **hotkeyCycleNotified**: Cycle forward to the character that most recently triggered a notification (see [Notified-Character Cycling](#notified-character-cycling))
 - **hotkeyPreviousNotified**: Cycle backward through recently notified characters
-- **hotkeyMoveToSavedPositions**: Move all EVE client windows to their saved positions
+- **hotkeyMoveToSavedPositions**: Move all EVE client windows to their saved positions (respects per-character `excludeFromAutoMove`)
 **Virtual Key Codes**: See [virtual_keys.zig](src/virtual_keys.zig) for full list
 
 **Modifier Combos**: Any global hotkey field, hotkey group key, per-character hotkey, or profile-switch hotkey can be prefixed with one or more modifiers, combined with `+`: `Ctrl`/`Control`, `Alt`, `Shift`, `Win`/`LWin`/`RWin` (e.g. `"Ctrl+Alt+F9"`).
@@ -1069,7 +1069,7 @@ Bound via `hotkeyCycleNotified` and `hotkeyPreviousNotified` (see [Hotkey Config
 
 ## Per-Character Configuration
 
-Customize individual characters with position, size, border colors, display names, a dedicated hotkey, opacity, auto-minimize/Close All exclusions, and hiding the thumbnail entirely:
+Customize individual characters with position, size, border colors, display names, a dedicated hotkey, opacity, auto-minimize/Close All/auto-move exclusions, and hiding the thumbnail entirely:
 
 ```json
 {
@@ -1090,6 +1090,7 @@ Customize individual characters with position, size, border colors, display name
       "opacity": 255,
       "excludeFromMinimize": true,
       "excludeFromCloseAll": true,
+      "excludeFromAutoMove": false,
       "hideThumbnail": false
     },
     {
@@ -1108,6 +1109,7 @@ Customize individual characters with position, size, border colors, display name
 - **opacity**: Optional per-character override for `thumbnailOpacity` (default: `null`, inherits the global value; clamped to the same 51–255 minimum).
 - **excludeFromMinimize**: Skip this character when auto-minimize fires (default: `false`). See [Auto-Minimize](#auto-minimize).
 - **excludeFromCloseAll**: Skip this character when the Close All hotkey fires (default: `false`). See [Close All](#close-all).
+- **excludeFromAutoMove**: Skip this character when moving EVE client windows to their saved positions, whether via the auto-move-on-login setting or the `hotkeyMoveToSavedPositions` hotkey (default: `false`).
 - **hideThumbnail**: Hide this character's thumbnail (and its row in list view) entirely, regardless of state (default: `false`).
 
 **Note**: Character positions are automatically saved when you drag thumbnails. Manual editing is not recommended.

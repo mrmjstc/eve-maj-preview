@@ -4814,6 +4814,10 @@ function populateCharacters() {
                             <span class="label-body">${t('dynamic.character.excludeCloseAllLabel')}</span>
                         </label>
                         <label>
+                            <input type="checkbox" id="char_${index}_excludeAutoMove" ${char.excludeFromAutoMove ? 'checked' : ''}>
+                            <span class="label-body">${t('dynamic.character.excludeAutoMoveLabel')}</span>
+                        </label>
+                        <label>
                             <input type="checkbox" id="char_${index}_hideThumbnail" ${char.hideThumbnail ? 'checked' : ''}>
                             <span class="label-body">${t('dynamic.character.hideThumbnailLabel')}</span>
                         </label>
@@ -5299,6 +5303,7 @@ function saveCharacters() {
         const nameColor = document.getElementById(`char_${index}_nameColor`);
         const excludeMinimize = document.getElementById(`char_${index}_excludeMinimize`);
         const excludeCloseAll = document.getElementById(`char_${index}_excludeCloseAll`);
+        const excludeAutoMove = document.getElementById(`char_${index}_excludeAutoMove`);
         const hideThumbnail = document.getElementById(`char_${index}_hideThumbnail`);
         const opacity = document.getElementById(`char_${index}_opacity`);
 
@@ -5307,6 +5312,7 @@ function saveCharacters() {
         if (hotkey) char.hotkey = hotkey.value || null;
         if (excludeMinimize) char.excludeFromMinimize = excludeMinimize.checked;
         if (excludeCloseAll) char.excludeFromCloseAll = excludeCloseAll.checked;
+        if (excludeAutoMove) char.excludeFromAutoMove = excludeAutoMove.checked;
         if (hideThumbnail) char.hideThumbnail = hideThumbnail.checked;
         char.opacity = resolveCharacterOpacity(opacity);
         // Position is saved automatically when thumbnails are dragged, don't overwrite from dialog
