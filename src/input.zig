@@ -610,7 +610,7 @@ pub fn applySnapping(x: i32, y: i32, width: i32, height: i32, dragging_hwnd: win
         result = applyThumbnailEdgeSnapping(result.x, result.y, width, height, threshold, dragging_hwnd, painter);
     }
 
-    if (painter.config.snapping.ghostPositions) {
+    if (painter.config.snapping.ghostPositions and painter.config.snapping.showGhostPositionBorders) {
         result = applyGhostSnapping(result.x, result.y, width, height, threshold, dragging_hwnd, painter);
     }
 
