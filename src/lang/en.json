@@ -311,7 +311,7 @@
   "field.quickGroupBadgeColor.label": "Badge Color",
   "field.rememberListViewPosition.label": "Remember Client List Position",
   "field.requireEveFocus.label": "Require EVE Focus",
-  "field.resetGroupIndexOnNonGroupFocus.label": "Reset Cycling When Leaving a Group",
+  "field.resetGroupIndexOnNonGroupFocus.label": "Reset Cycle Position When Leaving a Group",
   "field.resourcesEnabled.label": "Enable Text Overlays",
   "field.resourcesShowCpu.label": "Show CPU %",
   "field.resourcesShowRam.label": "Show RAM",
