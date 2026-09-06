@@ -138,7 +138,7 @@ pub fn main(init: std.process.Init) !void {
 
     var win = webui.newWindow();
 
-    win.setSize(1000, 900);
+    win.setSize(1000, 950);
     win.setKiosk(false);
     win.setResizable(false);
 

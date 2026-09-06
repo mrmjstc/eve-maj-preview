@@ -101,7 +101,7 @@ body::after {
 
 /* Sidebar - Terminal menu style */
 #tabs-sidebar {
-    width: 164px;
+    width: 169px;
     background: #0f0f0f;
     border-right: 1px solid #ffffff;
     padding: 6px 0;
@@ -110,7 +110,7 @@ body::after {
 }
 
 .tab-item {
-    padding: 6px 12px 6px 8px;
+    padding: 6px 10px 6px 6px;
     cursor: pointer;
     transition: all 0.15s;
     color: #ffffff;
@@ -124,7 +124,7 @@ body::after {
 .tab-item::before {
     content: '$ ';
     color: #ffffff;
-    margin-right: 2px;
+    margin-right: 0;
 }
 
 .tab-item:hover {
@@ -152,7 +152,7 @@ body::after {
 }
 
 .subheader-item {
-    padding: 3px 12px 3px 26px;
+    padding: 3px 10px 3px 22px;
     cursor: pointer;
     transition: all 0.15s;
     color: #888888;
@@ -1620,7 +1620,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .character-roster {
-    width: 200px;
+    width: 190px;
     flex-shrink: 0;
     overflow-y: auto;
     border: 1px solid #444444;
