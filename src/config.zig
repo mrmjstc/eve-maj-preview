@@ -33,7 +33,8 @@ const MAX_CONFIG_FILE_SIZE: u64 = 30 * 1024;
 
 /// Identifies a profile JSON as this app's own format, distinct from its release version; bump PROFILE_FORMAT_VERSION only when the schema change matters for parsing/migration.
 pub const PROFILE_FORMAT_IDENTIFIER = "eve-maj-preview";
-pub const PROFILE_FORMAT_VERSION: u32 = 1;
+/// v2: character positions saved while this app was DPI-unaware are migrated to physical pixels on load - see Config.fromWire.
+pub const PROFILE_FORMAT_VERSION: u32 = 2;
 
 /// ARGB color, serialized as an 8-digit hex string, e.g. "0xFF606060".
 pub const Argb = struct {
@@ -698,6 +699,22 @@ pub const GlobalSettings = struct {
 pub const Position = struct {
     x: i32,
     y: i32,
+
+    /// Converts a position captured by a DPI-unaware process (pre-DPI-awareness saves, EVE-O/EVE-X/EVE-APM imports) from its virtualized 96-DPI space into true physical pixels.
+    pub fn scaleFromLegacyDpiUnaware(self: Position) Position {
+        const monitor = win32.MonitorFromPoint(.{ .x = self.x, .y = self.y }, win32.MONITOR_DEFAULTTONEAREST) orelse return self;
+
+        var dpi_x: win32.UINT = 96;
+        var dpi_y: win32.UINT = 96;
+        _ = win32.GetDpiForMonitor(monitor, win32.MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y);
+        if (dpi_x == 96) return self;
+
+        const scale = @as(f32, @floatFromInt(dpi_x)) / 96.0;
+        return .{
+            .x = @intFromFloat(@round(@as(f32, @floatFromInt(self.x)) * scale)),
+            .y = @intFromFloat(@round(@as(f32, @floatFromInt(self.y)) * scale)),
+        };
+    }
 };
 
 pub const CharacterBorderColors = struct {
@@ -2011,6 +2028,12 @@ pub const Config = struct {
 
         try cfg.characters.ensureTotalCapacity(allocator, w.characters.len);
         for (w.characters) |cw| cfg.characters.appendAssumeCapacity(try CharacterConfig.fromWire(cw, allocator));
+
+        if (w.formatVersion < 2) {
+            for (cfg.characters.items) |*char| {
+                if (char.position) |pos| char.position = pos.scaleFromLegacyDpiUnaware();
+            }
+        }
 
         try cfg.systemColors.ensureTotalCapacity(allocator, w.systemColors.len);
         for (w.systemColors) |scw| cfg.systemColors.appendAssumeCapacity(try SystemColor.fromWire(scw, allocator));

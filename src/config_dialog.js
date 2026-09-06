@@ -2797,6 +2797,20 @@ function computeMajImportSections(data) {
     });
 }
 
+// Legacy tools (EVE-O/EVE-X/EVE-APM, and this app before its DPI-awareness change) captured positions while DPI-unaware, in a virtualized 96-DPI space Windows silently rescaled - scaleLegacyPositions (config_dialog.zig) converts them to real physical pixels via the current monitor's DPI.
+async function scaleCharacterPatchPositions(characterPatches) {
+    if (typeof webui === 'undefined') return;
+    const withPos = characterPatches.filter(cp => cp.position);
+    if (withPos.length === 0) return;
+    try {
+        const response = await webui.call('scaleLegacyPositions', JSON.stringify(withPos.map(cp => cp.position)));
+        const scaled = JSON.parse(response);
+        withPos.forEach((cp, i) => { if (scaled[i]) cp.position = scaled[i]; });
+    } catch (error) {
+        logWarn('Failed to scale legacy positions:', error);
+    }
+}
+
 // Merges by name/systemName so re-running an import updates matching entries in place instead of duplicating them; unlike mergeCharacterPatch, imported items are already full entries so this overwrites wholesale.
 function mergeMajByKey(list, imported, keyField) {
     imported.forEach(item => {
@@ -2808,7 +2822,7 @@ function mergeMajByKey(list, imported, keyField) {
     });
 }
 
-function applyMajImport(checked, allNotes) {
+async function applyMajImport(checked, allNotes) {
     const data = importParsedData;
 
     MAJ_SECTIONS.filter(s => s.kind === 'object').forEach(s => {
@@ -2819,6 +2833,8 @@ function applyMajImport(checked, allNotes) {
 
     if (checked('characters') && Array.isArray(data.characters)) {
         if (!currentConfig.characters) currentConfig.characters = [];
+        // formatVersion < 2 predates this app's DPI-awareness change - those saved positions need the same physical-pixel conversion as EVE-O/EVE-X/EVE-APM imports.
+        if ((data.formatVersion || 1) < 2) await scaleCharacterPatchPositions(data.characters);
         mergeMajByKey(currentConfig.characters, data.characters, 'name');
         allNotes.push(`Imported ${data.characters.length} character(s).`);
     }
@@ -2982,7 +2998,7 @@ function onImportDestChanged() {
     }
 }
 
-function applyEvexImport(checked, allNotes) {
+async function applyEvexImport(checked, allNotes) {
     const select = document.getElementById('importSourceProfile');
     const oldProfile = importParsedData._Profiles[select.value] || {};
     const oldGlobal = importParsedData.global_Settings || {};
@@ -2994,6 +3010,7 @@ function applyEvexImport(checked, allNotes) {
     }
     if (checked('characterPositions')) {
         const { characterPatches, notes } = extractCharacterPositions(oldProfile);
+        await scaleCharacterPatchPositions(characterPatches);
         mergeCharacterPatch(currentConfig, characterPatches);
         allNotes.push(...notes);
     }
@@ -3022,7 +3039,7 @@ function applyEvexImport(checked, allNotes) {
     }
 }
 
-function applyApmImport(checked, allNotes) {
+async function applyApmImport(checked, allNotes) {
     const sections = importParsedData;
 
     if (checked('thumbnailAppearance')) {
@@ -3032,6 +3049,7 @@ function applyApmImport(checked, allNotes) {
     }
     if (checked('characterPositions')) {
         const { characterPatches, notes } = apmExtractCharacterPositions(sections);
+        await scaleCharacterPatchPositions(characterPatches);
         mergeCharacterPatch(currentConfig, characterPatches);
         allNotes.push(...notes);
     }
@@ -3081,7 +3099,7 @@ function applyApmImport(checked, allNotes) {
     }
 }
 
-function applyEveoImport(checked, allNotes) {
+async function applyEveoImport(checked, allNotes) {
     const data = importParsedData;
 
     if (checked('thumbnailAppearance')) {
@@ -3091,6 +3109,7 @@ function applyEveoImport(checked, allNotes) {
     }
     if (checked('characterPositions')) {
         const { characterPatches, notes } = eveoExtractCharacterPositions(data);
+        await scaleCharacterPatchPositions(characterPatches);
         mergeCharacterPatch(currentConfig, characterPatches);
         allNotes.push(...notes);
     }
@@ -3167,13 +3186,13 @@ async function runImport() {
         }
 
         if (importFormat === 'evex') {
-            applyEvexImport(checked, allNotes);
+            await applyEvexImport(checked, allNotes);
         } else if (importFormat === 'eveo') {
-            applyEveoImport(checked, allNotes);
+            await applyEveoImport(checked, allNotes);
         } else if (importFormat === 'maj') {
-            applyMajImport(checked, allNotes);
+            await applyMajImport(checked, allNotes);
         } else {
-            applyApmImport(checked, allNotes);
+            await applyApmImport(checked, allNotes);
         }
 
         // Imported positions belong to a different setup, so the ghost overlay would just clutter drags with irrelevant saved positions.

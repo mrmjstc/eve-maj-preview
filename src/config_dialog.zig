@@ -176,6 +176,7 @@ pub fn main(init: std.process.Init) !void {
     _ = try win.bind("setAlwaysOnTop", setAlwaysOnTop);
     _ = try win.bind("scanUltraPotatoProfiles", scanUltraPotatoProfiles);
     _ = try win.bind("applyUltraPotatoMode", applyUltraPotatoMode);
+    _ = try win.bind("scaleLegacyPositions", scaleLegacyPositions);
 
     const html_with_resources = try injectResources(allocator, active_lang);
     defer allocator.free(html_with_resources);
@@ -1036,6 +1037,46 @@ fn getRunningWindows(e: *webui.Event) void {
         response.appendSlice(allocator, "\",\"title\":\"") catch break;
         appendJsonEscaped(allocator, &response, entry.title);
         response.appendSlice(allocator, "\"}") catch break;
+    }
+
+    response.append(allocator, ']') catch {
+        e.returnString("[]");
+        return;
+    };
+
+    const result = allocator.dupeZ(u8, response.items) catch {
+        e.returnString("[]");
+        return;
+    };
+    defer allocator.free(result);
+    e.returnString(result);
+}
+
+/// Batch wrapper around Position.scaleFromLegacyDpiUnaware for the config-dialog import flow.
+fn scaleLegacyPositions(e: *webui.Event) void {
+    const json_str = e.getString();
+    const allocator = g_allocator;
+
+    const parsed = std.json.parseFromSlice([]const config_mod.Position, allocator, json_str, .{}) catch {
+        e.returnString("[]");
+        return;
+    };
+    defer parsed.deinit();
+
+    var response = std.ArrayList(u8).empty;
+    defer response.deinit(allocator);
+
+    response.append(allocator, '[') catch {
+        e.returnString("[]");
+        return;
+    };
+
+    for (parsed.value, 0..) |pos, i| {
+        if (i > 0) response.append(allocator, ',') catch break;
+        const scaled = pos.scaleFromLegacyDpiUnaware();
+        var buf: [64]u8 = undefined;
+        const entry = std.fmt.bufPrint(&buf, "{{\"x\":{},\"y\":{}}}", .{ scaled.x, scaled.y }) catch break;
+        response.appendSlice(allocator, entry) catch break;
     }
 
     response.append(allocator, ']') catch {
