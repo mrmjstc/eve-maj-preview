@@ -340,26 +340,48 @@ fn handleDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
     const ctrl_pressed = win32.isCtrlPressed();
 
     if (ctrl_pressed) {
-        // Disable snapping when moving all thumbnails - use raw delta
-        const delta_x = new_x - rect.left;
-        const delta_y = new_y - rect.top;
+        // Thumbnail-edge and ghost snapping don't apply to a group move; screen edges still do.
+        var delta_x = new_x - rect.left;
+        var delta_y = new_y - rect.top;
 
         if (g_painter_ptr) |painter| {
+            if (painter.config.snapping.enabled and painter.config.snapping.screenEdges) {
+                const snapped = applyScreenEdgeSnapping(new_x, new_y, width, height, painter.config.snapping.threshold, hwnd);
+                delta_x = snapped.x - rect.left;
+                delta_y = snapped.y - rect.top;
+            }
+
+            var window_count: c_int = 0;
             for (painter.thumbnails.items) |thumbnail| {
-                if (!win32.isWindow(thumbnail.hwnd) or !win32.isWindow(thumbnail.text_hwnd)) {
-                    continue;
+                if (thumbnail.win32_enabled and win32.isWindow(thumbnail.hwnd) and win32.isWindow(thumbnail.text_hwnd)) {
+                    window_count += 2;
                 }
+            }
 
-                var thumb_rect: win32.RECT = undefined;
-                _ = win32.GetWindowRect(thumbnail.hwnd, &thumb_rect);
+            // Batched via DeferWindowPos so the whole group moves in one atomic DWM update instead of drifting apart across N sequential SetWindowPos calls.
+            if (window_count > 0) {
+                var hdwp = win32.BeginDeferWindowPos(window_count);
+                for (painter.thumbnails.items) |thumbnail| {
+                    if (!thumbnail.win32_enabled or !win32.isWindow(thumbnail.hwnd) or !win32.isWindow(thumbnail.text_hwnd)) {
+                        continue;
+                    }
 
-                const thumb_width = win32.rectWidth(thumb_rect);
-                const thumb_height = win32.rectHeight(thumb_rect);
-                const new_thumb_x = thumb_rect.left + delta_x;
-                const new_thumb_y = thumb_rect.top + delta_y;
+                    var thumb_rect: win32.RECT = undefined;
+                    _ = win32.GetWindowRect(thumbnail.hwnd, &thumb_rect);
 
-                _ = win32.SetWindowPos(thumbnail.hwnd, win32.HWND_NOTOPMOST, new_thumb_x, new_thumb_y, thumb_width, thumb_height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
-                _ = win32.SetWindowPos(thumbnail.text_hwnd, win32.HWND_TOPMOST, new_thumb_x, new_thumb_y, thumb_width, thumb_height, win32.SWP_NOACTIVATE);
+                    const new_thumb_x = thumb_rect.left + delta_x;
+                    const new_thumb_y = thumb_rect.top + delta_y;
+
+                    if (hdwp) |h| {
+                        hdwp = win32.DeferWindowPos(h, thumbnail.hwnd, win32.HWND_NOTOPMOST, new_thumb_x, new_thumb_y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
+                    }
+                    if (hdwp) |h| {
+                        hdwp = win32.DeferWindowPos(h, thumbnail.text_hwnd, win32.HWND_TOPMOST, new_thumb_x, new_thumb_y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
+                    }
+                }
+                if (hdwp) |h| {
+                    _ = win32.EndDeferWindowPos(h);
+                }
             }
         }
     } else {
