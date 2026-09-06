@@ -55,6 +55,9 @@
                 <div class="tab-item" data-tab="hotkeys">
                     <span data-i18n="tab.hotkeys.title">hotkeys</span>
                 </div>
+                <div class="tab-item" data-tab="hotkey-groups">
+                    <span data-i18n="tab.hotkey-groups.title">hotkey groups</span>
+                </div>
                 <div class="tab-item" data-tab="chatlog">
                     <span data-i18n="tab.chatlog.title">log monitoring</span>
                 </div>
@@ -232,7 +235,7 @@
                             <div id="overlayGuideY" class="overlay-guide overlay-guide-y"></div>
                             <div class="overlay-chip" id="overlayChip_characterName" data-key="characterName">Character Name</div>
                             <div class="overlay-chip" id="overlayChip_systemName" data-key="systemName">System Name</div>
-                            <div class="overlay-chip" id="overlayChip_quickGroupBadge" data-key="quickGroupBadge">Quick Group Name</div>
+                            <div class="overlay-chip" id="overlayChip_quickGroupBadge" data-key="quickGroupBadge">Group Name</div>
                             <div class="overlay-chip" id="overlayChip_notification" data-key="notification">Notification</div>
                             <div class="overlay-chip" id="overlayChip_combatIncoming" data-key="combatIncoming">Incoming DPS</div>
                             <div class="overlay-chip" id="overlayChip_combatOutgoing" data-key="combatOutgoing">Outgoing DPS</div>
@@ -354,11 +357,11 @@
 
                             <div class="row hidden-by-layout-preview" style="display: none; margin-top: 16px;">
                                 <div class="column">
-                                    <h4 data-i18n="tab.overlay-text.section.quick-group-badge.heading">Quick Group Badge</h4>
+                                    <h4 data-i18n="tab.overlay-text.section.group-badge.heading">Group Badge</h4>
 
                                     <label>
                                         <input type="checkbox" id="showQuickGroupBadge" onchange="toggleQuickGroupBadgeOptions()">
-                                        <span class="label-body" data-i18n="field.showQuickGroupBadge.label">Show Quick Group Badge</span>
+                                        <span class="label-body" data-i18n="field.showQuickGroupBadge.label">Show Group Badge</span>
                                     </label>
 
                                     <div id="quickGroupBadgeOptions" style="margin-top: 8px;">
@@ -850,6 +853,20 @@
                     </div>
                 </div>
 
+                <div class="panel-content" data-panel="hotkey-groups">
+                    <div class="section">
+                        <h3 data-i18n="tab.hotkey-groups.section.groups.heading">Hotkey Groups</h3>
+                        <p class="hint" data-i18n="tab.hotkey-groups.section.groups.hint">Groups of characters you can cycle through with hotkeys. Members are listed here, or assigned live by hovering a thumbnail and pressing the group's assign key.</p>
+
+                        <div id="hotkeyGroupsList" style="margin-bottom: 8px;">
+                            <!-- Hotkey groups will be dynamically populated here -->
+                        </div>
+
+                        <button type="button" onclick="addHotkeyGroup()" style="width: 100%;" data-i18n="button.add-hotkey-group.label">+ Add Hotkey Group</button>
+                    </div>
+
+                </div>
+
                 <div class="panel-content" data-panel="hotkeys">
                     <div class="section">
                         <h3 data-i18n="tab.hotkeys.section.hotkey-system.heading">Hotkey System</h3>
@@ -867,28 +884,6 @@
                             <input type="checkbox" id="resetGroupIndexOnNonGroupFocus">
                             <span class="label-body" data-i18n="field.resetGroupIndexOnNonGroupFocus.label">Reset Cycling When Leaving a Group</span>
                         </label>
-                    </div>
-
-                    <div class="section">
-                        <h3 data-i18n="tab.hotkeys.section.hotkey-groups.heading">Hotkey Groups</h3>
-                        <p class="hint" data-i18n="tab.hotkeys.section.hotkey-groups.hint">Groups of characters you can cycle through with hotkeys, each with forward and optional backward keys.</p>
-
-                        <div id="hotkeyGroupsList" style="margin-bottom: 8px;">
-                            <!-- Hotkey groups will be dynamically populated here -->
-                        </div>
-
-                        <button type="button" onclick="addHotkeyGroup()" style="width: 100%;" data-i18n="button.add-hotkey-group.label">+ Add Hotkey Group</button>
-                    </div>
-
-                    <div class="section">
-                        <h3 data-i18n="tab.hotkeys.section.quick-groups.heading">Quick Groups</h3>
-                        <p class="hint" data-i18n="tab.hotkeys.section.quick-groups.hint">Hover a thumbnail and press a group's assign key to toggle it in or out — membership is temporary and resets on restart.</p>
-
-                        <div id="quickGroupsList" style="margin-bottom: 8px;">
-                            <!-- Quick groups will be dynamically populated here -->
-                        </div>
-
-                        <button type="button" onclick="addQuickGroup()" style="width: 100%;" data-i18n="button.add-quick-group.label">+ Add Quick Group</button>
                     </div>
 
                     <div class="section">

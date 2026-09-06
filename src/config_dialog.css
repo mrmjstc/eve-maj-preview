@@ -39,6 +39,9 @@
     --radius: 3px;
     --radius-lg: 4px;
     --font-mono: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+    /* Label rail to control in .detail-form. Shared with the group panel's title
+       row, which lines its field up with that same rail from outside the grid. */
+    --detail-label-gap: 12px;
     /* Hover/interaction only - state transitions (.section-active,
        .field-clamped, .main-app-status) keep their own slower timings. */
     --t-hover: 0.15s;
@@ -486,7 +489,6 @@ select {
 input.recording {
     background-color: #241a16;
     border-color: var(--color-accent);
-    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.4);
 }
 
 input.hotkey-input {
@@ -507,8 +509,7 @@ input.hotkey-input.manual-editing {
 input.field-clamped {
     border-color: var(--color-accent) !important;
     background-color: rgba(var(--color-accent-rgb), 0.12);
-    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.5);
-    transition: border-color 1s ease-out, background-color 1s ease-out, box-shadow 1s ease-out;
+    transition: border-color 1s ease-out, background-color 1s ease-out;
 }
 
 /* Reserved for real validation problems only (see also .status-message.error) -
@@ -525,15 +526,13 @@ input.hotkey-conflict {
    to a different section. */
 .section.section-active {
     border-color: var(--color-accent);
-    box-shadow: 0 0 10px rgba(var(--color-accent-rgb), 0.45);
-    transition: border-color 0.4s ease-out, box-shadow 0.4s ease-out;
+    transition: border-color 0.4s ease-out;
 }
 
 input:focus,
 select:focus {
     outline: none;
     border-color: var(--color-accent);
-    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.35), inset 0 0 4px rgba(var(--color-accent-rgb), 0.08);
 }
 
 label {
@@ -607,8 +606,12 @@ input[type="checkbox"]:checked + .label-body::before {
     border-color: var(--color-accent);
 }
 
+/* A ring rather than a border tint: a checked box already carries the accent
+   border, so tinting it again would make focus invisible on exactly the boxes
+   most likely to have it. */
 input[type="checkbox"]:focus + .label-body::before {
-    box-shadow: 0 0 6px rgba(var(--color-accent-rgb), 0.5);
+    outline: 1px solid var(--color-accent);
+    outline-offset: 1px;
 }
 
 /* Hover gets its own quieter affordance (text-secondary) rather than the
@@ -857,7 +860,7 @@ input.search-filter-input {
     font-family: var(--font-mono);
     height: 28px;
     width: 100%;
-    transition: border-color var(--t-hover), box-shadow var(--t-hover);
+    transition: border-color var(--t-hover);
     line-height: normal;
     box-sizing: border-box;
     border-radius: var(--radius);
@@ -866,7 +869,6 @@ input.search-filter-input {
 .search-filter-input:focus {
     outline: none;
     border-color: var(--color-accent);
-    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.35);
 }
 
 .search-filter-input::placeholder {
@@ -967,7 +969,6 @@ body.advanced-mode .hotkey-edit-btn {
 input.manual-editing {
     background-color: #16211b;
     border-color: var(--color-success);
-    box-shadow: 0 0 8px rgba(var(--color-success-rgb), 0.35);
 }
 
 #footer-right {
@@ -1038,7 +1039,6 @@ input.manual-editing {
 #profile-select:focus {
     border-color: var(--color-accent);
     outline: none;
-    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.3);
 }
 
 /* Scrollbar */
@@ -1398,14 +1398,13 @@ input[type="color"] {
     background-color: var(--color-surface);
     box-sizing: border-box;
     border-radius: var(--radius);
-    transition: border-color var(--t-hover) ease, box-shadow var(--t-hover) ease;
+    transition: border-color var(--t-hover) ease;
 }
 
 input[type="color"]:hover,
 input[type="color"]:focus {
     outline: none;
     border-color: var(--color-accent);
-    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.35);
 }
 
 input[type="color"]::-webkit-color-swatch-wrapper {
@@ -1563,7 +1562,6 @@ input[type="color"]::-moz-color-swatch {
 .cp-hex-input:focus {
     outline: none;
     border-color: var(--color-accent);
-    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.35);
 }
 
 /* Shown only when the active swatch opts in via data-optional-color (reset to
@@ -1757,19 +1755,23 @@ input[type="range"]::-moz-range-thumb {
     box-shadow: inset 0 -2px 0 var(--color-accent);
 }
 
-/* The characters panel is stretched to fill the window instead of growing with
-   #content-panel, so the roster stays fully visible and scrolls independently
-   of whichever detail form is open. flex + min-height:0 all the way down, not
-   height:100% - a flex item's stretched size doesn't count as an "explicit"
-   height, so percentage heights on its descendants won't resolve against it. */
-.panel-content[data-panel="characters"].active {
+/* Both master-detail panels are stretched to fill the window instead of growing
+   with #content-panel, so the roster stays fully visible and scrolls
+   independently of whichever detail form is open. flex + min-height:0 all the
+   way down, not height:100% - a flex item's stretched size doesn't count as an
+   "explicit" height, so percentage heights on its descendants won't resolve
+   against it. Each panel holds the one section, which is what makes this work
+   where a scrolling column of sections (the hotkeys panel) couldn't. */
+.panel-content[data-panel="characters"].active,
+.panel-content[data-panel="hotkey-groups"].active {
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
 }
 
-.panel-content[data-panel="characters"] .section {
+.panel-content[data-panel="characters"] .section,
+.panel-content[data-panel="hotkey-groups"] .section {
     flex: 1;
     min-height: 0;
     margin-bottom: 0;
@@ -1777,11 +1779,12 @@ input[type="range"]::-moz-range-thumb {
     flex-direction: column;
 }
 
-/* #charactersList (the plain div populateCharacters() renders into, see
-   config_dialog.html) sits between .section and .master-detail - without flex
+/* The plain divs populateCharacters()/populateHotkeyGroups() render into (see
+   config_dialog.html) sit between .section and .master-detail - without flex
    sizing here too, .master-detail's flex:1 has nothing to grow into and just
    falls back to its content height. */
-#charactersList {
+#charactersList,
+#hotkeyGroupsList {
     flex: 1;
     min-height: 0;
     display: flex;
@@ -1797,19 +1800,19 @@ input[type="range"]::-moz-range-thumb {
     min-height: 0;
 }
 
-/* The hotkeys panel scrolls as one column of sections rather than stretching to
-   the window, so this master-detail has no flex parent to grow into and needs a
-   height of its own to scroll inside. */
-#hotkeyGroupsList .master-detail {
-    height: clamp(324px, calc(62vh - 16px), 664px);
-}
-
 .roster {
     width: 190px;
     flex-shrink: 0;
     overflow-y: auto;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
+}
+
+/* Group rows carry a name, a member count and key badges but no portrait, so
+   they need less width than the characters roster - and the detail side, which
+   holds the member list, gets the difference. */
+#hotkeyGroupsList .roster {
+    width: 150px;
 }
 
 .roster-row {
@@ -1864,33 +1867,10 @@ input[type="range"]::-moz-range-thumb {
     text-overflow: ellipsis;
 }
 
-.roster-hotkey-badge,
-.roster-count-badge {
+.roster-hotkey-badge {
     font-size: 11px;
     color: var(--color-muted);
     white-space: nowrap;
-}
-
-/* A hotkey group carries a forward and a backward badge on top of its member
-   count - more than fits beside the name in a 190px roster, so those wrap onto
-   their own line under it. */
-.roster-row-body {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.roster-row-line {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.roster-row-keys {
-    display: flex;
-    gap: 6px;
 }
 
 .roster-row.roster-row-empty {
@@ -1904,6 +1884,7 @@ input[type="range"]::-moz-range-thumb {
 
 .roster-row.dragging {
     opacity: 0.4;
+    cursor: grabbing;
 }
 
 .roster-row.drag-over-top {
@@ -1947,6 +1928,37 @@ input[type="range"]::-moz-range-thumb {
     font-size: 15px;
 }
 
+/* Takes .detail-panel-name's place in the header, but keeps every input cue -
+   border, background, caret - so it still reads as a field to type in. Only
+   layout is overridden, scoped past the input[type="text"] base rule, whose
+   attribute selector would otherwise win and put the bottom margin back, which
+   is what knocks the field out of line with the button beside it. */
+.detail-panel-header .detail-panel-name-input {
+    flex: 1;
+    min-width: 0;
+    margin-bottom: 0;
+}
+
+/* Matching the grid's column width isn't enough on its own (see
+   alignHotkeyGroupNameLabel): the flex gap after the label has to match the
+   grid's column gap too, or the field lands a few pixels left of the ones
+   below. */
+#hotkeyGroupsList .detail-panel-header {
+    gap: var(--detail-label-gap);
+}
+
+/* Sits on the row rather than above its field, so it drops the stacking margins
+   and the rail glyph, like the form labels below it. */
+.detail-panel-header .detail-panel-name-label {
+    margin: 0;
+    padding-left: 0;
+    white-space: nowrap;
+}
+
+.detail-panel-header .detail-panel-name-label::before {
+    content: none;
+}
+
 /* Label-left / control-right on a single rail - the same display:contents grid
    #overlayPopoverBody uses. Replaces stacked labels plus a heading band per
    group, which in a ~600px panel meant six horizontal rules and left 50px
@@ -1955,7 +1967,7 @@ input[type="range"]::-moz-range-thumb {
     display: grid;
     grid-template-columns: auto minmax(140px, 1fr);
     align-items: center;
-    gap: 8px 12px;
+    gap: 8px var(--detail-label-gap);
 }
 
 /* Lets each label/control pair become direct grid items, so every label lands
@@ -1975,12 +1987,14 @@ input[type="range"]::-moz-range-thumb {
 
 /* Keeps its stacking margins, unlike the rail labels - it sits above its
    controls rather than beside them. */
-.detail-field-full > label {
+.detail-field-full > label,
+.detail-members > label {
     padding-left: 0;
 }
 
 .detail-field > label::before,
-.detail-field-full > label::before {
+.detail-field-full > label::before,
+.detail-members > label::before {
     content: none;
 }
 
@@ -2034,11 +2048,89 @@ input[type="range"]::-moz-range-thumb {
     flex: none;
 }
 
+/* The member list is the one part of a group's panel that grows without bound,
+   so it does the scrolling rather than the panel around it - the keys, the
+   checkboxes and the add field stay put while only the rows move. */
+#hotkeyGroupsList .detail-stack {
+    display: flex;
+    flex-direction: column;
+    overflow-y: hidden;
+}
+
+#hotkeyGroupsList .detail-panel.active {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.detail-members {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
 /* Hotkey group character list (drag-to-reorder rows) */
 .hkgroup-chars-list {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 4px;
+}
+
+/* The index chip and the remove button bracket the card, so they take the same
+   box - the chip's, since the full icon-button footprint dwarfed it. Centring
+   is explicit because the chip sizes itself from line-height otherwise. */
+.hkgroup-char-row > .drag-index-chip,
+.hkgroup-char-row > button {
+    width: 22px;
+    height: 22px;
+    min-width: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.hkgroup-char-row > button {
+    font-size: 14px;
+}
+
+/* One step denser before the list gives up and scrolls, so a group that runs a
+   couple of rows past the fold still shows whole. Past this, overflow-y takes
+   over as usual. */
+.hkgroup-chars-list.chars-compact {
+    gap: 2px;
+}
+
+.hkgroup-chars-list.chars-compact .hkgroup-char-row {
+    padding: 0 4px;
+    gap: 4px;
+}
+
+.hkgroup-chars-list.chars-compact .hkgroup-char-row > input {
+    height: 22px;
+}
+
+.hkgroup-chars-list.chars-compact .hkgroup-char-row > .drag-index-chip,
+.hkgroup-chars-list.chars-compact .hkgroup-char-row > button {
+    width: 20px;
+    height: 20px;
+}
+
+/* Spans the columns the rows divide into, so the text reads as one line under
+   the label rather than sitting in the first cell. */
+.hkgroup-chars-empty {
+    grid-column: 1 / -1;
+    margin: 0;
+}
+
+.detail-members .hkgroup-chars-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    /* Rows keep their own height instead of stretching to fill a short list. */
+    align-content: start;
 }
 
 .hkgroup-char-row {
@@ -2059,6 +2151,11 @@ input[type="range"]::-moz-range-thumb {
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     padding: 1px 2px;
+    cursor: grab;
+}
+
+.drag-index-chip:active {
+    cursor: grabbing;
 }
 
 .drag-index-chip:hover {
@@ -2076,6 +2173,16 @@ input[type="range"]::-moz-range-thumb {
 
 .hkgroup-char-row.drag-over-bottom {
     box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+/* Member rows sit side by side, so their insertion point reads as the leading
+   or trailing edge rather than a line above or below the whole row. */
+.hkgroup-chars-list .hkgroup-char-row.drag-over-top {
+    box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.hkgroup-chars-list .hkgroup-char-row.drag-over-bottom {
+    box-shadow: inset -2px 0 0 var(--color-accent);
 }
 
 /* Character remove button confirmation state */

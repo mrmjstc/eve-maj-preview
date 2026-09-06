@@ -848,6 +848,12 @@ pub const HotkeyGroup = struct {
     excluded_characters: std.ArrayList([]const u8),
     forwardKey: ?u32,
     backwardKey: ?u32,
+    /// Hover a thumbnail and press this to toggle that character in or out of the group.
+    assignKey: ?u32 = null,
+    /// When true, membership is runtime-only: assign-key edits are never written back to the profile.
+    temporaryMembership: bool = false,
+    /// Draws the group's name on its members' thumbnails.
+    showBadge: bool = false,
     /// When true, cycling appends still-queued not-logged-in clients (see HotkeyManager.cycleNotLoggedIn) to the end of this group's cycle order.
     includeNotLoggedIn: bool = false,
     /// null = not yet cycled; see cycleGroup.
@@ -871,15 +877,21 @@ pub const HotkeyGroup = struct {
         characters: []const []const u8 = &.{},
         forwardKey: ?VkCode = null,
         backwardKey: ?VkCode = null,
+        assignKey: ?VkCode = null,
+        temporaryMembership: bool = false,
+        showBadge: bool = false,
         includeNotLoggedIn: bool = false,
     };
 
     pub fn toWire(self: HotkeyGroup) Wire {
         return .{
             .name = self.name,
-            .characters = self.characters.items,
+            .characters = if (self.temporaryMembership) &[_][]const u8{} else self.characters.items,
             .forwardKey = wrapVk(self.forwardKey),
             .backwardKey = wrapVk(self.backwardKey),
+            .assignKey = wrapVk(self.assignKey),
+            .temporaryMembership = self.temporaryMembership,
+            .showBadge = self.showBadge,
             .includeNotLoggedIn = self.includeNotLoggedIn,
         };
     }
@@ -892,6 +904,9 @@ pub const HotkeyGroup = struct {
             .excluded_characters = std.ArrayList([]const u8).empty,
             .forwardKey = unwrapVk(w.forwardKey),
             .backwardKey = unwrapVk(w.backwardKey),
+            .assignKey = unwrapVk(w.assignKey),
+            .temporaryMembership = w.temporaryMembership,
+            .showBadge = w.showBadge,
             .includeNotLoggedIn = w.includeNotLoggedIn,
         };
         errdefer group.deinit();
@@ -901,52 +916,24 @@ pub const HotkeyGroup = struct {
         }
         return group;
     }
-};
 
-/// Hover-assigned grouping; unlike HotkeyGroup, membership is never persisted.
-pub const QuickGroup = struct {
-    allocator: std.mem.Allocator,
-    name: []const u8,
-    assignKey: ?u32,
-    forwardKey: ?u32,
-    backwardKey: ?u32,
-    characters: std.ArrayList([]const u8),
-    /// null = not yet cycled; see cycleQuickGroup.
-    currentIndex: ?usize = null,
-
-    pub fn deinit(self: *QuickGroup) void {
-        self.allocator.free(self.name);
-        for (self.characters.items) |char_name| {
-            self.allocator.free(char_name);
-        }
-        self.characters.deinit(self.allocator);
-    }
-
-    pub const Wire = struct {
+    /// Pre-merge quick groups, read from older profiles and folded into hotkeyGroups on load.
+    pub const LegacyQuickGroupWire = struct {
         name: []const u8 = "",
         assignKey: ?VkCode = null,
         forwardKey: ?VkCode = null,
         backwardKey: ?VkCode = null,
     };
 
-    pub fn toWire(self: QuickGroup) Wire {
-        return .{
-            .name = self.name,
-            .assignKey = wrapVk(self.assignKey),
-            .forwardKey = wrapVk(self.forwardKey),
-            .backwardKey = wrapVk(self.backwardKey),
-        };
-    }
-
-    pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !QuickGroup {
-        return .{
-            .allocator = allocator,
-            .name = try allocator.dupe(u8, w.name),
-            .assignKey = unwrapVk(w.assignKey),
-            .forwardKey = unwrapVk(w.forwardKey),
-            .backwardKey = unwrapVk(w.backwardKey),
-            .characters = std.ArrayList([]const u8).empty,
-        };
+    pub fn fromLegacyQuickGroupWire(w: LegacyQuickGroupWire, allocator: std.mem.Allocator) !HotkeyGroup {
+        return fromWire(.{
+            .name = w.name,
+            .forwardKey = w.forwardKey,
+            .backwardKey = w.backwardKey,
+            .assignKey = w.assignKey,
+            .temporaryMembership = true,
+            .showBadge = true,
+        }, allocator);
     }
 };
 
@@ -1820,7 +1807,6 @@ pub const Config = struct {
     generatedCharacterColorCache: std.StringHashMap(u32),
 
     hotkeyGroups: std.ArrayList(HotkeyGroup),
-    quickGroups: std.ArrayList(QuickGroup),
     requireEveFocus: bool = false,
     resetGroupIndexOnNonGroupFocus: bool = false,
 
@@ -1861,7 +1847,8 @@ pub const Config = struct {
         characters: []const CharacterConfig.Wire = &.{},
         systemColors: []const SystemColor.Wire = &.{},
         hotkeyGroups: []const HotkeyGroup.Wire = &.{},
-        quickGroups: []const QuickGroup.Wire = &.{},
+        // Read-only legacy: merged into hotkeyGroups on load and always written back empty.
+        quickGroups: []const HotkeyGroup.LegacyQuickGroupWire = &.{},
         // Nested (not flattened onto Config.Wire directly) because config_dialog.js's in-memory currentConfig object keeps these under a "hotkeys" sub-object throughout the file, not just in the wire JSON shape.
         hotkeys: HotkeysWire = .{},
     };
@@ -1896,9 +1883,6 @@ pub const Config = struct {
         const groups = try allocator.alloc(HotkeyGroup.Wire, self.hotkeyGroups.items.len);
         for (self.hotkeyGroups.items, 0..) |item, i| groups[i] = item.toWire();
 
-        const quick_groups = try allocator.alloc(QuickGroup.Wire, self.quickGroups.items.len);
-        for (self.quickGroups.items, 0..) |item, i| quick_groups[i] = item.toWire();
-
         return .{
             .app = PROFILE_FORMAT_IDENTIFIER,
             .formatVersion = PROFILE_FORMAT_VERSION,
@@ -1921,7 +1905,6 @@ pub const Config = struct {
             .characters = chars,
             .systemColors = sys_colors,
             .hotkeyGroups = groups,
-            .quickGroups = quick_groups,
             .hotkeys = .{
                 .requireEveFocus = self.requireEveFocus,
                 .resetGroupIndexOnNonGroupFocus = self.resetGroupIndexOnNonGroupFocus,
@@ -2038,11 +2021,9 @@ pub const Config = struct {
         try cfg.systemColors.ensureTotalCapacity(allocator, w.systemColors.len);
         for (w.systemColors) |scw| cfg.systemColors.appendAssumeCapacity(try SystemColor.fromWire(scw, allocator));
 
-        try cfg.hotkeyGroups.ensureTotalCapacity(allocator, w.hotkeyGroups.len);
+        try cfg.hotkeyGroups.ensureTotalCapacity(allocator, w.hotkeyGroups.len + w.quickGroups.len);
         for (w.hotkeyGroups) |hgw| cfg.hotkeyGroups.appendAssumeCapacity(try HotkeyGroup.fromWire(hgw, allocator));
-
-        try cfg.quickGroups.ensureTotalCapacity(allocator, w.quickGroups.len);
-        for (w.quickGroups) |qgw| cfg.quickGroups.appendAssumeCapacity(try QuickGroup.fromWire(qgw, allocator));
+        for (w.quickGroups) |qgw| cfg.hotkeyGroups.appendAssumeCapacity(try HotkeyGroup.fromLegacyQuickGroupWire(qgw, allocator));
 
         return cfg;
     }
@@ -3768,7 +3749,6 @@ pub const Config = struct {
             .generatedColorCache = std.StringHashMap(u32).init(allocator),
             .generatedCharacterColorCache = std.StringHashMap(u32).init(allocator),
             .hotkeyGroups = std.ArrayList(HotkeyGroup).empty,
-            .quickGroups = std.ArrayList(QuickGroup).empty,
             .autoRegisterProtocol = false,
             .hotkeyMinimizeAll = null,
             .hotkeyCloseAll = null,
@@ -4170,11 +4150,6 @@ pub const Config = struct {
         }
         self.hotkeyGroups.deinit(allocator);
 
-        for (self.quickGroups.items) |*group| {
-            group.deinit();
-        }
-        self.quickGroups.deinit(allocator);
-
         self.chatlog.deinit(allocator);
         self.combat.deinit(allocator);
         self.mining.deinit(allocator);
@@ -4237,6 +4212,11 @@ pub const Config = struct {
         const new_monitor_index = fresh.display.monitorIndex;
         const new_use_monitor_work_area = fresh.display.useMonitorWorkArea;
         const new_honor_saved_positions = fresh.display.honorSavedPositions;
+
+        // Index-matched, like applyGroupBadgePreviewFromJson.
+        for (self.hotkeyGroups.items, 0..) |*group, group_index| {
+            group.showBadge = group_index < fresh.hotkeyGroups.items.len and fresh.hotkeyGroups.items[group_index].showBadge;
+        }
 
         // Restore per-character overrides by matching on name; displayName is duped before fresh.deinit() frees it, and characters with no match in `fresh` (created live but never saved) are removed entirely so reverting leaves no residue.
         var char_index: usize = self.characters.items.len;
@@ -4334,6 +4314,16 @@ pub const Config = struct {
         self.display.monitorIndex = new_monitor_index;
         self.display.useMonitorWorkArea = new_use_monitor_work_area;
         self.display.honorSavedPositions = new_honor_saved_positions;
+    }
+
+    /// Live-preview only: per-group badge flags in the config dialog's group order, matched to the running groups by index.
+    /// A group added or removed in the dialog shifts every index after it, so a length mismatch skips the preview until Save reloads the profile.
+    pub fn applyGroupBadgePreviewFromJson(self: *Config, flags_array: []const std.json.Value) void {
+        if (flags_array.len != self.hotkeyGroups.items.len) return;
+        for (flags_array, 0..) |flag, group_index| {
+            if (flag != .bool) continue;
+            self.hotkeyGroups.items[group_index].showBadge = flag.bool;
+        }
     }
 
     /// Replace the system color override list from a JSON array of {systemName, color} objects, freeing the old entries only after the new list parses successfully.
