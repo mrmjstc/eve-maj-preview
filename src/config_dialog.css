@@ -1689,12 +1689,6 @@ input[type="range"]::-moz-range-thumb {
     white-space: nowrap;
 }
 
-.accordion-count-badge {
-    font-size: 11px;
-    color: var(--color-muted);
-    white-space: nowrap;
-}
-
 /* One › rotated on expand, rather than swapping between two unrelated arrow
    glyphs - matches the single marker used for headings, labels and lists.
    inline-block because transforms don't apply to inline elements. */
@@ -1763,12 +1757,11 @@ input[type="range"]::-moz-range-thumb {
     box-shadow: inset 0 -2px 0 var(--color-accent);
 }
 
-/* Character panel: roster + single-panel detail, instead of an accordion list.
-   Stretched to fill the window instead of growing with #content-panel, so the
-   roster stays fully visible and scrolls independently of whichever detail
-   form is open. flex + min-height:0 all the way down, not height:100% - a
-   flex item's stretched size doesn't count as an "explicit" height, so
-   percentage heights on its descendants won't resolve against it. */
+/* The characters panel is stretched to fill the window instead of growing with
+   #content-panel, so the roster stays fully visible and scrolls independently
+   of whichever detail form is open. flex + min-height:0 all the way down, not
+   height:100% - a flex item's stretched size doesn't count as an "explicit"
+   height, so percentage heights on its descendants won't resolve against it. */
 .panel-content[data-panel="characters"].active {
     display: flex;
     flex-direction: column;
@@ -1785,9 +1778,9 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* #charactersList (the plain div populateCharacters() renders into, see
-   config_dialog.html) sits between .section and .character-master-detail -
-   without flex sizing here too, .character-master-detail's flex:1 has
-   nothing to grow into and just falls back to its content height. */
+   config_dialog.html) sits between .section and .master-detail - without flex
+   sizing here too, .master-detail's flex:1 has nothing to grow into and just
+   falls back to its content height. */
 #charactersList {
     flex: 1;
     min-height: 0;
@@ -1795,14 +1788,23 @@ input[type="range"]::-moz-range-thumb {
     flex-direction: column;
 }
 
-.character-master-detail {
+/* Roster + single-panel detail, instead of an accordion list. Shared by the
+   characters panel and the hotkey groups section. */
+.master-detail {
     display: flex;
     gap: 8px;
     flex: 1;
     min-height: 0;
 }
 
-.character-roster {
+/* The hotkeys panel scrolls as one column of sections rather than stretching to
+   the window, so this master-detail has no flex parent to grow into and needs a
+   height of its own to scroll inside. */
+#hotkeyGroupsList .master-detail {
+    height: clamp(324px, calc(62vh - 16px), 664px);
+}
+
+.roster {
     width: 190px;
     flex-shrink: 0;
     overflow-y: auto;
@@ -1862,10 +1864,33 @@ input[type="range"]::-moz-range-thumb {
     text-overflow: ellipsis;
 }
 
-.roster-hotkey-badge {
+.roster-hotkey-badge,
+.roster-count-badge {
     font-size: 11px;
     color: var(--color-muted);
     white-space: nowrap;
+}
+
+/* A hotkey group carries a forward and a backward badge on top of its member
+   count - more than fits beside the name in a 190px roster, so those wrap onto
+   their own line under it. */
+.roster-row-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.roster-row-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.roster-row-keys {
+    display: flex;
+    gap: 6px;
 }
 
 .roster-row.roster-row-empty {
@@ -1889,7 +1914,7 @@ input[type="range"]::-moz-range-thumb {
     box-shadow: inset 0 -2px 0 var(--color-accent);
 }
 
-.character-detail-stack {
+.detail-stack {
     flex: 1;
     min-width: 0;
     overflow-y: auto;
@@ -1898,16 +1923,16 @@ input[type="range"]::-moz-range-thumb {
     padding: 8px;
 }
 
-.char-detail-panel {
+.detail-panel {
     display: none;
 }
 
-.char-detail-panel.active {
+.detail-panel.active {
     display: block;
     animation: fadeIn 0.15s;
 }
 
-.char-detail-header {
+.detail-panel-header {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1916,7 +1941,7 @@ input[type="range"]::-moz-range-thumb {
     border-bottom: 1px solid var(--color-border);
 }
 
-.char-detail-name {
+.detail-panel-name {
     flex: 1;
     font-weight: 700;
     font-size: 15px;
@@ -1948,7 +1973,14 @@ input[type="range"]::-moz-range-thumb {
     white-space: nowrap;
 }
 
-.detail-field > label::before {
+/* Keeps its stacking margins, unlike the rail labels - it sits above its
+   controls rather than beside them. */
+.detail-field-full > label {
+    padding-left: 0;
+}
+
+.detail-field > label::before,
+.detail-field-full > label::before {
     content: none;
 }
 
@@ -1963,6 +1995,12 @@ input[type="range"]::-moz-range-thumb {
    13px line box, so both align at the top of the row already. */
 .detail-field-top > label {
     align-self: start;
+}
+
+/* Breaks out of the label rail so a member list and its add field get the
+   panel's full width instead of just the control column. */
+.detail-field-full {
+    grid-column: 1 / -1;
 }
 
 .detail-checks {

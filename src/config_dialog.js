@@ -3570,29 +3570,31 @@ function normalizeHotkeyValue(value) {
     return [...modifiers, mainKey].join('+');
 }
 
-// Uses the field's <label for="..."> text if one exists, otherwise the name in its enclosing accordion/character panel, disambiguating forward/backward.
+// Uses the field's <label for="..."> text if one exists, otherwise the name in its enclosing accordion/detail panel, disambiguating forward/backward.
 function hotkeyFieldLabel(input) {
     if (input.id) {
         const label = document.querySelector(`label[for="${input.id}"]`);
         if (label) return label.textContent.trim();
     }
 
-    const charPanel = input.closest('.char-detail-panel');
-    if (charPanel) {
-        const nameEl = charPanel.querySelector('.char-detail-name');
-        return (nameEl && nameEl.textContent.trim()) || 'Character';
-    }
-
-    const accordion = input.closest('.accordion');
-    if (accordion) {
-        const nameEl = accordion.querySelector('.accordion-name');
-        const base = (nameEl && nameEl.textContent.trim()) || 'Item';
+    const detailPanel = input.closest('.detail-panel');
+    if (detailPanel) {
+        const nameEl = detailPanel.querySelector('.detail-panel-name');
+        const base = (nameEl && nameEl.textContent.trim()) || 'Character';
 
         // Groups can be renamed to anything, so the base name alone wouldn't tell the user this is a cycling key rather than a character/profile switch hotkey.
         if (input.id.startsWith('hkgroup_')) {
             const direction = input.id.endsWith('_forward') ? 'Forward' : input.id.endsWith('_backward') ? 'Backward' : null;
             return direction ? `Hotkey Group "${base}" (${direction})` : `Hotkey Group "${base}"`;
         }
+
+        return base;
+    }
+
+    const accordion = input.closest('.accordion');
+    if (accordion) {
+        const nameEl = accordion.querySelector('.accordion-name');
+        const base = (nameEl && nameEl.textContent.trim()) || 'Item';
 
         if (input.id.startsWith('qg_')) {
             const direction = input.id.endsWith('_forward') ? 'Forward' : input.id.endsWith('_backward') ? 'Backward' : input.id.endsWith('_assign') ? 'Assign' : null;
@@ -3665,10 +3667,12 @@ function refreshAppHotkeyBadges() {
     });
 }
 
-// Mirrors each hotkey group's forward/backward inputs into the badges shown on its (possibly collapsed) accordion header.
+// Mirrors each hotkey group's forward/backward inputs into the badges shown on its roster row, whose detail panel may not be the open one.
 function refreshHotkeyGroupBadges() {
-    document.querySelectorAll('#hotkeyGroupsList > .accordion').forEach(accordion => {
-        const index = accordion.dataset.index;
+    document.querySelectorAll('#hotkeyGroupsList .roster-row').forEach(row => {
+        const index = row.dataset.index;
+        let anyBound = false;
+
         [['forward', '→'], ['backward', '←']].forEach(([direction, arrow]) => {
             const input = document.getElementById(`hkgroup_${index}_${direction}`);
             const badge = document.getElementById(`hkgroup_${index}_${direction}Badge`);
@@ -3678,7 +3682,12 @@ function refreshHotkeyGroupBadges() {
             const display = value && value !== 'Press keys...' && value !== 'Waiting for input...' ? value : '';
             badge.textContent = display ? `${arrow}[${display}]` : '';
             badge.style.display = display ? '' : 'none';
+            if (display) anyBound = true;
         });
+
+        // Collapse the second line entirely when neither key is bound, so its row gap doesn't show as a stray band under the name.
+        const keysLine = row.querySelector('.roster-row-keys');
+        if (keysLine) keysLine.style.display = anyBound ? '' : 'none';
     });
 }
 
@@ -4744,13 +4753,13 @@ function populateCharacters() {
 
     if (chars.length === 0) {
         container.innerHTML = `
-            <div class="character-master-detail">
-                <div class="character-roster">
+            <div class="master-detail">
+                <div class="roster">
                     <div class="roster-row roster-row-empty">
                         <span class="hint">${t('tab.characters.section.per-character-configuration.empty-roster')}</span>
                     </div>
                 </div>
-                <div class="character-detail-stack">
+                <div class="detail-stack">
                     <p class="hint">${t('tab.characters.section.per-character-configuration.empty-detail')}</p>
                 </div>
             </div>
@@ -4775,9 +4784,9 @@ function populateCharacters() {
     }).join('');
 
     const detailPanels = chars.map((char, index) => `
-        <div class="char-detail-panel ${index === selectedCharacterIndex ? 'active' : ''}" data-index="${index}">
-            <div class="char-detail-header">
-                <span class="char-detail-name" id="char_${index}_detail_name">${char.name || t('dynamic.character.defaultNamePrefix') + ' ' + (index + 1)}</span>
+        <div class="detail-panel ${index === selectedCharacterIndex ? 'active' : ''}" data-index="${index}">
+            <div class="detail-panel-header">
+                <span class="detail-panel-name" id="char_${index}_detail_name">${char.name || t('dynamic.character.defaultNamePrefix') + ' ' + (index + 1)}</span>
                 <button type="button" id="char_${index}_removeBtn" onclick="confirmRemoveCharacter(${index})">${t('common.remove')}</button>
             </div>
             <div class="detail-form">
@@ -4864,9 +4873,9 @@ function populateCharacters() {
     `).join('');
 
     container.innerHTML = `
-        <div class="character-master-detail">
-            <div class="character-roster" role="tablist" aria-orientation="vertical">${rosterRows}</div>
-            <div class="character-detail-stack">${detailPanels}</div>
+        <div class="master-detail">
+            <div class="roster" role="tablist" aria-orientation="vertical">${rosterRows}</div>
+            <div class="detail-stack">${detailPanels}</div>
         </div>
     `;
 
@@ -5128,7 +5137,7 @@ function selectCharacter(index) {
         row.classList.toggle('selected', isSelected);
         row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
     });
-    document.querySelectorAll('#charactersList .char-detail-panel').forEach(panel => {
+    document.querySelectorAll('#charactersList .detail-panel').forEach(panel => {
         panel.classList.toggle('active', parseInt(panel.dataset.index, 10) === index);
     });
 }
@@ -5195,7 +5204,7 @@ function addCharacter() {
     const newIndex = currentConfig.characters.length - 1;
     selectCharacter(newIndex);
 
-    const roster = document.querySelector('#charactersList .character-roster');
+    const roster = document.querySelector('#charactersList .roster');
     if (roster) {
         setTimeout(() => {
             roster.scrollTop = roster.scrollHeight;
@@ -5365,65 +5374,154 @@ function saveCharacters() {
     });
 }
 
+// Which group's detail panel is showing in the master-detail hotkey groups view.
+let selectedHotkeyGroupIndex = 0;
+
 function populateHotkeyGroups() {
     const container = document.getElementById('hotkeyGroupsList');
     if (!container) return;
-    
-    container.innerHTML = '';
+
     const groups = currentConfig.hotkeyGroups || [];
-    
-    groups.forEach((group, index) => {
-        const groupDiv = document.createElement('div');
-        groupDiv.className = 'accordion';
-        groupDiv.id = `hkgroup_${index}_accordion`;
-        groupDiv.dataset.index = index;
-        const forwardDisplay = vkHexToFriendly(group.forwardKey) || '';
-        const backwardDisplay = vkHexToFriendly(group.backwardKey) || '';
-        const charCount = (group.characters || []).length;
-        groupDiv.innerHTML = `
-            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleHotkeyGroupAccordion(${index})">
-                <div class="accordion-title">
-                    <span class="accordion-toggle"></span>
-                    <span class="accordion-name" id="hkgroup_${index}_header_name">${group.name || t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (index + 1)}</span>
-                    <span class="accordion-count-badge" id="hkgroup_${index}_countBadge">(${charCount})</span>
-                </div>
-                <div class="accordion-header-actions">
-                    <span class="accordion-hotkey-badge" id="hkgroup_${index}_forwardBadge" style="${forwardDisplay ? '' : 'display:none'}">→[${forwardDisplay}]</span>
-                    <span class="accordion-hotkey-badge" id="hkgroup_${index}_backwardBadge" style="${backwardDisplay ? '' : 'display:none'}">←[${backwardDisplay}]</span>
-                    <button type="button" id="hkgroup_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('hkgroup_${index}_removeBtn', () => removeHotkeyGroup(${index}))">${t('common.remove')}</button>
-                </div>
-            </div>
-            <div class="accordion-content">
-                <label style="display: block; margin-top: 8px;">${t('dynamic.hotkeyGroup.nameLabel')}</label>
-                <input type="text" id="hkgroup_${index}_name" value="${group.name || ''}" placeholder="${t('dynamic.hotkeyGroup.namePlaceholder')}" oninput="updateHotkeyGroupHeaderName(${index})">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
-                    <div>
-                        <label>${t('dynamic.hotkeyGroup.forwardKeyLabel')}</label>
-                        <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.hotkeyGroup.forwardPlaceholder'))}</div>
-                    </div>
-                    <div>
-                        <label>${t('dynamic.hotkeyGroup.backwardKeyLabel')}</label>
-                        <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_backward`, vkHexToFriendly(group.backwardKey) || '', t('dynamic.hotkeyGroup.backwardPlaceholder'))}</div>
+
+    if (groups.length === 0) {
+        container.innerHTML = `
+            <div class="master-detail">
+                <div class="roster">
+                    <div class="roster-row roster-row-empty">
+                        <span class="hint">${t('tab.hotkeys.section.hotkey-groups.empty-roster')}</span>
                     </div>
                 </div>
-                <label style="display: block; margin-top: 8px;">${t('dynamic.hotkeyGroup.charactersLabel')}</label>
-                <div class="hkgroup-chars-list" id="hkgroup_${index}_charsList" data-group-index="${index}">${renderHotkeyGroupCharRows(index, group.characters)}</div>
-                <div class="field-row" style="margin-top: 4px;">
-                    <input type="text" id="hkgroup_${index}_addChar" placeholder="${t('dynamic.hotkeyGroup.addCharPlaceholder')}" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addHotkeyGroupCharacter(${index}); }">
-                    <button type="button" onclick="addHotkeyGroupCharacter(${index})" style="white-space: nowrap;">${t('dynamic.hotkeyGroup.addBtnLabel')}</button>
-                    <button type="button" id="hkgroup_${index}_fillBtn" onclick="fillHotkeyGroupFromClients(${index})" style="white-space: nowrap;">${t('status.fillFromClientsLabel')}</button>
+                <div class="detail-stack">
+                    <p class="hint">${t('tab.hotkeys.section.hotkey-groups.empty-detail')}</p>
                 </div>
-                <label style="display: block; margin-top: 8px;">
-                    <input type="checkbox" id="hkgroup_${index}_includeNotLoggedIn" ${group.includeNotLoggedIn ? 'checked' : ''}>
-                    <span class="label-body">${t('dynamic.hotkeyGroup.includeNotLoggedInLabel')}</span>
-                </label>
             </div>
         `;
-        container.appendChild(groupDiv);
-    });
+        return;
+    }
 
+    if (selectedHotkeyGroupIndex >= groups.length) selectedHotkeyGroupIndex = groups.length - 1;
+    if (selectedHotkeyGroupIndex < 0) selectedHotkeyGroupIndex = 0;
+
+    const rosterRows = groups.map((group, index) => {
+        const forwardDisplay = vkHexToFriendly(group.forwardKey) || '';
+        const backwardDisplay = vkHexToFriendly(group.backwardKey) || '';
+        const groupName = group.name || t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (index + 1);
+        return `
+            <div class="roster-row ${index === selectedHotkeyGroupIndex ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${index === selectedHotkeyGroupIndex}" data-index="${index}" onclick="selectHotkeyGroup(${index})">
+                <span class="drag-index-chip hkgroup-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(index + 1).padStart(2, '0')}</span>
+                <div class="roster-row-body">
+                    <div class="roster-row-line">
+                        <span class="roster-name" id="hkgroup_${index}_header_name">${groupName}</span>
+                        <span class="roster-count-badge" id="hkgroup_${index}_countBadge">(${(group.characters || []).length})</span>
+                    </div>
+                    <div class="roster-row-keys" style="${forwardDisplay || backwardDisplay ? '' : 'display:none'}">
+                        <span class="roster-hotkey-badge" id="hkgroup_${index}_forwardBadge" style="${forwardDisplay ? '' : 'display:none'}">→[${forwardDisplay}]</span>
+                        <span class="roster-hotkey-badge" id="hkgroup_${index}_backwardBadge" style="${backwardDisplay ? '' : 'display:none'}">←[${backwardDisplay}]</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const detailPanels = groups.map((group, index) => `
+        <div class="detail-panel ${index === selectedHotkeyGroupIndex ? 'active' : ''}" data-index="${index}">
+            <div class="detail-panel-header">
+                <span class="detail-panel-name" id="hkgroup_${index}_detail_name">${group.name || t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (index + 1)}</span>
+                <button type="button" id="hkgroup_${index}_removeBtn" onclick="confirmRemove('hkgroup_${index}_removeBtn', () => removeHotkeyGroup(${index}))">${t('common.remove')}</button>
+            </div>
+            <div class="detail-form">
+                <div class="detail-field">
+                    <label for="hkgroup_${index}_name">${t('dynamic.hotkeyGroup.nameLabel')}</label>
+                    <input type="text" id="hkgroup_${index}_name" value="${group.name || ''}" placeholder="${t('dynamic.hotkeyGroup.namePlaceholder')}" oninput="updateHotkeyGroupHeaderName(${index})">
+                </div>
+                <div class="detail-field">
+                    <label for="hkgroup_${index}_forward">${t('dynamic.hotkeyGroup.forwardKeyLabel')}</label>
+                    <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.hotkeyGroup.forwardPlaceholder'))}</div>
+                </div>
+                <div class="detail-field">
+                    <label for="hkgroup_${index}_backward">${t('dynamic.hotkeyGroup.backwardKeyLabel')}</label>
+                    <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_backward`, vkHexToFriendly(group.backwardKey) || '', t('dynamic.hotkeyGroup.backwardPlaceholder'))}</div>
+                </div>
+                <div class="detail-field detail-field-top">
+                    <label>${t('dynamic.hotkeyGroup.behaviorHeading')}</label>
+                    <div class="detail-checks">
+                        <label>
+                            <input type="checkbox" id="hkgroup_${index}_includeNotLoggedIn" ${group.includeNotLoggedIn ? 'checked' : ''}>
+                            <span class="label-body">${t('dynamic.hotkeyGroup.includeNotLoggedInLabel')}</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="detail-field-full">
+                    <label for="hkgroup_${index}_addChar">${t('dynamic.hotkeyGroup.charactersLabel')}</label>
+                    <div class="hkgroup-chars-list" id="hkgroup_${index}_charsList" data-group-index="${index}">${renderHotkeyGroupCharRows(index, group.characters)}</div>
+                    <div class="field-row" style="margin-top: 4px;">
+                        <input type="text" id="hkgroup_${index}_addChar" list="hkgroupCharOptions" placeholder="${t('dynamic.hotkeyGroup.addCharPlaceholder')}" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addHotkeyGroupCharacter(${index}); }">
+                        <button type="button" onclick="addHotkeyGroupCharacter(${index})" style="white-space: nowrap;">${t('dynamic.hotkeyGroup.addBtnLabel')}</button>
+                        <button type="button" id="hkgroup_${index}_fillBtn" onclick="fillHotkeyGroupFromClients(${index})" style="white-space: nowrap;">${t('status.fillFromClientsLabel')}</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    // One shared datalist for every group's add field - the roster is the same list of known names whichever group is open.
+    const knownCharacters = (currentConfig.characters || [])
+        .map(char => (char.name || '').trim())
+        .filter(Boolean)
+        .map(name => `<option value="${escapeHtml(name)}">`)
+        .join('');
+
+    container.innerHTML = `
+        <div class="master-detail">
+            <div class="roster" role="tablist" aria-orientation="vertical">${rosterRows}</div>
+            <div class="detail-stack">${detailPanels}</div>
+        </div>
+        <datalist id="hkgroupCharOptions">${knownCharacters}</datalist>
+    `;
+
+    setupHotkeyGroupDragAndDrop();
     setupHotkeyGroupCharDragAndDrop();
     updateHotkeyConflictHighlights();
+}
+
+// Every group's fields stay mounted (just hidden) so hotkey-conflict detection, which scans all input.hotkey-input elements at once, keeps seeing every group.
+function selectHotkeyGroup(index) {
+    selectedHotkeyGroupIndex = index;
+    document.querySelectorAll('#hotkeyGroupsList .roster-row').forEach(row => {
+        const isSelected = parseInt(row.dataset.index, 10) === index;
+        row.classList.toggle('selected', isSelected);
+        row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+    });
+    document.querySelectorAll('#hotkeyGroupsList .detail-panel').forEach(panel => {
+        panel.classList.toggle('active', parseInt(panel.dataset.index, 10) === index);
+    });
+}
+
+function setupHotkeyGroupDragAndDrop() {
+    setupDragReorder(
+        document.querySelector('#hotkeyGroupsList .roster'),
+        '.roster-row',
+        '.hkgroup-drag-handle',
+        (item) => parseInt(item.dataset.index, 10),
+        reorderHotkeyGroups
+    );
+}
+
+// Tracks the selected group by identity so the open detail panel follows it, rather than whatever group the raw index now happens to point at.
+function reorderHotkeyGroups(fromIndex, insertBeforeIndex) {
+    if (!currentConfig.hotkeyGroups) return;
+
+    saveHotkeyGroups();
+
+    const groups = currentConfig.hotkeyGroups;
+    const selectedGroup = groups[selectedHotkeyGroupIndex];
+    const [moved] = groups.splice(fromIndex, 1);
+    const insertAt = fromIndex < insertBeforeIndex ? insertBeforeIndex - 1 : insertBeforeIndex;
+    groups.splice(insertAt, 0, moved);
+
+    if (selectedGroup) selectedHotkeyGroupIndex = groups.indexOf(selectedGroup);
+    markAsChanged();
+    populateHotkeyGroups();
 }
 
 function renderHotkeyGroupCharRows(groupIndex, characters) {
@@ -5517,6 +5615,14 @@ function addHotkeyGroupCharacter(groupIndex) {
     input.focus();
 }
 
+function scrollHotkeyGroupRosterToEnd() {
+    const roster = document.querySelector('#hotkeyGroupsList .roster');
+    if (!roster) return;
+    setTimeout(() => {
+        roster.scrollTop = roster.scrollHeight;
+    }, 50);
+}
+
 function addHotkeyGroup() {
     if (!currentConfig) return;
     if (!currentConfig.hotkeyGroups) currentConfig.hotkeyGroups = [];
@@ -5530,58 +5636,8 @@ function addHotkeyGroup() {
     });
     markAsChanged();
     populateHotkeyGroups();
-
-    const newIndex = currentConfig.hotkeyGroups.length - 1;
-    toggleHotkeyGroupAccordion(newIndex);
-
-    setTimeout(() => {
-        document.getElementById(`hkgroup_${newIndex}_accordion`)?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
-    }, 100);
-}
-
-async function addHotkeyGroupFromClients() {
-    const btn = event?.target;
-    if (btn) { btn.disabled = true; btn.textContent = t('status.scanningLabel'); }
-
-    try {
-        let names = [];
-        if (typeof webui !== 'undefined') {
-            const result = await webui.call('getOpenClients');
-            names = JSON.parse(result);
-        }
-
-        if (names.length === 0) {
-            showStatus(t('status.noOpenClients'), 'error');
-            return;
-        }
-
-        saveHotkeyGroups();
-        if (!currentConfig.hotkeyGroups) currentConfig.hotkeyGroups = [];
-        currentConfig.hotkeyGroups.push({
-            name: '',
-            forwardKey: null,
-            backwardKey: null,
-            includeNotLoggedIn: false,
-            characters: names
-        });
-        markAsChanged();
-
-        populateHotkeyGroups();
-        const newIndex = currentConfig.hotkeyGroups.length - 1;
-        toggleHotkeyGroupAccordion(newIndex);
-
-        setTimeout(() => {
-            document.getElementById(`hkgroup_${newIndex}_accordion`)?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
-        }, 100);
-
-        showStatus(t('status.createdHotkeyGroup').replace('{n}', names.length), 'success');
-        setTimeout(() => hideStatus(), 3000);
-    } catch (error) {
-        logError('Failed to create hotkey group from open clients:', error);
-        showStatus(t('status.scanClientsFailedPrefix') + error.message, 'error');
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = t('common.newGroupFromClients'); }
-    }
+    selectHotkeyGroup(currentConfig.hotkeyGroups.length - 1);
+    scrollHotkeyGroupRosterToEnd();
 }
 
 async function fillHotkeyGroupFromClients(index) {
@@ -5625,20 +5681,24 @@ async function fillHotkeyGroupFromClients(index) {
 }
 
 function removeHotkeyGroup(index) {
-    if (currentConfig.hotkeyGroups && currentConfig.hotkeyGroups[index]) {
-        saveHotkeyGroups();
-        currentConfig.hotkeyGroups.splice(index, 1);
-        markAsChanged();
-        populateHotkeyGroups();
-    }
+    const groups = currentConfig.hotkeyGroups;
+    if (!groups || !groups[index]) return;
+
+    saveHotkeyGroups();
+    const selectedGroup = groups[selectedHotkeyGroupIndex];
+    groups.splice(index, 1);
+
+    // Falls back to whichever group now sits at the removed slot (or the last one) when the removed group was the selected one.
+    const stillPresent = selectedGroup ? groups.indexOf(selectedGroup) : -1;
+    selectedHotkeyGroupIndex = stillPresent !== -1 ? stillPresent : Math.min(index, groups.length - 1);
+
+    markAsChanged();
+    populateHotkeyGroups();
 }
 
 function updateHotkeyGroupHeaderName(index) {
     syncAccordionHeaderName(`hkgroup_${index}_name`, `hkgroup_${index}_header_name`, 'Hotkey Group', index);
-}
-
-function toggleHotkeyGroupAccordion(index) {
-    toggleAccordion('#hotkeyGroupsList', index);
+    syncAccordionHeaderName(`hkgroup_${index}_name`, `hkgroup_${index}_detail_name`, 'Hotkey Group', index);
 }
 
 function saveHotkeyGroups() {
