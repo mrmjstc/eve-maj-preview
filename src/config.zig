@@ -736,6 +736,7 @@ pub const CharacterConfig = struct {
     excludeFromCloseAll: bool = false,
     excludeFromAutoMove: bool = false,
     hideThumbnail: bool = false,
+    notificationsMuted: bool = false,
     opacity: ?u8 = null,
 
     pub fn deinit(self: *CharacterConfig, allocator: std.mem.Allocator) void {
@@ -758,6 +759,7 @@ pub const CharacterConfig = struct {
         excludeFromCloseAll: bool = false,
         excludeFromAutoMove: bool = false,
         hideThumbnail: bool = false,
+        notificationsMuted: bool = false,
         opacity: ?u8 = null,
     };
 
@@ -775,6 +777,7 @@ pub const CharacterConfig = struct {
             .excludeFromCloseAll = self.excludeFromCloseAll,
             .excludeFromAutoMove = self.excludeFromAutoMove,
             .hideThumbnail = self.hideThumbnail,
+            .notificationsMuted = self.notificationsMuted,
             .opacity = self.opacity,
         };
     }
@@ -793,6 +796,7 @@ pub const CharacterConfig = struct {
             .excludeFromCloseAll = w.excludeFromCloseAll,
             .excludeFromAutoMove = w.excludeFromAutoMove,
             .hideThumbnail = w.hideThumbnail,
+            .notificationsMuted = w.notificationsMuted,
             .opacity = w.opacity,
         };
     }
@@ -3848,6 +3852,13 @@ pub const Config = struct {
     pub fn isExcludedFromAutoMove(self: *const Config, character_name: []const u8) bool {
         if (self.findCharacterConst(character_name)) |char| {
             return char.excludeFromAutoMove;
+        }
+        return false;
+    }
+
+    pub fn isNotificationMuted(self: *const Config, character_name: []const u8) bool {
+        if (self.findCharacterConst(character_name)) |char| {
+            return char.notificationsMuted;
         }
         return false;
     }

@@ -4821,6 +4821,10 @@ function populateCharacters() {
                             <input type="checkbox" id="char_${index}_hideThumbnail" ${char.hideThumbnail ? 'checked' : ''}>
                             <span class="label-body">${t('dynamic.character.hideThumbnailLabel')}</span>
                         </label>
+                        <label>
+                            <input type="checkbox" id="char_${index}_notificationsMuted" ${char.notificationsMuted ? 'checked' : ''}>
+                            <span class="label-body">${t('dynamic.character.muteNotificationsLabel')}</span>
+                        </label>
                     </div>
                 </div>
                 <div class="detail-field">
@@ -5305,6 +5309,7 @@ function saveCharacters() {
         const excludeCloseAll = document.getElementById(`char_${index}_excludeCloseAll`);
         const excludeAutoMove = document.getElementById(`char_${index}_excludeAutoMove`);
         const hideThumbnail = document.getElementById(`char_${index}_hideThumbnail`);
+        const notificationsMuted = document.getElementById(`char_${index}_notificationsMuted`);
         const opacity = document.getElementById(`char_${index}_opacity`);
 
         if (name) char.name = name.value;
@@ -5314,6 +5319,7 @@ function saveCharacters() {
         if (excludeCloseAll) char.excludeFromCloseAll = excludeCloseAll.checked;
         if (excludeAutoMove) char.excludeFromAutoMove = excludeAutoMove.checked;
         if (hideThumbnail) char.hideThumbnail = hideThumbnail.checked;
+        if (notificationsMuted) char.notificationsMuted = notificationsMuted.checked;
         char.opacity = resolveCharacterOpacity(opacity);
         // Position is saved automatically when thumbnails are dragged, don't overwrite from dialog
 

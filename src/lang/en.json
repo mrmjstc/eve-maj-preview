@@ -106,6 +106,7 @@
   "dynamic.character.hideThumbnailLabel": "Hide thumbnail",
   "dynamic.character.hotkeyPlaceholder": "e.g., F1",
   "dynamic.character.inactiveBorderColorLabel": "Inactive Border Color",
+  "dynamic.character.muteNotificationsLabel": "Mute Notifications",
   "dynamic.character.opacityLabel": "Opacity (%)",
   "dynamic.character.setWindowPositionButton": "Save Position",
   "dynamic.character.setWindowPositionHint": "Move the character's EVE client window where you want it, then click Save Position.",

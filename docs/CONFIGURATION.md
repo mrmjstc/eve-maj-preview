@@ -600,7 +600,7 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 ```
 
 **Notification Settings:**
-- `enabled`: Master switch for notification system
+- `enabled`: Master switch for notification system (per-character mute is set via `notificationsMuted` on the character entry - see [Per-Character Configuration](#per-character-configuration))
 - `position`: Where notifications appear on thumbnails (see Text Positions above)
 - `offset_x`/`offset_y`: Fine-tune notification position (pixels)
 - `suppress_click_duration_ms`: How long to suppress after click, applies per-type when that type's `suppress_when_clicked` is `true` (milliseconds, default: `2000`)
@@ -1069,7 +1069,7 @@ Bound via `hotkeyCycleNotified` and `hotkeyPreviousNotified` (see [Hotkey Config
 
 ## Per-Character Configuration
 
-Customize individual characters with position, size, border colors, display names, a dedicated hotkey, opacity, auto-minimize/Close All/auto-move exclusions, and hiding the thumbnail entirely:
+Customize individual characters with position, size, border colors, display names, a dedicated hotkey, opacity, auto-minimize/Close All/auto-move exclusions, hiding the thumbnail entirely, and muting notifications:
 
 ```json
 {
@@ -1091,7 +1091,8 @@ Customize individual characters with position, size, border colors, display name
       "excludeFromMinimize": true,
       "excludeFromCloseAll": true,
       "excludeFromAutoMove": false,
-      "hideThumbnail": false
+      "hideThumbnail": false,
+      "notificationsMuted": false
     },
     {
       "name": "Scout Character",
@@ -1111,6 +1112,7 @@ Customize individual characters with position, size, border colors, display name
 - **excludeFromCloseAll**: Skip this character when the Close All hotkey fires (default: `false`). See [Close All](#close-all).
 - **excludeFromAutoMove**: Skip this character when moving EVE client windows to their saved positions, whether via the auto-move-on-login setting or the `hotkeyMoveToSavedPositions` hotkey (default: `false`).
 - **hideThumbnail**: Hide this character's thumbnail (and its row in list view) entirely, regardless of state (default: `false`).
+- **notificationsMuted**: Suppress all notifications for this character, regardless of the global/per-type notification settings (default: `false`). See [Notification System](#notification-system).
 
 **Note**: Character positions are automatically saved when you drag thumbnails. Manual editing is not recommended.
 

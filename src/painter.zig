@@ -1075,6 +1075,7 @@ pub const Painter = struct {
     ) !void {
         if (self.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
             if (!self.config.thumbnail.notifications.enabled) return;
+            if (self.config.isNotificationMuted(thumbnail.character_name)) return;
 
             const type_config = self.config.thumbnail.notifications.getTypeConfig(notification_type);
 
