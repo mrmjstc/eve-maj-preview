@@ -368,6 +368,9 @@ pub const Painter = struct {
     /// Transient overlay shown only while dragging, outlining other characters' saved positions; created lazily, hidden (not destroyed) between drags.
     ghost_overlay_hwnd: ?win32.HWND = null,
     ghost_overlay_bitmap: ?gdi_overlay.OverlayBitmap = null,
+    /// Transient overlay shown only while dragging, reminding about Ctrl group-drag and how to disable dragging; created lazily, hidden (not destroyed) between drags.
+    drag_hint_hwnd: ?win32.HWND = null,
+    drag_hint_bitmap: ?gdi_overlay.OverlayBitmap = null,
     /// Sole "who's focused" source of truth; write only via reconcileThumbnailStates.
     active_source_hwnd: ?win32.HWND = null,
     /// Last EVE thumbnail hwnd that held focus; used by checkAutoMinimize's exemptLastActiveOnFocusLoss option to identify which client to spare once EVE itself has no window focused.
@@ -548,6 +551,9 @@ pub const Painter = struct {
 
         if (self.ghost_overlay_bitmap) |bitmap| bitmap.destroy();
         if (self.ghost_overlay_hwnd) |hwnd| _ = win32.DestroyWindow(hwnd);
+
+        if (self.drag_hint_bitmap) |bitmap| bitmap.destroy();
+        if (self.drag_hint_hwnd) |hwnd| _ = win32.DestroyWindow(hwnd);
 
         for (self.thumbnails.items) |thumbnail| {
             self.destroyThumbnailResources(thumbnail);
@@ -2604,6 +2610,136 @@ pub const Painter = struct {
 
     pub fn hideGhostOverlay(self: *Painter) void {
         if (self.ghost_overlay_hwnd) |hwnd| {
+            _ = win32.ShowWindow(hwnd, win32.SW_HIDE);
+        }
+    }
+
+    /// Shows (creating on first use) a topmost, click-through hint box centered on the monitor nearest `dragging_hwnd`; called once when a drag starts. Static for the duration of the drag.
+    pub fn showDragHintOverlay(self: *Painter, dragging_hwnd: win32.HWND) void {
+        const line1 = "Hold Ctrl to move all thumbnails together";
+        const line2 = "Turn off dragging from the tray icon or settings";
+
+        var bounds = win32.RECT{
+            .left = 0,
+            .top = 0,
+            .right = win32.GetSystemMetrics(win32.SM_CXSCREEN),
+            .bottom = win32.GetSystemMetrics(win32.SM_CYSCREEN),
+        };
+        var monitor_dpi = defaultDpi();
+        if (win32.MonitorFromWindow(dragging_hwnd, win32.MONITOR_DEFAULTTONEAREST)) |monitor| {
+            var info = win32.MONITORINFO{ .cbSize = @sizeOf(win32.MONITORINFO), .rcMonitor = undefined, .rcWork = undefined, .dwFlags = 0 };
+            if (win32.GetMonitorInfoA(monitor, &info) != win32.FALSE) {
+                bounds = info.rcMonitor;
+            }
+            monitor_dpi = getMonitorDpi(monitor);
+        }
+
+        const scale = dpiToScale(monitor_dpi);
+        const font = self.getCachedFont(.main, monitor_dpi, self.config.thumbnail.characterNameFontName, scalePixels(self.config.thumbnail.characterNameFontSize, scale), self.config.thumbnail.characterNameFontWeight) catch |err| {
+            slog.err("Failed to get font for drag hint overlay: {}", .{err});
+            return;
+        };
+
+        const init_dc = win32.GetDC(null) orelse return;
+        defer _ = win32.ReleaseDC(null, init_dc);
+        const old_measure_font = win32.SelectObject(init_dc, font);
+        const dims1 = measureText(init_dc, line1);
+        const dims2 = measureText(init_dc, line2);
+        if (old_measure_font) |of| _ = win32.SelectObject(init_dc, of);
+
+        const line_gap = 4;
+        const box_padding = 10;
+        const content_width = @max(dims1.width, dims2.width);
+        const content_height = dims1.height + dims2.height + line_gap;
+        const width: i32 = @intCast(content_width + box_padding * 2);
+        const height: i32 = @intCast(content_height + box_padding * 2);
+
+        const x = bounds.left + @divTrunc((bounds.right - bounds.left) - width, 2);
+        const y = bounds.top + @divTrunc((bounds.bottom - bounds.top) - height, 2);
+
+        if (self.drag_hint_hwnd) |hwnd| {
+            _ = win32.SetWindowPos(hwnd, win32.HWND_TOPMOST, x, y, width, height, win32.SWP_NOACTIVATE);
+        } else {
+            self.drag_hint_hwnd = win32.CreateWindowExA(
+                win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_NOACTIVATE | win32.WS_EX_TRANSPARENT,
+                GHOST_WINDOW_CLASS_NAME,
+                "",
+                win32.WS_POPUP,
+                x,
+                y,
+                width,
+                height,
+                null,
+                null,
+                self.instance,
+                null,
+            ) orelse {
+                slog.err("Failed to create drag hint overlay window", .{});
+                return;
+            };
+        }
+
+        const hwnd = self.drag_hint_hwnd.?;
+
+        const needs_new_bitmap = if (self.drag_hint_bitmap) |b|
+            b.width != @as(usize, @intCast(width)) or b.height != @as(usize, @intCast(height))
+        else
+            true;
+
+        if (needs_new_bitmap) {
+            if (self.drag_hint_bitmap) |b| b.destroy();
+            self.drag_hint_bitmap = null;
+            self.drag_hint_bitmap = gdi_overlay.OverlayBitmap.create(init_dc, width, height) catch |err| {
+                slog.err("Failed to allocate drag hint overlay bitmap: {}", .{err});
+                return;
+            };
+        }
+
+        const overlay = &self.drag_hint_bitmap.?;
+        clearPixels(overlay.pixels, overlay.width * overlay.height);
+        gdi_overlay.fillRect(overlay.pixels, overlay.width, 0, 0, overlay.width, overlay.height, color_mod.withAlpha(0x000000, 0xC8));
+
+        const old_font = win32.SelectObject(overlay.mem_dc, font);
+        defer {
+            if (old_font) |of| _ = win32.SelectObject(overlay.mem_dc, of);
+        }
+
+        const text_color: u32 = 0xFFFFFFFF;
+        renderText(overlay.mem_dc, line1, box_padding, box_padding, text_color);
+        gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, box_padding, box_padding, dims1.width, dims1.height);
+
+        const line2_y: i32 = @intCast(box_padding + dims1.height + line_gap);
+        renderText(overlay.mem_dc, line2, box_padding, line2_y, text_color);
+        gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, box_padding, line2_y, dims2.width, dims2.height);
+
+        const screen_dc = win32.GetDC(null) orelse return;
+        defer _ = win32.ReleaseDC(null, screen_dc);
+        const window_size = win32.SIZE{ .cx = @intCast(overlay.width), .cy = @intCast(overlay.height) };
+        const source_pos = win32.POINT{ .x = 0, .y = 0 };
+        var blend = win32.BLENDFUNCTION{
+            .BlendOp = win32.AC_SRC_OVER,
+            .BlendFlags = 0,
+            .SourceConstantAlpha = 255,
+            .AlphaFormat = win32.AC_SRC_ALPHA,
+        };
+
+        _ = win32.UpdateLayeredWindow(
+            hwnd,
+            screen_dc,
+            null,
+            @constCast(&window_size),
+            overlay.mem_dc,
+            @constCast(&source_pos),
+            0,
+            &blend,
+            win32.ULW_ALPHA,
+        );
+
+        _ = win32.ShowWindow(hwnd, win32.SW_SHOWNOACTIVATE);
+    }
+
+    pub fn hideDragHintOverlay(self: *Painter) void {
+        if (self.drag_hint_hwnd) |hwnd| {
             _ = win32.ShowWindow(hwnd, win32.SW_HIDE);
         }
     }

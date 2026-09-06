@@ -276,6 +276,7 @@ fn startDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
                 painter.showGhostOverlay(thumbnail.character_name);
             }
         }
+        painter.showDragHintOverlay(hwnd);
     }
 
     _ = win32.SetCapture(hwnd);
@@ -297,6 +298,7 @@ fn endDrag(hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
             }
 
             painter.hideGhostOverlay();
+            painter.hideDragHintOverlay();
 
             // Ctrl held during drag means all thumbnails moved together
             const ctrl_pressed = win32.isCtrlPressed();
@@ -323,6 +325,7 @@ fn handleDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
 
         if (g_painter_ptr) |painter| {
             painter.hideGhostOverlay();
+            painter.hideDragHintOverlay();
         }
         return;
     }
