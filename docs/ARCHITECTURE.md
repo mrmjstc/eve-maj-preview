@@ -128,3 +128,4 @@ The expensive full `EnumWindows` rescan is itself throttled to roughly every 20 
 - **`log.zig`** - the app's own file logger: buffered, size-rotated (`eve-maj.log`/`.old`, 5MB cap), a `scoped(name)` factory, mutex-guarded so it's safe to call from the crash handler.
 - **`types.zig`** - shared enums with no owning struct (`BorderStyle`, `TextPosition`, `NotificationType`, `LayoutMode`, ...), imported by nearly every module.
 - **`virtual_keys.zig`** - VK constants plus the hotkey string parser/formatter, including the convention for encoding mouse-button chords into the same `u32` ID space as keyboard VKs.
+- **`ultra_potato.zig`** - Ultra Potato Mode: scans `%LOCALAPPDATA%\CCP\EVE\*\settings*\` for EVE's own `core_public__.yaml`, then line-patches its heaviest graphics keys to `-300` (backing up each file once first) rather than doing a full YAML parse/re-serialize; bound into `config_dialog.zig` only, not the main app.

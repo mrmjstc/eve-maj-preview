@@ -21,6 +21,10 @@ pub fn setEnvironMap(environ_map: *const std.process.Environ.Map) void {
     g_environ_map = environ_map;
 }
 
+pub fn environMap() *const std.process.Environ.Map {
+    return g_environ_map;
+}
+
 pub const PROFILES_DIR = "profiles";
 pub const DEFAULT_PROFILE = "default.json";
 pub const GLOBAL_SETTINGS_FILE = "profiles/global.settings.json";

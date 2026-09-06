@@ -4,6 +4,7 @@ const protocol = @import("protocol.zig");
 const win32 = @import("win32.zig");
 const build_options = @import("build_options");
 const config_mod = @import("config.zig");
+const ultra_potato = @import("ultra_potato.zig");
 const esi_prices = @import("esi_prices.zig");
 const update = @import("update.zig");
 const log = @import("log.zig");
@@ -173,6 +174,8 @@ pub fn main(init: std.process.Init) !void {
     _ = try win.bind("openUrlInBrowser", openUrlInBrowser);
     _ = try win.bind("getValidationRanges", getValidationRanges);
     _ = try win.bind("setAlwaysOnTop", setAlwaysOnTop);
+    _ = try win.bind("scanUltraPotatoProfiles", scanUltraPotatoProfiles);
+    _ = try win.bind("applyUltraPotatoMode", applyUltraPotatoMode);
 
     const html_with_resources = try injectResources(allocator, active_lang);
     defer allocator.free(html_with_resources);
@@ -1042,6 +1045,111 @@ fn getRunningWindows(e: *webui.Event) void {
 
     const result = allocator.dupeZ(u8, response.items) catch {
         e.returnString("[]");
+        return;
+    };
+    defer allocator.free(result);
+    e.returnString(result);
+}
+
+/// Scans for EVE's core_public__.yaml settings files (one per client install / settings profile) for the Ultra Potato Mode picker.
+fn scanUltraPotatoProfiles(e: *webui.Event) void {
+    const allocator = g_allocator;
+
+    const profiles = ultra_potato.scanProfiles(allocator, g_io, config_mod.environMap()) catch |err| {
+        slog.warn("Failed to scan EVE settings profiles: {}", .{err});
+        e.returnString("[]");
+        return;
+    };
+    defer ultra_potato.freeProfiles(allocator, profiles);
+
+    var response = std.ArrayList(u8).empty;
+    defer response.deinit(allocator);
+
+    response.append(allocator, '[') catch {
+        e.returnString("[]");
+        return;
+    };
+
+    for (profiles, 0..) |p, i| {
+        if (i > 0) response.append(allocator, ',') catch break;
+        response.appendSlice(allocator, "{\"path\":\"") catch break;
+        appendJsonEscaped(allocator, &response, p.path);
+        response.appendSlice(allocator, "\",\"label\":\"") catch break;
+        appendJsonEscaped(allocator, &response, p.label);
+        response.appendSlice(allocator, "\"}") catch break;
+    }
+
+    response.append(allocator, ']') catch {
+        e.returnString("[]");
+        return;
+    };
+
+    const result = allocator.dupeZ(u8, response.items) catch {
+        e.returnString("[]");
+        return;
+    };
+    defer allocator.free(result);
+    e.returnString(result);
+}
+
+/// Patches the given core_public__.yaml files in place, forcing Ultra Potato Mode's target graphics keys to -300. Takes a JSON array of file paths (from scanUltraPotatoProfiles) selected by the user.
+fn applyUltraPotatoMode(e: *webui.Event) void {
+    const json_data = e.getString();
+    const allocator = g_allocator;
+
+    const parsed = std.json.parseFromSlice([]const []const u8, allocator, json_data, .{}) catch |err| {
+        slog.warn("Failed to parse Ultra Potato Mode path list: {}", .{err});
+        e.returnString("{\"success\": false, \"error\": \"Invalid request\"}");
+        return;
+    };
+    defer parsed.deinit();
+
+    if (parsed.value.len == 0) {
+        e.returnString("{\"success\": false, \"error\": \"No profiles selected\"}");
+        return;
+    }
+
+    const results = ultra_potato.applyToFiles(allocator, g_io, parsed.value) catch |err| {
+        slog.err("Failed to apply Ultra Potato Mode: {}", .{err});
+        e.returnString("{\"success\": false, \"error\": \"Failed to apply\"}");
+        return;
+    };
+    defer ultra_potato.freeApplyResults(allocator, results);
+
+    var response = std.ArrayList(u8).empty;
+    defer response.deinit(allocator);
+
+    response.appendSlice(allocator, "{\"success\": true, \"results\": [") catch {
+        e.returnString("{\"success\": false, \"error\": \"Failed to build response\"}");
+        return;
+    };
+
+    for (results, 0..) |r, i| {
+        if (i > 0) response.append(allocator, ',') catch break;
+        response.appendSlice(allocator, "{\"path\":\"") catch break;
+        appendJsonEscaped(allocator, &response, r.path);
+        response.appendSlice(allocator, "\",\"ok\":") catch break;
+        response.appendSlice(allocator, if (r.success) "true" else "false") catch break;
+        response.appendSlice(allocator, ",\"changed\":") catch break;
+        response.appendSlice(allocator, if (r.changed) "true" else "false") catch break;
+        response.appendSlice(allocator, ",\"error\":") catch break;
+        if (r.error_message) |m| {
+            response.append(allocator, '"') catch break;
+            appendJsonEscaped(allocator, &response, m);
+            response.append(allocator, '"') catch break;
+        } else {
+            response.appendSlice(allocator, "null") catch break;
+        }
+        response.append(allocator, '}') catch break;
+    }
+
+    response.appendSlice(allocator, "]}") catch {
+        e.returnString("{\"success\": false, \"error\": \"Failed to build response\"}");
+        return;
+    };
+
+    const result = allocator.dupeZ(u8, response.items) catch {
+        e.returnString("{\"success\": false, \"error\": \"Failed to build response\"}");
         return;
     };
     defer allocator.free(result);

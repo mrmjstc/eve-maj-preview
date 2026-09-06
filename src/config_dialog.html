@@ -833,6 +833,20 @@
                             <button type="button" id="clearAllWindowPositionsBtn" class="button-danger" onclick="confirmClearAllCharacterWindowPositions()" title="Remove All Saved Positions" data-i18n-title="common.clearWindowPositionForAllButton" data-i18n="common.clearWindowPositionForAllButtonShort" style="width: auto; margin-bottom: 0;">Clear All</button>
                         </div>
                     </div>
+
+                    <div class="section advanced-section">
+                        <h3 data-i18n="tab.behavior.section.ultra-potato.heading">Ultra Potato Mode</h3>
+                        <p class="hint" style="margin-bottom: 8px;" data-i18n="tab.behavior.section.ultra-potato.hint">Forces EVE Online's heaviest graphics settings (shaders, shadows, textures, reflections, post-processing, cloth, ambient occlusion, volumetrics) to their lowest quality. Close all EVE clients first - the client overwrites these files on exit. A .bak backup of each file is made before its first edit.</p>
+
+                        <label for="ultraPotatoProfileSelect" data-i18n="tab.behavior.section.ultra-potato.profile-label">EVE Settings Profile</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <select id="ultraPotatoProfileSelect" style="flex: 1; margin-bottom: 0;">
+                                <option value="" data-i18n="tab.behavior.section.ultra-potato.scanning">Scanning for EVE settings profiles...</option>
+                            </select>
+                            <button type="button" onclick="scanUltraPotatoProfiles()" title="Refresh" data-i18n-title="common.refreshTitle" style="width: auto; margin-bottom: 0;">↻</button>
+                            <button type="button" id="applyUltraPotatoBtn" onclick="applyUltraPotatoMode()" disabled data-i18n="button.apply-ultra-potato.label" style="width: auto; margin-bottom: 0;">Apply Ultra Potato Mode</button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="panel-content" data-panel="hotkeys">
