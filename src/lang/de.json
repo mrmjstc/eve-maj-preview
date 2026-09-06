@@ -690,7 +690,7 @@
   "tab.notifications.table.throttle.heading": "Limit (s)",
   "tab.notifications.table.throttle.title": "Wiederholte Benachrichtigungen dieses Typs innerhalb dieser Sekundenzahl nach der letzten Anzeige ignorieren",
   "tab.notifications.title": "Benachrichtigungen",
-  "tab.resources.section.resource-usage-overlay.heading": "Textüberlagerungen",
+  "tab.resources.section.resource-usage-overlay.heading": "Einstellungen für das Ressourcennutzungs-Overlay",
   "tab.resources.section.resource-usage-overlay.hint": "Zeigt CPU-, RAM- und VRAM-Auslastung jedes Clients auf seiner Miniaturansicht an, direkt von Windows abgefragt statt aus EVEs Logs.",
   "tab.resources.title": "Ressourcen-Overlay",
   "tab.overlay-text.section.character-name.heading": "Charaktername",

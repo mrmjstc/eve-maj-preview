@@ -690,7 +690,7 @@
   "tab.notifications.table.throttle.heading": "Límite (s)",
   "tab.notifications.table.throttle.title": "Ignorar notificaciones repetidas de este tipo dentro de este número de segundos desde la última mostrada",
   "tab.notifications.title": "notificaciones",
-  "tab.resources.section.resource-usage-overlay.heading": "Superposiciones de texto",
+  "tab.resources.section.resource-usage-overlay.heading": "Ajustes de superposición de uso de recursos",
   "tab.resources.section.resource-usage-overlay.hint": "Muestra el uso de CPU, RAM y VRAM de cada cliente en su miniatura, obtenido directamente de Windows en lugar de los registros de EVE.",
   "tab.resources.title": "superposición de recursos",
   "tab.overlay-text.section.character-name.heading": "Nombre del personaje",

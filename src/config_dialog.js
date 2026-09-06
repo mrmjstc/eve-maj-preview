@@ -4756,12 +4756,12 @@ function populateCharacters() {
                 </label>
             </div>
             <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.windowPositionHeading')}</h4>
+            <p class="hint">${t('dynamic.character.setWindowPositionHint')}</p>
             <div style="display: flex; align-items: center; gap: 8px;">
                 <span id="char_${index}_windowPositionDisplay">${char.windowPosition ? `${char.windowPosition.x}, ${char.windowPosition.y}` : t('dynamic.character.windowPositionNotSet')}</span>
                 <button type="button" onclick="setCharacterWindowPosition(${index})">${t('dynamic.character.setWindowPositionButton')}</button>
                 <button type="button" id="char_${index}_clearWindowPositionBtn" onclick="confirmClearCharacterWindowPosition(${index})">${t('dynamic.character.clearWindowPositionButton')}</button>
             </div>
-            <p class="hint">${t('dynamic.character.setWindowPositionHint')}</p>
         </div>
     `).join('');
 

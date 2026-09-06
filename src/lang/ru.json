@@ -690,7 +690,7 @@
   "tab.notifications.table.throttle.heading": "Лимит (с)",
   "tab.notifications.table.throttle.title": "Игнорировать повторные уведомления этого типа в течение указанного количества секунд с момента последнего показа",
   "tab.notifications.title": "уведомления",
-  "tab.resources.section.resource-usage-overlay.heading": "Текстовые оверлеи",
+  "tab.resources.section.resource-usage-overlay.heading": "Настройки оверлея использования ресурсов",
   "tab.resources.section.resource-usage-overlay.hint": "Показывает использование CPU, RAM и VRAM каждого клиента на его миниатюре, данные берутся напрямую из Windows, а не из логов EVE.",
   "tab.resources.title": "оверлей ресурсов",
   "tab.overlay-text.section.character-name.heading": "Имя персонажа",
