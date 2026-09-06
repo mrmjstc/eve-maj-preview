@@ -961,6 +961,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
     
     initializeTabs();
+    initDelegatedKeyboardActivation();
     buildSectionNav();
 
     const ready = await waitForWebUI();
@@ -989,22 +990,55 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 });
 
+// Checked per call so a mid-session OS change is picked up. scrollIntoView takes
+// its behavior as a JS argument, so the reduced-motion media query in the
+// stylesheet can't reach it - this is the scroll half of that rule.
+function scrollBehavior() {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+}
+
 function initializeTabs() {
     const tabs = document.querySelectorAll('.tab-item');
     tabs.forEach(tab => {
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('tabindex', '0');
+
         tab.addEventListener('click', function() {
             const targetPanel = this.getAttribute('data-tab');
             switchTab(targetPanel);
         });
+
+        // These are divs, not buttons, so Enter/Space need wiring by hand.
+        tab.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                switchTab(this.getAttribute('data-tab'));
+            }
+        });
+    });
+}
+
+// Rows that act like controls but have to stay divs - accordion headers contain
+// their own Remove buttons, roster rows contain a drag handle. The lists they
+// live in re-render constantly, so one delegated listener covers them all
+// without rebinding. Guarded to the row itself: Enter on a nested button must
+// do that button's job, not the row's.
+const KEYBOARD_ACTIVATABLE = '.accordion-header, .roster-row';
+
+function initDelegatedKeyboardActivation() {
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        if (!e.target.matches?.(KEYBOARD_ACTIVATABLE)) return;
+        e.preventDefault();
+        e.target.click();
     });
 }
 
 function switchTab(panelId) {
     document.querySelectorAll('.tab-item').forEach(tab => {
-        tab.classList.remove('active');
-        if (tab.getAttribute('data-tab') === panelId) {
-            tab.classList.add('active');
-        }
+        const isActive = tab.getAttribute('data-tab') === panelId;
+        tab.classList.toggle('active', isActive);
+        tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
     });
 
     document.querySelectorAll('.panel-content').forEach(panel => {
@@ -1074,7 +1108,7 @@ function jumpToSection(tabName, sectionId) {
     requestAnimationFrame(() => {
         const section = document.getElementById(sectionId);
         if (!section) return;
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        section.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
         setActiveSection(section);
     });
 }
@@ -3478,9 +3512,9 @@ function vkHexToFriendly(str) {
 }
 
 function renderHotkeyInputHtml(fieldId, value, placeholder) {
-    return `<input type="text" id="${fieldId}" class="hotkey-input" value="${value}" placeholder="${t('common.hotkeyClickToBind')}" title="${placeholder}" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('${fieldId}')" readonly style="flex: 1; margin-bottom: 0;">
-<button type="button" class="hotkey-clear-btn" onclick="clearHotkey('${fieldId}')" title="${t('common.hotkeyClear')}" style="margin-bottom: 0;">×</button>
-<button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('${fieldId}')" title="${t('common.hotkeyTypeDirectly')}" style="margin-bottom: 0;">✎</button>`;
+    return `<input type="text" id="${fieldId}" class="hotkey-input" value="${value}" placeholder="${t('common.hotkeyClickToBind')}" title="${placeholder}" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('${fieldId}')" readonly>
+<button type="button" class="hotkey-clear-btn" onclick="clearHotkey('${fieldId}')" title="${t('common.hotkeyClear')}">×</button>
+<button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('${fieldId}')" title="${t('common.hotkeyTypeDirectly')}">✎</button>`;
 }
 
 // Every hotkey <input> carries the shared "hotkey-input" class so conflicts can be found across all of them without hardcoding each field's id.
@@ -4116,7 +4150,7 @@ function showSnakeGame() {
     container.style.display = 'block';
     snakeGameActive = true;
     
-    container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    container.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
 
     initSnakeGame(canvas);
 
@@ -4316,11 +4350,23 @@ function setupDragReorder(container, itemSelector, handleSelector, getIndex, onR
     });
 }
 
+// The .expanded class is what CSS reads and aria-expanded is what screen readers
+// read, so both are set in one place to stop them drifting apart.
+function setAccordionExpanded(accordion, expanded) {
+    accordion.classList.toggle('expanded', expanded);
+    accordion.querySelector('.accordion-header')?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+}
+
+function toggleAccordionEl(header) {
+    const accordion = header.parentElement;
+    setAccordionExpanded(accordion, !accordion.classList.contains('expanded'));
+}
+
 // Used by window filters, characters, and hotkey groups (system colors isn't an accordion - it's a flat row list).
 function toggleAccordion(containerSelector, index) {
-    const accordions = document.querySelectorAll(`${containerSelector} .accordion`);
-    if (accordions[index]) {
-        accordions[index].classList.toggle('expanded');
+    const accordion = document.querySelectorAll(`${containerSelector} .accordion`)[index];
+    if (accordion) {
+        setAccordionExpanded(accordion, !accordion.classList.contains('expanded'));
     }
 }
 
@@ -4352,12 +4398,12 @@ function populateWindowFilters() {
         const filterDiv = document.createElement('div');
         filterDiv.className = 'accordion';
         filterDiv.innerHTML = `
-            <div class="accordion-header" onclick="toggleWindowFilterAccordion(${filterDisplayIndex})">
+            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleWindowFilterAccordion(${filterDisplayIndex})">
                 <div class="accordion-title">
                     <span class="accordion-toggle"></span>
                     <span class="accordion-name" id="filter_${index}_header_name">${filter.name || t('dynamic.windowFilter.defaultNamePrefix') + ' ' + (index + 1)}</span>
                 </div>
-                <button type="button" id="filter_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('filter_${index}_removeBtn', () => removeWindowFilter(${index}))" style="margin-bottom: 0;">${t('common.remove')}</button>
+                <button type="button" id="filter_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('filter_${index}_removeBtn', () => removeWindowFilter(${index}))">${t('common.remove')}</button>
             </div>
             <div class="accordion-content">
                 <label>
@@ -4408,7 +4454,7 @@ function addWindowFilter() {
     // Automatically expand the newly added filter (always rendered last)
     const accordions = document.querySelectorAll('#windowFiltersList .accordion');
     const newAccordion = accordions[accordions.length - 1];
-    if (newAccordion) newAccordion.classList.add('expanded');
+    if (newAccordion) setAccordionExpanded(newAccordion, true);
 }
 
 function removeWindowFilter(index) {
@@ -4518,11 +4564,12 @@ function populateSystemColors() {
     
     colors.forEach((sc, index) => {
         const colorDiv = document.createElement('div');
-        colorDiv.style.cssText = 'display: flex; gap: 8px; align-items: center; margin-bottom: 8px;';
+        colorDiv.className = 'field-row';
+        colorDiv.style.marginBottom = '8px';
         colorDiv.innerHTML = `
-            <input type="text" id="systemColor_${index}_name" value="${sc.systemName || ''}" placeholder="${t('dynamic.systemColor.namePlaceholder')}" style="flex: 1; margin-bottom: 0;">
-            <input type="color" id="systemColor_${index}_color" value="${zigColorToHtml(sc.color)}" style="width: 60px; margin-bottom: 0;">
-            <button type="button" id="systemColor_${index}_removeBtn" onclick="confirmRemove('systemColor_${index}_removeBtn', () => removeSystemColor(${index}))" style="margin-bottom: 0; min-width: 80px;">${t('common.remove')}</button>
+            <input type="text" id="systemColor_${index}_name" value="${sc.systemName || ''}" placeholder="${t('dynamic.systemColor.namePlaceholder')}">
+            <input type="color" id="systemColor_${index}_color" value="${zigColorToHtml(sc.color)}" style="width: 60px;">
+            <button type="button" id="systemColor_${index}_removeBtn" onclick="confirmRemove('systemColor_${index}_removeBtn', () => removeSystemColor(${index}))" style="min-width: 80px;">${t('common.remove')}</button>
         `;
         container.appendChild(colorDiv);
     });
@@ -4666,7 +4713,7 @@ function populateCharacters() {
                         <span class="hint">${t('tab.characters.section.per-character-configuration.empty-roster')}</span>
                     </div>
                 </div>
-                <div class="character-detail-stack character-detail-stack-empty">
+                <div class="character-detail-stack">
                     <p class="hint">${t('tab.characters.section.per-character-configuration.empty-detail')}</p>
                 </div>
             </div>
@@ -4681,7 +4728,7 @@ function populateCharacters() {
         const portraitUrl = characterPortraitUrl(char.name);
         const hotkeyDisplay = char.hotkey ? vkHexToFriendly(char.hotkey) : '';
         return `
-            <div class="roster-row ${index === selectedCharacterIndex ? 'selected' : ''}" data-index="${index}" onclick="selectCharacter(${index})">
+            <div class="roster-row ${index === selectedCharacterIndex ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${index === selectedCharacterIndex}" data-index="${index}" onclick="selectCharacter(${index})">
                 <span class="drag-index-chip character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(index + 1).padStart(2, '0')}</span>
                 <img class="character-portrait" id="char_${index}_portrait" src="${portraitUrl || ''}" alt="" style="${portraitUrl ? '' : 'display:none'}" onerror="this.style.display='none'">
                 <span class="roster-name" id="char_${index}_header_name">${char.name || t('dynamic.character.defaultNamePrefix') + ' ' + (index + 1)}</span>
@@ -4694,80 +4741,79 @@ function populateCharacters() {
         <div class="char-detail-panel ${index === selectedCharacterIndex ? 'active' : ''}" data-index="${index}">
             <div class="char-detail-header">
                 <span class="char-detail-name" id="char_${index}_detail_name">${char.name || t('dynamic.character.defaultNamePrefix') + ' ' + (index + 1)}</span>
-                <button type="button" id="char_${index}_removeBtn" onclick="confirmRemoveCharacter(${index})" style="margin-bottom: 0;">${t('common.remove')}</button>
+                <button type="button" id="char_${index}_removeBtn" onclick="confirmRemoveCharacter(${index})">${t('common.remove')}</button>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <div>
-                    <label>${t('common.characterName')}</label>
+            <div class="detail-form">
+                <div class="detail-field">
+                    <label for="char_${index}_name">${t('common.characterName')}</label>
                     <input type="text" id="char_${index}_name" value="${char.name || ''}" placeholder="${t('common.characterName')}" oninput="updateCharacterHeaderName(${index})">
                 </div>
-                <div>
-                    <label>${t('dynamic.character.displayNameLabel')}</label>
+                <div class="detail-field">
+                    <label for="char_${index}_displayName">${t('dynamic.character.displayNameLabel')}</label>
                     <input type="text" id="char_${index}_displayName" value="${char.displayName || ''}" placeholder="${t('dynamic.character.displayNamePlaceholder')}">
                 </div>
-            </div>
-            <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('common.hotkeyLabel')}</h4>
-            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 0;">${renderHotkeyInputHtml(`char_${index}_hotkey`, vkHexToFriendly(char.hotkey) || '', t('dynamic.character.hotkeyPlaceholder'))}</div>
-            <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.thumbnailSizeHeading')}</h4>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <div>
-                    <label>${t('common.widthPxLabel')}</label>
-                    <input type="number" id="char_${index}_width" value="${char.thumbnailSize?.width || ''}" placeholder="${t('dynamic.character.widthPlaceholder')}" min="50" max="3840">
+                <div class="detail-field">
+                    <label for="char_${index}_hotkey">${t('common.hotkeyLabel')}</label>
+                    <div class="field-row">${renderHotkeyInputHtml(`char_${index}_hotkey`, vkHexToFriendly(char.hotkey) || '', t('dynamic.character.hotkeyPlaceholder'))}</div>
                 </div>
-                <div>
-                    <label>${t('common.heightPxLabel')}</label>
-                    <input type="number" id="char_${index}_height" value="${char.thumbnailSize?.height || ''}" placeholder="${t('dynamic.character.heightPlaceholder')}" min="50" max="2160">
+                <div class="detail-field">
+                    <label for="char_${index}_width">${t('dynamic.character.thumbnailSizeHeading')}</label>
+                    <div class="field-row detail-size">
+                        <input type="number" id="char_${index}_width" value="${char.thumbnailSize?.width || ''}" placeholder="${t('dynamic.character.widthPlaceholder')}" min="50" max="3840">
+                        <span class="detail-size-x">&times;</span>
+                        <input type="number" id="char_${index}_height" value="${char.thumbnailSize?.height || ''}" placeholder="${t('dynamic.character.heightPlaceholder')}" min="50" max="2160">
+                    </div>
                 </div>
-            </div>
-            <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.borderColorsHeading')}</h4>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-                <div>
-                    <label>${t('dynamic.character.activeBorderColorLabel')}</label>
+                <div class="detail-field">
+                    <label for="char_${index}_activeColor">${t('dynamic.character.activeBorderColorLabel')}</label>
                     <div class="swatch-wrap">
                         <input type="color" id="char_${index}_activeColor" data-optional-color="true" ${!char.borderColors?.activeBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.activeBorderColor) || '#FFFF00'}">
                     </div>
                 </div>
-                <div>
-                    <label>${t('dynamic.character.inactiveBorderColorLabel')}</label>
+                <div class="detail-field">
+                    <label for="char_${index}_inactiveColor">${t('dynamic.character.inactiveBorderColorLabel')}</label>
                     <div class="swatch-wrap">
                         <input type="color" id="char_${index}_inactiveColor" data-optional-color="true" ${!char.borderColors?.inactiveBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.inactiveBorderColor) || '#606060'}">
                     </div>
                 </div>
-                <div>
-                    <label>${t('field.characterNameColor.label')}</label>
+                <div class="detail-field">
+                    <label for="char_${index}_nameColor">${t('field.characterNameColor.label')}</label>
                     <div class="swatch-wrap">
                         <input type="color" id="char_${index}_nameColor" data-optional-color="true" ${!char.nameColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.nameColor)}">
                     </div>
                 </div>
-            </div>
-            <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.behaviorHeading')}</h4>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-                <label>
-                    <input type="checkbox" id="char_${index}_excludeMinimize" ${char.excludeFromMinimize ? 'checked' : ''}>
-                    <span class="label-body">${t('dynamic.character.excludeMinimizeLabel')}</span>
-                </label>
-                <label>
-                    <input type="checkbox" id="char_${index}_excludeCloseAll" ${char.excludeFromCloseAll ? 'checked' : ''}>
-                    <span class="label-body">${t('dynamic.character.excludeCloseAllLabel')}</span>
-                </label>
-                <label>
-                    <input type="checkbox" id="char_${index}_hideThumbnail" ${char.hideThumbnail ? 'checked' : ''}>
-                    <span class="label-body">${t('dynamic.character.hideThumbnailLabel')}</span>
-                </label>
-            </div>
-            <h4 style="margin-top: 16px; margin-bottom: 8px;">${t('dynamic.character.windowPositionHeading')}</h4>
-            <p class="hint">${t('dynamic.character.setWindowPositionHint')}</p>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span id="char_${index}_windowPositionDisplay">${char.windowPosition ? `${char.windowPosition.x}, ${char.windowPosition.y}` : t('dynamic.character.windowPositionNotSet')}</span>
-                <button type="button" onclick="setCharacterWindowPosition(${index})">${t('dynamic.character.setWindowPositionButton')}</button>
-                <button type="button" id="char_${index}_clearWindowPositionBtn" onclick="confirmClearCharacterWindowPosition(${index})">${t('dynamic.character.clearWindowPositionButton')}</button>
+                <div class="detail-field detail-field-top">
+                    <label>${t('dynamic.character.behaviorHeading')}</label>
+                    <div class="detail-checks">
+                        <label>
+                            <input type="checkbox" id="char_${index}_excludeMinimize" ${char.excludeFromMinimize ? 'checked' : ''}>
+                            <span class="label-body">${t('dynamic.character.excludeMinimizeLabel')}</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" id="char_${index}_excludeCloseAll" ${char.excludeFromCloseAll ? 'checked' : ''}>
+                            <span class="label-body">${t('dynamic.character.excludeCloseAllLabel')}</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" id="char_${index}_hideThumbnail" ${char.hideThumbnail ? 'checked' : ''}>
+                            <span class="label-body">${t('dynamic.character.hideThumbnailLabel')}</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="detail-field">
+                    <label>${t('dynamic.character.windowPositionHeading')}</label>
+                    <div class="field-row detail-actions">
+                        <span class="detail-value" id="char_${index}_windowPositionDisplay">${char.windowPosition ? `${char.windowPosition.x}, ${char.windowPosition.y}` : t('dynamic.character.windowPositionNotSet')}</span>
+                        <button type="button" class="button-icon" id="char_${index}_clearWindowPositionBtn" onclick="confirmClearCharacterWindowPosition(${index})" title="${t('dynamic.character.clearWindowPositionButton')}" aria-label="${t('dynamic.character.clearWindowPositionButton')}">&times;</button>
+                        <button type="button" onclick="setCharacterWindowPosition(${index})">${t('dynamic.character.setWindowPositionButton')}</button>
+                    </div>
+                </div>
             </div>
         </div>
     `).join('');
 
     container.innerHTML = `
         <div class="character-master-detail">
-            <div class="character-roster">${rosterRows}</div>
+            <div class="character-roster" role="tablist" aria-orientation="vertical">${rosterRows}</div>
             <div class="character-detail-stack">${detailPanels}</div>
         </div>
     `;
@@ -4800,7 +4846,7 @@ async function setCharacterWindowPosition(index) {
 }
 
 function confirmClearCharacterWindowPosition(index) {
-    confirmRemove(`char_${index}_clearWindowPositionBtn`, () => clearCharacterWindowPosition(index));
+    confirmRemove(`char_${index}_clearWindowPositionBtn`, () => clearCharacterWindowPosition(index), '✓');
 }
 
 // Clears this character's saved window position (written straight to disk, same as set).
@@ -5026,7 +5072,9 @@ function updateCharacterHeaderName(index) {
 function selectCharacter(index) {
     selectedCharacterIndex = index;
     document.querySelectorAll('#charactersList .roster-row').forEach(row => {
-        row.classList.toggle('selected', parseInt(row.dataset.index, 10) === index);
+        const isSelected = parseInt(row.dataset.index, 10) === index;
+        row.classList.toggle('selected', isSelected);
+        row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
     });
     document.querySelectorAll('#charactersList .char-detail-panel').forEach(panel => {
         panel.classList.toggle('active', parseInt(panel.dataset.index, 10) === index);
@@ -5275,7 +5323,7 @@ function populateHotkeyGroups() {
         const backwardDisplay = vkHexToFriendly(group.backwardKey) || '';
         const charCount = (group.characters || []).length;
         groupDiv.innerHTML = `
-            <div class="accordion-header" onclick="toggleHotkeyGroupAccordion(${index})">
+            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleHotkeyGroupAccordion(${index})">
                 <div class="accordion-title">
                     <span class="accordion-toggle"></span>
                     <span class="accordion-name" id="hkgroup_${index}_header_name">${group.name || t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (index + 1)}</span>
@@ -5284,7 +5332,7 @@ function populateHotkeyGroups() {
                 <div class="accordion-header-actions">
                     <span class="accordion-hotkey-badge" id="hkgroup_${index}_forwardBadge" style="${forwardDisplay ? '' : 'display:none'}">→[${forwardDisplay}]</span>
                     <span class="accordion-hotkey-badge" id="hkgroup_${index}_backwardBadge" style="${backwardDisplay ? '' : 'display:none'}">←[${backwardDisplay}]</span>
-                    <button type="button" id="hkgroup_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('hkgroup_${index}_removeBtn', () => removeHotkeyGroup(${index}))" style="margin-bottom: 0;">${t('common.remove')}</button>
+                    <button type="button" id="hkgroup_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('hkgroup_${index}_removeBtn', () => removeHotkeyGroup(${index}))">${t('common.remove')}</button>
                 </div>
             </div>
             <div class="accordion-content">
@@ -5293,19 +5341,19 @@ function populateHotkeyGroups() {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
                     <div>
                         <label>${t('dynamic.hotkeyGroup.forwardKeyLabel')}</label>
-                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`hkgroup_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.hotkeyGroup.forwardPlaceholder'))}</div>
+                        <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.hotkeyGroup.forwardPlaceholder'))}</div>
                     </div>
                     <div>
                         <label>${t('dynamic.hotkeyGroup.backwardKeyLabel')}</label>
-                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`hkgroup_${index}_backward`, vkHexToFriendly(group.backwardKey) || '', t('dynamic.hotkeyGroup.backwardPlaceholder'))}</div>
+                        <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_backward`, vkHexToFriendly(group.backwardKey) || '', t('dynamic.hotkeyGroup.backwardPlaceholder'))}</div>
                     </div>
                 </div>
                 <label style="display: block; margin-top: 8px;">${t('dynamic.hotkeyGroup.charactersLabel')}</label>
                 <div class="hkgroup-chars-list" id="hkgroup_${index}_charsList" data-group-index="${index}">${renderHotkeyGroupCharRows(index, group.characters)}</div>
-                <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
-                    <input type="text" id="hkgroup_${index}_addChar" placeholder="${t('dynamic.hotkeyGroup.addCharPlaceholder')}" style="flex: 1; margin-bottom: 0;" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addHotkeyGroupCharacter(${index}); }">
-                    <button type="button" onclick="addHotkeyGroupCharacter(${index})" style="width: auto; margin-bottom: 0; white-space: nowrap;">${t('dynamic.hotkeyGroup.addBtnLabel')}</button>
-                    <button type="button" id="hkgroup_${index}_fillBtn" onclick="fillHotkeyGroupFromClients(${index})" style="width: auto; margin-bottom: 0; white-space: nowrap;">${t('status.fillFromClientsLabel')}</button>
+                <div class="field-row" style="margin-top: 4px;">
+                    <input type="text" id="hkgroup_${index}_addChar" placeholder="${t('dynamic.hotkeyGroup.addCharPlaceholder')}" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addHotkeyGroupCharacter(${index}); }">
+                    <button type="button" onclick="addHotkeyGroupCharacter(${index})" style="white-space: nowrap;">${t('dynamic.hotkeyGroup.addBtnLabel')}</button>
+                    <button type="button" id="hkgroup_${index}_fillBtn" onclick="fillHotkeyGroupFromClients(${index})" style="white-space: nowrap;">${t('status.fillFromClientsLabel')}</button>
                 </div>
                 <label style="display: block; margin-top: 8px;">
                     <input type="checkbox" id="hkgroup_${index}_includeNotLoggedIn" ${group.includeNotLoggedIn ? 'checked' : ''}>
@@ -5324,8 +5372,8 @@ function renderHotkeyGroupCharRows(groupIndex, characters) {
     return (characters || []).map((name, charIndex) => `
         <div class="hkgroup-char-row" data-char-index="${charIndex}">
             <span class="drag-index-chip character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(charIndex + 1).padStart(2, '0')}</span>
-            <input type="text" class="hkgroup-char-input" value="${name}" placeholder="${t('common.characterName')}" style="flex: 1; margin-bottom: 0;">
-            <button type="button" class="hotkey-clear-btn" onclick="removeHotkeyGroupCharacter(${groupIndex}, ${charIndex})" title="${t('common.remove')}" style="margin-bottom: 0;">×</button>
+            <input type="text" class="hkgroup-char-input" value="${name}" placeholder="${t('common.characterName')}">
+            <button type="button" class="hotkey-clear-btn" onclick="removeHotkeyGroupCharacter(${groupIndex}, ${charIndex})" title="${t('common.remove')}">×</button>
         </div>
     `).join('');
 }
@@ -5429,7 +5477,7 @@ function addHotkeyGroup() {
     toggleHotkeyGroupAccordion(newIndex);
 
     setTimeout(() => {
-        document.getElementById(`hkgroup_${newIndex}_accordion`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        document.getElementById(`hkgroup_${newIndex}_accordion`)?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
     }, 100);
 }
 
@@ -5465,7 +5513,7 @@ async function addHotkeyGroupFromClients() {
         toggleHotkeyGroupAccordion(newIndex);
 
         setTimeout(() => {
-            document.getElementById(`hkgroup_${newIndex}_accordion`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            document.getElementById(`hkgroup_${newIndex}_accordion`)?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
         }, 100);
 
         showStatus(t('status.createdHotkeyGroup').replace('{n}', names.length), 'success');
@@ -5574,7 +5622,7 @@ function populateQuickGroups() {
         const forwardDisplay = vkHexToFriendly(group.forwardKey) || '';
         const backwardDisplay = vkHexToFriendly(group.backwardKey) || '';
         groupDiv.innerHTML = `
-            <div class="accordion-header" onclick="toggleQuickGroupAccordion(${index})">
+            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleQuickGroupAccordion(${index})">
                 <div class="accordion-title">
                     <span class="accordion-toggle"></span>
                     <span class="accordion-name" id="qg_${index}_header_name">${group.name || t('dynamic.quickGroup.defaultNamePrefix') + ' ' + (index + 1)}</span>
@@ -5583,7 +5631,7 @@ function populateQuickGroups() {
                     <span class="accordion-hotkey-badge" id="qg_${index}_assignBadge" style="${assignDisplay ? '' : 'display:none'}">[${assignDisplay}]</span>
                     <span class="accordion-hotkey-badge" id="qg_${index}_forwardBadge" style="${forwardDisplay ? '' : 'display:none'}">→[${forwardDisplay}]</span>
                     <span class="accordion-hotkey-badge" id="qg_${index}_backwardBadge" style="${backwardDisplay ? '' : 'display:none'}">←[${backwardDisplay}]</span>
-                    <button type="button" id="qg_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('qg_${index}_removeBtn', () => removeQuickGroup(${index}))" style="margin-bottom: 0;">${t('common.remove')}</button>
+                    <button type="button" id="qg_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('qg_${index}_removeBtn', () => removeQuickGroup(${index}))">${t('common.remove')}</button>
                 </div>
             </div>
             <div class="accordion-content">
@@ -5594,17 +5642,17 @@ function populateQuickGroups() {
                     </div>
                     <div>
                         <label>${t('dynamic.quickGroup.assignKeyLabel')}</label>
-                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`qg_${index}_assign`, vkHexToFriendly(group.assignKey) || '', t('dynamic.quickGroup.assignPlaceholder'))}</div>
+                        <div class="field-row">${renderHotkeyInputHtml(`qg_${index}_assign`, vkHexToFriendly(group.assignKey) || '', t('dynamic.quickGroup.assignPlaceholder'))}</div>
                     </div>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
                     <div>
                         <label>${t('dynamic.quickGroup.forwardKeyLabel')}</label>
-                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`qg_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.quickGroup.forwardPlaceholder'))}</div>
+                        <div class="field-row">${renderHotkeyInputHtml(`qg_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.quickGroup.forwardPlaceholder'))}</div>
                     </div>
                     <div>
                         <label>${t('dynamic.quickGroup.backwardKeyLabel')}</label>
-                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`qg_${index}_backward`, vkHexToFriendly(group.backwardKey) || '', t('dynamic.quickGroup.backwardPlaceholder'))}</div>
+                        <div class="field-row">${renderHotkeyInputHtml(`qg_${index}_backward`, vkHexToFriendly(group.backwardKey) || '', t('dynamic.quickGroup.backwardPlaceholder'))}</div>
                     </div>
                 </div>
             </div>
@@ -5633,7 +5681,7 @@ function addQuickGroup() {
     toggleQuickGroupAccordion(newIndex);
 
     setTimeout(() => {
-        document.getElementById(`qg_${newIndex}_accordion`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        document.getElementById(`qg_${newIndex}_accordion`)?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
     }, 100);
 }
 
@@ -5799,12 +5847,12 @@ async function populateProfileSwitchHotkeys() {
         const row = document.createElement('div');
         row.className = 'accordion';
         row.innerHTML = `
-            <div class="accordion-header" onclick="toggleProfileSwitchHotkeyAccordion(${index})">
+            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleProfileSwitchHotkeyAccordion(${index})">
                 <div class="accordion-title">
                     <span class="accordion-toggle"></span>
                     <span class="accordion-name" id="pshotkey_${index}_header_name">${profileSwitchHotkeyLabel(effectiveTarget, index)}</span>
                 </div>
-                <button type="button" id="pshotkey_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('pshotkey_${index}_removeBtn', () => removeProfileSwitchHotkey(${index}))" style="margin-bottom: 0;">${t('common.remove')}</button>
+                <button type="button" id="pshotkey_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('pshotkey_${index}_removeBtn', () => removeProfileSwitchHotkey(${index}))">${t('common.remove')}</button>
             </div>
             <div class="accordion-content">
                 <label>${t('dynamic.profileSwitchHotkey.targetLabel')}</label>
@@ -5812,7 +5860,7 @@ async function populateProfileSwitchHotkeys() {
                     ${optionsHtml}
                 </select>
                 <label>${t('common.hotkeyLabel')}</label>
-                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 0;">${renderHotkeyInputHtml(`pshotkey_${index}_hotkey`, vkHexToFriendly(entry.hotkey) || '', t('dynamic.profileSwitchHotkey.hotkeyPlaceholder'))}</div>
+                <div class="field-row">${renderHotkeyInputHtml(`pshotkey_${index}_hotkey`, vkHexToFriendly(entry.hotkey) || '', t('dynamic.profileSwitchHotkey.hotkeyPlaceholder'))}</div>
             </div>
         `;
         container.appendChild(row);
@@ -5896,14 +5944,14 @@ function populateAppHotkeys() {
         row.className = 'accordion';
         row.dataset.index = index;
         row.innerHTML = `
-            <div class="accordion-header" onclick="toggleAppHotkeyAccordion(${index})">
+            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleAppHotkeyAccordion(${index})">
                 <div class="accordion-title">
                     <span class="accordion-toggle"></span>
                     <span class="accordion-name" id="apphotkey_${index}_header_name">${escapeHtml(appHotkeyLabel(entry.executableName, index))}</span>
                 </div>
                 <div class="accordion-header-actions">
                     <span class="accordion-hotkey-badge" id="apphotkey_${index}_hotkeyBadge" style="${hotkeyDisplay ? '' : 'display:none'}">[${hotkeyDisplay}]</span>
-                    <button type="button" id="apphotkey_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('apphotkey_${index}_removeBtn', () => removeAppHotkey(${index}))" style="margin-bottom: 0;">${t('common.remove')}</button>
+                    <button type="button" id="apphotkey_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('apphotkey_${index}_removeBtn', () => removeAppHotkey(${index}))">${t('common.remove')}</button>
                 </div>
             </div>
             <div class="accordion-content">
@@ -5914,7 +5962,7 @@ function populateAppHotkeys() {
                     </div>
                     <div>
                         <label>${t('common.hotkeyLabel')}</label>
-                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`apphotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.appHotkey.hotkeyPlaceholder'))}</div>
+                        <div class="field-row">${renderHotkeyInputHtml(`apphotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.appHotkey.hotkeyPlaceholder'))}</div>
                     </div>
                 </div>
                 <button type="button" id="apphotkey_${index}_pickBtn" onclick="pickRunningWindowForAppHotkey(${index})" style="width: 100%; margin-top: 8px;">${t('button.pick-running-window.label')}</button>
@@ -6060,7 +6108,7 @@ function populateUrlHotkeys() {
         row.className = 'accordion';
         row.dataset.index = index;
         row.innerHTML = `
-            <div class="accordion-header" onclick="toggleUrlHotkeyAccordion(${index})">
+            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleUrlHotkeyAccordion(${index})">
                 <div class="accordion-title">
                     <span class="accordion-toggle"></span>
                     <span class="accordion-name" id="urlhotkey_${index}_header_name">${escapeHtml(urlHotkeyLabel(entry.url, index))}</span>
@@ -6068,7 +6116,7 @@ function populateUrlHotkeys() {
                 <div class="accordion-header-actions">
                     <span class="accordion-hotkey-badge" id="urlhotkey_${index}_uploadBadge" style="${entry.uploadClipboard ? '' : 'display:none'}">${t('dynamic.urlHotkey.uploadClipboardBadge')}</span>
                     <span class="accordion-hotkey-badge" id="urlhotkey_${index}_hotkeyBadge" style="${hotkeyDisplay ? '' : 'display:none'}">[${hotkeyDisplay}]</span>
-                    <button type="button" id="urlhotkey_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('urlhotkey_${index}_removeBtn', () => removeUrlHotkey(${index}))" style="margin-bottom: 0;">${t('common.remove')}</button>
+                    <button type="button" id="urlhotkey_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('urlhotkey_${index}_removeBtn', () => removeUrlHotkey(${index}))">${t('common.remove')}</button>
                 </div>
             </div>
             <div class="accordion-content">
@@ -6079,7 +6127,7 @@ function populateUrlHotkeys() {
                     </div>
                     <div>
                         <label>${t('common.hotkeyLabel')}</label>
-                        <div style="display: flex; gap: 8px; align-items: center;">${renderHotkeyInputHtml(`urlhotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.urlHotkey.hotkeyPlaceholder'))}</div>
+                        <div class="field-row">${renderHotkeyInputHtml(`urlhotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.urlHotkey.hotkeyPlaceholder'))}</div>
                     </div>
                 </div>
                 <label id="urlhotkey_${index}_uploadClipboardRow" style="display: ${isAdashboardUrl(entry.url) ? 'block' : 'none'}; margin-top: 8px;">
@@ -6569,8 +6617,7 @@ function applyOptionToggle(checkboxId, optionsId) {
     if (!checkbox || !options) return undefined;
 
     const enabled = checkbox.checked;
-    options.style.opacity = enabled ? '1' : '0.5';
-    options.style.pointerEvents = enabled ? 'auto' : 'none';
+    options.classList.toggle('is-disabled', !enabled);
     return enabled;
 }
 
@@ -6597,8 +6644,7 @@ function toggleClientListOptions() {
 
     const isClientList = viewMode.value === 'ClientList';
 
-    clientListOptions.style.opacity = isClientList ? '1' : '0.5';
-    clientListOptions.style.pointerEvents = isClientList ? 'auto' : 'none';
+    clientListOptions.classList.toggle('is-disabled', !isClientList);
 
     if (listViewOrder) listViewOrder.disabled = !isClientList;
     if (rememberListViewPosition) rememberListViewPosition.disabled = !isClientList;
@@ -6614,18 +6660,15 @@ function toggleAspectRatioSlider() {
     const container = document.getElementById('aspectRatioSliderContainer');
     if (!checkbox || !container) return;
 
+    container.classList.toggle('is-disabled', !checkbox.checked);
+
     if (checkbox.checked) {
-        container.style.opacity = '1';
-        container.style.pointerEvents = 'auto';
         const w = parseFloat(document.getElementById('thumbWidth').value) || 200;
         const h = parseFloat(document.getElementById('thumbHeight').value) || 150;
         checkbox._baseWidth = w;
         checkbox._baseHeight = h;
         document.getElementById('thumbSizeSlider').value = 100;
         document.getElementById('thumbSizeValue').textContent = '100';
-    } else {
-        container.style.opacity = '0.5';
-        container.style.pointerEvents = 'none';
     }
 }
 
@@ -6687,14 +6730,10 @@ function toggleUniqueCharacterColors() {
     const focusedBorderColorOptions = document.getElementById('focusedBorderColorOptions');
     
     if (uniqueColorsCheckbox && focusedBorderColorOptions) {
-        if (uniqueColorsCheckbox.checked) {
-            focusedBorderColorOptions.style.opacity = '0.5';
-            focusedBorderColorOptions.style.pointerEvents = 'none';
+        focusedBorderColorOptions.classList.toggle('is-disabled', uniqueColorsCheckbox.checked);
 
+        if (uniqueColorsCheckbox.checked) {
             assignUniqueColorsToAllCharacters();
-        } else {
-            focusedBorderColorOptions.style.opacity = '1';
-            focusedBorderColorOptions.style.pointerEvents = 'auto';
         }
     }
 }
@@ -7069,8 +7108,7 @@ function applyPopoverInverseDisable(targetFieldId, disabled) {
     const body = document.getElementById('overlayPopoverBody');
     const input = body?.querySelector(`[data-popover-for="${targetFieldId}"]`);
     if (!input) return;
-    Array.from(input.parentElement.children).forEach(el => { el.style.opacity = disabled ? '0.5' : '1'; });
-    input.style.pointerEvents = disabled ? 'none' : 'auto';
+    Array.from(input.parentElement.children).forEach(el => el.classList.toggle('is-disabled', disabled));
 }
 
 // Writes back through setOverlayFieldValue()/setOverlayCheckboxValue() so it behaves like editing the real tab.
@@ -7365,9 +7403,7 @@ function toggleInverseOption(checkboxId, optionsId) {
     const options = document.getElementById(optionsId);
     if (!checkbox || !options) return;
 
-    const disabled = checkbox.checked;
-    options.style.opacity = disabled ? '0.5' : '1';
-    options.style.pointerEvents = disabled ? 'none' : 'auto';
+    options.classList.toggle('is-disabled', checkbox.checked);
 }
 
 function toggleUniqueSystemColors() {
@@ -7390,13 +7426,7 @@ function toggleNotificationOptions() {
     if (notificationsEnabled && notificationOptions) {
         const isEnabled = notificationsEnabled.checked;
 
-        if (isEnabled) {
-            notificationOptions.style.opacity = '1';
-            notificationOptions.style.pointerEvents = 'auto';
-        } else {
-            notificationOptions.style.opacity = '0.5';
-            notificationOptions.style.pointerEvents = 'none';
-        }
+        notificationOptions.classList.toggle('is-disabled', !isEnabled);
 
         if (notificationTypesTable) {
             const inputs = notificationTypesTable.querySelectorAll('input');
@@ -7418,8 +7448,7 @@ function toggleTtsOptions() {
 
     if (ttsEnabled && ttsOptions) {
         const isEnabled = ttsEnabled.checked;
-        ttsOptions.style.opacity = isEnabled ? '1' : '0.5';
-        ttsOptions.style.pointerEvents = isEnabled ? 'auto' : 'none';
+        ttsOptions.classList.toggle('is-disabled', !isEnabled);
 
         const inputs = ttsOptions.querySelectorAll('input');
         inputs.forEach(input => {

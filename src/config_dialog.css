@@ -8,16 +8,40 @@
 }
 
 :root {
-    /* Danger/error red palette - named so the relationship between shades (urgent
-       error vs. hover accent vs. confirm-delete fill) is intentional, not drift */
-    --color-danger-urgent: #ff0000;   /* active errors, hotkey conflicts */
-    --color-danger: #ff4444;          /* hover accent on destructive buttons */
-    --color-danger-fill: #ff6666;     /* confirm-delete button fill */
-    --color-danger-fill-hover: #ff8888; /* confirm-delete hover/border */
-    --color-success: #44ff44;         /* success status, active hotkey-edit state */
-    --color-success-rgb: 68, 255, 68; /* for rgba() glow/tint backgrounds */
-    --color-warning: #ffaa00;         /* pending-changes indicator */
-    --color-warning-rgb: 255, 170, 0; /* for rgba() tint backgrounds */
+    /* Quiet Terminal palette. One warm near-black ground, one accent (amber)
+       that covers both focus and the single "warning/auto-corrected" job,
+       and destructive kept a distinct hue from error so a validation problem
+       never reads the same as a delete button. */
+    --color-bg: #0b0c0d;
+    --color-panel: #131416;
+    --color-surface: #1a1b1d;
+    --color-surface-alt: #202224;
+    --color-border-faint: #26282c;
+    --color-border: #35383d;
+    --color-border-strong: #55585e;
+    --color-text: #e8e6e1;
+    --color-text-secondary: #c4c0b6;
+    --color-muted: #8b8f96;
+    --color-accent: #d9a441;
+    --color-accent-hover: #e8b75f;
+    --color-accent-rgb: 217, 164, 65;
+    --color-accent-ink: #1a1408;
+    --color-error: #e05a4e;
+    --color-error-rgb: 224, 90, 78;
+    --color-success: #5ec98f;
+    --color-success-rgb: 94, 201, 143;
+    --color-destructive: #b0492f;
+    --color-destructive-rgb: 176, 73, 47;
+    --color-destructive-fill: #c96246;
+    --color-destructive-fill-hover: #d97a5c;
+    /* Three deliberate tiers: small chips, controls, containers. */
+    --radius-sm: 2px;
+    --radius: 3px;
+    --radius-lg: 4px;
+    --font-mono: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+    /* Hover/interaction only - state transitions (.section-active,
+       .field-clamped, .main-app-status) keep their own slower timings. */
+    --t-hover: 0.15s;
 }
 
 html.pre-init {
@@ -33,48 +57,33 @@ input, textarea, select {
 }
 
 body {
-    background: #000000;
-    color: #ffffff;
+    background: var(--color-bg);
+    color: var(--color-text);
     height: 100vh;
     overflow: hidden;
     margin: 0;
-    font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+    font-family: var(--font-mono);
     font-size: 14px;
     line-height: 1.4;
 }
 
-body::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: repeating-linear-gradient(
-        0deg,
-        rgba(0, 0, 0, 0.08) 0px,
-        rgba(0, 0, 0, 0.08) 1px,
-        transparent 1px,
-        transparent 2px
-    );
-    pointer-events: none;
-    z-index: 1000;
+::selection {
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
 }
 
-body::after {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: radial-gradient(
-        ellipse at center,
-        rgba(255, 255, 255, 0) 0%,
-        rgba(0, 0, 0, 0.3) 100%
-    );
-    pointer-events: none;
-    z-index: 999;
+/* Honors the OS "reduce motion" setting across every animation and transition
+   here - the accordion chevron, panel fades, the status pulse, modal slide-ins.
+   Smooth scrolling is handled in config_dialog.js instead: scrollIntoView's
+   behavior option is a JS argument, so no stylesheet rule can override it. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
 }
 
 #window-container {
@@ -82,14 +91,7 @@ body::after {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: #000000;
-    box-shadow: inset 0 0 100px rgba(255, 255, 255, 0.05);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-    #window-container {
-        animation: flicker 14s infinite;
-    }
+    background: var(--color-bg);
 }
 
 /* Main layout */
@@ -102,45 +104,46 @@ body::after {
 /* Sidebar - Terminal menu style */
 #tabs-sidebar {
     width: 169px;
-    background: #0f0f0f;
-    border-right: 1px solid #ffffff;
+    background: var(--color-panel);
+    border-right: 1px solid var(--color-border);
     padding: 6px 0;
     overflow-y: auto;
     flex-shrink: 0;
 }
 
 .tab-item {
-    padding: 6px 10px 6px 6px;
+    padding: 6px 10px 6px 8px;
     cursor: pointer;
-    transition: all 0.15s;
-    color: #ffffff;
+    transition: background var(--t-hover), color var(--t-hover), border-color var(--t-hover);
+    color: var(--color-muted);
     font-size: 13px;
     position: relative;
     font-weight: 400;
-    letter-spacing: 0.3px;
-    text-transform: capitalize;
-}
-
-.tab-item::before {
-    content: '$ ';
-    color: #ffffff;
-    margin-right: 0;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    border-left: 2px solid transparent;
 }
 
 .tab-item:hover {
-    background: #252525;
-    color: #ffffff;
+    background: var(--color-surface-alt);
+    color: var(--color-text);
 }
 
 .tab-item.active {
-    background: #252525;
-    color: #ffffff;
+    background: var(--color-surface-alt);
+    color: var(--color-text);
     font-weight: 700;
+    border-left-color: var(--color-accent);
 }
 
-.tab-item.active::before {
-    content: '> ';
-    animation: blink 1.5s infinite;
+/* Inset rather than an outer glow so it doesn't bleed over the sidebar
+   divider. Keeps focus reading as amber, same as every other control. */
+.tab-item:focus-visible {
+    outline: none;
+    background: var(--color-surface-alt);
+    color: var(--color-text);
+    border-left-color: var(--color-accent);
+    box-shadow: inset 0 0 8px rgba(var(--color-accent-rgb), 0.3);
 }
 
 .subheader-list {
@@ -154,41 +157,29 @@ body::after {
 .subheader-item {
     padding: 3px 10px 3px 22px;
     cursor: pointer;
-    transition: all 0.15s;
-    color: #888888;
+    transition: color var(--t-hover);
+    color: var(--color-muted);
     font-size: 11px;
+    text-transform: capitalize;
 }
 
 .subheader-item:hover {
-    color: #ffffff;
+    color: var(--color-text);
 }
 
 .subheader-item.subheader-item-active {
-    color: #ffffff;
+    color: var(--color-text);
     font-weight: 600;
-}
-
-@keyframes blink {
-    0%, 49% { opacity: 1; }
-    50%, 100% { opacity: 0; }
-}
-
-@keyframes flicker {
-    0% { opacity: 0.98; }
-    5% { opacity: 1; }
-    10% { opacity: 0.98; }
-    15% { opacity: 1; }
-    20% { opacity: 0.98; }
-    25% { opacity: 1; }
-    100% { opacity: 1; }
 }
 
 /* Content panel */
 #content-panel {
     flex: 1;
+    /* Matches .section's bottom margin, so the frame around the stack reads
+       as the same gap that sits between its items. */
     padding: 8px;
     overflow-y: auto;
-    background: #000000;
+    background: var(--color-bg);
     display: flex;
     flex-direction: column;
 }
@@ -207,25 +198,30 @@ body::after {
     to { opacity: 1; }
 }
 
+/* h3 is the one heading level that gets uppercase + a glyph; h4 and below
+   differentiate by size/weight/color instead so hierarchy doesn't rely on
+   every level shouting at the same volume. */
 h3 {
-    color: #ffffff;
+    color: var(--color-text);
     font-size: 14px;
     font-weight: 700;
     margin-top: 12px;
     margin-bottom: 8px;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    border-bottom: 1px solid #ffffff;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--color-border);
     padding-bottom: 3px;
-    padding-left: 14px;
+    /* Same gutter and glyph offset as label below, so every › sits in one
+       vertical rail rather than headings and labels each having their own. */
+    padding-left: 20px;
     position: relative;
 }
 
 h3::before {
-    content: '# ';
-    color: #dddddd;
+    content: '›';
+    color: var(--color-muted);
     position: absolute;
-    left: 0;
+    left: 2px;
 }
 
 h3:first-child {
@@ -233,14 +229,13 @@ h3:first-child {
 }
 
 h4 {
-    color: #ffffff;
+    color: var(--color-text-secondary);
     font-size: 13px;
     font-weight: 600;
     margin-top: 16px;
     margin-bottom: 8px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    border-bottom: 1px solid #666666;
+    letter-spacing: 0.2px;
+    border-bottom: 1px solid var(--color-border);
     padding-bottom: 2px;
 }
 
@@ -254,7 +249,8 @@ h4:first-child {
     margin-top: 8px;
 }
 
-/* ASCII art and pre-formatted text */
+/* ASCII art and pre-formatted text. Generic monospace, not --font-mono:
+   Cascadia Code's programming ligatures can reflow ASCII art glyph runs. */
 pre {
     font-family: monospace;
     line-height: 1.1;
@@ -281,23 +277,22 @@ p {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    border: 1px solid #888888;
-    background: #1a1a1a;
+    border: 1px solid var(--color-border);
+    background: var(--color-panel);
     font-size: 12px;
     margin-top: 8px;
 }
 
 .notification-types-table th {
-    background: #0f0f0f;
-    border-top: 1px solid #888888;
-    border-right: 1px solid #888888;
-    border-bottom: 1px solid #888888;
+    background: var(--color-panel);
+    border-top: 1px solid var(--color-border);
+    border-right: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
     padding: 4px 6px;
     text-align: center;
-    color: #ffffff;
+    color: var(--color-text);
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
     line-height: 1.2;
     white-space: nowrap;
     position: sticky;
@@ -313,12 +308,12 @@ p {
 .notification-types-table thead tr:last-child:not(:first-child) th {
     top: calc(1.2em + 10px);
     font-weight: 500;
-    color: #dddddd;
+    color: var(--color-text-secondary);
     border-top: none;
 }
 
 .notification-types-table th:hover {
-    background: #1a1a1a;
+    background: var(--color-panel);
 }
 
 .notification-types-table th.event-type-col {
@@ -331,7 +326,7 @@ p {
 }
 
 .notification-types-table td {
-    border: 1px solid #444444;
+    border: 1px solid var(--color-border-faint);
     padding: 4px 3px;
     vertical-align: middle;
     text-align: center;
@@ -343,24 +338,24 @@ p {
 }
 
 .notification-types-table tbody tr {
-    transition: background 0.15s;
+    transition: background var(--t-hover);
 }
 
 .notification-types-table tbody tr:hover {
-    background: #252525;
+    background: var(--color-surface-alt);
 }
 
 .notification-types-table tbody tr:nth-child(even) {
-    background: #171717;
+    background: var(--color-surface);
 }
 
 .notification-types-table tbody tr:nth-child(even):hover {
-    background: #252525;
+    background: var(--color-surface-alt);
 }
 
 .notification-types-table .event-name {
     font-weight: 500;
-    color: #ffffff;
+    color: var(--color-text);
     line-height: 1.3;
 }
 
@@ -373,7 +368,7 @@ p {
 }
 
 .notification-types-table input[type="number"]::placeholder {
-    color: #909090;
+    color: var(--color-muted);
     font-style: italic;
 }
 
@@ -421,30 +416,51 @@ p {
 }
 
 .notification-types-table tr.category-separator td {
-    border-top: 1px solid #888888;
+    border-top: 1px solid var(--color-border);
 }
 
 .notification-types-table td.category-cell {
-    background: #0f0f0f;
-    color: #ffffff;
+    background: var(--color-panel);
+    color: var(--color-text);
     text-align: center;
     padding: 8px 4px;
-    border-color: #888888;
-    border-bottom: 1px solid #888888;
+    border-color: var(--color-border);
+    border-bottom: 1px solid var(--color-border);
     /* Pins the column to a fixed width regardless of content - large rowspans (as in the ore table, unlike notifications' short ones) can otherwise
        trip up auto table layout's handling of the vertical-rl label below, letting the column balloon to the label's unrotated horizontal width. */
     width: 28px;
     max-width: 28px;
     overflow: hidden;
+    /* Anchors the absolutely-positioned label below at this cell's own box. */
+    position: relative;
 }
 
 .notification-types-table td.category-cell .category-cell-label {
+    /* writing-mode: vertical-rl is load-bearing beyond the visual rotation -
+       see the comment on .category-cell above: it's what keeps this label's
+       intrinsic width narrow so auto table layout doesn't balloon the column
+       out to the word's unrotated width. rotate(180deg) just flips reading
+       direction on top of that; text-orientation can't do it instead (it's a
+       no-op for Latin text) and dropping writing-mode entirely breaks the
+       column sizing, so this keeps the original mechanism and only adds
+       backface-visibility as a lighter-touch fix for the blur than swapping
+       the whole approach. Weight/spacing match .th above so column and
+       category headers read as the same style of label. */
     writing-mode: vertical-rl;
-    transform: rotate(180deg);
+    /* Absolute + translate(-50%,-50%) centers on the cell's actual midpoint
+       explicitly, rather than trusting text-align/vertical-align plus this
+       element's own transform-origin - combining writing-mode with a
+       transform can leave the browser computing that origin against the
+       flow-relative box instead of the physical one, throwing off a rotation
+       pivot that's supposed to sit dead center. */
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(180deg);
+    backface-visibility: hidden;
     display: inline-block;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
     font-size: 12px;
     white-space: nowrap;
 }
@@ -454,23 +470,23 @@ input[type="text"],
 input[type="number"],
 input[type="range"],
 select {
-    background-color: #1a1a1a;
-    border: 1px solid #888888;
-    color: #ffffff;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text);
     padding: 4px 8px;
-    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-family: var(--font-mono);
     font-size: 13px;
     width: 100%;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     height: 28px;
     box-sizing: border-box;
-    text-shadow: none;
+    border-radius: var(--radius);
 }
 
 input.recording {
-    background-color: #2a1a1a;
-    border-color: #ffffff;
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    background-color: #241a16;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.4);
 }
 
 input.hotkey-input {
@@ -483,56 +499,64 @@ input.hotkey-input.manual-editing {
     caret-color: auto;
 }
 
-/* Momentary highlight after a number input is clamped to its min/max on blur -
-   warning-orange (not the danger-red used for .hotkey-conflict) since this is an
-   auto-correction, not an error. Class is removed on a timer in JS; the transition
-   here is what makes that removal read as a fade instead of a snap. */
+/* Momentary highlight after a number input is clamped to its min/max on blur.
+   Same accent used for "auto-corrected to a boundary" everywhere else
+   (see .overlay-chip.clamped) rather than a one-off warning color. Class is
+   removed on a timer in JS; the transition here is what makes that removal
+   read as a fade instead of a snap. */
 input.field-clamped {
-    border-color: var(--color-warning) !important;
-    background-color: rgba(var(--color-warning-rgb), 0.12);
-    box-shadow: 0 0 8px rgba(var(--color-warning-rgb), 0.5);
+    border-color: var(--color-accent) !important;
+    background-color: rgba(var(--color-accent-rgb), 0.12);
+    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.5);
     transition: border-color 1s ease-out, background-color 1s ease-out, box-shadow 1s ease-out;
 }
 
+/* Reserved for real validation problems only (see also .status-message.error) -
+   kept a different hue from --color-destructive so "this value is invalid"
+   never reads the same as "this button deletes something". */
 input.hotkey-conflict {
-    border-color: var(--color-danger-urgent) !important;
-    background-color: rgba(255, 0, 0, 0.1);
+    border-color: var(--color-error) !important;
+    background-color: rgba(var(--color-error-rgb), 0.12);
 }
 
 /* Highlights whichever section is currently in view (scrollspy) or was just
-   jumped to via a sidebar subheader - brightens the section's existing border
-   plus a soft glow, toned down from the button hover glow (0 0 15px / 0.5).
-   No timer: the transition just animates in when the class is added and back
-   out when it's removed as scroll moves to a different section. */
+   jumped to via a sidebar subheader. No timer: the transition just animates
+   in when the class is added and back out when it's removed as scroll moves
+   to a different section. */
 .section.section-active {
-    border-color: #ffffff;
-    box-shadow: 0 0 11px rgba(255, 255, 255, 0.4);
+    border-color: var(--color-accent);
+    box-shadow: 0 0 10px rgba(var(--color-accent-rgb), 0.45);
     transition: border-color 0.4s ease-out, box-shadow 0.4s ease-out;
 }
 
 input:focus,
 select:focus {
     outline: none;
-    border-color: #ffffff;
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.4), inset 0 0 5px rgba(255, 255, 255, 0.1);
+    border-color: var(--color-accent);
+    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.35), inset 0 0 4px rgba(var(--color-accent-rgb), 0.08);
 }
 
 label {
-    color: #dddddd;
+    color: var(--color-text-secondary);
     font-weight: 500;
     font-size: 13px;
     display: block;
     margin-bottom: 3px;
     margin-top: 6px;
-    padding-left: 17px;
+    /* Matches the checkbox label-body's 20px gutter (14px box + gap) below,
+       so a field label's text and a checkbox's text start at the same column. */
+    padding-left: 20px;
     position: relative;
 }
 
 label::before {
-    content: '» ';
-    color: #ffffff;
+    /* No trailing space - the glyph's own position (not text flow) sets its
+       gap from the label text, so it can be centered on the checkbox box
+       below (which spans 0-14px) instead of drifting with glyph width. */
+    content: '›';
+    color: var(--color-muted);
     position: absolute;
-    left: 0;
+    left: 2px;
 }
 
 /* Remove prefix and padding for checkbox labels */
@@ -558,8 +582,6 @@ input[type="checkbox"] + .label-body {
     padding-left: 20px;
     cursor: pointer;
     display: inline-block;
-    color: #dddddd;
-    font-weight: 500;
 }
 
 input[type="checkbox"] + .label-body::before {
@@ -572,28 +594,53 @@ input[type="checkbox"] + .label-body::before {
     height: 14px;
     line-height: 14px;
     text-align: center;
-    border: 1px solid #999999;
+    border: 1px solid var(--color-border-strong);
     box-sizing: border-box;
-    color: #ffffff;
-    font-size: 12px;
-    transition: all 0.2s;
+    color: var(--color-accent);
+    font-size: 11px;
+    border-radius: var(--radius-sm);
+    transition: border-color var(--t-hover);
 }
 
 input[type="checkbox"]:checked + .label-body::before {
-    content: '✕';
-    border-color: #ffffff;
+    content: '✓';
+    border-color: var(--color-accent);
 }
 
 input[type="checkbox"]:focus + .label-body::before {
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+    box-shadow: 0 0 6px rgba(var(--color-accent-rgb), 0.5);
 }
 
+/* Hover gets its own quieter affordance (text-secondary) rather than the
+   accent color reserved for checked/focus, so "hovered" and "confirmed"
+   don't look the same. */
 label:hover input[type="checkbox"] + .label-body::before {
-    border-color: #ffffff;
+    border-color: var(--color-text-secondary);
+}
+
+/* Disabled controls. .is-disabled is the class form for whole option groups
+   that JS greys out, so that stays styleable here instead of being written
+   as inline opacity/pointer-events. The notification table overrides the
+   opacity below - denser rows, so it dims harder. */
+input:disabled,
+select:disabled,
+button:disabled,
+.is-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+input[type="checkbox"]:disabled + .label-body {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.is-disabled {
+    pointer-events: none;
 }
 
 .hint {
-    color: #ffffff;
+    color: var(--color-muted);
     font-size: 12px;
     font-style: italic;
     margin: 2px 0;
@@ -601,6 +648,13 @@ label:hover input[type="checkbox"] + .label-body::before {
 
 .hint::before {
     content: none;
+}
+
+/* The intro hint under a section/subsection heading gets the between-groups
+   gap rather than the tight 2px above - was 48 inline margin-bottom styles. */
+h3 + .hint,
+h4 + .hint {
+    margin-bottom: 8px;
 }
 
 /* Status message */
@@ -615,6 +669,7 @@ label:hover input[type="checkbox"] + .label-body::before {
     box-sizing: border-box;
     align-items: center;
     line-height: 1.2;
+    border-radius: var(--radius);
 }
 
 .status-message.success {
@@ -624,45 +679,50 @@ label:hover input[type="checkbox"] + .label-body::before {
 }
 
 .status-message.error {
-    color: var(--color-danger-urgent);
-    border-color: var(--color-danger-urgent);
-    background: rgba(255, 0, 0, 0.1);
+    color: var(--color-error);
+    border-color: var(--color-error);
+    background: rgba(var(--color-error-rgb), 0.1);
 }
 
 .status-message.info {
-    color: #dddddd;
-    border-color: #cccccc;
-    background: rgba(204, 204, 204, 0.1);
+    color: var(--color-text-secondary);
+    border-color: var(--color-border-strong);
+    background: rgba(255, 255, 255, 0.04);
 }
 
 .status-message::before {
-    content: '>>> ';
+    content: '› ';
     font-weight: 700;
 }
 
 /* Button overrides */
 button {
-    background-color: #1a1a1a;
-    border: 1px solid #888888;
-    color: #ffffff;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text);
     padding: 6px 12px;
-    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-family: var(--font-mono);
     font-size: 13px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: background-color var(--t-hover), border-color var(--t-hover), color var(--t-hover);
     font-weight: 500;
-    text-transform: uppercase;
     height: 28px;
     line-height: 1.4;
-    text-shadow: none;
+    border-radius: var(--radius);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 button:hover {
-    background-color: #ffffff;
-    color: #000000;
-    border-color: #ffffff;
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
-    text-shadow: none;
+    background-color: var(--color-surface-alt);
+    color: var(--color-text);
+    border-color: var(--color-accent);
+}
+
+button:focus-visible {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.35);
 }
 
 button:active {
@@ -671,29 +731,50 @@ button:active {
 
 .button-outline {
     background-color: transparent;
-    color: #999999;
+    color: var(--color-muted);
 }
 
 .button-outline:hover {
-    background-color: #1a1a1a;
-    color: #ffffff;
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    border-color: var(--color-accent);
 }
 
-/* Destructive actions (delete/reset): reuse the same red used for
-   hotkey-clear and confirm-delete instead of the neutral hover above */
+/* The default action in a footer or modal - the only button carrying the accent
+   in its resting state, so exactly one per context stands out. Outlined at rest
+   and filled on hover, which keeps the amber fill as the moment of interaction
+   rather than a permanent block of color. Bold plus amber text is what separates
+   it from a hovered plain button, which also takes an accent border. Hover is
+   specific enough to beat button:hover even while disabled, which would
+   otherwise turn a greyed-out primary back to the neutral surface. */
+.button-primary {
+    background-color: transparent;
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    font-weight: 700;
+}
+
+.button-primary:hover {
+    background-color: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+    color: var(--color-accent-ink);
+}
+
+/* Destructive actions (delete/reset) get their own hue, distinct from
+   --color-error, so a validation problem never reads the same as a button
+   that permanently removes something. */
 .button-danger:hover {
-    background-color: #1a1a1a;
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-    box-shadow: 0 0 10px rgba(255, 68, 68, 0.4);
+    background-color: var(--color-surface);
+    color: var(--color-destructive);
+    border-color: var(--color-destructive);
 }
 
 /* Fixed footer */
 /* Profile Header */
 #profile-header {
     height: 44px;
-    background: #0f0f0f;
-    border-bottom: 1px solid #ffffff;
+    background: var(--color-panel);
+    border-bottom: 1px solid var(--color-border);
     padding: 8px 12px;
     display: flex;
     align-items: center;
@@ -720,7 +801,7 @@ button:active {
     gap: 6px;
     font-size: 13px;
     letter-spacing: 0.3px;
-    color: #999999;
+    color: var(--color-muted);
     transition: color 0.3s;
 }
 
@@ -738,8 +819,8 @@ button:active {
 
 #footer {
     height: 44px;
-    background: #1a1a1a;
-    border-top: 1px solid #ffffff;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
     padding: 8px 12px;
     display: flex;
     align-items: center;
@@ -767,34 +848,34 @@ button:active {
 }
 
 input.search-filter-input {
-    background: #1a1a1a;
-    color: #ffffff;
-    border: 1px solid #888888;
+    background: var(--color-surface);
+    color: var(--color-text);
+    border: 1px solid var(--color-border-strong);
     padding: 6px 32px 6px 8px;
     margin: 0;
     font-size: 13px;
-    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-family: var(--font-mono);
     height: 28px;
     width: 100%;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    transition: border-color var(--t-hover), box-shadow var(--t-hover);
     line-height: normal;
     box-sizing: border-box;
-    text-shadow: none;
+    border-radius: var(--radius);
 }
 
 .search-filter-input:focus {
     outline: none;
-    border-color: #ffffff;
-    box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+    border-color: var(--color-accent);
+    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.35);
 }
 
 .search-filter-input::placeholder {
-    color: #909090;
+    color: var(--color-muted);
 }
 
 .search-count {
     font-size: 13px;
-    color: #999999;
+    color: var(--color-muted);
     min-width: 60px;
     margin: 0;
 }
@@ -805,14 +886,14 @@ input.search-filter-input {
     top: 4px;
     background: transparent;
     border: none;
-    color: #999999;
+    color: var(--color-muted);
     padding: 0;
     width: 20px;
     height: 20px;
     cursor: pointer;
     font-size: 15px;
-    font-family: Arial, sans-serif;
-    transition: all 0.2s;
+    font-family: var(--font-mono);
+    transition: color var(--t-hover), background var(--t-hover);
     line-height: 20px;
     display: flex;
     align-items: center;
@@ -827,29 +908,33 @@ input.search-filter-input {
 }
 
 .button-clear:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
+    color: var(--color-text);
+    background: var(--color-surface-alt);
+    border-radius: var(--radius-sm);
 }
 
 .button-clear:active {
     transform: scale(0.9);
 }
 
+/* Square icon button. .hotkey-clear-btn is the original name for the same
+   thing; both current uses clear or delete, so the destructive hover lives
+   here rather than in a separate variant. */
+.button-icon,
 .hotkey-clear-btn {
     width: 28px;
     flex: none;
     padding: 0;
     font-size: 17px;
     line-height: 1;
-    color: #999999;
+    color: var(--color-muted);
 }
 
+.button-icon:hover,
 .hotkey-clear-btn:hover {
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-    background-color: #1a1a1a;
-    box-shadow: 0 0 10px rgba(255, 68, 68, 0.4);
+    color: var(--color-destructive);
+    border-color: var(--color-destructive);
+    background-color: var(--color-surface);
 }
 
 /* Manual key-name entry toggle: advanced-mode only, sits next to Record/Clear */
@@ -859,7 +944,7 @@ input.search-filter-input {
     padding: 0;
     font-size: 15px;
     line-height: 1;
-    color: #999999;
+    color: var(--color-muted);
     display: none;
 }
 
@@ -870,20 +955,19 @@ body.advanced-mode .hotkey-edit-btn {
 .hotkey-edit-btn:hover {
     color: var(--color-success);
     border-color: var(--color-success);
-    background-color: #1a1a1a;
-    box-shadow: 0 0 10px rgba(var(--color-success-rgb), 0.4);
+    background-color: var(--color-surface);
 }
 
 .hotkey-edit-btn.active {
-    color: #000000;
+    color: var(--color-bg);
     background-color: var(--color-success);
     border-color: var(--color-success);
 }
 
 input.manual-editing {
-    background-color: #1a2a1a;
+    background-color: #16211b;
     border-color: var(--color-success);
-    box-shadow: 0 0 10px rgba(var(--color-success-rgb), 0.4);
+    box-shadow: 0 0 8px rgba(var(--color-success-rgb), 0.35);
 }
 
 #footer-right {
@@ -897,11 +981,11 @@ input.manual-editing {
     align-items: center;
     gap: 4px;
     font-size: 13px;
-    color: var(--color-warning);
+    color: var(--color-accent);
     padding: 6px 8px;
-    border: 1px solid var(--color-warning);
-    border-radius: 2px;
-    background: rgba(var(--color-warning-rgb), 0.1);
+    border: 1px solid var(--color-accent);
+    border-radius: var(--radius-sm);
+    background: rgba(var(--color-accent-rgb), 0.1);
     height: 28px;
     box-sizing: border-box;
     animation: slideInFade 0.3s ease-in-out;
@@ -936,25 +1020,25 @@ input.manual-editing {
 }
 
 #profile-select {
-    background-color: #1a1a1a;
-    color: #ffffff;
-    border: 1px solid #888888;
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    border: 1px solid var(--color-border-strong);
     padding: 4px 8px;
     font-size: 13px;
     min-width: 130px;
-    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-family: var(--font-mono);
     height: 28px;
     line-height: normal;
     margin: 0;
     vertical-align: middle;
     box-sizing: border-box;
-    text-shadow: none;
+    border-radius: var(--radius);
 }
 
 #profile-select:focus {
-    border-color: #ffffff;
+    border-color: var(--color-accent);
     outline: none;
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.3);
 }
 
 /* Scrollbar */
@@ -963,49 +1047,72 @@ input.manual-editing {
 }
 
 ::-webkit-scrollbar-track {
-    background: #000000;
+    background: var(--color-bg);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #888888;
-    border: 1px solid #ffffff;
+    background: var(--color-border-strong);
+    border: 1px solid var(--color-border);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #ffffff;
+    background: var(--color-muted);
 }
 
 /* Section containers */
 .section {
-    background-color: #0f0f0f;
-    border: 1px solid #888888;
+    background-color: var(--color-panel);
+    border: 1px solid var(--color-border);
     padding: 8px;
+    /* Same 8px as the panel frame around the stack. Sections don't need a
+       wider gap to separate - they carry their own border and a background
+       distinct from the panel behind them. */
     margin-bottom: 8px;
+    border-radius: var(--radius);
     /* Leaves a gap above the section when jumped to via scrollIntoView, so its
        top border/glow isn't flush against #content-panel's edge. */
-    scroll-margin-top: 12px;
+    scroll-margin-top: 8px;
 }
 
-/* About sections' last child (p/ul/div/select/label) each carry their own
-   bottom margin - inline on most of them, so !important is needed to beat
-   that - which stacks on top of .section's own 8px padding and makes the
-   bottom gap bigger than the top. Zeroing it makes both sides match. */
-.panel-content[data-panel="about"] .section > *:last-child {
+/* A section's first and last child stack their own margins on top of
+   .section's 8px padding, so the top and bottom gaps end up wider than the
+   left and right. Zeroing them makes the padding read evenly on all four
+   sides. !important because many of these carry the margin inline. */
+.section > *:first-child {
+    margin-top: 0 !important;
+}
+
+.section > *:last-child {
     margin-bottom: 0 !important;
 }
 
-.panel-content[data-panel="about"] li::marker {
-    content: '» ';
-    color: #ffffff;
+/* Same absolute-glyph mechanism as h3/label rather than ::marker, whose box
+   sits outside the content edge and so can't be placed on the shared rail.
+   The indent lives on the li, so each grid column gets its own rail. */
+.panel-content[data-panel="about"] ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.panel-content[data-panel="about"] li {
+    position: relative;
+    padding-left: 20px;
+}
+
+.panel-content[data-panel="about"] li::before {
+    content: '›';
+    color: var(--color-muted);
+    position: absolute;
+    left: 2px;
 }
 
 a.external-link {
-    color: #ffffff;
+    color: var(--color-accent);
     text-decoration: underline;
 }
 
 a.external-link:hover {
-    text-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+    color: var(--color-text);
 }
 
 /* Advanced-only sections: hidden unless Advanced Mode is enabled */
@@ -1074,11 +1181,12 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     max-width: 540px;
     margin: 0 auto;
     aspect-ratio: 16 / 9;
-    background-color: #050505;
+    background-color: var(--color-bg);
     background-image: url('data:image/jpeg;base64,LAYOUT_PREVIEW_IMAGE_PLACEHOLDER');
     background-size: cover;
     background-position: center;
-    border: 1px solid #888888;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
     overflow: hidden;
 }
 
@@ -1088,14 +1196,15 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     left: 0;
     font-size: 11px;
     font-weight: 700;
-    color: #000000;
-    background-color: #ffffff;
-    border: 1px solid #888888;
+    color: var(--color-accent-ink);
+    background-color: var(--color-accent);
+    border: 1px solid var(--color-border-strong);
     padding: 5px 10px;
     white-space: nowrap;
     cursor: grab;
     touch-action: none;
     user-select: none;
+    border-radius: var(--radius);
 }
 
 .overlay-chip:focus-visible {
@@ -1105,7 +1214,7 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 
 .overlay-chip.dragging {
     cursor: grabbing;
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.7);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
     z-index: 2;
 }
 
@@ -1113,16 +1222,20 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     transition: left 0.15s ease-out, top 0.15s ease-out;
 }
 
+/* Same accent used for "auto-corrected to a boundary" everywhere else (see
+   input.field-clamped) rather than a one-off warning color. */
 .overlay-chip.clamped {
-    box-shadow: 0 0 8px rgba(var(--color-warning-rgb), 0.6);
+    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.6);
 }
 
-/* Offset resets to 0 while this glow shows - magnetically snapped to the anchor. */
+/* Offset resets to 0 while this glow shows - magnetically snapped to the
+   anchor. Shares the guides' success color so "aligned" reads as one signal. */
 .overlay-chip.snapped {
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 8px rgba(var(--color-success-rgb), 0.8);
 }
 
-/* Matches .swatch-wrap's cleared-color slash (see below) rather than dimming the chip. */
+/* Matches .swatch-wrap's cleared-color slash (see below) - both mark "this is
+   turned off", not a validation error, so they share --color-destructive. */
 .overlay-chip.dim::after {
     content: '';
     position: absolute;
@@ -1132,8 +1245,8 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     background: linear-gradient(
         to top right,
         transparent calc(50% - 1.5px),
-        var(--color-danger) calc(50% - 1.5px),
-        var(--color-danger) calc(50% + 1.5px),
+        var(--color-destructive) calc(50% - 1.5px),
+        var(--color-destructive) calc(50% + 1.5px),
         transparent calc(50% + 1.5px)
     );
 }
@@ -1163,11 +1276,12 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 .overlay-popover {
     position: fixed;
     z-index: 500;
-    background-color: #0f0f0f;
-    border: 1px solid #888888;
+    background-color: var(--color-panel);
+    border: 1px solid var(--color-border-strong);
     padding: 10px 12px;
     min-width: 220px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    border-radius: var(--radius);
 }
 
 .overlay-popover-header {
@@ -1176,17 +1290,25 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     align-items: center;
     margin-bottom: 8px;
     font-weight: 700;
+    color: var(--color-text);
 }
 
 .overlay-popover-header button {
     background: none;
     border: none;
-    color: #ffffff;
+    color: var(--color-muted);
     cursor: pointer;
     font-size: 16px;
     line-height: 1;
     padding: 0 4px;
     width: auto;
+    height: auto;
+}
+
+.overlay-popover-header button:hover {
+    background: none;
+    border-color: transparent;
+    color: var(--color-text);
 }
 
 #overlayPopoverBody {
@@ -1226,6 +1348,32 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     min-width: 0;
 }
 
+/* An input plus its adjacent buttons on one line. Controls inside shed the
+   stacked-form bottom margin because the row is the spacing unit, not each
+   field. Color swatches keep their fixed width instead of growing. */
+.field-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+/* The other two single-line control rows share the treatment - all three are
+   flex rows whose children would otherwise keep the stacked-form margin. */
+.field-row > input,
+.field-row > select,
+.field-row > button,
+.accordion-header-actions > button,
+.hkgroup-char-row > input,
+.hkgroup-char-row > button {
+    margin-bottom: 0;
+}
+
+.field-row > input:not([type="color"]),
+.field-row > select,
+.hkgroup-char-row > input {
+    flex: 1;
+}
+
 /* Grid for two-column key binding layouts */
 .key-bindings {
     display: grid;
@@ -1246,17 +1394,18 @@ input[type="color"] {
     width: 50px;
     padding: 3px;
     cursor: pointer;
-    border: 1px solid #888888;
-    background-color: #1a1a1a;
+    border: 1px solid var(--color-border-strong);
+    background-color: var(--color-surface);
     box-sizing: border-box;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    border-radius: var(--radius);
+    transition: border-color var(--t-hover) ease, box-shadow var(--t-hover) ease;
 }
 
 input[type="color"]:hover,
 input[type="color"]:focus {
     outline: none;
-    border-color: #ffffff;
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.4), inset 0 0 5px rgba(255, 255, 255, 0.1);
+    border-color: var(--color-accent);
+    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.35);
 }
 
 input[type="color"]::-webkit-color-swatch-wrapper {
@@ -1298,8 +1447,8 @@ input[type="color"]::-moz-color-swatch {
     background: linear-gradient(
         to top right,
         transparent calc(50% - 1px),
-        var(--color-danger) calc(50% - 1px),
-        var(--color-danger) calc(50% + 1px),
+        var(--color-destructive) calc(50% - 1px),
+        var(--color-destructive) calc(50% + 1px),
         transparent calc(50% + 1px)
     );
 }
@@ -1310,13 +1459,14 @@ input[type="color"]::-moz-color-swatch {
     position: fixed;
     z-index: 10000;
     display: none;
-    background: #0d0d0d;
-    border: 1px solid #888888;
-    box-shadow: 0 0 16px rgba(255, 255, 255, 0.25), 0 4px 20px rgba(0, 0, 0, 0.6);
+    background: var(--color-panel);
+    border: 1px solid var(--color-border-strong);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
     padding: 12px;
     width: 200px;
     box-sizing: border-box;
-    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-family: var(--font-mono);
+    border-radius: var(--radius);
 }
 
 #custom-color-picker.open {
@@ -1328,7 +1478,8 @@ input[type="color"]::-moz-color-swatch {
     width: 100%;
     height: 130px;
     cursor: crosshair;
-    border: 1px solid #444444;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
 }
 
 .cp-sv-white {
@@ -1364,7 +1515,8 @@ input[type="color"]::-moz-color-swatch {
     width: 100%;
     height: 10px;
     cursor: pointer;
-    border: 1px solid #444444;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
     background: linear-gradient(to right,
         #ff0000 0%, #ffff00 17%, #00ff00 33%,
         #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%);
@@ -1376,7 +1528,7 @@ input[type="color"]::-moz-color-swatch {
     width: 10px;
     height: 16px;
     background: #ffffff;
-    border: 1px solid #888888;
+    border: 1px solid var(--color-border-strong);
     box-sizing: border-box;
     transform: translate(-50%, -50%);
     pointer-events: none;
@@ -1390,28 +1542,28 @@ input[type="color"]::-moz-color-swatch {
 }
 
 .cp-hex-prefix {
-    color: #999999;
+    color: var(--color-muted);
     font-size: 13px;
 }
 
 .cp-hex-input {
     flex: 1;
-    background-color: #1a1a1a;
-    border: 1px solid #888888;
-    color: #ffffff;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text);
     padding: 4px 8px;
-    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-family: var(--font-mono);
     font-size: 13px;
     height: 26px;
     box-sizing: border-box;
     text-transform: uppercase;
-    text-shadow: none;
+    border-radius: var(--radius);
 }
 
 .cp-hex-input:focus {
     outline: none;
-    border-color: #ffffff;
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.4), inset 0 0 5px rgba(255, 255, 255, 0.1);
+    border-color: var(--color-accent);
+    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.35);
 }
 
 /* Shown only when the active swatch opts in via data-optional-color (reset to
@@ -1422,24 +1574,28 @@ input[type="color"]::-moz-color-swatch {
     margin-top: 10px;
     margin-bottom: 0;
     font-size: 13px;
-    color: #999999;
+    color: var(--color-muted);
 }
 
 .cp-clear-btn:hover {
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-    background-color: #1a1a1a;
-    box-shadow: 0 0 10px rgba(255, 68, 68, 0.4);
+    color: var(--color-destructive);
+    border-color: var(--color-destructive);
+    background-color: var(--color-surface);
 }
 
 /* Range slider styling */
 input[type="range"] {
     -webkit-appearance: none;
     appearance: none;
-    background: #1a1a1a;
+    /* Resets the border/padding inherited from the shared control rule above,
+       which would otherwise pack 1px of border and 4px of padding into a 6px
+       box. Track fill is --color-border so the groove still reads without one. */
+    border: none;
+    padding: 0;
+    background: var(--color-border);
     outline: none;
     height: 6px;
-    border-radius: 0;
+    border-radius: var(--radius);
 }
 
 input[type="range"]::-webkit-slider-thumb {
@@ -1447,25 +1603,36 @@ input[type="range"]::-webkit-slider-thumb {
     appearance: none;
     width: 16px;
     height: 16px;
-    background: #ffffff;
+    background: var(--color-accent);
     cursor: pointer;
-    border: 1px solid #888888;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 50%;
 }
 
 input[type="range"]::-moz-range-thumb {
     width: 16px;
     height: 16px;
-    background: #ffffff;
+    background: var(--color-accent);
     cursor: pointer;
-    border: 1px solid #888888;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 50%;
 }
 
 /* Character accordion styles */
 .accordion {
-    border: 1px solid #444;
-    margin-bottom: 6px;
-    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    /* Full-width left rail at the same 2px as .tab-item/.roster-row, so the
+       expanded state below only has to change its color - not its width,
+       which would shift the row. Not transparent: unlike those two, this
+       element has a border box to complete. */
+    border-left: 2px solid var(--color-border);
+    margin-bottom: 8px;
+    border-radius: var(--radius-lg);
     overflow: hidden;
+}
+
+.accordion.expanded {
+    border-left-color: var(--color-accent);
 }
 
 .accordion-header {
@@ -1473,13 +1640,19 @@ input[type="range"]::-moz-range-thumb {
     justify-content: space-between;
     align-items: center;
     padding: 8px;
-    background: #1a1a1a;
+    background: var(--color-surface);
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background var(--t-hover);
 }
 
 .accordion-header:hover {
-    background: #252525;
+    background: var(--color-surface-alt);
+}
+
+.accordion-header:focus-visible {
+    outline: none;
+    background: var(--color-surface-alt);
+    box-shadow: inset 0 0 8px rgba(var(--color-accent-rgb), 0.3);
 }
 
 .accordion-header button {
@@ -1497,8 +1670,8 @@ input[type="range"]::-moz-range-thumb {
     width: 32px;
     height: 32px;
     object-fit: cover;
-    border: 1px solid #999999;
-    background: #000000;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
     flex-shrink: 0;
 }
 
@@ -1510,27 +1683,44 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .accordion-hotkey-badge {
-    font-size: 12px;
-    color: #999999;
+    font-size: 11px;
+    color: var(--color-muted);
     letter-spacing: 0.3px;
     white-space: nowrap;
 }
 
 .accordion-count-badge {
-    font-size: 12px;
-    color: #999999;
+    font-size: 11px;
+    color: var(--color-muted);
     white-space: nowrap;
 }
 
+/* One › rotated on expand, rather than swapping between two unrelated arrow
+   glyphs - matches the single marker used for headings, labels and lists.
+   inline-block because transforms don't apply to inline elements. */
 .accordion-toggle {
-    font-family: monospace;
-    font-size: 17px;
-    color: #ffffff;
+    font-family: var(--font-mono);
+    font-size: 15px;
+    color: var(--color-muted);
     user-select: none;
+    display: inline-block;
+    transition: transform var(--t-hover);
 }
 
+.accordion-toggle::before {
+    content: '›';
+}
+
+.accordion.expanded .accordion-toggle {
+    transform: rotate(90deg);
+}
+
+/* Declared, not inherited: body's 14px + 700 would render this identically to
+   an h3, so a row inside a section would match the section's own heading.
+   13px matches .roster-name - same concept, same size. */
 .accordion-name {
-    font-weight: bold;
+    font-size: 13px;
+    font-weight: 700;
 }
 
 .accordion-content {
@@ -1542,18 +1732,11 @@ input[type="range"]::-moz-range-thumb {
     display: block;
 }
 
-.accordion.expanded .accordion-toggle::before {
-    content: '↓';
-}
-
-.accordion:not(.expanded) .accordion-toggle::before {
-    content: '→';
-}
 
 /* Drag-to-reorder handle */
 .character-drag-handle {
     cursor: grab;
-    color: #999999;
+    color: var(--color-muted);
     font-size: 15px;
     padding: 0 2px;
     -webkit-user-drag: element;
@@ -1561,7 +1744,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .character-drag-handle:hover {
-    color: #ffffff;
+    color: var(--color-text);
 }
 
 .character-drag-handle:active {
@@ -1573,11 +1756,11 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .accordion.drag-over-top {
-    border-top: 2px solid #ffffff;
+    box-shadow: inset 0 2px 0 var(--color-accent);
 }
 
 .accordion.drag-over-bottom {
-    border-bottom: 2px solid #ffffff;
+    box-shadow: inset 0 -2px 0 var(--color-accent);
 }
 
 /* Character panel: roster + single-panel detail, instead of an accordion list.
@@ -1623,18 +1806,19 @@ input[type="range"]::-moz-range-thumb {
     width: 190px;
     flex-shrink: 0;
     overflow-y: auto;
-    border: 1px solid #444444;
-    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
 }
 
 .roster-row {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 8px;
-    border-bottom: 1px solid #2a2a2a;
+    padding: 6px 8px 6px 6px;
+    border-bottom: 1px solid var(--color-border-faint);
+    border-left: 2px solid transparent;
     cursor: pointer;
-    color: #aaaaaa;
+    color: var(--color-muted);
 }
 
 .roster-row:last-child {
@@ -1642,17 +1826,27 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .roster-row:hover {
-    background: #1a1a1a;
-    color: #ffffff;
+    background: var(--color-surface);
+    color: var(--color-text);
 }
 
 .roster-row.selected {
-    background: #1a1a1a;
-    color: #ffffff;
+    background: var(--color-surface);
+    color: var(--color-text);
+    border-left-color: var(--color-accent);
 }
 
 .roster-row.selected .roster-name {
-    font-weight: bold;
+    font-weight: 700;
+}
+
+/* Same inset amber as .tab-item and .accordion-header - these rows are the
+   third div-acting-as-a-control in the dialog and should focus alike. */
+.roster-row:focus-visible {
+    outline: none;
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: inset 0 0 8px rgba(var(--color-accent-rgb), 0.3);
 }
 
 .roster-row .character-portrait {
@@ -1670,7 +1864,7 @@ input[type="range"]::-moz-range-thumb {
 
 .roster-hotkey-badge {
     font-size: 11px;
-    color: #999999;
+    color: var(--color-muted);
     white-space: nowrap;
 }
 
@@ -1680,7 +1874,7 @@ input[type="range"]::-moz-range-thumb {
 
 .roster-row.roster-row-empty:hover {
     background: none;
-    color: #aaaaaa;
+    color: var(--color-muted);
 }
 
 .roster-row.dragging {
@@ -1688,24 +1882,20 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .roster-row.drag-over-top {
-    border-top: 2px solid #ffffff;
+    box-shadow: inset 0 2px 0 var(--color-accent);
 }
 
 .roster-row.drag-over-bottom {
-    border-bottom: 2px solid #ffffff;
+    box-shadow: inset 0 -2px 0 var(--color-accent);
 }
 
 .character-detail-stack {
     flex: 1;
     min-width: 0;
     overflow-y: auto;
-    border: 1px solid #444444;
-    border-radius: 4px;
-    padding: 10px;
-}
-
-.character-detail-stack-empty {
-    padding: 6px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 8px;
 }
 
 .char-detail-panel {
@@ -1722,14 +1912,93 @@ input[type="range"]::-moz-range-thumb {
     align-items: center;
     gap: 8px;
     padding-bottom: 8px;
-    margin-bottom: 10px;
-    border-bottom: 1px solid #888888;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--color-border);
 }
 
 .char-detail-name {
     flex: 1;
-    font-weight: bold;
+    font-weight: 700;
     font-size: 15px;
+}
+
+/* Label-left / control-right on a single rail - the same display:contents grid
+   #overlayPopoverBody uses. Replaces stacked labels plus a heading band per
+   group, which in a ~600px panel meant six horizontal rules and left 50px
+   swatches adrift in 190px columns. */
+.detail-form {
+    display: grid;
+    grid-template-columns: auto minmax(140px, 1fr);
+    align-items: center;
+    gap: 8px 12px;
+}
+
+/* Lets each label/control pair become direct grid items, so every label lands
+   in the same column instead of each pair forming its own two-column grid. */
+.detail-field {
+    display: contents;
+}
+
+/* Rail labels only - nested checkbox labels sit inside .detail-checks and keep
+   their own treatment. The grid gap is the spacing, and there's no rail to
+   join inside a cell, so the glyph and its gutter come off. */
+.detail-field > label {
+    margin: 0;
+    padding-left: 0;
+    white-space: nowrap;
+}
+
+.detail-field > label::before {
+    content: none;
+}
+
+.detail-form input,
+.detail-form select {
+    margin-bottom: 0;
+}
+
+/* Rows whose control side runs taller than one line: the label sits on the
+   first line rather than floating at the middle of the stack. No top offset -
+   the control side here starts with a checkbox, whose text shares the label's
+   13px line box, so both align at the top of the row already. */
+.detail-field-top > label {
+    align-self: start;
+}
+
+.detail-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.detail-checks label {
+    margin: 0;
+}
+
+/* Button labels here run long ("Save Current Position"), and .field-row is
+   nowrap with shrinkable children - side by side they squash and wrap their
+   own text. Wrapping the row keeps each button at its natural width. */
+.detail-actions {
+    flex-wrap: wrap;
+}
+
+.detail-actions > button {
+    flex: none;
+}
+
+.detail-value {
+    color: var(--color-text);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Width and height read as one control rather than two unrelated fields. */
+.detail-size {
+    max-width: 220px;
+}
+
+.detail-size-x {
+    color: var(--color-muted);
+    flex: none;
 }
 
 /* Hotkey group character list (drag-to-reorder rows) */
@@ -1744,24 +2013,24 @@ input[type="range"]::-moz-range-thumb {
     align-items: center;
     gap: 8px;
     padding: 3px 6px;
-    border: 1px solid #444;
-    border-radius: 4px;
-    background: #1a1a1a;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
 }
 
 .drag-index-chip {
     font-size: 12px;
     min-width: 16px;
     text-align: center;
-    background: #2a2a2a;
-    border: 1px solid #444;
-    border-radius: 3px;
+    background: var(--color-surface-alt);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
     padding: 1px 2px;
 }
 
 .drag-index-chip:hover {
-    background: #383838;
-    border-color: #666;
+    background: var(--color-surface-alt);
+    border-color: var(--color-border-strong);
 }
 
 .hkgroup-char-row.dragging {
@@ -1769,22 +2038,22 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .hkgroup-char-row.drag-over-top {
-    border-top: 2px solid #ffffff;
+    box-shadow: inset 0 2px 0 var(--color-accent);
 }
 
 .hkgroup-char-row.drag-over-bottom {
-    border-bottom: 2px solid #ffffff;
+    box-shadow: inset 0 -2px 0 var(--color-accent);
 }
 
 /* Character remove button confirmation state */
 button.confirm-delete {
-    background: var(--color-danger-fill) !important;
+    background: var(--color-destructive-fill) !important;
     color: #ffffff !important;
-    border-color: var(--color-danger-fill-hover) !important;
+    border-color: var(--color-destructive-fill-hover) !important;
 }
 
 button.confirm-delete:hover {
-    background: var(--color-danger-fill-hover) !important;
+    background: var(--color-destructive-fill-hover) !important;
     color: #ffffff !important;
 }
 
@@ -1809,13 +2078,13 @@ button.confirm-delete:hover {
 }
 
 .modal-content {
-    background: #1a1a1a;
-    border: 1px solid #ffffff;
+    background: var(--color-panel);
+    border: 1px solid var(--color-border-strong);
     padding: 16px;
     width: 380px;
     max-width: 90%;
-    border-radius: 4px;
-    box-shadow: 0 0 20px rgba(255, 255, 255, 0.3), inset 0 0 100px rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
     animation: slideIn 0.2s ease-out;
     position: relative;
 }
@@ -1827,73 +2096,29 @@ button.confirm-delete:hover {
     text-align: left;
 }
 
-.modal-content::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: repeating-linear-gradient(
-        0deg,
-        rgba(0, 0, 0, 0.08) 0px,
-        rgba(0, 0, 0, 0.08) 1px,
-        transparent 1px,
-        transparent 2px
-    );
-    pointer-events: none;
-    z-index: 1;
-    border-radius: 4px;
-}
-
 .modal-content h3 {
     margin: 0 0 12px 0;
     padding-bottom: 6px;
-    border-bottom: 1px solid #ffffff;
+    border-bottom: 1px solid var(--color-border);
     font-size: 15px;
     font-weight: 400;
     letter-spacing: 1px;
     position: relative;
-    z-index: 2;
 }
 
 .modal-content input[type="text"] {
     width: 100%;
     margin-bottom: 12px;
-    position: relative;
-    z-index: 2;
 }
 
 .modal-buttons {
     display: flex;
     gap: 8px;
     justify-content: flex-end;
-    position: relative;
-    z-index: 2;
 }
 
 .modal-buttons button {
     min-width: 80px;
-    position: relative;
-    overflow: hidden;
-}
-
-.modal-buttons button::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: repeating-linear-gradient(
-        0deg,
-        rgba(0, 0, 0, 0.08) 0px,
-        rgba(0, 0, 0, 0.08) 1px,
-        transparent 1px,
-        transparent 2px
-    );
-    pointer-events: none;
-    z-index: 1;
 }
 
 @keyframes slideIn {
