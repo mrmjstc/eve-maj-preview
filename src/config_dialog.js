@@ -4614,6 +4614,11 @@ function addSystemColor() {
     markAsChanged();
     populateSystemColors();
     scheduleThumbnailPreview();
+
+    const newIndex = currentConfig.systemColors.length - 1;
+    setTimeout(() => {
+        document.getElementById(`systemColor_${newIndex}_name`)?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
+    }, 100);
 }
 
 function removeSystemColor(index) {
