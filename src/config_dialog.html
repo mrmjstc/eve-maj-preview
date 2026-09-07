@@ -19,14 +19,16 @@
     <div id="window-container">
         <div id="profile-header">
             <div id="profile-header-left">
+                <span id="app-brand"><span id="app-brand-mark">›</span>EVE-Maj Preview</span>
+                <span id="profile-header-sep"></span>
                 <select id="profile-select" onchange="switchProfile()">
                     <option value="default.json" data-i18n="common.defaultProfileLabel">default</option>
                 </select>
-                <button onclick="createNewProfile()" title="Create New Profile" data-i18n-title="button.create-new-profile.title" data-i18n="button.create-new-profile.label">New</button>
-                <button onclick="copyCurrentProfile()" title="Copy Current Profile" data-i18n-title="button.copy-current-profile.title" data-i18n="button.copy-current-profile.label">Copy</button>
-                <button id="delete-profile-btn" class="button-danger" onclick="deleteCurrentProfile()" title="Delete Current Profile" data-i18n-title="button.delete-profile-btn.title" data-i18n="button.delete-profile-btn.label">Delete</button>
-                <button id="reset-profile-btn" class="button-danger" onclick="resetCurrentProfile()" title="Reset Current Profile to Defaults" data-i18n-title="button.reset-profile-btn.title" data-i18n="button.reset-profile-btn.label">Reset</button>
-                <button onclick="openImportModal()" title="Import settings from an old EVE-X Preview, EVE-O Preview, or EVE-APM Preview settings file, or from another EVE-Maj Preview profile" data-i18n-title="button.open-import-modal.title" data-i18n="common.import">Import</button>
+                <button class="button-icon button-icon-add" onclick="createNewProfile()" title="Create New Profile" data-i18n-title="button.create-new-profile.title">+</button>
+                <button class="button-icon" onclick="copyCurrentProfile()" title="Copy Current Profile" data-i18n-title="button.copy-current-profile.title">⧉</button>
+                <button id="delete-profile-btn" class="button-icon button-icon-danger" onclick="deleteCurrentProfile()" title="Delete Current Profile" data-i18n-title="button.delete-profile-btn.title">&times;</button>
+                <button id="reset-profile-btn" class="button-icon button-icon-reset" onclick="resetCurrentProfile()" title="Reset Current Profile to Defaults" data-i18n-title="button.reset-profile-btn.title">↺</button>
+                <button class="button-icon button-icon-import" onclick="openImportModal()" title="Import settings from an old EVE-X Preview, EVE-O Preview, or EVE-APM Preview settings file, or from another EVE-Maj Preview profile" data-i18n-title="button.open-import-modal.title">⇩</button>
             </div>
             <div id="profile-header-right">
                 <span id="main-app-status" class="main-app-status status-offline" title="Whether the EVE-Maj Preview main app process is currently running" data-i18n-title="misc.main-app-status.title">
@@ -38,46 +40,46 @@
         <div id="main-content">
             <div id="tabs-sidebar" role="tablist" aria-orientation="vertical">
                 <div class="tab-item active" data-tab="about">
-                    <span data-i18n="tab.about.title">about</span>
+                    <span class="tab-glyph" aria-hidden="true">i</span><span data-i18n="tab.about.title">about</span>
                 </div>
                 <div class="tab-item advanced-tab" data-tab="general">
-                    <span data-i18n="tab.general.title">general</span>
+                    <span class="tab-glyph" aria-hidden="true">⚙</span><span data-i18n="tab.general.title">general</span>
                 </div>
                 <div class="tab-item" data-tab="thumbnails">
-                    <span data-i18n="tab.thumbnails.title">thumbnails</span>
+                    <span class="tab-glyph" aria-hidden="true">▭</span><span data-i18n="tab.thumbnails.title">thumbnails</span>
                 </div>
                 <div class="tab-item" data-tab="characters">
-                    <span data-i18n="tab.characters.title">characters</span>
+                    <span class="tab-glyph" aria-hidden="true">☰</span><span data-i18n="tab.characters.title">characters</span>
                 </div>
                 <div class="tab-item" data-tab="behavior">
-                    <span data-i18n="tab.behavior.title">behavior</span>
+                    <span class="tab-glyph" aria-hidden="true">⌘</span><span data-i18n="tab.behavior.title">behavior</span>
                 </div>
                 <div class="tab-item" data-tab="hotkeys">
-                    <span data-i18n="tab.hotkeys.title">hotkeys</span>
+                    <span class="tab-glyph" aria-hidden="true">⌨</span><span data-i18n="tab.hotkeys.title">hotkeys</span>
                 </div>
                 <div class="tab-item" data-tab="hotkey-groups">
-                    <span data-i18n="tab.hotkey-groups.title">hotkey groups</span>
+                    <span class="tab-glyph" aria-hidden="true">◫</span><span data-i18n="tab.hotkey-groups.title">hotkey groups</span>
                 </div>
                 <div class="tab-item" data-tab="chatlog">
-                    <span data-i18n="tab.chatlog.title">log monitoring</span>
+                    <span class="tab-glyph" aria-hidden="true">≡</span><span data-i18n="tab.chatlog.title">log monitoring</span>
                 </div>
                 <div class="tab-item" data-tab="notifications">
-                    <span data-i18n="tab.notifications.title">notifications</span>
+                    <span class="tab-glyph" aria-hidden="true">♪</span><span data-i18n="tab.notifications.title">notifications</span>
                 </div>
                 <div class="tab-item advanced-tab" data-tab="combat">
-                    <span data-i18n="tab.combat.title">combat overlay</span>
+                    <span class="tab-glyph" aria-hidden="true">⚔</span><span data-i18n="tab.combat.title">combat overlay</span>
                 </div>
                 <div class="tab-item advanced-tab" data-tab="mining">
-                    <span data-i18n="tab.mining.title">mining overlay</span>
+                    <span class="tab-glyph" aria-hidden="true">◆</span><span data-i18n="tab.mining.title">mining overlay</span>
                 </div>
                 <div class="tab-item advanced-tab" data-tab="bounty">
-                    <span data-i18n="tab.bounty.title">bounty overlay</span>
+                    <span class="tab-glyph" aria-hidden="true">$</span><span data-i18n="tab.bounty.title">bounty overlay</span>
                 </div>
                 <div class="tab-item advanced-tab" data-tab="resources">
-                    <span data-i18n="tab.resources.title">resource overlay</span>
+                    <span class="tab-glyph" aria-hidden="true">▤</span><span data-i18n="tab.resources.title">resource overlay</span>
                 </div>
                 <div class="tab-item" data-tab="advanced" style="display: none;">
-                    <span data-i18n="tab.advanced.title">advanced</span>
+                    <span class="tab-glyph" aria-hidden="true">▼</span><span data-i18n="tab.advanced.title">advanced</span>
                 </div>
             </div>
 
@@ -805,7 +807,7 @@
                             <h3 data-i18n="tab.behavior.section.interaction.heading">Interaction</h3>
                             <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
                         </div>
-                        <p class="hint" data-i18n="tab.behavior.section.interaction.hint">Mouse behavior for repositioning and activating thumbnails.</p>
+                        <p class="hint" data-i18n="tab.behavior.section.interaction.hint">Mouse behavior for repositioning and activating thumbnails, including when to activate the EVE client window on left-click.</p>
 
                         <label>
                             <input type="checkbox" id="enableDragging">
@@ -816,7 +818,6 @@
                             <option value="MouseDown" data-i18n="field.clickTrigger.option.mousedown">Mouse Down (Instant)</option>
                             <option value="MouseUp" data-i18n="field.clickTrigger.option.mouseup">Mouse Up (On Release)</option>
                         </select>
-                        <p class="hint" data-i18n="field.clickTrigger.hint">When to activate EVE client window on left-click</p>
                     </div>
 
                     <div class="section">
@@ -880,7 +881,6 @@
                                 <option value="CircleSlash" data-i18n="common.exclusionOverlayStyle.circleSlash">Circle Slash</option>
                                 <option value="None" data-i18n="common.exclusionOverlayStyle.none">None</option>
                             </select>
-                            <p class="hint" data-i18n="field.exclusionOverlayStyle.hint">Visual shown on a thumbnail while its character is excluded from hotkey cycling</p>
 
                             <label for="exclusionOverlayOpacity"><span data-i18n="field.exclusionOverlayOpacity.label">Overlay Opacity: </span><span id="exclusionOverlayOpacityValue">20</span>%</label>
                             <input type="range" id="exclusionOverlayOpacity" min="0" max="100" value="20" data-value-target="exclusionOverlayOpacityValue">
@@ -1052,7 +1052,7 @@
                         <div class="button-row">
                             <button type="button" onclick="addUrlHotkey()" data-i18n="button.add-url-hotkey.label">+ Add URL Hotkey</button>
                             <button type="button" onclick="addUrlHotkey('https://evemaps.dotlan.net/')" data-i18n="button.add-dotlan-hotkey.label">+ Dotlan</button>
-                            <button type="button" onclick="addUrlHotkey('https://adashboard.info/intel')" data-i18n="button.add-adashboard-hotkey.label">+ aDashboard Intel</button>
+                            <button type="button" style="text-transform: none;" onclick="addUrlHotkey('https://adashboard.info/intel')" data-i18n="button.add-adashboard-hotkey.label">+ aDashboard Intel</button>
                         </div>
                     </div>
                 </div>

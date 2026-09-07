@@ -1312,6 +1312,7 @@ function populateFormFields() {
     toggleWindowFilters();
 
     populateSystemColors();
+    ensureBlankRosterEntries();
     populateCharacters();
     populateHotkeyGroups();
     populateNotificationTypes();
@@ -3344,7 +3345,7 @@ function deleteCurrentProfile() {
             logError('Failed to delete profile:', error);
             showStatus(t('status.deleteProfileFailedPrefix') + error.message, 'error');
         }
-    });
+    }, '✓');
 }
 
 function resetCurrentProfile() {
@@ -3375,7 +3376,7 @@ function resetCurrentProfile() {
             logError('Failed to reset profile:', error);
             showStatus(t('status.resetProfileFailedPrefix') + error.message, 'error');
         }
-    });
+    }, '✓');
 }
 
 let isSavingConfig = false;
@@ -4886,6 +4887,35 @@ function updateCharacterHeaderPortrait(index) {
     applyCharacterPortrait(document.getElementById(`char_${index}_portrait`), document.getElementById(`char_${index}_name`)?.value);
 }
 
+// So a freshly loaded profile opens straight into an editable row instead of an empty-roster placeholder.
+function ensureBlankRosterEntries() {
+    if (!currentConfig) return;
+
+    if (!currentConfig.characters || currentConfig.characters.length === 0) {
+        currentConfig.characters = [{
+            name: '',
+            position: null,
+            borderColors: null,
+            thumbnailSize: null,
+            displayName: null,
+            hotkey: null
+        }];
+    }
+
+    if (!currentConfig.hotkeyGroups || currentConfig.hotkeyGroups.length === 0) {
+        currentConfig.hotkeyGroups = [{
+            name: '',
+            forwardKey: '',
+            backwardKey: null,
+            assignKey: null,
+            temporaryMembership: false,
+            showBadge: false,
+            includeNotLoggedIn: false,
+            characters: []
+        }];
+    }
+}
+
 function populateCharacters() {
     const container = document.getElementById('charactersList');
     if (!container) return;
@@ -5438,7 +5468,7 @@ function confirmRemove(buttonId, removeCallback, confirmText = 'Confirm') {
 // itself, since these buttons are routinely created while their tab or detail panel is
 // display:none (getBoundingClientRect would read zero) - a clone appended straight to <body>
 // keeps the original's classes and font but sidesteps that hidden ancestor entirely.
-const CONFIRM_BUTTON_SELECTOR = '[id$="_removeBtn"], #delete-profile-btn, #reset-profile-btn, #clearAllWindowPositionsBtn';
+const CONFIRM_BUTTON_SELECTOR = '[id$="_removeBtn"], #clearAllWindowPositionsBtn';
 
 function reserveConfirmButtonWidth(btn) {
     if (!btn || btn.dataset.confirmWidthReserved) return;
