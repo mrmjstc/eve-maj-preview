@@ -100,7 +100,7 @@
   "dynamic.character.borderColorsHeading": "Цвета",
   "dynamic.character.clearWindowPositionButton": "Удалить позицию",
   "dynamic.character.defaultNamePrefix": "Персонаж",
-  "dynamic.character.displayNameLabel": "Отображаемое имя (необязательно)",
+  "dynamic.character.displayNameLabel": "Отображаемое имя",
   "dynamic.character.displayNamePlaceholder": "Оставьте пустым, чтобы использовать имя персонажа",
   "dynamic.character.excludeAutoMoveLabel": "Исключить из автоперемещения на сохранённую позицию",
   "dynamic.character.excludeCloseAllLabel": "Исключить из \"Закрыть все\"",

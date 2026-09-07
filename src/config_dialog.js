@@ -4944,12 +4944,13 @@ function populateCharacters() {
     if (selectedCharacterIndex < 0) selectedCharacterIndex = 0;
 
     const rosterRows = chars.map((char, index) => {
+        // Portraits hidden for now - see .character-portrait usage below.
         const portraitUrl = characterPortraitUrl(char.name);
         const hotkeyDisplay = char.hotkey ? vkHexToFriendly(char.hotkey) : '';
         return `
             <div class="roster-row ${index === selectedCharacterIndex ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${index === selectedCharacterIndex}" data-index="${index}" onclick="selectCharacter(${index})">
                 <span class="drag-index-chip character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(index + 1).padStart(2, '0')}</span>
-                <img class="character-portrait" id="char_${index}_portrait" src="${portraitUrl || ''}" alt="" draggable="false" style="${portraitUrl ? '' : 'display:none'}" onerror="this.style.display='none'">
+                <!-- <img class="character-portrait" id="char_${index}_portrait" src="${portraitUrl || ''}" alt="" draggable="false" style="${portraitUrl ? '' : 'display:none'}" onerror="this.style.display='none'"> -->
                 <span class="roster-name" id="char_${index}_header_name">${char.name || t('dynamic.character.defaultNamePrefix') + ' ' + (index + 1)}</span>
                 <span class="roster-hotkey-badge" id="char_${index}_hotkeyBadge" style="${hotkeyDisplay ? '' : 'display:none'}">[${hotkeyDisplay}]</span>
             </div>
@@ -4987,22 +4988,27 @@ function populateCharacters() {
                         <span id="char_${index}_opacityValue">${char.opacity != null ? opacityToPercent(char.opacity) : opacityToPercent(currentConfig.thumbnail.thumbnailOpacity)}</span>%
                     </div>
                 </div>
-                <div class="detail-field">
-                    <label for="char_${index}_activeColor">${t('dynamic.character.activeBorderColorLabel')}</label>
-                    <div class="swatch-wrap">
-                        <input type="color" id="char_${index}_activeColor" data-optional-color="true" ${!char.borderColors?.activeBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.activeBorderColor) || '#FFFF00'}">
-                    </div>
-                </div>
-                <div class="detail-field">
-                    <label for="char_${index}_inactiveColor">${t('dynamic.character.inactiveBorderColorLabel')}</label>
-                    <div class="swatch-wrap">
-                        <input type="color" id="char_${index}_inactiveColor" data-optional-color="true" ${!char.borderColors?.inactiveBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.inactiveBorderColor) || '#606060'}">
-                    </div>
-                </div>
-                <div class="detail-field">
-                    <label for="char_${index}_nameColor">${t('field.characterNameColor.label')}</label>
-                    <div class="swatch-wrap">
-                        <input type="color" id="char_${index}_nameColor" data-optional-color="true" ${!char.nameColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.nameColor)}">
+                <div class="detail-field detail-field-top">
+                    <label>${t('dynamic.character.borderColorsHeading')}</label>
+                    <div class="detail-checks detail-color-rows">
+                        <div class="color-row">
+                            <span class="label-body">${t('dynamic.character.activeBorderColorLabel')}</span>
+                            <div class="swatch-wrap">
+                                <input type="color" id="char_${index}_activeColor" data-optional-color="true" ${!char.borderColors?.activeBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.activeBorderColor) || '#FFFF00'}">
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <span class="label-body">${t('dynamic.character.inactiveBorderColorLabel')}</span>
+                            <div class="swatch-wrap">
+                                <input type="color" id="char_${index}_inactiveColor" data-optional-color="true" ${!char.borderColors?.inactiveBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.inactiveBorderColor) || '#606060'}">
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <span class="label-body">${t('field.characterNameColor.label')}</span>
+                            <div class="swatch-wrap">
+                                <input type="color" id="char_${index}_nameColor" data-optional-color="true" ${!char.nameColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.nameColor)}">
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="detail-field detail-field-top">

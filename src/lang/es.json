@@ -100,7 +100,7 @@
   "dynamic.character.borderColorsHeading": "Colores",
   "dynamic.character.clearWindowPositionButton": "Eliminar posición",
   "dynamic.character.defaultNamePrefix": "Personaje",
-  "dynamic.character.displayNameLabel": "Nombre para mostrar (opcional)",
+  "dynamic.character.displayNameLabel": "Nombre para mostrar",
   "dynamic.character.displayNamePlaceholder": "Dejar vacío para usar el nombre del personaje",
   "dynamic.character.excludeAutoMoveLabel": "Excluir de Mover automáticamente a la posición guardada",
   "dynamic.character.excludeCloseAllLabel": "Excluir de Cerrar todo",
