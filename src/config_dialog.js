@@ -80,6 +80,7 @@ function refreshDynamicSections() {
     populateAppHotkeys();
     populateUrlHotkeys();
     populateOreTable();
+    renderHotkeyBindings();
 }
 
 window.addEventListener('error', (event) => {
@@ -963,6 +964,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     console.log('Config dialog initialized');
 
     applyTranslations();
+    renderHotkeyBindings();
     populateLanguageSelect();
     populateSharedSelectOptions();
     setupChangeDetection();
@@ -1077,6 +1079,7 @@ function switchTab(panelId) {
         alignHotkeyGroupNameLabel();
         fitHotkeyGroupCharsList(selectedHotkeyGroupIndex);
     }
+    if (panelId === 'hotkeys') alignBindingLabelColumns();
 
     setActiveSection(null);
 }
@@ -3554,10 +3557,164 @@ function vkHexToFriendly(str) {
     return converted.join('+');
 }
 
-function renderHotkeyInputHtml(fieldId, value, placeholder) {
-    return `<input type="text" id="${fieldId}" class="hotkey-input" value="${value}" placeholder="${t('common.hotkeyClickToBind')}" title="${placeholder}" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('${fieldId}')" readonly>
+// The .keycap-render span draws the bound combo as key caps over the input, which keeps its own text transparent;
+// refreshHotkeyKeycaps() fills it, and CSS uncovers the raw input again while it's recording or being typed into.
+function renderHotkeyInputHtml(fieldId, value, placeholder, extraAttributes = '') {
+    return `<span class="keycap-field"><input type="text" id="${fieldId}" class="hotkey-input" value="${value}" placeholder="${t('common.hotkeyClickToBind')}" title="${placeholder}"${extraAttributes} onclick="if (!this.classList.contains('manual-editing')) recordHotkey('${fieldId}')" readonly><span class="keycap-render" aria-hidden="true"></span></span>
 <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('${fieldId}')" title="${t('common.hotkeyClear')}">×</button>
 <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('${fieldId}')" title="${t('common.hotkeyTypeDirectly')}">✎</button>`;
+}
+
+// "Ctrl+Shift+N" reads as three caps rather than one run of text. A trailing "+" is the plus key itself, not a separator.
+function splitHotkeyCombo(value) {
+    const trailingPlus = value.endsWith('+') && value.length > 1;
+    const parts = (trailingPlus ? value.slice(0, -1) : value).split('+').filter(part => part.length > 0);
+    if (trailingPlus) parts.push('+');
+    return parts;
+}
+
+const HOTKEY_MODIFIERS = new Set(['CTRL', 'ALT', 'SHIFT', 'WIN', 'LWIN', 'RWIN']);
+
+// Piggybacks on updateHotkeyConflictHighlights() the way refreshCharacterHotkeyBadges() does - it already runs after
+// every finalized hotkey change, so there's no separate set of call sites to keep in step.
+function refreshHotkeyKeycaps() {
+    getAllHotkeyInputs().forEach(input => {
+        const render = input.parentElement?.querySelector('.keycap-render');
+        if (!render) return;
+
+        const value = input.value.trim();
+        const bound = value.length > 0 && value !== 'Press keys...' && value !== 'Waiting for input...';
+
+        render.innerHTML = bound
+            ? splitHotkeyCombo(value)
+                .map(part => `<kbd class="keycap${HOTKEY_MODIFIERS.has(part.toUpperCase()) ? ' keycap-modifier' : ''}">${escapeHtml(part)}</kbd>`)
+                .join('<span class="keycap-plus">+</span>')
+            : '';
+    });
+}
+
+
+// Every fixed binding on the Hotkeys tab, in the order it appears, rendered by renderHotkeyBindings() into the
+// containers the panel declares. A row's markup lives in one place, and a new binding is one entry rather than
+// eight lines of hand-copied HTML. `pair` puts a backward/forward set on one row instead of two near-identical ones.
+const HOTKEY_BINDINGS = [
+    {
+        containerId: 'windowActionBindings',
+        rows: [
+            { id: 'hotkeyMinimizeAll', labelKey: 'field.hotkeyMinimizeAll.label', exampleKey: 'field.hotkeyMinimizeAll.placeholder' },
+            { id: 'hotkeyCloseAll', labelKey: 'field.hotkeyCloseAll.label', exampleKey: 'field.hotkeyCloseAll.placeholder' },
+            { id: 'hotkeyToggleVisibility', labelKey: 'field.hotkeyToggleVisibility.label', exampleKey: 'field.hotkeyToggleVisibility.placeholder' },
+            { id: 'hotkeyToggleAutoMinimize', labelKey: 'field.hotkeyToggleAutoMinimize.label', exampleKey: 'field.hotkeyToggleAutoMinimize.placeholder' },
+            { id: 'hotkeyMoveToSavedPositions', labelKey: 'field.hotkeyMoveToSavedPositions.label', exampleKey: 'field.hotkeyMoveToSavedPositions.placeholder' },
+        ],
+    },
+    {
+        containerId: 'cyclingBindings',
+        rows: [
+            { labelKey: 'field.pair.excludedCharacters.label', pair: [
+                { id: 'hotkeyPreviousExcluded', exampleKey: 'common.hotkeyExampleOpenBracket' },
+                { id: 'hotkeyNextExcluded', exampleKey: 'common.hotkeyExampleCloseBracket' },
+            ] },
+            { labelKey: 'field.pair.notifiedCharacters.label', pair: [
+                { id: 'hotkeyPreviousNotified', exampleKey: 'field.hotkeyPreviousNotified.placeholder' },
+                { id: 'hotkeyCycleNotified', exampleKey: 'field.hotkeyCycleNotified.placeholder' },
+            ] },
+            { id: 'hotkeyToggleExclusion', labelKey: 'field.hotkeyToggleExclusion.label', exampleKey: 'field.hotkeyToggleExclusion.placeholder' },
+        ],
+    },
+    {
+        containerId: 'suspendBindings',
+        rows: [
+            { id: 'hotkeySuspend', labelKey: 'field.hotkeySuspend.label', exampleKey: 'field.hotkeySuspend.placeholder' },
+        ],
+    },
+    {
+        containerId: 'profileBindings',
+        rows: [
+            { labelKey: 'field.pair.profile.label', pair: [
+                { id: 'hotkeyPreviousProfile', exampleKey: 'field.hotkeyPreviousProfile.placeholder' },
+                { id: 'hotkeyNextProfile', exampleKey: 'field.hotkeyNextProfile.placeholder' },
+            ] },
+        ],
+    },
+    {
+        containerId: 'clientBindings',
+        rows: [
+            { labelKey: 'field.pair.loggedInClients.label', pair: [
+                { id: 'hotkeyCycleAllClientsBackward', exampleKey: 'common.hotkeyExampleOpenBracket' },
+                { id: 'hotkeyCycleAllClientsForward', exampleKey: 'common.hotkeyExampleCloseBracket' },
+            ] },
+            { labelKey: 'field.pair.notLoggedInClients.label', pair: [
+                { id: 'hotkeyCycleNotLoggedInBackward', exampleKey: 'field.hotkeyCycleNotLoggedInBackward.placeholder' },
+                { id: 'hotkeyCycleNotLoggedInForward', exampleKey: 'field.hotkeyCycleNotLoggedInForward.placeholder' },
+            ] },
+        ],
+    },
+    {
+        containerId: 'windowFocusBindings',
+        rows: [
+            { id: 'hotkeyReturnToLastApp', labelKey: 'field.hotkeyReturnToLastApp.label', exampleKey: 'field.hotkeyReturnToLastApp.placeholder' },
+        ],
+    },
+];
+
+function renderHotkeyBindingField(field, row, directionKey) {
+    const glyph = directionKey ? `<span class="binding-dir" aria-hidden="true">${directionKey === 'common.previous' ? '←' : '→'}</span>` : '';
+    // The pair shares one visible label, so each half names itself for screen readers and for the conflict messages.
+    const ariaLabel = directionKey ? ` aria-label="${escapeHtml(`${t(row.labelKey)} (${t(directionKey)})`)}"` : '';
+    return `<div class="field-row">${glyph}${renderHotkeyInputHtml(field.id, '', t(field.exampleKey), ariaLabel)}</div>`;
+}
+
+function renderHotkeyBindingRow(row) {
+    const fields = row.pair
+        ? renderHotkeyBindingField(row.pair[0], row, 'common.previous') + renderHotkeyBindingField(row.pair[1], row, 'common.next')
+        : renderHotkeyBindingField(row, row);
+    const firstId = row.pair ? row.pair[0].id : row.id;
+
+    return `
+        <div class="binding${row.pair ? ' binding-paired' : ''}">
+            <label for="${firstId}">${t(row.labelKey)}</label>
+            <div class="binding-control">${fields}</div>
+        </div>
+    `;
+}
+
+// Each section is its own grid, so their label columns would each settle on that section's longest label and the
+// fields would step in and out down the tab. Measuring the widest label across all of them gives one shared gutter.
+function alignBindingLabelColumns() {
+    const lists = Array.from(document.querySelectorAll('.binding-list'));
+    if (lists.length === 0) return;
+
+    // max-content first, so each label reports the width of its own text rather than of the column it was stretched to.
+    lists.forEach(list => { list.style.gridTemplateColumns = 'max-content minmax(140px, 1fr)'; });
+
+    // A paired row's control hangs back into the gutter by this much, so its label needs that much less of the column.
+    const dirOffset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--binding-dir-offset')) || 0;
+    const widest = Math.max(0, ...Array.from(document.querySelectorAll('.binding > label'))
+        .map(label => label.getBoundingClientRect().width + (label.parentElement.classList.contains('binding-paired') ? dirOffset : 0)));
+    // Zero while the tab is hidden, when nothing can be measured; switching to it re-runs this.
+    if (!widest) return;
+
+    lists.forEach(list => { list.style.gridTemplateColumns = `${Math.ceil(widest)}px minmax(140px, 1fr)`; });
+}
+
+// Called once at startup and again when the language changes, since the rows are built from t() rather than
+// data-i18n attributes. Bindings live only in the DOM until Save, so their values are carried across the rebuild.
+function renderHotkeyBindings() {
+    HOTKEY_BINDINGS.forEach(section => {
+        const container = document.getElementById(section.containerId);
+        if (!container) return;
+
+        const bound = new Map(Array.from(container.querySelectorAll('input.hotkey-input')).map(input => [input.id, input.value]));
+        container.innerHTML = section.rows.map(renderHotkeyBindingRow).join('');
+        bound.forEach((value, id) => {
+            const input = document.getElementById(id);
+            if (input) input.value = value;
+        });
+    });
+
+    alignBindingLabelColumns();
+    updateHotkeyConflictHighlights();
 }
 
 // Every hotkey <input> carries the shared "hotkey-input" class so conflicts can be found across all of them without hardcoding each field's id.
@@ -3583,6 +3740,11 @@ function normalizeHotkeyValue(value) {
 
 // Uses the field's <label for="..."> text if one exists, otherwise the name in its enclosing accordion/detail panel, disambiguating forward/backward.
 function hotkeyFieldLabel(input) {
+    // Set on each half of a paired binding, which has no <label for> of its own. Inside a detail panel the
+    // group or character it belongs to names it better, so that branch below keeps precedence.
+    const ariaLabel = input.getAttribute('aria-label');
+    if (ariaLabel && !input.closest('.detail-panel')) return ariaLabel;
+
     if (input.id) {
         const label = document.querySelector(`label[for="${input.id}"]`);
         if (label) return label.textContent.trim();
@@ -3636,8 +3798,7 @@ function updateHotkeyConflictHighlights() {
     const conflicts = findHotkeyConflicts();
     conflicts.forEach(inputs => inputs.forEach(input => input.classList.add('hotkey-conflict')));
     refreshCharacterHotkeyBadges();
-    refreshAppHotkeyBadges();
-    refreshUrlHotkeyBadges();
+    refreshHotkeyKeycaps();
     return conflicts;
 }
 
@@ -3647,21 +3808,6 @@ function refreshCharacterHotkeyBadges() {
         const index = row.dataset.index;
         const input = document.getElementById(`char_${index}_hotkey`);
         const badge = document.getElementById(`char_${index}_hotkeyBadge`);
-        if (!input || !badge) return;
-
-        const value = input.value.trim();
-        const display = value && value !== 'Press keys...' && value !== 'Waiting for input...' ? value : '';
-        badge.textContent = display ? `[${display}]` : '';
-        badge.style.display = display ? '' : 'none';
-    });
-}
-
-// Mirrors each app hotkey's input into the badge shown on its (possibly collapsed) accordion header.
-function refreshAppHotkeyBadges() {
-    document.querySelectorAll('#appHotkeysList > .accordion').forEach(accordion => {
-        const index = accordion.dataset.index;
-        const input = document.getElementById(`apphotkey_${index}_hotkey`);
-        const badge = document.getElementById(`apphotkey_${index}_hotkeyBadge`);
         if (!input || !badge) return;
 
         const value = input.value.trim();
@@ -4048,7 +4194,7 @@ function toggleManualHotkeyEdit(fieldId) {
     const input = document.getElementById(fieldId);
     if (!input) return;
 
-    const button = input.parentElement.querySelector('.hotkey-edit-btn');
+    const button = input.closest('.field-row')?.querySelector('.hotkey-edit-btn');
 
     if (input.classList.contains('manual-editing')) {
         commitManualHotkeyEdit(fieldId);
@@ -4084,7 +4230,7 @@ function commitManualHotkeyEdit(fieldId) {
     const input = document.getElementById(fieldId);
     if (!input) return;
 
-    const button = input.parentElement.querySelector('.hotkey-edit-btn');
+    const button = input.closest('.field-row')?.querySelector('.hotkey-edit-btn');
 
     input.value = input.value.trim();
     input.readOnly = true;
@@ -5451,13 +5597,12 @@ function populateHotkeyGroups() {
                 <button type="button" id="hkgroup_${index}_removeBtn" onclick="confirmRemove('hkgroup_${index}_removeBtn', () => removeHotkeyGroup(${index}))">${t('common.remove')}</button>
             </div>
             <div class="detail-form">
-                <div class="detail-field">
-                    <label for="hkgroup_${index}_forward">${t('dynamic.hotkeyGroup.forwardKeyLabel')}</label>
-                    <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.hotkeyGroup.forwardPlaceholder'))}</div>
-                </div>
-                <div class="detail-field">
-                    <label for="hkgroup_${index}_backward">${t('dynamic.hotkeyGroup.backwardKeyLabel')}</label>
-                    <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_backward`, vkHexToFriendly(group.backwardKey) || '', t('dynamic.hotkeyGroup.backwardPlaceholder'))}</div>
+                <div class="detail-field binding-paired">
+                    <label for="hkgroup_${index}_backward">${t('dynamic.hotkeyGroup.cycleKeysLabel')}</label>
+                    <div class="binding-control">
+                        <div class="field-row"><span class="binding-dir" aria-hidden="true">←</span>${renderHotkeyInputHtml(`hkgroup_${index}_backward`, vkHexToFriendly(group.backwardKey) || '', t('dynamic.hotkeyGroup.backwardPlaceholder'), ` aria-label="${escapeHtml(t('dynamic.hotkeyGroup.backwardKeyLabel'))}"`)}</div>
+                        <div class="field-row"><span class="binding-dir" aria-hidden="true">→</span>${renderHotkeyInputHtml(`hkgroup_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.hotkeyGroup.forwardPlaceholder'), ` aria-label="${escapeHtml(t('dynamic.hotkeyGroup.forwardKeyLabel'))}"`)}</div>
+                    </div>
                 </div>
                 <div class="detail-field">
                     <label for="hkgroup_${index}_assign">${t('dynamic.hotkeyGroup.assignKeyLabel')}</label>
@@ -5890,10 +6035,6 @@ async function getAvailableProfileNames() {
     return [];
 }
 
-function profileSwitchHotkeyLabel(targetProfile, index) {
-    return targetProfile ? `${t('dynamic.profileSwitchHotkey.switchPrefix')}${targetProfile.replace(/\.json$/, '')}` : `${t('dynamic.profileSwitchHotkey.defaultLabelPrefix')}${index + 1}`;
-}
-
 async function populateProfileSwitchHotkeys() {
     const container = document.getElementById('profileSwitchHotkeysList');
     if (!container) return;
@@ -5903,31 +6044,20 @@ async function populateProfileSwitchHotkeys() {
 
     container.innerHTML = '';
     entries.forEach((entry, index) => {
-        // If no target is set yet, the <select> auto-selects its first option, so treat that as the effective target for the header label too.
+        // With no target set the <select> auto-selects its first option, so that's the entry's effective target.
         const effectiveTarget = entry.targetProfile || profiles[0] || '';
         const optionsHtml = profiles.map(p => {
             const selected = p === effectiveTarget ? ' selected' : '';
-            return `<option value="${p}"${selected}>${p.replace(/\.json$/, '')}</option>`;
+            return `<option value="${p}"${selected}>${escapeHtml(p.replace(/\.json$/, ''))}</option>`;
         }).join('');
 
         const row = document.createElement('div');
-        row.className = 'accordion';
+        row.className = 'field-row';
+        row.style.marginBottom = '8px';
         row.innerHTML = `
-            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleProfileSwitchHotkeyAccordion(${index})">
-                <div class="accordion-title">
-                    <span class="accordion-toggle"></span>
-                    <span class="accordion-name" id="pshotkey_${index}_header_name">${profileSwitchHotkeyLabel(effectiveTarget, index)}</span>
-                </div>
-                <button type="button" id="pshotkey_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('pshotkey_${index}_removeBtn', () => removeProfileSwitchHotkey(${index}))">${t('common.remove')}</button>
-            </div>
-            <div class="accordion-content">
-                <label>${t('dynamic.profileSwitchHotkey.targetLabel')}</label>
-                <select id="pshotkey_${index}_target" onchange="updateProfileSwitchHotkeyHeaderName(${index})" style="margin-bottom: 8px;">
-                    ${optionsHtml}
-                </select>
-                <label>${t('common.hotkeyLabel')}</label>
-                <div class="field-row">${renderHotkeyInputHtml(`pshotkey_${index}_hotkey`, vkHexToFriendly(entry.hotkey) || '', t('dynamic.profileSwitchHotkey.hotkeyPlaceholder'))}</div>
-            </div>
+            <select id="pshotkey_${index}_target" aria-label="${escapeHtml(t('dynamic.profileSwitchHotkey.targetLabel'))}">${optionsHtml}</select>
+            ${renderHotkeyInputHtml(`pshotkey_${index}_hotkey`, vkHexToFriendly(entry.hotkey) || '', t('dynamic.profileSwitchHotkey.hotkeyPlaceholder'), ` aria-label="${escapeHtml(t('common.hotkeyLabel'))}"`)}
+            <button type="button" id="pshotkey_${index}_removeBtn" onclick="confirmRemove('pshotkey_${index}_removeBtn', () => removeProfileSwitchHotkey(${index}))" style="min-width: 80px;">${t('common.remove')}</button>
         `;
         container.appendChild(row);
     });
@@ -5947,9 +6077,6 @@ function addProfileSwitchHotkey() {
     markAsChanged();
 
     populateProfileSwitchHotkeys().then(() => {
-        const newIndex = currentGlobalSettings.profileSwitchHotkeys.length - 1;
-        toggleProfileSwitchHotkeyAccordion(newIndex);
-
         const contentPanel = document.getElementById('content-panel');
         if (contentPanel) {
             setTimeout(() => {
@@ -5968,19 +6095,6 @@ function removeProfileSwitchHotkey(index) {
     }
 }
 
-function updateProfileSwitchHotkeyHeaderName(index) {
-    const select = document.getElementById(`pshotkey_${index}_target`);
-    const headerName = document.getElementById(`pshotkey_${index}_header_name`);
-
-    if (select && headerName) {
-        headerName.textContent = profileSwitchHotkeyLabel(select.value, index);
-    }
-}
-
-function toggleProfileSwitchHotkeyAccordion(index) {
-    toggleAccordion('#profileSwitchHotkeysList', index);
-}
-
 function saveProfileSwitchHotkeys() {
     if (!currentGlobalSettings?.profileSwitchHotkeys) return;
 
@@ -5993,10 +6107,6 @@ function saveProfileSwitchHotkeys() {
     });
 }
 
-function appHotkeyLabel(executableName, index) {
-    return executableName ? executableName.replace(/\.exe$/i, '') : `${t('dynamic.appHotkey.defaultLabelPrefix')}${index + 1}`;
-}
-
 function populateAppHotkeys() {
     const container = document.getElementById('appHotkeysList');
     if (!container) return;
@@ -6007,33 +6117,15 @@ function populateAppHotkeys() {
     entries.forEach((entry, index) => {
         const hotkeyDisplay = vkHexToFriendly(entry.hotkey) || '';
         const row = document.createElement('div');
-        row.className = 'accordion';
-        row.dataset.index = index;
+        // The picker rides under its row, so each entry keeps its two parts together.
         row.innerHTML = `
-            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleAppHotkeyAccordion(${index})">
-                <div class="accordion-title">
-                    <span class="accordion-toggle"></span>
-                    <span class="accordion-name" id="apphotkey_${index}_header_name">${escapeHtml(appHotkeyLabel(entry.executableName, index))}</span>
-                </div>
-                <div class="accordion-header-actions">
-                    <span class="accordion-hotkey-badge" id="apphotkey_${index}_hotkeyBadge" style="${hotkeyDisplay ? '' : 'display:none'}">[${hotkeyDisplay}]</span>
-                    <button type="button" id="apphotkey_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('apphotkey_${index}_removeBtn', () => removeAppHotkey(${index}))">${t('common.remove')}</button>
-                </div>
+            <div class="field-row" style="margin-bottom: 8px;">
+                <input type="text" id="apphotkey_${index}_exe" value="${escapeHtml(entry.executableName || '')}" placeholder="${t('dynamic.appHotkey.exePlaceholder')}" aria-label="${escapeHtml(t('dynamic.appHotkey.targetLabel'))}">
+                ${renderHotkeyInputHtml(`apphotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.appHotkey.hotkeyPlaceholder'), ` aria-label="${escapeHtml(t('common.hotkeyLabel'))}"`)}
+                <button type="button" id="apphotkey_${index}_pickBtn" onclick="pickRunningWindowForAppHotkey(${index})" style="white-space: nowrap;">${t('button.pick-running-window.label')}</button>
+                <button type="button" id="apphotkey_${index}_removeBtn" onclick="confirmRemove('apphotkey_${index}_removeBtn', () => removeAppHotkey(${index}))" style="min-width: 80px;">${t('common.remove')}</button>
             </div>
-            <div class="accordion-content">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <div>
-                        <label>${t('dynamic.appHotkey.targetLabel')}</label>
-                        <input type="text" id="apphotkey_${index}_exe" value="${escapeHtml(entry.executableName || '')}" placeholder="${t('dynamic.appHotkey.exePlaceholder')}" oninput="updateAppHotkeyHeaderName(${index})">
-                    </div>
-                    <div>
-                        <label>${t('common.hotkeyLabel')}</label>
-                        <div class="field-row">${renderHotkeyInputHtml(`apphotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.appHotkey.hotkeyPlaceholder'))}</div>
-                    </div>
-                </div>
-                <button type="button" id="apphotkey_${index}_pickBtn" onclick="pickRunningWindowForAppHotkey(${index})" style="width: 100%; margin-top: 8px;">${t('button.pick-running-window.label')}</button>
-                <select id="apphotkey_${index}_picker" style="display: none; width: 100%; margin-top: 8px;" onchange="applyPickedWindowForAppHotkey(${index})"></select>
-            </div>
+            <select id="apphotkey_${index}_picker" style="display: none; width: 100%; margin-bottom: 8px;" onchange="applyPickedWindowForAppHotkey(${index})"></select>
         `;
         container.appendChild(row);
     });
@@ -6053,8 +6145,6 @@ function addAppHotkey() {
     markAsChanged();
 
     populateAppHotkeys();
-    const newIndex = currentGlobalSettings.appHotkeys.length - 1;
-    toggleAppHotkeyAccordion(newIndex);
 
     const contentPanel = document.getElementById('content-panel');
     if (contentPanel) {
@@ -6071,19 +6161,6 @@ function removeAppHotkey(index) {
         markAsChanged();
         populateAppHotkeys();
     }
-}
-
-function updateAppHotkeyHeaderName(index) {
-    const exeInput = document.getElementById(`apphotkey_${index}_exe`);
-    const headerName = document.getElementById(`apphotkey_${index}_header_name`);
-
-    if (exeInput && headerName) {
-        headerName.textContent = appHotkeyLabel(exeInput.value, index);
-    }
-}
-
-function toggleAppHotkeyAccordion(index) {
-    toggleAccordion('#appHotkeysList', index);
 }
 
 function saveAppHotkeys() {
@@ -6137,22 +6214,10 @@ function applyPickedWindowForAppHotkey(index) {
     const exeInput = document.getElementById(`apphotkey_${index}_exe`);
     if (exeInput) exeInput.value = chosen.exe;
 
-    updateAppHotkeyHeaderName(index);
     select.style.display = 'none';
     select.value = '';
 }
 
-function urlHotkeyLabel(url, index) {
-    if (!url) return `${t('dynamic.urlHotkey.defaultLabelPrefix')}${index + 1}`;
-    try {
-        const parsed = new URL(url);
-        return parsed.hostname + (parsed.pathname !== '/' ? parsed.pathname : '');
-    } catch {
-        return url;
-    }
-}
-
-// uploadClipboard's POST body shape (Paste+anything/submit=new) is specific to aDashboard's paste-intake form, so the checkbox only makes sense for that host.
 function isAdashboardUrl(url) {
     try {
         return new URL(url).hostname.toLowerCase() === 'adashboard.info';
@@ -6171,36 +6236,17 @@ function populateUrlHotkeys() {
     entries.forEach((entry, index) => {
         const hotkeyDisplay = vkHexToFriendly(entry.hotkey) || '';
         const row = document.createElement('div');
-        row.className = 'accordion';
-        row.dataset.index = index;
+        // The clipboard option only applies to aDashboard URLs, so it hangs under the row it belongs to.
         row.innerHTML = `
-            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleUrlHotkeyAccordion(${index})">
-                <div class="accordion-title">
-                    <span class="accordion-toggle"></span>
-                    <span class="accordion-name" id="urlhotkey_${index}_header_name">${escapeHtml(urlHotkeyLabel(entry.url, index))}</span>
-                </div>
-                <div class="accordion-header-actions">
-                    <span class="accordion-hotkey-badge" id="urlhotkey_${index}_uploadBadge" style="${entry.uploadClipboard ? '' : 'display:none'}">${t('dynamic.urlHotkey.uploadClipboardBadge')}</span>
-                    <span class="accordion-hotkey-badge" id="urlhotkey_${index}_hotkeyBadge" style="${hotkeyDisplay ? '' : 'display:none'}">[${hotkeyDisplay}]</span>
-                    <button type="button" id="urlhotkey_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('urlhotkey_${index}_removeBtn', () => removeUrlHotkey(${index}))">${t('common.remove')}</button>
-                </div>
+            <div class="field-row" style="margin-bottom: 8px;">
+                <input type="text" id="urlhotkey_${index}_url" value="${escapeHtml(entry.url || '')}" placeholder="${t('dynamic.urlHotkey.urlPlaceholder')}" aria-label="${escapeHtml(t('dynamic.urlHotkey.targetLabel'))}" oninput="updateUrlHotkeyUploadClipboardVisibility(${index})">
+                ${renderHotkeyInputHtml(`urlhotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.urlHotkey.hotkeyPlaceholder'), ` aria-label="${escapeHtml(t('common.hotkeyLabel'))}"`)}
+                <button type="button" id="urlhotkey_${index}_removeBtn" onclick="confirmRemove('urlhotkey_${index}_removeBtn', () => removeUrlHotkey(${index}))" style="min-width: 80px;">${t('common.remove')}</button>
             </div>
-            <div class="accordion-content">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <div>
-                        <label>${t('dynamic.urlHotkey.targetLabel')}</label>
-                        <input type="text" id="urlhotkey_${index}_url" value="${escapeHtml(entry.url || '')}" placeholder="${t('dynamic.urlHotkey.urlPlaceholder')}" oninput="updateUrlHotkeyHeaderName(${index}); updateUrlHotkeyUploadClipboardVisibility(${index})">
-                    </div>
-                    <div>
-                        <label>${t('common.hotkeyLabel')}</label>
-                        <div class="field-row">${renderHotkeyInputHtml(`urlhotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.urlHotkey.hotkeyPlaceholder'))}</div>
-                    </div>
-                </div>
-                <label id="urlhotkey_${index}_uploadClipboardRow" style="display: ${isAdashboardUrl(entry.url) ? 'block' : 'none'}; margin-top: 8px;">
-                    <input type="checkbox" id="urlhotkey_${index}_uploadClipboard" ${entry.uploadClipboard ? 'checked' : ''} onchange="refreshUrlHotkeyBadges()">
-                    <span class="label-body">${t('dynamic.urlHotkey.uploadClipboardLabel')}</span>
-                </label>
-            </div>
+            <label id="urlhotkey_${index}_uploadClipboardRow" style="display: ${isAdashboardUrl(entry.url) ? 'block' : 'none'}; margin-bottom: 8px;">
+                <input type="checkbox" id="urlhotkey_${index}_uploadClipboard" ${entry.uploadClipboard ? 'checked' : ''}>
+                <span class="label-body">${t('dynamic.urlHotkey.uploadClipboardLabel')}</span>
+            </label>
         `;
         container.appendChild(row);
     });
@@ -6221,8 +6267,6 @@ function addUrlHotkey(presetUrl) {
     markAsChanged();
 
     populateUrlHotkeys();
-    const newIndex = currentGlobalSettings.urlHotkeys.length - 1;
-    toggleUrlHotkeyAccordion(newIndex);
 
     const contentPanel = document.getElementById('content-panel');
     if (contentPanel) {
@@ -6241,16 +6285,6 @@ function removeUrlHotkey(index) {
     }
 }
 
-function updateUrlHotkeyHeaderName(index) {
-    const urlInput = document.getElementById(`urlhotkey_${index}_url`);
-    const headerName = document.getElementById(`urlhotkey_${index}_header_name`);
-
-    if (urlInput && headerName) {
-        headerName.textContent = urlHotkeyLabel(urlInput.value, index);
-    }
-}
-
-// Hides the upload-clipboard checkbox (and unchecks it) once the URL is edited away from aDashboard, so a stale checked box can't silently apply to an incompatible URL.
 function updateUrlHotkeyUploadClipboardVisibility(index) {
     const urlInput = document.getElementById(`urlhotkey_${index}_url`);
     const row = document.getElementById(`urlhotkey_${index}_uploadClipboardRow`);
@@ -6260,11 +6294,6 @@ function updateUrlHotkeyUploadClipboardVisibility(index) {
     const eligible = isAdashboardUrl(urlInput.value);
     row.style.display = eligible ? 'block' : 'none';
     if (!eligible) checkbox.checked = false;
-    refreshUrlHotkeyBadges();
-}
-
-function toggleUrlHotkeyAccordion(index) {
-    toggleAccordion('#urlHotkeysList', index);
 }
 
 function saveUrlHotkeys() {
@@ -6281,26 +6310,6 @@ function saveUrlHotkeys() {
     });
 }
 
-// Mirrors each URL hotkey's input into the badge shown on its (possibly collapsed) accordion header.
-function refreshUrlHotkeyBadges() {
-    document.querySelectorAll('#urlHotkeysList > .accordion').forEach(accordion => {
-        const index = accordion.dataset.index;
-        const input = document.getElementById(`urlhotkey_${index}_hotkey`);
-        const badge = document.getElementById(`urlhotkey_${index}_hotkeyBadge`);
-        if (input && badge) {
-            const value = input.value.trim();
-            const display = value && value !== 'Press keys...' && value !== 'Waiting for input...' ? value : '';
-            badge.textContent = display ? `[${display}]` : '';
-            badge.style.display = display ? '' : 'none';
-        }
-
-        const uploadCheckbox = document.getElementById(`urlhotkey_${index}_uploadClipboard`);
-        const uploadBadge = document.getElementById(`urlhotkey_${index}_uploadBadge`);
-        if (uploadCheckbox && uploadBadge) {
-            uploadBadge.style.display = uploadCheckbox.checked ? '' : 'none';
-        }
-    });
-}
 
 const ORE_CATEGORIES = ['Ore', 'Ice', 'Moons', 'Gas'];
 

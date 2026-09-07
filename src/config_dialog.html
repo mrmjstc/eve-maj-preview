@@ -126,7 +126,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.about.section.preferences.heading">Preferences</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.about.section.preferences.heading">Preferences</h3>
+                            <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                        </div>
                         <p class="hint" data-i18n="tab.about.section.preferences.hint">Global, applies across all profiles.</p>
                         <label>
                             <input type="checkbox" id="advancedModeToggle" onchange="toggleAdvancedMode()">
@@ -167,7 +170,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.general.section.window-filters.heading">Window Filters</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.general.section.window-filters.heading">Window Filters</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.general.section.window-filters.hint">Configure which applications to track. Each filter can match by window class name and executable name.</p>
                         
                         <label>
@@ -187,7 +193,10 @@
 
                 <div class="panel-content" data-panel="thumbnails">
                     <div class="section">
-                        <h3 data-i18n="tab.thumbnails.section.thumbnail-dimensions.heading">Dimensions</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.thumbnail-dimensions.heading">Dimensions</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.thumbnails.section.thumbnail-dimensions.hint">Set the pixel size each thumbnail is rendered at.</p>
 
                         <!-- min/max on the number inputs below are a fallback for before
@@ -218,7 +227,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.overlay-text.section.text-display-system.heading">Text Overlays and Layout</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.overlay-text.section.text-display-system.heading">Text Overlays and Layout</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.overlay-text.section.text-display-system.hint">Overlay a text strip on each thumbnail showing the character's name and/or current solar system. The preview below is not to scale - drag to reposition, click to edit.</p>
 
                         <label>
@@ -404,7 +416,10 @@
                     </div>
 
                     <div class="section advanced-section">
-                        <h3 data-i18n="tab.thumbnails.section.position-parameters.heading">Position Parameters</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.position-parameters.heading">Position Parameters</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
 
                         <div class="row">
                             <div class="column">
@@ -436,7 +451,10 @@
                     </div>
 
                     <div class="section advanced-section">
-                        <h3 data-i18n="tab.thumbnails.section.layout-system.heading">Layout System</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.layout-system.heading">Layout System</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.thumbnails.section.layout-system.hint">Controls how thumbnails are automatically arranged relative to each other.</p>
 
                         <label for="layoutMode" data-i18n="field.layoutMode.label">Layout Mode</label>
@@ -486,7 +504,10 @@
                     </div>
 
                     <div class="section advanced-section">
-                        <h3 data-i18n="tab.thumbnails.section.monitor-auto-arrange.heading">Monitor &amp; Auto-Arrange</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.monitor-auto-arrange.heading">Monitor &amp; Auto-Arrange</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
 
                         <label for="monitorIndex" data-i18n="field.monitorIndex.label">Monitor Index (0=primary)</label>
                         <input type="number" id="monitorIndex" min="0" max="9">
@@ -503,7 +524,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.thumbnails.section.border-configuration.heading">Borders</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.border-configuration.heading">Borders</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.thumbnails.section.border-configuration.hint">Draw a styled border around thumbnails based on their focus state.</p>
 
                         <label>
@@ -578,7 +602,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.thumbnails.section.visibility.heading">Visibility</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.visibility.heading">Visibility</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.thumbnails.section.visibility.hint">Control thumbnail transparency and when thumbnails are automatically hidden.</p>
 
                         <label for="thumbOpacity"><span data-i18n="field.thumbOpacity.label">Opacity: </span><span id="opacityValue">100</span>%</label>
@@ -603,7 +630,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.thumbnails.section.snapping-system.heading">Snapping</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.snapping-system.heading">Snapping</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.thumbnails.section.snapping-system.hint">Configure the snapping behavior for window edges.</p>
 
                         <label>
@@ -631,7 +661,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.thumbnails.section.display-mode.heading">Display Mode</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.display-mode.heading">Display Mode</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint"><strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-thumbnails-term">Thumbnails</span></strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-thumbnails-desc"> is best for visually tracking each client at a glance. </span><strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-clientlist-term">Client List</span></strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-clientlist-desc"> is more compact and uses fewer resources — ideal with many clients. </span><strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-nothing-term">Nothing</span></strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-nothing-desc"> uses the least resources of all; hotkeys and notifications keep working.</span></p>
                         <label for="viewMode" data-i18n="field.viewMode.label">View Mode</label>
                         <select id="viewMode" onchange="toggleClientListOptions()">
@@ -696,7 +729,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.overlay-text.section.system-color-overrides.heading">Custom System Colors</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.overlay-text.section.system-color-overrides.heading">Custom System Colors</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.overlay-text.section.system-color-overrides.hint">Define custom colors for specific solar systems (only used when Unique System Colors is enabled).</p>
                         
                         <div id="systemColorsList" style="margin-bottom: 8px;">
@@ -709,7 +745,10 @@
 
                 <div class="panel-content" data-panel="characters">
                     <div class="section">
-                        <h3 data-i18n="tab.characters.section.per-character-configuration.heading">Character List</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.characters.section.per-character-configuration.heading">Character List</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.characters.section.per-character-configuration.hint">Customize each character's saved position, size, border color, display name, and jump-to hotkey. Characters are added automatically when detected.</p>
 
                         <div class="search-input-wrapper" style="width: 100%; margin-bottom: 8px;">
@@ -737,10 +776,17 @@
                             <input type="checkbox" id="runOnStartup">
                             <span class="label-body" data-i18n="field.runOnStartup.label">Run on Startup</span>
                         </label>
+                        <label>
+                            <input type="checkbox" id="autoRegisterProtocol">
+                            <span class="label-body" data-i18n="field.autoRegisterProtocol.label">Auto-Register Protocol Handler</span>
+                        </label>
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.behavior.section.interaction.heading">Interaction</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.behavior.section.interaction.heading">Interaction</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.behavior.section.interaction.hint">Mouse behavior for repositioning and activating thumbnails.</p>
 
                         <label>
@@ -756,7 +802,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.behavior.section.auto-minimize-all-clients.heading">Auto-Minimize</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.behavior.section.auto-minimize-all-clients.heading">Auto-Minimize</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.behavior.section.auto-minimize-all-clients.hint">Minimizes an EVE client window after it's been unfocused for the configured delay.</p>
 
                         <label>
@@ -789,7 +838,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.behavior.section.character-exclusion.heading">Character Exclusion</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.behavior.section.character-exclusion.heading">Character Exclusion</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.behavior.section.character-exclusion.hint">Controls Shift+Click exclusion of characters from hotkey cycling.</p>
 
                         <label>
@@ -820,7 +872,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.behavior.section.window-position.heading">Window Position</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.behavior.section.window-position.heading">Window Position</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.behavior.section.window-position.hint">Saves each character's real EVE client window position, restored via the Move to Saved Positions hotkey or automatically on login. Set All copies the selected window's current position to every character; Clear All removes every saved position.</p>
 
                         <label>
@@ -855,8 +910,16 @@
 
                 <div class="panel-content" data-panel="hotkey-groups">
                     <div class="section">
-                        <h3 data-i18n="tab.hotkey-groups.section.groups.heading">Hotkey Groups</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkey-groups.section.groups.heading">Hotkey Groups</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.hotkey-groups.section.groups.hint">Groups of characters you can cycle through with hotkeys. Members are listed here, or assigned live by hovering a thumbnail and pressing the group's assign key.</p>
+
+                        <label>
+                            <input type="checkbox" id="resetGroupIndexOnNonGroupFocus">
+                            <span class="label-body" data-i18n="field.resetGroupIndexOnNonGroupFocus.label">Reset Cycling When Leaving a Group</span>
+                        </label>
 
                         <div id="hotkeyGroupsList" style="margin-bottom: 8px;">
                             <!-- Hotkey groups will be dynamically populated here -->
@@ -869,166 +932,71 @@
 
                 <div class="panel-content" data-panel="hotkeys">
                     <div class="section">
-                        <h3 data-i18n="tab.hotkeys.section.hotkey-system.heading">Hotkey System</h3>
-                        <p class="hint" data-i18n="tab.hotkeys.section.hotkey-system.hint">Controls how the hotkeys configured below are registered and triggered.</p>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.hotkey-system.heading">Hotkey System</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.hotkey-system.hint">Controls how the hotkeys below are registered and triggered.</p>
 
                         <label>
                             <input type="checkbox" id="requireEveFocus">
                             <span class="label-body" data-i18n="field.requireEveFocus.label">Require EVE Focus</span>
                         </label>
-                        <label>
-                            <input type="checkbox" id="autoRegisterProtocol">
-                            <span class="label-body" data-i18n="field.autoRegisterProtocol.label">Auto-Register Protocol Handler</span>
-                        </label>
-                        <label>
-                            <input type="checkbox" id="resetGroupIndexOnNonGroupFocus">
-                            <span class="label-body" data-i18n="field.resetGroupIndexOnNonGroupFocus.label">Reset Cycling When Leaving a Group</span>
-                        </label>
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.hotkeys.section.key-bindings.heading">Local Hotkeys</h3>
-                        <p class="hint" data-i18n="tab.hotkeys.section.key-bindings.hint">These hotkeys are local to this profile only — they change when you switch profiles.</p>
-
-                        <h4 style="margin-top: 16px;" data-i18n="tab.hotkeys.section.window-actions.heading">Window Actions</h4>
-                        <p class="hint" data-i18n="tab.hotkeys.section.window-actions.hint">Bind hotkeys for quick window actions — minimize, close, hide thumbnails, or toggle auto-minimize.</p>
-                        <div class="key-bindings">
-                            <div class="field">
-                                <label for="hotkeyMinimizeAll" data-i18n="field.hotkeyMinimizeAll.label">Minimize All</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyMinimizeAll" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+M" data-i18n-title="field.hotkeyMinimizeAll.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyMinimizeAll')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyMinimizeAll')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyMinimizeAll')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-
-                            <div class="field">
-                                <label for="hotkeyCloseAll" data-i18n="field.hotkeyCloseAll.label">Close All</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyCloseAll" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+Q" data-i18n-title="field.hotkeyCloseAll.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyCloseAll')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyCloseAll')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyCloseAll')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-
-                            <div class="field">
-                                <label for="hotkeyToggleVisibility" data-i18n="field.hotkeyToggleVisibility.label">Toggle Visibility</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyToggleVisibility" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+H" data-i18n-title="field.hotkeyToggleVisibility.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyToggleVisibility')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyToggleVisibility')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyToggleVisibility')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-
-                            <div class="field">
-                                <label for="hotkeyToggleAutoMinimize" data-i18n="field.hotkeyToggleAutoMinimize.label">Toggle Auto-Minimize</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyToggleAutoMinimize" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., F15" data-i18n-title="field.hotkeyToggleAutoMinimize.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyToggleAutoMinimize')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyToggleAutoMinimize')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyToggleAutoMinimize')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-
-                            <div class="field">
-                                <label for="hotkeyMoveToSavedPositions" data-i18n="field.hotkeyMoveToSavedPositions.label">Move to Saved Positions</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyMoveToSavedPositions" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+P" data-i18n-title="field.hotkeyMoveToSavedPositions.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyMoveToSavedPositions')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyMoveToSavedPositions')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyMoveToSavedPositions')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.window-actions.heading">Window Actions</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
                         </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.window-actions.hint">Minimize, close, hide thumbnails, toggle auto-minimize, or send every window back to its saved position.</p>
 
-                        <h4 data-i18n="tab.hotkeys.section.exclusion-cycling.heading">Exclusion Cycling</h4>
-                        <p class="hint" data-i18n="tab.hotkeys.section.exclusion-cycling.hint">Bind hotkeys to cycle through excluded characters, or toggle exclusion for the currently focused one.</p>
-                        <div class="key-bindings">
-                            <div class="field">
-                                <label for="hotkeyNextExcluded" data-i18n="field.hotkeyNextExcluded.label">Next Excluded</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyNextExcluded" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+]" data-i18n-title="common.hotkeyExampleCloseBracket" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyNextExcluded')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyNextExcluded')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyNextExcluded')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-
-                            <div class="field">
-                                <label for="hotkeyPreviousExcluded" data-i18n="field.hotkeyPreviousExcluded.label">Previous Excluded</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyPreviousExcluded" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+[" data-i18n-title="common.hotkeyExampleOpenBracket" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyPreviousExcluded')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyPreviousExcluded')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyPreviousExcluded')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-
-                            <div class="field">
-                                <label for="hotkeyToggleExclusion" data-i18n="field.hotkeyToggleExclusion.label">Toggle Focused Character Exclusion</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyToggleExclusion" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+E" data-i18n-title="field.hotkeyToggleExclusion.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyToggleExclusion')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyToggleExclusion')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyToggleExclusion')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <h4 data-i18n="tab.hotkeys.section.notification-cycling.heading">Notification Cycling</h4>
-                        <p class="hint" data-i18n="tab.hotkeys.section.notification-cycling.hint">Jump between characters that recently sent a notification, most recent first. Press repeatedly to keep stepping through the queue.</p>
-                        <div class="key-bindings">
-                            <div class="field">
-                                <label for="hotkeyCycleNotified" data-i18n="field.hotkeyCycleNotified.label">Next Notified</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyCycleNotified" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+N" data-i18n-title="field.hotkeyCycleNotified.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyCycleNotified')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyCycleNotified')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyCycleNotified')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-
-                            <div class="field">
-                                <label for="hotkeyPreviousNotified" data-i18n="field.hotkeyPreviousNotified.label">Previous Notified</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyPreviousNotified" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+Shift+N" data-i18n-title="field.hotkeyPreviousNotified.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyPreviousNotified')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyPreviousNotified')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyPreviousNotified')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <h4 data-i18n="tab.hotkeys.section.system.heading">System</h4>
-                        <p class="hint" data-i18n="tab.hotkeys.section.system.hint">Suspends or resumes all hotkeys. This hotkey always works, even while others are suspended.</p>
-                        <div class="key-bindings">
-                            <div class="field">
-                                <label for="hotkeySuspend" data-i18n="field.hotkeySuspend.label">Toggle Suspend Hotkeys</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeySuspend" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., ScrollLock" data-i18n-title="field.hotkeySuspend.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeySuspend')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeySuspend')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeySuspend')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-                        </div>
+                        <div class="binding-list" id="windowActionBindings"></div>
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.hotkeys.section.profile-hotkeys.heading">Profile Hotkeys</h3>
-                        <p class="hint" data-i18n="tab.hotkeys.section.profile-hotkeys.hint">Bind hotkeys to jump to a specific profile or cycle through all profiles. Stays active regardless of which profile is loaded.</p>
-
-                        <div class="key-bindings" style="margin-bottom: 8px;">
-                            <div class="field">
-                                <label for="hotkeyNextProfile" data-i18n="field.hotkeyNextProfile.label">Next Profile</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyNextProfile" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+PgDn" data-i18n-title="field.hotkeyNextProfile.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyNextProfile')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyNextProfile')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyNextProfile')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-
-                            <div class="field">
-                                <label for="hotkeyPreviousProfile" data-i18n="field.hotkeyPreviousProfile.label">Previous Profile</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyPreviousProfile" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+PgUp" data-i18n-title="field.hotkeyPreviousProfile.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyPreviousProfile')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyPreviousProfile')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyPreviousProfile')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.cycling.heading">Cycling</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
                         </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.cycling.hint">Step through the characters this profile sets apart - the excluded ones, or the ones that recently notified.</p>
+
+                        <div class="binding-list" id="cyclingBindings"></div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.system.heading">Suspend</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.system.hint">Suspends or resumes every hotkey. This one always works, even while the rest are suspended.</p>
+
+                        <div class="binding-list" id="suspendBindings"></div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.client-cycling.heading">Clients</h3>
+                            <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.client-cycling.hint">Step through EVE windows themselves, ordered by the Characters list, whichever profile is loaded and however groups are defined.</p>
+
+                        <label>
+                            <input type="checkbox" id="cycleAllClientsRespectExclusions">
+                            <span class="label-body" data-i18n="field.cycleAllClientsRespectExclusions.label">Skip characters excluded from cycling</span>
+                        </label>
+
+                        <div class="binding-list" id="clientBindings"></div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.profile-hotkeys.heading">Profiles</h3>
+                            <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.profile-hotkeys.hint">Cycle through profiles, or jump straight to one.</p>
+
+                        <div class="binding-list" id="profileBindings"></div>
 
                         <div id="profileSwitchHotkeysList" style="margin-bottom: 8px;">
                             <!-- Profile switch hotkeys will be dynamically populated here -->
@@ -1038,80 +1006,15 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.hotkeys.section.client-cycling.heading">Global Client Cycling</h3>
-                        <p class="hint" data-i18n="tab.hotkeys.section.client-cycling.hint">Cycle through EVE client windows across every profile, regardless of hotkey groups.</p>
-
-                        <h4 data-i18n="tab.hotkeys.section.cycle-all-clients.heading">Cycle All Clients</h4>
-                        <p class="hint" data-i18n="tab.hotkeys.section.cycle-all-clients.hint">Bind hotkeys to cycle through every logged-in EVE client, ordered by the Characters list (any not yet added there follow after, in detection order), regardless of which profile is loaded or how hotkey groups are defined.</p>
-
-                        <div class="key-bindings" style="margin-bottom: 8px;">
-                            <div class="field">
-                                <label for="hotkeyCycleAllClientsForward" data-i18n="field.hotkeyCycleAllClientsForward.label">Next Logged-In Client</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyCycleAllClientsForward" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+]" data-i18n-title="common.hotkeyExampleCloseBracket" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyCycleAllClientsForward')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyCycleAllClientsForward')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyCycleAllClientsForward')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-
-                            <div class="field">
-                                <label for="hotkeyCycleAllClientsBackward" data-i18n="field.hotkeyCycleAllClientsBackward.label">Previous Logged-In Client</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyCycleAllClientsBackward" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+[" data-i18n-title="common.hotkeyExampleOpenBracket" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyCycleAllClientsBackward')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyCycleAllClientsBackward')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyCycleAllClientsBackward')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.desktop-apps.heading">Outside EVE</h3>
+                            <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
                         </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.desktop-apps.hint">Jump to the app you last had focused, to a specific running application, or to a URL in your browser.</p>
 
-                        <label>
-                            <input type="checkbox" id="cycleAllClientsRespectExclusions">
-                            <span class="label-body" data-i18n="field.cycleAllClientsRespectExclusions.label">Skip characters excluded from cycling</span>
-                        </label>
-                        <h4 style="margin-top: 16px;" data-i18n="tab.hotkeys.section.cycle-not-logged-in.heading">Cycle Not Logged In</h4>
-                        <p class="hint" data-i18n="tab.hotkeys.section.cycle-not-logged-in.hint">Bind hotkeys to cycle through EVE client windows still sitting at the login screen (window title "EVE").</p>
-
-                        <div class="key-bindings" style="margin-bottom: 8px;">
-                            <div class="field">
-                                <label for="hotkeyCycleNotLoggedInForward" data-i18n="field.hotkeyCycleNotLoggedInForward.label">Next Not Logged In</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyCycleNotLoggedInForward" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+Down" data-i18n-title="field.hotkeyCycleNotLoggedInForward.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyCycleNotLoggedInForward')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyCycleNotLoggedInForward')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyCycleNotLoggedInForward')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-
-                            <div class="field">
-                                <label for="hotkeyCycleNotLoggedInBackward" data-i18n="field.hotkeyCycleNotLoggedInBackward.label">Previous Not Logged In</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyCycleNotLoggedInBackward" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+Up" data-i18n-title="field.hotkeyCycleNotLoggedInBackward.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyCycleNotLoggedInBackward')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyCycleNotLoggedInBackward')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyCycleNotLoggedInBackward')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="section">
-                        <h3 data-i18n="tab.hotkeys.section.desktop-apps.heading">External App Hotkeys</h3>
-                        <p class="hint" data-i18n="tab.hotkeys.section.desktop-apps.hint">Jump to things outside EVE: the last app you had focused, a specific running application, or a URL in your browser.</p>
-
-                        <h4 data-i18n="tab.hotkeys.section.window-focus.heading">Window Focus</h4>
-                        <p class="hint" data-i18n="tab.hotkeys.section.window-focus.hint">Bind a hotkey to jump back to whichever non-EVE window last had focus before you switched into EVE.</p>
-
-                        <div class="key-bindings" style="margin-bottom: 8px;">
-                            <div class="field">
-                                <label for="hotkeyReturnToLastApp" data-i18n="field.hotkeyReturnToLastApp.label">Return to Last App</label>
-                                <div class="field-row">
-                                    <input type="text" id="hotkeyReturnToLastApp" class="hotkey-input" placeholder="Click to bind" data-i18n-placeholder="common.hotkeyClickToBind" title="e.g., LWin+Z" data-i18n-title="field.hotkeyReturnToLastApp.placeholder" onclick="if (!this.classList.contains('manual-editing')) recordHotkey('hotkeyReturnToLastApp')" readonly>
-                                    <button type="button" class="hotkey-clear-btn" onclick="clearHotkey('hotkeyReturnToLastApp')" title="Clear" data-i18n-title="common.hotkeyClear">×</button>
-                                    <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('hotkeyReturnToLastApp')" title="Type key name directly" data-i18n-title="common.hotkeyTypeDirectly">✎</button>
-                                </div>
-                            </div>
-                        </div>
+                        <div class="binding-list" id="windowFocusBindings"></div>
 
                         <h4 style="margin-top: 16px;" data-i18n="tab.hotkeys.section.app-hotkeys.heading">App Hotkeys</h4>
-                        <p class="hint" data-i18n="tab.hotkeys.section.app-hotkeys.hint">Bind a hotkey to jump straight to a specific running application (e.g. your browser or Discord), picked from a list of open windows.</p>
 
                         <div id="appHotkeysList" style="margin-bottom: 8px;">
                             <!-- App hotkeys will be dynamically populated here -->
@@ -1120,7 +1023,6 @@
                         <button type="button" onclick="addAppHotkey()" style="width: 100%;" data-i18n="button.add-app-hotkey.label">+ Add App Hotkey</button>
 
                         <h4 style="margin-top: 16px;" data-i18n="tab.hotkeys.section.url-hotkeys.heading">URL Hotkeys</h4>
-                        <p class="hint" data-i18n="tab.hotkeys.section.url-hotkeys.hint">Bind a hotkey to open a URL in your default browser.</p>
 
                         <div id="urlHotkeysList" style="margin-bottom: 8px;">
                             <!-- URL hotkeys will be dynamically populated here -->
@@ -1136,7 +1038,10 @@
 
                 <div class="panel-content" data-panel="notifications">
                     <div class="section">
-                        <h3 data-i18n="tab.notifications.section.notification-system.heading">Notification System</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.notifications.section.notification-system.heading">Notification System</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.notifications.section.notification-system.hint">Configure position, duration, and suppression behavior for event notifications.</p>
 
                         <label>
@@ -1227,7 +1132,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.notifications.section.event-type-configuration.heading">Event Alerts</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.notifications.section.event-type-configuration.heading">Event Alerts</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.notifications.section.event-type-configuration.hint">Per-event notification, suppression, speech, and border behavior. Hover a column header for details.</p>
                         <table id="notificationTypesTable" class="notification-types-table">
                             <thead>
@@ -1263,7 +1171,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.notifications.section.history-panel.heading">History Panel</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.notifications.section.history-panel.heading">History Panel</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.notifications.section.history-panel.hint">A draggable, resizable panel showing recent notification history. Click a row to jump to that character.</p>
 
                         <label>
@@ -1340,7 +1251,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.notifications.section.travel-mode.heading">Travel Mode</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.notifications.section.travel-mode.heading">Travel Mode</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.notifications.section.travel-mode.hint">Detects when a tracked character falls behind while the rest of the group jumps together, and fires a notification. Runs automatically once enabled below - no manual start/stop needed. Border color, duration, and TTS for the alert are configured above under "Left Behind".</p>
 
                         <label>
@@ -1375,7 +1289,10 @@
 
                 <div class="panel-content" data-panel="chatlog">
                     <div class="section">
-                        <h3 data-i18n="tab.chatlog.section.chatlog-monitoring.heading">Log Monitoring</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.chatlog.section.chatlog-monitoring.heading">Log Monitoring</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint"><span data-i18n="tab.chatlog.section.chatlog-monitoring.hint-intro">Watches EVE's chatlog and gamelog files to drive the DPS overlay, mining overlay, and system-location display. In EVE, enable </span><strong><span data-i18n="tab.chatlog.section.chatlog-monitoring.hint-menu-path">Esc &gt; Chat Channel Settings &gt; Log chat to file</span></strong><span data-i18n="tab.chatlog.section.chatlog-monitoring.hint-outro"> so logs get written to disk.</span></p>
 
                         <label>
@@ -1425,7 +1342,10 @@
 
                 <div class="panel-content advanced-tab-panel" data-panel="combat">
                     <div class="section">
-                        <h3 data-i18n="tab.combat.section.combat-dps-overlay.heading">Text Overlays</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.combat.section.combat-dps-overlay.heading">Text Overlays</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.combat.section.combat-dps-overlay.hint">Displays incoming and outgoing DPS below each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
 
                         <label>
@@ -1524,7 +1444,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.combat.section.alerts.heading">Alerts</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.combat.section.alerts.heading">Alerts</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.combat.section.alerts.hint">Notifications and status icon triggered by incoming damage. Requires Text Overlays above to be enabled.</p>
 
                         <div id="combatAlertsOptions">
@@ -1541,7 +1464,10 @@
 
                 <div class="panel-content advanced-tab-panel" data-panel="mining">
                     <div class="section">
-                        <h3 data-i18n="tab.mining.section.mining-rate-overlay.heading">Text Overlays</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.mining.section.mining-rate-overlay.heading">Text Overlays</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.mining.section.mining-rate-overlay.hint">Displays m3 mined per second on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
 
                         <label>
@@ -1607,7 +1533,10 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.mining.section.alerts.heading">Alerts</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.mining.section.alerts.heading">Alerts</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.mining.section.alerts.hint">Notifications triggered by mining laser activity. Requires Text Overlays above to be enabled.</p>
 
                         <div id="miningAlertsOptions">
@@ -1632,7 +1561,10 @@
                     </div>
 
                     <div class="section">
-                        <h3>Ore / Ice / Gas Prices</h3>
+                        <div class="section-heading">
+                            <h3>Ore / Ice / Gas Prices</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint">"Fetch Prices" pulls current Jita buy prices from EVE's market.</p>
 
                         <table class="notification-types-table">
@@ -1652,7 +1584,10 @@
 
                 <div class="panel-content advanced-tab-panel" data-panel="bounty">
                     <div class="section">
-                        <h3 data-i18n="tab.bounty.section.bounty-rate-overlay.heading">Text Overlays</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.bounty.section.bounty-rate-overlay.heading">Text Overlays</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.bounty.section.bounty-rate-overlay.hint">Displays ISK bounty payouts per minute/hour on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
 
                         <label>
@@ -1713,7 +1648,10 @@
 
                 <div class="panel-content advanced-tab-panel" data-panel="resources">
                     <div class="section">
-                        <h3 data-i18n="tab.resources.section.resource-usage-overlay.heading">Resource Usage Overlay Settings</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.resources.section.resource-usage-overlay.heading">Resource Usage Overlay Settings</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
                         <p class="hint" data-i18n="tab.resources.section.resource-usage-overlay.hint">Displays each client's CPU%, RAM, and VRAM usage on its thumbnail, sampled directly from Windows rather than from EVE's logs.</p>
 
                         <label>
