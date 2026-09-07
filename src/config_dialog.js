@@ -4766,10 +4766,12 @@ function addSystemColor() {
     populateSystemColors();
     scheduleThumbnailPreview();
 
-    const newIndex = currentConfig.systemColors.length - 1;
-    setTimeout(() => {
-        document.getElementById(`systemColor_${newIndex}_name`)?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
-    }, 100);
+    const contentPanel = document.getElementById('content-panel');
+    if (contentPanel) {
+        setTimeout(() => {
+            contentPanel.scrollTop = contentPanel.scrollHeight;
+        }, 100);
+    }
 }
 
 function removeSystemColor(index) {
