@@ -84,7 +84,7 @@
             <div id="content-panel">
                 <div class="panel-content active" data-panel="about">
                     <div class="section">
-                        <pre id="ascii-logo" style="font-family: monospace; line-height: 1.1; margin: 0 0 12px 0; overflow-x: auto; text-align: center; cursor: pointer; user-select: none; font-size: 11px;">
+                        <pre id="ascii-logo">
  _______     _______      __  __        _   ____                 _               
 | ____\ \   / / ____|    |  \/  | __ _ (_) |  _ \ _ __ _____   _(_) _____      __
 |  _|  \ \ / /|  _| _____| |\/| |/ _` || | | |_) | '__/ _ \ \ / / |/ _ \ \ /\ / /
@@ -92,7 +92,7 @@
 |_____|  \_/  |_____|    |_|  |_|\__,_|/ | |_|   |_|  \___| \_/ |_|\___| \_/\_/  
                                       |__/                                        </pre>
                         <h3 data-i18n="tab.about.section.app-name.heading">EVE-Maj Preview</h3>
-                        <p class="hint" style="margin: 8px 0;" data-i18n="misc.app-description">A modern, lightweight window preview tool for EVE Online, built with Zig.</p>
+                        <p class="hint" data-i18n="misc.app-description">A modern, lightweight window preview tool for EVE Online, built with Zig.</p>
 
                         <div style="margin: 12px 0;">
                             <p class="hint"><strong data-i18n="misc.version-label">Version:</strong> <span id="app-version">0.0.2</span></p>
@@ -103,14 +103,14 @@
 
                     <div class="section">
                         <h3 data-i18n="tab.about.section.credits.heading">Credits</h3>
-                        <p class="hint" style="margin: 8px 0;" data-i18n="misc.credits-made-by">Made by Mr Majestic for the APM special interest group in Goonswarm.</p>
-                        <p class="hint" style="margin: 8px 0;" data-i18n="misc.credits-inspired-by">Heavily inspired by the original EVE-O Preview and related tools.</p>
+                        <p class="hint" data-i18n="misc.credits-made-by">Made by Mr Majestic for the APM special interest group in Goonswarm.</p>
+                        <p class="hint" data-i18n="misc.credits-inspired-by">Heavily inspired by the original EVE-O Preview and related tools.</p>
                     </div>
 
                     <div class="section">
                         <h3 data-i18n="tab.about.section.thanks.heading">Thanks</h3>
-                        <ul class="hint" style="margin: 8px 0; line-height: 1.8; display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 16px; row-gap: 0;">
-                            <li style="grid-column: 1 / -1;" data-i18n="misc.thanks-sig-feedback">Everyone in the APM special interest group for their feedback</li>
+                        <ul class="hint credits-grid">
+                            <li class="credits-grid-full" data-i18n="misc.thanks-sig-feedback">Everyone in the APM special interest group for their feedback</li>
                             <li>Aulis</li>
                             <li>Cy</li>
                             <li>Amaliana</li>
@@ -122,7 +122,7 @@
 
                     <div class="section">
                         <h3 data-i18n="tab.about.section.license.heading">License</h3>
-                        <p class="hint" style="margin: 8px 0;" data-i18n="misc.license-text">This project is open source and released under the GNU General Public License v3.0 (GPLv3). A copy of the license is included with the application.</p>
+                        <p class="hint" data-i18n="misc.license-text">This project is open source and released under the GNU General Public License v3.0 (GPLv3). A copy of the license is included with the application.</p>
                     </div>
 
                     <div class="section">
@@ -136,12 +136,12 @@
                             <span class="label-body" data-i18n="field.advancedModeToggle.label">Advanced Mode</span>
                         </label>
 
-                        <label style="margin-top: 8px;">
+                        <label>
                             <input type="checkbox" id="alwaysOnTopToggle" onchange="toggleAlwaysOnTop()">
                             <span class="label-body" data-i18n="field.alwaysOnTopToggle.label">Always on Top</span>
                         </label>
 
-                        <label for="languageSelect" style="margin-top: 8px;" data-i18n="tab.about.section.language.heading">Language</label>
+                        <label for="languageSelect" data-i18n="tab.about.section.language.heading">Language</label>
                         <select id="languageSelect" onchange="switchLanguage(this.value)"></select>
                     </div>
 
@@ -154,16 +154,27 @@
 
                 <div class="panel-content advanced-tab-panel" data-panel="general">
                     <div class="section">
-                        <h3 data-i18n="tab.general.section.system-configuration.heading">Logging &amp; Scanning</h3>
-                        <p class="hint" data-i18n="tab.general.section.system-configuration.hint">Log Level sets logging verbosity and applies globally, across all profiles. Scan Interval is the delay between checks for new windows, and applies to this profile only.</p>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.general.section.logging.heading">Logging</h3>
+                            <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.general.section.logging.hint">How much detail is written to the log file.</p>
 
-<label for="logLevel" data-i18n="field.logLevel.label">Log Level</label>
-                    <select id="logLevel">
-                        <option value="debug" data-i18n="field.logLevel.option.debug">Debug</option>
-                        <option value="info" data-i18n="field.logLevel.option.info">Info</option>
-                        <option value="warn" data-i18n="field.logLevel.option.warn">Warning</option>
-                        <option value="err" data-i18n="field.logLevel.option.err">Error</option>
-                    </select>
+                        <label for="logLevel" data-i18n="field.logLevel.label">Log Level</label>
+                        <select id="logLevel">
+                            <option value="debug" data-i18n="field.logLevel.option.debug">Debug</option>
+                            <option value="info" data-i18n="field.logLevel.option.info">Info</option>
+                            <option value="warn" data-i18n="field.logLevel.option.warn">Warning</option>
+                            <option value="err" data-i18n="field.logLevel.option.err">Error</option>
+                        </select>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.general.section.scanning.heading">Scanning</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.general.section.scanning.hint">How often to check for new EVE windows.</p>
 
                         <label for="scanInterval" data-i18n="field.scanInterval.label">Scan Interval (s)</label>
                         <input type="number" id="scanInterval" min="0.1" max="10" step="0.1">
@@ -186,7 +197,7 @@
                                 <!-- Window filters will be dynamically populated here -->
                             </div>
                             
-                            <button type="button" onclick="addWindowFilter()" style="width: 100%;" data-i18n="button.add-window-filter.label">+ Add Window Filter</button>
+                            <button type="button" class="full-width-btn" onclick="addWindowFilter()" data-i18n="button.add-window-filter.label">+ Add Window Filter</button>
                         </div>
                     </div>
                 </div>
@@ -215,7 +226,7 @@
                             </div>
                         </div>
 
-                        <label style="margin-top: 8px;">
+                        <label>
                             <input type="checkbox" id="constrainAspectRatio" checked onchange="toggleAspectRatioSlider()">
                             <span class="label-body" data-i18n="field.constrainAspectRatio.label">Constrain Aspect Ratio</span>
                         </label>
@@ -259,7 +270,7 @@
                         <div id="overlayPropertiesPopover" class="overlay-popover" style="display: none;">
                             <div class="overlay-popover-header">
                                 <span id="overlayPopoverTitle"></span>
-                                <button type="button" id="overlayPopoverClose" aria-label="Close">×</button>
+                                <button type="button" id="overlayPopoverClose" aria-label="Close" data-i18n-aria-label="common.close">×</button>
                             </div>
                             <div class="overlay-popover-body" id="overlayPopoverBody"></div>
                         </div>
@@ -515,7 +526,7 @@
                             <input type="checkbox" id="useMonitorWorkArea">
                             <span class="label-body" data-i18n="field.useMonitorWorkArea.label">Use Monitor Work Area</span>
                         </label>
-                        <label style="margin-top: 8px;">
+                        <label>
                             <input type="checkbox" id="honorSavedPositions">
                             <span class="label-body" data-i18n="field.honorSavedPositions.label">Honor Saved Positions</span>
                         </label>
@@ -548,7 +559,7 @@
                                     </label>
 
                                     <div id="focusedBorderOptions">
-                                        <label for="borderWidth" style="margin-top: 8px;" data-i18n="common.widthPxLabel">Width (px)</label>
+                                        <label for="borderWidth" data-i18n="common.widthPxLabel">Width (px)</label>
                                         <input type="number" id="borderWidth" min="1" max="50">
 
                                         <label for="borderStyle" data-i18n="common.styleLabel">Style</label>
@@ -577,7 +588,7 @@
                                     </label>
 
                                     <div id="inactiveBorderOptions">
-                                        <label for="inactiveBorderWidth" style="margin-top: 8px;" data-i18n="common.widthPxLabel">Width (px)</label>
+                                        <label for="inactiveBorderWidth" data-i18n="common.widthPxLabel">Width (px)</label>
                                         <input type="number" id="inactiveBorderWidth" min="1" max="50">
 
                                         <label for="inactiveBorderStyle" data-i18n="common.styleLabel">Style</label>
@@ -668,7 +679,7 @@
                             <option value="Nothing" data-i18n="field.viewMode.option.nothing">Nothing (no display, saves resources)</option>
                         </select>
                         <div id="clientListOptions">
-                            <h4 style="margin-top: 16px;" data-i18n="tab.thumbnails.section.client-list-layout.heading">Layout</h4>
+                            <h4 data-i18n="tab.thumbnails.section.client-list-layout.heading">Layout</h4>
 
                             <div class="row">
                                 <div class="column">
@@ -684,7 +695,7 @@
                                     <input type="number" id="listViewColumns" min="1" max="15">
                                 </div>
                             </div>
-                            <label for="listViewOpacity" style="margin-top: 8px;"><span data-i18n="field.listViewOpacity.label">Client List Opacity: </span><span id="listViewOpacityValue">100</span>%</label>
+                            <label for="listViewOpacity"><span data-i18n="field.listViewOpacity.label">Client List Opacity: </span><span id="listViewOpacityValue">100</span>%</label>
                             <input type="range" id="listViewOpacity" min="20" max="100" value="100" data-value-target="listViewOpacityValue">
 
                             <h4 data-i18n="tab.thumbnails.section.client-list-font.heading">Font</h4>
@@ -731,7 +742,7 @@
                             <!-- System colors will be dynamically populated here -->
                         </div>
                         
-                        <button type="button" onclick="addSystemColor()" style="width: 100%;" data-i18n="button.add-system-color.label">+ Add System Color</button>
+                        <button type="button" class="full-width-btn" onclick="addSystemColor()" data-i18n="button.add-system-color.label">+ Add System Color</button>
                     </div>
                 </div>
 
@@ -752,7 +763,7 @@
                             <!-- Characters will be dynamically populated here -->
                         </div>
                         
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div class="button-row">
                             <button type="button" onclick="addCharacter()" data-i18n="button.add-character.label">+ Add Character</button>
                             <button type="button" id="populateCharactersBtn" onclick="populateCharactersFromClients()" data-i18n="common.populateFromClients">↻ Populate from Open Clients</button>
                         </div>
@@ -814,12 +825,12 @@
                                 <span class="label-body" data-i18n="field.autoMinimizeExemptLastActive.label">Keep Last-Active Client Visible</span>
                             </label>
 
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                                <div>
+                            <div class="row">
+                                <div class="column">
                                     <label for="autoMinimizeDelay" data-i18n="field.autoMinimizeDelay.label">Delay (s)</label>
                                     <input type="number" id="autoMinimizeDelay" min="0" max="10" step="0.1">
                                 </div>
-                                <div>
+                                <div class="column">
                                     <label for="animationStyle" data-i18n="field.animationStyle.label">Animation Style</label>
                                     <select id="animationStyle">
                                         <option value="NoAnimation" data-i18n="field.animationStyle.option.noanimation">No Animation</option>
@@ -842,12 +853,12 @@
                             <span class="label-body" data-i18n="field.enableShiftClickExclude.label">Enable Shift+Click to Exclude</span>
                         </label>
                         <div id="shiftClickExcludeOptions">
-                            <label style="margin-top: 8px;">
+                            <label>
                                 <input type="checkbox" id="autoMinimizeExcludedCharacters">
                                 <span class="label-body" data-i18n="field.autoMinimizeExcludedCharacters.label">Auto-Minimize Excluded Characters</span>
                             </label>
 
-                            <label for="exclusionOverlayStyle" style="margin-top: 8px;" data-i18n="field.exclusionOverlayStyle.label">Overlay Style</label>
+                            <label for="exclusionOverlayStyle" data-i18n="field.exclusionOverlayStyle.label">Overlay Style</label>
                             <select id="exclusionOverlayStyle">
                                 <option value="X" data-i18n="common.exclusionOverlayStyle.x">X</option>
                                 <option value="DiagonalSlash" data-i18n="common.exclusionOverlayStyle.diagonalSlash">Diagonal Slash</option>
@@ -882,14 +893,17 @@
 
                         <div class="field-row">
                             <select id="windowPositionSourceSelect" title="Copy Position From" data-i18n-title="field.windowPositionSourceSelect.label"></select>
-                            <button type="button" onclick="refreshWindowPositionSourceOptions()" title="Refresh" data-i18n-title="common.refreshTitle">↻</button>
+                            <button type="button" class="button-icon" onclick="refreshWindowPositionSourceOptions()" title="Refresh" data-i18n-title="common.refreshTitle">↻</button>
                             <button type="button" onclick="setAllCharacterWindowPositions()" title="Set Window Position for All Characters" data-i18n-title="common.setWindowPositionForAllButton" data-i18n="common.setWindowPositionForAllButtonShort">Set All</button>
                             <button type="button" id="clearAllWindowPositionsBtn" class="button-danger" onclick="confirmClearAllCharacterWindowPositions()" title="Remove All Saved Positions" data-i18n-title="common.clearWindowPositionForAllButton" data-i18n="common.clearWindowPositionForAllButtonShort">Clear All</button>
                         </div>
                     </div>
 
                     <div class="section advanced-section">
-                        <h3 data-i18n="tab.behavior.section.ultra-potato.heading">Ultra Potato Mode</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.behavior.section.ultra-potato.heading">Ultra Potato Mode</h3>
+                            <span class="scope-chip" data-i18n="common.scopeExternal">eve settings</span>
+                        </div>
                         <p class="hint" data-i18n="tab.behavior.section.ultra-potato.hint">Forces EVE Online's heaviest graphics settings (shaders, shadows, textures, reflections, post-processing, cloth, ambient occlusion, volumetrics) to their lowest quality. Close all EVE clients first - the client overwrites these files on exit. A .bak backup of each file is made before its first edit.</p>
 
                         <label for="ultraPotatoProfileSelect" data-i18n="tab.behavior.section.ultra-potato.profile-label">EVE Settings Profile</label>
@@ -897,7 +911,7 @@
                             <select id="ultraPotatoProfileSelect">
                                 <option value="" data-i18n="tab.behavior.section.ultra-potato.scanning">Scanning for EVE settings profiles...</option>
                             </select>
-                            <button type="button" onclick="scanUltraPotatoProfiles()" title="Refresh" data-i18n-title="common.refreshTitle">↻</button>
+                            <button type="button" class="button-icon" onclick="scanUltraPotatoProfiles()" title="Refresh" data-i18n-title="common.refreshTitle">↻</button>
                             <button type="button" id="applyUltraPotatoBtn" onclick="applyUltraPotatoMode()" disabled data-i18n="button.apply-ultra-potato.label">Apply Ultra Potato Mode</button>
                         </div>
                     </div>
@@ -920,7 +934,7 @@
                             <!-- Hotkey groups will be dynamically populated here -->
                         </div>
 
-                        <button type="button" onclick="addHotkeyGroup()" style="width: 100%;" data-i18n="button.add-hotkey-group.label">+ Add Hotkey Group</button>
+                        <button type="button" class="full-width-btn" onclick="addHotkeyGroup()" data-i18n="button.add-hotkey-group.label">+ Add Hotkey Group</button>
                     </div>
 
                 </div>
@@ -997,7 +1011,7 @@
                             <!-- Profile switch hotkeys will be dynamically populated here -->
                         </div>
 
-                        <button type="button" onclick="addProfileSwitchHotkey()" style="width: 100%;" data-i18n="button.add-profile-switch-hotkey.label">+ Add Profile Switch Hotkey</button>
+                        <button type="button" class="full-width-btn" onclick="addProfileSwitchHotkey()" data-i18n="button.add-profile-switch-hotkey.label">+ Add Profile Switch Hotkey</button>
                     </div>
 
                     <div class="section">
@@ -1009,21 +1023,21 @@
 
                         <div class="binding-list" id="windowFocusBindings"></div>
 
-                        <h4 style="margin-top: 16px;" data-i18n="tab.hotkeys.section.app-hotkeys.heading">App Hotkeys</h4>
+                        <h4 data-i18n="tab.hotkeys.section.app-hotkeys.heading">App Hotkeys</h4>
 
                         <div id="appHotkeysList" style="margin-bottom: 8px;">
                             <!-- App hotkeys will be dynamically populated here -->
                         </div>
 
-                        <button type="button" onclick="addAppHotkey()" style="width: 100%;" data-i18n="button.add-app-hotkey.label">+ Add App Hotkey</button>
+                        <button type="button" class="full-width-btn" onclick="addAppHotkey()" data-i18n="button.add-app-hotkey.label">+ Add App Hotkey</button>
 
-                        <h4 style="margin-top: 16px;" data-i18n="tab.hotkeys.section.url-hotkeys.heading">URL Hotkeys</h4>
+                        <h4 data-i18n="tab.hotkeys.section.url-hotkeys.heading">URL Hotkeys</h4>
 
                         <div id="urlHotkeysList" style="margin-bottom: 8px;">
                             <!-- URL hotkeys will be dynamically populated here -->
                         </div>
 
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                        <div class="button-row">
                             <button type="button" onclick="addUrlHotkey()" data-i18n="button.add-url-hotkey.label">+ Add URL Hotkey</button>
                             <button type="button" onclick="addUrlHotkey('https://evemaps.dotlan.net/')" data-i18n="button.add-dotlan-hotkey.label">+ Dotlan</button>
                             <button type="button" onclick="addUrlHotkey('https://adashboard.info/intel')" data-i18n="button.add-adashboard-hotkey.label">+ aDashboard Intel</button>
@@ -1159,9 +1173,9 @@
                                 <!-- Notification type configs will be dynamically populated here -->
                             </tbody>
                         </table>
-                        <div style="display: flex; gap: 8px; margin-top: 8px;">
-                            <button type="button" class="button-danger" onclick="resetNotificationTextColors()" style="width: 100%;" data-i18n="button.reset-notification-text-colors.label">↻ Reset All Text Colors</button>
-                            <button type="button" class="button-danger" onclick="resetNotificationBorderColors()" style="width: 100%;" data-i18n="button.reset-notification-border-colors.label">↻ Reset All Border Colors</button>
+                        <div class="button-row">
+                            <button type="button" class="button-danger" onclick="resetNotificationTextColors()" data-i18n="button.reset-notification-text-colors.label">↻ Reset All Text Colors</button>
+                            <button type="button" class="button-danger" onclick="resetNotificationBorderColors()" data-i18n="button.reset-notification-border-colors.label">↻ Reset All Border Colors</button>
                         </div>
                     </div>
 
@@ -1193,7 +1207,7 @@
                             <input type="number" id="notifInfoPanelMaxRows" min="1" max="30">
                             <p class="hint" data-i18n="field.notifInfoPanelMaxRows.hint">Caps how many recent notifications are shown, even if the panel is tall enough for more</p>
 
-                            <label for="notifInfoPanelOpacity" style="margin-top: 8px;"><span data-i18n="field.notifInfoPanelOpacity.label">Panel Opacity: </span><span id="notifInfoPanelOpacityValue">100</span>%</label>
+                            <label for="notifInfoPanelOpacity"><span data-i18n="field.notifInfoPanelOpacity.label">Panel Opacity: </span><span id="notifInfoPanelOpacityValue">100</span>%</label>
                             <input type="range" id="notifInfoPanelOpacity" min="20" max="100" value="100" data-value-target="notifInfoPanelOpacityValue">
 
                             <h4 data-i18n="tab.notifications.section.history-panel-font.heading">Font</h4>
@@ -1295,7 +1309,7 @@
                         </label>
 
                         <div id="chatlogOptions">
-                            <h4 style="margin-top: 16px;" data-i18n="tab.chatlog.section.log-directories.heading">Log Directories</h4>
+                            <h4 data-i18n="tab.chatlog.section.log-directories.heading">Log Directories</h4>
 
                             <label for="chatlogDir" data-i18n="field.chatlogDir.label">Chatlog Directory</label>
                             <div class="field-row">
@@ -1310,13 +1324,13 @@
                             </div>
 
                             <div class="advanced-section">
-                                <h4 style="margin-top: 16px;" data-i18n="tab.chatlog.section.polling-performance.heading">Polling &amp; Performance</h4>
+                                <h4 data-i18n="tab.chatlog.section.polling-performance.heading">Polling &amp; Performance</h4>
 
                                 <label>
                                     <input type="checkbox" id="chatlogUseThreading">
                                     <span class="label-body" data-i18n="field.chatlogUseThreading.label">Use Threading</span>
                                 </label>
-                                <label for="chatlogPollInterval" style="margin-top: 8px;" data-i18n="field.chatlogPollInterval.label">Poll Interval (s)</label>
+                                <label for="chatlogPollInterval" data-i18n="field.chatlogPollInterval.label">Poll Interval (s)</label>
                                 <input type="number" id="chatlogPollInterval" min="0.1" max="5" step="0.1">
                                 <p class="hint" data-i18n="field.chatlogPollInterval.hint">How often to check each log file for new lines. Lower is more responsive but uses more CPU; clamped to 0.1-5s.</p>
 
@@ -1342,7 +1356,7 @@
 
                         <label>
                             <input type="checkbox" id="combatEnabled" onchange="toggleCombatOptions()">
-                            <span class="label-body" data-i18n="field.combatEnabled.label">Enable Combat Overlays</span>
+                            <span class="label-body" data-i18n="field.combatEnabled.label">Enable Text Overlays</span>
                         </label>
 
                         <div id="combatOptions">
@@ -1374,7 +1388,7 @@
                                     <label for="combatIncomingColor" data-i18n="field.combatIncomingColor.label">Color</label>
                                     <input type="color" id="combatIncomingColor" data-default-color="#FF4444">
 
-                                    <label for="combatIncomingFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
+                                    <label for="combatIncomingFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
                                     <input type="number" id="combatIncomingFontSize" min="6" max="72">
 
                                     <label for="combatIncomingFontName" data-i18n="common.fontNameLabel">Font Name</label>
@@ -1412,7 +1426,7 @@
                                     <label for="combatOutgoingColor" data-i18n="field.combatOutgoingColor.label">Color</label>
                                     <input type="color" id="combatOutgoingColor" data-default-color="#44FF44">
 
-                                    <label for="combatOutgoingFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
+                                    <label for="combatOutgoingFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
                                     <input type="number" id="combatOutgoingFontSize" min="6" max="72">
 
                                     <label for="combatOutgoingFontName" data-i18n="common.fontNameLabel">Font Name</label>
@@ -1488,7 +1502,7 @@
                                 <label for="miningOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="miningOffsetYValue">0</span></label>
                                 <input type="range" id="miningOffsetY" min="-50" max="50" value="0" data-value-target="miningOffsetYValue">
 
-                                <label for="miningFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
+                                <label for="miningFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
                                 <input type="number" id="miningFontSize" min="6" max="72">
 
                                 <label for="miningFontName" data-i18n="common.fontNameLabel">Font Name</label>
@@ -1554,23 +1568,23 @@
 
                     <div class="section">
                         <div class="section-heading">
-                            <h3>Ore / Ice / Gas Prices</h3>
+                            <h3 data-i18n="tab.mining.section.ore-prices.heading">Ore / Ice / Gas Prices</h3>
                             <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
                         </div>
-                        <p class="hint">"Fetch Prices" pulls current Jita buy prices from EVE's market.</p>
+                        <p class="hint" data-i18n="tab.mining.section.ore-prices.hint">"Fetch Prices" pulls current Jita buy prices from EVE's market.</p>
 
                         <table class="notification-types-table">
                             <thead>
                                 <tr>
                                     <th class="category-col"></th>
-                                    <th class="event-type-col">Name</th>
-                                    <th>Price (ISK)</th>
+                                    <th class="event-type-col" data-i18n="tab.mining.table.ore-name.heading">Name</th>
+                                    <th data-i18n="tab.mining.table.ore-price.heading">Price (ISK)</th>
                                 </tr>
                             </thead>
                             <tbody id="oreTableBody"></tbody>
                         </table>
 
-                        <button type="button" id="fetchOrePricesBtn" class="full-width-btn" onclick="fetchOrePrices()">↻ Fetch Prices</button>
+                        <button type="button" id="fetchOrePricesBtn" class="full-width-btn" onclick="fetchOrePrices()" data-i18n="button.fetch-ore-prices.label">↻ Fetch Prices</button>
                     </div>
                 </div>
 
@@ -1608,7 +1622,7 @@
                                 <label for="bountyOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="bountyOffsetYValue">0</span></label>
                                 <input type="range" id="bountyOffsetY" min="-50" max="50" value="0" data-value-target="bountyOffsetYValue">
 
-                                <label for="bountyFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
+                                <label for="bountyFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
                                 <input type="number" id="bountyFontSize" min="6" max="72">
 
                                 <label for="bountyFontName" data-i18n="common.fontNameLabel">Font Name</label>
@@ -1630,8 +1644,8 @@
 
                             <label for="bountyIskRateUnit" data-i18n="field.bountyIskRateUnit.label">ISK Rate Unit</label>
                             <select id="bountyIskRateUnit">
-                                <option value="minute" data-i18n="field.miningIskRateUnit.minute">Per Minute</option>
-                                <option value="hour" data-i18n="field.miningIskRateUnit.hour">Per Hour</option>
+                                <option value="minute" data-i18n="field.bountyIskRateUnit.minute">Per Minute</option>
+                                <option value="hour" data-i18n="field.bountyIskRateUnit.hour">Per Hour</option>
                             </select>
                         </div>
                     </div>
@@ -1682,7 +1696,7 @@
                                 <label for="resourcesOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="resourcesOffsetYValue">0</span></label>
                                 <input type="range" id="resourcesOffsetY" min="-50" max="50" value="0" data-value-target="resourcesOffsetYValue">
 
-                                <label for="resourcesFontSize" data-i18n="common.fontSizeLabel">Font Size</label>
+                                <label for="resourcesFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
                                 <input type="number" id="resourcesFontSize" min="6" max="72">
 
                                 <label for="resourcesFontName" data-i18n="common.fontNameLabel">Font Name</label>
