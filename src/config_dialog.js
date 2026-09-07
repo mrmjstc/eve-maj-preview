@@ -5604,6 +5604,7 @@ function populateHotkeyGroups() {
                     <div class="roster-row roster-row-empty">
                         <span class="hint">${t('tab.hotkey-groups.section.groups.empty-roster')}</span>
                     </div>
+                    <button type="button" class="hkgroup-tab-add" onclick="addHotkeyGroup()">${t('button.add-hotkey-group.label')}</button>
                 </div>
                 <div class="detail-stack">
                     <p class="hint">${t('tab.hotkey-groups.section.groups.empty-detail')}</p>
@@ -5619,8 +5620,7 @@ function populateHotkeyGroups() {
     const rosterRows = groups.map((group, index) => {
         const groupName = group.name || t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (index + 1);
         return `
-            <div class="roster-row ${index === selectedHotkeyGroupIndex ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${index === selectedHotkeyGroupIndex}" data-index="${index}" onclick="selectHotkeyGroup(${index})">
-                <span class="drag-index-chip hkgroup-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(index + 1).padStart(2, '0')}</span>
+            <div class="roster-row ${index === selectedHotkeyGroupIndex ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${index === selectedHotkeyGroupIndex}" data-index="${index}" onclick="selectHotkeyGroup(${index})" title="${t('common.dragToReorder')}">
                 <span class="roster-name" id="hkgroup_${index}_header_name">${groupName}</span>
             </div>
         `;
@@ -5678,7 +5678,7 @@ function populateHotkeyGroups() {
 
     container.innerHTML = `
         <div class="master-detail">
-            <div class="roster" role="tablist" aria-orientation="vertical">${rosterRows}</div>
+            <div class="roster" role="tablist">${rosterRows}<button type="button" class="hkgroup-tab-add" onclick="addHotkeyGroup()">${t('button.add-hotkey-group.label')}</button></div>
             <div class="detail-stack">${detailPanels}</div>
         </div>
     `;
@@ -5757,11 +5757,11 @@ function toggleHotkeyGroupMembershipEditor(index) {
 function setupHotkeyGroupDragAndDrop() {
     setupDragReorder(
         document.querySelector('#hotkeyGroupsList .roster'),
-        '.roster-row',
-        '.hkgroup-drag-handle',
+        '.roster-row:not(.hkgroup-tab-add)',
+        null,
         (item) => parseInt(item.dataset.index, 10),
         reorderHotkeyGroups,
-        { wholeRow: true }
+        { wholeRow: true, grid: true }
     );
 }
 
@@ -5879,11 +5879,9 @@ function scrollHotkeyGroupCharsToEnd(groupIndex) {
 }
 
 function scrollHotkeyGroupRosterToEnd() {
-    const roster = document.querySelector('#hotkeyGroupsList .roster');
-    if (!roster) return;
-    setTimeout(() => {
-        roster.scrollTop = roster.scrollHeight;
-    }, 50);
+    const rows = document.querySelectorAll('#hotkeyGroupsList .roster-row:not(.hkgroup-tab-add)');
+    const last = rows[rows.length - 1];
+    if (last) last.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
 }
 
 function addHotkeyGroup() {
