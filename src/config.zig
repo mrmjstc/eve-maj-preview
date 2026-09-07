@@ -347,6 +347,7 @@ pub const GlobalSettings = struct {
     characterIdMap: std.StringHashMap([]const u8),
     disableUpdateChecks: bool,
     runOnStartup: bool,
+    autoRegisterProtocol: bool,
     alwaysOnTop: bool,
     language: []const u8,
     oreTable: std.ArrayList(OrePriceEntry),
@@ -371,6 +372,7 @@ pub const GlobalSettings = struct {
             .characterIdMap = std.StringHashMap([]const u8).init(allocator),
             .disableUpdateChecks = false,
             .runOnStartup = false,
+            .autoRegisterProtocol = true,
             .alwaysOnTop = true,
             .language = "en",
             .oreTable = std.ArrayList(OrePriceEntry).empty,
@@ -599,6 +601,7 @@ pub const GlobalSettings = struct {
         characterIdMap: StringMapWire = .{},
         disableUpdateChecks: bool = false,
         runOnStartup: bool = false,
+        autoRegisterProtocol: bool = true,
         alwaysOnTop: bool = true,
         language: []const u8 = "en",
         oreTable: []const OrePriceEntry.Wire = &.{},
@@ -641,6 +644,7 @@ pub const GlobalSettings = struct {
             .characterIdMap = .{ .entries = entries },
             .disableUpdateChecks = self.disableUpdateChecks,
             .runOnStartup = self.runOnStartup,
+            .autoRegisterProtocol = self.autoRegisterProtocol,
             .alwaysOnTop = self.alwaysOnTop,
             .language = self.language,
             .oreTable = ore,
@@ -666,6 +670,7 @@ pub const GlobalSettings = struct {
         settings.hotkeyReturnToLastApp = unwrapVk(w.hotkeyReturnToLastApp);
         settings.disableUpdateChecks = w.disableUpdateChecks;
         settings.runOnStartup = w.runOnStartup;
+        settings.autoRegisterProtocol = w.autoRegisterProtocol;
         settings.alwaysOnTop = w.alwaysOnTop;
 
         for (w.profileSwitchHotkeys) |item_wire| {
@@ -1810,8 +1815,6 @@ pub const Config = struct {
     requireEveFocus: bool = false,
     resetGroupIndexOnNonGroupFocus: bool = false,
 
-    autoRegisterProtocol: bool = true,
-
     hotkeyMinimizeAll: ?u32 = null,
     hotkeyCloseAll: ?u32 = null,
     hotkeyToggleVisibility: ?u32 = null,
@@ -1856,7 +1859,6 @@ pub const Config = struct {
     pub const HotkeysWire = struct {
         requireEveFocus: bool = false,
         resetGroupIndexOnNonGroupFocus: bool = false,
-        autoRegisterProtocol: bool = true,
         hotkeyMinimizeAll: ?VkCode = null,
         hotkeyCloseAll: ?VkCode = null,
         hotkeyToggleVisibility: ?VkCode = null,
@@ -1908,7 +1910,6 @@ pub const Config = struct {
             .hotkeys = .{
                 .requireEveFocus = self.requireEveFocus,
                 .resetGroupIndexOnNonGroupFocus = self.resetGroupIndexOnNonGroupFocus,
-                .autoRegisterProtocol = self.autoRegisterProtocol,
                 .hotkeyMinimizeAll = wrapVk(self.hotkeyMinimizeAll),
                 .hotkeyCloseAll = wrapVk(self.hotkeyCloseAll),
                 .hotkeyToggleVisibility = wrapVk(self.hotkeyToggleVisibility),
@@ -1948,7 +1949,6 @@ pub const Config = struct {
         cfg.travel = w.travel;
         cfg.requireEveFocus = w.hotkeys.requireEveFocus;
         cfg.resetGroupIndexOnNonGroupFocus = w.hotkeys.resetGroupIndexOnNonGroupFocus;
-        cfg.autoRegisterProtocol = w.hotkeys.autoRegisterProtocol;
         cfg.hotkeyMinimizeAll = unwrapVk(w.hotkeys.hotkeyMinimizeAll);
         cfg.hotkeyCloseAll = unwrapVk(w.hotkeys.hotkeyCloseAll);
         cfg.hotkeyToggleVisibility = unwrapVk(w.hotkeys.hotkeyToggleVisibility);
@@ -3749,7 +3749,6 @@ pub const Config = struct {
             .generatedColorCache = std.StringHashMap(u32).init(allocator),
             .generatedCharacterColorCache = std.StringHashMap(u32).init(allocator),
             .hotkeyGroups = std.ArrayList(HotkeyGroup).empty,
-            .autoRegisterProtocol = false,
             .hotkeyMinimizeAll = null,
             .hotkeyCloseAll = null,
             .hotkeyToggleVisibility = null,
