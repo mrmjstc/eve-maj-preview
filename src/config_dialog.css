@@ -38,6 +38,8 @@
     --color-destructive: #d3673f;
     --color-destructive-fill: #ad4527;
     --color-destructive-fill-hover: #bb4f30;
+    --color-purple: #a988d1;
+    --color-sky: #7fb3d9;
     /* Three deliberate tiers: small chips, controls, containers. */
     --radius-sm: 2px;
     --radius: 3px;
@@ -164,8 +166,10 @@ body {
 
 /* Sidebar - Terminal menu style. Widened from 169px - the longest de/ru
    labels were tight against the edge at that width. */
+/* No fixed width - a flex item with no width set shrinks/grows to its
+   content's own max-content size, so the rail hugs whichever tab label is
+   longest instead of reserving space for one that isn't there. */
 #tabs-sidebar {
-    width: 188px;
     background: var(--color-panel);
     border-right: 1px solid var(--color-border);
     padding: 6px 0;
@@ -174,16 +178,28 @@ body {
 }
 
 .tab-item {
-    padding: 6px 10px 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px 6px 8px;
     cursor: pointer;
     transition: background var(--t-hover), color var(--t-hover), border-color var(--t-hover);
     color: var(--color-muted);
     font-size: var(--fs-body);
-    position: relative;
+    white-space: nowrap;
     font-weight: var(--fw-normal);
     letter-spacing: 0.5px;
-    text-transform: uppercase;
+    text-transform: capitalize;
     border-left: 2px solid transparent;
+}
+
+.tab-glyph {
+    flex: none;
+    width: 14px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--color-muted);
+    transition: color var(--t-hover);
 }
 
 /* One step quieter than .active's --color-surface-alt, so hovering an
@@ -193,11 +209,19 @@ body {
     color: var(--color-text);
 }
 
+.tab-item:hover .tab-glyph {
+    color: var(--color-text);
+}
+
 .tab-item.active {
     background: var(--color-surface-alt);
     color: var(--color-text);
     font-weight: var(--fw-bold);
     border-left-color: var(--color-accent);
+}
+
+.tab-item.active .tab-glyph {
+    color: var(--color-accent);
 }
 
 /* Inset rather than an outer glow so it doesn't bleed over the sidebar
@@ -219,9 +243,12 @@ body {
 }
 
 /* No text-transform here - renders the heading text as authored rather than
-   adding a second casing system alongside .tab-item's uppercase above it. */
+   adding a second casing system alongside .tab-item's uppercase above it.
+   Left padding matches .tab-item's own text start (2px reserved border-left,
+   even when transparent + 8px edge + 14px glyph + 8px gap), so a submenu
+   label lines up under the tab label above it, not its glyph. */
 .subheader-item {
-    padding: 3px 10px 3px 22px;
+    padding: 3px 10px 3px 32px;
     cursor: pointer;
     transition: color var(--t-hover);
     color: var(--color-muted);
@@ -263,30 +290,18 @@ body {
     to { opacity: 1; }
 }
 
-/* h3 is the one heading level that gets uppercase + a glyph; h4 and below
-   differentiate by size/weight/color instead so hierarchy doesn't rely on
-   every level shouting at the same volume. */
+/* h3 is the one heading level that gets uppercase; h4 and below differentiate
+   by size/weight/color instead so hierarchy doesn't rely on every level
+   shouting at the same volume. No rule glyph and no underline here - both are
+   the field label's job now (see label rule below), not the section title's. */
 h3 {
     color: var(--color-text);
     font-size: var(--fs-heading);
     font-weight: var(--fw-bold);
     margin-top: var(--space-3);
     margin-bottom: var(--space-2);
-    text-transform: uppercase;
+    text-transform: capitalize;
     letter-spacing: 1px;
-    border-bottom: 1px solid var(--color-border);
-    padding-bottom: 3px;
-    /* The one remaining use of the rail glyph - section titles only, since
-       every field label and list item dropped it (see label rule below). */
-    padding-left: 20px;
-    position: relative;
-}
-
-h3::before {
-    content: '›';
-    color: var(--color-muted);
-    position: absolute;
-    left: 2px;
 }
 
 h3:first-child {
@@ -480,7 +495,7 @@ p {
 }
 
 .notification-types-table .swatch-wrap {
-    width: 26px;
+    width: var(--control-h-dense);
     height: var(--control-h-dense);
 }
 
@@ -689,14 +704,17 @@ input[type="checkbox"] + .label-body::before {
     text-align: center;
     border: 1px solid var(--color-border-strong);
     box-sizing: border-box;
-    color: var(--color-accent);
+    color: var(--color-accent-ink);
     font-size: var(--fs-small);
     border-radius: var(--radius-sm);
-    transition: border-color var(--t-hover);
+    transition: border-color var(--t-hover), background-color var(--t-hover);
 }
 
+/* Filled rather than an outline with a floating checkmark - a checked box
+   reads as "on" at a glance instead of needing the glyph to carry that alone. */
 input[type="checkbox"]:checked + .label-body::before {
     content: '✓';
+    background-color: var(--color-accent);
     border-color: var(--color-accent);
 }
 
@@ -830,7 +848,7 @@ input[type="checkbox"]:disabled + .label-body {
     color: var(--color-muted);
     font-size: var(--fs-label);
     font-style: italic;
-    margin: 2px 0;
+    margin: 1px 0 2px;
 }
 
 /* The intro hint under a section/subsection heading gets the between-groups
@@ -839,6 +857,21 @@ h3 + .hint,
 h4 + .hint,
 .section-heading + .hint {
     margin-bottom: var(--space-2);
+}
+
+/* Sibling margins collapse to the larger of the two, so .hint's own tight
+   top margin is otherwise masked by the heading/control's own margin-bottom
+   (--space-2) - shrink that margin specifically when a hint follows, rather
+   than everywhere, so unpaired headings/controls keep their normal rhythm. */
+h3:has(+ .hint),
+h4:has(+ .hint),
+.section-heading:has(+ .hint) {
+    margin-bottom: 2px;
+}
+
+input:has(+ .hint),
+select:has(+ .hint) {
+    margin-bottom: 2px;
 }
 
 /* A trailing hint after a control gets the same between-groups gap, whichever
@@ -902,7 +935,7 @@ button {
     height: var(--control-h);
     line-height: var(--lh-body);
     border-radius: var(--radius);
-    text-transform: uppercase;
+    text-transform: capitalize;
     letter-spacing: 0.5px;
 }
 
@@ -980,6 +1013,29 @@ button:active {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+#app-brand {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    color: var(--color-text);
+    font-weight: var(--fw-semibold);
+    font-size: var(--fs-body);
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+}
+
+#app-brand-mark {
+    color: var(--color-accent);
+    font-weight: var(--fw-bold);
+}
+
+#profile-header-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--color-border);
+    flex-shrink: 0;
 }
 
 #profile-header-right {
@@ -1114,19 +1170,48 @@ input.search-filter-input {
     transform: scale(0.9);
 }
 
-/* Square icon button - shape only, so a refresh reads differently from a delete. */
+/* Square icon button - shape only, so a refresh reads differently from a delete.
+   Explicit flex centering, not line-height alone - symbol glyphs (+, ⧉, ↺, ⇩, ↻)
+   sit at wildly different heights within their em box, so text-align plus a
+   line-height guess leaves some visibly off-center. Same mechanism as
+   .button-clear above. */
 .button-icon {
     width: var(--control-h);
     flex: none;
-    padding: 0;
+    /* Asymmetric, not 0 - align-items:center centers the font's line box, and
+       most of these glyphs sit optically above that box's own center, which
+       reads as "too high". A couple px of top-only padding nudges the
+       flex-centered content down without moving the button's own border. */
+    padding: 2px 0 0;
     font-size: 17px;
     line-height: 1;
     color: var(--color-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .button-icon-danger:hover {
     color: var(--color-destructive);
     border-color: var(--color-destructive);
+    background-color: var(--color-surface);
+}
+
+.button-icon-add:hover {
+    color: var(--color-success);
+    border-color: var(--color-success);
+    background-color: var(--color-surface);
+}
+
+.button-icon-reset:hover {
+    color: var(--color-purple);
+    border-color: var(--color-purple);
+    background-color: var(--color-surface);
+}
+
+.button-icon-import:hover {
+    color: var(--color-sky);
+    border-color: var(--color-sky);
     background-color: var(--color-surface);
 }
 
@@ -1414,7 +1499,7 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 /* Computed every pointer move during a drag (see setupOverlayChipDrag in
    config_dialog.js) but previously painted nothing. */
 .overlay-chip.snapped {
-    outline: 1px solid var(--color-success);
+    outline: 1px solid var(--color-accent);
     outline-offset: 1px;
 }
 
@@ -1443,7 +1528,7 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 /* Shown while a dragged chip aligns with another chip's edge/center. */
 .overlay-guide {
     position: absolute;
-    background-color: var(--color-success);
+    background-color: var(--color-accent);
     opacity: 0.7;
     pointer-events: none;
     display: none;
@@ -1693,24 +1778,16 @@ label + .binding-list {
     font-size: 10px;
 }
 
-/* Carries the heading rule across the chip too, so a section with one underlines
-   the same full width as a section without. The h3's own padding-bottom comes
-   here with it: left on the h3 it would sit inside the centred row and push the
-   chip below the heading text. */
 .section-heading {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
     margin-bottom: 8px;
-    padding-bottom: 3px;
-    border-bottom: 1px solid var(--color-border);
 }
 
 .section-heading > h3 {
     margin-bottom: 0;
-    padding-bottom: 0;
-    border-bottom: none;
 }
 
 /* Scope, said once per section instead of in every hint: which file a binding
@@ -1771,7 +1848,7 @@ input[type="color"] {
     -moz-appearance: none;
     appearance: none;
     height: var(--control-h);
-    width: 50px;
+    width: var(--control-h);
     padding: 3px;
     cursor: pointer;
     border: 1px solid var(--color-border-strong);
@@ -1810,8 +1887,8 @@ input[type="color"]::-moz-color-swatch {
 .swatch-wrap {
     position: relative;
     display: inline-block;
-    width: 50px;
-    height: 28px;
+    width: var(--control-h);
+    height: var(--control-h);
 }
 
 .swatch-wrap input[type="color"] {
@@ -1837,13 +1914,11 @@ input[type="color"]::-moz-color-swatch {
     );
 }
 
-/* A persistent hex companion next to a swatch, split evenly with it - built
-   by initInlineColorHex() in config_dialog.js, which wraps every
-   input[type="color"] (or its .swatch-wrap, where one exists) in this at
-   render time, including ones created after page load. The whole pairing
-   still respects the never-more-than-half-width rule above; min-width keeps
-   the hex side legible if its container is already narrow (e.g. a .field-row
-   sharing space with a name field). Excluded from the notification table's
+/* A persistent hex companion next to a swatch - built by initInlineColorHex()
+   in config_dialog.js, which wraps every input[type="color"] (or its
+   .swatch-wrap, where one exists) in this at render time, including ones
+   created after page load. The swatch stays a fixed square; the hex input
+   fills whatever space remains. Excluded from the notification table's
    per-row swatches - that column has no room for a second control. */
 /* Fixed, not a percentage - a percentage resolves against whatever container
    a swatch happens to sit in (a plain section vs. one already halved by
@@ -1859,8 +1934,7 @@ input[type="color"]::-moz-color-swatch {
 
 .color-with-hex > input[type="color"],
 .color-with-hex > .swatch-wrap {
-    width: auto;
-    flex: 1 1 0%;
+    flex: none;
 }
 
 .color-with-hex > input.swatch-hex-input {
