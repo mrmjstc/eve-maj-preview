@@ -133,7 +133,7 @@
                         <p class="hint" data-i18n="tab.about.section.preferences.hint">Global, applies across all profiles.</p>
                         <label>
                             <input type="checkbox" id="advancedModeToggle" onchange="toggleAdvancedMode()">
-                            <span class="label-body" data-i18n="field.advancedModeToggle.label">Advanced mode</span>
+                            <span class="label-body" data-i18n="field.advancedModeToggle.label">Advanced Mode</span>
                         </label>
 
                         <label style="margin-top: 8px;">
@@ -217,7 +217,7 @@
 
                         <label style="margin-top: 8px;">
                             <input type="checkbox" id="constrainAspectRatio" checked onchange="toggleAspectRatioSlider()">
-                            <span class="label-body" data-i18n="field.constrainAspectRatio.label">Constrain aspect ratio</span>
+                            <span class="label-body" data-i18n="field.constrainAspectRatio.label">Constrain Aspect Ratio</span>
                         </label>
                         <div id="aspectRatioSliderContainer" class="is-disabled" style="margin-top: 8px;">
                             <label for="thumbSizeSlider"><span data-i18n="field.thumbSizeSlider.label">Size: </span><span id="thumbSizeValue">100</span>%</label>
@@ -235,7 +235,7 @@
 
                         <label>
                             <input type="checkbox" id="showText" onchange="toggleTextDisplayOptions()">
-                            <span class="label-body" data-i18n="field.showText.label">Show Text Overlay</span>
+                            <span class="label-body" data-i18n="field.showText.label">Show Text Overlays</span>
                         </label>
 
                         <label style="margin-bottom: 8px;">
@@ -536,7 +536,7 @@
                         <div id="borderOptions">
                             <label>
                                 <input type="checkbox" id="assignUniqueCharacterColors" onchange="toggleUniqueCharacterColors()">
-                                <span class="label-body" data-i18n="field.assignUniqueCharacterColors.label">Assign unique border color per character</span>
+                                <span class="label-body" data-i18n="field.assignUniqueCharacterColors.label">Unique Character Border Colors</span>
                             </label>
                             <div class="row">
                                 <div class="column">
@@ -611,7 +611,7 @@
 
                         <label>
                             <input type="checkbox" id="applyOpacityToOverlayTexts">
-                            <span class="label-body" data-i18n="field.applyOpacityToOverlayTexts.label">Apply opacity to overlay texts</span>
+                            <span class="label-body" data-i18n="field.applyOpacityToOverlayTexts.label">Apply Opacity to Overlay Texts</span>
                         </label>
                         <label>
                             <input type="checkbox" id="activeThumbnailHidden">
@@ -913,7 +913,7 @@
 
                         <label>
                             <input type="checkbox" id="resetGroupIndexOnNonGroupFocus">
-                            <span class="label-body" data-i18n="field.resetGroupIndexOnNonGroupFocus.label">Reset Cycling When Leaving a Group</span>
+                            <span class="label-body" data-i18n="field.resetGroupIndexOnNonGroupFocus.label">Reset Cycle Position When Leaving a Group</span>
                         </label>
 
                         <div id="hotkeyGroupsList" style="margin-bottom: 8px;">
@@ -978,7 +978,7 @@
 
                         <label>
                             <input type="checkbox" id="cycleAllClientsRespectExclusions">
-                            <span class="label-body" data-i18n="field.cycleAllClientsRespectExclusions.label">Skip characters excluded from cycling</span>
+                            <span class="label-body" data-i18n="field.cycleAllClientsRespectExclusions.label">Skip Characters Excluded from Cycling</span>
                         </label>
 
                         <div class="binding-list" id="clientBindings"></div>
@@ -1084,12 +1084,12 @@
                                 <div class="column">
                                     <label for="notifSuppressClickDuration" data-i18n="field.notifSuppressClickDuration.label">Click Suppress Duration (s)</label>
                                     <input type="number" id="notifSuppressClickDuration" min="0" max="60" step="0.1">
-                                    <p class="hint" data-i18n="field.notifSuppressClickDuration.hint">After switching to a character (click or hotkey), notification types with "Sup. Clicked" enabled stay suppressed on it for this many seconds.</p>
+                                    <p class="hint" data-i18n="field.notifSuppressClickDuration.hint">How long "Clicked" suppression lasts after switching to a character.</p>
                                 </div>
                                 <div class="column">
                                     <label for="notifCycleRetention" data-i18n="field.notifCycleRetention.label">Recently-Notified Cycle Retention (s)</label>
                                     <input type="number" id="notifCycleRetention" min="5" max="600" step="1">
-                                    <p class="hint" data-i18n="field.notifCycleRetention.hint">How long a character stays in the "Cycle Notified Characters" queue after their last notification. Re-notifying resets the timer.</p>
+                                    <p class="hint" data-i18n="field.notifCycleRetention.hint">How long a character stays cyclable via the Notified Characters hotkeys after its last notification.</p>
                                 </div>
                             </div>
 
@@ -1104,12 +1104,12 @@
                             <div id="ttsOptions">
                                 <label>
                                     <input type="checkbox" id="ttsSpeakCharacterName">
-                                    <span class="label-body" data-i18n="field.ttsSpeakCharacterName.label">Prefix spoken alerts with the character name</span>
+                                    <span class="label-body" data-i18n="field.ttsSpeakCharacterName.label">Prefix Spoken Alerts with the Character Name</span>
                                 </label>
 
                                 <label>
                                     <input type="checkbox" id="ttsUseDisplayName">
-                                    <span class="label-body" data-i18n="field.ttsUseDisplayName.label">Use Custom Display Name instead of Character Name</span>
+                                    <span class="label-body" data-i18n="field.ttsUseDisplayName.label">Speak Display Name Instead of Character Name</span>
                                 </label>
 
                                 <div class="row">
@@ -1118,7 +1118,7 @@
                                         <input type="range" id="ttsVolume" min="0" max="100" value="100" data-value-target="ttsVolumeValue">
                                     </div>
                                     <div class="column">
-                                        <label for="ttsRate"><span data-i18n="field.ttsRate.label">Rate: </span><span id="ttsRateValue">0</span></label>
+                                        <label for="ttsRate"><span data-i18n="field.ttsRate.label">Speed: </span><span id="ttsRateValue">0</span></label>
                                         <input type="range" id="ttsRate" min="-10" max="10" value="0" data-value-target="ttsRateValue">
                                     </div>
                                 </div>
