@@ -187,7 +187,7 @@ body {
     color: var(--color-muted);
     font-size: var(--fs-body);
     white-space: nowrap;
-    font-weight: var(--fw-normal);
+    font-weight: var(--fw-bold);
     letter-spacing: 0.5px;
     text-transform: capitalize;
     border-left: 2px solid transparent;
@@ -216,7 +216,6 @@ body {
 .tab-item.active {
     background: var(--color-surface-alt);
     color: var(--color-text);
-    font-weight: var(--fw-bold);
     border-left-color: var(--color-accent);
 }
 
