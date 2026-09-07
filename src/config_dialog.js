@@ -267,7 +267,6 @@ const CONFIG_SCHEMA = [
 
     { id: 'requireEveFocus', path: 'hotkeys.requireEveFocus' },
     { id: 'resetGroupIndexOnNonGroupFocus', path: 'hotkeys.resetGroupIndexOnNonGroupFocus' },
-    { id: 'autoRegisterProtocol', path: 'hotkeys.autoRegisterProtocol' },
     { id: 'hotkeyMinimizeAll', path: 'hotkeys.hotkeyMinimizeAll', transform: 'vkhex' },
     { id: 'hotkeyCloseAll', path: 'hotkeys.hotkeyCloseAll', transform: 'vkhex' },
     { id: 'hotkeyToggleVisibility', path: 'hotkeys.hotkeyToggleVisibility', transform: 'vkhex' },
@@ -3425,6 +3424,7 @@ async function saveConfigurationImpl() {
         currentGlobalSettings.hotkeyCycleAllClientsBackward = getFieldValue('hotkeyCycleAllClientsBackward') || null;
         currentGlobalSettings.cycleAllClientsRespectExclusions = getFieldValue('cycleAllClientsRespectExclusions');
         currentGlobalSettings.runOnStartup = getFieldValue('runOnStartup');
+        currentGlobalSettings.autoRegisterProtocol = getFieldValue('autoRegisterProtocol');
         currentGlobalSettings.hotkeyCycleNotLoggedInForward = getFieldValue('hotkeyCycleNotLoggedInForward') || null;
         currentGlobalSettings.hotkeyCycleNotLoggedInBackward = getFieldValue('hotkeyCycleNotLoggedInBackward') || null;
         currentGlobalSettings.hotkeyReturnToLastApp = getFieldValue('hotkeyReturnToLastApp') || null;
@@ -5979,6 +5979,7 @@ async function loadGlobalSettingsFromBackend() {
     setFieldValue('hotkeyCycleAllClientsBackward', vkHexToFriendly(currentGlobalSettings.hotkeyCycleAllClientsBackward));
     setCheckboxValue('cycleAllClientsRespectExclusions', currentGlobalSettings.cycleAllClientsRespectExclusions);
     setCheckboxValue('runOnStartup', currentGlobalSettings.runOnStartup);
+    setCheckboxValue('autoRegisterProtocol', currentGlobalSettings.autoRegisterProtocol);
     setFieldValue('hotkeyCycleNotLoggedInForward', vkHexToFriendly(currentGlobalSettings.hotkeyCycleNotLoggedInForward));
     setFieldValue('hotkeyCycleNotLoggedInBackward', vkHexToFriendly(currentGlobalSettings.hotkeyCycleNotLoggedInBackward));
     setFieldValue('hotkeyReturnToLastApp', vkHexToFriendly(currentGlobalSettings.hotkeyReturnToLastApp));

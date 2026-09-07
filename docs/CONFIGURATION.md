@@ -507,13 +507,11 @@ evemajpreview://hotkey/toggle_visibility
 
 ### Registration
 
-Control whether the application automatically registers the protocol handler on startup with `autoRegisterProtocol`, under `"hotkeys"` (see [Hotkey Configuration](#hotkey-configuration)):
+Control whether the application automatically registers the protocol handler on startup with `autoRegisterProtocol`, in [Global Settings](#global-settings-profilesglobalsettingsjson) (it applies regardless of which profile is loaded, so it isn't part of any one profile's JSON):
 
 ```json
 {
-  "hotkeys": {
-    "autoRegisterProtocol": true
-  }
+  "autoRegisterProtocol": true
 }
 ```
 
@@ -896,7 +894,6 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 {
   "hotkeys": {
     "requireEveFocus": false,
-    "autoRegisterProtocol": true,
     "hotkeyMinimizeAll": null,
     "hotkeyCloseAll": null,
     "hotkeyToggleVisibility": null,
@@ -956,7 +953,8 @@ Some settings persist across all profiles and are configured in `profiles\global
   "hotkeyCycleAllClientsBackward": "F23",
   "cycleAllClientsRespectExclusions": false,
   "hotkeyReturnToLastApp": "LWin+Z",
-  "disableUpdateChecks": false
+  "disableUpdateChecks": false,
+  "autoRegisterProtocol": true
 }
 ```
 
@@ -972,6 +970,7 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **cycleAllClientsRespectExclusions**: If `true`, characters excluded via Shift+Click (or `hotkeyToggleExclusion`) are skipped when cycling all clients, whether or not they belong to a hotkey group (default: `false`, cycles through every client)
 - **hotkeyReturnToLastApp**: Refocus whichever non-EVE window last held focus (e.g. jump back to your browser or Discord after switching into EVE). Stays active regardless of which profile is loaded; editable from the config dialog's Hotkeys tab ("Outside EVE" section).
 - **disableUpdateChecks**: Set to `true` to disable automatic update checks on startup (default: `false`)
+- **autoRegisterProtocol**: See [Registration](#registration) under Protocol Handler (default: `true`)
 - **characterIdMap**: Internal mapping of character names to session IDs (managed automatically)
 
 **Profile Cycling Features:**

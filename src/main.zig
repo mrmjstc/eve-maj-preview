@@ -683,7 +683,7 @@ fn mainImpl(init: std.process.Init) !void {
 
     g_config.logSettings();
 
-    if (g_config.autoRegisterProtocol) {
+    if (g_global_settings.autoRegisterProtocol) {
         if (!protocol.isRegistered()) {
             slog.info("Protocol handler not registered, attempting auto-registration...", .{});
             const success = protocol.register(g_allocator) catch |err| blk: {
