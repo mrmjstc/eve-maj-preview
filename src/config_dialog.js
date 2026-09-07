@@ -5422,19 +5422,29 @@ function confirmRemove(buttonId, removeCallback, confirmText = 'Confirm') {
         // Second click - revert to normal appearance, then perform the action
         btn.classList.remove('confirm-delete');
         btn.textContent = btn.dataset.originalText || btn.textContent;
+        btn.style.width = '';
         removeCallback();
     } else {
-        // First click - set confirm state
+        // First click - set confirm state. Locked to the wider of the two labels'
+        // natural widths so the swap can't grow or shrink the button - measuring
+        // rather than hardcoding keeps this correct under every translation.
         const originalText = btn.textContent;
+        const originalWidth = btn.getBoundingClientRect().width;
+        btn.textContent = confirmText;
+        const confirmWidth = btn.getBoundingClientRect().width;
+        btn.textContent = originalText;
+        btn.style.width = `${Math.max(originalWidth, confirmWidth)}px`;
+
         btn.classList.add('confirm-delete');
         btn.textContent = confirmText;
         btn.dataset.originalText = originalText;
-        
+
         // Reset after 2 seconds if not clicked
         setTimeout(() => {
             if (btn && btn.classList.contains('confirm-delete')) {
                 btn.classList.remove('confirm-delete');
                 btn.textContent = btn.dataset.originalText || 'Remove';
+                btn.style.width = '';
             }
         }, 2000);
     }
