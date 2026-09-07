@@ -505,10 +505,8 @@ input.hotkey-input.manual-editing {
 }
 
 /* Momentary highlight after a number input is clamped to its min/max on blur.
-   Same accent used for "auto-corrected to a boundary" everywhere else
-   (see .overlay-chip.clamped) rather than a one-off warning color. Class is
-   removed on a timer in JS; the transition here is what makes that removal
-   read as a fade instead of a snap. */
+   Class is removed on a timer in JS; the transition here is what makes that
+   removal read as a fade instead of a snap. */
 input.field-clamped {
     border-color: var(--color-accent) !important;
     background-color: rgba(var(--color-accent-rgb), 0.12);
@@ -1224,18 +1222,6 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 
 .overlay-chip.settling {
     transition: left 0.15s ease-out, top 0.15s ease-out;
-}
-
-/* Same accent used for "auto-corrected to a boundary" everywhere else (see
-   input.field-clamped) rather than a one-off warning color. */
-.overlay-chip.clamped {
-    box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.6);
-}
-
-/* Offset resets to 0 while this glow shows - magnetically snapped to the
-   anchor. Shares the guides' success color so "aligned" reads as one signal. */
-.overlay-chip.snapped {
-    box-shadow: 0 0 8px rgba(var(--color-success-rgb), 0.8);
 }
 
 /* Matches .swatch-wrap's cleared-color slash (see below) - both mark "this is
@@ -2072,17 +2058,11 @@ input[type="range"]::-moz-range-thumb {
     border-bottom: 1px solid var(--color-border);
 }
 
-.detail-panel-name {
-    flex: 1;
-    font-weight: 700;
-    font-size: 15px;
-}
-
-/* Takes .detail-panel-name's place in the header, but keeps every input cue -
-   border, background, caret - so it still reads as a field to type in. Only
-   layout is overridden, scoped past the input[type="text"] base rule, whose
-   attribute selector would otherwise win and put the bottom margin back, which
-   is what knocks the field out of line with the button beside it. */
+/* Keeps every input cue - border, background, caret - so it still reads as a
+   field to type in. Only layout is overridden, scoped past the
+   input[type="text"] base rule, whose attribute selector would otherwise win
+   and put the bottom margin back, which is what knocks the field out of line
+   with the button beside it. */
 .detail-panel-header .detail-panel-name-input {
     flex: 1;
     min-width: 0;
@@ -2090,10 +2070,11 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* Matching the grid's column width isn't enough on its own (see
-   alignHotkeyGroupNameLabel): the flex gap after the label has to match the
+   alignDetailPanelNameLabel): the flex gap after the label has to match the
    grid's column gap too, or the field lands a few pixels left of the ones
    below. */
-#hotkeyGroupsList .detail-panel-header {
+#hotkeyGroupsList .detail-panel-header,
+#charactersList .detail-panel-header {
     gap: var(--detail-label-gap);
 }
 

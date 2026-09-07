@@ -1075,9 +1075,10 @@ function switchTab(panelId) {
     // Both read as 0 via getBoundingClientRect while the panel is display:none - recompute now that it's visible.
     if (panelId === 'thumbnails') refreshOverlayLayoutPreview();
     if (panelId === 'hotkey-groups') {
-        alignHotkeyGroupNameLabel();
+        alignDetailPanelNameLabel('hotkeyGroupsList');
         fitHotkeyGroupCharsList(selectedHotkeyGroupIndex);
     }
+    if (panelId === 'characters') alignDetailPanelNameLabel('charactersList');
     if (panelId === 'hotkeys') alignBindingLabelColumns();
 
     setActiveSection(null);
@@ -1279,6 +1280,7 @@ function populateFormFields() {
     toggleAspectRatioSlider();
     toggleSnappingOptions();
     toggleNotifInfoPanelOptions();
+    toggleShiftClickExcludeOptions();
     toggleBorderOptions();
     toggleFocusedBorderOptions();
     toggleInactiveBorderOptions();
@@ -4962,14 +4964,11 @@ function populateCharacters() {
     const detailPanels = chars.map((char, index) => `
         <div class="detail-panel ${index === selectedCharacterIndex ? 'active' : ''}" data-index="${index}">
             <div class="detail-panel-header">
-                <span class="detail-panel-name" id="char_${index}_detail_name">${char.name || t('dynamic.character.defaultNamePrefix') + ' ' + (index + 1)}</span>
+                <label class="detail-panel-name-label" for="char_${index}_name">${t('common.characterName')}</label>
+                <input type="text" class="detail-panel-name-input" id="char_${index}_name" value="${char.name || ''}" placeholder="${t('common.characterName')}" oninput="updateCharacterHeaderName(${index})">
                 <button type="button" id="char_${index}_removeBtn" onclick="confirmRemoveCharacter(${index})">${t('common.remove')}</button>
             </div>
             <div class="detail-form">
-                <div class="detail-field">
-                    <label for="char_${index}_name">${t('common.characterName')}</label>
-                    <input type="text" id="char_${index}_name" value="${char.name || ''}" placeholder="${t('common.characterName')}" oninput="updateCharacterHeaderName(${index})">
-                </div>
                 <div class="detail-field">
                     <label for="char_${index}_displayName">${t('dynamic.character.displayNameLabel')}</label>
                     <input type="text" id="char_${index}_displayName" value="${char.displayName || ''}" placeholder="${t('dynamic.character.displayNamePlaceholder')}">
@@ -5058,6 +5057,8 @@ function populateCharacters() {
     setupCharacterDragAndDrop();
     updateHotkeyConflictHighlights();
     applyCharacterFilter();
+    // innerHTML above replaced the elements the last measuring pass sized.
+    alignDetailPanelNameLabel('charactersList');
 }
 
 // Saves this character's live window position, written straight to disk (not behind Save).
@@ -5302,7 +5303,6 @@ function reorderCharacters(fromIndex, insertBeforeIndex) {
 
 function updateCharacterHeaderName(index) {
     syncAccordionHeaderName(`char_${index}_name`, `char_${index}_header_name`, 'Character', index);
-    syncAccordionHeaderName(`char_${index}_name`, `char_${index}_detail_name`, 'Character', index);
     updateCharacterHeaderPortrait(index);
 }
 
@@ -5650,7 +5650,7 @@ function populateHotkeyGroups() {
     setupHotkeyGroupCharDragAndDrop();
     updateHotkeyConflictHighlights();
     // innerHTML above replaced the elements the last measuring pass sized.
-    alignHotkeyGroupNameLabel();
+    alignDetailPanelNameLabel('hotkeyGroupsList');
     fitHotkeyGroupCharsList(selectedHotkeyGroupIndex);
 }
 
@@ -5669,18 +5669,30 @@ function selectHotkeyGroup(index) {
     fitHotkeyGroupCharsList(index);
 }
 
-// The title row sits outside .detail-form's grid, so no CSS rule can give its label the same width as the label column below it. Every group panel carries the same field labels, so the open one's column measures for all of them.
-function alignHotkeyGroupNameLabel() {
-    const railLabel = document.querySelector('#hotkeyGroupsList .detail-panel.active .detail-form > .detail-field > label');
-    if (!railLabel) return;
+// The title row sits outside .detail-form's grid, so no CSS rule can size its column to match the label rail below - or the other way around, if the header text (e.g. "Group Name") is the wider of the two. A paired binding row (see .binding-paired) also hangs its control back into the gutter by --binding-dir-offset, so its label needs that much extra room - same technique alignBindingLabelColumns uses for the Hotkeys tab. Every panel in the list shares one field set and header label, so the active one's measurements size all of them.
+function alignDetailPanelNameLabel(containerId) {
+    const activePanel = document.querySelector(`#${containerId} .detail-panel.active`);
+    if (!activePanel) return;
 
-    const columnWidth = railLabel.getBoundingClientRect().width;
-    if (!columnWidth) return;
+    const form = activePanel.querySelector('.detail-form');
+    const nameLabel = activePanel.querySelector('.detail-panel-name-label');
+    if (!form || !nameLabel) return;
 
-    document.querySelectorAll('#hotkeyGroupsList .detail-panel-name-label').forEach(label => {
-        // min-width, so a label longer than the column still shows in full rather than spilling over the field.
-        label.style.minWidth = `${Math.round(columnWidth)}px`;
-    });
+    // max-content/0 first, so each label reports its own text width rather than a stretched or stale one.
+    form.style.gridTemplateColumns = 'max-content minmax(140px, 1fr)';
+    nameLabel.style.minWidth = '0';
+
+    const dirOffset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--binding-dir-offset')) || 0;
+    const fieldWidths = Array.from(form.querySelectorAll(':scope > .detail-field > label'))
+        .map(label => label.getBoundingClientRect().width + (label.parentElement.classList.contains('binding-paired') ? dirOffset : 0));
+
+    const widest = Math.max(nameLabel.getBoundingClientRect().width, ...fieldWidths);
+    // Zero while the panel or tab is hidden, when nothing can be measured; the next populate or tab switch re-runs this.
+    if (!widest) return;
+
+    const widthPx = `${Math.ceil(widest)}px`;
+    document.querySelectorAll(`#${containerId} .detail-form`).forEach(f => { f.style.gridTemplateColumns = `${widthPx} minmax(140px, 1fr)`; });
+    document.querySelectorAll(`#${containerId} .detail-panel-name-label`).forEach(label => { label.style.minWidth = widthPx; });
 }
 
 // A list that runs a row or two past the fold packs its cards tighter instead of scrolling; past what that buys, the scrollbar comes back.
@@ -6703,6 +6715,10 @@ function toggleSnappingOptions() {
 
 function toggleNotifInfoPanelOptions() {
     applyOptionToggle('showNotifInfoPanel', 'notifInfoPanelOptions');
+}
+
+function toggleShiftClickExcludeOptions() {
+    applyOptionToggle('enableShiftClickExclude', 'shiftClickExcludeOptions');
 }
 
 function toggleClientListOptions() {

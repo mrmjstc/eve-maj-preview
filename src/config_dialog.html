@@ -435,7 +435,6 @@
 
                         <label for="spacing" data-i18n="field.spacing.label">Spacing (px)</label>
                         <input type="number" id="spacing" min="0" max="500">
-                        <p class="hint" data-i18n="field.spacing.hint">Gap between thumbnails</p>
 
                         <div class="row">
                             <div class="column">
@@ -511,7 +510,6 @@
 
                         <label for="monitorIndex" data-i18n="field.monitorIndex.label">Monitor Index (0=primary)</label>
                         <input type="number" id="monitorIndex" min="0" max="9">
-                        <p class="hint" data-i18n="field.monitorIndex.hint">Which monitor to arrange thumbnails on</p>
 
                         <label>
                             <input type="checkbox" id="useMonitorWorkArea">
@@ -610,7 +608,6 @@
 
                         <label for="thumbOpacity"><span data-i18n="field.thumbOpacity.label">Opacity: </span><span id="opacityValue">100</span>%</label>
                         <input type="range" id="thumbOpacity" min="20" max="100" value="100" data-value-target="opacityValue">
-                        <p class="hint" data-i18n="field.thumbOpacity.hint">Transparency level</p>
 
                         <label>
                             <input type="checkbox" id="applyOpacityToOverlayTexts">
@@ -626,7 +623,6 @@
                         </label>
                         <label for="hideDebounceMs" data-i18n="field.hideDebounceMs.label">Hide Debounce (s)</label>
                         <input type="number" id="hideDebounceMs" min="0" max="5" step="0.1">
-                        <p class="hint" data-i18n="field.hideDebounceMs.hint">Delay before hiding thumbnails when focus is lost</p>
                     </div>
 
                     <div class="section">
@@ -656,7 +652,6 @@
                             </label>
                             <label for="snappingThreshold" data-i18n="field.snappingThreshold.label">Snapping Threshold (px)</label>
                             <input type="number" id="snappingThreshold" min="0" max="100">
-                            <p class="hint" data-i18n="field.snappingThreshold.hint">Distance in pixels within which windows snap together</p>
                         </div>
                     </div>
 
@@ -683,17 +678,14 @@
                                         <option value="Alphabetical" data-i18n="field.listViewOrder.option.alphabetical">Alphabetical</option>
                                         <option value="ConfiguredCharacters" data-i18n="field.listViewOrder.option.configuredcharacters">Configured Character Order</option>
                                     </select>
-                                    <p class="hint" data-i18n="field.listViewOrder.hint">Order client rows are listed in</p>
                                 </div>
                                 <div class="column">
                                     <label for="listViewColumns" data-i18n="field.listViewColumns.label">Columns</label>
                                     <input type="number" id="listViewColumns" min="1" max="15">
-                                    <p class="hint" data-i18n="field.listViewColumns.hint">Number of columns in the Client List panel</p>
                                 </div>
                             </div>
                             <label for="listViewOpacity" style="margin-top: 8px;"><span data-i18n="field.listViewOpacity.label">Client List Opacity: </span><span id="listViewOpacityValue">100</span>%</label>
                             <input type="range" id="listViewOpacity" min="20" max="100" value="100" data-value-target="listViewOpacityValue">
-                            <p class="hint" data-i18n="field.listViewOpacity.hint">Transparency level of the Client List panel</p>
 
                             <h4 data-i18n="tab.thumbnails.section.client-list-font.heading">Font</h4>
 
@@ -773,7 +765,7 @@
                             <h3 data-i18n="tab.behavior.section.startup.heading">Startup</h3>
                             <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
                         </div>
-                        <p class="hint" data-i18n="tab.behavior.section.startup.hint">Launch EVE-Maj Preview automatically when you log into Windows.</p>
+                        <p class="hint" data-i18n="tab.behavior.section.startup.hint">Launch on Windows login, and register the evemajpreview:// URL protocol for external control (Stream Deck, scripts, etc.).</p>
 
                         <label>
                             <input type="checkbox" id="runOnStartup">
@@ -826,7 +818,6 @@
                                 <div>
                                     <label for="autoMinimizeDelay" data-i18n="field.autoMinimizeDelay.label">Delay (s)</label>
                                     <input type="number" id="autoMinimizeDelay" min="0" max="10" step="0.1">
-                                    <p class="hint" data-i18n="field.autoMinimizeDelay.hint">Inactivity duration before automatic minimize</p>
                                 </div>
                                 <div>
                                     <label for="animationStyle" data-i18n="field.animationStyle.label">Animation Style</label>
@@ -834,7 +825,6 @@
                                         <option value="NoAnimation" data-i18n="field.animationStyle.option.noanimation">No Animation</option>
                                         <option value="OriginalAnimation" data-i18n="field.animationStyle.option.originalanimation">Original Animation</option>
                                     </select>
-                                    <p class="hint" data-i18n="field.animationStyle.hint">Visual transition used when a window is automatically minimized/restored</p>
                                 </div>
                             </div>
                         </div>
@@ -848,30 +838,32 @@
                         <p class="hint" data-i18n="tab.behavior.section.character-exclusion.hint">Controls Shift+Click exclusion of characters from hotkey cycling.</p>
 
                         <label>
-                            <input type="checkbox" id="enableShiftClickExclude">
+                            <input type="checkbox" id="enableShiftClickExclude" onchange="toggleShiftClickExcludeOptions()">
                             <span class="label-body" data-i18n="field.enableShiftClickExclude.label">Enable Shift+Click to Exclude</span>
                         </label>
-                        <label style="margin-top: 8px;">
-                            <input type="checkbox" id="autoMinimizeExcludedCharacters">
-                            <span class="label-body" data-i18n="field.autoMinimizeExcludedCharacters.label">Auto-Minimize Excluded Characters</span>
-                        </label>
+                        <div id="shiftClickExcludeOptions">
+                            <label style="margin-top: 8px;">
+                                <input type="checkbox" id="autoMinimizeExcludedCharacters">
+                                <span class="label-body" data-i18n="field.autoMinimizeExcludedCharacters.label">Auto-Minimize Excluded Characters</span>
+                            </label>
 
-                        <label for="exclusionOverlayStyle" style="margin-top: 8px;" data-i18n="field.exclusionOverlayStyle.label">Overlay Style</label>
-                        <select id="exclusionOverlayStyle">
-                            <option value="X" data-i18n="common.exclusionOverlayStyle.x">X</option>
-                            <option value="DiagonalSlash" data-i18n="common.exclusionOverlayStyle.diagonalSlash">Diagonal Slash</option>
-                            <option value="DiagonalHatch" data-i18n="common.exclusionOverlayStyle.diagonalHatch">Diagonal Hatch</option>
-                            <option value="Checkerboard" data-i18n="common.exclusionOverlayStyle.checkerboard">Checkerboard</option>
-                            <option value="SolidTint" data-i18n="common.exclusionOverlayStyle.solidTint">Solid Tint</option>
-                            <option value="CircleSlash" data-i18n="common.exclusionOverlayStyle.circleSlash">Circle Slash</option>
-                            <option value="None" data-i18n="common.exclusionOverlayStyle.none">None</option>
-                        </select>
-                        <p class="hint" data-i18n="field.exclusionOverlayStyle.hint">Visual shown on a thumbnail while its character is excluded from hotkey cycling</p>
+                            <label for="exclusionOverlayStyle" style="margin-top: 8px;" data-i18n="field.exclusionOverlayStyle.label">Overlay Style</label>
+                            <select id="exclusionOverlayStyle">
+                                <option value="X" data-i18n="common.exclusionOverlayStyle.x">X</option>
+                                <option value="DiagonalSlash" data-i18n="common.exclusionOverlayStyle.diagonalSlash">Diagonal Slash</option>
+                                <option value="DiagonalHatch" data-i18n="common.exclusionOverlayStyle.diagonalHatch">Diagonal Hatch</option>
+                                <option value="Checkerboard" data-i18n="common.exclusionOverlayStyle.checkerboard">Checkerboard</option>
+                                <option value="SolidTint" data-i18n="common.exclusionOverlayStyle.solidTint">Solid Tint</option>
+                                <option value="CircleSlash" data-i18n="common.exclusionOverlayStyle.circleSlash">Circle Slash</option>
+                                <option value="None" data-i18n="common.exclusionOverlayStyle.none">None</option>
+                            </select>
+                            <p class="hint" data-i18n="field.exclusionOverlayStyle.hint">Visual shown on a thumbnail while its character is excluded from hotkey cycling</p>
 
-                        <label for="exclusionOverlayOpacity"><span data-i18n="field.exclusionOverlayOpacity.label">Overlay Opacity: </span><span id="exclusionOverlayOpacityValue">20</span>%</label>
-                        <input type="range" id="exclusionOverlayOpacity" min="0" max="100" value="20" data-value-target="exclusionOverlayOpacityValue">
-                        <label for="exclusionOverlayColor" data-i18n="field.exclusionOverlayColor.label">Overlay Color</label>
-                        <input type="color" id="exclusionOverlayColor" data-default-color="#ff0000">
+                            <label for="exclusionOverlayOpacity"><span data-i18n="field.exclusionOverlayOpacity.label">Overlay Opacity: </span><span id="exclusionOverlayOpacityValue">20</span>%</label>
+                            <input type="range" id="exclusionOverlayOpacity" min="0" max="100" value="20" data-value-target="exclusionOverlayOpacityValue">
+                            <label for="exclusionOverlayColor" data-i18n="field.exclusionOverlayColor.label">Overlay Color</label>
+                            <input type="color" id="exclusionOverlayColor" data-default-color="#ff0000">
+                        </div>
                     </div>
 
                     <div class="section">
@@ -1203,7 +1195,6 @@
 
                             <label for="notifInfoPanelOpacity" style="margin-top: 8px;"><span data-i18n="field.notifInfoPanelOpacity.label">Panel Opacity: </span><span id="notifInfoPanelOpacityValue">100</span>%</label>
                             <input type="range" id="notifInfoPanelOpacity" min="20" max="100" value="100" data-value-target="notifInfoPanelOpacityValue">
-                            <p class="hint" data-i18n="field.notifInfoPanelOpacity.hint">Transparency level of the History panel</p>
 
                             <h4 data-i18n="tab.notifications.section.history-panel-font.heading">Font</h4>
 
@@ -1311,14 +1302,12 @@
                                 <input type="text" id="chatlogDir" placeholder="C:\Users\...\Chatlogs" data-i18n-placeholder="field.chatlogDir.placeholder">
                                 <button type="button" onclick="browseChatlogDir()" data-i18n="common.browse">Browse</button>
                             </div>
-                            <p class="hint" data-i18n="field.chatlogDir.hint">Folder EVE writes chat channel logs to (used for local/say chat parsing). Defaults to Documents\EVE\logs\Chatlogs.</p>
 
                             <label for="gamelogDir" data-i18n="field.gamelogDir.label">Gamelog Directory</label>
                             <div class="field-row">
                                 <input type="text" id="gamelogDir" placeholder="C:\Users\...\Gamelogs" data-i18n-placeholder="field.gamelogDir.placeholder">
                                 <button type="button" onclick="browseGamelogDir()" data-i18n="common.browse">Browse</button>
                             </div>
-                            <p class="hint" data-i18n="field.gamelogDir.hint">Folder EVE writes combat/mining/system gamelogs to. Defaults to Documents\EVE\logs\Gamelogs.</p>
 
                             <div class="advanced-section">
                                 <h4 style="margin-top: 16px;" data-i18n="tab.chatlog.section.polling-performance.heading">Polling &amp; Performance</h4>
