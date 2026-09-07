@@ -1399,6 +1399,17 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     grid-template-columns: auto minmax(140px, 1fr);
     align-items: center;
     gap: 8px var(--detail-label-gap);
+    /* Zeroed by .section > *:last-child when a list is the section's final
+       element (most are); kept otherwise, so a flat list or heading that
+       follows one - Profiles' custom hotkey rows, Outside EVE's App Hotkeys
+       heading - gets the same 8px gap every other stacked block gets. */
+    margin-bottom: 8px;
+}
+
+/* A checkbox's own margin-bottom (3px) is too tight against a grid straight
+   below it - Clients' Skip Characters Excluded sits right above clientBindings. */
+label + .binding-list {
+    margin-top: 8px;
 }
 
 /* Lets the label, the control and the conflict note land in the rail directly
