@@ -132,7 +132,7 @@ const RenderSettings = struct {
 
     show_exclusion_overlay: bool = false,
     exclusion_overlay_style: types.ExclusionOverlayStyle = .X,
-    exclusion_overlay_color: u32 = 0x33FF0000,
+    exclusion_overlay_color: u32 = 0x33A62222,
 
     show_group_badge: bool = false,
     group_badge_text: []const u8 = "",
