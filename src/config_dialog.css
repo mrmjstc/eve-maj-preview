@@ -1527,6 +1527,7 @@ label + .binding-list {
 .section-heading {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
     margin-bottom: 8px;
     padding-bottom: 3px;
@@ -1543,6 +1544,8 @@ label + .binding-list {
    is saved to, and so whether switching profiles changes it. */
 .scope-chip {
     flex: none;
+    position: relative;
+    top: -2px;
     padding: 1px 5px;
     font-size: 10px;
     font-weight: 500;
