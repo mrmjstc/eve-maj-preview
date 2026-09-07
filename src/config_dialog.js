@@ -983,6 +983,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
     
     initializeTabs();
+    // The default active tab never goes through switchTab(), so its .binding-lists would otherwise
+    // never get the shared computed column width every other tab gets when first switched to.
+    const initialPanel = document.querySelector('.panel-content.active')?.dataset.panel;
+    if (initialPanel) alignBindingLabelColumns(`.panel-content[data-panel="${initialPanel}"]`);
     initDelegatedKeyboardActivation();
     initConfirmButtonWidthReservation();
     buildSectionNav();
@@ -1083,7 +1087,8 @@ function switchTab(panelId) {
         fitHotkeyGroupCharsList(selectedHotkeyGroupIndex);
     }
     if (panelId === 'characters') alignDetailPanelNameLabel('charactersList');
-    if (panelId === 'hotkeys') alignBindingLabelColumns();
+    // A no-op on panels with no .binding-list, so every tab can share this call rather than listing each one.
+    alignBindingLabelColumns(`.panel-content[data-panel="${panelId}"]`);
 
     setActiveSection(null);
 }
@@ -3690,9 +3695,10 @@ function renderHotkeyBindingRow(row) {
 }
 
 // Each section is its own grid, so their label columns would each settle on that section's longest label and the
-// fields would step in and out down the tab. Measuring the widest label across all of them gives one shared gutter.
-function alignBindingLabelColumns() {
-    const lists = Array.from(document.querySelectorAll('.binding-list'));
+// fields would step in and out down the tab. Measuring the widest label across all of them (within one tab) gives
+// one shared gutter - scoped per panel so an unrelated tab's longer label can't shift this one's alignment.
+function alignBindingLabelColumns(scope = '.panel-content[data-panel="hotkeys"]') {
+    const lists = Array.from(document.querySelectorAll(`${scope} .binding-list`));
     if (lists.length === 0) return;
 
     // max-content first, so each label reports the width of its own text rather than of the column it was stretched to.
@@ -3700,7 +3706,7 @@ function alignBindingLabelColumns() {
 
     // A paired row's control hangs back into the gutter by this much, so its label needs that much less of the column.
     const dirOffset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--binding-dir-offset')) || 0;
-    const widest = Math.max(0, ...Array.from(document.querySelectorAll('.binding > label'))
+    const widest = Math.max(0, ...Array.from(document.querySelectorAll(`${scope} .binding > label`))
         .map(label => label.getBoundingClientRect().width + (label.parentElement.classList.contains('binding-paired') ? dirOffset : 0)));
     // Zero while the tab is hidden, when nothing can be measured; switching to it re-runs this.
     if (!widest) return;
@@ -4582,6 +4588,8 @@ function setupDragReorder(container, itemSelector, handleSelector, getIndex, onR
 function setAccordionExpanded(accordion, expanded) {
     accordion.classList.toggle('expanded', expanded);
     accordion.querySelector('.accordion-header')?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    // .accordion-content is display:none while collapsed, so its .binding-lists could only be measured now that expanding makes them visible.
+    if (expanded) alignBindingLabelColumns('.panel-content[data-panel="advanced"]');
 }
 
 function toggleAccordionEl(header) {
