@@ -2269,11 +2269,50 @@ input[type="range"]::-moz-range-thumb {
     border-radius: var(--radius-lg);
 }
 
-/* Group rows carry a name, a member count and key badges but no portrait, so
-   they need less width than the characters roster - and the detail side, which
-   holds the member list, gets the difference. */
+#hotkeyGroupsList .master-detail {
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Only a handful of profiles are expected, so the roster reads better as a
+   row of separate boxed chips (matching the dialog's other bordered panels)
+   than a vertical list. */
 #hotkeyGroupsList .roster {
-    width: 150px;
+    display: flex;
+    width: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    overflow: visible;
+    border: none;
+    border-radius: 0;
+    gap: 6px;
+}
+
+#hotkeyGroupsList .roster-row {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.5px;
+}
+
+#hotkeyGroupsList .roster-row:hover {
+    border-color: var(--color-border-strong);
+}
+
+#hotkeyGroupsList .roster-row.selected {
+    background: var(--color-surface-alt);
+    border-color: var(--color-accent);
+}
+
+#hotkeyGroupsList .roster-name {
+    max-width: 160px;
+}
+
+/* Plain button (not a tab chip) so it reads as an action, not another profile. */
+#hotkeyGroupsList .hkgroup-tab-add {
+    margin-left: 4px;
 }
 
 .roster-row {
@@ -2403,6 +2442,11 @@ input[type="range"]::-moz-range-thumb {
     gap: var(--detail-label-gap);
 }
 
+#hotkeyGroupsList .detail-panel-header {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
 /* Sits on the row rather than above its field, so it drops the stacking margins
    and the rail glyph, like the form labels below it. */
 .detail-panel-header .detail-panel-name-label {
@@ -2522,7 +2566,7 @@ input[type="range"]::-moz-range-thumb {
 /* Hotkey group character list (drag-to-reorder rows) */
 .hkgroup-chars-list {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 4px;
 }
 
