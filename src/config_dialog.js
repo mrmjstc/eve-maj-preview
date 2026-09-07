@@ -45,6 +45,9 @@ function applyTranslations() {
     document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
         el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
     });
+    document.querySelectorAll('[data-i18n-aria-label]').forEach(el => {
+        el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria-label')));
+    });
 }
 
 // window.__I18N_ALL__ is populated by Zig's injectResources(), so switching languages needs no reload/backend round trip.
@@ -3563,7 +3566,7 @@ function vkHexToFriendly(str) {
 // refreshHotkeyKeycaps() fills it, and CSS uncovers the raw input again while it's recording or being typed into.
 function renderHotkeyInputHtml(fieldId, value, placeholder, extraAttributes = '') {
     return `<span class="keycap-field"><input type="text" id="${fieldId}" class="hotkey-input" value="${value}" placeholder="${t('common.hotkeyClickToBind')}" title="${placeholder}"${extraAttributes} onclick="if (!this.classList.contains('manual-editing')) recordHotkey('${fieldId}')" readonly><span class="keycap-render" aria-hidden="true"></span></span>
-<button type="button" class="hotkey-clear-btn" onclick="clearHotkey('${fieldId}')" title="${t('common.hotkeyClear')}">×</button>
+<button type="button" class="button-icon button-icon-danger" onclick="clearHotkey('${fieldId}')" title="${t('common.hotkeyClear')}">×</button>
 <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('${fieldId}')" title="${t('common.hotkeyTypeDirectly')}">✎</button>`;
 }
 
@@ -4602,59 +4605,32 @@ function syncAccordionHeaderName(nameFieldId, headerFieldId, fallbackPrefix, ind
 function populateWindowFilters() {
     const container = document.getElementById('windowFiltersList');
     if (!container) return;
-    
+
     container.innerHTML = '';
     const filters = currentConfig.windowFilters || [];
-    
-    let displayIndex = 0;
+
     filters.forEach((filter, index) => {
-        // Skip the default "EVE Online" filter
-        if (filter.name === 'EVE Online') {
-            return;
-        }
-        const filterDisplayIndex = displayIndex++;
+        // The default EVE filter is implicit and not user-editable.
+        if (filter.name === 'EVE Online') return;
 
-        const filterDiv = document.createElement('div');
-        filterDiv.className = 'accordion';
-        filterDiv.innerHTML = `
-            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleWindowFilterAccordion(${filterDisplayIndex})">
-                <div class="accordion-title">
-                    <span class="accordion-toggle"></span>
-                    <span class="accordion-name" id="filter_${index}_header_name">${filter.name || t('dynamic.windowFilter.defaultNamePrefix') + ' ' + (index + 1)}</span>
-                </div>
-                <button type="button" id="filter_${index}_removeBtn" onclick="event.stopPropagation(); confirmRemove('filter_${index}_removeBtn', () => removeWindowFilter(${index}))">${t('common.remove')}</button>
-            </div>
-            <div class="accordion-content">
-                <label>
-                    <input type="checkbox" id="filter_${index}_enabled" ${filter.enabled ? 'checked' : ''}>
-                    <span class="label-body">${t('common.enabledLabel')}</span>
+        const row = document.createElement('div');
+        // The picker rides under its row, so each entry keeps its two parts together.
+        row.innerHTML = `
+            <div class="field-row" style="margin-bottom: 8px;">
+                <label title="${escapeHtml(t('common.enabledLabel'))}">
+                    <input type="checkbox" id="filter_${index}_enabled" ${filter.enabled ? 'checked' : ''} aria-label="${escapeHtml(t('common.enabledLabel'))}">
+                    <span class="label-body"></span>
                 </label>
-                <label style="display: block; margin-top: 8px;">${t('dynamic.windowFilter.nameLabel')}</label>
-                <input type="text" id="filter_${index}_name" value="${filter.name || ''}" placeholder="${t('dynamic.windowFilter.namePlaceholder')}" oninput="updateWindowFilterHeaderName(${index})">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
-                    <div>
-                        <label>${t('dynamic.windowFilter.classesLabel')}</label>
-                        <input type="text" id="filter_${index}_classes" value="${(filter.class_names || []).join(', ')}" placeholder="${t('dynamic.windowFilter.classesPlaceholder')}">
-                    </div>
-                    <div>
-                        <label>${t('dynamic.windowFilter.exesLabel')}</label>
-                        <input type="text" id="filter_${index}_exes" value="${(filter.executable_names || []).join(', ')}" placeholder="${t('dynamic.windowFilter.exesPlaceholder')}">
-                    </div>
-                </div>
-                <button type="button" id="filter_${index}_pickBtn" onclick="pickRunningWindowForFilter(${index})" style="width: 100%; margin-top: 8px;">${t('button.pick-running-window.label')}</button>
-                <select id="filter_${index}_picker" style="display: none; width: 100%; margin-top: 8px;" onchange="applyPickedWindowForFilter(${index})"></select>
+                <input type="text" id="filter_${index}_name" value="${escapeHtml(filter.name || '')}" placeholder="${t('dynamic.windowFilter.namePlaceholder')}" aria-label="${escapeHtml(t('dynamic.windowFilter.nameLabel'))}">
+                <input type="text" id="filter_${index}_classes" value="${escapeHtml((filter.class_names || []).join(', '))}" placeholder="${t('dynamic.windowFilter.classesPlaceholder')}" aria-label="${escapeHtml(t('dynamic.windowFilter.classesLabel'))}">
+                <input type="text" id="filter_${index}_exes" value="${escapeHtml((filter.executable_names || []).join(', '))}" placeholder="${t('dynamic.windowFilter.exesPlaceholder')}" aria-label="${escapeHtml(t('dynamic.windowFilter.exesLabel'))}">
+                <button type="button" id="filter_${index}_pickBtn" onclick="pickRunningWindowForFilter(${index})" style="white-space: nowrap;">${t('button.pick-running-window.label')}</button>
+                <button type="button" class="button-remove" id="filter_${index}_removeBtn" onclick="confirmRemove('filter_${index}_removeBtn', () => removeWindowFilter(${index}))">${t('common.remove')}</button>
             </div>
+            <select id="filter_${index}_picker" style="display: none; width: 100%; margin-bottom: 8px;" onchange="applyPickedWindowForFilter(${index})"></select>
         `;
-        container.appendChild(filterDiv);
+        container.appendChild(row);
     });
-}
-
-function updateWindowFilterHeaderName(index) {
-    syncAccordionHeaderName(`filter_${index}_name`, `filter_${index}_header_name`, 'Filter', index);
-}
-
-function toggleWindowFilterAccordion(index) {
-    toggleAccordion('#windowFiltersList', index);
 }
 
 function addWindowFilter() {
@@ -4747,10 +4723,7 @@ function applyPickedWindowForFilter(index) {
 
     const nameInput = document.getElementById(`filter_${index}_name`);
     const friendlyName = chosen.exe.replace(/\.exe$/i, '');
-    if (nameInput) {
-        nameInput.value = friendlyName;
-        updateWindowFilterHeaderName(index);
-    }
+    if (nameInput) nameInput.value = friendlyName;
 
     pendingCharacterNames.set(friendlyName.trim().toLowerCase(), friendlyName);
 }
@@ -4787,8 +4760,8 @@ function populateSystemColors() {
         colorDiv.style.marginBottom = '8px';
         colorDiv.innerHTML = `
             <input type="text" id="systemColor_${index}_name" value="${sc.systemName || ''}" placeholder="${t('dynamic.systemColor.namePlaceholder')}">
-            <input type="color" id="systemColor_${index}_color" value="${zigColorToHtml(sc.color)}" style="width: 60px;">
-            <button type="button" id="systemColor_${index}_removeBtn" onclick="confirmRemove('systemColor_${index}_removeBtn', () => removeSystemColor(${index}))" style="min-width: 80px;">${t('common.remove')}</button>
+            <input type="color" id="systemColor_${index}_color" value="${zigColorToHtml(sc.color)}">
+            <button type="button" class="button-remove" id="systemColor_${index}_removeBtn" onclick="confirmRemove('systemColor_${index}_removeBtn', () => removeSystemColor(${index}))">${t('common.remove')}</button>
         `;
         container.appendChild(colorDiv);
     });
@@ -5039,7 +5012,7 @@ function populateCharacters() {
                     <label>${t('dynamic.character.windowPositionHeading')}</label>
                     <div class="field-row detail-actions">
                         <span class="detail-value" id="char_${index}_windowPositionDisplay">${char.windowPosition ? `${char.windowPosition.x}, ${char.windowPosition.y}` : t('dynamic.character.windowPositionNotSet')}</span>
-                        <button type="button" class="button-icon" id="char_${index}_clearWindowPositionBtn" onclick="confirmClearCharacterWindowPosition(${index})" title="${t('dynamic.character.clearWindowPositionButton')}" aria-label="${t('dynamic.character.clearWindowPositionButton')}">&times;</button>
+                        <button type="button" class="button-icon button-icon-danger" id="char_${index}_clearWindowPositionBtn" onclick="confirmClearCharacterWindowPosition(${index})" title="${t('dynamic.character.clearWindowPositionButton')}" aria-label="${t('dynamic.character.clearWindowPositionButton')}">&times;</button>
                         <button type="button" onclick="setCharacterWindowPosition(${index})">${t('dynamic.character.setWindowPositionButton')}</button>
                     </div>
                 </div>
@@ -5754,7 +5727,7 @@ function renderHotkeyGroupCharRows(groupIndex, characters) {
         <div class="hkgroup-char-row" data-char-index="${charIndex}">
             <span class="drag-index-chip character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(charIndex + 1).padStart(2, '0')}</span>
             <input type="text" class="hkgroup-char-input" value="${name}" placeholder="${t('common.characterName')}">
-            <button type="button" class="hotkey-clear-btn" onclick="removeHotkeyGroupCharacter(${groupIndex}, ${charIndex})" title="${t('common.remove')}">×</button>
+            <button type="button" class="button-icon button-icon-danger" onclick="removeHotkeyGroupCharacter(${groupIndex}, ${charIndex})" title="${t('common.remove')}">×</button>
         </div>
     `).join('');
 }
@@ -6070,7 +6043,7 @@ async function populateProfileSwitchHotkeys() {
         row.innerHTML = `
             <select id="pshotkey_${index}_target" aria-label="${escapeHtml(t('dynamic.profileSwitchHotkey.targetLabel'))}">${optionsHtml}</select>
             ${renderHotkeyInputHtml(`pshotkey_${index}_hotkey`, vkHexToFriendly(entry.hotkey) || '', t('dynamic.profileSwitchHotkey.hotkeyPlaceholder'), ` aria-label="${escapeHtml(t('common.hotkeyLabel'))}"`)}
-            <button type="button" id="pshotkey_${index}_removeBtn" onclick="confirmRemove('pshotkey_${index}_removeBtn', () => removeProfileSwitchHotkey(${index}))" style="min-width: 80px;">${t('common.remove')}</button>
+            <button type="button" class="button-remove" id="pshotkey_${index}_removeBtn" onclick="confirmRemove('pshotkey_${index}_removeBtn', () => removeProfileSwitchHotkey(${index}))">${t('common.remove')}</button>
         `;
         container.appendChild(row);
     });
@@ -6136,7 +6109,7 @@ function populateAppHotkeys() {
                 <input type="text" id="apphotkey_${index}_exe" value="${escapeHtml(entry.executableName || '')}" placeholder="${t('dynamic.appHotkey.exePlaceholder')}" aria-label="${escapeHtml(t('dynamic.appHotkey.targetLabel'))}">
                 ${renderHotkeyInputHtml(`apphotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.appHotkey.hotkeyPlaceholder'), ` aria-label="${escapeHtml(t('common.hotkeyLabel'))}"`)}
                 <button type="button" id="apphotkey_${index}_pickBtn" onclick="pickRunningWindowForAppHotkey(${index})" style="white-space: nowrap;">${t('button.pick-running-window.label')}</button>
-                <button type="button" id="apphotkey_${index}_removeBtn" onclick="confirmRemove('apphotkey_${index}_removeBtn', () => removeAppHotkey(${index}))" style="min-width: 80px;">${t('common.remove')}</button>
+                <button type="button" class="button-remove" id="apphotkey_${index}_removeBtn" onclick="confirmRemove('apphotkey_${index}_removeBtn', () => removeAppHotkey(${index}))">${t('common.remove')}</button>
             </div>
             <select id="apphotkey_${index}_picker" style="display: none; width: 100%; margin-bottom: 8px;" onchange="applyPickedWindowForAppHotkey(${index})"></select>
         `;
@@ -6254,7 +6227,7 @@ function populateUrlHotkeys() {
             <div class="field-row" style="margin-bottom: 8px;">
                 <input type="text" id="urlhotkey_${index}_url" value="${escapeHtml(entry.url || '')}" placeholder="${t('dynamic.urlHotkey.urlPlaceholder')}" aria-label="${escapeHtml(t('dynamic.urlHotkey.targetLabel'))}" oninput="updateUrlHotkeyUploadClipboardVisibility(${index})">
                 ${renderHotkeyInputHtml(`urlhotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.urlHotkey.hotkeyPlaceholder'), ` aria-label="${escapeHtml(t('common.hotkeyLabel'))}"`)}
-                <button type="button" id="urlhotkey_${index}_removeBtn" onclick="confirmRemove('urlhotkey_${index}_removeBtn', () => removeUrlHotkey(${index}))" style="min-width: 80px;">${t('common.remove')}</button>
+                <button type="button" class="button-remove" id="urlhotkey_${index}_removeBtn" onclick="confirmRemove('urlhotkey_${index}_removeBtn', () => removeUrlHotkey(${index}))">${t('common.remove')}</button>
             </div>
             <label id="urlhotkey_${index}_uploadClipboardRow" style="display: ${isAdashboardUrl(entry.url) ? 'block' : 'none'}; margin-bottom: 8px;">
                 <input type="checkbox" id="urlhotkey_${index}_uploadClipboard" ${entry.uploadClipboard ? 'checked' : ''}>
@@ -7235,6 +7208,8 @@ function maybeSyncOverlayStyle(def) {
     if (document.getElementById('syncOverlayStyling')?.checked) syncOverlayStyleFrom(def);
 }
 
+// Reads/writes the markup carrying .hidden-by-layout-preview (config_dialog.html) - those inputs stay
+// this popover's backing store even though the class itself has no CSS rule of its own.
 function buildOverlayPopoverField(f, def) {
     const wrap = document.createElement('div');
     wrap.className = 'overlay-popover-field';
