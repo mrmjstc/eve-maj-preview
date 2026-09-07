@@ -91,7 +91,9 @@
 | |___  \ V / | |__|_____| |  | | (_| || | |  __/| | |  __/\ V /| |  __/\ V  V / 
 |_____|  \_/  |_____|    |_|  |_|\__,_|/ | |_|   |_|  \___| \_/ |_|\___| \_/\_/  
                                       |__/                                        </pre>
-                        <h3 data-i18n="tab.about.section.app-name.heading">EVE-Maj Preview</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.about.section.app-name.heading">EVE-Maj Preview</h3>
+                        </div>
                         <p class="hint" data-i18n="misc.app-description">A modern, lightweight window preview tool for EVE Online, built with Zig.</p>
 
                         <div style="margin: 12px 0;">
@@ -102,13 +104,17 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.about.section.credits.heading">Credits</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.about.section.credits.heading">Credits</h3>
+                        </div>
                         <p class="hint" data-i18n="misc.credits-made-by">Made by Mr Majestic for the APM special interest group in Goonswarm.</p>
                         <p class="hint" data-i18n="misc.credits-inspired-by">Heavily inspired by the original EVE-O Preview and related tools.</p>
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.about.section.thanks.heading">Thanks</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.about.section.thanks.heading">Thanks</h3>
+                        </div>
                         <ul class="hint credits-grid">
                             <li class="credits-grid-full" data-i18n="misc.thanks-sig-feedback">Everyone in the APM special interest group for their feedback</li>
                             <li>Aulis</li>
@@ -121,7 +127,9 @@
                     </div>
 
                     <div class="section">
-                        <h3 data-i18n="tab.about.section.license.heading">License</h3>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.about.section.license.heading">License</h3>
+                        </div>
                         <p class="hint" data-i18n="misc.license-text">This project is open source and released under the GNU General Public License v3.0 (GPLv3). A copy of the license is included with the application.</p>
                     </div>
 
@@ -146,8 +154,10 @@
                     </div>
 
                     <div id="snake-game-container" class="section" style="display: none;">
-                        <h3 data-i18n="tab.about.section.snake.heading">Ssssnake!</h3>
-                        <p style="margin-bottom: 8px;" data-i18n="tab.about.section.snake.hint">Use arrow keys to play. Press ESC to close.</p>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.about.section.snake.heading">Ssssnake!</h3>
+                        </div>
+                        <p class="hint" data-i18n="tab.about.section.snake.hint">Use arrow keys to play. Press ESC to close.</p>
                         <canvas width="400" height="400" id="snake-game" style="border: 1px solid white; margin: 0 auto; display: block;"></canvas>
                     </div>
                 </div>
@@ -193,7 +203,7 @@
                         </label>
 
                         <div id="windowFiltersOptions">
-                            <div id="windowFiltersList" style="margin-bottom: 8px; margin-top: 8px;">
+                            <div id="windowFiltersList" class="list-container field-group">
                                 <!-- Window filters will be dynamically populated here -->
                             </div>
                             
@@ -230,7 +240,7 @@
                             <input type="checkbox" id="constrainAspectRatio" checked onchange="toggleAspectRatioSlider()">
                             <span class="label-body" data-i18n="field.constrainAspectRatio.label">Constrain Aspect Ratio</span>
                         </label>
-                        <div id="aspectRatioSliderContainer" class="is-disabled" style="margin-top: 8px;">
+                        <div id="aspectRatioSliderContainer" class="is-disabled field-group">
                             <label for="thumbSizeSlider"><span data-i18n="field.thumbSizeSlider.label">Size: </span><span id="thumbSizeValue">100</span>%</label>
                             <input type="range" id="thumbSizeSlider" min="10" max="400" value="100" oninput="onThumbSizeSlider()">
                             <p class="hint" data-i18n="field.thumbSizeSlider.hint">Scales width and height proportionally</p>
@@ -249,7 +259,7 @@
                             <span class="label-body" data-i18n="field.showText.label">Show Text Overlays</span>
                         </label>
 
-                        <label style="margin-bottom: 8px;">
+                        <label class="list-container">
                             <input type="checkbox" id="syncOverlayStyling">
                             <span class="label-body" data-i18n="field.syncOverlayStyling.label">Sync Fonts and Backgrounds</span>
                         </label>
@@ -276,7 +286,7 @@
                         </div>
 
                         <div id="textDisplayOptions">
-                            <div class="row hidden-by-layout-preview" style="display: none; margin-top: 16px;">
+                            <div class="row hidden-by-layout-preview">
                                 <div class="column">
                                     <h4 data-i18n="tab.overlay-text.section.character-name.heading">Character Name</h4>
 
@@ -285,8 +295,8 @@
                                         <span class="label-body" data-i18n="field.showCharacterName.label">Show Character Name</span>
                                     </label>
 
-                                    <div id="characterNameOptions" style="margin-top: 8px;">
-                                        <div class="hidden-by-layout-preview" style="display: none;">
+                                    <div id="characterNameOptions" class="field-group">
+                                        <div class="hidden-by-layout-preview">
                                             <label for="characterNamePosition" data-i18n="common.positionLabel">Position</label>
                                             <select id="characterNamePosition" class="position-options"></select>
 
@@ -320,7 +330,7 @@
                                             <input type="checkbox" id="useUniqueCharacterNameColors" onchange="toggleUniqueCharacterNameColors()">
                                             <span class="label-body" data-i18n="field.useUniqueCharacterNameColors.label">Unique Character Name Colors</span>
                                         </label>
-                                        <div id="characterNameColorOption" style="margin-top: 8px;">
+                                        <div id="characterNameColorOption" class="field-group">
                                             <label for="characterNameColor" data-i18n="field.characterNameColor.label">Character Name Color</label>
                                             <input type="color" id="characterNameColor" data-default-color="#FFFFFF">
                                         </div>
@@ -335,8 +345,8 @@
                                         <span class="label-body" data-i18n="field.showSystemName.label">Show System Name</span>
                                     </label>
 
-                                    <div id="systemNameOptions" style="margin-top: 8px;">
-                                        <div class="hidden-by-layout-preview" style="display: none;">
+                                    <div id="systemNameOptions" class="field-group">
+                                        <div class="hidden-by-layout-preview">
                                             <label for="systemNamePosition" data-i18n="common.positionLabel">Position</label>
                                             <select id="systemNamePosition" class="position-options"></select>
 
@@ -370,7 +380,7 @@
                                             <input type="checkbox" id="useUniqueSystemColors" onchange="toggleUniqueSystemColors()">
                                             <span class="label-body" data-i18n="field.useUniqueSystemColors.label">Unique System Colors</span>
                                         </label>
-                                        <div id="systemNameColorOption" style="margin-top: 8px;">
+                                        <div id="systemNameColorOption" class="field-group">
                                             <label for="systemNameColor" data-i18n="field.systemNameColor.label">System Name Color</label>
                                             <input type="color" id="systemNameColor" data-default-color="#FFFFFF">
                                         </div>
@@ -378,7 +388,7 @@
                                 </div>
                             </div>
 
-                            <div class="row hidden-by-layout-preview" style="display: none; margin-top: 16px;">
+                            <div class="row hidden-by-layout-preview">
                                 <div class="column">
                                     <h4 data-i18n="tab.overlay-text.section.group-badge.heading">Group Badge</h4>
 
@@ -387,8 +397,8 @@
                                         <span class="label-body" data-i18n="field.showQuickGroupBadge.label">Show Group Badge</span>
                                     </label>
 
-                                    <div id="quickGroupBadgeOptions" style="margin-top: 8px;">
-                                        <div class="hidden-by-layout-preview" style="display: none;">
+                                    <div id="quickGroupBadgeOptions" class="field-group">
+                                        <div class="hidden-by-layout-preview">
                                             <label for="quickGroupBadgePosition" data-i18n="common.positionLabel">Position</label>
                                             <select id="quickGroupBadgePosition" class="position-options"></select>
 
@@ -602,8 +612,10 @@
                                             <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
                                         </select>
 
-                                        <label for="inactiveBorderColor" data-i18n="field.inactiveBorderColor.label">Color</label>
-                                        <input type="color" id="inactiveBorderColor" data-default-color="#606060">
+                                        <div id="inactiveBorderColorOptions">
+                                            <label for="inactiveBorderColor" data-i18n="field.inactiveBorderColor.label">Color</label>
+                                            <input type="color" id="inactiveBorderColor" data-default-color="#606060">
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -738,7 +750,7 @@
                         </div>
                         <p class="hint" data-i18n="tab.overlay-text.section.system-color-overrides.hint">Define custom colors for specific solar systems (only used when Unique System Colors is enabled).</p>
                         
-                        <div id="systemColorsList" style="margin-bottom: 8px;">
+                        <div id="systemColorsList" class="list-container">
                             <!-- System colors will be dynamically populated here -->
                         </div>
                         
@@ -754,12 +766,12 @@
                         </div>
                         <p class="hint" data-i18n="tab.characters.section.per-character-configuration.hint">Customize each character's saved position, size, border color, display name, and jump-to hotkey. Characters are added automatically when detected.</p>
 
-                        <div class="search-input-wrapper" style="width: 100%; margin-bottom: 8px;">
+                        <div class="search-input-wrapper search-input-wrapper-wide list-container">
                             <input type="text" id="characterSearchFilter" class="search-filter-input" placeholder="Search characters..." data-i18n-placeholder="field.characterSearchFilter.placeholder" oninput="onCharacterSearchInput(this.value)" />
                             <button type="button" class="button-clear" onclick="clearCharacterSearch()" title="Clear search" data-i18n-title="common.clearSearchTitle">×</button>
                         </div>
 
-                        <div id="charactersList" style="margin-bottom: 8px;">
+                        <div id="charactersList" class="list-container">
                             <!-- Characters will be dynamically populated here -->
                         </div>
                         
@@ -820,7 +832,7 @@
                         </label>
 
                         <div id="autoMinimizeOptions">
-                            <label style="margin-bottom: 8px;">
+                            <label class="list-container">
                                 <input type="checkbox" id="autoMinimizeExemptLastActive">
                                 <span class="label-body" data-i18n="field.autoMinimizeExemptLastActive.label">Keep Last-Active Client Visible</span>
                             </label>
@@ -873,7 +885,7 @@
                             <label for="exclusionOverlayOpacity"><span data-i18n="field.exclusionOverlayOpacity.label">Overlay Opacity: </span><span id="exclusionOverlayOpacityValue">20</span>%</label>
                             <input type="range" id="exclusionOverlayOpacity" min="0" max="100" value="20" data-value-target="exclusionOverlayOpacityValue">
                             <label for="exclusionOverlayColor" data-i18n="field.exclusionOverlayColor.label">Overlay Color</label>
-                            <input type="color" id="exclusionOverlayColor" data-default-color="#ff0000">
+                            <input type="color" id="exclusionOverlayColor" data-default-color="#A62222">
                         </div>
                     </div>
 
@@ -930,7 +942,7 @@
                             <span class="label-body" data-i18n="field.resetGroupIndexOnNonGroupFocus.label">Reset Cycle Position When Leaving a Group</span>
                         </label>
 
-                        <div id="hotkeyGroupsList" style="margin-bottom: 8px;">
+                        <div id="hotkeyGroupsList" class="list-container">
                             <!-- Hotkey groups will be dynamically populated here -->
                         </div>
 
@@ -1007,7 +1019,7 @@
 
                         <div class="binding-list" id="profileBindings"></div>
 
-                        <div id="profileSwitchHotkeysList" style="margin-bottom: 8px;">
+                        <div id="profileSwitchHotkeysList" class="list-container">
                             <!-- Profile switch hotkeys will be dynamically populated here -->
                         </div>
 
@@ -1025,7 +1037,7 @@
 
                         <h4 data-i18n="tab.hotkeys.section.app-hotkeys.heading">App Hotkeys</h4>
 
-                        <div id="appHotkeysList" style="margin-bottom: 8px;">
+                        <div id="appHotkeysList" class="list-container">
                             <!-- App hotkeys will be dynamically populated here -->
                         </div>
 
@@ -1033,7 +1045,7 @@
 
                         <h4 data-i18n="tab.hotkeys.section.url-hotkeys.heading">URL Hotkeys</h4>
 
-                        <div id="urlHotkeysList" style="margin-bottom: 8px;">
+                        <div id="urlHotkeysList" class="list-container">
                             <!-- URL hotkeys will be dynamically populated here -->
                         </div>
 
@@ -1059,7 +1071,7 @@
                         </label>
 
                         <div id="notificationOptions">
-                            <div class="hidden-by-layout-preview" style="display: none;">
+                            <div class="hidden-by-layout-preview">
                                 <label for="notificationPosition" data-i18n="common.positionLabel">Position</label>
                                 <select id="notificationPosition" class="position-options"></select>
 
@@ -1106,10 +1118,17 @@
                                     <p class="hint" data-i18n="field.notifCycleRetention.hint">How long a character stays cyclable via the Notified Characters hotkeys after its last notification.</p>
                                 </div>
                             </div>
+                        </div>
+                    </div>
 
-                            <h4 data-i18n="tab.notifications.section.text-to-speech.heading">Text-to-Speech</h4>
-                            <p class="hint" data-i18n="tab.notifications.section.text-to-speech.hint">Speak alerts aloud using the Windows system voice. Enable individual event types below in the "TTS" column.</p>
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.notifications.section.text-to-speech.heading">Text-to-Speech</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.notifications.section.text-to-speech.hint">Speak alerts aloud using the Windows system voice. Enable individual event types below in the "TTS" column.</p>
 
+                        <div id="ttsSection">
                             <label>
                                 <input type="checkbox" id="ttsEnabled" onchange="toggleTtsOptions()">
                                 <span class="label-body" data-i18n="field.ttsEnabled.label">Enable Text-to-Speech</span>
@@ -1205,7 +1224,6 @@
 
                             <label for="notifInfoPanelMaxRows" data-i18n="field.notifInfoPanelMaxRows.label">Max History Rows</label>
                             <input type="number" id="notifInfoPanelMaxRows" min="1" max="30">
-                            <p class="hint" data-i18n="field.notifInfoPanelMaxRows.hint">Caps how many recent notifications are shown, even if the panel is tall enough for more</p>
 
                             <label for="notifInfoPanelOpacity"><span data-i18n="field.notifInfoPanelOpacity.label">Panel Opacity: </span><span id="notifInfoPanelOpacityValue">100</span>%</label>
                             <input type="range" id="notifInfoPanelOpacity" min="20" max="100" value="100" data-value-target="notifInfoPanelOpacityValue">
@@ -1309,8 +1327,6 @@
                         </label>
 
                         <div id="chatlogOptions">
-                            <h4 data-i18n="tab.chatlog.section.log-directories.heading">Log Directories</h4>
-
                             <label for="chatlogDir" data-i18n="field.chatlogDir.label">Chatlog Directory</label>
                             <div class="field-row">
                                 <input type="text" id="chatlogDir" placeholder="C:\Users\...\Chatlogs" data-i18n-placeholder="field.chatlogDir.placeholder">
@@ -1368,7 +1384,7 @@
                             <input type="number" id="combatUpdateIntervalMs" min="0.1" max="60" step="0.1">
                             <p class="hint" data-i18n="field.combatUpdateIntervalMs.hint">How often the DPS display refreshes (0.1–60 s)</p>
 
-                            <div class="row hidden-by-layout-preview" style="display: none;">
+                            <div class="row hidden-by-layout-preview">
                                 <div class="column">
                                     <h4 data-i18n="tab.combat.section.incoming-damage.heading">Incoming Damage</h4>
 
@@ -1490,7 +1506,7 @@
                             <input type="number" id="miningUpdateIntervalMs" min="0.1" max="60" step="0.1">
                             <p class="hint" data-i18n="field.miningUpdateIntervalMs.hint">How often the display refreshes (0.1–60 s)</p>
 
-                            <div class="hidden-by-layout-preview" style="display: none;">
+                            <div class="hidden-by-layout-preview">
                                 <label for="miningPosition" data-i18n="common.positionLabel">Position</label>
                                 <select id="miningPosition" class="position-options"></select>
 
@@ -1610,7 +1626,7 @@
                             <input type="number" id="bountyUpdateIntervalMs" min="0.1" max="60" step="0.1">
                             <p class="hint" data-i18n="field.bountyUpdateIntervalMs.hint">How often the display refreshes (0.1–60 s)</p>
 
-                            <div class="hidden-by-layout-preview" style="display: none;">
+                            <div class="hidden-by-layout-preview">
                                 <label for="bountyPosition" data-i18n="common.positionLabel">Position</label>
                                 <select id="bountyPosition" class="position-options"></select>
 
@@ -1684,7 +1700,7 @@
                             <input type="number" id="resourcesUpdateIntervalMs" min="0.5" max="60" step="0.1">
                             <p class="hint" data-i18n="field.resourcesUpdateIntervalMs.hint">How often CPU/RAM/VRAM are resampled (0.5–60 s); shared by all three since VRAM sampling is the most expensive</p>
 
-                            <div class="hidden-by-layout-preview" style="display: none;">
+                            <div class="hidden-by-layout-preview">
                                 <label for="resourcesPosition" data-i18n="common.positionLabel">Position</label>
                                 <select id="resourcesPosition" class="position-options"></select>
 

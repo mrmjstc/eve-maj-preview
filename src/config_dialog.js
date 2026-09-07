@@ -1328,11 +1328,13 @@ function setFieldValue(fieldId, value) {
     // A missing/null value means nothing is set for this field - clear it rather than leaving the previous profile's value.
     if (value === undefined || value === null) {
         field.value = field.type === 'color' ? zigColorToHtml(null) : '';
+        if (field.type === 'color') syncSwatchHexInput(field);
         return;
     }
 
     if (field.type === 'color') {
         field.value = zigColorToHtml(value);
+        syncSwatchHexInput(field);
     } else {
         field.value = value;
     }
@@ -3483,7 +3485,8 @@ function showStatus(message, type) {
     const statusEl = document.getElementById('status-message');
     statusEl.textContent = message;
     statusEl.className = 'status-message ' + type;
-    statusEl.style.display = 'block';
+    // flex, not block - .status-message's align-items only takes effect on a flex box.
+    statusEl.style.display = 'flex';
 }
 
 function hideStatus() {
@@ -4585,14 +4588,6 @@ function toggleAccordionEl(header) {
     setAccordionExpanded(accordion, !accordion.classList.contains('expanded'));
 }
 
-// Used by window filters, characters, and hotkey groups (system colors isn't an accordion - it's a flat row list).
-function toggleAccordion(containerSelector, index) {
-    const accordion = document.querySelectorAll(`${containerSelector} .accordion`)[index];
-    if (accordion) {
-        setAccordionExpanded(accordion, !accordion.classList.contains('expanded'));
-    }
-}
-
 function syncAccordionHeaderName(nameFieldId, headerFieldId, fallbackPrefix, index) {
     const nameInput = document.getElementById(nameFieldId);
     const headerName = document.getElementById(headerFieldId);
@@ -4617,7 +4612,7 @@ function populateWindowFilters() {
         const row = document.createElement('div');
         // The picker rides under its row, so each entry keeps its two parts together.
         row.innerHTML = `
-            <div class="field-row" style="margin-bottom: 8px;">
+            <div class="field-row list-container">
                 <label title="${escapeHtml(t('common.enabledLabel'))}">
                     <input type="checkbox" id="filter_${index}_enabled" ${filter.enabled ? 'checked' : ''} aria-label="${escapeHtml(t('common.enabledLabel'))}">
                     <span class="label-body"></span>
@@ -4625,10 +4620,10 @@ function populateWindowFilters() {
                 <input type="text" id="filter_${index}_name" value="${escapeHtml(filter.name || '')}" placeholder="${t('dynamic.windowFilter.namePlaceholder')}" aria-label="${escapeHtml(t('dynamic.windowFilter.nameLabel'))}">
                 <input type="text" id="filter_${index}_classes" value="${escapeHtml((filter.class_names || []).join(', '))}" placeholder="${t('dynamic.windowFilter.classesPlaceholder')}" aria-label="${escapeHtml(t('dynamic.windowFilter.classesLabel'))}">
                 <input type="text" id="filter_${index}_exes" value="${escapeHtml((filter.executable_names || []).join(', '))}" placeholder="${t('dynamic.windowFilter.exesPlaceholder')}" aria-label="${escapeHtml(t('dynamic.windowFilter.exesLabel'))}">
-                <button type="button" id="filter_${index}_pickBtn" onclick="pickRunningWindowForFilter(${index})" style="white-space: nowrap;">${t('button.pick-running-window.label')}</button>
+                <button type="button" id="filter_${index}_pickBtn" onclick="pickRunningWindowForFilter(${index})" class="btn-nowrap">${t('button.pick-running-window.label')}</button>
                 <button type="button" class="button-remove" id="filter_${index}_removeBtn" onclick="confirmRemove('filter_${index}_removeBtn', () => removeWindowFilter(${index}))">${t('common.remove')}</button>
             </div>
-            <select id="filter_${index}_picker" style="display: none; width: 100%; margin-bottom: 8px;" onchange="applyPickedWindowForFilter(${index})"></select>
+            <select id="filter_${index}_picker" class="picker-select" onchange="applyPickedWindowForFilter(${index})"></select>
         `;
         container.appendChild(row);
     });
@@ -4646,11 +4641,6 @@ function addWindowFilter() {
     });
     markAsChanged();
     populateWindowFilters();
-
-    // Automatically expand the newly added filter (always rendered last)
-    const accordions = document.querySelectorAll('#windowFiltersList .accordion');
-    const newAccordion = accordions[accordions.length - 1];
-    if (newAccordion) setAccordionExpanded(newAccordion, true);
 }
 
 function removeWindowFilter(index) {
@@ -4757,8 +4747,7 @@ function populateSystemColors() {
     
     colors.forEach((sc, index) => {
         const colorDiv = document.createElement('div');
-        colorDiv.className = 'field-row';
-        colorDiv.style.marginBottom = '8px';
+        colorDiv.className = 'field-row list-container';
         colorDiv.innerHTML = `
             <input type="text" id="systemColor_${index}_name" value="${sc.systemName || ''}" placeholder="${t('dynamic.systemColor.namePlaceholder')}">
             <input type="color" id="systemColor_${index}_color" value="${zigColorToHtml(sc.color)}">
@@ -5648,8 +5637,8 @@ function populateHotkeyGroups() {
                 <div class="hkgroup-chars-list" id="hkgroup_${index}_charsList" data-group-index="${index}">${renderHotkeyGroupCharRows(index, group.characters)}</div>
                 <div class="field-row" style="margin-top: 4px;">
                     <input type="text" id="hkgroup_${index}_addChar" autocomplete="off" placeholder="${t('dynamic.hotkeyGroup.addCharPlaceholder')}" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addHotkeyGroupCharacter(${index}); }">
-                    <button type="button" onclick="addHotkeyGroupCharacter(${index})" style="white-space: nowrap;">${t('dynamic.hotkeyGroup.addBtnLabel')}</button>
-                    <button type="button" id="hkgroup_${index}_fillBtn" onclick="fillHotkeyGroupFromClients(${index})" style="white-space: nowrap;">${t('status.fillFromClientsLabel')}</button>
+                    <button type="button" onclick="addHotkeyGroupCharacter(${index})" class="btn-nowrap">${t('dynamic.hotkeyGroup.addBtnLabel')}</button>
+                    <button type="button" id="hkgroup_${index}_fillBtn" onclick="fillHotkeyGroupFromClients(${index})" class="btn-nowrap">${t('status.fillFromClientsLabel')}</button>
                 </div>
             </div>
         </div>
@@ -6081,8 +6070,7 @@ async function populateProfileSwitchHotkeys() {
         }).join('');
 
         const row = document.createElement('div');
-        row.className = 'field-row';
-        row.style.marginBottom = '8px';
+        row.className = 'field-row list-container';
         row.innerHTML = `
             <select id="pshotkey_${index}_target" aria-label="${escapeHtml(t('dynamic.profileSwitchHotkey.targetLabel'))}">${optionsHtml}</select>
             ${renderHotkeyInputHtml(`pshotkey_${index}_hotkey`, vkHexToFriendly(entry.hotkey) || '', t('dynamic.profileSwitchHotkey.hotkeyPlaceholder'), ` aria-label="${escapeHtml(t('common.hotkeyLabel'))}"`)}
@@ -6148,13 +6136,13 @@ function populateAppHotkeys() {
         const row = document.createElement('div');
         // The picker rides under its row, so each entry keeps its two parts together.
         row.innerHTML = `
-            <div class="field-row" style="margin-bottom: 8px;">
+            <div class="field-row list-container">
                 <input type="text" id="apphotkey_${index}_exe" value="${escapeHtml(entry.executableName || '')}" placeholder="${t('dynamic.appHotkey.exePlaceholder')}" aria-label="${escapeHtml(t('dynamic.appHotkey.targetLabel'))}">
                 ${renderHotkeyInputHtml(`apphotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.appHotkey.hotkeyPlaceholder'), ` aria-label="${escapeHtml(t('common.hotkeyLabel'))}"`)}
-                <button type="button" id="apphotkey_${index}_pickBtn" onclick="pickRunningWindowForAppHotkey(${index})" style="white-space: nowrap;">${t('button.pick-running-window.label')}</button>
+                <button type="button" id="apphotkey_${index}_pickBtn" onclick="pickRunningWindowForAppHotkey(${index})" class="btn-nowrap">${t('button.pick-running-window.label')}</button>
                 <button type="button" class="button-remove" id="apphotkey_${index}_removeBtn" onclick="confirmRemove('apphotkey_${index}_removeBtn', () => removeAppHotkey(${index}))">${t('common.remove')}</button>
             </div>
-            <select id="apphotkey_${index}_picker" style="display: none; width: 100%; margin-bottom: 8px;" onchange="applyPickedWindowForAppHotkey(${index})"></select>
+            <select id="apphotkey_${index}_picker" class="picker-select" onchange="applyPickedWindowForAppHotkey(${index})"></select>
         `;
         container.appendChild(row);
     });
@@ -6267,12 +6255,12 @@ function populateUrlHotkeys() {
         const row = document.createElement('div');
         // The clipboard option only applies to aDashboard URLs, so it hangs under the row it belongs to.
         row.innerHTML = `
-            <div class="field-row" style="margin-bottom: 8px;">
+            <div class="field-row list-container">
                 <input type="text" id="urlhotkey_${index}_url" value="${escapeHtml(entry.url || '')}" placeholder="${t('dynamic.urlHotkey.urlPlaceholder')}" aria-label="${escapeHtml(t('dynamic.urlHotkey.targetLabel'))}" oninput="updateUrlHotkeyUploadClipboardVisibility(${index})">
                 ${renderHotkeyInputHtml(`urlhotkey_${index}_hotkey`, hotkeyDisplay, t('dynamic.urlHotkey.hotkeyPlaceholder'), ` aria-label="${escapeHtml(t('common.hotkeyLabel'))}"`)}
                 <button type="button" class="button-remove" id="urlhotkey_${index}_removeBtn" onclick="confirmRemove('urlhotkey_${index}_removeBtn', () => removeUrlHotkey(${index}))">${t('common.remove')}</button>
             </div>
-            <label id="urlhotkey_${index}_uploadClipboardRow" style="display: ${isAdashboardUrl(entry.url) ? 'block' : 'none'}; margin-bottom: 8px;">
+            <label id="urlhotkey_${index}_uploadClipboardRow" class="list-container" style="display: ${isAdashboardUrl(entry.url) ? 'block' : 'none'};">
                 <input type="checkbox" id="urlhotkey_${index}_uploadClipboard" ${entry.uploadClipboard ? 'checked' : ''}>
                 <span class="label-body">${t('dynamic.urlHotkey.uploadClipboardLabel')}</span>
             </label>
@@ -6528,45 +6516,45 @@ function populateNotificationTypes() {
             <td class="event-name-cell">
                 <div class="event-name">${t('notification.' + notifType.key + '.label')}</div>
             </td>
-            <td style="text-align: center;">
+            <td>
                 <label>
                     <input type="checkbox" id="notif_${notifType.key}_enabled" ${config.enabled ? 'checked' : ''}
                            onchange="toggleNotificationTypeEnabled('${notifType.key}')">
                     <span class="label-body"></span>
                 </label>
             </td>
-            <td style="text-align: center;">
+            <td>
                 <input type="number" id="notif_${notifType.key}_duration" min="0" max="60" step="0.1"
                        value="${config.duration_ms && config.duration_ms > 0 ? config.duration_ms / 1000 : 5}">
             </td>
-            <td style="text-align: center;">
+            <td>
                 <label>
-                    <input type="checkbox" id="notif_${notifType.key}_suppressFocused" 
+                    <input type="checkbox" id="notif_${notifType.key}_suppressFocused"
                            ${config.suppress_when_focused ? 'checked' : ''}>
                     <span class="label-body"></span>
                 </label>
             </td>
-            <td style="text-align: center;">
+            <td>
                 <label>
                     <input type="checkbox" id="notif_${notifType.key}_suppressClicked"
                            ${config.suppress_when_clicked ? 'checked' : ''}>
                     <span class="label-body"></span>
                 </label>
             </td>
-            <td style="text-align: center;">
+            <td>
                 <input type="number" id="notif_${notifType.key}_throttle" min="0" max="300" step="1"
                        title="Ignore repeat notifications of this type within this many seconds of the last one shown (0 = off)"
                        value="${config.throttle_ms !== undefined ? config.throttle_ms / 1000 : 10}">
             </td>
-            <td style="text-align: center;">
+            <td>
                 <label>
                     <input type="checkbox" id="notif_${notifType.key}_tts"
                            ${config.tts_enabled ? 'checked' : ''}>
                     <span class="label-body"></span>
                 </label>
             </td>
-            <td style="text-align: center;">
-                <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+            <td>
+                <div class="notif-cell-inline">
                     <input type="checkbox" id="notif_${notifType.key}_textColorEnabled"
                            title="Enable per-type notification text color override"
                            ${hasTextColor ? 'checked' : ''}
@@ -6584,7 +6572,7 @@ function populateNotificationTypes() {
                     </div>
                 </div>
             </td>
-            <td style="text-align: center;">
+            <td>
                 <label>
                     <input type="checkbox" id="notif_${notifType.key}_showBorder"
                            title="Draw a border while this notification is active"
@@ -6593,7 +6581,7 @@ function populateNotificationTypes() {
                     <span class="label-body"></span>
                 </label>
             </td>
-            <td style="text-align: center;">
+            <td>
                 <label>
                     <input type="checkbox" id="notif_${notifType.key}_flashBorder"
                            title="Blink the border on/off 4 times when the notification starts"
@@ -6601,8 +6589,8 @@ function populateNotificationTypes() {
                     <span class="label-body"></span>
                 </label>
             </td>
-            <td style="text-align: center;">
-                <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+            <td>
+                <div class="notif-cell-inline">
                     <input type="checkbox" id="notif_${notifType.key}_borderColorEnabled"
                            title="Enable per-type border color override"
                            ${hasBorderColor ? 'checked' : ''}
@@ -6836,9 +6824,13 @@ function toggleInactiveBorderOptions() {
 function toggleUniqueCharacterColors() {
     const uniqueColorsCheckbox = document.getElementById('assignUniqueCharacterColors');
     const focusedBorderColorOptions = document.getElementById('focusedBorderColorOptions');
-    
-    if (uniqueColorsCheckbox && focusedBorderColorOptions) {
-        focusedBorderColorOptions.classList.toggle('is-disabled', uniqueColorsCheckbox.checked);
+    const inactiveBorderColorOptions = document.getElementById('inactiveBorderColorOptions');
+
+    if (uniqueColorsCheckbox) {
+        // Inactive border color is per-character too (see resolveOptionalCharacterColor) -
+        // it dims along with the focused field instead of staying interactive while overridden.
+        focusedBorderColorOptions?.classList.toggle('is-disabled', uniqueColorsCheckbox.checked);
+        inactiveBorderColorOptions?.classList.toggle('is-disabled', uniqueColorsCheckbox.checked);
 
         if (uniqueColorsCheckbox.checked) {
             assignUniqueColorsToAllCharacters();
@@ -7533,11 +7525,16 @@ function toggleNotificationOptions() {
     const notificationsEnabled = document.getElementById('notificationsEnabled');
     const notificationOptions = document.getElementById('notificationOptions');
     const notificationTypesTable = document.getElementById('notificationTypesTable');
-    
+    // Text-to-Speech is its own section now, but it still only means something
+    // while notifications are firing, so it dims with the rest - same pattern
+    // as Combat/Mining's Alerts sections depending on their own Enable checkbox.
+    const ttsSection = document.getElementById('ttsSection');
+
     if (notificationsEnabled && notificationOptions) {
         const isEnabled = notificationsEnabled.checked;
 
         notificationOptions.classList.toggle('is-disabled', !isEnabled);
+        ttsSection?.classList.toggle('is-disabled', !isEnabled);
 
         if (notificationTypesTable) {
             const inputs = notificationTypesTable.querySelectorAll('input');
@@ -8129,18 +8126,110 @@ function filterSettings(query) {
     }, true);
 })();
 
+// A persistent, always-visible companion to the popup's hex field above - lets a
+// swatch's exact value be read/typed without opening the picker. Wraps every
+// input[type="color"] (or its .swatch-wrap, where one exists) in a
+// .color-with-hex row at render time; a MutationObserver catches ones created
+// later by the various populate* functions, same as the picker needs no extra
+// wiring for dynamic inputs. Skips the notification table and the overlay
+// popover's own color field - neither has room for a second control next to
+// the swatch (a ~26px table cell, a ~150px popover column).
+//
+// syncSwatchHexInput is also called directly from setFieldValue() below -
+// like the range slider's mirrored span, the browser only fires 'input' for
+// user interaction, not a programmatic .value assignment, so config load
+// (populateFormFields -> setFieldValue) would otherwise leave every hex field
+// showing its pre-load value until the swatch was next touched by hand.
+function syncSwatchHexInput(color) {
+    const hex = color.closest('.color-with-hex')?.querySelector('.swatch-hex-input');
+    if (!hex || document.activeElement === hex) return;
+    if (color.dataset.cleared === 'true') {
+        hex.value = '';
+        hex.placeholder = color.value.toUpperCase();
+    } else {
+        hex.value = color.value.toUpperCase();
+        hex.placeholder = '';
+    }
+}
+
+(function initInlineColorHex() {
+    function commitToColor(hex, color) {
+        const v = hex.value.replace('#', '');
+        if (!/^[0-9a-fA-F]{6}$/.test(v)) {
+            syncSwatchHexInput(color);
+            return;
+        }
+        color.value = '#' + v;
+        delete color.dataset.cleared;
+        if (color.dataset.baseTitle) color.title = color.dataset.baseTitle;
+        else color.removeAttribute('title');
+        color.dispatchEvent(new Event('input', { bubbles: true }));
+        color.dispatchEvent(new Event('change', { bubbles: true }));
+        syncSwatchHexInput(color);
+    }
+
+    function attach(color) {
+        if (color.dataset.hexAttached || color.closest('.notification-types-table, .overlay-popover')) return;
+        color.dataset.hexAttached = 'true';
+
+        const host = color.closest('.swatch-wrap') || color;
+        const wrap = document.createElement('div');
+        wrap.className = 'color-with-hex';
+        host.parentNode.insertBefore(wrap, host);
+        wrap.appendChild(host);
+
+        const hex = document.createElement('input');
+        hex.type = 'text';
+        hex.className = 'swatch-hex-input';
+        hex.maxLength = 7;
+        hex.spellcheck = false;
+        hex.autocomplete = 'off';
+        if (color.id) hex.setAttribute('aria-label', document.querySelector(`label[for="${color.id}"]`)?.textContent?.trim() || 'Hex color');
+        wrap.appendChild(hex);
+
+        syncSwatchHexInput(color);
+
+        hex.addEventListener('input', () => {
+            const digits = hex.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6).toUpperCase();
+            hex.value = digits ? '#' + digits : '';
+        });
+        hex.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { commitToColor(hex, color); hex.blur(); }
+        });
+        hex.addEventListener('blur', () => commitToColor(hex, color));
+
+        color.addEventListener('input', () => syncSwatchHexInput(color));
+        color.addEventListener('change', () => syncSwatchHexInput(color));
+    }
+
+    function scanNode(node) {
+        if (node.nodeType !== 1) return;
+        if (node.matches('input[type="color"]')) attach(node);
+        node.querySelectorAll?.('input[type="color"]').forEach(attach);
+    }
+
+    document.querySelectorAll('input[type="color"]').forEach(attach);
+
+    new MutationObserver(mutations => {
+        for (const m of mutations) m.addedNodes.forEach(scanNode);
+    }).observe(document.body, { childList: true, subtree: true });
+})();
+
 function updateSearchCount(sections, elements) {
     const countEl = document.getElementById('search-results-count');
     if (!countEl) return;
     
     if (sections === 0 && !searchState.currentQuery) {
         countEl.textContent = '';
+        countEl.classList.remove('search-count-none', 'search-count-some');
     } else if (sections === 0) {
         countEl.textContent = t('status.noMatches');
-        countEl.style.color = '#ff6b6b';
+        countEl.classList.add('search-count-none');
+        countEl.classList.remove('search-count-some');
     } else {
         countEl.textContent = `${sections} ${sections !== 1 ? t('status.sectionPlural') : t('status.sectionSingular')}`;
-        countEl.style.color = '#4a9eff';
+        countEl.classList.add('search-count-some');
+        countEl.classList.remove('search-count-none');
     }
 }
 
