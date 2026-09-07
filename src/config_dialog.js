@@ -984,6 +984,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     initializeTabs();
     initDelegatedKeyboardActivation();
+    initConfirmButtonWidthReservation();
     buildSectionNav();
 
     const ready = await waitForWebUI();
@@ -5422,19 +5423,11 @@ function confirmRemove(buttonId, removeCallback, confirmText = 'Confirm') {
         // Second click - revert to normal appearance, then perform the action
         btn.classList.remove('confirm-delete');
         btn.textContent = btn.dataset.originalText || btn.textContent;
-        btn.style.width = '';
         removeCallback();
     } else {
-        // First click - set confirm state. Locked to the wider of the two labels'
-        // natural widths so the swap can't grow or shrink the button - measuring
-        // rather than hardcoding keeps this correct under every translation.
+        // First click - set confirm state. Width is reserved ahead of time by
+        // reserveConfirmButtonWidth(), so this swap itself never resizes the button.
         const originalText = btn.textContent;
-        const originalWidth = btn.getBoundingClientRect().width;
-        btn.textContent = confirmText;
-        const confirmWidth = btn.getBoundingClientRect().width;
-        btn.textContent = originalText;
-        btn.style.width = `${Math.max(originalWidth, confirmWidth)}px`;
-
         btn.classList.add('confirm-delete');
         btn.textContent = confirmText;
         btn.dataset.originalText = originalText;
@@ -5444,10 +5437,50 @@ function confirmRemove(buttonId, removeCallback, confirmText = 'Confirm') {
             if (btn && btn.classList.contains('confirm-delete')) {
                 btn.classList.remove('confirm-delete');
                 btn.textContent = btn.dataset.originalText || 'Remove';
-                btn.style.width = '';
             }
         }, 2000);
     }
+}
+
+// Buttons confirmRemove() swaps to a wider "Confirm" label are pre-sized to fit that label the
+// instant they're created, so the very first click can't resize them - locking the width inside
+// confirmRemove itself is one transition too late, since the button has already rendered and been
+// seen at its narrower natural size by then. Measures an offscreen clone rather than the button
+// itself, since these buttons are routinely created while their tab or detail panel is
+// display:none (getBoundingClientRect would read zero) - a clone appended straight to <body>
+// keeps the original's classes and font but sidesteps that hidden ancestor entirely.
+const CONFIRM_BUTTON_SELECTOR = '[id$="_removeBtn"], #delete-profile-btn, #reset-profile-btn, #clearAllWindowPositionsBtn';
+
+function reserveConfirmButtonWidth(btn) {
+    if (!btn || btn.dataset.confirmWidthReserved) return;
+    btn.dataset.confirmWidthReserved = '1';
+
+    const clone = btn.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.style.cssText = 'position:fixed; visibility:hidden; left:-9999px; top:-9999px;';
+    document.body.appendChild(clone);
+    const originalWidth = clone.getBoundingClientRect().width;
+    clone.textContent = 'Confirm';
+    const confirmWidth = clone.getBoundingClientRect().width;
+    document.body.removeChild(clone);
+
+    btn.style.minWidth = `${Math.max(originalWidth, confirmWidth)}px`;
+}
+
+function initConfirmButtonWidthReservation() {
+    document.querySelectorAll(CONFIRM_BUTTON_SELECTOR).forEach(reserveConfirmButtonWidth);
+
+    // Dynamic lists (characters, hotkey groups, window filters, ...) rebuild their rows via
+    // innerHTML on every add/remove/re-render, so new buttons keep appearing after this first pass.
+    new MutationObserver(mutations => {
+        for (const mutation of mutations) {
+            mutation.addedNodes.forEach(node => {
+                if (node.nodeType !== Node.ELEMENT_NODE) return;
+                if (node.matches?.(CONFIRM_BUTTON_SELECTOR)) reserveConfirmButtonWidth(node);
+                node.querySelectorAll?.(CONFIRM_BUTTON_SELECTOR).forEach(reserveConfirmButtonWidth);
+            });
+        }
+    }).observe(document.body, { childList: true, subtree: true });
 }
 
 function confirmRemoveCharacter(index) {
