@@ -674,6 +674,10 @@ label:has(input[type="radio"])::before {
 label:has(input[type="checkbox"]),
 label:has(input[type="radio"]) {
     padding-left: 0;
+    /* Matches .binding-list's margin-bottom so a checkbox-to-checkbox gap
+       reads the same as a checkbox-to-field or field-to-field gap. */
+    margin-top: 8px;
+    margin-bottom: 8px;
 }
 
 /* Checkbox styling - terminal style */
@@ -1445,6 +1449,13 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     display: none;
 }
 
+/* .binding-list also sets display, and single-class rules resolve by source
+   order on a tie - this two-class rule outranks either alone so hiding always
+   wins regardless of where each rule sits in the file. */
+.hidden-by-layout-preview.binding-list {
+    display: none;
+}
+
 /* Overlay Text tab: drag-to-position Layout Preview, replaces raw offset sliders */
 #overlayLayoutStage {
     position: relative;
@@ -1663,6 +1674,19 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     margin-bottom: 8px;
 }
 
+/* A .binding-list that sits in a half-width .row column instead of spanning
+   the section - deliberately not .binding-list, so alignBindingLabelColumns()
+   (which shares one label-column width across every .binding-list on the tab)
+   can't force a width sized for the tab's longest label into this narrow
+   column and overflow it into its neighbor. Sized for its own short label. */
+.binding-list-compact {
+    display: grid;
+    grid-template-columns: max-content minmax(60px, 1fr);
+    align-items: center;
+    gap: 6px var(--detail-label-gap);
+    padding: 4px 0;
+}
+
 /* A checkbox's own margin-bottom (3px) is too tight against a grid straight
    below it - Clients' Skip Characters Excluded sits right above clientBindings. */
 label + .binding-list {
@@ -1683,6 +1707,14 @@ label + .binding-list {
 
 .binding > label::before {
     content: none;
+}
+
+/* Same reset .field-row gives its own children - a bare control's inherited
+   stacked-form bottom margin would otherwise sit only under it and not the
+   label beside it, throwing off align-items:center's shared vertical center. */
+.binding > input,
+.binding > select {
+    margin-bottom: 0;
 }
 
 /* A backward/forward pair shares one row, each half taking an equal share. */
@@ -2521,7 +2553,10 @@ input[type="range"]::-moz-range-thumb {
     gap: 6px;
 }
 
-.detail-checks label {
+/* Beats label:has(input[type="checkbox"])'s margin on specificity (the
+   attribute selector inside :has() outweighs this rule's single class
+   otherwise) - .detail-checks spaces its rows with its own gap instead. */
+.detail-checks label:has(input[type="checkbox"]) {
     margin: 0;
 }
 
@@ -2530,6 +2565,15 @@ input[type="range"]::-moz-range-thumb {
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+}
+
+/* A bare .label-body (no preceding checkbox here) gets no color from any
+   other rule - every real <label> gets this shade from the generic label
+   rule, so this row's text matches it explicitly instead of falling back to
+   the default (brighter) text color. */
+.color-row .label-body {
+    color: var(--color-text-secondary);
+    font-weight: var(--fw-bold);
 }
 
 /* Narrower than the default 160px .color-with-hex - these rows sit one to a

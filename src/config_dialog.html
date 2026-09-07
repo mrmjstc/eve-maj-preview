@@ -151,8 +151,12 @@
                             <span class="label-body" data-i18n="field.alwaysOnTopToggle.label">Always on Top</span>
                         </label>
 
-                        <label for="languageSelect" data-i18n="tab.about.section.language.heading">Language</label>
-                        <select id="languageSelect" onchange="switchLanguage(this.value)"></select>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="languageSelect" data-i18n="tab.about.section.language.heading">Language</label>
+                                <select id="languageSelect" onchange="switchLanguage(this.value)"></select>
+                            </div>
+                        </div>
                     </div>
 
                     <div id="snake-game-container" class="section" style="display: none;">
@@ -172,13 +176,17 @@
                         </div>
                         <p class="hint" data-i18n="tab.general.section.logging.hint">How much detail is written to the log file.</p>
 
-                        <label for="logLevel" data-i18n="field.logLevel.label">Log Level</label>
-                        <select id="logLevel">
-                            <option value="debug" data-i18n="field.logLevel.option.debug">Debug</option>
-                            <option value="info" data-i18n="field.logLevel.option.info">Info</option>
-                            <option value="warn" data-i18n="field.logLevel.option.warn">Warning</option>
-                            <option value="err" data-i18n="field.logLevel.option.err">Error</option>
-                        </select>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="logLevel" data-i18n="field.logLevel.label">Log Level</label>
+                                <select id="logLevel">
+                                    <option value="debug" data-i18n="field.logLevel.option.debug">Debug</option>
+                                    <option value="info" data-i18n="field.logLevel.option.info">Info</option>
+                                    <option value="warn" data-i18n="field.logLevel.option.warn">Warning</option>
+                                    <option value="err" data-i18n="field.logLevel.option.err">Error</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="section">
@@ -188,8 +196,12 @@
                         </div>
                         <p class="hint" data-i18n="tab.general.section.scanning.hint">How often to check for new EVE windows.</p>
 
-                        <label for="scanInterval" data-i18n="field.scanInterval.label">Scan Interval (s)</label>
-                        <input type="number" id="scanInterval" min="0.1" max="10" step="0.1">
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="scanInterval" data-i18n="field.scanInterval.label">Scan Interval (s)</label>
+                                <input type="number" id="scanInterval" min="0.1" max="10" step="0.1">
+                            </div>
+                        </div>
                     </div>
 
                     <div class="section">
@@ -227,14 +239,14 @@
                              backend bounds from Config.zig and overwrites them - see
                              applyValidationRangesToInputs(). Keep them roughly accurate,
                              but the enforced clamp always comes from the Zig side. -->
-                        <div class="row">
-                            <div class="column">
-                                <label for="thumbWidth" data-i18n="common.widthPxLabel">Width (px)</label>
-                                <input type="number" id="thumbWidth" min="50" max="3840" oninput="onThumbWidthInput()">
-                            </div>
-                            <div class="column">
-                                <label for="thumbHeight" data-i18n="common.heightPxLabel">Height (px)</label>
-                                <input type="number" id="thumbHeight" min="50" max="2160" oninput="onThumbHeightInput()">
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="thumbWidth" data-i18n="dynamic.character.thumbnailSizeHeading">Thumbnail Size</label>
+                                <div class="field-row detail-size">
+                                    <input type="number" id="thumbWidth" min="50" max="3840" oninput="onThumbWidthInput()">
+                                    <span class="detail-size-x">&times;</span>
+                                    <input type="number" id="thumbHeight" min="50" max="2160" oninput="onThumbHeightInput()">
+                                </div>
                             </div>
                         </div>
 
@@ -242,10 +254,14 @@
                             <input type="checkbox" id="constrainAspectRatio" checked onchange="toggleAspectRatioSlider()">
                             <span class="label-body" data-i18n="field.constrainAspectRatio.label">Constrain Aspect Ratio</span>
                         </label>
-                        <div id="aspectRatioSliderContainer" class="is-disabled field-group">
-                            <label for="thumbSizeSlider"><span data-i18n="field.thumbSizeSlider.label">Size: </span><span id="thumbSizeValue">100</span>%</label>
-                            <input type="range" id="thumbSizeSlider" min="10" max="400" value="100" oninput="onThumbSizeSlider()">
-                            <p class="hint" data-i18n="field.thumbSizeSlider.hint">Scales width and height proportionally</p>
+                        <div id="aspectRatioSliderContainer" class="is-disabled field-group binding-list">
+                            <div class="binding">
+                                <label for="thumbSizeSlider" data-i18n="field.thumbSizeSlider.label">Size</label>
+                                <div class="field-row">
+                                    <input type="range" id="thumbSizeSlider" min="10" max="400" value="100" oninput="onThumbSizeSlider()">
+                                    <span id="thumbSizeValue">100</span>%
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -298,43 +314,64 @@
                                     </label>
 
                                     <div id="characterNameOptions" class="field-group">
-                                        <div class="hidden-by-layout-preview">
-                                            <label for="characterNamePosition" data-i18n="common.positionLabel">Position</label>
-                                            <select id="characterNamePosition" class="position-options"></select>
-
-                                            <label for="characterNameOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="characterNameOffsetXValue">0</span></label>
-                                            <input type="range" id="characterNameOffsetX" min="-50" max="50" value="0" data-value-target="characterNameOffsetXValue">
-
-                                            <label for="characterNameOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="characterNameOffsetYValue">0</span></label>
-                                            <input type="range" id="characterNameOffsetY" min="-50" max="50" value="0" data-value-target="characterNameOffsetYValue">
-
-                                            <label for="characterNameFontName" data-i18n="common.fontNameLabel">Font Name</label>
-                                            <select id="characterNameFontName" class="font-options"></select>
-
-                                            <label for="characterNameFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
-                                            <input type="number" id="characterNameFontSize" min="6" max="72">
-
-                                            <label for="characterNameFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
-                                            <select id="characterNameFontWeight">
-                                                <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
-                                                <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
-                                                <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
-                                                <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
-                                            </select>
-
-                                            <label for="characterNameBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                            <input type="color" id="characterNameBgColor" data-default-color="#000000">
-                                            <label for="characterNameBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="characterNameBgOpacityValue">90</span>%</label>
-                                            <input type="range" id="characterNameBgOpacity" min="0" max="100" value="90" data-value-target="characterNameBgOpacityValue">
+                                        <div class="hidden-by-layout-preview binding-list">
+                                            <div class="binding">
+                                                <label for="characterNamePosition" data-i18n="common.positionLabel">Position</label>
+                                                <select id="characterNamePosition" class="position-options"></select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="characterNameOffsetX" min="-50" max="50" value="0" data-value-target="characterNameOffsetXValue">
+                                                    <span id="characterNameOffsetXValue">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="characterNameOffsetY" min="-50" max="50" value="0" data-value-target="characterNameOffsetYValue">
+                                                    <span id="characterNameOffsetYValue">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                                <select id="characterNameFontName" class="font-options"></select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                                <input type="number" id="characterNameFontSize" min="6" max="72">
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                                <select id="characterNameFontWeight">
+                                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                                </select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                                <input type="color" id="characterNameBgColor" data-default-color="#000000">
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="characterNameBgOpacity" min="0" max="100" value="90" data-value-target="characterNameBgOpacityValue">
+                                                    <span id="characterNameBgOpacityValue">90</span>%
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <label>
                                             <input type="checkbox" id="useUniqueCharacterNameColors" onchange="toggleUniqueCharacterNameColors()">
                                             <span class="label-body" data-i18n="field.useUniqueCharacterNameColors.label">Unique Character Name Colors</span>
                                         </label>
-                                        <div id="characterNameColorOption" class="field-group">
-                                            <label for="characterNameColor" data-i18n="field.characterNameColor.label">Character Name Color</label>
-                                            <input type="color" id="characterNameColor" data-default-color="#FFFFFF">
+                                        <div id="characterNameColorOption" class="field-group binding-list">
+                                            <div class="binding">
+                                                <label for="characterNameColor" data-i18n="field.characterNameColor.label">Character Name Color</label>
+                                                <input type="color" id="characterNameColor" data-default-color="#FFFFFF">
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -348,43 +385,64 @@
                                     </label>
 
                                     <div id="systemNameOptions" class="field-group">
-                                        <div class="hidden-by-layout-preview">
-                                            <label for="systemNamePosition" data-i18n="common.positionLabel">Position</label>
-                                            <select id="systemNamePosition" class="position-options"></select>
-
-                                            <label for="systemNameOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="systemNameOffsetXValue">0</span></label>
-                                            <input type="range" id="systemNameOffsetX" min="-50" max="50" value="0" data-value-target="systemNameOffsetXValue">
-
-                                            <label for="systemNameOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="systemNameOffsetYValue">0</span></label>
-                                            <input type="range" id="systemNameOffsetY" min="-50" max="50" value="0" data-value-target="systemNameOffsetYValue">
-
-                                            <label for="systemNameFontName" data-i18n="common.fontNameLabel">Font Name</label>
-                                            <select id="systemNameFontName" class="font-options"></select>
-
-                                            <label for="systemNameFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
-                                            <input type="number" id="systemNameFontSize" min="6" max="72">
-
-                                            <label for="systemNameFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
-                                            <select id="systemNameFontWeight">
-                                                <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
-                                                <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
-                                                <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
-                                                <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
-                                            </select>
-
-                                            <label for="systemNameBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                            <input type="color" id="systemNameBgColor" data-default-color="#000000">
-                                            <label for="systemNameBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="systemNameBgOpacityValue">90</span>%</label>
-                                            <input type="range" id="systemNameBgOpacity" min="0" max="100" value="90" data-value-target="systemNameBgOpacityValue">
+                                        <div class="hidden-by-layout-preview binding-list">
+                                            <div class="binding">
+                                                <label for="systemNamePosition" data-i18n="common.positionLabel">Position</label>
+                                                <select id="systemNamePosition" class="position-options"></select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="systemNameOffsetX" min="-50" max="50" value="0" data-value-target="systemNameOffsetXValue">
+                                                    <span id="systemNameOffsetXValue">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="systemNameOffsetY" min="-50" max="50" value="0" data-value-target="systemNameOffsetYValue">
+                                                    <span id="systemNameOffsetYValue">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                                <select id="systemNameFontName" class="font-options"></select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                                <input type="number" id="systemNameFontSize" min="6" max="72">
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                                <select id="systemNameFontWeight">
+                                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                                </select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                                <input type="color" id="systemNameBgColor" data-default-color="#000000">
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="systemNameBgOpacity" min="0" max="100" value="90" data-value-target="systemNameBgOpacityValue">
+                                                    <span id="systemNameBgOpacityValue">90</span>%
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <label>
                                             <input type="checkbox" id="useUniqueSystemColors" onchange="toggleUniqueSystemColors()">
                                             <span class="label-body" data-i18n="field.useUniqueSystemColors.label">Unique System Colors</span>
                                         </label>
-                                        <div id="systemNameColorOption" class="field-group">
-                                            <label for="systemNameColor" data-i18n="field.systemNameColor.label">System Name Color</label>
-                                            <input type="color" id="systemNameColor" data-default-color="#FFFFFF">
+                                        <div id="systemNameColorOption" class="field-group binding-list">
+                                            <div class="binding">
+                                                <label for="systemNameColor" data-i18n="field.systemNameColor.label">System Name Color</label>
+                                                <input type="color" id="systemNameColor" data-default-color="#FFFFFF">
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -400,38 +458,61 @@
                                     </label>
 
                                     <div id="quickGroupBadgeOptions" class="field-group">
-                                        <div class="hidden-by-layout-preview">
-                                            <label for="quickGroupBadgePosition" data-i18n="common.positionLabel">Position</label>
-                                            <select id="quickGroupBadgePosition" class="position-options"></select>
-
-                                            <label for="quickGroupBadgeOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="quickGroupBadgeOffsetXValue">0</span></label>
-                                            <input type="range" id="quickGroupBadgeOffsetX" min="-50" max="50" value="0" data-value-target="quickGroupBadgeOffsetXValue">
-
-                                            <label for="quickGroupBadgeOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="quickGroupBadgeOffsetYValue">0</span></label>
-                                            <input type="range" id="quickGroupBadgeOffsetY" min="-50" max="50" value="0" data-value-target="quickGroupBadgeOffsetYValue">
-
-                                            <label for="quickGroupBadgeFontName" data-i18n="common.fontNameLabel">Font Name</label>
-                                            <select id="quickGroupBadgeFontName" class="font-options"></select>
-
-                                            <label for="quickGroupBadgeFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
-                                            <input type="number" id="quickGroupBadgeFontSize" min="6" max="72">
-
-                                            <label for="quickGroupBadgeFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
-                                            <select id="quickGroupBadgeFontWeight">
-                                                <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
-                                                <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
-                                                <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
-                                                <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
-                                            </select>
-
-                                            <label for="quickGroupBadgeBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                            <input type="color" id="quickGroupBadgeBgColor" data-default-color="#000000">
-                                            <label for="quickGroupBadgeBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="quickGroupBadgeBgOpacityValue">90</span>%</label>
-                                            <input type="range" id="quickGroupBadgeBgOpacity" min="0" max="100" value="90" data-value-target="quickGroupBadgeBgOpacityValue">
+                                        <div class="hidden-by-layout-preview binding-list">
+                                            <div class="binding">
+                                                <label for="quickGroupBadgePosition" data-i18n="common.positionLabel">Position</label>
+                                                <select id="quickGroupBadgePosition" class="position-options"></select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="quickGroupBadgeOffsetX" min="-50" max="50" value="0" data-value-target="quickGroupBadgeOffsetXValue">
+                                                    <span id="quickGroupBadgeOffsetXValue">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="quickGroupBadgeOffsetY" min="-50" max="50" value="0" data-value-target="quickGroupBadgeOffsetYValue">
+                                                    <span id="quickGroupBadgeOffsetYValue">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                                <select id="quickGroupBadgeFontName" class="font-options"></select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                                <input type="number" id="quickGroupBadgeFontSize" min="6" max="72">
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                                <select id="quickGroupBadgeFontWeight">
+                                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                                </select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                                <input type="color" id="quickGroupBadgeBgColor" data-default-color="#000000">
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="quickGroupBadgeBgOpacity" min="0" max="100" value="90" data-value-target="quickGroupBadgeBgOpacityValue">
+                                                    <span id="quickGroupBadgeBgOpacityValue">90</span>%
+                                                </div>
+                                            </div>
                                         </div>
 
-                                        <label for="quickGroupBadgeColor" data-i18n="field.quickGroupBadgeColor.label">Badge Color</label>
-                                        <input type="color" id="quickGroupBadgeColor" data-default-color="#44FF44">
+                                        <div class="binding-list">
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeColor" data-i18n="field.quickGroupBadgeColor.label">Badge Color</label>
+                                                <input type="color" id="quickGroupBadgeColor" data-default-color="#44FF44">
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -444,27 +525,31 @@
                             <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
                         </div>
 
-                        <div class="row">
-                            <div class="column">
+                        <div class="binding-list">
+                            <div class="binding">
                                 <label for="startX" data-i18n="field.startX.label">Start X</label>
                                 <input type="number" id="startX">
                             </div>
-                            <div class="column">
+                            <div class="binding">
                                 <label for="startY" data-i18n="field.startY.label">Start Y</label>
                                 <input type="number" id="startY">
                             </div>
                         </div>
                         <p class="hint" data-i18n="tab.thumbnails.section.spawn-coordinates.hint">Initial spawn coordinates</p>
 
-                        <label for="spacing" data-i18n="field.spacing.label">Spacing (px)</label>
-                        <input type="number" id="spacing" min="0" max="500">
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="spacing" data-i18n="field.spacing.label">Spacing (px)</label>
+                                <input type="number" id="spacing" min="0" max="500">
+                            </div>
+                        </div>
 
-                        <div class="row">
-                            <div class="column">
+                        <div class="binding-list">
+                            <div class="binding">
                                 <label for="spacingX" data-i18n="field.spacingX.label">Spacing X (px)</label>
                                 <input type="number" id="spacingX" min="0" max="500">
                             </div>
-                            <div class="column">
+                            <div class="binding">
                                 <label for="spacingY" data-i18n="field.spacingY.label">Spacing Y (px)</label>
                                 <input type="number" id="spacingY" min="0" max="500">
                             </div>
@@ -479,49 +564,65 @@
                         </div>
                         <p class="hint" data-i18n="tab.thumbnails.section.layout-system.hint">Controls how thumbnails are automatically arranged relative to each other.</p>
 
-                        <label for="layoutMode" data-i18n="field.layoutMode.label">Layout Mode</label>
-                        <select id="layoutMode">
-                            <option value="Grid" data-i18n="field.layoutMode.option.grid">Grid</option>
-                            <option value="VerticalStack" data-i18n="field.layoutMode.option.verticalstack">Vertical Stack</option>
-                            <option value="HorizontalStack" data-i18n="field.layoutMode.option.horizontalstack">Horizontal Stack</option>
-                            <option value="VerticalList" data-i18n="field.layoutMode.option.verticallist">Vertical List</option>
-                            <option value="HorizontalList" data-i18n="field.layoutMode.option.horizontallist">Horizontal List</option>
-                            <option value="Overlay" data-i18n="field.layoutMode.option.overlay">Overlay</option>
-                            <option value="Custom" data-i18n="field.layoutMode.option.custom">Custom</option>
-                        </select>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="layoutMode" data-i18n="field.layoutMode.label">Layout Mode</label>
+                                <select id="layoutMode">
+                                    <option value="Grid" data-i18n="field.layoutMode.option.grid">Grid</option>
+                                    <option value="VerticalStack" data-i18n="field.layoutMode.option.verticalstack">Vertical Stack</option>
+                                    <option value="HorizontalStack" data-i18n="field.layoutMode.option.horizontalstack">Horizontal Stack</option>
+                                    <option value="VerticalList" data-i18n="field.layoutMode.option.verticallist">Vertical List</option>
+                                    <option value="HorizontalList" data-i18n="field.layoutMode.option.horizontallist">Horizontal List</option>
+                                    <option value="Overlay" data-i18n="field.layoutMode.option.overlay">Overlay</option>
+                                    <option value="Custom" data-i18n="field.layoutMode.option.custom">Custom</option>
+                                </select>
+                            </div>
+                        </div>
                         <p class="hint" data-i18n="field.layoutMode.hint">How thumbnails are arranged: Grid, Stack, List, Overlay (all in one spot), or Custom (freely positioned, ignores the settings below)</p>
 
-                        <label for="layoutDirection" data-i18n="field.layoutDirection.label">Layout Direction</label>
-                        <select id="layoutDirection">
-                            <option value="RowFirst_LTR_TTB" data-i18n="field.layoutDirection.option.rowfirst_ltr_ttb">Row First: Left-to-Right, Top-to-Bottom</option>
-                            <option value="RowFirst_RTL_TTB" data-i18n="field.layoutDirection.option.rowfirst_rtl_ttb">Row First: Right-to-Left, Top-to-Bottom</option>
-                            <option value="RowFirst_LTR_BTT" data-i18n="field.layoutDirection.option.rowfirst_ltr_btt">Row First: Left-to-Right, Bottom-to-Top</option>
-                            <option value="RowFirst_RTL_BTT" data-i18n="field.layoutDirection.option.rowfirst_rtl_btt">Row First: Right-to-Left, Bottom-to-Top</option>
-                            <option value="ColumnFirst_TTB_LTR" data-i18n="field.layoutDirection.option.columnfirst_ttb_ltr">Column First: Top-to-Bottom, Left-to-Right</option>
-                            <option value="ColumnFirst_TTB_RTL" data-i18n="field.layoutDirection.option.columnfirst_ttb_rtl">Column First: Top-to-Bottom, Right-to-Left</option>
-                            <option value="ColumnFirst_BTT_LTR" data-i18n="field.layoutDirection.option.columnfirst_btt_ltr">Column First: Bottom-to-Top, Left-to-Right</option>
-                            <option value="ColumnFirst_BTT_RTL" data-i18n="field.layoutDirection.option.columnfirst_btt_rtl">Column First: Bottom-to-Top, Right-to-Left</option>
-                        </select>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="layoutDirection" data-i18n="field.layoutDirection.label">Layout Direction</label>
+                                <select id="layoutDirection">
+                                    <option value="RowFirst_LTR_TTB" data-i18n="field.layoutDirection.option.rowfirst_ltr_ttb">Row First: Left-to-Right, Top-to-Bottom</option>
+                                    <option value="RowFirst_RTL_TTB" data-i18n="field.layoutDirection.option.rowfirst_rtl_ttb">Row First: Right-to-Left, Top-to-Bottom</option>
+                                    <option value="RowFirst_LTR_BTT" data-i18n="field.layoutDirection.option.rowfirst_ltr_btt">Row First: Left-to-Right, Bottom-to-Top</option>
+                                    <option value="RowFirst_RTL_BTT" data-i18n="field.layoutDirection.option.rowfirst_rtl_btt">Row First: Right-to-Left, Bottom-to-Top</option>
+                                    <option value="ColumnFirst_TTB_LTR" data-i18n="field.layoutDirection.option.columnfirst_ttb_ltr">Column First: Top-to-Bottom, Left-to-Right</option>
+                                    <option value="ColumnFirst_TTB_RTL" data-i18n="field.layoutDirection.option.columnfirst_ttb_rtl">Column First: Top-to-Bottom, Right-to-Left</option>
+                                    <option value="ColumnFirst_BTT_LTR" data-i18n="field.layoutDirection.option.columnfirst_btt_ltr">Column First: Bottom-to-Top, Left-to-Right</option>
+                                    <option value="ColumnFirst_BTT_RTL" data-i18n="field.layoutDirection.option.columnfirst_btt_rtl">Column First: Bottom-to-Top, Right-to-Left</option>
+                                </select>
+                            </div>
+                        </div>
                         <p class="hint" data-i18n="field.layoutDirection.hint">Fill order for Grid and List layouts</p>
 
-                        <div class="row">
-                            <div class="column">
+                        <div class="binding-list">
+                            <div class="binding">
                                 <label for="gridColumns" data-i18n="field.gridColumns.label">Grid Columns</label>
                                 <input type="number" id="gridColumns" min="1" max="20">
                             </div>
-                            <div class="column">
+                            <div class="binding">
                                 <label for="gridRows" data-i18n="field.gridRows.label">Grid Rows (0=auto)</label>
                                 <input type="number" id="gridRows" min="1" max="20">
                             </div>
                         </div>
                         <p class="hint" data-i18n="tab.thumbnails.section.grid-dimensions.hint">Grid dimensions when Layout Mode is Grid</p>
 
-                        <label for="stackOffset" data-i18n="field.stackOffset.label">Stack Offset (px)</label>
-                        <input type="number" id="stackOffset" min="-500" max="500">
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="stackOffset" data-i18n="field.stackOffset.label">Stack Offset (px)</label>
+                                <input type="number" id="stackOffset" min="-500" max="500">
+                            </div>
+                        </div>
                         <p class="hint" data-i18n="field.stackOffset.hint">Pixel offset between thumbnails when Layout Mode is a Stack</p>
 
-                        <label for="stackAlignment" data-i18n="field.stackAlignment.label">Stack Alignment</label>
-                        <select id="stackAlignment" class="position-options"></select>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="stackAlignment" data-i18n="field.stackAlignment.label">Stack Alignment</label>
+                                <select id="stackAlignment" class="position-options"></select>
+                            </div>
+                        </div>
                         <p class="hint" data-i18n="field.stackAlignment.hint">Alignment of thumbnails when Layout Mode is a Stack</p>
                     </div>
 
@@ -531,8 +632,12 @@
                             <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
                         </div>
 
-                        <label for="monitorIndex" data-i18n="field.monitorIndex.label">Monitor Index (0=primary)</label>
-                        <input type="number" id="monitorIndex" min="0" max="9">
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="monitorIndex" data-i18n="field.monitorIndex.label">Monitor Index (0=primary)</label>
+                                <input type="number" id="monitorIndex" min="0" max="9">
+                            </div>
+                        </div>
 
                         <label>
                             <input type="checkbox" id="useMonitorWorkArea">
@@ -561,8 +666,8 @@
                                 <input type="checkbox" id="assignUniqueCharacterColors" onchange="toggleUniqueCharacterColors()">
                                 <span class="label-body" data-i18n="field.assignUniqueCharacterColors.label">Unique Character Border Colors</span>
                             </label>
-                            <div class="row">
-                                <div class="column">
+                            <div>
+                                <div>
                                     <h4 data-i18n="tab.thumbnails.section.focused-border.heading">Focused Border</h4>
 
                                     <label>
@@ -570,28 +675,30 @@
                                         <span class="label-body" data-i18n="field.showBorderWhenFocused.label">Show Focused Border</span>
                                     </label>
 
-                                    <div id="focusedBorderOptions">
-                                        <label for="borderWidth" data-i18n="common.widthPxLabel">Width (px)</label>
-                                        <input type="number" id="borderWidth" min="1" max="50">
-
-                                        <label for="borderStyle" data-i18n="common.styleLabel">Style</label>
-                                        <select id="borderStyle">
-                                            <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
-                                            <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
-                                            <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
-                                            <option value="Double" data-i18n="common.borderStyle.double">Double</option>
-                                            <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
-                                            <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
-                                            <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
-                                        </select>
-
-                                        <div id="focusedBorderColorOptions">
+                                    <div id="focusedBorderOptions" class="binding-list">
+                                        <div class="binding">
+                                            <label for="borderWidth" data-i18n="common.widthPxLabel">Width (px)</label>
+                                            <input type="number" id="borderWidth" min="1" max="50">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="borderStyle" data-i18n="common.styleLabel">Style</label>
+                                            <select id="borderStyle">
+                                                <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                                <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                                <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                                <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                                <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                                <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                                <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                            </select>
+                                        </div>
+                                        <div id="focusedBorderColorOptions" class="binding">
                                             <label for="borderColor" data-i18n="field.borderColor.label">Color</label>
                                             <input type="color" id="borderColor" data-default-color="#606060">
                                         </div>
                                     </div>
                                 </div>
-                                <div class="column">
+                                <div>
                                     <h4 data-i18n="tab.thumbnails.section.inactive-border.heading">Inactive Border</h4>
 
                                     <label>
@@ -599,22 +706,24 @@
                                         <span class="label-body" data-i18n="field.showBorderWhenInactive.label">Show Inactive Border</span>
                                     </label>
 
-                                    <div id="inactiveBorderOptions">
-                                        <label for="inactiveBorderWidth" data-i18n="common.widthPxLabel">Width (px)</label>
-                                        <input type="number" id="inactiveBorderWidth" min="1" max="50">
-
-                                        <label for="inactiveBorderStyle" data-i18n="common.styleLabel">Style</label>
-                                        <select id="inactiveBorderStyle">
-                                            <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
-                                            <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
-                                            <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
-                                            <option value="Double" data-i18n="common.borderStyle.double">Double</option>
-                                            <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
-                                            <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
-                                            <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
-                                        </select>
-
-                                        <div id="inactiveBorderColorOptions">
+                                    <div id="inactiveBorderOptions" class="binding-list">
+                                        <div class="binding">
+                                            <label for="inactiveBorderWidth" data-i18n="common.widthPxLabel">Width (px)</label>
+                                            <input type="number" id="inactiveBorderWidth" min="1" max="50">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="inactiveBorderStyle" data-i18n="common.styleLabel">Style</label>
+                                            <select id="inactiveBorderStyle">
+                                                <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                                <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                                <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                                <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                                <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                                <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                                <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                            </select>
+                                        </div>
+                                        <div id="inactiveBorderColorOptions" class="binding">
                                             <label for="inactiveBorderColor" data-i18n="field.inactiveBorderColor.label">Color</label>
                                             <input type="color" id="inactiveBorderColor" data-default-color="#606060">
                                         </div>
@@ -631,8 +740,15 @@
                         </div>
                         <p class="hint" data-i18n="tab.thumbnails.section.visibility.hint">Control thumbnail transparency and when thumbnails are automatically hidden.</p>
 
-                        <label for="thumbOpacity"><span data-i18n="field.thumbOpacity.label">Opacity: </span><span id="opacityValue">100</span>%</label>
-                        <input type="range" id="thumbOpacity" min="20" max="100" value="100" data-value-target="opacityValue">
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="thumbOpacity" data-i18n="field.thumbOpacity.label">Opacity</label>
+                                <div class="field-row">
+                                    <input type="range" id="thumbOpacity" min="20" max="100" value="100" data-value-target="opacityValue">
+                                    <span id="opacityValue">100</span>%
+                                </div>
+                            </div>
+                        </div>
 
                         <label>
                             <input type="checkbox" id="applyOpacityToOverlayTexts">
@@ -646,8 +762,12 @@
                             <input type="checkbox" id="hideWhenNoEveFocus">
                             <span class="label-body" data-i18n="field.hideWhenNoEveFocus.label">Hide When No EVE Focus</span>
                         </label>
-                        <label for="hideDebounceMs" data-i18n="field.hideDebounceMs.label">Hide Debounce (s)</label>
-                        <input type="number" id="hideDebounceMs" min="0" max="5" step="0.1">
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="hideDebounceMs" data-i18n="field.hideDebounceMs.label">Hide Debounce (s)</label>
+                                <input type="number" id="hideDebounceMs" min="0" max="5" step="0.1">
+                            </div>
+                        </div>
                     </div>
 
                     <div class="section">
@@ -675,8 +795,12 @@
                                 <input type="checkbox" id="snappingShowGhostBorders">
                                 <span class="label-body" data-i18n="field.snappingShowGhostBorders.label">Show Ghost Position Borders</span>
                             </label>
-                            <label for="snappingThreshold" data-i18n="field.snappingThreshold.label">Snapping Threshold (px)</label>
-                            <input type="number" id="snappingThreshold" min="0" max="100">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="snappingThreshold" data-i18n="field.snappingThreshold.label">Snapping Threshold (px)</label>
+                                    <input type="number" id="snappingThreshold" min="0" max="100">
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -686,17 +810,21 @@
                             <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
                         </div>
                         <p class="hint"><strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-thumbnails-term">Thumbnails</span></strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-thumbnails-desc"> is best for visually tracking each client at a glance. </span><strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-clientlist-term">Client List</span></strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-clientlist-desc"> is more compact and uses fewer resources — ideal with many clients. </span><strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-nothing-term">Nothing</span></strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-nothing-desc"> uses the least resources of all; hotkeys and notifications keep working.</span></p>
-                        <label for="viewMode" data-i18n="field.viewMode.label">View Mode</label>
-                        <select id="viewMode" onchange="toggleClientListOptions()">
-                            <option value="Thumbnails" data-i18n="field.viewMode.option.thumbnails">Thumbnails (live video preview)</option>
-                            <option value="ClientList" data-i18n="field.viewMode.option.clientlist">Client List (compact text panel)</option>
-                            <option value="Nothing" data-i18n="field.viewMode.option.nothing">Nothing (no display, saves resources)</option>
-                        </select>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="viewMode" data-i18n="field.viewMode.label">View Mode</label>
+                                <select id="viewMode" onchange="toggleClientListOptions()">
+                                    <option value="Thumbnails" data-i18n="field.viewMode.option.thumbnails">Thumbnails (live video preview)</option>
+                                    <option value="ClientList" data-i18n="field.viewMode.option.clientlist">Client List (compact text panel)</option>
+                                    <option value="Nothing" data-i18n="field.viewMode.option.nothing">Nothing (no display, saves resources)</option>
+                                </select>
+                            </div>
+                        </div>
                         <div id="clientListOptions">
                             <h4 data-i18n="tab.thumbnails.section.client-list-layout.heading">Layout</h4>
 
-                            <div class="row">
-                                <div class="column">
+                            <div class="binding-list">
+                                <div class="binding">
                                     <label for="listViewOrder" data-i18n="field.listViewOrder.label">Client List Order</label>
                                     <select id="listViewOrder">
                                         <option value="Tracked" data-i18n="field.listViewOrder.option.tracked">Tracked Order</option>
@@ -704,28 +832,33 @@
                                         <option value="ConfiguredCharacters" data-i18n="field.listViewOrder.option.configuredcharacters">Configured Character Order</option>
                                     </select>
                                 </div>
-                                <div class="column">
+                                <div class="binding">
                                     <label for="listViewColumns" data-i18n="field.listViewColumns.label">Columns</label>
                                     <input type="number" id="listViewColumns" min="1" max="15">
                                 </div>
+                                <div class="binding">
+                                    <label for="listViewOpacity" data-i18n="field.listViewOpacity.label">Client List Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="listViewOpacity" min="20" max="100" value="100" data-value-target="listViewOpacityValue">
+                                        <span id="listViewOpacityValue">100</span>%
+                                    </div>
+                                </div>
                             </div>
-                            <label for="listViewOpacity"><span data-i18n="field.listViewOpacity.label">Client List Opacity: </span><span id="listViewOpacityValue">100</span>%</label>
-                            <input type="range" id="listViewOpacity" min="20" max="100" value="100" data-value-target="listViewOpacityValue">
 
                             <h4 data-i18n="tab.thumbnails.section.client-list-font.heading">Font</h4>
 
-                            <div class="text-settings">
-                                <div class="field">
+                            <div class="text-settings binding-list">
+                                <div class="binding">
                                     <label for="listViewFontName" data-i18n="common.fontNameLabel">Font Name</label>
                                     <select id="listViewFontName" class="font-options"></select>
                                 </div>
 
-                                <div class="field">
+                                <div class="binding">
                                     <label for="listViewFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
                                     <input type="number" id="listViewFontSize" min="6" max="72">
                                 </div>
 
-                                <div class="field">
+                                <div class="binding">
                                     <label for="listViewFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
                                     <select id="listViewFontWeight">
                                         <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
@@ -813,11 +946,15 @@
                             <input type="checkbox" id="enableDragging">
                             <span class="label-body" data-i18n="field.enableDragging.label">Enable Dragging</span>
                         </label>
-                        <label for="clickTrigger" data-i18n="field.clickTrigger.label">Click Trigger</label>
-                        <select id="clickTrigger">
-                            <option value="MouseDown" data-i18n="field.clickTrigger.option.mousedown">Mouse Down (Instant)</option>
-                            <option value="MouseUp" data-i18n="field.clickTrigger.option.mouseup">Mouse Up (On Release)</option>
-                        </select>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="clickTrigger" data-i18n="field.clickTrigger.label">Click Trigger</label>
+                                <select id="clickTrigger">
+                                    <option value="MouseDown" data-i18n="field.clickTrigger.option.mousedown">Mouse Down (Instant)</option>
+                                    <option value="MouseUp" data-i18n="field.clickTrigger.option.mouseup">Mouse Up (On Release)</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="section">
@@ -838,12 +975,12 @@
                                 <span class="label-body" data-i18n="field.autoMinimizeExemptLastActive.label">Keep Last-Active Client Visible</span>
                             </label>
 
-                            <div class="row">
-                                <div class="column">
+                            <div class="binding-list">
+                                <div class="binding">
                                     <label for="autoMinimizeDelay" data-i18n="field.autoMinimizeDelay.label">Delay (s)</label>
                                     <input type="number" id="autoMinimizeDelay" min="0" max="10" step="0.1">
                                 </div>
-                                <div class="column">
+                                <div class="binding">
                                     <label for="animationStyle" data-i18n="field.animationStyle.label">Animation Style</label>
                                     <select id="animationStyle">
                                         <option value="NoAnimation" data-i18n="field.animationStyle.option.noanimation">No Animation</option>
@@ -871,21 +1008,31 @@
                                 <span class="label-body" data-i18n="field.autoMinimizeExcludedCharacters.label">Auto-Minimize Excluded Characters</span>
                             </label>
 
-                            <label for="exclusionOverlayStyle" data-i18n="field.exclusionOverlayStyle.label">Overlay Style</label>
-                            <select id="exclusionOverlayStyle">
-                                <option value="X" data-i18n="common.exclusionOverlayStyle.x">X</option>
-                                <option value="DiagonalSlash" data-i18n="common.exclusionOverlayStyle.diagonalSlash">Diagonal Slash</option>
-                                <option value="DiagonalHatch" data-i18n="common.exclusionOverlayStyle.diagonalHatch">Diagonal Hatch</option>
-                                <option value="Checkerboard" data-i18n="common.exclusionOverlayStyle.checkerboard">Checkerboard</option>
-                                <option value="SolidTint" data-i18n="common.exclusionOverlayStyle.solidTint">Solid Tint</option>
-                                <option value="CircleSlash" data-i18n="common.exclusionOverlayStyle.circleSlash">Circle Slash</option>
-                                <option value="None" data-i18n="common.exclusionOverlayStyle.none">None</option>
-                            </select>
-
-                            <label for="exclusionOverlayOpacity"><span data-i18n="field.exclusionOverlayOpacity.label">Overlay Opacity: </span><span id="exclusionOverlayOpacityValue">20</span>%</label>
-                            <input type="range" id="exclusionOverlayOpacity" min="0" max="100" value="20" data-value-target="exclusionOverlayOpacityValue">
-                            <label for="exclusionOverlayColor" data-i18n="field.exclusionOverlayColor.label">Overlay Color</label>
-                            <input type="color" id="exclusionOverlayColor" data-default-color="#A62222">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="exclusionOverlayStyle" data-i18n="field.exclusionOverlayStyle.label">Overlay Style</label>
+                                    <select id="exclusionOverlayStyle">
+                                        <option value="X" data-i18n="common.exclusionOverlayStyle.x">X</option>
+                                        <option value="DiagonalSlash" data-i18n="common.exclusionOverlayStyle.diagonalSlash">Diagonal Slash</option>
+                                        <option value="DiagonalHatch" data-i18n="common.exclusionOverlayStyle.diagonalHatch">Diagonal Hatch</option>
+                                        <option value="Checkerboard" data-i18n="common.exclusionOverlayStyle.checkerboard">Checkerboard</option>
+                                        <option value="SolidTint" data-i18n="common.exclusionOverlayStyle.solidTint">Solid Tint</option>
+                                        <option value="CircleSlash" data-i18n="common.exclusionOverlayStyle.circleSlash">Circle Slash</option>
+                                        <option value="None" data-i18n="common.exclusionOverlayStyle.none">None</option>
+                                    </select>
+                                </div>
+                                <div class="binding">
+                                    <label for="exclusionOverlayOpacity" data-i18n="field.exclusionOverlayOpacity.label">Overlay Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="exclusionOverlayOpacity" min="0" max="100" value="20" data-value-target="exclusionOverlayOpacityValue">
+                                        <span id="exclusionOverlayOpacityValue">20</span>%
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="exclusionOverlayColor" data-i18n="field.exclusionOverlayColor.label">Overlay Color</label>
+                                    <input type="color" id="exclusionOverlayColor" data-default-color="#A62222">
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -918,13 +1065,17 @@
                         </div>
                         <p class="hint" data-i18n="tab.behavior.section.ultra-potato.hint">Forces EVE Online's heaviest graphics settings (shaders, shadows, textures, reflections, post-processing, cloth, ambient occlusion, volumetrics) to their lowest quality. Close all EVE clients first - the client overwrites these files on exit. A .bak backup of each file is made before its first edit.</p>
 
-                        <label for="ultraPotatoProfileSelect" data-i18n="tab.behavior.section.ultra-potato.profile-label">EVE Settings Profile</label>
-                        <div class="field-row">
-                            <select id="ultraPotatoProfileSelect">
-                                <option value="" data-i18n="tab.behavior.section.ultra-potato.scanning">Scanning for EVE settings profiles...</option>
-                            </select>
-                            <button type="button" class="button-icon" onclick="scanUltraPotatoProfiles()" title="Refresh" data-i18n-title="common.refreshTitle">↻</button>
-                            <button type="button" id="applyUltraPotatoBtn" onclick="applyUltraPotatoMode()" disabled data-i18n="button.apply-ultra-potato.label">Apply Ultra Potato Mode</button>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="ultraPotatoProfileSelect" data-i18n="tab.behavior.section.ultra-potato.profile-label">EVE Settings Profile</label>
+                                <div class="field-row">
+                                    <select id="ultraPotatoProfileSelect">
+                                        <option value="" data-i18n="tab.behavior.section.ultra-potato.scanning">Scanning for EVE settings profiles...</option>
+                                    </select>
+                                    <button type="button" class="button-icon" onclick="scanUltraPotatoProfiles()" title="Refresh" data-i18n-title="common.refreshTitle">↻</button>
+                                    <button type="button" id="applyUltraPotatoBtn" onclick="applyUltraPotatoMode()" disabled data-i18n="button.apply-ultra-potato.label">Apply Ultra Potato Mode</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1069,53 +1220,67 @@
                         </label>
 
                         <div id="notificationOptions">
-                            <div class="hidden-by-layout-preview">
-                                <label for="notificationPosition" data-i18n="common.positionLabel">Position</label>
-                                <select id="notificationPosition" class="position-options"></select>
-
-                                <div class="row">
-                                    <div class="column">
-                                        <label for="notificationOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="notificationOffsetXValue">0</span></label>
+                            <div class="hidden-by-layout-preview binding-list">
+                                <div class="binding">
+                                    <label for="notificationPosition" data-i18n="common.positionLabel">Position</label>
+                                    <select id="notificationPosition" class="position-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="notificationOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                    <div class="field-row">
                                         <input type="range" id="notificationOffsetX" min="-50" max="50" value="0" data-value-target="notificationOffsetXValue">
-                                    </div>
-                                    <div class="column">
-                                        <label for="notificationOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="notificationOffsetYValue">0</span></label>
-                                        <input type="range" id="notificationOffsetY" min="-50" max="50" value="0" data-value-target="notificationOffsetYValue">
+                                        <span id="notificationOffsetXValue">0</span>
                                     </div>
                                 </div>
-
-                                <label for="notificationFontName" data-i18n="common.fontNameLabel">Font Name</label>
-                                <select id="notificationFontName" class="font-options"></select>
-
-                                <label for="notificationFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
-                                <input type="number" id="notificationFontSize" min="6" max="72">
-
-                                <label for="notificationFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
-                                <select id="notificationFontWeight">
-                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
-                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
-                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
-                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
-                                </select>
-
-                                <label for="notificationBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                <input type="color" id="notificationBgColor" data-default-color="#000000">
-                                <label for="notificationBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="notificationBgOpacityValue">90</span>%</label>
-                                <input type="range" id="notificationBgOpacity" min="0" max="100" value="90" data-value-target="notificationBgOpacityValue">
+                                <div class="binding">
+                                    <label for="notificationOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="notificationOffsetY" min="-50" max="50" value="0" data-value-target="notificationOffsetYValue">
+                                        <span id="notificationOffsetYValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="notificationFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                    <select id="notificationFontName" class="font-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="notificationFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                    <input type="number" id="notificationFontSize" min="6" max="72">
+                                </div>
+                                <div class="binding">
+                                    <label for="notificationFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                    <select id="notificationFontWeight">
+                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                    </select>
+                                </div>
+                                <div class="binding">
+                                    <label for="notificationBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                    <input type="color" id="notificationBgColor" data-default-color="#000000">
+                                </div>
+                                <div class="binding">
+                                    <label for="notificationBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="notificationBgOpacity" min="0" max="100" value="90" data-value-target="notificationBgOpacityValue">
+                                        <span id="notificationBgOpacityValue">90</span>%
+                                    </div>
+                                </div>
                             </div>
 
-                            <div class="row">
-                                <div class="column">
+                            <div class="binding-list">
+                                <div class="binding">
                                     <label for="notifSuppressClickDuration" data-i18n="field.notifSuppressClickDuration.label">Click Suppress Duration (s)</label>
                                     <input type="number" id="notifSuppressClickDuration" min="0" max="60" step="0.1">
-                                    <p class="hint" data-i18n="field.notifSuppressClickDuration.hint">How long "Clicked" suppression lasts after switching to a character.</p>
                                 </div>
-                                <div class="column">
+                                <div class="binding">
                                     <label for="notifCycleRetention" data-i18n="field.notifCycleRetention.label">Recently-Notified Cycle Retention (s)</label>
                                     <input type="number" id="notifCycleRetention" min="5" max="600" step="1">
-                                    <p class="hint" data-i18n="field.notifCycleRetention.hint">How long a character stays cyclable via the Notified Characters hotkeys after its last notification.</p>
                                 </div>
                             </div>
+                            <p class="hint" data-i18n="field.notifSuppressClickDuration.hint">How long "Clicked" suppression lasts after switching to a character.</p>
+                            <p class="hint" data-i18n="field.notifCycleRetention.hint">How long a character stays cyclable via the Notified Characters hotkeys after its last notification.</p>
                         </div>
                     </div>
 
@@ -1144,13 +1309,23 @@
                                 </label>
 
                                 <div class="row">
-                                    <div class="column">
-                                        <label for="ttsVolume"><span data-i18n="field.ttsVolume.label">Volume: </span><span id="ttsVolumeValue">100</span></label>
-                                        <input type="range" id="ttsVolume" min="0" max="100" value="100" data-value-target="ttsVolumeValue">
+                                    <div class="column binding-list-compact">
+                                        <div class="binding">
+                                            <label for="ttsVolume" data-i18n="field.ttsVolume.label">Volume</label>
+                                            <div class="field-row">
+                                                <input type="range" id="ttsVolume" min="0" max="100" value="100" data-value-target="ttsVolumeValue">
+                                                <span id="ttsVolumeValue">100</span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="column">
-                                        <label for="ttsRate"><span data-i18n="field.ttsRate.label">Speed: </span><span id="ttsRateValue">0</span></label>
-                                        <input type="range" id="ttsRate" min="-10" max="10" value="0" data-value-target="ttsRateValue">
+                                    <div class="column binding-list-compact">
+                                        <div class="binding">
+                                            <label for="ttsRate" data-i18n="field.ttsRate.label">Speed</label>
+                                            <div class="field-row">
+                                                <input type="range" id="ttsRate" min="-10" max="10" value="0" data-value-target="ttsRateValue">
+                                                <span id="ttsRateValue">0</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1209,37 +1384,42 @@
                         </label>
 
                         <div id="notifInfoPanelOptions">
-                            <div class="row">
-                                <div class="column">
+                            <div class="binding-list">
+                                <div class="binding">
                                     <label for="notifInfoPanelWidth" data-i18n="field.notifInfoPanelWidth.label">Panel Width (px)</label>
                                     <input type="number" id="notifInfoPanelWidth" min="100" max="1920">
                                 </div>
-                                <div class="column">
+                                <div class="binding">
                                     <label for="notifInfoPanelHeight" data-i18n="field.notifInfoPanelHeight.label">Panel Height (px)</label>
                                     <input type="number" id="notifInfoPanelHeight" min="60" max="2160">
                                 </div>
+                                <div class="binding">
+                                    <label for="notifInfoPanelMaxRows" data-i18n="field.notifInfoPanelMaxRows.label">Max History Rows</label>
+                                    <input type="number" id="notifInfoPanelMaxRows" min="1" max="30">
+                                </div>
+                                <div class="binding">
+                                    <label for="notifInfoPanelOpacity" data-i18n="field.notifInfoPanelOpacity.label">Panel Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="notifInfoPanelOpacity" min="20" max="100" value="100" data-value-target="notifInfoPanelOpacityValue">
+                                        <span id="notifInfoPanelOpacityValue">100</span>%
+                                    </div>
+                                </div>
                             </div>
-
-                            <label for="notifInfoPanelMaxRows" data-i18n="field.notifInfoPanelMaxRows.label">Max History Rows</label>
-                            <input type="number" id="notifInfoPanelMaxRows" min="1" max="30">
-
-                            <label for="notifInfoPanelOpacity"><span data-i18n="field.notifInfoPanelOpacity.label">Panel Opacity: </span><span id="notifInfoPanelOpacityValue">100</span>%</label>
-                            <input type="range" id="notifInfoPanelOpacity" min="20" max="100" value="100" data-value-target="notifInfoPanelOpacityValue">
 
                             <h4 data-i18n="tab.notifications.section.history-panel-font.heading">Font</h4>
 
-                            <div class="text-settings">
-                                <div class="field">
+                            <div class="text-settings binding-list">
+                                <div class="binding">
                                     <label for="notifInfoPanelFontName" data-i18n="common.fontNameLabel">Font Name</label>
                                     <select id="notifInfoPanelFontName" class="font-options"></select>
                                 </div>
 
-                                <div class="field">
+                                <div class="binding">
                                     <label for="notifInfoPanelFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
                                     <input type="number" id="notifInfoPanelFontSize" min="6" max="72">
                                 </div>
 
-                                <div class="field">
+                                <div class="binding">
                                     <label for="notifInfoPanelFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
                                     <select id="notifInfoPanelFontWeight">
                                         <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
@@ -1287,25 +1467,37 @@
                         </label>
 
                         <div id="travelOptions">
-                            <label for="travelWindowSeconds" data-i18n="field.travelWindowSeconds.label">Catch-Up Window (seconds)</label>
-                            <input type="number" id="travelWindowSeconds" min="1" max="3600">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="travelWindowSeconds" data-i18n="field.travelWindowSeconds.label">Catch-Up Window (seconds)</label>
+                                    <input type="number" id="travelWindowSeconds" min="1" max="3600">
+                                </div>
+                            </div>
                             <p class="hint" data-i18n="field.travelWindowSeconds.hint">How long a straggler has to jump into the group's current system before being flagged as left behind</p>
 
-                            <label for="travelThresholdMode" data-i18n="field.travelThresholdMode.label">Group Size Threshold</label>
-                            <select id="travelThresholdMode" onchange="toggleTravelOptions()">
-                                <option value="percent" data-i18n="field.travelThresholdMode.percent">Percentage of characters</option>
-                                <option value="count" data-i18n="field.travelThresholdMode.count">Fixed number of characters</option>
-                            </select>
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="travelThresholdMode" data-i18n="field.travelThresholdMode.label">Group Size Threshold</label>
+                                    <select id="travelThresholdMode" onchange="toggleTravelOptions()">
+                                        <option value="percent" data-i18n="field.travelThresholdMode.percent">Percentage of characters</option>
+                                        <option value="count" data-i18n="field.travelThresholdMode.count">Fixed number of characters</option>
+                                    </select>
+                                </div>
+                            </div>
                             <p class="hint" data-i18n="field.travelThresholdMode.hint">How many characters must already share a system before stragglers there count as "left behind" - avoids false alerts from a single character jumping around alone</p>
 
-                            <div id="travelThresholdPercentRow">
-                                <label for="travelThresholdPercent" data-i18n="field.travelThresholdPercent.label">Minimum Percentage</label>
-                                <input type="number" id="travelThresholdPercent" min="1" max="100" step="1">
+                            <div id="travelThresholdPercentRow" class="binding-list">
+                                <div class="binding">
+                                    <label for="travelThresholdPercent" data-i18n="field.travelThresholdPercent.label">Minimum Percentage</label>
+                                    <input type="number" id="travelThresholdPercent" min="1" max="100" step="1">
+                                </div>
                             </div>
 
-                            <div id="travelThresholdCountRow">
-                                <label for="travelThresholdCount" data-i18n="field.travelThresholdCount.label">Minimum Count</label>
-                                <input type="number" id="travelThresholdCount" min="1" max="50">
+                            <div id="travelThresholdCountRow" class="binding-list">
+                                <div class="binding">
+                                    <label for="travelThresholdCount" data-i18n="field.travelThresholdCount.label">Minimum Count</label>
+                                    <input type="number" id="travelThresholdCount" min="1" max="50">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1325,16 +1517,21 @@
                         </label>
 
                         <div id="chatlogOptions">
-                            <label for="chatlogDir" data-i18n="field.chatlogDir.label">Chatlog Directory</label>
-                            <div class="field-row">
-                                <input type="text" id="chatlogDir" placeholder="C:\Users\...\Chatlogs" data-i18n-placeholder="field.chatlogDir.placeholder">
-                                <button type="button" onclick="browseChatlogDir()" data-i18n="common.browse">Browse</button>
-                            </div>
-
-                            <label for="gamelogDir" data-i18n="field.gamelogDir.label">Gamelog Directory</label>
-                            <div class="field-row">
-                                <input type="text" id="gamelogDir" placeholder="C:\Users\...\Gamelogs" data-i18n-placeholder="field.gamelogDir.placeholder">
-                                <button type="button" onclick="browseGamelogDir()" data-i18n="common.browse">Browse</button>
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="chatlogDir" data-i18n="field.chatlogDir.label">Chatlog Directory</label>
+                                    <div class="field-row">
+                                        <input type="text" id="chatlogDir" placeholder="C:\Users\...\Chatlogs" data-i18n-placeholder="field.chatlogDir.placeholder">
+                                        <button type="button" onclick="browseChatlogDir()" data-i18n="common.browse">Browse</button>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="gamelogDir" data-i18n="field.gamelogDir.label">Gamelog Directory</label>
+                                    <div class="field-row">
+                                        <input type="text" id="gamelogDir" placeholder="C:\Users\...\Gamelogs" data-i18n-placeholder="field.gamelogDir.placeholder">
+                                        <button type="button" onclick="browseGamelogDir()" data-i18n="common.browse">Browse</button>
+                                    </div>
+                                </div>
                             </div>
 
                             <div class="advanced-section">
@@ -1344,16 +1541,28 @@
                                     <input type="checkbox" id="chatlogUseThreading">
                                     <span class="label-body" data-i18n="field.chatlogUseThreading.label">Use Threading</span>
                                 </label>
-                                <label for="chatlogPollInterval" data-i18n="field.chatlogPollInterval.label">Poll Interval (s)</label>
-                                <input type="number" id="chatlogPollInterval" min="0.1" max="5" step="0.1">
+                                <div class="binding-list">
+                                    <div class="binding">
+                                        <label for="chatlogPollInterval" data-i18n="field.chatlogPollInterval.label">Poll Interval (s)</label>
+                                        <input type="number" id="chatlogPollInterval" min="0.1" max="5" step="0.1">
+                                    </div>
+                                </div>
                                 <p class="hint" data-i18n="field.chatlogPollInterval.hint">How often to check each log file for new lines. Lower is more responsive but uses more CPU; clamped to 0.1-5s.</p>
 
-                                <label for="chatlogIdleThreshold" data-i18n="field.chatlogIdleThreshold.label">Idle Threshold (polls)</label>
-                                <input type="number" id="chatlogIdleThreshold" min="1" max="1000" step="1">
+                                <div class="binding-list">
+                                    <div class="binding">
+                                        <label for="chatlogIdleThreshold" data-i18n="field.chatlogIdleThreshold.label">Idle Threshold (polls)</label>
+                                        <input type="number" id="chatlogIdleThreshold" min="1" max="1000" step="1">
+                                    </div>
+                                </div>
                                 <p class="hint" data-i18n="field.chatlogIdleThreshold.hint">Consecutive quiet polls before a log is considered idle and polled less often to save CPU. New activity resets it to full speed.</p>
 
-                                <label for="chatlogMaxPollMultiplier" data-i18n="field.chatlogMaxPollMultiplier.label">Max Poll Multiplier</label>
-                                <input type="number" id="chatlogMaxPollMultiplier" min="1" max="32">
+                                <div class="binding-list">
+                                    <div class="binding">
+                                        <label for="chatlogMaxPollMultiplier" data-i18n="field.chatlogMaxPollMultiplier.label">Max Poll Multiplier</label>
+                                        <input type="number" id="chatlogMaxPollMultiplier" min="1" max="32">
+                                    </div>
+                                </div>
                                 <p class="hint" data-i18n="field.chatlogMaxPollMultiplier.hint">Cap on how much idle logs slow down (e.g. 8x = checked 8x less often). Higher saves CPU for AFK characters but delays detecting new activity.</p>
                             </div>
                         </div>
@@ -1374,12 +1583,20 @@
                         </label>
 
                         <div id="combatOptions">
-                            <label for="combatWindowSeconds" data-i18n="field.combatWindowSeconds.label">DPS Window (seconds)</label>
-                            <input type="number" id="combatWindowSeconds" min="1" max="3600">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="combatWindowSeconds" data-i18n="field.combatWindowSeconds.label">DPS Window (seconds)</label>
+                                    <input type="number" id="combatWindowSeconds" min="1" max="3600">
+                                </div>
+                            </div>
                             <p class="hint" data-i18n="field.combatWindowSeconds.hint">Sliding time window used to calculate DPS (1–3600 s)</p>
 
-                            <label for="combatUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
-                            <input type="number" id="combatUpdateIntervalMs" min="0.1" max="60" step="0.1">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="combatUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
+                                    <input type="number" id="combatUpdateIntervalMs" min="0.1" max="60" step="0.1">
+                                </div>
+                            </div>
                             <p class="hint" data-i18n="field.combatUpdateIntervalMs.hint">How often the DPS display refreshes (0.1–60 s)</p>
 
                             <div class="row hidden-by-layout-preview">
@@ -1391,35 +1608,58 @@
                                         <span class="label-body" data-i18n="field.combatShowIncoming.label">Show Incoming Damage</span>
                                     </label>
 
-                                    <label for="combatIncomingPosition" data-i18n="common.positionLabel">Position</label>
-                                    <select id="combatIncomingPosition" class="position-options"></select>
-
-                                    <label for="combatIncomingOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="combatIncomingOffsetXValue">0</span></label>
-                                    <input type="range" id="combatIncomingOffsetX" min="-50" max="50" value="0" data-value-target="combatIncomingOffsetXValue">
-                                    <label for="combatIncomingOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="combatIncomingOffsetYValue">0</span></label>
-                                    <input type="range" id="combatIncomingOffsetY" min="-50" max="50" value="0" data-value-target="combatIncomingOffsetYValue">
-
-                                    <label for="combatIncomingColor" data-i18n="field.combatIncomingColor.label">Color</label>
-                                    <input type="color" id="combatIncomingColor" data-default-color="#FF4444">
-
-                                    <label for="combatIncomingFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
-                                    <input type="number" id="combatIncomingFontSize" min="6" max="72">
-
-                                    <label for="combatIncomingFontName" data-i18n="common.fontNameLabel">Font Name</label>
-                                    <select id="combatIncomingFontName" class="font-options"></select>
-
-                                    <label for="combatIncomingFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
-                                    <select id="combatIncomingFontWeight">
-                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
-                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
-                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
-                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
-                                    </select>
-
-                                    <label for="combatIncomingBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                    <input type="color" id="combatIncomingBgColor" data-default-color="#000000">
-                                    <label for="combatIncomingBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="combatIncomingBgOpacityValue">90</span>%</label>
-                                    <input type="range" id="combatIncomingBgOpacity" min="0" max="100" value="90" data-value-target="combatIncomingBgOpacityValue">
+                                    <div class="binding-list">
+                                        <div class="binding">
+                                            <label for="combatIncomingPosition" data-i18n="common.positionLabel">Position</label>
+                                            <select id="combatIncomingPosition" class="position-options"></select>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                            <div class="field-row">
+                                                <input type="range" id="combatIncomingOffsetX" min="-50" max="50" value="0" data-value-target="combatIncomingOffsetXValue">
+                                                <span id="combatIncomingOffsetXValue">0</span>
+                                            </div>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                            <div class="field-row">
+                                                <input type="range" id="combatIncomingOffsetY" min="-50" max="50" value="0" data-value-target="combatIncomingOffsetYValue">
+                                                <span id="combatIncomingOffsetYValue">0</span>
+                                            </div>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingColor" data-i18n="field.combatIncomingColor.label">Color</label>
+                                            <input type="color" id="combatIncomingColor" data-default-color="#FF4444">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                            <input type="number" id="combatIncomingFontSize" min="6" max="72">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                            <select id="combatIncomingFontName" class="font-options"></select>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                            <select id="combatIncomingFontWeight">
+                                                <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                                <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                                <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                                <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                            </select>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                            <input type="color" id="combatIncomingBgColor" data-default-color="#000000">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                            <div class="field-row">
+                                                <input type="range" id="combatIncomingBgOpacity" min="0" max="100" value="90" data-value-target="combatIncomingBgOpacityValue">
+                                                <span id="combatIncomingBgOpacityValue">90</span>%
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="column">
                                     <h4 data-i18n="tab.combat.section.outgoing-damage.heading">Outgoing Damage</h4>
@@ -1429,35 +1669,58 @@
                                         <span class="label-body" data-i18n="field.combatShowOutgoing.label">Show Outgoing Damage</span>
                                     </label>
 
-                                    <label for="combatOutgoingPosition" data-i18n="common.positionLabel">Position</label>
-                                    <select id="combatOutgoingPosition" class="position-options"></select>
-
-                                    <label for="combatOutgoingOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="combatOutgoingOffsetXValue">0</span></label>
-                                    <input type="range" id="combatOutgoingOffsetX" min="-50" max="50" value="0" data-value-target="combatOutgoingOffsetXValue">
-                                    <label for="combatOutgoingOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="combatOutgoingOffsetYValue">0</span></label>
-                                    <input type="range" id="combatOutgoingOffsetY" min="-50" max="50" value="0" data-value-target="combatOutgoingOffsetYValue">
-
-                                    <label for="combatOutgoingColor" data-i18n="field.combatOutgoingColor.label">Color</label>
-                                    <input type="color" id="combatOutgoingColor" data-default-color="#44FF44">
-
-                                    <label for="combatOutgoingFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
-                                    <input type="number" id="combatOutgoingFontSize" min="6" max="72">
-
-                                    <label for="combatOutgoingFontName" data-i18n="common.fontNameLabel">Font Name</label>
-                                    <select id="combatOutgoingFontName" class="font-options"></select>
-
-                                    <label for="combatOutgoingFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
-                                    <select id="combatOutgoingFontWeight">
-                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
-                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
-                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
-                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
-                                    </select>
-
-                                    <label for="combatOutgoingBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                    <input type="color" id="combatOutgoingBgColor" data-default-color="#000000">
-                                    <label for="combatOutgoingBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="combatOutgoingBgOpacityValue">90</span>%</label>
-                                    <input type="range" id="combatOutgoingBgOpacity" min="0" max="100" value="90" data-value-target="combatOutgoingBgOpacityValue">
+                                    <div class="binding-list">
+                                        <div class="binding">
+                                            <label for="combatOutgoingPosition" data-i18n="common.positionLabel">Position</label>
+                                            <select id="combatOutgoingPosition" class="position-options"></select>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                            <div class="field-row">
+                                                <input type="range" id="combatOutgoingOffsetX" min="-50" max="50" value="0" data-value-target="combatOutgoingOffsetXValue">
+                                                <span id="combatOutgoingOffsetXValue">0</span>
+                                            </div>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                            <div class="field-row">
+                                                <input type="range" id="combatOutgoingOffsetY" min="-50" max="50" value="0" data-value-target="combatOutgoingOffsetYValue">
+                                                <span id="combatOutgoingOffsetYValue">0</span>
+                                            </div>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingColor" data-i18n="field.combatOutgoingColor.label">Color</label>
+                                            <input type="color" id="combatOutgoingColor" data-default-color="#44FF44">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                            <input type="number" id="combatOutgoingFontSize" min="6" max="72">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                            <select id="combatOutgoingFontName" class="font-options"></select>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                            <select id="combatOutgoingFontWeight">
+                                                <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                                <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                                <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                                <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                            </select>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                            <input type="color" id="combatOutgoingBgColor" data-default-color="#000000">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                            <div class="field-row">
+                                                <input type="range" id="combatOutgoingBgOpacity" min="0" max="100" value="90" data-value-target="combatOutgoingBgOpacityValue">
+                                                <span id="combatOutgoingBgOpacityValue">90</span>%
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1474,8 +1737,12 @@
                             <h4 data-i18n="tab.combat.section.taking-damage-alert.heading">Taking Damage Alert</h4>
                             <p class="hint" data-i18n="tab.combat.section.taking-damage-alert.hint">Notifies on incoming hits. Repeat rate, border color/duration are set on the Notifications tab under "Taking Damage". Requires notifications enabled.</p>
 
-                            <label for="combatDamageAlertExcludedWeapons" data-i18n="field.combatDamageAlertExcludedWeapons.label">Exclude Weapons</label>
-                            <input type="text" id="combatDamageAlertExcludedWeapons" placeholder="e.g. Smartbomb, Warp Scrambler" data-i18n-placeholder="field.combatDamageAlertExcludedWeapons.placeholder">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="combatDamageAlertExcludedWeapons" data-i18n="field.combatDamageAlertExcludedWeapons.label">Exclude Weapons</label>
+                                    <input type="text" id="combatDamageAlertExcludedWeapons" placeholder="e.g. Smartbomb, Warp Scrambler" data-i18n-placeholder="field.combatDamageAlertExcludedWeapons.placeholder">
+                                </div>
+                            </div>
                             <p class="hint" data-i18n="field.combatDamageAlertExcludedWeapons.hint">Comma-separated weapon/module names (case-insensitive, partial match). Matching hits still count toward the DPS overlay but won't trigger this alert.</p>
                         </div>
                     </div>
@@ -1496,44 +1763,73 @@
                         </label>
 
                         <div id="miningOptions">
-                            <label for="miningWindowSeconds" data-i18n="field.miningWindowSeconds.label">Window (seconds)</label>
-                            <input type="number" id="miningWindowSeconds" min="1" max="3600">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="miningWindowSeconds" data-i18n="field.miningWindowSeconds.label">Window (seconds)</label>
+                                    <input type="number" id="miningWindowSeconds" min="1" max="3600">
+                                </div>
+                            </div>
                             <p class="hint" data-i18n="field.miningWindowSeconds.hint">Sliding time window for rate calculation (1–3600 s)</p>
 
-                            <label for="miningUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
-                            <input type="number" id="miningUpdateIntervalMs" min="0.1" max="60" step="0.1">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="miningUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
+                                    <input type="number" id="miningUpdateIntervalMs" min="0.1" max="60" step="0.1">
+                                </div>
+                            </div>
                             <p class="hint" data-i18n="field.miningUpdateIntervalMs.hint">How often the display refreshes (0.1–60 s)</p>
 
-                            <div class="hidden-by-layout-preview">
-                                <label for="miningPosition" data-i18n="common.positionLabel">Position</label>
-                                <select id="miningPosition" class="position-options"></select>
-
-                                <label for="miningColor" data-i18n="common.textColorLabel">Text Color</label>
-                                <input type="color" id="miningColor" data-default-color="#44AAFF">
-
-                                <label for="miningOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="miningOffsetXValue">0</span></label>
-                                <input type="range" id="miningOffsetX" min="-50" max="50" value="0" data-value-target="miningOffsetXValue">
-                                <label for="miningOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="miningOffsetYValue">0</span></label>
-                                <input type="range" id="miningOffsetY" min="-50" max="50" value="0" data-value-target="miningOffsetYValue">
-
-                                <label for="miningFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
-                                <input type="number" id="miningFontSize" min="6" max="72">
-
-                                <label for="miningFontName" data-i18n="common.fontNameLabel">Font Name</label>
-                                <select id="miningFontName" class="font-options"></select>
-
-                                <label for="miningFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
-                                <select id="miningFontWeight">
-                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
-                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
-                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
-                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
-                                </select>
-
-                                <label for="miningBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                <input type="color" id="miningBgColor" data-default-color="#000000">
-                                <label for="miningBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="miningBgOpacityValue">90</span>%</label>
-                                <input type="range" id="miningBgOpacity" min="0" max="100" value="90" data-value-target="miningBgOpacityValue">
+                            <div class="hidden-by-layout-preview binding-list">
+                                <div class="binding">
+                                    <label for="miningPosition" data-i18n="common.positionLabel">Position</label>
+                                    <select id="miningPosition" class="position-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="miningColor" data-i18n="common.textColorLabel">Text Color</label>
+                                    <input type="color" id="miningColor" data-default-color="#44AAFF">
+                                </div>
+                                <div class="binding">
+                                    <label for="miningOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="miningOffsetX" min="-50" max="50" value="0" data-value-target="miningOffsetXValue">
+                                        <span id="miningOffsetXValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="miningOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="miningOffsetY" min="-50" max="50" value="0" data-value-target="miningOffsetYValue">
+                                        <span id="miningOffsetYValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="miningFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                    <input type="number" id="miningFontSize" min="6" max="72">
+                                </div>
+                                <div class="binding">
+                                    <label for="miningFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                    <select id="miningFontName" class="font-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="miningFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                    <select id="miningFontWeight">
+                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                    </select>
+                                </div>
+                                <div class="binding">
+                                    <label for="miningBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                    <input type="color" id="miningBgColor" data-default-color="#000000">
+                                </div>
+                                <div class="binding">
+                                    <label for="miningBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="miningBgOpacity" min="0" max="100" value="90" data-value-target="miningBgOpacityValue">
+                                        <span id="miningBgOpacityValue">90</span>%
+                                    </div>
+                                </div>
                             </div>
 
                             <label>
@@ -1542,12 +1838,14 @@
                             </label>
                             <p class="hint" data-i18n="field.miningShowIskRate.hint">Appends an abbreviated ISK/min or ISK/hour estimate next to the m3/min text, using each ore's Price from the ore/ice/gas table below.</p>
 
-                            <div id="miningIskRateOptions">
-                                <label for="miningIskRateUnit" data-i18n="field.miningIskRateUnit.label">ISK Rate Unit</label>
-                                <select id="miningIskRateUnit">
-                                    <option value="minute" data-i18n="field.miningIskRateUnit.minute">Per Minute</option>
-                                    <option value="hour" data-i18n="field.miningIskRateUnit.hour">Per Hour</option>
-                                </select>
+                            <div id="miningIskRateOptions" class="binding-list">
+                                <div class="binding">
+                                    <label for="miningIskRateUnit" data-i18n="field.miningIskRateUnit.label">ISK Rate Unit</label>
+                                    <select id="miningIskRateUnit">
+                                        <option value="minute" data-i18n="field.miningIskRateUnit.minute">Per Minute</option>
+                                        <option value="hour" data-i18n="field.miningIskRateUnit.hour">Per Hour</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1563,19 +1861,31 @@
                             <h4 data-i18n="tab.mining.section.laser-idle-alert.heading">Laser Idle Alert</h4>
                             <p class="hint" data-i18n="tab.mining.section.laser-idle-alert.hint">Notifies when fewer than N mining events occur in X seconds — useful for detecting a stopped laser. Requires notifications enabled.</p>
 
-                            <label for="miningIdleAlertWindowSeconds" data-i18n="field.miningIdleAlertWindowSeconds.label">Detection Window (seconds)</label>
-                            <input type="number" id="miningIdleAlertWindowSeconds" min="1" max="3600">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="miningIdleAlertWindowSeconds" data-i18n="field.miningIdleAlertWindowSeconds.label">Detection Window (seconds)</label>
+                                    <input type="number" id="miningIdleAlertWindowSeconds" min="1" max="3600">
+                                </div>
+                            </div>
                             <p class="hint" data-i18n="field.miningIdleAlertWindowSeconds.hint">How many seconds with too few events before alerting</p>
 
-                            <label for="miningIdleAlertThreshold" data-i18n="field.miningIdleAlertThreshold.label">Event Threshold</label>
-                            <input type="number" id="miningIdleAlertThreshold" min="0" max="20">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="miningIdleAlertThreshold" data-i18n="field.miningIdleAlertThreshold.label">Event Threshold</label>
+                                    <input type="number" id="miningIdleAlertThreshold" min="0" max="20">
+                                </div>
+                            </div>
                             <p class="hint" data-i18n="field.miningIdleAlertThreshold.hint">Alert if event count in the window is ≤ this value (e.g. 1 = alert when only 1 laser active)</p>
 
                             <h4 data-i18n="tab.mining.section.mining-stopped-alert.heading">Mining Stopped Alert</h4>
                             <p class="hint" data-i18n="tab.mining.section.mining-stopped-alert.hint">Notifies when no mining events occur for X seconds; re-arms automatically when mining resumes. Requires notifications enabled.</p>
 
-                            <label for="miningStoppedAlertWindowSeconds" data-i18n="field.miningStoppedAlertWindowSeconds.label">Silence Window (seconds)</label>
-                            <input type="number" id="miningStoppedAlertWindowSeconds" min="1" max="3600">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="miningStoppedAlertWindowSeconds" data-i18n="field.miningStoppedAlertWindowSeconds.label">Silence Window (seconds)</label>
+                                    <input type="number" id="miningStoppedAlertWindowSeconds" min="1" max="3600">
+                                </div>
+                            </div>
                             <p class="hint" data-i18n="field.miningStoppedAlertWindowSeconds.hint">How many seconds with no events before alerting</p>
                         </div>
                     </div>
@@ -1616,51 +1926,84 @@
                         </label>
 
                         <div id="bountyOptions">
-                            <label for="bountyWindowSeconds" data-i18n="field.bountyWindowSeconds.label">Window (seconds)</label>
-                            <input type="number" id="bountyWindowSeconds" min="1" max="3600">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="bountyWindowSeconds" data-i18n="field.bountyWindowSeconds.label">Window (seconds)</label>
+                                    <input type="number" id="bountyWindowSeconds" min="1" max="3600">
+                                </div>
+                            </div>
                             <p class="hint" data-i18n="field.bountyWindowSeconds.hint">Sliding time window for rate calculation (1–3600 s)</p>
 
-                            <label for="bountyUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
-                            <input type="number" id="bountyUpdateIntervalMs" min="0.1" max="60" step="0.1">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="bountyUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
+                                    <input type="number" id="bountyUpdateIntervalMs" min="0.1" max="60" step="0.1">
+                                </div>
+                            </div>
                             <p class="hint" data-i18n="field.bountyUpdateIntervalMs.hint">How often the display refreshes (0.1–60 s)</p>
 
-                            <div class="hidden-by-layout-preview">
-                                <label for="bountyPosition" data-i18n="common.positionLabel">Position</label>
-                                <select id="bountyPosition" class="position-options"></select>
-
-                                <label for="bountyColor" data-i18n="common.textColorLabel">Text Color</label>
-                                <input type="color" id="bountyColor" data-default-color="#FFD700">
-
-                                <label for="bountyOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="bountyOffsetXValue">0</span></label>
-                                <input type="range" id="bountyOffsetX" min="-50" max="50" value="0" data-value-target="bountyOffsetXValue">
-                                <label for="bountyOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="bountyOffsetYValue">0</span></label>
-                                <input type="range" id="bountyOffsetY" min="-50" max="50" value="0" data-value-target="bountyOffsetYValue">
-
-                                <label for="bountyFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
-                                <input type="number" id="bountyFontSize" min="6" max="72">
-
-                                <label for="bountyFontName" data-i18n="common.fontNameLabel">Font Name</label>
-                                <select id="bountyFontName" class="font-options"></select>
-
-                                <label for="bountyFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
-                                <select id="bountyFontWeight">
-                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
-                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
-                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
-                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
-                                </select>
-
-                                <label for="bountyBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                <input type="color" id="bountyBgColor" data-default-color="#000000">
-                                <label for="bountyBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="bountyBgOpacityValue">90</span>%</label>
-                                <input type="range" id="bountyBgOpacity" min="0" max="100" value="90" data-value-target="bountyBgOpacityValue">
+                            <div class="hidden-by-layout-preview binding-list">
+                                <div class="binding">
+                                    <label for="bountyPosition" data-i18n="common.positionLabel">Position</label>
+                                    <select id="bountyPosition" class="position-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyColor" data-i18n="common.textColorLabel">Text Color</label>
+                                    <input type="color" id="bountyColor" data-default-color="#FFD700">
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="bountyOffsetX" min="-50" max="50" value="0" data-value-target="bountyOffsetXValue">
+                                        <span id="bountyOffsetXValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="bountyOffsetY" min="-50" max="50" value="0" data-value-target="bountyOffsetYValue">
+                                        <span id="bountyOffsetYValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                    <input type="number" id="bountyFontSize" min="6" max="72">
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                    <select id="bountyFontName" class="font-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                    <select id="bountyFontWeight">
+                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                    </select>
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                    <input type="color" id="bountyBgColor" data-default-color="#000000">
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="bountyBgOpacity" min="0" max="100" value="90" data-value-target="bountyBgOpacityValue">
+                                        <span id="bountyBgOpacityValue">90</span>%
+                                    </div>
+                                </div>
                             </div>
 
-                            <label for="bountyIskRateUnit" data-i18n="field.bountyIskRateUnit.label">ISK Rate Unit</label>
-                            <select id="bountyIskRateUnit">
-                                <option value="minute" data-i18n="field.bountyIskRateUnit.minute">Per Minute</option>
-                                <option value="hour" data-i18n="field.bountyIskRateUnit.hour">Per Hour</option>
-                            </select>
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="bountyIskRateUnit" data-i18n="field.bountyIskRateUnit.label">ISK Rate Unit</label>
+                                    <select id="bountyIskRateUnit">
+                                        <option value="minute" data-i18n="field.bountyIskRateUnit.minute">Per Minute</option>
+                                        <option value="hour" data-i18n="field.bountyIskRateUnit.hour">Per Hour</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -1694,40 +2037,65 @@
                             </label>
                             <p class="hint" data-i18n="field.resourcesShowVram.hint">VRAM requires the Windows GPU performance counters; if unavailable, the label falls back to just CPU/RAM.</p>
 
-                            <label for="resourcesUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
-                            <input type="number" id="resourcesUpdateIntervalMs" min="0.5" max="60" step="0.1">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="resourcesUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
+                                    <input type="number" id="resourcesUpdateIntervalMs" min="0.5" max="60" step="0.1">
+                                </div>
+                            </div>
                             <p class="hint" data-i18n="field.resourcesUpdateIntervalMs.hint">How often CPU/RAM/VRAM are resampled (0.5–60 s); shared by all three since VRAM sampling is the most expensive</p>
 
-                            <div class="hidden-by-layout-preview">
-                                <label for="resourcesPosition" data-i18n="common.positionLabel">Position</label>
-                                <select id="resourcesPosition" class="position-options"></select>
-
-                                <label for="resourcesColor" data-i18n="common.textColorLabel">Text Color</label>
-                                <input type="color" id="resourcesColor" data-default-color="#FFFFFF">
-
-                                <label for="resourcesOffsetX"><span data-i18n="common.offsetXLabel">X Offset (px): </span><span id="resourcesOffsetXValue">0</span></label>
-                                <input type="range" id="resourcesOffsetX" min="-50" max="50" value="0" data-value-target="resourcesOffsetXValue">
-                                <label for="resourcesOffsetY"><span data-i18n="common.offsetYLabel">Y Offset (px): </span><span id="resourcesOffsetYValue">0</span></label>
-                                <input type="range" id="resourcesOffsetY" min="-50" max="50" value="0" data-value-target="resourcesOffsetYValue">
-
-                                <label for="resourcesFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
-                                <input type="number" id="resourcesFontSize" min="6" max="72">
-
-                                <label for="resourcesFontName" data-i18n="common.fontNameLabel">Font Name</label>
-                                <select id="resourcesFontName" class="font-options"></select>
-
-                                <label for="resourcesFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
-                                <select id="resourcesFontWeight">
-                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
-                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
-                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
-                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
-                                </select>
-
-                                <label for="resourcesBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                <input type="color" id="resourcesBgColor" data-default-color="#000000">
-                                <label for="resourcesBgOpacity"><span data-i18n="common.textBgOpacityLabel">Background Opacity: </span><span id="resourcesBgOpacityValue">90</span>%</label>
-                                <input type="range" id="resourcesBgOpacity" min="0" max="100" value="90" data-value-target="resourcesBgOpacityValue">
+                            <div class="hidden-by-layout-preview binding-list">
+                                <div class="binding">
+                                    <label for="resourcesPosition" data-i18n="common.positionLabel">Position</label>
+                                    <select id="resourcesPosition" class="position-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesColor" data-i18n="common.textColorLabel">Text Color</label>
+                                    <input type="color" id="resourcesColor" data-default-color="#FFFFFF">
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="resourcesOffsetX" min="-50" max="50" value="0" data-value-target="resourcesOffsetXValue">
+                                        <span id="resourcesOffsetXValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="resourcesOffsetY" min="-50" max="50" value="0" data-value-target="resourcesOffsetYValue">
+                                        <span id="resourcesOffsetYValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                    <input type="number" id="resourcesFontSize" min="6" max="72">
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                    <select id="resourcesFontName" class="font-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                    <select id="resourcesFontWeight">
+                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                    </select>
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                    <input type="color" id="resourcesBgColor" data-default-color="#000000">
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="resourcesBgOpacity" min="0" max="100" value="90" data-value-target="resourcesBgOpacityValue">
+                                        <span id="resourcesBgOpacityValue">90</span>%
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1757,37 +2125,41 @@
                                     <span class="label-body" data-i18n="common.showBorderLabel">Show Border</span>
                                 </label>
 
-                                <div class="row">
-                                    <div class="column">
+                                <div class="binding-list">
+                                    <div class="binding">
                                         <label for="stateActiveBorderWidth" data-i18n="common.borderWidthLabel">Border Width (px)</label>
                                         <input type="number" id="stateActiveBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateActiveBorderWidth.placeholder">
                                     </div>
-                                    <div class="column">
+                                    <div class="binding">
                                         <label for="stateActiveOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
                                         <input type="number" id="stateActiveOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateActiveOpacity.placeholder">
                                     </div>
+                                    <div class="binding">
+                                        <label for="stateActiveBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
+                                        <select id="stateActiveBorderStyle">
+                                            <option value="" data-i18n="field.stateActiveBorderStyle.option.default">Default</option>
+                                            <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                            <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                            <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                            <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                            <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                            <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                            <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                        </select>
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateActiveBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
+                                        <input type="color" id="stateActiveBorderColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateActiveTextColor" data-i18n="common.textColorLabel">Text Color</label>
+                                        <input type="color" id="stateActiveTextColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateActiveTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                        <input type="color" id="stateActiveTextBgColor">
+                                    </div>
                                 </div>
-
-                                <label for="stateActiveBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
-                                <select id="stateActiveBorderStyle">
-                                    <option value="" data-i18n="field.stateActiveBorderStyle.option.default">Default</option>
-                                    <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
-                                    <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
-                                    <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
-                                    <option value="Double" data-i18n="common.borderStyle.double">Double</option>
-                                    <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
-                                    <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
-                                    <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
-                                </select>
-
-                                <label for="stateActiveBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
-                                <input type="color" id="stateActiveBorderColor">
-
-                                <label for="stateActiveTextColor" data-i18n="common.textColorLabel">Text Color</label>
-                                <input type="color" id="stateActiveTextColor">
-
-                                <label for="stateActiveTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                <input type="color" id="stateActiveTextBgColor">
                             </div>
                         </div>
 
@@ -1809,37 +2181,41 @@
                                     <span class="label-body" data-i18n="common.showBorderLabel">Show Border</span>
                                 </label>
 
-                                <div class="row">
-                                    <div class="column">
+                                <div class="binding-list">
+                                    <div class="binding">
                                         <label for="stateInactiveBorderWidth" data-i18n="common.borderWidthLabel">Border Width (px)</label>
                                         <input type="number" id="stateInactiveBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateInactiveBorderWidth.placeholder">
                                     </div>
-                                    <div class="column">
+                                    <div class="binding">
                                         <label for="stateInactiveOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
                                         <input type="number" id="stateInactiveOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateInactiveOpacity.placeholder">
                                     </div>
+                                    <div class="binding">
+                                        <label for="stateInactiveBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
+                                        <select id="stateInactiveBorderStyle">
+                                            <option value="" data-i18n="field.stateInactiveBorderStyle.option.default">Default</option>
+                                            <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                            <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                            <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                            <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                            <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                            <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                            <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                        </select>
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateInactiveBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
+                                        <input type="color" id="stateInactiveBorderColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateInactiveTextColor" data-i18n="common.textColorLabel">Text Color</label>
+                                        <input type="color" id="stateInactiveTextColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateInactiveTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                        <input type="color" id="stateInactiveTextBgColor">
+                                    </div>
                                 </div>
-
-                                <label for="stateInactiveBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
-                                <select id="stateInactiveBorderStyle">
-                                    <option value="" data-i18n="field.stateInactiveBorderStyle.option.default">Default</option>
-                                    <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
-                                    <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
-                                    <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
-                                    <option value="Double" data-i18n="common.borderStyle.double">Double</option>
-                                    <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
-                                    <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
-                                    <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
-                                </select>
-
-                                <label for="stateInactiveBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
-                                <input type="color" id="stateInactiveBorderColor">
-
-                                <label for="stateInactiveTextColor" data-i18n="common.textColorLabel">Text Color</label>
-                                <input type="color" id="stateInactiveTextColor">
-
-                                <label for="stateInactiveTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                <input type="color" id="stateInactiveTextBgColor">
                             </div>
                         </div>
 
@@ -1861,37 +2237,41 @@
                                     <span class="label-body" data-i18n="common.showBorderLabel">Show Border</span>
                                 </label>
 
-                                <div class="row">
-                                    <div class="column">
+                                <div class="binding-list">
+                                    <div class="binding">
                                         <label for="stateAlertBorderWidth" data-i18n="common.borderWidthLabel">Border Width (px)</label>
                                         <input type="number" id="stateAlertBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateAlertBorderWidth.placeholder">
                                     </div>
-                                    <div class="column">
+                                    <div class="binding">
                                         <label for="stateAlertOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
                                         <input type="number" id="stateAlertOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateAlertOpacity.placeholder">
                                     </div>
+                                    <div class="binding">
+                                        <label for="stateAlertBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
+                                        <select id="stateAlertBorderStyle">
+                                            <option value="" data-i18n="field.stateAlertBorderStyle.option.default">Default</option>
+                                            <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                            <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                            <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                            <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                            <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                            <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                            <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                        </select>
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateAlertBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
+                                        <input type="color" id="stateAlertBorderColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateAlertTextColor" data-i18n="common.textColorLabel">Text Color</label>
+                                        <input type="color" id="stateAlertTextColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateAlertTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                        <input type="color" id="stateAlertTextBgColor">
+                                    </div>
                                 </div>
-
-                                <label for="stateAlertBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
-                                <select id="stateAlertBorderStyle">
-                                    <option value="" data-i18n="field.stateAlertBorderStyle.option.default">Default</option>
-                                    <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
-                                    <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
-                                    <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
-                                    <option value="Double" data-i18n="common.borderStyle.double">Double</option>
-                                    <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
-                                    <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
-                                    <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
-                                </select>
-
-                                <label for="stateAlertBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
-                                <input type="color" id="stateAlertBorderColor">
-
-                                <label for="stateAlertTextColor" data-i18n="common.textColorLabel">Text Color</label>
-                                <input type="color" id="stateAlertTextColor">
-
-                                <label for="stateAlertTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                <input type="color" id="stateAlertTextBgColor">
                             </div>
                         </div>
 
@@ -1913,37 +2293,41 @@
                                     <span class="label-body" data-i18n="common.showBorderLabel">Show Border</span>
                                 </label>
 
-                                <div class="row">
-                                    <div class="column">
+                                <div class="binding-list">
+                                    <div class="binding">
                                         <label for="stateMinimizedBorderWidth" data-i18n="common.borderWidthLabel">Border Width (px)</label>
                                         <input type="number" id="stateMinimizedBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateMinimizedBorderWidth.placeholder">
                                     </div>
-                                    <div class="column">
+                                    <div class="binding">
                                         <label for="stateMinimizedOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
                                         <input type="number" id="stateMinimizedOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateMinimizedOpacity.placeholder">
                                     </div>
+                                    <div class="binding">
+                                        <label for="stateMinimizedBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
+                                        <select id="stateMinimizedBorderStyle">
+                                            <option value="" data-i18n="field.stateMinimizedBorderStyle.option.default">Default</option>
+                                            <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                            <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                            <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                            <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                            <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                            <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                            <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                        </select>
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateMinimizedBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
+                                        <input type="color" id="stateMinimizedBorderColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateMinimizedTextColor" data-i18n="common.textColorLabel">Text Color</label>
+                                        <input type="color" id="stateMinimizedTextColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateMinimizedTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                        <input type="color" id="stateMinimizedTextBgColor">
+                                    </div>
                                 </div>
-
-                                <label for="stateMinimizedBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
-                                <select id="stateMinimizedBorderStyle">
-                                    <option value="" data-i18n="field.stateMinimizedBorderStyle.option.default">Default</option>
-                                    <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
-                                    <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
-                                    <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
-                                    <option value="Double" data-i18n="common.borderStyle.double">Double</option>
-                                    <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
-                                    <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
-                                    <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
-                                </select>
-
-                                <label for="stateMinimizedBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
-                                <input type="color" id="stateMinimizedBorderColor">
-
-                                <label for="stateMinimizedTextColor" data-i18n="common.textColorLabel">Text Color</label>
-                                <input type="color" id="stateMinimizedTextColor">
-
-                                <label for="stateMinimizedTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                <input type="color" id="stateMinimizedTextBgColor">
                             </div>
                         </div>
 
@@ -1965,37 +2349,41 @@
                                     <span class="label-body" data-i18n="common.showBorderLabel">Show Border</span>
                                 </label>
 
-                                <div class="row">
-                                    <div class="column">
+                                <div class="binding-list">
+                                    <div class="binding">
                                         <label for="stateDraggingBorderWidth" data-i18n="common.borderWidthLabel">Border Width (px)</label>
                                         <input type="number" id="stateDraggingBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateDraggingBorderWidth.placeholder">
                                     </div>
-                                    <div class="column">
+                                    <div class="binding">
                                         <label for="stateDraggingOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
                                         <input type="number" id="stateDraggingOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateDraggingOpacity.placeholder">
                                     </div>
+                                    <div class="binding">
+                                        <label for="stateDraggingBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
+                                        <select id="stateDraggingBorderStyle">
+                                            <option value="" data-i18n="field.stateDraggingBorderStyle.option.default">Default</option>
+                                            <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                            <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                            <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                            <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                            <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                            <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                            <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                        </select>
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateDraggingBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
+                                        <input type="color" id="stateDraggingBorderColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateDraggingTextColor" data-i18n="common.textColorLabel">Text Color</label>
+                                        <input type="color" id="stateDraggingTextColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateDraggingTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                        <input type="color" id="stateDraggingTextBgColor">
+                                    </div>
                                 </div>
-
-                                <label for="stateDraggingBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
-                                <select id="stateDraggingBorderStyle">
-                                    <option value="" data-i18n="field.stateDraggingBorderStyle.option.default">Default</option>
-                                    <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
-                                    <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
-                                    <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
-                                    <option value="Double" data-i18n="common.borderStyle.double">Double</option>
-                                    <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
-                                    <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
-                                    <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
-                                </select>
-
-                                <label for="stateDraggingBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
-                                <input type="color" id="stateDraggingBorderColor">
-
-                                <label for="stateDraggingTextColor" data-i18n="common.textColorLabel">Text Color</label>
-                                <input type="color" id="stateDraggingTextColor">
-
-                                <label for="stateDraggingTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                <input type="color" id="stateDraggingTextBgColor">
                             </div>
                         </div>
 
