@@ -1869,7 +1869,6 @@ label + .binding-list {
 .notif-cell-inline {
     display: flex;
     align-items: center;
-    justify-content: center;
     gap: 4px;
 }
 
@@ -2480,9 +2479,18 @@ input[type="range"]::-moz-range-thumb {
 }
 
 #hotkeyGroupsList .detail-panel-header,
-#charactersList .detail-panel-header {
+#charactersList .detail-panel-header,
+#notificationTypesList .detail-panel-header {
     border-bottom: none;
     padding-bottom: 0;
+}
+
+/* Reads as a title rather than a rail label, since this panel's header has no
+   paired input beside it (event names aren't editable, unlike a character's
+   or hotkey group's name). */
+#notificationTypesList .detail-panel-name-label {
+    font-size: var(--fs-heading);
+    font-weight: var(--fw-bold);
 }
 
 /* Sits on the row rather than above its field, so it drops the stacking margins
@@ -2525,6 +2533,19 @@ input[type="range"]::-moz-range-thumb {
 
 .detail-field > label::before,
 .detail-members > label::before {
+    content: none;
+}
+
+/* A label paired inline with its own input inside a .field-row (e.g. Event
+   Alerts' Duration/Limit, nested under the checkbox that gates them) - same
+   glyph/indent removal as a rail label, since it isn't one but reads like one. */
+.field-row > label {
+    margin: 0;
+    padding-left: 0;
+    white-space: nowrap;
+}
+
+.field-row > label::before {
     content: none;
 }
 
@@ -2636,6 +2657,28 @@ input[type="range"]::-moz-range-thumb {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 4px;
+}
+
+/* Fixed height, not flex:1 like Characters/Hotkey Groups - this list sits mid-page
+   among other Notifications sections rather than alone filling its own tab. */
+#notificationTypesList .master-detail {
+    height: 640px;
+}
+
+/* Sized to its widest event name (like #tabs-sidebar) instead of a guessed
+   fixed width - capped so one unusually long localized label can't run away. */
+#notificationTypesList .roster {
+    width: max-content;
+    max-width: 320px;
+}
+
+/* Duration/Limit fields in the Event Alerts detail form hold a couple of
+   digits - the base input[type=number] rule's width:100% (or .field-row's
+   flex:1, when nested in one to sit under the checkbox it depends on) would
+   otherwise stretch them the full width of the detail-form's control column. */
+.detail-number-input {
+    width: 70px;
+    flex: none;
 }
 
 /* The index chip and the remove button bracket the card, so they take the same
