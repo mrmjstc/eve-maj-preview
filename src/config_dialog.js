@@ -140,10 +140,11 @@ function htmlColorToZig(htmlColor) {
 }
 
 // Shared <option> lists for the many identical position/font <select> elements across tabs.
+// Second element is an i18n key, not the label text - resolved via t() at population time so a live language switch (see switchLanguage()) is reflected.
 const POSITION_OPTIONS = [
-    ['TopLeft', 'Top Left'], ['TopCenter', 'Top Center'], ['TopRight', 'Top Right'],
-    ['LeftCenter', 'Left Center'], ['Center', 'Center'], ['RightCenter', 'Right Center'],
-    ['BottomLeft', 'Bottom Left'], ['BottomCenter', 'Bottom Center'], ['BottomRight', 'Bottom Right'],
+    ['TopLeft', 'dynamic.position.topLeft'], ['TopCenter', 'dynamic.position.topCenter'], ['TopRight', 'dynamic.position.topRight'],
+    ['LeftCenter', 'dynamic.position.leftCenter'], ['Center', 'dynamic.position.center'], ['RightCenter', 'dynamic.position.rightCenter'],
+    ['BottomLeft', 'dynamic.position.bottomLeft'], ['BottomCenter', 'dynamic.position.bottomCenter'], ['BottomRight', 'dynamic.position.bottomRight'],
 ];
 
 const FONT_OPTIONS = [
@@ -161,7 +162,7 @@ function populateLanguageSelect() {
 
 function populateSharedSelectOptions() {
     document.querySelectorAll('select.position-options').forEach(select => {
-        POSITION_OPTIONS.forEach(([value, label]) => select.add(new Option(label, value)));
+        POSITION_OPTIONS.forEach(([value, labelKey]) => select.add(new Option(t(labelKey), value)));
     });
     document.querySelectorAll('select.font-options').forEach(select => {
         FONT_OPTIONS.forEach(name => select.add(new Option(name, name)));
@@ -1550,7 +1551,7 @@ function showLiveSwitchModal(selectedProfile) {
 }
 
 async function createNewProfile() {
-    const profileName = await showProfileNameModal('Create New Profile', '');
+    const profileName = await showProfileNameModal(t('button.create-new-profile.title'), '');
     if (!profileName) return;
     
     const sanitizedName = profileName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '');
@@ -1592,7 +1593,7 @@ async function copyCurrentProfile() {
     const currentProfile = profileSelect.value;
     const currentDisplayName = currentProfile.replace(/\.json$/, '');
     
-    const newName = await showProfileNameModal(`Copy Profile: ${currentDisplayName}`, currentDisplayName + ' - Copy');
+    const newName = await showProfileNameModal(t('dynamic.profile.copyModalTitle').replace('{name}', currentDisplayName), currentDisplayName + ' - Copy');
     if (!newName) return;
     
     const sanitizedName = newName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '');
@@ -1785,12 +1786,12 @@ function computeImportSections(oldProfile, oldGlobal) {
         (typeof oldGlobal.Suspend_Hotkeys_Hotkey === 'string' && oldGlobal.Suspend_Hotkeys_Hotkey.trim() !== '');
 
     return [
-        { id: 'thumbnailAppearance', title: 'Thumbnail Appearance', hint: 'Border colors/thickness, text overlay, opacity', available: hasThumbAppearance },
-        { id: 'characterPositions', title: 'Character Positions & Sizes', hint: `${Object.keys(positions).length} character(s) with saved positions`, available: hasPositions },
-        { id: 'characterColorsHotkeys', title: 'Character Colors & Hotkeys', hint: `${charNames.length} custom color(s), ${hotkeysArr.length} character hotkey(s)`, available: hasColorsOrHotkeys },
-        { id: 'hotkeyGroups', title: 'Hotkey Groups', hint: `${Object.keys(groups).length} group(s)`, available: hasGroups },
-        { id: 'autoMinimize', title: 'Auto-Minimize', hint: 'Minimize inactive clients + excluded characters', available: hasAutoMinimize },
-        { id: 'snapping', title: 'Snapping & Suspend Hotkey', hint: 'Thumbnail snapping + global suspend-hotkeys key', available: hasSnapping },
+        { id: 'thumbnailAppearance', title: t('dynamic.import.evex.thumbnailAppearance.title'), hint: t('dynamic.import.evex.thumbnailAppearance.hint'), available: hasThumbAppearance },
+        { id: 'characterPositions', title: t('dynamic.import.evex.characterPositions.title'), hint: t('dynamic.import.characterPositionsHint').replace('{n}', Object.keys(positions).length), available: hasPositions },
+        { id: 'characterColorsHotkeys', title: t('dynamic.import.evex.characterColorsHotkeys.title'), hint: t('dynamic.import.characterColorsHotkeysHint').replace('{colors}', charNames.length).replace('{hotkeys}', hotkeysArr.length), available: hasColorsOrHotkeys },
+        { id: 'hotkeyGroups', title: t('dynamic.import.evex.hotkeyGroups.title'), hint: t('dynamic.import.hotkeyGroupsCountHint').replace('{n}', Object.keys(groups).length), available: hasGroups },
+        { id: 'autoMinimize', title: t('dynamic.import.evex.autoMinimize.title'), hint: t('dynamic.import.evex.autoMinimize.hint'), available: hasAutoMinimize },
+        { id: 'snapping', title: t('dynamic.import.evex.snapping.title'), hint: t('dynamic.import.evex.snapping.hint'), available: hasSnapping },
     ];
 }
 
@@ -1820,7 +1821,7 @@ function renderImportSections() {
             <input type="checkbox" id="import_${s.id}" ${s.available ? 'checked' : 'disabled'}>
             <span class="label-body">${escapeHtml(s.title)}</span>
         </label>
-        <p class="hint" style="margin: 0 0 6px 22px;">${escapeHtml(s.available ? s.hint : 'Nothing to import for this section')}</p>
+        <p class="hint" style="margin: 0 0 6px 22px;">${escapeHtml(s.available ? s.hint : t('dynamic.import.nothingToImportHint'))}</p>
     `).join('');
 }
 
@@ -1881,7 +1882,7 @@ function extractThumbnailAppearance(oldProfile, oldGlobal) {
     if (num(tsl.width) !== null) patch.width = num(tsl.width);
     if (num(tsl.height) !== null) patch.height = num(tsl.height);
 
-    return { patch, notes: ['Thumbnail appearance settings imported.'] };
+    return { patch, notes: [t('dynamic.import.thumbnailAppearanceImportedNote')] };
 }
 
 function extractCharacterPositions(oldProfile) {
@@ -1898,7 +1899,7 @@ function extractCharacterPositions(oldProfile) {
         }
         characterPatches.push(cp);
     });
-    return { characterPatches, notes: [`Imported saved position/size for ${characterPatches.length} character(s).`] };
+    return { characterPatches, notes: [t('dynamic.import.importedPositionsWithSizeNote').replace('{n}', characterPatches.length)] };
 }
 
 function extractCharacterColorsAndHotkeys(oldProfile) {
@@ -1922,9 +1923,9 @@ function extractCharacterColorsAndHotkeys(oldProfile) {
             }
             byName.set(name, entry);
         });
-        if (names.length > 0) notes.push(`Imported custom border colors for ${names.length} character(s).`);
+        if (names.length > 0) notes.push(t('dynamic.import.evex.importedBorderColorsForCharsNote').replace('{n}', names.length));
         if (Array.isArray(cc.cColors.TextColor) && cc.cColors.TextColor.length > 0) {
-            notes.push('Per-character text color is not supported in EVE-Maj Preview and was not imported.');
+            notes.push(t('dynamic.import.evex.textColorNotSupportedNote'));
         }
     }
 
@@ -1940,12 +1941,12 @@ function extractCharacterColorsAndHotkeys(oldProfile) {
                 patchEntry.hotkey = hex;
                 convertedCount++;
             } else {
-                notes.push(`Skipped hotkey for "${name}": "${raw}" can't be represented as a keyboard hotkey (mouse buttons/custom combinations aren't supported).`);
+                notes.push(t('dynamic.import.evex.hotkeySkippedNote').replace('{name}', name).replace('{raw}', raw));
             }
             byName.set(name, patchEntry);
         });
     });
-    if (hotkeysArr.length > 0) notes.push(`Converted ${convertedCount} of ${hotkeysArr.length} character hotkey(s).`);
+    if (hotkeysArr.length > 0) notes.push(t('dynamic.import.convertedHotkeysNote').replace('{converted}', convertedCount).replace('{total}', hotkeysArr.length));
 
     return { characterPatches: Array.from(byName.values()), notes };
 }
@@ -1960,14 +1961,14 @@ function extractHotkeyGroups(oldProfile) {
         const forwardKey = g.ForwardsHotkey ? legacyHotkeyToVkHex(g.ForwardsHotkey) : null;
         const backwardKey = g.BackwardsHotkey ? legacyHotkeyToVkHex(g.BackwardsHotkey) : null;
         if (g.ForwardsHotkey && !forwardKey) {
-            notes.push(`Hotkey group "${name}": forward key "${g.ForwardsHotkey}" can't be converted.`);
+            notes.push(t('dynamic.import.hotkeyGroupForwardKeyFailedNote').replace('{name}', name).replace('{key}', g.ForwardsHotkey));
         }
         if (g.BackwardsHotkey && !backwardKey) {
-            notes.push(`Hotkey group "${name}": backward key "${g.BackwardsHotkey}" can't be converted.`);
+            notes.push(t('dynamic.import.hotkeyGroupBackwardKeyFailedNote').replace('{name}', name).replace('{key}', g.BackwardsHotkey));
         }
         hotkeyGroups.push({ name, characters, forwardKey: forwardKey || null, backwardKey: backwardKey || null });
     });
-    notes.unshift(`Imported ${hotkeyGroups.length} hotkey group(s).`);
+    notes.unshift(t('dynamic.import.hotkeyGroupsImportedNote').replace('{n}', hotkeyGroups.length));
     return { hotkeyGroups, notes };
 }
 
@@ -1980,7 +1981,7 @@ function extractAutoMinimize(oldProfile, oldGlobal) {
     const characterPatches = Array.isArray(cs.Dont_Minimize_Clients)
         ? cs.Dont_Minimize_Clients.map(name => ({ name, excludeFromMinimize: true }))
         : [];
-    return { patch, characterPatches, notes: ['Auto-minimize settings imported.'] };
+    return { patch, characterPatches, notes: [t('dynamic.import.autoMinimizeImportedNote')] };
 }
 
 function extractSnapping(oldProfile, oldGlobal) {
@@ -1997,10 +1998,10 @@ function extractSnapping(oldProfile, oldGlobal) {
         if (hex) {
             hotkeysPatch.hotkeySuspend = hex;
         } else {
-            notes.push(`Suspend-hotkeys key "${suspendRaw}" can't be converted and was skipped.`);
+            notes.push(t('dynamic.import.evex.suspendHotkeyFailedNote').replace('{key}', suspendRaw));
         }
     }
-    notes.push('Snapping settings imported.');
+    notes.push(t('dynamic.import.snappingImportedNote'));
     return { snappingPatch, hotkeysPatch, notes };
 }
 
@@ -2146,15 +2147,15 @@ function computeApmImportSections(sections) {
     const hasNotifications = !!(cm.enabledEventTypes && cm.enabledEventTypes.trim() !== '');
 
     return [
-        { id: 'thumbnailAppearance', title: 'Thumbnail Appearance', hint: 'Border/text colors, opacity, font', available: hasThumbAppearance },
-        { id: 'characterPositions', title: 'Character Positions', hint: `${Object.keys(positions).length} character(s) with saved positions`, available: hasPositions },
-        { id: 'characterColors', title: 'Character Colors & Hotkeys', hint: `${Object.keys(colors).length} custom color(s), ${Object.keys(hotkeys).length} character hotkey(s)`, available: hasColors },
-        { id: 'hotkeyGroups', title: 'Hotkey Groups', hint: `${Object.keys(groups).length} group(s)`, available: hasGroups },
-        { id: 'globalHotkeys', title: 'Global Hotkeys & Behavior', hint: 'Close/minimize-all, toggle visibility, suspend, EVE-focus requirement', available: hasGlobalHotkeys },
-        { id: 'autoMinimize', title: 'Auto-Minimize', hint: 'Minimize inactive clients + excluded characters', available: hasAutoMinimize },
-        { id: 'snapping', title: 'Snapping', hint: 'Thumbnail snapping', available: hasSnapping },
-        { id: 'chatlog', title: 'Chatlog Monitoring', hint: 'Chatlog/gamelog folders', available: hasChatlog },
-        { id: 'notifications', title: 'Fleet/Event Notifications', hint: 'Fleet invite, decloak, mining, etc.', available: hasNotifications },
+        { id: 'thumbnailAppearance', title: t('dynamic.import.apm.thumbnailAppearance.title'), hint: t('dynamic.import.apm.thumbnailAppearance.hint'), available: hasThumbAppearance },
+        { id: 'characterPositions', title: t('dynamic.import.apm.characterPositions.title'), hint: t('dynamic.import.characterPositionsHint').replace('{n}', Object.keys(positions).length), available: hasPositions },
+        { id: 'characterColors', title: t('dynamic.import.apm.characterColors.title'), hint: t('dynamic.import.characterColorsHotkeysHint').replace('{colors}', Object.keys(colors).length).replace('{hotkeys}', Object.keys(hotkeys).length), available: hasColors },
+        { id: 'hotkeyGroups', title: t('dynamic.import.apm.hotkeyGroups.title'), hint: t('dynamic.import.hotkeyGroupsCountHint').replace('{n}', Object.keys(groups).length), available: hasGroups },
+        { id: 'globalHotkeys', title: t('dynamic.import.apm.globalHotkeys.title'), hint: t('dynamic.import.apm.globalHotkeys.hint'), available: hasGlobalHotkeys },
+        { id: 'autoMinimize', title: t('dynamic.import.apm.autoMinimize.title'), hint: t('dynamic.import.apm.autoMinimize.hint'), available: hasAutoMinimize },
+        { id: 'snapping', title: t('dynamic.import.apm.snapping.title'), hint: t('dynamic.import.apm.snapping.hint'), available: hasSnapping },
+        { id: 'chatlog', title: t('dynamic.import.apm.chatlog.title'), hint: t('dynamic.import.apm.chatlog.hint'), available: hasChatlog },
+        { id: 'notifications', title: t('dynamic.import.apm.notifications.title'), hint: t('dynamic.import.apm.notifications.hint'), available: hasNotifications },
     ];
 }
 
@@ -2175,7 +2176,7 @@ function apmBorderStyleToZig(raw, notes, label) {
     if (!Number.isFinite(n)) return null;
     const name = APM_BORDER_STYLE_NAMES[n] || `#${n}`;
     if (APM_BORDER_STYLE_SUPPORTED.has(name)) return name;
-    notes.push(`${label} border style "${name}" has no equivalent in EVE-Maj Preview and was not imported.`);
+    notes.push(t('dynamic.import.apm.borderStyleUnsupportedNote').replace('{label}', label).replace('{name}', name));
     return null;
 }
 
@@ -2184,7 +2185,7 @@ function apmExtractThumbnailAppearance(sections) {
     const overlay = sections['overlay'] || {};
     const thumb = sections['thumbnail'] || {};
     const patch = {};
-    const notes = ['Thumbnail appearance settings imported.'];
+    const notes = [t('dynamic.import.thumbnailAppearanceImportedNote')];
     const num = (v) => (v === undefined || v === null || v === '' || isNaN(Number(v))) ? null : Number(v);
 
     const borderColor = legacyColorToZig(ui.highlightColor);
@@ -2194,7 +2195,7 @@ function apmExtractThumbnailAppearance(sections) {
     if ('hideThumbnailsWhenEVENotFocused' in ui) patch.hideWhenNoEveFocus = parseQtBool(ui.hideThumbnailsWhenEVENotFocused);
     if ('hideActiveClientThumbnail' in ui) patch.activeThumbnailHidden = parseQtBool(ui.hideActiveClientThumbnail);
     if ('activeBorderStyle' in ui) {
-        const style = apmBorderStyleToZig(ui.activeBorderStyle, notes, 'Active');
+        const style = apmBorderStyleToZig(ui.activeBorderStyle, notes, t('dynamic.import.apm.activeLabel'));
         if (style) patch.borderStyle = style;
     }
 
@@ -2203,7 +2204,7 @@ function apmExtractThumbnailAppearance(sections) {
     if (num(ui.inactiveBorderWidth) !== null) patch.inactiveBorderWidth = num(ui.inactiveBorderWidth);
     if ('showInactiveBorders' in ui) patch.showBorderWhenInactive = parseQtBool(ui.showInactiveBorders);
     if ('inactiveBorderStyle' in ui) {
-        const style = apmBorderStyleToZig(ui.inactiveBorderStyle, notes, 'Inactive');
+        const style = apmBorderStyleToZig(ui.inactiveBorderStyle, notes, t('dynamic.import.apm.inactiveLabel'));
         if (style) patch.inactiveBorderStyle = style;
     }
 
@@ -2275,8 +2276,8 @@ function apmExtractCharacterPositions(sections) {
         if (isApmNonEveWindowEntry(name)) { skipped++; return; }
         characterPatches.push({ name, position: pt });
     });
-    const notes = [`Imported saved position for ${characterPatches.length} character(s).`];
-    if (skipped > 0) notes.push(`Skipped ${skipped} non-EVE window item(s) (tracked via EVE-APM's non-EVE window overlay - not real characters).`);
+    const notes = [t('dynamic.import.apm.importedPositionsNote').replace('{n}', characterPatches.length)];
+    if (skipped > 0) notes.push(t('dynamic.import.apm.skippedNonEveWindowNote').replace('{n}', skipped));
     return { characterPatches, notes };
 }
 
@@ -2310,11 +2311,11 @@ function apmExtractCharacterColors(sections) {
     });
 
     const characterPatches = Array.from(byName.values());
-    const notes = [`Imported ${characterPatches.filter(c => c.borderColors).length} custom border color(s).`];
+    const notes = [t('dynamic.import.importedBorderColorsCountNote').replace('{n}', characterPatches.filter(c => c.borderColors).length)];
     if (hotkeyKeys.length > 0) {
-        notes.push(`Converted ${convertedHotkeys} of ${hotkeyKeys.length} character hotkey(s) (decoded from EVE-APM Preview's internal hotkey format).`);
+        notes.push(t('dynamic.import.apm.convertedHotkeysDecodedNote').replace('{converted}', convertedHotkeys).replace('{total}', hotkeyKeys.length));
     }
-    if (skipped > 0) notes.push(`Skipped ${skipped} non-EVE window item(s) (tracked via EVE-APM's non-EVE window overlay - not real characters).`);
+    if (skipped > 0) notes.push(t('dynamic.import.apm.skippedNonEveWindowNote').replace('{n}', skipped));
     return { characterPatches, notes };
 }
 
@@ -2340,16 +2341,16 @@ function apmExtractHotkeyGroups(sections) {
         const backwardKey = decodeApmHotkeyTuple(backwardRaw);
         hotkeyGroups.push({ name, characters, forwardKey, backwardKey });
         if (forwardKey || backwardKey) {
-            notes.push(`Hotkey group "${name}": forward/backward key(s) were decoded from EVE-APM Preview's internal hotkey format - please confirm they're correct.`);
+            notes.push(t('dynamic.import.apm.hotkeyGroupDecodedNote').replace('{name}', name));
         }
         if (!forwardKey && isApmHotkeyTupleEnabled(forwardRaw)) {
-            notes.push(`Hotkey group "${name}": forward key can't be represented as a keyboard hotkey (mouse button or unsupported) and was skipped.`);
+            notes.push(t('dynamic.import.apm.hotkeyGroupForwardUnsupportedNote').replace('{name}', name));
         }
         if (!backwardKey && isApmHotkeyTupleEnabled(backwardRaw)) {
-            notes.push(`Hotkey group "${name}": backward key can't be represented as a keyboard hotkey (mouse button or unsupported) and was skipped.`);
+            notes.push(t('dynamic.import.apm.hotkeyGroupBackwardUnsupportedNote').replace('{name}', name));
         }
     });
-    notes.unshift(`Imported ${hotkeyGroups.length} hotkey group(s).`);
+    notes.unshift(t('dynamic.import.hotkeyGroupsImportedNote').replace('{n}', hotkeyGroups.length));
     return { hotkeyGroups, notes };
 }
 
@@ -2367,22 +2368,22 @@ function apmExtractGlobalHotkeys(sections) {
         if (hex) {
             patch[targetField] = hex;
         } else {
-            notes.push(`${label} hotkey can't be represented as a keyboard hotkey (mouse button or unsupported) and was skipped.`);
+            notes.push(t('dynamic.import.apm.globalHotkeyUnsupportedNote').replace('{label}', label));
         }
         if (enabledTuples.length > 1) {
-            notes.push(`${label} had ${enabledTuples.length} bound keys in EVE-APM Preview - only the first is imported (EVE-Maj Preview supports one hotkey per action).`);
+            notes.push(t('dynamic.import.apm.globalHotkeyMultipleBoundNote').replace('{label}', label).replace('{n}', enabledTuples.length));
         }
     };
-    tryKey('closeAllHotkeys', 'closeAllClients', 'hotkeyCloseAll', 'Close-all-clients');
-    tryKey('minimizeAllHotkeys', 'minimizeAllClients', 'hotkeyMinimizeAll', 'Minimize-all-clients');
-    tryKey('toggleThumbnailsVisibilityHotkeys', 'toggleThumbnailsVisibility', 'hotkeyToggleVisibility', 'Toggle-thumbnails-visibility');
-    tryKey('hotkeys', 'suspendHotkey', 'hotkeySuspend', 'Suspend-hotkeys');
+    tryKey('closeAllHotkeys', 'closeAllClients', 'hotkeyCloseAll', t('dynamic.import.apm.actionLabel.closeAll'));
+    tryKey('minimizeAllHotkeys', 'minimizeAllClients', 'hotkeyMinimizeAll', t('dynamic.import.apm.actionLabel.minimizeAll'));
+    tryKey('toggleThumbnailsVisibilityHotkeys', 'toggleThumbnailsVisibility', 'hotkeyToggleVisibility', t('dynamic.import.apm.actionLabel.toggleVisibility'));
+    tryKey('hotkeys', 'suspendHotkey', 'hotkeySuspend', t('dynamic.import.apm.actionLabel.suspend'));
 
     const hk = sections['hotkey'] || {};
     if ('onlyWhenEVEFocused' in hk) patch.requireEveFocus = parseQtBool(hk.onlyWhenEVEFocused);
     if ('resetGroupIndexOnNonGroupFocus' in hk) patch.resetGroupIndexOnNonGroupFocus = parseQtBool(hk.resetGroupIndexOnNonGroupFocus);
 
-    notes.push('Global action hotkeys imported.');
+    notes.push(t('dynamic.import.apm.globalHotkeysImportedNote'));
     return { patch, notes };
 }
 
@@ -2397,7 +2398,7 @@ function apmExtractAutoMinimize(sections) {
         const list = iniUnquote(win.neverMinimizeCharacters).split(',').map(s => s.trim()).filter(Boolean);
         characterPatches = list.map(name => ({ name, excludeFromMinimize: true }));
     }
-    return { patch, characterPatches, notes: ['Auto-minimize settings imported.'] };
+    return { patch, characterPatches, notes: [t('dynamic.import.autoMinimizeImportedNote')] };
 }
 
 function apmExtractSnapping(sections) {
@@ -2406,7 +2407,7 @@ function apmExtractSnapping(sections) {
     if ('enableSnapping' in pos) patch.enabled = parseQtBool(pos.enableSnapping);
     const dist = parseInt(pos.snapDistance, 10);
     if (Number.isFinite(dist)) patch.threshold = dist;
-    return { patch, notes: ['Snapping settings imported.'] };
+    return { patch, notes: [t('dynamic.import.snappingImportedNote')] };
 }
 
 function apmExtractChatlog(sections) {
@@ -2416,7 +2417,7 @@ function apmExtractChatlog(sections) {
     if ('enableMonitoring' in chat) patch.enabled = parseQtBool(chat.enableMonitoring);
     if (chat.directory) patch.chatlogDir = chat.directory.trim();
     if (game.directory) patch.gamelogDir = game.directory.trim();
-    return { patch, notes: ['Chatlog monitoring settings imported.'] };
+    return { patch, notes: [t('dynamic.import.apm.chatlogImportedNote')] };
 }
 
 // "mining_started" has no equivalent notification type here and is intentionally unmapped.
@@ -2445,7 +2446,7 @@ function apmExtractNotifications(sections) {
     enabledList.forEach(evt => {
         const target = APM_EVENT_TYPE_MAP[evt];
         if (!target) {
-            notes.push(`Event type "${evt}" has no equivalent notification in EVE-Maj Preview and was not imported.`);
+            notes.push(t('dynamic.import.apm.eventTypeUnsupportedNote').replace('{evt}', evt));
             return;
         }
         const dur = parseInt(cm[`eventDurations\\${evt}`], 10);
@@ -2456,7 +2457,7 @@ function apmExtractNotifications(sections) {
         mapped++;
     });
 
-    if (enabledList.length > 0) notes.push(`Imported ${mapped} of ${enabledList.length} event notification type(s).`);
+    if (enabledList.length > 0) notes.push(t('dynamic.import.apm.notificationTypesImportedNote').replace('{mapped}', mapped).replace('{total}', enabledList.length));
     return { notificationsPatch, typePatches, notes };
 }
 
@@ -2621,18 +2622,18 @@ function computeEveoImportSections(data) {
     const hasSnapping = 'EnableThumbnailSnap' in data;
 
     return [
-        { id: 'thumbnailAppearance', title: 'Thumbnail Appearance', hint: 'Border color/thickness, text overlay, opacity', available: hasThumbAppearance },
-        { id: 'characterPositions', title: 'Character Positions & Sizes', hint: `${positionKeys.size} character(s) with saved positions`, available: hasPositions },
-        { id: 'characterColors', title: 'Character Colors & Hotkeys', hint: `${colorKeys.length} custom color(s), ${hotkeyKeys.length} character hotkey(s)`, available: hasColors },
-        { id: 'hotkeyGroups', title: 'Hotkey Groups', hint: `${groupCount} group(s)`, available: hasGroups },
-        { id: 'autoMinimize', title: 'Auto-Minimize', hint: 'Minimize inactive clients', available: hasAutoMinimize },
-        { id: 'snapping', title: 'Snapping', hint: 'Thumbnail snapping', available: hasSnapping },
+        { id: 'thumbnailAppearance', title: t('dynamic.import.eveo.thumbnailAppearance.title'), hint: t('dynamic.import.eveo.thumbnailAppearance.hint'), available: hasThumbAppearance },
+        { id: 'characterPositions', title: t('dynamic.import.eveo.characterPositions.title'), hint: t('dynamic.import.characterPositionsHint').replace('{n}', positionKeys.size), available: hasPositions },
+        { id: 'characterColors', title: t('dynamic.import.eveo.characterColors.title'), hint: t('dynamic.import.characterColorsHotkeysHint').replace('{colors}', colorKeys.length).replace('{hotkeys}', hotkeyKeys.length), available: hasColors },
+        { id: 'hotkeyGroups', title: t('dynamic.import.eveo.hotkeyGroups.title'), hint: t('dynamic.import.hotkeyGroupsCountHint').replace('{n}', groupCount), available: hasGroups },
+        { id: 'autoMinimize', title: t('dynamic.import.eveo.autoMinimize.title'), hint: t('dynamic.import.eveo.autoMinimize.hint'), available: hasAutoMinimize },
+        { id: 'snapping', title: t('dynamic.import.eveo.snapping.title'), hint: t('dynamic.import.eveo.snapping.hint'), available: hasSnapping },
     ];
 }
 
 function eveoExtractThumbnailAppearance(data) {
     const patch = {};
-    const notes = ['Thumbnail appearance settings imported.'];
+    const notes = [t('dynamic.import.thumbnailAppearanceImportedNote')];
 
     if (typeof data.ThumbnailsOpacity === 'number') {
         patch.thumbnailOpacity = Math.max(0, Math.min(255, Math.round(data.ThumbnailsOpacity * 255)));
@@ -2641,7 +2642,7 @@ function eveoExtractThumbnailAppearance(data) {
     if (data.ActiveClientHighlightColor) {
         const borderColor = eveoColorToZig(data.ActiveClientHighlightColor);
         if (borderColor) patch.borderColor = borderColor;
-        else notes.push(`Active client highlight color "${data.ActiveClientHighlightColor}" wasn't recognized and was skipped.`);
+        else notes.push(t('dynamic.import.eveo.activeColorUnrecognizedNote').replace('{color}', data.ActiveClientHighlightColor));
     }
     if (typeof data.ActiveClientHighlightThickness === 'number') patch.borderWidth = data.ActiveClientHighlightThickness;
 
@@ -2652,7 +2653,7 @@ function eveoExtractThumbnailAppearance(data) {
     if (data.OverlayLabelColor) {
         const textColor = eveoColorToZig(data.OverlayLabelColor);
         if (textColor) patch.characterNameColor = textColor;
-        else notes.push(`Overlay label color "${data.OverlayLabelColor}" wasn't recognized and was skipped.`);
+        else notes.push(t('dynamic.import.eveo.labelColorUnrecognizedNote').replace('{color}', data.OverlayLabelColor));
     }
     if (typeof data.OverlayLabelSize === 'number') {
         patch.characterNameFontSize = data.OverlayLabelSize;
@@ -2711,8 +2712,8 @@ function eveoExtractCharacterPositions(data) {
     });
 
     const characterPatches = Array.from(byName.values());
-    const notes = [`Imported saved position/size for ${characterPatches.length} character(s).`];
-    if (skippedNames.size > 0) notes.push(`Skipped ${skippedNames.size} placeholder item(s) from EVE-O Preview's default config - not real characters.`);
+    const notes = [t('dynamic.import.importedPositionsWithSizeNote').replace('{n}', characterPatches.length)];
+    if (skippedNames.size > 0) notes.push(t('dynamic.import.eveo.skippedPlaceholderNote').replace('{n}', skippedNames.size));
     return { characterPatches, notes };
 }
 
@@ -2748,9 +2749,9 @@ function eveoExtractCharacterColors(data) {
     });
 
     const characterPatches = Array.from(byName.values());
-    const notes = [`Imported ${colorCount} custom border color(s).`];
-    if (hotkeyKeys.length > 0) notes.push(`Converted ${convertedHotkeys} of ${hotkeyKeys.length} character hotkey(s).`);
-    if (skippedNames.size > 0) notes.push(`Skipped ${skippedNames.size} placeholder item(s) from EVE-O Preview's default config - not real characters.`);
+    const notes = [t('dynamic.import.importedBorderColorsCountNote').replace('{n}', colorCount)];
+    if (hotkeyKeys.length > 0) notes.push(t('dynamic.import.convertedHotkeysNote').replace('{converted}', convertedHotkeys).replace('{total}', hotkeyKeys.length));
+    if (skippedNames.size > 0) notes.push(t('dynamic.import.eveo.skippedPlaceholderNote').replace('{n}', skippedNames.size));
     return { characterPatches, notes };
 }
 
@@ -2769,60 +2770,63 @@ function eveoExtractHotkeyGroups(data) {
 
         const forwardKey = eveoFirstConvertibleHotkey(forwardBound);
         const backwardKey = eveoFirstConvertibleHotkey(backwardBound);
-        const name = `Cycle Group ${n}`;
+        const name = t('dynamic.import.eveo.cycleGroupName').replace('{n}', n);
         hotkeyGroups.push({ name, characters, forwardKey, backwardKey });
 
-        if (forwardBound.length > 0 && !forwardKey) notes.push(`Hotkey group "${name}": forward key "${forwardBound[0]}" can't be converted.`);
-        if (backwardBound.length > 0 && !backwardKey) notes.push(`Hotkey group "${name}": backward key "${backwardBound[0]}" can't be converted.`);
+        if (forwardBound.length > 0 && !forwardKey) notes.push(t('dynamic.import.hotkeyGroupForwardKeyFailedNote').replace('{name}', name).replace('{key}', forwardBound[0]));
+        if (backwardBound.length > 0 && !backwardKey) notes.push(t('dynamic.import.hotkeyGroupBackwardKeyFailedNote').replace('{name}', name).replace('{key}', backwardBound[0]));
         if (forwardBound.length > 1 || backwardBound.length > 1) {
-            notes.push(`Hotkey group "${name}" had multiple bound keys in EVE-O Preview - only the first usable one is imported.`);
+            notes.push(t('dynamic.import.eveo.hotkeyGroupMultipleBoundNote').replace('{name}', name));
         }
     });
 
-    notes.unshift(`Imported ${hotkeyGroups.length} hotkey group(s).`);
+    notes.unshift(t('dynamic.import.hotkeyGroupsImportedNote').replace('{n}', hotkeyGroups.length));
     return { hotkeyGroups, notes };
 }
 
 function eveoExtractAutoMinimize(data) {
     const patch = {};
     if ('MinimizeInactiveClients' in data) patch.enabled = !!data.MinimizeInactiveClients;
-    return { patch, notes: ['Auto-minimize settings imported.'] };
+    return { patch, notes: [t('dynamic.import.autoMinimizeImportedNote')] };
 }
 
 function eveoExtractSnapping(data) {
     const snappingPatch = {};
     if ('EnableThumbnailSnap' in data) snappingPatch.enabled = !!data.EnableThumbnailSnap;
-    return { snappingPatch, notes: ['Snapping settings imported.'] };
+    return { snappingPatch, notes: [t('dynamic.import.snappingImportedNote')] };
 }
 
 // Unlike the legacy formats above, a maj-format file already has exactly currentConfig's shape, so no field-by-field translation is needed, just a per-section merge.
+// Stores i18n key names rather than t()-resolved text: this array is built at module load, before window.__I18N__ exists.
 const MAJ_SECTIONS = [
-    { id: 'thumbnail', title: 'Thumbnail Appearance & Notifications', hint: 'Border/text styling, per-state visuals, alert notifications', kind: 'object' },
-    { id: 'display', title: 'Display', hint: 'List view appearance', kind: 'object' },
-    { id: 'timer', title: 'Scan Timer', hint: 'Window scan interval', kind: 'object' },
-    { id: 'interaction', title: 'Interaction', hint: 'Click/drag behavior', kind: 'object' },
-    { id: 'snapping', title: 'Snapping', hint: 'Thumbnail snapping', kind: 'object' },
-    { id: 'autoMinimize', title: 'Auto-Minimize', hint: 'Minimize inactive clients', kind: 'object' },
-    { id: 'closeAll', title: 'Close All', hint: 'Close-all behavior', kind: 'object' },
-    { id: 'chatlog', title: 'Chatlog Monitoring', hint: 'Chat/game log directories and triggers', kind: 'object' },
-    { id: 'combat', title: 'Combat Tracker', hint: 'Combat log parsing', kind: 'object' },
-    { id: 'mining', title: 'Mining Tracker', hint: 'Mining log parsing', kind: 'object' },
-    { id: 'bounty', title: 'Bounty Tracker', hint: 'Bounty log parsing', kind: 'object' },
-    { id: 'resources', title: 'Resource Usage', hint: 'Per-client CPU/RAM/VRAM overlay', kind: 'object' },
-    { id: 'hotkeys', title: 'Global Hotkeys', hint: 'App-wide hotkeys', kind: 'object' },
-    { id: 'characters', title: 'Characters', hint: 'Positions, sizes, colors, hotkeys', kind: 'array' },
-    { id: 'systemColors', title: 'System Colors', hint: 'Per-system border colors', kind: 'array' },
-    { id: 'hotkeyGroups', title: 'Hotkey Groups', hint: 'Character cycling groups', kind: 'array' },
-    { id: 'windowFilters', title: 'Window Filters', hint: 'Custom EVE window matching rules', kind: 'array' },
+    { id: 'thumbnail', titleKey: 'dynamic.import.maj.thumbnail.title', hintKey: 'dynamic.import.maj.thumbnail.hint', kind: 'object' },
+    { id: 'display', titleKey: 'dynamic.import.maj.display.title', hintKey: 'dynamic.import.maj.display.hint', kind: 'object' },
+    { id: 'timer', titleKey: 'dynamic.import.maj.timer.title', hintKey: 'dynamic.import.maj.timer.hint', kind: 'object' },
+    { id: 'interaction', titleKey: 'dynamic.import.maj.interaction.title', hintKey: 'dynamic.import.maj.interaction.hint', kind: 'object' },
+    { id: 'snapping', titleKey: 'dynamic.import.maj.snapping.title', hintKey: 'dynamic.import.maj.snapping.hint', kind: 'object' },
+    { id: 'autoMinimize', titleKey: 'dynamic.import.maj.autoMinimize.title', hintKey: 'dynamic.import.maj.autoMinimize.hint', kind: 'object' },
+    { id: 'closeAll', titleKey: 'dynamic.import.maj.closeAll.title', hintKey: 'dynamic.import.maj.closeAll.hint', kind: 'object' },
+    { id: 'chatlog', titleKey: 'dynamic.import.maj.chatlog.title', hintKey: 'dynamic.import.maj.chatlog.hint', kind: 'object' },
+    { id: 'combat', titleKey: 'dynamic.import.maj.combat.title', hintKey: 'dynamic.import.maj.combat.hint', kind: 'object' },
+    { id: 'mining', titleKey: 'dynamic.import.maj.mining.title', hintKey: 'dynamic.import.maj.mining.hint', kind: 'object' },
+    { id: 'bounty', titleKey: 'dynamic.import.maj.bounty.title', hintKey: 'dynamic.import.maj.bounty.hint', kind: 'object' },
+    { id: 'resources', titleKey: 'dynamic.import.maj.resources.title', hintKey: 'dynamic.import.maj.resources.hint', kind: 'object' },
+    { id: 'hotkeys', titleKey: 'dynamic.import.maj.hotkeys.title', hintKey: 'dynamic.import.maj.hotkeys.hint', kind: 'object' },
+    { id: 'characters', titleKey: 'dynamic.import.maj.characters.title', hintKey: 'dynamic.import.maj.characters.hint', kind: 'array' },
+    { id: 'systemColors', titleKey: 'dynamic.import.maj.systemColors.title', hintKey: 'dynamic.import.maj.systemColors.hint', kind: 'array' },
+    { id: 'hotkeyGroups', titleKey: 'dynamic.import.maj.hotkeyGroups.title', hintKey: 'dynamic.import.maj.hotkeyGroups.hint', kind: 'array' },
+    { id: 'windowFilters', titleKey: 'dynamic.import.maj.windowFilters.title', hintKey: 'dynamic.import.maj.windowFilters.hint', kind: 'array' },
 ];
 
 function computeMajImportSections(data) {
     return MAJ_SECTIONS.map(s => {
+        const title = t(s.titleKey);
+        const hint = t(s.hintKey);
         if (s.kind === 'array') {
             const arr = Array.isArray(data[s.id]) ? data[s.id] : [];
-            return { id: s.id, title: s.title, hint: `${s.hint} (${arr.length})`, available: arr.length > 0 };
+            return { id: s.id, title, hint: `${hint} (${arr.length})`, available: arr.length > 0 };
         }
-        return { id: s.id, title: s.title, hint: s.hint, available: data[s.id] !== undefined && data[s.id] !== null };
+        return { id: s.id, title, hint, available: data[s.id] !== undefined && data[s.id] !== null };
     });
 }
 
@@ -2857,7 +2861,7 @@ async function applyMajImport(checked, allNotes) {
     MAJ_SECTIONS.filter(s => s.kind === 'object').forEach(s => {
         if (!checked(s.id) || !data[s.id]) return;
         currentConfig[s.id] = Object.assign({}, currentConfig[s.id], data[s.id]);
-        allNotes.push(`${s.title} imported.`);
+        allNotes.push(t('dynamic.import.maj.sectionImportedNote').replace('{title}', t(s.titleKey)));
     });
 
     if (checked('characters') && Array.isArray(data.characters)) {
@@ -2865,22 +2869,22 @@ async function applyMajImport(checked, allNotes) {
         // formatVersion < 2 predates this app's DPI-awareness change - those saved positions need the same physical-pixel conversion as EVE-O/EVE-X/EVE-APM imports.
         if ((data.formatVersion || 1) < 2) await scaleCharacterPatchPositions(data.characters);
         mergeMajByKey(currentConfig.characters, data.characters, 'name');
-        allNotes.push(`Imported ${data.characters.length} character(s).`);
+        allNotes.push(t('dynamic.import.maj.charactersImportedNote').replace('{n}', data.characters.length));
     }
     if (checked('systemColors') && Array.isArray(data.systemColors)) {
         if (!currentConfig.systemColors) currentConfig.systemColors = [];
         mergeMajByKey(currentConfig.systemColors, data.systemColors, 'systemName');
-        allNotes.push(`Imported ${data.systemColors.length} system color(s).`);
+        allNotes.push(t('dynamic.import.maj.systemColorsImportedNote').replace('{n}', data.systemColors.length));
     }
     if (checked('hotkeyGroups') && Array.isArray(data.hotkeyGroups)) {
         if (!currentConfig.hotkeyGroups) currentConfig.hotkeyGroups = [];
         mergeMajByKey(currentConfig.hotkeyGroups, data.hotkeyGroups, 'name');
-        allNotes.push(`Imported ${data.hotkeyGroups.length} hotkey group(s).`);
+        allNotes.push(t('dynamic.import.hotkeyGroupsImportedNote').replace('{n}', data.hotkeyGroups.length));
     }
     if (checked('windowFilters') && Array.isArray(data.windowFilters)) {
         if (!currentConfig.windowFilters) currentConfig.windowFilters = [];
         mergeMajByKey(currentConfig.windowFilters, data.windowFilters, 'name');
-        allNotes.push(`Imported ${data.windowFilters.length} window filter(s).`);
+        allNotes.push(t('dynamic.import.maj.windowFiltersImportedNote').replace('{n}', data.windowFilters.length));
     }
 }
 
@@ -3237,10 +3241,10 @@ async function runImport() {
         }
 
         const hint = autoSaveAfterImport && !hasUnsavedChanges
-            ? 'This profile is now live - the running app has been updated with these settings.'
-            : 'Review the affected tabs, then click Save to keep these changes.';
+            ? t('dynamic.import.liveNowHint')
+            : t('dynamic.import.reviewAndSaveHint');
         const summaryEl = document.getElementById('importSummary');
-        summaryEl.innerHTML = '<h4 style="margin: 0 0 6px 0;">Import complete</h4>' +
+        summaryEl.innerHTML = `<h4 style="margin: 0 0 6px 0;">${escapeHtml(t('dynamic.import.completeHeading'))}</h4>` +
             '<ul style="margin: 0; padding-left: 18px;">' +
             allNotes.map(n => `<li>${escapeHtml(n)}</li>`).join('') +
             '</ul>' +
@@ -3601,7 +3605,7 @@ function refreshHotkeyKeycaps() {
         if (!render) return;
 
         const value = input.value.trim();
-        const bound = value.length > 0 && value !== 'Press keys...' && value !== 'Waiting for input...';
+        const bound = value.length > 0 && value !== t('common.hotkeyRecordingPrompt') && value !== t('common.hotkeyWaitingForInput');
 
         render.innerHTML = bound
             ? splitHotkeyCombo(value)
@@ -3744,7 +3748,7 @@ function getAllHotkeyInputs() {
 function normalizeHotkeyValue(value) {
     if (!value) return null;
     const v = value.trim();
-    if (!v || v === 'Press keys...' || v === 'Waiting for input...') return null;
+    if (!v || v === t('common.hotkeyRecordingPrompt') || v === t('common.hotkeyWaitingForInput')) return null;
     // Some fields display raw "0xNN" hex while others display friendly names - run everything through vkHexToFriendly so the same physical key compares equal.
     const friendly = vkHexToFriendly(v).toLowerCase();
 
@@ -3830,7 +3834,7 @@ function refreshCharacterHotkeyBadges() {
         if (!input || !badge) return;
 
         const value = input.value.trim();
-        const display = value && value !== 'Press keys...' && value !== 'Waiting for input...' ? value : '';
+        const display = value && value !== t('common.hotkeyRecordingPrompt') && value !== t('common.hotkeyWaitingForInput') ? value : '';
         badge.textContent = display ? `[${display}]` : '';
         badge.style.display = display ? '' : 'none';
     });
@@ -4007,9 +4011,9 @@ function recordHotkey(fieldId) {
     recordingComboCaptured = false;
     suspendMainAppHotkeysForRecording();
     input.classList.add('recording');
-    input.value = 'Press keys...';
+    input.value = t('common.hotkeyRecordingPrompt');
     input.dataset.originalPlaceholder = input.placeholder;
-    input.placeholder = 'Waiting for input...';
+    input.placeholder = t('common.hotkeyWaitingForInput');
     input.blur();
 
     // `wheel` listeners are passive by default, which would block captureWheel's preventDefault() (needed to stop the page scrolling under the modal).
@@ -4188,7 +4192,7 @@ function stopRecording() {
     input.classList.remove('recording');
 
     // Reset value and placeholder if no binding was set
-    if (input.value === 'Press keys...') {
+    if (input.value === t('common.hotkeyRecordingPrompt')) {
         input.value = '';
     }
 
@@ -4231,7 +4235,7 @@ function toggleManualHotkeyEdit(fieldId) {
     input.select();
     if (button) {
         button.classList.add('active');
-        button.title = 'Done editing';
+        button.title = t('common.hotkeyDoneEditing');
     }
 
     // Enter/Escape commit the typed value without requiring another click on the pencil
@@ -4257,7 +4261,7 @@ function commitManualHotkeyEdit(fieldId) {
     markAsChanged();
     if (button) {
         button.classList.remove('active');
-        button.title = 'Type key name directly';
+        button.title = t('common.hotkeyTypeDirectly');
     }
 
     updateHotkeyConflictHighlights();
@@ -4646,7 +4650,7 @@ function addWindowFilter() {
     if (!currentConfig.windowFilters) currentConfig.windowFilters = [];
     saveWindowFilters();
     currentConfig.windowFilters.push({
-        name: 'New Filter',
+        name: t('dynamic.windowFilter.defaultNewName'),
         enabled: true,
         class_names: [],
         executable_names: []
@@ -5314,7 +5318,7 @@ function reorderCharacters(fromIndex, insertBeforeIndex) {
 }
 
 function updateCharacterHeaderName(index) {
-    syncAccordionHeaderName(`char_${index}_name`, `char_${index}_header_name`, 'Character', index);
+    syncAccordionHeaderName(`char_${index}_name`, `char_${index}_header_name`, t('dynamic.character.defaultNamePrefix'), index);
     updateCharacterHeaderPortrait(index);
 }
 
@@ -5453,7 +5457,7 @@ async function populateCharactersFromClients() {
     }
 }
 
-function confirmRemove(buttonId, removeCallback, confirmText = 'Confirm') {
+function confirmRemove(buttonId, removeCallback, confirmText = t('common.confirm')) {
     const btn = document.getElementById(buttonId);
     if (!btn) return;
 
@@ -5498,7 +5502,7 @@ function reserveConfirmButtonWidth(btn) {
     clone.style.cssText = 'position:fixed; visibility:hidden; left:-9999px; top:-9999px;';
     document.body.appendChild(clone);
     const originalWidth = clone.getBoundingClientRect().width;
-    clone.textContent = 'Confirm';
+    clone.textContent = t('common.confirm');
     const confirmWidth = clone.getBoundingClientRect().width;
     document.body.removeChild(clone);
 
@@ -5979,7 +5983,7 @@ function removeHotkeyGroup(index) {
 }
 
 function updateHotkeyGroupHeaderName(index) {
-    syncAccordionHeaderName(`hkgroup_${index}_name`, `hkgroup_${index}_header_name`, 'Hotkey Group', index);
+    syncAccordionHeaderName(`hkgroup_${index}_name`, `hkgroup_${index}_header_name`, t('dynamic.hotkeyGroup.defaultNamePrefix'), index);
 }
 
 function saveHotkeyGroups() {
@@ -6425,7 +6429,7 @@ async function fetchOrePrices() {
     isFetchingOrePrices = true;
     const btn = document.getElementById('fetchOrePricesBtn');
     if (btn) btn.disabled = true;
-    showStatus(`Fetching ${names.length} price(s) from ESI...`, 'info');
+    showStatus(t('status.fetchingOrePrices').replace('{n}', names.length), 'info');
 
     try {
         const response = await webui.call('fetchOrePrices', JSON.stringify(names));
@@ -6441,10 +6445,10 @@ async function fetchOrePrices() {
 
         markAsChanged();
         populateOreTable();
-        showStatus(`Updated ${updated} of ${names.length} price(s) from ESI.`, updated > 0 ? 'success' : 'error');
+        showStatus(t('status.orePricesUpdated').replace('{updated}', updated).replace('{total}', names.length), updated > 0 ? 'success' : 'error');
     } catch (error) {
         logError('Failed to fetch ore prices:', error);
-        showStatus('Failed to fetch prices from ESI.', 'error');
+        showStatus(t('status.orePricesFetchFailed'), 'error');
     } finally {
         isFetchingOrePrices = false;
         if (btn) btn.disabled = false;
@@ -6617,7 +6621,7 @@ function populateNotificationTypes() {
                             <span class="label-body">${t('tab.notifications.detail.text-color.heading')}</span>
                             <div class="notif-cell-inline">
                                 <input type="checkbox" id="notif_${notifType.key}_textColorEnabled"
-                                       title="Enable per-type notification text color override"
+                                       title="${t('tab.notifications.detail.text-color.enableTitle')}"
                                        ${hasTextColor ? 'checked' : ''}
                                        onchange="toggleNotifTextColor('${notifType.key}')">
                                 <div class="swatch-wrap">
@@ -6626,9 +6630,9 @@ function populateNotificationTypes() {
                                            data-optional-color="true"
                                            data-default-color="${notifDefaultTextColorHtml()}"
                                            data-null-checkbox="notif_${notifType.key}_textColorEnabled"
-                                           data-base-title="Notification text color while this notification is active"
+                                           data-base-title="${t('tab.notifications.detail.text-color.activeTitle')}"
                                            ${!hasTextColor ? 'data-cleared="true"' : ''}
-                                           title="${hasTextColor ? 'Notification text color while this notification is active' : 'Not set - inheriting default text color'}"
+                                           title="${hasTextColor ? t('tab.notifications.detail.text-color.activeTitle') : t('tab.notifications.detail.text-color.notSetTitle')}"
                                            onchange="document.getElementById('notif_${notifType.key}_textColorEnabled').checked = true">
                                 </div>
                             </div>
@@ -6637,7 +6641,7 @@ function populateNotificationTypes() {
                             <span class="label-body">${t('tab.notifications.detail.border-color.heading')}</span>
                             <div class="notif-cell-inline">
                                 <input type="checkbox" id="notif_${notifType.key}_borderColorEnabled"
-                                       title="Enable per-type border color override"
+                                       title="${t('tab.notifications.detail.border-color.enableTitle')}"
                                        ${hasBorderColor ? 'checked' : ''}
                                        onchange="toggleNotifBorderColor('${notifType.key}')">
                                 <div class="swatch-wrap">
@@ -6646,9 +6650,9 @@ function populateNotificationTypes() {
                                            data-optional-color="true"
                                            data-default-color="${notifDefaultBorderColorHtml()}"
                                            data-null-checkbox="notif_${notifType.key}_borderColorEnabled"
-                                           data-base-title="Border color while this notification is active"
+                                           data-base-title="${t('tab.notifications.detail.border-color.activeTitle')}"
                                            ${!hasBorderColor ? 'data-cleared="true"' : ''}
-                                           title="${hasBorderColor ? 'Border color while this notification is active' : 'Not set - inheriting default border color'}"
+                                           title="${hasBorderColor ? t('tab.notifications.detail.border-color.activeTitle') : t('tab.notifications.detail.border-color.notSetTitle')}"
                                            onchange="document.getElementById('notif_${notifType.key}_borderColorEnabled').checked = true">
                                 </div>
                             </div>
@@ -6742,7 +6746,7 @@ function syncNotifSwatchClearedState(checkboxId, inputId) {
         if (!input.title) input.removeAttribute('title');
     } else {
         input.dataset.cleared = 'true';
-        input.title = 'Not set - inheriting default color';
+        input.title = t('tab.notifications.detail.notSetInheritingDefaultColor');
     }
 }
 
@@ -6754,7 +6758,7 @@ function resetNotificationColors(kind, defaultColorHtml) {
         if (input) {
             input.value = defaultColorHtml();
             input.dataset.cleared = 'true';
-            input.title = 'Not set - inheriting default color';
+            input.title = t('tab.notifications.detail.notSetInheritingDefaultColor');
         }
     });
     markAsChanged();
@@ -6934,124 +6938,125 @@ function toggleQuickGroupBadgeOptions() {
 
 // Drives each element's real (hidden) Position/Offset inputs by dispatching their normal events,
 // so CONFIG_SCHEMA, getFieldValue/setFieldValue, and the live-preview pipeline don't need to know this exists.
+// popoverTitleKey/labelKey store i18n key names, resolved via t() when the popover renders (see openOverlayPopover/buildOverlayPopoverField) rather than here, so a live language switch (see switchLanguage()) is reflected.
 const OVERLAY_LAYOUT_ELEMENTS = [
     { chipId: 'overlayChip_characterName', showId: 'showCharacterName', positionId: 'characterNamePosition', offsetXId: 'characterNameOffsetX', offsetYId: 'characterNameOffsetY', colorId: 'characterNameColor', alsoRequiresIds: ['showText'],
         uniqueColorsId: 'useUniqueCharacterNameColors', fontNameId: 'characterNameFontName', fontWeightId: 'characterNameFontWeight', fontSizeId: 'characterNameFontSize',
         bgColorId: 'characterNameBgColor', bgOpacityId: 'characterNameBgOpacity',
-        popoverTitle: 'Character Name', popoverFields: [
-            { type: 'checkbox', id: 'showCharacterName', label: 'Show Character Name' },
-            { type: 'checkbox', id: 'useUniqueCharacterNameColors', label: 'Unique Character Name Colors', disables: 'characterNameColor' },
-            { type: 'color', id: 'characterNameColor', label: 'Character Name Color' },
-            { type: 'font-name', id: 'characterNameFontName', label: 'Font Name' },
-            { type: 'number', id: 'characterNameFontSize', label: 'Font Size (px)', min: 6, max: 72 },
-            { type: 'font-weight', id: 'characterNameFontWeight', label: 'Font Weight' },
-            { type: 'color', id: 'characterNameBgColor', label: 'Background Color' },
-            { type: 'range', id: 'characterNameBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        popoverTitleKey: 'dynamic.overlay.characterNameTitle', popoverFields: [
+            { type: 'checkbox', id: 'showCharacterName', labelKey: 'field.showCharacterName.label' },
+            { type: 'checkbox', id: 'useUniqueCharacterNameColors', labelKey: 'field.useUniqueCharacterNameColors.label', disables: 'characterNameColor' },
+            { type: 'color', id: 'characterNameColor', labelKey: 'field.characterNameColor.label' },
+            { type: 'font-name', id: 'characterNameFontName', labelKey: 'common.fontNameLabel' },
+            { type: 'number', id: 'characterNameFontSize', labelKey: 'common.fontSizePxLabel', min: 6, max: 72 },
+            { type: 'font-weight', id: 'characterNameFontWeight', labelKey: 'common.fontWeightLabel' },
+            { type: 'color', id: 'characterNameBgColor', labelKey: 'dynamic.overlay.backgroundColorLabel' },
+            { type: 'range', id: 'characterNameBgOpacity', labelKey: 'common.textBgOpacityLabel', min: 0, max: 100, unit: '%' },
         ] },
     { chipId: 'overlayChip_systemName', showId: 'showSystemName', positionId: 'systemNamePosition', offsetXId: 'systemNameOffsetX', offsetYId: 'systemNameOffsetY', colorId: 'systemNameColor', alsoRequiresIds: ['showText'],
         uniqueColorsId: 'useUniqueSystemColors', fontNameId: 'systemNameFontName', fontWeightId: 'systemNameFontWeight', fontSizeId: 'systemNameFontSize',
         bgColorId: 'systemNameBgColor', bgOpacityId: 'systemNameBgOpacity',
-        popoverTitle: 'System Name', popoverFields: [
-            { type: 'checkbox', id: 'showSystemName', label: 'Show System Name' },
-            { type: 'checkbox', id: 'useUniqueSystemColors', label: 'Unique System Colors', disables: 'systemNameColor' },
-            { type: 'color', id: 'systemNameColor', label: 'System Name Color' },
-            { type: 'font-name', id: 'systemNameFontName', label: 'Font Name' },
-            { type: 'number', id: 'systemNameFontSize', label: 'Font Size (px)', min: 6, max: 72 },
-            { type: 'font-weight', id: 'systemNameFontWeight', label: 'Font Weight' },
-            { type: 'color', id: 'systemNameBgColor', label: 'Background Color' },
-            { type: 'range', id: 'systemNameBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        popoverTitleKey: 'dynamic.overlay.systemNameTitle', popoverFields: [
+            { type: 'checkbox', id: 'showSystemName', labelKey: 'field.showSystemName.label' },
+            { type: 'checkbox', id: 'useUniqueSystemColors', labelKey: 'field.useUniqueSystemColors.label', disables: 'systemNameColor' },
+            { type: 'color', id: 'systemNameColor', labelKey: 'field.systemNameColor.label' },
+            { type: 'font-name', id: 'systemNameFontName', labelKey: 'common.fontNameLabel' },
+            { type: 'number', id: 'systemNameFontSize', labelKey: 'common.fontSizePxLabel', min: 6, max: 72 },
+            { type: 'font-weight', id: 'systemNameFontWeight', labelKey: 'common.fontWeightLabel' },
+            { type: 'color', id: 'systemNameBgColor', labelKey: 'dynamic.overlay.backgroundColorLabel' },
+            { type: 'range', id: 'systemNameBgOpacity', labelKey: 'common.textBgOpacityLabel', min: 0, max: 100, unit: '%' },
         ] },
     { chipId: 'overlayChip_quickGroupBadge', showId: 'showQuickGroupBadge', positionId: 'quickGroupBadgePosition', offsetXId: 'quickGroupBadgeOffsetX', offsetYId: 'quickGroupBadgeOffsetY', colorId: 'quickGroupBadgeColor',
         alsoRequiresIds: ['showText'],
         fontNameId: 'quickGroupBadgeFontName', fontWeightId: 'quickGroupBadgeFontWeight', fontSizeId: 'quickGroupBadgeFontSize',
         bgColorId: 'quickGroupBadgeBgColor', bgOpacityId: 'quickGroupBadgeBgOpacity',
-        popoverTitle: 'Group Badge', popoverFields: [
-            { type: 'checkbox', id: 'showQuickGroupBadge', label: 'Show Group Badge' },
-            { type: 'color', id: 'quickGroupBadgeColor', label: 'Badge Color' },
-            { type: 'font-name', id: 'quickGroupBadgeFontName', label: 'Font Name' },
-            { type: 'number', id: 'quickGroupBadgeFontSize', label: 'Font Size (px)', min: 6, max: 72 },
-            { type: 'font-weight', id: 'quickGroupBadgeFontWeight', label: 'Font Weight' },
-            { type: 'color', id: 'quickGroupBadgeBgColor', label: 'Background Color' },
-            { type: 'range', id: 'quickGroupBadgeBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        popoverTitleKey: 'dynamic.overlay.groupBadgeTitle', popoverFields: [
+            { type: 'checkbox', id: 'showQuickGroupBadge', labelKey: 'field.showQuickGroupBadge.label' },
+            { type: 'color', id: 'quickGroupBadgeColor', labelKey: 'field.quickGroupBadgeColor.label' },
+            { type: 'font-name', id: 'quickGroupBadgeFontName', labelKey: 'common.fontNameLabel' },
+            { type: 'number', id: 'quickGroupBadgeFontSize', labelKey: 'common.fontSizePxLabel', min: 6, max: 72 },
+            { type: 'font-weight', id: 'quickGroupBadgeFontWeight', labelKey: 'common.fontWeightLabel' },
+            { type: 'color', id: 'quickGroupBadgeBgColor', labelKey: 'dynamic.overlay.backgroundColorLabel' },
+            { type: 'range', id: 'quickGroupBadgeBgOpacity', labelKey: 'common.textBgOpacityLabel', min: 0, max: 100, unit: '%' },
         ] },
     { chipId: 'overlayChip_notification', showId: 'notificationsEnabled', positionId: 'notificationPosition', offsetXId: 'notificationOffsetX', offsetYId: 'notificationOffsetY', colorId: 'characterNameColor', alsoRequiresIds: ['showText'],
         fontNameId: 'notificationFontName', fontWeightId: 'notificationFontWeight', fontSizeId: 'notificationFontSize',
         bgColorId: 'notificationBgColor', bgOpacityId: 'notificationBgOpacity',
-        popoverTitle: 'Notification', popoverFields: [
-            { type: 'checkbox', id: 'notificationsEnabled', label: 'Show Notifications' },
-            { type: 'font-name', id: 'notificationFontName', label: 'Font Name' },
-            { type: 'number', id: 'notificationFontSize', label: 'Font Size (px)', min: 6, max: 72 },
-            { type: 'font-weight', id: 'notificationFontWeight', label: 'Font Weight' },
-            { type: 'color', id: 'notificationBgColor', label: 'Background Color' },
-            { type: 'range', id: 'notificationBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        popoverTitleKey: 'dynamic.overlay.notificationTitle', popoverFields: [
+            { type: 'checkbox', id: 'notificationsEnabled', labelKey: 'dynamic.overlay.showNotificationsLabel' },
+            { type: 'font-name', id: 'notificationFontName', labelKey: 'common.fontNameLabel' },
+            { type: 'number', id: 'notificationFontSize', labelKey: 'common.fontSizePxLabel', min: 6, max: 72 },
+            { type: 'font-weight', id: 'notificationFontWeight', labelKey: 'common.fontWeightLabel' },
+            { type: 'color', id: 'notificationBgColor', labelKey: 'dynamic.overlay.backgroundColorLabel' },
+            { type: 'range', id: 'notificationBgOpacity', labelKey: 'common.textBgOpacityLabel', min: 0, max: 100, unit: '%' },
         ] },
     { chipId: 'overlayChip_combatIncoming', showId: 'combatShowIncoming', positionId: 'combatIncomingPosition', offsetXId: 'combatIncomingOffsetX', offsetYId: 'combatIncomingOffsetY', colorId: 'combatIncomingColor', alsoRequiresIds: ['combatEnabled', 'showText'],
         fontNameId: 'combatIncomingFontName', fontWeightId: 'combatIncomingFontWeight', fontSizeId: 'combatIncomingFontSize',
         bgColorId: 'combatIncomingBgColor', bgOpacityId: 'combatIncomingBgOpacity',
-        popoverTitle: 'Incoming DPS', popoverFields: [
-            { type: 'checkbox', id: 'combatEnabled', label: 'Enable Combat Overlays' },
-            { type: 'checkbox', id: 'combatShowIncoming', label: 'Show Incoming Damage' },
-            { type: 'color', id: 'combatIncomingColor', label: 'Color' },
-            { type: 'font-name', id: 'combatIncomingFontName', label: 'Font Name' },
-            { type: 'number', id: 'combatIncomingFontSize', label: 'Font Size', min: 6, max: 72 },
-            { type: 'font-weight', id: 'combatIncomingFontWeight', label: 'Font Weight' },
-            { type: 'color', id: 'combatIncomingBgColor', label: 'Background Color' },
-            { type: 'range', id: 'combatIncomingBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        popoverTitleKey: 'dynamic.overlay.incomingDpsTitle', popoverFields: [
+            { type: 'checkbox', id: 'combatEnabled', labelKey: 'dynamic.overlay.enableCombatOverlaysLabel' },
+            { type: 'checkbox', id: 'combatShowIncoming', labelKey: 'field.combatShowIncoming.label' },
+            { type: 'color', id: 'combatIncomingColor', labelKey: 'field.combatIncomingColor.label' },
+            { type: 'font-name', id: 'combatIncomingFontName', labelKey: 'common.fontNameLabel' },
+            { type: 'number', id: 'combatIncomingFontSize', labelKey: 'dynamic.overlay.fontSizeLabel', min: 6, max: 72 },
+            { type: 'font-weight', id: 'combatIncomingFontWeight', labelKey: 'common.fontWeightLabel' },
+            { type: 'color', id: 'combatIncomingBgColor', labelKey: 'dynamic.overlay.backgroundColorLabel' },
+            { type: 'range', id: 'combatIncomingBgOpacity', labelKey: 'common.textBgOpacityLabel', min: 0, max: 100, unit: '%' },
         ] },
     { chipId: 'overlayChip_combatOutgoing', showId: 'combatShowOutgoing', positionId: 'combatOutgoingPosition', offsetXId: 'combatOutgoingOffsetX', offsetYId: 'combatOutgoingOffsetY', colorId: 'combatOutgoingColor', alsoRequiresIds: ['combatEnabled', 'showText'],
         fontNameId: 'combatOutgoingFontName', fontWeightId: 'combatOutgoingFontWeight', fontSizeId: 'combatOutgoingFontSize',
         bgColorId: 'combatOutgoingBgColor', bgOpacityId: 'combatOutgoingBgOpacity',
-        popoverTitle: 'Outgoing DPS', popoverFields: [
-            { type: 'checkbox', id: 'combatEnabled', label: 'Enable Combat Overlays' },
-            { type: 'checkbox', id: 'combatShowOutgoing', label: 'Show Outgoing Damage' },
-            { type: 'color', id: 'combatOutgoingColor', label: 'Color' },
-            { type: 'font-name', id: 'combatOutgoingFontName', label: 'Font Name' },
-            { type: 'number', id: 'combatOutgoingFontSize', label: 'Font Size', min: 6, max: 72 },
-            { type: 'font-weight', id: 'combatOutgoingFontWeight', label: 'Font Weight' },
-            { type: 'color', id: 'combatOutgoingBgColor', label: 'Background Color' },
-            { type: 'range', id: 'combatOutgoingBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        popoverTitleKey: 'dynamic.overlay.outgoingDpsTitle', popoverFields: [
+            { type: 'checkbox', id: 'combatEnabled', labelKey: 'dynamic.overlay.enableCombatOverlaysLabel' },
+            { type: 'checkbox', id: 'combatShowOutgoing', labelKey: 'field.combatShowOutgoing.label' },
+            { type: 'color', id: 'combatOutgoingColor', labelKey: 'field.combatOutgoingColor.label' },
+            { type: 'font-name', id: 'combatOutgoingFontName', labelKey: 'common.fontNameLabel' },
+            { type: 'number', id: 'combatOutgoingFontSize', labelKey: 'dynamic.overlay.fontSizeLabel', min: 6, max: 72 },
+            { type: 'font-weight', id: 'combatOutgoingFontWeight', labelKey: 'common.fontWeightLabel' },
+            { type: 'color', id: 'combatOutgoingBgColor', labelKey: 'dynamic.overlay.backgroundColorLabel' },
+            { type: 'range', id: 'combatOutgoingBgOpacity', labelKey: 'common.textBgOpacityLabel', min: 0, max: 100, unit: '%' },
         ] },
     { chipId: 'overlayChip_mining', showId: 'miningEnabled', positionId: 'miningPosition', offsetXId: 'miningOffsetX', offsetYId: 'miningOffsetY', colorId: 'miningColor',
         alsoRequiresIds: ['showText'],
         fontNameId: 'miningFontName', fontWeightId: 'miningFontWeight', fontSizeId: 'miningFontSize',
         bgColorId: 'miningBgColor', bgOpacityId: 'miningBgOpacity',
-        popoverTitle: 'Mining Rate', popoverFields: [
-            { type: 'checkbox', id: 'miningEnabled', label: 'Show Mining Rate' },
-            { type: 'color', id: 'miningColor', label: 'Text Color' },
-            { type: 'font-name', id: 'miningFontName', label: 'Font Name' },
-            { type: 'number', id: 'miningFontSize', label: 'Font Size', min: 6, max: 72 },
-            { type: 'font-weight', id: 'miningFontWeight', label: 'Font Weight' },
-            { type: 'color', id: 'miningBgColor', label: 'Background Color' },
-            { type: 'range', id: 'miningBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        popoverTitleKey: 'dynamic.overlay.miningRateTitle', popoverFields: [
+            { type: 'checkbox', id: 'miningEnabled', labelKey: 'dynamic.overlay.showMiningRateLabel' },
+            { type: 'color', id: 'miningColor', labelKey: 'common.textColorLabel' },
+            { type: 'font-name', id: 'miningFontName', labelKey: 'common.fontNameLabel' },
+            { type: 'number', id: 'miningFontSize', labelKey: 'dynamic.overlay.fontSizeLabel', min: 6, max: 72 },
+            { type: 'font-weight', id: 'miningFontWeight', labelKey: 'common.fontWeightLabel' },
+            { type: 'color', id: 'miningBgColor', labelKey: 'dynamic.overlay.backgroundColorLabel' },
+            { type: 'range', id: 'miningBgOpacity', labelKey: 'common.textBgOpacityLabel', min: 0, max: 100, unit: '%' },
         ] },
     { chipId: 'overlayChip_bounty', showId: 'bountyEnabled', positionId: 'bountyPosition', offsetXId: 'bountyOffsetX', offsetYId: 'bountyOffsetY', colorId: 'bountyColor',
         alsoRequiresIds: ['showText'],
         fontNameId: 'bountyFontName', fontWeightId: 'bountyFontWeight', fontSizeId: 'bountyFontSize',
         bgColorId: 'bountyBgColor', bgOpacityId: 'bountyBgOpacity',
-        popoverTitle: 'Bounty Rate', popoverFields: [
-            { type: 'checkbox', id: 'bountyEnabled', label: 'Show Bounty Rate' },
-            { type: 'color', id: 'bountyColor', label: 'Text Color' },
-            { type: 'font-name', id: 'bountyFontName', label: 'Font Name' },
-            { type: 'number', id: 'bountyFontSize', label: 'Font Size', min: 6, max: 72 },
-            { type: 'font-weight', id: 'bountyFontWeight', label: 'Font Weight' },
-            { type: 'color', id: 'bountyBgColor', label: 'Background Color' },
-            { type: 'range', id: 'bountyBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        popoverTitleKey: 'dynamic.overlay.bountyRateTitle', popoverFields: [
+            { type: 'checkbox', id: 'bountyEnabled', labelKey: 'dynamic.overlay.showBountyRateLabel' },
+            { type: 'color', id: 'bountyColor', labelKey: 'common.textColorLabel' },
+            { type: 'font-name', id: 'bountyFontName', labelKey: 'common.fontNameLabel' },
+            { type: 'number', id: 'bountyFontSize', labelKey: 'dynamic.overlay.fontSizeLabel', min: 6, max: 72 },
+            { type: 'font-weight', id: 'bountyFontWeight', labelKey: 'common.fontWeightLabel' },
+            { type: 'color', id: 'bountyBgColor', labelKey: 'dynamic.overlay.backgroundColorLabel' },
+            { type: 'range', id: 'bountyBgOpacity', labelKey: 'common.textBgOpacityLabel', min: 0, max: 100, unit: '%' },
         ] },
     { chipId: 'overlayChip_resources', showId: 'resourcesEnabled', positionId: 'resourcesPosition', offsetXId: 'resourcesOffsetX', offsetYId: 'resourcesOffsetY', colorId: 'resourcesColor',
         alsoRequiresIds: ['showText'],
         fontNameId: 'resourcesFontName', fontWeightId: 'resourcesFontWeight', fontSizeId: 'resourcesFontSize',
         bgColorId: 'resourcesBgColor', bgOpacityId: 'resourcesBgOpacity',
-        popoverTitle: 'Resource Usage', popoverFields: [
-            { type: 'checkbox', id: 'resourcesEnabled', label: 'Show Resource Usage' },
-            { type: 'checkbox', id: 'resourcesShowCpu', label: 'Show CPU %' },
-            { type: 'checkbox', id: 'resourcesShowRam', label: 'Show RAM' },
-            { type: 'checkbox', id: 'resourcesShowVram', label: 'Show VRAM' },
-            { type: 'color', id: 'resourcesColor', label: 'Text Color' },
-            { type: 'font-name', id: 'resourcesFontName', label: 'Font Name' },
-            { type: 'number', id: 'resourcesFontSize', label: 'Font Size', min: 6, max: 72 },
-            { type: 'font-weight', id: 'resourcesFontWeight', label: 'Font Weight' },
-            { type: 'color', id: 'resourcesBgColor', label: 'Background Color' },
-            { type: 'range', id: 'resourcesBgOpacity', label: 'Background Opacity', min: 0, max: 100, unit: '%' },
+        popoverTitleKey: 'dynamic.overlay.resourceUsageTitle', popoverFields: [
+            { type: 'checkbox', id: 'resourcesEnabled', labelKey: 'dynamic.overlay.showResourceUsageLabel' },
+            { type: 'checkbox', id: 'resourcesShowCpu', labelKey: 'field.resourcesShowCpu.label' },
+            { type: 'checkbox', id: 'resourcesShowRam', labelKey: 'field.resourcesShowRam.label' },
+            { type: 'checkbox', id: 'resourcesShowVram', labelKey: 'field.resourcesShowVram.label' },
+            { type: 'color', id: 'resourcesColor', labelKey: 'common.textColorLabel' },
+            { type: 'font-name', id: 'resourcesFontName', labelKey: 'common.fontNameLabel' },
+            { type: 'number', id: 'resourcesFontSize', labelKey: 'dynamic.overlay.fontSizeLabel', min: 6, max: 72 },
+            { type: 'font-weight', id: 'resourcesFontWeight', labelKey: 'common.fontWeightLabel' },
+            { type: 'color', id: 'resourcesBgColor', labelKey: 'dynamic.overlay.backgroundColorLabel' },
+            { type: 'range', id: 'resourcesBgOpacity', labelKey: 'common.textBgOpacityLabel', min: 0, max: 100, unit: '%' },
         ] },
 ];
 
@@ -7328,7 +7333,7 @@ function buildOverlayPopoverField(f, def) {
         });
         const span = document.createElement('span');
         span.className = 'label-body';
-        span.textContent = f.label;
+        span.textContent = t(f.labelKey);
         label.appendChild(input);
         label.appendChild(span);
         wrap.appendChild(label);
@@ -7336,7 +7341,7 @@ function buildOverlayPopoverField(f, def) {
     }
 
     const label = document.createElement('label');
-    label.textContent = f.label;
+    label.textContent = t(f.labelKey);
     wrap.appendChild(label);
 
     let input;
@@ -7402,7 +7407,7 @@ function openOverlayPopover(def, chip) {
     const body = document.getElementById('overlayPopoverBody');
     if (!popover || !title || !body || !def.popoverFields) return;
 
-    title.textContent = def.popoverTitle;
+    title.textContent = t(def.popoverTitleKey);
     body.innerHTML = '';
     def.popoverFields.forEach(f => body.appendChild(buildOverlayPopoverField(f, def)));
     def.popoverFields.forEach(f => {
@@ -8015,7 +8020,7 @@ function filterSettings(query) {
                 // #000000 is the display placeholder for "unset"; dataset.cleared is the actual signal consumed at save time, not the displayed color.
                 activeInput.value = activeInput.dataset.defaultColor || '#000000';
                 activeInput.dataset.cleared = 'true';
-                activeInput.title = 'Not set - inheriting global color';
+                activeInput.title = t('common.notSetInheritingColor');
             } else if (activeInput.dataset.defaultColor) {
                 activeInput.value = activeInput.dataset.defaultColor;
             } else {
@@ -8249,7 +8254,7 @@ function syncSwatchHexInput(color) {
         hex.maxLength = 7;
         hex.spellcheck = false;
         hex.autocomplete = 'off';
-        if (color.id) hex.setAttribute('aria-label', document.querySelector(`label[for="${color.id}"]`)?.textContent?.trim() || 'Hex color');
+        if (color.id) hex.setAttribute('aria-label', document.querySelector(`label[for="${color.id}"]`)?.textContent?.trim() || t('common.hexColorLabel'));
         wrap.appendChild(hex);
 
         syncSwatchHexInput(color);
