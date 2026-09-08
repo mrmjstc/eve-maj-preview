@@ -140,7 +140,12 @@ pub fn main(init: std.process.Init) !void {
 
     var win = webui.newWindow();
 
-    win.setSize(800, 950);
+    // Per-monitor DPI awareness makes setSize take physical pixels, so scale the 96-DPI design size or the non-resizable dialog shrinks at higher scaling.
+    const dialog_dpi_scale = @as(f32, @floatFromInt(win32.GetDpiForSystem())) / 96.0;
+    win.setSize(
+        @intFromFloat(@round(800.0 * dialog_dpi_scale)),
+        @intFromFloat(@round(950.0 * dialog_dpi_scale)),
+    );
     win.setKiosk(false);
     win.setResizable(false);
 
