@@ -533,7 +533,7 @@
   "status.ultraPotatoFailedPrefix": "Ошибка: ",
   "status.ultraPotatoPartialFailurePrefix": "Применено к {n}/{total}. Ошибки:",
   "status.unknownError": "Неизвестная ошибка",
-  "status.unrecognizedSettingsFile": "Файл не похож на поддерживаемый файл настроек EVE-X Preview, EVE-O Preview, EVE-APM Preview или EVE-Maj Preview.",
+  "status.unrecognizedSettingsFile": "Неопознанный файл настроек.",
   "status.webuiInitFailed": "Не удалось инициализировать соединение WebUI",
   "status.windowPositionCancelled": "Отменено",
   "status.windowPositionCleared": "Позиции окон очищены",
