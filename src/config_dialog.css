@@ -2302,7 +2302,7 @@ input[type="range"]::-moz-range-thumb {
 
 /* Portraits are hidden for now, and rows no longer need to make room for one. */
 #charactersList .roster {
-    width: 130px;
+    width: 175px;
 }
 
 #hotkeyGroupsList .master-detail {
