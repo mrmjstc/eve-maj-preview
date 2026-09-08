@@ -1164,15 +1164,13 @@
                             <h3 data-i18n="tab.hotkeys.section.profile-hotkeys.heading">Profiles</h3>
                             <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
                         </div>
-                        <p class="hint" data-i18n="tab.hotkeys.section.profile-hotkeys.hint">Cycle through profiles, or jump straight to one.</p>
+                        <p class="hint" data-i18n="tab.hotkeys.section.profile-hotkeys.hint">Cycle through profiles, or switch straight to one.</p>
 
                         <div class="binding-list" id="profileBindings"></div>
 
-                        <div id="profileSwitchHotkeysList" class="list-container">
-                            <!-- Profile switch hotkeys will be dynamically populated here -->
+                        <div id="profileSwitchHotkeysList" class="binding-list">
+                            <!-- One row per existing profile, dynamically populated here -->
                         </div>
-
-                        <button type="button" class="full-width-btn" onclick="addProfileSwitchHotkey()" data-i18n="button.add-profile-switch-hotkey.label">+ Add Profile Switch Hotkey</button>
                     </div>
 
                     <div class="section">

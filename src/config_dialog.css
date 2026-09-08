@@ -1658,7 +1658,6 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     flex: 1;
 }
 
-
 /* Bindings ------------------------------------------------------------------
    Same label rail as .detail-form, so a binding row lines up with the forms on
    every other tab and every bound key shares one left edge to scan down. */

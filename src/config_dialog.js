@@ -1569,7 +1569,8 @@ async function createNewProfile() {
             if (result.success) {
                 showStatus(t('status.profileCreatedSuccess'), 'success');
                 await loadProfileList();
-                
+                await populateProfileSwitchHotkeys();
+
                 const profileSelect = document.getElementById('profile-select');
                 profileSelect.value = sanitizedName + '.json';
                 await switchProfile();
@@ -1614,7 +1615,8 @@ async function copyCurrentProfile() {
             if (result.success) {
                 showStatus(t('status.profileCopiedSuccess'), 'success');
                 await loadProfileList();
-                
+                await populateProfileSwitchHotkeys();
+
                 profileSelect.value = sanitizedName + '.json';
                 await switchProfile();
             } else {
@@ -3336,6 +3338,7 @@ function deleteCurrentProfile() {
                     profileSelect.value = 'default.json';
                     await switchProfile(false, true);
                     await loadProfileList();
+                    await populateProfileSwitchHotkeys();
 
                     showStatus(t('status.profileDeletedSuccess'), 'success');
                     setTimeout(() => hideStatus(), 3000);
@@ -6097,6 +6100,13 @@ async function getAvailableProfileNames() {
     return [];
 }
 
+// Ids can't contain the profile filename's dots/spaces verbatim, so rows and saveProfileSwitchHotkeys() both derive the field id from this.
+function profileHotkeyFieldId(profile) {
+    return profile.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+// One row per existing profile rather than a user-managed list - adding/deleting a profile just changes which rows populate() draws next.
+// Uses the same .binding/.binding-control markup as the fixed HOTKEY_BINDINGS rows so labels and fields share their column widths via alignBindingLabelColumns().
 async function populateProfileSwitchHotkeys() {
     const container = document.getElementById('profileSwitchHotkeysList');
     if (!container) return;
@@ -6104,68 +6114,40 @@ async function populateProfileSwitchHotkeys() {
     const profiles = await getAvailableProfileNames();
     const entries = currentGlobalSettings?.profileSwitchHotkeys || [];
 
-    container.innerHTML = '';
-    entries.forEach((entry, index) => {
-        // With no target set the <select> auto-selects its first option, so that's the entry's effective target.
-        const effectiveTarget = entry.targetProfile || profiles[0] || '';
-        const optionsHtml = profiles.map(p => {
-            const selected = p === effectiveTarget ? ' selected' : '';
-            return `<option value="${p}"${selected}>${escapeHtml(p.replace(/\.json$/, ''))}</option>`;
-        }).join('');
+    container.innerHTML = profiles.map(profile => {
+        const entry = entries.find(e => e.targetProfile === profile);
+        const displayName = profile.replace(/\.json$/, '');
+        const fieldId = `pshotkey_${profileHotkeyFieldId(profile)}_hotkey`;
+        const label = `${t('dynamic.profileSwitchHotkey.switchToLabel')} ${escapeHtml(displayName)}`;
 
-        const row = document.createElement('div');
-        row.className = 'field-row list-container';
-        row.innerHTML = `
-            <select id="pshotkey_${index}_target" aria-label="${escapeHtml(t('dynamic.profileSwitchHotkey.targetLabel'))}">${optionsHtml}</select>
-            ${renderHotkeyInputHtml(`pshotkey_${index}_hotkey`, vkHexToFriendly(entry.hotkey) || '', t('dynamic.profileSwitchHotkey.hotkeyPlaceholder'), ` aria-label="${escapeHtml(t('common.hotkeyLabel'))}"`)}
-            <button type="button" class="button-remove" id="pshotkey_${index}_removeBtn" onclick="confirmRemove('pshotkey_${index}_removeBtn', () => removeProfileSwitchHotkey(${index}))">${t('common.remove')}</button>
+        return `
+            <div class="binding" data-profile="${escapeHtml(profile)}">
+                <label for="${fieldId}">${label}</label>
+                <div class="binding-control">
+                    <div class="field-row">${renderHotkeyInputHtml(fieldId, vkHexToFriendly(entry?.hotkey) || '', t('dynamic.profileSwitchHotkey.hotkeyPlaceholder'))}</div>
+                </div>
+            </div>
         `;
-        container.appendChild(row);
-    });
+    }).join('');
 
+    alignBindingLabelColumns();
     updateHotkeyConflictHighlights();
 }
 
-function addProfileSwitchHotkey() {
-    if (!currentGlobalSettings) currentGlobalSettings = {};
-    if (!currentGlobalSettings.profileSwitchHotkeys) currentGlobalSettings.profileSwitchHotkeys = [];
-    saveProfileSwitchHotkeys();
+function saveProfileSwitchHotkeys() {
+    if (!currentGlobalSettings) return;
+    const container = document.getElementById('profileSwitchHotkeysList');
+    if (!container) return;
 
-    currentGlobalSettings.profileSwitchHotkeys.push({
-        hotkey: null,
-        targetProfile: ''
-    });
-    markAsChanged();
-
-    populateProfileSwitchHotkeys().then(() => {
-        const contentPanel = document.getElementById('content-panel');
-        if (contentPanel) {
-            setTimeout(() => {
-                contentPanel.scrollTop = contentPanel.scrollHeight;
-            }, 100);
+    const result = [];
+    container.querySelectorAll('[data-profile]').forEach(row => {
+        const profile = row.dataset.profile;
+        const hotkey = document.getElementById(`pshotkey_${profileHotkeyFieldId(profile)}_hotkey`);
+        if (hotkey && hotkey.value) {
+            result.push({ hotkey: hotkey.value, targetProfile: profile });
         }
     });
-}
-
-function removeProfileSwitchHotkey(index) {
-    if (currentGlobalSettings?.profileSwitchHotkeys && currentGlobalSettings.profileSwitchHotkeys[index]) {
-        saveProfileSwitchHotkeys();
-        currentGlobalSettings.profileSwitchHotkeys.splice(index, 1);
-        markAsChanged();
-        populateProfileSwitchHotkeys();
-    }
-}
-
-function saveProfileSwitchHotkeys() {
-    if (!currentGlobalSettings?.profileSwitchHotkeys) return;
-
-    currentGlobalSettings.profileSwitchHotkeys.forEach((entry, index) => {
-        const target = document.getElementById(`pshotkey_${index}_target`);
-        const hotkey = document.getElementById(`pshotkey_${index}_hotkey`);
-
-        if (target) entry.targetProfile = target.value || '';
-        if (hotkey) entry.hotkey = hotkey.value || null;
-    });
+    currentGlobalSettings.profileSwitchHotkeys = result;
 }
 
 function populateAppHotkeys() {
