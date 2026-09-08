@@ -98,11 +98,12 @@
     /* Hover/interaction only - state transitions (.section-active,
        .field-clamped, .main-app-status) keep their own slower timings. */
     --t-hover: 0.15s;
-    /* One ring for every focus-visible control. -inset is for the
-       div-acting-as-a-control rows (tab/accordion/roster), which stay inset
-       so the glow doesn't bleed over a neighboring edge. */
-    --focus-ring: 0 0 8px rgba(var(--color-accent-rgb), 0.35);
-    --focus-ring-inset: inset 0 0 8px rgba(var(--color-accent-rgb), 0.3);
+    /* One ring for every focus-visible control. Zero blur radius: a solid
+       ring, not a glow. -inset is for the div-acting-as-a-control rows
+       (tab/accordion/roster), which stay inset so it doesn't bleed over a
+       neighboring edge. */
+    --focus-ring: 0 0 0 2px rgba(var(--color-accent-rgb), 0.5);
+    --focus-ring-inset: inset 0 0 0 2px rgba(var(--color-accent-rgb), 0.45);
 
     color-scheme: dark;
 }
