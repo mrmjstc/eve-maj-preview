@@ -533,7 +533,7 @@
   "status.ultraPotatoFailedPrefix": "Error: ",
   "status.ultraPotatoPartialFailurePrefix": "Aplicado a {n}/{total}. Fallidos:",
   "status.unknownError": "Error desconocido",
-  "status.unrecognizedSettingsFile": "Este archivo no parece ser un archivo de configuración reconocido de EVE-X Preview, EVE-O Preview, EVE-APM Preview o EVE-Maj Preview.",
+  "status.unrecognizedSettingsFile": "Archivo de configuración no reconocido.",
   "status.webuiInitFailed": "Error al inicializar la conexión con WebUI",
   "status.windowPositionCancelled": "Cancelado",
   "status.windowPositionCleared": "Posiciones de ventana borradas",
