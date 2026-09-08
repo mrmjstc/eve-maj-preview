@@ -6503,14 +6503,6 @@ const NOTIFICATION_TYPES = [
     { key: 'Generic', category: 'general' }
 ];
 
-const NOTIFICATION_CATEGORY_LABEL_KEYS = {
-    fleet: 'notification.category.fleet.heading',
-    mining: 'notification.category.mining.heading',
-    combat: 'notification.category.combat-defense.heading',
-    navigation: 'notification.category.navigation-travel.heading',
-    general: 'notification.category.general.heading'
-};
-
 // Single source for the notification table's default swatch colors, falling back to '#FFFFFF'/'#606060' until defaultConfig loads. Border is an approximation - the true fallback is the Alert state's border color, which isn't wired up in this dialog yet.
 function notifDefaultTextColorHtml() {
     return defaultConfig?.thumbnail?.characterNameColor != null ? zigColorToHtml(defaultConfig.thumbnail.characterNameColor) : '#FFFFFF';
@@ -6519,147 +6511,195 @@ function notifDefaultBorderColorHtml() {
     return defaultConfig?.thumbnail?.inactiveBorderColor != null ? zigColorToHtml(defaultConfig.thumbnail.inactiveBorderColor) : '#606060';
 }
 
+// Which event type's detail panel is showing in the master-detail Event Alerts view.
+let selectedNotificationTypeIndex = 0;
+
+let notificationTypeSearchQuery = '';
+
+function onNotificationTypeSearchInput(query) {
+    notificationTypeSearchQuery = query.toLowerCase().trim();
+    applyNotificationTypeFilter();
+}
+
+function clearNotificationTypeSearch() {
+    const input = document.getElementById('notificationTypeSearchFilter');
+    if (input) input.value = '';
+    notificationTypeSearchQuery = '';
+    applyNotificationTypeFilter();
+}
+
+function applyNotificationTypeFilter() {
+    const container = document.getElementById('notificationTypesList');
+    if (!container) return;
+
+    container.querySelectorAll('.roster-row').forEach(row => {
+        const name = (row.querySelector('.roster-name')?.textContent || '').toLowerCase();
+        row.style.display = !notificationTypeSearchQuery || name.includes(notificationTypeSearchQuery) ? '' : 'none';
+    });
+}
+
 function populateNotificationTypes() {
     const container = document.getElementById('notificationTypesList');
     if (!container) return;
-    
-    container.innerHTML = '';
 
     if (!currentConfig.thumbnail) currentConfig.thumbnail = {};
     if (!currentConfig.thumbnail.notifications) currentConfig.thumbnail.notifications = {};
     if (!currentConfig.thumbnail.notifications.type_configs) {
         currentConfig.thumbnail.notifications.type_configs = {};
     }
-    
+
     const typeConfigs = currentConfig.thumbnail.notifications.type_configs;
 
-    const categoryRowCounts = {};
-    NOTIFICATION_TYPES.forEach((nt) => {
-        categoryRowCounts[nt.category] = (categoryRowCounts[nt.category] || 0) + 1;
-    });
-    let lastCategory = null;
+    if (selectedNotificationTypeIndex >= NOTIFICATION_TYPES.length) selectedNotificationTypeIndex = NOTIFICATION_TYPES.length - 1;
+    if (selectedNotificationTypeIndex < 0) selectedNotificationTypeIndex = 0;
 
-    NOTIFICATION_TYPES.forEach((notifType) => {
-        const isFirstInCategory = notifType.category !== lastCategory;
-        const isFirstCategoryOverall = lastCategory === null;
-        lastCategory = notifType.category;
+    const rosterRows = NOTIFICATION_TYPES.map((notifType, index) => {
+        const eventLabel = t('notification.' + notifType.key + '.label');
 
+        return `
+            <div class="roster-row ${index === selectedNotificationTypeIndex ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${index === selectedNotificationTypeIndex}" data-index="${index}" onclick="selectNotificationType(${index})">
+                <span class="roster-name" title="${eventLabel}">${eventLabel}</span>
+            </div>
+        `;
+    }).join('');
+
+    const detailPanels = NOTIFICATION_TYPES.map((notifType, index) => {
         const config = typeConfigs[notifType.key] || {};
-
-        const row = document.createElement('tr');
-        row.id = `notif_${notifType.key}_row`;
-        if (isFirstInCategory && !isFirstCategoryOverall) row.className = 'category-separator';
-
         const hasBorderColor = config.border_color != null;
         const borderColorHtml = hasBorderColor ? zigColorToHtml(config.border_color) : notifDefaultBorderColorHtml();
         const hasTextColor = config.text_color != null;
         const textColorHtml = hasTextColor ? zigColorToHtml(config.text_color) : notifDefaultTextColorHtml();
 
-        row.innerHTML = `
-            ${isFirstInCategory ? `<td rowspan="${categoryRowCounts[notifType.category]}" class="category-cell"><span class="category-cell-label">${t(NOTIFICATION_CATEGORY_LABEL_KEYS[notifType.category])}</span></td>` : ''}
-            <td class="event-name-cell">
-                <div class="event-name">${t('notification.' + notifType.key + '.label')}</div>
-            </td>
-            <td>
-                <label>
-                    <input type="checkbox" id="notif_${notifType.key}_enabled" ${config.enabled ? 'checked' : ''}
-                           onchange="toggleNotificationTypeEnabled('${notifType.key}')">
-                    <span class="label-body"></span>
-                </label>
-            </td>
-            <td>
-                <input type="number" id="notif_${notifType.key}_duration" min="0" max="60" step="0.1"
-                       value="${config.duration_ms && config.duration_ms > 0 ? config.duration_ms / 1000 : 5}">
-            </td>
-            <td>
-                <label>
-                    <input type="checkbox" id="notif_${notifType.key}_suppressFocused"
-                           ${config.suppress_when_focused ? 'checked' : ''}>
-                    <span class="label-body"></span>
-                </label>
-            </td>
-            <td>
-                <label>
-                    <input type="checkbox" id="notif_${notifType.key}_suppressClicked"
-                           ${config.suppress_when_clicked ? 'checked' : ''}>
-                    <span class="label-body"></span>
-                </label>
-            </td>
-            <td>
-                <input type="number" id="notif_${notifType.key}_throttle" min="0" max="300" step="1"
-                       title="Ignore repeat notifications of this type within this many seconds of the last one shown (0 = off)"
-                       value="${config.throttle_ms !== undefined ? config.throttle_ms / 1000 : 10}">
-            </td>
-            <td>
-                <label>
-                    <input type="checkbox" id="notif_${notifType.key}_tts"
-                           ${config.tts_enabled ? 'checked' : ''}>
-                    <span class="label-body"></span>
-                </label>
-            </td>
-            <td>
-                <div class="notif-cell-inline">
-                    <input type="checkbox" id="notif_${notifType.key}_textColorEnabled"
-                           title="Enable per-type notification text color override"
-                           ${hasTextColor ? 'checked' : ''}
-                           onchange="toggleNotifTextColor('${notifType.key}')">
-                    <div class="swatch-wrap">
-                        <input type="color" id="notif_${notifType.key}_textColor"
-                               value="${textColorHtml}"
-                               data-optional-color="true"
-                               data-default-color="${notifDefaultTextColorHtml()}"
-                               data-null-checkbox="notif_${notifType.key}_textColorEnabled"
-                               data-base-title="Notification text color while this notification is active"
-                               ${!hasTextColor ? 'data-cleared="true"' : ''}
-                               title="${hasTextColor ? 'Notification text color while this notification is active' : 'Not set - inheriting default text color'}"
-                               onchange="document.getElementById('notif_${notifType.key}_textColorEnabled').checked = true">
+        return `
+        <div class="detail-panel ${index === selectedNotificationTypeIndex ? 'active' : ''}" data-index="${index}">
+            <div class="detail-panel-header">
+                <span class="detail-panel-name-label">${t('notification.' + notifType.key + '.label')}</span>
+            </div>
+            <div class="detail-form">
+                <div class="detail-field detail-field-top">
+                    <label>${t('tab.notifications.table.notification.heading')}</label>
+                    <div class="detail-checks">
+                        <label title="${t('tab.notifications.table.enabled.title')}">
+                            <input type="checkbox" id="notif_${notifType.key}_enabled" ${config.enabled ? 'checked' : ''}
+                                   onchange="toggleNotificationTypeEnabled('${notifType.key}')">
+                            <span class="label-body">${t('tab.notifications.detail.enabled.heading')}</span>
+                        </label>
+                        <div class="field-row">
+                            <label for="notif_${notifType.key}_duration" title="${t('tab.notifications.table.duration.title')}">${t('tab.notifications.table.duration.heading')}</label>
+                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_duration" min="0" max="60" step="0.1"
+                                   value="${config.duration_ms && config.duration_ms > 0 ? config.duration_ms / 1000 : 5}">
+                        </div>
+                        <div class="field-row">
+                            <label for="notif_${notifType.key}_throttle" title="${t('tab.notifications.table.throttle.title')}">${t('tab.notifications.table.throttle.heading')}</label>
+                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_throttle" min="0" max="300" step="1"
+                                   title="${t('tab.notifications.table.throttle.title')}"
+                                   value="${config.throttle_ms !== undefined ? config.throttle_ms / 1000 : 10}">
+                        </div>
                     </div>
                 </div>
-            </td>
-            <td>
-                <label>
-                    <input type="checkbox" id="notif_${notifType.key}_showBorder"
-                           title="Draw a border while this notification is active"
-                           ${config.show_border ? 'checked' : ''}
-                           onchange="toggleNotifShowBorder('${notifType.key}')">
-                    <span class="label-body"></span>
-                </label>
-            </td>
-            <td>
-                <label>
-                    <input type="checkbox" id="notif_${notifType.key}_flashBorder"
-                           title="Blink the border on/off 4 times when the notification starts"
-                           ${config.flash_border ? 'checked' : ''}>
-                    <span class="label-body"></span>
-                </label>
-            </td>
-            <td>
-                <div class="notif-cell-inline">
-                    <input type="checkbox" id="notif_${notifType.key}_borderColorEnabled"
-                           title="Enable per-type border color override"
-                           ${hasBorderColor ? 'checked' : ''}
-                           onchange="toggleNotifBorderColor('${notifType.key}')">
-                    <div class="swatch-wrap">
-                        <input type="color" id="notif_${notifType.key}_borderColor"
-                               value="${borderColorHtml}"
-                               data-optional-color="true"
-                               data-default-color="${notifDefaultBorderColorHtml()}"
-                               data-null-checkbox="notif_${notifType.key}_borderColorEnabled"
-                               data-base-title="Border color while this notification is active"
-                               ${!hasBorderColor ? 'data-cleared="true"' : ''}
-                               title="${hasBorderColor ? 'Border color while this notification is active' : 'Not set - inheriting default border color'}"
-                               onchange="document.getElementById('notif_${notifType.key}_borderColorEnabled').checked = true">
+                <div class="detail-field detail-field-top">
+                    <label>${t('dynamic.character.behaviorHeading')}</label>
+                    <div class="detail-checks">
+                        <label title="${t('tab.notifications.table.suppress-focused.title')}">
+                            <input type="checkbox" id="notif_${notifType.key}_suppressFocused"
+                                   ${config.suppress_when_focused ? 'checked' : ''}>
+                            <span class="label-body">${t('tab.notifications.detail.suppress-focused.heading')}</span>
+                        </label>
+                        <label title="${t('tab.notifications.table.suppress-clicked.title')}">
+                            <input type="checkbox" id="notif_${notifType.key}_suppressClicked"
+                                   ${config.suppress_when_clicked ? 'checked' : ''}>
+                            <span class="label-body">${t('tab.notifications.detail.suppress-clicked.heading')}</span>
+                        </label>
+                        <label title="${t('tab.notifications.table.speech.title')}">
+                            <input type="checkbox" id="notif_${notifType.key}_tts"
+                                   ${config.tts_enabled ? 'checked' : ''}>
+                            <span class="label-body">${t('tab.notifications.detail.speech.heading')}</span>
+                        </label>
+                        <label title="${t('tab.notifications.table.border-show.title')}">
+                            <input type="checkbox" id="notif_${notifType.key}_showBorder"
+                                   ${config.show_border ? 'checked' : ''}
+                                   onchange="toggleNotifShowBorder('${notifType.key}')">
+                            <span class="label-body">${t('tab.notifications.detail.border-show.heading')}</span>
+                        </label>
+                        <label title="${t('tab.notifications.table.border-flash.title')}">
+                            <input type="checkbox" id="notif_${notifType.key}_flashBorder"
+                                   ${config.flash_border ? 'checked' : ''}>
+                            <span class="label-body">${t('tab.notifications.detail.border-flash.heading')}</span>
+                        </label>
                     </div>
                 </div>
-            </td>
-        `;
-        
-        container.appendChild(row);
+                <div class="detail-field detail-field-top">
+                    <label>${t('dynamic.character.borderColorsHeading')}</label>
+                    <div class="detail-checks detail-color-rows">
+                        <div class="color-row">
+                            <span class="label-body">${t('tab.notifications.detail.text-color.heading')}</span>
+                            <div class="notif-cell-inline">
+                                <input type="checkbox" id="notif_${notifType.key}_textColorEnabled"
+                                       title="Enable per-type notification text color override"
+                                       ${hasTextColor ? 'checked' : ''}
+                                       onchange="toggleNotifTextColor('${notifType.key}')">
+                                <div class="swatch-wrap">
+                                    <input type="color" id="notif_${notifType.key}_textColor"
+                                           value="${textColorHtml}"
+                                           data-optional-color="true"
+                                           data-default-color="${notifDefaultTextColorHtml()}"
+                                           data-null-checkbox="notif_${notifType.key}_textColorEnabled"
+                                           data-base-title="Notification text color while this notification is active"
+                                           ${!hasTextColor ? 'data-cleared="true"' : ''}
+                                           title="${hasTextColor ? 'Notification text color while this notification is active' : 'Not set - inheriting default text color'}"
+                                           onchange="document.getElementById('notif_${notifType.key}_textColorEnabled').checked = true">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="color-row">
+                            <span class="label-body">${t('tab.notifications.detail.border-color.heading')}</span>
+                            <div class="notif-cell-inline">
+                                <input type="checkbox" id="notif_${notifType.key}_borderColorEnabled"
+                                       title="Enable per-type border color override"
+                                       ${hasBorderColor ? 'checked' : ''}
+                                       onchange="toggleNotifBorderColor('${notifType.key}')">
+                                <div class="swatch-wrap">
+                                    <input type="color" id="notif_${notifType.key}_borderColor"
+                                           value="${borderColorHtml}"
+                                           data-optional-color="true"
+                                           data-default-color="${notifDefaultBorderColorHtml()}"
+                                           data-null-checkbox="notif_${notifType.key}_borderColorEnabled"
+                                           data-base-title="Border color while this notification is active"
+                                           ${!hasBorderColor ? 'data-cleared="true"' : ''}
+                                           title="${hasBorderColor ? 'Border color while this notification is active' : 'Not set - inheriting default border color'}"
+                                           onchange="document.getElementById('notif_${notifType.key}_borderColorEnabled').checked = true">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    }).join('');
 
-        toggleNotificationTypeEnabled(notifType.key);
-    });
+    container.innerHTML = `
+        <div class="master-detail">
+            <div class="roster" role="tablist" aria-orientation="vertical">${rosterRows}</div>
+            <div class="detail-stack">${detailPanels}</div>
+        </div>
+    `;
 
+    NOTIFICATION_TYPES.forEach((notifType) => toggleNotificationTypeEnabled(notifType.key));
     toggleNotificationOptions();
+    applyNotificationTypeFilter();
+}
+
+function selectNotificationType(index) {
+    selectedNotificationTypeIndex = index;
+    document.querySelectorAll('#notificationTypesList .roster-row').forEach(row => {
+        const isSelected = parseInt(row.dataset.index, 10) === index;
+        row.classList.toggle('selected', isSelected);
+        row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+    });
+    document.querySelectorAll('#notificationTypesList .detail-panel').forEach(panel => {
+        panel.classList.toggle('active', parseInt(panel.dataset.index, 10) === index);
+    });
 }
 
 function toggleNotificationTypeEnabled(typeKey) {
@@ -7568,7 +7608,7 @@ function toggleAutoMinimizeOptions() {
 function toggleNotificationOptions() {
     const notificationsEnabled = document.getElementById('notificationsEnabled');
     const notificationOptions = document.getElementById('notificationOptions');
-    const notificationTypesTable = document.getElementById('notificationTypesTable');
+    const notificationTypesContainer = document.getElementById('notificationTypesList');
     // Text-to-Speech is its own section now, but it still only means something
     // while notifications are firing, so it dims with the rest - same pattern
     // as Combat/Mining's Alerts sections depending on their own Enable checkbox.
@@ -7580,8 +7620,8 @@ function toggleNotificationOptions() {
         notificationOptions.classList.toggle('is-disabled', !isEnabled);
         ttsSection?.classList.toggle('is-disabled', !isEnabled);
 
-        if (notificationTypesTable) {
-            const inputs = notificationTypesTable.querySelectorAll('input');
+        if (notificationTypesContainer) {
+            const inputs = notificationTypesContainer.querySelectorAll('input');
             inputs.forEach(input => {
                 input.disabled = !isEnabled;
             });
@@ -8175,9 +8215,8 @@ function filterSettings(query) {
 // input[type="color"] (or its .swatch-wrap, where one exists) in a
 // .color-with-hex row at render time; a MutationObserver catches ones created
 // later by the various populate* functions, same as the picker needs no extra
-// wiring for dynamic inputs. Skips the notification table and the overlay
-// popover's own color field - neither has room for a second control next to
-// the swatch (a ~26px table cell, a ~150px popover column).
+// wiring for dynamic inputs. Skips the overlay popover's own color field -
+// its ~150px column has no room for a second control next to the swatch.
 //
 // syncSwatchHexInput is also called directly from setFieldValue() below -
 // like the range slider's mirrored span, the browser only fires 'input' for
@@ -8213,7 +8252,7 @@ function syncSwatchHexInput(color) {
     }
 
     function attach(color) {
-        if (color.dataset.hexAttached || color.closest('.notification-types-table, .overlay-popover')) return;
+        if (color.dataset.hexAttached || color.closest('.overlay-popover')) return;
         color.dataset.hexAttached = 'true';
 
         const host = color.closest('.swatch-wrap') || color;
