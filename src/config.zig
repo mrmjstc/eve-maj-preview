@@ -29,7 +29,7 @@ pub const PROFILES_DIR = "profiles";
 pub const DEFAULT_PROFILE = "default.json";
 pub const GLOBAL_SETTINGS_FILE = "profiles/global.settings.json";
 const DEFAULT_FONT_NAME = "Segoe UI";
-const MAX_CONFIG_FILE_SIZE: u64 = 30 * 1024;
+const MAX_CONFIG_FILE_SIZE: u64 = 300 * 1024;
 
 /// Identifies a profile JSON as this app's own format, distinct from its release version; bump PROFILE_FORMAT_VERSION only when the schema change matters for parsing/migration.
 pub const PROFILE_FORMAT_IDENTIFIER = "eve-maj-preview";
