@@ -4614,35 +4614,96 @@ function syncAccordionHeaderName(nameFieldId, headerFieldId, fallbackPrefix, ind
     }
 }
 
+// Which filter's detail panel is showing in the master-detail window filters view.
+let selectedWindowFilterIndex = 0;
+
 function populateWindowFilters() {
     const container = document.getElementById('windowFiltersList');
     if (!container) return;
 
-    container.innerHTML = '';
     const filters = currentConfig.windowFilters || [];
+    // The default EVE filter is implicit and not user-editable.
+    const editableIndexes = filters.reduce((acc, f, i) => { if (f.name !== 'EVE Online') acc.push(i); return acc; }, []);
 
-    filters.forEach((filter, index) => {
-        // The default EVE filter is implicit and not user-editable.
-        if (filter.name === 'EVE Online') return;
-
-        const row = document.createElement('div');
-        // The picker rides under its row, so each entry keeps its two parts together.
-        row.innerHTML = `
-            <div class="field-row list-container">
-                <label title="${escapeHtml(t('common.enabledLabel'))}">
-                    <input type="checkbox" id="filter_${index}_enabled" ${filter.enabled ? 'checked' : ''} aria-label="${escapeHtml(t('common.enabledLabel'))}">
-                    <span class="label-body"></span>
-                </label>
-                <input type="text" id="filter_${index}_name" value="${escapeHtml(filter.name || '')}" placeholder="${t('dynamic.windowFilter.namePlaceholder')}" aria-label="${escapeHtml(t('dynamic.windowFilter.nameLabel'))}">
-                <input type="text" id="filter_${index}_classes" value="${escapeHtml((filter.class_names || []).join(', '))}" placeholder="${t('dynamic.windowFilter.classesPlaceholder')}" aria-label="${escapeHtml(t('dynamic.windowFilter.classesLabel'))}">
-                <input type="text" id="filter_${index}_exes" value="${escapeHtml((filter.executable_names || []).join(', '))}" placeholder="${t('dynamic.windowFilter.exesPlaceholder')}" aria-label="${escapeHtml(t('dynamic.windowFilter.exesLabel'))}">
-                <button type="button" id="filter_${index}_pickBtn" onclick="pickRunningWindowForFilter(${index})" class="btn-nowrap">${t('button.pick-running-window.label')}</button>
-                <button type="button" class="button-remove" id="filter_${index}_removeBtn" onclick="confirmRemove('filter_${index}_removeBtn', () => removeWindowFilter(${index}))">${t('common.remove')}</button>
+    if (editableIndexes.length === 0) {
+        container.innerHTML = `
+            <div class="master-detail">
+                <div class="roster">
+                    <div class="roster-row roster-row-empty">
+                        <span class="hint">${t('tab.general.section.window-filters.empty-roster')}</span>
+                    </div>
+                </div>
+                <div class="detail-stack">
+                    <p class="hint">${t('tab.general.section.window-filters.empty-detail')}</p>
+                </div>
             </div>
-            <select id="filter_${index}_picker" class="picker-select" onchange="applyPickedWindowForFilter(${index})"></select>
         `;
-        container.appendChild(row);
-    });
+        return;
+    }
+
+    if (!editableIndexes.includes(selectedWindowFilterIndex)) selectedWindowFilterIndex = editableIndexes[0];
+
+    const rosterRows = editableIndexes.map(index => {
+        const filter = filters[index];
+        const displayName = filter.name || `${t('dynamic.windowFilter.defaultNewName')} ${index + 1}`;
+        return `
+            <div class="roster-row ${index === selectedWindowFilterIndex ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${index === selectedWindowFilterIndex}" data-index="${index}" onclick="selectWindowFilter(${index})">
+                <span class="roster-name" id="filter_${index}_header_name">${escapeHtml(displayName)}</span>
+                ${filter.enabled === false ? `<span class="roster-hotkey-badge">${t('dynamic.windowFilter.disabledBadge')}</span>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    const detailPanels = editableIndexes.map(index => {
+        const filter = filters[index];
+        return `
+            <div class="detail-panel ${index === selectedWindowFilterIndex ? 'active' : ''}" data-index="${index}">
+                <div class="detail-panel-header">
+                    <label class="detail-panel-name-label" for="filter_${index}_name">${t('dynamic.windowFilter.nameLabel')}</label>
+                    <input type="text" class="detail-panel-name-input" id="filter_${index}_name" value="${escapeHtml(filter.name || '')}" placeholder="${t('dynamic.windowFilter.namePlaceholder')}" oninput="updateWindowFilterHeaderName(${index})">
+                    <button type="button" id="filter_${index}_removeBtn" onclick="confirmRemove('filter_${index}_removeBtn', () => removeWindowFilter(${index}))">${t('common.remove')}</button>
+                </div>
+                <label>
+                    <input type="checkbox" id="filter_${index}_enabled" ${filter.enabled ? 'checked' : ''}>
+                    <span class="label-body">${t('common.enabledLabel')}</span>
+                </label>
+                <div class="detail-form">
+                    <div class="detail-field">
+                        <label for="filter_${index}_classes">${t('dynamic.windowFilter.classesLabel')}</label>
+                        <input type="text" id="filter_${index}_classes" value="${escapeHtml((filter.class_names || []).join(', '))}" placeholder="${t('dynamic.windowFilter.classesPlaceholder')}">
+                    </div>
+                    <div class="detail-field">
+                        <label for="filter_${index}_exes">${t('dynamic.windowFilter.exesLabel')}</label>
+                        <input type="text" id="filter_${index}_exes" value="${escapeHtml((filter.executable_names || []).join(', '))}" placeholder="${t('dynamic.windowFilter.exesPlaceholder')}">
+                    </div>
+                    <div class="detail-field">
+                        <label>${t('dynamic.windowFilter.detectLabel')}</label>
+                        <button type="button" id="filter_${index}_pickBtn" onclick="pickRunningWindowForFilter(${index})" class="full-width-btn">${t('button.pick-running-window.label')}</button>
+                    </div>
+                </div>
+                <select id="filter_${index}_picker" class="picker-select" onchange="applyPickedWindowForFilter(${index})"></select>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="master-detail">
+            <div class="roster" role="tablist" aria-orientation="vertical">${rosterRows}</div>
+            <div class="detail-stack">${detailPanels}</div>
+        </div>
+    `;
+
+    // innerHTML above replaced the elements the last measuring pass sized.
+    alignDetailPanelNameLabel('windowFiltersList');
+}
+
+function updateWindowFilterHeaderName(index) {
+    syncAccordionHeaderName(`filter_${index}_name`, `filter_${index}_header_name`, t('dynamic.windowFilter.defaultNewName'), index);
+}
+
+function selectWindowFilter(index) {
+    selectedWindowFilterIndex = index;
+    selectMasterDetailRow('windowFiltersList', index);
 }
 
 function addWindowFilter() {
@@ -4656,6 +4717,8 @@ function addWindowFilter() {
         executable_names: []
     });
     markAsChanged();
+
+    selectedWindowFilterIndex = currentConfig.windowFilters.length - 1;
     populateWindowFilters();
 }
 
@@ -4666,6 +4729,7 @@ function removeWindowFilter(index) {
         currentConfig.windowFilters.splice(index, 1);
         pendingCharacterNames.delete(removedName.trim().toLowerCase());
         removeCharacterByName(removedName);
+        if (selectedWindowFilterIndex >= index) selectedWindowFilterIndex = Math.max(0, selectedWindowFilterIndex - 1);
         markAsChanged();
         populateWindowFilters();
     }
@@ -4707,7 +4771,7 @@ async function pickRunningWindowFor(idPrefix, index) {
         select.innerHTML = `<option value="">${escapeHtml(t('dynamic.windowFilter.pickerDefaultOption'))}</option>` +
             windows.map((w, i) => `<option value="${i}">${escapeHtml(w.title)} — ${escapeHtml(w.exe)}</option>`).join('');
         select.dataset.windows = JSON.stringify(windows);
-        select.style.display = '';
+        select.style.display = 'block';
     } catch (error) {
         logError('Failed to scan running windows:', error);
         showStatus(t('status.scanClientsFailedPrefix') + error.message, 'error');
@@ -4741,6 +4805,7 @@ function applyPickedWindowForFilter(index) {
     const nameInput = document.getElementById(`filter_${index}_name`);
     const friendlyName = chosen.exe.replace(/\.exe$/i, '');
     if (nameInput) nameInput.value = friendlyName;
+    updateWindowFilterHeaderName(index);
 
     pendingCharacterNames.set(friendlyName.trim().toLowerCase(), friendlyName);
 }

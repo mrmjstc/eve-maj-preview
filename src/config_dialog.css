@@ -1859,6 +1859,7 @@ label + .binding-list {
 .picker-select {
     display: none;
     width: 100%;
+    margin-top: var(--space-2);
     margin-bottom: var(--space-2);
 }
 
@@ -2474,12 +2475,14 @@ input[type="range"]::-moz-range-thumb {
    grid's column gap too, or the field lands a few pixels left of the ones
    below. */
 #hotkeyGroupsList .detail-panel-header,
-#charactersList .detail-panel-header {
+#charactersList .detail-panel-header,
+#windowFiltersList .detail-panel-header {
     gap: var(--detail-label-gap);
 }
 
 #hotkeyGroupsList .detail-panel-header,
 #charactersList .detail-panel-header,
+#windowFiltersList .detail-panel-header,
 #notificationTypesList .detail-panel-header {
     border-bottom: none;
     padding-bottom: 0;
@@ -2558,6 +2561,12 @@ input[type="range"]::-moz-range-thumb {
 .detail-form input,
 .detail-form select {
     margin-bottom: 0;
+}
+
+/* .full-width-btn's own margin-top is meant to gap it below a list; here it's
+   just another grid row, so the grid's own gap already provides that. */
+.detail-form .full-width-btn {
+    margin-top: 0;
 }
 
 /* Rows whose control side runs taller than one line: the label sits on the
@@ -2663,6 +2672,13 @@ input[type="range"]::-moz-range-thumb {
    among other Notifications sections rather than alone filling its own tab. */
 #notificationTypesList .master-detail {
     height: 640px;
+}
+
+/* Same reasoning as #notificationTypesList above - Window Filters is one of
+   several General sections, not a full tab, and has a much shorter detail
+   form (just Enabled, Window Classes, Executable Names, Detect). */
+#windowFiltersList .master-detail {
+    height: 220px;
 }
 
 /* Sized to its widest event name (like #tabs-sidebar) instead of a guessed
