@@ -4687,9 +4687,9 @@ function saveWindowFilters() {
     });
 }
 
-async function pickRunningWindowForFilter(index) {
-    const btn = document.getElementById(`filter_${index}_pickBtn`);
-    const select = document.getElementById(`filter_${index}_picker`);
+async function pickRunningWindowFor(idPrefix, index) {
+    const btn = document.getElementById(`${idPrefix}_${index}_pickBtn`);
+    const select = document.getElementById(`${idPrefix}_${index}_picker`);
     if (btn) { btn.disabled = true; btn.textContent = t('status.scanningLabel'); }
 
     try {
@@ -4716,12 +4716,22 @@ async function pickRunningWindowForFilter(index) {
     }
 }
 
-function applyPickedWindowForFilter(index) {
-    const select = document.getElementById(`filter_${index}_picker`);
-    if (!select || select.value === '') return;
+function pickRunningWindowForFilter(index) {
+    return pickRunningWindowFor('filter', index);
+}
+
+function resolvePickedWindow(idPrefix, index) {
+    const select = document.getElementById(`${idPrefix}_${index}_picker`);
+    if (!select || select.value === '') return null;
     const windows = JSON.parse(select.dataset.windows || '[]');
     const chosen = windows[parseInt(select.value, 10)];
-    if (!chosen) return;
+    return chosen ? { select, chosen } : null;
+}
+
+function applyPickedWindowForFilter(index) {
+    const picked = resolvePickedWindow('filter', index);
+    if (!picked) return;
+    const { chosen } = picked;
 
     const classesInput = document.getElementById(`filter_${index}_classes`);
     const exesInput = document.getElementById(`filter_${index}_exes`);
@@ -4773,6 +4783,15 @@ function populateSystemColors() {
     });
 }
 
+function scrollContentPanelToBottom() {
+    const contentPanel = document.getElementById('content-panel');
+    if (contentPanel) {
+        setTimeout(() => {
+            contentPanel.scrollTop = contentPanel.scrollHeight;
+        }, 100);
+    }
+}
+
 function addSystemColor() {
     if (!currentConfig.systemColors) currentConfig.systemColors = [];
     saveSystemColors();
@@ -4780,13 +4799,7 @@ function addSystemColor() {
     markAsChanged();
     populateSystemColors();
     scheduleThumbnailPreview();
-
-    const contentPanel = document.getElementById('content-panel');
-    if (contentPanel) {
-        setTimeout(() => {
-            contentPanel.scrollTop = contentPanel.scrollHeight;
-        }, 100);
-    }
+    scrollContentPanelToBottom();
 }
 
 function removeSystemColor(index) {
@@ -5323,16 +5336,20 @@ function updateCharacterHeaderName(index) {
 }
 
 // Every character's fields stay mounted (just hidden) so hotkey-conflict detection, which scans all input.hotkey-input elements at once, keeps seeing every character.
-function selectCharacter(index) {
-    selectedCharacterIndex = index;
-    document.querySelectorAll('#charactersList .roster-row').forEach(row => {
+function selectMasterDetailRow(containerId, index) {
+    document.querySelectorAll(`#${containerId} .roster-row`).forEach(row => {
         const isSelected = parseInt(row.dataset.index, 10) === index;
         row.classList.toggle('selected', isSelected);
         row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
     });
-    document.querySelectorAll('#charactersList .detail-panel').forEach(panel => {
+    document.querySelectorAll(`#${containerId} .detail-panel`).forEach(panel => {
         panel.classList.toggle('active', parseInt(panel.dataset.index, 10) === index);
     });
+}
+
+function selectCharacter(index) {
+    selectedCharacterIndex = index;
+    selectMasterDetailRow('charactersList', index);
 }
 
 function generateUniqueColor(index) {
@@ -5715,14 +5732,7 @@ function populateHotkeyGroups() {
 // Every group's fields stay mounted (just hidden) so hotkey-conflict detection, which scans all input.hotkey-input elements at once, keeps seeing every group.
 function selectHotkeyGroup(index) {
     selectedHotkeyGroupIndex = index;
-    document.querySelectorAll('#hotkeyGroupsList .roster-row').forEach(row => {
-        const isSelected = parseInt(row.dataset.index, 10) === index;
-        row.classList.toggle('selected', isSelected);
-        row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-    });
-    document.querySelectorAll('#hotkeyGroupsList .detail-panel').forEach(panel => {
-        panel.classList.toggle('active', parseInt(panel.dataset.index, 10) === index);
-    });
+    selectMasterDetailRow('hotkeyGroupsList', index);
     // This group's list could only be measured once its panel became the visible one.
     fitHotkeyGroupCharsList(index);
 }
@@ -6192,13 +6202,7 @@ function addAppHotkey() {
     markAsChanged();
 
     populateAppHotkeys();
-
-    const contentPanel = document.getElementById('content-panel');
-    if (contentPanel) {
-        setTimeout(() => {
-            contentPanel.scrollTop = contentPanel.scrollHeight;
-        }, 100);
-    }
+    scrollContentPanelToBottom();
 }
 
 function removeAppHotkey(index) {
@@ -6222,41 +6226,14 @@ function saveAppHotkeys() {
     });
 }
 
-async function pickRunningWindowForAppHotkey(index) {
-    const btn = document.getElementById(`apphotkey_${index}_pickBtn`);
-    const select = document.getElementById(`apphotkey_${index}_picker`);
-    if (btn) { btn.disabled = true; btn.textContent = t('status.scanningLabel'); }
-
-    try {
-        let windows = [];
-        if (typeof webui !== 'undefined') {
-            const result = await webui.call('getRunningWindows');
-            windows = JSON.parse(result);
-        }
-
-        if (windows.length === 0) {
-            showStatus(t('status.noRunningWindows'), 'error');
-            return;
-        }
-
-        select.innerHTML = `<option value="">${escapeHtml(t('dynamic.windowFilter.pickerDefaultOption'))}</option>` +
-            windows.map((w, i) => `<option value="${i}">${escapeHtml(w.title)} — ${escapeHtml(w.exe)}</option>`).join('');
-        select.dataset.windows = JSON.stringify(windows);
-        select.style.display = '';
-    } catch (error) {
-        logError('Failed to scan running windows:', error);
-        showStatus(t('status.scanClientsFailedPrefix') + error.message, 'error');
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = t('button.pick-running-window.label'); }
-    }
+function pickRunningWindowForAppHotkey(index) {
+    return pickRunningWindowFor('apphotkey', index);
 }
 
 function applyPickedWindowForAppHotkey(index) {
-    const select = document.getElementById(`apphotkey_${index}_picker`);
-    if (!select || select.value === '') return;
-    const windows = JSON.parse(select.dataset.windows || '[]');
-    const chosen = windows[parseInt(select.value, 10)];
-    if (!chosen) return;
+    const picked = resolvePickedWindow('apphotkey', index);
+    if (!picked) return;
+    const { select, chosen } = picked;
 
     const exeInput = document.getElementById(`apphotkey_${index}_exe`);
     if (exeInput) exeInput.value = chosen.exe;
@@ -6314,13 +6291,7 @@ function addUrlHotkey(presetUrl) {
     markAsChanged();
 
     populateUrlHotkeys();
-
-    const contentPanel = document.getElementById('content-panel');
-    if (contentPanel) {
-        setTimeout(() => {
-            contentPanel.scrollTop = contentPanel.scrollHeight;
-        }, 100);
-    }
+    scrollContentPanelToBottom();
 }
 
 function removeUrlHotkey(index) {
@@ -6678,14 +6649,7 @@ function populateNotificationTypes() {
 
 function selectNotificationType(index) {
     selectedNotificationTypeIndex = index;
-    document.querySelectorAll('#notificationTypesList .roster-row').forEach(row => {
-        const isSelected = parseInt(row.dataset.index, 10) === index;
-        row.classList.toggle('selected', isSelected);
-        row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-    });
-    document.querySelectorAll('#notificationTypesList .detail-panel').forEach(panel => {
-        panel.classList.toggle('active', parseInt(panel.dataset.index, 10) === index);
-    });
+    selectMasterDetailRow('notificationTypesList', index);
 }
 
 function toggleNotificationTypeEnabled(typeKey) {
@@ -7685,44 +7649,32 @@ function toggleTravelOptions() {
     countRow.style.display = isPercent ? 'none' : '';
 }
 
-async function browseChatlogDir() {
-    console.log('Browsing for chatlog directory...');
-    
+async function browseLogDir(webuiMethod, inputId, label) {
+    console.log(`Browsing for ${label} directory...`);
+
     try {
         if (typeof webui !== 'undefined') {
-            const result = await webui.call('browseChatlogDir');
+            const result = await webui.call(webuiMethod);
             if (result && result !== '') {
-                const chatlogDirInput = document.getElementById('chatlogDir');
-                if (chatlogDirInput) {
-                    chatlogDirInput.value = result;
+                const input = document.getElementById(inputId);
+                if (input) {
+                    input.value = result;
                 }
             }
         } else {
-            logWarn('WebUI not available for browsing chatlog directory');
+            logWarn(`WebUI not available for browsing ${label} directory`);
         }
     } catch (error) {
-        logError('Failed to browse chatlog directory:', error);
+        logError(`Failed to browse ${label} directory:`, error);
     }
 }
 
-async function browseGamelogDir() {
-    console.log('Browsing for gamelog directory...');
-    
-    try {
-        if (typeof webui !== 'undefined') {
-            const result = await webui.call('browseGamelogDir');
-            if (result && result !== '') {
-                const gamelogDirInput = document.getElementById('gamelogDir');
-                if (gamelogDirInput) {
-                    gamelogDirInput.value = result;
-                }
-            }
-        } else {
-            logWarn('WebUI not available for browsing gamelog directory');
-        }
-    } catch (error) {
-        logError('Failed to browse gamelog directory:', error);
-    }
+function browseChatlogDir() {
+    return browseLogDir('browseChatlogDir', 'chatlogDir', 'chatlog');
+}
+
+function browseGamelogDir() {
+    return browseLogDir('browseGamelogDir', 'gamelogDir', 'gamelog');
 }
 
 function saveNotificationTypes() {
