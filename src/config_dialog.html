@@ -524,6 +524,7 @@
                             <h3 data-i18n="tab.thumbnails.section.position-parameters.heading">Position Parameters</h3>
                             <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
                         </div>
+                        <p class="hint" data-i18n="tab.thumbnails.section.position-parameters.hint">Where new thumbnails spawn and how far apart they're spaced.</p>
 
                         <div class="binding-list">
                             <div class="binding">
@@ -535,7 +536,6 @@
                                 <input type="number" id="startY">
                             </div>
                         </div>
-                        <p class="hint" data-i18n="tab.thumbnails.section.spawn-coordinates.hint">Initial spawn coordinates</p>
 
                         <div class="binding-list">
                             <div class="binding">
@@ -554,7 +554,6 @@
                                 <input type="number" id="spacingY" min="0" max="500">
                             </div>
                         </div>
-                        <p class="hint" data-i18n="tab.thumbnails.section.spacing-override.hint">Override horizontal/vertical spacing (leave 0 to use main spacing)</p>
                     </div>
 
                     <div class="section advanced-section">
@@ -578,7 +577,6 @@
                                 </select>
                             </div>
                         </div>
-                        <p class="hint" data-i18n="field.layoutMode.hint">How thumbnails are arranged: Grid, Stack, List, Overlay (all in one spot), or Custom (freely positioned, ignores the settings below)</p>
 
                         <div class="binding-list">
                             <div class="binding">
@@ -595,7 +593,6 @@
                                 </select>
                             </div>
                         </div>
-                        <p class="hint" data-i18n="field.layoutDirection.hint">Fill order for Grid and List layouts</p>
 
                         <div class="binding-list">
                             <div class="binding">
@@ -607,7 +604,6 @@
                                 <input type="number" id="gridRows" min="1" max="20">
                             </div>
                         </div>
-                        <p class="hint" data-i18n="tab.thumbnails.section.grid-dimensions.hint">Grid dimensions when Layout Mode is Grid</p>
 
                         <div class="binding-list">
                             <div class="binding">
@@ -615,7 +611,6 @@
                                 <input type="number" id="stackOffset" min="-500" max="500">
                             </div>
                         </div>
-                        <p class="hint" data-i18n="field.stackOffset.hint">Pixel offset between thumbnails when Layout Mode is a Stack</p>
 
                         <div class="binding-list">
                             <div class="binding">
@@ -623,7 +618,6 @@
                                 <select id="stackAlignment" class="position-options"></select>
                             </div>
                         </div>
-                        <p class="hint" data-i18n="field.stackAlignment.hint">Alignment of thumbnails when Layout Mode is a Stack</p>
                     </div>
 
                     <div class="section advanced-section">
@@ -1048,8 +1042,6 @@
                             <span class="label-body" data-i18n="field.autoMovePositionEnabled.label">Automatically Move to Saved Position on Login</span>
                         </label>
 
-                        <h4 data-i18n="tab.behavior.section.global-window-position.heading">Global Window Position</h4>
-
                         <div class="field-row">
                             <select id="windowPositionSourceSelect" title="Copy Position From" data-i18n-title="field.windowPositionSourceSelect.label"></select>
                             <button type="button" class="button-icon" onclick="refreshWindowPositionSourceOptions()" title="Refresh" data-i18n-title="common.refreshTitle">↻</button>
@@ -1277,8 +1269,6 @@
                                     <input type="number" id="notifCycleRetention" min="5" max="600" step="1">
                                 </div>
                             </div>
-                            <p class="hint" data-i18n="field.notifSuppressClickDuration.hint">How long "Clicked" suppression lasts after switching to a character.</p>
-                            <p class="hint" data-i18n="field.notifCycleRetention.hint">How long a character stays cyclable via the Notified Characters hotkeys after its last notification.</p>
                         </div>
                     </div>
 
@@ -1453,7 +1443,6 @@
                                     <input type="number" id="travelWindowSeconds" min="1" max="3600">
                                 </div>
                             </div>
-                            <p class="hint" data-i18n="field.travelWindowSeconds.hint">How long a straggler has to jump into the group's current system before being flagged as left behind</p>
 
                             <div class="binding-list">
                                 <div class="binding">
@@ -1464,7 +1453,6 @@
                                     </select>
                                 </div>
                             </div>
-                            <p class="hint" data-i18n="field.travelThresholdMode.hint">How many characters must already share a system before stragglers there count as "left behind" - avoids false alerts from a single character jumping around alone</p>
 
                             <div id="travelThresholdPercentRow" class="binding-list">
                                 <div class="binding">
@@ -1513,37 +1501,37 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
 
-                            <div class="advanced-section">
-                                <h4 data-i18n="tab.chatlog.section.polling-performance.heading">Polling &amp; Performance</h4>
+                    <div class="section advanced-section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.chatlog.section.polling-performance.heading">Polling &amp; Performance</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
 
-                                <label>
-                                    <input type="checkbox" id="chatlogUseThreading">
-                                    <span class="label-body" data-i18n="field.chatlogUseThreading.label">Use Threading</span>
-                                </label>
-                                <div class="binding-list">
-                                    <div class="binding">
-                                        <label for="chatlogPollInterval" data-i18n="field.chatlogPollInterval.label">Poll Interval (s)</label>
-                                        <input type="number" id="chatlogPollInterval" min="0.1" max="5" step="0.1">
-                                    </div>
-                                </div>
-                                <p class="hint" data-i18n="field.chatlogPollInterval.hint">How often to check each log file for new lines. Lower is more responsive but uses more CPU; clamped to 0.1-5s.</p>
+                        <label>
+                            <input type="checkbox" id="chatlogUseThreading">
+                            <span class="label-body" data-i18n="field.chatlogUseThreading.label">Use Threading</span>
+                        </label>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="chatlogPollInterval" data-i18n="field.chatlogPollInterval.label">Poll Interval (s)</label>
+                                <input type="number" id="chatlogPollInterval" min="0.1" max="5" step="0.1">
+                            </div>
+                        </div>
 
-                                <div class="binding-list">
-                                    <div class="binding">
-                                        <label for="chatlogIdleThreshold" data-i18n="field.chatlogIdleThreshold.label">Idle Threshold (polls)</label>
-                                        <input type="number" id="chatlogIdleThreshold" min="1" max="1000" step="1">
-                                    </div>
-                                </div>
-                                <p class="hint" data-i18n="field.chatlogIdleThreshold.hint">Consecutive quiet polls before a log is considered idle and polled less often to save CPU. New activity resets it to full speed.</p>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="chatlogIdleThreshold" data-i18n="field.chatlogIdleThreshold.label">Idle Threshold (polls)</label>
+                                <input type="number" id="chatlogIdleThreshold" min="1" max="1000" step="1">
+                            </div>
+                        </div>
 
-                                <div class="binding-list">
-                                    <div class="binding">
-                                        <label for="chatlogMaxPollMultiplier" data-i18n="field.chatlogMaxPollMultiplier.label">Max Poll Multiplier</label>
-                                        <input type="number" id="chatlogMaxPollMultiplier" min="1" max="32">
-                                    </div>
-                                </div>
-                                <p class="hint" data-i18n="field.chatlogMaxPollMultiplier.hint">Cap on how much idle logs slow down (e.g. 8x = checked 8x less often). Higher saves CPU for AFK characters but delays detecting new activity.</p>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="chatlogMaxPollMultiplier" data-i18n="field.chatlogMaxPollMultiplier.label">Max Poll Multiplier</label>
+                                <input type="number" id="chatlogMaxPollMultiplier" min="1" max="32">
                             </div>
                         </div>
                     </div>
@@ -1569,7 +1557,6 @@
                                     <input type="number" id="combatWindowSeconds" min="1" max="3600">
                                 </div>
                             </div>
-                            <p class="hint" data-i18n="field.combatWindowSeconds.hint">Sliding time window used to calculate DPS (1–3600 s)</p>
 
                             <div class="binding-list">
                                 <div class="binding">
@@ -1577,7 +1564,13 @@
                                     <input type="number" id="combatUpdateIntervalMs" min="0.1" max="60" step="0.1">
                                 </div>
                             </div>
-                            <p class="hint" data-i18n="field.combatUpdateIntervalMs.hint">How often the DPS display refreshes (0.1–60 s)</p>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="combatDamageAlertExcludedWeapons" data-i18n="field.combatDamageAlertExcludedWeapons.label">Exclude Weapons</label>
+                                    <input type="text" id="combatDamageAlertExcludedWeapons" placeholder="e.g. Smartbomb, Warp Scrambler" data-i18n-placeholder="field.combatDamageAlertExcludedWeapons.placeholder">
+                                </div>
+                            </div>
 
                             <div class="row hidden-by-layout-preview">
                                 <div class="column">
@@ -1706,27 +1699,6 @@
                         </div>
                     </div>
 
-                    <div class="section">
-                        <div class="section-heading">
-                            <h3 data-i18n="tab.combat.section.alerts.heading">Alerts</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
-                        </div>
-                        <p class="hint" data-i18n="tab.combat.section.alerts.hint">Notifications and status icon triggered by incoming damage. Requires Text Overlays above to be enabled.</p>
-
-                        <div id="combatAlertsOptions">
-                            <h4 data-i18n="tab.combat.section.taking-damage-alert.heading">Taking Damage Alert</h4>
-                            <p class="hint" data-i18n="tab.combat.section.taking-damage-alert.hint">Notifies on incoming hits. Repeat rate, border color/duration are set on the Notifications tab under "Taking Damage". Requires notifications enabled.</p>
-
-                            <div class="binding-list">
-                                <div class="binding">
-                                    <label for="combatDamageAlertExcludedWeapons" data-i18n="field.combatDamageAlertExcludedWeapons.label">Exclude Weapons</label>
-                                    <input type="text" id="combatDamageAlertExcludedWeapons" placeholder="e.g. Smartbomb, Warp Scrambler" data-i18n-placeholder="field.combatDamageAlertExcludedWeapons.placeholder">
-                                </div>
-                            </div>
-                            <p class="hint" data-i18n="field.combatDamageAlertExcludedWeapons.hint">Comma-separated weapon/module names (case-insensitive, partial match). Matching hits still count toward the DPS overlay but won't trigger this alert.</p>
-                        </div>
-                    </div>
-
                 </div>
 
                 <div class="panel-content advanced-tab-panel" data-panel="mining">
@@ -1749,7 +1721,6 @@
                                     <input type="number" id="miningWindowSeconds" min="1" max="3600">
                                 </div>
                             </div>
-                            <p class="hint" data-i18n="field.miningWindowSeconds.hint">Sliding time window for rate calculation (1–3600 s)</p>
 
                             <div class="binding-list">
                                 <div class="binding">
@@ -1757,7 +1728,6 @@
                                     <input type="number" id="miningUpdateIntervalMs" min="0.1" max="60" step="0.1">
                                 </div>
                             </div>
-                            <p class="hint" data-i18n="field.miningUpdateIntervalMs.hint">How often the display refreshes (0.1–60 s)</p>
 
                             <div class="hidden-by-layout-preview binding-list">
                                 <div class="binding">
@@ -1816,7 +1786,6 @@
                                 <input type="checkbox" id="miningShowIskRate" onchange="toggleMiningOptions()">
                                 <span class="label-body" data-i18n="field.miningShowIskRate.label">Show ISK Rate</span>
                             </label>
-                            <p class="hint" data-i18n="field.miningShowIskRate.hint">Appends an abbreviated ISK/min or ISK/hour estimate next to the m3/min text, using each ore's Price from the ore/ice/gas table below.</p>
 
                             <div id="miningIskRateOptions" class="binding-list">
                                 <div class="binding">
@@ -1839,7 +1808,6 @@
 
                         <div id="miningAlertsOptions">
                             <h4 data-i18n="tab.mining.section.laser-idle-alert.heading">Laser Idle Alert</h4>
-                            <p class="hint" data-i18n="tab.mining.section.laser-idle-alert.hint">Notifies when fewer than N mining events occur in X seconds — useful for detecting a stopped laser. Requires notifications enabled.</p>
 
                             <div class="binding-list">
                                 <div class="binding">
@@ -1847,7 +1815,6 @@
                                     <input type="number" id="miningIdleAlertWindowSeconds" min="1" max="3600">
                                 </div>
                             </div>
-                            <p class="hint" data-i18n="field.miningIdleAlertWindowSeconds.hint">How many seconds with too few events before alerting</p>
 
                             <div class="binding-list">
                                 <div class="binding">
@@ -1855,10 +1822,8 @@
                                     <input type="number" id="miningIdleAlertThreshold" min="0" max="20">
                                 </div>
                             </div>
-                            <p class="hint" data-i18n="field.miningIdleAlertThreshold.hint">Alert if event count in the window is ≤ this value (e.g. 1 = alert when only 1 laser active)</p>
 
                             <h4 data-i18n="tab.mining.section.mining-stopped-alert.heading">Mining Stopped Alert</h4>
-                            <p class="hint" data-i18n="tab.mining.section.mining-stopped-alert.hint">Notifies when no mining events occur for X seconds; re-arms automatically when mining resumes. Requires notifications enabled.</p>
 
                             <div class="binding-list">
                                 <div class="binding">
@@ -1866,7 +1831,6 @@
                                     <input type="number" id="miningStoppedAlertWindowSeconds" min="1" max="3600">
                                 </div>
                             </div>
-                            <p class="hint" data-i18n="field.miningStoppedAlertWindowSeconds.hint">How many seconds with no events before alerting</p>
                         </div>
                     </div>
 
@@ -1912,7 +1876,6 @@
                                     <input type="number" id="bountyWindowSeconds" min="1" max="3600">
                                 </div>
                             </div>
-                            <p class="hint" data-i18n="field.bountyWindowSeconds.hint">Sliding time window for rate calculation (1–3600 s)</p>
 
                             <div class="binding-list">
                                 <div class="binding">
@@ -1920,7 +1883,6 @@
                                     <input type="number" id="bountyUpdateIntervalMs" min="0.1" max="60" step="0.1">
                                 </div>
                             </div>
-                            <p class="hint" data-i18n="field.bountyUpdateIntervalMs.hint">How often the display refreshes (0.1–60 s)</p>
 
                             <div class="hidden-by-layout-preview binding-list">
                                 <div class="binding">
@@ -2015,7 +1977,6 @@
                                 <input type="checkbox" id="resourcesShowVram">
                                 <span class="label-body" data-i18n="field.resourcesShowVram.label">Show VRAM</span>
                             </label>
-                            <p class="hint" data-i18n="field.resourcesShowVram.hint">VRAM requires the Windows GPU performance counters; if unavailable, the label falls back to just CPU/RAM.</p>
 
                             <div class="binding-list">
                                 <div class="binding">
@@ -2023,7 +1984,6 @@
                                     <input type="number" id="resourcesUpdateIntervalMs" min="0.5" max="60" step="0.1">
                                 </div>
                             </div>
-                            <p class="hint" data-i18n="field.resourcesUpdateIntervalMs.hint">How often CPU/RAM/VRAM are resampled (0.5–60 s); shared by all three since VRAM sampling is the most expensive</p>
 
                             <div class="hidden-by-layout-preview binding-list">
                                 <div class="binding">

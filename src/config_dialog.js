@@ -7684,7 +7684,6 @@ function initCombatShowRequiresEnabled() {
 
 function toggleCombatOptions() {
     applyOptionToggle('combatEnabled', 'combatOptions');
-    applyOptionToggle('combatEnabled', 'combatAlertsOptions');
 }
 
 function toggleMiningOptions() {

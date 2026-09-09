@@ -898,7 +898,9 @@ select + .hint {
     height: var(--control-h);
     box-sizing: border-box;
     align-items: center;
-    line-height: var(--lh-tight);
+    /* var(--lh-tight) (1.2) leaves almost no slack under this fixed height
+       once the border and padding are subtracted - see .changes-pending. */
+    line-height: 1;
     border-radius: var(--radius);
 }
 
@@ -918,11 +920,6 @@ select + .hint {
     color: var(--color-text-secondary);
     border-color: var(--color-border-strong);
     background: rgba(255, 255, 255, 0.04);
-}
-
-.status-message::before {
-    content: '› ';
-    font-weight: 700;
 }
 
 /* Button overrides */
@@ -1257,6 +1254,10 @@ body.advanced-mode .hotkey-edit-btn {
     align-items: center;
     gap: 4px;
     font-size: var(--fs-body);
+    /* The label's inherited line-height (1.4) is taller than the room this
+       fixed-height pill leaves after its padding and border, so it centered
+       within a box bigger than itself and read as riding low. */
+    line-height: 1;
     color: var(--color-accent);
     padding: 6px 8px;
     border: 1px solid var(--color-accent);
