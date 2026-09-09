@@ -1387,7 +1387,7 @@ body.advanced-mode .advanced-section {
 }
 
 body.advanced-mode .advanced-tab {
-    display: block;
+    display: flex;
 }
 
 body:not(.advanced-mode) .panel-content.advanced-tab-panel {
