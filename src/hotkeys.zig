@@ -1214,8 +1214,29 @@ pub const HotkeyManager = struct {
         slog.info("Hotkeys {s}", .{state});
 
         if (main_mod.g_timer_hwnd) |hwnd| {
+            if (self.hotkeys_suspended) {
+                // RegisterHotKey intercepts system-wide, so leaving bindings registered while "suspended" would still block other apps from seeing those keys.
+                self.unregisterAll(hwnd);
+                self.registerSuspendOnly(hwnd);
+            } else {
+                self.registerHotkeys(hwnd) catch |err| {
+                    slog.err("Failed to re-register hotkeys after resuming: {}", .{err});
+                };
+            }
             _ = win32.PostMessageA(hwnd, win32.WM_HOTKEYS_STATE_CHANGED, 0, 0);
         }
+    }
+
+    /// Re-registers just the suspend hotkey after unregisterAll, so pressing it again can resume everything else.
+    fn registerSuspendOnly(self: *HotkeyManager, hwnd: win32.HWND) void {
+        const vk_code = self.config.hotkeySuspend orelse return;
+        const id = @intFromEnum(GlobalActionId.SuspendHotkeys);
+        const action = HotkeyAction{ .SuspendHotkeys = {} };
+        self.registerAndTrackHotkey(hwnd, id, vk_code, action, "suspend/resume all hotkeys") catch |err| {
+            var key_name_buf: [32]u8 = undefined;
+            const key_name = formatKeyName(vk_code, &key_name_buf);
+            slog.err("Failed to re-register suspend hotkey {s}: {}", .{ key_name, err });
+        };
     }
 
     pub fn handleSuspendHotkeysRequest(self: *HotkeyManager) void {
