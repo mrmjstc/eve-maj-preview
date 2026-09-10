@@ -284,22 +284,20 @@
                         <div id="overlayLayoutStage">
                             <div id="overlayGuideX" class="overlay-guide overlay-guide-x"></div>
                             <div id="overlayGuideY" class="overlay-guide overlay-guide-y"></div>
-                            <div class="overlay-chip" id="overlayChip_characterName" data-key="characterName">Character Name</div>
-                            <div class="overlay-chip" id="overlayChip_systemName" data-key="systemName">System Name</div>
-                            <div class="overlay-chip" id="overlayChip_quickGroupBadge" data-key="quickGroupBadge">Group Name</div>
-                            <div class="overlay-chip" id="overlayChip_notification" data-key="notification">Notification</div>
-                            <div class="overlay-chip" id="overlayChip_combatIncoming" data-key="combatIncoming">Incoming DPS</div>
-                            <div class="overlay-chip" id="overlayChip_combatOutgoing" data-key="combatOutgoing">Outgoing DPS</div>
-                            <div class="overlay-chip" id="overlayChip_mining" data-key="mining">Mining Rate</div>
-                            <div class="overlay-chip" id="overlayChip_bounty" data-key="bounty">Bounty Rate</div>
-                            <div class="overlay-chip" id="overlayChip_resources" data-key="resources">Resource Usage</div>
+                            <div class="overlay-chip" id="overlayChip_characterName" data-key="characterName"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Character Name</span></div>
+                            <div class="overlay-chip" id="overlayChip_systemName" data-key="systemName"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">System Name</span></div>
+                            <div class="overlay-chip" id="overlayChip_quickGroupBadge" data-key="quickGroupBadge"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Group Name</span></div>
+                            <div class="overlay-chip" id="overlayChip_notification" data-key="notification"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Notification</span></div>
+                            <div class="overlay-chip" id="overlayChip_combatIncoming" data-key="combatIncoming"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Incoming DPS</span></div>
+                            <div class="overlay-chip" id="overlayChip_combatOutgoing" data-key="combatOutgoing"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Outgoing DPS</span></div>
+                            <div class="overlay-chip" id="overlayChip_mining" data-key="mining"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Mining Rate</span></div>
+                            <div class="overlay-chip" id="overlayChip_bounty" data-key="bounty"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Bounty Rate</span></div>
+                            <div class="overlay-chip" id="overlayChip_resources" data-key="resources"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Resource Usage</span></div>
                         </div>
 
                         <div id="overlayPropertiesPopover" class="overlay-popover" style="display: none;">
-                            <div class="overlay-popover-header">
-                                <span id="overlayPopoverTitle"></span>
-                                <button type="button" id="overlayPopoverClose" aria-label="Close" data-i18n-aria-label="common.close">×</button>
-                            </div>
+                            <button type="button" id="overlayPopoverClose" class="overlay-popover-close" aria-label="Close" data-i18n-aria-label="common.close">×</button>
+                            <h3 id="overlayPopoverTitle"></h3>
                             <div class="overlay-popover-body" id="overlayPopoverBody"></div>
                         </div>
 

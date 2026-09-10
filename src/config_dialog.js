@@ -7322,19 +7322,6 @@ function overlayStageContentSize(stage) {
     return { width: rect.width - borderX, height: rect.height - borderY };
 }
 
-// Each element's own independent background color/opacity - not shared, and separate from its own text color.
-function overlayBackgroundCssFor(bgColorId, bgOpacityId) {
-    const colorField = document.getElementById(bgColorId);
-    const opacityField = document.getElementById(bgOpacityId);
-    const hex = (colorField ? colorField.value : '#000000').replace('#', '');
-    const r = parseInt(hex.slice(0, 2), 16) || 0;
-    const g = parseInt(hex.slice(2, 4), 16) || 0;
-    const b = parseInt(hex.slice(4, 6), 16) || 0;
-    const percent = opacityField ? parseFloat(opacityField.value) : 50;
-    const alpha = overlayClamp(isNaN(percent) ? 0.5 : percent / 100, 0, 1);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 // Programmatic .value writes don't fire native events, so dispatch one explicitly for the rest of the dialog to see.
 function setOverlayFieldValue(fieldId, value) {
     const field = document.getElementById(fieldId);
@@ -7360,30 +7347,18 @@ function placeOverlayChip(def) {
     const shown = getFieldValue(def.showId) && (def.alsoRequiresIds || []).every(id => getFieldValue(id));
     chip.classList.toggle('dim', !shown);
 
-    // Horizontal matches painter.zig's TEXT_PADDING_X (5px at real scale); vertical is bumped up a bit
-    // from the real TEXT_PADDING_Y (2px) purely for readability in this mockup.
-    chip.style.padding = `${4 * scale}px ${5 * scale}px`;
+    // Matches painter.zig's TEXT_PADDING_X/Y (5px/2px at real scale); left side is
+    // tighter since the drag-handle glyph already carries its own visual weight there.
+    chip.style.padding = `${2 * scale}px ${5 * scale}px ${2 * scale}px ${3 * scale}px`;
 
-    // Chip's own color is text color; background is this element's own independent bg color/opacity.
-    chip.style.backgroundColor = overlayBackgroundCssFor(def.bgColorId, def.bgOpacityId);
-    if (def.colorId) {
-        const colorField = document.getElementById(def.colorId);
-        if (colorField) chip.style.color = colorField.value;
-    }
+    // Preview chips always use the accent color and black text, ignoring each setting's own color/background config.
+    chip.style.backgroundColor = 'var(--color-accent)';
+    chip.style.color = '#000000';
 
-    if (def.fontNameId) {
-        const nameField = document.getElementById(def.fontNameId);
-        if (nameField && nameField.value) chip.style.fontFamily = `"${nameField.value}", monospace`;
-    }
     if (def.fontSizeId) {
         // Not * scale: that's tuned for a few px of padding, but stretches a 12px font to ~32px at default stage zoom.
         const size = getFieldValue(def.fontSizeId);
         if (size) chip.style.fontSize = `${size}px`;
-    }
-    if (def.fontWeightId) {
-        const weight = getFieldValue(def.fontWeightId);
-        chip.style.fontWeight = (weight === 'Bold' || weight === 'BoldItalic') ? '700' : '400';
-        chip.style.fontStyle = (weight === 'Italic' || weight === 'BoldItalic') ? 'italic' : 'normal';
     }
 
     const { width: W, height: H } = overlayStageContentSize(stage);

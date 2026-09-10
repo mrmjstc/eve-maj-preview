@@ -1483,17 +1483,37 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     position: absolute;
     top: 0;
     left: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
     font-size: 10px;
     font-weight: 700;
     color: var(--color-accent-ink);
     background-color: var(--color-accent);
-    border: 1px solid var(--color-border-strong);
     padding: 5px 10px;
     white-space: nowrap;
     cursor: grab;
     touch-action: none;
     user-select: none;
     border-radius: var(--radius);
+}
+
+/* Signals the chip is draggable without needing a hover to discover it. Just
+   a plain flex item (no nested centering box) so .overlay-chip's own
+   align-items:center is the only thing positioning it - line-height:1 keeps
+   its height equal to the glyph's own font-size, with nothing else to throw
+   that off. Outside .overlay-chip-label so .dim's strike-through can't reach it. */
+.overlay-chip-handle {
+    position: relative;
+    top: 1px;
+    flex: none;
+    line-height: 1;
+    font-size: 14px;
+    opacity: 0.6;
+}
+
+.overlay-chip-handle::before {
+    content: '⠿';
 }
 
 /* Amber, matching every other control's focus ring - was the one green
@@ -1513,33 +1533,14 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     transition: left 0.15s ease-out, top 0.15s ease-out;
 }
 
-/* Computed every pointer move during a drag (see setupOverlayChipDrag in
-   config_dialog.js) but previously painted nothing. */
-.overlay-chip.snapped {
-    outline: 1px solid var(--color-accent);
-    outline-offset: 1px;
-}
-
 .overlay-chip.clamped {
     box-shadow: 0 0 0 2px rgba(var(--color-error-rgb), 0.6);
 }
 
-/* Matches .swatch-wrap's cleared-color slash (see below) - both mark "this is
-   turned off", not a validation error, so they share --color-destructive and
-   the same inset/opacity/stroke geometry. */
-.overlay-chip.dim::after {
-    content: '';
-    position: absolute;
-    inset: 4px;
-    pointer-events: none;
-    opacity: 0.35;
-    background: linear-gradient(
-        to top right,
-        transparent calc(50% - 1px),
-        var(--color-destructive) calc(50% - 1px),
-        var(--color-destructive) calc(50% + 1px),
-        transparent calc(50% + 1px)
-    );
+.overlay-chip.dim .overlay-chip-label {
+    text-decoration: line-through;
+    text-decoration-color: #000000;
+    text-decoration-thickness: 2px;
 }
 
 /* Shown while a dragged chip aligns with another chip's edge/center. */
@@ -1575,16 +1576,10 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     border-radius: var(--radius);
 }
 
-.overlay-popover-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-    font-weight: 700;
-    color: var(--color-text);
-}
-
-.overlay-popover-header button {
+.overlay-popover-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
     background: none;
     border: none;
     color: var(--color-muted);
@@ -1596,10 +1591,15 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     height: auto;
 }
 
-.overlay-popover-header button:hover {
+.overlay-popover-close:hover {
     background: none;
     border-color: transparent;
     color: var(--color-text);
+}
+
+/* Leaves room for .overlay-popover-close so a long title doesn't run under it. */
+#overlayPopoverTitle {
+    padding-right: 20px;
 }
 
 #overlayPopoverBody {
@@ -1616,7 +1616,12 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 
 .overlay-popover-field label {
     margin-top: 0;
+    padding-left: 0;
     white-space: nowrap;
+}
+
+.overlay-popover-field label::before {
+    content: none;
 }
 
 .overlay-popover-field select,
@@ -1626,6 +1631,13 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 
 .overlay-popover-checkbox-row {
     grid-column: 1 / -1;
+}
+
+/* #overlayPopoverBody needed to outrank label:has(input[type="checkbox"])'s 8px/8px
+   margins - the grid's own row gap already spaces this row from its neighbors, so
+   those margins would stack on top and read as extra padding. */
+#overlayPopoverBody .overlay-popover-checkbox-row {
+    margin: 0;
 }
 
 .overlay-popover-range-control {
