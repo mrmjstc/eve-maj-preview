@@ -441,16 +441,26 @@ fn sendProfileSwitchToMainApp(profile_name: []const u8) void {
     }
 }
 
-/// Runs sendProfileSwitchToMainApp on a detached thread so the blocking WM_COPYDATA round-trip - which the main app doesn't answer until its full profile reload (thumbnail teardown/rebuild, window rescan, hotkey re-registration) finishes - doesn't stall the caller's response to the dialog. Shared by the post-Save reload and "Make It Live".
+/// Guards against repeated Save/"Make It Live" presses queuing up overlapping reloads in the main app; cleared once the background thread finishes.
+var g_profile_switch_in_flight: std.atomic.Value(bool) = .init(false);
+
+/// Runs sendProfileSwitchToMainApp on a detached thread so the blocking WM_COPYDATA round-trip - which the main app doesn't answer until its full profile reload (thumbnail teardown/rebuild, window rescan, hotkey re-registration) finishes - doesn't stall the caller's response to the dialog. Shared by the post-Save reload and "Make It Live"; a no-op if one is already running.
 fn sendProfileSwitchToMainAppAsync(profile_name: []const u8) void {
+    if (g_profile_switch_in_flight.swap(true, .acq_rel)) {
+        slog.info("Profile reload already in progress; ignoring", .{});
+        return;
+    }
+
     const allocator = g_allocator;
     const profile_name_copy = allocator.dupe(u8, profile_name) catch {
         slog.err("Failed to allocate memory for async profile switch", .{});
+        g_profile_switch_in_flight.store(false, .release);
         return;
     };
     const thread = std.Thread.spawn(.{}, profileSwitchThreadMain, .{ allocator, profile_name_copy }) catch |err| {
         slog.warn("Failed to start profile switch thread: {}", .{err});
         allocator.free(profile_name_copy);
+        g_profile_switch_in_flight.store(false, .release);
         return;
     };
     thread.detach();
@@ -458,6 +468,7 @@ fn sendProfileSwitchToMainAppAsync(profile_name: []const u8) void {
 
 fn profileSwitchThreadMain(allocator: std.mem.Allocator, profile_name: []const u8) void {
     defer allocator.free(profile_name);
+    defer g_profile_switch_in_flight.store(false, .release);
     sendProfileSwitchToMainApp(profile_name);
 }
 
