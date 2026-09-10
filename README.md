@@ -8,7 +8,7 @@ A *very* lightweight Windows tool for displaying DWM-based thumbnail previews of
 
 ## What EVE-Maj Preview Isn't
 
-It's **never** going to let you input broadcast, display portions of your eve client, manipulate your eve client in any way or intentionally help you break the EVE Online EULA/TOS. 
+It's **never** going to let you input broadcast, display cropped portions of your eve client, manipulate your eve client in any way or intentionally help you break the EVE Online EULA/TOS. 
 
 > **Not publicly supported.** This is built for my corporation, friends, and anyone brave enough to run it - not a supported public release. Use it as-is, no guarantees, no support whatsoever.
 
