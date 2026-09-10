@@ -2117,7 +2117,7 @@ pub const Config = struct {
 
         showBorderWhenFocused: bool = true,
         borderWidth: u8 = 2,
-        borderColor: u32 = 0xFFE4E4E4,
+        borderColor: u32 = DEFAULT_ACCENT_COLOR,
         borderStyle: types.BorderStyle = .Solid,
         showBorderWhenInactive: bool = false,
         inactiveBorderWidth: u8 = 2,
