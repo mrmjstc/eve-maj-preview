@@ -98,11 +98,8 @@
     /* Hover/interaction only - state transitions (.section-active,
        .field-clamped, .main-app-status) keep their own slower timings. */
     --t-hover: 0.15s;
-    /* One ring for every focus-visible control. Zero blur radius: a solid
-       ring, not a glow. -inset is for the div-acting-as-a-control rows
-       (tab/accordion/roster), which stay inset so it doesn't bleed over a
-       neighboring edge. */
-    --focus-ring: 0 0 0 2px rgba(var(--color-accent-rgb), 0.5);
+    /* For the div-acting-as-a-control rows (tab/accordion/roster/hint-toggle),
+       which have no border of their own to recolor on focus. */
     --focus-ring-inset: inset 0 0 0 2px rgba(var(--color-accent-rgb), 0.45);
 
     color-scheme: dark;
@@ -639,7 +636,6 @@ input.search-filter-input:focus-visible,
 .cp-hex-input:focus-visible {
     outline: none;
     border-color: var(--color-accent);
-    box-shadow: var(--focus-ring);
 }
 
 label {
@@ -808,7 +804,6 @@ input[type="file"] {
 input[type="file"]:focus-visible {
     outline: none;
     border-color: var(--color-accent);
-    box-shadow: var(--focus-ring);
 }
 
 input[type="file"]::file-selector-button {
@@ -949,7 +944,6 @@ button:hover {
 button:focus-visible {
     outline: none;
     border-color: var(--color-accent);
-    box-shadow: var(--focus-ring);
 }
 
 button:active {
@@ -1956,7 +1950,6 @@ input[type="color"]:hover {
 input[type="color"]:focus-visible {
     outline: none;
     border-color: var(--color-accent);
-    box-shadow: var(--focus-ring);
 }
 
 input[type="color"]::-webkit-color-swatch-wrapper {
