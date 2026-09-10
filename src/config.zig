@@ -29,6 +29,7 @@ pub const PROFILES_DIR = "profiles";
 pub const DEFAULT_PROFILE = "default.json";
 pub const GLOBAL_SETTINGS_FILE = "profiles/global.settings.json";
 pub const MAX_PROFILE_NAME_LEN: usize = 16;
+pub const DEFAULT_ACCENT_COLOR: u32 = 0xFFD9A441;
 
 /// Truncates a user-supplied profile name to MAX_PROFILE_NAME_LEN; names are ASCII (enforced by the config dialog's input sanitization) so byte slicing is safe.
 pub fn clampProfileName(name: []const u8) []const u8 {
@@ -1807,6 +1808,7 @@ pub const Config = struct {
     bounty: BountyConfig,
     resources: ResourcesConfig,
     travel: TravelConfig,
+    accentColor: u32 = DEFAULT_ACCENT_COLOR,
 
     windowFilters: std.ArrayList(WindowFilter),
 
@@ -1852,6 +1854,7 @@ pub const Config = struct {
         bounty: BountyConfig.Wire = .{},
         resources: ResourcesConfig.Wire = .{},
         travel: TravelConfig = .{},
+        accentColor: Argb = .{ .value = DEFAULT_ACCENT_COLOR },
         windowFilters: []const WindowFilter = &.{WindowFilter.DEFAULT},
         characters: []const CharacterConfig.Wire = &.{},
         systemColors: []const SystemColor.Wire = &.{},
@@ -1909,6 +1912,7 @@ pub const Config = struct {
             .bounty = self.bounty.toWire(),
             .resources = self.resources.toWire(),
             .travel = self.travel,
+            .accentColor = .{ .value = self.accentColor },
             .windowFilters = window_filters,
             .characters = chars,
             .systemColors = sys_colors,
@@ -1953,6 +1957,7 @@ pub const Config = struct {
         cfg.bounty = try BountyConfig.fromWire(w.bounty, allocator);
         cfg.resources = try ResourcesConfig.fromWire(w.resources, allocator);
         cfg.travel = w.travel;
+        cfg.accentColor = w.accentColor.value;
         cfg.requireEveFocus = w.hotkeys.requireEveFocus;
         cfg.resetGroupIndexOnNonGroupFocus = w.hotkeys.resetGroupIndexOnNonGroupFocus;
         cfg.hotkeyMinimizeAll = unwrapVk(w.hotkeys.hotkeyMinimizeAll);
@@ -3604,7 +3609,7 @@ pub const Config = struct {
     }
 
     /// Accepts 0xRRGGBB, 0xAARRGGBB, #RRGGBB, or RRGGBB.
-    fn parseHexColor(str: []const u8) !u32 {
+    pub fn parseHexColor(str: []const u8) !u32 {
         if (str.len < 3) return error.InvalidColorFormat;
 
         const start: usize = if (std.mem.startsWith(u8, str, "0x") or std.mem.startsWith(u8, str, "0X"))
@@ -3749,6 +3754,7 @@ pub const Config = struct {
             .bounty = .{},
             .resources = .{},
             .travel = .{},
+            .accentColor = DEFAULT_ACCENT_COLOR,
             .windowFilters = default_filters,
             .characters = std.ArrayList(CharacterConfig).empty,
             .systemColors = std.ArrayList(SystemColor).empty,

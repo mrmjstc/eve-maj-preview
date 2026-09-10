@@ -320,6 +320,15 @@ h4 {
    section's opening heading, and a blanket reset would also catch an h4 that
    merely opens a toggle-group wrapper, where the subsection break is wanted. */
 
+/* A modal's own internal group heading (e.g. the import wizard's "Import into"/"Sections to
+   import") - larger than h4's 12px and no border, since a modal group isn't a tab subsection. */
+h4.modal-subheading {
+    font-size: var(--fs-heading);
+    font-weight: var(--fw-semibold);
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
 /* Column headers sit at the top of a fresh grid column, not mid-flow,
    so they get a smaller top margin than a full-width subsection break */
 .column > h4:first-child {
@@ -2902,29 +2911,63 @@ button.confirm-delete:hover {
 
 .modal-content.modal-wide {
     width: 560px;
-    max-height: 82vh;
+    max-height: 96vh;
     overflow-y: auto;
     text-align: left;
 }
 
 .modal-content h3 {
-    margin: 0 0 12px 0;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--color-border);
-    font-size: var(--fs-heading);
-    font-weight: var(--fw-normal);
-    letter-spacing: 1px;
-    position: relative;
+    margin: 0 0 var(--space-3) 0;
+}
+
+/* Matches the tight h3-to-hint gap every section uses (h3:has(+ .hint) above) - the import
+   modal's own hint is one div deeper, past what that adjacent-sibling selector can reach. */
+#import-settings-modal > .modal-content > h3 {
+    margin-bottom: 2px;
+}
+
+/* This label sits above its own select like a group heading, not a checkbox/radio's inline
+   text, so it drops the field-label chevron the same way those already do. */
+#importSourceProfileRow > label {
+    padding-left: 0;
+}
+
+#importSourceProfileRow > label::before {
+    content: none;
+}
+
+/* Two columns and its own scroll region (this list is often a dozen-plus entries) so a long
+   list scrolls in place instead of pushing the whole modal past viewport height. */
+#importSectionsList {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: var(--space-4);
+    align-content: start;
+    max-height: 380px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-2) var(--space-3);
 }
 
 .modal-content input[type="text"] {
     width: 100%;
-    margin-bottom: 12px;
+    margin-bottom: var(--space-3);
+}
+
+.modal-content .field-row {
+    margin-bottom: var(--space-3);
+}
+
+/* Outranks the block-input rule above, whose width/margin-bottom otherwise beat .field-row's own reset on specificity. */
+.modal-content .field-row input[type="text"] {
+    width: auto;
+    margin-bottom: 0;
 }
 
 .modal-buttons {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
     justify-content: flex-end;
 }
 

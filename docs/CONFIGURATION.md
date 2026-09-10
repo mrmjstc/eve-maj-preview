@@ -1116,6 +1116,16 @@ Define custom colors for specific solar systems:
 
 > **Note**: The key is `systemName`, not `name` - an entry using the wrong key will fail to load and abort loading the entire profile.
 
+## Config Dialog Accent Color
+
+```json
+{
+  "accentColor": "0xFFD9A441"
+}
+```
+
+Sets the accent color used by the config dialog's own UI (buttons, focus rings, tabs) for this profile. Purely cosmetic - it has no effect on thumbnail rendering or the running overlay. Chosen when creating, copying, or importing into a profile.
+
 ## Color Format
 
 Colors use hexadecimal string format in JSON:

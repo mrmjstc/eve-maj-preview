@@ -1327,14 +1327,20 @@ fn switchProfile(e: *webui.Event) void {
 }
 
 /// Builds and writes a fresh default profile file named `filename` at `path`.
-fn writeDefaultProfileFile(allocator: std.mem.Allocator, path: []const u8, filename: []const u8) !void {
+fn writeDefaultProfileFile(allocator: std.mem.Allocator, path: []const u8, filename: []const u8, accent_color: ?u32) !void {
     var defaults = try config_mod.Config.getDefaultsWithProfile(allocator, filename);
     defer defaults.deinit();
+    if (accent_color) |c| defaults.accentColor = c;
     try config_mod.Config.saveToJsonFile(&defaults, allocator, path);
 }
 
 fn createProfile(e: *webui.Event) void {
-    const profile_name = config_mod.clampProfileName(e.getString());
+    const profile_name = config_mod.clampProfileName(e.getStringAt(0));
+    const accent_color_str = e.getStringAt(1);
+    const accent_color: ?u32 = if (accent_color_str.len > 0)
+        config_mod.Config.parseHexColor(accent_color_str) catch null
+    else
+        null;
     const allocator = g_allocator;
 
     const profile_filename = std.fmt.allocPrint(allocator, "{s}.json", .{profile_name}) catch {
@@ -1351,7 +1357,7 @@ fn createProfile(e: *webui.Event) void {
 
     const file = std.Io.Dir.cwd().openFile(g_io, profile_path, .{}) catch |err| {
         if (err == error.FileNotFound) {
-            writeDefaultProfileFile(allocator, profile_path, profile_filename) catch {
+            writeDefaultProfileFile(allocator, profile_path, profile_filename, accent_color) catch {
                 e.returnString("{\"success\": false, \"error\": \"Failed to write profile\"}");
                 return;
             };
@@ -1365,6 +1371,27 @@ fn createProfile(e: *webui.Event) void {
     file.close(g_io);
 
     e.returnString("{\"success\": false, \"error\": \"Profile already exists\"}");
+}
+
+/// Overwrites a copied profile's accentColor in place, avoiding a full JS-side re-serialize.
+fn patchProfileAccentColor(allocator: std.mem.Allocator, filename: []const u8, accent_color: u32) void {
+    var cfg = config_mod.Config.loadProfile(allocator, filename) catch |err| {
+        slog.warn("Failed to load copied profile '{s}' to patch accent color: {}", .{ filename, err });
+        return;
+    };
+    defer cfg.deinit();
+
+    cfg.accentColor = accent_color;
+
+    const profile_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, filename }) catch |err| {
+        slog.warn("Failed to allocate path to patch accent color for '{s}': {}", .{ filename, err });
+        return;
+    };
+    defer allocator.free(profile_path);
+
+    config_mod.Config.saveToJsonFile(&cfg, allocator, profile_path) catch |err| {
+        slog.warn("Failed to save patched accent color for '{s}': {}", .{ filename, err });
+    };
 }
 
 fn copyProfile(e: *webui.Event) void {
@@ -1403,6 +1430,11 @@ fn copyProfile(e: *webui.Event) void {
     }
     const target_name = config_mod.clampProfileName(target_val.string);
 
+    const accent_color: ?u32 = if (root.object.get("accentColor")) |v|
+        (if (v == .string) config_mod.Config.parseHexColor(v.string) catch null else null)
+    else
+        null;
+
     const source_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, source_name }) catch {
         e.returnString("{\"success\": false, \"error\": \"Memory allocation failed\"}");
         return;
@@ -1427,6 +1459,8 @@ fn copyProfile(e: *webui.Event) void {
                 e.returnString("{\"success\": false, \"error\": \"Failed to copy file\"}");
                 return;
             };
+
+            if (accent_color) |c| patchProfileAccentColor(allocator, target_filename, c);
 
             e.returnString("{\"success\": true}");
             return;
@@ -1482,7 +1516,7 @@ fn resetProfile(e: *webui.Event) void {
     };
     defer allocator.free(profile_path);
 
-    writeDefaultProfileFile(allocator, profile_path, profile_name) catch {
+    writeDefaultProfileFile(allocator, profile_path, profile_name, null) catch {
         e.returnString("{\"success\": false, \"error\": \"Failed to write profile\"}");
         return;
     };

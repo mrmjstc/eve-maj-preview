@@ -139,6 +139,35 @@ function htmlColorToZig(htmlColor) {
     return '0xFF' + rgb.toUpperCase();
 }
 
+const DEFAULT_ACCENT_COLOR_HTML = '#d9a441';
+
+// Retints the dialog's --color-accent* CSS variables from the active profile's accentColor
+// (or, when previewing a not-yet-saved pick, overrideZig), so every profile can carry its own chrome color.
+function applyAccentColorTheme(overrideZig) {
+    const accentZig = overrideZig || (currentConfig && currentConfig.accentColor) || (defaultConfig && defaultConfig.accentColor);
+    const hex = zigColorToHtml(accentZig || htmlColorToZig(DEFAULT_ACCENT_COLOR_HTML));
+
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+
+    const hoverHex = '#' + [r, g, b].map(c => Math.round(c + (255 - c) * 0.15).toString(16).padStart(2, '0')).join('');
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    const inkHex = luminance > 0.55 ? '#1a1408' : '#f5f0e6';
+
+    const root = document.documentElement.style;
+    root.setProperty('--color-accent', hex);
+    root.setProperty('--color-accent-hover', hoverHex);
+    root.setProperty('--color-accent-rgb', `${r}, ${g}, ${b}`);
+    root.setProperty('--color-accent-ink', inkHex);
+}
+
+// Live-previews the import modal's accent color pick the same way showProfileNameModal does.
+function initImportAccentColorPreview() {
+    const input = document.getElementById('importAccentColor');
+    if (input) input.addEventListener('input', () => applyAccentColorTheme(htmlColorToZig(input.value)));
+}
+
 // Shared <option> lists for the many identical position/font <select> elements across tabs.
 // Second element is an i18n key, not the label text - resolved via t() at population time so a live language switch (see switchLanguage()) is reflected.
 const POSITION_OPTIONS = [
@@ -974,6 +1003,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     setupThumbnailPreview();
     initOverlayLayoutPreview();
     initCombatShowRequiresEnabled();
+    initImportAccentColorPreview();
 
     // Mark initially hidden tabs for search filter
     document.querySelectorAll('.tab-item').forEach(tab => {
@@ -1282,6 +1312,7 @@ function refreshNotificationColorDefaults() {
 function populateFormFields() {
     if (!currentConfig) return;
 
+    applyAccentColorTheme();
     applyConfigSchemaToForm();
     applySpecialFieldsToForm();
 
@@ -1524,37 +1555,25 @@ function showLiveSwitchModal(selectedProfile) {
         const handleLive = () => handle('live');
         const handleEdit = () => handle('edit');
         const handleCancel = () => handle('cancel');
-        const handleKeyDown = (e) => {
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                handleCancel();
-            }
-        };
-        const handleClickOutside = (e) => {
-            if (e.target === modal) handleCancel();
-        };
 
         const cleanup = () => {
             modal.classList.remove('show');
             liveBtn.removeEventListener('click', handleLive);
             editBtn.removeEventListener('click', handleEdit);
             cancelBtn.removeEventListener('click', handleCancel);
-            document.removeEventListener('keydown', handleKeyDown);
-            modal.removeEventListener('click', handleClickOutside);
         };
 
         liveBtn.addEventListener('click', handleLive);
         editBtn.addEventListener('click', handleEdit);
         cancelBtn.addEventListener('click', handleCancel);
-        document.addEventListener('keydown', handleKeyDown);
-        modal.addEventListener('click', handleClickOutside);
     });
 }
 
 async function createNewProfile() {
-    const profileName = await showProfileNameModal(t('button.create-new-profile.title'), '');
-    if (!profileName) return;
-    
+    const result0 = await showProfileNameModal(t('button.create-new-profile.title'), '');
+    if (!result0) return;
+    const { name: profileName, color: accentColor } = result0;
+
     const sanitizedName = profileName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
     if (sanitizedName === '') {
         showStatus(t('status.invalidProfileName'), 'error');
@@ -1562,12 +1581,12 @@ async function createNewProfile() {
     }
 
     showStatus(t('status.creatingProfile'), 'info');
-    
+
     try {
         if (typeof webui !== 'undefined') {
-            const response = await webui.call('createProfile', sanitizedName);
+            const response = await webui.call('createProfile', sanitizedName, htmlColorToZig(accentColor));
             const result = JSON.parse(response);
-            
+
             if (result.success) {
                 showStatus(t('status.profileCreatedSuccess'), 'success');
                 await loadProfileList();
@@ -1594,9 +1613,11 @@ async function copyCurrentProfile() {
     const currentProfile = profileSelect.value;
     const currentDisplayName = currentProfile.replace(/\.json$/, '');
     
-    const newName = await showProfileNameModal(t('dynamic.profile.copyModalTitle').replace('{name}', currentDisplayName), currentDisplayName + ' - Copy');
-    if (!newName) return;
-    
+    const defaultColor = zigColorToHtml(currentConfig.accentColor);
+    const copyResult = await showProfileNameModal(t('dynamic.profile.copyModalTitle').replace('{name}', currentDisplayName), currentDisplayName + ' - Copy', defaultColor);
+    if (!copyResult) return;
+    const { name: newName, color: accentColor } = copyResult;
+
     const sanitizedName = newName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
     if (sanitizedName === '') {
         showStatus(t('status.invalidProfileName'), 'error');
@@ -1604,16 +1625,17 @@ async function copyCurrentProfile() {
     }
 
     showStatus(t('status.copyingProfile'), 'info');
-    
+
     try {
         if (typeof webui !== 'undefined') {
             const payload = JSON.stringify({
                 source: currentProfile,
-                target: sanitizedName
+                target: sanitizedName,
+                accentColor: htmlColorToZig(accentColor)
             });
             const response = await webui.call('copyProfile', payload);
             const result = JSON.parse(response);
-            
+
             if (result.success) {
                 showStatus(t('status.profileCopiedSuccess'), 'success');
                 await loadProfileList();
@@ -1818,11 +1840,10 @@ function renderImportSections() {
     }
 
     container.innerHTML = sections.map(s => `
-        <label style="display: block; margin: 4px 0;">
+        <label class="import-section-item" title="${escapeHtml(s.available ? s.hint : t('dynamic.import.nothingToImportHint'))}">
             <input type="checkbox" id="import_${s.id}" ${s.available ? 'checked' : 'disabled'}>
             <span class="label-body">${escapeHtml(s.title)}</span>
         </label>
-        <p class="hint" style="margin: 0 0 6px 22px;">${escapeHtml(s.available ? s.hint : t('dynamic.import.nothingToImportHint'))}</p>
     `).join('');
 }
 
@@ -2916,6 +2937,7 @@ function openImportModal() {
 function closeImportModal() {
     const modal = document.getElementById('import-settings-modal');
     modal.classList.remove('show');
+    applyAccentColorTheme();
 }
 
 async function handleImportFileSelected(event) {
@@ -3023,7 +3045,13 @@ function onImportSourceProfileChanged() {
 
 function onImportDestChanged() {
     const isNew = document.getElementById('import-dest-new').checked;
-    document.getElementById('importNewProfileName').style.display = isNew ? '' : 'none';
+    document.getElementById('importNewProfileRow').style.display = isNew ? '' : 'none';
+    if (isNew) {
+        document.getElementById('importAccentColor').value = DEFAULT_ACCENT_COLOR_HTML;
+        applyAccentColorTheme(htmlColorToZig(DEFAULT_ACCENT_COLOR_HTML));
+    } else {
+        applyAccentColorTheme();
+    }
 
     const profileSelect = document.getElementById('profile-select');
     const currentLabel = document.getElementById('importDestCurrentLabel');
@@ -3197,7 +3225,9 @@ async function runImport() {
                 return;
             }
 
-            const response = await webui.call('createProfile', sanitized);
+            const accentColorInput = document.getElementById('importAccentColor');
+            const accentColor = accentColorInput ? htmlColorToZig(accentColorInput.value) : '';
+            const response = await webui.call('createProfile', sanitized, accentColor);
             const result = JSON.parse(response);
             if (!result.success) {
                 showStatus(t('status.createProfileFailedPrefix') + (result.error || t('status.unknownError')), 'error');
@@ -3245,7 +3275,7 @@ async function runImport() {
             ? t('dynamic.import.liveNowHint')
             : t('dynamic.import.reviewAndSaveHint');
         const summaryEl = document.getElementById('importSummary');
-        summaryEl.innerHTML = `<h4 style="margin: 0 0 6px 0;">${escapeHtml(t('dynamic.import.completeHeading'))}</h4>` +
+        summaryEl.innerHTML = `<p class="hint" style="margin: 0 0 8px 0;">${escapeHtml(t('dynamic.import.completeHeading'))}</p>` +
             '<ul style="margin: 0; padding-left: 18px;">' +
             allNotes.map(n => `<li>${escapeHtml(n)}</li>`).join('') +
             '</ul>' +
@@ -3263,16 +3293,19 @@ async function runImport() {
     }
 }
 
-function showProfileNameModal(title, defaultValue = '') {
+function showProfileNameModal(title, defaultValue = '', defaultColor = DEFAULT_ACCENT_COLOR_HTML) {
     return new Promise((resolve) => {
         const modal = document.getElementById('profile-name-modal');
         const titleEl = document.getElementById('profile-modal-title');
         const input = document.getElementById('profile-name-input');
+        const colorInput = document.getElementById('profile-name-color');
         const okBtn = document.getElementById('profile-modal-ok');
         const cancelBtn = document.getElementById('profile-modal-cancel');
-        
+
         titleEl.textContent = title;
         input.value = defaultValue.slice(0, MAX_PROFILE_NAME_LENGTH);
+        colorInput.value = defaultColor;
+        applyAccentColorTheme(htmlColorToZig(defaultColor));
 
         modal.classList.add('show');
         setTimeout(() => {
@@ -3282,8 +3315,9 @@ function showProfileNameModal(title, defaultValue = '') {
 
         const handleOk = () => {
             const value = input.value.trim();
+            const color = colorInput.value;
             cleanup();
-            resolve(value);
+            resolve(value ? { name: value, color } : null);
         };
 
         const handleCancel = () => {
@@ -3295,30 +3329,26 @@ function showProfileNameModal(title, defaultValue = '') {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 handleOk();
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                handleCancel();
             }
         };
 
-        const handleClickOutside = (e) => {
-            if (e.target === modal) {
-                handleCancel();
-            }
-        };
+        // Previews the picked accent live on the dialog itself, so a drag through the
+        // picker shows what the profile's own chrome will look like before OK is pressed.
+        const handleColorPreview = () => applyAccentColorTheme(htmlColorToZig(colorInput.value));
 
         const cleanup = () => {
             modal.classList.remove('show');
             okBtn.removeEventListener('click', handleOk);
             cancelBtn.removeEventListener('click', handleCancel);
             input.removeEventListener('keydown', handleKeyDown);
-            modal.removeEventListener('click', handleClickOutside);
+            colorInput.removeEventListener('input', handleColorPreview);
+            applyAccentColorTheme();
         };
 
         okBtn.addEventListener('click', handleOk);
+        colorInput.addEventListener('input', handleColorPreview);
         cancelBtn.addEventListener('click', handleCancel);
         input.addEventListener('keydown', handleKeyDown);
-        modal.addEventListener('click', handleClickOutside);
     });
 }
 
@@ -3858,24 +3888,9 @@ function showHotkeyConflictModal(message) {
     const handleClose = () => {
         modal.classList.remove('show');
         okBtn.removeEventListener('click', handleClose);
-        modal.removeEventListener('click', handleClickOutside);
-        document.removeEventListener('keydown', handleKeyDown);
-    };
-
-    const handleClickOutside = (e) => {
-        if (e.target === modal) handleClose();
-    };
-
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter' || e.key === 'Escape') {
-            e.preventDefault();
-            handleClose();
-        }
     };
 
     okBtn.addEventListener('click', handleClose);
-    modal.addEventListener('click', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
 }
 
 // The dialog's own update check (config_dialog.zig main()) is a background HTTP request that may still be in flight on the first call.
@@ -3920,24 +3935,9 @@ function showUpdateAvailableModal(version, url, notes) {
     const handleClose = () => {
         modal.classList.remove('show');
         closeBtn.removeEventListener('click', handleClose);
-        modal.removeEventListener('click', handleClickOutside);
-        document.removeEventListener('keydown', handleKeyDown);
-    };
-
-    const handleClickOutside = (e) => {
-        if (e.target === modal) handleClose();
-    };
-
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter' || e.key === 'Escape') {
-            e.preventDefault();
-            handleClose();
-        }
     };
 
     closeBtn.addEventListener('click', handleClose);
-    modal.addEventListener('click', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
 }
 
 // Opens in the OS default browser via the backend instead of letting the WebView2 host spawn a popup for a plain target="_blank" link.
@@ -8236,8 +8236,9 @@ function filterSettings(query) {
 // input[type="color"] (or its .swatch-wrap, where one exists) in a
 // .color-with-hex row at render time; a MutationObserver catches ones created
 // later by the various populate* functions, same as the picker needs no extra
-// wiring for dynamic inputs. Skips the overlay popover's own color field -
-// its ~150px column has no room for a second control next to the swatch.
+// wiring for dynamic inputs. Skips the overlay popover's own color field (its
+// ~150px column has no room for a second control) and any color field inside
+// a .modal (e.g. the profile create/copy/import accent color picker).
 //
 // syncSwatchHexInput is also called directly from setFieldValue() below -
 // like the range slider's mirrored span, the browser only fires 'input' for
@@ -8273,7 +8274,7 @@ function syncSwatchHexInput(color) {
     }
 
     function attach(color) {
-        if (color.dataset.hexAttached || color.closest('.overlay-popover')) return;
+        if (color.dataset.hexAttached || color.closest('.overlay-popover') || color.closest('.modal')) return;
         color.dataset.hexAttached = 'true';
 
         const host = color.closest('.swatch-wrap') || color;
