@@ -38,7 +38,7 @@ Log levels (from most to least verbose):
   "thumbnail": {
     "showBorderWhenFocused": true,
     "borderWidth": 2,
-    "borderColor": "0xFFE4E4E4",
+    "borderColor": "0xFFD9A441",
     "borderStyle": "Solid",
     "showBorderWhenInactive": false,
     "inactiveBorderWidth": 1,
