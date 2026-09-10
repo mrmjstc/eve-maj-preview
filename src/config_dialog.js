@@ -275,8 +275,8 @@ const POSITION_OPTIONS = [
 ];
 
 const FONT_OPTIONS = [
-    'Consolas', 'Courier New', 'Lucida Console', 'Monaco', 'Menlo', 'Arial', 'Verdana',
-    'Tahoma', 'Trebuchet MS', 'Segoe UI', 'Calibri', 'Georgia', 'Times New Roman',
+    'Cascadia Code', 'Cascadia Mono', 'Consolas', 'Courier New', 'Lucida Console', 'Monaco', 'Menlo', 'Arial', 'Verdana',
+    'Tahoma', 'Trebuchet MS', 'Segoe UI', 'Calibri', 'Georgia', 'Times New Roman', 'Impact', 'Comic Sans MS',
 ];
 
 // Must run before any setFieldValue() targets these selects, or there are no <option> elements yet to match.
