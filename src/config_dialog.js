@@ -168,6 +168,104 @@ function initImportAccentColorPreview() {
     if (input) input.addEventListener('input', () => applyAccentColorTheme(htmlColorToZig(input.value)));
 }
 
+// Backup filenames are "<unixSeconds>_<originalFilename>.json", stamped by deleteProfile().
+function parseBackupFilename(filename) {
+    const match = filename.match(/^(\d+)_(.+)\.json$/);
+    if (!match) return { displayName: filename.replace(/\.json$/, ''), dateLabel: '' };
+    return {
+        displayName: match[2],
+        dateLabel: new Date(parseInt(match[1], 10) * 1000).toLocaleString(),
+    };
+}
+
+async function loadImportBackupsList() {
+    const section = document.getElementById('importBackupsSection');
+    const select = document.getElementById('importBackupSelect');
+    if (!section || !select) return;
+
+    if (typeof webui === 'undefined') {
+        section.style.display = 'none';
+        return;
+    }
+
+    try {
+        const response = await webui.call('listProfileBackups', '');
+        const result = JSON.parse(response);
+        const backups = Array.isArray(result.backups) ? result.backups : [];
+
+        if (backups.length === 0) {
+            section.style.display = 'none';
+            select.innerHTML = '';
+            return;
+        }
+
+        select.innerHTML = '';
+        backups.forEach(filename => {
+            const { displayName, dateLabel } = parseBackupFilename(filename);
+            const opt = document.createElement('option');
+            opt.value = filename;
+            opt.textContent = dateLabel ? `${displayName} — ${dateLabel}` : displayName;
+            select.appendChild(opt);
+        });
+        section.style.display = '';
+    } catch (err) {
+        logError('Failed to load profile backups:', err);
+        section.style.display = 'none';
+    }
+}
+
+function restoreSelectedProfileBackup() {
+    const select = document.getElementById('importBackupSelect');
+    if (!select || !select.value) return;
+    const { displayName } = parseBackupFilename(select.value);
+    restoreProfileBackup(select.value, displayName);
+}
+
+async function restoreProfileBackup(filename, displayName) {
+    const restoreResult = await showProfileNameModal(t('dynamic.profile.restoreModalTitle').replace('{name}', displayName), displayName);
+    if (!restoreResult) return;
+    const { name: newName, color: accentColor } = restoreResult;
+
+    const sanitizedName = newName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
+    if (sanitizedName === '') {
+        showStatus(t('status.invalidProfileName'), 'error');
+        return;
+    }
+
+    showStatus(t('status.restoringProfile'), 'info');
+
+    try {
+        if (typeof webui !== 'undefined') {
+            const payload = JSON.stringify({
+                source: 'backup\\' + filename,
+                target: sanitizedName,
+                accentColor: htmlColorToZig(accentColor)
+            });
+            const response = await webui.call('copyProfile', payload);
+            const result = JSON.parse(response);
+
+            if (result.success) {
+                showStatus(t('status.profileRestoredSuccess'), 'success');
+                closeImportModal();
+                await loadProfileList();
+                await populateProfileSwitchHotkeys();
+
+                const profileSelect = document.getElementById('profile-select');
+                profileSelect.value = sanitizedName + '.json';
+                await switchProfile();
+            } else {
+                showStatus(t('status.restoreProfileFailedPrefix') + (result.error || t('status.unknownError')), 'error');
+            }
+        } else {
+            showStatus(t('status.mockCopyPrefix') + filename + t('status.mockCopyMiddle') + sanitizedName, 'info');
+            setTimeout(() => hideStatus(), 3000);
+        }
+    } catch (error) {
+        logError('Failed to restore profile backup:', error);
+        showStatus(t('status.restoreProfileFailedPrefix') + error.message, 'error');
+    }
+}
+
 // Shared <option> lists for the many identical position/font <select> elements across tabs.
 // Second element is an i18n key, not the label text - resolved via t() at population time so a live language switch (see switchLanguage()) is reflected.
 const POSITION_OPTIONS = [
@@ -2929,6 +3027,8 @@ function openImportModal() {
 
     document.getElementById('import-dest-current').checked = true;
     onImportDestChanged();
+
+    loadImportBackupsList();
 
     const modal = document.getElementById('import-settings-modal');
     modal.classList.add('show');

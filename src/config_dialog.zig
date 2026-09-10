@@ -143,6 +143,7 @@ pub fn main(init: std.process.Init) !void {
     _ = try win.bind("saveConfig", saveConfig);
     _ = try win.bind("getConfigData", getConfigData);
     _ = try win.bind("listProfiles", listProfiles);
+    _ = try win.bind("listProfileBackups", listProfileBackups);
     _ = try win.bind("switchProfile", switchProfile);
     _ = try win.bind("createProfile", createProfile);
     _ = try win.bind("copyProfile", copyProfile);
@@ -1293,6 +1294,72 @@ fn listProfiles(e: *webui.Event) void {
     e.returnString(response.items[0 .. response.items.len - 1 :0]);
 }
 
+fn listProfileBackups(e: *webui.Event) void {
+    const allocator = g_allocator;
+
+    var backups = std.ArrayList([]const u8).empty;
+    defer {
+        for (backups.items) |backup| {
+            allocator.free(backup);
+        }
+        backups.deinit(allocator);
+    }
+
+    const backup_dir = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, "backup" }) catch {
+        e.returnString("{\"backups\": []}");
+        return;
+    };
+    defer allocator.free(backup_dir);
+
+    var dir = std.Io.Dir.cwd().openDir(g_io, backup_dir, .{ .iterate = true }) catch {
+        e.returnString("{\"backups\": []}");
+        return;
+    };
+    defer dir.close(g_io);
+
+    var iter = dir.iterate();
+    while (iter.next(g_io) catch null) |entry| {
+        if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".json")) {
+            const backup_name = allocator.dupe(u8, entry.name) catch continue;
+            backups.append(allocator, backup_name) catch continue;
+        }
+    }
+
+    std.mem.sort([]const u8, backups.items, {}, struct {
+        fn desc(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.order(u8, a, b) == .gt;
+        }
+    }.desc);
+
+    var response = std.ArrayList(u8).empty;
+    defer response.deinit(allocator);
+
+    response.appendSlice(allocator, "{\"backups\": [") catch {
+        e.returnString("{\"backups\": []}");
+        return;
+    };
+
+    for (backups.items, 0..) |backup, i| {
+        if (i > 0) {
+            response.append(allocator, ',') catch break;
+        }
+        response.append(allocator, '\"') catch break;
+        appendJsonEscaped(allocator, &response, backup);
+        response.append(allocator, '\"') catch break;
+    }
+
+    response.appendSlice(allocator, "]}") catch {
+        e.returnString("{\"backups\": []}");
+        return;
+    };
+
+    response.append(allocator, 0) catch {
+        e.returnString("{\"backups\": []}");
+        return;
+    };
+    e.returnString(response.items[0 .. response.items.len - 1 :0]);
+}
+
 fn switchProfile(e: *webui.Event) void {
     const profile_name = e.getString();
     slog.debug("Switching to profile: {s}", .{profile_name});
@@ -1488,7 +1555,34 @@ fn deleteProfile(e: *webui.Event) void {
     };
     defer allocator.free(profile_path);
 
-    std.Io.Dir.cwd().deleteFile(g_io, profile_path) catch |err| {
+    const backup_dir = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, "backup" }) catch {
+        e.returnString("{\"success\": false, \"error\": \"Memory allocation failed\"}");
+        return;
+    };
+    defer allocator.free(backup_dir);
+
+    std.Io.Dir.cwd().createDir(g_io, backup_dir, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => {
+            e.returnString("{\"success\": false, \"error\": \"Failed to create backup directory\"}");
+            return;
+        },
+    };
+
+    const now_seconds = std.Io.Clock.real.now(g_io).toSeconds();
+    const backup_filename = std.fmt.allocPrint(allocator, "{d}_{s}", .{ now_seconds, profile_name }) catch {
+        e.returnString("{\"success\": false, \"error\": \"Memory allocation failed\"}");
+        return;
+    };
+    defer allocator.free(backup_filename);
+
+    const backup_path = std.fs.path.join(allocator, &[_][]const u8{ backup_dir, backup_filename }) catch {
+        e.returnString("{\"success\": false, \"error\": \"Memory allocation failed\"}");
+        return;
+    };
+    defer allocator.free(backup_path);
+
+    std.Io.Dir.cwd().rename(profile_path, std.Io.Dir.cwd(), backup_path, g_io) catch |err| {
         const error_msg = std.fmt.allocPrint(allocator, "{{\"success\": false, \"error\": \"Failed to delete: {}\"}}", .{err}) catch {
             e.returnString("{\"success\": false, \"error\": \"Failed to delete profile\"}");
             return;

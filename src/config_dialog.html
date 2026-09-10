@@ -2453,6 +2453,14 @@
                 <p class="hint" style="margin: 0 0 8px 0;" data-i18n="misc.import-settings-file-hint">Select an old EVE-X Preview (.json), EVE-O Preview (.json), or EVE-APM Preview (.ini) file, or an EVE-Maj Preview profile (.json) — format is detected automatically. Nothing is saved until you review and click Save.</p>
                 <input type="file" id="importFileInput" accept=".json,.ini" onchange="handleImportFileSelected(event)">
                 <p id="importFileStatus" class="hint" style="margin: 8px 0 0 0;"></p>
+
+                <div id="importBackupsSection" style="margin-top: 16px; display: none;">
+                    <label for="importBackupSelect" data-i18n="field.importBackupSelect.label">Restore from backup</label>
+                    <div class="field-row">
+                        <select id="importBackupSelect"></select>
+                        <button type="button" class="button-outline" onclick="restoreSelectedProfileBackup()" data-i18n="common.restore">Restore</button>
+                    </div>
+                </div>
             </div>
 
             <div id="import-step-options" style="display: none;">

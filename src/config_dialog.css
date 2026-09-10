@@ -88,6 +88,8 @@
        modals, and previously shared the same 10000 as .modal - stacking
        between them was decided by DOM order alone. */
     --z-color-picker: 10001;
+    /* Same problem: the backup-restore flow opens profile-name-modal from inside import-settings-modal. */
+    --z-modal-nested: 10001;
 
     /* Label rail to control in .detail-form. Shared with the group panel's title
        row, which lines its field up with that same rail from outside the grid. */
@@ -2897,6 +2899,10 @@ button.confirm-delete:hover {
     justify-content: center;
 }
 
+#profile-name-modal {
+    z-index: var(--z-modal-nested);
+}
+
 .modal-content {
     background: var(--color-panel);
     border: 1px solid var(--color-border-strong);
@@ -2928,11 +2934,13 @@ button.confirm-delete:hover {
 
 /* This label sits above its own select like a group heading, not a checkbox/radio's inline
    text, so it drops the field-label chevron the same way those already do. */
-#importSourceProfileRow > label {
+#importSourceProfileRow > label,
+#importBackupsSection > label {
     padding-left: 0;
 }
 
-#importSourceProfileRow > label::before {
+#importSourceProfileRow > label::before,
+#importBackupsSection > label::before {
     content: none;
 }
 

@@ -978,6 +978,7 @@ Some settings persist across all profiles and are configured in `profiles\global
 - Set either or both hotkeys to `null` to disable
 - Profiles are enumerated from the `profiles` directory
 - Allows quick switching between different profile configurations (e.g., PvP, Mining, Trading) without using the system tray or command-line arguments
+- Deleting a profile moves its file to `profiles\backup\` (timestamp-prefixed) instead of removing it; the config dialog's Import modal can restore from these backups
 
 ### Hotkey Groups (Character Cycling)
 
