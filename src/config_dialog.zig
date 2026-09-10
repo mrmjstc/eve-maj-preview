@@ -1334,7 +1334,7 @@ fn writeDefaultProfileFile(allocator: std.mem.Allocator, path: []const u8, filen
 }
 
 fn createProfile(e: *webui.Event) void {
-    const profile_name = e.getString();
+    const profile_name = config_mod.clampProfileName(e.getString());
     const allocator = g_allocator;
 
     const profile_filename = std.fmt.allocPrint(allocator, "{s}.json", .{profile_name}) catch {
@@ -1401,7 +1401,7 @@ fn copyProfile(e: *webui.Event) void {
         e.returnString("{\"success\": false, \"error\": \"Missing target\"}");
         return;
     }
-    const target_name = target_val.string;
+    const target_name = config_mod.clampProfileName(target_val.string);
 
     const source_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, source_name }) catch {
         e.returnString("{\"success\": false, \"error\": \"Memory allocation failed\"}");

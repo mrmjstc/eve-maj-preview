@@ -28,6 +28,12 @@ pub fn environMap() *const std.process.Environ.Map {
 pub const PROFILES_DIR = "profiles";
 pub const DEFAULT_PROFILE = "default.json";
 pub const GLOBAL_SETTINGS_FILE = "profiles/global.settings.json";
+pub const MAX_PROFILE_NAME_LEN: usize = 16;
+
+/// Truncates a user-supplied profile name to MAX_PROFILE_NAME_LEN; names are ASCII (enforced by the config dialog's input sanitization) so byte slicing is safe.
+pub fn clampProfileName(name: []const u8) []const u8 {
+    return if (name.len > MAX_PROFILE_NAME_LEN) name[0..MAX_PROFILE_NAME_LEN] else name;
+}
 const DEFAULT_FONT_NAME = "Segoe UI";
 const MAX_CONFIG_FILE_SIZE: u64 = 300 * 1024;
 

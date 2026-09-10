@@ -2397,7 +2397,7 @@
     <div id="profile-name-modal" class="modal">
         <div class="modal-content">
             <h3 id="profile-modal-title" data-i18n="misc.profile-modal-title">Enter Profile Name</h3>
-            <input type="text" id="profile-name-input" placeholder="Profile name" data-i18n-placeholder="field.profile-name-input.placeholder" />
+            <input type="text" id="profile-name-input" maxlength="16" placeholder="Profile name" data-i18n-placeholder="field.profile-name-input.placeholder" />
             <div class="modal-buttons">
                 <button id="profile-modal-ok" class="button-primary" data-i18n="common.ok">OK</button>
                 <button id="profile-modal-cancel" class="button-outline" data-i18n="common.cancel">Cancel</button>
@@ -2468,7 +2468,7 @@
                         <input type="radio" name="importDest" id="import-dest-new" value="new" onchange="onImportDestChanged()">
                         <span class="label-body" data-i18n="field.import-dest-new.label">New profile</span>
                     </label>
-                    <input type="text" id="importNewProfileName" placeholder="New profile name" data-i18n-placeholder="field.importNewProfileName.placeholder" style="display: none; margin-top: 6px;">
+                    <input type="text" id="importNewProfileName" maxlength="16" placeholder="New profile name" data-i18n-placeholder="field.importNewProfileName.placeholder" style="display: none; margin-top: 6px;">
                 </div>
 
                 <div style="margin-top: 12px;">

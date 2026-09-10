@@ -1167,6 +1167,7 @@ function closeDialog() {
 
 // Polls whether the main app process is running, so the status indicator reflects it being closed/reopened while this dialog stays open.
 const MAIN_APP_STATUS_POLL_MS = 3000;
+const MAX_PROFILE_NAME_LENGTH = 16;
 
 async function updateMainAppStatus() {
     const statusEl = document.getElementById('main-app-status');
@@ -1554,12 +1555,12 @@ async function createNewProfile() {
     const profileName = await showProfileNameModal(t('button.create-new-profile.title'), '');
     if (!profileName) return;
     
-    const sanitizedName = profileName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '');
+    const sanitizedName = profileName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
     if (sanitizedName === '') {
         showStatus(t('status.invalidProfileName'), 'error');
         return;
     }
-    
+
     showStatus(t('status.creatingProfile'), 'info');
     
     try {
@@ -1596,12 +1597,12 @@ async function copyCurrentProfile() {
     const newName = await showProfileNameModal(t('dynamic.profile.copyModalTitle').replace('{name}', currentDisplayName), currentDisplayName + ' - Copy');
     if (!newName) return;
     
-    const sanitizedName = newName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '');
+    const sanitizedName = newName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
     if (sanitizedName === '') {
         showStatus(t('status.invalidProfileName'), 'error');
         return;
     }
-    
+
     showStatus(t('status.copyingProfile'), 'info');
     
     try {
@@ -2946,7 +2947,7 @@ async function handleImportFileSelected(event) {
             importParsedData = data;
 
             document.getElementById('importSourceProfileRow').style.display = 'none';
-            const defaultName = file.name.replace(/\.(json|ini)$/i, '').trim().replace(/[^a-zA-Z0-9_\-\s]/g, '');
+            const defaultName = file.name.replace(/\.(json|ini)$/i, '').trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
             document.getElementById('importNewProfileName').value = defaultName || 'Imported';
 
             statusEl.textContent = t('status.detectedMajFile');
@@ -2968,7 +2969,7 @@ async function handleImportFileSelected(event) {
             if (lastUsed && profileNames.includes(lastUsed)) select.value = lastUsed;
 
             document.getElementById('importSourceProfileRow').style.display = profileNames.length > 1 ? '' : 'none';
-            document.getElementById('importNewProfileName').value = (profileNames[0] || 'Imported').trim().replace(/[^a-zA-Z0-9_\-\s]/g, '');
+            document.getElementById('importNewProfileName').value = (profileNames[0] || 'Imported').trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
 
             statusEl.textContent = t('status.detectedEvexFile').replace('{n}', profileNames.length);
         } else if (data && isEveoConfigData(data)) {
@@ -2976,7 +2977,7 @@ async function handleImportFileSelected(event) {
             importParsedData = data;
 
             document.getElementById('importSourceProfileRow').style.display = 'none';
-            const defaultName = file.name.replace(/\.(json|ini)$/i, '').trim().replace(/[^a-zA-Z0-9_\-\s]/g, '');
+            const defaultName = file.name.replace(/\.(json|ini)$/i, '').trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
             document.getElementById('importNewProfileName').value = defaultName || 'Imported';
 
             statusEl.textContent = t('status.detectedEveoFile');
@@ -2991,7 +2992,7 @@ async function handleImportFileSelected(event) {
             importParsedData = sections;
 
             document.getElementById('importSourceProfileRow').style.display = 'none';
-            const defaultName = file.name.replace(/\.(json|ini)$/i, '').trim().replace(/[^a-zA-Z0-9_\-\s]/g, '');
+            const defaultName = file.name.replace(/\.(json|ini)$/i, '').trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
             document.getElementById('importNewProfileName').value = defaultName || 'Imported';
 
             statusEl.textContent = t('status.detectedApmFile');
@@ -3015,7 +3016,7 @@ function onImportSourceProfileChanged() {
     const profileName = select.value;
 
     const nameInput = document.getElementById('importNewProfileName');
-    nameInput.value = profileName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '');
+    nameInput.value = profileName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
 
     renderImportSections();
 }
@@ -3189,7 +3190,7 @@ async function runImport() {
         const destNew = document.getElementById('import-dest-new').checked;
         if (destNew) {
             const rawName = document.getElementById('importNewProfileName').value;
-            const sanitized = rawName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '');
+            const sanitized = rawName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
             if (sanitized === '') {
                 showStatus(t('status.invalidNewProfileName'), 'error');
                 runBtn.disabled = false;
@@ -3271,7 +3272,7 @@ function showProfileNameModal(title, defaultValue = '') {
         const cancelBtn = document.getElementById('profile-modal-cancel');
         
         titleEl.textContent = title;
-        input.value = defaultValue;
+        input.value = defaultValue.slice(0, MAX_PROFILE_NAME_LENGTH);
 
         modal.classList.add('show');
         setTimeout(() => {
