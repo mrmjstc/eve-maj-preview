@@ -1822,6 +1822,64 @@ label + .binding-list {
     margin-bottom: 0;
 }
 
+.section-heading-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.button-icon.hint-toggle {
+    width: auto;
+    height: auto;
+    position: relative;
+    top: -2px;
+    padding: 1px 5px;
+    font-size: var(--fs-micro);
+    line-height: var(--lh-body);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+}
+
+.button-icon.hint-toggle:hover {
+    background: transparent;
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+
+.button-icon.hint-toggle:active,
+.button-icon.hint-toggle.hint-toggle-active {
+    transform: none;
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-accent-ink);
+}
+
+/* Inset rather than an outer glow so it doesn't grow past the badge next to it. */
+.hint-toggle:focus-visible {
+    box-shadow: var(--focus-ring-inset);
+}
+
+.hint-extra {
+    display: none;
+    color: var(--color-muted);
+    font-size: var(--fs-label);
+    font-style: italic;
+    margin: 1px 0 4px;
+}
+
+.section.hints-visible .hint-extra {
+    display: block;
+}
+
+/* .binding-list and .binding-list-compact are 2-column grids and .binding uses
+   display:contents, so a trailing hint-extra needs an explicit span or it
+   lands narrow in column 1. */
+.binding-list > .hint-extra,
+.binding-list-compact > .hint-extra {
+    grid-column: 1 / -1;
+}
+
 /* Scope, said once per section instead of in every hint: which file a binding
    is saved to, and so whether switching profiles changes it. */
 .scope-chip {

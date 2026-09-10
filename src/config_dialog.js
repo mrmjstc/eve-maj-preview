@@ -6156,6 +6156,11 @@ function toggleAdvancedMode() {
     }
 }
 
+function toggleSectionHint(btn) {
+    const visible = btn.closest('.section').classList.toggle('hints-visible');
+    btn.classList.toggle('hint-toggle-active', visible);
+}
+
 // Preference lives in global.settings.json so it applies across all profiles.
 function toggleAlwaysOnTop() {
     const enabled = document.getElementById('alwaysOnTopToggle').checked;
@@ -7664,9 +7669,21 @@ function toggleTtsOptions() {
         });
     }
 
+    toggleTtsDisplayNameOption();
+
     // The per-type "TTS" checkboxes only matter when the master switch is on.
     if (typeof NOTIFICATION_TYPES !== 'undefined') {
         NOTIFICATION_TYPES.forEach(nt => toggleNotificationTypeEnabled(nt.key));
+    }
+}
+
+// Use Display Name only matters when the character name is actually spoken.
+function toggleTtsDisplayNameOption() {
+    const ttsEnabled = document.getElementById('ttsEnabled');
+    const speakCharacterName = document.getElementById('ttsSpeakCharacterName');
+    const useDisplayName = document.getElementById('ttsUseDisplayName');
+    if (useDisplayName) {
+        useDisplayName.disabled = !(ttsEnabled && ttsEnabled.checked && speakCharacterName && speakCharacterName.checked);
     }
 }
 

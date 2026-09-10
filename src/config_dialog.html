@@ -915,7 +915,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.behavior.section.startup.heading">Startup</h3>
-                            <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.behavior.section.startup.hint">Launch on Windows login, and register the evemajpreview:// URL protocol for external control (Stream Deck, scripts, etc.).</p>
 
@@ -927,12 +930,16 @@
                             <input type="checkbox" id="autoRegisterProtocol">
                             <span class="label-body" data-i18n="field.autoRegisterProtocol.label">Auto-Register Protocol Handler</span>
                         </label>
+                        <p class="hint hint-extra"><span data-i18n="field.autoRegisterProtocol.hint">Needed once for links like evemajpreview://cycle-next to work from other apps.</span> <a href="https://github.com/mrmjstc/eve-maj-preview/blob/main/docs/CONFIGURATION.md#protocol-handler" onclick="return openExternalLink(event)" class="external-link">Learn more</a></p>
                     </div>
 
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.behavior.section.interaction.heading">Interaction</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.behavior.section.interaction.hint">Mouse behavior for repositioning and activating thumbnails, including when to activate the EVE client window on left-click.</p>
 
@@ -948,13 +955,17 @@
                                     <option value="MouseUp" data-i18n="field.clickTrigger.option.mouseup">Mouse Up (On Release)</option>
                                 </select>
                             </div>
+                            <p class="hint hint-extra" data-i18n="field.clickTrigger.hint">Mouse Up avoids accidental drags from a quick click.</p>
                         </div>
                     </div>
 
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.behavior.section.auto-minimize-all-clients.heading">Auto-Minimize</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.behavior.section.auto-minimize-all-clients.hint">Minimizes an EVE client window after it's been unfocused for the configured delay.</p>
 
@@ -968,12 +979,14 @@
                                 <input type="checkbox" id="autoMinimizeExemptLastActive">
                                 <span class="label-body" data-i18n="field.autoMinimizeExemptLastActive.label">Keep Last-Active Client Visible</span>
                             </label>
+                            <p class="hint hint-extra" data-i18n="field.autoMinimizeExemptLastActive.hint">Exempts whichever client you focused most recently, even past the delay.</p>
 
                             <div class="binding-list">
                                 <div class="binding">
                                     <label for="autoMinimizeDelay" data-i18n="field.autoMinimizeDelay.label">Delay (s)</label>
                                     <input type="number" id="autoMinimizeDelay" min="0" max="10" step="0.1">
                                 </div>
+                                <p class="hint hint-extra" data-i18n="field.autoMinimizeDelay.hint">How long a client can sit unfocused before it's minimized.</p>
                                 <div class="binding">
                                     <label for="animationStyle" data-i18n="field.animationStyle.label">Animation Style</label>
                                     <select id="animationStyle">
@@ -981,6 +994,7 @@
                                         <option value="OriginalAnimation" data-i18n="field.animationStyle.option.originalanimation">Original Animation</option>
                                     </select>
                                 </div>
+                                <p class="hint hint-extra" data-i18n="field.animationStyle.hint">No Animation minimizes instantly; Original Animation keeps Windows' native minimize effect.</p>
                             </div>
                         </div>
                     </div>
@@ -988,7 +1002,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.behavior.section.character-exclusion.heading">Character Exclusion</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.behavior.section.character-exclusion.hint">Controls Shift+Click exclusion of characters from hotkey cycling.</p>
 
@@ -1001,6 +1018,7 @@
                                 <input type="checkbox" id="autoMinimizeExcludedCharacters">
                                 <span class="label-body" data-i18n="field.autoMinimizeExcludedCharacters.label">Auto-Minimize Excluded Characters</span>
                             </label>
+                            <p class="hint hint-extra" data-i18n="field.autoMinimizeExcludedCharacters.hint">Minimizes immediately on exclusion, not on the Auto-Minimize delay above.</p>
 
                             <div class="binding-list">
                                 <div class="binding">
@@ -1096,7 +1114,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.hotkeys.section.hotkey-system.heading">Hotkey System</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.hotkeys.section.hotkey-system.hint">Controls how the hotkeys below are registered and triggered.</p>
 
@@ -1104,6 +1125,7 @@
                             <input type="checkbox" id="requireEveFocus">
                             <span class="label-body" data-i18n="field.requireEveFocus.label">Require EVE Focus</span>
                         </label>
+                        <p class="hint hint-extra" data-i18n="field.requireEveFocus.hint">Hotkeys are ignored unless an EVE window is currently focused.</p>
                     </div>
 
                     <div class="section">
@@ -1139,7 +1161,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.hotkeys.section.client-cycling.heading">Client Cycling</h3>
-                            <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.hotkeys.section.client-cycling.hint">Step through open EVE client windows, ordered by the Characters list of whichever profile is loaded.</p>
 
@@ -1147,6 +1172,7 @@
                             <input type="checkbox" id="cycleAllClientsRespectExclusions">
                             <span class="label-body" data-i18n="field.cycleAllClientsRespectExclusions.label">Skip Excluded Characters</span>
                         </label>
+                        <p class="hint hint-extra" data-i18n="field.cycleAllClientsRespectExclusions.hint">Same exclusion list as Character Exclusion on the Behavior tab.</p>
 
                         <div class="binding-list" id="clientBindings"></div>
                     </div>
@@ -1200,7 +1226,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.notifications.section.notification-system.heading">Notification System</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.notifications.section.notification-system.hint">Configure position, duration, and suppression behavior for event notifications.</p>
 
@@ -1264,10 +1293,12 @@
                                     <label for="notifSuppressClickDuration" data-i18n="field.notifSuppressClickDuration.label">Click Suppress Duration (s)</label>
                                     <input type="number" id="notifSuppressClickDuration" min="0" max="60" step="0.1">
                                 </div>
+                                <p class="hint hint-extra" data-i18n="field.notifSuppressClickDuration.hint">Suppresses further notifications on a thumbnail for this long after you click it.</p>
                                 <div class="binding">
                                     <label for="notifCycleRetention" data-i18n="field.notifCycleRetention.label">Recently-Notified Cycle Retention (s)</label>
                                     <input type="number" id="notifCycleRetention" min="5" max="600" step="1">
                                 </div>
+                                <p class="hint hint-extra" data-i18n="field.notifCycleRetention.hint">How long a character stays in the "recently notified" cycle group after its last alert.</p>
                             </div>
                         </div>
                     </div>
@@ -1287,7 +1318,7 @@
 
                             <div id="ttsOptions">
                                 <label>
-                                    <input type="checkbox" id="ttsSpeakCharacterName">
+                                    <input type="checkbox" id="ttsSpeakCharacterName" onchange="toggleTtsDisplayNameOption()">
                                     <span class="label-body" data-i18n="field.ttsSpeakCharacterName.label">Prefix Spoken Alerts with the Character Name</span>
                                 </label>
 
@@ -1344,7 +1375,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.notifications.section.history-panel.heading">History Panel</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.notifications.section.history-panel.hint">A draggable, resizable panel showing recent notification history. Click a row to jump to that character.</p>
 
@@ -1416,18 +1450,23 @@
                                 <input type="checkbox" id="notifInfoPanelShowTimestamp">
                                 <span class="label-body" data-i18n="field.notifInfoPanelShowTimestamp.label">Show Relative Timestamps</span>
                             </label>
+                            <p class="hint hint-extra" data-i18n="field.notifInfoPanelShowTimestamp.hint">Shows times like "5m ago" instead of a fixed clock time.</p>
 
                             <label>
                                 <input type="checkbox" id="notifInfoPanelShowCategoryFilters">
                                 <span class="label-body" data-i18n="field.notifInfoPanelShowCategoryFilters.label">Show Category Filters</span>
                             </label>
+                            <p class="hint hint-extra" data-i18n="field.notifInfoPanelShowCategoryFilters.hint">Adds filter buttons for each notification category to the panel.</p>
                         </div>
                     </div>
 
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.notifications.section.travel-mode.heading">Travel Mode</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.notifications.section.travel-mode.hint">Detects when a tracked character falls behind while the rest of the group jumps together, and fires a notification. Runs automatically once enabled below - no manual start/stop needed. Border color, duration, and TTS for the alert are configured above under "Left Behind".</p>
 
@@ -1442,6 +1481,7 @@
                                     <label for="travelWindowSeconds" data-i18n="field.travelWindowSeconds.label">Catch-Up Window (seconds)</label>
                                     <input type="number" id="travelWindowSeconds" min="1" max="3600">
                                 </div>
+                                <p class="hint hint-extra" data-i18n="field.travelWindowSeconds.hint">How long a character can lag behind the group's jump before this fires.</p>
                             </div>
 
                             <div class="binding-list">
@@ -1452,6 +1492,7 @@
                                         <option value="count" data-i18n="field.travelThresholdMode.count">Fixed number of characters</option>
                                     </select>
                                 </div>
+                                <p class="hint hint-extra" data-i18n="field.travelThresholdMode.hint">Minimum group size required before a straggler triggers an alert.</p>
                             </div>
 
                             <div id="travelThresholdPercentRow" class="binding-list">
