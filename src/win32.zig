@@ -132,6 +132,7 @@ pub const SWP_NOACTIVATE = 0x0010;
 pub const SWP_SHOWWINDOW = 0x0040;
 
 pub const GWLP_USERDATA = -21;
+pub const GWLP_WNDPROC = -4;
 pub const GWL_EXSTYLE = -20;
 
 pub const IDC_ARROW: LPCSTR = @ptrFromInt(32512);
@@ -453,6 +454,7 @@ pub extern "user32" fn SetWinEventHook(
 pub extern "user32" fn UnhookWinEvent(hWinEventHook: HANDLE) callconv(.c) BOOL;
 pub extern "user32" fn SetWindowLongPtrA(hWnd: HWND, nIndex: c_int, dwNewLong: isize) callconv(.c) isize;
 pub extern "user32" fn GetWindowLongPtrA(hWnd: HWND, nIndex: c_int) callconv(.c) isize;
+pub extern "user32" fn CallWindowProcA(lpPrevWndFunc: isize, hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.c) LRESULT;
 pub extern "user32" fn SetPropA(hWnd: HWND, lpString: LPCSTR, hData: HANDLE) callconv(.c) BOOL;
 pub extern "user32" fn GetPropA(hWnd: HWND, lpString: LPCSTR) callconv(.c) ?HANDLE;
 pub extern "user32" fn SetTimer(hWnd: ?HWND, nIDEvent: usize, uElapse: UINT, lpTimerFunc: ?*const anyopaque) callconv(.c) usize;

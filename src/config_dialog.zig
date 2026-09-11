@@ -44,8 +44,26 @@ var config_path_allocated: ?[]const u8 = null;
 /// Window title used to find an already-open dialog instance and as the browser app-window's title (set via config_dialog.html's <title>).
 const DIALOG_WINDOW_TITLE = "EVE-Maj Preview Configuration";
 
+/// Dialog's design size at 96 DPI; scaled by the target monitor's DPI before display.
+const DIALOG_DESIGN_WIDTH: f32 = 800.0;
+const DIALOG_DESIGN_HEIGHT: f32 = 950.0;
+
+const PhysicalSize = struct { width: u32, height: u32 };
+
+/// Converts the 96-DPI design size into the physical pixels setSize/SetWindowPos expect at this DPI.
+fn targetPhysicalSize(dpi: u32) PhysicalSize {
+    const scale = @as(f32, @floatFromInt(dpi)) / 96.0;
+    return .{
+        .width = @intFromFloat(@round(DIALOG_DESIGN_WIDTH * scale)),
+        .height = @intFromFloat(@round(DIALOG_DESIGN_HEIGHT * scale)),
+    };
+}
+
 /// Set once by revealDialogWindow, once the WebView2 host window exists; consumed by setAlwaysOnTop.
 var g_dialog_hwnd: ?win32.HWND = null;
+
+/// webui's own WndProc, saved by revealDialogWindow's subclassing so dialogWndProc can chain to it.
+var g_dialog_orig_wndproc: isize = 0;
 
 /// Extract the profile filename (e.g. "default.json") from config_path, which is always "profiles/<name>.json".
 fn currentProfileFilename() []const u8 {
@@ -128,12 +146,9 @@ pub fn main(init: std.process.Init) !void {
 
     var win = webui.newWindow();
 
-    // Per-monitor DPI awareness makes setSize take physical pixels, so scale the 96-DPI design size or the non-resizable dialog shrinks at higher scaling.
-    const dialog_dpi_scale = @as(f32, @floatFromInt(win32.GetDpiForSystem())) / 96.0;
-    win.setSize(
-        @intFromFloat(@round(800.0 * dialog_dpi_scale)),
-        @intFromFloat(@round(950.0 * dialog_dpi_scale)),
-    );
+    // Physical-pixel size for per-monitor DPI awareness; GetDpiForSystem is just a startup guess, corrected in revealDialogWindow once the real monitor is known.
+    const startup_size = targetPhysicalSize(win32.GetDpiForSystem());
+    win.setSize(startup_size.width, startup_size.height);
     win.setKiosk(false);
     win.setResizable(false);
 
@@ -208,15 +223,51 @@ fn focusExistingDialog() void {
     _ = win32.SetForegroundWindow(hwnd);
 }
 
-fn revealDialogWindow(win: anytype, initial_always_on_top: bool) void {
-    win.run("document.documentElement.classList.remove('pre-init');");
+/// Subclasses webui's HWND so we see WM_DPICHANGED, which it never surfaces to us otherwise.
+fn installDpiChangeHandler(hwnd: win32.HWND) void {
+    const prev = win32.SetWindowLongPtrA(hwnd, win32.GWLP_WNDPROC, @as(isize, @bitCast(@intFromPtr(&dialogWndProc))));
+    g_dialog_orig_wndproc = prev;
+}
 
+fn dialogWndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
+    if (msg == win32.WM_DPICHANGED) {
+        const target = targetPhysicalSize(win32.GetDpiForWindow(hwnd));
+
+        const suggested = win32.lparamToPtr(win32.RECT, lParam);
+        _ = win32.SetWindowPos(
+            hwnd,
+            win32.HWND_NOTOPMOST,
+            suggested.left,
+            suggested.top,
+            @intCast(target.width),
+            @intCast(target.height),
+            win32.SWP_NOZORDER | win32.SWP_NOACTIVATE,
+        );
+
+        return 0;
+    }
+
+    if (g_dialog_orig_wndproc != 0) {
+        return win32.CallWindowProcA(g_dialog_orig_wndproc, hwnd, msg, wParam, lParam);
+    }
+    return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
+}
+
+fn revealDialogWindow(win: anytype, initial_always_on_top: bool) void {
     if (win.getHwnd()) |hwnd| {
         g_dialog_hwnd = hwnd;
+        installDpiChangeHandler(hwnd);
+
+        // Re-derive against the window's actual monitor DPI, since the startup size above was only a guess.
+        const target = targetPhysicalSize(win32.GetDpiForWindow(hwnd));
+        win.setSize(target.width, target.height);
+
         if (initial_always_on_top) applyAlwaysOnTop(true);
     } else |err| {
         slog.warn("Failed to get configuration dialog HWND: {}", .{err});
     }
+
+    win.run("document.documentElement.classList.remove('pre-init');");
 
     slog.debug("Configuration dialog window visible", .{});
 }
