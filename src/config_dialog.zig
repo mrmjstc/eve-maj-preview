@@ -117,6 +117,15 @@ pub fn main(init: std.process.Init) !void {
     } else |_| {}
     defer if (startup_settings) |*s| s.deinit();
 
+    // Same as main.zig: Windows GUI subsystem doesn't create a console by default, so pop one when Debug logging is on.
+    if (startup_settings) |s| {
+        if (s.logLevel == .debug) {
+            _ = win32.AllocConsole();
+            log.setConsoleReady(true);
+            _ = win32.SetConsoleCtrlHandler(consoleCtrlHandler, win32.TRUE);
+        }
+    }
+
     // config.exe is a separate executable (see build.zig) with its own g_update_status, so it can't reuse main.zig's check result.
     const update_checks_disabled = if (startup_settings) |s| s.disableUpdateChecks else false;
     if (!update_checks_disabled) {
@@ -223,6 +232,33 @@ fn focusExistingDialog() void {
     _ = win32.SetForegroundWindow(hwnd);
 }
 
+fn consoleCtrlHandler(ctrl_type: win32.DWORD) callconv(.c) win32.BOOL {
+    switch (ctrl_type) {
+        win32.CTRL_C_EVENT, win32.CTRL_BREAK_EVENT, win32.CTRL_CLOSE_EVENT, win32.CTRL_LOGOFF_EVENT, win32.CTRL_SHUTDOWN_EVENT => {
+            log.flush();
+        },
+        else => {},
+    }
+    return win32.FALSE;
+}
+
+fn logWindowAndClientRects(hwnd: win32.HWND, label: []const u8) void {
+    var window_rect: win32.RECT = undefined;
+    var client_rect: win32.RECT = undefined;
+    _ = win32.GetWindowRect(hwnd, &window_rect);
+    _ = win32.GetClientRect(hwnd, &client_rect);
+    slog.info(
+        "[dpi-diag] {s}: window={}x{} client={}x{}",
+        .{
+            label,
+            win32.rectWidth(window_rect),
+            win32.rectHeight(window_rect),
+            win32.rectWidth(client_rect),
+            win32.rectHeight(client_rect),
+        },
+    );
+}
+
 /// Subclasses webui's HWND so we see WM_DPICHANGED, which it never surfaces to us otherwise.
 fn installDpiChangeHandler(hwnd: win32.HWND) void {
     const prev = win32.SetWindowLongPtrA(hwnd, win32.GWLP_WNDPROC, @as(isize, @bitCast(@intFromPtr(&dialogWndProc))));
@@ -231,7 +267,11 @@ fn installDpiChangeHandler(hwnd: win32.HWND) void {
 
 fn dialogWndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     if (msg == win32.WM_DPICHANGED) {
-        const target = targetPhysicalSize(win32.GetDpiForWindow(hwnd));
+        logWindowAndClientRects(hwnd, "WM_DPICHANGED: before resize");
+
+        const new_dpi = win32.GetDpiForWindow(hwnd);
+        const target = targetPhysicalSize(new_dpi);
+        slog.info("[dpi-diag] WM_DPICHANGED: new dpi={} target={}x{}", .{ new_dpi, target.width, target.height });
 
         const suggested = win32.lparamToPtr(win32.RECT, lParam);
         _ = win32.SetWindowPos(
@@ -244,6 +284,7 @@ fn dialogWndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam
             win32.SWP_NOZORDER | win32.SWP_NOACTIVATE,
         );
 
+        logWindowAndClientRects(hwnd, "WM_DPICHANGED: immediately after resize");
         return 0;
     }
 
@@ -259,8 +300,15 @@ fn revealDialogWindow(win: anytype, initial_always_on_top: bool) void {
         installDpiChangeHandler(hwnd);
 
         // Re-derive against the window's actual monitor DPI, since the startup size above was only a guess.
-        const target = targetPhysicalSize(win32.GetDpiForWindow(hwnd));
+        const actual_dpi = win32.GetDpiForWindow(hwnd);
+        const target = targetPhysicalSize(actual_dpi);
+
+        slog.info("[dpi-diag] dpi={} target={}x{}", .{ actual_dpi, target.width, target.height });
+        logWindowAndClientRects(hwnd, "before setSize");
+
         win.setSize(target.width, target.height);
+
+        logWindowAndClientRects(hwnd, "immediately after setSize");
 
         if (initial_always_on_top) applyAlwaysOnTop(true);
     } else |err| {
@@ -270,6 +318,11 @@ fn revealDialogWindow(win: anytype, initial_always_on_top: bool) void {
     win.run("document.documentElement.classList.remove('pre-init');");
 
     slog.debug("Configuration dialog window visible", .{});
+
+    if (g_dialog_hwnd) |hwnd| {
+        std.Io.sleep(g_io, .fromMilliseconds(1000), .awake) catch {};
+        logWindowAndClientRects(hwnd, "1s after setSize (WebView2 init should be settled by now)");
+    }
 }
 
 /// Sets or clears WS_EX_TOPMOST on the dialog window; a no-op if the HWND isn't available yet (e.g. called before revealDialogWindow captures it).
