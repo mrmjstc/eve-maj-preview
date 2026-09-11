@@ -203,7 +203,7 @@ Configure which applications to create thumbnails for. By default, only EVE Onli
 
 ## Display and Positioning
 
-The display configuration supports multiple layout modes for arranging thumbnails automatically, with full multi-monitor support.
+The display configuration has two layout modes, with full multi-monitor support.
 
 **Basic Configuration:**
 
@@ -213,8 +213,7 @@ The display configuration supports multiple layout modes for arranging thumbnail
     "startX": 10,
     "startY": 10,
     "spacing": 10,
-    "layoutMode": "HorizontalList",
-    "gridColumns": 4,
+    "layoutMode": "Custom",
     "honorSavedPositions": true
   }
 }
@@ -222,13 +221,44 @@ The display configuration supports multiple layout modes for arranging thumbnail
 
 **Layout Modes:**
 
-- **`HorizontalList`** (default): Multi-row grid, fills left-to-right, then wraps to next row
-- **`Grid`**: Classic grid with configurable rows/columns and directional fill patterns
-- **`VerticalList`**: Multi-column grid, fills top-to-bottom, then starts new column
-- **`VerticalStack`**: Single column, thumbnails stacked vertically
-- **`HorizontalStack`**: Single row, thumbnails stacked horizontally
-- **`Overlay`**: All thumbnails at the same position (for minimal space/hotkey switching)
-- **`Custom`**: No auto-layout, uses only saved positions
+- **`Custom`** (default): No auto-layout. Each character spawns at its saved position (see `honorSavedPositions`); a character with no saved position yet spawns at `startX`/`startY`.
+- **`RegionFit`**: Auto-fits thumbnails into a user-dragged screen rectangle (`regionX`/`regionY`/`regionWidth`/`regionHeight`) - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit) below.
+
+## Thumbnail Space (Region Fit)
+
+Rather than a fixed per-thumbnail size and an unbounded grid, `RegionFit` mode fits however many thumbnails are currently tracked into a fixed rectangle: it picks the column count that best fills the region for the current count, derives rows, and sizes every cell to fill the region while preserving the configured thumbnail's aspect ratio (no minimum cell size - cells keep shrinking as more characters log in). Cells are packed snugly against each other (using `spacing`, not stretched to fill the region) so any slack from the aspect-ratio fit collects as one block at the region's far edge instead of gaps between thumbnails. It reflows automatically on login, and on logout if `regionFitReorderLoggedOut` is true; while active it fully replaces per-character manual dragging and the global/per-character thumbnail size (`thumbnail.width`/`height`, `CharacterThumbnailSize`) - those are ignored.
+
+The region itself is set via the config dialog's "Define Thumbnail Space" button, which asks the running main app to show a full-desktop drag-to-select overlay; the captured rectangle is written into `regionX`/`regionY`/`regionWidth`/`regionHeight` (all `null` until first captured).
+
+Fill order is controlled by two independent settings:
+- `regionFitOrder`: `Characters` (the profile's configured character list order) or `HotkeyGroups` (grouped by hotkey group membership, in `hotkeyGroups` order, each group's own member order preserved; a character in more than one group counts toward whichever it appears in first). Characters matching neither sort after ranked ones.
+- `regionFitDirection`: which corner the grid fills from and whether it goes row-first or column-first:
+  - `RowFirst_LTR_TTB`: Left→right, top→bottom (default)
+  - `RowFirst_RTL_TTB`: Right→left, top→bottom
+  - `RowFirst_LTR_BTT`: Left→right, bottom→top
+  - `RowFirst_RTL_BTT`: Right→left, bottom→top
+  - `ColumnFirst_TTB_LTR`: Top→bottom, left→right
+  - `ColumnFirst_BTT_LTR`: Bottom→top, left→right
+  - `ColumnFirst_TTB_RTL`: Top→bottom, right→left
+  - `ColumnFirst_BTT_RTL`: Bottom→top, right→left
+
+`regionFitReorderLoggedOut` (default `true`): whether a character logging out moves its thumbnail to the end of the grid (an unranked "EVE" placeholder always sorts last) or stays in its current slot until some other login/logout triggers a reflow.
+
+```json
+{
+  "display": {
+    "layoutMode": "RegionFit",
+    "regionX": 100,
+    "regionY": 100,
+    "regionWidth": 800,
+    "regionHeight": 600,
+    "regionFitOrder": "Characters",
+    "regionFitDirection": "RowFirst_LTR_TTB",
+    "regionFitReorderLoggedOut": true,
+    "spacing": 10
+  }
+}
+```
 
 **Multi-Monitor Support:**
 
@@ -237,8 +267,7 @@ Target specific monitors by index (0-based):
 ```json
 {
   "display": {
-    "layoutMode": "Grid",
-    "gridColumns": 4,
+    "layoutMode": "Custom",
     "monitorIndex": 1,
     "useMonitorWorkArea": true,
     "startX": 10,
@@ -253,124 +282,14 @@ Target specific monitors by index (0-based):
 
 All pixel-based values here (thumbnail size, `startX`/`startY`, spacing, font sizes) are logical (96 DPI) units — the app is per-monitor DPI aware and scales them to whichever monitor a thumbnail actually lands on, so the same config looks the same size on monitors with different display scaling.
 
-**Grid Configuration:**
-
-```json
-{
-  "display": {
-    "layoutMode": "Grid",
-    "layoutDirection": "RowFirst_LTR_TTB",
-    "gridColumns": 4,
-    "gridRows": 3,
-    "spacing": 10
-  }
-}
-```
-
-**Layout Directions** (for Grid mode):
-- `RowFirst_LTR_TTB`: Left→right, top→bottom (default)
-- `RowFirst_RTL_TTB`: Right→left, top→bottom
-- `RowFirst_LTR_BTT`: Left→right, bottom→top
-- `RowFirst_RTL_BTT`: Right→left, bottom→top
-- `ColumnFirst_TTB_LTR`: Top→bottom, left→right
-- `ColumnFirst_BTT_LTR`: Bottom→top, left→right
-- `ColumnFirst_TTB_RTL`: Top→bottom, right→left
-- `ColumnFirst_BTT_RTL`: Bottom→top, right→left
-
-**Stack Alignment:**
-
-Control how stacks align on their secondary axis:
-
-```json
-{
-  "display": {
-    "layoutMode": "VerticalStack",
-    "stackAlignment": "Center",
-    "stackOffset": 10,
-    "startX": 960
-  }
-}
-```
-
-For **VerticalStack** (aligns horizontally):
-- `TopLeft`, `LeftCenter`, `BottomLeft`: Left edge at startX
-- `TopCenter`, `Center`, `BottomCenter`: Centered on startX
-- `TopRight`, `RightCenter`, `BottomRight`: Right edge at startX
-
-For **HorizontalStack** (aligns vertically):
-- `TopLeft`, `TopCenter`, `TopRight`: Top edge at startY
-- `LeftCenter`, `Center`, `RightCenter`: Centered on startY
-- `BottomLeft`, `BottomCenter`, `BottomRight`: Bottom edge at startY
-
-**Advanced Spacing:**
-
-Use different horizontal and vertical spacing:
-
-```json
-{
-  "display": {
-    "spacing": 10,
-    "spacingX": 20,
-    "spacingY": 5
-  }
-}
-```
-
-- `spacing`: Default spacing if `spacingX`/`spacingY` not specified
-- `spacingX`: Horizontal spacing between thumbnails (overrides `spacing`)
-- `spacingY`: Vertical spacing between thumbnails (overrides `spacing`)
-
-**Example Configurations:**
-
-**Overlay Mode** (minimal space):
-```json
-{
-  "display": {
-    "layoutMode": "Overlay",
-    "startX": 100,
-    "startY": 100,
-    "honorSavedPositions": false
-  }
-}
-```
-
-**Second Monitor Grid**:
-```json
-{
-  "display": {
-    "layoutMode": "Grid",
-    "gridColumns": 6,
-    "monitorIndex": 1,
-    "startX": 0,
-    "startY": 0
-  }
-}
-```
-
-**Centered Vertical Stack**:
-```json
-{
-  "display": {
-    "layoutMode": "VerticalStack",
-    "stackAlignment": "Center",
-    "startX": 960,
-    "startY": 10,
-    "stackOffset": 10
-  }
-}
-```
-
 **All Display Options:**
 
-- `startX`, `startY`: Starting position (absolute or monitor-relative)
-- `spacing`: Default spacing between thumbnails
-- `spacingX`, `spacingY`: Per-direction spacing (optional)
-- `layoutMode`: Layout arrangement mode
-- `layoutDirection`: Direction for grid growth
-- `gridColumns`: Number of columns
-- `gridRows`: Maximum rows (null = unlimited)
-- `stackOffset`: Spacing for stack modes
-- `stackAlignment`: Alignment for stacks on secondary axis
+- `startX`, `startY`: Starting position (absolute or monitor-relative); also the spawn point for characters with no saved position in `Custom` mode
+- `newThumbnailSpacing`: Horizontal gap between thumbnails with no saved position yet (new characters, and not-logged-in "EVE" placeholders) - they're lined up left-to-right from `startX`/`startY` instead of stacking on top of each other
+- `spacing`: Gap between thumbnails in `RegionFit` mode
+- `layoutMode`: `Custom` or `RegionFit`
+- `regionX`, `regionY`, `regionWidth`, `regionHeight`: Thumbnail Space rectangle for `RegionFit` mode (null until captured) - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit)
+- `regionFitOrder`, `regionFitDirection`, `regionFitReorderLoggedOut`: `RegionFit` fill order and logout behavior - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit)
 - `monitorIndex`: Target monitor (0-based, null = absolute)
 - `useMonitorWorkArea`: Respect taskbar
 - `honorSavedPositions`: Use saved character positions

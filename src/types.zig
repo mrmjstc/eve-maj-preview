@@ -117,13 +117,8 @@ pub fn notificationCategory(t: NotificationType) NotificationCategory {
 }
 
 pub const LayoutMode = enum {
-    Grid,
-    VerticalStack,
-    HorizontalStack,
-    VerticalList,
-    HorizontalList,
-    Overlay,
     Custom,
+    RegionFit,
 };
 
 /// Primary display mode: how EVE clients are presented
@@ -140,12 +135,14 @@ pub const ListViewOrder = enum {
     ConfiguredCharacters,
 };
 
-/// Direction for layout growth
-pub const LayoutDirection = enum {
-    LeftToRight,
-    RightToLeft,
-    TopToBottom,
-    BottomToTop,
+/// Fill order for RegionFit's grid: configured character list, or grouped by hotkey group membership.
+pub const RegionFitOrder = enum {
+    Characters,
+    HotkeyGroups,
+};
+
+/// Fill direction for RegionFit's grid
+pub const RegionFitDirection = enum {
     RowFirst_LTR_TTB,
     RowFirst_RTL_TTB,
     RowFirst_LTR_BTT,
