@@ -1715,6 +1715,11 @@ pub const HotkeyManager = struct {
         while (attempts < num) : (attempts += 1) {
             const w = windows[order[index]];
 
+            if (scout.isGenericCharacterName(w.character_name)) {
+                index = stepCycleIndex(index, num, forward);
+                continue;
+            }
+
             if (respect_exclusions and self.isCharacterExcluded(w.character_name)) {
                 index = stepCycleIndex(index, num, forward);
                 continue;

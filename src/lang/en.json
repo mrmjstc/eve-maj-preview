@@ -442,7 +442,7 @@
   "field.notificationsEnabled.label": "Enable Notifications",
   "field.pair.excludedCharacters.label": "Excluded Characters",
   "field.pair.loggedInClients.label": "Logged-In Clients",
-  "field.pair.notLoggedInClients.label": "Clients at Login Screen",
+  "field.pair.notLoggedInClients.label": "Logged-Out Clients",
   "field.pair.notifiedCharacters.label": "Notified Characters",
   "field.pair.profile.label": "Profile",
   "field.profile-name-input.placeholder": "Profile name",
