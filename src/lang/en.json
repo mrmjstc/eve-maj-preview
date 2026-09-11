@@ -295,6 +295,8 @@
   "dynamic.windowFilter.pickerDefaultOption": "-- Select a running window --",
   "field.activeThumbnailHidden.label": "Hide Active Thumbnail",
   "field.advancedModeToggle.label": "Advanced Mode",
+  "field.allowHotkeyAutoRepeat.hint": "Holding a hotkey down repeats its action instead of firing once.",
+  "field.allowHotkeyAutoRepeat.label": "Repeat Hotkey While Held",
   "field.alwaysOnTopToggle.label": "Always on Top",
   "field.animationStyle.hint": "No Animation minimizes instantly; Original Animation keeps Windows' native minimize effect.",
   "field.animationStyle.label": "Animation Style",

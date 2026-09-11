@@ -818,7 +818,8 @@ pub const HotkeyManager = struct {
 
         // No MOD_NOREPEAT (see registerSingleHotkey), so this must run before every early return or held keys would re-fire.
         const vk_code = win32.hotkeyVkFromLparam(lparam);
-        if (!trackHotkeyPress(self.allocator, vk_code)) {
+        const is_repeat = !trackHotkeyPress(self.allocator, vk_code);
+        if (is_repeat and !self.config.allowHotkeyAutoRepeat) {
             slog.debug("Hotkey {} ignored - key-repeat re-fire while held", .{hotkey_id});
             return;
         }
