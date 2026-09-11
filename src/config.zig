@@ -1809,6 +1809,7 @@ pub const Config = struct {
     resources: ResourcesConfig,
     travel: TravelConfig,
     accentColor: u32 = DEFAULT_ACCENT_COLOR,
+    advancedMode: bool = false,
 
     windowFilters: std.ArrayList(WindowFilter),
 
@@ -1855,6 +1856,7 @@ pub const Config = struct {
         resources: ResourcesConfig.Wire = .{},
         travel: TravelConfig = .{},
         accentColor: Argb = .{ .value = DEFAULT_ACCENT_COLOR },
+        advancedMode: bool = false,
         windowFilters: []const WindowFilter = &.{WindowFilter.DEFAULT},
         characters: []const CharacterConfig.Wire = &.{},
         systemColors: []const SystemColor.Wire = &.{},
@@ -1913,6 +1915,7 @@ pub const Config = struct {
             .resources = self.resources.toWire(),
             .travel = self.travel,
             .accentColor = .{ .value = self.accentColor },
+            .advancedMode = self.advancedMode,
             .windowFilters = window_filters,
             .characters = chars,
             .systemColors = sys_colors,
@@ -1958,6 +1961,7 @@ pub const Config = struct {
         cfg.resources = try ResourcesConfig.fromWire(w.resources, allocator);
         cfg.travel = w.travel;
         cfg.accentColor = w.accentColor.value;
+        cfg.advancedMode = w.advancedMode;
         cfg.requireEveFocus = w.hotkeys.requireEveFocus;
         cfg.resetGroupIndexOnNonGroupFocus = w.hotkeys.resetGroupIndexOnNonGroupFocus;
         cfg.hotkeyMinimizeAll = unwrapVk(w.hotkeys.hotkeyMinimizeAll);
@@ -3755,6 +3759,7 @@ pub const Config = struct {
             .resources = .{},
             .travel = .{},
             .accentColor = DEFAULT_ACCENT_COLOR,
+            .advancedMode = false,
             .windowFilters = default_filters,
             .characters = std.ArrayList(CharacterConfig).empty,
             .systemColors = std.ArrayList(SystemColor).empty,

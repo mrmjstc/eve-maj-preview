@@ -1127,6 +1127,16 @@ Define custom colors for specific solar systems:
 
 Sets the accent color used by the config dialog's own UI (buttons, focus rings, tabs) for this profile. Purely cosmetic - it has no effect on thumbnail rendering or the running overlay. Chosen when creating, copying, or importing into a profile.
 
+## Config Dialog Advanced Mode
+
+```json
+{
+  "advancedMode": false
+}
+```
+
+Whether the config dialog's Advanced Mode (extra, rarely-changed settings sections and tabs) is on for this profile. Dialog-only, like `accentColor` - has no effect on the running overlay. Per-profile rather than global, so switching profiles doesn't unexpectedly show or hide sections.
+
 ## Color Format
 
 Colors use hexadecimal string format in JSON:

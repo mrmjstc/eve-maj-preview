@@ -660,6 +660,11 @@ function applySpecialFieldsToForm() {
 
     setCheckboxValue('ttsSpeakCharacterName', currentConfig.thumbnail?.notifications?.tts_speak_character_name !== false);
     setFieldValue('notifCycleRetention', currentConfig.thumbnail?.notifications?.notified_cycle_retention_seconds ?? 30);
+
+    const advancedModeEnabled = !!currentConfig.advancedMode;
+    setCheckboxValue('advancedModeToggle', advancedModeEnabled);
+    document.body.classList.toggle('advanced-mode', advancedModeEnabled);
+    buildSectionNav();
 }
 
 function applySpecialFieldsFromForm() {
@@ -679,6 +684,8 @@ function applySpecialFieldsFromForm() {
     const rawRetention = parseInt(document.getElementById('notifCycleRetention').value, 10) || 30;
     currentConfig.thumbnail.notifications.notified_cycle_retention_seconds =
         clampToValidationRange('thumbnail.notifications.notified_cycle_retention_seconds', rawRetention);
+
+    currentConfig.advancedMode = getFieldValue('advancedModeToggle');
 }
 
 // Mirrors any range slider's value into its data-value-target span, covering all offset/opacity sliders without a per-slider handler.
@@ -6228,25 +6235,18 @@ async function loadGlobalSettingsFromBackend() {
     setFieldValue('hotkeyCycleNotLoggedInBackward', vkHexToFriendly(currentGlobalSettings.hotkeyCycleNotLoggedInBackward));
     setFieldValue('hotkeyReturnToLastApp', vkHexToFriendly(currentGlobalSettings.hotkeyReturnToLastApp));
 
-    const advancedModeEnabled = !!currentGlobalSettings.advancedMode;
-    const advancedToggle = document.getElementById('advancedModeToggle');
-    if (advancedToggle) advancedToggle.checked = advancedModeEnabled;
-    document.body.classList.toggle('advanced-mode', advancedModeEnabled);
-    buildSectionNav();
-
     setCheckboxValue('alwaysOnTopToggle', currentGlobalSettings.alwaysOnTop);
 
     refreshCharacterPortraits();
 }
 
-// Preference lives in global.settings.json so it applies across all profiles.
+// Per-profile (currentConfig.advancedMode), not global - see applySpecialFieldsToForm/FromForm.
 function toggleAdvancedMode() {
     const enabled = document.getElementById('advancedModeToggle').checked;
     document.body.classList.toggle('advanced-mode', enabled);
     buildSectionNav();
 
-    if (!currentGlobalSettings) currentGlobalSettings = {};
-    currentGlobalSettings.advancedMode = enabled;
+    if (currentConfig) currentConfig.advancedMode = enabled;
 
     // If an advanced-only tab was open when Advanced Mode got turned off, its sidebar entry just vanished - move to the always-visible About tab.
     if (!enabled) {
