@@ -246,15 +246,9 @@ pub const TrayIcon = struct {
         );
     }
 
-    /// Builds the current profile's path and saves `config` to it, logging (but not propagating) any failure.
+    /// Saves `config` to its current profile file, logging (but not propagating) any failure.
     fn saveCurrentProfile(config: *const config_mod.Config, allocator: std.mem.Allocator, context: []const u8) void {
-        const profile_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, config.profile_name }) catch |err| {
-            slog.err("Failed to build profile path for save: {}", .{err});
-            return;
-        };
-        defer allocator.free(profile_path);
-
-        config_mod.Config.saveToJsonFile(config, allocator, profile_path) catch |err| {
+        config.saveCurrentProfile(allocator) catch |err| {
             slog.err("Failed to save config after toggling {s}: {}", .{ context, err });
         };
     }

@@ -4,6 +4,7 @@ const protocol = @import("protocol.zig");
 const win32 = @import("win32.zig");
 const build_options = @import("build_options");
 const config_mod = @import("config.zig");
+const scout = @import("scout.zig");
 const ultra_potato = @import("ultra_potato.zig");
 const esi_prices = @import("esi_prices.zig");
 const update = @import("update.zig");
@@ -803,10 +804,7 @@ fn matchEveClientTitle(hwnd: win32.HWND, title_buf: *[512:0]u8) ?[]const u8 {
     if (title_len <= 0) return null;
     const title_slice = title_buf[0..@intCast(title_len)];
 
-    const dash_pos = std.mem.indexOf(u8, title_slice, " - ") orelse return null;
-    const char_name = title_slice[dash_pos + 3 ..];
-    if (char_name.len == 0) return null;
-    return char_name;
+    return scout.Scout.splitCharacterName(title_slice);
 }
 
 /// EnumWindows callback that collects character names + process creation times.

@@ -218,41 +218,24 @@ fn findWindowByExecutable(executable_name: []const u8) ?win32.HWND {
     return ctx.found;
 }
 
-fn characterOrderIndex(cfg: *const config_mod.Config, character_name: []const u8) ?usize {
-    for (cfg.characters.items, 0..) |char, i| {
-        if (std.mem.eql(u8, char.name, character_name)) return i;
-    }
-    return null;
-}
-
-/// Caller owns the returned slice; mirrors list_view.zig's ConfiguredCharacters ordering, so windows for unconfigured characters sort after configured ones, keeping discovery order among themselves.
+/// Caller owns the returned slice; uses the profile's configured Characters list order, so windows for unconfigured characters sort after configured ones, keeping discovery order among themselves.
 fn buildCharacterOrderedIndices(allocator: std.mem.Allocator, cfg: *const config_mod.Config, windows: []const scout.EveWindow) ![]usize {
+    var order_map = try config_mod.buildCharacterOrderMap(cfg.characters.items, allocator);
+    defer order_map.deinit();
+
     const indices = try allocator.alloc(usize, windows.len);
     for (indices, 0..) |*slot, i| slot.* = i;
 
     const Ctx = struct {
-        cfg: *const config_mod.Config,
         windows: []const scout.EveWindow,
+        order_map: *const std.StringHashMap(usize),
 
         fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
-            const a_order = characterOrderIndex(ctx.cfg, ctx.windows[a_index].character_name);
-            const b_order = characterOrderIndex(ctx.cfg, ctx.windows[b_index].character_name);
-
-            if (a_order) |ao| {
-                if (b_order) |bo| {
-                    if (ao != bo) return ao < bo;
-                } else {
-                    return true;
-                }
-            } else if (b_order != null) {
-                return false;
-            }
-
-            return a_index < b_index;
+            return config_mod.orderMapLessThan(ctx.order_map, ctx.windows[a_index].character_name, ctx.windows[b_index].character_name, a_index, b_index);
         }
     };
 
-    std.sort.pdq(usize, indices, Ctx{ .cfg = cfg, .windows = windows }, Ctx.lessThan);
+    std.sort.pdq(usize, indices, Ctx{ .windows = windows, .order_map = &order_map }, Ctx.lessThan);
     return indices;
 }
 

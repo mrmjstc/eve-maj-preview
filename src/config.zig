@@ -500,7 +500,7 @@ pub const GlobalSettings = struct {
         const json = try self.toJsonString(self.allocator);
         defer self.allocator.free(json);
 
-        try Config.atomicWriteFile(self.allocator, GLOBAL_SETTINGS_FILE, json);
+        try Config.atomicWriteFile(self.allocator, g_io, GLOBAL_SETTINGS_FILE, json);
 
         slog.debug("Saved global settings", .{});
     }
@@ -830,6 +830,29 @@ pub const CharacterConfig = struct {
         };
     }
 };
+
+/// Name -> first-occurrence index among `characters`. Caller owns the returned map.
+pub fn buildCharacterOrderMap(characters: []const CharacterConfig, allocator: std.mem.Allocator) !std.StringHashMap(usize) {
+    var map = std.StringHashMap(usize).init(allocator);
+    errdefer map.deinit();
+    for (characters, 0..) |char, i| {
+        const gop = try map.getOrPut(char.name);
+        if (!gop.found_existing) gop.value_ptr.* = i;
+    }
+    return map;
+}
+
+/// Ranks a_name/b_name by order_map, falling back to array position for ties or names absent from order_map (which always sort last).
+pub fn orderMapLessThan(order_map: *const std.StringHashMap(usize), a_name: []const u8, b_name: []const u8, a_index: usize, b_index: usize) bool {
+    const a_order = order_map.get(a_name);
+    const b_order = order_map.get(b_name);
+    if (a_order) |ao| {
+        if (b_order) |bo| {
+            if (ao != bo) return ao < bo;
+        } else return true;
+    } else if (b_order != null) return false;
+    return a_index < b_index;
+}
 
 pub const SystemColor = struct {
     name: []const u8,
@@ -2815,34 +2838,34 @@ pub const Config = struct {
         try saveToJsonFile(&defaults, allocator, path);
     }
 
-    /// Writes via a temp file + rename so a failed write can't corrupt the profile.
-    fn atomicWriteFile(allocator: std.mem.Allocator, path: []const u8, content: []const u8) !void {
-        // Unique per call so overlapping saves of the same profile can't share a temp file.
+    /// Writes via a temp file + rename so a failed write can't corrupt the destination file.
+    pub fn atomicWriteFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8, content: []const u8) !void {
+        // Unique per call so overlapping saves of the same path can't share a temp file.
         const unique = blk: {
             var rand_bytes: [8]u8 = undefined;
-            g_io.random(&rand_bytes);
+            io.random(&rand_bytes);
             break :blk std.mem.readInt(u64, &rand_bytes, .little);
         };
         const temp_path = try std.fmt.allocPrint(allocator, "{s}.{x}.tmp", .{ path, unique });
         defer allocator.free(temp_path);
 
-        const temp_file = std.Io.Dir.cwd().createFile(g_io, temp_path, .{}) catch |err| {
+        const temp_file = std.Io.Dir.cwd().createFile(io, temp_path, .{}) catch |err| {
             slog.err("Failed to create temp file '{s}' ({} bytes): {}", .{ temp_path, content.len, err });
             return err;
         };
-        defer temp_file.close(g_io);
+        defer temp_file.close(io);
 
-        temp_file.writeStreamingAll(g_io, content) catch |err| {
+        temp_file.writeStreamingAll(io, content) catch |err| {
             slog.err("Failed to write {} bytes to temp file '{s}': {}", .{ content.len, temp_path, err });
-            std.Io.Dir.cwd().deleteFile(g_io, temp_path) catch |cleanup_err| {
+            std.Io.Dir.cwd().deleteFile(io, temp_path) catch |cleanup_err| {
                 slog.err("Failed to cleanup temp file '{s}' after write failure (original error: {}): {}", .{ temp_path, err, cleanup_err });
             };
             return err;
         };
 
-        std.Io.Dir.cwd().rename(temp_path, std.Io.Dir.cwd(), path, g_io) catch |err| {
+        std.Io.Dir.cwd().rename(temp_path, std.Io.Dir.cwd(), path, io) catch |err| {
             slog.err("Failed to rename temp file '{s}' to '{s}' ({} bytes): {}", .{ temp_path, path, content.len, err });
-            std.Io.Dir.cwd().deleteFile(g_io, temp_path) catch |cleanup_err| {
+            std.Io.Dir.cwd().deleteFile(io, temp_path) catch |cleanup_err| {
                 slog.err("Failed to cleanup temp file '{s}' after rename failure (original error: {}): {}", .{ temp_path, err, cleanup_err });
             };
             return err;
@@ -2864,7 +2887,7 @@ pub const Config = struct {
         const json = try cfg.toJsonString(allocator);
         defer allocator.free(json);
 
-        try atomicWriteFile(allocator, path, json);
+        try atomicWriteFile(allocator, g_io, path, json);
         slog.info("Saved JSON config to: {s}", .{path});
     }
 
@@ -4476,7 +4499,7 @@ pub const Config = struct {
     }
 
     /// Persists the entire config as JSON to this profile's file.
-    fn saveCurrentProfile(self: *const Config, allocator: std.mem.Allocator) !void {
+    pub fn saveCurrentProfile(self: *const Config, allocator: std.mem.Allocator) !void {
         const profile_path = try std.fs.path.join(allocator, &[_][]const u8{ PROFILES_DIR, self.profile_name });
         defer allocator.free(profile_path);
         try saveToJsonFile(self, allocator, profile_path);

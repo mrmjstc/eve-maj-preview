@@ -1,5 +1,6 @@
 const std = @import("std");
 const log = @import("log.zig");
+const config_mod = @import("config.zig");
 
 const slog = log.scoped("ultra_potato");
 
@@ -132,7 +133,7 @@ fn applyToOneFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !A
         return .{ .path = path_copy, .success = true, .changed = false, .error_message = null };
     }
 
-    atomicOverwrite(allocator, io, path, outcome.text) catch |err| {
+    config_mod.Config.atomicWriteFile(allocator, io, path, outcome.text) catch |err| {
         return .{ .path = path_copy, .success = false, .changed = false, .error_message = @errorName(err) };
     };
 
@@ -159,26 +160,6 @@ fn makeBackup(io: std.Io, path: []const u8, allocator: std.mem.Allocator) bool {
     return true;
 }
 
-fn atomicOverwrite(allocator: std.mem.Allocator, io: std.Io, path: []const u8, content: []const u8) !void {
-    var rand_bytes: [8]u8 = undefined;
-    io.random(&rand_bytes);
-    const unique = std.mem.readInt(u64, &rand_bytes, .little);
-    const temp_path = try std.fmt.allocPrint(allocator, "{s}.{x}.tmp", .{ path, unique });
-    defer allocator.free(temp_path);
-
-    const temp_file = try std.Io.Dir.cwd().createFile(io, temp_path, .{});
-    defer temp_file.close(io);
-
-    temp_file.writeStreamingAll(io, content) catch |err| {
-        std.Io.Dir.cwd().deleteFile(io, temp_path) catch {};
-        return err;
-    };
-
-    std.Io.Dir.cwd().rename(temp_path, std.Io.Dir.cwd(), path, io) catch |err| {
-        std.Io.Dir.cwd().deleteFile(io, temp_path) catch {};
-        return err;
-    };
-}
 
 const PatchOutcome = struct {
     text: []u8,

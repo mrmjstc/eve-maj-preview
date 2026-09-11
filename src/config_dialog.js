@@ -4699,6 +4699,40 @@ function setupDragReorder(container, itemSelector, handleSelector, getIndex, onR
     }, { signal });
 }
 
+// Moves arr[fromIndex] to just before insertBeforeIndex (both measured before the move), matching setupDragReorder's insertion semantics. Returns the moved element.
+function moveArrayItem(arr, fromIndex, insertBeforeIndex) {
+    const [moved] = arr.splice(fromIndex, 1);
+    const insertAt = fromIndex < insertBeforeIndex ? insertBeforeIndex - 1 : insertBeforeIndex;
+    arr.splice(insertAt, 0, moved);
+    return moved;
+}
+
+// Filters .roster-row elements in containerId by a case-insensitive substring match against each row's .roster-name text.
+function makeRosterSearchFilter(containerId) {
+    let query = '';
+    function apply() {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.querySelectorAll('.roster-row').forEach(row => {
+            const name = (row.querySelector('.roster-name')?.textContent || '').toLowerCase();
+            row.style.display = !query || name.includes(query) ? '' : 'none';
+        });
+    }
+    return {
+        apply,
+        onInput(value) {
+            query = value.toLowerCase().trim();
+            apply();
+        },
+        clear(inputId) {
+            const input = document.getElementById(inputId);
+            if (input) input.value = '';
+            query = '';
+            apply();
+        },
+    };
+}
+
 // The .expanded class is what CSS reads and aria-expanded is what screen readers
 // read, so both are set in one place to stop them drifting apart.
 function setAccordionExpanded(accordion, expanded) {
@@ -5034,33 +5068,14 @@ async function reloadLivePositions() {
     }
 }
 
-// Applied by applyCharacterFilter() after every populateCharacters() rebuild so the filter survives add/remove/reorder.
-let characterSearchQuery = '';
-
 // Which character's detail panel is showing in the master-detail characters view.
 let selectedCharacterIndex = 0;
 
-function onCharacterSearchInput(query) {
-    characterSearchQuery = query.toLowerCase().trim();
-    applyCharacterFilter();
-}
-
-function clearCharacterSearch() {
-    const input = document.getElementById('characterSearchFilter');
-    if (input) input.value = '';
-    characterSearchQuery = '';
-    applyCharacterFilter();
-}
-
-function applyCharacterFilter() {
-    const container = document.getElementById('charactersList');
-    if (!container) return;
-
-    container.querySelectorAll('.roster-row').forEach(row => {
-        const name = (row.querySelector('.roster-name')?.textContent || '').toLowerCase();
-        row.style.display = !characterSearchQuery || name.includes(characterSearchQuery) ? '' : 'none';
-    });
-}
+// Applied after every populateCharacters() rebuild so the filter survives add/remove/reorder.
+const characterSearchFilter = makeRosterSearchFilter('charactersList');
+function onCharacterSearchInput(query) { characterSearchFilter.onInput(query); }
+function clearCharacterSearch() { characterSearchFilter.clear('characterSearchFilter'); }
+function applyCharacterFilter() { characterSearchFilter.apply(); }
 
 // Character IDs are learned at runtime from chatlog filenames and cached in global settings, so a freshly added or renamed character has no portrait until the app has seen a chatlog for it.
 function characterPortraitUrl(name) {
@@ -5496,9 +5511,7 @@ function reorderCharacters(fromIndex, insertBeforeIndex) {
 
     const chars = currentConfig.characters;
     const selectedChar = chars[selectedCharacterIndex];
-    const [moved] = chars.splice(fromIndex, 1);
-    const insertAt = fromIndex < insertBeforeIndex ? insertBeforeIndex - 1 : insertBeforeIndex;
-    chars.splice(insertAt, 0, moved);
+    moveArrayItem(chars, fromIndex, insertBeforeIndex);
 
     if (selectedChar) selectedCharacterIndex = chars.indexOf(selectedChar);
     populateCharacters();
@@ -5720,11 +5733,10 @@ function confirmRemoveCharacter(index) {
     confirmRemove(`char_${index}_removeBtn`, () => removeCharacter(index));
 }
 
-// If the removed character was the selected one, falls back to whichever character now sits at the removed slot (or the last one).
-function reselectCharacterAfterRemoval(selectedChar, removedIndex) {
-    const chars = currentConfig.characters;
-    const stillPresent = selectedChar ? chars.indexOf(selectedChar) : -1;
-    selectedCharacterIndex = stillPresent !== -1 ? stillPresent : Math.min(removedIndex, chars.length - 1);
+// If the removed item was the selected one, falls back to whichever item now sits at the removed slot (or the last one). Returns the index the caller should select.
+function reselectAfterRemoval(arr, selectedItem, removedIndex) {
+    const stillPresent = selectedItem ? arr.indexOf(selectedItem) : -1;
+    return stillPresent !== -1 ? stillPresent : Math.min(removedIndex, arr.length - 1);
 }
 
 function removeCharacterByName(name) {
@@ -5736,7 +5748,7 @@ function removeCharacterByName(name) {
     deletedCharacterNames.add(target);
     const selectedChar = currentConfig.characters[selectedCharacterIndex];
     currentConfig.characters.splice(index, 1);
-    reselectCharacterAfterRemoval(selectedChar, index);
+    selectedCharacterIndex = reselectAfterRemoval(currentConfig.characters, selectedChar, index);
     populateCharacters();
 }
 
@@ -5746,7 +5758,7 @@ function removeCharacter(index) {
         deletedCharacterNames.add((currentConfig.characters[index].name || '').trim().toLowerCase());
         const selectedChar = currentConfig.characters[selectedCharacterIndex];
         currentConfig.characters.splice(index, 1);
-        reselectCharacterAfterRemoval(selectedChar, index);
+        selectedCharacterIndex = reselectAfterRemoval(currentConfig.characters, selectedChar, index);
         markAsChanged();
         populateCharacters();
     }
@@ -5978,9 +5990,7 @@ function reorderHotkeyGroups(fromIndex, insertBeforeIndex) {
 
     const groups = currentConfig.hotkeyGroups;
     const selectedGroup = groups[selectedHotkeyGroupIndex];
-    const [moved] = groups.splice(fromIndex, 1);
-    const insertAt = fromIndex < insertBeforeIndex ? insertBeforeIndex - 1 : insertBeforeIndex;
-    groups.splice(insertAt, 0, moved);
+    moveArrayItem(groups, fromIndex, insertBeforeIndex);
 
     if (selectedGroup) selectedHotkeyGroupIndex = groups.indexOf(selectedGroup);
     markAsChanged();
@@ -6035,10 +6045,7 @@ function reorderHotkeyGroupChars(groupIndex, fromIndex, insertBeforeIndex) {
     const group = currentConfig.hotkeyGroups && currentConfig.hotkeyGroups[groupIndex];
     if (!group) return;
 
-    const chars = group.characters;
-    const [moved] = chars.splice(fromIndex, 1);
-    const insertAt = fromIndex < insertBeforeIndex ? insertBeforeIndex - 1 : insertBeforeIndex;
-    chars.splice(insertAt, 0, moved);
+    moveArrayItem(group.characters, fromIndex, insertBeforeIndex);
 
     refreshHotkeyGroupCharsList(groupIndex);
 }
@@ -6157,10 +6164,7 @@ function removeHotkeyGroup(index) {
     saveHotkeyGroups();
     const selectedGroup = groups[selectedHotkeyGroupIndex];
     groups.splice(index, 1);
-
-    // Falls back to whichever group now sits at the removed slot (or the last one) when the removed group was the selected one.
-    const stillPresent = selectedGroup ? groups.indexOf(selectedGroup) : -1;
-    selectedHotkeyGroupIndex = stillPresent !== -1 ? stillPresent : Math.min(index, groups.length - 1);
+    selectedHotkeyGroupIndex = reselectAfterRemoval(groups, selectedGroup, index);
 
     markAsChanged();
     populateHotkeyGroups();
@@ -6643,29 +6647,10 @@ function notifDefaultBorderColorHtml() {
 // Which event type's detail panel is showing in the master-detail Event Alerts view.
 let selectedNotificationTypeIndex = 0;
 
-let notificationTypeSearchQuery = '';
-
-function onNotificationTypeSearchInput(query) {
-    notificationTypeSearchQuery = query.toLowerCase().trim();
-    applyNotificationTypeFilter();
-}
-
-function clearNotificationTypeSearch() {
-    const input = document.getElementById('notificationTypeSearchFilter');
-    if (input) input.value = '';
-    notificationTypeSearchQuery = '';
-    applyNotificationTypeFilter();
-}
-
-function applyNotificationTypeFilter() {
-    const container = document.getElementById('notificationTypesList');
-    if (!container) return;
-
-    container.querySelectorAll('.roster-row').forEach(row => {
-        const name = (row.querySelector('.roster-name')?.textContent || '').toLowerCase();
-        row.style.display = !notificationTypeSearchQuery || name.includes(notificationTypeSearchQuery) ? '' : 'none';
-    });
-}
+const notificationTypeSearchFilter = makeRosterSearchFilter('notificationTypesList');
+function onNotificationTypeSearchInput(query) { notificationTypeSearchFilter.onInput(query); }
+function clearNotificationTypeSearch() { notificationTypeSearchFilter.clear('notificationTypeSearchFilter'); }
+function applyNotificationTypeFilter() { notificationTypeSearchFilter.apply(); }
 
 function populateNotificationTypes() {
     const container = document.getElementById('notificationTypesList');

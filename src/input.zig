@@ -426,19 +426,7 @@ fn applyScreenEdgeSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i
     const right = x + width;
     const bottom = y + height;
 
-    // GetSystemMetrics(SM_CXSCREEN/CYSCREEN) only reports the primary monitor, so snapping uses the bounds of the monitor nearest the dragged window instead, falling back to primary metrics if that lookup fails.
-    var bounds = win32.RECT{
-        .left = 0,
-        .top = 0,
-        .right = win32.GetSystemMetrics(win32.SM_CXSCREEN),
-        .bottom = win32.GetSystemMetrics(win32.SM_CYSCREEN),
-    };
-    if (win32.MonitorFromWindow(dragging_hwnd, win32.MONITOR_DEFAULTTONEAREST)) |monitor| {
-        var info = win32.MONITORINFO{ .cbSize = @sizeOf(win32.MONITORINFO), .rcMonitor = undefined, .rcWork = undefined, .dwFlags = 0 };
-        if (win32.GetMonitorInfoA(monitor, &info) != win32.FALSE) {
-            bounds = info.rcMonitor;
-        }
-    }
+    const bounds = Painter.nearestMonitorBounds(dragging_hwnd).bounds;
 
     if (@abs(x - bounds.left) < threshold) {
         snapped_x = bounds.left;

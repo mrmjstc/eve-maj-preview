@@ -65,13 +65,7 @@ fn effectiveCategoryEnabled(cfg: *const config_mod.Config, cat: types.Notificati
     return categoryEnabled(cfg, cat);
 }
 
-const HTCAPTION: win32.LRESULT = 2;
-const HTCLIENT: win32.LRESULT = 1;
-
 var g_class_registered: bool = false;
-
-var g_drag_anchor_cursor: win32.POINT = .{ .x = 0, .y = 0 };
-var g_drag_anchor_rect: win32.RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
 
 /// Set by Painter.init() so the window proc can activate EVE clients without a direct notif_info_view → input circular dependency.
 pub var g_activate_fn: ?*const fn (win32.HWND) void = null;
@@ -520,21 +514,12 @@ fn notifInfoWindowProc(
 ) callconv(.c) win32.LRESULT {
     switch (msg) {
         win32.WM_NCHITTEST => {
-            const sy: i32 = hiwordSigned(lParam);
-
-            var wr: win32.RECT = undefined;
-            _ = win32.GetWindowRect(hwnd, &wr);
-            const cy = sy - wr.top;
-
             const dragging_enabled = if (painter_mod.g_painter_ptr) |p| p.config.interaction.enableDragging else true;
-
-            if (dragging_enabled and cy < HEADER_HEIGHT) return HTCAPTION;
-            return HTCLIENT;
+            return gdi_overlay.panelHeaderHitTest(hwnd, lParam, HEADER_HEIGHT, dragging_enabled);
         },
 
         win32.WM_ENTERSIZEMOVE => {
-            _ = win32.GetCursorPos(&g_drag_anchor_cursor);
-            _ = win32.GetWindowRect(hwnd, &g_drag_anchor_rect);
+            gdi_overlay.beginPanelDrag(hwnd);
 
             if (painter_mod.g_painter_ptr) |p| {
                 // No single character owns this panel, so nothing is excluded - every saved position shows as a ghost.
@@ -545,21 +530,7 @@ fn notifInfoWindowProc(
 
         win32.WM_MOVING => {
             const rect: *win32.RECT = @ptrFromInt(@as(usize, @intCast(lParam)));
-            const width = rect.right - rect.left;
-            const height = rect.bottom - rect.top;
-
-            var cursor: win32.POINT = undefined;
-            _ = win32.GetCursorPos(&cursor);
-            const intended_x = g_drag_anchor_rect.left + (cursor.x - g_drag_anchor_cursor.x);
-            const intended_y = g_drag_anchor_rect.top + (cursor.y - g_drag_anchor_cursor.y);
-
-            const input_mod = @import("input.zig");
-            const snapped = input_mod.applySnapping(intended_x, intended_y, width, height, hwnd);
-
-            rect.left = snapped.x;
-            rect.top = snapped.y;
-            rect.right = snapped.x + width;
-            rect.bottom = snapped.y + height;
+            gdi_overlay.updatePanelDragRect(hwnd, rect);
             return win32.TRUE;
         },
 
@@ -633,33 +604,7 @@ fn measureTextHeight(dc: win32.HDC, text: []const u8) i32 {
 }
 
 fn drawTextTruncated(dc: win32.HDC, text: []const u8, x: i32, y: i32, rgb: u32, max_w: usize) void {
-    var buf: [TEXT_BUF:0]u8 = undefined;
-    const orig_n = @min(text.len, TEXT_BUF - 4);
-    var lo: usize = 0;
-    var hi: usize = orig_n;
-
-    const ellipsis = "...";
-    var ellipsis_w: win32.SIZE = undefined;
-    _ = win32.GetTextExtentPoint32A(dc, ellipsis, 3, &ellipsis_w);
-    const budget: i32 = @as(i32, @intCast(max_w)) - ellipsis_w.cx;
-    if (budget <= 0) return;
-
-    while (lo < hi) {
-        const mid = (lo + hi + 1) / 2;
-        @memcpy(buf[0..mid], text[0..mid]);
-        buf[mid] = 0;
-        var sz: win32.SIZE = undefined;
-        _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(mid), &sz);
-        if (sz.cx <= budget) {
-            lo = mid;
-        } else {
-            hi = mid - 1;
-        }
-    }
-
     var out: [TEXT_BUF:0]u8 = undefined;
-    @memcpy(out[0..lo], text[0..lo]);
-    @memcpy(out[lo .. lo + 3], ellipsis);
-    out[lo + 3] = 0;
-    drawText(dc, out[0 .. lo + 3], x, y, rgb);
+    const truncated = gdi_overlay.truncateTextToFit(TEXT_BUF, dc, &out, text, max_w);
+    drawText(dc, truncated, x, y, rgb);
 }

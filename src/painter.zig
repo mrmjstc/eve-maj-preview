@@ -1877,6 +1877,25 @@ pub const Painter = struct {
         };
     }
 
+    /// Bounds of the monitor nearest `hwnd`, falling back to primary-monitor metrics (GetSystemMetrics only reports the primary monitor) if the lookup fails; also returns the resolved monitor handle, if any, for a DPI lookup.
+    pub fn nearestMonitorBounds(hwnd: win32.HWND) struct { bounds: win32.RECT, monitor: ?win32.HMONITOR } {
+        var bounds = win32.RECT{
+            .left = 0,
+            .top = 0,
+            .right = win32.GetSystemMetrics(win32.SM_CXSCREEN),
+            .bottom = win32.GetSystemMetrics(win32.SM_CYSCREEN),
+        };
+        var monitor: ?win32.HMONITOR = null;
+        if (win32.MonitorFromWindow(hwnd, win32.MONITOR_DEFAULTTONEAREST)) |m| {
+            var info = win32.MONITORINFO{ .cbSize = @sizeOf(win32.MONITORINFO), .rcMonitor = undefined, .rcWork = undefined, .dwFlags = 0 };
+            if (win32.GetMonitorInfoA(m, &info) != win32.FALSE) {
+                bounds = info.rcMonitor;
+                monitor = m;
+            }
+        }
+        return .{ .bounds = bounds, .monitor = monitor };
+    }
+
     /// DPI for a specific monitor; used before a window exists on it yet.
     fn getMonitorDpi(hmonitor: win32.HMONITOR) u32 {
         var dpi_x: win32.UINT = 96;
@@ -2629,20 +2648,9 @@ pub const Painter = struct {
         const line1 = "Hold Ctrl to move all thumbnails together";
         const line2 = "Turn off dragging from the tray icon or settings";
 
-        var bounds = win32.RECT{
-            .left = 0,
-            .top = 0,
-            .right = win32.GetSystemMetrics(win32.SM_CXSCREEN),
-            .bottom = win32.GetSystemMetrics(win32.SM_CYSCREEN),
-        };
-        var monitor_dpi = defaultDpi();
-        if (win32.MonitorFromWindow(dragging_hwnd, win32.MONITOR_DEFAULTTONEAREST)) |monitor| {
-            var info = win32.MONITORINFO{ .cbSize = @sizeOf(win32.MONITORINFO), .rcMonitor = undefined, .rcWork = undefined, .dwFlags = 0 };
-            if (win32.GetMonitorInfoA(monitor, &info) != win32.FALSE) {
-                bounds = info.rcMonitor;
-            }
-            monitor_dpi = getMonitorDpi(monitor);
-        }
+        const nearest = nearestMonitorBounds(dragging_hwnd);
+        const bounds = nearest.bounds;
+        const monitor_dpi = if (nearest.monitor) |monitor| getMonitorDpi(monitor) else defaultDpi();
 
         const scale = dpiToScale(monitor_dpi);
         const font = self.getCachedFont(.main, monitor_dpi, self.config.thumbnail.characterNameFontName, scalePixels(self.config.thumbnail.characterNameFontSize, scale), self.config.thumbnail.characterNameFontWeight) catch |err| {
@@ -3114,7 +3122,7 @@ fn insertThousandsSeparators(buf: []u8, text: []const u8) []const u8 {
 }
 
 /// Abbreviates an ISK value with k/m suffixes (e.g. 2_450_000.0 -> "2.5m", 200_000.0 -> "200k", 850.0 -> "850").
-fn formatIskAbbrev(buf: []u8, value: f32) []const u8 {
+pub fn formatIskAbbrev(buf: []u8, value: f32) []const u8 {
     const abs_value = @abs(value);
     if (abs_value >= 1_000_000.0) {
         return std.fmt.bufPrint(buf, "{d:.1}m", .{value / 1_000_000.0}) catch "?";

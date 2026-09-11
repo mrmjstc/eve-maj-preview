@@ -37,15 +37,7 @@ const BADGE_MINIMIZED: u32 = 0xFF303030;
 const BADGE_DISABLED_BG: u32 = 0xFF3E3E3E;
 const BADGE_DISABLED_X: u32 = 0xFFCC4444;
 
-// WM_NCHITTEST return values
-const HTCAPTION: win32.LRESULT = 2;
-const HTCLIENT: win32.LRESULT = 1;
-
 var g_class_registered: bool = false;
-
-// Anchors the drag to an absolute cursor position captured at WM_ENTERSIZEMOVE, since WM_MOVING's rect reflects our own prior snap overrides and re-deriving from it every message would prevent escaping an edge; mirrors input.zig's thumbnail dragging.
-var g_drag_anchor_cursor: win32.POINT = .{ .x = 0, .y = 0 };
-var g_drag_anchor_rect: win32.RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
 
 /// Set by Painter.init() so the window proc can activate EVE clients without a direct list_view → input circular dependency.
 pub var g_activate_fn: ?*const fn (win32.HWND) void = null;
@@ -219,52 +211,21 @@ pub const ListWindow = struct {
             thumbnails: []const ThumbnailWindow,
             order_map: ?*const std.StringHashMap(usize),
 
-            fn compareIgnoreCase(a: []const u8, b: []const u8) std.math.Order {
-                const min_len = @min(a.len, b.len);
-                var i: usize = 0;
-                while (i < min_len) : (i += 1) {
-                    const ca = std.ascii.toLower(a[i]);
-                    const cb = std.ascii.toLower(b[i]);
-                    if (ca < cb) return .lt;
-                    if (ca > cb) return .gt;
-                }
-                if (a.len < b.len) return .lt;
-                if (a.len > b.len) return .gt;
-                return .eq;
-            }
-
             fn alphabeticalLessThan(a: ThumbnailWindow, b: ThumbnailWindow, a_index: usize, b_index: usize) bool {
                 const a_name = a.cached_display_name;
                 const b_name = b.cached_display_name;
 
-                switch (compareIgnoreCase(a_name, b_name)) {
+                switch (std.ascii.orderIgnoreCase(a_name, b_name)) {
                     .lt => return true,
                     .gt => return false,
                     .eq => {},
                 }
 
-                switch (compareIgnoreCase(a.character_name, b.character_name)) {
+                switch (std.ascii.orderIgnoreCase(a.character_name, b.character_name)) {
                     .lt => return true,
                     .gt => return false,
                     .eq => return a_index < b_index,
                 }
-            }
-
-            fn configuredLessThan(order_map: *const std.StringHashMap(usize), a: ThumbnailWindow, b: ThumbnailWindow, a_index: usize, b_index: usize) bool {
-                const a_order = order_map.get(a.character_name);
-                const b_order = order_map.get(b.character_name);
-
-                if (a_order) |ao| {
-                    if (b_order) |bo| {
-                        if (ao != bo) return ao < bo;
-                    } else {
-                        return true;
-                    }
-                } else if (b_order != null) {
-                    return false;
-                }
-
-                return a_index < b_index;
             }
 
             fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
@@ -273,23 +234,17 @@ pub const ListWindow = struct {
                 return switch (ctx.cfg.display.listViewOrder) {
                     .Tracked => a_index < b_index,
                     .Alphabetical => alphabeticalLessThan(a, b, a_index, b_index),
-                    .ConfiguredCharacters => configuredLessThan(ctx.order_map.?, a, b, a_index, b_index),
+                    .ConfiguredCharacters => config_mod.orderMapLessThan(ctx.order_map.?, a.character_name, b.character_name, a_index, b_index),
                 };
             }
         };
 
-        // Precompute name -> configured-order index once per sort (first occurrence wins) instead of rescanning cfg.characters.items per comparator call.
+        // Precompute name -> configured-order index once per sort instead of rescanning cfg.characters.items per comparator call.
         var order_map: ?std.StringHashMap(usize) = null;
         defer if (order_map) |*m| m.deinit();
 
         if (self.config.display.listViewOrder == .ConfiguredCharacters) {
-            var map = std.StringHashMap(usize).init(self.allocator);
-            errdefer map.deinit();
-            for (self.config.characters.items, 0..) |char, i| {
-                const gop = try map.getOrPut(char.name);
-                if (!gop.found_existing) gop.value_ptr.* = i;
-            }
-            order_map = map;
+            order_map = try config_mod.buildCharacterOrderMap(self.config.characters.items, self.allocator);
         }
 
         if (self.config.display.listViewOrder != .Tracked) {
@@ -365,18 +320,6 @@ pub const ListWindow = struct {
         return h.final();
     }
 
-    /// Abbreviates an ISK value with k/m suffixes; mirrors painter.zig's own formatIskAbbrev for the thumbnail overlay text.
-    fn formatIskAbbrev(buf: []u8, value: f32) []const u8 {
-        const abs_value = @abs(value);
-        if (abs_value >= 1_000_000.0) {
-            return std.fmt.bufPrint(buf, "{d:.1}m", .{value / 1_000_000.0}) catch "?";
-        } else if (abs_value >= 1_000.0) {
-            return std.fmt.bufPrint(buf, "{d:.0}k", .{value / 1_000.0}) catch "?";
-        } else {
-            return std.fmt.bufPrint(buf, "{d:.0}", .{value}) catch "?";
-        }
-    }
-
     /// Compact combined DPS in/out + mining rate string for the list row's right-side slot; empty when neither stat is active. Mirrors the thumbnail overlay's own formatting (painter.renderThumbnail).
     fn buildStatText(self: *const ListWindow, buf: []u8, thumb: *const ThumbnailWindow) []const u8 {
         var writer: std.Io.Writer = .fixed(buf);
@@ -422,7 +365,7 @@ pub const ListWindow = struct {
             if (thumb.last_bounty_isk_rate) |isk_rate| {
                 var isk_buf: [16]u8 = undefined;
                 const period_secs: f32 = if (bounty_cfg.isk_rate_unit == .hour) 3600.0 else 60.0;
-                const isk_abbrev = formatIskAbbrev(&isk_buf, isk_rate * period_secs);
+                const isk_abbrev = painter_mod.formatIskAbbrev(&isk_buf, isk_rate * period_secs);
                 writer.print("B:{s}", .{isk_abbrev}) catch {};
             } else {
                 writer.writeAll("B:??") catch {};
@@ -728,42 +671,18 @@ fn listWindowProc(
 ) callconv(.c) win32.LRESULT {
     switch (msg) {
         win32.WM_NCHITTEST => {
-            const sy: i32 = @as(i32, @intCast(@as(i16, @truncate(lParam >> 16))));
-
-            var wr: win32.RECT = undefined;
-            _ = win32.GetWindowRect(hwnd, &wr);
-            const cy = sy - wr.top;
-
             const dragging_enabled = if (painter_mod.g_painter_ptr) |p| p.config.interaction.enableDragging else true;
-
-            if (dragging_enabled and cy < HEADER_HEIGHT) return HTCAPTION;
-            return HTCLIENT;
+            return gdi_overlay.panelHeaderHitTest(hwnd, lParam, HEADER_HEIGHT, dragging_enabled);
         },
 
         win32.WM_ENTERSIZEMOVE => {
-            _ = win32.GetCursorPos(&g_drag_anchor_cursor);
-            _ = win32.GetWindowRect(hwnd, &g_drag_anchor_rect);
+            gdi_overlay.beginPanelDrag(hwnd);
             return 0;
         },
 
         win32.WM_MOVING => {
             const rect: *win32.RECT = @ptrFromInt(@as(usize, @intCast(lParam)));
-            const width = rect.right - rect.left;
-            const height = rect.bottom - rect.top;
-
-            // Compute the truly-intended position from the absolute cursor delta since drag start, ignoring Windows' possibly already-snapped rect (see g_drag_anchor_cursor above).
-            var cursor: win32.POINT = undefined;
-            _ = win32.GetCursorPos(&cursor);
-            const intended_x = g_drag_anchor_rect.left + (cursor.x - g_drag_anchor_cursor.x);
-            const intended_y = g_drag_anchor_rect.top + (cursor.y - g_drag_anchor_cursor.y);
-
-            const input_mod = @import("input.zig");
-            const snapped = input_mod.applySnapping(intended_x, intended_y, width, height, hwnd);
-
-            rect.left = snapped.x;
-            rect.top = snapped.y;
-            rect.right = snapped.x + width;
-            rect.bottom = snapped.y + height;
+            gdi_overlay.updatePanelDragRect(hwnd, rect);
             return win32.TRUE;
         },
 
@@ -783,8 +702,7 @@ fn listWindowProc(
             if (cy < HEADER_HEIGHT) return 0;
 
             const row: usize = @intCast(@divTrunc(cy - HEADER_HEIGHT, ROW_HEIGHT));
-            const vkeys = @import("virtual_keys.zig");
-            const shift_pressed = (win32.GetAsyncKeyState(@intCast(vkeys.VK_SHIFT)) & @as(c_short, @bitCast(@as(c_ushort, 0x8000)))) != 0;
+            const shift_pressed = win32.isShiftPressed();
 
             if (painter_mod.g_painter_ptr) |p| {
                 if (p.list_window) |*lv| {
@@ -964,41 +882,7 @@ fn drawTextTruncated(
     rgb: u32,
     max_w: usize,
 ) void {
-    var buf: [TEXT_BUF:0]u8 = undefined;
-    // -4 leaves room for the "..." suffix.
-    const orig_n = @min(text.len, TEXT_BUF - 4);
-    var lo: usize = 0;
-    var hi: usize = orig_n;
-    @memcpy(buf[0..orig_n], text[0..orig_n]);
-    buf[orig_n] = 0;
-    var sz: win32.SIZE = undefined;
-    _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(orig_n), &sz);
-    if (@as(usize, @intCast(@max(0, sz.cx))) <= max_w) {
-        drawText(dc, text[0..orig_n], x, y, rgb);
-        return;
-    }
-    // Find longest prefix that fits with "..."
-    const ellipsis = "...";
-    var ellipsis_w: win32.SIZE = undefined;
-    _ = win32.GetTextExtentPoint32A(dc, ellipsis, 3, &ellipsis_w);
-    const budget: i32 = @as(i32, @intCast(max_w)) - ellipsis_w.cx;
-    if (budget <= 0) return;
-
-    while (lo < hi) {
-        const mid = (lo + hi + 1) / 2;
-        @memcpy(buf[0..mid], text[0..mid]);
-        buf[mid] = 0;
-        _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(mid), &sz);
-        if (sz.cx <= budget) {
-            lo = mid;
-        } else {
-            hi = mid - 1;
-        }
-    }
-
     var out: [TEXT_BUF:0]u8 = undefined;
-    @memcpy(out[0..lo], text[0..lo]);
-    @memcpy(out[lo .. lo + 3], ellipsis);
-    out[lo + 3] = 0;
-    drawText(dc, out[0 .. lo + 3], x, y, rgb);
+    const truncated = gdi_overlay.truncateTextToFit(TEXT_BUF, dc, &out, text, max_w);
+    drawText(dc, truncated, x, y, rgb);
 }

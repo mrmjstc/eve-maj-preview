@@ -388,15 +388,17 @@ pub const Scout = struct {
         };
     }
 
-    /// EVE window titles are typically: "EVE - CharacterName"
+    /// EVE window titles are typically: "EVE - CharacterName"; falls back to the full title if there's no " - " separator or nothing follows it.
     fn extractCharacterName(title: []const u8) []const u8 {
-        if (std.mem.indexOf(u8, title, " - ")) |dash_pos| {
-            const name_start = dash_pos + 3;
-            if (name_start < title.len) {
-                return title[name_start..];
-            }
-        }
-        return title;
+        return splitCharacterName(title) orelse title;
+    }
+
+    /// Splits an EVE window title ("EVE - CharacterName") on " - "; null if there's no such separator or nothing follows it.
+    pub fn splitCharacterName(title: []const u8) ?[]const u8 {
+        const dash_pos = std.mem.indexOf(u8, title, " - ") orelse return null;
+        const name = title[dash_pos + 3 ..];
+        if (name.len == 0) return null;
+        return name;
     }
 
     /// Lookup HWND by character name (validates window before returning)
