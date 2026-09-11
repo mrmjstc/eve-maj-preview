@@ -384,7 +384,7 @@ pub const Painter = struct {
         const cfg = &self.config.display;
         if (cfg.layoutMode == .RegionFit) {
             if (regionRectFromConfig(cfg)) |region| {
-                const grid = calculateRegionFitGrid(region, total_count, cfg.getSpacingX(), cfg.getSpacingY(), self.regionFitAspectRatio());
+                const grid = calculateRegionFitGrid(region, total_count, cfg.spacing, cfg.spacing, self.regionFitAspectRatio());
                 return .{ .width = grid.cell_width, .height = grid.cell_height };
             }
         }
@@ -1983,6 +1983,23 @@ pub const Painter = struct {
         }
     }
 
+    /// Always false for the generic "not logged in" name, which never has a saved position of its own.
+    fn hasSavedPosition(self: *const Painter, character_name: []const u8) bool {
+        const cfg = &self.config.display;
+        return !scout_mod.isGenericCharacterName(character_name) and
+            cfg.honorSavedPositions and
+            self.config.getCharacterPosition(character_name) != null;
+    }
+
+    /// Ranks this thumbnail's slot in the left-to-right unpositioned spawn row.
+    fn unpositionedIndex(self: *const Painter, up_to: usize) usize {
+        var count: usize = 0;
+        for (self.thumbnails.items[0..@min(up_to, self.thumbnails.items.len)]) |thumbnail| {
+            if (!self.hasSavedPosition(thumbnail.character_name)) count += 1;
+        }
+        return count;
+    }
+
     fn calculateThumbnailPosition(
         self: *const Painter,
         character_name: []const u8,
@@ -2002,34 +2019,18 @@ pub const Painter = struct {
             }
         }
 
-        const is_generic = scout_mod.isGenericCharacterName(character_name);
-        const use_saved_position = !is_generic and
-            cfg.honorSavedPositions and
-            self.config.getCharacterPosition(character_name) != null;
-
-        if (use_saved_position) {
+        if (self.hasSavedPosition(character_name)) {
             // Saved positions are absolute physical pixels (see saveThumbnailPosition), so scaling doesn't apply.
             const saved_pos = self.config.getCharacterPosition(character_name).?;
             slog.debug("Using saved position for {s}: ({}, {})", .{ character_name, saved_pos.x, saved_pos.y });
             return .{ .x = saved_pos.x, .y = saved_pos.y };
         }
 
-        var pos = switch (cfg.layoutMode) {
-            .Custom, .RegionFit => blk: {
-                // RegionFit with no region captured yet falls back to plain origin placement, same as Custom.
-                slog.debug("Custom/unset-RegionFit layout mode, no saved position, using origin", .{});
-                break :blk config_mod.Position{ .x = scalePixels(cfg.startX, scale), .y = scalePixels(cfg.startY, scale) };
-            },
-            .Overlay => blk: {
-                slog.debug("Overlay mode, spawning thumbnail #{} at ({}, {})", .{ index, cfg.startX, cfg.startY });
-                break :blk config_mod.Position{ .x = scalePixels(cfg.startX, scale), .y = scalePixels(cfg.startY, scale) };
-            },
-            .Grid => self.calculateGridPosition(index, thumb_width, thumb_height, scale),
-            .VerticalStack => self.calculateStackPosition(index, thumb_width, thumb_height, true, scale),
-            .HorizontalStack => self.calculateStackPosition(index, thumb_width, thumb_height, false, scale),
-            .VerticalList => self.calculateListPosition(index, thumb_width, thumb_height, true, scale),
-            .HorizontalList => self.calculateListPosition(index, thumb_width, thumb_height, false, scale),
-        };
+        // No saved position: line up left-to-right from startX/startY instead of stacking.
+        const slot = @as(i32, @intCast(self.unpositionedIndex(index)));
+        const step = thumb_width + scalePixels(cfg.newThumbnailSpacing, scale);
+        slog.debug("Thumbnail #{} has no saved position, spawning at unpositioned row slot {}", .{ index, slot });
+        var pos = config_mod.Position{ .x = scalePixels(cfg.startX, scale) + slot * step, .y = scalePixels(cfg.startY, scale) };
 
         var bounds_for_clamping: ?win32.RECT = null;
         if (monitor_bounds) |bounds| {
@@ -2061,165 +2062,6 @@ pub const Painter = struct {
         }
 
         return pos;
-    }
-
-    fn calculateGridPosition(
-        self: *const Painter,
-        index: usize,
-        thumb_width: i32,
-        thumb_height: i32,
-        scale: f32,
-    ) config_mod.Position {
-        const cfg = &self.config.display;
-        const spacing_x = scalePixels(cfg.getSpacingX(), scale);
-        const spacing_y = scalePixels(cfg.getSpacingY(), scale);
-        const columns = cfg.gridColumns;
-
-        var col: i32 = undefined;
-        var row: i32 = undefined;
-
-        switch (cfg.layoutDirection) {
-            .RowFirst_LTR_TTB => {
-                col = @intCast(index % columns);
-                row = @intCast(index / columns);
-            },
-            .RowFirst_RTL_TTB => {
-                col = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns));
-                row = @intCast(index / columns);
-            },
-            .RowFirst_LTR_BTT => {
-                col = @intCast(index % columns);
-                row = -@as(i32, @intCast(index / columns));
-            },
-            .RowFirst_RTL_BTT => {
-                col = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns));
-                row = -@as(i32, @intCast(index / columns));
-            },
-            .ColumnFirst_TTB_LTR => {
-                const rows = cfg.gridRows orelse 999;
-                col = @intCast(index / rows);
-                row = @intCast(index % rows);
-            },
-            .ColumnFirst_BTT_LTR => {
-                const rows = cfg.gridRows orelse 999;
-                col = @intCast(index / rows);
-                row = -@as(i32, @intCast(index % rows));
-            },
-            .ColumnFirst_TTB_RTL => {
-                const rows = cfg.gridRows orelse 999;
-                col = -@as(i32, @intCast(index / rows));
-                row = @intCast(index % rows);
-            },
-            .ColumnFirst_BTT_RTL => {
-                const rows = cfg.gridRows orelse 999;
-                col = -@as(i32, @intCast(index / rows));
-                row = -@as(i32, @intCast(index % rows));
-            },
-            else => {
-                // Fallback to simple left-to-right, top-to-bottom
-                col = @intCast(index % columns);
-                row = @intCast(index / columns);
-            },
-        }
-
-        const start_x = scalePixels(cfg.startX, scale);
-        const start_y = scalePixels(cfg.startY, scale);
-        const x = col * (thumb_width + spacing_x) + start_x;
-        const y = row * (thumb_height + spacing_y) + start_y;
-
-        slog.debug("Grid layout: thumbnail #{} at ({}, {}) [col={}, row={}]", .{ index, x, y, col, row });
-        return .{ .x = x, .y = y };
-    }
-
-    fn calculateStackPosition(
-        self: *const Painter,
-        index: usize,
-        thumb_width: i32,
-        thumb_height: i32,
-        is_vertical: bool,
-        scale: f32,
-    ) config_mod.Position {
-        const cfg = &self.config.display;
-        const start_x = scalePixels(cfg.startX, scale);
-        const start_y = scalePixels(cfg.startY, scale);
-        const offset = scalePixels(cfg.stackOffset, scale);
-        const idx = @as(i32, @intCast(index));
-        const alignment = cfg.stackAlignment;
-
-        if (is_vertical) {
-            // Vertical stack - align on secondary axis (horizontal/X)
-            const y = start_y + (idx * (thumb_height + offset));
-            var x = start_x;
-
-            switch (alignment) {
-                .TopLeft, .LeftCenter, .BottomLeft => {
-                    x = start_x;
-                },
-                .TopCenter, .Center, .BottomCenter => {
-                    x = start_x - @divTrunc(thumb_width, 2);
-                },
-                .TopRight, .RightCenter, .BottomRight => {
-                    x = start_x - thumb_width;
-                },
-            }
-
-            slog.debug("Vertical stack: thumbnail #{} at ({}, {}) [alignment={}]", .{ index, x, y, alignment });
-            return .{ .x = x, .y = y };
-        } else {
-            // Horizontal stack - align on secondary axis (vertical/Y)
-            const x = start_x + (idx * (thumb_width + offset));
-            var y = start_y;
-
-            switch (alignment) {
-                .TopLeft, .TopCenter, .TopRight => {
-                    y = start_y;
-                },
-                .LeftCenter, .Center, .RightCenter => {
-                    y = start_y - @divTrunc(thumb_height, 2);
-                },
-                .BottomLeft, .BottomCenter, .BottomRight => {
-                    y = start_y - thumb_height;
-                },
-            }
-
-            slog.debug("Horizontal stack: thumbnail #{} at ({}, {}) [alignment={}]", .{ index, x, y, alignment });
-            return .{ .x = x, .y = y };
-        }
-    }
-
-    fn calculateListPosition(
-        self: *const Painter,
-        index: usize,
-        thumb_width: i32,
-        thumb_height: i32,
-        is_vertical: bool,
-        scale: f32,
-    ) config_mod.Position {
-        const cfg = &self.config.display;
-        const spacing_x = scalePixels(cfg.getSpacingX(), scale);
-        const spacing_y = scalePixels(cfg.getSpacingY(), scale);
-        const start_x = scalePixels(cfg.startX, scale);
-        const start_y = scalePixels(cfg.startY, scale);
-
-        if (is_vertical) {
-            // Vertical list (multiple columns, fill top-to-bottom first)
-            const rows = cfg.gridRows orelse 999;
-            const col = @as(i32, @intCast(index / rows));
-            const row = @as(i32, @intCast(index % rows));
-            const x = col * (thumb_width + spacing_x) + start_x;
-            const y = row * (thumb_height + spacing_y) + start_y;
-            slog.debug("Vertical list: thumbnail #{} at ({}, {}) [col={}, row={}]", .{ index, x, y, col, row });
-            return .{ .x = x, .y = y };
-        } else {
-            // Horizontal list (multiple rows, fill left-to-right first)
-            const cols = cfg.gridColumns;
-            const col = @as(i32, @intCast(index % cols));
-            const row = @as(i32, @intCast(index / cols));
-            const x = col * (thumb_width + spacing_x) + start_x;
-            const y = row * (thumb_height + spacing_y) + start_y;
-            slog.debug("Horizontal list: thumbnail #{} at ({}, {}) [col={}, row={}]", .{ index, x, y, col, row });
-            return .{ .x = x, .y = y };
-        }
     }
 
     /// box_width/box_height is the per-column/row share of the region, used only to pick the column count; cell_width/cell_height is the actual aspect-corrected thumbnail size used for positioning.
@@ -2282,8 +2124,8 @@ pub const Painter = struct {
         return best;
     }
 
-    /// Unlike calculateGridPosition (unbounded growth from an origin), BTT/RTL here stay within [0, rows/columns) since the region is fixed-size.
-    fn regionFitColRow(direction: types.LayoutDirection, index: usize, columns: u32, rows: u32) struct { col: i32, row: i32 } {
+    /// BTT/RTL directions stay within [0, rows/columns) since the region is fixed-size.
+    fn regionFitColRow(direction: types.RegionFitDirection, index: usize, columns: u32, rows: u32) struct { col: i32, row: i32 } {
         return switch (direction) {
             .RowFirst_RTL_TTB => .{ .col = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns)), .row = @intCast(index / columns) },
             .RowFirst_LTR_BTT => .{ .col = @intCast(index % columns), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index / columns)) },
@@ -2298,10 +2140,10 @@ pub const Painter = struct {
 
     /// index/total_count here are display-order ranks (see computeRegionFitDisplayOrder), not raw thumbnails-array positions.
     fn calculateRegionFitPosition(cfg: *const config_mod.Config.DisplayConfig, region: win32.RECT, index: usize, total_count: usize, aspect_ratio: f32) config_mod.Position {
-        const spacing_x = cfg.getSpacingX();
-        const spacing_y = cfg.getSpacingY();
+        const spacing_x = cfg.spacing;
+        const spacing_y = cfg.spacing;
         const grid = calculateRegionFitGrid(region, total_count, spacing_x, spacing_y, aspect_ratio);
-        const cr = regionFitColRow(cfg.layoutDirection, index, grid.columns, grid.rows);
+        const cr = regionFitColRow(cfg.regionFitDirection, index, grid.columns, grid.rows);
         // Stride by cell size, not the wider box, so slack collects at the region's far edge instead of as gaps between thumbnails.
         return .{
             .x = region.left + cr.col * (grid.cell_width + spacing_x),
@@ -2309,16 +2151,14 @@ pub const Painter = struct {
         };
     }
 
-    /// Ranks each tracked thumbnail per display.regionFitOrder; unranked characters sort last, in their existing relative order (mirrors list_view.zig's ConfiguredCharacters). Returns a thumbnails-array-index -> display-rank mapping; caller owns the slice.
+    /// Ranks each tracked thumbnail per display.regionFitOrder; unranked characters sort last, in their existing relative order. Returns a thumbnails-array-index -> display-rank mapping; caller owns the slice.
     fn computeRegionFitDisplayOrder(self: *Painter) ![]usize {
         var order_map = std.StringHashMap(usize).init(self.allocator);
         defer order_map.deinit();
         switch (self.config.display.regionFitOrder) {
             .Characters => {
-                for (self.config.characters.items, 0..) |char, i| {
-                    const gop = try order_map.getOrPut(char.name);
-                    if (!gop.found_existing) gop.value_ptr.* = i;
-                }
+                order_map.deinit();
+                order_map = try config_mod.buildCharacterOrderMap(self.config.characters.items, self.allocator);
             },
             .HotkeyGroups => {
                 var rank: usize = 0;
@@ -2344,14 +2184,7 @@ pub const Painter = struct {
             order_map: *const std.StringHashMap(usize),
 
             fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
-                const a_order = ctx.order_map.get(ctx.thumbnails[a_index].character_name);
-                const b_order = ctx.order_map.get(ctx.thumbnails[b_index].character_name);
-                if (a_order) |ao| {
-                    if (b_order) |bo| {
-                        if (ao != bo) return ao < bo;
-                    } else return true;
-                } else if (b_order != null) return false;
-                return a_index < b_index;
+                return config_mod.orderMapLessThan(ctx.order_map, ctx.thumbnails[a_index].character_name, ctx.thumbnails[b_index].character_name, a_index, b_index);
             }
         };
         std.sort.pdq(usize, sort_indices, Ctx{ .thumbnails = self.thumbnails.items, .order_map = &order_map }, Ctx.lessThan);

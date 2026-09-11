@@ -831,6 +831,29 @@ pub const CharacterConfig = struct {
     }
 };
 
+/// Name -> first-occurrence index among `characters`; used to rank thumbnails against the profile's configured Characters list order. Caller owns the returned map.
+pub fn buildCharacterOrderMap(characters: []const CharacterConfig, allocator: std.mem.Allocator) !std.StringHashMap(usize) {
+    var map = std.StringHashMap(usize).init(allocator);
+    errdefer map.deinit();
+    for (characters, 0..) |char, i| {
+        const gop = try map.getOrPut(char.name);
+        if (!gop.found_existing) gop.value_ptr.* = i;
+    }
+    return map;
+}
+
+/// Ranks a_name/b_name by order_map, falling back to array position for ties or names absent from order_map (which always sort last).
+pub fn orderMapLessThan(order_map: *const std.StringHashMap(usize), a_name: []const u8, b_name: []const u8, a_index: usize, b_index: usize) bool {
+    const a_order = order_map.get(a_name);
+    const b_order = order_map.get(b_name);
+    if (a_order) |ao| {
+        if (b_order) |bo| {
+            if (ao != bo) return ao < bo;
+        } else return true;
+    } else if (b_order != null) return false;
+    return a_index < b_index;
+}
+
 pub const SystemColor = struct {
     name: []const u8,
     color: u32,
@@ -2496,6 +2519,9 @@ pub const Config = struct {
         startY: i32 = 10,
         spacing: i32 = 10,
 
+        /// Horizontal gap for thumbnails with no saved position, lined up left-to-right from startX/startY instead of stacking.
+        newThumbnailSpacing: i32 = 10,
+
         viewMode: types.ViewMode = .Thumbnails,
         listViewOrder: types.ListViewOrder = .Tracked,
         rememberListViewPosition: bool = true,
@@ -2526,11 +2552,8 @@ pub const Config = struct {
         notifInfoPanelShowNavigation: bool = true,
         notifInfoPanelShowGeneral: bool = true,
 
-        layoutMode: types.LayoutMode = .HorizontalList,
-        layoutDirection: types.LayoutDirection = .RowFirst_LTR_TTB,
-
-        gridColumns: u32 = 4,
-        gridRows: ?u32 = null,
+        layoutMode: types.LayoutMode = .Custom,
+        regionFitDirection: types.RegionFitDirection = .RowFirst_LTR_TTB,
 
         /// Physical pixels, absolute (like saved positions); null until captured via "Define Thumbnail Space".
         regionX: ?i32 = null,
@@ -2540,12 +2563,6 @@ pub const Config = struct {
         regionFitOrder: types.RegionFitOrder = .Characters,
         /// Whether a logout moves a thumbnail to the end of the grid, or leaves it in place until another reflow.
         regionFitReorderLoggedOut: bool = true,
-
-        stackOffset: i32 = 10,
-        stackAlignment: types.TextPosition = .TopLeft,
-
-        spacingX: ?i32 = null,
-        spacingY: ?i32 = null,
 
         monitorIndex: ?u32 = null,
         useMonitorWorkArea: bool = true,
@@ -2567,16 +2584,10 @@ pub const Config = struct {
         pub const NOTIF_PANEL_MAX_ROWS_MAX: i32 = 30;
         pub const SPACING_MIN: i32 = 0;
         pub const SPACING_MAX: i32 = 500;
-        pub const GRID_COLUMNS_MIN: u32 = 1;
-        pub const GRID_COLUMNS_MAX: u32 = 20;
-        pub const GRID_ROWS_MIN: u32 = 1;
-        pub const GRID_ROWS_MAX: u32 = 20;
         pub const REGION_WIDTH_MIN: i32 = 100;
         pub const REGION_WIDTH_MAX: i32 = 7680;
         pub const REGION_HEIGHT_MIN: i32 = 100;
         pub const REGION_HEIGHT_MAX: i32 = 4320;
-        pub const STACK_OFFSET_MIN: i32 = -500;
-        pub const STACK_OFFSET_MAX: i32 = 500;
         pub const MONITOR_INDEX_MAX: u32 = 9;
         pub const LIST_VIEW_COLUMNS_MIN: u32 = 1;
         pub const LIST_VIEW_COLUMNS_MAX: u32 = 15;
@@ -2589,6 +2600,9 @@ pub const Config = struct {
             if (self.startX > START_X_MAX) self.startX = START_X_MAX;
             if (self.startY < START_Y_MIN) self.startY = START_Y_MIN;
             if (self.startY > START_Y_MAX) self.startY = START_Y_MAX;
+
+            if (self.newThumbnailSpacing < SPACING_MIN) self.newThumbnailSpacing = SPACING_MIN;
+            if (self.newThumbnailSpacing > SPACING_MAX) self.newThumbnailSpacing = SPACING_MAX;
 
             if (self.notifInfoPanelX < START_X_MIN) self.notifInfoPanelX = START_X_MIN;
             if (self.notifInfoPanelX > START_X_MAX) self.notifInfoPanelX = START_X_MAX;
@@ -2608,12 +2622,6 @@ pub const Config = struct {
                 self.spacing = SPACING_MAX;
             }
 
-            if (self.gridColumns < GRID_COLUMNS_MIN) self.gridColumns = GRID_COLUMNS_MIN;
-            if (self.gridColumns > GRID_COLUMNS_MAX) self.gridColumns = GRID_COLUMNS_MAX;
-            if (self.gridRows) |*rows| {
-                if (rows.* < GRID_ROWS_MIN) rows.* = GRID_ROWS_MIN;
-                if (rows.* > GRID_ROWS_MAX) rows.* = GRID_ROWS_MAX;
-            }
             if (self.regionX) |*x| {
                 if (x.* < START_X_MIN) x.* = START_X_MIN;
                 if (x.* > START_X_MAX) x.* = START_X_MAX;
@@ -2629,18 +2637,6 @@ pub const Config = struct {
             if (self.regionHeight) |*h| {
                 if (h.* < REGION_HEIGHT_MIN) h.* = REGION_HEIGHT_MIN;
                 if (h.* > REGION_HEIGHT_MAX) h.* = REGION_HEIGHT_MAX;
-            }
-
-            if (self.stackOffset < STACK_OFFSET_MIN) self.stackOffset = STACK_OFFSET_MIN;
-            if (self.stackOffset > STACK_OFFSET_MAX) self.stackOffset = STACK_OFFSET_MAX;
-
-            if (self.spacingX) |*sx| {
-                if (sx.* < SPACING_MIN) sx.* = SPACING_MIN;
-                if (sx.* > SPACING_MAX) sx.* = SPACING_MAX;
-            }
-            if (self.spacingY) |*sy| {
-                if (sy.* < SPACING_MIN) sy.* = SPACING_MIN;
-                if (sy.* > SPACING_MAX) sy.* = SPACING_MAX;
             }
 
             if (self.monitorIndex) |*idx| {
@@ -2677,36 +2673,6 @@ pub const Config = struct {
                 slog.warn("Notification history panel font size {} too large, clamping to {}", .{ self.notifInfoPanelFontSize, NOTIF_PANEL_FONT_SIZE_MAX });
                 self.notifInfoPanelFontSize = NOTIF_PANEL_FONT_SIZE_MAX;
             }
-
-            // Uses a typical 200x150 thumbnail size to estimate whether this grid configuration would spawn thumbnails off-screen.
-            const typical_thumb_width = 200;
-            const typical_thumb_height = 150;
-            const spacing_x = self.spacingX orelse self.spacing;
-            const spacing_y = self.spacingY orelse self.spacing;
-
-            const estimated_width = @as(i32, @intCast(self.gridColumns)) * (typical_thumb_width + spacing_x);
-            const max_reasonable_width = 7680;
-
-            if (estimated_width > max_reasonable_width) {
-                slog.warn("Grid configuration may spawn thumbnails off-screen: {} columns × {}px ≈ {}px width (max reasonable: {}px)", .{ self.gridColumns, typical_thumb_width + spacing_x, estimated_width, max_reasonable_width });
-            }
-
-            if (self.gridRows) |rows| {
-                const estimated_height = @as(i32, @intCast(rows)) * (typical_thumb_height + spacing_y);
-                const max_reasonable_height = 4320;
-
-                if (estimated_height > max_reasonable_height) {
-                    slog.warn("Grid configuration may spawn thumbnails off-screen: {} rows × {}px ≈ {}px height (max reasonable: {}px)", .{ rows, typical_thumb_height + spacing_y, estimated_height, max_reasonable_height });
-                }
-            }
-        }
-
-        pub fn getSpacingX(self: *const DisplayConfig) i32 {
-            return self.spacingX orelse self.spacing;
-        }
-
-        pub fn getSpacingY(self: *const DisplayConfig) i32 {
-            return self.spacingY orelse self.spacing;
         }
     };
 
@@ -3456,6 +3422,9 @@ pub const Config = struct {
         if (obj.get("spacing")) |v| {
             if (v == .integer) display.spacing = std.math.cast(i32, v.integer) orelse display.spacing;
         }
+        if (obj.get("newThumbnailSpacing")) |v| {
+            if (v == .integer) display.newThumbnailSpacing = std.math.cast(i32, v.integer) orelse display.newThumbnailSpacing;
+        }
         if (obj.get("layoutMode")) |v| {
             if (v == .string) {
                 if (std.meta.stringToEnum(types.LayoutMode, v.string)) |mode| {
@@ -3463,23 +3432,11 @@ pub const Config = struct {
                 }
             }
         }
-        if (obj.get("layoutDirection")) |v| {
+        if (obj.get("regionFitDirection")) |v| {
             if (v == .string) {
-                if (std.meta.stringToEnum(types.LayoutDirection, v.string)) |dir| {
-                    display.layoutDirection = dir;
+                if (std.meta.stringToEnum(types.RegionFitDirection, v.string)) |dir| {
+                    display.regionFitDirection = dir;
                 }
-            }
-        }
-        if (obj.get("gridColumns")) |v| {
-            if (v == .integer) {
-                if (std.math.cast(u32, v.integer)) |val| display.gridColumns = val;
-            }
-        }
-        if (obj.get("gridRows")) |v| {
-            if (v == .integer) {
-                if (std.math.cast(u32, v.integer)) |val| display.gridRows = val;
-            } else if (v == .null) {
-                display.gridRows = null;
             }
         }
         if (obj.get("regionX")) |v| {
@@ -3519,30 +3476,6 @@ pub const Config = struct {
         }
         if (obj.get("regionFitReorderLoggedOut")) |v| {
             if (v == .bool) display.regionFitReorderLoggedOut = v.bool;
-        }
-        if (obj.get("stackOffset")) |v| {
-            if (v == .integer) display.stackOffset = std.math.cast(i32, v.integer) orelse display.stackOffset;
-        }
-        if (obj.get("stackAlignment")) |v| {
-            if (v == .string) {
-                if (std.meta.stringToEnum(types.TextPosition, v.string)) |alignment| {
-                    display.stackAlignment = alignment;
-                }
-            }
-        }
-        if (obj.get("spacingX")) |v| {
-            if (v == .integer) {
-                display.spacingX = std.math.cast(i32, v.integer) orelse display.spacingX;
-            } else if (v == .null) {
-                display.spacingX = null;
-            }
-        }
-        if (obj.get("spacingY")) |v| {
-            if (v == .integer) {
-                display.spacingY = std.math.cast(i32, v.integer) orelse display.spacingY;
-            } else if (v == .null) {
-                display.spacingY = null;
-            }
         }
         if (obj.get("monitorIndex")) |v| {
             if (v == .integer) {
@@ -4114,13 +4047,9 @@ pub const Config = struct {
             .@"thumbnail.notifications.suppress_click_duration_ms" = Range{ .min = 0, .max = ThumbnailConfig.SUPPRESS_CLICK_DURATION_MS_MAX },
 
             .@"display.spacing" = Range{ .min = DisplayConfig.SPACING_MIN, .max = DisplayConfig.SPACING_MAX },
-            .@"display.spacingX" = Range{ .min = DisplayConfig.SPACING_MIN, .max = DisplayConfig.SPACING_MAX },
-            .@"display.spacingY" = Range{ .min = DisplayConfig.SPACING_MIN, .max = DisplayConfig.SPACING_MAX },
-            .@"display.gridColumns" = Range{ .min = DisplayConfig.GRID_COLUMNS_MIN, .max = DisplayConfig.GRID_COLUMNS_MAX },
-            .@"display.gridRows" = Range{ .min = DisplayConfig.GRID_ROWS_MIN, .max = DisplayConfig.GRID_ROWS_MAX },
+            .@"display.newThumbnailSpacing" = Range{ .min = DisplayConfig.SPACING_MIN, .max = DisplayConfig.SPACING_MAX },
             .@"display.regionWidth" = Range{ .min = DisplayConfig.REGION_WIDTH_MIN, .max = DisplayConfig.REGION_WIDTH_MAX },
             .@"display.regionHeight" = Range{ .min = DisplayConfig.REGION_HEIGHT_MIN, .max = DisplayConfig.REGION_HEIGHT_MAX },
-            .@"display.stackOffset" = Range{ .min = DisplayConfig.STACK_OFFSET_MIN, .max = DisplayConfig.STACK_OFFSET_MAX },
             .@"display.monitorIndex" = Range{ .min = 0, .max = DisplayConfig.MONITOR_INDEX_MAX },
             .@"display.listViewColumns" = Range{ .min = DisplayConfig.LIST_VIEW_COLUMNS_MIN, .max = DisplayConfig.LIST_VIEW_COLUMNS_MAX },
             .@"display.listViewFontSize" = Range{ .min = DisplayConfig.LIST_VIEW_FONT_SIZE_MIN, .max = DisplayConfig.LIST_VIEW_FONT_SIZE_MAX },
@@ -4280,16 +4209,11 @@ pub const Config = struct {
         const new_notif_panel_show_category_filters = fresh.display.notifInfoPanelShowCategoryFilters;
         fresh.display.notifInfoPanelFontName = DEFAULT_FONT_NAME;
 
-        // Grid/stack/list layout fields ride along too, but never startX/startY - those can be live-dragged in the running app.
+        // RegionFit fields ride along too, but never startX/startY - those can be live-dragged in the running app.
         const new_spacing = fresh.display.spacing;
-        const new_spacing_x = fresh.display.spacingX;
-        const new_spacing_y = fresh.display.spacingY;
         const new_layout_mode = fresh.display.layoutMode;
-        const new_layout_direction = fresh.display.layoutDirection;
-        const new_grid_columns = fresh.display.gridColumns;
-        const new_grid_rows = fresh.display.gridRows;
-        const new_stack_offset = fresh.display.stackOffset;
-        const new_stack_alignment = fresh.display.stackAlignment;
+        const new_region_fit_direction = fresh.display.regionFitDirection;
+        const new_new_thumbnail_spacing = fresh.display.newThumbnailSpacing;
         const new_monitor_index = fresh.display.monitorIndex;
         const new_use_monitor_work_area = fresh.display.useMonitorWorkArea;
         const new_honor_saved_positions = fresh.display.honorSavedPositions;
@@ -4384,14 +4308,9 @@ pub const Config = struct {
         self.display.notifInfoPanelShowCategoryFilters = new_notif_panel_show_category_filters;
 
         self.display.spacing = new_spacing;
-        self.display.spacingX = new_spacing_x;
-        self.display.spacingY = new_spacing_y;
         self.display.layoutMode = new_layout_mode;
-        self.display.layoutDirection = new_layout_direction;
-        self.display.gridColumns = new_grid_columns;
-        self.display.gridRows = new_grid_rows;
-        self.display.stackOffset = new_stack_offset;
-        self.display.stackAlignment = new_stack_alignment;
+        self.display.regionFitDirection = new_region_fit_direction;
+        self.display.newThumbnailSpacing = new_new_thumbnail_spacing;
         self.display.monitorIndex = new_monitor_index;
         self.display.useMonitorWorkArea = new_use_monitor_work_area;
         self.display.honorSavedPositions = new_honor_saved_positions;

@@ -354,8 +354,7 @@ const CONFIG_SCHEMA = [
     // showBorderWhenFocused/showBorderWhenInactive/borderEnabled and the *BgColor/*BgOpacity pairs (see BG_COLOR_FIELDS) are special-cased below.
 
     { id: 'spacing', path: 'display.spacing' },
-    { id: 'spacingX', path: 'display.spacingX', transform: 'nullable' },
-    { id: 'spacingY', path: 'display.spacingY', transform: 'nullable' },
+    { id: 'newThumbnailSpacing', path: 'display.newThumbnailSpacing' },
     { id: 'layoutMode', path: 'display.layoutMode' },
     { id: 'viewMode', path: 'display.viewMode' },
     { id: 'listViewOrder', path: 'display.listViewOrder', default: 'Tracked' },
@@ -365,17 +364,13 @@ const CONFIG_SCHEMA = [
     { id: 'listViewFontName', path: 'display.listViewFontName' },
     { id: 'listViewFontSize', path: 'display.listViewFontSize' },
     { id: 'listViewFontWeight', path: 'display.listViewFontWeight' },
-    { id: 'layoutDirection', path: 'display.layoutDirection' },
-    { id: 'gridColumns', path: 'display.gridColumns' },
-    { id: 'gridRows', path: 'display.gridRows', transform: 'nullable' },
+    { id: 'regionFitDirection', path: 'display.regionFitDirection' },
     { id: 'regionX', path: 'display.regionX', transform: 'nullable' },
     { id: 'regionY', path: 'display.regionY', transform: 'nullable' },
     { id: 'regionWidth', path: 'display.regionWidth', transform: 'nullable' },
     { id: 'regionHeight', path: 'display.regionHeight', transform: 'nullable' },
     { id: 'regionFitOrder', path: 'display.regionFitOrder' },
     { id: 'regionFitReorderLoggedOut', path: 'display.regionFitReorderLoggedOut' },
-    { id: 'stackOffset', path: 'display.stackOffset' },
-    { id: 'stackAlignment', path: 'display.stackAlignment' },
     { id: 'monitorIndex', path: 'display.monitorIndex', transform: 'nullable' },
     { id: 'useMonitorWorkArea', path: 'display.useMonitorWorkArea' },
     { id: 'honorSavedPositions', path: 'display.honorSavedPositions' },
@@ -778,8 +773,8 @@ const THUMBNAIL_PREVIEW_FIELD_IDS = [
     'listViewOpacity', 'listViewFontName', 'listViewFontSize', 'listViewFontWeight',
     'notifInfoPanelWidth', 'notifInfoPanelHeight', 'notifInfoPanelMaxRows', 'notifInfoPanelShowTimestamp', 'notifInfoPanelShowCategoryFilters',
     'notifInfoPanelOpacity', 'notifInfoPanelFontName', 'notifInfoPanelFontSize', 'notifInfoPanelFontWeight',
-    'spacing', 'spacingX', 'spacingY', 'layoutMode', 'layoutDirection',
-    'gridColumns', 'gridRows', 'regionFitEnabled', 'regionFitOrder', 'regionFitReorderLoggedOut', 'regionX', 'regionY', 'regionWidth', 'regionHeight', 'stackOffset', 'stackAlignment',
+    'spacing', 'newThumbnailSpacing', 'layoutMode', 'regionFitDirection',
+    'regionFitEnabled', 'regionFitOrder', 'regionFitReorderLoggedOut', 'regionX', 'regionY', 'regionWidth', 'regionHeight',
     'monitorIndex', 'useMonitorWorkArea', 'honorSavedPositions',
     'notificationsEnabled', 'notificationPosition', 'notificationOffsetX', 'notificationOffsetY',
     'notificationFontName', 'notificationFontSize', 'notificationFontWeight',
@@ -879,18 +874,13 @@ function buildThumbnailPreviewPatch(includePositions = false) {
             notifInfoPanelFontWeight: getFieldValue('notifInfoPanelFontWeight'),
             // startX/startY are deliberately omitted - see repositionAllThumbnails() in painter.zig.
             spacing: getFieldValue('spacing'),
-            spacingX: getNullableFieldValue('spacingX'),
-            spacingY: getNullableFieldValue('spacingY'),
+            newThumbnailSpacing: getFieldValue('newThumbnailSpacing'),
             layoutMode: getFieldValue('layoutMode'),
-            layoutDirection: getFieldValue('layoutDirection'),
-            gridColumns: getFieldValue('gridColumns'),
-            gridRows: getNullableFieldValue('gridRows'),
+            regionFitDirection: getFieldValue('regionFitDirection'),
             regionX: getNullableFieldValue('regionX'),
             regionY: getNullableFieldValue('regionY'),
             regionWidth: getNullableFieldValue('regionWidth'),
             regionHeight: getNullableFieldValue('regionHeight'),
-            stackOffset: getFieldValue('stackOffset'),
-            stackAlignment: getFieldValue('stackAlignment'),
             monitorIndex: getNullableFieldValue('monitorIndex'),
             useMonitorWorkArea: getFieldValue('useMonitorWorkArea'),
             honorSavedPositions: getFieldValue('honorSavedPositions'),
@@ -7022,7 +7012,7 @@ function toggleRegionFitOptions() {
     if (enabled) {
         layoutModeField.value = 'RegionFit';
     } else if (layoutModeField.value === 'RegionFit') {
-        layoutModeField.value = 'HorizontalList';
+        layoutModeField.value = 'Custom';
     }
 }
 

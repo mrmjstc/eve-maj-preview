@@ -250,46 +250,23 @@ pub const ListWindow = struct {
                 }
             }
 
-            fn configuredLessThan(order_map: *const std.StringHashMap(usize), a: ThumbnailWindow, b: ThumbnailWindow, a_index: usize, b_index: usize) bool {
-                const a_order = order_map.get(a.character_name);
-                const b_order = order_map.get(b.character_name);
-
-                if (a_order) |ao| {
-                    if (b_order) |bo| {
-                        if (ao != bo) return ao < bo;
-                    } else {
-                        return true;
-                    }
-                } else if (b_order != null) {
-                    return false;
-                }
-
-                return a_index < b_index;
-            }
-
             fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
                 const a = ctx.thumbnails[a_index];
                 const b = ctx.thumbnails[b_index];
                 return switch (ctx.cfg.display.listViewOrder) {
                     .Tracked => a_index < b_index,
                     .Alphabetical => alphabeticalLessThan(a, b, a_index, b_index),
-                    .ConfiguredCharacters => configuredLessThan(ctx.order_map.?, a, b, a_index, b_index),
+                    .ConfiguredCharacters => config_mod.orderMapLessThan(ctx.order_map.?, a.character_name, b.character_name, a_index, b_index),
                 };
             }
         };
 
-        // Precompute name -> configured-order index once per sort (first occurrence wins) instead of rescanning cfg.characters.items per comparator call.
+        // Precompute name -> configured-order index once per sort instead of rescanning cfg.characters.items per comparator call.
         var order_map: ?std.StringHashMap(usize) = null;
         defer if (order_map) |*m| m.deinit();
 
         if (self.config.display.listViewOrder == .ConfiguredCharacters) {
-            var map = std.StringHashMap(usize).init(self.allocator);
-            errdefer map.deinit();
-            for (self.config.characters.items, 0..) |char, i| {
-                const gop = try map.getOrPut(char.name);
-                if (!gop.found_existing) gop.value_ptr.* = i;
-            }
-            order_map = map;
+            order_map = try config_mod.buildCharacterOrderMap(self.config.characters.items, self.allocator);
         }
 
         if (self.config.display.listViewOrder != .Tracked) {

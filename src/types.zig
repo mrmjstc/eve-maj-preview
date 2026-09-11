@@ -117,12 +117,6 @@ pub fn notificationCategory(t: NotificationType) NotificationCategory {
 }
 
 pub const LayoutMode = enum {
-    Grid,
-    VerticalStack,
-    HorizontalStack,
-    VerticalList,
-    HorizontalList,
-    Overlay,
     Custom,
     RegionFit,
 };
@@ -147,12 +141,8 @@ pub const RegionFitOrder = enum {
     HotkeyGroups,
 };
 
-/// Direction for layout growth
-pub const LayoutDirection = enum {
-    LeftToRight,
-    RightToLeft,
-    TopToBottom,
-    BottomToTop,
+/// Fill direction for RegionFit's grid
+pub const RegionFitDirection = enum {
     RowFirst_LTR_TTB,
     RowFirst_RTL_TTB,
     RowFirst_LTR_BTT,
