@@ -229,6 +229,33 @@ The display configuration supports multiple layout modes for arranging thumbnail
 - **`HorizontalStack`**: Single row, thumbnails stacked horizontally
 - **`Overlay`**: All thumbnails at the same position (for minimal space/hotkey switching)
 - **`Custom`**: No auto-layout, uses only saved positions
+- **`RegionFit`**: Auto-fits thumbnails into a user-dragged screen rectangle (`regionX`/`regionY`/`regionWidth`/`regionHeight`) - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit) below
+
+## Thumbnail Space (Region Fit)
+
+Rather than a fixed per-thumbnail size and an unbounded grid, `RegionFit` mode fits however many thumbnails are currently tracked into a fixed rectangle: it picks the column count that best fills the region for the current count, derives rows, and sizes every cell to fill the region while preserving the configured thumbnail's aspect ratio (no minimum cell size - cells keep shrinking as more characters log in). Cells are packed snugly against each other (using `spacing`, not stretched to fill the region) so any slack from the aspect-ratio fit collects as one block at the region's far edge instead of gaps between thumbnails. It reflows automatically on login, and on logout if `regionFitReorderLoggedOut` is true; while active it fully replaces per-character manual dragging and the global/per-character thumbnail size (`thumbnail.width`/`height`, `CharacterThumbnailSize`) - those are ignored.
+
+The region itself is set via the config dialog's "Define Thumbnail Space" button (Layout Mode → Region Fit), which asks the running main app to show a full-desktop drag-to-select overlay; the captured rectangle is written into `regionX`/`regionY`/`regionWidth`/`regionHeight` (all `null` until first captured).
+
+Fill order is controlled by two independent settings:
+- `regionFitOrder`: `Characters` (the profile's configured character list order) or `HotkeyGroups` (grouped by hotkey group membership, in `hotkeyGroups` order, each group's own member order preserved; a character in more than one group counts toward whichever it appears in first). Characters matching neither sort after ranked ones.
+- `layoutDirection`: which corner the grid fills from and whether it goes row-first or column-first (same enum Grid mode uses).
+
+`regionFitReorderLoggedOut` (default `true`): whether a character logging out moves its thumbnail to the end of the grid (an unranked "EVE" placeholder always sorts last) or stays in its current slot until some other login/logout triggers a reflow.
+
+```json
+{
+  "display": {
+    "layoutMode": "RegionFit",
+    "regionX": 100,
+    "regionY": 100,
+    "regionWidth": 800,
+    "regionHeight": 600,
+    "regionFitOrder": "Characters",
+    "regionFitReorderLoggedOut": true
+  }
+}
+```
 
 **Multi-Monitor Support:**
 
@@ -369,6 +396,8 @@ Use different horizontal and vertical spacing:
 - `layoutDirection`: Direction for grid growth
 - `gridColumns`: Number of columns
 - `gridRows`: Maximum rows (null = unlimited)
+- `regionX`, `regionY`, `regionWidth`, `regionHeight`: Thumbnail Space rectangle for `RegionFit` mode (null until captured) - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit)
+- `regionFitOrder`, `regionFitReorderLoggedOut`: `RegionFit` fill order and logout behavior - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit)
 - `stackOffset`: Spacing for stack modes
 - `stackAlignment`: Alignment for stacks on secondary axis
 - `monitorIndex`: Target monitor (0-based, null = absolute)

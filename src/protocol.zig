@@ -34,6 +34,7 @@ pub const Command = union(enum) {
     RevertPreview: void,
     DialogSuspendHotkeys: void,
     DialogResumeHotkeys: void,
+    StartRegionSelect: void,
 };
 
 /// Format: evemajpreview://action/params
@@ -174,7 +175,83 @@ pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
             _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
             slog.debug("Sent dialog resume hotkeys", .{});
         },
+        .StartRegionSelect => {
+            const cds = win32.COPYDATASTRUCT{
+                .dwData = win32.PROTOCOL_START_REGION_SELECT,
+                .cbData = 0,
+                .lpData = null,
+            };
+            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
+            slog.info("Sent start region select", .{});
+        },
     }
+}
+
+/// Cross-process result of a "Define Thumbnail Space" drag; a named shared-memory mapping since today's WM_COPYDATA IPC is one-way dialog->app.
+pub const RegionSelectResult = extern struct {
+    sequence: u32 = 0,
+    /// 0 = none yet, 1 = success, 2 = cancelled
+    status: u32 = 0,
+    x: i32 = 0,
+    y: i32 = 0,
+    width: i32 = 0,
+    height: i32 = 0,
+};
+
+const REGION_SELECT_MAPPING_NAME = "Local\\EVE-Maj-Preview-RegionSelectResult";
+
+// A named file mapping only lives while a handle to it stays open somewhere, so this is kept open for the process's lifetime rather than per-write.
+var g_region_select_mapping: ?win32.HANDLE = null;
+
+fn ensureRegionSelectMapping() ?win32.HANDLE {
+    if (g_region_select_mapping) |h| return h;
+    const mapping = win32.CreateFileMappingA(
+        win32.INVALID_HANDLE_VALUE,
+        null,
+        win32.PAGE_READWRITE,
+        0,
+        @sizeOf(RegionSelectResult),
+        REGION_SELECT_MAPPING_NAME,
+    ) orelse return null;
+    g_region_select_mapping = mapping;
+    return mapping;
+}
+
+/// Reads the current result; returns null if the mapping doesn't exist yet (main app hasn't published a result this run).
+pub fn readRegionSelectResult() ?RegionSelectResult {
+    const mapping = win32.OpenFileMappingA(win32.FILE_MAP_ALL_ACCESS, win32.FALSE, REGION_SELECT_MAPPING_NAME) orelse return null;
+    defer _ = win32.CloseHandle(mapping);
+
+    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(RegionSelectResult)) orelse return null;
+    defer _ = win32.UnmapViewOfFile(view);
+
+    const result_ptr: *const RegionSelectResult = @ptrCast(@alignCast(view));
+    return result_ptr.*;
+}
+
+/// Increments the sequence and writes a fresh result; called by the main app once a drag finishes or is cancelled.
+pub fn publishRegionSelectResult(status: u32, rect: win32.RECT) void {
+    const mapping = ensureRegionSelectMapping() orelse {
+        slog.err("Failed to create region-select result mapping", .{});
+        return;
+    };
+
+    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(RegionSelectResult)) orelse {
+        slog.err("Failed to map region-select result view", .{});
+        return;
+    };
+    defer _ = win32.UnmapViewOfFile(view);
+
+    const result_ptr: *RegionSelectResult = @ptrCast(@alignCast(view));
+    const next_sequence = result_ptr.sequence +% 1;
+    result_ptr.* = .{
+        .sequence = next_sequence,
+        .status = status,
+        .x = rect.left,
+        .y = rect.top,
+        .width = rect.right - rect.left,
+        .height = rect.bottom - rect.top,
+    };
 }
 
 /// Returns the protocol URL if --protocol was passed (caller must free), otherwise null.

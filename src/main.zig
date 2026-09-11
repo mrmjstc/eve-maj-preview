@@ -167,6 +167,11 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
                         manager.dialogResumeHotkeys(hwnd);
                     }
                 },
+                win32.PROTOCOL_START_REGION_SELECT => {
+                    if (g_painter) |painter_ptr| {
+                        painter_ptr.startRegionSelect();
+                    }
+                },
                 else => {},
             }
             return 0;
@@ -841,6 +846,7 @@ fn mainImpl(init: std.process.Init) !void {
     for (eve_windows) |*eve_window| {
         try g_painter.?.createThumbnail(eve_window, "");
     }
+    g_painter.?.reflowIfRegionFitActive();
 
     // Register with chatlog monitor after thumbnails are visible (deferred I/O)
     if (g_chatlog_monitor) |monitor| {
@@ -1022,6 +1028,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
                     slog.err("Failed to create thumbnail for {s}: {}", .{ eve_window.character_name, err });
                 };
             }
+            g_painter.?.reflowIfRegionFitActive();
             slog.debug("Recreated {} thumbnail(s)", .{eve_windows.len});
 
             if (keep_chatlog_monitor) {

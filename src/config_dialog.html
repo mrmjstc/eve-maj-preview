@@ -267,6 +267,74 @@
 
                     <div class="section">
                         <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.thumbnail-space.heading">Thumbnail Space</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="field.regionFit.hint">Drag a rectangle on screen; thumbnails auto-fit to fill it and reflow as characters log in/out.</p>
+
+                        <label>
+                            <input type="checkbox" id="regionFitEnabled" onchange="toggleRegionFitOptions()">
+                            <span class="label-body" data-i18n="field.regionFitEnabled.label">Auto-fit into a screen region</span>
+                        </label>
+
+                        <div id="regionFitOptions">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="regionFitOrder" data-i18n="field.regionFitOrder.label">Order By</label>
+                                    <select id="regionFitOrder">
+                                        <option value="Characters" data-i18n="field.regionFitOrder.option.characters">Character Order</option>
+                                        <option value="HotkeyGroups" data-i18n="field.regionFitOrder.option.hotkeygroups">Hotkey Group Order</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <label>
+                                <input type="checkbox" id="regionFitReorderLoggedOut">
+                                <span class="label-body" data-i18n="field.regionFitReorderLoggedOut.label">Move logged-out characters to the end</span>
+                            </label>
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="layoutDirection" data-i18n="field.layoutDirection.regionFitLabel">Fill Order</label>
+                                    <select id="layoutDirection">
+                                        <option value="RowFirst_LTR_TTB" data-i18n="field.layoutDirection.option.rowfirst_ltr_ttb">Row First: Left-to-Right, Top-to-Bottom</option>
+                                        <option value="RowFirst_RTL_TTB" data-i18n="field.layoutDirection.option.rowfirst_rtl_ttb">Row First: Right-to-Left, Top-to-Bottom</option>
+                                        <option value="RowFirst_LTR_BTT" data-i18n="field.layoutDirection.option.rowfirst_ltr_btt">Row First: Left-to-Right, Bottom-to-Top</option>
+                                        <option value="RowFirst_RTL_BTT" data-i18n="field.layoutDirection.option.rowfirst_rtl_btt">Row First: Right-to-Left, Bottom-to-Top</option>
+                                        <option value="ColumnFirst_TTB_LTR" data-i18n="field.layoutDirection.option.columnfirst_ttb_ltr">Column First: Top-to-Bottom, Left-to-Right</option>
+                                        <option value="ColumnFirst_TTB_RTL" data-i18n="field.layoutDirection.option.columnfirst_ttb_rtl">Column First: Top-to-Bottom, Right-to-Left</option>
+                                        <option value="ColumnFirst_BTT_LTR" data-i18n="field.layoutDirection.option.columnfirst_btt_ltr">Column First: Bottom-to-Top, Left-to-Right</option>
+                                        <option value="ColumnFirst_BTT_RTL" data-i18n="field.layoutDirection.option.columnfirst_btt_rtl">Column First: Bottom-to-Top, Right-to-Left</option>
+                                    </select>
+                                </div>
+                                <div class="binding">
+                                    <label for="spacing" data-i18n="field.spacing.label">Spacing (px)</label>
+                                    <input type="number" id="spacing" min="0" max="500">
+                                </div>
+                            </div>
+                            <button type="button" id="defineRegionButton" class="full-width-btn" onclick="startRegionSelectFlow()" data-i18n="field.regionFit.button">Define Thumbnail Space</button>
+                            <!-- Bound via CONFIG_SCHEMA; not something a user needs to see or edit. -->
+                            <div class="binding-list" style="display: none;">
+                                <div class="binding">
+                                    <label for="regionX" data-i18n="field.regionX.label">Region X</label>
+                                    <input type="number" id="regionX" readonly>
+                                </div>
+                                <div class="binding">
+                                    <label for="regionY" data-i18n="field.regionY.label">Region Y</label>
+                                    <input type="number" id="regionY" readonly>
+                                </div>
+                                <div class="binding">
+                                    <label for="regionWidth" data-i18n="field.regionWidth.label">Region Width</label>
+                                    <input type="number" id="regionWidth" readonly>
+                                </div>
+                                <div class="binding">
+                                    <label for="regionHeight" data-i18n="field.regionHeight.label">Region Height</label>
+                                    <input type="number" id="regionHeight" readonly>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
                             <h3 data-i18n="tab.overlay-text.section.text-display-system.heading">Text Overlays</h3>
                             <div class="section-heading-actions">
                                 <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
@@ -541,13 +609,6 @@
 
                         <div class="binding-list">
                             <div class="binding">
-                                <label for="spacing" data-i18n="field.spacing.label">Spacing (px)</label>
-                                <input type="number" id="spacing" min="0" max="500">
-                            </div>
-                        </div>
-
-                        <div class="binding-list">
-                            <div class="binding">
                                 <label for="spacingX" data-i18n="field.spacingX.label">Spacing X (px)</label>
                                 <input type="number" id="spacingX" min="0" max="500">
                             </div>
@@ -576,22 +637,7 @@
                                     <option value="HorizontalList" data-i18n="field.layoutMode.option.horizontallist">Horizontal List</option>
                                     <option value="Overlay" data-i18n="field.layoutMode.option.overlay">Overlay</option>
                                     <option value="Custom" data-i18n="field.layoutMode.option.custom">Custom</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="binding-list">
-                            <div class="binding">
-                                <label for="layoutDirection" data-i18n="field.layoutDirection.label">Layout Direction</label>
-                                <select id="layoutDirection">
-                                    <option value="RowFirst_LTR_TTB" data-i18n="field.layoutDirection.option.rowfirst_ltr_ttb">Row First: Left-to-Right, Top-to-Bottom</option>
-                                    <option value="RowFirst_RTL_TTB" data-i18n="field.layoutDirection.option.rowfirst_rtl_ttb">Row First: Right-to-Left, Top-to-Bottom</option>
-                                    <option value="RowFirst_LTR_BTT" data-i18n="field.layoutDirection.option.rowfirst_ltr_btt">Row First: Left-to-Right, Bottom-to-Top</option>
-                                    <option value="RowFirst_RTL_BTT" data-i18n="field.layoutDirection.option.rowfirst_rtl_btt">Row First: Right-to-Left, Bottom-to-Top</option>
-                                    <option value="ColumnFirst_TTB_LTR" data-i18n="field.layoutDirection.option.columnfirst_ttb_ltr">Column First: Top-to-Bottom, Left-to-Right</option>
-                                    <option value="ColumnFirst_TTB_RTL" data-i18n="field.layoutDirection.option.columnfirst_ttb_rtl">Column First: Top-to-Bottom, Right-to-Left</option>
-                                    <option value="ColumnFirst_BTT_LTR" data-i18n="field.layoutDirection.option.columnfirst_btt_ltr">Column First: Bottom-to-Top, Left-to-Right</option>
-                                    <option value="ColumnFirst_BTT_RTL" data-i18n="field.layoutDirection.option.columnfirst_btt_rtl">Column First: Bottom-to-Top, Right-to-Left</option>
+                                    <option value="RegionFit" data-i18n="field.layoutMode.option.regionfit">Region Fit (Auto)</option>
                                 </select>
                             </div>
                         </div>

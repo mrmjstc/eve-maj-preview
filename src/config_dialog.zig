@@ -173,6 +173,8 @@ pub fn main(init: std.process.Init) !void {
     _ = try win.bind("scanUltraPotatoProfiles", scanUltraPotatoProfiles);
     _ = try win.bind("applyUltraPotatoMode", applyUltraPotatoMode);
     _ = try win.bind("scaleLegacyPositions", scaleLegacyPositions);
+    _ = try win.bind("startRegionSelect", startRegionSelect);
+    _ = try win.bind("pollRegionSelectResult", pollRegionSelectResult);
 
     const html_with_resources = try injectResources(allocator, active_lang);
     defer allocator.free(html_with_resources);
@@ -492,6 +494,58 @@ fn previewThumbnailConfig(e: *webui.Event) void {
     }
 
     e.returnString("{\"success\": true}");
+}
+
+/// Baseline sequence at startRegionSelect, so pollRegionSelectResult can tell a fresh result from a stale one left over from a previous session.
+var g_region_select_baseline_sequence: u32 = 0;
+var g_region_select_pending: bool = false;
+
+/// Triggers the main app's drag-to-select overlay; config_dialog.js's startRegionSelectFlow() then polls pollRegionSelectResult.
+fn startRegionSelect(e: *webui.Event) void {
+    const hwnd = findMainAppWindow() orelse {
+        e.returnString("{\"success\": false, \"error\": \"Main app is not running\"}");
+        return;
+    };
+
+    g_region_select_baseline_sequence = if (protocol.readRegionSelectResult()) |result| result.sequence else 0;
+    g_region_select_pending = true;
+
+    protocol.sendCommandToInstance(hwnd, protocol.Command{ .StartRegionSelect = {} });
+    e.returnString("{\"success\": true}");
+}
+
+/// Returns {"done": false} until the main app publishes a sequence past the baseline.
+fn pollRegionSelectResult(e: *webui.Event) void {
+    if (!g_region_select_pending) {
+        e.returnString("{\"done\": false}");
+        return;
+    }
+
+    const result = protocol.readRegionSelectResult() orelse {
+        e.returnString("{\"done\": false}");
+        return;
+    };
+    if (result.sequence == g_region_select_baseline_sequence) {
+        e.returnString("{\"done\": false}");
+        return;
+    }
+
+    g_region_select_pending = false;
+
+    if (result.status == 1) {
+        var buf: [160]u8 = undefined;
+        const json = std.fmt.bufPrintZ(
+            &buf,
+            "{{\"done\": true, \"cancelled\": false, \"x\": {}, \"y\": {}, \"width\": {}, \"height\": {}}}",
+            .{ result.x, result.y, result.width, result.height },
+        ) catch {
+            e.returnString("{\"done\": true, \"cancelled\": true}");
+            return;
+        };
+        e.returnString(json);
+    } else {
+        e.returnString("{\"done\": true, \"cancelled\": true}");
+    }
 }
 
 /// Tell the running main app to discard any live preview and reload thumbnail appearance from disk; called on dialog close, a no-op if the profile was saved first.

@@ -124,6 +124,7 @@ pub const LayoutMode = enum {
     HorizontalList,
     Overlay,
     Custom,
+    RegionFit,
 };
 
 /// Primary display mode: how EVE clients are presented
@@ -138,6 +139,12 @@ pub const ListViewOrder = enum {
     Tracked,
     Alphabetical,
     ConfiguredCharacters,
+};
+
+/// Fill order for RegionFit's grid: configured character list, or grouped by hotkey group membership.
+pub const RegionFitOrder = enum {
+    Characters,
+    HotkeyGroups,
 };
 
 /// Direction for layout growth

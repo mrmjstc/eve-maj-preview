@@ -368,6 +368,12 @@ const CONFIG_SCHEMA = [
     { id: 'layoutDirection', path: 'display.layoutDirection' },
     { id: 'gridColumns', path: 'display.gridColumns' },
     { id: 'gridRows', path: 'display.gridRows', transform: 'nullable' },
+    { id: 'regionX', path: 'display.regionX', transform: 'nullable' },
+    { id: 'regionY', path: 'display.regionY', transform: 'nullable' },
+    { id: 'regionWidth', path: 'display.regionWidth', transform: 'nullable' },
+    { id: 'regionHeight', path: 'display.regionHeight', transform: 'nullable' },
+    { id: 'regionFitOrder', path: 'display.regionFitOrder' },
+    { id: 'regionFitReorderLoggedOut', path: 'display.regionFitReorderLoggedOut' },
     { id: 'stackOffset', path: 'display.stackOffset' },
     { id: 'stackAlignment', path: 'display.stackAlignment' },
     { id: 'monitorIndex', path: 'display.monitorIndex', transform: 'nullable' },
@@ -660,6 +666,8 @@ function applySpecialFieldsToForm() {
 
     setCheckboxValue('ttsSpeakCharacterName', currentConfig.thumbnail?.notifications?.tts_speak_character_name !== false);
     setFieldValue('notifCycleRetention', currentConfig.thumbnail?.notifications?.notified_cycle_retention_seconds ?? 30);
+
+    setCheckboxValue('regionFitEnabled', currentConfig.display?.layoutMode === 'RegionFit');
 }
 
 function applySpecialFieldsFromForm() {
@@ -771,7 +779,7 @@ const THUMBNAIL_PREVIEW_FIELD_IDS = [
     'notifInfoPanelWidth', 'notifInfoPanelHeight', 'notifInfoPanelMaxRows', 'notifInfoPanelShowTimestamp', 'notifInfoPanelShowCategoryFilters',
     'notifInfoPanelOpacity', 'notifInfoPanelFontName', 'notifInfoPanelFontSize', 'notifInfoPanelFontWeight',
     'spacing', 'spacingX', 'spacingY', 'layoutMode', 'layoutDirection',
-    'gridColumns', 'gridRows', 'stackOffset', 'stackAlignment',
+    'gridColumns', 'gridRows', 'regionFitEnabled', 'regionFitOrder', 'regionFitReorderLoggedOut', 'regionX', 'regionY', 'regionWidth', 'regionHeight', 'stackOffset', 'stackAlignment',
     'monitorIndex', 'useMonitorWorkArea', 'honorSavedPositions',
     'notificationsEnabled', 'notificationPosition', 'notificationOffsetX', 'notificationOffsetY',
     'notificationFontName', 'notificationFontSize', 'notificationFontWeight',
@@ -877,6 +885,10 @@ function buildThumbnailPreviewPatch(includePositions = false) {
             layoutDirection: getFieldValue('layoutDirection'),
             gridColumns: getFieldValue('gridColumns'),
             gridRows: getNullableFieldValue('gridRows'),
+            regionX: getNullableFieldValue('regionX'),
+            regionY: getNullableFieldValue('regionY'),
+            regionWidth: getNullableFieldValue('regionWidth'),
+            regionHeight: getNullableFieldValue('regionHeight'),
             stackOffset: getFieldValue('stackOffset'),
             stackAlignment: getFieldValue('stackAlignment'),
             monitorIndex: getNullableFieldValue('monitorIndex'),
@@ -1317,6 +1329,78 @@ function startMainAppStatusPolling() {
     setInterval(updateMainAppStatus, MAIN_APP_STATUS_POLL_MS);
 }
 
+// The main app owns the drag overlay; this dialog triggers it and polls the result (pollRegionSelectResult), since WM_COPYDATA IPC is one-way dialog->app.
+const REGION_SELECT_POLL_MS = 300;
+const REGION_SELECT_TIMEOUT_MS = 120000;
+let regionSelectPollTimer = null;
+
+function stopRegionSelectPolling(button) {
+    if (regionSelectPollTimer) {
+        clearInterval(regionSelectPollTimer);
+        regionSelectPollTimer = null;
+    }
+    if (button) {
+        button.disabled = false;
+        if (button.dataset.originalText) button.textContent = button.dataset.originalText;
+    }
+    hideStatus();
+}
+
+async function startRegionSelectFlow() {
+    if (typeof webui === 'undefined' || regionSelectPollTimer) return;
+
+    const button = document.getElementById('defineRegionButton');
+
+    try {
+        const { success, error } = JSON.parse(await webui.call('startRegionSelect'));
+        if (!success) {
+            showStatus(t('status.regionSelectFailedPrefix') + (error || ''), 'error');
+            return;
+        }
+    } catch (err) {
+        logWarn('Failed to start region select:', err);
+        showStatus(t('status.regionSelectFailedPrefix') + err, 'error');
+        return;
+    }
+
+    if (button) {
+        button.disabled = true;
+        button.dataset.originalText = button.textContent;
+        button.textContent = 'Drag on screen... (Esc to cancel)';
+    }
+    showStatus(t('status.regionSelectDragHint'), 'info');
+
+    const startedAt = Date.now();
+    regionSelectPollTimer = setInterval(async () => {
+        if (Date.now() - startedAt > REGION_SELECT_TIMEOUT_MS) {
+            stopRegionSelectPolling(button);
+            return;
+        }
+
+        try {
+            const result = JSON.parse(await webui.call('pollRegionSelectResult'));
+            if (!result.done) return;
+
+            stopRegionSelectPolling(button);
+            if (result.cancelled) return;
+
+            setFieldValue('regionX', result.x);
+            setFieldValue('regionY', result.y);
+            setFieldValue('regionWidth', result.width);
+            setFieldValue('regionHeight', result.height);
+            currentConfig.display.regionX = result.x;
+            currentConfig.display.regionY = result.y;
+            currentConfig.display.regionWidth = result.width;
+            currentConfig.display.regionHeight = result.height;
+            markAsChanged();
+            scheduleThumbnailPreview();
+        } catch (err) {
+            logWarn('Failed to poll region select result:', err);
+            stopRegionSelectPolling(button);
+        }
+    }, REGION_SELECT_POLL_MS);
+}
+
 async function loadAppVersion() {
     try {
         const data = JSON.parse(await webui.call('getConfigData'));
@@ -1419,6 +1503,7 @@ function populateFormFields() {
     // Order-independent: each just reads fields already populated above and adjusts unrelated elements' disabled state.
     toggleAspectRatioSlider();
     toggleSnappingOptions();
+    toggleRegionFitOptions();
     toggleNotifInfoPanelOptions();
     toggleShiftClickExcludeOptions();
     toggleBorderOptions();
@@ -6924,6 +7009,21 @@ function toggleSnappingOptions() {
 
 function toggleNotifInfoPanelOptions() {
     applyOptionToggle('showNotifInfoPanel', 'notifInfoPanelOptions');
+}
+
+// regionFitEnabled isn't a saved field itself - it just drives the hidden layoutMode select's value.
+function toggleRegionFitOptions() {
+    const enabled = applyOptionToggle('regionFitEnabled', 'regionFitOptions');
+    if (enabled === undefined) return;
+
+    const layoutModeField = document.getElementById('layoutMode');
+    if (!layoutModeField) return;
+
+    if (enabled) {
+        layoutModeField.value = 'RegionFit';
+    } else if (layoutModeField.value === 'RegionFit') {
+        layoutModeField.value = 'HorizontalList';
+    }
 }
 
 function toggleShiftClickExcludeOptions() {

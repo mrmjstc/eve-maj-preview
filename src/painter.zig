@@ -11,6 +11,7 @@ const list_view = @import("list_view.zig");
 const notif_info_view = @import("notif_info_view.zig");
 const activity_tracker = @import("activity_tracker.zig");
 const gdi_overlay = @import("gdi_overlay.zig");
+const region_select = @import("region_select.zig");
 const main_mod = @import("main.zig");
 const log = @import("log.zig");
 const slog = log.scoped("painter");
@@ -378,7 +379,15 @@ pub const Painter = struct {
     /// Most recent foreground window that belongs to neither an EVE client nor this process; used by HotkeyAction.ReturnToLastApp.
     last_non_eve_foreground: ?win32.HWND = null,
 
-    fn getThumbnailSize(self: *const Painter, character_name: []const u8) struct { width: i32, height: i32 } {
+    /// total_count only matters for RegionFit; other modes ignore it.
+    fn getThumbnailSize(self: *const Painter, character_name: []const u8, total_count: usize) struct { width: i32, height: i32 } {
+        const cfg = &self.config.display;
+        if (cfg.layoutMode == .RegionFit) {
+            if (regionRectFromConfig(cfg)) |region| {
+                const grid = calculateRegionFitGrid(region, total_count, cfg.getSpacingX(), cfg.getSpacingY(), self.regionFitAspectRatio());
+                return .{ .width = grid.cell_width, .height = grid.cell_height };
+            }
+        }
         if (self.config.getCharacterSize(character_name)) |char_size| {
             return .{
                 .width = char_size.width orelse self.config.thumbnail.width,
@@ -759,6 +768,8 @@ pub const Painter = struct {
 
         if (removed_any) {
             self.rebuildHwndIndex(false);
+            // A logout must reflow the survivors to refill the region.
+            if (isRegionFitActive(&self.config.display)) self.repositionAllThumbnails();
         }
     }
 
@@ -1369,24 +1380,56 @@ pub const Painter = struct {
         const monitor_placement = resolveMonitorPlacement(cfg);
         const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
         const scale = dpiToScale(if (monitor_placement) |mp| getMonitorDpi(mp.monitor) else defaultDpi());
+        const region_fit_active = isRegionFitActive(cfg);
+        const total_count = self.thumbnails.items.len;
+
+        // RegionFit fills in configured-order rank, not raw array position.
+        const display_order: ?[]usize = if (region_fit_active)
+            self.computeRegionFitDisplayOrder() catch null
+        else
+            null;
+        defer if (display_order) |order| self.allocator.free(order);
+
         for (self.thumbnails.items, 0..) |thumbnail, index| {
             if (!thumbnail.win32_enabled) continue;
-            const thumb_size = self.getThumbnailSize(thumbnail.character_name);
-            const scaled_width = scalePixels(thumb_size.width, scale);
-            const scaled_height = scalePixels(thumb_size.height, scale);
-            const pos = self.calculateThumbnailPosition(thumbnail.character_name, scaled_width, scaled_height, index, monitor_bounds, scale);
-            hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_NOTOPMOST, pos.x, pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE) orelse return;
-            hdwp = win32.DeferWindowPos(hdwp, thumbnail.text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOACTIVATE) orelse return;
+            const thumb_size = self.getThumbnailSize(thumbnail.character_name, total_count);
+            const target_width = if (region_fit_active) thumb_size.width else scalePixels(thumb_size.width, scale);
+            const target_height = if (region_fit_active) thumb_size.height else scalePixels(thumb_size.height, scale);
+            const position_index = if (display_order) |order| order[index] else index;
+            const pos = self.calculateThumbnailPosition(thumbnail.character_name, target_width, target_height, position_index, total_count, monitor_bounds, scale);
+            if (region_fit_active) {
+                // DeferWindowPos alone won't update the DWM thumbnail's own destination rect.
+                hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_NOTOPMOST, pos.x, pos.y, target_width, target_height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE) orelse return;
+                hdwp = win32.DeferWindowPos(hdwp, thumbnail.text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, target_width, target_height, win32.SWP_NOACTIVATE) orelse return;
+                const props = makeThumbnailProps(target_width, target_height, win32.DWM_TNP_RECTDESTINATION);
+                _ = win32.DwmUpdateThumbnailProperties(thumbnail.thumbnail_id, &props);
+            } else {
+                hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_NOTOPMOST, pos.x, pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE) orelse return;
+                hdwp = win32.DeferWindowPos(hdwp, thumbnail.text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOACTIVATE) orelse return;
+            }
         }
         _ = win32.EndDeferWindowPos(hdwp);
+
+        if (region_fit_active) {
+            // Avoids a one-tick delay before the border catches up to the new cell size.
+            for (self.thumbnails.items) |*thumbnail| {
+                if (!thumbnail.win32_enabled) continue;
+                thumbnail.cached_render_settings = null;
+                self.renderThumbnailLogged(thumbnail, "region fit resize");
+            }
+        }
     }
 
     /// Resizes a thumbnail's window and DWM rect to the DPI-scaled configured size if changed; text_hwnd resizes separately via UpdateLayeredWindow.
     pub fn resizeThumbnailIfNeeded(self: *Painter, thumbnail: *ThumbnailWindow) void {
-        const logical = self.getThumbnailSize(thumbnail.character_name);
-        const scale = dpiToScale(getWindowDpi(thumbnail.hwnd));
-        const target_width = scalePixels(logical.width, scale);
-        const target_height = scalePixels(logical.height, scale);
+        const cfg = &self.config.display;
+        const size = self.getThumbnailSize(thumbnail.character_name, self.thumbnails.items.len);
+        const target_width, const target_height = if (isRegionFitActive(cfg))
+            .{ size.width, size.height }
+        else blk: {
+            const scale = dpiToScale(getWindowDpi(thumbnail.hwnd));
+            break :blk .{ scalePixels(size.width, scale), scalePixels(size.height, scale) };
+        };
 
         var current_rect: win32.RECT = undefined;
         if (win32.GetClientRect(thumbnail.hwnd, &current_rect) == 0) return;
@@ -1552,11 +1595,17 @@ pub const Painter = struct {
 
     /// Reacts to Scout's name-change events: syncs the affected thumbnail's name/title and runs the associated side effects (position restore, system-name clear, exclusion restore).
     pub fn applyNameChanges(self: *Painter, name_changes: []const scout_mod.NameChange, eve_windows: []const scout_mod.EveWindow) void {
+        var any_login_rank_change = false;
+        var any_logout_rank_change = false;
         for (name_changes) |change| {
             const thumbnail = self.getThumbnailBySourceHwnd(change.hwnd) orelse continue;
 
             const was_generic = scout_mod.isGenericCharacterName(change.old_name);
-            const now_specific = !scout_mod.isGenericCharacterName(change.new_name);
+            const now_generic = scout_mod.isGenericCharacterName(change.new_name);
+            const now_specific = !now_generic;
+            // An unconfigured "EVE" placeholder always sorts last, so either direction can change a thumbnail's RegionFit rank.
+            if (was_generic and now_specific) any_login_rank_change = true;
+            if (now_generic and !was_generic) any_logout_rank_change = true;
 
             var new_title: []const u8 = change.new_name;
             for (eve_windows) |w| {
@@ -1588,9 +1637,10 @@ pub const Painter = struct {
 
             // If character logged in (changed from "EVE" to actual name), move the thumbnail box to its remembered spot
             if (was_generic and now_specific) {
-                if (thumbnail.win32_enabled) {
+                // RegionFit ignores the saved spot; the reflow below places it correctly instead.
+                if (thumbnail.win32_enabled and !isRegionFitActive(&self.config.display)) {
                     if (self.config.getCharacterPosition(change.new_name)) |saved_pos| {
-                        const thumb_size = self.getThumbnailSize(change.new_name);
+                        const thumb_size = self.getThumbnailSize(change.new_name, self.thumbnails.items.len);
                         _ = win32.SetWindowPos(thumbnail.hwnd, win32.HWND_NOTOPMOST, saved_pos.x, saved_pos.y, thumb_size.width, thumb_size.height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
                         _ = win32.SetWindowPos(thumbnail.text_hwnd, win32.HWND_TOPMOST, saved_pos.x, saved_pos.y, thumb_size.width, thumb_size.height, win32.SWP_NOACTIVATE);
                         slog.info("Moved {s} thumbnail to saved position: ({}, {})", .{ change.new_name, saved_pos.x, saved_pos.y });
@@ -1644,6 +1694,11 @@ pub const Painter = struct {
 
             slog.info("Updated thumbnail for {s}", .{thumbnail.character_name});
         }
+
+        const region_fit_active = isRegionFitActive(&self.config.display);
+        if (region_fit_active and (any_login_rank_change or (any_logout_rank_change and self.config.display.regionFitReorderLoggedOut))) {
+            self.repositionAllThumbnails();
+        }
     }
 
     /// Syncs thumbnail title text against Scout's latest scan, independent of character-name changes.
@@ -1687,7 +1742,9 @@ pub const Painter = struct {
         self.syncThumbnailTitles(eve_windows);
 
         // createThumbnail seeds title/character_name from eve_window, so new thumbnails need no re-sync.
-        _ = self.syncThumbnailsWithWindows(eve_windows);
+        const created_new = self.syncThumbnailsWithWindows(eve_windows);
+        // A new login changes RegionFit's count, so every thumbnail (not just the new one) must reflow to the recomputed cell size.
+        if (created_new and isRegionFitActive(&self.config.display)) self.repositionAllThumbnails();
 
         // Thumbnail-mode only — ClientList has no Win32 windows to redraw here.
         try self.processDirtyThumbnails();
@@ -1800,7 +1857,19 @@ pub const Painter = struct {
 
         gdi_overlay.registerWindowClass(self.instance, win32.DefWindowProcA, GHOST_WINDOW_CLASS_NAME, null) catch return error.RegisterGhostClassFailed;
 
+        region_select.registerWindowClass(self.instance) catch return error.RegisterRegionSelectClassFailed;
+
         g_window_class_registered = true;
+    }
+
+    /// Starts the "Define Thumbnail Space" drag-to-select overlay; the result reaches the config dialog asynchronously via protocol.publishRegionSelectResult.
+    pub fn startRegionSelect(self: *Painter) void {
+        region_select.start(self.instance, self.config.accentColor);
+    }
+
+    /// Call once after a bulk create-thumbnail loop (startup, profile reload), since each createThumbnail call there sizes/positions against whatever total_count existed at that moment rather than the final one. No-op outside RegionFit.
+    pub fn reflowIfRegionFitActive(self: *Painter) void {
+        if (isRegionFitActive(&self.config.display)) self.repositionAllThumbnails();
     }
 
     const MonitorEnumData = struct {
@@ -1920,10 +1989,18 @@ pub const Painter = struct {
         thumb_width: i32,
         thumb_height: i32,
         index: usize,
+        total_count: usize,
         monitor_bounds: ?win32.RECT,
         scale: f32,
     ) config_mod.Position {
         const cfg = &self.config.display;
+
+        // Checked before saved positions, which it replaces entirely while active.
+        if (cfg.layoutMode == .RegionFit) {
+            if (regionRectFromConfig(cfg)) |region| {
+                return calculateRegionFitPosition(cfg, region, index, total_count, self.regionFitAspectRatio());
+            }
+        }
 
         const is_generic = scout_mod.isGenericCharacterName(character_name);
         const use_saved_position = !is_generic and
@@ -1938,8 +2015,9 @@ pub const Painter = struct {
         }
 
         var pos = switch (cfg.layoutMode) {
-            .Custom => blk: {
-                slog.debug("Custom layout mode, no saved position, using origin", .{});
+            .Custom, .RegionFit => blk: {
+                // RegionFit with no region captured yet falls back to plain origin placement, same as Custom.
+                slog.debug("Custom/unset-RegionFit layout mode, no saved position, using origin", .{});
                 break :blk config_mod.Position{ .x = scalePixels(cfg.startX, scale), .y = scalePixels(cfg.startY, scale) };
             },
             .Overlay => blk: {
@@ -2144,6 +2222,147 @@ pub const Painter = struct {
         }
     }
 
+    /// box_width/box_height is the per-column/row share of the region, used only to pick the column count; cell_width/cell_height is the actual aspect-corrected thumbnail size used for positioning.
+    const RegionFitGrid = struct { columns: u32, rows: u32, box_width: i32, box_height: i32, cell_width: i32, cell_height: i32 };
+
+    fn regionRectFromConfig(cfg: *const config_mod.Config.DisplayConfig) ?win32.RECT {
+        const x = cfg.regionX orelse return null;
+        const y = cfg.regionY orelse return null;
+        const width = cfg.regionWidth orelse return null;
+        const height = cfg.regionHeight orelse return null;
+        return .{ .left = x, .top = y, .right = x + width, .bottom = y + height };
+    }
+
+    fn isRegionFitActive(cfg: *const config_mod.Config.DisplayConfig) bool {
+        return cfg.layoutMode == .RegionFit and regionRectFromConfig(cfg) != null;
+    }
+
+    /// RegionFit ignores the configured absolute thumbnail size, but keeps its shape.
+    fn regionFitAspectRatio(self: *const Painter) f32 {
+        return @as(f32, @floatFromInt(self.config.thumbnail.width)) / @as(f32, @floatFromInt(self.config.thumbnail.height));
+    }
+
+    /// Floors at 1px (a Win32 API-validity floor, not a usability minimum).
+    fn fitAspect(box_width: i32, box_height: i32, aspect_ratio: f32) struct { width: i32, height: i32 } {
+        if (box_width <= 0 or box_height <= 0) return .{ .width = 1, .height = 1 };
+
+        var width = box_width;
+        var height: i32 = @intFromFloat(@round(@as(f32, @floatFromInt(width)) / aspect_ratio));
+        if (height > box_height) {
+            height = box_height;
+            width = @intFromFloat(@round(@as(f32, @floatFromInt(height)) * aspect_ratio));
+        }
+        return .{ .width = @max(width, 1), .height = @max(height, 1) };
+    }
+
+    /// Picks the column count that maximizes per-cell area once cells are fit to aspect_ratio.
+    fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
+        const n: u32 = @intCast(@max(count, 1));
+        const region_width = region.right - region.left;
+        const region_height = region.bottom - region.top;
+
+        var best = RegionFitGrid{ .columns = 1, .rows = n, .box_width = 1, .box_height = 1, .cell_width = 1, .cell_height = 1 };
+        var best_area: i64 = -1;
+
+        var columns: u32 = 1;
+        while (columns <= n) : (columns += 1) {
+            const rows: u32 = (n + columns - 1) / columns;
+            const box_width = @divTrunc(region_width - spacing_x * (@as(i32, @intCast(columns)) - 1), @as(i32, @intCast(columns)));
+            const box_height = @divTrunc(region_height - spacing_y * (@as(i32, @intCast(rows)) - 1), @as(i32, @intCast(rows)));
+            if (box_width <= 0 or box_height <= 0) continue;
+
+            const cell = fitAspect(box_width, box_height, aspect_ratio);
+            const area = @as(i64, cell.width) * @as(i64, cell.height);
+            if (area > best_area) {
+                best_area = area;
+                best = .{ .columns = columns, .rows = rows, .box_width = box_width, .box_height = box_height, .cell_width = cell.width, .cell_height = cell.height };
+            }
+        }
+
+        return best;
+    }
+
+    /// Unlike calculateGridPosition (unbounded growth from an origin), BTT/RTL here stay within [0, rows/columns) since the region is fixed-size.
+    fn regionFitColRow(direction: types.LayoutDirection, index: usize, columns: u32, rows: u32) struct { col: i32, row: i32 } {
+        return switch (direction) {
+            .RowFirst_RTL_TTB => .{ .col = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns)), .row = @intCast(index / columns) },
+            .RowFirst_LTR_BTT => .{ .col = @intCast(index % columns), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index / columns)) },
+            .RowFirst_RTL_BTT => .{ .col = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns)), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index / columns)) },
+            .ColumnFirst_TTB_LTR => .{ .col = @intCast(index / rows), .row = @intCast(index % rows) },
+            .ColumnFirst_BTT_LTR => .{ .col = @intCast(index / rows), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index % rows)) },
+            .ColumnFirst_TTB_RTL => .{ .col = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index / rows)), .row = @intCast(index % rows) },
+            .ColumnFirst_BTT_RTL => .{ .col = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index / rows)), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index % rows)) },
+            else => .{ .col = @intCast(index % columns), .row = @intCast(index / columns) },
+        };
+    }
+
+    /// index/total_count here are display-order ranks (see computeRegionFitDisplayOrder), not raw thumbnails-array positions.
+    fn calculateRegionFitPosition(cfg: *const config_mod.Config.DisplayConfig, region: win32.RECT, index: usize, total_count: usize, aspect_ratio: f32) config_mod.Position {
+        const spacing_x = cfg.getSpacingX();
+        const spacing_y = cfg.getSpacingY();
+        const grid = calculateRegionFitGrid(region, total_count, spacing_x, spacing_y, aspect_ratio);
+        const cr = regionFitColRow(cfg.layoutDirection, index, grid.columns, grid.rows);
+        // Stride by cell size, not the wider box, so slack collects at the region's far edge instead of as gaps between thumbnails.
+        return .{
+            .x = region.left + cr.col * (grid.cell_width + spacing_x),
+            .y = region.top + cr.row * (grid.cell_height + spacing_y),
+        };
+    }
+
+    /// Ranks each tracked thumbnail per display.regionFitOrder; unranked characters sort last, in their existing relative order (mirrors list_view.zig's ConfiguredCharacters). Returns a thumbnails-array-index -> display-rank mapping; caller owns the slice.
+    fn computeRegionFitDisplayOrder(self: *Painter) ![]usize {
+        var order_map = std.StringHashMap(usize).init(self.allocator);
+        defer order_map.deinit();
+        switch (self.config.display.regionFitOrder) {
+            .Characters => {
+                for (self.config.characters.items, 0..) |char, i| {
+                    const gop = try order_map.getOrPut(char.name);
+                    if (!gop.found_existing) gop.value_ptr.* = i;
+                }
+            },
+            .HotkeyGroups => {
+                var rank: usize = 0;
+                for (self.config.hotkeyGroups.items) |group| {
+                    for (group.characters.items) |name| {
+                        const gop = try order_map.getOrPut(name);
+                        if (!gop.found_existing) {
+                            gop.value_ptr.* = rank;
+                            rank += 1;
+                        }
+                    }
+                }
+            },
+        }
+
+        const n = self.thumbnails.items.len;
+        const sort_indices = try self.allocator.alloc(usize, n);
+        defer self.allocator.free(sort_indices);
+        for (sort_indices, 0..) |*si, i| si.* = i;
+
+        const Ctx = struct {
+            thumbnails: []const ThumbnailWindow,
+            order_map: *const std.StringHashMap(usize),
+
+            fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
+                const a_order = ctx.order_map.get(ctx.thumbnails[a_index].character_name);
+                const b_order = ctx.order_map.get(ctx.thumbnails[b_index].character_name);
+                if (a_order) |ao| {
+                    if (b_order) |bo| {
+                        if (ao != bo) return ao < bo;
+                    } else return true;
+                } else if (b_order != null) return false;
+                return a_index < b_index;
+            }
+        };
+        std.sort.pdq(usize, sort_indices, Ctx{ .thumbnails = self.thumbnails.items, .order_map = &order_map }, Ctx.lessThan);
+
+        const display_index_by_thumb_index = try self.allocator.alloc(usize, n);
+        for (sort_indices, 0..) |thumb_index, display_index| {
+            display_index_by_thumb_index[thumb_index] = display_index;
+        }
+        return display_index_by_thumb_index;
+    }
+
     fn determineInitialVisibility(
         self: *const Painter,
         source_hwnd: win32.HWND,
@@ -2276,16 +2495,17 @@ pub const Painter = struct {
         const char_name_z = try self.allocator.dupeZ(u8, eve_window.character_name);
         defer self.allocator.free(char_name_z);
 
-        const logical_size = self.getThumbnailSize(eve_window.character_name);
         const cfg = &self.config.display;
+        const total_count = self.thumbnails.items.len + 1;
+        const size = self.getThumbnailSize(eve_window.character_name, total_count);
         const monitor_placement = resolveMonitorPlacement(cfg);
         const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
         const scale = dpiToScale(if (monitor_placement) |mp| getMonitorDpi(mp.monitor) else defaultDpi());
-        const thumb_size = .{
-            .width = scalePixels(logical_size.width, scale),
-            .height = scalePixels(logical_size.height, scale),
-        };
-        const pos = self.calculateThumbnailPosition(eve_window.character_name, thumb_size.width, thumb_size.height, self.thumbnails.items.len, monitor_bounds, scale);
+        const thumb_width, const thumb_height = if (isRegionFitActive(cfg))
+            .{ size.width, size.height }
+        else
+            .{ scalePixels(size.width, scale), scalePixels(size.height, scale) };
+        const pos = self.calculateThumbnailPosition(eve_window.character_name, thumb_width, thumb_height, self.thumbnails.items.len, total_count, monitor_bounds, scale);
 
         // Create thumbnail window (borderless, layered for transparency)
         const hwnd = win32.CreateWindowExA(
@@ -2295,8 +2515,8 @@ pub const Painter = struct {
             win32.WS_POPUP | win32.WS_VISIBLE,
             pos.x,
             pos.y,
-            thumb_size.width,
-            thumb_size.height,
+            thumb_width,
+            thumb_height,
             null,
             null,
             self.instance,
@@ -2336,8 +2556,8 @@ pub const Painter = struct {
             win32.WS_POPUP,
             pos.x,
             pos.y,
-            thumb_size.width,
-            thumb_size.height,
+            thumb_width,
+            thumb_height,
             null,
             null,
             self.instance,
@@ -2399,7 +2619,7 @@ pub const Painter = struct {
         // For reverse lookup during drag.
         _ = win32.SetWindowLongPtrA(text_hwnd, win32.GWLP_USERDATA, win32.hwndToUserData(hwnd));
 
-        _ = win32.SetWindowPos(text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, thumb_size.width, thumb_size.height, win32.SWP_NOACTIVATE);
+        _ = win32.SetWindowPos(text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, thumb_width, thumb_height, win32.SWP_NOACTIVATE);
         _ = win32.ShowWindow(text_hwnd, win32.SW_SHOW);
         _ = win32.UpdateWindow(text_hwnd);
 
@@ -2452,7 +2672,7 @@ pub const Painter = struct {
         for (self.config.characters.items) |char_config| {
             if (std.mem.eql(u8, char_config.name, exclude_character)) continue;
             const pos = char_config.position orelse continue;
-            const size = self.getThumbnailSize(char_config.name);
+            const size = self.getThumbnailSize(char_config.name, self.thumbnails.items.len);
             try raw.append(allocator, .{
                 .name = char_config.name,
                 .rect = .{ .left = pos.x, .top = pos.y, .right = pos.x + size.width, .bottom = pos.y + size.height },
@@ -3889,11 +4109,25 @@ fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWind
         final_text_color = unique_color;
     }
 
-    const char_size = cfg.getCharacterSize(character_name);
-    const logical_width = if (char_size) |cs| cs.width orelse cfg.thumbnail.width else cfg.thumbnail.width;
-    const logical_height = if (char_size) |cs| cs.height orelse cfg.thumbnail.height else cfg.thumbnail.height;
-    const overlay_width = scalePixels(logical_width, dpi_scale);
-    const overlay_height = scalePixels(logical_height, dpi_scale);
+    // Read the already-sized window back rather than duplicating the region-fit grid math here.
+    var overlay_width: c_int = undefined;
+    var overlay_height: c_int = undefined;
+    var used_live_size = false;
+    if (cfg.display.layoutMode == .RegionFit) {
+        var client_rect: win32.RECT = undefined;
+        if (win32.GetClientRect(thumbnail.hwnd, &client_rect) != 0 and client_rect.right > 0 and client_rect.bottom > 0) {
+            overlay_width = @intCast(client_rect.right);
+            overlay_height = @intCast(client_rect.bottom);
+            used_live_size = true;
+        }
+    }
+    if (!used_live_size) {
+        const char_size = cfg.getCharacterSize(character_name);
+        const logical_width = if (char_size) |cs| cs.width orelse cfg.thumbnail.width else cfg.thumbnail.width;
+        const logical_height = if (char_size) |cs| cs.height orelse cfg.thumbnail.height else cfg.thumbnail.height;
+        overlay_width = scalePixels(logical_width, dpi_scale);
+        overlay_height = scalePixels(logical_height, dpi_scale);
+    }
 
     // Builds the visible stack, newest first: each entry keeps its own suppress_when_focused/text_color_override,
     // so different notification types can be filtered and colored independently within the same stack.

@@ -69,6 +69,8 @@ pub const WM_RBUTTONUP = 0x0205;
 pub const WM_MOUSEWHEEL = 0x020A;
 pub const WM_XBUTTONDOWN = 0x020B;
 pub const WM_XBUTTONUP = 0x020C;
+pub const WM_CAPTURECHANGED = 0x0215;
+pub const WM_SETCURSOR = 0x0020;
 pub const WM_ENTERSIZEMOVE = 0x0231;
 pub const WM_EXITSIZEMOVE = 0x0232;
 pub const WM_HOTKEY = 0x0312;
@@ -91,6 +93,7 @@ pub const PROTOCOL_PREVIEW_THUMBNAIL: usize = 3;
 pub const PROTOCOL_REVERT_PREVIEW: usize = 4;
 pub const PROTOCOL_DIALOG_SUSPEND_HOTKEYS: usize = 5;
 pub const PROTOCOL_DIALOG_RESUME_HOTKEYS: usize = 6;
+pub const PROTOCOL_START_REGION_SELECT: usize = 7;
 
 pub const SPI_GETANIMATION = 0x0048;
 pub const SPI_SETANIMATION = 0x0049;
@@ -135,6 +138,7 @@ pub const GWLP_USERDATA = -21;
 pub const GWL_EXSTYLE = -20;
 
 pub const IDC_ARROW: LPCSTR = @ptrFromInt(32512);
+pub const IDC_CROSS: LPCSTR = @ptrFromInt(32515);
 
 pub const PROCESS_QUERY_INFORMATION = 0x0400;
 pub const PROCESS_VM_READ = 0x0010;
@@ -404,6 +408,7 @@ pub extern "user32" fn InvalidateRect(hWnd: HWND, lpRect: ?*const RECT, bErase: 
 pub extern "user32" fn GetDC(hWnd: ?HWND) callconv(.c) ?HDC;
 pub extern "user32" fn ReleaseDC(hWnd: ?HWND, hDC: HDC) callconv(.c) c_int;
 pub extern "user32" fn LoadCursorA(hInstance: ?HINSTANCE, lpCursorName: LPCSTR) callconv(.c) ?HCURSOR;
+pub extern "user32" fn SetCursor(hCursor: ?HCURSOR) callconv(.c) ?HCURSOR;
 pub extern "user32" fn SetLayeredWindowAttributes(hwnd: HWND, crKey: DWORD, bAlpha: BYTE, dwFlags: DWORD) callconv(.c) BOOL;
 pub extern "user32" fn UpdateLayeredWindow(
     hWnd: HWND,
@@ -610,6 +615,7 @@ pub const VK_CONTROL = 0x11;
 pub const VK_MENU = 0x12;
 pub const VK_LWIN = 0x5B;
 pub const VK_RWIN = 0x5C;
+pub const VK_ESCAPE = 0x1B;
 
 // Identifies which side button triggered a WM_XBUTTONDOWN/UP message or MSLLHOOKSTRUCT event (packed into the high word of wParam/mouseData respectively).
 pub const XBUTTON1: WORD = 0x0001;
@@ -618,6 +624,13 @@ pub const XBUTTON2: WORD = 0x0002;
 pub extern "kernel32" fn GetModuleHandleA(lpModuleName: ?LPCSTR) callconv(.c) ?HINSTANCE;
 pub extern "kernel32" fn OpenProcess(dwDesiredAccess: DWORD, bInheritHandle: BOOL, dwProcessId: DWORD) callconv(.c) ?HANDLE;
 pub extern "kernel32" fn CloseHandle(hObject: HANDLE) callconv(.c) BOOL;
+
+pub const PAGE_READWRITE: DWORD = 0x04;
+pub const FILE_MAP_ALL_ACCESS: DWORD = 0x000F001F;
+pub extern "kernel32" fn CreateFileMappingA(hFile: HANDLE, lpFileMappingAttributes: ?*anyopaque, flProtect: DWORD, dwMaximumSizeHigh: DWORD, dwMaximumSizeLow: DWORD, lpName: ?LPCSTR) callconv(.c) ?HANDLE;
+pub extern "kernel32" fn OpenFileMappingA(dwDesiredAccess: DWORD, bInheritHandle: BOOL, lpName: LPCSTR) callconv(.c) ?HANDLE;
+pub extern "kernel32" fn MapViewOfFile(hFileMappingObject: HANDLE, dwDesiredAccess: DWORD, dwFileOffsetHigh: DWORD, dwFileOffsetLow: DWORD, dwNumberOfBytesToMap: usize) callconv(.c) LPVOID;
+pub extern "kernel32" fn UnmapViewOfFile(lpBaseAddress: LPVOID) callconv(.c) BOOL;
 pub extern "kernel32" fn GetModuleFileNameExA(hProcess: HANDLE, hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;
 pub extern "kernel32" fn GetModuleFileNameA(hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;
 

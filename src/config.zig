@@ -2532,6 +2532,15 @@ pub const Config = struct {
         gridColumns: u32 = 4,
         gridRows: ?u32 = null,
 
+        /// Physical pixels, absolute (like saved positions); null until captured via "Define Thumbnail Space".
+        regionX: ?i32 = null,
+        regionY: ?i32 = null,
+        regionWidth: ?i32 = null,
+        regionHeight: ?i32 = null,
+        regionFitOrder: types.RegionFitOrder = .Characters,
+        /// Whether a logout moves a thumbnail to the end of the grid, or leaves it in place until another reflow.
+        regionFitReorderLoggedOut: bool = true,
+
         stackOffset: i32 = 10,
         stackAlignment: types.TextPosition = .TopLeft,
 
@@ -2562,6 +2571,10 @@ pub const Config = struct {
         pub const GRID_COLUMNS_MAX: u32 = 20;
         pub const GRID_ROWS_MIN: u32 = 1;
         pub const GRID_ROWS_MAX: u32 = 20;
+        pub const REGION_WIDTH_MIN: i32 = 100;
+        pub const REGION_WIDTH_MAX: i32 = 7680;
+        pub const REGION_HEIGHT_MIN: i32 = 100;
+        pub const REGION_HEIGHT_MAX: i32 = 4320;
         pub const STACK_OFFSET_MIN: i32 = -500;
         pub const STACK_OFFSET_MAX: i32 = 500;
         pub const MONITOR_INDEX_MAX: u32 = 9;
@@ -2601,6 +2614,23 @@ pub const Config = struct {
                 if (rows.* < GRID_ROWS_MIN) rows.* = GRID_ROWS_MIN;
                 if (rows.* > GRID_ROWS_MAX) rows.* = GRID_ROWS_MAX;
             }
+            if (self.regionX) |*x| {
+                if (x.* < START_X_MIN) x.* = START_X_MIN;
+                if (x.* > START_X_MAX) x.* = START_X_MAX;
+            }
+            if (self.regionY) |*y| {
+                if (y.* < START_Y_MIN) y.* = START_Y_MIN;
+                if (y.* > START_Y_MAX) y.* = START_Y_MAX;
+            }
+            if (self.regionWidth) |*w| {
+                if (w.* < REGION_WIDTH_MIN) w.* = REGION_WIDTH_MIN;
+                if (w.* > REGION_WIDTH_MAX) w.* = REGION_WIDTH_MAX;
+            }
+            if (self.regionHeight) |*h| {
+                if (h.* < REGION_HEIGHT_MIN) h.* = REGION_HEIGHT_MIN;
+                if (h.* > REGION_HEIGHT_MAX) h.* = REGION_HEIGHT_MAX;
+            }
+
             if (self.stackOffset < STACK_OFFSET_MIN) self.stackOffset = STACK_OFFSET_MIN;
             if (self.stackOffset > STACK_OFFSET_MAX) self.stackOffset = STACK_OFFSET_MAX;
 
@@ -3452,6 +3482,44 @@ pub const Config = struct {
                 display.gridRows = null;
             }
         }
+        if (obj.get("regionX")) |v| {
+            if (v == .integer) {
+                display.regionX = std.math.cast(i32, v.integer) orelse display.regionX;
+            } else if (v == .null) {
+                display.regionX = null;
+            }
+        }
+        if (obj.get("regionY")) |v| {
+            if (v == .integer) {
+                display.regionY = std.math.cast(i32, v.integer) orelse display.regionY;
+            } else if (v == .null) {
+                display.regionY = null;
+            }
+        }
+        if (obj.get("regionWidth")) |v| {
+            if (v == .integer) {
+                display.regionWidth = std.math.cast(i32, v.integer) orelse display.regionWidth;
+            } else if (v == .null) {
+                display.regionWidth = null;
+            }
+        }
+        if (obj.get("regionHeight")) |v| {
+            if (v == .integer) {
+                display.regionHeight = std.math.cast(i32, v.integer) orelse display.regionHeight;
+            } else if (v == .null) {
+                display.regionHeight = null;
+            }
+        }
+        if (obj.get("regionFitOrder")) |v| {
+            if (v == .string) {
+                if (std.meta.stringToEnum(types.RegionFitOrder, v.string)) |order| {
+                    display.regionFitOrder = order;
+                }
+            }
+        }
+        if (obj.get("regionFitReorderLoggedOut")) |v| {
+            if (v == .bool) display.regionFitReorderLoggedOut = v.bool;
+        }
         if (obj.get("stackOffset")) |v| {
             if (v == .integer) display.stackOffset = std.math.cast(i32, v.integer) orelse display.stackOffset;
         }
@@ -4050,6 +4118,8 @@ pub const Config = struct {
             .@"display.spacingY" = Range{ .min = DisplayConfig.SPACING_MIN, .max = DisplayConfig.SPACING_MAX },
             .@"display.gridColumns" = Range{ .min = DisplayConfig.GRID_COLUMNS_MIN, .max = DisplayConfig.GRID_COLUMNS_MAX },
             .@"display.gridRows" = Range{ .min = DisplayConfig.GRID_ROWS_MIN, .max = DisplayConfig.GRID_ROWS_MAX },
+            .@"display.regionWidth" = Range{ .min = DisplayConfig.REGION_WIDTH_MIN, .max = DisplayConfig.REGION_WIDTH_MAX },
+            .@"display.regionHeight" = Range{ .min = DisplayConfig.REGION_HEIGHT_MIN, .max = DisplayConfig.REGION_HEIGHT_MAX },
             .@"display.stackOffset" = Range{ .min = DisplayConfig.STACK_OFFSET_MIN, .max = DisplayConfig.STACK_OFFSET_MAX },
             .@"display.monitorIndex" = Range{ .min = 0, .max = DisplayConfig.MONITOR_INDEX_MAX },
             .@"display.listViewColumns" = Range{ .min = DisplayConfig.LIST_VIEW_COLUMNS_MIN, .max = DisplayConfig.LIST_VIEW_COLUMNS_MAX },
