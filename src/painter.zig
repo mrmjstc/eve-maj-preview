@@ -1880,7 +1880,7 @@ pub const Painter = struct {
         region_select.start(self.instance, self.config.accentColor);
     }
 
-    /// Call once after a bulk create-thumbnail loop (startup, profile reload), since each createThumbnail call there sizes/positions against whatever total_count existed at that moment rather than the final one. No-op outside RegionFit.
+    /// Call once after a bulk create-thumbnail loop, since each createThumbnail there sized against a mid-loop total_count.
     pub fn reflowIfRegionFitActive(self: *Painter) void {
         if (isRegionFitActive(&self.config.display)) self.repositionAllThumbnails();
     }
