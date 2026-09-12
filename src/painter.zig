@@ -2128,9 +2128,9 @@ pub const Painter = struct {
         var columns: u32 = 1;
         while (columns <= n) : (columns += 1) {
             const rows: u32 = (n + columns - 1) / columns;
-            const box_width = @divTrunc(region_width - spacing_x * (@as(i32, @intCast(columns)) - 1), @as(i32, @intCast(columns)));
-            const box_height = @divTrunc(region_height - spacing_y * (@as(i32, @intCast(rows)) - 1), @as(i32, @intCast(rows)));
-            if (box_width <= 0 or box_height <= 0) continue;
+            // Clamp instead of skipping, so spacing that overruns a tiny region still yields a usable grid.
+            const box_width = @max(@divTrunc(region_width - spacing_x * (@as(i32, @intCast(columns)) - 1), @as(i32, @intCast(columns))), 1);
+            const box_height = @max(@divTrunc(region_height - spacing_y * (@as(i32, @intCast(rows)) - 1), @as(i32, @intCast(rows))), 1);
 
             const cell = fitAspect(box_width, box_height, aspect_ratio);
             const area = @as(i64, cell.width) * @as(i64, cell.height);
