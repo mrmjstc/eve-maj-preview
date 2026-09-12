@@ -1391,13 +1391,24 @@ pub const Painter = struct {
             null;
         defer if (display_order) |order| self.allocator.free(order);
 
+        // region/grid are invariant across every thumbnail this pass, so compute them once instead of per-thumbnail (isRegionFitActive guarantees regionRectFromConfig succeeds).
+        const region_fit: ?struct { region: win32.RECT, grid: RegionFitGrid } = if (region_fit_active) blk: {
+            const region = regionRectFromConfig(cfg).?;
+            break :blk .{ .region = region, .grid = calculateRegionFitGrid(region, total_count, cfg.spacing, cfg.spacing, self.regionFitAspectRatio()) };
+        } else null;
+
         for (self.thumbnails.items, 0..) |thumbnail, index| {
             if (!thumbnail.win32_enabled) continue;
-            const thumb_size = self.getThumbnailSize(thumbnail.character_name, total_count);
-            const target_width = if (region_fit_active) thumb_size.width else scalePixels(thumb_size.width, scale);
-            const target_height = if (region_fit_active) thumb_size.height else scalePixels(thumb_size.height, scale);
             const position_index = if (display_order) |order| order[index] else index;
-            const pos = self.calculateThumbnailPosition(thumbnail.character_name, target_width, target_height, position_index, total_count, monitor_bounds, scale);
+
+            const target_width, const target_height, const pos = if (region_fit) |rf|
+                .{ rf.grid.cell_width, rf.grid.cell_height, regionFitPositionForGrid(cfg, rf.region, rf.grid, position_index) }
+            else blk: {
+                const thumb_size = self.getThumbnailSize(thumbnail.character_name, total_count);
+                const width = scalePixels(thumb_size.width, scale);
+                const height = scalePixels(thumb_size.height, scale);
+                break :blk .{ width, height, self.calculateThumbnailPosition(thumbnail.character_name, width, height, position_index, total_count, monitor_bounds, scale) };
+            };
             if (region_fit_active) {
                 // DeferWindowPos alone won't update the DWM thumbnail's own destination rect.
                 hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_NOTOPMOST, pos.x, pos.y, target_width, target_height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE) orelse return;
@@ -2164,11 +2175,16 @@ pub const Painter = struct {
         const spacing_x = cfg.spacing;
         const spacing_y = cfg.spacing;
         const grid = calculateRegionFitGrid(region, total_count, spacing_x, spacing_y, aspect_ratio);
+        return regionFitPositionForGrid(cfg, region, grid, index);
+    }
+
+    /// Split out of calculateRegionFitPosition so callers that already computed the grid (e.g. repositionAllThumbnails, once for the whole batch) don't redo the O(n) column search per thumbnail.
+    fn regionFitPositionForGrid(cfg: *const config_mod.Config.DisplayConfig, region: win32.RECT, grid: RegionFitGrid, index: usize) config_mod.Position {
         const cr = regionFitColRow(cfg.regionFitDirection, index, grid.columns, grid.rows);
         // Stride by cell size, not the wider box, so slack collects at the region's far edge instead of as gaps between thumbnails.
         return .{
-            .x = region.left + cr.col * (grid.cell_width + spacing_x),
-            .y = region.top + cr.row * (grid.cell_height + spacing_y),
+            .x = region.left + cr.col * (grid.cell_width + cfg.spacing),
+            .y = region.top + cr.row * (grid.cell_height + cfg.spacing),
         };
     }
 
