@@ -885,6 +885,8 @@ function buildThumbnailPreviewPatch(includePositions = false) {
             newThumbnailSpacing: getFieldValue('newThumbnailSpacing'),
             layoutMode: getFieldValue('layoutMode'),
             regionFitDirection: getFieldValue('regionFitDirection'),
+            regionFitOrder: getFieldValue('regionFitOrder'),
+            regionFitReorderLoggedOut: getFieldValue('regionFitReorderLoggedOut'),
             regionX: getNullableFieldValue('regionX'),
             regionY: getNullableFieldValue('regionY'),
             regionWidth: getNullableFieldValue('regionWidth'),
