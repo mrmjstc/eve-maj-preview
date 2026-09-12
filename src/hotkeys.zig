@@ -1426,6 +1426,7 @@ pub const HotkeyManager = struct {
         // Membership changed - old index may now point at a shifted member
         group.currentIndex = null;
 
+        self.painter.reflowIfRegionFitActive();
         self.painter.refreshGroupBadge(thumbnail);
         self.painter.renderThumbnail(thumbnail) catch |err| {
             slog.err("Failed to render thumbnail after group assignment: {}", .{err});
