@@ -4226,6 +4226,10 @@ pub const Config = struct {
         const new_monitor_index = fresh.display.monitorIndex;
         const new_use_monitor_work_area = fresh.display.useMonitorWorkArea;
         const new_honor_saved_positions = fresh.display.honorSavedPositions;
+        const new_region_x = fresh.display.regionX;
+        const new_region_y = fresh.display.regionY;
+        const new_region_width = fresh.display.regionWidth;
+        const new_region_height = fresh.display.regionHeight;
 
         // Index-matched, like applyGroupBadgePreviewFromJson.
         for (self.hotkeyGroups.items, 0..) |*group, group_index| {
@@ -4323,6 +4327,10 @@ pub const Config = struct {
         self.display.monitorIndex = new_monitor_index;
         self.display.useMonitorWorkArea = new_use_monitor_work_area;
         self.display.honorSavedPositions = new_honor_saved_positions;
+        self.display.regionX = new_region_x;
+        self.display.regionY = new_region_y;
+        self.display.regionWidth = new_region_width;
+        self.display.regionHeight = new_region_height;
     }
 
     /// Live-preview only: per-group badge flags in the config dialog's group order, matched to the running groups by index.
