@@ -49,6 +49,18 @@ pub const OverlayBitmap = struct {
         _ = win32.DeleteObject(self.bitmap);
         _ = win32.DeleteDC(self.mem_dc);
     }
+
+    pub fn needsResize(existing: ?OverlayBitmap, width: i32, height: i32) bool {
+        const b = existing orelse return true;
+        return b.width != @as(usize, @intCast(width)) or b.height != @as(usize, @intCast(height));
+    }
+
+    /// Destroys `slot.*` if present and replaces it with a fresh bitmap of the given size; `slot.*` is left null if creation fails.
+    pub fn recreate(slot: *?OverlayBitmap, screen_dc: win32.HDC, width: i32, height: i32) !void {
+        if (slot.*) |existing| existing.destroy();
+        slot.* = null;
+        slot.* = try create(screen_dc, width, height);
+    }
 };
 
 /// Converts this app's 0xAARRGGBB color into a Win32 COLORREF (0x00BBGGRR) for GDI APIs; without this, SetTextColor swaps red and blue.

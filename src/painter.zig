@@ -2635,17 +2635,10 @@ pub const Painter = struct {
 
         const hwnd = self.ghost_overlay_hwnd.?;
 
-        const needs_new_bitmap = if (self.ghost_overlay_bitmap) |b|
-            b.width != @as(usize, @intCast(width)) or b.height != @as(usize, @intCast(height))
-        else
-            true;
-
-        if (needs_new_bitmap) {
-            if (self.ghost_overlay_bitmap) |b| b.destroy();
-            self.ghost_overlay_bitmap = null;
+        if (gdi_overlay.OverlayBitmap.needsResize(self.ghost_overlay_bitmap, width, height)) {
             const init_dc = win32.GetDC(null) orelse return;
             defer _ = win32.ReleaseDC(null, init_dc);
-            self.ghost_overlay_bitmap = gdi_overlay.OverlayBitmap.create(init_dc, width, height) catch |err| {
+            gdi_overlay.OverlayBitmap.recreate(&self.ghost_overlay_bitmap, init_dc, width, height) catch |err| {
                 slog.err("Failed to allocate ghost overlay bitmap: {}", .{err});
                 return;
             };
@@ -2770,15 +2763,8 @@ pub const Painter = struct {
 
         const hwnd = self.drag_hint_hwnd.?;
 
-        const needs_new_bitmap = if (self.drag_hint_bitmap) |b|
-            b.width != @as(usize, @intCast(width)) or b.height != @as(usize, @intCast(height))
-        else
-            true;
-
-        if (needs_new_bitmap) {
-            if (self.drag_hint_bitmap) |b| b.destroy();
-            self.drag_hint_bitmap = null;
-            self.drag_hint_bitmap = gdi_overlay.OverlayBitmap.create(init_dc, width, height) catch |err| {
+        if (gdi_overlay.OverlayBitmap.needsResize(self.drag_hint_bitmap, width, height)) {
+            gdi_overlay.OverlayBitmap.recreate(&self.drag_hint_bitmap, init_dc, width, height) catch |err| {
                 slog.err("Failed to allocate drag hint overlay bitmap: {}", .{err});
                 return;
             };
@@ -3274,16 +3260,10 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
     const height = settings.overlay_height;
 
     // Reuse the cached overlay bitmap unless dimensions changed (first render or resize).
-    const needs_new_bitmap = if (thumbnail.cached_overlay) |o|
-        o.width != @as(usize, @intCast(width)) or o.height != @as(usize, @intCast(height))
-    else
-        true;
-
-    if (needs_new_bitmap) {
-        if (thumbnail.cached_overlay) |o| o.destroy();
+    if (gdi_overlay.OverlayBitmap.needsResize(thumbnail.cached_overlay, width, height)) {
         const init_dc = win32.GetDC(null) orelse return error.GetDCFailed;
         defer _ = win32.ReleaseDC(null, init_dc);
-        thumbnail.cached_overlay = try gdi_overlay.OverlayBitmap.create(init_dc, width, height);
+        try gdi_overlay.OverlayBitmap.recreate(&thumbnail.cached_overlay, init_dc, width, height);
         slog.debug("Allocated overlay bitmap {}x{} for {s}", .{ width, height, thumbnail.character_name });
     }
 

@@ -101,20 +101,12 @@ fn grabForegroundFocus(hwnd: win32.HWND) void {
 }
 
 fn ensureBitmap(width: i32, height: i32) void {
-    const needs_new = if (g_bitmap) |b|
-        b.width != @as(usize, @intCast(width)) or b.height != @as(usize, @intCast(height))
-    else
-        true;
-    if (!needs_new) return;
-
-    if (g_bitmap) |b| b.destroy();
-    g_bitmap = null;
+    if (!gdi_overlay.OverlayBitmap.needsResize(g_bitmap, width, height)) return;
 
     const dc = win32.GetDC(null) orelse return;
     defer _ = win32.ReleaseDC(null, dc);
-    g_bitmap = gdi_overlay.OverlayBitmap.create(dc, width, height) catch |err| {
+    gdi_overlay.OverlayBitmap.recreate(&g_bitmap, dc, width, height) catch |err| {
         slog.err("Failed to allocate region-select overlay bitmap: {}", .{err});
-        return;
     };
 }
 
