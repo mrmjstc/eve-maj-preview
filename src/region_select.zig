@@ -17,7 +17,6 @@ const DEFAULT_BORDER_COLOR: u32 = 0xFF3399FF;
 
 var g_window_class_registered = false;
 var g_border_color: u32 = DEFAULT_BORDER_COLOR;
-var g_active = false;
 var g_dragging = false;
 var g_hwnd: ?win32.HWND = null;
 var g_bitmap: ?gdi_overlay.OverlayBitmap = null;
@@ -70,7 +69,6 @@ pub fn start(instance: win32.HINSTANCE, accent_color: u32) void {
 
     const hwnd = g_hwnd.?;
     ensureBitmap(width, height);
-    g_active = true;
     g_last_redraw = win32.Ticks.now();
     redraw();
 
@@ -175,7 +173,6 @@ fn maybeRedrawThrottled() void {
 
 fn finish(cancelled: bool) void {
     if (g_hwnd) |hwnd| _ = win32.ShowWindow(hwnd, win32.SW_HIDE);
-    g_active = false;
     g_dragging = false;
 
     if (cancelled) {
