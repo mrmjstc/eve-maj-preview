@@ -745,7 +745,7 @@ pub const Painter = struct {
     }
 
     /// Remove thumbnails whose source / related windows are gone (defensive cleanup)
-    pub fn cleanupClosedThumbnails(self: *Painter, closed_windows: []const scout_mod.ClosedWindow) void {
+    pub fn cleanupClosedThumbnails(self: *Painter, closed_windows: []const scout_mod.ClosedWindow) bool {
         // By source_hwnd, not name: multiple windows can share a name (e.g. "EVE").
         var removed_any = false;
         for (closed_windows) |cw| {
@@ -768,9 +768,10 @@ pub const Painter = struct {
 
         if (removed_any) {
             self.rebuildHwndIndex(false);
-            // A logout must reflow the survivors to refill the region.
-            if (isRegionFitActive(&self.config.display)) self.repositionAllThumbnails();
         }
+
+        // A logout must reflow the survivors to refill the region.
+        return removed_any and isRegionFitActive(&self.config.display);
     }
 
     /// Rebuilds all HWND → index mappings; call after removing thumbnails to keep indices consistent. `force` bypasses the rate limit when the caller needs a correct index immediately.
@@ -1594,7 +1595,7 @@ pub const Painter = struct {
     }
 
     /// Reacts to Scout's name-change events: syncs the affected thumbnail's name/title and runs the associated side effects (position restore, system-name clear, exclusion restore).
-    pub fn applyNameChanges(self: *Painter, name_changes: []const scout_mod.NameChange, eve_windows: []const scout_mod.EveWindow) void {
+    pub fn applyNameChanges(self: *Painter, name_changes: []const scout_mod.NameChange, eve_windows: []const scout_mod.EveWindow) bool {
         var any_login_rank_change = false;
         var any_logout_rank_change = false;
         for (name_changes) |change| {
@@ -1696,9 +1697,7 @@ pub const Painter = struct {
         }
 
         const region_fit_active = isRegionFitActive(&self.config.display);
-        if (region_fit_active and (any_login_rank_change or (any_logout_rank_change and self.config.display.regionFitReorderLoggedOut))) {
-            self.repositionAllThumbnails();
-        }
+        return region_fit_active and (any_login_rank_change or (any_logout_rank_change and self.config.display.regionFitReorderLoggedOut));
     }
 
     /// Syncs thumbnail title text against Scout's latest scan, independent of character-name changes.
@@ -1735,16 +1734,19 @@ pub const Painter = struct {
 
     /// Main update cycle - performs all Painter operations for a single tick
     pub fn update(self: *Painter, eve_windows: []const scout_mod.EveWindow, closed_windows: []const scout_mod.ClosedWindow, name_changes: []const scout_mod.NameChange) !void {
-        self.cleanupClosedThumbnails(closed_windows);
+        var needs_region_reflow = self.cleanupClosedThumbnails(closed_windows);
         self.updateThumbnailStates();
         self.checkAutoMinimize();
-        self.applyNameChanges(name_changes, eve_windows);
+        needs_region_reflow = self.applyNameChanges(name_changes, eve_windows) or needs_region_reflow;
         self.syncThumbnailTitles(eve_windows);
 
         // createThumbnail seeds title/character_name from eve_window, so new thumbnails need no re-sync.
         const created_new = self.syncThumbnailsWithWindows(eve_windows);
         // A new login changes RegionFit's count, so every thumbnail (not just the new one) must reflow to the recomputed cell size.
-        if (created_new and isRegionFitActive(&self.config.display)) self.repositionAllThumbnails();
+        needs_region_reflow = (created_new and isRegionFitActive(&self.config.display)) or needs_region_reflow;
+
+        // Coalesced into one reflow, since any combination of the three triggers above can fire in the same tick.
+        if (needs_region_reflow) self.repositionAllThumbnails();
 
         // Thumbnail-mode only — ClientList has no Win32 windows to redraw here.
         try self.processDirtyThumbnails();
