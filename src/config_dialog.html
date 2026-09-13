@@ -1,0 +1,2534 @@
+<!DOCTYPE html>
+<html lang="en" class="pre-init">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="misc.document-title">EVE-Maj Preview Configuration</title>
+    <!-- Favicon will be injected here by WebUI -->
+    <script src="webui.js"></script>
+    <script id="i18n-catalog">
+        window.__I18N__ = {}; /* Translations will be injected here by WebUI */
+        window.__I18N_LANGS__ = {}; /* Language list will be injected here by WebUI */
+        window.__I18N_ALL__ = {}; /* All translations will be injected here by WebUI */
+    </script>
+    <style id="config-styles">
+        /* Styles will be injected here by WebUI */
+    </style>
+</head>
+<body>
+    <div id="window-container">
+        <div id="profile-header">
+            <div id="profile-header-left">
+                <span id="app-brand"><span id="app-brand-mark">›</span>EVE-Maj Preview</span>
+                <span id="profile-header-sep"></span>
+                <select id="profile-select" onchange="switchProfile()">
+                    <option value="default.json" data-i18n="common.defaultProfileLabel">default</option>
+                </select>
+                <button class="button-icon button-icon-add" onclick="createNewProfile()" title="Create New Profile" data-i18n-title="button.create-new-profile.title">+</button>
+                <button class="button-icon" onclick="copyCurrentProfile()" title="Copy Current Profile" data-i18n-title="button.copy-current-profile.title">⧉</button>
+                <button id="delete-profile-btn" class="button-icon button-icon-danger" onclick="deleteCurrentProfile()" title="Delete Current Profile" data-i18n-title="button.delete-profile-btn.title">&times;</button>
+                <button id="reset-profile-btn" class="button-icon button-icon-reset" onclick="resetCurrentProfile()" title="Reset Current Profile to Defaults" data-i18n-title="button.reset-profile-btn.title">↺</button>
+                <button class="button-icon button-icon-import" onclick="openImportModal()" title="Import settings from an old EVE-X Preview, EVE-O Preview, or EVE-APM Preview settings file, or from another EVE-Maj Preview profile" data-i18n-title="button.open-import-modal.title">⇩</button>
+            </div>
+            <div id="profile-header-right">
+                <span id="main-app-status" class="main-app-status status-offline" title="Whether the EVE-Maj Preview main app process is currently running" data-i18n-title="misc.main-app-status.title">
+                    <span class="indicator-dot">●</span> <span data-i18n="misc.main-app-status.disconnected">Disconnected</span>
+                </span>
+            </div>
+        </div>
+
+        <div id="main-content">
+            <div id="tabs-sidebar" role="tablist" aria-orientation="vertical">
+                <div class="tab-item active" data-tab="about">
+                    <span class="tab-glyph" aria-hidden="true">★</span><span data-i18n="tab.about.title">about</span>
+                </div>
+                <div class="tab-item advanced-tab" data-tab="general">
+                    <span class="tab-glyph" aria-hidden="true">⚙</span><span data-i18n="tab.general.title">general</span>
+                </div>
+                <div class="tab-item" data-tab="thumbnails">
+                    <span class="tab-glyph" aria-hidden="true">▭</span><span data-i18n="tab.thumbnails.title">thumbnails</span>
+                </div>
+                <div class="tab-item" data-tab="characters">
+                    <span class="tab-glyph" aria-hidden="true">☰</span><span data-i18n="tab.characters.title">characters</span>
+                </div>
+                <div class="tab-item" data-tab="behavior">
+                    <span class="tab-glyph" aria-hidden="true">✥</span><span data-i18n="tab.behavior.title">behavior</span>
+                </div>
+                <div class="tab-item" data-tab="hotkeys">
+                    <span class="tab-glyph" aria-hidden="true">⌨</span><span data-i18n="tab.hotkeys.title">hotkeys</span>
+                </div>
+                <div class="tab-item" data-tab="hotkey-groups">
+                    <span class="tab-glyph" aria-hidden="true">◫</span><span data-i18n="tab.hotkey-groups.title">hotkey groups</span>
+                </div>
+                <div class="tab-item" data-tab="chatlog">
+                    <span class="tab-glyph" aria-hidden="true">⌕</span><span data-i18n="tab.chatlog.title">log monitoring</span>
+                </div>
+                <div class="tab-item" data-tab="notifications">
+                    <span class="tab-glyph" aria-hidden="true">✉</span><span data-i18n="tab.notifications.title">notifications</span>
+                </div>
+                <div class="tab-item advanced-tab" data-tab="combat">
+                    <span class="tab-glyph" aria-hidden="true">⚔</span><span data-i18n="tab.combat.title">combat overlay</span>
+                </div>
+                <div class="tab-item advanced-tab" data-tab="mining">
+                    <span class="tab-glyph" aria-hidden="true">◆</span><span data-i18n="tab.mining.title">mining overlay</span>
+                </div>
+                <div class="tab-item advanced-tab" data-tab="bounty">
+                    <span class="tab-glyph" aria-hidden="true">$</span><span data-i18n="tab.bounty.title">bounty overlay</span>
+                </div>
+                <div class="tab-item advanced-tab" data-tab="resources">
+                    <span class="tab-glyph" aria-hidden="true">▤</span><span data-i18n="tab.resources.title">resource overlay</span>
+                </div>
+                <div class="tab-item" data-tab="advanced" style="display: none;">
+                    <span class="tab-glyph" aria-hidden="true">▼</span><span data-i18n="tab.advanced.title">advanced</span>
+                </div>
+            </div>
+
+            <div id="content-panel">
+                <div class="panel-content active" data-panel="about">
+                    <div class="section">
+                        <pre id="ascii-logo">
+ _______     _______      __  __        _   ____                 _               
+| ____\ \   / / ____|    |  \/  | __ _ (_) |  _ \ _ __ _____   _(_) _____      __
+|  _|  \ \ / /|  _| _____| |\/| |/ _` || | | |_) | '__/ _ \ \ / / |/ _ \ \ /\ / /
+| |___  \ V / | |__|_____| |  | | (_| || | |  __/| | |  __/\ V /| |  __/\ V  V / 
+|_____|  \_/  |_____|    |_|  |_|\__,_|/ | |_|   |_|  \___| \_/ |_|\___| \_/\_/  
+                                      |__/                                        </pre>
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.about.section.app-name.heading">EVE-Maj Preview</h3>
+                        </div>
+                        <p class="hint" data-i18n="misc.app-description">A modern, lightweight window preview tool for EVE Online, built with Zig.</p>
+
+                        <div style="margin: 12px 0;">
+                            <p class="hint"><strong data-i18n="misc.version-label">Version:</strong> <span id="app-version">0.0.2</span></p>
+                            <p class="hint"><strong data-i18n="misc.repository-label">Repository:</strong> <a href="https://github.com/mrmjstc/eve-maj-preview" onclick="return openExternalLink(event)" class="external-link">github.com/mrmjstc/eve-maj-preview</a></p>
+                            <p class="hint"><strong data-i18n="misc.discord-label">Discord:</strong> <a href="https://discord.gg/w7Gjnjr7uM" onclick="return openExternalLink(event)" class="external-link">discord.gg/w7Gjnjr7uM</a></p>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.about.section.credits.heading">Credits</h3>
+                        </div>
+                        <p class="hint" data-i18n="misc.credits-made-by">Made by Mr Majestic for the APM special interest group in Goonswarm.</p>
+                        <p class="hint" data-i18n="misc.credits-inspired-by">Heavily inspired by the original EVE-O Preview and related tools.</p>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.about.section.thanks.heading">Thanks</h3>
+                        </div>
+                        <ul class="hint credits-grid">
+                            <li class="credits-grid-full" data-i18n="misc.thanks-sig-feedback">Everyone in the APM special interest group for their feedback</li>
+                            <li>Aulis</li>
+                            <li>Cy</li>
+                            <li>Amaliana</li>
+                            <li>Technoprobe</li>
+                            <li>Yabu Kusanagi</li>
+                            <li>Sevey</li>
+                        </ul>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.about.section.license.heading">License</h3>
+                        </div>
+                        <p class="hint" data-i18n="misc.license-text">This project is open source and released under the GNU General Public License v3.0 (GPLv3). A copy of the license is included with the application.</p>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.about.section.preferences.heading">Preferences</h3>
+                            <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.about.section.preferences.hint">Reveals power-user settings across the app — extra tabs, position/spacing parameters, snapping, layout system, and more — and sets the display language for this configuration window. These preferences are global and apply across all profiles.</p>
+                        <label>
+                            <input type="checkbox" id="advancedModeToggle" onchange="toggleAdvancedMode()">
+                            <span class="label-body" data-i18n="field.advancedModeToggle.label">Advanced Mode</span>
+                        </label>
+
+                        <label>
+                            <input type="checkbox" id="alwaysOnTopToggle" onchange="toggleAlwaysOnTop()">
+                            <span class="label-body" data-i18n="field.alwaysOnTopToggle.label">Always on Top</span>
+                        </label>
+
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="languageSelect" data-i18n="tab.about.section.language.heading">Language</label>
+                                <select id="languageSelect" onchange="switchLanguage(this.value)"></select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="snake-game-container" class="section" style="display: none;">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.about.section.snake.heading">Ssssnake!</h3>
+                        </div>
+                        <p class="hint" data-i18n="tab.about.section.snake.hint">Use arrow keys to play. Press ESC to close.</p>
+                        <canvas width="400" height="400" id="snake-game" style="border: 1px solid white; margin: 0 auto; display: block;"></canvas>
+                    </div>
+                </div>
+
+                <div class="panel-content advanced-tab-panel" data-panel="general">
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.general.section.logging.heading">Logging</h3>
+                            <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.general.section.logging.hint">How much detail is written to the log file.</p>
+
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="logLevel" data-i18n="field.logLevel.label">Log Level</label>
+                                <select id="logLevel">
+                                    <option value="debug" data-i18n="field.logLevel.option.debug">Debug</option>
+                                    <option value="info" data-i18n="field.logLevel.option.info">Info</option>
+                                    <option value="warn" data-i18n="field.logLevel.option.warn">Warning</option>
+                                    <option value="err" data-i18n="field.logLevel.option.err">Error</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.general.section.scanning.heading">Scanning</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.general.section.scanning.hint">How often to check for new EVE windows.</p>
+
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="scanInterval" data-i18n="field.scanInterval.label">Scan Interval (s)</label>
+                                <input type="number" id="scanInterval" min="0.1" max="10" step="0.1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.general.section.window-filters.heading">Window Filters</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.general.section.window-filters.hint">Configure which applications to track. Each filter can match by window class name and executable name.</p>
+                        
+                        <label>
+                            <input type="checkbox" id="windowFiltersEnabled" onchange="toggleWindowFilters()">
+                            <span class="label-body" data-i18n="field.windowFiltersEnabled.label">Enable Window Filters</span>
+                        </label>
+
+                        <div id="windowFiltersOptions">
+                            <div id="windowFiltersList" class="list-container">
+                                <!-- Window filters will be dynamically populated here -->
+                            </div>
+
+                            <button type="button" class="full-width-btn" onclick="addWindowFilter()" data-i18n="button.add-window-filter.label">+ Add Window Filter</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-content" data-panel="thumbnails">
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.thumbnail-dimensions.heading">Dimensions</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.thumbnails.section.thumbnail-dimensions.hint">Set the pixel size each thumbnail is rendered at.</p>
+
+                        <!-- min/max on the number inputs below are a fallback for before
+                             loadValidationRanges() (config_dialog.js) fetches the real
+                             backend bounds from Config.zig and overwrites them - see
+                             applyValidationRangesToInputs(). Keep them roughly accurate,
+                             but the enforced clamp always comes from the Zig side. -->
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="thumbWidth" data-i18n="dynamic.character.thumbnailSizeHeading">Thumbnail Size</label>
+                                <div class="field-row detail-size">
+                                    <input type="number" id="thumbWidth" min="50" max="3840" oninput="onThumbWidthInput()">
+                                    <span class="detail-size-x">&times;</span>
+                                    <input type="number" id="thumbHeight" min="50" max="2160" oninput="onThumbHeightInput()">
+                                </div>
+                            </div>
+                        </div>
+
+                        <label>
+                            <input type="checkbox" id="constrainAspectRatio" checked onchange="toggleAspectRatioSlider()">
+                            <span class="label-body" data-i18n="field.constrainAspectRatio.label">Constrain Aspect Ratio</span>
+                        </label>
+                        <div id="aspectRatioSliderContainer" class="is-disabled field-group binding-list">
+                            <div class="binding">
+                                <label for="thumbSizeSlider" data-i18n="field.thumbSizeSlider.label">Size</label>
+                                <div class="field-row">
+                                    <input type="range" id="thumbSizeSlider" min="10" max="400" value="100" oninput="onThumbSizeSlider()">
+                                    <span id="thumbSizeValue">100</span>%
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.thumbnail-space.heading">Thumbnail Space</h3>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="field.regionFit.hint">Drag a rectangle on screen; thumbnails auto-fit to fill it and reflow as characters log in/out.</p>
+
+                        <label>
+                            <input type="checkbox" id="regionFitEnabled" onchange="toggleRegionFitOptions()">
+                            <span class="label-body" data-i18n="field.regionFitEnabled.label">Auto-Fit Into a Screen Region</span>
+                        </label>
+                        <p class="hint hint-extra" data-i18n="field.regionFitEnabled.hint">Switches this profile's layout mode to Region Fit, taking over thumbnail placement instead of using saved positions.</p>
+
+                        <div id="regionFitOptions">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="regionFitOrder" data-i18n="field.regionFitOrder.label">Order By</label>
+                                    <select id="regionFitOrder">
+                                        <option value="Characters" data-i18n="field.regionFitOrder.option.characters">Character Order</option>
+                                        <option value="HotkeyGroups" data-i18n="field.regionFitOrder.option.hotkeygroups">Hotkey Group Order</option>
+                                    </select>
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.regionFitOrder.hint">Character Order follows the Characters list; Hotkey Group Order follows the hotkey groups instead.</p>
+                            </div>
+                            <label>
+                                <input type="checkbox" id="regionFitReorderLoggedOut">
+                                <span class="label-body" data-i18n="field.regionFitReorderLoggedOut.label">Move Logged-Out Characters to the End</span>
+                            </label>
+                            <p class="hint hint-extra" data-i18n="field.regionFitReorderLoggedOut.hint">When off, a logged-out character's spot stays put until the next reflow instead of closing the gap immediately.</p>
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="regionFitDirection" data-i18n="field.regionFitDirection.label">Fill Order</label>
+                                    <select id="regionFitDirection">
+                                        <option value="RowFirst_LTR_TTB" data-i18n="field.regionFitDirection.option.rowfirst_ltr_ttb">Row First: Left-to-Right, Top-to-Bottom</option>
+                                        <option value="RowFirst_RTL_TTB" data-i18n="field.regionFitDirection.option.rowfirst_rtl_ttb">Row First: Right-to-Left, Top-to-Bottom</option>
+                                        <option value="RowFirst_LTR_BTT" data-i18n="field.regionFitDirection.option.rowfirst_ltr_btt">Row First: Left-to-Right, Bottom-to-Top</option>
+                                        <option value="RowFirst_RTL_BTT" data-i18n="field.regionFitDirection.option.rowfirst_rtl_btt">Row First: Right-to-Left, Bottom-to-Top</option>
+                                        <option value="ColumnFirst_TTB_LTR" data-i18n="field.regionFitDirection.option.columnfirst_ttb_ltr">Column First: Top-to-Bottom, Left-to-Right</option>
+                                        <option value="ColumnFirst_TTB_RTL" data-i18n="field.regionFitDirection.option.columnfirst_ttb_rtl">Column First: Top-to-Bottom, Right-to-Left</option>
+                                        <option value="ColumnFirst_BTT_LTR" data-i18n="field.regionFitDirection.option.columnfirst_btt_ltr">Column First: Bottom-to-Top, Left-to-Right</option>
+                                        <option value="ColumnFirst_BTT_RTL" data-i18n="field.regionFitDirection.option.columnfirst_btt_rtl">Column First: Bottom-to-Top, Right-to-Left</option>
+                                    </select>
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.regionFitDirection.hint">The order the grid fills as thumbnails are placed into the region.</p>
+                                <div class="binding">
+                                    <label for="spacing" data-i18n="field.spacing.label">Spacing (px)</label>
+                                    <input type="number" id="spacing" min="0" max="500">
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.spacing.hint">Gap between thumbnails inside the Thumbnail Space.</p>
+                            </div>
+                            <button type="button" id="defineRegionButton" class="full-width-btn" onclick="startRegionSelectFlow()" data-i18n="field.regionFit.button">▭ Define Thumbnail Space</button>
+                            <!-- Bound via CONFIG_SCHEMA; not something a user needs to see or edit. -->
+                            <div class="binding-list" style="display: none;">
+                                <div class="binding">
+                                    <label for="layoutMode" data-i18n="field.layoutMode.label">Layout Mode</label>
+                                    <select id="layoutMode">
+                                        <option value="Custom" data-i18n="field.layoutMode.option.custom">Custom</option>
+                                        <option value="RegionFit" data-i18n="field.layoutMode.option.regionfit">Region Fit (Auto)</option>
+                                    </select>
+                                </div>
+                                <div class="binding">
+                                    <label for="regionX" data-i18n="field.regionX.label">Region X</label>
+                                    <input type="number" id="regionX" readonly>
+                                </div>
+                                <div class="binding">
+                                    <label for="regionY" data-i18n="field.regionY.label">Region Y</label>
+                                    <input type="number" id="regionY" readonly>
+                                </div>
+                                <div class="binding">
+                                    <label for="regionWidth" data-i18n="field.regionWidth.label">Region Width</label>
+                                    <input type="number" id="regionWidth" readonly>
+                                </div>
+                                <div class="binding">
+                                    <label for="regionHeight" data-i18n="field.regionHeight.label">Region Height</label>
+                                    <input type="number" id="regionHeight" readonly>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.overlay-text.section.text-display-system.heading">Text Overlays</h3>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="tab.overlay-text.section.text-display-system.hint">Overlay a text strip on each thumbnail showing the character's name and/or current solar system. The preview below is not to scale - drag to reposition, click to edit.</p>
+
+                        <label>
+                            <input type="checkbox" id="showText" onchange="toggleTextDisplayOptions()">
+                            <span class="label-body" data-i18n="field.showText.label">Show Text Overlays</span>
+                        </label>
+
+                        <label class="list-container">
+                            <input type="checkbox" id="syncOverlayStyling">
+                            <span class="label-body" data-i18n="field.syncOverlayStyling.label">Sync Fonts and Backgrounds</span>
+                        </label>
+                        <p class="hint hint-extra" data-i18n="field.syncOverlayStyling.hint">Editing one overlay's font or background applies it to all the others.</p>
+                        <div id="overlayLayoutStage">
+                            <div id="overlayGuideX" class="overlay-guide overlay-guide-x"></div>
+                            <div id="overlayGuideY" class="overlay-guide overlay-guide-y"></div>
+                            <div class="overlay-chip" id="overlayChip_characterName" data-key="characterName"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Character Name</span></div>
+                            <div class="overlay-chip" id="overlayChip_systemName" data-key="systemName"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">System Name</span></div>
+                            <div class="overlay-chip" id="overlayChip_quickGroupBadge" data-key="quickGroupBadge"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Group Name</span></div>
+                            <div class="overlay-chip" id="overlayChip_notification" data-key="notification"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Notification</span></div>
+                            <div class="overlay-chip" id="overlayChip_combatIncoming" data-key="combatIncoming"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Incoming DPS</span></div>
+                            <div class="overlay-chip" id="overlayChip_combatOutgoing" data-key="combatOutgoing"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Outgoing DPS</span></div>
+                            <div class="overlay-chip" id="overlayChip_mining" data-key="mining"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Mining Rate</span></div>
+                            <div class="overlay-chip" id="overlayChip_bounty" data-key="bounty"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Bounty Rate</span></div>
+                            <div class="overlay-chip" id="overlayChip_resources" data-key="resources"><span class="overlay-chip-handle" aria-hidden="true"></span><span class="overlay-chip-label">Resource Usage</span></div>
+                        </div>
+
+                        <div id="overlayPropertiesPopover" class="overlay-popover" style="display: none;">
+                            <button type="button" id="overlayPopoverClose" class="overlay-popover-close" aria-label="Close" data-i18n-aria-label="common.close">×</button>
+                            <h3 id="overlayPopoverTitle"></h3>
+                            <div class="overlay-popover-body" id="overlayPopoverBody"></div>
+                        </div>
+
+                        <div id="textDisplayOptions">
+                            <div class="row hidden-by-layout-preview">
+                                <div class="column">
+                                    <h4 data-i18n="tab.overlay-text.section.character-name.heading">Character Name</h4>
+
+                                    <label>
+                                        <input type="checkbox" id="showCharacterName" onchange="toggleCharacterNameOptions()">
+                                        <span class="label-body" data-i18n="field.showCharacterName.label">Show Character Name</span>
+                                    </label>
+
+                                    <div id="characterNameOptions" class="field-group">
+                                        <div class="hidden-by-layout-preview binding-list">
+                                            <div class="binding">
+                                                <label for="characterNamePosition" data-i18n="common.positionLabel">Position</label>
+                                                <select id="characterNamePosition" class="position-options"></select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="characterNameOffsetX" min="-50" max="50" value="0" data-value-target="characterNameOffsetXValue">
+                                                    <span id="characterNameOffsetXValue">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="characterNameOffsetY" min="-50" max="50" value="0" data-value-target="characterNameOffsetYValue">
+                                                    <span id="characterNameOffsetYValue">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                                <select id="characterNameFontName" class="font-options"></select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                                <input type="number" id="characterNameFontSize" min="6" max="72">
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                                <select id="characterNameFontWeight">
+                                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                                </select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                                <input type="color" id="characterNameBgColor" data-default-color="#000000">
+                                            </div>
+                                            <div class="binding">
+                                                <label for="characterNameBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="characterNameBgOpacity" min="0" max="100" value="90" data-value-target="characterNameBgOpacityValue">
+                                                    <span id="characterNameBgOpacityValue">90</span>%
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <label>
+                                            <input type="checkbox" id="useUniqueCharacterNameColors" onchange="toggleUniqueCharacterNameColors()">
+                                            <span class="label-body" data-i18n="field.useUniqueCharacterNameColors.label">Unique Character Name Colors</span>
+                                        </label>
+                                        <div id="characterNameColorOption" class="field-group binding-list">
+                                            <div class="binding">
+                                                <label for="characterNameColor" data-i18n="field.characterNameColor.label">Character Name Color</label>
+                                                <input type="color" id="characterNameColor" data-default-color="#FFFFFF">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="column">
+                                    <h4 data-i18n="tab.overlay-text.section.system-name.heading">System Name</h4>
+
+                                    <label>
+                                        <input type="checkbox" id="showSystemName" onchange="toggleSystemNameOptions()">
+                                        <span class="label-body" data-i18n="field.showSystemName.label">Show System Name</span>
+                                    </label>
+
+                                    <div id="systemNameOptions" class="field-group">
+                                        <div class="hidden-by-layout-preview binding-list">
+                                            <div class="binding">
+                                                <label for="systemNamePosition" data-i18n="common.positionLabel">Position</label>
+                                                <select id="systemNamePosition" class="position-options"></select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="systemNameOffsetX" min="-50" max="50" value="0" data-value-target="systemNameOffsetXValue">
+                                                    <span id="systemNameOffsetXValue">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="systemNameOffsetY" min="-50" max="50" value="0" data-value-target="systemNameOffsetYValue">
+                                                    <span id="systemNameOffsetYValue">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                                <select id="systemNameFontName" class="font-options"></select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                                <input type="number" id="systemNameFontSize" min="6" max="72">
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                                <select id="systemNameFontWeight">
+                                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                                </select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                                <input type="color" id="systemNameBgColor" data-default-color="#000000">
+                                            </div>
+                                            <div class="binding">
+                                                <label for="systemNameBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="systemNameBgOpacity" min="0" max="100" value="90" data-value-target="systemNameBgOpacityValue">
+                                                    <span id="systemNameBgOpacityValue">90</span>%
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <label>
+                                            <input type="checkbox" id="useUniqueSystemColors" onchange="toggleUniqueSystemColors()">
+                                            <span class="label-body" data-i18n="field.useUniqueSystemColors.label">Unique System Colors</span>
+                                        </label>
+                                        <div id="systemNameColorOption" class="field-group binding-list">
+                                            <div class="binding">
+                                                <label for="systemNameColor" data-i18n="field.systemNameColor.label">System Name Color</label>
+                                                <input type="color" id="systemNameColor" data-default-color="#FFFFFF">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row hidden-by-layout-preview">
+                                <div class="column">
+                                    <h4 data-i18n="tab.overlay-text.section.group-badge.heading">Group Badge</h4>
+
+                                    <label>
+                                        <input type="checkbox" id="showQuickGroupBadge" onchange="toggleQuickGroupBadgeOptions()">
+                                        <span class="label-body" data-i18n="field.showQuickGroupBadge.label">Show Group Badge</span>
+                                    </label>
+
+                                    <div id="quickGroupBadgeOptions" class="field-group">
+                                        <div class="hidden-by-layout-preview binding-list">
+                                            <div class="binding">
+                                                <label for="quickGroupBadgePosition" data-i18n="common.positionLabel">Position</label>
+                                                <select id="quickGroupBadgePosition" class="position-options"></select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="quickGroupBadgeOffsetX" min="-50" max="50" value="0" data-value-target="quickGroupBadgeOffsetXValue">
+                                                    <span id="quickGroupBadgeOffsetXValue">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="quickGroupBadgeOffsetY" min="-50" max="50" value="0" data-value-target="quickGroupBadgeOffsetYValue">
+                                                    <span id="quickGroupBadgeOffsetYValue">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                                <select id="quickGroupBadgeFontName" class="font-options"></select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                                <input type="number" id="quickGroupBadgeFontSize" min="6" max="72">
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                                <select id="quickGroupBadgeFontWeight">
+                                                    <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                                    <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                                    <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                                    <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                                </select>
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                                <input type="color" id="quickGroupBadgeBgColor" data-default-color="#000000">
+                                            </div>
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                                <div class="field-row">
+                                                    <input type="range" id="quickGroupBadgeBgOpacity" min="0" max="100" value="90" data-value-target="quickGroupBadgeBgOpacityValue">
+                                                    <span id="quickGroupBadgeBgOpacityValue">90</span>%
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="binding-list">
+                                            <div class="binding">
+                                                <label for="quickGroupBadgeColor" data-i18n="field.quickGroupBadgeColor.label">Badge Color</label>
+                                                <input type="color" id="quickGroupBadgeColor" data-default-color="#44FF44">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section advanced-section" style="display: none;">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.position-parameters.heading">Position Parameters</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.thumbnails.section.position-parameters.hint">Where new thumbnails without a saved position spawn.</p>
+
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="startX" data-i18n="field.startX.label">Start X</label>
+                                <input type="number" id="startX">
+                            </div>
+                            <div class="binding">
+                                <label for="startY" data-i18n="field.startY.label">Start Y</label>
+                                <input type="number" id="startY">
+                            </div>
+                        </div>
+
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="newThumbnailSpacing" data-i18n="field.newThumbnailSpacing.label">New Thumbnail Spacing (px)</label>
+                                <input type="number" id="newThumbnailSpacing" min="0" max="500">
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="field.newThumbnailSpacing.hint">Lines up thumbnails with no saved position yet (new characters, not-logged-in placeholders) left-to-right from Start X/Y, instead of stacking them on top of each other.</p>
+
+                    </div>
+
+                    <div class="section advanced-section" style="display: none;">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.monitor-auto-arrange.heading">Monitor &amp; Auto-Arrange</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="monitorIndex" data-i18n="field.monitorIndex.label">Monitor Index (0=primary)</label>
+                                <input type="number" id="monitorIndex" min="0" max="9">
+                            </div>
+                        </div>
+
+                        <label>
+                            <input type="checkbox" id="useMonitorWorkArea">
+                            <span class="label-body" data-i18n="field.useMonitorWorkArea.label">Use Monitor Work Area</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" id="honorSavedPositions">
+                            <span class="label-body" data-i18n="field.honorSavedPositions.label">Honor Saved Positions</span>
+                        </label>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.border-configuration.heading">Borders</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.thumbnails.section.border-configuration.hint">Draw a styled border around thumbnails based on their focus state.</p>
+
+                        <label>
+                            <input type="checkbox" id="borderEnabled" onchange="toggleBorderOptions()">
+                            <span class="label-body" data-i18n="field.borderEnabled.label">Enable Borders</span>
+                        </label>
+
+                        <div id="borderOptions">
+                            <label>
+                                <input type="checkbox" id="assignUniqueCharacterColors" onchange="toggleUniqueCharacterColors()">
+                                <span class="label-body" data-i18n="field.assignUniqueCharacterColors.label">Unique Character Border Colors</span>
+                            </label>
+                            <div>
+                                <div>
+                                    <h4 data-i18n="tab.thumbnails.section.focused-border.heading">Focused Border</h4>
+
+                                    <label>
+                                        <input type="checkbox" id="showBorderWhenFocused" onchange="toggleFocusedBorderOptions()">
+                                        <span class="label-body" data-i18n="field.showBorderWhenFocused.label">Show Focused Border</span>
+                                    </label>
+
+                                    <div id="focusedBorderOptions" class="binding-list">
+                                        <div class="binding">
+                                            <label for="borderWidth" data-i18n="common.widthPxLabel">Width (px)</label>
+                                            <input type="number" id="borderWidth" min="1" max="50">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="borderStyle" data-i18n="common.styleLabel">Style</label>
+                                            <select id="borderStyle">
+                                                <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                                <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                                <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                                <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                                <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                                <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                                <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                            </select>
+                                        </div>
+                                        <div id="focusedBorderColorOptions" class="binding">
+                                            <label for="borderColor" data-i18n="field.borderColor.label">Color</label>
+                                            <input type="color" id="borderColor" data-default-color="#606060">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h4 data-i18n="tab.thumbnails.section.inactive-border.heading">Inactive Border</h4>
+
+                                    <label>
+                                        <input type="checkbox" id="showBorderWhenInactive" onchange="toggleInactiveBorderOptions()">
+                                        <span class="label-body" data-i18n="field.showBorderWhenInactive.label">Show Inactive Border</span>
+                                    </label>
+
+                                    <div id="inactiveBorderOptions" class="binding-list">
+                                        <div class="binding">
+                                            <label for="inactiveBorderWidth" data-i18n="common.widthPxLabel">Width (px)</label>
+                                            <input type="number" id="inactiveBorderWidth" min="1" max="50">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="inactiveBorderStyle" data-i18n="common.styleLabel">Style</label>
+                                            <select id="inactiveBorderStyle">
+                                                <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                                <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                                <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                                <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                                <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                                <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                                <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                            </select>
+                                        </div>
+                                        <div id="inactiveBorderColorOptions" class="binding">
+                                            <label for="inactiveBorderColor" data-i18n="field.inactiveBorderColor.label">Color</label>
+                                            <input type="color" id="inactiveBorderColor" data-default-color="#606060">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.visibility.heading">Visibility</h3>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="tab.thumbnails.section.visibility.hint">Control thumbnail transparency and when thumbnails are automatically hidden.</p>
+
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="thumbOpacity" data-i18n="field.thumbOpacity.label">Opacity</label>
+                                <div class="field-row">
+                                    <input type="range" id="thumbOpacity" min="20" max="100" value="100" data-value-target="opacityValue">
+                                    <span id="opacityValue">100</span>%
+                                </div>
+                            </div>
+                        </div>
+
+                        <label>
+                            <input type="checkbox" id="applyOpacityToOverlayTexts">
+                            <span class="label-body" data-i18n="field.applyOpacityToOverlayTexts.label">Apply Opacity to Overlay Texts</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" id="activeThumbnailHidden">
+                            <span class="label-body" data-i18n="field.activeThumbnailHidden.label">Hide Active Thumbnail</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" id="hideWhenNoEveFocus">
+                            <span class="label-body" data-i18n="field.hideWhenNoEveFocus.label">Hide When No EVE Focus</span>
+                        </label>
+                        <p class="hint hint-extra" data-i18n="field.hideWhenNoEveFocus.hint">Hides all thumbnails while no EVE client window has focus.</p>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="hideDebounceMs" data-i18n="field.hideDebounceMs.label">Hide Debounce (s)</label>
+                                <input type="number" id="hideDebounceMs" min="0" max="5" step="0.1">
+                            </div>
+                            <p class="hint hint-extra" data-i18n="field.hideDebounceMs.hint">Delay before hiding, so switching briefly doesn't flicker.</p>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.snapping-system.heading">Snapping</h3>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="tab.thumbnails.section.snapping-system.hint">Configure the snapping behavior for window edges.</p>
+
+                        <label>
+                            <input type="checkbox" id="snappingEnabled" onchange="toggleSnappingOptions()">
+                            <span class="label-body" data-i18n="field.snappingEnabled.label">Enable Snapping</span>
+                        </label>
+
+                        <div id="snappingOptions">
+                            <label>
+                                <input type="checkbox" id="snappingScreenEdges">
+                                <span class="label-body" data-i18n="field.snappingScreenEdges.label">Snap to Screen Edges</span>
+                            </label>
+                            <label>
+                                <input type="checkbox" id="snappingThumbnailEdges">
+                                <span class="label-body" data-i18n="field.snappingThumbnailEdges.label">Snap to Thumbnail Edges</span>
+                            </label>
+                            <label>
+                                <input type="checkbox" id="snappingShowGhostBorders">
+                                <span class="label-body" data-i18n="field.snappingShowGhostBorders.label">Show Ghost Position Borders</span>
+                            </label>
+                            <p class="hint hint-extra" data-i18n="field.snappingShowGhostBorders.hint">Also snaps to other characters' saved positions while dragging.</p>
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="snappingThreshold" data-i18n="field.snappingThreshold.label">Snapping Threshold (px)</label>
+                                    <input type="number" id="snappingThreshold" min="0" max="100">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.thumbnails.section.display-mode.heading">Display Mode</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint"><strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-thumbnails-term">Thumbnails</span></strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-thumbnails-desc"> is best for visually tracking each client at a glance. </span><strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-clientlist-term">Client List</span></strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-clientlist-desc"> is more compact and uses fewer resources — ideal with many clients. </span><strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-nothing-term">Nothing</span></strong><span data-i18n="tab.thumbnails.section.display-mode.viewmode-nothing-desc"> uses the least resources of all; hotkeys and notifications keep working.</span></p>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="viewMode" data-i18n="field.viewMode.label">View Mode</label>
+                                <select id="viewMode" onchange="toggleClientListOptions()">
+                                    <option value="Thumbnails" data-i18n="field.viewMode.option.thumbnails">Thumbnails (live video preview)</option>
+                                    <option value="ClientList" data-i18n="field.viewMode.option.clientlist">Client List (compact text panel)</option>
+                                    <option value="Nothing" data-i18n="field.viewMode.option.nothing">Nothing (no display, saves resources)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="clientListOptions">
+                            <h4 data-i18n="tab.thumbnails.section.client-list-layout.heading">Layout</h4>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="listViewOrder" data-i18n="field.listViewOrder.label">Client List Order</label>
+                                    <select id="listViewOrder">
+                                        <option value="Tracked" data-i18n="field.listViewOrder.option.tracked">Tracked Order</option>
+                                        <option value="Alphabetical" data-i18n="field.listViewOrder.option.alphabetical">Alphabetical</option>
+                                        <option value="ConfiguredCharacters" data-i18n="field.listViewOrder.option.configuredcharacters">Configured Character Order</option>
+                                    </select>
+                                </div>
+                                <div class="binding">
+                                    <label for="listViewColumns" data-i18n="field.listViewColumns.label">Columns</label>
+                                    <input type="number" id="listViewColumns" min="1" max="15">
+                                </div>
+                                <div class="binding">
+                                    <label for="listViewOpacity" data-i18n="field.listViewOpacity.label">Client List Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="listViewOpacity" min="20" max="100" value="100" data-value-target="listViewOpacityValue">
+                                        <span id="listViewOpacityValue">100</span>%
+                                    </div>
+                                </div>
+                            </div>
+
+                            <h4 data-i18n="tab.thumbnails.section.client-list-font.heading">Font</h4>
+
+                            <div class="text-settings binding-list">
+                                <div class="binding">
+                                    <label for="listViewFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                    <select id="listViewFontName" class="font-options"></select>
+                                </div>
+
+                                <div class="binding">
+                                    <label for="listViewFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                    <input type="number" id="listViewFontSize" min="6" max="72">
+                                </div>
+
+                                <div class="binding">
+                                    <label for="listViewFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                    <select id="listViewFontWeight">
+                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <h4 data-i18n="tab.thumbnails.section.client-list-behavior.heading">Behavior</h4>
+
+                            <label>
+                                <input type="checkbox" id="rememberListViewPosition">
+                                <span class="label-body" data-i18n="field.rememberListViewPosition.label">Remember Client List Position</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.overlay-text.section.system-color-overrides.heading">System Colors</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.overlay-text.section.system-color-overrides.hint">Define custom colors for specific solar systems (only used when Unique System Colors is enabled).</p>
+                        
+                        <div id="systemColorsList" class="list-container">
+                            <!-- System colors will be dynamically populated here -->
+                        </div>
+                        
+                        <button type="button" class="full-width-btn" onclick="addSystemColor()" data-i18n="button.add-system-color.label">+ Add System Color</button>
+                    </div>
+                </div>
+
+                <div class="panel-content" data-panel="characters">
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.characters.section.per-character-configuration.heading">Character List</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.characters.section.per-character-configuration.hint">Customize each character's saved position, size, border color, display name, and jump-to hotkey. Characters are added automatically when detected.</p>
+
+                        <div class="search-input-wrapper search-input-wrapper-wide list-container">
+                            <input type="text" id="characterSearchFilter" class="search-filter-input" placeholder="Search characters..." data-i18n-placeholder="field.characterSearchFilter.placeholder" oninput="onCharacterSearchInput(this.value)" />
+                            <button type="button" class="button-clear" onclick="clearCharacterSearch()" title="Clear search" data-i18n-title="common.clearSearchTitle">×</button>
+                        </div>
+
+                        <div id="charactersList" class="list-container">
+                            <!-- Characters will be dynamically populated here -->
+                        </div>
+                        
+                        <div class="button-row">
+                            <button type="button" onclick="addCharacter()" data-i18n="button.add-character.label">+ Add Character</button>
+                            <button type="button" id="populateCharactersBtn" onclick="populateCharactersFromClients()" data-i18n="common.populateFromClients">↻ Populate from Open Clients</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-content" data-panel="behavior">
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.behavior.section.startup.heading">Startup</h3>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="tab.behavior.section.startup.hint">Launch on Windows login, and register the evemajpreview:// URL protocol for external control (Stream Deck, scripts, etc.).</p>
+
+                        <label>
+                            <input type="checkbox" id="runOnStartup">
+                            <span class="label-body" data-i18n="field.runOnStartup.label">Run on Startup</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" id="autoRegisterProtocol">
+                            <span class="label-body" data-i18n="field.autoRegisterProtocol.label">Auto-Register Protocol Handler</span>
+                        </label>
+                        <p class="hint hint-extra"><span data-i18n="field.autoRegisterProtocol.hint">Needed once for links like evemajpreview://cycle-next to work from other apps.</span> <a href="https://github.com/mrmjstc/eve-maj-preview/blob/main/docs/CONFIGURATION.md#protocol-handler" onclick="return openExternalLink(event)" class="external-link">Learn more</a></p>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.behavior.section.interaction.heading">Interaction</h3>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="tab.behavior.section.interaction.hint">Mouse behavior for repositioning and activating thumbnails, including when to activate the EVE client window on left-click.</p>
+
+                        <label>
+                            <input type="checkbox" id="enableDragging">
+                            <span class="label-body" data-i18n="field.enableDragging.label">Enable Dragging</span>
+                        </label>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="clickTrigger" data-i18n="field.clickTrigger.label">Click Trigger</label>
+                                <select id="clickTrigger">
+                                    <option value="MouseDown" data-i18n="field.clickTrigger.option.mousedown">Mouse Down (Instant)</option>
+                                    <option value="MouseUp" data-i18n="field.clickTrigger.option.mouseup">Mouse Up (On Release)</option>
+                                </select>
+                            </div>
+                            <p class="hint hint-extra" data-i18n="field.clickTrigger.hint">Mouse Up avoids accidental drags from a quick click.</p>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.behavior.section.auto-minimize-all-clients.heading">Auto-Minimize</h3>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="tab.behavior.section.auto-minimize-all-clients.hint">Minimizes an EVE client window after it's been unfocused for the configured delay.</p>
+
+                        <label>
+                            <input type="checkbox" id="autoMinimizeEnabled" onchange="toggleAutoMinimizeOptions()">
+                            <span class="label-body" data-i18n="field.autoMinimizeEnabled.label">Enable Auto-Minimize</span>
+                        </label>
+
+                        <div id="autoMinimizeOptions">
+                            <label class="list-container">
+                                <input type="checkbox" id="autoMinimizeExemptLastActive">
+                                <span class="label-body" data-i18n="field.autoMinimizeExemptLastActive.label">Keep Last-Active Client Visible</span>
+                            </label>
+                            <p class="hint hint-extra" data-i18n="field.autoMinimizeExemptLastActive.hint">Exempts whichever client you focused most recently, even past the delay.</p>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="autoMinimizeDelay" data-i18n="field.autoMinimizeDelay.label">Delay (s)</label>
+                                    <input type="number" id="autoMinimizeDelay" min="0" max="10" step="0.1">
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.autoMinimizeDelay.hint">How long a client can sit unfocused before it's minimized.</p>
+                                <div class="binding">
+                                    <label for="animationStyle" data-i18n="field.animationStyle.label">Animation Style</label>
+                                    <select id="animationStyle">
+                                        <option value="NoAnimation" data-i18n="field.animationStyle.option.noanimation">No Animation</option>
+                                        <option value="OriginalAnimation" data-i18n="field.animationStyle.option.originalanimation">Original Animation</option>
+                                    </select>
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.animationStyle.hint">No Animation minimizes instantly; Original Animation keeps Windows' native minimize effect.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.behavior.section.character-exclusion.heading">Character Exclusion</h3>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="tab.behavior.section.character-exclusion.hint">Controls Shift+Click exclusion of characters from hotkey cycling.</p>
+
+                        <label>
+                            <input type="checkbox" id="enableShiftClickExclude" onchange="toggleShiftClickExcludeOptions()">
+                            <span class="label-body" data-i18n="field.enableShiftClickExclude.label">Enable Shift+Click to Exclude</span>
+                        </label>
+                        <div id="shiftClickExcludeOptions">
+                            <label>
+                                <input type="checkbox" id="autoMinimizeExcludedCharacters">
+                                <span class="label-body" data-i18n="field.autoMinimizeExcludedCharacters.label">Auto-Minimize Excluded Characters</span>
+                            </label>
+                            <p class="hint hint-extra" data-i18n="field.autoMinimizeExcludedCharacters.hint">Minimizes immediately on exclusion, not on the Auto-Minimize delay above.</p>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="exclusionOverlayStyle" data-i18n="field.exclusionOverlayStyle.label">Overlay Style</label>
+                                    <select id="exclusionOverlayStyle">
+                                        <option value="X" data-i18n="common.exclusionOverlayStyle.x">X</option>
+                                        <option value="DiagonalSlash" data-i18n="common.exclusionOverlayStyle.diagonalSlash">Diagonal Slash</option>
+                                        <option value="DiagonalHatch" data-i18n="common.exclusionOverlayStyle.diagonalHatch">Diagonal Hatch</option>
+                                        <option value="Checkerboard" data-i18n="common.exclusionOverlayStyle.checkerboard">Checkerboard</option>
+                                        <option value="SolidTint" data-i18n="common.exclusionOverlayStyle.solidTint">Solid Tint</option>
+                                        <option value="CircleSlash" data-i18n="common.exclusionOverlayStyle.circleSlash">Circle Slash</option>
+                                        <option value="None" data-i18n="common.exclusionOverlayStyle.none">None</option>
+                                    </select>
+                                </div>
+                                <div class="binding">
+                                    <label for="exclusionOverlayOpacity" data-i18n="field.exclusionOverlayOpacity.label">Overlay Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="exclusionOverlayOpacity" min="0" max="100" value="20" data-value-target="exclusionOverlayOpacityValue">
+                                        <span id="exclusionOverlayOpacityValue">20</span>%
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="exclusionOverlayColor" data-i18n="field.exclusionOverlayColor.label">Overlay Color</label>
+                                    <input type="color" id="exclusionOverlayColor" data-default-color="#A62222">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.behavior.section.window-position.heading">Window Position</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.behavior.section.window-position.hint">Saves each character's real EVE client window position, restored via the Move to Saved Positions hotkey or automatically on login. Set All copies the selected window's current position to every character; Clear All removes every saved position.</p>
+
+                        <label>
+                            <input type="checkbox" id="autoMovePositionEnabled">
+                            <span class="label-body" data-i18n="field.autoMovePositionEnabled.label">Automatically Move to Saved Position on Login</span>
+                        </label>
+
+                        <div class="field-row">
+                            <select id="windowPositionSourceSelect" title="Copy Position From" data-i18n-title="field.windowPositionSourceSelect.label"></select>
+                            <button type="button" class="button-icon" onclick="refreshWindowPositionSourceOptions()" title="Refresh" data-i18n-title="common.refreshTitle">↻</button>
+                            <button type="button" onclick="setAllCharacterWindowPositions()" title="Set Window Position for All Characters" data-i18n-title="common.setWindowPositionForAllButton" data-i18n="common.setWindowPositionForAllButtonShort">Set All</button>
+                            <button type="button" id="clearAllWindowPositionsBtn" class="button-danger" onclick="confirmClearAllCharacterWindowPositions()" title="Remove All Saved Positions" data-i18n-title="common.clearWindowPositionForAllButton" data-i18n="common.clearWindowPositionForAllButtonShort">Clear All</button>
+                        </div>
+                    </div>
+
+                    <div class="section advanced-section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.behavior.section.ultra-potato.heading">Ultra Potato Mode</h3>
+                            <span class="scope-chip" data-i18n="common.scopeExternal">eve settings</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.behavior.section.ultra-potato.hint">Forces EVE Online's heaviest graphics settings (shaders, shadows, textures, reflections, post-processing, cloth, ambient occlusion, volumetrics) to their lowest quality. Close all EVE clients first - the client overwrites these files on exit. A .bak backup of each file is made before its first edit.</p>
+
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="ultraPotatoProfileSelect" data-i18n="tab.behavior.section.ultra-potato.profile-label">EVE Settings Profile</label>
+                                <div class="field-row">
+                                    <select id="ultraPotatoProfileSelect">
+                                        <option value="" data-i18n="tab.behavior.section.ultra-potato.scanning">Scanning for EVE settings profiles...</option>
+                                    </select>
+                                    <button type="button" class="button-icon" onclick="scanUltraPotatoProfiles()" title="Refresh" data-i18n-title="common.refreshTitle">↻</button>
+                                    <button type="button" id="applyUltraPotatoBtn" onclick="applyUltraPotatoMode()" disabled data-i18n="button.apply-ultra-potato.label">Apply Ultra Potato Mode</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-content" data-panel="hotkey-groups">
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkey-groups.section.groups.heading">Hotkey Groups</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.hotkey-groups.section.groups.hint">Groups of characters you can cycle through with hotkeys. List members here, or assign them live.</p>
+
+                        <label>
+                            <input type="checkbox" id="resetGroupIndexOnNonGroupFocus">
+                            <span class="label-body" data-i18n="field.resetGroupIndexOnNonGroupFocus.label">Reset Cycle Position When Leaving a Group</span>
+                        </label>
+
+                        <div id="hotkeyGroupsList" class="list-container">
+                            <!-- Hotkey groups will be dynamically populated here -->
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="panel-content" data-panel="hotkeys">
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.hotkey-system.heading">Hotkey System</h3>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.hotkey-system.hint">Controls how the hotkeys below are registered and triggered.</p>
+
+                        <label>
+                            <input type="checkbox" id="requireEveFocus">
+                            <span class="label-body" data-i18n="field.requireEveFocus.label">Require EVE Focus</span>
+                        </label>
+                        <p class="hint hint-extra" data-i18n="field.requireEveFocus.hint">Hotkeys are ignored unless an EVE window is currently focused.</p>
+
+                        <label>
+                            <input type="checkbox" id="allowHotkeyAutoRepeat">
+                            <span class="label-body" data-i18n="field.allowHotkeyAutoRepeat.label">Repeat Hotkey While Held</span>
+                        </label>
+                        <p class="hint hint-extra" data-i18n="field.allowHotkeyAutoRepeat.hint">Holding a hotkey down repeats its action instead of firing once.</p>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.window-actions.heading">Window Actions</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.window-actions.hint">Minimize, close, hide thumbnails, toggle auto-minimize, or send every window back to its saved position.</p>
+
+                        <div class="binding-list" id="windowActionBindings"></div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.cycling.heading">Special Cycling</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.cycling.hint">Step through the characters this profile sets apart - the excluded ones, or the ones that recently notified.</p>
+
+                        <div class="binding-list" id="cyclingBindings"></div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.system.heading">Suspend</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.system.hint">Suspends or resumes every hotkey. This one always works, even while the rest are suspended.</p>
+
+                        <div class="binding-list" id="suspendBindings"></div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.client-cycling.heading">Client Cycling</h3>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.client-cycling.hint">Step through open EVE client windows, ordered by the Characters list of whichever profile is loaded.</p>
+
+                        <label>
+                            <input type="checkbox" id="cycleAllClientsRespectExclusions">
+                            <span class="label-body" data-i18n="field.cycleAllClientsRespectExclusions.label">Skip Excluded Characters</span>
+                        </label>
+                        <p class="hint hint-extra" data-i18n="field.cycleAllClientsRespectExclusions.hint">Same exclusion list as Character Exclusion on the Behavior tab.</p>
+
+                        <div class="binding-list" id="clientBindings"></div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.profile-hotkeys.heading">Profiles</h3>
+                            <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.profile-hotkeys.hint">Cycle through profiles, or switch straight to one.</p>
+
+                        <div class="binding-list" id="profileBindings"></div>
+
+                        <div id="profileSwitchHotkeysList" class="binding-list">
+                            <!-- One row per existing profile, dynamically populated here -->
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.hotkeys.section.desktop-apps.heading">Outside EVE</h3>
+                            <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.hotkeys.section.desktop-apps.hint">Jump to the app you last had focused, to a specific running application, or to a URL in your browser.</p>
+
+                        <div class="binding-list" id="windowFocusBindings"></div>
+
+                        <h4 data-i18n="tab.hotkeys.section.app-hotkeys.heading">App Hotkeys</h4>
+
+                        <div id="appHotkeysList" class="list-container">
+                            <!-- App hotkeys will be dynamically populated here -->
+                        </div>
+
+                        <button type="button" class="full-width-btn" onclick="addAppHotkey()" data-i18n="button.add-app-hotkey.label">+ Add App Hotkey</button>
+
+                        <h4 data-i18n="tab.hotkeys.section.url-hotkeys.heading">URL Hotkeys</h4>
+
+                        <div id="urlHotkeysList" class="list-container">
+                            <!-- URL hotkeys will be dynamically populated here -->
+                        </div>
+
+                        <div class="button-row">
+                            <button type="button" onclick="addUrlHotkey()" data-i18n="button.add-url-hotkey.label">+ Add URL Hotkey</button>
+                            <button type="button" onclick="addUrlHotkey('https://evemaps.dotlan.net/')" data-i18n="button.add-dotlan-hotkey.label">+ Dotlan</button>
+                            <button type="button" style="text-transform: none;" onclick="addUrlHotkey('https://adashboard.info/intel')" data-i18n="button.add-adashboard-hotkey.label">+ aDashboard Intel</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-content" data-panel="notifications">
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.notifications.section.notification-system.heading">Notification System</h3>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="tab.notifications.section.notification-system.hint">Configure position, duration, and suppression behavior for event notifications.</p>
+
+                        <label>
+                            <input type="checkbox" id="notificationsEnabled" onchange="toggleNotificationOptions()">
+                            <span class="label-body" data-i18n="field.notificationsEnabled.label">Enable Notifications</span>
+                        </label>
+
+                        <div id="notificationOptions">
+                            <div class="hidden-by-layout-preview binding-list">
+                                <div class="binding">
+                                    <label for="notificationPosition" data-i18n="common.positionLabel">Position</label>
+                                    <select id="notificationPosition" class="position-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="notificationOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="notificationOffsetX" min="-50" max="50" value="0" data-value-target="notificationOffsetXValue">
+                                        <span id="notificationOffsetXValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="notificationOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="notificationOffsetY" min="-50" max="50" value="0" data-value-target="notificationOffsetYValue">
+                                        <span id="notificationOffsetYValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="notificationFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                    <select id="notificationFontName" class="font-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="notificationFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                    <input type="number" id="notificationFontSize" min="6" max="72">
+                                </div>
+                                <div class="binding">
+                                    <label for="notificationFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                    <select id="notificationFontWeight">
+                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                    </select>
+                                </div>
+                                <div class="binding">
+                                    <label for="notificationBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                    <input type="color" id="notificationBgColor" data-default-color="#000000">
+                                </div>
+                                <div class="binding">
+                                    <label for="notificationBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="notificationBgOpacity" min="0" max="100" value="90" data-value-target="notificationBgOpacityValue">
+                                        <span id="notificationBgOpacityValue">90</span>%
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="notifSuppressClickDuration" data-i18n="field.notifSuppressClickDuration.label">Click Suppress Duration (s)</label>
+                                    <input type="number" id="notifSuppressClickDuration" min="0" max="60" step="0.1">
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.notifSuppressClickDuration.hint">Suppresses further notifications on a thumbnail for this long after you click it.</p>
+                                <div class="binding">
+                                    <label for="notifCycleRetention" data-i18n="field.notifCycleRetention.label">Recently-Notified Cycle Retention (s)</label>
+                                    <input type="number" id="notifCycleRetention" min="5" max="600" step="1">
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.notifCycleRetention.hint">How long a character stays in the "recently notified" cycle group after its last alert.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.notifications.section.text-to-speech.heading">Text-to-Speech</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.notifications.section.text-to-speech.hint">Speak alerts aloud using the Windows system voice. Enable individual event types below in the "TTS" column.</p>
+
+                        <div id="ttsSection">
+                            <label>
+                                <input type="checkbox" id="ttsEnabled" onchange="toggleTtsOptions()">
+                                <span class="label-body" data-i18n="field.ttsEnabled.label">Enable Text-to-Speech</span>
+                            </label>
+
+                            <div id="ttsOptions">
+                                <label>
+                                    <input type="checkbox" id="ttsSpeakCharacterName" onchange="toggleTtsDisplayNameOption()">
+                                    <span class="label-body" data-i18n="field.ttsSpeakCharacterName.label">Prefix Spoken Alerts with the Character Name</span>
+                                </label>
+
+                                <label>
+                                    <input type="checkbox" id="ttsUseDisplayName">
+                                    <span class="label-body" data-i18n="field.ttsUseDisplayName.label">Speak Display Name Instead of Character Name</span>
+                                </label>
+
+                                <div class="row">
+                                    <div class="column binding-list-compact">
+                                        <div class="binding">
+                                            <label for="ttsVolume" data-i18n="field.ttsVolume.label">Volume</label>
+                                            <div class="field-row">
+                                                <input type="range" id="ttsVolume" min="0" max="100" value="100" data-value-target="ttsVolumeValue">
+                                                <span id="ttsVolumeValue">100</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="column binding-list-compact">
+                                        <div class="binding">
+                                            <label for="ttsRate" data-i18n="field.ttsRate.label">Speed</label>
+                                            <div class="field-row">
+                                                <input type="range" id="ttsRate" min="-10" max="10" value="0" data-value-target="ttsRateValue">
+                                                <span id="ttsRateValue">0</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.notifications.section.event-type-configuration.heading">Event Alerts</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.notifications.section.event-type-configuration.hint">Per-event notification, suppression, speech, and border behavior. Select an event on the left to edit it.</p>
+
+                        <div class="search-input-wrapper search-input-wrapper-wide list-container">
+                            <input type="text" id="notificationTypeSearchFilter" class="search-filter-input" placeholder="Search events..." data-i18n-placeholder="field.notificationTypeSearchFilter.placeholder" oninput="onNotificationTypeSearchInput(this.value)" />
+                            <button type="button" class="button-clear" onclick="clearNotificationTypeSearch()" title="Clear search" data-i18n-title="common.clearSearchTitle">×</button>
+                        </div>
+
+                        <div id="notificationTypesList" class="list-container">
+                            <!-- Notification type configs will be dynamically populated here -->
+                        </div>
+                        <div class="button-row">
+                            <button type="button" class="button-danger" onclick="resetNotificationTextColors()" data-i18n="button.reset-notification-text-colors.label">↻ Reset All Text Colors</button>
+                            <button type="button" class="button-danger" onclick="resetNotificationBorderColors()" data-i18n="button.reset-notification-border-colors.label">↻ Reset All Border Colors</button>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.notifications.section.history-panel.heading">History Panel</h3>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="tab.notifications.section.history-panel.hint">A draggable, resizable panel showing recent notification history. Click a row to jump to that character.</p>
+
+                        <label>
+                            <input type="checkbox" id="showNotifInfoPanel" onchange="toggleNotifInfoPanelOptions()">
+                            <span class="label-body" data-i18n="field.showNotifInfoPanel.label">Show History Panel</span>
+                        </label>
+
+                        <div id="notifInfoPanelOptions">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="notifInfoPanelWidth" data-i18n="field.notifInfoPanelWidth.label">Panel Width (px)</label>
+                                    <input type="number" id="notifInfoPanelWidth" min="100" max="1920">
+                                </div>
+                                <div class="binding">
+                                    <label for="notifInfoPanelHeight" data-i18n="field.notifInfoPanelHeight.label">Panel Height (px)</label>
+                                    <input type="number" id="notifInfoPanelHeight" min="60" max="2160">
+                                </div>
+                                <div class="binding">
+                                    <label for="notifInfoPanelMaxRows" data-i18n="field.notifInfoPanelMaxRows.label">Max History Rows</label>
+                                    <input type="number" id="notifInfoPanelMaxRows" min="1" max="30">
+                                </div>
+                                <div class="binding">
+                                    <label for="notifInfoPanelOpacity" data-i18n="field.notifInfoPanelOpacity.label">Panel Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="notifInfoPanelOpacity" min="20" max="100" value="100" data-value-target="notifInfoPanelOpacityValue">
+                                        <span id="notifInfoPanelOpacityValue">100</span>%
+                                    </div>
+                                </div>
+                            </div>
+
+                            <h4 data-i18n="tab.notifications.section.history-panel-font.heading">Font</h4>
+
+                            <div class="text-settings binding-list">
+                                <div class="binding">
+                                    <label for="notifInfoPanelFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                    <select id="notifInfoPanelFontName" class="font-options"></select>
+                                </div>
+
+                                <div class="binding">
+                                    <label for="notifInfoPanelFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                    <input type="number" id="notifInfoPanelFontSize" min="6" max="72">
+                                </div>
+
+                                <div class="binding">
+                                    <label for="notifInfoPanelFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                    <select id="notifInfoPanelFontWeight">
+                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <h4 data-i18n="tab.notifications.section.history-panel-behavior.heading">Behavior</h4>
+
+                            <label>
+                                <input type="checkbox" id="rememberNotifInfoPanelPosition">
+                                <span class="label-body" data-i18n="field.rememberNotifInfoPanelPosition.label">Remember History Panel Position</span>
+                            </label>
+
+                            <label>
+                                <input type="checkbox" id="hideNotifInfoPanelWhenNoCharacters">
+                                <span class="label-body" data-i18n="field.hideNotifInfoPanelWhenNoCharacters.label">Hide Panel When No Characters Are Logged In</span>
+                            </label>
+
+                            <label>
+                                <input type="checkbox" id="notifInfoPanelShowTimestamp">
+                                <span class="label-body" data-i18n="field.notifInfoPanelShowTimestamp.label">Show Relative Timestamps</span>
+                            </label>
+                            <p class="hint hint-extra" data-i18n="field.notifInfoPanelShowTimestamp.hint">Shows times like "5m ago" instead of a fixed clock time.</p>
+
+                            <label>
+                                <input type="checkbox" id="notifInfoPanelShowCategoryFilters">
+                                <span class="label-body" data-i18n="field.notifInfoPanelShowCategoryFilters.label">Show Category Filters</span>
+                            </label>
+                            <p class="hint hint-extra" data-i18n="field.notifInfoPanelShowCategoryFilters.hint">Adds filter buttons for each notification category to the panel.</p>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.notifications.section.travel-mode.heading">Travel Mode</h3>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
+                        </div>
+                        <p class="hint" data-i18n="tab.notifications.section.travel-mode.hint">Detects when a tracked character falls behind while the rest of the group jumps together, and fires a notification. Runs automatically once enabled below - no manual start/stop needed. Border color, duration, and TTS for the alert are configured above under "Left Behind".</p>
+
+                        <label>
+                            <input type="checkbox" id="travelEnabled" onchange="toggleTravelOptions()">
+                            <span class="label-body" data-i18n="field.travelEnabled.label">Enable Travel Mode</span>
+                        </label>
+
+                        <div id="travelOptions">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="travelWindowSeconds" data-i18n="field.travelWindowSeconds.label">Catch-Up Window (seconds)</label>
+                                    <input type="number" id="travelWindowSeconds" min="1" max="3600">
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.travelWindowSeconds.hint">How long a character can lag behind the group's jump before this fires.</p>
+                            </div>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="travelThresholdMode" data-i18n="field.travelThresholdMode.label">Group Size Threshold</label>
+                                    <select id="travelThresholdMode" onchange="toggleTravelOptions()">
+                                        <option value="percent" data-i18n="field.travelThresholdMode.percent">Percentage of characters</option>
+                                        <option value="count" data-i18n="field.travelThresholdMode.count">Fixed number of characters</option>
+                                    </select>
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.travelThresholdMode.hint">Minimum group size required before a straggler triggers an alert.</p>
+                            </div>
+
+                            <div id="travelThresholdPercentRow" class="binding-list">
+                                <div class="binding">
+                                    <label for="travelThresholdPercent" data-i18n="field.travelThresholdPercent.label">Minimum Percentage</label>
+                                    <input type="number" id="travelThresholdPercent" min="1" max="100" step="1">
+                                </div>
+                            </div>
+
+                            <div id="travelThresholdCountRow" class="binding-list">
+                                <div class="binding">
+                                    <label for="travelThresholdCount" data-i18n="field.travelThresholdCount.label">Minimum Count</label>
+                                    <input type="number" id="travelThresholdCount" min="1" max="50">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-content" data-panel="chatlog">
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.chatlog.section.chatlog-monitoring.heading">Log Monitoring</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint"><span data-i18n="tab.chatlog.section.chatlog-monitoring.hint-intro">Watches EVE's chatlog and gamelog files to drive the DPS overlay, mining overlay, and system-location display. In EVE, enable </span><strong><span data-i18n="tab.chatlog.section.chatlog-monitoring.hint-menu-path">Esc &gt; Chat Channel Settings &gt; Log chat to file</span></strong><span data-i18n="tab.chatlog.section.chatlog-monitoring.hint-outro"> so logs get written to disk.</span></p>
+
+                        <label>
+                            <input type="checkbox" id="chatlogEnabled" onchange="toggleChatlogOptions()">
+                            <span class="label-body" data-i18n="field.chatlogEnabled.label">Enable Log Monitoring</span>
+                        </label>
+
+                        <div id="chatlogOptions">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="chatlogDir" data-i18n="field.chatlogDir.label">Chatlog Directory</label>
+                                    <div class="field-row">
+                                        <input type="text" id="chatlogDir" placeholder="C:\Users\...\Chatlogs" data-i18n-placeholder="field.chatlogDir.placeholder">
+                                        <button type="button" onclick="browseChatlogDir()" data-i18n="common.browse">Browse</button>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="gamelogDir" data-i18n="field.gamelogDir.label">Gamelog Directory</label>
+                                    <div class="field-row">
+                                        <input type="text" id="gamelogDir" placeholder="C:\Users\...\Gamelogs" data-i18n-placeholder="field.gamelogDir.placeholder">
+                                        <button type="button" onclick="browseGamelogDir()" data-i18n="common.browse">Browse</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section advanced-section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.chatlog.section.polling-performance.heading">Polling &amp; Performance</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+
+                        <label>
+                            <input type="checkbox" id="chatlogUseThreading">
+                            <span class="label-body" data-i18n="field.chatlogUseThreading.label">Use Threading</span>
+                        </label>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="chatlogPollInterval" data-i18n="field.chatlogPollInterval.label">Poll Interval (s)</label>
+                                <input type="number" id="chatlogPollInterval" min="0.1" max="5" step="0.1">
+                            </div>
+                        </div>
+
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="chatlogIdleThreshold" data-i18n="field.chatlogIdleThreshold.label">Idle Threshold (polls)</label>
+                                <input type="number" id="chatlogIdleThreshold" min="1" max="1000" step="1">
+                            </div>
+                        </div>
+
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="chatlogMaxPollMultiplier" data-i18n="field.chatlogMaxPollMultiplier.label">Max Poll Multiplier</label>
+                                <input type="number" id="chatlogMaxPollMultiplier" min="1" max="32">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-content advanced-tab-panel" data-panel="combat">
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.combat.section.combat-dps-overlay.heading">Combat Overlay Settings</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.combat.section.combat-dps-overlay.hint">Displays incoming and outgoing DPS below each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
+
+                        <label>
+                            <input type="checkbox" id="combatEnabled" onchange="toggleCombatOptions()">
+                            <span class="label-body" data-i18n="field.combatEnabled.label">Enable Text Overlays</span>
+                        </label>
+
+                        <div id="combatOptions">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="combatWindowSeconds" data-i18n="field.combatWindowSeconds.label">DPS Window (seconds)</label>
+                                    <input type="number" id="combatWindowSeconds" min="1" max="3600">
+                                </div>
+                            </div>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="combatUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
+                                    <input type="number" id="combatUpdateIntervalMs" min="0.1" max="60" step="0.1">
+                                </div>
+                            </div>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="combatDamageAlertExcludedWeapons" data-i18n="field.combatDamageAlertExcludedWeapons.label">Exclude Weapons</label>
+                                    <input type="text" id="combatDamageAlertExcludedWeapons" placeholder="e.g. Smartbomb, Warp Scrambler" data-i18n-placeholder="field.combatDamageAlertExcludedWeapons.placeholder">
+                                </div>
+                            </div>
+
+                            <div class="row hidden-by-layout-preview">
+                                <div class="column">
+                                    <h4 data-i18n="tab.combat.section.incoming-damage.heading">Incoming Damage</h4>
+
+                                    <label>
+                                        <input type="checkbox" id="combatShowIncoming">
+                                        <span class="label-body" data-i18n="field.combatShowIncoming.label">Show Incoming Damage</span>
+                                    </label>
+
+                                    <div class="binding-list">
+                                        <div class="binding">
+                                            <label for="combatIncomingPosition" data-i18n="common.positionLabel">Position</label>
+                                            <select id="combatIncomingPosition" class="position-options"></select>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                            <div class="field-row">
+                                                <input type="range" id="combatIncomingOffsetX" min="-50" max="50" value="0" data-value-target="combatIncomingOffsetXValue">
+                                                <span id="combatIncomingOffsetXValue">0</span>
+                                            </div>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                            <div class="field-row">
+                                                <input type="range" id="combatIncomingOffsetY" min="-50" max="50" value="0" data-value-target="combatIncomingOffsetYValue">
+                                                <span id="combatIncomingOffsetYValue">0</span>
+                                            </div>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingColor" data-i18n="field.combatIncomingColor.label">Color</label>
+                                            <input type="color" id="combatIncomingColor" data-default-color="#FF4444">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                            <input type="number" id="combatIncomingFontSize" min="6" max="72">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                            <select id="combatIncomingFontName" class="font-options"></select>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                            <select id="combatIncomingFontWeight">
+                                                <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                                <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                                <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                                <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                            </select>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                            <input type="color" id="combatIncomingBgColor" data-default-color="#000000">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatIncomingBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                            <div class="field-row">
+                                                <input type="range" id="combatIncomingBgOpacity" min="0" max="100" value="90" data-value-target="combatIncomingBgOpacityValue">
+                                                <span id="combatIncomingBgOpacityValue">90</span>%
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="column">
+                                    <h4 data-i18n="tab.combat.section.outgoing-damage.heading">Outgoing Damage</h4>
+
+                                    <label>
+                                        <input type="checkbox" id="combatShowOutgoing">
+                                        <span class="label-body" data-i18n="field.combatShowOutgoing.label">Show Outgoing Damage</span>
+                                    </label>
+
+                                    <div class="binding-list">
+                                        <div class="binding">
+                                            <label for="combatOutgoingPosition" data-i18n="common.positionLabel">Position</label>
+                                            <select id="combatOutgoingPosition" class="position-options"></select>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                            <div class="field-row">
+                                                <input type="range" id="combatOutgoingOffsetX" min="-50" max="50" value="0" data-value-target="combatOutgoingOffsetXValue">
+                                                <span id="combatOutgoingOffsetXValue">0</span>
+                                            </div>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                            <div class="field-row">
+                                                <input type="range" id="combatOutgoingOffsetY" min="-50" max="50" value="0" data-value-target="combatOutgoingOffsetYValue">
+                                                <span id="combatOutgoingOffsetYValue">0</span>
+                                            </div>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingColor" data-i18n="field.combatOutgoingColor.label">Color</label>
+                                            <input type="color" id="combatOutgoingColor" data-default-color="#44FF44">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                            <input type="number" id="combatOutgoingFontSize" min="6" max="72">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                            <select id="combatOutgoingFontName" class="font-options"></select>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                            <select id="combatOutgoingFontWeight">
+                                                <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                                <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                                <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                                <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                            </select>
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                            <input type="color" id="combatOutgoingBgColor" data-default-color="#000000">
+                                        </div>
+                                        <div class="binding">
+                                            <label for="combatOutgoingBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                            <div class="field-row">
+                                                <input type="range" id="combatOutgoingBgOpacity" min="0" max="100" value="90" data-value-target="combatOutgoingBgOpacityValue">
+                                                <span id="combatOutgoingBgOpacityValue">90</span>%
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="panel-content advanced-tab-panel" data-panel="mining">
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.mining.section.mining-rate-overlay.heading">Mining Overlay Settings</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.mining.section.mining-rate-overlay.hint">Displays m3 mined per second on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
+
+                        <label>
+                            <input type="checkbox" id="miningEnabled" onchange="toggleMiningOptions()">
+                            <span class="label-body" data-i18n="field.miningEnabled.label">Enable Text Overlays</span>
+                        </label>
+
+                        <div id="miningOptions">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="miningWindowSeconds" data-i18n="field.miningWindowSeconds.label">Window (seconds)</label>
+                                    <input type="number" id="miningWindowSeconds" min="1" max="3600">
+                                </div>
+                            </div>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="miningUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
+                                    <input type="number" id="miningUpdateIntervalMs" min="0.1" max="60" step="0.1">
+                                </div>
+                            </div>
+
+                            <div class="hidden-by-layout-preview binding-list">
+                                <div class="binding">
+                                    <label for="miningPosition" data-i18n="common.positionLabel">Position</label>
+                                    <select id="miningPosition" class="position-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="miningColor" data-i18n="common.textColorLabel">Text Color</label>
+                                    <input type="color" id="miningColor" data-default-color="#44AAFF">
+                                </div>
+                                <div class="binding">
+                                    <label for="miningOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="miningOffsetX" min="-50" max="50" value="0" data-value-target="miningOffsetXValue">
+                                        <span id="miningOffsetXValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="miningOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="miningOffsetY" min="-50" max="50" value="0" data-value-target="miningOffsetYValue">
+                                        <span id="miningOffsetYValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="miningFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                    <input type="number" id="miningFontSize" min="6" max="72">
+                                </div>
+                                <div class="binding">
+                                    <label for="miningFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                    <select id="miningFontName" class="font-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="miningFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                    <select id="miningFontWeight">
+                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                    </select>
+                                </div>
+                                <div class="binding">
+                                    <label for="miningBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                    <input type="color" id="miningBgColor" data-default-color="#000000">
+                                </div>
+                                <div class="binding">
+                                    <label for="miningBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="miningBgOpacity" min="0" max="100" value="90" data-value-target="miningBgOpacityValue">
+                                        <span id="miningBgOpacityValue">90</span>%
+                                    </div>
+                                </div>
+                            </div>
+
+                            <label>
+                                <input type="checkbox" id="miningShowIskRate" onchange="toggleMiningOptions()">
+                                <span class="label-body" data-i18n="field.miningShowIskRate.label">Show ISK Rate</span>
+                            </label>
+
+                            <div id="miningIskRateOptions" class="binding-list">
+                                <div class="binding">
+                                    <label for="miningIskRateUnit" data-i18n="field.miningIskRateUnit.label">ISK Rate Unit</label>
+                                    <select id="miningIskRateUnit">
+                                        <option value="minute" data-i18n="field.miningIskRateUnit.minute">Per Minute</option>
+                                        <option value="hour" data-i18n="field.miningIskRateUnit.hour">Per Hour</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.mining.section.alerts.heading">Alerts</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.mining.section.alerts.hint">Notifications triggered by mining laser activity. Requires Text Overlays above to be enabled.</p>
+
+                        <div id="miningAlertsOptions">
+                            <h4 data-i18n="tab.mining.section.laser-idle-alert.heading">Laser Idle Alert</h4>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="miningIdleAlertWindowSeconds" data-i18n="field.miningIdleAlertWindowSeconds.label">Detection Window (seconds)</label>
+                                    <input type="number" id="miningIdleAlertWindowSeconds" min="1" max="3600">
+                                </div>
+                            </div>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="miningIdleAlertThreshold" data-i18n="field.miningIdleAlertThreshold.label">Event Threshold</label>
+                                    <input type="number" id="miningIdleAlertThreshold" min="0" max="20">
+                                </div>
+                            </div>
+
+                            <h4 data-i18n="tab.mining.section.mining-stopped-alert.heading">Mining Stopped Alert</h4>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="miningStoppedAlertWindowSeconds" data-i18n="field.miningStoppedAlertWindowSeconds.label">Silence Window (seconds)</label>
+                                    <input type="number" id="miningStoppedAlertWindowSeconds" min="1" max="3600">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.mining.section.ore-prices.heading">Ore / Ice / Gas Prices</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.mining.section.ore-prices.hint">"Fetch Prices" pulls current Jita buy prices from EVE's market.</p>
+
+                        <table class="notification-types-table">
+                            <thead>
+                                <tr>
+                                    <th class="category-col"></th>
+                                    <th class="event-type-col" data-i18n="tab.mining.table.ore-name.heading">Name</th>
+                                    <th data-i18n="tab.mining.table.ore-price.heading">Price (ISK)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="oreTableBody"></tbody>
+                        </table>
+
+                        <button type="button" id="fetchOrePricesBtn" class="full-width-btn" onclick="fetchOrePrices()" data-i18n="button.fetch-ore-prices.label">↻ Fetch Prices</button>
+                    </div>
+                </div>
+
+                <div class="panel-content advanced-tab-panel" data-panel="bounty">
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.bounty.section.bounty-rate-overlay.heading">Bounty Overlay Settings</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.bounty.section.bounty-rate-overlay.hint">Displays ISK bounty payouts per minute/hour on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
+
+                        <label>
+                            <input type="checkbox" id="bountyEnabled" onchange="toggleBountyOptions()">
+                            <span class="label-body" data-i18n="field.bountyEnabled.label">Enable Text Overlays</span>
+                        </label>
+
+                        <div id="bountyOptions">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="bountyWindowSeconds" data-i18n="field.bountyWindowSeconds.label">Window (seconds)</label>
+                                    <input type="number" id="bountyWindowSeconds" min="1" max="3600">
+                                </div>
+                            </div>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="bountyUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
+                                    <input type="number" id="bountyUpdateIntervalMs" min="0.1" max="60" step="0.1">
+                                </div>
+                            </div>
+
+                            <div class="hidden-by-layout-preview binding-list">
+                                <div class="binding">
+                                    <label for="bountyPosition" data-i18n="common.positionLabel">Position</label>
+                                    <select id="bountyPosition" class="position-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyColor" data-i18n="common.textColorLabel">Text Color</label>
+                                    <input type="color" id="bountyColor" data-default-color="#FFD700">
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="bountyOffsetX" min="-50" max="50" value="0" data-value-target="bountyOffsetXValue">
+                                        <span id="bountyOffsetXValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="bountyOffsetY" min="-50" max="50" value="0" data-value-target="bountyOffsetYValue">
+                                        <span id="bountyOffsetYValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                    <input type="number" id="bountyFontSize" min="6" max="72">
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                    <select id="bountyFontName" class="font-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                    <select id="bountyFontWeight">
+                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                    </select>
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                    <input type="color" id="bountyBgColor" data-default-color="#000000">
+                                </div>
+                                <div class="binding">
+                                    <label for="bountyBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="bountyBgOpacity" min="0" max="100" value="90" data-value-target="bountyBgOpacityValue">
+                                        <span id="bountyBgOpacityValue">90</span>%
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="bountyIskRateUnit" data-i18n="field.bountyIskRateUnit.label">ISK Rate Unit</label>
+                                    <select id="bountyIskRateUnit">
+                                        <option value="minute" data-i18n="field.bountyIskRateUnit.minute">Per Minute</option>
+                                        <option value="hour" data-i18n="field.bountyIskRateUnit.hour">Per Hour</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="panel-content advanced-tab-panel" data-panel="resources">
+                    <div class="section">
+                        <div class="section-heading">
+                            <h3 data-i18n="tab.resources.section.resource-usage-overlay.heading">Resource Usage Overlay Settings</h3>
+                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                        </div>
+                        <p class="hint" data-i18n="tab.resources.section.resource-usage-overlay.hint">Displays each client's CPU%, RAM, and VRAM usage on its thumbnail, sampled directly from Windows rather than from EVE's logs.</p>
+
+                        <label>
+                            <input type="checkbox" id="resourcesEnabled" onchange="toggleResourcesOptions()">
+                            <span class="label-body" data-i18n="field.resourcesEnabled.label">Enable Text Overlays</span>
+                        </label>
+
+                        <div id="resourcesOptions">
+                            <label>
+                                <input type="checkbox" id="resourcesShowCpu">
+                                <span class="label-body" data-i18n="field.resourcesShowCpu.label">Show CPU %</span>
+                            </label>
+                            <label>
+                                <input type="checkbox" id="resourcesShowRam">
+                                <span class="label-body" data-i18n="field.resourcesShowRam.label">Show RAM</span>
+                            </label>
+                            <label>
+                                <input type="checkbox" id="resourcesShowVram">
+                                <span class="label-body" data-i18n="field.resourcesShowVram.label">Show VRAM</span>
+                            </label>
+
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="resourcesUpdateIntervalMs" data-i18n="common.updateIntervalSLabel">Update Interval (s)</label>
+                                    <input type="number" id="resourcesUpdateIntervalMs" min="0.5" max="60" step="0.1">
+                                </div>
+                            </div>
+
+                            <div class="hidden-by-layout-preview binding-list">
+                                <div class="binding">
+                                    <label for="resourcesPosition" data-i18n="common.positionLabel">Position</label>
+                                    <select id="resourcesPosition" class="position-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesColor" data-i18n="common.textColorLabel">Text Color</label>
+                                    <input type="color" id="resourcesColor" data-default-color="#FFFFFF">
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesOffsetX" data-i18n="common.offsetXLabel">X Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="resourcesOffsetX" min="-50" max="50" value="0" data-value-target="resourcesOffsetXValue">
+                                        <span id="resourcesOffsetXValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesOffsetY" data-i18n="common.offsetYLabel">Y Offset (px)</label>
+                                    <div class="field-row">
+                                        <input type="range" id="resourcesOffsetY" min="-50" max="50" value="0" data-value-target="resourcesOffsetYValue">
+                                        <span id="resourcesOffsetYValue">0</span>
+                                    </div>
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesFontSize" data-i18n="common.fontSizePxLabel">Font Size (px)</label>
+                                    <input type="number" id="resourcesFontSize" min="6" max="72">
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesFontName" data-i18n="common.fontNameLabel">Font Name</label>
+                                    <select id="resourcesFontName" class="font-options"></select>
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesFontWeight" data-i18n="common.fontWeightLabel">Font Weight</label>
+                                    <select id="resourcesFontWeight">
+                                        <option value="Regular" data-i18n="common.fontWeightOption.regular">Regular</option>
+                                        <option value="Bold" data-i18n="common.fontWeightOption.bold">Bold</option>
+                                        <option value="Italic" data-i18n="common.fontWeightOption.italic">Italic</option>
+                                        <option value="BoldItalic" data-i18n="common.fontWeightOption.boldItalic">Bold Italic</option>
+                                    </select>
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                    <input type="color" id="resourcesBgColor" data-default-color="#000000">
+                                </div>
+                                <div class="binding">
+                                    <label for="resourcesBgOpacity" data-i18n="common.textBgOpacityLabel">Background Opacity</label>
+                                    <div class="field-row">
+                                        <input type="range" id="resourcesBgOpacity" min="0" max="100" value="90" data-value-target="resourcesBgOpacityValue">
+                                        <span id="resourcesBgOpacityValue">90</span>%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="panel-content" data-panel="advanced" style="display: none;">
+                    <div class="section">
+                        <h3 data-i18n="tab.advanced.section.state-overrides.heading">State Overrides</h3>
+                        <p class="hint" data-i18n="tab.advanced.section.state-overrides.hint">Configure visual appearance for each thumbnail state. Leave fields empty to use default values.</p>
+
+                        <div class="accordion">
+                            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleAccordionEl(this)">
+                                <div class="accordion-title">
+                                    <span class="accordion-toggle"></span>
+                                    <span class="accordion-name" data-i18n="tab.advanced.section.active-state.heading">Active State</span>
+                                </div>
+                            </div>
+                            <div class="accordion-content">
+                                <label>
+                                    <input type="checkbox" id="stateActiveShow">
+                                    <span class="label-body" data-i18n="common.showThumbnailLabel">Show Thumbnail</span>
+                                </label>
+
+                                <label>
+                                    <input type="checkbox" id="stateActiveShowBorder">
+                                    <span class="label-body" data-i18n="common.showBorderLabel">Show Border</span>
+                                </label>
+
+                                <div class="binding-list">
+                                    <div class="binding">
+                                        <label for="stateActiveBorderWidth" data-i18n="common.borderWidthLabel">Border Width (px)</label>
+                                        <input type="number" id="stateActiveBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateActiveBorderWidth.placeholder">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateActiveOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
+                                        <input type="number" id="stateActiveOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateActiveOpacity.placeholder">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateActiveBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
+                                        <select id="stateActiveBorderStyle">
+                                            <option value="" data-i18n="field.stateActiveBorderStyle.option.default">Default</option>
+                                            <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                            <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                            <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                            <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                            <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                            <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                            <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                        </select>
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateActiveBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
+                                        <input type="color" id="stateActiveBorderColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateActiveTextColor" data-i18n="common.textColorLabel">Text Color</label>
+                                        <input type="color" id="stateActiveTextColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateActiveTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                        <input type="color" id="stateActiveTextBgColor">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion">
+                            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleAccordionEl(this)">
+                                <div class="accordion-title">
+                                    <span class="accordion-toggle"></span>
+                                    <span class="accordion-name" data-i18n="tab.advanced.section.inactive-state.heading">Inactive State</span>
+                                </div>
+                            </div>
+                            <div class="accordion-content">
+                                <label>
+                                    <input type="checkbox" id="stateInactiveShow">
+                                    <span class="label-body" data-i18n="common.showThumbnailLabel">Show Thumbnail</span>
+                                </label>
+
+                                <label>
+                                    <input type="checkbox" id="stateInactiveShowBorder">
+                                    <span class="label-body" data-i18n="common.showBorderLabel">Show Border</span>
+                                </label>
+
+                                <div class="binding-list">
+                                    <div class="binding">
+                                        <label for="stateInactiveBorderWidth" data-i18n="common.borderWidthLabel">Border Width (px)</label>
+                                        <input type="number" id="stateInactiveBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateInactiveBorderWidth.placeholder">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateInactiveOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
+                                        <input type="number" id="stateInactiveOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateInactiveOpacity.placeholder">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateInactiveBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
+                                        <select id="stateInactiveBorderStyle">
+                                            <option value="" data-i18n="field.stateInactiveBorderStyle.option.default">Default</option>
+                                            <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                            <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                            <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                            <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                            <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                            <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                            <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                        </select>
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateInactiveBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
+                                        <input type="color" id="stateInactiveBorderColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateInactiveTextColor" data-i18n="common.textColorLabel">Text Color</label>
+                                        <input type="color" id="stateInactiveTextColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateInactiveTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                        <input type="color" id="stateInactiveTextBgColor">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion">
+                            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleAccordionEl(this)">
+                                <div class="accordion-title">
+                                    <span class="accordion-toggle"></span>
+                                    <span class="accordion-name" data-i18n="tab.advanced.section.alert-state.heading">Alert State</span>
+                                </div>
+                            </div>
+                            <div class="accordion-content">
+                                <label>
+                                    <input type="checkbox" id="stateAlertShow">
+                                    <span class="label-body" data-i18n="common.showThumbnailLabel">Show Thumbnail</span>
+                                </label>
+
+                                <label>
+                                    <input type="checkbox" id="stateAlertShowBorder">
+                                    <span class="label-body" data-i18n="common.showBorderLabel">Show Border</span>
+                                </label>
+
+                                <div class="binding-list">
+                                    <div class="binding">
+                                        <label for="stateAlertBorderWidth" data-i18n="common.borderWidthLabel">Border Width (px)</label>
+                                        <input type="number" id="stateAlertBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateAlertBorderWidth.placeholder">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateAlertOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
+                                        <input type="number" id="stateAlertOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateAlertOpacity.placeholder">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateAlertBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
+                                        <select id="stateAlertBorderStyle">
+                                            <option value="" data-i18n="field.stateAlertBorderStyle.option.default">Default</option>
+                                            <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                            <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                            <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                            <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                            <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                            <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                            <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                        </select>
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateAlertBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
+                                        <input type="color" id="stateAlertBorderColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateAlertTextColor" data-i18n="common.textColorLabel">Text Color</label>
+                                        <input type="color" id="stateAlertTextColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateAlertTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                        <input type="color" id="stateAlertTextBgColor">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion">
+                            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleAccordionEl(this)">
+                                <div class="accordion-title">
+                                    <span class="accordion-toggle"></span>
+                                    <span class="accordion-name" data-i18n="tab.advanced.section.minimized-state.heading">Minimized State</span>
+                                </div>
+                            </div>
+                            <div class="accordion-content">
+                                <label>
+                                    <input type="checkbox" id="stateMinimizedShow">
+                                    <span class="label-body" data-i18n="common.showThumbnailLabel">Show Thumbnail</span>
+                                </label>
+
+                                <label>
+                                    <input type="checkbox" id="stateMinimizedShowBorder">
+                                    <span class="label-body" data-i18n="common.showBorderLabel">Show Border</span>
+                                </label>
+
+                                <div class="binding-list">
+                                    <div class="binding">
+                                        <label for="stateMinimizedBorderWidth" data-i18n="common.borderWidthLabel">Border Width (px)</label>
+                                        <input type="number" id="stateMinimizedBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateMinimizedBorderWidth.placeholder">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateMinimizedOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
+                                        <input type="number" id="stateMinimizedOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateMinimizedOpacity.placeholder">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateMinimizedBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
+                                        <select id="stateMinimizedBorderStyle">
+                                            <option value="" data-i18n="field.stateMinimizedBorderStyle.option.default">Default</option>
+                                            <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                            <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                            <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                            <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                            <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                            <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                            <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                        </select>
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateMinimizedBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
+                                        <input type="color" id="stateMinimizedBorderColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateMinimizedTextColor" data-i18n="common.textColorLabel">Text Color</label>
+                                        <input type="color" id="stateMinimizedTextColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateMinimizedTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                        <input type="color" id="stateMinimizedTextBgColor">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion">
+                            <div class="accordion-header" role="button" tabindex="0" aria-expanded="false" onclick="toggleAccordionEl(this)">
+                                <div class="accordion-title">
+                                    <span class="accordion-toggle"></span>
+                                    <span class="accordion-name" data-i18n="tab.advanced.section.dragging-state.heading">Dragging State</span>
+                                </div>
+                            </div>
+                            <div class="accordion-content">
+                                <label>
+                                    <input type="checkbox" id="stateDraggingShow">
+                                    <span class="label-body" data-i18n="common.showThumbnailLabel">Show Thumbnail</span>
+                                </label>
+
+                                <label>
+                                    <input type="checkbox" id="stateDraggingShowBorder">
+                                    <span class="label-body" data-i18n="common.showBorderLabel">Show Border</span>
+                                </label>
+
+                                <div class="binding-list">
+                                    <div class="binding">
+                                        <label for="stateDraggingBorderWidth" data-i18n="common.borderWidthLabel">Border Width (px)</label>
+                                        <input type="number" id="stateDraggingBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateDraggingBorderWidth.placeholder">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateDraggingOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
+                                        <input type="number" id="stateDraggingOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateDraggingOpacity.placeholder">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateDraggingBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
+                                        <select id="stateDraggingBorderStyle">
+                                            <option value="" data-i18n="field.stateDraggingBorderStyle.option.default">Default</option>
+                                            <option value="Solid" data-i18n="common.borderStyle.solid">Solid</option>
+                                            <option value="Dashed" data-i18n="common.borderStyle.dashed">Dashed</option>
+                                            <option value="Dotted" data-i18n="common.borderStyle.dotted">Dotted</option>
+                                            <option value="Double" data-i18n="common.borderStyle.double">Double</option>
+                                            <option value="DiagonalHatch" data-i18n="common.borderStyle.diagonalHatch">Diagonal Hatch</option>
+                                            <option value="DashDot" data-i18n="common.borderStyle.dashDot">Dash-Dot</option>
+                                            <option value="CornerBrackets" data-i18n="common.borderStyle.cornerBrackets">Corner Brackets</option>
+                                        </select>
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateDraggingBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
+                                        <input type="color" id="stateDraggingBorderColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateDraggingTextColor" data-i18n="common.textColorLabel">Text Color</label>
+                                        <input type="color" id="stateDraggingTextColor">
+                                    </div>
+                                    <div class="binding">
+                                        <label for="stateDraggingTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
+                                        <input type="color" id="stateDraggingTextBgColor">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="footer">
+            <div id="footer-left">
+                <div id="search-container">
+                    <div class="search-input-wrapper">
+                        <input type="text" id="search-filter" class="search-filter-input" placeholder="Search settings..." data-i18n-placeholder="field.search-filter.placeholder" oninput="onSearchInput(this.value)" />
+                        <button class="button-clear" onclick="clearSearch()" title="Clear search" data-i18n-title="common.clearSearchTitle">×</button>
+                    </div>
+                    <span id="search-results-count" class="search-count"></span>
+                </div>
+                <span id="status-message" class="status-message"></span>
+            </div>
+            <div id="footer-right">
+                <span id="changes-indicator" class="changes-pending" style="display: none;">
+                    <span class="indicator-dot">●</span> <span data-i18n="misc.unsaved-changes">Unsaved changes</span>
+                </span>
+                <button id="save-config-btn" class="button-primary" onclick="saveConfiguration()" data-i18n="button.save-configuration.label">Save</button>
+                <button class="button-outline" onclick="closeDialog()" data-i18n="button.close-dialog.label">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="profile-name-modal" class="modal">
+        <div class="modal-content">
+            <h3 id="profile-modal-title" data-i18n="misc.profile-modal-title">Enter Profile Name</h3>
+            <div class="field-row">
+                <input type="text" id="profile-name-input" maxlength="16" placeholder="Profile name" data-i18n-placeholder="field.profile-name-input.placeholder" />
+                <input type="color" id="profile-name-color" />
+            </div>
+            <div class="modal-buttons">
+                <button id="profile-modal-ok" class="button-primary" data-i18n="common.ok">OK</button>
+                <button id="profile-modal-cancel" class="button-outline" data-i18n="common.cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="live-switch-modal" class="modal">
+        <div class="modal-content">
+            <h3 data-i18n="misc.switch-profile-heading">Switch profile?</h3>
+            <p id="live-switch-message" style="margin: 0 0 12px 0;"></p>
+            <p class="hint" style="margin: 0 0 12px 0;" data-i18n="misc.switch-profile-hint">Making it live reloads thumbnails, hotkeys, and chatlog monitoring now. Editing alone leaves the running overlay untouched until you save or choose Make It Live.</p>
+            <div class="modal-buttons">
+                <button id="live-switch-modal-live" class="button-primary" data-i18n="button.live-switch-modal-live.label">Make It Live</button>
+                <button id="live-switch-modal-edit" class="button-outline" data-i18n="button.live-switch-modal-edit.label">Just Edit</button>
+                <button id="live-switch-modal-cancel" class="button-outline" data-i18n="common.cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="hotkey-conflict-modal" class="modal">
+        <div class="modal-content">
+            <h3 data-i18n="misc.hotkey-conflict-heading">Hotkey Conflict</h3>
+            <p id="hotkey-conflict-message" style="margin: 0 0 12px 0; white-space: pre-line;"></p>
+            <div class="modal-buttons">
+                <button id="hotkey-conflict-modal-ok" class="button-primary" data-i18n="common.ok">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="update-available-modal" class="modal">
+        <div class="modal-content modal-wide">
+            <h3 data-i18n="misc.update-available-heading">Update Available!</h3>
+            <p style="margin: 0 0 12px 0;">
+                <span data-i18n="misc.update-available-body">A new version is available:</span>
+                <a id="update-available-link" href="#" onclick="return openExternalLink(event)" class="external-link"></a>
+            </p>
+            <div id="update-available-notes" style="display: none; white-space: pre-wrap; text-align: left; margin: 0 0 12px 0;"></div>
+            <div class="modal-buttons">
+                <button id="update-available-modal-close" class="button-outline" data-i18n="common.close">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="import-settings-modal" class="modal">
+        <div class="modal-content modal-wide">
+            <h3 data-i18n="misc.import-settings-heading">Import Settings</h3>
+
+            <div id="import-step-file">
+                <p class="hint" style="margin: 0 0 8px 0;" data-i18n="misc.import-settings-file-hint">Select an old EVE-X Preview (.json), EVE-O Preview (.json), or EVE-APM Preview (.ini) file, or an EVE-Maj Preview profile (.json) — format is detected automatically. Nothing is saved until you review and click Save.</p>
+                <input type="file" id="importFileInput" accept=".json,.ini" onchange="handleImportFileSelected(event)">
+                <p id="importFileStatus" class="hint" style="margin: 8px 0 0 0;"></p>
+
+                <div id="importBackupsSection" style="margin-top: 16px; display: none;">
+                    <label for="importBackupSelect" data-i18n="field.importBackupSelect.label">Restore from backup</label>
+                    <div class="field-row">
+                        <select id="importBackupSelect"></select>
+                        <button type="button" class="button-outline" onclick="restoreSelectedProfileBackup()" data-i18n="common.restore">Restore</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="import-step-options" style="display: none;">
+                <div id="importSourceProfileRow" style="margin-top: 12px;">
+                    <label for="importSourceProfile" data-i18n="field.importSourceProfile.label">Old profile to import from</label>
+                    <select id="importSourceProfile" onchange="onImportSourceProfileChanged()"></select>
+                </div>
+
+                <div style="margin-top: 12px;">
+                    <h4 class="modal-subheading" data-i18n="misc.import-dest-label">Import into</h4>
+                    <label>
+                        <input type="radio" name="importDest" id="import-dest-current" value="current" checked onchange="onImportDestChanged()">
+                        <span class="label-body" id="importDestCurrentLabel" data-i18n="field.import-dest-current.label">Current profile</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="importDest" id="import-dest-new" value="new" onchange="onImportDestChanged()">
+                        <span class="label-body" data-i18n="field.import-dest-new.label">New profile</span>
+                    </label>
+                    <div id="importNewProfileRow" class="field-row" style="display: none; margin-top: 6px;">
+                        <input type="text" id="importNewProfileName" maxlength="16" placeholder="New profile name" data-i18n-placeholder="field.importNewProfileName.placeholder">
+                        <input type="color" id="importAccentColor" />
+                    </div>
+                </div>
+
+                <div style="margin-top: 12px;">
+                    <h4 class="modal-subheading" data-i18n="misc.import-sections-label">Sections to import</h4>
+                    <div id="importSectionsList"></div>
+                </div>
+            </div>
+
+            <div id="importSummary" style="display: none;"></div>
+
+            <div class="modal-buttons" style="margin-top: 12px;">
+                <button id="import-modal-run" class="button-primary" onclick="runImport()" disabled data-i18n="common.import">Import</button>
+                <button id="import-modal-cancel" class="button-outline" onclick="closeImportModal()" data-i18n="common.cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script id="config-script">
+        // Script will be injected here by WebUI
+    </script>
+</body>
+</html>

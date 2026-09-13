@@ -1,0 +1,3010 @@
+* {
+    -webkit-user-drag: none;
+    box-sizing: border-box;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+:root {
+    /* Quiet Terminal palette. One warm near-black ground, one accent (amber)
+       that covers both focus and the single "warning/auto-corrected" job,
+       and destructive kept a distinct hue from error so a validation problem
+       never reads the same as a delete button. */
+    --color-bg: #0b0c0d;
+    --color-panel: #131416;
+    --color-surface: #1a1b1d;
+    --color-surface-alt: #202224;
+    --color-border-faint: #26282c;
+    --color-border: #35383d;
+    /* Lightened from #55585e (2.4:1) to clear the 3:1 SC 1.4.11 wants for a
+       control's own resting border - this is every input/select/button edge. */
+    --color-border-strong: #6b6e75;
+    --color-text: #e8e6e1;
+    --color-text-secondary: #c4c0b6;
+    --color-muted: #8b8f96;
+    --color-accent: #d9a441;
+    --color-accent-hover: #e8b75f;
+    --color-accent-rgb: 217, 164, 65;
+    --color-accent-ink: #1a1408;
+    --color-error: #e05a4e;
+    --color-error-rgb: 224, 90, 78;
+    --color-success: #5ec98f;
+    --color-success-rgb: 94, 201, 143;
+    /* Lightened from #b0492f (3.15:1 as the hover foreground of every delete
+       button) to clear 4.5:1 AA. Fill/fill-hover darkened to match so white
+       text on them clears AA too - hover previously read *less* legible than rest. */
+    --color-destructive: #d3673f;
+    --color-destructive-fill: #ad4527;
+    --color-destructive-fill-hover: #bb4f30;
+    --color-purple: #a988d1;
+    --color-sky: #7fb3d9;
+    /* Three deliberate tiers: small chips, controls, containers. */
+    --radius-sm: 2px;
+    --radius: 3px;
+    --radius-lg: 4px;
+    --font-mono: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+
+    /* 4px grid. --space-2 is the rhythm nearly everything already used as a
+       raw literal; the rest name what was likewise already a repeated literal. */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+
+    /* h3 steps up from body so a section title reads a level above its
+       content instead of matching it at the same size. */
+    --fs-micro: 9px;
+    --fs-small: 10px;
+    --fs-label: 11px;
+    --fs-body: 12px;
+    --fs-heading: 14px;
+    --fw-normal: 400;
+    --fw-medium: 500;
+    --fw-semibold: 600;
+    --fw-bold: 700;
+    --lh-tight: 1.2;
+    --lh-body: 1.4;
+
+    /* Named so the next dense context (a table row, a compact list) reuses
+       this instead of re-deriving it from scratch. */
+    --control-h: 28px;
+    --control-h-dense: 22px;
+
+    /* One shadow per kind of floating surface, not one per instance. */
+    --shadow-raised: 0 2px 8px rgba(0, 0, 0, 0.5);
+    --shadow-overlay: 0 4px 16px rgba(0, 0, 0, 0.6);
+    --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.55);
+
+    --z-guide: 1;
+    --z-dragging: 2;
+    --z-sticky: 10;
+    --z-sticky-top: 11;
+    --z-popover: 500;
+    --z-modal: 10000;
+    /* Above --z-modal: the picker opens from swatches that live inside
+       modals, and previously shared the same 10000 as .modal - stacking
+       between them was decided by DOM order alone. */
+    --z-color-picker: 10001;
+    /* Same problem: the backup-restore flow opens profile-name-modal from inside import-settings-modal. */
+    --z-modal-nested: 10001;
+
+    /* Label rail to control in .detail-form. Shared with the group panel's title
+       row, which lines its field up with that same rail from outside the grid. */
+    --detail-label-gap: 12px;
+    /* A direction glyph plus the gap after it. A paired binding hangs this much
+       into its gutter so its field starts where an unpaired one's does. */
+    --binding-dir-offset: 22px;
+    /* Hover/interaction only - state transitions (.section-active,
+       .field-clamped, .main-app-status) keep their own slower timings. */
+    --t-hover: 0.15s;
+    /* For the div-acting-as-a-control rows (tab/accordion/roster/hint-toggle),
+       which have no border of their own to recolor on focus. */
+    --focus-ring-inset: inset 0 0 0 2px rgba(var(--color-accent-rgb), 0.45);
+
+    color-scheme: dark;
+}
+
+html.pre-init {
+    visibility: hidden;
+}
+
+/* Allow text selection in input fields */
+input, textarea, select {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
+body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    height: 100vh;
+    overflow: hidden;
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+}
+
+::selection {
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+}
+
+/* Honors the OS "reduce motion" setting across every animation and transition
+   here - the accordion chevron, panel fades, the status pulse, modal slide-ins.
+   Smooth scrolling is handled in config_dialog.js instead: scrollIntoView's
+   behavior option is a JS argument, so no stylesheet rule can override it. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+#window-container {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--color-bg);
+}
+
+/* Main layout */
+#main-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Sidebar - Terminal menu style. Widened from 169px - the longest de/ru
+   labels were tight against the edge at that width. */
+/* No fixed width - a flex item with no width set shrinks/grows to its
+   content's own max-content size, so the rail hugs whichever tab label is
+   longest instead of reserving space for one that isn't there. */
+#tabs-sidebar {
+    background: var(--color-panel);
+    border-right: 1px solid var(--color-border);
+    padding: 6px 0;
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+
+.tab-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px 6px 8px;
+    cursor: pointer;
+    transition: background var(--t-hover), color var(--t-hover), border-color var(--t-hover);
+    color: var(--color-muted);
+    font-size: var(--fs-body);
+    white-space: nowrap;
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.5px;
+    text-transform: capitalize;
+    border-left: 2px solid transparent;
+}
+
+.tab-glyph {
+    flex: none;
+    width: 14px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--color-muted);
+    transition: color var(--t-hover);
+}
+
+/* One step quieter than .active's --color-surface-alt, so hovering an
+   inactive tab doesn't read as if it were the selected one. */
+.tab-item:hover {
+    background: var(--color-surface);
+    color: var(--color-text);
+}
+
+.tab-item:hover .tab-glyph {
+    color: var(--color-text);
+}
+
+.tab-item.active {
+    background: var(--color-surface-alt);
+    color: var(--color-text);
+    border-left-color: var(--color-accent);
+}
+
+.tab-item.active .tab-glyph {
+    color: var(--color-accent);
+}
+
+/* Inset rather than an outer glow so it doesn't bleed over the sidebar
+   divider. Keeps focus reading as amber, same as every other control. */
+.tab-item:focus-visible {
+    outline: none;
+    background: var(--color-surface-alt);
+    color: var(--color-text);
+    border-left-color: var(--color-accent);
+    box-shadow: var(--focus-ring-inset);
+}
+
+.subheader-list {
+    display: none;
+}
+
+.tab-item.active + .subheader-list {
+    display: block;
+}
+
+/* No text-transform here - renders the heading text as authored rather than
+   adding a second casing system alongside .tab-item's uppercase above it.
+   Left padding matches .tab-item's own text start (2px reserved border-left,
+   even when transparent + 8px edge + 14px glyph + 8px gap), so a submenu
+   label lines up under the tab label above it, not its glyph. */
+.subheader-item {
+    padding: 3px 10px 3px 32px;
+    cursor: pointer;
+    transition: color var(--t-hover);
+    color: var(--color-muted);
+    font-size: var(--fs-small);
+}
+
+.subheader-item:hover {
+    color: var(--color-text);
+}
+
+.subheader-item.subheader-item-active {
+    color: var(--color-text);
+    font-weight: var(--fw-semibold);
+}
+
+/* Content panel */
+#content-panel {
+    flex: 1;
+    /* Matches .section's bottom margin, so the frame around the stack reads
+       as the same gap that sits between its items. */
+    padding: var(--space-2);
+    overflow-y: auto;
+    background: var(--color-bg);
+    display: flex;
+    flex-direction: column;
+}
+
+.panel-content {
+    display: none;
+}
+
+.panel-content.active {
+    display: block;
+    animation: fadeIn 0.2s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* h3 is the one heading level that gets uppercase; h4 and below differentiate
+   by size/weight/color instead so hierarchy doesn't rely on every level
+   shouting at the same volume. No rule glyph and no underline here - both are
+   the field label's job now (see label rule below), not the section title's. */
+h3 {
+    color: var(--color-text);
+    font-size: var(--fs-heading);
+    font-weight: var(--fw-bold);
+    margin-top: var(--space-3);
+    margin-bottom: var(--space-2);
+    text-transform: capitalize;
+    letter-spacing: 1px;
+}
+
+h3:first-child {
+    margin-top: 0;
+}
+
+h4 {
+    color: var(--color-text-secondary);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+    margin-top: var(--space-4);
+    margin-bottom: var(--space-2);
+    letter-spacing: 0.2px;
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 2px;
+}
+
+/* No h4:first-child reset here: .section > *:first-child already zeroes a
+   section's opening heading, and a blanket reset would also catch an h4 that
+   merely opens a toggle-group wrapper, where the subsection break is wanted. */
+
+/* A modal's own internal group heading (e.g. the import wizard's "Import into"/"Sections to
+   import") - larger than h4's 12px and no border, since a modal group isn't a tab subsection. */
+h4.modal-subheading {
+    font-size: var(--fs-heading);
+    font-weight: var(--fw-semibold);
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+/* Column headers sit at the top of a fresh grid column, not mid-flow,
+   so they get a smaller top margin than a full-width subsection break */
+.column > h4:first-child {
+    margin-top: var(--space-2);
+}
+
+/* ASCII art and pre-formatted text. Generic monospace, not --font-mono:
+   Cascadia Code's programming ligatures can reflow ASCII art glyph runs. */
+pre {
+    font-family: monospace;
+    line-height: 1.1;
+    margin: 0 0 16px 0;
+    overflow-x: auto;
+    text-align: center;
+    font-size: 11px;
+}
+
+#ascii-logo {
+    cursor: pointer;
+    user-select: none;
+    font-size: 10px;
+    margin-bottom: 12px;
+}
+
+/* Contributor names read as a block rather than one long column. */
+.credits-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    column-gap: 16px;
+    line-height: 1.8;
+}
+
+.credits-grid-full {
+    grid-column: 1 / -1;
+}
+
+/* Paragraph spacing */
+p {
+    margin: 6px 0;
+    line-height: var(--lh-body);
+    font-size: var(--fs-body);
+}
+
+/* Notification types table */
+.notification-types-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--color-border);
+    background: var(--color-panel);
+    font-size: var(--fs-label);
+    margin-top: var(--space-2);
+}
+
+.notification-types-table th {
+    background: var(--color-panel);
+    border-top: 1px solid var(--color-border);
+    border-right: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    padding: 4px 6px;
+    text-align: center;
+    color: var(--color-text);
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    line-height: 1.2;
+    white-space: nowrap;
+    position: sticky;
+    z-index: var(--z-sticky);
+}
+
+/* Only the cells that actually carry a tooltip - the spanning group headers
+   above them explain nothing the sub-columns do not. */
+.notification-types-table th[title] {
+    cursor: help;
+}
+
+.notification-types-table thead tr:first-child th {
+    top: 0;
+    z-index: var(--z-sticky-top);
+}
+
+.notification-types-table thead tr:last-child:not(:first-child) th {
+    top: calc(1.2em + 10px);
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    border-top: none;
+}
+
+.notification-types-table th.event-type-col {
+    min-width: 130px;
+    text-align: left;
+}
+
+.notification-types-table th.category-col {
+    min-width: 28px;
+}
+
+.notification-types-table td {
+    border: 1px solid var(--color-border-faint);
+    padding: 4px 3px;
+    vertical-align: middle;
+    text-align: center;
+}
+
+.notification-types-table td.event-name-cell {
+    text-align: left;
+    padding: 4px 6px;
+}
+
+.notification-types-table tbody tr {
+    transition: background var(--t-hover);
+}
+
+.notification-types-table tbody tr:hover {
+    background: var(--color-surface-alt);
+}
+
+.notification-types-table tbody tr:nth-child(even) {
+    background: var(--color-surface);
+}
+
+.notification-types-table tbody tr:nth-child(even):hover {
+    background: var(--color-surface-alt);
+}
+
+.notification-types-table .event-name {
+    font-weight: 500;
+    color: var(--color-text);
+    line-height: 1.3;
+}
+
+.notification-types-table input[type="number"] {
+    width: 42px;
+    height: var(--control-h-dense);
+    padding: 2px 4px;
+    margin: 0;
+    font-size: var(--fs-small);
+}
+
+.notification-types-table input[type="number"]::placeholder {
+    color: var(--color-muted);
+    font-style: italic;
+}
+
+.notification-types-table label {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: var(--control-h-dense);
+    width: 100%;
+}
+
+.notification-types-table input[type="checkbox"] + .label-body {
+    padding-left: 0;
+    width: var(--control-h-dense);
+    height: var(--control-h-dense);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.notification-types-table input[type="checkbox"] + .label-body::before {
+    position: static;
+    transform: none;
+    left: auto;
+    top: auto;
+}
+
+.notification-types-table .swatch-wrap {
+    width: var(--control-h-dense);
+    height: var(--control-h-dense);
+}
+
+/* Disabled state for notification table controls */
+.notification-types-table input:disabled,
+.notification-types-table input[type="checkbox"]:disabled + .label-body::before {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.notification-types-table input[type="checkbox"]:disabled + .label-body {
+    cursor: not-allowed;
+}
+
+.notification-types-table tr.category-separator td {
+    border-top: 1px solid var(--color-border);
+}
+
+.notification-types-table td.category-cell {
+    background: var(--color-panel);
+    color: var(--color-text);
+    text-align: center;
+    padding: 8px 4px;
+    border-color: var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    /* Pins the column to a fixed width regardless of content - large rowspans (as in the ore table, unlike notifications' short ones) can otherwise
+       trip up auto table layout's handling of the vertical-rl label below, letting the column balloon to the label's unrotated horizontal width. */
+    width: 28px;
+    max-width: 28px;
+    overflow: hidden;
+    /* Anchors the absolutely-positioned label below at this cell's own box. */
+    position: relative;
+}
+
+.notification-types-table td.category-cell .category-cell-label {
+    /* writing-mode: vertical-rl is load-bearing beyond the visual rotation -
+       see the comment on .category-cell above: it's what keeps this label's
+       intrinsic width narrow so auto table layout doesn't balloon the column
+       out to the word's unrotated width. rotate(180deg) just flips reading
+       direction on top of that; text-orientation can't do it instead (it's a
+       no-op for Latin text) and dropping writing-mode entirely breaks the
+       column sizing, so this keeps the original mechanism and only adds
+       backface-visibility as a lighter-touch fix for the blur than swapping
+       the whole approach. Weight/spacing match .th above so column and
+       category headers read as the same style of label. */
+    writing-mode: vertical-rl;
+    /* Absolute + translate(-50%,-50%) centers on the cell's actual midpoint
+       explicitly, rather than trusting text-align/vertical-align plus this
+       element's own transform-origin - combining writing-mode with a
+       transform can leave the browser computing that origin against the
+       flow-relative box instead of the physical one, throwing off a rotation
+       pivot that's supposed to sit dead center. */
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(180deg);
+    backface-visibility: hidden;
+    display: inline-block;
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.3px;
+    font-size: var(--fs-label);
+    white-space: nowrap;
+}
+
+/* Terminal-style form elements. Also the base .search-filter-input,
+   #profile-select and .cp-hex-input extend instead of re-declaring - see
+   their own rules below for what they override. */
+input[type="text"],
+input[type="number"],
+input[type="range"],
+select,
+input.search-filter-input,
+#profile-select,
+.cp-hex-input {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text);
+    padding: 4px 8px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-body);
+    width: 100%;
+    margin-bottom: var(--space-2);
+    height: var(--control-h);
+    box-sizing: border-box;
+    border-radius: var(--radius);
+}
+
+/* Custom-drawn like every other control, rather than the native popup arrow. */
+select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--color-muted) 50%),
+        linear-gradient(135deg, var(--color-muted) 50%, transparent 50%);
+    background-position: right 11px top 12px, right 7px top 12px;
+    background-size: 4px 4px, 4px 4px;
+    background-repeat: no-repeat;
+    padding-right: 24px;
+}
+
+input.recording {
+    background-color: rgba(var(--color-accent-rgb), 0.12);
+    border-color: var(--color-accent);
+}
+
+input.hotkey-input {
+    cursor: pointer;
+    caret-color: transparent;
+}
+
+input.hotkey-input.manual-editing {
+    cursor: text;
+    caret-color: auto;
+}
+
+input.manual-editing {
+    background-color: rgba(var(--color-success-rgb), 0.12);
+    border-color: var(--color-success);
+}
+
+/* Momentary highlight after a number input is clamped to its min/max on blur.
+   Class is removed on a timer in JS; the transition here is what makes that
+   removal read as a fade instead of a snap. */
+input.field-clamped {
+    border-color: var(--color-accent) !important;
+    background-color: rgba(var(--color-accent-rgb), 0.12);
+    transition: border-color 1s ease-out, background-color 1s ease-out;
+}
+
+/* Reserved for real validation problems only (see also .status-message.error) -
+   kept a different hue from --color-destructive so "this value is invalid"
+   never reads the same as "this button deletes something". */
+input.hotkey-conflict {
+    border-color: var(--color-error) !important;
+    background-color: rgba(var(--color-error-rgb), 0.12);
+}
+
+input:focus-visible,
+select:focus-visible,
+input.search-filter-input:focus-visible,
+#profile-select:focus-visible,
+.cp-hex-input:focus-visible {
+    outline: none;
+    border-color: var(--color-accent);
+}
+
+label {
+    color: var(--color-text-secondary);
+    font-weight: var(--fw-medium);
+    font-size: var(--fs-body);
+    display: block;
+    margin-bottom: 3px;
+    margin-top: 6px;
+    /* Matches the checkbox/radio label-body's 20px gutter (14px box + gap)
+       below, so a field label's text and a checkbox/radio's text start at the
+       same column. */
+    padding-left: 20px;
+    position: relative;
+}
+
+label::before {
+    /* Fills the gutter above so a plain field label's text doesn't sit on
+       unexplained empty indent - a checkbox/radio row has its own glyph doing
+       that job instead, so it opts out below. No trailing space - the glyph's
+       own position (not text flow) sets its gap from the label text. */
+    content: '›';
+    color: var(--color-muted);
+    position: absolute;
+    left: 2px;
+}
+
+label:has(input[type="checkbox"])::before,
+label:has(input[type="radio"])::before {
+    content: none;
+}
+
+label:has(input[type="checkbox"]),
+label:has(input[type="radio"]) {
+    padding-left: 0;
+    /* Matches .binding-list's margin-bottom so a checkbox-to-checkbox gap
+       reads the same as a checkbox-to-field or field-to-field gap. */
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+/* Checkbox styling - terminal style */
+input[type="checkbox"] {
+    opacity: 0;
+    position: absolute;
+    width: 0;
+    height: 0;
+}
+
+input[type="checkbox"] + .label-body {
+    position: relative;
+    padding-left: 20px;
+    cursor: pointer;
+    display: inline-block;
+}
+
+input[type="checkbox"] + .label-body::before {
+    content: '';
+    display: inline-block;
+    position: absolute;
+    left: 0;
+    top: 1px;
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+    text-align: center;
+    border: 1px solid var(--color-border-strong);
+    box-sizing: border-box;
+    color: var(--color-accent-ink);
+    font-size: var(--fs-small);
+    border-radius: var(--radius-sm);
+    transition: border-color var(--t-hover), background-color var(--t-hover);
+}
+
+/* Filled rather than an outline with a floating checkmark - a checked box
+   reads as "on" at a glance instead of needing the glyph to carry that alone. */
+input[type="checkbox"]:checked + .label-body::before {
+    content: '✓';
+    background-color: var(--color-accent);
+    border-color: var(--color-accent);
+}
+
+/* A ring rather than a border tint: a checked box already carries the accent
+   border, so tinting it again would make focus invisible on exactly the boxes
+   most likely to have it. :focus-visible, not :focus, so a mouse click doesn't
+   ring it - matches every other control in the dialog. */
+input[type="checkbox"]:focus-visible + .label-body::before {
+    outline: 1px solid var(--color-accent);
+    outline-offset: 1px;
+}
+
+/* Hover gets its own quieter affordance (text-secondary) rather than the
+   accent color reserved for checked/focus, so "hovered" and "confirmed"
+   don't look the same. */
+label:hover input[type="checkbox"] + .label-body::before {
+    border-color: var(--color-text-secondary);
+}
+
+/* Radio - same opacity-0-input + drawn-glyph mechanism as the checkbox above,
+   just round and dot-filled instead of boxed and check-filled. Only used in
+   the Import modal today. */
+input[type="radio"] {
+    opacity: 0;
+    position: absolute;
+    width: 0;
+    height: 0;
+}
+
+input[type="radio"] + .label-body {
+    position: relative;
+    padding-left: 20px;
+    cursor: pointer;
+    display: inline-block;
+}
+
+input[type="radio"] + .label-body::before {
+    content: '';
+    display: inline-block;
+    position: absolute;
+    left: 0;
+    top: 1px;
+    width: 14px;
+    height: 14px;
+    box-sizing: border-box;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 50%;
+    transition: border-color var(--t-hover);
+}
+
+input[type="radio"]:checked + .label-body::before {
+    border-color: var(--color-accent);
+    /* Inset dot via a spread shadow rather than a second ::after - one layer
+       to keep in sync with the box above. */
+    box-shadow: inset 0 0 0 3px var(--color-accent);
+}
+
+input[type="radio"]:focus-visible + .label-body::before {
+    outline: 1px solid var(--color-accent);
+    outline-offset: 1px;
+}
+
+label:hover input[type="radio"] + .label-body::before {
+    border-color: var(--color-text-secondary);
+}
+
+input[type="radio"]:disabled + .label-body {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Native chrome (button face, drop shadow) can't be restyled away without a
+   full custom widget - drawn-glyph doesn't apply here the way it does above.
+   Only the frame and text match the theme. */
+input[type="file"] {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text);
+    padding: 4px 8px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-body);
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: var(--radius);
+}
+
+input[type="file"]:focus-visible {
+    outline: none;
+    border-color: var(--color-accent);
+}
+
+input[type="file"]::file-selector-button {
+    background-color: var(--color-surface-alt);
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text);
+    padding: 3px 10px;
+    margin-right: 8px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-label);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+}
+
+input[type="file"]::file-selector-button:hover {
+    border-color: var(--color-accent);
+}
+
+/* Disabled controls. .is-disabled is the class form for whole option groups
+   that JS greys out, so that stays styleable here instead of being written
+   as inline opacity/pointer-events. The notification table overrides the
+   opacity below - denser rows, so it dims harder. */
+input:disabled,
+select:disabled,
+button:disabled,
+.is-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+input[type="checkbox"]:disabled + .label-body {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.is-disabled {
+    pointer-events: none;
+}
+
+.hint {
+    color: var(--color-muted);
+    font-size: var(--fs-label);
+    font-style: italic;
+    margin: 1px 0 2px;
+}
+
+/* The intro hint under a section/subsection heading gets the between-groups
+   gap rather than the tight 2px above - was 48 inline margin-bottom styles. */
+h3 + .hint,
+h4 + .hint,
+.section-heading + .hint {
+    margin-bottom: var(--space-2);
+}
+
+/* Sibling margins collapse to the larger of the two, so .hint's own tight
+   top margin is otherwise masked by the heading/control's own margin-bottom
+   (--space-2) - shrink that margin specifically when a hint follows, rather
+   than everywhere, so unpaired headings/controls keep their normal rhythm. */
+h3:has(+ .hint),
+h4:has(+ .hint),
+.section-heading:has(+ .hint) {
+    margin-bottom: 2px;
+}
+
+input:has(+ .hint),
+select:has(+ .hint) {
+    margin-bottom: 2px;
+}
+
+/* A trailing hint after a control gets the same between-groups gap, whichever
+   control precedes it - Layout System and the overlay panels both trail a
+   hint after select/number/range instead of leading with one. */
+input + .hint,
+select + .hint {
+    margin-top: var(--space-1);
+}
+
+/* Status message. display stays none until showStatus() sets it to flex -
+   align-items only takes effect on a flex box, so that JS-set value matters. */
+.status-message {
+    padding: 6px 10px;
+    margin: 0;
+    display: none;
+    font-size: var(--fs-body);
+    border: 1px solid;
+    font-weight: var(--fw-medium);
+    height: var(--control-h);
+    box-sizing: border-box;
+    align-items: center;
+    /* var(--lh-tight) (1.2) leaves almost no slack under this fixed height
+       once the border and padding are subtracted - see .changes-pending. */
+    line-height: 1;
+    border-radius: var(--radius);
+}
+
+.status-message.success {
+    color: var(--color-success);
+    border-color: var(--color-success);
+    background: rgba(var(--color-success-rgb), 0.1);
+}
+
+.status-message.error {
+    color: var(--color-error);
+    border-color: var(--color-error);
+    background: rgba(var(--color-error-rgb), 0.1);
+}
+
+.status-message.info {
+    color: var(--color-text-secondary);
+    border-color: var(--color-border-strong);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+/* Button overrides */
+button {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text);
+    padding: 6px 12px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-body);
+    cursor: pointer;
+    transition: background-color var(--t-hover), border-color var(--t-hover), color var(--t-hover);
+    font-weight: var(--fw-medium);
+    height: var(--control-h);
+    line-height: var(--lh-body);
+    border-radius: var(--radius);
+    text-transform: capitalize;
+    letter-spacing: 0.5px;
+}
+
+button:hover {
+    background-color: var(--color-surface-alt);
+    color: var(--color-text);
+    border-color: var(--color-accent);
+}
+
+button:focus-visible {
+    outline: none;
+    border-color: var(--color-accent);
+}
+
+button:active {
+    transform: scale(0.98);
+}
+
+.button-outline {
+    background-color: transparent;
+    color: var(--color-muted);
+}
+
+.button-outline:hover {
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    border-color: var(--color-accent);
+}
+
+/* The default action in a footer or modal - the only button carrying the accent
+   in its resting state, so exactly one per context stands out. Outlined at rest
+   and filled on hover, which keeps the amber fill as the moment of interaction
+   rather than a permanent block of color. Bold plus amber text is what separates
+   it from a hovered plain button, which also takes an accent border. Hover is
+   specific enough to beat button:hover even while disabled, which would
+   otherwise turn a greyed-out primary back to the neutral surface. */
+.button-primary {
+    background-color: transparent;
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    font-weight: var(--fw-bold);
+}
+
+.button-primary:hover {
+    background-color: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+    color: var(--color-accent-ink);
+}
+
+/* Destructive actions (delete/reset) get their own hue, distinct from
+   --color-error, so a validation problem never reads the same as a button
+   that permanently removes something. */
+.button-danger:hover {
+    background-color: var(--color-surface);
+    color: var(--color-destructive);
+    border-color: var(--color-destructive);
+}
+
+/* Fixed footer */
+/* Profile Header */
+#profile-header {
+    height: 44px;
+    background: var(--color-panel);
+    border-bottom: 1px solid var(--color-border);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+#profile-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#app-brand {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    color: var(--color-text);
+    font-weight: var(--fw-semibold);
+    font-size: var(--fs-body);
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+}
+
+#app-brand-mark {
+    color: var(--color-accent);
+    font-weight: var(--fw-bold);
+}
+
+#profile-header-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--color-border);
+    flex-shrink: 0;
+}
+
+#profile-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.main-app-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-body);
+    letter-spacing: 0.3px;
+    color: var(--color-muted);
+    transition: color 0.3s;
+}
+
+.main-app-status .indicator-dot {
+    animation: none;
+}
+
+.main-app-status.status-online {
+    color: var(--color-success);
+}
+
+.main-app-status.status-online .indicator-dot {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+/* Same background as #profile-header - both are the dialog's chrome bars. */
+#footer {
+    height: 44px;
+    background: var(--color-panel);
+    border-top: 1px solid var(--color-border);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+#footer-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+#search-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.search-input-wrapper {
+    position: relative;
+    width: 180px;
+}
+
+/* The Characters tab's search sits at the top of a section instead of a
+   fixed-width footer slot, so it takes the section's full width instead of
+   the footer search's fixed 180px. */
+.search-input-wrapper-wide {
+    width: 100%;
+}
+
+/* Extends the shared control rule above; only what differs from it lives here. */
+input.search-filter-input {
+    padding: 6px 32px 6px 8px;
+    margin: 0;
+    transition: border-color var(--t-hover);
+    line-height: normal;
+}
+
+.search-filter-input::placeholder {
+    color: var(--color-muted);
+}
+
+.search-count {
+    font-size: var(--fs-body);
+    color: var(--color-muted);
+    min-width: 60px;
+    margin: 0;
+}
+
+/* Was inline #ff6b6b / #4a9eff - both left over from the abandoned
+   modern-blue theme, off this palette entirely. */
+.search-count-none {
+    color: var(--color-error);
+}
+
+.search-count-some {
+    color: var(--color-accent);
+}
+
+.button-clear {
+    position: absolute;
+    right: 5px;
+    top: 3px;
+    background: transparent;
+    border: none;
+    color: var(--color-muted);
+    padding: 0;
+    width: var(--control-h-dense);
+    height: var(--control-h-dense);
+    cursor: pointer;
+    font-size: 14px;
+    font-family: var(--font-mono);
+    transition: color var(--t-hover), background var(--t-hover);
+    line-height: var(--control-h-dense);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    visibility: hidden;
+}
+
+/* visibility, not opacity - opacity:0 would still leave this in the tab
+   order with its focus ring rendering at zero opacity. */
+.search-filter-input:not(:placeholder-shown) ~ .button-clear {
+    visibility: visible;
+}
+
+.button-clear:hover {
+    color: var(--color-text);
+    background: var(--color-surface-alt);
+    border-radius: var(--radius-sm);
+}
+
+.button-clear:active {
+    transform: scale(0.9);
+}
+
+/* Square icon button - shape only, so a refresh reads differently from a delete.
+   Explicit flex centering, not line-height alone - symbol glyphs (+, ⧉, ↺, ⇩, ↻)
+   sit at wildly different heights within their em box, so text-align plus a
+   line-height guess leaves some visibly off-center. Same mechanism as
+   .button-clear above. */
+.button-icon {
+    width: var(--control-h);
+    flex: none;
+    /* Asymmetric, not 0 - align-items:center centers the font's line box, and
+       most of these glyphs sit optically above that box's own center, which
+       reads as "too high". A couple px of top-only padding nudges the
+       flex-centered content down without moving the button's own border. */
+    padding: 2px 0 0;
+    font-size: 15px;
+    line-height: 1;
+    color: var(--color-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.button-icon-danger:hover {
+    color: var(--color-destructive);
+    border-color: var(--color-destructive);
+    background-color: var(--color-surface);
+}
+
+.button-icon-add:hover {
+    color: var(--color-success);
+    border-color: var(--color-success);
+    background-color: var(--color-surface);
+}
+
+.button-icon-reset:hover {
+    color: var(--color-purple);
+    border-color: var(--color-purple);
+    background-color: var(--color-surface);
+}
+
+.button-icon-import:hover {
+    color: var(--color-sky);
+    border-color: var(--color-sky);
+    background-color: var(--color-surface);
+}
+
+/* Manual key-name entry toggle: advanced-mode only, sits next to Record/Clear */
+.hotkey-edit-btn {
+    width: var(--control-h);
+    flex: none;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--color-muted);
+    display: none;
+}
+
+body.advanced-mode .hotkey-edit-btn {
+    display: inline-block;
+}
+
+.hotkey-edit-btn:hover {
+    color: var(--color-success);
+    border-color: var(--color-success);
+    background-color: var(--color-surface);
+}
+
+.hotkey-edit-btn.active {
+    color: var(--color-bg);
+    background-color: var(--color-success);
+    border-color: var(--color-success);
+}
+
+#footer-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.changes-pending {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--fs-body);
+    /* The label's inherited line-height (1.4) is taller than the room this
+       fixed-height pill leaves after its padding and border, so it centered
+       within a box bigger than itself and read as riding low. */
+    line-height: 1;
+    color: var(--color-accent);
+    padding: 6px 8px;
+    border: 1px solid var(--color-accent);
+    border-radius: var(--radius-sm);
+    background: rgba(var(--color-accent-rgb), 0.1);
+    height: var(--control-h);
+    box-sizing: border-box;
+    animation: slideInFade 0.3s ease-in-out;
+}
+
+.indicator-dot {
+    animation: pulse 2s ease-in-out infinite;
+    font-size: var(--fs-small);
+    line-height: 1;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.2);
+    }
+}
+
+@keyframes slideInFade {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Extends the shared control rule above; only what differs from it lives here. */
+#profile-select {
+    min-width: 130px;
+    line-height: normal;
+    margin: 0;
+    vertical-align: middle;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border: 1px solid var(--color-border);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-muted);
+}
+
+/* Section containers */
+.section {
+    background-color: var(--color-panel);
+    border: 1px solid var(--color-border);
+    /* One step up from the 8px used everywhere else, so a section reads as a
+       container with interior space rather than as one more 8px increment. */
+    padding: var(--space-3);
+    /* Matches the panel frame around the stack, so the gap between sections
+       reads the same as the frame around the whole stack. */
+    margin-bottom: var(--space-2);
+    border-radius: var(--radius);
+    /* Leaves a gap above the section when jumped to via scrollIntoView, so its
+       top border/glow isn't flush against #content-panel's edge. */
+    scroll-margin-top: var(--space-2);
+}
+
+/* Highlights whichever section is currently in view (scrollspy) or was just
+   jumped to via a sidebar subheader. No timer: the transition just animates
+   in when the class is added and back out when it's removed as scroll moves
+   to a different section. */
+.section.section-active {
+    border-color: var(--color-accent);
+    transition: border-color 0.4s ease-out;
+}
+
+/* A section's first and last child stack their own margins on top of
+   .section's 8px padding, so the top and bottom gaps end up wider than the
+   left and right. Zeroing them makes the padding read evenly on all four
+   sides. !important because many of these carry the margin inline. */
+.section > *:first-child {
+    margin-top: 0 !important;
+}
+
+.section > *:last-child {
+    margin-bottom: 0 !important;
+}
+
+.panel-content[data-panel="about"] ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+a.external-link {
+    color: var(--color-accent);
+    text-decoration: underline;
+}
+
+a.external-link:hover {
+    color: var(--color-text);
+}
+
+/* Advanced-only sections: hidden unless Advanced Mode is enabled */
+.advanced-section {
+    display: none;
+}
+
+body.advanced-mode .advanced-section {
+    display: block;
+}
+
+/* Advanced-only tabs (e.g. General): hide the sidebar entry and its panel entirely */
+.advanced-tab {
+    display: none;
+}
+
+body.advanced-mode .advanced-tab {
+    display: flex;
+}
+
+body:not(.advanced-mode) .panel-content.advanced-tab-panel {
+    display: none !important;
+}
+
+.section h3 {
+    margin-top: 0;
+}
+
+.section:last-child {
+    margin-bottom: 0;
+}
+
+.full-width-btn {
+    width: 100%;
+    margin-top: var(--space-2);
+}
+
+/* Buttons sharing one line. Column count comes from the child count, so a row
+   never restates it. Same 8px as .field-row - both are single-line control rows. */
+.button-row {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+}
+
+/* The ore table reuses .notification-types-table (see above) wholesale for identical visual/scrolling behavior - this is the one thing that table never needed. */
+/* Wider than the shared number-input rule (sized for notifications' Duration/Throttle) - fetched ISK prices run up to 6+ digits. */
+.notification-types-table input.ore-price-input {
+    width: 90px;
+}
+
+/* Grid for two-column layouts */
+.row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-5);
+}
+
+.column {
+    min-width: 0;
+}
+
+/* Grid for three-column layouts */
+.text-settings {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: var(--space-5);
+}
+
+/* Raw position/font/color fields the drag-to-position Layout Preview replaces.
+   Permanently hidden, not toggled - config_dialog.js still reads/writes them,
+   it just never shows them (see the comment on that class there). Was 8
+   repeated inline display:none, 2 of them also inline margin-top:16px, which
+   is unreachable once the element never renders. */
+.hidden-by-layout-preview {
+    display: none;
+}
+
+/* .binding-list also sets display, and single-class rules resolve by source
+   order on a tie - this two-class rule outranks either alone so hiding always
+   wins regardless of where each rule sits in the file. */
+.hidden-by-layout-preview.binding-list {
+    display: none;
+}
+
+/* Overlay Text tab: drag-to-position Layout Preview, replaces raw offset sliders */
+#overlayLayoutStage {
+    position: relative;
+    width: 100%;
+    max-width: 540px;
+    margin: 0 auto;
+    aspect-ratio: 16 / 9;
+    background-color: var(--color-bg);
+    background-image: url('data:image/jpeg;base64,LAYOUT_PREVIEW_IMAGE_PLACEHOLDER');
+    background-size: cover;
+    background-position: center;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.overlay-chip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--color-accent-ink);
+    background-color: var(--color-accent);
+    padding: 5px 10px;
+    white-space: nowrap;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    border-radius: var(--radius);
+}
+
+/* Signals the chip is draggable without needing a hover to discover it. Just
+   a plain flex item (no nested centering box) so .overlay-chip's own
+   align-items:center is the only thing positioning it - line-height:1 keeps
+   its height equal to the glyph's own font-size, with nothing else to throw
+   that off. Outside .overlay-chip-label so .dim's strike-through can't reach it. */
+.overlay-chip-handle {
+    position: relative;
+    top: 1px;
+    flex: none;
+    line-height: 1;
+    font-size: 14px;
+    opacity: 0.6;
+}
+
+.overlay-chip-handle::before {
+    content: '⠿';
+}
+
+/* Amber, matching every other control's focus ring - was the one green
+   outline in the dialog (green is otherwise reserved for the success state). */
+.overlay-chip:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+}
+
+.overlay-chip.dragging {
+    cursor: grabbing;
+    box-shadow: var(--shadow-raised);
+    z-index: var(--z-dragging);
+}
+
+.overlay-chip.settling {
+    transition: left 0.15s ease-out, top 0.15s ease-out;
+}
+
+.overlay-chip.clamped {
+    box-shadow: 0 0 0 2px rgba(var(--color-error-rgb), 0.6);
+}
+
+.overlay-chip.dim .overlay-chip-label {
+    text-decoration: line-through;
+    text-decoration-color: #000000;
+    text-decoration-thickness: 2px;
+}
+
+/* Shown while a dragged chip aligns with another chip's edge/center. */
+.overlay-guide {
+    position: absolute;
+    background-color: var(--color-accent);
+    opacity: 0.7;
+    pointer-events: none;
+    display: none;
+    z-index: var(--z-guide);
+}
+
+.overlay-guide-x {
+    top: 0;
+    bottom: 0;
+    width: 1px;
+}
+
+.overlay-guide-y {
+    left: 0;
+    right: 0;
+    height: 1px;
+}
+
+.overlay-popover {
+    position: fixed;
+    z-index: var(--z-popover);
+    background-color: var(--color-panel);
+    border: 1px solid var(--color-border-strong);
+    padding: 10px 12px;
+    min-width: 220px;
+    box-shadow: var(--shadow-overlay);
+    border-radius: var(--radius);
+}
+
+.overlay-popover-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: none;
+    border: none;
+    color: var(--color-muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 4px;
+    width: auto;
+    height: auto;
+}
+
+.overlay-popover-close:hover {
+    background: none;
+    border-color: transparent;
+    color: var(--color-text);
+}
+
+/* Leaves room for .overlay-popover-close so a long title doesn't run under it. */
+#overlayPopoverTitle {
+    padding-right: 20px;
+}
+
+#overlayPopoverBody {
+    display: grid;
+    grid-template-columns: auto minmax(70px, 1fr);
+    align-items: center;
+    gap: 8px 12px;
+}
+
+/* Lets each field's label/control pair become direct grid items of #overlayPopoverBody, so labels align into one column across all rows. */
+.overlay-popover-field {
+    display: contents;
+}
+
+.overlay-popover-field label {
+    margin-top: 0;
+    padding-left: 0;
+    white-space: nowrap;
+}
+
+.overlay-popover-field label::before {
+    content: none;
+}
+
+.overlay-popover-field select,
+.overlay-popover-field input[type="number"] {
+    width: 100%;
+}
+
+.overlay-popover-checkbox-row {
+    grid-column: 1 / -1;
+}
+
+/* #overlayPopoverBody needed to outrank label:has(input[type="checkbox"])'s 8px/8px
+   margins - the grid's own row gap already spaces this row from its neighbors, so
+   those margins would stack on top and read as extra padding. */
+#overlayPopoverBody .overlay-popover-checkbox-row {
+    margin: 0;
+}
+
+.overlay-popover-range-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.overlay-popover-range-control input[type="range"] {
+    flex: 1;
+    min-width: 0;
+}
+
+/* An input plus its adjacent buttons on one line. Controls inside shed the
+   stacked-form bottom margin because the row is the spacing unit, not each
+   field. Color swatches keep their fixed width instead of growing. */
+.field-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+/* The other two single-line control rows share the treatment - all three are
+   flex rows whose children would otherwise keep the stacked-form margin. */
+.field-row > input,
+.field-row > select,
+.field-row > button,
+.hkgroup-char-row > input,
+.hkgroup-char-row > button {
+    margin-bottom: 0;
+}
+
+.field-row > input:not([type="color"]),
+.field-row > select,
+.field-row > .keycap-field,
+.hkgroup-char-row > input {
+    flex: 1;
+}
+
+/* Bindings ------------------------------------------------------------------
+   Same label rail as .detail-form, so a binding row lines up with the forms on
+   every other tab and every bound key shares one left edge to scan down. */
+.binding-list {
+    display: grid;
+    grid-template-columns: auto minmax(140px, 1fr);
+    align-items: center;
+    gap: 8px var(--detail-label-gap);
+    /* Zeroed by .section > *:last-child when a list is the section's final
+       element (most are); kept otherwise, so a flat list or heading that
+       follows one - Profiles' custom hotkey rows, Outside EVE's App Hotkeys
+       heading - gets the same 8px gap every other stacked block gets. */
+    margin-bottom: 8px;
+}
+
+/* A .binding-list that sits in a half-width .row column instead of spanning
+   the section - deliberately not .binding-list, so alignBindingLabelColumns()
+   (which shares one label-column width across every .binding-list on the tab)
+   can't force a width sized for the tab's longest label into this narrow
+   column and overflow it into its neighbor. Sized for its own short label. */
+.binding-list-compact {
+    display: grid;
+    grid-template-columns: max-content minmax(60px, 1fr);
+    align-items: center;
+    gap: 6px var(--detail-label-gap);
+    padding: 4px 0;
+}
+
+/* A checkbox's own margin-bottom (3px) is too tight against a grid straight
+   below it - Clients' Skip Characters Excluded sits right above clientBindings. */
+label + .binding-list {
+    margin-top: 8px;
+}
+
+/* Lets the label, the control and the conflict note land in the rail directly
+   rather than each row forming its own two-column grid. */
+.binding {
+    display: contents;
+}
+
+.binding > label {
+    margin: 0;
+    padding-left: 0;
+    white-space: nowrap;
+}
+
+.binding > label::before {
+    content: none;
+}
+
+/* Same reset .field-row gives its own children - a bare control's inherited
+   stacked-form bottom margin would otherwise sit only under it and not the
+   label beside it, throwing off align-items:center's shared vertical center. */
+.binding > input,
+.binding > select {
+    margin-bottom: 0;
+}
+
+/* A backward/forward pair shares one row, each half taking an equal share. */
+.binding-control {
+    display: flex;
+    align-items: center;
+    gap: var(--detail-label-gap);
+}
+
+.binding-control > .field-row {
+    flex: 1;
+    min-width: 0;
+}
+
+.binding-dir {
+    /* Fixed, so the offset the row hangs by is known rather than measured. */
+    width: 14px;
+    flex: none;
+    text-align: center;
+    color: var(--color-muted);
+    font-size: 14px;
+    /* Keeps the taller glyph from stretching the row past its control height. */
+    line-height: 1;
+}
+
+/* The glyph sits in the gutter instead of pushing the field right, so every
+   field on the tab shares one left edge. alignBindingLabelColumns() keeps the
+   label column wide enough that a paired label can't collide with it. */
+.binding-paired > .binding-control {
+    margin-left: calc(-1 * var(--binding-dir-offset));
+}
+
+/* Key caps ------------------------------------------------------------------
+   The input stays the value and the event source; .keycap-render draws over it
+   so a combo reads as keys rather than as a line of text. */
+.keycap-field {
+    position: relative;
+    display: block;
+    min-width: 0;
+}
+
+.keycap-field > .hotkey-input {
+    width: 100%;
+    margin-bottom: 0;
+}
+
+.keycap-render {
+    position: absolute;
+    inset: 1px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0 6px;
+    overflow: hidden;
+    /* Clicks belong to the input underneath, which is what starts recording. */
+    pointer-events: none;
+}
+
+/* Only cover the input once there are caps to cover it with. */
+.keycap-field:has(.keycap-render:not(:empty)) .hotkey-input {
+    color: transparent;
+}
+
+/* Recording and manual typing are about the raw text, so the caps step aside. */
+.keycap-field:has(.hotkey-input.recording) .keycap-render,
+.keycap-field:has(.hotkey-input.manual-editing) .keycap-render {
+    display: none;
+}
+
+.keycap {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1;
+    padding: 3px 5px;
+    color: var(--color-text);
+    background: var(--color-surface-alt);
+    border: 1px solid var(--color-border-strong);
+    /* The heavier bottom edge is what reads as a key rather than a chip. */
+    border-bottom-width: 2px;
+    border-radius: var(--radius);
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+/* Modifiers are the qualifier, the last cap is the key - so the key leads. */
+.keycap-modifier {
+    color: var(--color-muted);
+}
+
+.keycap-plus {
+    color: var(--color-muted);
+    font-size: 9px;
+}
+
+.section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.section-heading > h3 {
+    margin-bottom: 0;
+}
+
+.section-heading-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.button-icon.hint-toggle {
+    width: auto;
+    height: auto;
+    position: relative;
+    top: -2px;
+    padding: 1px 5px;
+    font-size: var(--fs-micro);
+    line-height: var(--lh-body);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+}
+
+.button-icon.hint-toggle:hover {
+    background: transparent;
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+
+.button-icon.hint-toggle:active,
+.button-icon.hint-toggle.hint-toggle-active {
+    transform: none;
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-accent-ink);
+}
+
+/* Inset rather than an outer glow so it doesn't grow past the badge next to it. */
+.hint-toggle:focus-visible {
+    box-shadow: var(--focus-ring-inset);
+}
+
+.hint-extra {
+    display: none;
+    color: var(--color-muted);
+    font-size: var(--fs-label);
+    font-style: italic;
+    margin: 1px 0 4px;
+}
+
+.section.hints-visible .hint-extra {
+    display: block;
+}
+
+/* .binding-list and .binding-list-compact are 2-column grids and .binding uses
+   display:contents, so a trailing hint-extra needs an explicit span or it
+   lands narrow in column 1. */
+.binding-list > .hint-extra,
+.binding-list-compact > .hint-extra {
+    grid-column: 1 / -1;
+}
+
+/* Scope, said once per section instead of in every hint: which file a binding
+   is saved to, and so whether switching profiles changes it. */
+.scope-chip {
+    flex: none;
+    position: relative;
+    top: -2px;
+    padding: 1px 5px;
+    font-size: var(--fs-micro);
+    font-weight: var(--fw-medium);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+}
+
+.field {
+    min-width: 0;
+}
+
+/* Replaces what were ~30 repeated inline styles across config_dialog.html/js:
+   one class per repeated spacing/layout decision instead of restating it at
+   each call site. */
+.field-group {
+    margin-top: var(--space-2);
+}
+
+.list-container {
+    margin-bottom: var(--space-2);
+}
+
+.modal-row {
+    margin-top: var(--space-3);
+}
+
+.picker-select {
+    display: none;
+    width: 100%;
+    margin-top: var(--space-2);
+    margin-bottom: var(--space-2);
+}
+
+.btn-nowrap {
+    white-space: nowrap;
+}
+
+.notif-cell-inline {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Color input styling */
+input[type="color"] {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    height: var(--control-h);
+    width: var(--control-h);
+    padding: 3px;
+    cursor: pointer;
+    border: 1px solid var(--color-border-strong);
+    background-color: var(--color-surface);
+    box-sizing: border-box;
+    border-radius: var(--radius);
+    transition: border-color var(--t-hover) ease;
+}
+
+input[type="color"]:hover {
+    outline: none;
+    border-color: var(--color-accent);
+}
+
+input[type="color"]:focus-visible {
+    outline: none;
+    border-color: var(--color-accent);
+}
+
+input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+input[type="color"]::-webkit-color-swatch {
+    border: none;
+}
+
+input[type="color"]::-moz-color-swatch {
+    border: none;
+}
+
+/* Wraps optional/override swatches (see data-optional-color) so the "not set"
+   indicator below can be layered on top without fighting the browser-drawn
+   swatch fill, which can't take CSS content of its own. */
+.swatch-wrap {
+    position: relative;
+    display: inline-block;
+    width: var(--control-h);
+    height: var(--control-h);
+}
+
+.swatch-wrap input[type="color"] {
+    width: 100%;
+    height: 100%;
+}
+
+/* Diagonal slash over a cleared swatch - otherwise "unset" and "explicitly
+   black" render identically. Reflects the input's own data-cleared attribute
+   (kept in sync by initCustomColorPicker), not a separate piece of state. */
+.swatch-wrap:has(input[data-cleared="true"])::after {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    pointer-events: none;
+    opacity: 0.35;
+    background: linear-gradient(
+        to top right,
+        transparent calc(50% - 1px),
+        var(--color-destructive) calc(50% - 1px),
+        var(--color-destructive) calc(50% + 1px),
+        transparent calc(50% + 1px)
+    );
+}
+
+/* A persistent hex companion next to a swatch - built by initInlineColorHex()
+   in config_dialog.js, which wraps every input[type="color"] (or its
+   .swatch-wrap, where one exists) in this at render time, including ones
+   created after page load. The swatch stays a fixed square; the hex input
+   fills whatever space remains. Excluded from the notification table's
+   per-row swatches - that column has no room for a second control. */
+/* Fixed, not a percentage - a percentage resolves against whatever container
+   a swatch happens to sit in (a plain section vs. one already halved by
+   .column), so the same swatch+hex pairing would render two different sizes
+   depending on context. max-width lets it shrink gracefully rather than
+   overflow if it ever lands somewhere narrower than 160px. */
+.color-with-hex {
+    display: flex;
+    gap: 8px;
+    width: 160px;
+    max-width: 100%;
+}
+
+.color-with-hex > input[type="color"],
+.color-with-hex > .swatch-wrap {
+    flex: none;
+}
+
+.color-with-hex > input.swatch-hex-input {
+    flex: 1 1 0%;
+    max-width: none;
+    min-width: 0;
+    margin-bottom: 0;
+    text-transform: uppercase;
+}
+
+/* Custom color picker popup (replaces the native OS color dialog, which
+   cannot be themed) */
+#custom-color-picker {
+    position: fixed;
+    z-index: var(--z-color-picker);
+    display: none;
+    background: var(--color-panel);
+    border: 1px solid var(--color-border-strong);
+    box-shadow: var(--shadow-overlay);
+    padding: var(--space-3);
+    width: 200px;
+    box-sizing: border-box;
+    font-family: var(--font-mono);
+    border-radius: var(--radius);
+}
+
+#custom-color-picker.open {
+    display: block;
+}
+
+.cp-sv-area {
+    position: relative;
+    width: 100%;
+    height: 130px;
+    cursor: crosshair;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+}
+
+.cp-sv-white {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right, #ffffff, rgba(255, 255, 255, 0));
+    pointer-events: none;
+}
+
+.cp-sv-black {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, #000000, rgba(0, 0, 0, 0));
+    pointer-events: none;
+}
+
+.cp-sv-thumb {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 0 1px #000000;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.cp-hue-row {
+    margin-top: 10px;
+}
+
+.cp-hue-slider {
+    position: relative;
+    width: 100%;
+    height: 10px;
+    cursor: pointer;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: linear-gradient(to right,
+        #ff0000 0%, #ffff00 17%, #00ff00 33%,
+        #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%);
+}
+
+.cp-hue-thumb {
+    position: absolute;
+    top: 50%;
+    width: 10px;
+    height: 16px;
+    background: #ffffff;
+    border: 1px solid var(--color-border-strong);
+    box-sizing: border-box;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.cp-hex-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.cp-hex-prefix {
+    color: var(--color-muted);
+    font-size: 12px;
+}
+
+/* Extends the shared control rule above; only what differs from it lives here.
+   height was drifting to 26px against the shared 28px control height - now inherited. */
+.cp-hex-input {
+    flex: 1;
+    margin-bottom: 0;
+    text-transform: uppercase;
+}
+
+/* Shown only when the active swatch opts in via data-optional-color (reset to
+   null/inherited) or data-default-color (reset to the app's factory color). */
+.cp-clear-btn {
+    display: none;
+    width: 100%;
+    margin-top: 10px;
+    margin-bottom: 0;
+    font-size: 12px;
+    color: var(--color-muted);
+}
+
+.cp-clear-btn:hover {
+    color: var(--color-destructive);
+    border-color: var(--color-destructive);
+    background-color: var(--color-surface);
+}
+
+/* Range slider styling */
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    /* Resets the border/padding inherited from the shared control rule above,
+       which would otherwise pack 1px of border and 4px of padding into a 6px
+       box. Track fill is --color-border so the groove still reads without one. */
+    border: none;
+    padding: 0;
+    background: var(--color-border);
+    outline: none;
+    height: 6px;
+    border-radius: var(--radius);
+}
+
+/* border:none above kills the shared input:focus-visible border-color cue,
+   and the track is too thin for a box-shadow glow to read - an outline drawn
+   outside the track is what every other range implementation does, so it's
+   what shows up here instead of nothing. */
+input[type="range"]:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--color-accent);
+    cursor: pointer;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 50%;
+}
+
+input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--color-accent);
+    cursor: pointer;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 50%;
+}
+
+/* Character accordion styles */
+.accordion {
+    border: 1px solid var(--color-border);
+    /* Full-width left rail at the same 2px as .tab-item/.roster-row, so the
+       expanded state below only has to change its color - not its width,
+       which would shift the row. Not transparent: unlike those two, this
+       element has a border box to complete. */
+    border-left: 2px solid var(--color-border);
+    margin-bottom: 8px;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.accordion.expanded {
+    border-left-color: var(--color-accent);
+}
+
+.accordion-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    background: var(--color-surface);
+    cursor: pointer;
+    transition: background var(--t-hover);
+}
+
+.accordion-header:hover {
+    background: var(--color-surface-alt);
+}
+
+.accordion-header:focus-visible {
+    outline: none;
+    background: var(--color-surface-alt);
+    box-shadow: var(--focus-ring-inset);
+}
+
+.accordion-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.character-portrait {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    flex-shrink: 0;
+}
+
+/* One › rotated on expand, rather than swapping between two unrelated arrow
+   glyphs - matches the single marker used for headings, labels and lists.
+   inline-block because transforms don't apply to inline elements. */
+.accordion-toggle {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--color-muted);
+    user-select: none;
+    display: inline-block;
+    transition: transform var(--t-hover);
+}
+
+.accordion-toggle::before {
+    content: '›';
+}
+
+.accordion.expanded .accordion-toggle {
+    transform: rotate(90deg);
+}
+
+/* Declared, not inherited: body's size + 700 would render this identically to
+   an h3, so a row inside a section would match the section's own heading.
+   Matches .roster-name - same concept, same size. */
+.accordion-name {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.accordion-content {
+    padding: 8px;
+    display: none;
+}
+
+.accordion.expanded .accordion-content {
+    display: block;
+}
+
+
+/* Drag-to-reorder handle. Always paired with .drag-index-chip on the same
+   element (see config_dialog.js) - that rule comes later in the cascade and
+   owns font-size/padding at equal specificity, so only what it doesn't set
+   belongs here. */
+.character-drag-handle {
+    cursor: grab;
+    color: var(--color-muted);
+    -webkit-user-drag: element;
+    user-select: none;
+}
+
+.character-drag-handle:hover {
+    color: var(--color-text);
+}
+
+.character-drag-handle:active {
+    cursor: grabbing;
+}
+
+/* Both master-detail panels are stretched to fill the window instead of growing
+   with #content-panel, so the roster stays fully visible and scrolls
+   independently of whichever detail form is open. flex + min-height:0 all the
+   way down, not height:100% - a flex item's stretched size doesn't count as an
+   "explicit" height, so percentage heights on its descendants won't resolve
+   against it. Each panel holds the one section, which is what makes this work
+   where a scrolling column of sections (the hotkeys panel) couldn't. */
+.panel-content[data-panel="characters"].active,
+.panel-content[data-panel="hotkey-groups"].active {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.panel-content[data-panel="characters"] .section,
+.panel-content[data-panel="hotkey-groups"] .section {
+    flex: 1;
+    min-height: 0;
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* The plain divs populateCharacters()/populateHotkeyGroups() render into (see
+   config_dialog.html) sit between .section and .master-detail - without flex
+   sizing here too, .master-detail's flex:1 has nothing to grow into and just
+   falls back to its content height. */
+#charactersList,
+#hotkeyGroupsList {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Roster + single-panel detail, instead of an accordion list. Shared by the
+   characters panel and the hotkey groups section. */
+.master-detail {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    min-height: 0;
+}
+
+.roster {
+    width: 190px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+}
+
+/* Portraits are hidden for now, and rows no longer need to make room for one. */
+#charactersList .roster {
+    width: 175px;
+}
+
+#hotkeyGroupsList .master-detail {
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Only a handful of profiles are expected, so the roster reads better as a
+   row of separate boxed chips (matching the dialog's other bordered panels)
+   than a vertical list. */
+#hotkeyGroupsList .roster {
+    display: flex;
+    width: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    overflow: visible;
+    border: none;
+    border-radius: 0;
+    gap: 6px;
+}
+
+#hotkeyGroupsList .roster-row {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.5px;
+}
+
+#hotkeyGroupsList .roster-row:hover {
+    border-color: var(--color-border-strong);
+}
+
+#hotkeyGroupsList .roster-row.selected {
+    background: var(--color-surface-alt);
+    border-color: var(--color-accent);
+}
+
+#hotkeyGroupsList .roster-name {
+    max-width: 160px;
+}
+
+/* Plain button (not a tab chip) so it reads as an action, not another profile. */
+#hotkeyGroupsList .hkgroup-tab-add {
+    margin-left: 4px;
+}
+
+.roster-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px 6px 6px;
+    border-bottom: 1px solid var(--color-border-faint);
+    border-left: 2px solid transparent;
+    cursor: pointer;
+    color: var(--color-muted);
+}
+
+.roster-row:last-child {
+    border-bottom: none;
+}
+
+.roster-row:hover {
+    background: var(--color-surface);
+    color: var(--color-text);
+}
+
+.roster-row.selected {
+    background: var(--color-surface);
+    color: var(--color-text);
+    border-left-color: var(--color-accent);
+}
+
+.roster-row.selected .roster-name {
+    font-weight: 700;
+}
+
+/* Same inset amber as .tab-item and .accordion-header - these rows are the
+   third div-acting-as-a-control in the dialog and should focus alike. */
+.roster-row:focus-visible {
+    outline: none;
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: var(--focus-ring-inset);
+}
+
+.roster-row .character-portrait {
+    width: 24px;
+    height: 24px;
+}
+
+.roster-name {
+    flex: 1;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.roster-hotkey-badge {
+    font-size: 10px;
+    color: var(--color-muted);
+    white-space: nowrap;
+}
+
+.roster-row.roster-row-empty {
+    cursor: default;
+}
+
+.roster-row.roster-row-empty:hover {
+    background: none;
+    color: var(--color-muted);
+}
+
+.roster-row.dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+}
+
+.roster-row.drag-over-top {
+    box-shadow: inset 0 2px 0 var(--color-accent);
+}
+
+.roster-row.drag-over-bottom {
+    box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+.detail-stack {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 8px;
+}
+
+.detail-panel {
+    display: none;
+}
+
+.detail-panel.active {
+    display: block;
+    animation: fadeIn 0.15s;
+}
+
+.detail-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+/* Keeps every input cue - border, background, caret - so it still reads as a
+   field to type in. Only layout is overridden, scoped past the
+   input[type="text"] base rule, whose attribute selector would otherwise win
+   and put the bottom margin back, which is what knocks the field out of line
+   with the button beside it. */
+.detail-panel-header .detail-panel-name-input {
+    flex: 1;
+    min-width: 0;
+    margin-bottom: 0;
+}
+
+/* Matching the grid's column width isn't enough on its own (see
+   alignDetailPanelNameLabel): the flex gap after the label has to match the
+   grid's column gap too, or the field lands a few pixels left of the ones
+   below. */
+#hotkeyGroupsList .detail-panel-header,
+#charactersList .detail-panel-header,
+#windowFiltersList .detail-panel-header {
+    gap: var(--detail-label-gap);
+}
+
+#hotkeyGroupsList .detail-panel-header,
+#charactersList .detail-panel-header,
+#windowFiltersList .detail-panel-header,
+#notificationTypesList .detail-panel-header {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+/* Reads as a title rather than a rail label, since this panel's header has no
+   paired input beside it (event names aren't editable, unlike a character's
+   or hotkey group's name). */
+#notificationTypesList .detail-panel-name-label {
+    font-size: var(--fs-heading);
+    font-weight: var(--fw-bold);
+}
+
+/* Sits on the row rather than above its field, so it drops the stacking margins
+   and the rail glyph, like the form labels below it. */
+.detail-panel-header .detail-panel-name-label {
+    margin: 0;
+    padding-left: 0;
+    white-space: nowrap;
+}
+
+.detail-panel-header .detail-panel-name-label::before {
+    content: none;
+}
+
+/* Label-left / control-right on a single rail - the same display:contents grid
+   #overlayPopoverBody uses. Replaces stacked labels plus a heading band per
+   group, which in a ~600px panel meant six horizontal rules and left 50px
+   swatches adrift in 190px columns. */
+.detail-form {
+    display: grid;
+    grid-template-columns: auto minmax(140px, 1fr);
+    align-items: center;
+    gap: 8px var(--detail-label-gap);
+}
+
+/* Lets each label/control pair become direct grid items, so every label lands
+   in the same column instead of each pair forming its own two-column grid. */
+.detail-field {
+    display: contents;
+}
+
+/* Rail labels only - nested checkbox labels sit inside .detail-checks and keep
+   their own treatment. The grid gap is the spacing, and there's no rail to
+   join inside a cell, so the glyph and its gutter come off. */
+.detail-field > label {
+    margin: 0;
+    padding-left: 0;
+    white-space: nowrap;
+}
+
+.detail-field > label::before,
+.detail-members > label::before {
+    content: none;
+}
+
+/* A label paired inline with its own input inside a .field-row (e.g. Event
+   Alerts' Duration/Limit, nested under the checkbox that gates them) - same
+   glyph/indent removal as a rail label, since it isn't one but reads like one. */
+.field-row > label {
+    margin: 0;
+    padding-left: 0;
+    white-space: nowrap;
+}
+
+.field-row > label::before {
+    content: none;
+}
+
+/* Keeps its stacking margins, unlike the rail labels - it sits above its
+   controls rather than beside them. */
+.detail-members > label {
+    padding-left: 0;
+}
+
+.detail-form input,
+.detail-form select {
+    margin-bottom: 0;
+}
+
+/* .full-width-btn's own margin-top is meant to gap it below a list; here it's
+   just another grid row, so the grid's own gap already provides that. */
+.detail-form .full-width-btn {
+    margin-top: 0;
+}
+
+/* Rows whose control side runs taller than one line: the label sits on the
+   first line rather than floating at the middle of the stack. No top offset -
+   the control side here starts with a checkbox, whose text shares the label's
+   13px line box, so both align at the top of the row already. */
+.detail-field-top > label {
+    align-self: start;
+}
+
+.detail-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Beats label:has(input[type="checkbox"])'s margin on specificity (the
+   attribute selector inside :has() outweighs this rule's single class
+   otherwise) - .detail-checks spaces its rows with its own gap instead. */
+.detail-checks label:has(input[type="checkbox"]) {
+    margin: 0;
+}
+
+.color-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+/* A bare .label-body (no preceding checkbox here) gets no color from any
+   other rule - every real <label> gets this shade from the generic label
+   rule, so this row's text matches it explicitly instead of falling back to
+   the default (brighter) text color. */
+.color-row .label-body {
+    color: var(--color-text-secondary);
+    font-weight: var(--fw-bold);
+}
+
+/* Narrower than the default 160px .color-with-hex - these rows sit one to a
+   line under a shared "Colors" heading instead of owning a full form row. */
+.detail-color-rows .color-with-hex {
+    width: 110px;
+}
+
+/* Button labels here run long ("Save Current Position"), and .field-row is
+   nowrap with shrinkable children - side by side they squash and wrap their
+   own text. Wrapping the row keeps each button at its natural width. */
+.detail-actions {
+    flex-wrap: wrap;
+}
+
+.detail-actions > button {
+    flex: none;
+}
+
+.detail-value {
+    color: var(--color-text);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Keeps the position readout pinned left while the buttons that act on it push right. */
+.detail-actions .detail-value {
+    margin-right: auto;
+}
+
+.detail-size-x {
+    color: var(--color-muted);
+    flex: none;
+}
+
+/* The member list is the one part of a group's panel that grows without bound,
+   so it does the scrolling rather than the panel around it - the keys, the
+   checkboxes and the add field stay put while only the rows move. */
+#hotkeyGroupsList .detail-stack {
+    display: flex;
+    flex-direction: column;
+    overflow-y: hidden;
+}
+
+#hotkeyGroupsList .detail-panel.active {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.detail-members {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+/* Hotkey group character list (drag-to-reorder rows) */
+.hkgroup-chars-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+}
+
+/* Fixed height, not flex:1 like Characters/Hotkey Groups - this list sits mid-page
+   among other Notifications sections rather than alone filling its own tab. */
+#notificationTypesList .master-detail {
+    height: 640px;
+}
+
+/* Same reasoning as #notificationTypesList above - Window Filters is one of
+   several General sections, not a full tab, and has a much shorter detail
+   form (just Enabled, Window Classes, Executable Names, Detect). */
+#windowFiltersList .master-detail {
+    height: 220px;
+}
+
+/* Sized to its widest event name (like #tabs-sidebar) instead of a guessed
+   fixed width - capped so one unusually long localized label can't run away. */
+#notificationTypesList .roster {
+    width: max-content;
+    max-width: 320px;
+}
+
+/* Duration/Limit fields in the Event Alerts detail form hold a couple of
+   digits - the base input[type=number] rule's width:100% (or .field-row's
+   flex:1, when nested in one to sit under the checkbox it depends on) would
+   otherwise stretch them the full width of the detail-form's control column. */
+.detail-number-input {
+    width: 70px;
+    flex: none;
+}
+
+/* The index chip and the remove button bracket the card, so they take the same
+   box - the chip's, since the full icon-button footprint dwarfed it. Centring
+   is explicit because the chip sizes itself from line-height otherwise. */
+.hkgroup-char-row > .drag-index-chip,
+.hkgroup-char-row > button {
+    width: var(--control-h-dense);
+    height: var(--control-h-dense);
+    min-width: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.hkgroup-char-row > button {
+    font-size: 13px;
+}
+
+/* One step denser before the list gives up and scrolls, so a group that runs a
+   couple of rows past the fold still shows whole. Past this, overflow-y takes
+   over as usual. */
+.hkgroup-chars-list.chars-compact {
+    gap: 2px;
+}
+
+.hkgroup-chars-list.chars-compact .hkgroup-char-row {
+    padding: 0 4px;
+    gap: 4px;
+}
+
+.hkgroup-chars-list.chars-compact .hkgroup-char-row > input {
+    height: var(--control-h-dense);
+}
+
+.hkgroup-chars-list.chars-compact .hkgroup-char-row > .drag-index-chip,
+.hkgroup-chars-list.chars-compact .hkgroup-char-row > button {
+    width: 20px;
+    height: 20px;
+}
+
+/* Spans the columns the rows divide into, so the text reads as one line under
+   the label rather than sitting in the first cell. */
+.hkgroup-chars-empty {
+    grid-column: 1 / -1;
+    margin: 0;
+}
+
+.detail-members .hkgroup-chars-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    /* Rows keep their own height instead of stretching to fill a short list. */
+    align-content: start;
+}
+
+.hkgroup-char-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+}
+
+.drag-index-chip {
+    font-size: 11px;
+    min-width: 16px;
+    text-align: center;
+    background: var(--color-surface-alt);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1px 2px;
+    cursor: grab;
+}
+
+.drag-index-chip:active {
+    cursor: grabbing;
+}
+
+.drag-index-chip:hover {
+    background: var(--color-surface-alt);
+    border-color: var(--color-border-strong);
+}
+
+.hkgroup-char-row.dragging {
+    opacity: 0.4;
+}
+
+.hkgroup-char-row.drag-over-top {
+    box-shadow: inset 0 2px 0 var(--color-accent);
+}
+
+.hkgroup-char-row.drag-over-bottom {
+    box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+/* Member rows sit side by side, so their insertion point reads as the leading
+   or trailing edge rather than a line above or below the whole row. */
+.hkgroup-chars-list .hkgroup-char-row.drag-over-top {
+    box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.hkgroup-chars-list .hkgroup-char-row.drag-over-bottom {
+    box-shadow: inset -2px 0 0 var(--color-accent);
+}
+
+/* Character remove button confirmation state */
+button.confirm-delete {
+    background: var(--color-destructive-fill) !important;
+    color: #ffffff !important;
+    border-color: var(--color-destructive-fill-hover) !important;
+}
+
+button.confirm-delete:hover {
+    background: var(--color-destructive-fill-hover) !important;
+    color: #ffffff !important;
+}
+
+/* Modal Dialog */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: var(--z-modal);
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.2s ease-in;
+}
+
+.modal.show {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#profile-name-modal {
+    z-index: var(--z-modal-nested);
+}
+
+.modal-content {
+    background: var(--color-panel);
+    border: 1px solid var(--color-border-strong);
+    padding: 16px;
+    width: 380px;
+    max-width: 90%;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-modal);
+    animation: slideIn 0.2s ease-out;
+    position: relative;
+}
+
+.modal-content.modal-wide {
+    width: 560px;
+    max-height: 96vh;
+    overflow-y: auto;
+    text-align: left;
+}
+
+.modal-content h3 {
+    margin: 0 0 var(--space-3) 0;
+}
+
+/* Matches the tight h3-to-hint gap every section uses (h3:has(+ .hint) above) - the import
+   modal's own hint is one div deeper, past what that adjacent-sibling selector can reach. */
+#import-settings-modal > .modal-content > h3 {
+    margin-bottom: 2px;
+}
+
+/* This label sits above its own select like a group heading, not a checkbox/radio's inline
+   text, so it drops the field-label chevron the same way those already do. */
+#importSourceProfileRow > label,
+#importBackupsSection > label {
+    padding-left: 0;
+}
+
+#importSourceProfileRow > label::before,
+#importBackupsSection > label::before {
+    content: none;
+}
+
+/* Two columns and its own scroll region (this list is often a dozen-plus entries) so a long
+   list scrolls in place instead of pushing the whole modal past viewport height. */
+#importSectionsList {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: var(--space-4);
+    align-content: start;
+    max-height: 380px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-2) var(--space-3);
+}
+
+.modal-content input[type="text"] {
+    width: 100%;
+    margin-bottom: var(--space-3);
+}
+
+.modal-content .field-row {
+    margin-bottom: var(--space-3);
+}
+
+/* Outranks the block-input rule above, whose width/margin-bottom otherwise beat .field-row's own reset on specificity. */
+.modal-content .field-row input[type="text"] {
+    width: auto;
+    margin-bottom: 0;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: var(--space-2);
+    justify-content: flex-end;
+}
+
+/* Shared with .button-remove, so a Remove reads the same width in a flat row,
+   a modal and a detail panel. */
+.button-remove,
+.modal-buttons button {
+    min-width: 80px;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
