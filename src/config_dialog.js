@@ -3654,6 +3654,7 @@ async function saveConfigurationImpl() {
         currentGlobalSettings.cycleAllClientsRespectExclusions = getFieldValue('cycleAllClientsRespectExclusions');
         currentGlobalSettings.runOnStartup = getFieldValue('runOnStartup');
         currentGlobalSettings.autoRegisterProtocol = getFieldValue('autoRegisterProtocol');
+        currentGlobalSettings.disableUpdateChecks = getFieldValue('disableUpdateChecksToggle');
         currentGlobalSettings.hotkeyCycleNotLoggedInForward = getFieldValue('hotkeyCycleNotLoggedInForward') || null;
         currentGlobalSettings.hotkeyCycleNotLoggedInBackward = getFieldValue('hotkeyCycleNotLoggedInBackward') || null;
         currentGlobalSettings.hotkeyReturnToLastApp = getFieldValue('hotkeyReturnToLastApp') || null;
@@ -6345,6 +6346,7 @@ async function loadGlobalSettingsFromBackend() {
     setCheckboxValue('cycleAllClientsRespectExclusions', currentGlobalSettings.cycleAllClientsRespectExclusions);
     setCheckboxValue('runOnStartup', currentGlobalSettings.runOnStartup);
     setCheckboxValue('autoRegisterProtocol', currentGlobalSettings.autoRegisterProtocol);
+    setCheckboxValue('disableUpdateChecksToggle', currentGlobalSettings.disableUpdateChecks);
     setFieldValue('hotkeyCycleNotLoggedInForward', vkHexToFriendly(currentGlobalSettings.hotkeyCycleNotLoggedInForward));
     setFieldValue('hotkeyCycleNotLoggedInBackward', vkHexToFriendly(currentGlobalSettings.hotkeyCycleNotLoggedInBackward));
     setFieldValue('hotkeyReturnToLastApp', vkHexToFriendly(currentGlobalSettings.hotkeyReturnToLastApp));

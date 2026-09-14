@@ -362,6 +362,7 @@
   "field.constrainAspectRatio.label": "Constrain Aspect Ratio",
   "field.cycleAllClientsRespectExclusions.hint": "Same exclusion list as Character Exclusion on the Behavior tab.",
   "field.cycleAllClientsRespectExclusions.label": "Skip Excluded Characters",
+  "field.disableUpdateChecksToggle.label": "Disable Update Checks",
   "field.enableDragging.label": "Enable Dragging",
   "field.enableShiftClickExclude.label": "Enable Shift+Click to Exclude",
   "field.exclusionOverlayColor.label": "Overlay Color",
