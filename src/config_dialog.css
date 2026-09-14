@@ -1889,11 +1889,12 @@ label + .binding-list {
     display: block;
 }
 
-/* .binding-list and .binding-list-compact are 2-column grids and .binding uses
-   display:contents, so a trailing hint-extra needs an explicit span or it
-   lands narrow in column 1. */
+/* .binding-list, .binding-list-compact and .detail-form are 2-column grids and
+   their row wrappers use display:contents, so a trailing hint-extra needs an
+   explicit span or it lands narrow in column 1. */
 .binding-list > .hint-extra,
-.binding-list-compact > .hint-extra {
+.binding-list-compact > .hint-extra,
+.detail-field > .hint-extra {
     grid-column: 1 / -1;
 }
 

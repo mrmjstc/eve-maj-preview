@@ -172,7 +172,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.general.section.logging.heading">Logging</h3>
-                            <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeGlobal">all profiles</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.general.section.logging.hint">How much detail is written to the log file.</p>
 
@@ -186,13 +189,17 @@
                                     <option value="err" data-i18n="field.logLevel.option.err">Error</option>
                                 </select>
                             </div>
+                            <p class="hint hint-extra" data-i18n="field.logLevel.hint">Debug is verbose and mainly useful for troubleshooting; Warning/Error only record problems.</p>
                         </div>
                     </div>
 
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.general.section.scanning.heading">Scanning</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.general.section.scanning.hint">How often to check for new EVE windows.</p>
 
@@ -201,20 +208,25 @@
                                 <label for="scanInterval" data-i18n="field.scanInterval.label">Scan Interval (s)</label>
                                 <input type="number" id="scanInterval" min="0.1" max="10" step="0.1">
                             </div>
+                            <p class="hint hint-extra" data-i18n="field.scanInterval.hint">Lower values pick up new or closed clients faster, at the cost of slightly more CPU usage.</p>
                         </div>
                     </div>
 
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.general.section.window-filters.heading">Window Filters</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.general.section.window-filters.hint">Configure which applications to track. Each filter can match by window class name and executable name.</p>
-                        
+
                         <label>
                             <input type="checkbox" id="windowFiltersEnabled" onchange="toggleWindowFilters()">
                             <span class="label-body" data-i18n="field.windowFiltersEnabled.label">Enable Window Filters</span>
                         </label>
+                        <p class="hint hint-extra" data-i18n="field.windowFiltersEnabled.hint">When off, only EVE Online client windows are tracked.</p>
 
                         <div id="windowFiltersOptions">
                             <div id="windowFiltersList" class="list-container">
@@ -658,7 +670,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.thumbnails.section.border-configuration.heading">Borders</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.thumbnails.section.border-configuration.hint">Draw a styled border around thumbnails based on their focus state.</p>
 
@@ -672,6 +687,7 @@
                                 <input type="checkbox" id="assignUniqueCharacterColors" onchange="toggleUniqueCharacterColors()">
                                 <span class="label-body" data-i18n="field.assignUniqueCharacterColors.label">Unique Character Border Colors</span>
                             </label>
+                            <p class="hint hint-extra" data-i18n="field.assignUniqueCharacterColors.hint">Auto-generates a color per character name, overriding the Focused/Inactive Color settings below.</p>
                             <div>
                                 <div>
                                     <h4 data-i18n="tab.thumbnails.section.focused-border.heading">Focused Border</h4>
@@ -763,6 +779,7 @@
                             <input type="checkbox" id="applyOpacityToOverlayTexts">
                             <span class="label-body" data-i18n="field.applyOpacityToOverlayTexts.label">Apply Opacity to Overlay Texts</span>
                         </label>
+                        <p class="hint hint-extra" data-i18n="field.applyOpacityToOverlayTexts.hint">Also fades the name/badge/combat/mining/bounty/resource overlay text and backgrounds with the Opacity slider above; otherwise they stay fully opaque.</p>
                         <label>
                             <input type="checkbox" id="activeThumbnailHidden">
                             <span class="label-body" data-i18n="field.activeThumbnailHidden.label">Hide Active Thumbnail</span>
@@ -912,7 +929,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.characters.section.per-character-configuration.heading">Character List</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.characters.section.per-character-configuration.hint">Customize each character's saved position, size, border color, display name, and jump-to hotkey. Characters are added automatically when detected.</p>
 
@@ -924,7 +944,7 @@
                         <div id="charactersList" class="list-container">
                             <!-- Characters will be dynamically populated here -->
                         </div>
-                        
+
                         <div class="button-row">
                             <button type="button" onclick="addCharacter()" data-i18n="button.add-character.label">+ Add Character</button>
                             <button type="button" id="populateCharactersBtn" onclick="populateCharactersFromClients()" data-i18n="common.populateFromClients">↻ Populate from Open Clients</button>
@@ -1115,7 +1135,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.hotkey-groups.section.groups.heading">Hotkey Groups</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.hotkey-groups.section.groups.hint">Groups of characters you can cycle through with hotkeys. List members here, or assign them live.</p>
 
@@ -1158,7 +1181,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.hotkeys.section.window-actions.heading">Window Actions</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.hotkeys.section.window-actions.hint">Minimize, close, hide thumbnails, toggle auto-minimize, or send every window back to its saved position.</p>
 
@@ -1168,7 +1194,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.hotkeys.section.cycling.heading">Special Cycling</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.hotkeys.section.cycling.hint">Step through the characters this profile sets apart - the excluded ones, or the ones that recently notified.</p>
 
@@ -1333,7 +1362,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.notifications.section.text-to-speech.heading">Text-to-Speech</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.notifications.section.text-to-speech.hint">Speak alerts aloud using the Windows system voice. Enable individual event types below in the "TTS" column.</p>
 
@@ -1353,6 +1385,7 @@
                                     <input type="checkbox" id="ttsUseDisplayName">
                                     <span class="label-body" data-i18n="field.ttsUseDisplayName.label">Speak Display Name Instead of Character Name</span>
                                 </label>
+                                <p class="hint hint-extra" data-i18n="field.ttsUseDisplayName.hint">Only takes effect while Prefix Spoken Alerts with the Character Name is also on.</p>
 
                                 <div class="row">
                                     <div class="column binding-list-compact">
@@ -1372,6 +1405,7 @@
                                                 <span id="ttsRateValue">0</span>
                                             </div>
                                         </div>
+                                        <p class="hint hint-extra" data-i18n="field.ttsRate.hint">0 is normal speaking speed; negative is slower, positive is faster.</p>
                                     </div>
                                 </div>
                             </div>
@@ -1381,7 +1415,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.notifications.section.event-type-configuration.heading">Event Alerts</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.notifications.section.event-type-configuration.hint">Per-event notification, suppression, speech, and border behavior. Select an event on the left to edit it.</p>
 
@@ -1575,7 +1612,10 @@
                     <div class="section advanced-section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.chatlog.section.polling-performance.heading">Polling &amp; Performance</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
 
                         <label>
@@ -1587,6 +1627,7 @@
                                 <label for="chatlogPollInterval" data-i18n="field.chatlogPollInterval.label">Poll Interval (s)</label>
                                 <input type="number" id="chatlogPollInterval" min="0.1" max="5" step="0.1">
                             </div>
+                            <p class="hint hint-extra" data-i18n="field.chatlogPollInterval.hint">How often each log file is checked for new lines, before any idle backoff kicks in.</p>
                         </div>
 
                         <div class="binding-list">
@@ -1594,6 +1635,7 @@
                                 <label for="chatlogIdleThreshold" data-i18n="field.chatlogIdleThreshold.label">Idle Threshold (polls)</label>
                                 <input type="number" id="chatlogIdleThreshold" min="1" max="1000" step="1">
                             </div>
+                            <p class="hint hint-extra" data-i18n="field.chatlogIdleThreshold.hint">Consecutive empty polls of a log file before its interval starts backing off.</p>
                         </div>
 
                         <div class="binding-list">
@@ -1601,6 +1643,7 @@
                                 <label for="chatlogMaxPollMultiplier" data-i18n="field.chatlogMaxPollMultiplier.label">Max Poll Multiplier</label>
                                 <input type="number" id="chatlogMaxPollMultiplier" min="1" max="32">
                             </div>
+                            <p class="hint hint-extra" data-i18n="field.chatlogMaxPollMultiplier.hint">Caps how much slower an idle file's interval can back off to; resets to 1x as soon as it has new lines again.</p>
                         </div>
                     </div>
                 </div>
@@ -1609,7 +1652,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.combat.section.combat-dps-overlay.heading">Combat Overlay Settings</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.combat.section.combat-dps-overlay.hint">Displays incoming and outgoing DPS below each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
 
@@ -1624,6 +1670,7 @@
                                     <label for="combatWindowSeconds" data-i18n="field.combatWindowSeconds.label">DPS Window (seconds)</label>
                                     <input type="number" id="combatWindowSeconds" min="1" max="3600">
                                 </div>
+                                <p class="hint hint-extra" data-i18n="field.combatWindowSeconds.hint">The rolling look-back period DPS is averaged over, not how often the number updates.</p>
                             </div>
 
                             <div class="binding-list">
@@ -1638,6 +1685,7 @@
                                     <label for="combatDamageAlertExcludedWeapons" data-i18n="field.combatDamageAlertExcludedWeapons.label">Exclude Weapons</label>
                                     <input type="text" id="combatDamageAlertExcludedWeapons" placeholder="e.g. Smartbomb, Warp Scrambler" data-i18n-placeholder="field.combatDamageAlertExcludedWeapons.placeholder">
                                 </div>
+                                <p class="hint hint-extra" data-i18n="field.combatDamageAlertExcludedWeapons.hint">Case-insensitive, comma-separated name matches. Only suppresses the Taking Damage alert - excluded hits still count toward the DPS shown above.</p>
                             </div>
 
                             <div class="row hidden-by-layout-preview">
@@ -1783,7 +1831,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.mining.section.mining-rate-overlay.heading">Mining Overlay Settings</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.mining.section.mining-rate-overlay.hint">Displays m3 mined per second on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
 
@@ -1798,6 +1849,7 @@
                                     <label for="miningWindowSeconds" data-i18n="field.miningWindowSeconds.label">Window (seconds)</label>
                                     <input type="number" id="miningWindowSeconds" min="1" max="3600">
                                 </div>
+                                <p class="hint hint-extra" data-i18n="field.miningWindowSeconds.hint">The rolling look-back period the m3/s rate is averaged over, not how often the number updates.</p>
                             </div>
 
                             <div class="binding-list">
@@ -1864,6 +1916,7 @@
                                 <input type="checkbox" id="miningShowIskRate" onchange="toggleMiningOptions()">
                                 <span class="label-body" data-i18n="field.miningShowIskRate.label">Show ISK Rate</span>
                             </label>
+                            <p class="hint hint-extra" data-i18n="field.miningShowIskRate.hint">Valued using the prices set in Ore / Ice / Gas Prices below - fetch or fill those in first, or this reads 0.</p>
 
                             <div id="miningIskRateOptions" class="binding-list">
                                 <div class="binding">
@@ -1885,12 +1938,16 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.mining.section.alerts.heading">Alerts</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.mining.section.alerts.hint">Notifications triggered by mining laser activity. Requires Text Overlays above to be enabled.</p>
 
                         <div id="miningAlertsOptions">
                             <h4 data-i18n="tab.mining.section.laser-idle-alert.heading">Laser Idle Alert</h4>
+                            <p class="hint hint-extra" data-i18n="tab.mining.section.laser-idle-alert.hint">Fires when fewer than Event Threshold mining hits occur within Detection Window - a slowdown, not full silence.</p>
 
                             <div class="binding-list">
                                 <div class="binding">
@@ -1907,6 +1964,7 @@
                             </div>
 
                             <h4 data-i18n="tab.mining.section.mining-stopped-alert.heading">Mining Stopped Alert</h4>
+                            <p class="hint hint-extra" data-i18n="tab.mining.section.mining-stopped-alert.hint">Fires once mining has been completely silent for the Silence Window; rearms as soon as mining resumes.</p>
 
                             <div class="binding-list">
                                 <div class="binding">
@@ -1943,7 +2001,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.bounty.section.bounty-rate-overlay.heading">Bounty Overlay Settings</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.bounty.section.bounty-rate-overlay.hint">Displays ISK bounty payouts per minute/hour on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.</p>
 
@@ -1958,6 +2019,7 @@
                                     <label for="bountyWindowSeconds" data-i18n="field.bountyWindowSeconds.label">Window (seconds)</label>
                                     <input type="number" id="bountyWindowSeconds" min="1" max="3600">
                                 </div>
+                                <p class="hint hint-extra" data-i18n="field.bountyWindowSeconds.hint">The rolling look-back period the ISK/s rate is averaged over, not how often the number updates.</p>
                             </div>
 
                             <div class="binding-list">
@@ -2038,7 +2100,10 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.resources.section.resource-usage-overlay.heading">Resource Usage Overlay Settings</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.resources.section.resource-usage-overlay.hint">Displays each client's CPU%, RAM, and VRAM usage on its thumbnail, sampled directly from Windows rather than from EVE's logs.</p>
 
@@ -2052,6 +2117,7 @@
                                 <input type="checkbox" id="resourcesShowCpu">
                                 <span class="label-body" data-i18n="field.resourcesShowCpu.label">Show CPU %</span>
                             </label>
+                            <p class="hint hint-extra" data-i18n="field.resourcesShowCpu.hint">That EVE client process's own usage, not total system CPU.</p>
                             <label>
                                 <input type="checkbox" id="resourcesShowRam">
                                 <span class="label-body" data-i18n="field.resourcesShowRam.label">Show RAM</span>
@@ -2060,6 +2126,7 @@
                                 <input type="checkbox" id="resourcesShowVram">
                                 <span class="label-body" data-i18n="field.resourcesShowVram.label">Show VRAM</span>
                             </label>
+                            <p class="hint hint-extra" data-i18n="field.resourcesShowVram.hint">Only counts video memory that EVE client's own process has allocated, not the GPU's total usage.</p>
 
                             <div class="binding-list">
                                 <div class="binding">

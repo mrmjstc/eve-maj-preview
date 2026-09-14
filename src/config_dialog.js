@@ -258,7 +258,6 @@ async function restoreProfileBackup(filename, displayName) {
             }
         } else {
             showStatus(t('status.mockCopyPrefix') + filename + t('status.mockCopyMiddle') + sanitizedName, 'info');
-            setTimeout(() => hideStatus(), 3000);
         }
     } catch (error) {
         logError('Failed to restore profile backup:', error);
@@ -1243,7 +1242,7 @@ function switchTab(panelId) {
 }
 
 // Tabs whose sections are too few/short to be worth a sidebar sub-list.
-const TABS_WITHOUT_SUBHEADERS = ['about', 'characters', 'chatlog', 'hotkey-groups', 'resources'];
+const TABS_WITHOUT_SUBHEADERS = ['about', 'characters', 'chatlog', 'hotkey-groups', 'resources', 'combat', 'bounty'];
 
 // IDs/labels are derived from each section's h3[data-i18n] rather than hand-maintained, so they can't drift out of sync as sections are added/removed.
 function buildSectionNav() {
@@ -1432,7 +1431,6 @@ async function loadConfigurationFromBackend() {
             populateFormFields();
             markAsSaved();
             showStatus(t('status.loaded'), 'success');
-            setTimeout(() => hideStatus(), 3000);
         } else {
             logWarn('WebUI not available');
         }
@@ -1709,13 +1707,11 @@ async function switchProfile(deferLivePush = false, forceLive = false) {
 
                 showStatus(t('status.profileSwitchedSuccess'), 'success');
                 await loadConfigurationFromBackend();
-                setTimeout(() => hideStatus(), 3000);
             } else {
                 showStatus(t('status.switchProfileFailedPrefix') + (result.error || t('status.unknownError')), 'error');
             }
         } else {
             showStatus(t('status.mockSwitchPrefix') + selectedProfile, 'info');
-            setTimeout(() => hideStatus(), 3000);
         }
     } catch (error) {
         logError('Failed to switch profile:', error);
@@ -1791,7 +1787,6 @@ async function createNewProfile() {
             }
         } else {
             showStatus(t('status.mockCreateProfilePrefix') + sanitizedName, 'info');
-            setTimeout(() => hideStatus(), 3000);
         }
     } catch (error) {
         logError('Failed to create profile:', error);
@@ -1839,7 +1834,6 @@ async function copyCurrentProfile() {
             }
         } else {
             showStatus(t('status.mockCopyPrefix') + currentProfile + t('status.mockCopyMiddle') + sanitizedName, 'info');
-            setTimeout(() => hideStatus(), 3000);
         }
     } catch (error) {
         logError('Failed to copy profile:', error);
@@ -3569,13 +3563,11 @@ function deleteCurrentProfile() {
                     await populateProfileSwitchHotkeys();
 
                     showStatus(t('status.profileDeletedSuccess'), 'success');
-                    setTimeout(() => hideStatus(), 3000);
                 } else {
                     showStatus(t('status.deleteProfileFailedPrefix') + (result.error || t('status.unknownError')), 'error');
                 }
             } else {
                 showStatus(t('status.mockDeletePrefix') + currentProfile, 'info');
-                setTimeout(() => hideStatus(), 3000);
             }
         } catch (error) {
             logError('Failed to delete profile:', error);
@@ -3600,13 +3592,11 @@ function resetCurrentProfile() {
                 if (result.success) {
                     await loadConfigurationFromBackend();
                     showStatus(t('status.profileResetDone').replace('{name}', currentDisplayName), 'success');
-                    setTimeout(() => hideStatus(), 5000);
                 } else {
                     showStatus(t('status.resetProfileFailedPrefix') + (result.error || t('status.unknownError')), 'error');
                 }
             } else {
                 showStatus(t('status.mockResetPrefix') + currentProfile, 'info');
-                setTimeout(() => hideStatus(), 3000);
             }
         } catch (error) {
             logError('Failed to reset profile:', error);
@@ -3695,7 +3685,6 @@ async function saveConfigurationImpl() {
 
             if (result.success) {
                 showStatus(t('status.configSavedSuccess'), 'success');
-                setTimeout(() => hideStatus(), 3000);
                 // Saving always pushes this profile live (see saveConfig's reloadProfileInMainApp()), so live preview can resume for it.
                 liveConfirmedProfile = dialogEditingProfile;
                 deletedCharacterNames.clear();
@@ -3709,7 +3698,6 @@ async function saveConfigurationImpl() {
         } else {
             console.log('Would save:', currentConfig);
             showStatus(t('status.configSavedMock'), 'success');
-            setTimeout(() => hideStatus(), 3000);
             markAsSaved();
         }
     } catch (error) {
@@ -3718,17 +3706,27 @@ async function saveConfigurationImpl() {
     }
 }
 
+let statusHideTimer = null;
+const STATUS_HIDE_DELAY_MS = 10000;
+
 function showStatus(message, type) {
     const statusEl = document.getElementById('status-message');
     statusEl.textContent = message;
     statusEl.className = 'status-message ' + type;
     // flex, not block - .status-message's align-items only takes effect on a flex box.
     statusEl.style.display = 'flex';
+
+    if (statusHideTimer) clearTimeout(statusHideTimer);
+    statusHideTimer = setTimeout(hideStatus, STATUS_HIDE_DELAY_MS);
 }
 
 function hideStatus() {
     const statusEl = document.getElementById('status-message');
     statusEl.style.display = 'none';
+    if (statusHideTimer) {
+        clearTimeout(statusHideTimer);
+        statusHideTimer = null;
+    }
 }
 
 // Mirrors the Zig-side writeVirtualKey() in virtual_keys.zig - keep these two in sync.
@@ -3850,7 +3848,7 @@ const HOTKEY_BINDINGS = [
             { id: 'hotkeyMinimizeAll', labelKey: 'field.hotkeyMinimizeAll.label', exampleKey: 'field.hotkeyMinimizeAll.placeholder' },
             { id: 'hotkeyCloseAll', labelKey: 'field.hotkeyCloseAll.label', exampleKey: 'field.hotkeyCloseAll.placeholder' },
             { id: 'hotkeyToggleVisibility', labelKey: 'field.hotkeyToggleVisibility.label', exampleKey: 'field.hotkeyToggleVisibility.placeholder' },
-            { id: 'hotkeyToggleAutoMinimize', labelKey: 'field.hotkeyToggleAutoMinimize.label', exampleKey: 'field.hotkeyToggleAutoMinimize.placeholder' },
+            { id: 'hotkeyToggleAutoMinimize', labelKey: 'field.hotkeyToggleAutoMinimize.label', exampleKey: 'field.hotkeyToggleAutoMinimize.placeholder', hintKey: 'field.hotkeyToggleAutoMinimize.hint' },
             { id: 'hotkeyMoveToSavedPositions', labelKey: 'field.hotkeyMoveToSavedPositions.label', exampleKey: 'field.hotkeyMoveToSavedPositions.placeholder' },
         ],
     },
@@ -3861,11 +3859,11 @@ const HOTKEY_BINDINGS = [
                 { id: 'hotkeyPreviousExcluded', exampleKey: 'common.hotkeyExampleOpenBracket' },
                 { id: 'hotkeyNextExcluded', exampleKey: 'common.hotkeyExampleCloseBracket' },
             ] },
-            { labelKey: 'field.pair.notifiedCharacters.label', pair: [
+            { labelKey: 'field.pair.notifiedCharacters.label', hintKey: 'tab.hotkeys.section.cycling.notified-hint', pair: [
                 { id: 'hotkeyPreviousNotified', exampleKey: 'field.hotkeyPreviousNotified.placeholder' },
                 { id: 'hotkeyCycleNotified', exampleKey: 'field.hotkeyCycleNotified.placeholder' },
             ] },
-            { id: 'hotkeyToggleExclusion', labelKey: 'field.hotkeyToggleExclusion.label', exampleKey: 'field.hotkeyToggleExclusion.placeholder' },
+            { id: 'hotkeyToggleExclusion', labelKey: 'field.hotkeyToggleExclusion.label', exampleKey: 'field.hotkeyToggleExclusion.placeholder', hintKey: 'field.hotkeyToggleExclusion.hint' },
         ],
     },
     {
@@ -3890,7 +3888,7 @@ const HOTKEY_BINDINGS = [
                 { id: 'hotkeyCycleAllClientsBackward', exampleKey: 'common.hotkeyExampleOpenBracket' },
                 { id: 'hotkeyCycleAllClientsForward', exampleKey: 'common.hotkeyExampleCloseBracket' },
             ] },
-            { labelKey: 'field.pair.notLoggedInClients.label', pair: [
+            { labelKey: 'field.pair.notLoggedInClients.label', hintKey: 'field.pair.notLoggedInClients.hint', pair: [
                 { id: 'hotkeyCycleNotLoggedInBackward', exampleKey: 'field.hotkeyCycleNotLoggedInBackward.placeholder' },
                 { id: 'hotkeyCycleNotLoggedInForward', exampleKey: 'field.hotkeyCycleNotLoggedInForward.placeholder' },
             ] },
@@ -3917,11 +3915,14 @@ function renderHotkeyBindingRow(row) {
         : renderHotkeyBindingField(row, row);
     const firstId = row.pair ? row.pair[0].id : row.id;
 
+    const hint = row.hintKey ? `<p class="hint hint-extra">${t(row.hintKey)}</p>` : '';
+
     return `
         <div class="binding${row.pair ? ' binding-paired' : ''}">
             <label for="${firstId}">${t(row.labelKey)}</label>
             <div class="binding-control">${fields}</div>
         </div>
+        ${hint}
     `;
 }
 
@@ -4925,6 +4926,7 @@ function populateWindowFilters() {
                     <div class="detail-field">
                         <label for="filter_${index}_classes">${t('dynamic.windowFilter.classesLabel')}</label>
                         <input type="text" id="filter_${index}_classes" value="${escapeHtml((filter.class_names || []).join(', '))}" placeholder="${t('dynamic.windowFilter.classesPlaceholder')}">
+                        <p class="hint hint-extra">${t('dynamic.windowFilter.classesHint')}</p>
                     </div>
                     <div class="detail-field">
                         <label for="filter_${index}_exes">${t('dynamic.windowFilter.exesLabel')}</label>
@@ -5296,6 +5298,7 @@ function populateCharacters() {
                 <div class="detail-field">
                     <label for="char_${index}_displayName">${t('dynamic.character.displayNameLabel')}</label>
                     <input type="text" id="char_${index}_displayName" value="${char.displayName || ''}" placeholder="${t('dynamic.character.displayNamePlaceholder')}">
+                    <p class="hint hint-extra">${t('dynamic.character.displayNameHint')}</p>
                 </div>
                 <div class="detail-field">
                     <label for="char_${index}_hotkey">${t('common.hotkeyLabel')}</label>
@@ -5308,6 +5311,7 @@ function populateCharacters() {
                         <span class="detail-size-x">&times;</span>
                         <input type="number" id="char_${index}_height" value="${char.thumbnailSize?.height || ''}" placeholder="${t('dynamic.character.heightPlaceholder')}" min="50" max="2160">
                     </div>
+                    <p class="hint hint-extra">${t('dynamic.character.thumbnailSizeHint')}</p>
                 </div>
                 <div class="detail-field">
                     <label for="char_${index}_opacity">${t('dynamic.character.opacityLabel')}</label>
@@ -5315,6 +5319,7 @@ function populateCharacters() {
                         <input type="range" id="char_${index}_opacity" min="20" max="100" value="${char.opacity != null ? opacityToPercent(char.opacity) : opacityToPercent(currentConfig.thumbnail.thumbnailOpacity)}" data-value-target="char_${index}_opacityValue">
                         <span id="char_${index}_opacityValue">${char.opacity != null ? opacityToPercent(char.opacity) : opacityToPercent(currentConfig.thumbnail.thumbnailOpacity)}</span>%
                     </div>
+                    <p class="hint hint-extra">${t('dynamic.character.opacityHint')}</p>
                 </div>
                 <div class="detail-field detail-field-top">
                     <label>${t('dynamic.character.borderColorsHeading')}</label>
@@ -5371,6 +5376,7 @@ function populateCharacters() {
                         <button type="button" class="button-icon button-icon-danger" id="char_${index}_clearWindowPositionBtn" onclick="confirmClearCharacterWindowPosition(${index})" title="${t('dynamic.character.clearWindowPositionButton')}" aria-label="${t('dynamic.character.clearWindowPositionButton')}">&times;</button>
                         <button type="button" onclick="setCharacterWindowPosition(${index})">${t('dynamic.character.setWindowPositionButton')}</button>
                     </div>
+                    <p class="hint hint-extra">${t('dynamic.character.windowPositionHint')}</p>
                 </div>
             </div>
         </div>
@@ -5540,7 +5546,6 @@ async function applyUltraPotatoMode() {
             message = t('status.ultraPotatoAlreadySet').replace('{n}', String(alreadySet));
         }
         showStatus(message, 'success');
-        setTimeout(() => hideStatus(), 3000);
     } catch (error) {
         logError('Failed to apply Ultra Potato Mode:', error);
         showStatus(t('status.ultraPotatoFailedPrefix') + error.message, 'error');
@@ -5763,7 +5768,6 @@ async function populateCharactersFromClients() {
         } else {
             showStatus(t('status.allClientsInList'), 'info');
         }
-        setTimeout(() => hideStatus(), 3000);
     } catch (error) {
         logError('Failed to populate characters from open clients:', error);
         showStatus(t('status.scanClientsFailedPrefix') + error.message, 'error');
@@ -5979,6 +5983,7 @@ function populateHotkeyGroups() {
                 <div class="detail-field">
                     <label for="hkgroup_${index}_assign">${t('dynamic.hotkeyGroup.assignKeyLabel')}</label>
                     <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_assign`, vkHexToFriendly(group.assignKey) || '', t('dynamic.hotkeyGroup.assignPlaceholder'))}</div>
+                    <p class="hint hint-extra">${t('dynamic.hotkeyGroup.assignKeyHint')}</p>
                 </div>
                 <div class="detail-field detail-field-top">
                     <label>${t('dynamic.hotkeyGroup.behaviorHeading')}</label>
@@ -6259,7 +6264,6 @@ async function fillHotkeyGroupFromClients(index) {
             scrollHotkeyGroupCharsToEnd(index);
             showStatus(t('status.addedCharactersToGroup').replace('{n}', toAdd.length), 'success');
         }
-        setTimeout(() => hideStatus(), 3000);
     } catch (error) {
         logError('Failed to fill hotkey group from open clients:', error);
         showStatus(t('status.scanClientsFailedPrefix') + error.message, 'error');
@@ -6710,7 +6714,6 @@ async function fetchOrePrices() {
     } finally {
         isFetchingOrePrices = false;
         if (btn) btn.disabled = false;
-        setTimeout(() => hideStatus(), 4000);
     }
 }
 
@@ -6814,12 +6817,14 @@ function populateNotificationTypes() {
                             <input type="number" class="detail-number-input" id="notif_${notifType.key}_duration" min="0" max="60" step="0.1"
                                    value="${config.duration_ms && config.duration_ms > 0 ? config.duration_ms / 1000 : 5}">
                         </div>
+                        <p class="hint hint-extra">${t('tab.notifications.detail.duration.hint')}</p>
                         <div class="field-row">
                             <label for="notif_${notifType.key}_throttle" title="${t('tab.notifications.table.throttle.title')}">${t('tab.notifications.table.throttle.heading')}</label>
                             <input type="number" class="detail-number-input" id="notif_${notifType.key}_throttle" min="0" max="300" step="1"
                                    title="${t('tab.notifications.table.throttle.title')}"
                                    value="${config.throttle_ms !== undefined ? config.throttle_ms / 1000 : 10}">
                         </div>
+                        <p class="hint hint-extra">${t('tab.notifications.detail.throttle.hint')}</p>
                     </div>
                 </div>
                 <div class="detail-field detail-field-top">
@@ -6830,11 +6835,13 @@ function populateNotificationTypes() {
                                    ${config.suppress_when_focused ? 'checked' : ''}>
                             <span class="label-body">${t('tab.notifications.detail.suppress-focused.heading')}</span>
                         </label>
+                        <p class="hint hint-extra">${t('tab.notifications.detail.suppress-focused.hint')}</p>
                         <label title="${t('tab.notifications.table.suppress-clicked.title')}">
                             <input type="checkbox" id="notif_${notifType.key}_suppressClicked"
                                    ${config.suppress_when_clicked ? 'checked' : ''}>
                             <span class="label-body">${t('tab.notifications.detail.suppress-clicked.heading')}</span>
                         </label>
+                        <p class="hint hint-extra">${t('tab.notifications.detail.suppress-clicked.hint')}</p>
                         <label title="${t('tab.notifications.table.speech.title')}">
                             <input type="checkbox" id="notif_${notifType.key}_tts"
                                    ${config.tts_enabled ? 'checked' : ''}>
