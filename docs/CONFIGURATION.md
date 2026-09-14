@@ -1057,7 +1057,7 @@ Sets the accent color used by the config dialog's own UI (buttons, focus rings, 
 }
 ```
 
-Whether the config dialog's Advanced Mode (extra, rarely-changed settings sections and tabs) is on for this profile. Dialog-only, like `accentColor` - has no effect on the running overlay. Per-profile rather than global, so switching profiles doesn't unexpectedly show or hide sections.
+Whether the config dialog's Advanced Mode (extra, rarely-changed settings sections and tabs) is on. Dialog-only - has no effect on the running overlay. Lives in `global.settings.json`, not the profile JSON, so it applies across every profile instead of resetting when you switch.
 
 ## Color Format
 

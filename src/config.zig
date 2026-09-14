@@ -361,6 +361,7 @@ pub const GlobalSettings = struct {
     runOnStartup: bool,
     autoRegisterProtocol: bool,
     alwaysOnTop: bool,
+    advancedMode: bool,
     language: []const u8,
     oreTable: std.ArrayList(OrePriceEntry),
     needs_free: bool,
@@ -386,6 +387,7 @@ pub const GlobalSettings = struct {
             .runOnStartup = false,
             .autoRegisterProtocol = true,
             .alwaysOnTop = true,
+            .advancedMode = false,
             .language = "en",
             .oreTable = std.ArrayList(OrePriceEntry).empty,
             .needs_free = false,
@@ -619,6 +621,7 @@ pub const GlobalSettings = struct {
         runOnStartup: bool = false,
         autoRegisterProtocol: bool = true,
         alwaysOnTop: bool = true,
+        advancedMode: bool = false,
         language: []const u8 = "en",
         oreTable: []const OrePriceEntry.Wire = &.{},
     };
@@ -662,6 +665,7 @@ pub const GlobalSettings = struct {
             .runOnStartup = self.runOnStartup,
             .autoRegisterProtocol = self.autoRegisterProtocol,
             .alwaysOnTop = self.alwaysOnTop,
+            .advancedMode = self.advancedMode,
             .language = self.language,
             .oreTable = ore,
         };
@@ -688,6 +692,7 @@ pub const GlobalSettings = struct {
         settings.runOnStartup = w.runOnStartup;
         settings.autoRegisterProtocol = w.autoRegisterProtocol;
         settings.alwaysOnTop = w.alwaysOnTop;
+        settings.advancedMode = w.advancedMode;
 
         for (w.profileSwitchHotkeys) |item_wire| {
             try settings.profileSwitchHotkeys.append(allocator, try ProfileSwitchHotkey.fromWire(item_wire, allocator));
@@ -1843,7 +1848,6 @@ pub const Config = struct {
     resources: ResourcesConfig,
     travel: TravelConfig,
     accentColor: u32 = DEFAULT_ACCENT_COLOR,
-    advancedMode: bool = false,
 
     windowFilters: std.ArrayList(WindowFilter),
 
@@ -1891,7 +1895,6 @@ pub const Config = struct {
         resources: ResourcesConfig.Wire = .{},
         travel: TravelConfig = .{},
         accentColor: Argb = .{ .value = DEFAULT_ACCENT_COLOR },
-        advancedMode: bool = false,
         windowFilters: []const WindowFilter = &.{WindowFilter.DEFAULT},
         characters: []const CharacterConfig.Wire = &.{},
         systemColors: []const SystemColor.Wire = &.{},
@@ -1951,7 +1954,6 @@ pub const Config = struct {
             .resources = self.resources.toWire(),
             .travel = self.travel,
             .accentColor = .{ .value = self.accentColor },
-            .advancedMode = self.advancedMode,
             .windowFilters = window_filters,
             .characters = chars,
             .systemColors = sys_colors,
@@ -1998,7 +2000,6 @@ pub const Config = struct {
         cfg.resources = try ResourcesConfig.fromWire(w.resources, allocator);
         cfg.travel = w.travel;
         cfg.accentColor = w.accentColor.value;
-        cfg.advancedMode = w.advancedMode;
         cfg.requireEveFocus = w.hotkeys.requireEveFocus;
         cfg.resetGroupIndexOnNonGroupFocus = w.hotkeys.resetGroupIndexOnNonGroupFocus;
         cfg.allowHotkeyAutoRepeat = w.hotkeys.allowHotkeyAutoRepeat;
@@ -3769,7 +3770,6 @@ pub const Config = struct {
             .resources = .{},
             .travel = .{},
             .accentColor = DEFAULT_ACCENT_COLOR,
-            .advancedMode = false,
             .windowFilters = default_filters,
             .characters = std.ArrayList(CharacterConfig).empty,
             .systemColors = std.ArrayList(SystemColor).empty,
