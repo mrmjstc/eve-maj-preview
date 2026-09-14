@@ -331,34 +331,37 @@ pub const ListWindow = struct {
         var wrote = false;
 
         if (combat_cfg.enabled and thumb.has_dps_data) {
+            const in_prefix: []const u8 = if (combat_cfg.incoming_show_prefix) "IN:" else "";
+            const out_prefix: []const u8 = if (combat_cfg.outgoing_show_prefix) "OUT:" else "";
             if (combat_cfg.show_incoming and (thumb.last_incoming_dps == null or thumb.last_incoming_dps.? > 0)) {
                 if (thumb.last_incoming_dps) |dps|
-                    writer.print("IN:{d:.0}", .{dps}) catch {}
+                    writer.print("{s}{d:.0}", .{ in_prefix, dps }) catch {}
                 else
-                    writer.writeAll("IN:??") catch {};
+                    writer.print("{s}??", .{in_prefix}) catch {};
                 wrote = true;
             }
             if (combat_cfg.show_outgoing and (thumb.last_outgoing_dps == null or thumb.last_outgoing_dps.? > 0)) {
                 if (wrote) writer.writeByte(' ') catch {};
                 if (thumb.last_outgoing_dps) |dps|
-                    writer.print("OUT:{d:.0}", .{dps}) catch {}
+                    writer.print("{s}{d:.0}", .{ out_prefix, dps }) catch {}
                 else
-                    writer.writeAll("OUT:??") catch {};
+                    writer.print("{s}??", .{out_prefix}) catch {};
                 wrote = true;
             }
         }
 
         if (mining_cfg.enabled and thumb.has_mining_data and (thumb.last_mining_rate == null or thumb.last_mining_rate.? > 0)) {
             if (wrote) writer.writeByte(' ') catch {};
+            const m_prefix: []const u8 = if (mining_cfg.show_prefix) "M:" else "";
             if (thumb.last_mining_rate) |rate| {
                 const rate_per_min = rate * 60.0;
                 if (rate_per_min < 10.0) {
-                    writer.print("M:{d:.1}", .{rate_per_min}) catch {};
+                    writer.print("{s}{d:.1}", .{ m_prefix, rate_per_min }) catch {};
                 } else {
-                    writer.print("M:{d:.0}", .{rate_per_min}) catch {};
+                    writer.print("{s}{d:.0}", .{ m_prefix, rate_per_min }) catch {};
                 }
             } else {
-                writer.writeAll("M:??") catch {};
+                writer.print("{s}??", .{m_prefix}) catch {};
             }
         }
 

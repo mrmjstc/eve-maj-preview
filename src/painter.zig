@@ -3583,9 +3583,11 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
             const f = try painter.getCachedFont(.combat, dpi, combat_cfg.incoming_font_name, scalePixels(combat_cfg.incoming_font_size, dpi_scale), combat_cfg.incoming_font_weight);
             _ = win32.SelectObject(overlay.mem_dc, f);
             dps_in_text = if (thumbnail.last_incoming_dps) |dps|
-                std.fmt.bufPrint(&dps_in_buf, "IN: {d:.0}", .{dps}) catch "IN: ---"
-            else
-                "IN: ??";
+                (if (combat_cfg.incoming_show_prefix)
+                    std.fmt.bufPrint(&dps_in_buf, "IN: {d:.0}", .{dps}) catch "IN: ---"
+                else
+                    std.fmt.bufPrint(&dps_in_buf, "{d:.0}", .{dps}) catch "---")
+            else if (combat_cfg.incoming_show_prefix) "IN: ??" else "??";
             dps_in_dims = measureText(overlay.mem_dc, dps_in_text);
             dps_in_pos = calculateTextPosition(combat_cfg.incoming_position, dps_in_dims.width, dps_in_dims.height, overlay.width, overlay.height, combat_cfg.incoming_offset_x, combat_cfg.incoming_offset_y);
             draw_lines[draw_line_count] = .{ .font = f, .text = dps_in_text, .render_pos = dps_in_pos, .bg_pos = dps_in_pos, .bg_dims = dps_in_dims, .color = combat_cfg.incoming_color, .bg_color = settings.combat_incoming_bg_color };
@@ -3596,9 +3598,11 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
             const f = try painter.getCachedFont(.combat_outgoing, dpi, combat_cfg.outgoing_font_name, scalePixels(combat_cfg.outgoing_font_size, dpi_scale), combat_cfg.outgoing_font_weight);
             _ = win32.SelectObject(overlay.mem_dc, f);
             dps_out_text = if (thumbnail.last_outgoing_dps) |dps|
-                std.fmt.bufPrint(&dps_out_buf, "OUT: {d:.0}", .{dps}) catch "OUT: ---"
-            else
-                "OUT: ??";
+                (if (combat_cfg.outgoing_show_prefix)
+                    std.fmt.bufPrint(&dps_out_buf, "OUT: {d:.0}", .{dps}) catch "OUT: ---"
+                else
+                    std.fmt.bufPrint(&dps_out_buf, "{d:.0}", .{dps}) catch "---")
+            else if (combat_cfg.outgoing_show_prefix) "OUT: ??" else "??";
             dps_out_dims = measureText(overlay.mem_dc, dps_out_text);
             dps_out_pos = calculateTextPosition(combat_cfg.outgoing_position, dps_out_dims.width, dps_out_dims.height, overlay.width, overlay.height, combat_cfg.outgoing_offset_x, combat_cfg.outgoing_offset_y);
             draw_lines[draw_line_count] = .{ .font = f, .text = dps_out_text, .render_pos = dps_out_pos, .bg_pos = dps_out_pos, .bg_dims = dps_out_dims, .color = combat_cfg.outgoing_color, .bg_color = settings.combat_outgoing_bg_color };
@@ -3633,9 +3637,12 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
                 std.fmt.bufPrint(&raw_buf, "{d:.0}", .{rate_per_min}) catch "---";
             var comma_buf: [16]u8 = undefined;
             const formatted = insertThousandsSeparators(&comma_buf, raw);
-            mining_text = std.fmt.bufPrint(&mining_buf, "M: {s} m3/min", .{formatted}) catch "M: ---";
+            mining_text = if (mining_cfg.show_prefix)
+                std.fmt.bufPrint(&mining_buf, "M: {s} m3/min", .{formatted}) catch "M: ---"
+            else
+                std.fmt.bufPrint(&mining_buf, "{s} m3/min", .{formatted}) catch "---";
         } else {
-            mining_text = "M: ?? m3/min";
+            mining_text = if (mining_cfg.show_prefix) "M: ?? m3/min" else "?? m3/min";
         }
         mining_dims = measureText(overlay.mem_dc, mining_text);
 

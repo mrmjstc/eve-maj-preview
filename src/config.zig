@@ -1110,6 +1110,8 @@ pub const CombatConfig = struct {
     incoming_offset_y: i32 = 0,
     outgoing_offset_x: i32 = 0,
     outgoing_offset_y: i32 = 0,
+    incoming_show_prefix: bool = true,
+    outgoing_show_prefix: bool = true,
     // Comma-separated, case-insensitive substring match against the parsed weapon name (see activity_tracker.parseCombatLine/isWeaponExcluded); matching hits still count toward DPS stats, just don't retrigger the Taking Damage alert.
     damage_alert_excluded_weapons: []const u8 = "",
 
@@ -1170,6 +1172,8 @@ pub const CombatConfig = struct {
         incoming_offset_y: i32 = (CombatConfig{}).incoming_offset_y,
         outgoing_offset_x: i32 = (CombatConfig{}).outgoing_offset_x,
         outgoing_offset_y: i32 = (CombatConfig{}).outgoing_offset_y,
+        incoming_show_prefix: bool = (CombatConfig{}).incoming_show_prefix,
+        outgoing_show_prefix: bool = (CombatConfig{}).outgoing_show_prefix,
         damage_alert_excluded_weapons: []const u8 = (CombatConfig{}).damage_alert_excluded_weapons,
     };
 
@@ -1196,6 +1200,8 @@ pub const CombatConfig = struct {
             .incoming_offset_y = self.incoming_offset_y,
             .outgoing_offset_x = self.outgoing_offset_x,
             .outgoing_offset_y = self.outgoing_offset_y,
+            .incoming_show_prefix = self.incoming_show_prefix,
+            .outgoing_show_prefix = self.outgoing_show_prefix,
             .damage_alert_excluded_weapons = self.damage_alert_excluded_weapons,
         };
     }
@@ -1230,6 +1236,8 @@ pub const CombatConfig = struct {
             .incoming_offset_y = w.incoming_offset_y,
             .outgoing_offset_x = w.outgoing_offset_x,
             .outgoing_offset_y = w.outgoing_offset_y,
+            .incoming_show_prefix = w.incoming_show_prefix,
+            .outgoing_show_prefix = w.outgoing_show_prefix,
             .damage_alert_excluded_weapons = damage_alert_excluded_weapons,
         };
     }
@@ -1254,6 +1262,7 @@ pub const MiningConfig = struct {
     stopped_alert_window_seconds: u32 = 60,
     show_isk_rate: bool = true,
     isk_rate_unit: IskRateUnit = .hour,
+    show_prefix: bool = true,
 
     pub const WINDOW_SECONDS_MIN: u32 = 1;
     pub const WINDOW_SECONDS_MAX: u32 = 3600;
@@ -1309,6 +1318,7 @@ pub const MiningConfig = struct {
         stopped_alert_window_seconds: u32 = (MiningConfig{}).stopped_alert_window_seconds,
         show_isk_rate: bool = (MiningConfig{}).show_isk_rate,
         isk_rate_unit: IskRateUnit = (MiningConfig{}).isk_rate_unit,
+        show_prefix: bool = (MiningConfig{}).show_prefix,
     };
 
     pub fn toWire(self: MiningConfig) Wire {
@@ -1329,6 +1339,7 @@ pub const MiningConfig = struct {
             .stopped_alert_window_seconds = self.stopped_alert_window_seconds,
             .show_isk_rate = self.show_isk_rate,
             .isk_rate_unit = self.isk_rate_unit,
+            .show_prefix = self.show_prefix,
         };
     }
 
@@ -1350,6 +1361,7 @@ pub const MiningConfig = struct {
             .stopped_alert_window_seconds = w.stopped_alert_window_seconds,
             .show_isk_rate = w.show_isk_rate,
             .isk_rate_unit = w.isk_rate_unit,
+            .show_prefix = w.show_prefix,
         };
     }
 };
@@ -3253,6 +3265,12 @@ pub const Config = struct {
         if (obj.get("outgoing_offset_y")) |v| {
             if (v == .integer) combat.outgoing_offset_y = std.math.cast(i32, v.integer) orelse combat.outgoing_offset_y;
         }
+        if (obj.get("incoming_show_prefix")) |v| {
+            if (v == .bool) combat.incoming_show_prefix = v.bool;
+        }
+        if (obj.get("outgoing_show_prefix")) |v| {
+            if (v == .bool) combat.outgoing_show_prefix = v.bool;
+        }
         if (obj.get("damage_alert_excluded_weapons")) |v| {
             try updateOwnedString(allocator, &combat.damage_alert_excluded_weapons, v);
         }
@@ -3312,6 +3330,9 @@ pub const Config = struct {
             if (v == .string) {
                 mining.isk_rate_unit = std.meta.stringToEnum(IskRateUnit, v.string) orelse .hour;
             }
+        }
+        if (obj.get("show_prefix")) |v| {
+            if (v == .bool) mining.show_prefix = v.bool;
         }
     }
 
