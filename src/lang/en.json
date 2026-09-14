@@ -57,6 +57,7 @@
   "common.fontWeightOption.italic": "Italic",
   "common.fontWeightOption.regular": "Regular",
   "common.hexColorLabel": "Hex color",
+  "common.hotkeyBindShort": "Bind...",
   "common.hotkeyClear": "Clear",
   "common.hotkeyClickToBind": "Click to bind",
   "common.hotkeyDoneEditing": "Done editing",

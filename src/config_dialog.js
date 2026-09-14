@@ -1230,6 +1230,8 @@ function switchTab(panelId) {
     if (panelId === 'characters') alignDetailPanelNameLabel('charactersList');
     // A no-op on panels with no .binding-list, so every tab can share this call rather than listing each one.
     alignBindingLabelColumns(`.panel-content[data-panel="${panelId}"]`);
+    // Hotkey inputs on the panel just made visible read a real clientWidth for the first time - recheck their placeholder fit.
+    updateHotkeyPlaceholders();
 
     setActiveSection(null);
 }
@@ -3961,6 +3963,28 @@ function getAllHotkeyInputs() {
     return Array.from(document.querySelectorAll('input.hotkey-input'));
 }
 
+let hotkeyPlaceholderMeasureCtx = null;
+
+function hotkeyTextWidth(input, text) {
+    if (!hotkeyPlaceholderMeasureCtx) hotkeyPlaceholderMeasureCtx = document.createElement('canvas').getContext('2d');
+    const style = getComputedStyle(input);
+    hotkeyPlaceholderMeasureCtx.font = `${style.fontSize} ${style.fontFamily}`;
+    return hotkeyPlaceholderMeasureCtx.measureText(text).width;
+}
+
+// Narrow fields (e.g. the compact App Hotkeys column) can't fit "Click to bind" - fall back to "Bind..." rather than
+// letting it clip. Skips 'recording', which is managing its own placeholder ("Waiting for input...") right now.
+function updateHotkeyPlaceholders() {
+    const full = t('common.hotkeyClickToBind');
+    const short = t('common.hotkeyBindShort');
+    getAllHotkeyInputs().forEach(input => {
+        if (input.classList.contains('recording')) return;
+        const style = getComputedStyle(input);
+        const available = input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        input.placeholder = hotkeyTextWidth(input, full) <= available ? full : short;
+    });
+}
+
 function normalizeHotkeyValue(value) {
     if (!value) return null;
     const v = value.trim();
@@ -4038,6 +4062,7 @@ function updateHotkeyConflictHighlights() {
     conflicts.forEach(inputs => inputs.forEach(input => input.classList.add('hotkey-conflict')));
     refreshCharacterHotkeyBadges();
     refreshHotkeyKeycaps();
+    updateHotkeyPlaceholders();
     return conflicts;
 }
 
@@ -4816,7 +4841,10 @@ function setAccordionExpanded(accordion, expanded) {
     accordion.classList.toggle('expanded', expanded);
     accordion.querySelector('.accordion-header')?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     // .accordion-content is display:none while collapsed, so its .binding-lists could only be measured now that expanding makes them visible.
-    if (expanded) alignBindingLabelColumns('.panel-content[data-panel="advanced"]');
+    if (expanded) {
+        alignBindingLabelColumns('.panel-content[data-panel="advanced"]');
+        updateHotkeyPlaceholders();
+    }
 }
 
 function toggleAccordionEl(header) {
@@ -7738,6 +7766,7 @@ function initOverlayLayoutPreview() {
     document.getElementById('thumbSizeSlider')?.addEventListener('input', refreshOverlayLayoutPreview);
     window.addEventListener('resize', refreshOverlayLayoutPreview);
     window.addEventListener('resize', () => fitHotkeyGroupCharsList(selectedHotkeyGroupIndex));
+    window.addEventListener('resize', updateHotkeyPlaceholders);
 
     // Turning sync on (or loading a profile while it's already on) unifies every element to Character Name's current styling.
     document.getElementById('syncOverlayStyling')?.addEventListener('change', function () {
