@@ -106,6 +106,8 @@ let pendingCharacterNames = new Map();
 let defaultConfig = null;
 let webuiReady = false;
 let hasUnsavedChanges = false;
+// Value-based snapshot from the last markAsSaved() call; null until the initial load finishes. See hasRealUnsavedChanges().
+let savedFormFingerprint = null;
 
 // Server-truth min/max bounds keyed by CONFIG_SCHEMA's dotted path, in Config.zig's validate() units.
 let VALIDATION_RANGES = {};
@@ -735,6 +737,7 @@ function markAsSaved() {
     if (indicator) {
         indicator.style.display = 'none';
     }
+    savedFormFingerprint = computeFormFingerprint();
 }
 
 // Delegated (not per-element) so rows added later at runtime are covered without needing to re-run this after every dynamic list rebuild.
@@ -746,6 +749,23 @@ function isTrackedFormElement(element) {
 function isChangeEventType(element) {
     return element.type === 'checkbox' || element.type === 'radio' ||
         element.type === 'color' || element.tagName === 'SELECT';
+}
+
+// Value-based snapshot of every tracked field. Unlike hasUnsavedChanges (a one-way latch set by any input/change event),
+// this tells a real edit apart from a value that got toggled back to what it was - e.g. a checkbox clicked on then off.
+function computeFormFingerprint() {
+    const parts = [];
+    document.querySelectorAll('input, select, textarea').forEach((el) => {
+        if (!isTrackedFormElement(el)) return;
+        const value = (el.type === 'checkbox' || el.type === 'radio') ? el.checked : el.value;
+        parts.push(el.id + '=' + value);
+    });
+    return parts.join('\n');
+}
+
+// null savedFormFingerprint means the initial load hasn't finished yet, so nothing can be "unsaved" yet either.
+function hasRealUnsavedChanges() {
+    return savedFormFingerprint !== null && computeFormFingerprint() !== savedFormFingerprint;
 }
 
 function setupChangeDetection() {
@@ -1300,11 +1320,66 @@ function setActiveSection(section) {
     }
 }
 
-function closeDialog() {
+async function closeDialog() {
+    if (hasRealUnsavedChanges()) {
+        const choice = await showUnsavedCloseModal();
+        if (choice === 'cancel') return;
+        if (choice === 'save') {
+            await saveConfiguration();
+            // Save can fail (validation, hotkey conflict) without throwing - the fingerprint still
+            // won't match the saved baseline in that case, so don't close out from under the error.
+            if (hasRealUnsavedChanges()) return;
+        }
+    }
+    doCloseDialog();
+}
+
+function doCloseDialog() {
     if (typeof webui !== 'undefined') {
         webui.call('closeDialog');
     }
 }
+
+function showUnsavedCloseModal() {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('unsaved-close-modal');
+        const saveBtn = document.getElementById('unsaved-close-modal-save');
+        const discardBtn = document.getElementById('unsaved-close-modal-discard');
+        const cancelBtn = document.getElementById('unsaved-close-modal-cancel');
+
+        // All .modal elements share the same z-index, so DOM order decides who paints on top; re-parent to the end of <body> to stay above other open modals.
+        document.body.appendChild(modal);
+        modal.classList.add('show');
+
+        const handle = (choice) => {
+            cleanup();
+            resolve(choice);
+        };
+        const handleSave = () => handle('save');
+        const handleDiscard = () => handle('discard');
+        const handleCancel = () => handle('cancel');
+
+        const cleanup = () => {
+            modal.classList.remove('show');
+            saveBtn.removeEventListener('click', handleSave);
+            discardBtn.removeEventListener('click', handleDiscard);
+            cancelBtn.removeEventListener('click', handleCancel);
+        };
+
+        saveBtn.addEventListener('click', handleSave);
+        discardBtn.addEventListener('click', handleDiscard);
+        cancelBtn.addEventListener('click', handleCancel);
+    });
+}
+
+// Best-effort guard for the native title-bar close button / Alt+F4, which don't go through closeDialog() above.
+// Browsers (and Chromium-based webviews) show their own fixed dialog here - the returnValue text itself is ignored by modern engines, only whether it's set matters.
+window.addEventListener('beforeunload', (e) => {
+    if (hasRealUnsavedChanges()) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
 
 // Polls whether the main app process is running, so the status indicator reflects it being closed/reopened while this dialog stays open.
 const MAIN_APP_STATUS_POLL_MS = 3000;
@@ -6359,6 +6434,12 @@ async function loadGlobalSettingsFromBackend() {
     buildSectionNav();
 
     refreshCharacterPortraits();
+
+    // loadConfigurationFromBackend() and this function fire concurrently at startup (see the comment
+    // near refreshCharacterPortraits), so whichever finishes last must be the one to set the saved
+    // baseline - otherwise a fingerprint taken before this function's fields were populated would
+    // make the close-guard think they're an unsaved edit.
+    markAsSaved();
 }
 
 // Preference lives in global.settings.json so it applies across all profiles.

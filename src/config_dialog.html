@@ -2507,7 +2507,7 @@
                     <span class="indicator-dot">●</span> <span data-i18n="misc.unsaved-changes">Unsaved changes</span>
                 </span>
                 <button id="save-config-btn" class="button-primary" onclick="saveConfiguration()" data-i18n="button.save-configuration.label">Save</button>
-                <button class="button-outline" onclick="closeDialog()" data-i18n="button.close-dialog.label">Close</button>
+                <button id="close-dialog-btn" class="button-outline" onclick="closeDialog()" data-i18n="button.close-dialog.label">Close</button>
             </div>
         </div>
     </div>
@@ -2535,6 +2535,18 @@
                 <button id="live-switch-modal-live" class="button-primary" data-i18n="button.live-switch-modal-live.label">Make It Live</button>
                 <button id="live-switch-modal-edit" class="button-outline" data-i18n="button.live-switch-modal-edit.label">Just Edit</button>
                 <button id="live-switch-modal-cancel" class="button-outline" data-i18n="common.cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="unsaved-close-modal" class="modal">
+        <div class="modal-content">
+            <h3 data-i18n="misc.unsaved-close-heading">Unsaved Changes</h3>
+            <p style="margin: 0 0 12px 0;" data-i18n="misc.unsaved-close-hint">You have unsaved changes. Save them before closing, or close without saving?</p>
+            <div class="modal-buttons">
+                <button id="unsaved-close-modal-save" class="button-primary" data-i18n="button.unsaved-close-modal-save.label">Save</button>
+                <button id="unsaved-close-modal-discard" class="button-danger" data-i18n="button.unsaved-close-modal-discard.label">Discard</button>
+                <button id="unsaved-close-modal-cancel" class="button-outline" data-i18n="common.cancel">Cancel</button>
             </div>
         </div>
     </div>
