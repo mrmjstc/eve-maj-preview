@@ -706,11 +706,10 @@ async function waitForWebUI() {
         if (typeof webui !== 'undefined' && webui.call) {
             try {
                 await webui.call('getConfigData');
-                console.log('WebUI connection verified after', attempts * 100, 'ms');
                 webuiReady = true;
                 return true;
             } catch (error) {
-                console.log('WebUI not ready yet, attempt', attempts + 1);
+                // Not ready yet; retry below.
             }
         }
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -1122,8 +1121,6 @@ function setupThumbnailPreview() {
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
-    console.log('Config dialog initialized');
-
     applyTranslations();
     renderHotkeyBindings();
     populateLanguageSelect();
@@ -1490,7 +1487,6 @@ async function loadAppVersion() {
 }
 
 async function loadConfigurationFromBackend() {
-    console.log('Loading configuration from backend...');
     showStatus(t('status.loadingConfig'), 'info');
 
     try {
@@ -1614,8 +1610,6 @@ function populateFormFields() {
     populateNotificationTypes();
 
     refreshOverlayLayoutPreview();
-
-    console.log('Form fields populated');
 }
 
 function setFieldValue(fieldId, value) {
@@ -1720,8 +1714,6 @@ async function loadProfileList() {
                 option.textContent = t('common.defaultProfileLabel');
                 profileSelect.appendChild(option);
             }
-            
-            console.log('Loaded', data.profiles.length, 'profiles');
         }
     } catch (error) {
         logError('Failed to load profile list:', error);
@@ -1760,7 +1752,6 @@ async function switchProfile(deferLivePush = false, forceLive = false) {
         // choice === 'edit' -> leave liveConfirmedProfile as-is, so preview stays suppressed until confirmed live or saved.
     }
 
-    console.log('Switching to profile:', selectedProfile);
     showStatus(t('status.switchingToProfilePrefix') + selectedProfile.replace(/\.json$/, '') + '...', 'info');
 
     try {
@@ -3692,7 +3683,6 @@ async function saveConfiguration() {
 }
 
 async function saveConfigurationImpl() {
-    console.log('Saving configuration...');
     showStatus(t('status.savingConfig'), 'info');
 
     if (currentConfig) {
@@ -3766,7 +3756,6 @@ async function saveConfigurationImpl() {
                 markAsSaved();
             }
         } else {
-            console.log('Would save:', currentConfig);
             showStatus(t('status.configSavedMock'), 'success');
             markAsSaved();
         }
@@ -8013,8 +8002,6 @@ function toggleTravelOptions() {
 }
 
 async function browseLogDir(webuiMethod, inputId, label) {
-    console.log(`Browsing for ${label} directory...`);
-
     try {
         if (typeof webui !== 'undefined') {
             const result = await webui.call(webuiMethod);
