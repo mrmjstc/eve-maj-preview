@@ -3708,9 +3708,15 @@ fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings,
         if (thumbnail.last_bounty_isk_rate) |isk_rate| {
             var isk_buf: [16]u8 = undefined;
             const isk_abbrev = formatIskAbbrev(&isk_buf, isk_rate * period_secs);
-            bounty_text = std.fmt.bufPrint(&bounty_buf, "B: {s} ISK/{s}", .{ isk_abbrev, unit_suffix }) catch "B: ---";
+            bounty_text = if (bounty_cfg.show_prefix)
+                std.fmt.bufPrint(&bounty_buf, "ISK: {s} ISK/{s}", .{ isk_abbrev, unit_suffix }) catch "ISK: ---"
+            else
+                std.fmt.bufPrint(&bounty_buf, "{s} ISK/{s}", .{ isk_abbrev, unit_suffix }) catch "---";
         } else {
-            bounty_text = std.fmt.bufPrint(&bounty_buf, "B: ?? ISK/{s}", .{unit_suffix}) catch "B: ---";
+            bounty_text = if (bounty_cfg.show_prefix)
+                std.fmt.bufPrint(&bounty_buf, "ISK: ?? ISK/{s}", .{unit_suffix}) catch "ISK: ---"
+            else
+                std.fmt.bufPrint(&bounty_buf, "?? ISK/{s}", .{unit_suffix}) catch "---";
         }
         bounty_dims = measureText(overlay.mem_dc, bounty_text);
         bounty_pos = calculateTextPosition(bounty_cfg.position, bounty_dims.width, bounty_dims.height, overlay.width, overlay.height, bounty_cfg.offset_x, bounty_cfg.offset_y);

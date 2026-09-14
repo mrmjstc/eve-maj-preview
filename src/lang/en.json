@@ -331,6 +331,7 @@
   "field.bountyIskRateUnit.hour": "Per Hour",
   "field.bountyIskRateUnit.label": "ISK Rate Unit",
   "field.bountyIskRateUnit.minute": "Per Minute",
+  "field.bountyShowPrefix.label": "Show ISK: Prefix",
   "field.bountyWindowSeconds.hint": "The rolling look-back period the ISK/s rate is averaged over, not how often the number updates.",
   "field.bountyWindowSeconds.label": "Window (seconds)",
   "field.characterNameColor.label": "Character Name Color",

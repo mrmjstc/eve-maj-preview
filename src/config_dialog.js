@@ -494,6 +494,7 @@ const CONFIG_SCHEMA = [
     { id: 'bountyOffsetX', path: 'bounty.offset_x' },
     { id: 'bountyOffsetY', path: 'bounty.offset_y' },
     { id: 'bountyIskRateUnit', path: 'bounty.isk_rate_unit' },
+    { id: 'bountyShowPrefix', path: 'bounty.show_prefix' },
 
     { id: 'resourcesEnabled', path: 'resources.enabled' },
     { id: 'resourcesShowCpu', path: 'resources.show_cpu' },
@@ -817,7 +818,7 @@ const THUMBNAIL_PREVIEW_FIELD_IDS = [
     'miningIdleAlertWindowSeconds', 'miningIdleAlertThreshold', 'miningStoppedAlertWindowSeconds',
     'bountyEnabled', 'bountyWindowSeconds', 'bountyUpdateIntervalMs', 'bountyPosition', 'bountyColor',
     'bountyFontSize', 'bountyFontName', 'bountyFontWeight', 'bountyOffsetX', 'bountyOffsetY',
-    'bountyBgColor', 'bountyBgOpacity', 'bountyIskRateUnit',
+    'bountyBgColor', 'bountyBgOpacity', 'bountyIskRateUnit', 'bountyShowPrefix',
     'resourcesEnabled', 'resourcesShowCpu', 'resourcesShowRam', 'resourcesShowVram', 'resourcesUpdateIntervalMs',
     'resourcesPosition', 'resourcesColor', 'resourcesFontSize', 'resourcesFontName', 'resourcesFontWeight',
     'resourcesOffsetX', 'resourcesOffsetY', 'resourcesBgColor', 'resourcesBgOpacity',
@@ -979,6 +980,7 @@ function buildThumbnailPreviewPatch(includePositions = false) {
             offset_x: getFieldValue('bountyOffsetX'),
             offset_y: getFieldValue('bountyOffsetY'),
             isk_rate_unit: getFieldValue('bountyIskRateUnit'),
+            show_prefix: getFieldValue('bountyShowPrefix'),
         },
         resources: {
             enabled: getFieldValue('resourcesEnabled'),
@@ -7364,6 +7366,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
         bgColorId: 'bountyBgColor', bgOpacityId: 'bountyBgOpacity',
         popoverTitleKey: 'dynamic.overlay.bountyRateTitle', popoverFields: [
             { type: 'checkbox', id: 'bountyEnabled', labelKey: 'dynamic.overlay.showBountyRateLabel' },
+            { type: 'checkbox', id: 'bountyShowPrefix', labelKey: 'field.bountyShowPrefix.label' },
             { type: 'color', id: 'bountyColor', labelKey: 'common.textColorLabel' },
             { type: 'font-name', id: 'bountyFontName', labelKey: 'common.fontNameLabel' },
             { type: 'number', id: 'bountyFontSize', labelKey: 'dynamic.overlay.fontSizeLabel', min: 6, max: 72 },

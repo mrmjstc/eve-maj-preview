@@ -367,13 +367,14 @@ pub const ListWindow = struct {
 
         if (bounty_cfg.enabled and thumb.has_bounty_data and (thumb.last_bounty_isk_rate == null or thumb.last_bounty_isk_rate.? > 0)) {
             if (wrote) writer.writeByte(' ') catch {};
+            const isk_prefix: []const u8 = if (bounty_cfg.show_prefix) "ISK:" else "";
             if (thumb.last_bounty_isk_rate) |isk_rate| {
                 var isk_buf: [16]u8 = undefined;
                 const period_secs: f32 = if (bounty_cfg.isk_rate_unit == .hour) 3600.0 else 60.0;
                 const isk_abbrev = painter_mod.formatIskAbbrev(&isk_buf, isk_rate * period_secs);
-                writer.print("B:{s}", .{isk_abbrev}) catch {};
+                writer.print("{s}{s}", .{ isk_prefix, isk_abbrev }) catch {};
             } else {
-                writer.writeAll("B:??") catch {};
+                writer.print("{s}??", .{isk_prefix}) catch {};
             }
         }
 

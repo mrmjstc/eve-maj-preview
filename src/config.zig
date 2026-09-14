@@ -1385,6 +1385,7 @@ pub const BountyConfig = struct {
     offset_x: i32 = 0,
     offset_y: i32 = 0,
     isk_rate_unit: IskRateUnit = .hour,
+    show_prefix: bool = true,
 
     pub const WINDOW_SECONDS_MIN: u32 = 1;
     pub const WINDOW_SECONDS_MAX: u32 = 3600;
@@ -1426,6 +1427,7 @@ pub const BountyConfig = struct {
         offset_x: i32 = (BountyConfig{}).offset_x,
         offset_y: i32 = (BountyConfig{}).offset_y,
         isk_rate_unit: IskRateUnit = (BountyConfig{}).isk_rate_unit,
+        show_prefix: bool = (BountyConfig{}).show_prefix,
     };
 
     pub fn toWire(self: BountyConfig) Wire {
@@ -1442,6 +1444,7 @@ pub const BountyConfig = struct {
             .offset_x = self.offset_x,
             .offset_y = self.offset_y,
             .isk_rate_unit = self.isk_rate_unit,
+            .show_prefix = self.show_prefix,
         };
     }
 
@@ -1459,6 +1462,7 @@ pub const BountyConfig = struct {
             .offset_x = w.offset_x,
             .offset_y = w.offset_y,
             .isk_rate_unit = w.isk_rate_unit,
+            .show_prefix = w.show_prefix,
         };
     }
 };
@@ -3379,6 +3383,9 @@ pub const Config = struct {
             if (v == .string) {
                 bounty.isk_rate_unit = std.meta.stringToEnum(IskRateUnit, v.string) orelse .hour;
             }
+        }
+        if (obj.get("show_prefix")) |v| {
+            if (v == .bool) bounty.show_prefix = v.bool;
         }
     }
 
