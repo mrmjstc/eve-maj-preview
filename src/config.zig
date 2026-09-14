@@ -2591,10 +2591,6 @@ pub const Config = struct {
         pub const NOTIF_PANEL_MAX_ROWS_MAX: i32 = 30;
         pub const SPACING_MIN: i32 = 0;
         pub const SPACING_MAX: i32 = 500;
-        pub const REGION_WIDTH_MIN: i32 = 100;
-        pub const REGION_WIDTH_MAX: i32 = 7680;
-        pub const REGION_HEIGHT_MIN: i32 = 100;
-        pub const REGION_HEIGHT_MAX: i32 = 4320;
         pub const MONITOR_INDEX_MAX: u32 = 9;
         pub const LIST_VIEW_COLUMNS_MIN: u32 = 1;
         pub const LIST_VIEW_COLUMNS_MAX: u32 = 15;
@@ -2637,15 +2633,6 @@ pub const Config = struct {
                 if (y.* < START_Y_MIN) y.* = START_Y_MIN;
                 if (y.* > START_Y_MAX) y.* = START_Y_MAX;
             }
-            if (self.regionWidth) |*w| {
-                if (w.* < REGION_WIDTH_MIN) w.* = REGION_WIDTH_MIN;
-                if (w.* > REGION_WIDTH_MAX) w.* = REGION_WIDTH_MAX;
-            }
-            if (self.regionHeight) |*h| {
-                if (h.* < REGION_HEIGHT_MIN) h.* = REGION_HEIGHT_MIN;
-                if (h.* > REGION_HEIGHT_MAX) h.* = REGION_HEIGHT_MAX;
-            }
-
             if (self.monitorIndex) |*idx| {
                 if (idx.* > MONITOR_INDEX_MAX) {
                     slog.warn("Monitor index {} too high, clamping to {} (max {} monitors)", .{ idx.*, MONITOR_INDEX_MAX, MONITOR_INDEX_MAX + 1 });
@@ -4054,8 +4041,6 @@ pub const Config = struct {
 
             .@"display.spacing" = Range{ .min = DisplayConfig.SPACING_MIN, .max = DisplayConfig.SPACING_MAX },
             .@"display.newThumbnailSpacing" = Range{ .min = DisplayConfig.SPACING_MIN, .max = DisplayConfig.SPACING_MAX },
-            .@"display.regionWidth" = Range{ .min = DisplayConfig.REGION_WIDTH_MIN, .max = DisplayConfig.REGION_WIDTH_MAX },
-            .@"display.regionHeight" = Range{ .min = DisplayConfig.REGION_HEIGHT_MIN, .max = DisplayConfig.REGION_HEIGHT_MAX },
             .@"display.monitorIndex" = Range{ .min = 0, .max = DisplayConfig.MONITOR_INDEX_MAX },
             .@"display.listViewColumns" = Range{ .min = DisplayConfig.LIST_VIEW_COLUMNS_MIN, .max = DisplayConfig.LIST_VIEW_COLUMNS_MAX },
             .@"display.listViewFontSize" = Range{ .min = DisplayConfig.LIST_VIEW_FONT_SIZE_MIN, .max = DisplayConfig.LIST_VIEW_FONT_SIZE_MAX },

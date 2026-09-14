@@ -8,7 +8,7 @@ const slog = log.scoped("region_select");
 const WINDOW_CLASS_NAME = "EVE_REGION_SELECT_CLASS";
 const REDRAW_THROTTLE_MS: u64 = 16;
 const BORDER_THICKNESS: usize = 2;
-/// Below this, a drag is treated as an accidental click; distinct from DisplayConfig.REGION_WIDTH/HEIGHT_MIN, the saved-value minimum.
+/// Below this, a drag is treated as an accidental click.
 const MIN_DRAG_PX: i32 = 10;
 
 const DIM_COLOR: u32 = 0x60000000;
