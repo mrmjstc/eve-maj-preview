@@ -306,6 +306,7 @@ const CONFIG_SCHEMA = [
     { id: 'snappingThreshold', path: 'snapping.threshold' },
     { id: 'snappingScreenEdges', path: 'snapping.screenEdges' },
     { id: 'snappingThumbnailEdges', path: 'snapping.thumbnailEdges' },
+    { id: 'snappingGhostPositions', path: 'snapping.ghostPositions' },
     { id: 'snappingShowGhostBorders', path: 'snapping.showGhostPositionBorders' },
 
     { id: 'thumbWidth', path: 'thumbnail.width' },
