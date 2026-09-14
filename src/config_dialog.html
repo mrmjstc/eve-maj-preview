@@ -78,9 +78,11 @@
                 <div class="tab-item advanced-tab" data-tab="resources">
                     <span class="tab-glyph" aria-hidden="true">▤</span><span data-i18n="tab.resources.title">resource overlay</span>
                 </div>
+                <!-- Advanced tab is currently hidden - see the matching comment around its panel-content further down.
                 <div class="tab-item advanced-tab" data-tab="advanced">
                     <span class="tab-glyph" aria-hidden="true">▼</span><span data-i18n="tab.advanced.title">advanced</span>
                 </div>
+                -->
             </div>
 
             <div id="content-panel">
@@ -2206,6 +2208,7 @@
 
                 </div>
 
+                <!-- Advanced tab: fully wired (see THUMBNAIL_STATE_OVERRIDES / applyStateOverridesToForm/FromForm in config_dialog.js, and getStateConfig in config.zig/painter.zig) but hidden, sidebar entry included, pending a decision on whether to expose it. Uncomment this panel, its sidebar tab-item above, and the matching JS to re-enable.
                 <div class="panel-content advanced-tab-panel" data-panel="advanced">
                     <div class="section">
                         <h3 data-i18n="tab.advanced.section.state-overrides.heading">State Overrides</h3>
@@ -2235,10 +2238,6 @@
                                         <input type="number" id="stateActiveBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateActiveBorderWidth.placeholder">
                                     </div>
                                     <div class="binding">
-                                        <label for="stateActiveOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
-                                        <input type="number" id="stateActiveOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateActiveOpacity.placeholder">
-                                    </div>
-                                    <div class="binding">
                                         <label for="stateActiveBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
                                         <select id="stateActiveBorderStyle">
                                             <option value="" data-i18n="field.stateActiveBorderStyle.option.default">Default</option>
@@ -2253,15 +2252,15 @@
                                     </div>
                                     <div class="binding">
                                         <label for="stateActiveBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
-                                        <input type="color" id="stateActiveBorderColor">
+                                        <input type="color" id="stateActiveBorderColor" data-optional-color="true" data-default-color="#606060">
                                     </div>
                                     <div class="binding">
                                         <label for="stateActiveTextColor" data-i18n="common.textColorLabel">Text Color</label>
-                                        <input type="color" id="stateActiveTextColor">
+                                        <input type="color" id="stateActiveTextColor" data-optional-color="true" data-default-color="#FFFFFF">
                                     </div>
                                     <div class="binding">
                                         <label for="stateActiveTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                        <input type="color" id="stateActiveTextBgColor">
+                                        <input type="color" id="stateActiveTextBgColor" data-optional-color="true" data-default-color="#000000">
                                     </div>
                                 </div>
                             </div>
@@ -2291,10 +2290,6 @@
                                         <input type="number" id="stateInactiveBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateInactiveBorderWidth.placeholder">
                                     </div>
                                     <div class="binding">
-                                        <label for="stateInactiveOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
-                                        <input type="number" id="stateInactiveOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateInactiveOpacity.placeholder">
-                                    </div>
-                                    <div class="binding">
                                         <label for="stateInactiveBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
                                         <select id="stateInactiveBorderStyle">
                                             <option value="" data-i18n="field.stateInactiveBorderStyle.option.default">Default</option>
@@ -2309,15 +2304,15 @@
                                     </div>
                                     <div class="binding">
                                         <label for="stateInactiveBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
-                                        <input type="color" id="stateInactiveBorderColor">
+                                        <input type="color" id="stateInactiveBorderColor" data-optional-color="true" data-default-color="#606060">
                                     </div>
                                     <div class="binding">
                                         <label for="stateInactiveTextColor" data-i18n="common.textColorLabel">Text Color</label>
-                                        <input type="color" id="stateInactiveTextColor">
+                                        <input type="color" id="stateInactiveTextColor" data-optional-color="true" data-default-color="#FFFFFF">
                                     </div>
                                     <div class="binding">
                                         <label for="stateInactiveTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                        <input type="color" id="stateInactiveTextBgColor">
+                                        <input type="color" id="stateInactiveTextBgColor" data-optional-color="true" data-default-color="#000000">
                                     </div>
                                 </div>
                             </div>
@@ -2347,10 +2342,6 @@
                                         <input type="number" id="stateAlertBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateAlertBorderWidth.placeholder">
                                     </div>
                                     <div class="binding">
-                                        <label for="stateAlertOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
-                                        <input type="number" id="stateAlertOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateAlertOpacity.placeholder">
-                                    </div>
-                                    <div class="binding">
                                         <label for="stateAlertBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
                                         <select id="stateAlertBorderStyle">
                                             <option value="" data-i18n="field.stateAlertBorderStyle.option.default">Default</option>
@@ -2365,15 +2356,15 @@
                                     </div>
                                     <div class="binding">
                                         <label for="stateAlertBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
-                                        <input type="color" id="stateAlertBorderColor">
+                                        <input type="color" id="stateAlertBorderColor" data-optional-color="true" data-default-color="#606060">
                                     </div>
                                     <div class="binding">
                                         <label for="stateAlertTextColor" data-i18n="common.textColorLabel">Text Color</label>
-                                        <input type="color" id="stateAlertTextColor">
+                                        <input type="color" id="stateAlertTextColor" data-optional-color="true" data-default-color="#FFFFFF">
                                     </div>
                                     <div class="binding">
                                         <label for="stateAlertTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                        <input type="color" id="stateAlertTextBgColor">
+                                        <input type="color" id="stateAlertTextBgColor" data-optional-color="true" data-default-color="#000000">
                                     </div>
                                 </div>
                             </div>
@@ -2403,10 +2394,6 @@
                                         <input type="number" id="stateMinimizedBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateMinimizedBorderWidth.placeholder">
                                     </div>
                                     <div class="binding">
-                                        <label for="stateMinimizedOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
-                                        <input type="number" id="stateMinimizedOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateMinimizedOpacity.placeholder">
-                                    </div>
-                                    <div class="binding">
                                         <label for="stateMinimizedBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
                                         <select id="stateMinimizedBorderStyle">
                                             <option value="" data-i18n="field.stateMinimizedBorderStyle.option.default">Default</option>
@@ -2421,15 +2408,15 @@
                                     </div>
                                     <div class="binding">
                                         <label for="stateMinimizedBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
-                                        <input type="color" id="stateMinimizedBorderColor">
+                                        <input type="color" id="stateMinimizedBorderColor" data-optional-color="true" data-default-color="#606060">
                                     </div>
                                     <div class="binding">
                                         <label for="stateMinimizedTextColor" data-i18n="common.textColorLabel">Text Color</label>
-                                        <input type="color" id="stateMinimizedTextColor">
+                                        <input type="color" id="stateMinimizedTextColor" data-optional-color="true" data-default-color="#FFFFFF">
                                     </div>
                                     <div class="binding">
                                         <label for="stateMinimizedTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                        <input type="color" id="stateMinimizedTextBgColor">
+                                        <input type="color" id="stateMinimizedTextBgColor" data-optional-color="true" data-default-color="#000000">
                                     </div>
                                 </div>
                             </div>
@@ -2459,10 +2446,6 @@
                                         <input type="number" id="stateDraggingBorderWidth" min="1" max="50" placeholder="Default" data-i18n-placeholder="field.stateDraggingBorderWidth.placeholder">
                                     </div>
                                     <div class="binding">
-                                        <label for="stateDraggingOpacity" data-i18n="common.opacityLabel">Opacity (0-255)</label>
-                                        <input type="number" id="stateDraggingOpacity" min="0" max="255" placeholder="Default" data-i18n-placeholder="field.stateDraggingOpacity.placeholder">
-                                    </div>
-                                    <div class="binding">
                                         <label for="stateDraggingBorderStyle" data-i18n="common.borderStyleLabel">Border Style</label>
                                         <select id="stateDraggingBorderStyle">
                                             <option value="" data-i18n="field.stateDraggingBorderStyle.option.default">Default</option>
@@ -2477,15 +2460,15 @@
                                     </div>
                                     <div class="binding">
                                         <label for="stateDraggingBorderColor" data-i18n="common.borderColorLabel">Border Color</label>
-                                        <input type="color" id="stateDraggingBorderColor">
+                                        <input type="color" id="stateDraggingBorderColor" data-optional-color="true" data-default-color="#606060">
                                     </div>
                                     <div class="binding">
                                         <label for="stateDraggingTextColor" data-i18n="common.textColorLabel">Text Color</label>
-                                        <input type="color" id="stateDraggingTextColor">
+                                        <input type="color" id="stateDraggingTextColor" data-optional-color="true" data-default-color="#FFFFFF">
                                     </div>
                                     <div class="binding">
                                         <label for="stateDraggingTextBgColor" data-i18n="common.textBgColorLabel">Text Background Color</label>
-                                        <input type="color" id="stateDraggingTextBgColor">
+                                        <input type="color" id="stateDraggingTextBgColor" data-optional-color="true" data-default-color="#000000">
                                     </div>
                                 </div>
                             </div>
@@ -2493,6 +2476,7 @@
 
                     </div>
                 </div>
+                -->
             </div>
         </div>
 

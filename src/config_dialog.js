@@ -414,11 +414,12 @@ const CONFIG_SCHEMA = [
     { id: 'hotkeyPreviousNotified', path: 'hotkeys.hotkeyPreviousNotified', transform: 'vkhex' },
     { id: 'hotkeySuspend', path: 'hotkeys.hotkeySuspend', transform: 'vkhex' },
 
+    // State Overrides section is currently hidden in the dialog (see config_dialog.html) - these are disabled along with it.
     // "active" is intentionally not here - unchecking it must write null (defer to activeThumbnailHidden), not false; see applySpecialFields*.
-    { id: 'stateInactiveShow', path: 'thumbnail.inactive.showThumbnail' },
-    { id: 'stateAlertShow', path: 'thumbnail.alert.showThumbnail' },
-    { id: 'stateMinimizedShow', path: 'thumbnail.minimized.showThumbnail' },
-    { id: 'stateDraggingShow', path: 'thumbnail.dragging.showThumbnail' },
+    // { id: 'stateInactiveShow', path: 'thumbnail.inactive.showThumbnail' },
+    // { id: 'stateAlertShow', path: 'thumbnail.alert.showThumbnail' },
+    // { id: 'stateMinimizedShow', path: 'thumbnail.minimized.showThumbnail' },
+    // { id: 'stateDraggingShow', path: 'thumbnail.dragging.showThumbnail' },
 
     { id: 'notificationsEnabled', path: 'thumbnail.notifications.enabled' },
     { id: 'notificationPosition', path: 'thumbnail.notifications.position' },
@@ -644,6 +645,65 @@ const BG_COLOR_FIELDS = [
     { colorId: 'resourcesBgColor', opacityId: 'resourcesBgOpacity', path: 'resources.bg_color' },
 ];
 
+/* State Overrides section is currently hidden in the dialog (see config_dialog.html) - kept here, correct and working, in case it gets re-enabled later.
+// The 5 thumbnail states the Advanced tab's "State Overrides" accordions can override; idPrefix matches
+// the HTML (e.g. stateActiveBorderWidth) and key matches the Zig config (thumbnail.active.borderWidth).
+// showThumbnail isn't listed here - Active's is a special case (see applySpecialFieldsFromForm) and the
+// other four are plain CONFIG_SCHEMA entries, since only these six fields need the nullable handling below.
+const THUMBNAIL_STATE_OVERRIDES = [
+    { idPrefix: 'stateActive', key: 'active' },
+    { idPrefix: 'stateInactive', key: 'inactive' },
+    { idPrefix: 'stateAlert', key: 'alert' },
+    { idPrefix: 'stateMinimized', key: 'minimized' },
+    { idPrefix: 'stateDragging', key: 'dragging' },
+];
+
+// Mirrors setFieldValue for a nullable data-optional-color swatch: shows its data-default-color placeholder
+// and marks it cleared when unset, matching the "Clear to Default" convention resolveOptionalColor() reads back.
+function setOptionalColorField(fieldId, value) {
+    const field = document.getElementById(fieldId);
+    if (!field) return;
+    if (value === null || value === undefined) {
+        field.value = field.dataset.defaultColor || '#000000';
+        field.dataset.cleared = 'true';
+        field.title = t('common.notSetInheritingColor');
+    } else {
+        field.value = zigColorToHtml(value);
+        delete field.dataset.cleared;
+        field.removeAttribute('title');
+    }
+    syncSwatchHexInput(field);
+}
+
+function applyStateOverridesToForm() {
+    THUMBNAIL_STATE_OVERRIDES.forEach(({ idPrefix, key }) => {
+        const override = currentConfig.thumbnail?.[key] || {};
+        setCheckboxValue(`${idPrefix}ShowBorder`, override.showBorder);
+        setFieldValue(`${idPrefix}BorderWidth`, override.borderWidth);
+        setFieldValue(`${idPrefix}BorderStyle`, override.borderStyle);
+        setOptionalColorField(`${idPrefix}BorderColor`, override.borderColor);
+        setOptionalColorField(`${idPrefix}TextColor`, override.textColor);
+        setOptionalColorField(`${idPrefix}TextBgColor`, override.textBgColor);
+    });
+}
+
+// showBorder is saved as a plain true/false (not preserved as null/"inherit") once touched - same
+// simplification already used by the Inactive/Alert/Minimized/Dragging showThumbnail checkboxes here.
+function applyStateOverridesFromForm() {
+    THUMBNAIL_STATE_OVERRIDES.forEach(({ idPrefix, key }) => {
+        if (!currentConfig.thumbnail[key]) currentConfig.thumbnail[key] = {};
+        const override = currentConfig.thumbnail[key];
+
+        override.showBorder = getFieldValue(`${idPrefix}ShowBorder`);
+        override.borderWidth = getNullableFieldValue(`${idPrefix}BorderWidth`);
+        override.borderStyle = getFieldValue(`${idPrefix}BorderStyle`) || null;
+        override.borderColor = resolveOptionalColor(document.getElementById(`${idPrefix}BorderColor`), override.borderColor != null);
+        override.textColor = resolveOptionalColor(document.getElementById(`${idPrefix}TextColor`), override.textColor != null);
+        override.textBgColor = resolveOptionalColor(document.getElementById(`${idPrefix}TextBgColor`), override.textBgColor != null);
+    });
+}
+*/
+
 // Fields that can't be expressed as a single {id, path} pair: composite values, asymmetric load/save, or non-trivial defaults.
 function applySpecialFieldsToForm() {
     setFieldValue('startX', currentConfig.display?.startX);
@@ -664,7 +724,9 @@ function applySpecialFieldsToForm() {
     const exclusionOverlayOpacityPercent = opacityToPercent(zigColorAlpha(currentConfig.thumbnail?.exclusionOverlayColor));
     setFieldValue('exclusionOverlayOpacity', exclusionOverlayOpacityPercent);
 
-    setCheckboxValue('stateActiveShow', currentConfig.thumbnail?.active?.showThumbnail);
+    // State Overrides section is currently hidden in the dialog - see config_dialog.html.
+    // setCheckboxValue('stateActiveShow', currentConfig.thumbnail?.active?.showThumbnail);
+    // applyStateOverridesToForm();
 
     setCheckboxValue('ttsSpeakCharacterName', currentConfig.thumbnail?.notifications?.tts_speak_character_name !== false);
     setFieldValue('notifCycleRetention', currentConfig.thumbnail?.notifications?.notified_cycle_retention_seconds ?? 30);
@@ -683,8 +745,10 @@ function applySpecialFieldsFromForm() {
 
     currentConfig.thumbnail.exclusionOverlayColor = zigColorWithAlpha(getFieldValue('exclusionOverlayColor'), percentToOpacity(getFieldValue('exclusionOverlayOpacity')));
 
-    if (!currentConfig.thumbnail.active) currentConfig.thumbnail.active = {};
-    currentConfig.thumbnail.active.showThumbnail = getFieldValue('stateActiveShow') ? true : null;
+    // State Overrides section is currently hidden in the dialog - see config_dialog.html.
+    // if (!currentConfig.thumbnail.active) currentConfig.thumbnail.active = {};
+    // currentConfig.thumbnail.active.showThumbnail = getFieldValue('stateActiveShow') ? true : null;
+    // applyStateOverridesFromForm();
 
     const rawRetention = parseInt(document.getElementById('notifCycleRetention').value, 10) || 30;
     currentConfig.thumbnail.notifications.notified_cycle_retention_seconds =
@@ -1026,7 +1090,7 @@ function buildHotkeyGroupBadgesPreviewPatch() {
 }
 
 // A color counts as "set" if it was already set on load, or the user changed it from the #000000 default; "Clear to Default" sets dataset.cleared to override this.
-function resolveOptionalCharacterColor(input, hadValue) {
+function resolveOptionalColor(input, hadValue) {
     if (!input || input.dataset.cleared === 'true') return null;
     const changed = input.value.toUpperCase() !== '#000000';
     return (hadValue || changed) ? htmlColorToZig(input.value) : null;
@@ -1064,13 +1128,13 @@ function buildCharacterOverridesPreviewPatch(includePositions = false) {
         const h = height ? (parseInt(height.value) || null) : null;
         const thumbnailSize = (w || h) ? { width: w, height: h } : null;
 
-        const activeOut = resolveOptionalCharacterColor(activeColor, !!(char.borderColors && char.borderColors.activeBorderColor));
-        const inactiveOut = resolveOptionalCharacterColor(inactiveColor, !!(char.borderColors && char.borderColors.inactiveBorderColor));
+        const activeOut = resolveOptionalColor(activeColor, !!(char.borderColors && char.borderColors.activeBorderColor));
+        const inactiveOut = resolveOptionalColor(inactiveColor, !!(char.borderColors && char.borderColors.inactiveBorderColor));
         const borderColors = (activeOut || inactiveOut)
             ? { activeBorderColor: activeOut, inactiveBorderColor: inactiveOut }
             : null;
 
-        const nameColorOut = resolveOptionalCharacterColor(nameColor, !!char.nameColor);
+        const nameColorOut = resolveOptionalColor(nameColor, !!char.nameColor);
 
         const entry = { name: char.name, displayName, hideThumbnail, thumbnailSize, borderColors, nameColor: nameColorOut, opacity };
         if (includePositions && char.position) entry.position = char.position;
@@ -5978,13 +6042,13 @@ function saveCharacters() {
             char.thumbnailSize = null;
         }
         
-        const activeOut = resolveOptionalCharacterColor(activeColor, !!(char.borderColors && char.borderColors.activeBorderColor));
-        const inactiveOut = resolveOptionalCharacterColor(inactiveColor, !!(char.borderColors && char.borderColors.inactiveBorderColor));
+        const activeOut = resolveOptionalColor(activeColor, !!(char.borderColors && char.borderColors.activeBorderColor));
+        const inactiveOut = resolveOptionalColor(inactiveColor, !!(char.borderColors && char.borderColors.inactiveBorderColor));
         char.borderColors = (activeOut || inactiveOut)
             ? { activeBorderColor: activeOut, inactiveBorderColor: inactiveOut }
             : null;
 
-        char.nameColor = resolveOptionalCharacterColor(nameColor, !!char.nameColor);
+        char.nameColor = resolveOptionalColor(nameColor, !!char.nameColor);
     });
 }
 
@@ -7225,7 +7289,7 @@ function toggleUniqueCharacterColors() {
     const inactiveBorderColorOptions = document.getElementById('inactiveBorderColorOptions');
 
     if (uniqueColorsCheckbox) {
-        // Inactive border color is per-character too (see resolveOptionalCharacterColor) -
+        // Inactive border color is per-character too (see resolveOptionalColor) -
         // it dims along with the focused field instead of staying interactive while overridden.
         focusedBorderColorOptions?.classList.toggle('is-disabled', uniqueColorsCheckbox.checked);
         inactiveBorderColorOptions?.classList.toggle('is-disabled', uniqueColorsCheckbox.checked);
