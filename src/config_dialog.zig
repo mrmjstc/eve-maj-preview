@@ -18,20 +18,48 @@ const config_js = @embedFile("config_dialog.js");
 const layout_preview_jpg = @embedFile("assets/layout_preview.jpg");
 
 const catalog_en = @embedFile("lang/en.json");
+const catalog_de = @embedFile("lang/de.json");
+const catalog_ru = @embedFile("lang/ru.json");
+const catalog_zh = @embedFile("lang/zh.json");
+const catalog_pt = @embedFile("lang/pt.json");
+const catalog_es = @embedFile("lang/es.json");
+const catalog_fr = @embedFile("lang/fr.json");
+const catalog_pl = @embedFile("lang/pl.json");
 
 /// Add a language by dropping src/lang/xx.json, embedding it above, and adding one variant here plus one arm each in `catalog()` and `displayName()`.
 const SupportedLang = enum {
     en,
+    de,
+    ru,
+    zh,
+    pt,
+    es,
+    fr,
+    pl,
 
     fn catalog(self: SupportedLang) []const u8 {
         return switch (self) {
             .en => catalog_en,
+            .de => catalog_de,
+            .ru => catalog_ru,
+            .zh => catalog_zh,
+            .pt => catalog_pt,
+            .es => catalog_es,
+            .fr => catalog_fr,
+            .pl => catalog_pl,
         };
     }
 
     fn displayName(self: SupportedLang) []const u8 {
         return switch (self) {
             .en => "English",
+            .de => "Deutsch",
+            .ru => "Русский",
+            .zh => "简体中文",
+            .pt => "Português",
+            .es => "Español",
+            .fr => "Français",
+            .pl => "Polski",
         };
     }
 };
