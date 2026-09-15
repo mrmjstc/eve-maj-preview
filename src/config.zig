@@ -1602,6 +1602,11 @@ pub const NotificationTypeConfig = struct {
     flash_border: bool = false,
     // Also requires the global NotificationConfig.tts_enabled master switch.
     tts_enabled: bool = false,
+    // Self-contained, unlike tts_enabled - there is no global sound master switch.
+    sound_enabled: bool = false,
+    // Absolute path to a .wav/.mp3 file; may be set while sound_enabled is false so the picked file isn't lost by unchecking.
+    sound_path: ?[]const u8 = null,
+    sound_volume: u8 = 100,
 
     pub const Wire = struct {
         enabled: bool = (NotificationTypeConfig{}).enabled,
@@ -1614,6 +1619,9 @@ pub const NotificationTypeConfig = struct {
         show_border: bool = (NotificationTypeConfig{}).show_border,
         flash_border: bool = (NotificationTypeConfig{}).flash_border,
         tts_enabled: bool = (NotificationTypeConfig{}).tts_enabled,
+        sound_enabled: bool = (NotificationTypeConfig{}).sound_enabled,
+        sound_path: ?[]const u8 = null,
+        sound_volume: u8 = (NotificationTypeConfig{}).sound_volume,
     };
 
     pub fn toWire(self: NotificationTypeConfig) Wire {
@@ -1628,10 +1636,13 @@ pub const NotificationTypeConfig = struct {
             .show_border = self.show_border,
             .flash_border = self.flash_border,
             .tts_enabled = self.tts_enabled,
+            .sound_enabled = self.sound_enabled,
+            .sound_path = self.sound_path,
+            .sound_volume = self.sound_volume,
         };
     }
 
-    pub fn fromWire(w: Wire) NotificationTypeConfig {
+    pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !NotificationTypeConfig {
         return .{
             .enabled = w.enabled,
             .duration_ms = w.duration_ms,
@@ -1643,7 +1654,14 @@ pub const NotificationTypeConfig = struct {
             .show_border = w.show_border,
             .flash_border = w.flash_border,
             .tts_enabled = w.tts_enabled,
+            .sound_enabled = w.sound_enabled,
+            .sound_path = if (w.sound_path) |sp| try allocator.dupe(u8, sp) else null,
+            .sound_volume = w.sound_volume,
         };
+    }
+
+    pub fn deinit(self: *NotificationTypeConfig, allocator: std.mem.Allocator) void {
+        if (self.sound_path) |p| allocator.free(p);
     }
 };
 
@@ -1667,7 +1685,10 @@ pub const TypeConfigMapWire = struct {
             const ntype = std.meta.stringToEnum(types.NotificationType, entry.key_ptr.*) orelse continue;
             const type_wire = try std.json.parseFromValue(NotificationTypeConfig.Wire, allocator, entry.value_ptr.*, opts);
             defer type_wire.deinit();
-            result.map.set(ntype, type_wire.value);
+            var wire_value = type_wire.value;
+            // type_wire owns an arena freed by the defer above; re-dupe with the outer allocator so sound_path outlives it.
+            if (wire_value.sound_path) |sp| wire_value.sound_path = try allocator.dupe(u8, sp);
+            result.map.set(ntype, wire_value);
         }
         return result;
     }
@@ -1757,7 +1778,7 @@ pub const NotificationConfig = struct {
         var map: std.enums.EnumArray(types.NotificationType, NotificationTypeConfig) = .initFill(.{});
         inline for (std.meta.fields(types.NotificationType)) |f| {
             const ntype = @field(types.NotificationType, f.name);
-            map.set(ntype, NotificationTypeConfig.fromWire(w.type_configs.map.get(ntype)));
+            map.set(ntype, try NotificationTypeConfig.fromWire(w.type_configs.map.get(ntype), allocator));
         }
         return .{
             .enabled = w.enabled,
@@ -2240,6 +2261,7 @@ pub const Config = struct {
         pub const OFFSET_MIN: i32 = -500;
         pub const OFFSET_MAX: i32 = 500;
         pub const TTS_VOLUME_MAX: u8 = 100;
+        pub const SOUND_VOLUME_MAX: u8 = 100;
         /// SAPI native range.
         pub const TTS_RATE_MIN: i8 = -10;
         pub const TTS_RATE_MAX: i8 = 10;
@@ -2337,6 +2359,10 @@ pub const Config = struct {
                 }
                 if (type_config.throttle_ms > NOTIFICATION_THROTTLE_MS_MAX) {
                     type_config.throttle_ms = NOTIFICATION_THROTTLE_MS_MAX;
+                    changed = true;
+                }
+                if (type_config.sound_volume > SOUND_VOLUME_MAX) {
+                    type_config.sound_volume = SOUND_VOLUME_MAX;
                     changed = true;
                 }
                 if (changed) self.notifications.type_configs.set(ntype, type_config);
@@ -3135,7 +3161,6 @@ pub const Config = struct {
         if (obj.get("notified_cycle_retention_seconds")) |v| {
             if (v == .integer) notif.notified_cycle_retention_seconds = std.math.cast(u32, v.integer) orelse notif.notified_cycle_retention_seconds;
         }
-
         if (obj.get("type_configs")) |type_configs_val| {
             if (type_configs_val == .object) {
                 inline for (std.meta.fields(types.NotificationType)) |field| {
@@ -3161,6 +3186,17 @@ pub const Config = struct {
                             }
                             if (type_val.object.get("tts_enabled")) |v| {
                                 if (v == .bool) type_config.tts_enabled = v.bool;
+                            }
+                            if (type_val.object.get("sound_enabled")) |v| {
+                                if (v == .bool) type_config.sound_enabled = v.bool;
+                            }
+                            if (type_val.object.get("sound_volume")) |v| {
+                                if (v == .integer) {
+                                    if (std.math.cast(u8, v.integer)) |val| type_config.sound_volume = val;
+                                }
+                            }
+                            if (type_val.object.get("sound_path")) |v| {
+                                try updateOwnedOptionalString(allocator, &type_config.sound_path, v);
                             }
                             if (type_val.object.get("show_border")) |v| {
                                 if (v == .bool) type_config.show_border = v.bool;
@@ -3196,6 +3232,20 @@ pub const Config = struct {
         const old = field.*;
         field.* = try allocator.dupe(u8, v.string);
         allocator.free(old);
+    }
+
+    fn updateOwnedOptionalString(allocator: std.mem.Allocator, field: *?[]const u8, v: std.json.Value) !void {
+        if (v == .string) {
+            if (field.*) |old| {
+                if (std.mem.eql(u8, old, v.string)) return;
+            }
+            const new_value = try allocator.dupe(u8, v.string);
+            if (field.*) |old| allocator.free(old);
+            field.* = new_value;
+        } else if (v == .null) {
+            if (field.*) |old| allocator.free(old);
+            field.* = null;
+        }
     }
 
     pub fn parseJsonCombatConfig(combat: *CombatConfig, obj: std.json.ObjectMap, allocator: std.mem.Allocator) !void {
@@ -4139,6 +4189,11 @@ pub const Config = struct {
         freeFontNameIfOwned(allocator, self.display.listViewFontName);
         freeFontNameIfOwned(allocator, self.display.notifInfoPanelFontName);
 
+        var type_config_it = self.thumbnail.notifications.type_configs.iterator();
+        while (type_config_it.next()) |entry| {
+            entry.value.deinit(allocator);
+        }
+
         for (self.characters.items) |*char| {
             char.deinit(allocator);
         }
@@ -4260,6 +4315,10 @@ pub const Config = struct {
         freeFontNameIfOwned(allocator, self.thumbnail.systemNameFontName);
         freeFontNameIfOwned(allocator, self.thumbnail.quickGroupBadgeFontName);
         freeFontNameIfOwned(allocator, self.thumbnail.notifications.font_name);
+        var old_type_config_it = self.thumbnail.notifications.type_configs.iterator();
+        while (old_type_config_it.next()) |entry| {
+            entry.value.deinit(allocator);
+        }
         self.thumbnail = new_thumb;
 
         freeFontNameIfOwned(allocator, self.combat.incoming_font_name);

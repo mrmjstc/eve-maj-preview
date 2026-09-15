@@ -91,13 +91,14 @@ Not just JSON schema - it's the shared model layer with both a wire format and r
 
 ## Threading model
 
-Four threads, total:
+Six threads, total:
 
 1. **Main thread** - the Win32 message loop, all window procs, all `SetWinEventHook`/low-level keyboard/mouse hook callbacks (Win32 delivers these to the installing thread), and `onTimerTick` (see below).
 2. **Chatlog worker thread** (`chatlog.zig`, opt-out via `useThreading: false`) - log file I/O and parsing, communicating through the three `EventQueue(T)` queues.
 3. **TTS worker thread** (`tts.zig`) - a lazily-started, persistent STA-COM thread draining a mutex-guarded command queue, so `Speak()` never blocks the caller.
-4. **Update-check thread** - one-shot, detached, writes into a mutex-guarded global `UpdateStatus` that the tray menu reads.
-5. **Clipboard-upload thread** (`paste_upload.zig`) - one-shot, detached, spawned when a URL hotkey with `uploadClipboard` set is pressed; POSTs the clipboard to the target URL, copies the resulting page's URL back to the clipboard, then opens it.
+4. **Sound worker thread** (`sound.zig`) - same lazily-started, persistent, mutex-guarded-queue shape as the TTS worker, decoding and playing custom notification sound alerts (WAV/MP3 via Media Foundation, played via waveOut) so `playAlert()` never blocks the caller and overlapping alerts don't cut each other off.
+5. **Update-check thread** - one-shot, detached, writes into a mutex-guarded global `UpdateStatus` that the tray menu reads.
+6. **Clipboard-upload thread** (`paste_upload.zig`) - one-shot, detached, spawned when a URL hotkey with `uploadClipboard` set is pressed; POSTs the clipboard to the target URL, copies the resulting page's URL back to the clipboard, then opens it.
 
 Inter-module communication is predominantly **direct calls on shared global pointers**, not an event bus: `main.zig` holds module-level globals (`g_scout`, `g_painter`, `g_hotkey_manager`, `g_chatlog_monitor`, ...), and other modules mirror this with their own optional global pointers set during init (`painter.g_painter_ptr`, `scout.g_scout_ptr`) so OS callbacks - which can't carry a `self` pointer through the Win32 callback ABI - can reach the live instances. A couple of function-pointer fields exist purely to break compile-time circular imports (`list_view.g_activate_fn`, set by `Painter.init` so `list_view.zig` can call into `input.zig` without importing it). The closest thing to real message passing is the chatlog event queues (cross-thread) and Win32 messages themselves, used both for same-process signaling (tray → main loop) and cross-process IPC (`config.exe` → main app).
 
@@ -120,6 +121,7 @@ The expensive full `EnumWindows` rescan is itself throttled to roughly every 20 
 
 - **`tray.zig`** - system tray icon, right-click menu (profiles, dragging/auto-minimize/visibility/suspend-hotkeys toggles, Close All, update notice), launches `config.exe`.
 - **`tts.zig`** - Windows SAPI via late-bound `IDispatch::Invoke` on its own STA-COM thread; `speakAlert()` is the fire-and-forget public API.
+- **`sound.zig`** - custom per-notification-type sound alerts: decodes WAV/MP3 via Media Foundation's `IMFSourceReader` (hand-written COM vtables, transcribed from mingw-w64's headers rather than Microsoft's alphabetized Learn docs) and plays the PCM via winmm `waveOut`; `playAlert()` is the fire-and-forget public API, `playBlocking()` the underlying synchronous call also used directly by `config_dialog.zig`'s "Test Sound" button.
 - **`update.zig`** - checks GitHub Releases via `std.http.Client` on a background thread, run independently by both `main.zig` and `config_dialog.zig` since they're separate processes, each with its own `UpdateStatus`; opens the release page in a browser.
 - **`paste_upload.zig`** - a URL hotkey's optional clipboard-upload path: POSTs the clipboard as form data to the target URL via `std.http.Client`, relies on the client's default redirect handling to land on the created paste's page (the standard Post/Redirect/Get pattern), copies that page's URL back to the clipboard, then opens it in a browser.
 - **`list_view.zig`** - the compact `ClientList` view mode: a single custom-drawn panel (badge/name/system/notification per row) as an alternative to per-window DWM thumbnails, wired to `input.zig` via function pointers to avoid a circular import.

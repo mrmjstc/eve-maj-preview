@@ -11,6 +11,7 @@ const chatlog = @import("chatlog.zig");
 const activity_mod = @import("activity_tracker.zig");
 const resource_tracker_mod = @import("resource_tracker.zig");
 const tts = @import("tts.zig");
+const sound = @import("sound.zig");
 const tray = @import("tray.zig");
 const protocol = @import("protocol.zig");
 const update = @import("update.zig");
@@ -595,6 +596,7 @@ fn mainImpl(init: std.process.Init) !void {
     g_io = init.io;
     log.setIo(g_io);
     tts.setIo(g_io);
+    sound.setIo(g_io);
     update.setIo(g_io);
     paste_upload.setIo(g_io);
     config_mod.setIo(g_io);
@@ -714,6 +716,7 @@ fn mainImpl(init: std.process.Init) !void {
     }
 
     defer tts.shutdown();
+    defer sound.shutdown();
 
     // Allocate console in debug mode (Windows GUI subsystem doesn't create one by default)
     if (g_global_settings.logLevel == .debug) {

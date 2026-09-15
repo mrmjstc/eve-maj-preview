@@ -53,6 +53,9 @@ pub fn build(b: *std.Build) void {
     exe.root_module.linkSystemLibrary("oleaut32", .{});
     exe.root_module.linkSystemLibrary("dbghelp", .{});
     exe.root_module.linkSystemLibrary("shcore", .{});
+    exe.root_module.linkSystemLibrary("winmm", .{});
+    exe.root_module.linkSystemLibrary("mfplat", .{});
+    exe.root_module.linkSystemLibrary("mfreadwrite", .{});
 
     exe.root_module.addWin32ResourceFile(.{
         .file = b.path("app.rc"),
@@ -104,6 +107,9 @@ pub fn build(b: *std.Build) void {
     config_dialog.root_module.linkSystemLibrary("gdi32", .{});
     config_dialog.root_module.linkSystemLibrary("shell32", .{});
     config_dialog.root_module.linkSystemLibrary("psapi", .{});
+    config_dialog.root_module.linkSystemLibrary("winmm", .{});
+    config_dialog.root_module.linkSystemLibrary("mfplat", .{});
+    config_dialog.root_module.linkSystemLibrary("mfreadwrite", .{});
 
     config_dialog.root_module.addOptions("build_options", options);
 

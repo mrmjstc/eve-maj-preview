@@ -8,6 +8,7 @@ const scout = @import("scout.zig");
 const ultra_potato = @import("ultra_potato.zig");
 const esi_prices = @import("esi_prices.zig");
 const update = @import("update.zig");
+const sound = @import("sound.zig");
 const log = @import("log.zig");
 
 const slog = log.scoped("config_dialog");
@@ -218,6 +219,8 @@ fn mainImpl(init: std.process.Init) !void {
     _ = try win.bind("resetProfile", resetProfile);
     _ = try win.bind("browseChatlogDir", browseChatlogDir);
     _ = try win.bind("browseGamelogDir", browseGamelogDir);
+    _ = try win.bind("browseSoundFile", browseSoundFile);
+    _ = try win.bind("testSoundFile", testSoundFile);
     _ = try win.bind("setCharacterWindowPosition", setCharacterWindowPosition);
     _ = try win.bind("clearCharacterWindowPosition", clearCharacterWindowPosition);
     _ = try win.bind("setAllCharacterWindowPositions", setAllCharacterWindowPositions);
@@ -2062,6 +2065,39 @@ fn browseChatlogDir(e: *webui.Event) void {
 
 fn browseGamelogDir(e: *webui.Event) void {
     browseDirAndReturn(e, "Select Gamelog Directory");
+}
+
+fn browseSoundFile(e: *webui.Event) void {
+    const allocator = g_allocator;
+
+    const owner: ?win32.HWND = if (e.getWindow().win32GetHwnd()) |hwnd| @ptrCast(hwnd) else |_| null;
+    const selected_path = win32.showFilePicker(allocator, "Select Sound File", "Audio Files (*.wav, *.mp3)", "*.wav;*.mp3", owner) catch {
+        e.returnString("");
+        return;
+    };
+
+    if (selected_path) |path| {
+        defer allocator.free(path);
+        const path_z = allocator.dupeZ(u8, path) catch {
+            e.returnString("");
+            return;
+        };
+        defer allocator.free(path_z);
+        e.returnString(path_z);
+    } else {
+        e.returnString("");
+    }
+}
+
+// Plays directly rather than via sound.zig's worker queue - only one test can run at a time here.
+fn testSoundFile(e: *webui.Event) void {
+    const path = e.getStringAt(0);
+    const volume_str = e.getStringAt(1);
+    const volume = std.fmt.parseInt(u8, volume_str, 10) catch 100;
+
+    sound.playBlocking(g_allocator, path, volume) catch |err| {
+        slog.warn("Test sound playback failed for '{s}': {}", .{ path, err });
+    };
 }
 
 /// Bound to config_dialog.js's window.onerror/unhandledrejection handlers and its

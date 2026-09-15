@@ -535,6 +535,9 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `suppress_when_clicked`: Suppress this type for `suppress_click_duration_ms` after the user clicks the thumbnail (default: `false`)
 - `throttle_ms`: Ignore repeat notifications of this type until this many ms have passed since the last one actually shown (per thumbnail); suppressed attempts don't reset the window - `0` disables throttling (default: `10000`, clamped to 0–300000)
 - `tts_enabled`: Speak this type's alert aloud - requires the global `tts_enabled` master switch above to also be `true` (default: `false`)
+- `sound_enabled`: Play `sound_path` as a custom sound alert - self-contained, unlike `tts_enabled` there is no global master switch (default: `false`)
+- `sound_path`: Absolute path to a `.wav` or `.mp3` file to play when this type fires; only these two formats are supported (decoded via Windows Media Foundation - no OGG or other formats). May be set while `sound_enabled` is `false` without losing the picked file (default: `null`)
+- `sound_volume`: Playback volume for this type's sound alert, 0–100 (default: `100`); each type has its own, there is no shared/global volume
 - `show_border`: Whether to draw a border at all while this notification is active; `false` suppresses the border entirely regardless of the Alert state's border settings or any `border_color` override (default: `true`)
 - `flash_border`: Blink the border on/off 4 times (150ms per phase) when the notification starts, then settle into a steady-on border for the rest of the duration; has no effect when `show_border` is `false` (default: `false`)
 - `border_color`: Optional ARGB color override for the thumbnail border while this notification is active (default: `null`, falls back to the Alert state's border color)

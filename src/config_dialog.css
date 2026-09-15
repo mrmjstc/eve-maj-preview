@@ -2765,12 +2765,14 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* Duration/Limit fields in the Event Alerts detail form hold a couple of
-   digits - the base input[type=number] rule's width:100% (or .field-row's
-   flex:1, when nested in one to sit under the checkbox it depends on) would
-   otherwise stretch them the full width of the detail-form's control column. */
-.detail-number-input {
-    width: 70px;
-    flex: none;
+   digits - right-aligned like the Colors rows' swatches, and no wider than
+   those. flex-shrink stays 1 (not the more obvious flex:none) so the field
+   still yields on a narrow panel instead of forcing a horizontal scrollbar;
+   the selector below (not just the bare class) is needed to outrank
+   .field-row > input:not([type="color"])'s flex:1 at equal specificity. */
+.field-row > input.detail-number-input {
+    flex: 0 1 110px;
+    margin-left: auto;
 }
 
 /* The index chip and the remove button bracket the card, so they take the same

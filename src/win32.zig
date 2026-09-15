@@ -1079,6 +1079,15 @@ const IFileOpenDialog = extern struct {
         if (hr < 0) return null;
         return result;
     }
+
+    fn setFileTypes(self: *IFileOpenDialog, specs: []const COMDLG_FILTERSPEC) c_long {
+        return self.vtable.SetFileTypes(self, @intCast(specs.len), specs.ptr);
+    }
+};
+
+const COMDLG_FILTERSPEC = extern struct {
+    pszName: [*:0]const u16,
+    pszSpec: [*:0]const u16,
 };
 
 const IShellItem = extern struct {
@@ -1158,6 +1167,61 @@ pub fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8, owner: 
     const path = try std.unicode.utf16LeToUtf8Alloc(allocator, path_slice);
 
     return path;
+}
+
+/// Shows the Win32 "Open File" dialog restricted to `filter_spec` (e.g. "*.wav;*.mp3"); see showFolderPicker for the rest.
+pub fn showFilePicker(allocator: std.mem.Allocator, title: []const u8, filter_name: []const u8, filter_spec: []const u8, owner: ?HWND) !?[]const u8 {
+    const COINIT_APARTMENTTHREADED: u32 = 0x2;
+    const COINIT_DISABLE_OLE1DDE: u32 = 0x4;
+    const hr = CoInitializeEx(null, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    // 0x00000001 is S_FALSE (already initialized), which is OK.
+    if (hr < 0 and hr != 0x00000001) {
+        return error.ComInitFailed;
+    }
+    defer CoUninitialize();
+
+    const CLSCTX_INPROC_SERVER: u32 = 0x1;
+    var dialog_ptr: ?*anyopaque = null;
+    const create_hr = CoCreateInstance(
+        &CLSID_FileOpenDialog,
+        null,
+        CLSCTX_INPROC_SERVER,
+        &IID_IFileOpenDialog,
+        &dialog_ptr,
+    );
+
+    if (create_hr < 0 or dialog_ptr == null) {
+        return error.CreateDialogFailed;
+    }
+
+    const dialog: *IFileOpenDialog = @ptrCast(@alignCast(dialog_ptr.?));
+    defer dialog.release();
+
+    const title_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, title);
+    defer allocator.free(title_w);
+    _ = dialog.setTitle(title_w.ptr);
+
+    const filter_name_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, filter_name);
+    defer allocator.free(filter_name_w);
+    const filter_spec_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, filter_spec);
+    defer allocator.free(filter_spec_w);
+    const specs = [_]COMDLG_FILTERSPEC{.{ .pszName = filter_name_w.ptr, .pszSpec = filter_spec_w.ptr }};
+    _ = dialog.setFileTypes(&specs);
+
+    const show_hr = dialog.show(owner);
+    if (show_hr < 0) {
+        return null;
+    }
+
+    const result_item = dialog.getResult() orelse return null;
+    defer result_item.release();
+
+    const path_w = result_item.getDisplayName(SIGDN_FILESYSPATH) orelse return null;
+    defer CoTaskMemFree(path_w);
+
+    const path_len = std.mem.indexOfSentinel(u16, 0, path_w);
+    const path_slice = path_w[0..path_len :0];
+    return try std.unicode.utf16LeToUtf8Alloc(allocator, path_slice);
 }
 
 extern "shell32" fn SHGetKnownFolderPath(

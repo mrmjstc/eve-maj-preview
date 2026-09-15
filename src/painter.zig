@@ -16,6 +16,7 @@ const main_mod = @import("main.zig");
 const log = @import("log.zig");
 const slog = log.scoped("painter");
 const tts = @import("tts.zig");
+const sound = @import("sound.zig");
 
 const WINDOW_CLASS_NAME = "EVE_THUMBNAIL_CLASS";
 const TEXT_WINDOW_CLASS_NAME = "EVE_TEXT_OVERLAY_CLASS";
@@ -1165,6 +1166,13 @@ pub const Painter = struct {
                     tts.speakAlert(spoken);
                 } else {
                     tts.speakAlert(notification_text);
+                }
+            }
+
+            // Self-contained per type, unlike TTS above - there is no global sound master switch or shared volume.
+            if (type_config.sound_enabled) {
+                if (type_config.sound_path) |path| {
+                    sound.playAlert(path, type_config.sound_volume);
                 }
             }
 

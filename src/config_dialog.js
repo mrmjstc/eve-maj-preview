@@ -1718,6 +1718,10 @@ function percentToOpacity(percent) {
     return Math.round(Math.max(0, Math.min(100, percent)) / 100 * 255);
 }
 
+function soundFileBaseName(path) {
+    return path ? path.split(/[\\/]/).pop() : '';
+}
+
 // Mirrors applyConfigSchemaFromForm()'s 'ms' transform, for fields (e.g. update_interval_ms) whose DOM value is fractional seconds.
 function msFieldValue(fieldId) {
     const raw = parseFloat(document.getElementById(fieldId)?.value);
@@ -5446,7 +5450,7 @@ function populateCharacters() {
                     </div>
                     <p class="hint hint-extra">${t('dynamic.character.opacityHint')}</p>
                 </div>
-                <div class="detail-field detail-field-top">
+                <div class="detail-field">
                     <label>${t('dynamic.character.borderColorsHeading')}</label>
                     <div class="detail-checks detail-color-rows">
                         <div class="color-row">
@@ -5455,12 +5459,22 @@ function populateCharacters() {
                                 <input type="color" id="char_${index}_activeColor" data-optional-color="true" ${!char.borderColors?.activeBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.activeBorderColor) || '#FFFF00'}">
                             </div>
                         </div>
+                    </div>
+                </div>
+                <div class="detail-field">
+                    <label></label>
+                    <div class="detail-checks detail-color-rows">
                         <div class="color-row">
                             <span class="label-body">${t('dynamic.character.inactiveBorderColorLabel')}</span>
                             <div class="swatch-wrap">
                                 <input type="color" id="char_${index}_inactiveColor" data-optional-color="true" ${!char.borderColors?.inactiveBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.inactiveBorderColor) || '#606060'}">
                             </div>
                         </div>
+                    </div>
+                </div>
+                <div class="detail-field">
+                    <label></label>
+                    <div class="detail-checks detail-color-rows">
                         <div class="color-row">
                             <span class="label-body">${t('field.characterNameColor.label')}</span>
                             <div class="swatch-wrap">
@@ -5469,25 +5483,45 @@ function populateCharacters() {
                         </div>
                     </div>
                 </div>
-                <div class="detail-field detail-field-top">
+                <div class="detail-field">
                     <label>${t('dynamic.character.behaviorHeading')}</label>
                     <div class="detail-checks">
                         <label>
                             <input type="checkbox" id="char_${index}_excludeMinimize" ${char.excludeFromMinimize ? 'checked' : ''}>
                             <span class="label-body">${t('dynamic.character.excludeMinimizeLabel')}</span>
                         </label>
+                    </div>
+                </div>
+                <div class="detail-field">
+                    <label></label>
+                    <div class="detail-checks">
                         <label>
                             <input type="checkbox" id="char_${index}_excludeCloseAll" ${char.excludeFromCloseAll ? 'checked' : ''}>
                             <span class="label-body">${t('dynamic.character.excludeCloseAllLabel')}</span>
                         </label>
+                    </div>
+                </div>
+                <div class="detail-field">
+                    <label></label>
+                    <div class="detail-checks">
                         <label>
                             <input type="checkbox" id="char_${index}_excludeAutoMove" ${char.excludeFromAutoMove ? 'checked' : ''}>
                             <span class="label-body">${t('dynamic.character.excludeAutoMoveLabel')}</span>
                         </label>
+                    </div>
+                </div>
+                <div class="detail-field">
+                    <label></label>
+                    <div class="detail-checks">
                         <label>
                             <input type="checkbox" id="char_${index}_hideThumbnail" ${char.hideThumbnail ? 'checked' : ''}>
                             <span class="label-body">${t('dynamic.character.hideThumbnailLabel')}</span>
                         </label>
+                    </div>
+                </div>
+                <div class="detail-field">
+                    <label></label>
+                    <div class="detail-checks">
                         <label>
                             <input type="checkbox" id="char_${index}_notificationsMuted" ${char.notificationsMuted ? 'checked' : ''}>
                             <span class="label-body">${t('dynamic.character.muteNotificationsLabel')}</span>
@@ -6985,6 +7019,12 @@ function populateNotificationTypes() {
                                    ${config.tts_enabled ? 'checked' : ''}>
                             <span class="label-body">${t('tab.notifications.detail.speech.heading')}</span>
                         </label>
+                        <label title="${t('tab.notifications.table.sound.title')}">
+                            <input type="checkbox" id="notif_${notifType.key}_soundEnabled"
+                                   ${config.sound_enabled ? 'checked' : ''}
+                                   onchange="toggleNotifSoundEnabled('${notifType.key}')">
+                            <span class="label-body">${t('tab.notifications.detail.sound.heading')}</span>
+                        </label>
                         <label title="${t('tab.notifications.table.border-show.title')}">
                             <input type="checkbox" id="notif_${notifType.key}_showBorder"
                                    ${config.show_border ? 'checked' : ''}
@@ -6998,7 +7038,7 @@ function populateNotificationTypes() {
                         </label>
                     </div>
                 </div>
-                <div class="detail-field detail-field-top">
+                <div class="detail-field">
                     <label>${t('dynamic.character.borderColorsHeading')}</label>
                     <div class="detail-checks detail-color-rows">
                         <div class="color-row">
@@ -7021,6 +7061,11 @@ function populateNotificationTypes() {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+                <div class="detail-field">
+                    <label></label>
+                    <div class="detail-checks detail-color-rows">
                         <div class="color-row">
                             <span class="label-body">${t('tab.notifications.detail.border-color.heading')}</span>
                             <div class="notif-cell-inline">
@@ -7041,6 +7086,28 @@ function populateNotificationTypes() {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+                <div class="detail-field">
+                    <label>${t('tab.notifications.detail.sound.pathLabel')}</label>
+                    <div class="field-row">
+                        <input type="text" id="notif_${notifType.key}_soundPath" readonly
+                               data-full-path="${config.sound_path || ''}"
+                               value="${soundFileBaseName(config.sound_path)}"
+                               title="${config.sound_path || ''}"
+                               placeholder="${t('tab.notifications.detail.sound.noFile')}">
+                        <button type="button" class="btn-nowrap" id="notif_${notifType.key}_soundBrowseBtn" onclick="browseSoundFile('${notifType.key}')">${t('common.browse')}</button>
+                        <button type="button" class="button-icon button-icon-danger" id="notif_${notifType.key}_soundClearBtn" onclick="clearSoundFile('${notifType.key}')" title="${t('tab.notifications.detail.sound.clear')}">&times;</button>
+                    </div>
+                </div>
+                <div class="detail-field">
+                    <label></label>
+                    <div class="field-row">
+                        <label for="notif_${notifType.key}_soundVolume">${t('field.soundVolume.label')}</label>
+                        <input type="range" id="notif_${notifType.key}_soundVolume" min="0" max="100"
+                               value="${config.sound_volume ?? 100}" data-value-target="notif_${notifType.key}_soundVolumeValue">
+                        <span id="notif_${notifType.key}_soundVolumeValue">${config.sound_volume ?? 100}</span>
+                        <button type="button" class="btn-nowrap" id="notif_${notifType.key}_soundTestBtn" onclick="testSound('${notifType.key}')">${t('tab.notifications.detail.sound.test')}</button>
                     </div>
                 </div>
             </div>
@@ -7078,6 +7145,12 @@ function toggleNotificationTypeEnabled(typeKey) {
     const borderColorInput = document.getElementById(`notif_${typeKey}_borderColor`);
     const textColorEnabledCheckbox = document.getElementById(`notif_${typeKey}_textColorEnabled`);
     const textColorInput = document.getElementById(`notif_${typeKey}_textColor`);
+    const soundEnabledCheckbox = document.getElementById(`notif_${typeKey}_soundEnabled`);
+    const soundPathInput = document.getElementById(`notif_${typeKey}_soundPath`);
+    const soundBrowseBtn = document.getElementById(`notif_${typeKey}_soundBrowseBtn`);
+    const soundClearBtn = document.getElementById(`notif_${typeKey}_soundClearBtn`);
+    const soundTestBtn = document.getElementById(`notif_${typeKey}_soundTestBtn`);
+    const soundVolumeInput = document.getElementById(`notif_${typeKey}_soundVolume`);
 
     const isEnabled = enabledCheckbox && enabledCheckbox.checked;
     const ttsMasterEnabled = document.getElementById('ttsEnabled');
@@ -7089,6 +7162,16 @@ function toggleNotificationTypeEnabled(typeKey) {
     if (throttleInput) throttleInput.disabled = !isEnabled;
     if (ttsCheckbox) ttsCheckbox.disabled = !isTtsAvailable;
     if (showBorderCheckbox) showBorderCheckbox.disabled = !isEnabled;
+    // Sound alert is self-contained (no global master switch to also check, unlike TTS above).
+    if (soundEnabledCheckbox) soundEnabledCheckbox.disabled = !isEnabled;
+    // The checkbox only gates whether the alert fires for real - picking/clearing/testing a file and setting its
+    // volume are always allowed while the type is enabled, regardless of the checkbox (browseSoundFile() checks
+    // it automatically once a file is set).
+    if (soundPathInput) soundPathInput.disabled = !isEnabled;
+    if (soundBrowseBtn) soundBrowseBtn.disabled = !isEnabled;
+    if (soundClearBtn) soundClearBtn.disabled = !isEnabled;
+    if (soundTestBtn) soundTestBtn.disabled = !isEnabled;
+    if (soundVolumeInput) soundVolumeInput.disabled = !isEnabled;
     // Text color isn't tied to the border - it renders whenever the notification is enabled, regardless of border visibility.
     if (textColorEnabledCheckbox) textColorEnabledCheckbox.disabled = !isEnabled;
     if (textColorInput) textColorInput.disabled = !isEnabled;
@@ -7100,6 +7183,10 @@ function toggleNotificationTypeEnabled(typeKey) {
 }
 
 function toggleNotifShowBorder(typeKey) {
+    toggleNotificationTypeEnabled(typeKey);
+}
+
+function toggleNotifSoundEnabled(typeKey) {
     toggleNotificationTypeEnabled(typeKey);
 }
 
@@ -8094,6 +8181,55 @@ function browseGamelogDir() {
     return browseLogDir('browseGamelogDir', 'gamelogDir', 'gamelog');
 }
 
+async function browseSoundFile(typeKey) {
+    try {
+        if (typeof webui === 'undefined') {
+            logWarn('WebUI not available for browsing sound file');
+            return;
+        }
+        const result = await webui.call('browseSoundFile');
+        if (result && result !== '') {
+            const input = document.getElementById(`notif_${typeKey}_soundPath`);
+            if (input) {
+                input.value = soundFileBaseName(result);
+                input.title = result;
+                input.dataset.fullPath = result;
+            }
+            const enabledCheckbox = document.getElementById(`notif_${typeKey}_soundEnabled`);
+            if (enabledCheckbox) enabledCheckbox.checked = true;
+            toggleNotificationTypeEnabled(typeKey);
+        }
+    } catch (error) {
+        logError('Failed to browse sound file:', error);
+    }
+}
+
+function clearSoundFile(typeKey) {
+    const input = document.getElementById(`notif_${typeKey}_soundPath`);
+    if (input) {
+        input.value = '';
+        input.title = '';
+        input.dataset.fullPath = '';
+    }
+}
+
+async function testSound(typeKey) {
+    const input = document.getElementById(`notif_${typeKey}_soundPath`);
+    const path = input ? input.dataset.fullPath : '';
+    if (!path) return;
+    const volumeInput = document.getElementById(`notif_${typeKey}_soundVolume`);
+    const volume = volumeInput ? volumeInput.value : '100';
+    try {
+        if (typeof webui === 'undefined') {
+            logWarn('WebUI not available for testing sound');
+            return;
+        }
+        await webui.call('testSoundFile', path, volume);
+    } catch (error) {
+        logError('Failed to test sound:', error);
+    }
+}
+
 function saveNotificationTypes() {
     if (!currentConfig.thumbnail) currentConfig.thumbnail = {};
     if (!currentConfig.thumbnail.notifications) currentConfig.thumbnail.notifications = {};
@@ -8110,6 +8246,9 @@ function saveNotificationTypes() {
         const suppressClicked = document.getElementById(`notif_${notifType.key}_suppressClicked`);
         const throttle = document.getElementById(`notif_${notifType.key}_throttle`);
         const ttsTypeEnabled = document.getElementById(`notif_${notifType.key}_tts`);
+        const soundTypeEnabled = document.getElementById(`notif_${notifType.key}_soundEnabled`);
+        const soundPath = document.getElementById(`notif_${notifType.key}_soundPath`);
+        const soundVolume = document.getElementById(`notif_${notifType.key}_soundVolume`);
 
         if (!enabled) return;
 
@@ -8132,6 +8271,10 @@ function saveNotificationTypes() {
         config.throttle_ms = Math.round(throttleValue);
 
         config.tts_enabled = ttsTypeEnabled ? ttsTypeEnabled.checked : false;
+
+        config.sound_enabled = soundTypeEnabled ? soundTypeEnabled.checked : false;
+        config.sound_path = soundPath && soundPath.dataset.fullPath ? soundPath.dataset.fullPath : null;
+        config.sound_volume = soundVolume ? parseInt(soundVolume.value, 10) : 100;
 
         const showBorder = document.getElementById(`notif_${notifType.key}_showBorder`);
         config.show_border = showBorder ? showBorder.checked : false;
