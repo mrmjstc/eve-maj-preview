@@ -1600,9 +1600,9 @@ pub const NotificationTypeConfig = struct {
     show_border: bool = false,
     // Flashes on/off a few times on start, then settles into an always-on border; no effect when show_border is false.
     flash_border: bool = false,
-    // Also requires the global NotificationConfig.tts_enabled master switch.
+    // Self-contained - there is no global TTS master switch.
     tts_enabled: bool = false,
-    // Self-contained, unlike tts_enabled - there is no global sound master switch.
+    // Self-contained too - there is no global sound master switch either.
     sound_enabled: bool = false,
     // Absolute path to a .wav/.mp3 file; may be set while sound_enabled is false so the picked file isn't lost by unchecking.
     sound_path: ?[]const u8 = null,
@@ -1706,8 +1706,6 @@ pub const NotificationConfig = struct {
 
     suppress_click_duration_ms: u32 = 2000,
 
-    // A given alert only speaks when this master switch AND its NotificationTypeConfig.tts_enabled are both true.
-    tts_enabled: bool = false,
     tts_volume: u8 = 100,
     tts_rate: i8 = 0,
     tts_speak_character_name: bool = true,
@@ -1739,7 +1737,6 @@ pub const NotificationConfig = struct {
         font_weight: types.FontWeight = NotificationConfig.init().font_weight,
         bg_color: Argb = .{ .value = NotificationConfig.init().bg_color },
         suppress_click_duration_ms: u32 = NotificationConfig.init().suppress_click_duration_ms,
-        tts_enabled: bool = NotificationConfig.init().tts_enabled,
         tts_volume: u8 = NotificationConfig.init().tts_volume,
         tts_rate: i8 = NotificationConfig.init().tts_rate,
         tts_speak_character_name: bool = NotificationConfig.init().tts_speak_character_name,
@@ -1764,7 +1761,6 @@ pub const NotificationConfig = struct {
             .font_weight = self.font_weight,
             .bg_color = .{ .value = self.bg_color },
             .suppress_click_duration_ms = self.suppress_click_duration_ms,
-            .tts_enabled = self.tts_enabled,
             .tts_volume = self.tts_volume,
             .tts_rate = self.tts_rate,
             .tts_speak_character_name = self.tts_speak_character_name,
@@ -1790,7 +1786,6 @@ pub const NotificationConfig = struct {
             .font_weight = w.font_weight,
             .bg_color = w.bg_color.value,
             .suppress_click_duration_ms = w.suppress_click_duration_ms,
-            .tts_enabled = w.tts_enabled,
             .tts_volume = w.tts_volume,
             .tts_rate = w.tts_rate,
             .tts_speak_character_name = w.tts_speak_character_name,
@@ -3138,9 +3133,6 @@ pub const Config = struct {
         }
         if (obj.get("suppress_click_duration_ms")) |v| {
             if (v == .integer) notif.suppress_click_duration_ms = std.math.cast(u32, v.integer) orelse notif.suppress_click_duration_ms;
-        }
-        if (obj.get("tts_enabled")) |v| {
-            if (v == .bool) notif.tts_enabled = v.bool;
         }
         if (obj.get("tts_volume")) |v| {
             if (v == .integer) {

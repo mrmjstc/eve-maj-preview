@@ -1153,8 +1153,8 @@ pub const Painter = struct {
             self.trackNotifiedCharacter(thumbnail.character_name);
             self.pushNotificationHistory(source_hwnd, thumbnail.character_name, notification_text, notification_type);
 
-            // Speaks the same phrase the visual notification shows, gated by the master switch plus this type's own opt-in.
-            if (self.config.thumbnail.notifications.tts_enabled and type_config.tts_enabled) {
+            // Speaks the same phrase the visual notification shows; self-contained, no global master switch.
+            if (type_config.tts_enabled) {
                 tts.setVoiceSettings(self.config.thumbnail.notifications.tts_volume, self.config.thumbnail.notifications.tts_rate);
                 if (self.config.thumbnail.notifications.tts_speak_character_name and thumbnail.character_name.len > 0) {
                     const spoken_name = if (self.config.thumbnail.notifications.tts_use_display_name)
@@ -1169,7 +1169,7 @@ pub const Painter = struct {
                 }
             }
 
-            // Self-contained per type, unlike TTS above - there is no global sound master switch or shared volume.
+            // Self-contained too, like TTS above - there is no global sound master switch or shared volume.
             if (type_config.sound_enabled) {
                 if (type_config.sound_path) |path| {
                     sound.playAlert(path, type_config.sound_volume);

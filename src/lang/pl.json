@@ -541,7 +541,6 @@
   "field.travelThresholdPercent.label": "Minimalny procent",
   "field.travelWindowSeconds.hint": "Jak długo postać może pozostawać w tyle za skokiem grupy, zanim to się uruchomi.",
   "field.travelWindowSeconds.label": "Okno nadrabiania (sekundy)",
-  "field.ttsEnabled.label": "Włącz syntezę mowy",
   "field.ttsRate.hint": "0 to normalne tempo mowy; ujemne jest wolniejsze, dodatnie szybsze.",
   "field.ttsRate.label": "Szybkość",
   "field.ttsSpeakCharacterName.label": "Poprzedzaj wypowiadane alerty nazwą postaci",

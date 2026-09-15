@@ -541,7 +541,6 @@
   "field.travelThresholdPercent.label": "Minimum Percentage",
   "field.travelWindowSeconds.hint": "How long a character can lag behind the group's jump before this fires.",
   "field.travelWindowSeconds.label": "Catch-Up Window (seconds)",
-  "field.ttsEnabled.label": "Enable Text-to-Speech",
   "field.ttsRate.hint": "0 is normal speaking speed; negative is slower, positive is faster.",
   "field.ttsRate.label": "Speed",
   "field.ttsSpeakCharacterName.label": "Prefix Spoken Alerts with the Character Name",

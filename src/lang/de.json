@@ -541,7 +541,6 @@
   "field.travelThresholdPercent.label": "Mindestprozentsatz",
   "field.travelWindowSeconds.hint": "Wie lange ein Charakter hinter dem Sprung der Gruppe zurückbleiben darf, bevor dies auslöst.",
   "field.travelWindowSeconds.label": "Aufholfenster (Sekunden)",
-  "field.ttsEnabled.label": "Text-to-Speech aktivieren",
   "field.ttsRate.hint": "0 ist normale Sprechgeschwindigkeit; negativ ist langsamer, positiv ist schneller.",
   "field.ttsRate.label": "Geschwindigkeit",
   "field.ttsSpeakCharacterName.label": "Gesprochenen Alarmen den Charakternamen voranstellen",

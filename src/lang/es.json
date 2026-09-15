@@ -541,7 +541,6 @@
   "field.travelThresholdPercent.label": "Porcentaje Mínimo",
   "field.travelWindowSeconds.hint": "Cuánto puede rezagarse un personaje del salto del grupo antes de que esto se dispare.",
   "field.travelWindowSeconds.label": "Ventana de Alcance (segundos)",
-  "field.ttsEnabled.label": "Activar Texto a Voz",
   "field.ttsRate.hint": "0 es la velocidad de habla normal; negativo es más lento, positivo es más rápido.",
   "field.ttsRate.label": "Velocidad",
   "field.ttsSpeakCharacterName.label": "Anteponer el Nombre del Personaje a las Alertas Habladas",

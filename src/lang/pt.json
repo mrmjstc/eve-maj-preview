@@ -541,7 +541,6 @@
   "field.travelThresholdPercent.label": "Percentual Mínimo",
   "field.travelWindowSeconds.hint": "Por quanto tempo um personagem pode ficar para trás do salto do grupo antes que isso dispare.",
   "field.travelWindowSeconds.label": "Janela de Recuperação (segundos)",
-  "field.ttsEnabled.label": "Ativar Texto-para-Fala",
   "field.ttsRate.hint": "0 é a velocidade normal de fala; negativo é mais lento, positivo é mais rápido.",
   "field.ttsRate.label": "Velocidade",
   "field.ttsSpeakCharacterName.label": "Prefixar Alertas Falados com o Nome do Personagem",

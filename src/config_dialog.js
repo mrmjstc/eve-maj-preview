@@ -429,7 +429,6 @@ const CONFIG_SCHEMA = [
     { id: 'notificationFontSize', path: 'thumbnail.notifications.font_size' },
     { id: 'notificationFontWeight', path: 'thumbnail.notifications.font_weight' },
     { id: 'notifSuppressClickDuration', path: 'thumbnail.notifications.suppress_click_duration_ms', transform: 'ms' },
-    { id: 'ttsEnabled', path: 'thumbnail.notifications.tts_enabled' },
     { id: 'ttsVolume', path: 'thumbnail.notifications.tts_volume', default: 100 },
     { id: 'ttsRate', path: 'thumbnail.notifications.tts_rate', default: 0 },
     { id: 'ttsUseDisplayName', path: 'thumbnail.notifications.tts_use_display_name', default: false },
@@ -1654,7 +1653,7 @@ function populateFormFields() {
     toggleUniqueCharacterNameColors();
     toggleClientListOptions();
     toggleAutoMinimizeOptions();
-    toggleTtsOptions();
+    toggleTtsDisplayNameOption();
     toggleNotificationOptions();
     toggleChatlogOptions();
     toggleCombatOptions();
@@ -7153,16 +7152,15 @@ function toggleNotificationTypeEnabled(typeKey) {
     const soundVolumeInput = document.getElementById(`notif_${typeKey}_soundVolume`);
 
     const isEnabled = enabledCheckbox && enabledCheckbox.checked;
-    const ttsMasterEnabled = document.getElementById('ttsEnabled');
-    const isTtsAvailable = isEnabled && ttsMasterEnabled && ttsMasterEnabled.checked;
 
     if (durationInput) durationInput.disabled = !isEnabled;
     if (suppressFocusedCheckbox) suppressFocusedCheckbox.disabled = !isEnabled;
     if (suppressClickedCheckbox) suppressClickedCheckbox.disabled = !isEnabled;
     if (throttleInput) throttleInput.disabled = !isEnabled;
-    if (ttsCheckbox) ttsCheckbox.disabled = !isTtsAvailable;
+    // TTS is self-contained too (no global master switch to also check).
+    if (ttsCheckbox) ttsCheckbox.disabled = !isEnabled;
     if (showBorderCheckbox) showBorderCheckbox.disabled = !isEnabled;
-    // Sound alert is self-contained (no global master switch to also check, unlike TTS above).
+    // Sound alert is self-contained as well.
     if (soundEnabledCheckbox) soundEnabledCheckbox.disabled = !isEnabled;
     // The checkbox only gates whether the alert fires for real - picking/clearing/testing a file and setting its
     // volume are always allowed while the type is enabled, regardless of the checkbox (browseSoundFile() checks
@@ -8080,35 +8078,12 @@ function toggleNotificationOptions() {
     }
 }
 
-function toggleTtsOptions() {
-    const ttsEnabled = document.getElementById('ttsEnabled');
-    const ttsOptions = document.getElementById('ttsOptions');
-
-    if (ttsEnabled && ttsOptions) {
-        const isEnabled = ttsEnabled.checked;
-        ttsOptions.classList.toggle('is-disabled', !isEnabled);
-
-        const inputs = ttsOptions.querySelectorAll('input');
-        inputs.forEach(input => {
-            input.disabled = !isEnabled;
-        });
-    }
-
-    toggleTtsDisplayNameOption();
-
-    // The per-type "TTS" checkboxes only matter when the master switch is on.
-    if (typeof NOTIFICATION_TYPES !== 'undefined') {
-        NOTIFICATION_TYPES.forEach(nt => toggleNotificationTypeEnabled(nt.key));
-    }
-}
-
 // Use Display Name only matters when the character name is actually spoken.
 function toggleTtsDisplayNameOption() {
-    const ttsEnabled = document.getElementById('ttsEnabled');
     const speakCharacterName = document.getElementById('ttsSpeakCharacterName');
     const useDisplayName = document.getElementById('ttsUseDisplayName');
     if (useDisplayName) {
-        useDisplayName.disabled = !(ttsEnabled && ttsEnabled.checked && speakCharacterName && speakCharacterName.checked);
+        useDisplayName.disabled = !(speakCharacterName && speakCharacterName.checked);
     }
 }
 

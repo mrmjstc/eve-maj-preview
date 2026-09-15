@@ -541,7 +541,6 @@
   "field.travelThresholdPercent.label": "Минимальный процент",
   "field.travelWindowSeconds.hint": "Сколько персонаж может отставать от прыжка группы, прежде чем сработает алерт.",
   "field.travelWindowSeconds.label": "Окно ожидания (секунды)",
-  "field.ttsEnabled.label": "Включить озвучку (TTS)",
   "field.ttsRate.hint": "0 - обычная скорость речи; отрицательное значение медленнее, положительное быстрее.",
   "field.ttsRate.label": "Скорость",
   "field.ttsSpeakCharacterName.label": "Добавлять имя персонажа перед озвучкой алерта",

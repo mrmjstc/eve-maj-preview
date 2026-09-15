@@ -541,7 +541,6 @@
   "field.travelThresholdPercent.label": "Pourcentage minimum",
   "field.travelWindowSeconds.hint": "Combien de temps un personnage peut être en retard sur le saut du groupe avant que cela ne se déclenche.",
   "field.travelWindowSeconds.label": "Fenêtre de rattrapage (secondes)",
-  "field.ttsEnabled.label": "Activer la synthèse vocale",
   "field.ttsRate.hint": "0 est la vitesse d'élocution normale ; négatif est plus lent, positif est plus rapide.",
   "field.ttsRate.label": "Vitesse",
   "field.ttsSpeakCharacterName.label": "Préfixer les alertes vocales par le nom du personnage",

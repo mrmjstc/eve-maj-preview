@@ -479,7 +479,6 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
       "offset_x": 0,
       "offset_y": 0,
       "suppress_click_duration_ms": 2000,
-      "tts_enabled": false,
       "tts_volume": 100,
       "tts_rate": 0,
       "tts_speak_character_name": true,
@@ -521,7 +520,6 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `position`: Where notifications appear on thumbnails (see Text Positions above)
 - `offset_x`/`offset_y`: Fine-tune notification position (pixels)
 - `suppress_click_duration_ms`: How long to suppress after click, applies per-type when that type's `suppress_when_clicked` is `true` (milliseconds, default: `2000`)
-- `tts_enabled`: Master switch for text-to-speech - a given alert only speaks when this **and** its own `tts_enabled` are both `true` (default: `false`)
 - `tts_volume`: Speech volume, 0–100 (default: `100`)
 - `tts_rate`: Speech rate, native SAPI range -10 (slowest) to 10 (fastest) (default: `0`)
 - `tts_speak_character_name`: Prefix spoken alerts with `"<character>, "` (default: `true`)
@@ -534,8 +532,8 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `suppress_when_focused`: Suppress this type when the EVE client has focus (default: `false`)
 - `suppress_when_clicked`: Suppress this type for `suppress_click_duration_ms` after the user clicks the thumbnail (default: `false`)
 - `throttle_ms`: Ignore repeat notifications of this type until this many ms have passed since the last one actually shown (per thumbnail); suppressed attempts don't reset the window - `0` disables throttling (default: `10000`, clamped to 0–300000)
-- `tts_enabled`: Speak this type's alert aloud - requires the global `tts_enabled` master switch above to also be `true` (default: `false`)
-- `sound_enabled`: Play `sound_path` as a custom sound alert - self-contained, unlike `tts_enabled` there is no global master switch (default: `false`)
+- `tts_enabled`: Speak this type's alert aloud - self-contained, there is no global TTS master switch (default: `false`)
+- `sound_enabled`: Play `sound_path` as a custom sound alert - self-contained too, there is no global sound master switch either (default: `false`)
 - `sound_path`: Absolute path to a `.wav` or `.mp3` file to play when this type fires; only these two formats are supported (decoded via Windows Media Foundation - no OGG or other formats). May be set while `sound_enabled` is `false` without losing the picked file (default: `null`)
 - `sound_volume`: Playback volume for this type's sound alert, 0–100 (default: `100`); each type has its own, there is no shared/global volume
 - `show_border`: Whether to draw a border at all while this notification is active; `false` suppresses the border entirely regardless of the Alert state's border settings or any `border_color` override (default: `true`)

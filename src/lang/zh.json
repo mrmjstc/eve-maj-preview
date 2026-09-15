@@ -541,7 +541,6 @@
   "field.travelThresholdPercent.label": "最小百分比",
   "field.travelWindowSeconds.hint": "角色滞后于队伍跳跃多久后触发此警报。",
   "field.travelWindowSeconds.label": "追赶窗口 (秒)",
-  "field.ttsEnabled.label": "启用文字转语音",
   "field.ttsRate.hint": "0 为正常语速;负值更慢,正值更快。",
   "field.ttsRate.label": "语速",
   "field.ttsSpeakCharacterName.label": "在语音警报前加上角色名称",
