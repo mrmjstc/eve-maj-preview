@@ -25,12 +25,18 @@ var g_anchor: win32.POINT = undefined;
 var g_current: win32.POINT = undefined;
 var g_last_redraw: win32.Ticks = undefined;
 var g_cross_cursor: ?win32.HCURSOR = null;
+var g_on_finished: ?*const fn () void = null;
 
 pub fn registerWindowClass(instance: win32.HINSTANCE) !void {
     if (g_window_class_registered) return;
     g_cross_cursor = win32.LoadCursorA(null, win32.IDC_CROSS);
     try gdi_overlay.registerWindowClass(instance, wndProc, WINDOW_CLASS_NAME, null);
     g_window_class_registered = true;
+}
+
+/// Called once the overlay closes, whether the drag was committed or cancelled.
+pub fn setOnFinishedCallback(cb: ?*const fn () void) void {
+    g_on_finished = cb;
 }
 
 /// Starts (or resets, if already in progress) the drag-to-select overlay; publishes the result via
@@ -177,6 +183,8 @@ fn finish(cancelled: bool) void {
 
     if (g_bitmap) |bmp| bmp.destroy();
     g_bitmap = null;
+
+    if (g_on_finished) |cb| cb();
 
     if (cancelled) {
         protocol.publishRegionSelectResult(2, .{ .left = 0, .top = 0, .right = 0, .bottom = 0 });

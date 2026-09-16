@@ -374,6 +374,8 @@
   "field.hideDebounceMs.hint": "Задержка перед скрытием, чтобы быстрые переключения не мерцали.",
   "field.hideDebounceMs.label": "Задержка скрытия (с)",
   "field.hideNotifInfoPanelWhenNoCharacters.label": "Скрывать панель, если нет вошедших персонажей",
+  "field.hideThumbnailsDuringRegionSelect.hint": "Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.",
+  "field.hideThumbnailsDuringRegionSelect.label": "Hide Thumbnails During Region Selection",
   "field.hideWhenNoEveFocus.hint": "Скрывает все превью, пока ни одно окно клиента EVE не в фокусе.",
   "field.hideWhenNoEveFocus.label": "Скрывать без фокуса EVE",
   "field.honorSavedPositions.label": "Учитывать сохранённые позиции",

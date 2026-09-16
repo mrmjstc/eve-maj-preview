@@ -374,6 +374,8 @@
   "field.hideDebounceMs.hint": "隐藏前的延迟,避免短暂切换时闪烁。",
   "field.hideDebounceMs.label": "隐藏防抖 (秒)",
   "field.hideNotifInfoPanelWhenNoCharacters.label": "无角色登录时隐藏面板",
+  "field.hideThumbnailsDuringRegionSelect.hint": "Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.",
+  "field.hideThumbnailsDuringRegionSelect.label": "Hide Thumbnails During Region Selection",
   "field.hideWhenNoEveFocus.hint": "当没有 EVE 客户端窗口获得焦点时隐藏所有缩略图。",
   "field.hideWhenNoEveFocus.label": "无 EVE 焦点时隐藏",
   "field.honorSavedPositions.label": "遵循已保存位置",

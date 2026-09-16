@@ -2600,7 +2600,7 @@ pub const Config = struct {
         layoutMode: types.LayoutMode = .Custom,
         regionFitDirection: types.RegionFitDirection = .RowFirst_LTR_TTB,
 
-        /// Physical pixels, absolute (like saved positions); null until captured via "Define Thumbnail Space".
+        /// Physical pixels, absolute (like saved positions); null until captured via "Start Region Selection".
         regionX: ?i32 = null,
         regionY: ?i32 = null,
         regionWidth: ?i32 = null,
@@ -2608,6 +2608,8 @@ pub const Config = struct {
         regionFitOrder: types.RegionFitOrder = .Characters,
         /// Whether a logout moves a thumbnail to the end of the grid, or leaves it in place until another reflow.
         regionFitReorderLoggedOut: bool = true,
+        /// Whether "Start Region Selection" temporarily hides visible thumbnails so they don't obscure the drag-to-select overlay.
+        hideThumbnailsDuringRegionSelect: bool = true,
 
         monitorIndex: ?u32 = null,
         useMonitorWorkArea: bool = true,
@@ -3542,6 +3544,9 @@ pub const Config = struct {
         if (obj.get("regionFitReorderLoggedOut")) |v| {
             if (v == .bool) display.regionFitReorderLoggedOut = v.bool;
         }
+        if (obj.get("hideThumbnailsDuringRegionSelect")) |v| {
+            if (v == .bool) display.hideThumbnailsDuringRegionSelect = v.bool;
+        }
         if (obj.get("monitorIndex")) |v| {
             if (v == .integer) {
                 if (std.math.cast(u32, v.integer)) |val| display.monitorIndex = val;
@@ -4266,6 +4271,7 @@ pub const Config = struct {
         const new_spacing = fresh.display.spacing;
         const new_layout_mode = fresh.display.layoutMode;
         const new_region_fit_direction = fresh.display.regionFitDirection;
+        const new_hide_thumbnails_during_region_select = fresh.display.hideThumbnailsDuringRegionSelect;
         const new_new_thumbnail_spacing = fresh.display.newThumbnailSpacing;
         const new_monitor_index = fresh.display.monitorIndex;
         const new_use_monitor_work_area = fresh.display.useMonitorWorkArea;
@@ -4349,6 +4355,7 @@ pub const Config = struct {
         self.display.spacing = new_spacing;
         self.display.layoutMode = new_layout_mode;
         self.display.regionFitDirection = new_region_fit_direction;
+        self.display.hideThumbnailsDuringRegionSelect = new_hide_thumbnails_during_region_select;
         self.display.newThumbnailSpacing = new_new_thumbnail_spacing;
         self.display.monitorIndex = new_monitor_index;
         self.display.useMonitorWorkArea = new_use_monitor_work_area;

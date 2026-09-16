@@ -232,7 +232,7 @@ Rather than a fixed per-thumbnail size and an unbounded grid, `RegionFit` mode f
 
 Cells are packed snugly against each other (using `spacing`, not stretched to fill the region) so any slack collects as one block at the region's far edge instead of gaps between thumbnails. It reflows automatically on login, and on logout if `regionFitReorderLoggedOut` is true; while active it fully replaces per-character manual dragging and the global/per-character thumbnail size (`thumbnail.width`/`height`, `CharacterThumbnailSize`) - those are ignored.
 
-The region itself is set via the config dialog's "Define Thumbnail Space" button, which asks the running main app to show a full-desktop drag-to-select overlay; the captured rectangle is written into `regionX`/`regionY`/`regionWidth`/`regionHeight` (all `null` until first captured).
+The region itself is set via the config dialog's "Start Region Selection" button, which asks the running main app to show a full-desktop drag-to-select overlay; the captured rectangle is written into `regionX`/`regionY`/`regionWidth`/`regionHeight` (all `null` until first captured). If `hideThumbnailsDuringRegionSelect` (default `true`) is on, currently-visible thumbnails are hidden for the duration of that overlay so they don't cover it, then restored exactly as they were once it closes (a thumbnail already hidden beforehand, e.g. manually, is left alone).
 
 Fill order is controlled by two independent settings:
 - `regionFitOrder`: `Characters` (the profile's configured character list order) or `HotkeyGroups` (grouped by hotkey group membership, in `hotkeyGroups` order, each group's own member order preserved; a character in more than one group counts toward whichever it appears in first). Characters matching neither sort after ranked ones.
@@ -259,6 +259,7 @@ Fill order is controlled by two independent settings:
     "regionFitOrder": "Characters",
     "regionFitDirection": "RowFirst_LTR_TTB",
     "regionFitReorderLoggedOut": true,
+    "hideThumbnailsDuringRegionSelect": true,
     "spacing": 10
   }
 }
@@ -293,7 +294,7 @@ All pixel-based values here (thumbnail size, `startX`/`startY`, spacing, font si
 - `spacing`: Gap between thumbnails in `RegionFit` mode
 - `layoutMode`: `Custom` or `RegionFit`
 - `regionX`, `regionY`, `regionWidth`, `regionHeight`: Thumbnail Space rectangle for `RegionFit` mode (null until captured) - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit)
-- `regionFitOrder`, `regionFitDirection`, `regionFitReorderLoggedOut`: `RegionFit` fill order and logout behavior - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit)
+- `regionFitOrder`, `regionFitDirection`, `regionFitReorderLoggedOut`, `hideThumbnailsDuringRegionSelect`: `RegionFit` fill order, logout behavior, and select-overlay hiding - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit)
 - `monitorIndex`: Target monitor (0-based, null = absolute)
 - `useMonitorWorkArea`: Respect taskbar
 - `honorSavedPositions`: Use saved character positions

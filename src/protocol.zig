@@ -187,7 +187,7 @@ pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
     }
 }
 
-/// Cross-process result of a "Define Thumbnail Space" drag; a named shared-memory mapping since today's WM_COPYDATA IPC is one-way dialog->app.
+/// Cross-process result of a "Start Region Selection" drag; a named shared-memory mapping since today's WM_COPYDATA IPC is one-way dialog->app.
 pub const RegionSelectResult = extern struct {
     sequence: u32 = 0,
     /// 0 = none yet, 1 = success, 2 = cancelled

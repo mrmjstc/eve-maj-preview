@@ -374,6 +374,8 @@
   "field.hideDebounceMs.hint": "Verzögerung vor dem Ausblenden, damit kurzes Umschalten nicht flackert.",
   "field.hideDebounceMs.label": "Ausblendverzögerung (s)",
   "field.hideNotifInfoPanelWhenNoCharacters.label": "Panel ausblenden, wenn keine Charaktere eingeloggt sind",
+  "field.hideThumbnailsDuringRegionSelect.hint": "Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.",
+  "field.hideThumbnailsDuringRegionSelect.label": "Hide Thumbnails During Region Selection",
   "field.hideWhenNoEveFocus.hint": "Blendet alle Vorschaubilder aus, solange kein EVE-Client-Fenster fokussiert ist.",
   "field.hideWhenNoEveFocus.label": "Ausblenden ohne EVE-Fokus",
   "field.honorSavedPositions.label": "Gespeicherte Positionen berücksichtigen",

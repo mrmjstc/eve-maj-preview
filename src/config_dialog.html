@@ -332,7 +332,12 @@
                                 </div>
                                 <p class="hint hint-extra" data-i18n="field.spacing.hint">Gap between thumbnails inside the Thumbnail Space.</p>
                             </div>
-                            <button type="button" id="defineRegionButton" class="full-width-btn" onclick="startRegionSelectFlow()" data-i18n="field.regionFit.button">▭ Define Thumbnail Space</button>
+                            <label>
+                                <input type="checkbox" id="hideThumbnailsDuringRegionSelect">
+                                <span class="label-body" data-i18n="field.hideThumbnailsDuringRegionSelect.label">Hide Thumbnails During Region Selection</span>
+                            </label>
+                            <p class="hint hint-extra" data-i18n="field.hideThumbnailsDuringRegionSelect.hint">Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.</p>
+                            <button type="button" id="defineRegionButton" class="full-width-btn" onclick="startRegionSelectFlow()" data-i18n="field.regionFit.button">▭ Start Region Selection</button>
                             <!-- Bound via CONFIG_SCHEMA; not something a user needs to see or edit. -->
                             <div class="binding-list" style="display: none;">
                                 <div class="binding">

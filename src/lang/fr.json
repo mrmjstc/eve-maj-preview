@@ -374,6 +374,8 @@
   "field.hideDebounceMs.hint": "Délai avant masquage, pour qu'un changement bref ne scintille pas.",
   "field.hideDebounceMs.label": "Anti-rebond de masquage (s)",
   "field.hideNotifInfoPanelWhenNoCharacters.label": "Masquer le panneau si aucun personnage n'est connecté",
+  "field.hideThumbnailsDuringRegionSelect.hint": "Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.",
+  "field.hideThumbnailsDuringRegionSelect.label": "Hide Thumbnails During Region Selection",
   "field.hideWhenNoEveFocus.hint": "Masque toutes les miniatures tant qu'aucune fenêtre de client EVE n'a le focus.",
   "field.hideWhenNoEveFocus.label": "Masquer sans focus EVE",
   "field.honorSavedPositions.label": "Respecter les positions enregistrées",

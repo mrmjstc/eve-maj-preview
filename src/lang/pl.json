@@ -374,6 +374,8 @@
   "field.hideDebounceMs.hint": "Opóźnienie przed ukryciem, aby krótkie przełączenie się nie migało.",
   "field.hideDebounceMs.label": "Opóźnienie ukrywania (s)",
   "field.hideNotifInfoPanelWhenNoCharacters.label": "Ukryj panel, gdy nikt nie jest zalogowany",
+  "field.hideThumbnailsDuringRegionSelect.hint": "Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.",
+  "field.hideThumbnailsDuringRegionSelect.label": "Hide Thumbnails During Region Selection",
   "field.hideWhenNoEveFocus.hint": "Ukrywa wszystkie miniatury, gdy żadne okno klienta EVE nie ma fokusu.",
   "field.hideWhenNoEveFocus.label": "Ukryj przy braku fokusu EVE",
   "field.honorSavedPositions.label": "Uwzględniaj zapisane pozycje",

@@ -366,6 +366,8 @@ pub const Painter = struct {
     notif_info_window: ?notif_info_view.NotifInfoWindow = null,
     /// FIFO queue of recently-notified characters, oldest first; populated by trackNotifiedCharacter, consumed by HotkeyManager.cycleNotified via getNotifiedCharacterNames.
     notified_queue: std.ArrayList(NotifiedCharacterEntry) = .empty,
+    /// Thumbnails hideThumbnailsForRegionSelect hid, so restoreThumbnailsAfterRegionSelect only re-shows exactly those (not ones already manually hidden beforehand).
+    region_select_hidden_hwnds: std.ArrayList(win32.HWND) = .empty,
     /// Ring buffer of the last NOTIF_HISTORY_CAPACITY notifications shown, across all characters, newest overwrites oldest; feeds notif_info_window.
     notification_history: [NOTIF_HISTORY_CAPACITY]NotificationHistoryEntry = undefined,
     notification_history_head: usize = 0,
@@ -584,6 +586,7 @@ pub const Painter = struct {
         self.thumbnails.deinit(self.allocator);
         for (self.notified_queue.items) |entry| self.allocator.free(entry.character_name);
         self.notified_queue.deinit(self.allocator);
+        self.region_select_hidden_hwnds.deinit(self.allocator);
         self.hwnd_to_thumbnail_index.deinit();
         self.thumbnail_hwnd_to_index.deinit();
         self.text_hwnd_to_index.deinit();
@@ -1029,6 +1032,31 @@ pub const Painter = struct {
 
             self.renderThumbnailLogged(thumbnail, "visibility toggle");
         }
+    }
+
+    /// Hides every currently-visible thumbnail so it doesn't obscure the "Start Region Selection" overlay.
+    pub fn hideThumbnailsForRegionSelect(self: *Painter) void {
+        self.region_select_hidden_hwnds.clearRetainingCapacity();
+        for (self.thumbnails.items) |*thumbnail| {
+            if (!thumbnail.isVisible()) continue;
+            thumbnail.setVisibility(.HiddenManual);
+            if (thumbnail.isVisible()) continue; // setVisibility silently refused (alerting/dragging) - nothing to restore later.
+            self.region_select_hidden_hwnds.append(self.allocator, thumbnail.hwnd) catch |err| {
+                slog.err("Failed to record thumbnail for region-select restore: {}", .{err});
+            };
+            self.renderThumbnailLogged(thumbnail, "region select hide");
+        }
+    }
+
+    /// Restores visibility for thumbnails hideThumbnailsForRegionSelect hid.
+    pub fn restoreThumbnailsAfterRegionSelect(self: *Painter) void {
+        for (self.region_select_hidden_hwnds.items) |hwnd| {
+            const index = self.thumbnail_hwnd_to_index.get(hwnd) orelse continue;
+            const thumbnail = &self.thumbnails.items[index];
+            thumbnail.setVisibility(.Visible);
+            self.renderThumbnailLogged(thumbnail, "region select restore");
+        }
+        self.region_select_hidden_hwnds.clearRetainingCapacity();
     }
 
     /// Toggle auto-minimize mode temporarily, without persisting to config (hotkey action).
@@ -1915,12 +1943,14 @@ pub const Painter = struct {
         gdi_overlay.registerWindowClass(self.instance, win32.DefWindowProcA, GHOST_WINDOW_CLASS_NAME, null) catch return error.RegisterGhostClassFailed;
 
         region_select.registerWindowClass(self.instance) catch return error.RegisterRegionSelectClassFailed;
+        region_select.setOnFinishedCallback(regionSelectFinishedCallback);
 
         g_window_class_registered = true;
     }
 
-    /// Starts the "Define Thumbnail Space" drag-to-select overlay; the result reaches the config dialog asynchronously via protocol.publishRegionSelectResult.
+    /// Starts the "Start Region Selection" drag-to-select overlay; the result reaches the config dialog asynchronously via protocol.publishRegionSelectResult.
     pub fn startRegionSelect(self: *Painter) void {
+        if (self.config.display.hideThumbnailsDuringRegionSelect) self.hideThumbnailsForRegionSelect();
         region_select.start(self.instance, self.config.accentColor);
     }
 
@@ -4225,6 +4255,11 @@ fn isExplorerOwned(hwnd: win32.HWND) bool {
     const suffix = "\\explorer.exe";
     if (path_slice.len < suffix.len) return false;
     return std.ascii.eqlIgnoreCase(path_slice[path_slice.len - suffix.len ..], suffix);
+}
+
+fn regionSelectFinishedCallback() void {
+    const painter = g_painter_ptr orelse return;
+    painter.restoreThumbnailsAfterRegionSelect();
 }
 
 fn winEventProc(
