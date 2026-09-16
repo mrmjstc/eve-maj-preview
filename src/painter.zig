@@ -2168,9 +2168,31 @@ pub const Painter = struct {
         return .{ .width = @max(width, 1), .height = @max(height, 1) };
     }
 
+    /// Like fitAspect, but height follows box_width unclamped, so a column's cell size doesn't shrink just to hit a specific row count.
+    fn naturalCellForWidth(box_width: i32, aspect_ratio: f32) struct { width: i32, height: i32 } {
+        if (box_width <= 0) return .{ .width = 1, .height = 1 };
+        const height: i32 = @intFromFloat(@round(@as(f32, @floatFromInt(box_width)) / aspect_ratio));
+        return .{ .width = box_width, .height = @max(height, 1) };
+    }
+
+    /// Fills one column to its natural capacity before adding another, rather than always splitting evenly.
+    fn calculateRegionFitGridPortrait(region: win32.RECT, n: u32, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
+        const region_width = region.right - region.left;
+        const region_height = region.bottom - region.top;
+
+        var columns: u32 = 1;
+        while (true) : (columns += 1) {
+            const box_width = @max(@divTrunc(region_width - spacing_x * (@as(i32, @intCast(columns)) - 1), @as(i32, @intCast(columns))), 1);
+            const cell = naturalCellForWidth(box_width, aspect_ratio);
+            const rows_per_column: u32 = @intCast(@max(@divTrunc(region_height + spacing_y, cell.height + spacing_y), 1));
+            if (columns * rows_per_column >= n) {
+                return .{ .columns = columns, .rows = rows_per_column, .box_width = box_width, .box_height = cell.height, .cell_width = cell.width, .cell_height = cell.height };
+            }
+        }
+    }
+
     /// Picks the column count that maximizes per-cell area once cells are fit to aspect_ratio.
-    fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
-        const n: u32 = @intCast(@max(count, 1));
+    fn calculateRegionFitGridLandscape(region: win32.RECT, n: u32, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
         const region_width = region.right - region.left;
         const region_height = region.bottom - region.top;
 
@@ -2193,6 +2215,15 @@ pub const Painter = struct {
         }
 
         return best;
+    }
+
+    fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
+        const n: u32 = @intCast(@max(count, 1));
+        const is_portrait = (region.bottom - region.top) > (region.right - region.left);
+        return if (is_portrait)
+            calculateRegionFitGridPortrait(region, n, spacing_x, spacing_y, aspect_ratio)
+        else
+            calculateRegionFitGridLandscape(region, n, spacing_x, spacing_y, aspect_ratio);
     }
 
     /// BTT/RTL directions stay within [0, rows/columns) since the region is fixed-size.

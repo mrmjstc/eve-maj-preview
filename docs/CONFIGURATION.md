@@ -226,13 +226,17 @@ The display configuration has two layout modes, with full multi-monitor support.
 
 ## Thumbnail Space (Region Fit)
 
-Rather than a fixed per-thumbnail size and an unbounded grid, `RegionFit` mode fits however many thumbnails are currently tracked into a fixed rectangle: it picks the column count that best fills the region for the current count, derives rows, and sizes every cell to fill the region while preserving the configured thumbnail's aspect ratio (no minimum cell size - cells keep shrinking as more characters log in). Cells are packed snugly against each other (using `spacing`, not stretched to fill the region) so any slack from the aspect-ratio fit collects as one block at the region's far edge instead of gaps between thumbnails. It reflows automatically on login, and on logout if `regionFitReorderLoggedOut` is true; while active it fully replaces per-character manual dragging and the global/per-character thumbnail size (`thumbnail.width`/`height`, `CharacterThumbnailSize`) - those are ignored.
+Rather than a fixed per-thumbnail size and an unbounded grid, `RegionFit` mode fits however many thumbnails are currently tracked into a fixed rectangle, sizing every cell to preserve the configured thumbnail's aspect ratio. How it picks a column count depends on the region's shape:
+- **Portrait** (taller than wide): fills one column to its natural capacity - as many cells as fit at that column's width without shrinking - before adding another column, so a tall region with room to spare keeps everything in a single column instead of splitting into artificially small side-by-side columns.
+- **Landscape or square** (wide as or wider than tall): picks whichever column count yields the largest cells for the current count (no minimum cell size - cells keep shrinking as more characters log in).
+
+Cells are packed snugly against each other (using `spacing`, not stretched to fill the region) so any slack collects as one block at the region's far edge instead of gaps between thumbnails. It reflows automatically on login, and on logout if `regionFitReorderLoggedOut` is true; while active it fully replaces per-character manual dragging and the global/per-character thumbnail size (`thumbnail.width`/`height`, `CharacterThumbnailSize`) - those are ignored.
 
 The region itself is set via the config dialog's "Define Thumbnail Space" button, which asks the running main app to show a full-desktop drag-to-select overlay; the captured rectangle is written into `regionX`/`regionY`/`regionWidth`/`regionHeight` (all `null` until first captured).
 
 Fill order is controlled by two independent settings:
 - `regionFitOrder`: `Characters` (the profile's configured character list order) or `HotkeyGroups` (grouped by hotkey group membership, in `hotkeyGroups` order, each group's own member order preserved; a character in more than one group counts toward whichever it appears in first). Characters matching neither sort after ranked ones.
-- `regionFitDirection`: which corner the grid fills from and whether it goes row-first or column-first:
+- `regionFitDirection`: which corner the grid fills from and whether it goes row-first or column-first (a portrait region's column-by-column capacity fill, above, is only visible top-to-bottom within each column under a `ColumnFirst_*` direction - a `RowFirst_*` direction interleaves across columns instead):
   - `RowFirst_LTR_TTB`: Left→right, top→bottom (default)
   - `RowFirst_RTL_TTB`: Right→left, top→bottom
   - `RowFirst_LTR_BTT`: Left→right, bottom→top
