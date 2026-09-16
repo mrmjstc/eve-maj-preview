@@ -7432,7 +7432,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
         ] },
     { chipId: 'overlayChip_systemName', showId: 'showSystemName', positionId: 'systemNamePosition', offsetXId: 'systemNameOffsetX', offsetYId: 'systemNameOffsetY', colorId: 'systemNameColor', alsoRequiresIds: ['showText'],
         uniqueColorsId: 'useUniqueSystemColors', fontNameId: 'systemNameFontName', fontWeightId: 'systemNameFontWeight', fontSizeId: 'systemNameFontSize',
-        bgColorId: 'systemNameBgColor', bgOpacityId: 'systemNameBgOpacity',
+        bgColorId: 'systemNameBgColor', bgOpacityId: 'systemNameBgOpacity', requiresChatlog: true,
         popoverTitleKey: 'dynamic.overlay.systemNameTitle', popoverFields: [
             { type: 'checkbox', id: 'showSystemName', labelKey: 'field.showSystemName.label' },
             { type: 'checkbox', id: 'useUniqueSystemColors', labelKey: 'field.useUniqueSystemColors.label', disables: 'systemNameColor' },
@@ -7458,7 +7458,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
         ] },
     { chipId: 'overlayChip_notification', showId: 'notificationsEnabled', positionId: 'notificationPosition', offsetXId: 'notificationOffsetX', offsetYId: 'notificationOffsetY', colorId: 'characterNameColor', alsoRequiresIds: ['showText'],
         fontNameId: 'notificationFontName', fontWeightId: 'notificationFontWeight', fontSizeId: 'notificationFontSize',
-        bgColorId: 'notificationBgColor', bgOpacityId: 'notificationBgOpacity',
+        bgColorId: 'notificationBgColor', bgOpacityId: 'notificationBgOpacity', requiresChatlog: true,
         popoverTitleKey: 'dynamic.overlay.notificationTitle', popoverFields: [
             { type: 'checkbox', id: 'notificationsEnabled', labelKey: 'dynamic.overlay.showNotificationsLabel' },
             { type: 'font-name', id: 'notificationFontName', labelKey: 'common.fontNameLabel' },
@@ -7469,7 +7469,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
         ] },
     { chipId: 'overlayChip_combatIncoming', showId: 'combatShowIncoming', positionId: 'combatIncomingPosition', offsetXId: 'combatIncomingOffsetX', offsetYId: 'combatIncomingOffsetY', colorId: 'combatIncomingColor', alsoRequiresIds: ['combatEnabled', 'showText'],
         fontNameId: 'combatIncomingFontName', fontWeightId: 'combatIncomingFontWeight', fontSizeId: 'combatIncomingFontSize',
-        bgColorId: 'combatIncomingBgColor', bgOpacityId: 'combatIncomingBgOpacity',
+        bgColorId: 'combatIncomingBgColor', bgOpacityId: 'combatIncomingBgOpacity', requiresChatlog: true,
         popoverTitleKey: 'dynamic.overlay.incomingDpsTitle', popoverFields: [
             { type: 'checkbox', id: 'combatEnabled', labelKey: 'dynamic.overlay.enableCombatOverlaysLabel' },
             { type: 'checkbox', id: 'combatShowIncoming', labelKey: 'field.combatShowIncoming.label' },
@@ -7483,7 +7483,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
         ] },
     { chipId: 'overlayChip_combatOutgoing', showId: 'combatShowOutgoing', positionId: 'combatOutgoingPosition', offsetXId: 'combatOutgoingOffsetX', offsetYId: 'combatOutgoingOffsetY', colorId: 'combatOutgoingColor', alsoRequiresIds: ['combatEnabled', 'showText'],
         fontNameId: 'combatOutgoingFontName', fontWeightId: 'combatOutgoingFontWeight', fontSizeId: 'combatOutgoingFontSize',
-        bgColorId: 'combatOutgoingBgColor', bgOpacityId: 'combatOutgoingBgOpacity',
+        bgColorId: 'combatOutgoingBgColor', bgOpacityId: 'combatOutgoingBgOpacity', requiresChatlog: true,
         popoverTitleKey: 'dynamic.overlay.outgoingDpsTitle', popoverFields: [
             { type: 'checkbox', id: 'combatEnabled', labelKey: 'dynamic.overlay.enableCombatOverlaysLabel' },
             { type: 'checkbox', id: 'combatShowOutgoing', labelKey: 'field.combatShowOutgoing.label' },
@@ -7498,7 +7498,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
     { chipId: 'overlayChip_mining', showId: 'miningEnabled', positionId: 'miningPosition', offsetXId: 'miningOffsetX', offsetYId: 'miningOffsetY', colorId: 'miningColor',
         alsoRequiresIds: ['showText'],
         fontNameId: 'miningFontName', fontWeightId: 'miningFontWeight', fontSizeId: 'miningFontSize',
-        bgColorId: 'miningBgColor', bgOpacityId: 'miningBgOpacity',
+        bgColorId: 'miningBgColor', bgOpacityId: 'miningBgOpacity', requiresChatlog: true,
         popoverTitleKey: 'dynamic.overlay.miningRateTitle', popoverFields: [
             { type: 'checkbox', id: 'miningEnabled', labelKey: 'dynamic.overlay.showMiningRateLabel' },
             { type: 'checkbox', id: 'miningShowPrefix', labelKey: 'field.miningShowPrefix.label' },
@@ -7512,7 +7512,7 @@ const OVERLAY_LAYOUT_ELEMENTS = [
     { chipId: 'overlayChip_bounty', showId: 'bountyEnabled', positionId: 'bountyPosition', offsetXId: 'bountyOffsetX', offsetYId: 'bountyOffsetY', colorId: 'bountyColor',
         alsoRequiresIds: ['showText'],
         fontNameId: 'bountyFontName', fontWeightId: 'bountyFontWeight', fontSizeId: 'bountyFontSize',
-        bgColorId: 'bountyBgColor', bgOpacityId: 'bountyBgOpacity',
+        bgColorId: 'bountyBgColor', bgOpacityId: 'bountyBgOpacity', requiresChatlog: true,
         popoverTitleKey: 'dynamic.overlay.bountyRateTitle', popoverFields: [
             { type: 'checkbox', id: 'bountyEnabled', labelKey: 'dynamic.overlay.showBountyRateLabel' },
             { type: 'checkbox', id: 'bountyShowPrefix', labelKey: 'field.bountyShowPrefix.label' },
@@ -7865,6 +7865,17 @@ function openOverlayPopover(def, chip) {
 
     title.textContent = t(def.popoverTitleKey);
     body.innerHTML = '';
+
+    if (def.requiresChatlog && !document.getElementById('chatlogEnabled')?.checked) {
+        const gateNotice = document.createElement('div');
+        gateNotice.className = 'gate-notice show';
+        const message = document.createElement('span');
+        message.className = 'label-body';
+        message.textContent = t('dynamic.overlay.chatlogGateMessage');
+        gateNotice.appendChild(message);
+        body.appendChild(gateNotice);
+    }
+
     def.popoverFields.forEach(f => body.appendChild(buildOverlayPopoverField(f, def)));
     def.popoverFields.forEach(f => {
         if (f.type === 'checkbox' && f.disables) {
@@ -8089,6 +8100,17 @@ function toggleTtsDisplayNameOption() {
 
 function toggleChatlogOptions() {
     applyOptionToggle('chatlogEnabled', 'chatlogOptions');
+    toggleChatlogGateNotice('notificationsChatlogGate');
+}
+
+// Notifications are driven by chatlog/gamelog parsing, so it's worth flagging
+// up front rather than leaving a checkbox that silently does nothing.
+function toggleChatlogGateNotice(gateNoticeId) {
+    const chatlogEnabled = document.getElementById('chatlogEnabled');
+    const gateNotice = document.getElementById(gateNoticeId);
+    if (!chatlogEnabled || !gateNotice) return;
+
+    gateNotice.classList.toggle('show', !chatlogEnabled.checked);
 }
 
 function initCombatShowRequiresEnabled() {
