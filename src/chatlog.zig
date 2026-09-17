@@ -178,7 +178,6 @@ pub const ChatlogMonitor = struct {
     combat_tracker: ?*activity_mod.CombatTracker = null,
     mining_tracker: ?*activity_mod.MiningTracker = null,
     bounty_tracker: ?*activity_mod.BountyTracker = null,
-    // Borrowed from Config, not Painter - set only while the worker is stopped, like combat_tracker.
     damage_alert_excluded_weapons: []const u8 = "",
     idle_poll_threshold: u32 = 20,
     max_poll_multiplier: u8 = 8,
@@ -187,7 +186,6 @@ pub const ChatlogMonitor = struct {
     pending_scan_index: usize = 0,
     pending_chatlog_signaled: bool = false,
     pending_gamelog_signaled: bool = false,
-    // Owned snapshot of character names for the in-progress scan; immune to Scout.windows reordering mid-scan.
     pending_scan_names: std.ArrayList([]u8) = .empty,
     worker_thread: ?std.Thread = null,
     command_queue: EventQueue(ChatlogCommand),
@@ -196,6 +194,7 @@ pub const ChatlogMonitor = struct {
     should_exit: std.atomic.Value(bool),
     threading_enabled: bool = false,
     pending_characters: std.StringHashMap(void),
+    pending_characters_mutex: std.Io.Mutex,
 
     pub fn init(allocator: std.mem.Allocator, io: std.Io, chatlog_dir: []const u8, gamelog_dir: []const u8, painter_ref: ?*painter_mod.Painter, scout_ref: ?*scout_mod.Scout, global_settings_ref: ?*config_mod.GlobalSettings, idle_poll_threshold: u32, max_poll_multiplier: u8, poll_interval_ms: u32) !*ChatlogMonitor {
         if (!std.unicode.utf8ValidateSlice(chatlog_dir)) {
@@ -239,6 +238,7 @@ pub const ChatlogMonitor = struct {
         monitor.should_exit = std.atomic.Value(bool).init(false);
         monitor.threading_enabled = false;
         monitor.pending_characters = std.StringHashMap(void).init(allocator);
+        monitor.pending_characters_mutex = .init;
         monitor.poll_interval_ms = poll_interval_ms;
 
         monitor.chatlog_watcher = monitor.setupDirectoryWatcher(chatlog_dir);
@@ -349,8 +349,11 @@ pub const ChatlogMonitor = struct {
                     self.removeCharacter(char_name);
                 },
                 .resolve_character_id => |data| {
-                    const needs_lookup = if (self.global_settings) |gs| !gs.characterIdMap.contains(data.name) else false;
-                    if (!needs_lookup) continue;
+                    const already_cached = if (self.global_settings) |gs| gs.hasCharacterId(data.name) catch |err| blk: {
+                        slog.err("Worker: failed to check character ID cache for {s}: {}", .{ data.name, err });
+                        break :blk false;
+                    } else false;
+                    if (already_cached) continue;
 
                     slog.debug("Worker: Resolving character ID for {s}", .{data.name});
                     if (self.findChatlogForCharacter(data.name)) |path| {
@@ -445,6 +448,9 @@ pub const ChatlogMonitor = struct {
     /// Queues a command for the worker thread if threading is enabled, otherwise does the I/O synchronously.
     pub fn addCharacter(self: *ChatlogMonitor, character_name: []const u8) !void {
         if (self.threading_enabled) {
+            try self.pending_characters_mutex.lock(self.io);
+            defer self.pending_characters_mutex.unlock(self.io);
+
             if (self.pending_characters.contains(character_name)) return;
 
             const cmd = ChatlogCommand{
@@ -749,6 +755,9 @@ pub const ChatlogMonitor = struct {
             const time_budget_ns = 2 * std.time.ns_per_ms;
             _ = try self.checkNewLogFiles(character_names, time_budget_ns);
         } else {
+            try self.pending_characters_mutex.lock(self.io);
+            defer self.pending_characters_mutex.unlock(self.io);
+
             // Phase 2: Send commands to worker thread
             for (closed_windows) |cw| {
                 if (self.pending_characters.fetchRemove(cw.character_name)) |entry| {
@@ -1889,7 +1898,11 @@ pub const ChatlogMonitor = struct {
     ) ?[]u8 {
         // Fast path: character ID already cached from a previous match.
         if (self.global_settings) |gs| {
-            if (gs.characterIdMap.get(char_name)) |id| {
+            if (gs.getCharacterId(self.allocator, char_name) catch |err| blk: {
+                slog.warn("Failed to look up cached character ID for {s}: {}", .{ char_name, err });
+                break :blk null;
+            }) |id| {
+                defer self.allocator.free(id);
                 if (self.findNewestMatchingId(dir_path, is_chatlog, id)) |path| {
                     return path;
                 }

@@ -357,6 +357,7 @@ pub const GlobalSettings = struct {
     hotkeyCycleNotLoggedInBackward: ?u32,
     hotkeyReturnToLastApp: ?u32,
     characterIdMap: std.StringHashMap([]const u8),
+    characterIdMapMutex: std.Io.Mutex,
     disableUpdateChecks: bool,
     runOnStartup: bool,
     autoRegisterProtocol: bool,
@@ -383,6 +384,7 @@ pub const GlobalSettings = struct {
             .hotkeyCycleNotLoggedInBackward = null,
             .hotkeyReturnToLastApp = null,
             .characterIdMap = std.StringHashMap([]const u8).init(allocator),
+            .characterIdMapMutex = .init,
             .disableUpdateChecks = false,
             .runOnStartup = false,
             .autoRegisterProtocol = true,
@@ -496,7 +498,7 @@ pub const GlobalSettings = struct {
     }
 
     /// Caller owns the returned slice.
-    pub fn toJsonString(self: *const GlobalSettings, allocator: std.mem.Allocator) ![]u8 {
+    pub fn toJsonString(self: *GlobalSettings, allocator: std.mem.Allocator) ![]u8 {
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
         const wire = try self.toWire(arena.allocator());
@@ -507,7 +509,7 @@ pub const GlobalSettings = struct {
         });
     }
 
-    pub fn save(self: *const GlobalSettings) !void {
+    pub fn save(self: *GlobalSettings) !void {
         const json = try self.toJsonString(self.allocator);
         defer self.allocator.free(json);
 
@@ -517,7 +519,7 @@ pub const GlobalSettings = struct {
     }
 
     /// Log all global settings for debugging; same line-per-JSON-line approach as Config.logSettings -- see that method's doc comment for why.
-    pub fn logSettings(self: *const GlobalSettings) void {
+    pub fn logSettings(self: *GlobalSettings) void {
         const json = self.toJsonString(self.allocator) catch |err| {
             slog.warn("Failed to serialize global settings for logging: {}", .{err});
             return;
@@ -549,24 +551,43 @@ pub const GlobalSettings = struct {
     }
 
     pub fn updateCharacterId(self: *GlobalSettings, character_name: []const u8, character_id: []const u8) !void {
-        if (self.characterIdMap.get(character_name)) |existing_id| {
-            if (std.mem.eql(u8, existing_id, character_id)) {
-                return;
+        {
+            try self.characterIdMapMutex.lock(g_io);
+            defer self.characterIdMapMutex.unlock(g_io);
+
+            if (self.characterIdMap.get(character_name)) |existing_id| {
+                if (std.mem.eql(u8, existing_id, character_id)) {
+                    return;
+                }
             }
-        }
 
-        const name_copy = try self.allocator.dupe(u8, character_name);
-        errdefer self.allocator.free(name_copy);
-        const id_copy = try self.allocator.dupe(u8, character_id);
-        errdefer self.allocator.free(id_copy);
+            const name_copy = try self.allocator.dupe(u8, character_name);
+            errdefer self.allocator.free(name_copy);
+            const id_copy = try self.allocator.dupe(u8, character_id);
+            errdefer self.allocator.free(id_copy);
 
-        if (try self.characterIdMap.fetchPut(name_copy, id_copy)) |old_entry| {
-            self.allocator.free(old_entry.key);
-            self.allocator.free(old_entry.value);
+            if (try self.characterIdMap.fetchPut(name_copy, id_copy)) |old_entry| {
+                self.allocator.free(old_entry.key);
+                self.allocator.free(old_entry.value);
+            }
         }
 
         slog.info("Cached character ID: {s} -> {s}", .{ character_name, character_id });
         try self.save();
+    }
+
+    pub fn hasCharacterId(self: *GlobalSettings, character_name: []const u8) !bool {
+        try self.characterIdMapMutex.lock(g_io);
+        defer self.characterIdMapMutex.unlock(g_io);
+        return self.characterIdMap.contains(character_name);
+    }
+
+    /// Caller owns the returned slice.
+    pub fn getCharacterId(self: *GlobalSettings, allocator: std.mem.Allocator, character_name: []const u8) !?[]const u8 {
+        try self.characterIdMapMutex.lock(g_io);
+        defer self.characterIdMapMutex.unlock(g_io);
+        const id = self.characterIdMap.get(character_name) orelse return null;
+        return try allocator.dupe(u8, id);
     }
 
     pub fn enumerateProfiles(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
@@ -626,7 +647,7 @@ pub const GlobalSettings = struct {
         oreTable: []const OrePriceEntry.Wire = &.{},
     };
 
-    pub fn toWire(self: *const GlobalSettings, allocator: std.mem.Allocator) !Wire {
+    pub fn toWire(self: *GlobalSettings, allocator: std.mem.Allocator) !Wire {
         const psh = try allocator.alloc(ProfileSwitchHotkey.Wire, self.profileSwitchHotkeys.items.len);
         for (self.profileSwitchHotkeys.items, 0..) |item, i| psh[i] = item.toWire();
 
@@ -639,12 +660,18 @@ pub const GlobalSettings = struct {
         const ore = try allocator.alloc(OrePriceEntry.Wire, self.oreTable.items.len);
         for (self.oreTable.items, 0..) |item, i| ore[i] = item.toWire();
 
-        const entries = try allocator.alloc(StringMapWire.Entry, self.characterIdMap.count());
-        var it = self.characterIdMap.iterator();
-        var i: usize = 0;
-        while (it.next()) |entry| : (i += 1) {
-            entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* };
-        }
+        const entries = blk: {
+            try self.characterIdMapMutex.lock(g_io);
+            defer self.characterIdMapMutex.unlock(g_io);
+
+            const e = try allocator.alloc(StringMapWire.Entry, self.characterIdMap.count());
+            var it = self.characterIdMap.iterator();
+            var i: usize = 0;
+            while (it.next()) |entry| : (i += 1) {
+                e[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* };
+            }
+            break :blk e;
+        };
 
         return .{
             .lastUsedProfile = self.lastUsedProfile,
