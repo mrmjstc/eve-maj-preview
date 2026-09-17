@@ -119,7 +119,7 @@ The expensive full `EnumWindows` rescan is itself throttled to roughly every 20 
 
 ## Other subsystems
 
-- **`tray.zig`** - system tray icon, right-click menu (profiles, dragging/auto-minimize/visibility/suspend-hotkeys toggles, Close All, update notice), launches `config.exe`.
+- **`tray.zig`** - system tray icon, right-click menu (profiles, dragging/auto-minimize/visibility/suspend-hotkeys toggles, restore saved positions, Close All, update notice), launches `config.exe`.
 - **`tts.zig`** - Windows SAPI via late-bound `IDispatch::Invoke` on its own STA-COM thread; `speakAlert()` is the fire-and-forget public API.
 - **`sound.zig`** - custom per-notification-type sound alerts: decodes WAV/MP3 via Media Foundation's `IMFSourceReader` (hand-written COM vtables, transcribed from mingw-w64's headers rather than Microsoft's alphabetized Learn docs) and plays the PCM via winmm `waveOut`; `playAlert()` is the fire-and-forget public API, `playBlocking()` the underlying synchronous call also used directly by `config_dialog.zig`'s "Test Sound" button.
 - **`update.zig`** - checks GitHub Releases via `std.http.Client` on a background thread, run independently by both `main.zig` and `config_dialog.zig` since they're separate processes, each with its own `UpdateStatus`; opens the release page in a browser.
