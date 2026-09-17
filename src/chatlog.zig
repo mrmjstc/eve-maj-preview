@@ -533,6 +533,25 @@ pub const ChatlogMonitor = struct {
             return;
         }
 
+        var i: usize = 0;
+        while (i < self.log_files.items.len) {
+            const state = &self.log_files.items[i];
+            if (state.is_chatlog == is_chatlog and std.mem.eql(u8, state.character_name, character_name)) {
+                slog.info("Log rotated for {s} ({s}): {s} -> {s}", .{
+                    character_name,
+                    if (is_chatlog) "chatlog" else "gamelog",
+                    state.file_path,
+                    file_path,
+                });
+
+                _ = self.monitored_paths.remove(state.file_path);
+                var removed = self.log_files.orderedRemove(i);
+                removed.deinit(self.allocator);
+            } else {
+                i += 1;
+            }
+        }
+
         {
             const duped_path = try self.allocator.dupe(u8, file_path);
             errdefer self.allocator.free(duped_path);
