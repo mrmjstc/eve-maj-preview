@@ -95,9 +95,41 @@ fn restoreAnimation() void {
     }
 }
 
+/// Plain SetForegroundWindow only works when the calling process just received user input. A real
+/// click on our own window satisfies that, but a hotkey dispatched via keyboard_hook.zig/mouse_hook.zig's
+/// low-level hook + synthetic WM_HOTKEY doesn't carry RegisterHotKey's old foreground-lock exemption,
+/// so Windows silently refuses the request (AttachThreadInput to the current foreground thread alone
+/// isn't reliably enough here). Simulating a bare Alt press/release first resets Windows' internal
+/// foreground-lock timer - the standard workaround hotkey-based window-switchers rely on.
 pub fn forceSetForegroundWindow(target_hwnd: win32.HWND) void {
-    _ = win32.SetForegroundWindow(target_hwnd);
+    const current_thread = win32.GetCurrentThreadId();
+    var attached = false;
+    var foreground_thread: win32.DWORD = 0;
+
+    if (win32.GetForegroundWindow()) |foreground| {
+        foreground_thread = win32.GetWindowThreadProcessId(foreground, null);
+        if (foreground_thread != 0 and foreground_thread != current_thread) {
+            attached = win32.AttachThreadInput(current_thread, foreground_thread, win32.TRUE) != 0;
+            if (!attached) {
+                slog.debug("AttachThreadInput failed (current_thread={}, foreground_thread={}): error {}", .{ current_thread, foreground_thread, win32.GetLastError() });
+            }
+        }
+    } else {
+        slog.debug("GetForegroundWindow returned null before forceSetForegroundWindow({*})", .{target_hwnd});
+    }
+
+    win32.keybd_event(win32.VK_MENU, 0, 0, 0);
+    win32.keybd_event(win32.VK_MENU, 0, win32.KEYEVENTF_KEYUP, 0);
+
+    const sfw_ok = win32.toBool(win32.SetForegroundWindow(target_hwnd));
+    if (!sfw_ok) {
+        slog.debug("SetForegroundWindow({*}) failed (attached={}): error {}", .{ target_hwnd, attached, win32.GetLastError() });
+    }
     _ = win32.SetFocus(target_hwnd);
+
+    if (attached) {
+        _ = win32.AttachThreadInput(current_thread, foreground_thread, win32.FALSE);
+    }
 }
 
 /// Activates and focuses the EVE client window when its thumbnail is clicked, handling minimized/maximized states.

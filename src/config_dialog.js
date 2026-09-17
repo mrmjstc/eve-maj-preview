@@ -3867,6 +3867,11 @@ function friendlyBaseKeyName(vkCode) {
     if (vkCode >= 0x60 && vkCode <= 0x69) return 'Numpad' + (vkCode - 0x60);
     // Spellings must match parseBaseKey() exactly since this text round-trips back through it on save.
     const named = {
+        // A bare modifier used as the trigger key itself (e.g. plain "Shift", or "Ctrl+Shift" with Shift as the trigger).
+        0x10: 'Shift',
+        0x11: 'Ctrl',
+        0x12: 'Alt',
+        0x5B: 'Win',
         0x09: 'Tab',
         0x13: 'Pause',
         0x14: 'CapsLock',

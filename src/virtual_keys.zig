@@ -1,4 +1,5 @@
 const std = @import("std");
+const win32 = @import("win32.zig");
 const log = @import("log.zig");
 const slog = log.scoped("virtual_keys");
 
@@ -8,6 +9,9 @@ pub const VK_TAB: u32 = 0x09;
 pub const VK_PAUSE: u32 = 0x13;
 pub const VK_CAPITAL: u32 = 0x14;
 pub const VK_SHIFT: u32 = 0x10;
+pub const VK_CONTROL: u32 = win32.VK_CONTROL;
+pub const VK_MENU: u32 = win32.VK_MENU;
+pub const VK_LWIN: u32 = win32.VK_LWIN;
 pub const VK_SPACE: u32 = 0x20;
 pub const VK_PRIOR: u32 = 0x21;
 pub const VK_NEXT: u32 = 0x22;
@@ -67,10 +71,21 @@ pub fn combineKey(vk_code: u32, modifiers: u32) u32 {
     return (vk_code & VK_MASK) | ((modifiers & MOD_MASK) << MOD_SHIFT_AMOUNT);
 }
 
-/// Whether a base virtual key code is a mouse button or wheel direction that must be routed
-/// through the low-level mouse hook rather than RegisterHotKey (see hotkeys.zig / mouse_hook.zig)
+/// Whether a base virtual key code is a mouse button or wheel direction, which is bound through
+/// mouse_hook.zig's low-level hook instead of keyboard_hook.zig's (see hotkeys.zig)
 pub fn isMouseHookVk(vk_code: u32) bool {
     return vk_code == VK_XBUTTON1 or vk_code == VK_XBUTTON2 or vk_code == VK_WHEELUP or vk_code == VK_WHEELDOWN;
+}
+
+/// Currently-held modifier keys (MOD_ALT | MOD_CONTROL | MOD_SHIFT | MOD_WIN), read via GetAsyncKeyState.
+/// Shared by mouse_hook.zig and keyboard_hook.zig to match a low-level hook event against a bound combo.
+pub fn currentModifiers() u32 {
+    var mods: u32 = 0;
+    if (win32.isCtrlPressed()) mods |= MOD_CONTROL;
+    if (win32.isAltPressed()) mods |= MOD_ALT;
+    if (win32.isShiftPressed()) mods |= MOD_SHIFT;
+    if (win32.isWinPressed()) mods |= MOD_WIN;
+    return mods;
 }
 
 /// Write virtual key code (plus any modifiers) as a human-readable string, e.g. "Ctrl+F9"
@@ -82,6 +97,19 @@ pub fn writeVirtualKey(writer: anytype, combined: u32) !void {
     if (modifiers & MOD_WIN != 0) try writer.writeAll("Win+");
 
     const vk_code = extractVk(combined);
+
+    // A bare-modifier binding (base key is itself Ctrl/Alt/Shift/Win); modifiers is always 0 in this case.
+    const bare_modifier_name: ?[]const u8 = switch (vk_code) {
+        VK_CONTROL => "Ctrl",
+        VK_MENU => "Alt",
+        VK_SHIFT => "Shift",
+        VK_LWIN => "Win",
+        else => null,
+    };
+    if (bare_modifier_name) |name| {
+        try writer.writeAll(name);
+        return;
+    }
 
     if (vk_code >= VK_F1 and vk_code <= VK_F24) {
         try writer.print("F{d}", .{vk_code - VK_F1 + 1});
@@ -163,7 +191,8 @@ fn parseModifierToken(token: []const u8) ?u32 {
 /// Parse a single (non-combo) key token into its base virtual key code.
 /// Supports: F1-F24, A-Z, 0-9, ; = , - . / ` [ \ ] ', Space, PageUp, PageDown, End, Home,
 ///           Left, Up, Right, Down, Insert, Delete, Numpad0-Numpad9, NumpadMultiply,
-///           NumpadAdd, NumpadSubtract, NumpadDecimal, NumpadDivide
+///           NumpadAdd, NumpadSubtract, NumpadDecimal, NumpadDivide, and a bare modifier
+///           (Ctrl, Alt, Shift, Win/LWin/RWin) used as the trigger key itself.
 fn parseBaseKey(key_str: []const u8) ?u32 {
     if (key_str.len == 0) return null;
 
@@ -204,6 +233,12 @@ fn parseBaseKey(key_str: []const u8) ?u32 {
             return VK_F1 + (num - 1);
         }
     }
+
+    // A bare modifier as the base/trigger key itself, e.g. "Shift" alone or "Ctrl+Shift" (Ctrl held, Shift as trigger).
+    if (std.ascii.eqlIgnoreCase(key_str, "ctrl") or std.ascii.eqlIgnoreCase(key_str, "control")) return VK_CONTROL;
+    if (std.ascii.eqlIgnoreCase(key_str, "alt")) return VK_MENU;
+    if (std.ascii.eqlIgnoreCase(key_str, "shift")) return VK_SHIFT;
+    if (std.ascii.eqlIgnoreCase(key_str, "win") or std.ascii.eqlIgnoreCase(key_str, "lwin") or std.ascii.eqlIgnoreCase(key_str, "rwin")) return VK_LWIN;
 
     if (std.ascii.eqlIgnoreCase(key_str, "tab")) return VK_TAB;
     if (std.ascii.eqlIgnoreCase(key_str, "pause")) return VK_PAUSE;
@@ -282,6 +317,22 @@ pub fn parseVirtualKey(key_str: []const u8) ?u32 {
             slog.warn("Unrecognized key: '{s}'", .{key_part});
             return null;
         };
+
+        // A modifier can't also be its own required-held modifier (e.g. "Shift+Shift"); the hook
+        // excludes a bare-modifier trigger's own bit from the held-modifiers match, so this would
+        // otherwise silently parse into a binding that can never fire.
+        const self_referential = switch (vk_code) {
+            VK_CONTROL => modifiers & MOD_CONTROL != 0,
+            VK_MENU => modifiers & MOD_ALT != 0,
+            VK_SHIFT => modifiers & MOD_SHIFT != 0,
+            VK_LWIN => modifiers & MOD_WIN != 0,
+            else => false,
+        };
+        if (self_referential) {
+            slog.warn("Modifier '{s}' can't also be held as its own modifier: '{s}'", .{ key_part, key_str });
+            return null;
+        }
+
         return combineKey(vk_code, modifiers);
     }
 

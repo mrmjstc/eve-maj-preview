@@ -6,6 +6,7 @@ const scout = @import("scout.zig");
 const config_mod = @import("config.zig");
 const vk = @import("virtual_keys.zig");
 const mouse_hook = @import("mouse_hook.zig");
+const keyboard_hook = @import("keyboard_hook.zig");
 const log = @import("log.zig");
 const slog = log.scoped("hotkeys");
 const painter_mod = @import("painter.zig");
@@ -15,81 +16,6 @@ const main_mod = @import("main.zig");
 // Static buffers for profile names; must stay valid until the async WM_SWITCH_PROFILE handler runs.
 var g_profile_cycle_buffer: [256]u8 = undefined;
 var g_profile_switch_buffer: [256]u8 = undefined;
-
-var g_hotkey_tracked: std.AutoHashMap(u32, bool) = undefined;
-var g_hotkey_tracking_initialized = false;
-var g_hotkey_release_hook: ?win32.HHOOK = null;
-
-fn ensureHotkeyTrackingInit(allocator: std.mem.Allocator) void {
-    if (g_hotkey_tracking_initialized) return;
-    g_hotkey_tracked = std.AutoHashMap(u32, bool).init(allocator);
-    g_hotkey_tracking_initialized = true;
-}
-
-/// Marks vk_code down to distinguish a repeat WM_HOTKEY from a new press; swallow-on-release is decided later in markHotkeySwallowRelease.
-pub fn trackHotkeyPress(allocator: std.mem.Allocator, vk_code: u32) bool {
-    // Mouse-button hotkeys route through here with lparam=0.
-    if (vk_code == 0) return true;
-    ensureHotkeyTrackingInit(allocator);
-
-    const gop = g_hotkey_tracked.getOrPut(vk_code) catch |err| {
-        slog.warn("Failed to track hotkey press for vk 0x{X}: {}", .{ vk_code, err });
-        return true;
-    };
-    if (gop.found_existing) return false;
-
-    gop.value_ptr.* = false;
-    if (g_hotkey_release_hook == null) installHotkeyReleaseHook();
-    return true;
-}
-
-/// Arms release-swallowing for vk_code once its action has moved focus, so the previously-focused client still believes the key is held.
-pub fn markHotkeySwallowRelease(vk_code: u32) void {
-    if (vk_code == 0) return;
-    if (!g_hotkey_tracking_initialized) return;
-    if (g_hotkey_tracked.getPtr(vk_code)) |swallow| swallow.* = true;
-}
-
-fn installHotkeyReleaseHook() void {
-    const hmod = win32.GetModuleHandleA(null);
-    g_hotkey_release_hook = win32.SetWindowsHookExA(win32.WH_KEYBOARD_LL, lowLevelHotkeyReleaseProc, hmod, 0);
-    if (g_hotkey_release_hook == null) {
-        slog.err("Failed to install low-level keyboard release hook", .{});
-        return;
-    }
-    slog.debug("Low-level keyboard release hook installed", .{});
-}
-
-/// Clear all tracked keys and uninstall the hook. Safe to call even if nothing was tracked.
-pub fn uninstallHotkeyReleaseHook() void {
-    if (!g_hotkey_tracking_initialized) return;
-    g_hotkey_tracked.clearRetainingCapacity();
-    if (g_hotkey_release_hook) |hook| {
-        _ = win32.UnhookWindowsHookEx(hook);
-        g_hotkey_release_hook = null;
-        slog.debug("Low-level keyboard release hook removed", .{});
-    }
-}
-
-/// Frees g_hotkey_tracked; call only once at true process shutdown, never from a reload path that may track again.
-pub fn deinitHotkeyTracking() void {
-    if (!g_hotkey_tracking_initialized) return;
-    g_hotkey_tracked.deinit();
-    g_hotkey_tracking_initialized = false;
-}
-
-fn lowLevelHotkeyReleaseProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
-    if (nCode == win32.HC_ACTION and (wParam == win32.WM_KEYUP or wParam == win32.WM_SYSKEYUP)) {
-        const info = win32.lparamToPtr(win32.KBDLLHOOKSTRUCT, lParam);
-
-        if (g_hotkey_tracked.fetchRemove(info.vkCode)) |entry| {
-            if (entry.value) {
-                return 1;
-            }
-        }
-    }
-    return win32.CallNextHookEx(null, nCode, wParam, lParam);
-}
 
 // Hotkey IDs are banded to avoid collisions: 0-999 groups (3 per group), 1000s global, 2000s per-character, 3000s profile switch, 5000s app hotkeys, 6000s URL hotkeys.
 const HOTKEY_ID_CYCLE_GROUP_BASE: c_int = 0;
@@ -311,7 +237,7 @@ pub const HotkeyManager = struct {
 
     /// Layered errdefer: each step's cleanup only runs if a later step in registration fails.
     fn registerAndTrackHotkey(self: *HotkeyManager, hwnd: win32.HWND, id: c_int, virtual_key: u32, action: HotkeyAction, description: []const u8) !void {
-        // RegisterHotKey can't see mouse buttons; route those through the mouse hook, which re-posts WM_HOTKEY on a match.
+        // Mouse buttons/wheel route through the mouse hook, everything else through the keyboard hook; both re-post a match as WM_HOTKEY.
         if (vk.isMouseHookVk(vk.extractVk(virtual_key))) {
             try mouse_hook.register(self.allocator, hwnd, virtual_key, id);
             errdefer mouse_hook.unregister(virtual_key);
@@ -324,7 +250,7 @@ pub const HotkeyManager = struct {
         }
 
         try self.registerSingleHotkey(hwnd, id, virtual_key, description);
-        errdefer _ = win32.UnregisterHotKey(hwnd, id);
+        errdefer keyboard_hook.unregister(virtual_key);
 
         try self.hotkey_map.put(id, action);
         errdefer _ = self.hotkey_map.remove(id);
@@ -771,15 +697,7 @@ pub const HotkeyManager = struct {
     }
 
     fn registerSingleHotkey(self: *HotkeyManager, hwnd: win32.HWND, id: c_int, virtual_key: u32, description: []const u8) !void {
-        _ = self;
-        const base_vk: win32.UINT = @intCast(vk.extractVk(virtual_key));
-        const key_modifiers: win32.UINT = @intCast(vk.extractModifiers(virtual_key));
-
-        // Deliberately not MOD_NOREPEAT; handleHotkeyPress suppresses repeats itself via trackHotkeyPress.
-        if (!win32.toBool(win32.RegisterHotKey(hwnd, id, key_modifiers, base_vk))) {
-            // Likely already in use by another application
-            return error.HotkeyRegistrationFailed;
-        }
+        try keyboard_hook.register(self.allocator, hwnd, virtual_key, id);
 
         var key_name_buf: [32]u8 = undefined;
         const key_name = formatKeyName(virtual_key, &key_name_buf);
@@ -788,9 +706,10 @@ pub const HotkeyManager = struct {
     }
 
     pub fn unregisterAll(self: *HotkeyManager, hwnd: win32.HWND) void {
-        // Always clear mouse-button bindings too; cheap no-op if none were registered.
+        _ = hwnd;
+        // Always clear both hooks' bindings; cheap no-op if none were registered.
         mouse_hook.unregisterAll();
-        uninstallHotkeyReleaseHook();
+        keyboard_hook.unregisterAll();
 
         var action_it = self.hotkey_map.valueIterator();
         while (action_it.next()) |action| {
@@ -799,18 +718,7 @@ pub const HotkeyManager = struct {
             }
         }
 
-        if (self.registered_ids.items.len == 0) {
-            self.hotkey_map.clearRetainingCapacity();
-            return;
-        }
-
         slog.debug("Unregistering {} hotkey(s)...", .{self.registered_ids.items.len});
-        for (self.registered_ids.items) |id| {
-            // Mouse-button hotkeys were never registered via RegisterHotKey, so this expectedly (harmlessly) fails for them.
-            if (!win32.toBool(win32.UnregisterHotKey(hwnd, id))) {
-                slog.debug("Failed to unregister hotkey ID {}", .{id});
-            }
-        }
         self.registered_ids.clearRetainingCapacity();
         self.hotkey_map.clearRetainingCapacity();
     }
@@ -822,9 +730,9 @@ pub const HotkeyManager = struct {
             return;
         };
 
-        // No MOD_NOREPEAT (see registerSingleHotkey), so this must run before every early return or held keys would re-fire.
+        // Auto-repeat while a key is held isn't filtered by the keyboard hook, so this must run before every early return or held keys would re-fire.
         const vk_code = win32.hotkeyVkFromLparam(lparam);
-        const is_repeat = !trackHotkeyPress(self.allocator, vk_code);
+        const is_repeat = !keyboard_hook.trackPress(self.allocator, vk_code);
         if (is_repeat and !self.config.allowHotkeyAutoRepeat) {
             slog.debug("Hotkey {} ignored - key-repeat re-fire while held", .{hotkey_id});
             return;
@@ -938,7 +846,7 @@ pub const HotkeyManager = struct {
         }
 
         if (win32.GetForegroundWindow() != foreground_before) {
-            markHotkeySwallowRelease(vk_code);
+            keyboard_hook.markSwallowRelease(vk_code);
         }
     }
 
@@ -1222,7 +1130,7 @@ pub const HotkeyManager = struct {
 
         if (main_mod.g_timer_hwnd) |hwnd| {
             if (self.hotkeys_suspended) {
-                // RegisterHotKey intercepts system-wide, so leaving bindings registered while "suspended" would still block other apps from seeing those keys.
+                // The low-level hooks intercept system-wide, so leaving bindings registered while "suspended" would still block other apps from seeing those keys.
                 self.unregisterAll(hwnd);
                 self.registerSuspendOnly(hwnd);
             } else {
@@ -1255,7 +1163,7 @@ pub const HotkeyManager = struct {
         return self.hotkeys_suspended;
     }
 
-    /// Unregisters every live hotkey (not just gates dispatch) since RegisterHotKey intercepts system-wide, so a gate alone would never let the dialog see the keypress.
+    /// Unregisters every live hotkey (not just gates dispatch) since the low-level hooks swallow matched keys system-wide, so a gate alone would never let the dialog see the keypress.
     pub fn dialogSuspendHotkeys(self: *HotkeyManager, hwnd: win32.HWND) void {
         if (self.dialog_suspended) return;
         slog.debug("Config dialog is recording a hotkey - unregistering live hotkeys", .{});

@@ -7,6 +7,7 @@ const input = @import("input.zig");
 const config_mod = @import("config.zig");
 const hotkeys = @import("hotkeys.zig");
 const mouse_hook = @import("mouse_hook.zig");
+const keyboard_hook = @import("keyboard_hook.zig");
 const chatlog = @import("chatlog.zig");
 const activity_mod = @import("activity_tracker.zig");
 const resource_tracker_mod = @import("resource_tracker.zig");
@@ -881,7 +882,7 @@ fn mainImpl(init: std.process.Init) !void {
         }
         painter.g_hotkey_manager_ptr = null;
         mouse_hook.deinit();
-        hotkeys.deinitHotkeyTracking();
+        keyboard_hook.deinit();
     }
 
     g_hotkey_manager.?.registerHotkeys(timer_hwnd) catch |err| {
