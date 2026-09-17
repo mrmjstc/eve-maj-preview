@@ -226,9 +226,7 @@ The display configuration has two layout modes, with full multi-monitor support.
 
 ## Thumbnail Space (Region Fit)
 
-Rather than a fixed per-thumbnail size and an unbounded grid, `RegionFit` mode fits however many thumbnails are currently tracked into a fixed rectangle, sizing every cell to preserve the configured thumbnail's aspect ratio. How it picks a column count depends on the region's shape:
-- **Portrait** (taller than wide): fills one column to its natural capacity - as many cells as fit at that column's width without shrinking - before adding another column, so a tall region with room to spare keeps everything in a single column instead of splitting into artificially small side-by-side columns.
-- **Landscape or square** (wide as or wider than tall): picks whichever column count yields the largest cells for the current count (no minimum cell size - cells keep shrinking as more characters log in).
+Rather than a fixed per-thumbnail size and an unbounded grid, `RegionFit` mode fits however many thumbnails are currently tracked into a fixed rectangle, sizing every cell to preserve the configured thumbnail's aspect ratio. It fills column 1 to its natural capacity - as many cells as fit at that column's width, using the region's full height, without shrinking - before starting a second column; a column's cell size stays the same as more characters arrive, right up until it's actually full.
 
 Cells are packed snugly against each other (using `spacing`, not stretched to fill the region) so any slack collects as one block at the region's far edge instead of gaps between thumbnails. It reflows automatically on login, and on logout if `regionFitReorderLoggedOut` is true; while active it fully replaces per-character manual dragging and the global/per-character thumbnail size (`thumbnail.width`/`height`, `CharacterThumbnailSize`) - those are ignored.
 
@@ -236,7 +234,7 @@ The region itself is set via the config dialog's "Start Region Selection" button
 
 Fill order is controlled by two independent settings:
 - `regionFitOrder`: `Characters` (the profile's configured character list order) or `HotkeyGroups` (grouped by hotkey group membership, in `hotkeyGroups` order, each group's own member order preserved; a character in more than one group counts toward whichever it appears in first). Characters matching neither sort after ranked ones.
-- `regionFitDirection`: which corner the grid fills from and whether it goes row-first or column-first (a portrait region's column-by-column capacity fill, above, is only visible top-to-bottom within each column under a `ColumnFirst_*` direction - a `RowFirst_*` direction interleaves across columns instead):
+- `regionFitDirection`: which corner the grid fills from and whether it goes row-first or column-first:
   - `RowFirst_LTR_TTB`: Left→right, top→bottom (default)
   - `RowFirst_RTL_TTB`: Right→left, top→bottom
   - `RowFirst_LTR_BTT`: Left→right, bottom→top
@@ -246,7 +244,7 @@ Fill order is controlled by two independent settings:
   - `ColumnFirst_TTB_RTL`: Top→bottom, right→left
   - `ColumnFirst_BTT_RTL`: Bottom→top, right→left
 
-`regionFitReorderLoggedOut` (default `true`): whether a character logging out moves its thumbnail to the end of the grid (an unranked "EVE" placeholder always sorts last) or stays in its current slot until some other login/logout triggers a reflow.
+`regionFitReorderLoggedOut` (default `true`): whether a character logging out moves its thumbnail to the end of the grid (an unranked "EVE" placeholder always sorts last) or stays in its current slot until some other login/logout triggers a reflow. Ignored when [Not-Logged-In Thumbnail Space](#not-logged-in-thumbnail-space) is enabled - a logout always reflows then, since the placeholder must physically leave the grid for that space rather than just keep or lose its slot within it.
 
 ```json
 {
@@ -261,6 +259,25 @@ Fill order is controlled by two independent settings:
     "regionFitReorderLoggedOut": true,
     "hideThumbnailsDuringRegionSelect": true,
     "spacing": 10
+  }
+}
+```
+
+## Not-Logged-In Thumbnail Space
+
+A separate, optional auto-fit area just for not-yet-logged-in "EVE" placeholder windows, independent of `layoutMode`. When `notLoggedInSpaceEnabled` is on and `notLoggedInSpaceX`/`Y`/`Width`/`Height` are captured (same drag-to-select flow as Thumbnail Space, via its own "Start Region Selection" button), placeholders auto-fit to fill that rectangle - the same column/row/aspect-ratio grid-fit `RegionFit` itself uses (see above), sized for however many placeholders currently exist - instead of joining the regular unpositioned-thumbnail flow at `startX`/`startY`. It has its own `notLoggedInSpaceSpacing`, independent of `RegionFit`'s `spacing`.
+
+It coexists with `RegionFit`: placeholders are carved out of the `RegionFit` grid entirely (they don't take a cell, and don't count toward its cell-count math) and auto-fit into the not-logged-in space instead, reflowing back into the grid the moment they log in. Both grids reflow (resizing every member, not just the one that changed) whenever a placeholder crosses between them.
+
+```json
+{
+  "display": {
+    "notLoggedInSpaceEnabled": true,
+    "notLoggedInSpaceX": 100,
+    "notLoggedInSpaceY": 100,
+    "notLoggedInSpaceWidth": 400,
+    "notLoggedInSpaceHeight": 300,
+    "notLoggedInSpaceSpacing": 10
   }
 }
 ```
@@ -290,11 +307,12 @@ All pixel-based values here (thumbnail size, `startX`/`startY`, spacing, font si
 **All Display Options:**
 
 - `startX`, `startY`: Starting position (absolute or monitor-relative); also the spawn point for characters with no saved position in `Custom` mode
-- `newThumbnailSpacing`: Horizontal gap between thumbnails with no saved position yet (new characters, and not-logged-in "EVE" placeholders) - they're lined up left-to-right from `startX`/`startY` instead of stacking on top of each other
+- `newThumbnailSpacing`: Horizontal gap between thumbnails with no saved position yet (new characters, and not-logged-in "EVE" placeholders not covered by `notLoggedInSpaceEnabled`) - they're lined up left-to-right from `startX`/`startY` instead of stacking on top of each other
 - `spacing`: Gap between thumbnails in `RegionFit` mode
 - `layoutMode`: `Custom` or `RegionFit`
 - `regionX`, `regionY`, `regionWidth`, `regionHeight`: Thumbnail Space rectangle for `RegionFit` mode (null until captured) - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit)
 - `regionFitOrder`, `regionFitDirection`, `regionFitReorderLoggedOut`, `hideThumbnailsDuringRegionSelect`: `RegionFit` fill order, logout behavior, and select-overlay hiding - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit)
+- `notLoggedInSpaceEnabled`, `notLoggedInSpaceX`, `notLoggedInSpaceY`, `notLoggedInSpaceWidth`, `notLoggedInSpaceHeight`, `notLoggedInSpaceSpacing`: Separate auto-fit area just for not-logged-in placeholders - see [Not-Logged-In Thumbnail Space](#not-logged-in-thumbnail-space)
 - `monitorIndex`: Target monitor (0-based, null = absolute)
 - `useMonitorWorkArea`: Respect taskbar
 - `honorSavedPositions`: Use saved character positions

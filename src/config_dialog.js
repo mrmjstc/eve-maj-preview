@@ -375,6 +375,12 @@ const CONFIG_SCHEMA = [
     { id: 'regionFitOrder', path: 'display.regionFitOrder' },
     { id: 'regionFitReorderLoggedOut', path: 'display.regionFitReorderLoggedOut' },
     { id: 'hideThumbnailsDuringRegionSelect', path: 'display.hideThumbnailsDuringRegionSelect', default: true },
+    { id: 'notLoggedInSpaceEnabled', path: 'display.notLoggedInSpaceEnabled', default: false },
+    { id: 'notLoggedInSpaceSpacing', path: 'display.notLoggedInSpaceSpacing' },
+    { id: 'notLoggedInSpaceX', path: 'display.notLoggedInSpaceX', transform: 'nullable' },
+    { id: 'notLoggedInSpaceY', path: 'display.notLoggedInSpaceY', transform: 'nullable' },
+    { id: 'notLoggedInSpaceWidth', path: 'display.notLoggedInSpaceWidth', transform: 'nullable' },
+    { id: 'notLoggedInSpaceHeight', path: 'display.notLoggedInSpaceHeight', transform: 'nullable' },
     { id: 'monitorIndex', path: 'display.monitorIndex', transform: 'nullable' },
     { id: 'useMonitorWorkArea', path: 'display.useMonitorWorkArea' },
     { id: 'honorSavedPositions', path: 'display.honorSavedPositions' },
@@ -866,6 +872,7 @@ const THUMBNAIL_PREVIEW_FIELD_IDS = [
     'notifInfoPanelOpacity', 'notifInfoPanelFontName', 'notifInfoPanelFontSize', 'notifInfoPanelFontWeight',
     'spacing', 'newThumbnailSpacing', 'layoutMode', 'regionFitDirection',
     'regionFitEnabled', 'regionFitOrder', 'regionFitReorderLoggedOut', 'hideThumbnailsDuringRegionSelect', 'regionX', 'regionY', 'regionWidth', 'regionHeight',
+    'notLoggedInSpaceEnabled', 'notLoggedInSpaceSpacing', 'notLoggedInSpaceX', 'notLoggedInSpaceY', 'notLoggedInSpaceWidth', 'notLoggedInSpaceHeight',
     'monitorIndex', 'useMonitorWorkArea', 'honorSavedPositions',
     'notificationsEnabled', 'notificationPosition', 'notificationOffsetX', 'notificationOffsetY',
     'notificationFontName', 'notificationFontSize', 'notificationFontWeight',
@@ -975,6 +982,12 @@ function buildThumbnailPreviewPatch(includePositions = false) {
             regionY: getNullableFieldValue('regionY'),
             regionWidth: getNullableFieldValue('regionWidth'),
             regionHeight: getNullableFieldValue('regionHeight'),
+            notLoggedInSpaceEnabled: getFieldValue('notLoggedInSpaceEnabled'),
+            notLoggedInSpaceSpacing: getFieldValue('notLoggedInSpaceSpacing'),
+            notLoggedInSpaceX: getNullableFieldValue('notLoggedInSpaceX'),
+            notLoggedInSpaceY: getNullableFieldValue('notLoggedInSpaceY'),
+            notLoggedInSpaceWidth: getNullableFieldValue('notLoggedInSpaceWidth'),
+            notLoggedInSpaceHeight: getNullableFieldValue('notLoggedInSpaceHeight'),
             monitorIndex: getNullableFieldValue('monitorIndex'),
             useMonitorWorkArea: getFieldValue('useMonitorWorkArea'),
             honorSavedPositions: getFieldValue('honorSavedPositions'),
@@ -1489,10 +1502,11 @@ function stopRegionSelectPolling(button) {
     hideStatus();
 }
 
-async function startRegionSelectFlow() {
+// buttonId/fieldIds let the same drag-to-select overlay feed either RegionFit or notLoggedInSpace.
+async function startRegionSelectFlow(buttonId = 'defineRegionButton', fieldIds = { x: 'regionX', y: 'regionY', width: 'regionWidth', height: 'regionHeight' }) {
     if (typeof webui === 'undefined' || regionSelectPollTimer) return;
 
-    const button = document.getElementById('defineRegionButton');
+    const button = document.getElementById(buttonId);
 
     try {
         const { success, error } = JSON.parse(await webui.call('startRegionSelect'));
@@ -1527,14 +1541,14 @@ async function startRegionSelectFlow() {
             stopRegionSelectPolling(button);
             if (result.cancelled) return;
 
-            setFieldValue('regionX', result.x);
-            setFieldValue('regionY', result.y);
-            setFieldValue('regionWidth', result.width);
-            setFieldValue('regionHeight', result.height);
-            currentConfig.display.regionX = result.x;
-            currentConfig.display.regionY = result.y;
-            currentConfig.display.regionWidth = result.width;
-            currentConfig.display.regionHeight = result.height;
+            setFieldValue(fieldIds.x, result.x);
+            setFieldValue(fieldIds.y, result.y);
+            setFieldValue(fieldIds.width, result.width);
+            setFieldValue(fieldIds.height, result.height);
+            currentConfig.display[fieldIds.x] = result.x;
+            currentConfig.display[fieldIds.y] = result.y;
+            currentConfig.display[fieldIds.width] = result.width;
+            currentConfig.display[fieldIds.height] = result.height;
             markAsChanged();
             scheduleThumbnailPreview();
         } catch (err) {
@@ -1645,6 +1659,7 @@ function populateFormFields() {
     toggleAspectRatioSlider();
     toggleSnappingOptions();
     toggleRegionFitOptions();
+    toggleNotLoggedInSpaceOptions();
     toggleNotifInfoPanelOptions();
     toggleShiftClickExcludeOptions();
     toggleBorderOptions();
@@ -7253,6 +7268,10 @@ function applyOptionToggle(checkboxId, optionsId) {
 
 function toggleSnappingOptions() {
     applyOptionToggle('snappingEnabled', 'snappingOptions');
+}
+
+function toggleNotLoggedInSpaceOptions() {
+    applyOptionToggle('notLoggedInSpaceEnabled', 'notLoggedInSpaceOptions');
 }
 
 function toggleNotifInfoPanelOptions() {

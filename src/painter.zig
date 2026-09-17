@@ -391,9 +391,14 @@ pub const Painter = struct {
     /// Most recent foreground window that belongs to neither an EVE client nor this process; used by HotkeyAction.ReturnToLastApp.
     last_non_eve_foreground: ?win32.HWND = null,
 
-    /// total_count only matters for RegionFit; other modes ignore it. Pass precomputed_grid when the caller already has one for this batch (e.g. a loop over all thumbnails), to avoid recomputing the O(n) grid search per call.
+    /// total_count only matters for RegionFit; other modes ignore it. precomputed_grid is always RegionFit's own grid, never notLoggedInSpace's - that one's cheap enough to recompute fresh each call.
     fn getThumbnailSize(self: *const Painter, character_name: []const u8, total_count: usize, precomputed_grid: ?RegionFitGrid) struct { width: i32, height: i32 } {
         const cfg = &self.config.display;
+        if (isCarvedOutOfRegionFit(cfg, character_name)) {
+            const space = notLoggedInSpaceRectFromConfig(cfg).?;
+            const grid = self.notLoggedInSpaceGrid(space, self.notLoggedInSpaceCount());
+            return .{ .width = grid.cell_width, .height = grid.cell_height };
+        }
         if (cfg.layoutMode == .RegionFit) {
             if (precomputed_grid) |grid| {
                 return .{ .width = grid.cell_width, .height = grid.cell_height };
@@ -1393,7 +1398,7 @@ pub const Painter = struct {
         const cfg = &self.config.display;
         // region/grid are invariant across every thumbnail this pass; compute once instead of per-thumbnail (see repositionAllThumbnails).
         const region_fit_grid: ?RegionFitGrid = if (isRegionFitActive(cfg))
-            calculateRegionFitGrid(regionRectFromConfig(cfg).?, self.thumbnails.items.len, cfg.spacing, cfg.spacing, self.regionFitAspectRatio())
+            calculateRegionFitGrid(regionRectFromConfig(cfg).?, self.regionFitGridCount(), cfg.spacing, cfg.spacing, self.regionFitAspectRatio())
         else
             null;
 
@@ -1457,50 +1462,70 @@ pub const Painter = struct {
         const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
         const scale = dpiToScale(if (monitor_placement) |mp| getMonitorDpi(mp.monitor) else defaultDpi());
         const region_fit_active = isRegionFitActive(cfg);
+        const not_logged_in_space = notLoggedInSpaceRectFromConfig(cfg);
         const total_count = self.thumbnails.items.len;
 
-        // RegionFit fills in configured-order rank, not raw array position.
-        const display_order: ?[]usize = if (region_fit_active)
-            self.computeRegionFitDisplayOrder() catch |err| blk: {
+        // RegionFit fills in configured-order rank, not raw array position; notLoggedInSpace carves its placeholders out of that rank and count entirely.
+        const display_order: ?RegionFitDisplayOrder = if (region_fit_active)
+            self.computeRegionFitDisplayOrder(not_logged_in_space != null) catch |err| blk: {
                 slog.warn("Failed to compute RegionFit display order: {}", .{err});
                 break :blk null;
             }
         else
             null;
-        defer if (display_order) |order| self.allocator.free(order);
+        defer if (display_order) |order| self.allocator.free(order.ranks);
 
         // region/grid are invariant across every thumbnail this pass, so compute them once instead of per-thumbnail (isRegionFitActive guarantees regionRectFromConfig succeeds).
         const region_fit: ?struct { region: win32.RECT, grid: RegionFitGrid } = if (region_fit_active) blk: {
             const region = regionRectFromConfig(cfg).?;
-            break :blk .{ .region = region, .grid = calculateRegionFitGrid(region, total_count, cfg.spacing, cfg.spacing, self.regionFitAspectRatio()) };
+            const grid_count = if (display_order) |order| order.count else total_count;
+            break :blk .{ .region = region, .grid = calculateRegionFitGrid(region, grid_count, cfg.spacing, cfg.spacing, self.regionFitAspectRatio()) };
         } else null;
+
+        // Own auto-fit grid for not-logged-in placeholders, invariant across the pass just like RegionFit's.
+        const not_logged_in: ?struct { space: win32.RECT, grid: RegionFitGrid } = if (not_logged_in_space) |space|
+            .{ .space = space, .grid = self.notLoggedInSpaceGrid(space, self.notLoggedInSpaceCount()) }
+        else
+            null;
 
         for (self.thumbnails.items, 0..) |thumbnail, index| {
             if (!thumbnail.win32_enabled) continue;
-            const position_index = if (display_order) |order| order[index] else index;
+            const carved_out = not_logged_in_space != null and scout_mod.isGenericCharacterName(thumbnail.character_name);
 
-            const target_width, const target_height, const pos = if (region_fit) |rf|
-                .{ rf.grid.cell_width, rf.grid.cell_height, regionFitPositionForGrid(cfg, rf.region, rf.grid, position_index) }
-            else blk: {
-                const thumb_size = self.getThumbnailSize(thumbnail.character_name, total_count, null);
-                const width = scalePixels(thumb_size.width, scale);
-                const height = scalePixels(thumb_size.height, scale);
-                break :blk .{ width, height, self.calculateThumbnailPosition(thumbnail.character_name, width, height, position_index, total_count, monitor_bounds, scale) };
-            };
-            if (region_fit_active) {
-                // DeferWindowPos alone won't update the DWM thumbnail's own destination rect.
-                hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_NOTOPMOST, pos.x, pos.y, target_width, target_height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE) orelse return;
-                hdwp = win32.DeferWindowPos(hdwp, thumbnail.text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, target_width, target_height, win32.SWP_NOACTIVATE) orelse return;
-                const props = makeThumbnailProps(target_width, target_height, win32.DWM_TNP_RECTDESTINATION);
-                _ = win32.DwmUpdateThumbnailProperties(thumbnail.thumbnail_id, &props);
-            } else {
-                hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_NOTOPMOST, pos.x, pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE) orelse return;
-                hdwp = win32.DeferWindowPos(hdwp, thumbnail.text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOACTIVATE) orelse return;
+            if (region_fit) |rf| {
+                if (!carved_out) {
+                    const position_index = if (display_order) |order| order.ranks[index] else index;
+                    const pos = regionFitPositionForGrid(rf.region, rf.grid, position_index, cfg.regionFitDirection, cfg.spacing);
+                    // DeferWindowPos alone won't update the DWM thumbnail's own destination rect.
+                    hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_NOTOPMOST, pos.x, pos.y, rf.grid.cell_width, rf.grid.cell_height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE) orelse return;
+                    hdwp = win32.DeferWindowPos(hdwp, thumbnail.text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, rf.grid.cell_width, rf.grid.cell_height, win32.SWP_NOACTIVATE) orelse return;
+                    const props = makeThumbnailProps(rf.grid.cell_width, rf.grid.cell_height, win32.DWM_TNP_RECTDESTINATION);
+                    _ = win32.DwmUpdateThumbnailProperties(thumbnail.thumbnail_id, &props);
+                    continue;
+                }
             }
+
+            if (carved_out) {
+                const nl = not_logged_in.?;
+                const rank = self.notLoggedInIndex(index);
+                const pos = regionFitPositionForGrid(nl.space, nl.grid, rank, cfg.regionFitDirection, cfg.notLoggedInSpaceSpacing);
+                // May still be sized from a previous RegionFit grid cell, so resize explicitly.
+                hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_NOTOPMOST, pos.x, pos.y, nl.grid.cell_width, nl.grid.cell_height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE) orelse return;
+                hdwp = win32.DeferWindowPos(hdwp, thumbnail.text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, nl.grid.cell_width, nl.grid.cell_height, win32.SWP_NOACTIVATE) orelse return;
+                continue;
+            }
+
+            // Plain Custom mode: RegionFit is off and this thumbnail isn't a carved-out placeholder either.
+            const thumb_size = self.getThumbnailSize(thumbnail.character_name, total_count, null);
+            const width = scalePixels(thumb_size.width, scale);
+            const height = scalePixels(thumb_size.height, scale);
+            const pos = self.calculateThumbnailPosition(thumbnail.character_name, width, height, index, total_count, monitor_bounds, scale);
+            hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_NOTOPMOST, pos.x, pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE) orelse return;
+            hdwp = win32.DeferWindowPos(hdwp, thumbnail.text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOACTIVATE) orelse return;
         }
         _ = win32.EndDeferWindowPos(hdwp);
 
-        if (region_fit_active) {
+        if (region_fit_active or not_logged_in != null) {
             // Avoids a one-tick delay before the border catches up to the new cell size.
             for (self.thumbnails.items) |*thumbnail| {
                 if (!thumbnail.win32_enabled) continue;
@@ -1515,7 +1540,8 @@ pub const Painter = struct {
     pub fn resizeThumbnailIfNeeded(self: *Painter, thumbnail: *ThumbnailWindow, precomputed_grid: ?RegionFitGrid) void {
         const cfg = &self.config.display;
         const size = self.getThumbnailSize(thumbnail.character_name, self.thumbnails.items.len, precomputed_grid);
-        const target_width, const target_height = if (isRegionFitActive(cfg))
+        // Grid-fit sizes (RegionFit's or notLoggedInSpace's) are already absolute physical pixels; only the plain default/per-character size needs DPI scaling.
+        const target_width, const target_height = if (isRegionFitActive(cfg) or isCarvedOutOfRegionFit(cfg, thumbnail.character_name))
             .{ size.width, size.height }
         else blk: {
             const scale = dpiToScale(getWindowDpi(thumbnail.hwnd));
@@ -1759,6 +1785,8 @@ pub const Painter = struct {
                 slog.debug("Cleared system name for logged out client", .{});
 
                 self.clearAllNotifications(thumbnail);
+
+                // Moving this placeholder into the not-logged-in space happens via the forced reflow below, which also resizes everyone else already there.
             }
 
             // Update exclusion state when character name becomes known (e.g., "EVE" -> "Probe Enthusiast")
@@ -1780,6 +1808,11 @@ pub const Painter = struct {
         }
 
         const region_fit_active = isRegionFitActive(&self.config.display);
+        const not_logged_in_space_active = notLoggedInSpaceRectFromConfig(&self.config.display) != null;
+
+        // notLoggedInSpace is count-dependent, so crossing its boundary must reflow it regardless of regionFitReorderLoggedOut.
+        if (not_logged_in_space_active and (any_login_rank_change or any_logout_rank_change)) return true;
+
         return region_fit_active and (any_login_rank_change or (any_logout_rank_change and self.config.display.regionFitReorderLoggedOut));
     }
 
@@ -1825,8 +1858,8 @@ pub const Painter = struct {
 
         // createThumbnail seeds title/character_name from eve_window, so new thumbnails need no re-sync.
         const created_new = self.syncThumbnailsWithWindows(eve_windows);
-        // A new login changes RegionFit's count, so every thumbnail (not just the new one) must reflow to the recomputed cell size.
-        needs_region_reflow = (created_new and isRegionFitActive(&self.config.display)) or needs_region_reflow;
+        // A new arrival changes RegionFit's and/or notLoggedInSpace's grid count, so every member must reflow to the recomputed cell size.
+        needs_region_reflow = (created_new and (isRegionFitActive(&self.config.display) or notLoggedInSpaceRectFromConfig(&self.config.display) != null)) or needs_region_reflow;
 
         // Coalesced into one reflow, since any combination of the three triggers above can fire in the same tick.
         if (needs_region_reflow) self.repositionAllThumbnails();
@@ -2108,6 +2141,62 @@ pub const Painter = struct {
         return count;
     }
 
+    /// Ranks this thumbnail among not-logged-in "EVE" placeholders only, for notLoggedInSpace's own grid.
+    fn notLoggedInIndex(self: *const Painter, up_to: usize) usize {
+        var count: usize = 0;
+        for (self.thumbnails.items[0..@min(up_to, self.thumbnails.items.len)]) |thumbnail| {
+            if (scout_mod.isGenericCharacterName(thumbnail.character_name)) count += 1;
+        }
+        return count;
+    }
+
+    fn notLoggedInSpaceRectFromConfig(cfg: *const config_mod.Config.DisplayConfig) ?win32.RECT {
+        if (!cfg.notLoggedInSpaceEnabled) return null;
+        const x = cfg.notLoggedInSpaceX orelse return null;
+        const y = cfg.notLoggedInSpaceY orelse return null;
+        const width = cfg.notLoggedInSpaceWidth orelse return null;
+        const height = cfg.notLoggedInSpaceHeight orelse return null;
+        return .{ .left = x, .top = y, .right = x + width, .bottom = y + height };
+    }
+
+    /// True when notLoggedInSpace pulls this placeholder out of the RegionFit grid entirely, even while RegionFit is active.
+    fn isCarvedOutOfRegionFit(cfg: *const config_mod.Config.DisplayConfig, character_name: []const u8) bool {
+        return scout_mod.isGenericCharacterName(character_name) and notLoggedInSpaceRectFromConfig(cfg) != null;
+    }
+
+    /// How many tracked thumbnails actually belong in the RegionFit grid, excluding notLoggedInSpace placeholders when that space is configured.
+    fn regionFitGridCount(self: *const Painter) usize {
+        const cfg = &self.config.display;
+        if (notLoggedInSpaceRectFromConfig(cfg) == null) return self.thumbnails.items.len;
+        var count: usize = 0;
+        for (self.thumbnails.items) |thumbnail| {
+            if (!scout_mod.isGenericCharacterName(thumbnail.character_name)) count += 1;
+        }
+        return count;
+    }
+
+    /// How many not-logged-in "EVE" placeholders currently exist, for notLoggedInSpace's own grid-fit sizing.
+    fn notLoggedInSpaceCount(self: *const Painter) usize {
+        var count: usize = 0;
+        for (self.thumbnails.items) |thumbnail| {
+            if (scout_mod.isGenericCharacterName(thumbnail.character_name)) count += 1;
+        }
+        return count;
+    }
+
+    /// notLoggedInSpace's own auto-fit grid - same aspect-preserving column/row search as RegionFit's Thumbnail Space, but with its own spacing.
+    fn notLoggedInSpaceGrid(self: *const Painter, space: win32.RECT, count: usize) RegionFitGrid {
+        const cfg = &self.config.display;
+        return calculateRegionFitGrid(space, count, cfg.notLoggedInSpaceSpacing, cfg.notLoggedInSpaceSpacing, self.regionFitAspectRatio());
+    }
+
+    /// Auto-fits not-logged-in placeholders into `space`: same grid-fit as RegionFit's Thumbnail Space, just with its own item count, spacing, and region.
+    fn calculateNotLoggedInSpacePosition(self: *const Painter, cfg: *const config_mod.Config.DisplayConfig, space: win32.RECT, index: usize) config_mod.Position {
+        const grid = self.notLoggedInSpaceGrid(space, self.notLoggedInSpaceCount());
+        const rank = self.notLoggedInIndex(index);
+        return regionFitPositionForGrid(space, grid, rank, cfg.regionFitDirection, cfg.notLoggedInSpaceSpacing);
+    }
+
     fn calculateThumbnailPosition(
         self: *const Painter,
         character_name: []const u8,
@@ -2119,6 +2208,13 @@ pub const Painter = struct {
         scale: f32,
     ) config_mod.Position {
         const cfg = &self.config.display;
+
+        // Checked first: notLoggedInSpace takes priority over RegionFit for these placeholders.
+        if (scout_mod.isGenericCharacterName(character_name)) {
+            if (notLoggedInSpaceRectFromConfig(cfg)) |space| {
+                return self.calculateNotLoggedInSpacePosition(cfg, space, index);
+            }
+        }
 
         // Checked before saved positions, which it replaces entirely while active.
         if (cfg.layoutMode == .RegionFit) {
@@ -2200,15 +2296,16 @@ pub const Painter = struct {
         return .{ .width = @max(width, 1), .height = @max(height, 1) };
     }
 
-    /// Like fitAspect, but height follows box_width unclamped, so a column's cell size doesn't shrink just to hit a specific row count.
+    /// Like fitAspect, but height follows box_width unclamped, so a column's cell size never shrinks just to squeeze in one more row.
     fn naturalCellForWidth(box_width: i32, aspect_ratio: f32) struct { width: i32, height: i32 } {
         if (box_width <= 0) return .{ .width = 1, .height = 1 };
         const height: i32 = @intFromFloat(@round(@as(f32, @floatFromInt(box_width)) / aspect_ratio));
         return .{ .width = box_width, .height = @max(height, 1) };
     }
 
-    /// Fills one column to its natural capacity before adding another, rather than always splitting evenly.
-    fn calculateRegionFitGridPortrait(region: win32.RECT, n: u32, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
+    /// Fills column 1 to its natural (unshrunk) capacity before starting another column, so cell size stays put until a column is actually full.
+    fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
+        const n: u32 = @intCast(@max(count, 1));
         const region_width = region.right - region.left;
         const region_height = region.bottom - region.top;
 
@@ -2221,41 +2318,6 @@ pub const Painter = struct {
                 return .{ .columns = columns, .rows = rows_per_column, .box_width = box_width, .box_height = cell.height, .cell_width = cell.width, .cell_height = cell.height };
             }
         }
-    }
-
-    /// Picks the column count that maximizes per-cell area once cells are fit to aspect_ratio.
-    fn calculateRegionFitGridLandscape(region: win32.RECT, n: u32, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
-        const region_width = region.right - region.left;
-        const region_height = region.bottom - region.top;
-
-        var best = RegionFitGrid{ .columns = 1, .rows = n, .box_width = 1, .box_height = 1, .cell_width = 1, .cell_height = 1 };
-        var best_area: i64 = -1;
-
-        var columns: u32 = 1;
-        while (columns <= n) : (columns += 1) {
-            const rows: u32 = (n + columns - 1) / columns;
-            // Clamp instead of skipping, so spacing that overruns a tiny region still yields a usable grid.
-            const box_width = @max(@divTrunc(region_width - spacing_x * (@as(i32, @intCast(columns)) - 1), @as(i32, @intCast(columns))), 1);
-            const box_height = @max(@divTrunc(region_height - spacing_y * (@as(i32, @intCast(rows)) - 1), @as(i32, @intCast(rows))), 1);
-
-            const cell = fitAspect(box_width, box_height, aspect_ratio);
-            const area = @as(i64, cell.width) * @as(i64, cell.height);
-            if (area > best_area) {
-                best_area = area;
-                best = .{ .columns = columns, .rows = rows, .box_width = box_width, .box_height = box_height, .cell_width = cell.width, .cell_height = cell.height };
-            }
-        }
-
-        return best;
-    }
-
-    fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
-        const n: u32 = @intCast(@max(count, 1));
-        const is_portrait = (region.bottom - region.top) > (region.right - region.left);
-        return if (is_portrait)
-            calculateRegionFitGridPortrait(region, n, spacing_x, spacing_y, aspect_ratio)
-        else
-            calculateRegionFitGridLandscape(region, n, spacing_x, spacing_y, aspect_ratio);
     }
 
     /// BTT/RTL directions stay within [0, rows/columns) since the region is fixed-size.
@@ -2274,24 +2336,25 @@ pub const Painter = struct {
 
     /// index/total_count here are display-order ranks (see computeRegionFitDisplayOrder), not raw thumbnails-array positions.
     fn calculateRegionFitPosition(cfg: *const config_mod.Config.DisplayConfig, region: win32.RECT, index: usize, total_count: usize, aspect_ratio: f32) config_mod.Position {
-        const spacing_x = cfg.spacing;
-        const spacing_y = cfg.spacing;
-        const grid = calculateRegionFitGrid(region, total_count, spacing_x, spacing_y, aspect_ratio);
-        return regionFitPositionForGrid(cfg, region, grid, index);
+        const grid = calculateRegionFitGrid(region, total_count, cfg.spacing, cfg.spacing, aspect_ratio);
+        return regionFitPositionForGrid(region, grid, index, cfg.regionFitDirection, cfg.spacing);
     }
 
-    /// Split out of calculateRegionFitPosition so callers that already computed the grid (e.g. repositionAllThumbnails, once for the whole batch) don't redo the O(n) column search per thumbnail.
-    fn regionFitPositionForGrid(cfg: *const config_mod.Config.DisplayConfig, region: win32.RECT, grid: RegionFitGrid, index: usize) config_mod.Position {
-        const cr = regionFitColRow(cfg.regionFitDirection, index, grid.columns, grid.rows);
+    /// Split out of calculateRegionFitPosition so callers that already computed the grid don't redo it per thumbnail. Takes direction/spacing explicitly so notLoggedInSpace can reuse it with its own spacing.
+    fn regionFitPositionForGrid(region: win32.RECT, grid: RegionFitGrid, index: usize, direction: types.RegionFitDirection, spacing: i32) config_mod.Position {
+        const cr = regionFitColRow(direction, index, grid.columns, grid.rows);
         // Stride by cell size, not the wider box, so slack collects at the region's far edge instead of as gaps between thumbnails.
         return .{
-            .x = region.left + cr.col * (grid.cell_width + cfg.spacing),
-            .y = region.top + cr.row * (grid.cell_height + cfg.spacing),
+            .x = region.left + cr.col * (grid.cell_width + spacing),
+            .y = region.top + cr.row * (grid.cell_height + spacing),
         };
     }
 
-    /// Ranks each tracked thumbnail per display.regionFitOrder; unranked characters sort last, in their existing relative order. Returns a thumbnails-array-index -> display-rank mapping; caller owns the slice.
-    fn computeRegionFitDisplayOrder(self: *Painter) ![]usize {
+    const RegionFitDisplayOrder = struct { ranks: []usize, count: usize };
+
+    /// Ranks each tracked thumbnail per display.regionFitOrder; unranked characters sort last. Returns a thumbnails-array-index -> display-rank mapping (caller owns .ranks) and how many were ranked.
+    /// carve_out excludes notLoggedInSpace placeholders entirely, so `count`/ranks reflect only what belongs in the RegionFit grid.
+    fn computeRegionFitDisplayOrder(self: *Painter, carve_out: bool) !RegionFitDisplayOrder {
         var order_map = std.StringHashMap(usize).init(self.allocator);
         defer order_map.deinit();
         switch (self.config.display.regionFitOrder) {
@@ -2316,23 +2379,37 @@ pub const Painter = struct {
         const n = self.thumbnails.items.len;
         const sort_indices = try self.allocator.alloc(usize, n);
         defer self.allocator.free(sort_indices);
-        for (sort_indices, 0..) |*si, i| si.* = i;
+        var count: usize = 0;
+        for (self.thumbnails.items, 0..) |thumbnail, i| {
+            if (carve_out and scout_mod.isGenericCharacterName(thumbnail.character_name)) continue;
+            sort_indices[count] = i;
+            count += 1;
+        }
+        const used = sort_indices[0..count];
 
         const Ctx = struct {
             thumbnails: []const ThumbnailWindow,
             order_map: *const std.StringHashMap(usize),
 
+            // Checked before order_map, or an unranked logged-in character (not in the Characters list) would tie with a placeholder and sort by array order instead.
             fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
-                return config_mod.orderMapLessThan(ctx.order_map, ctx.thumbnails[a_index].character_name, ctx.thumbnails[b_index].character_name, a_index, b_index);
+                const a_name = ctx.thumbnails[a_index].character_name;
+                const b_name = ctx.thumbnails[b_index].character_name;
+                const a_generic = scout_mod.isGenericCharacterName(a_name);
+                const b_generic = scout_mod.isGenericCharacterName(b_name);
+                if (a_generic != b_generic) return !a_generic;
+                return config_mod.orderMapLessThan(ctx.order_map, a_name, b_name, a_index, b_index);
             }
         };
-        std.sort.pdq(usize, sort_indices, Ctx{ .thumbnails = self.thumbnails.items, .order_map = &order_map }, Ctx.lessThan);
+        std.sort.pdq(usize, used, Ctx{ .thumbnails = self.thumbnails.items, .order_map = &order_map }, Ctx.lessThan);
 
+        // Carved-out entries keep their zero-initialized rank; it's never read since they route to notLoggedInSpace instead.
         const display_index_by_thumb_index = try self.allocator.alloc(usize, n);
-        for (sort_indices, 0..) |thumb_index, display_index| {
+        @memset(display_index_by_thumb_index, 0);
+        for (used, 0..) |thumb_index, display_index| {
             display_index_by_thumb_index[thumb_index] = display_index;
         }
-        return display_index_by_thumb_index;
+        return .{ .ranks = display_index_by_thumb_index, .count = count };
     }
 
     fn determineInitialVisibility(
@@ -2488,7 +2565,8 @@ pub const Painter = struct {
         const monitor_placement = resolveMonitorPlacement(cfg);
         const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
         const scale = dpiToScale(if (monitor_placement) |mp| getMonitorDpi(mp.monitor) else defaultDpi());
-        const thumb_width, const thumb_height = if (isRegionFitActive(cfg))
+        // Grid-fit sizes (RegionFit's or notLoggedInSpace's) are already absolute physical pixels; only the plain default/per-character size needs DPI scaling.
+        const thumb_width, const thumb_height = if (isRegionFitActive(cfg) or isCarvedOutOfRegionFit(cfg, eve_window.character_name))
             .{ size.width, size.height }
         else
             .{ scalePixels(size.width, scale), scalePixels(size.height, scale) };
@@ -2653,7 +2731,7 @@ pub const Painter = struct {
 
         const cfg = &self.config.display;
         const region_fit_grid: ?RegionFitGrid = if (isRegionFitActive(cfg))
-            calculateRegionFitGrid(regionRectFromConfig(cfg).?, self.thumbnails.items.len, cfg.spacing, cfg.spacing, self.regionFitAspectRatio())
+            calculateRegionFitGrid(regionRectFromConfig(cfg).?, self.regionFitGridCount(), cfg.spacing, cfg.spacing, self.regionFitAspectRatio())
         else
             null;
 

@@ -2611,6 +2611,16 @@ pub const Config = struct {
         /// Whether "Start Region Selection" temporarily hides visible thumbnails so they don't obscure the drag-to-select overlay.
         hideThumbnailsDuringRegionSelect: bool = true,
 
+        /// A separate auto-fit holding area for not-yet-logged-in "EVE" placeholders; coexists with RegionFit by carving them out of that grid entirely.
+        notLoggedInSpaceEnabled: bool = false,
+        /// Physical pixels, absolute (like regionX/Y); null until captured via "Start Region Selection".
+        notLoggedInSpaceX: ?i32 = null,
+        notLoggedInSpaceY: ?i32 = null,
+        notLoggedInSpaceWidth: ?i32 = null,
+        notLoggedInSpaceHeight: ?i32 = null,
+        /// Independent of RegionFit's `spacing`, so each Thumbnail Space can be tuned separately.
+        notLoggedInSpaceSpacing: i32 = 0,
+
         monitorIndex: ?u32 = null,
         useMonitorWorkArea: bool = true,
 
@@ -2665,11 +2675,25 @@ pub const Config = struct {
                 self.spacing = SPACING_MAX;
             }
 
+            if (self.notLoggedInSpaceSpacing < SPACING_MIN) self.notLoggedInSpaceSpacing = SPACING_MIN;
+            if (self.notLoggedInSpaceSpacing > SPACING_MAX) {
+                slog.warn("Not-logged-in space spacing {} too large, clamping to {}", .{ self.notLoggedInSpaceSpacing, SPACING_MAX });
+                self.notLoggedInSpaceSpacing = SPACING_MAX;
+            }
+
             if (self.regionX) |*x| {
                 if (x.* < START_X_MIN) x.* = START_X_MIN;
                 if (x.* > START_X_MAX) x.* = START_X_MAX;
             }
             if (self.regionY) |*y| {
+                if (y.* < START_Y_MIN) y.* = START_Y_MIN;
+                if (y.* > START_Y_MAX) y.* = START_Y_MAX;
+            }
+            if (self.notLoggedInSpaceX) |*x| {
+                if (x.* < START_X_MIN) x.* = START_X_MIN;
+                if (x.* > START_X_MAX) x.* = START_X_MAX;
+            }
+            if (self.notLoggedInSpaceY) |*y| {
                 if (y.* < START_Y_MIN) y.* = START_Y_MIN;
                 if (y.* > START_Y_MAX) y.* = START_Y_MAX;
             }
@@ -3550,6 +3574,40 @@ pub const Config = struct {
         if (obj.get("hideThumbnailsDuringRegionSelect")) |v| {
             if (v == .bool) display.hideThumbnailsDuringRegionSelect = v.bool;
         }
+        if (obj.get("notLoggedInSpaceEnabled")) |v| {
+            if (v == .bool) display.notLoggedInSpaceEnabled = v.bool;
+        }
+        if (obj.get("notLoggedInSpaceX")) |v| {
+            if (v == .integer) {
+                display.notLoggedInSpaceX = std.math.cast(i32, v.integer) orelse display.notLoggedInSpaceX;
+            } else if (v == .null) {
+                display.notLoggedInSpaceX = null;
+            }
+        }
+        if (obj.get("notLoggedInSpaceY")) |v| {
+            if (v == .integer) {
+                display.notLoggedInSpaceY = std.math.cast(i32, v.integer) orelse display.notLoggedInSpaceY;
+            } else if (v == .null) {
+                display.notLoggedInSpaceY = null;
+            }
+        }
+        if (obj.get("notLoggedInSpaceWidth")) |v| {
+            if (v == .integer) {
+                display.notLoggedInSpaceWidth = std.math.cast(i32, v.integer) orelse display.notLoggedInSpaceWidth;
+            } else if (v == .null) {
+                display.notLoggedInSpaceWidth = null;
+            }
+        }
+        if (obj.get("notLoggedInSpaceHeight")) |v| {
+            if (v == .integer) {
+                display.notLoggedInSpaceHeight = std.math.cast(i32, v.integer) orelse display.notLoggedInSpaceHeight;
+            } else if (v == .null) {
+                display.notLoggedInSpaceHeight = null;
+            }
+        }
+        if (obj.get("notLoggedInSpaceSpacing")) |v| {
+            if (v == .integer) display.notLoggedInSpaceSpacing = std.math.cast(i32, v.integer) orelse display.notLoggedInSpaceSpacing;
+        }
         if (obj.get("monitorIndex")) |v| {
             if (v == .integer) {
                 if (std.math.cast(u32, v.integer)) |val| display.monitorIndex = val;
@@ -4119,6 +4177,7 @@ pub const Config = struct {
 
             .@"display.spacing" = Range{ .min = DisplayConfig.SPACING_MIN, .max = DisplayConfig.SPACING_MAX },
             .@"display.newThumbnailSpacing" = Range{ .min = DisplayConfig.SPACING_MIN, .max = DisplayConfig.SPACING_MAX },
+            .@"display.notLoggedInSpaceSpacing" = Range{ .min = DisplayConfig.SPACING_MIN, .max = DisplayConfig.SPACING_MAX },
             .@"display.monitorIndex" = Range{ .min = 0, .max = DisplayConfig.MONITOR_INDEX_MAX },
             .@"display.listViewColumns" = Range{ .min = DisplayConfig.LIST_VIEW_COLUMNS_MIN, .max = DisplayConfig.LIST_VIEW_COLUMNS_MAX },
             .@"display.listViewFontSize" = Range{ .min = DisplayConfig.LIST_VIEW_FONT_SIZE_MIN, .max = DisplayConfig.LIST_VIEW_FONT_SIZE_MAX },
@@ -4283,6 +4342,12 @@ pub const Config = struct {
         const new_region_y = fresh.display.regionY;
         const new_region_width = fresh.display.regionWidth;
         const new_region_height = fresh.display.regionHeight;
+        const new_not_logged_in_space_enabled = fresh.display.notLoggedInSpaceEnabled;
+        const new_not_logged_in_space_x = fresh.display.notLoggedInSpaceX;
+        const new_not_logged_in_space_y = fresh.display.notLoggedInSpaceY;
+        const new_not_logged_in_space_width = fresh.display.notLoggedInSpaceWidth;
+        const new_not_logged_in_space_height = fresh.display.notLoggedInSpaceHeight;
+        const new_not_logged_in_space_spacing = fresh.display.notLoggedInSpaceSpacing;
 
         // Index-matched, like applyGroupBadgePreviewFromJson.
         for (self.hotkeyGroups.items, 0..) |*group, group_index| {
@@ -4367,6 +4432,12 @@ pub const Config = struct {
         self.display.regionY = new_region_y;
         self.display.regionWidth = new_region_width;
         self.display.regionHeight = new_region_height;
+        self.display.notLoggedInSpaceEnabled = new_not_logged_in_space_enabled;
+        self.display.notLoggedInSpaceX = new_not_logged_in_space_x;
+        self.display.notLoggedInSpaceY = new_not_logged_in_space_y;
+        self.display.notLoggedInSpaceWidth = new_not_logged_in_space_width;
+        self.display.notLoggedInSpaceHeight = new_not_logged_in_space_height;
+        self.display.notLoggedInSpaceSpacing = new_not_logged_in_space_spacing;
     }
 
     /// Live-preview only: per-group badge flags in the config dialog's group order, matched to the running groups by index.
