@@ -2761,7 +2761,9 @@ pub const Config = struct {
         autoMinimizeExcluded: bool = false,
     };
 
-    pub const CloseAllConfig = struct {};
+    pub const CloseAllConfig = struct {
+        excludeLoginScreenClients: bool = false,
+    };
 
     /// Expand %VAR% patterns in a path string. Caller owns the returned slice.
     fn expandEnvironmentVariables(allocator: std.mem.Allocator, path: []const u8) ![]u8 {

@@ -465,11 +465,15 @@ Exclusions are configured per character, not here - set `excludeFromMinimize` on
 
 ```json
 {
-  "closeAll": {}
+  "closeAll": {
+    "excludeLoginScreenClients": false
+  }
 }
 ```
 
-Exclusions are configured per character, not here - set `excludeFromCloseAll` on the character entry (see [Per-Character Configuration](#per-character-configuration)).
+`excludeLoginScreenClients` (default: `false`) skips any client still sitting at the character-selection screen.
+
+Per-character exclusions are configured separately - set `excludeFromCloseAll` on the character entry (see [Per-Character Configuration](#per-character-configuration)).
 
 ## Notification System
 

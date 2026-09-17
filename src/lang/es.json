@@ -350,6 +350,8 @@
   "field.clickTrigger.label": "Disparador de Clic",
   "field.clickTrigger.option.mousedown": "Pulsar Ratón (Instantáneo)",
   "field.clickTrigger.option.mouseup": "Soltar Ratón (Al Soltar)",
+  "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
+  "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Coincidencias de nombre separadas por comas, sin distinguir mayúsculas/minúsculas. Solo suprime la alerta de Recibiendo Daño - los impactos excluidos igual cuentan para el DPS mostrado arriba.",
   "field.combatDamageAlertExcludedWeapons.label": "Excluir Armas",
   "field.combatDamageAlertExcludedWeapons.placeholder": "p. ej. Smartbomb, Warp Scrambler",

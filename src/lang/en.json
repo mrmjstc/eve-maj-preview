@@ -350,6 +350,8 @@
   "field.clickTrigger.label": "Click Trigger",
   "field.clickTrigger.option.mousedown": "Mouse Down (Instant)",
   "field.clickTrigger.option.mouseup": "Mouse Up (On Release)",
+  "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
+  "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Case-insensitive, comma-separated name matches. Only suppresses the Taking Damage alert - excluded hits still count toward the DPS shown above.",
   "field.combatDamageAlertExcludedWeapons.label": "Exclude Weapons",
   "field.combatDamageAlertExcludedWeapons.placeholder": "e.g. Smartbomb, Warp Scrambler",

@@ -96,6 +96,12 @@ pub fn closeAllClients(eve_windows: []const scout_mod.EveWindow, config: *const 
             continue;
         }
 
+        if (config.closeAll.excludeLoginScreenClients and scout_mod.isGenericCharacterName(eve_window.character_name)) {
+            slog.debug("Skipping login-screen client (hwnd {*})", .{eve_window.hwnd});
+            excluded_count += 1;
+            continue;
+        }
+
         _ = win32.PostMessageA(eve_window.hwnd, win32.WM_CLOSE, 0, 0);
         closed_count += 1;
         slog.debug("Closing: {s}", .{eve_window.character_name});

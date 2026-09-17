@@ -350,6 +350,8 @@
   "field.clickTrigger.label": "Déclencheur de clic",
   "field.clickTrigger.option.mousedown": "Appui de la souris (instantané)",
   "field.clickTrigger.option.mouseup": "Relâchement de la souris (au relâchement)",
+  "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
+  "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Correspondance de noms insensible à la casse, séparés par des virgules. Supprime uniquement l'alerte « Subit des dégâts » - les coups exclus comptent toujours dans le DPS affiché ci-dessus.",
   "field.combatDamageAlertExcludedWeapons.label": "Exclure des armes",
   "field.combatDamageAlertExcludedWeapons.placeholder": "ex. Smartbomb, Warp Scrambler",

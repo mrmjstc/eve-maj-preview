@@ -350,6 +350,8 @@
   "field.clickTrigger.label": "Gatilho de Clique",
   "field.clickTrigger.option.mousedown": "Pressionar Botão (Instantâneo)",
   "field.clickTrigger.option.mouseup": "Soltar Botão (ao Liberar)",
+  "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
+  "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Correspondência de nomes separados por vírgula, sem distinção entre maiúsculas/minúsculas. Suprime apenas o alerta de Recebendo Dano - acertos excluídos ainda contam para o DPS mostrado acima.",
   "field.combatDamageAlertExcludedWeapons.label": "Excluir Armas",
   "field.combatDamageAlertExcludedWeapons.placeholder": "ex.: Smartbomb, Warp Scrambler",

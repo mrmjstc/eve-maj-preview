@@ -400,6 +400,8 @@ const CONFIG_SCHEMA = [
     { id: 'enableShiftClickExclude', path: 'exclusion.enableShiftClickExclude' },
     { id: 'autoMinimizeExcludedCharacters', path: 'exclusion.autoMinimizeExcluded' },
 
+    { id: 'closeAllExcludeLoginScreenClients', path: 'closeAll.excludeLoginScreenClients' },
+
     { id: 'requireEveFocus', path: 'hotkeys.requireEveFocus' },
     { id: 'resetGroupIndexOnNonGroupFocus', path: 'hotkeys.resetGroupIndexOnNonGroupFocus' },
     { id: 'allowHotkeyAutoRepeat', path: 'hotkeys.allowHotkeyAutoRepeat' },
@@ -3975,8 +3977,8 @@ const HOTKEY_BINDINGS = [
     {
         containerId: 'windowActionBindings',
         rows: [
-            { id: 'hotkeyMinimizeAll', labelKey: 'field.hotkeyMinimizeAll.label', exampleKey: 'field.hotkeyMinimizeAll.placeholder' },
             { id: 'hotkeyCloseAll', labelKey: 'field.hotkeyCloseAll.label', exampleKey: 'field.hotkeyCloseAll.placeholder' },
+            { id: 'hotkeyMinimizeAll', labelKey: 'field.hotkeyMinimizeAll.label', exampleKey: 'field.hotkeyMinimizeAll.placeholder' },
             { id: 'hotkeyToggleVisibility', labelKey: 'field.hotkeyToggleVisibility.label', exampleKey: 'field.hotkeyToggleVisibility.placeholder' },
             { id: 'hotkeyToggleAutoMinimize', labelKey: 'field.hotkeyToggleAutoMinimize.label', exampleKey: 'field.hotkeyToggleAutoMinimize.placeholder', hintKey: 'field.hotkeyToggleAutoMinimize.hint' },
             { id: 'hotkeyMoveToSavedPositions', labelKey: 'field.hotkeyMoveToSavedPositions.label', exampleKey: 'field.hotkeyMoveToSavedPositions.placeholder' },

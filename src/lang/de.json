@@ -350,6 +350,8 @@
   "field.clickTrigger.label": "Klick-Auslöser",
   "field.clickTrigger.option.mousedown": "Mouse Down (sofort)",
   "field.clickTrigger.option.mouseup": "Mouse Up (beim Loslassen)",
+  "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
+  "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Groß-/Kleinschreibung wird ignoriert, Namen kommagetrennt. Unterdrückt nur den \"Taking Damage\"-Alarm – ausgeschlossene Treffer zählen weiterhin zum oben angezeigten DPS.",
   "field.combatDamageAlertExcludedWeapons.label": "Waffen ausschließen",
   "field.combatDamageAlertExcludedWeapons.placeholder": "z. B. Smartbomb, Warp Scrambler",

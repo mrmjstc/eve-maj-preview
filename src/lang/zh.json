@@ -350,6 +350,8 @@
   "field.clickTrigger.label": "点击触发方式",
   "field.clickTrigger.option.mousedown": "鼠标按下 (即时)",
   "field.clickTrigger.option.mouseup": "鼠标释放 (松开时)",
+  "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
+  "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "不区分大小写,以逗号分隔的名称匹配。仅抑制“受到伤害”警报 - 被排除的命中仍会计入上方显示的 DPS。",
   "field.combatDamageAlertExcludedWeapons.label": "排除武器",
   "field.combatDamageAlertExcludedWeapons.placeholder": "例如:智能炸弹、跃迁扰频器",

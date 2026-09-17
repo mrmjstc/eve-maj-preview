@@ -350,6 +350,8 @@
   "field.clickTrigger.label": "Триггер клика",
   "field.clickTrigger.option.mousedown": "Нажатие кнопки (мгновенно)",
   "field.clickTrigger.option.mouseup": "Отпускание кнопки (по отпусканию)",
+  "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
+  "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Сопоставление по названию, без учёта регистра, через запятую. Подавляет только алерт «Получение урона» - исключённые попадания всё равно учитываются в DPS выше.",
   "field.combatDamageAlertExcludedWeapons.label": "Исключить оружие",
   "field.combatDamageAlertExcludedWeapons.placeholder": "например, Smartbomb, Warp Scrambler",

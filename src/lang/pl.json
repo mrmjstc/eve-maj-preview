@@ -350,6 +350,8 @@
   "field.clickTrigger.label": "Wyzwalacz kliknięcia",
   "field.clickTrigger.option.mousedown": "Wciśnięcie myszy (natychmiast)",
   "field.clickTrigger.option.mouseup": "Puszczenie myszy (po zwolnieniu)",
+  "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
+  "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Dopasowanie nazw bez rozróżniania wielkości liter, oddzielone przecinkami. Tłumi tylko alert Otrzymywanie obrażeń - wykluczone trafienia nadal liczą się do DPS pokazywanego powyżej.",
   "field.combatDamageAlertExcludedWeapons.label": "Wyklucz bronie",
   "field.combatDamageAlertExcludedWeapons.placeholder": "np. Smartbomb, Warp Scrambler",
