@@ -1,6 +1,6 @@
-// RegisterHotKey is keyboard-only and can't bind mouse buttons or the wheel, so this module
-// hooks WH_MOUSE_LL instead and re-posts matches as WM_HOTKEY, keeping hotkey dispatch agnostic
-// to whether a press came from the mouse or the keyboard.
+// Mouse buttons/wheel can't be bound via a keyboard API, so this module hooks WH_MOUSE_LL
+// (mirroring keyboard_hook.zig's WH_KEYBOARD_LL) and re-posts matches as WM_HOTKEY, keeping
+// hotkey dispatch agnostic to whether a press came from the mouse or the keyboard.
 const std = @import("std");
 const win32 = @import("win32.zig");
 const vk = @import("virtual_keys.zig");
@@ -73,18 +73,9 @@ fn uninstallHook() void {
     g_swallow_xbutton2_up = false;
 }
 
-fn currentModifiers() u32 {
-    var mods: u32 = 0;
-    if (win32.isCtrlPressed()) mods |= vk.MOD_CONTROL;
-    if (win32.isAltPressed()) mods |= vk.MOD_ALT;
-    if (win32.isShiftPressed()) mods |= vk.MOD_SHIFT;
-    if (win32.isWinPressed()) mods |= vk.MOD_WIN;
-    return mods;
-}
-
 /// Look up a bound base virtual key (with the currently-held modifiers) and re-post a match as WM_HOTKEY; returns whether the event should be swallowed.
 fn dispatchIfBound(base_vk: u32) bool {
-    const combined = vk.combineKey(base_vk, currentModifiers());
+    const combined = vk.combineKey(base_vk, vk.currentModifiers());
     if (g_bindings.get(combined)) |id| {
         if (g_target_hwnd) |hwnd| {
             _ = win32.PostMessageA(hwnd, win32.WM_HOTKEY, @intCast(id), 0);
@@ -105,7 +96,7 @@ fn lowLevelMouseProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) c
                 win32.XBUTTON2 => vk.VK_XBUTTON2,
                 else => null,
             };
-            // Swallow the click, matching RegisterHotKey's exclusive-capture semantics.
+            // Swallow the click so the underlying app never sees it.
             if (button_vk) |base_vk| {
                 if (dispatchIfBound(base_vk)) {
                     // Arm the matching release swallow so the newly-focused client doesn't see a phantom button-up.
@@ -133,7 +124,7 @@ fn lowLevelMouseProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) c
         } else if (wParam == win32.WM_MOUSEWHEEL) {
             const info = win32.lparamToPtr(win32.MSLLHOOKSTRUCT, lParam);
             const wheel_vk: u32 = if (win32.getWheelDelta(info.mouseData) > 0) vk.VK_WHEELUP else vk.VK_WHEELDOWN;
-            // Swallow the scroll, matching RegisterHotKey's exclusive-capture semantics.
+            // Swallow the scroll so the underlying app never sees it.
             if (dispatchIfBound(wheel_vk)) return 1;
         }
     }

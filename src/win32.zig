@@ -489,19 +489,11 @@ pub extern "user32" fn ReleaseCapture() callconv(.c) BOOL;
 pub extern "user32" fn GetParent(hWnd: HWND) callconv(.c) ?HWND;
 pub extern "user32" fn GetSystemMetrics(nIndex: c_int) callconv(.c) c_int;
 pub extern "user32" fn GetAsyncKeyState(vKey: c_int) callconv(.c) c_short;
-pub extern "user32" fn RegisterHotKey(
-    hWnd: ?HWND,
-    id: c_int,
-    fsModifiers: UINT,
-    vk: UINT,
-) callconv(.c) BOOL;
-pub extern "user32" fn UnregisterHotKey(
-    hWnd: ?HWND,
-    id: c_int,
-) callconv(.c) BOOL;
+pub extern "user32" fn keybd_event(bVk: BYTE, bScan: BYTE, dwFlags: DWORD, dwExtraInfo: usize) callconv(.c) void;
+pub const KEYEVENTF_KEYUP: DWORD = 0x0002;
 
-// RegisterHotKey is keyboard-only, so mouse-button hotkeys (e.g. XButton1/XButton2) instead
-// go through a WH_MOUSE_LL low-level hook, with its own handle/callback/(un)install functions.
+// All hotkeys (keyboard and mouse-button/wheel) are bound via low-level hooks - see
+// keyboard_hook.zig and mouse_hook.zig, each with its own handle/callback/(un)install functions.
 pub const HHOOK = HANDLE;
 pub const WH_KEYBOARD_LL: c_int = 13;
 pub const WH_MOUSE_LL: c_int = 14;
@@ -640,6 +632,13 @@ pub const VK_LWIN = 0x5B;
 pub const VK_RWIN = 0x5C;
 pub const VK_ESCAPE = 0x1B;
 pub const VK_RETURN = 0x0D;
+// WH_KEYBOARD_LL reports these side-specific codes for Ctrl/Alt/Shift, never the generic ones above.
+pub const VK_LSHIFT = 0xA0;
+pub const VK_RSHIFT = 0xA1;
+pub const VK_LCONTROL = 0xA2;
+pub const VK_RCONTROL = 0xA3;
+pub const VK_LMENU = 0xA4;
+pub const VK_RMENU = 0xA5;
 
 // Identifies which side button triggered a WM_XBUTTONDOWN/UP message or MSLLHOOKSTRUCT event (packed into the high word of wParam/mouseData respectively).
 pub const XBUTTON1: WORD = 0x0001;
