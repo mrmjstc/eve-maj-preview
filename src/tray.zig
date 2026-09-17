@@ -205,6 +205,7 @@ pub const TrayIcon = struct {
             break :blk if (is_visible) win32.MF_STRING | win32.MF_CHECKED else win32.MF_STRING;
         } else win32.MF_STRING;
         _ = win32.AppendMenuA(menu, visibility_flags, win32.IDM_TOGGLE_VISIBILITY, "Show Thumbnails");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_RESTORE_SAVED_POSITIONS, "Restore Saved Positions");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
         const history_panel_visible = if (painter) |p| p.isNotifInfoPanelVisible() else config.display.showNotifInfoPanel;
@@ -327,6 +328,16 @@ pub const TrayIcon = struct {
         if (command_id == win32.IDM_SUSPEND_HOTKEYS) {
             if (hotkey_manager) |hkm| {
                 hkm.handleSuspendHotkeysRequest();
+            }
+            return true;
+        }
+
+        if (command_id == win32.IDM_RESTORE_SAVED_POSITIONS) {
+            slog.info("Restore saved positions requested from system tray", .{});
+            if (hotkey_manager) |hkm| {
+                hkm.handleMoveToSavedPositionsRequest();
+            } else {
+                slog.err("Hotkey manager not available for restore saved positions", .{});
             }
             return true;
         }
