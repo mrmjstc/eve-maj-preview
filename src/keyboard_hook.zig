@@ -1,9 +1,6 @@
-// Global keyboard hotkeys are bound via a WH_KEYBOARD_LL low-level hook rather than
-// RegisterHotKey, since RegisterHotKey can't represent a bare-modifier trigger (e.g. "Shift"
-// alone, or "Ctrl+Shift" with Shift as the trigger and Ctrl held) - Windows silently refuses
-// those combos. Matches are re-posted as WM_HOTKEY, mirroring mouse_hook.zig, so the rest of
-// the dispatch pipeline (HotkeyManager.handleHotkeyPress) doesn't need to know whether a press
-// came from the mouse or the keyboard.
+// WH_KEYBOARD_LL rather than RegisterHotKey, since RegisterHotKey can't represent a bare-modifier
+// trigger (e.g. plain "Shift"). Matches are re-posted as WM_HOTKEY, mirroring mouse_hook.zig, so
+// HotkeyManager.handleHotkeyPress doesn't need to know whether a press came from mouse or keyboard.
 const std = @import("std");
 const win32 = @import("win32.zig");
 const vk = @import("virtual_keys.zig");
@@ -49,7 +46,7 @@ pub fn unregisterAll() void {
     uninstallHook();
 }
 
-/// Frees g_bindings/g_swallow_release; call only once at true process shutdown, never from a reload path that may register() again.
+/// Call only once at true process shutdown, never from a reload path that may register() again.
 pub fn deinit() void {
     if (!g_initialized) return;
     g_bindings.deinit();
@@ -57,8 +54,7 @@ pub fn deinit() void {
     g_initialized = false;
 }
 
-/// Marks vk_code down to distinguish a repeat WM_HOTKEY from a new press; swallow-on-release is decided later via markSwallowRelease.
-/// Mouse-button hotkeys route through handleHotkeyPress too, with vk_code == 0, which is always treated as a fresh press.
+/// Distinguishes a repeat WM_HOTKEY from a new press; vk_code == 0 (mouse-button hotkeys) is always fresh.
 pub fn trackPress(allocator: std.mem.Allocator, vk_code: u32) bool {
     if (vk_code == 0) return true;
     ensureInit(allocator);
@@ -99,8 +95,7 @@ fn uninstallHook() void {
     g_swallow_release.clearRetainingCapacity();
 }
 
-/// WH_KEYBOARD_LL reports the side-specific extended vk for Ctrl/Alt/Shift (e.g. VK_LSHIFT), never
-/// the generic one, and only VK_LWIN/VK_RWIN exist for Win - normalize to the generic vk for matching.
+/// WH_KEYBOARD_LL reports the side-specific vk for Ctrl/Alt/Shift/Win (e.g. VK_LSHIFT), never the generic one.
 fn normalizeModifierVk(raw_vk: u32) u32 {
     return switch (raw_vk) {
         win32.VK_LSHIFT, win32.VK_RSHIFT => vk.VK_SHIFT,
@@ -111,8 +106,7 @@ fn normalizeModifierVk(raw_vk: u32) u32 {
     };
 }
 
-/// Modifier bit a generic modifier vk itself represents, so it can be excluded from the held-modifiers
-/// mask before matching (GetAsyncKeyState already reflects the key's own new state by the time the hook fires).
+/// A bare-modifier trigger's own bit, excluded from the held-modifiers mask since GetAsyncKeyState already reflects it as down.
 fn selfModifierBit(base_vk: u32) u32 {
     return switch (base_vk) {
         vk.VK_CONTROL => vk.MOD_CONTROL,
@@ -123,23 +117,29 @@ fn selfModifierBit(base_vk: u32) u32 {
     };
 }
 
-/// Look up a bound base virtual key (with the currently-held modifiers, excluding the base key's
-/// own modifier identity if it is one) and re-post a match as WM_HOTKEY; returns whether the event should be swallowed.
+/// Re-posts a match as WM_HOTKEY; returns whether the event should be swallowed. Falls back to the
+/// bare (no-modifier) binding if the exact combo isn't bound, so an unrelated held modifier doesn't
+/// block it; a more specific binding, if one exists, still wins outright.
 fn dispatchIfBound(raw_vk: u32) bool {
     const base_vk = normalizeModifierVk(raw_vk);
     const mods = vk.currentModifiers() & ~selfModifierBit(base_vk);
     const combined = vk.combineKey(base_vk, mods);
-    if (g_bindings.get(combined)) |id| {
-        if (g_target_hwnd) |hwnd| {
-            // Encode raw_vk into HIWORD(lParam) like a real WM_HOTKEY message, so hotkeyVkFromLparam/
-            // trackPress/markSwallowRelease downstream (hotkeys.zig's handleHotkeyPress) need no changes.
-            // Release-swallowing is armed there, not here - only after an action actually moves focus.
-            const lparam: win32.LPARAM = @bitCast(@as(usize, raw_vk << 16));
-            _ = win32.PostMessageA(hwnd, win32.WM_HOTKEY, @intCast(id), lparam);
-        }
-        return true;
+
+    var id: c_int = undefined;
+    if (g_bindings.get(combined)) |exact_id| {
+        id = exact_id;
+    } else if (mods != 0) {
+        id = g_bindings.get(vk.combineKey(base_vk, 0)) orelse return false;
+    } else {
+        return false;
     }
-    return false;
+
+    if (g_target_hwnd) |hwnd| {
+        // Encode raw_vk into HIWORD(lParam) like a real WM_HOTKEY message, so hotkeyVkFromLparam needs no changes.
+        const lparam: win32.LPARAM = @bitCast(@as(usize, raw_vk << 16));
+        _ = win32.PostMessageA(hwnd, win32.WM_HOTKEY, @intCast(id), lparam);
+    }
+    return true;
 }
 
 fn lowLevelKeyboardProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {

@@ -71,14 +71,12 @@ pub fn combineKey(vk_code: u32, modifiers: u32) u32 {
     return (vk_code & VK_MASK) | ((modifiers & MOD_MASK) << MOD_SHIFT_AMOUNT);
 }
 
-/// Whether a base virtual key code is a mouse button or wheel direction, which is bound through
-/// mouse_hook.zig's low-level hook instead of keyboard_hook.zig's (see hotkeys.zig)
+/// Whether vk_code is a mouse button or wheel direction, bound via mouse_hook.zig instead of keyboard_hook.zig.
 pub fn isMouseHookVk(vk_code: u32) bool {
     return vk_code == VK_XBUTTON1 or vk_code == VK_XBUTTON2 or vk_code == VK_WHEELUP or vk_code == VK_WHEELDOWN;
 }
 
-/// Currently-held modifier keys (MOD_ALT | MOD_CONTROL | MOD_SHIFT | MOD_WIN), read via GetAsyncKeyState.
-/// Shared by mouse_hook.zig and keyboard_hook.zig to match a low-level hook event against a bound combo.
+/// Currently-held modifier keys, read via GetAsyncKeyState; shared by mouse_hook.zig and keyboard_hook.zig.
 pub fn currentModifiers() u32 {
     var mods: u32 = 0;
     if (win32.isCtrlPressed()) mods |= MOD_CONTROL;
@@ -318,9 +316,7 @@ pub fn parseVirtualKey(key_str: []const u8) ?u32 {
             return null;
         };
 
-        // A modifier can't also be its own required-held modifier (e.g. "Shift+Shift"); the hook
-        // excludes a bare-modifier trigger's own bit from the held-modifiers match, so this would
-        // otherwise silently parse into a binding that can never fire.
+        // e.g. "Shift+Shift" would otherwise parse into a binding that can never fire (its own bit is always excluded from the match).
         const self_referential = switch (vk_code) {
             VK_CONTROL => modifiers & MOD_CONTROL != 0,
             VK_MENU => modifiers & MOD_ALT != 0,

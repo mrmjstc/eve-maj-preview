@@ -455,8 +455,11 @@ pub extern "user32" fn GetAsyncKeyState(vKey: c_int) callconv(.c) c_short;
 pub extern "user32" fn keybd_event(bVk: BYTE, bScan: BYTE, dwFlags: DWORD, dwExtraInfo: usize) callconv(.c) void;
 pub const KEYEVENTF_KEYUP: DWORD = 0x0002;
 
-// All hotkeys (keyboard and mouse-button/wheel) are bound via low-level hooks - see
-// keyboard_hook.zig and mouse_hook.zig, each with its own handle/callback/(un)install functions.
+// Not used for actual hotkeys (see keyboard_hook.zig/mouse_hook.zig) - only by input.zig's foreground-lock workaround.
+pub extern "user32" fn RegisterHotKey(hWnd: ?HWND, id: c_int, fsModifiers: UINT, vk: UINT) callconv(.c) BOOL;
+pub extern "user32" fn UnregisterHotKey(hWnd: ?HWND, id: c_int) callconv(.c) BOOL;
+
+// Hotkeys are bound via low-level hooks - see keyboard_hook.zig and mouse_hook.zig.
 pub const HHOOK = HANDLE;
 pub const WH_KEYBOARD_LL: c_int = 13;
 pub const WH_MOUSE_LL: c_int = 14;
