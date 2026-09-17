@@ -73,16 +73,24 @@ fn uninstallHook() void {
     g_swallow_xbutton2_up = false;
 }
 
-/// Look up a bound base virtual key (with the currently-held modifiers) and re-post a match as WM_HOTKEY; returns whether the event should be swallowed.
+/// Re-posts a match as WM_HOTKEY; returns whether the event should be swallowed. Modifier fallback matches keyboard_hook.zig's dispatchIfBound.
 fn dispatchIfBound(base_vk: u32) bool {
-    const combined = vk.combineKey(base_vk, vk.currentModifiers());
-    if (g_bindings.get(combined)) |id| {
-        if (g_target_hwnd) |hwnd| {
-            _ = win32.PostMessageA(hwnd, win32.WM_HOTKEY, @intCast(id), 0);
-        }
-        return true;
+    const mods = vk.currentModifiers();
+    const combined = vk.combineKey(base_vk, mods);
+
+    var id: c_int = undefined;
+    if (g_bindings.get(combined)) |exact_id| {
+        id = exact_id;
+    } else if (mods != 0) {
+        id = g_bindings.get(vk.combineKey(base_vk, 0)) orelse return false;
+    } else {
+        return false;
     }
-    return false;
+
+    if (g_target_hwnd) |hwnd| {
+        _ = win32.PostMessageA(hwnd, win32.WM_HOTKEY, @intCast(id), 0);
+    }
+    return true;
 }
 
 fn lowLevelMouseProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {

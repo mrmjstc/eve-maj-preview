@@ -95,41 +95,63 @@ fn restoreAnimation() void {
     }
 }
 
-/// Plain SetForegroundWindow only works when the calling process just received user input. A real
-/// click on our own window satisfies that, but a hotkey dispatched via keyboard_hook.zig/mouse_hook.zig's
-/// low-level hook + synthetic WM_HOTKEY doesn't carry RegisterHotKey's old foreground-lock exemption,
-/// so Windows silently refuses the request (AttachThreadInput to the current foreground thread alone
-/// isn't reliably enough here). Simulating a bare Alt press/release first resets Windows' internal
-/// foreground-lock timer - the standard workaround hotkey-based window-switchers rely on.
-pub fn forceSetForegroundWindow(target_hwnd: win32.HWND) void {
-    const current_thread = win32.GetCurrentThreadId();
-    var attached = false;
-    var foreground_thread: win32.DWORD = 0;
+// SetForegroundWindow silently refuses unless the caller just received real input, which a hotkey
+// dispatched via keyboard_hook.zig/mouse_hook.zig doesn't carry. The conduit hotkey below keeps a
+// permanently-registered, physically unreachable RegisterHotKey binding alive purely to borrow that
+// exemption on demand.
+// 0xE8 is reserved/unassigned in the Windows VK table - no physical key generates it.
+const FOCUS_GRANT_VK: win32.UINT = 0xE8;
+const FOCUS_GRANT_ID_BASE: c_int = 9000;
+// MOD_ALT|MOD_CONTROL|MOD_SHIFT|MOD_WIN occupy bits 0-3, so every value 0-15 is already a valid combo.
+const FOCUS_GRANT_COMBO_COUNT: u32 = 16;
 
-    if (win32.GetForegroundWindow()) |foreground| {
-        foreground_thread = win32.GetWindowThreadProcessId(foreground, null);
-        if (foreground_thread != 0 and foreground_thread != current_thread) {
-            attached = win32.AttachThreadInput(current_thread, foreground_thread, win32.TRUE) != 0;
-            if (!attached) {
-                slog.debug("AttachThreadInput failed (current_thread={}, foreground_thread={}): error {}", .{ current_thread, foreground_thread, win32.GetLastError() });
-            }
+var g_focus_grant_hwnd: ?win32.HWND = null;
+var g_focus_grant_target: ?win32.HWND = null;
+
+/// Call once at startup.
+pub fn installFocusGrant(hwnd: win32.HWND) void {
+    g_focus_grant_hwnd = hwnd;
+    for (0..FOCUS_GRANT_COMBO_COUNT) |i| {
+        const mods: win32.UINT = @intCast(i);
+        const id = FOCUS_GRANT_ID_BASE + @as(c_int, @intCast(i));
+        if (!win32.toBool(win32.RegisterHotKey(hwnd, id, mods, FOCUS_GRANT_VK))) {
+            slog.err("Failed to register foreground-grant conduit hotkey {} (mods=0x{X})", .{ id, mods });
         }
-    } else {
-        slog.debug("GetForegroundWindow returned null before forceSetForegroundWindow({*})", .{target_hwnd});
     }
+}
 
-    win32.keybd_event(win32.VK_MENU, 0, 0, 0);
-    win32.keybd_event(win32.VK_MENU, 0, win32.KEYEVENTF_KEYUP, 0);
-
-    const sfw_ok = win32.toBool(win32.SetForegroundWindow(target_hwnd));
-    if (!sfw_ok) {
-        slog.debug("SetForegroundWindow({*}) failed (attached={}): error {}", .{ target_hwnd, attached, win32.GetLastError() });
+/// Call once at shutdown.
+pub fn uninstallFocusGrant() void {
+    const hwnd = g_focus_grant_hwnd orelse return;
+    for (0..FOCUS_GRANT_COMBO_COUNT) |i| {
+        _ = win32.UnregisterHotKey(hwnd, FOCUS_GRANT_ID_BASE + @as(c_int, @intCast(i)));
     }
+    g_focus_grant_hwnd = null;
+}
+
+/// Returns false if id isn't the conduit hotkey, so the caller can dispatch it normally.
+pub fn handleFocusGrantWmHotkey(id: c_int) bool {
+    if (id < FOCUS_GRANT_ID_BASE or id >= FOCUS_GRANT_ID_BASE + @as(c_int, @intCast(FOCUS_GRANT_COMBO_COUNT))) return false;
+
+    const target = g_focus_grant_target orelse return true;
+    // Worth one immediate retry rather than leaving the user stuck on the wrong window.
+    if (!win32.toBool(win32.SetForegroundWindow(target))) {
+        _ = win32.SetForegroundWindow(target);
+    }
+    _ = win32.SetFocus(target);
+    return true;
+}
+
+/// Direct SetForegroundWindow is a same-process fast path; the conduit hotkey above is the reliable
+/// (async) path for the cross-process case, which plain SetForegroundWindow can't do alone.
+pub fn forceSetForegroundWindow(target_hwnd: win32.HWND) void {
+    _ = win32.SetForegroundWindow(target_hwnd);
     _ = win32.SetFocus(target_hwnd);
 
-    if (attached) {
-        _ = win32.AttachThreadInput(current_thread, foreground_thread, win32.FALSE);
-    }
+    g_focus_grant_target = target_hwnd;
+    // keybd_event only injects this vk, so held modifiers stay held and still match a registration.
+    win32.keybd_event(@intCast(FOCUS_GRANT_VK), 0, 0, 0);
+    win32.keybd_event(@intCast(FOCUS_GRANT_VK), 0, win32.KEYEVENTF_KEYUP, 0);
 }
 
 /// Activates and focuses the EVE client window when its thumbnail is clicked, handling minimized/maximized states.

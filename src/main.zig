@@ -94,8 +94,11 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             return 0;
         },
         win32.WM_HOTKEY => {
-            if (g_hotkey_manager) |manager| {
-                manager.handleHotkeyPress(@intCast(wParam), lParam);
+            const id: c_int = @intCast(wParam);
+            if (!input.handleFocusGrantWmHotkey(id)) {
+                if (g_hotkey_manager) |manager| {
+                    manager.handleHotkeyPress(id, lParam);
+                }
             }
             return 0;
         },
@@ -891,6 +894,7 @@ fn mainImpl(init: std.process.Init) !void {
         g_hotkey_manager.?.* = try hotkeys.HotkeyManager.init(g_allocator, &g_config, &g_global_settings, g_scout.?, g_painter.?);
     }
     painter.g_hotkey_manager_ptr = g_hotkey_manager;
+    input.installFocusGrant(timer_hwnd);
     defer {
         if (g_hotkey_manager) |manager| {
             manager.unregisterAll(timer_hwnd);
@@ -900,6 +904,7 @@ fn mainImpl(init: std.process.Init) !void {
         painter.g_hotkey_manager_ptr = null;
         mouse_hook.deinit();
         keyboard_hook.deinit();
+        input.uninstallFocusGrant();
     }
 
     g_hotkey_manager.?.registerHotkeys(timer_hwnd) catch |err| {
