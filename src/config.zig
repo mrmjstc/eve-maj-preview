@@ -2734,6 +2734,7 @@ pub const Config = struct {
         enableDragging: bool = true,
         animationStyle: types.AnimationStyle = .NoAnimation,
         clickTrigger: types.ClickTrigger = .MouseDown,
+        clickThrough: bool = false,
     };
 
     pub const AutoMinimizeConfig = struct {

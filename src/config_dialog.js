@@ -303,6 +303,7 @@ const CONFIG_SCHEMA = [
     { id: 'enableDragging', path: 'interaction.enableDragging' },
     { id: 'animationStyle', path: 'interaction.animationStyle' },
     { id: 'clickTrigger', path: 'interaction.clickTrigger' },
+    { id: 'clickThrough', path: 'interaction.clickThrough' },
 
     { id: 'snappingEnabled', path: 'snapping.enabled' },
     { id: 'snappingThreshold', path: 'snapping.threshold' },
@@ -1655,6 +1656,7 @@ function populateFormFields() {
     toggleQuickGroupBadgeOptions();
     toggleUniqueSystemColors();
     toggleUniqueCharacterNameColors();
+    toggleClickThroughOptions();
     toggleClientListOptions();
     toggleAutoMinimizeOptions();
     toggleTtsDisplayNameOption();
@@ -8054,6 +8056,10 @@ function toggleInverseOption(checkboxId, optionsId) {
 
 function toggleUniqueSystemColors() {
     toggleInverseOption('useUniqueSystemColors', 'systemNameColorOption');
+}
+
+function toggleClickThroughOptions() {
+    toggleInverseOption('clickThrough', 'clickThroughOptions');
 }
 
 function toggleUniqueCharacterNameColors() {

@@ -1001,18 +1001,26 @@
                         <p class="hint" data-i18n="tab.behavior.section.interaction.hint">Mouse behavior for repositioning and activating thumbnails, including when to activate the EVE client window on left-click.</p>
 
                         <label>
-                            <input type="checkbox" id="enableDragging">
-                            <span class="label-body" data-i18n="field.enableDragging.label">Enable Dragging</span>
+                            <input type="checkbox" id="clickThrough" onchange="toggleClickThroughOptions()">
+                            <span class="label-body" data-i18n="field.clickThrough.label">Click Through Thumbnails</span>
                         </label>
-                        <div class="binding-list">
-                            <div class="binding">
-                                <label for="clickTrigger" data-i18n="field.clickTrigger.label">Click Trigger</label>
-                                <select id="clickTrigger">
-                                    <option value="MouseDown" data-i18n="field.clickTrigger.option.mousedown">Mouse Down (Instant)</option>
-                                    <option value="MouseUp" data-i18n="field.clickTrigger.option.mouseup">Mouse Up (On Release)</option>
-                                </select>
+                        <p class="hint hint-extra" data-i18n="field.clickThrough.hint">Thumbnails ignore all mouse input and let clicks/drags pass through to whatever is behind them; disables click-to-focus, exclusion toggling, and dragging.</p>
+
+                        <div id="clickThroughOptions">
+                            <label>
+                                <input type="checkbox" id="enableDragging">
+                                <span class="label-body" data-i18n="field.enableDragging.label">Enable Dragging</span>
+                            </label>
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="clickTrigger" data-i18n="field.clickTrigger.label">Click Trigger</label>
+                                    <select id="clickTrigger">
+                                        <option value="MouseDown" data-i18n="field.clickTrigger.option.mousedown">Mouse Down (Instant)</option>
+                                        <option value="MouseUp" data-i18n="field.clickTrigger.option.mouseup">Mouse Up (On Release)</option>
+                                    </select>
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.clickTrigger.hint">Mouse Up avoids accidental drags from a quick click.</p>
                             </div>
-                            <p class="hint hint-extra" data-i18n="field.clickTrigger.hint">Mouse Up avoids accidental drags from a quick click.</p>
                         </div>
                     </div>
 

@@ -346,6 +346,8 @@
   "field.chatlogPollInterval.hint": "在任何空闲退避生效前,每个日志文件检查新行的频率。",
   "field.chatlogPollInterval.label": "轮询间隔 (秒)",
   "field.chatlogUseThreading.label": "使用多线程",
+  "field.clickThrough.hint": "缩略图将忽略所有鼠标输入，点击/拖动会穿透到其后面的窗口；同时禁用点击聚焦、排除切换和拖动。",
+  "field.clickThrough.label": "缩略图点击穿透",
   "field.clickTrigger.hint": "鼠标释放可避免快速点击时误触发拖动。",
   "field.clickTrigger.label": "点击触发方式",
   "field.clickTrigger.option.mousedown": "鼠标按下 (即时)",

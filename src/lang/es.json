@@ -346,6 +346,8 @@
   "field.chatlogPollInterval.hint": "Con qué frecuencia se revisa cada archivo de log en busca de líneas nuevas, antes de que se active la ralentización por inactividad.",
   "field.chatlogPollInterval.label": "Intervalo de Sondeo (s)",
   "field.chatlogUseThreading.label": "Usar Multihilo",
+  "field.clickThrough.hint": "Las miniaturas ignoran toda entrada del ratón y dejan pasar los clics/arrastres a lo que esté detrás; desactiva la activación por clic, el cambio de exclusión y el arrastre.",
+  "field.clickThrough.label": "Clics a Través de Miniaturas",
   "field.clickTrigger.hint": "Soltar el Ratón evita arrastres accidentales por un clic rápido.",
   "field.clickTrigger.label": "Disparador de Clic",
   "field.clickTrigger.option.mousedown": "Pulsar Ratón (Instantáneo)",

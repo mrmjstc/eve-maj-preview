@@ -346,6 +346,8 @@
   "field.chatlogPollInterval.hint": "Com que frequência cada arquivo de log é verificado em busca de novas linhas, antes de qualquer desaceleração por ociosidade.",
   "field.chatlogPollInterval.label": "Intervalo de Consulta (s)",
   "field.chatlogUseThreading.label": "Usar Threading",
+  "field.clickThrough.hint": "As miniaturas ignoram toda entrada do mouse e deixam cliques/arrastos passarem para o que estiver atrás delas; desativa a ativação por clique, a alternância de exclusão e o arrasto.",
+  "field.clickThrough.label": "Clique Através das Miniaturas",
   "field.clickTrigger.hint": "Soltar o Botão evita arrastos acidentais em um clique rápido.",
   "field.clickTrigger.label": "Gatilho de Clique",
   "field.clickTrigger.option.mousedown": "Pressionar Botão (Instantâneo)",

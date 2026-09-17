@@ -346,6 +346,8 @@
   "field.chatlogPollInterval.hint": "Wie oft jede Logdatei auf neue Zeilen geprüft wird, bevor eine Leerlauf-Verlangsamung einsetzt.",
   "field.chatlogPollInterval.label": "Abfrageintervall (s)",
   "field.chatlogUseThreading.label": "Threading verwenden",
+  "field.clickThrough.hint": "Miniaturansichten ignorieren jede Mauseingabe und lassen Klicks/Ziehvorgänge zum dahinterliegenden Fenster durch; deaktiviert Fokussieren per Klick, Ausschluss-Umschaltung und Verschieben.",
+  "field.clickThrough.label": "Klicks durch Miniaturansichten durchlassen",
   "field.clickTrigger.hint": "\"Mouse Up\" vermeidet versehentliches Ziehen bei einem schnellen Klick.",
   "field.clickTrigger.label": "Klick-Auslöser",
   "field.clickTrigger.option.mousedown": "Mouse Down (sofort)",

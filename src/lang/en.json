@@ -346,6 +346,8 @@
   "field.chatlogPollInterval.hint": "How often each log file is checked for new lines, before any idle backoff kicks in.",
   "field.chatlogPollInterval.label": "Poll Interval (s)",
   "field.chatlogUseThreading.label": "Use Threading",
+  "field.clickThrough.hint": "Thumbnails ignore all mouse input and let clicks/drags pass through to whatever is behind them; disables click-to-focus, exclusion toggling, and dragging.",
+  "field.clickThrough.label": "Click Through Thumbnails",
   "field.clickTrigger.hint": "Mouse Up avoids accidental drags from a quick click.",
   "field.clickTrigger.label": "Click Trigger",
   "field.clickTrigger.option.mousedown": "Mouse Down (Instant)",

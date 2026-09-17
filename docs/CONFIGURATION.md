@@ -353,7 +353,8 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
   "interaction": {
     "enableDragging": true,
     "animationStyle": "NoAnimation",
-    "clickTrigger": "MouseDown"
+    "clickTrigger": "MouseDown",
+    "clickThrough": false
   }
 }
 ```
@@ -366,6 +367,7 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
 - `clickTrigger`: When left-click activates the EVE client
   - `"MouseDown"` (default): Activate immediately on mouse button press
   - `"MouseUp"`: Activate on mouse button release
+- `clickThrough`: Make thumbnails ignore all mouse input (default: `false`), so clicks and drags pass through to whatever is behind them on screen. Disables click-to-focus, shift-click exclusion toggling, and dragging on every thumbnail while enabled.
 
 **Animation Style Details:**
 

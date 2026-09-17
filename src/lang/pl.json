@@ -346,6 +346,8 @@
   "field.chatlogPollInterval.hint": "Jak często każdy plik logu jest sprawdzany pod kątem nowych linii, zanim zadziała wydłużanie przy bezczynności.",
   "field.chatlogPollInterval.label": "Częstotliwość odczytu (s)",
   "field.chatlogUseThreading.label": "Użyj wątkowania",
+  "field.clickThrough.hint": "Miniatury ignorują wszystkie kliknięcia i przeciągnięcia myszy, przepuszczając je do okna znajdującego się pod spodem; wyłącza aktywowanie kliknięciem, przełączanie wykluczenia i przeciąganie.",
+  "field.clickThrough.label": "Przezroczystość miniatur na kliknięcia",
   "field.clickTrigger.hint": "Puszczenie przycisku myszy zapobiega przypadkowym przeciągnięciom przy szybkim kliknięciu.",
   "field.clickTrigger.label": "Wyzwalacz kliknięcia",
   "field.clickTrigger.option.mousedown": "Wciśnięcie myszy (natychmiast)",

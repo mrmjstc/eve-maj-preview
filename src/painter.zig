@@ -1432,6 +1432,8 @@ pub const Painter = struct {
 
             // thumbnailOpacity is otherwise only applied once, at window creation time.
             _ = win32.SetLayeredWindowAttributes(thumbnail.hwnd, 0, thumbnail.cached_opacity, win32.LWA_ALPHA);
+            setClickThroughStyle(thumbnail.hwnd, self.config.interaction.clickThrough);
+            setClickThroughStyle(thumbnail.text_hwnd, self.config.interaction.clickThrough);
             self.resizeThumbnailIfNeeded(thumbnail, region_fit_grid);
             self.renderThumbnailLogged(thumbnail, "visuals refresh");
         }
@@ -2492,9 +2494,12 @@ pub const Painter = struct {
             .{ scalePixels(size.width, scale), scalePixels(size.height, scale) };
         const pos = self.calculateThumbnailPosition(eve_window.character_name, thumb_width, thumb_height, self.thumbnails.items.len, total_count, monitor_bounds, scale);
 
+        // Needed on both windows since text_hwnd, being topmost, is the one that actually receives mouse messages.
+        const click_through_ex: win32.DWORD = if (self.config.interaction.clickThrough) win32.WS_EX_TRANSPARENT else 0;
+
         // Create thumbnail window (borderless, layered for transparency)
         const hwnd = win32.CreateWindowExA(
-            win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_LAYERED | win32.WS_EX_NOACTIVATE,
+            win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_LAYERED | win32.WS_EX_NOACTIVATE | click_through_ex,
             WINDOW_CLASS_NAME,
             char_name_z.ptr,
             win32.WS_POPUP | win32.WS_VISIBLE,
@@ -2528,9 +2533,9 @@ pub const Painter = struct {
         _ = win32.ShowWindow(hwnd, win32.SW_SHOW);
         _ = win32.UpdateWindow(hwnd);
 
-        // Covers the full thumbnail, not just a top bar; not WS_EX_TRANSPARENT so the border can actually render.
+        // Covers the full thumbnail, not just a top bar.
         const text_hwnd = win32.CreateWindowExA(
-            win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_NOACTIVATE,
+            win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_NOACTIVATE | click_through_ex,
             TEXT_WINDOW_CLASS_NAME,
             char_name_z.ptr,
             win32.WS_POPUP,
@@ -4228,6 +4233,15 @@ fn windowDestroyProc(
     _ = painter.thumbnails.orderedRemove(index);
 
     painter.rebuildHwndIndex(false);
+}
+
+/// Toggles WS_EX_TRANSPARENT on an already-created window, so clickThrough can change live without recreating it.
+fn setClickThroughStyle(hwnd: win32.HWND, enabled: bool) void {
+    const current = win32.GetWindowLongPtrA(hwnd, win32.GWL_EXSTYLE);
+    const new_style = if (enabled) current | win32.WS_EX_TRANSPARENT else current & ~@as(isize, win32.WS_EX_TRANSPARENT);
+    if (new_style != current) {
+        _ = win32.SetWindowLongPtrA(hwnd, win32.GWL_EXSTYLE, new_style);
+    }
 }
 
 /// True if hwnd belongs to this process, so its own dialogs/panels never get recorded as a "last non-EVE app".
