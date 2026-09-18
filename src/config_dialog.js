@@ -4075,12 +4075,19 @@ function renderHotkeyBindingRow(row) {
     `;
 }
 
+// Keyed by scope/containerId so re-registering is a no-op; replayed on resize (see initOverlayLayoutPreview) so a width measured before a post-load DPI correction doesn't stay stuck.
+const labelColumnRealignJobs = new Map();
+
 // Each section is its own grid, so their label columns would each settle on that section's longest label and the
 // fields would step in and out down the tab. Measuring the widest label across all of them (within one tab) gives
 // one shared gutter - scoped per panel so an unrelated tab's longer label can't shift this one's alignment.
 function alignBindingLabelColumns(scope = '.panel-content[data-panel="hotkeys"]') {
     const lists = Array.from(document.querySelectorAll(`${scope} .binding-list`));
     if (lists.length === 0) return;
+    labelColumnRealignJobs.set(`binding:${scope}`, () => alignBindingLabelColumns(scope));
+
+    // Skip silently while hidden instead of resetting - a late async populate landing after a tab switch shouldn't clobber a good width with an unmeasurable one.
+    if (lists.every(list => list.getClientRects().length === 0)) return;
 
     // max-content first, so each label reports the width of its own text rather than of the column it was stretched to.
     lists.forEach(list => { list.style.gridTemplateColumns = 'max-content minmax(140px, 1fr)'; });
@@ -4089,7 +4096,6 @@ function alignBindingLabelColumns(scope = '.panel-content[data-panel="hotkeys"]'
     const dirOffset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--binding-dir-offset')) || 0;
     const widest = Math.max(0, ...Array.from(document.querySelectorAll(`${scope} .binding > label`))
         .map(label => label.getBoundingClientRect().width + (label.parentElement.classList.contains('binding-paired') ? dirOffset : 0)));
-    // Zero while the tab is hidden, when nothing can be measured; switching to it re-runs this.
     if (!widest) return;
 
     lists.forEach(list => { list.style.gridTemplateColumns = `${Math.ceil(widest)}px minmax(140px, 1fr)`; });
@@ -6226,6 +6232,10 @@ function alignDetailPanelNameLabel(containerId) {
     const form = activePanel.querySelector('.detail-form');
     const nameLabel = activePanel.querySelector('.detail-panel-name-label');
     if (!form || !nameLabel) return;
+    labelColumnRealignJobs.set(`detail:${containerId}`, () => alignDetailPanelNameLabel(containerId));
+
+    // Skip silently while hidden instead of resetting - a late async populate landing after a tab switch shouldn't clobber a good width with an unmeasurable one.
+    if (form.getClientRects().length === 0) return;
 
     // max-content/0 first, so each label reports its own text width rather than a stretched or stale one.
     form.style.gridTemplateColumns = 'max-content minmax(140px, 1fr)';
@@ -6236,7 +6246,6 @@ function alignDetailPanelNameLabel(containerId) {
         .map(label => label.getBoundingClientRect().width + (label.parentElement.classList.contains('binding-paired') ? dirOffset : 0));
 
     const widest = Math.max(nameLabel.getBoundingClientRect().width, ...fieldWidths);
-    // Zero while the panel or tab is hidden, when nothing can be measured; the next populate or tab switch re-runs this.
     if (!widest) return;
 
     const widthPx = `${Math.ceil(widest)}px`;
@@ -8043,6 +8052,8 @@ function initOverlayLayoutPreview() {
     window.addEventListener('resize', refreshOverlayLayoutPreview);
     window.addEventListener('resize', () => fitHotkeyGroupCharsList(selectedHotkeyGroupIndex));
     window.addEventListener('resize', updateHotkeyPlaceholders);
+    // Startup size is a DPI guess corrected post-load (targetPhysicalSize/WM_DPICHANGED in config_dialog.zig) - redo every registered label-column measurement once it lands.
+    window.addEventListener('resize', () => labelColumnRealignJobs.forEach(job => job()));
 
     // Turning sync on (or loading a profile while it's already on) unifies every element to Character Name's current styling.
     document.getElementById('syncOverlayStyling')?.addEventListener('change', function () {
