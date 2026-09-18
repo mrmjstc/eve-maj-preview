@@ -152,6 +152,7 @@ pub const LogFileState = struct {
     u16_buffer: std.ArrayList(u16),
     system_name_buffer: std.ArrayList(u8),
     excessive_data_warnings: u32 = 0,
+    long_line_warnings: u32 = 0,
 
     pub fn deinit(self: *LogFileState, allocator: std.mem.Allocator) void {
         allocator.free(self.file_path);
@@ -481,7 +482,10 @@ pub const ChatlogMonitor = struct {
 
     /// Backfills a character's ID from existing log files without monitoring them (unlike addCharacter); worker-thread only.
     pub fn resolveCharacterId(self: *ChatlogMonitor, character_name: []const u8) !void {
-        if (!self.threading_enabled) return;
+        if (!self.threading_enabled) {
+            slog.debug("Skipping ID backfill for {s}: threading disabled", .{character_name});
+            return;
+        }
 
         const cmd = ChatlogCommand{
             .resolve_character_id = .{
@@ -953,8 +957,9 @@ pub const ChatlogMonitor = struct {
             self.queueSystemUpdate(state.character_name, m.system, m.event_ts, false);
 
             // No need to free - m.system is a borrowed slice from system_name_buffer
+        } else if (file_stat.size > MAX_BACKWARD_SCAN_BYTES) {
+            slog.warn("No system found for {s} within the last {} bytes of {s}; initial system name unavailable until next channel change or jump", .{ state.character_name, MAX_BACKWARD_SCAN_BYTES, state.file_path });
         }
-        // Not found: nothing to seed from yet. Skip to EOF either way.
 
         state.position = file_stat.size;
     }
@@ -1203,7 +1208,15 @@ pub const ChatlogMonitor = struct {
             state.has_bom = false;
         }
 
-        if (clean_line.len < MIN_LINE_LENGTH or clean_line.len > MAX_LINE_LENGTH) {
+        if (clean_line.len < MIN_LINE_LENGTH) {
+            return;
+        }
+
+        if (clean_line.len > MAX_LINE_LENGTH) {
+            state.long_line_warnings += 1;
+            if (state.long_line_warnings <= 3 or state.long_line_warnings % 100 == 0) {
+                slog.warn("Dropping line ({} bytes, over the {}-byte cap) for {s} (warning #{})", .{ clean_line.len, MAX_LINE_LENGTH, state.character_name, state.long_line_warnings });
+            }
             return;
         }
 
