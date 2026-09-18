@@ -2304,8 +2304,7 @@ pub const Painter = struct {
     }
 
     /// Fills column 1 to its natural (unshrunk) capacity before starting another column, so cell size stays put until a column is actually full.
-    fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
-        const n: u32 = @intCast(@max(count, 1));
+    fn calculateRegionFitGridPortrait(region: win32.RECT, n: u32, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
         const region_width = region.right - region.left;
         const region_height = region.bottom - region.top;
 
@@ -2318,6 +2317,41 @@ pub const Painter = struct {
                 return .{ .columns = columns, .rows = rows_per_column, .box_width = box_width, .box_height = cell.height, .cell_width = cell.width, .cell_height = cell.height };
             }
         }
+    }
+
+    /// Picks the column count that maximizes per-cell area once cells are fit to aspect_ratio.
+    fn calculateRegionFitGridLandscape(region: win32.RECT, n: u32, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
+        const region_width = region.right - region.left;
+        const region_height = region.bottom - region.top;
+
+        var best = RegionFitGrid{ .columns = 1, .rows = n, .box_width = 1, .box_height = 1, .cell_width = 1, .cell_height = 1 };
+        var best_area: i64 = -1;
+
+        var columns: u32 = 1;
+        while (columns <= n) : (columns += 1) {
+            const rows: u32 = (n + columns - 1) / columns;
+            // Clamp instead of skipping, so spacing that overruns a tiny region still yields a usable grid.
+            const box_width = @max(@divTrunc(region_width - spacing_x * (@as(i32, @intCast(columns)) - 1), @as(i32, @intCast(columns))), 1);
+            const box_height = @max(@divTrunc(region_height - spacing_y * (@as(i32, @intCast(rows)) - 1), @as(i32, @intCast(rows))), 1);
+
+            const cell = fitAspect(box_width, box_height, aspect_ratio);
+            const area = @as(i64, cell.width) * @as(i64, cell.height);
+            if (area > best_area) {
+                best_area = area;
+                best = .{ .columns = columns, .rows = rows, .box_width = box_width, .box_height = box_height, .cell_width = cell.width, .cell_height = cell.height };
+            }
+        }
+
+        return best;
+    }
+
+    fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
+        const n: u32 = @intCast(@max(count, 1));
+        const is_portrait = (region.bottom - region.top) > (region.right - region.left);
+        return if (is_portrait)
+            calculateRegionFitGridPortrait(region, n, spacing_x, spacing_y, aspect_ratio)
+        else
+            calculateRegionFitGridLandscape(region, n, spacing_x, spacing_y, aspect_ratio);
     }
 
     /// BTT/RTL directions stay within [0, rows/columns) since the region is fixed-size.
