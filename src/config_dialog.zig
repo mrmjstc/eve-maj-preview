@@ -974,6 +974,7 @@ fn enumClientsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
 const WindowRectScanContext = struct {
     target_name: []const u8,
     rect: ?win32.RECT = null,
+    minimized: bool = false,
 };
 
 /// EnumWindows callback that captures the rect of the window matching ctx.target_name.
@@ -984,6 +985,12 @@ fn findWindowRectCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) w
     const char_name = matchEveClientTitle(hwnd, &title_buf) orelse return win32.TRUE;
     if (!std.mem.eql(u8, char_name, ctx.target_name)) return win32.TRUE;
 
+    // A minimized window's rect is the off-screen parking spot (-32000, -32000), not a real position.
+    if (win32.isWindowIconic(hwnd)) {
+        ctx.minimized = true;
+        return win32.FALSE;
+    }
+
     var rect: win32.RECT = undefined;
     if (win32.GetWindowRect(hwnd, &rect) == 0) return win32.TRUE;
 
@@ -991,11 +998,14 @@ fn findWindowRectCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) w
     return win32.FALSE;
 }
 
-/// Returns `character_name`'s live window's current screen rect, or null if it's not open.
-fn findWindowRectByCharacterName(character_name: []const u8) ?win32.RECT {
+const WindowRectError = error{ CharacterNotOpen, CharacterMinimized };
+
+/// Returns `character_name`'s live window's current screen rect; minimized windows have no usable position.
+fn findWindowRectByCharacterName(character_name: []const u8) WindowRectError!win32.RECT {
     var ctx = WindowRectScanContext{ .target_name = character_name };
     _ = win32.EnumWindows(findWindowRectCallback, win32.ptrToLparam(&ctx));
-    return ctx.rect;
+    if (ctx.minimized) return error.CharacterMinimized;
+    return ctx.rect orelse error.CharacterNotOpen;
 }
 
 /// Loads the current profile's config, or writes a load-failure JSON response and returns null.
@@ -1015,8 +1025,11 @@ fn setCharacterWindowPosition(e: *webui.Event) void {
 
     slog.debug("setCharacterWindowPosition requested for '{s}'", .{character_name});
 
-    const rect = findWindowRectByCharacterName(character_name) orelse {
-        e.returnString("{\"success\": false, \"error\": \"Character is not currently open\"}");
+    const rect = findWindowRectByCharacterName(character_name) catch |err| {
+        e.returnString(switch (err) {
+            error.CharacterMinimized => "{\"success\": false, \"error\": \"Character's window is minimized\"}",
+            error.CharacterNotOpen => "{\"success\": false, \"error\": \"Character is not currently open\"}",
+        });
         return;
     };
     const pos = config_mod.Position{ .x = @intCast(rect.left), .y = @intCast(rect.top) };
@@ -1064,8 +1077,11 @@ fn setAllCharacterWindowPositions(e: *webui.Event) void {
 
     slog.debug("setAllCharacterWindowPositions requested, source '{s}'", .{source_character_name});
 
-    const rect = findWindowRectByCharacterName(source_character_name) orelse {
-        e.returnString("{\"success\": false, \"error\": \"Selected character is not currently open\"}");
+    const rect = findWindowRectByCharacterName(source_character_name) catch |err| {
+        e.returnString(switch (err) {
+            error.CharacterMinimized => "{\"success\": false, \"error\": \"Selected character's window is minimized\"}",
+            error.CharacterNotOpen => "{\"success\": false, \"error\": \"Selected character is not currently open\"}",
+        });
         return;
     };
     const pos = config_mod.Position{ .x = @intCast(rect.left), .y = @intCast(rect.top) };
