@@ -473,14 +473,16 @@ Automatically minimize inactive EVE clients after a delay:
   "autoMinimize": {
     "enabled": false,
     "delayMs": 5000,
-    "exemptLastActiveOnFocusLoss": false
+    "exemptLastActiveOnFocusLoss": true
   }
 }
 ```
 
 `delayMs` is clamped between `0` and `10000`.
 
-`exemptLastActiveOnFocusLoss` (default: `false`) keeps the last-focused client visible when EVE itself loses focus entirely (e.g. switching to another app), instead of minimizing it along with the rest once its delay elapses.
+The last-focused client on each monitor (by the monitor its EVE window is on) is treated as that monitor's last-active client. While an EVE client is focused, the last-active client on every other monitor stays visible, so one client per monitor can remain on screen; other clients minimize after the delay.
+
+`exemptLastActiveOnFocusLoss` (default: `true`) keeps each monitor's last-active client visible when EVE itself loses focus entirely (e.g. switching to another app), instead of minimizing it along with the rest once its delay elapses.
 
 Exclusions are configured per character, not here - set `excludeFromMinimize` on the character entry (see [Per-Character Configuration](#per-character-configuration)).
 
