@@ -24,3 +24,5 @@ build-release.ps1
 .claude/
 .vscode/launch.json
 nul
+update-winget.ps1
+manifests/
