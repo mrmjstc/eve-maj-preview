@@ -203,7 +203,7 @@ fn mainImpl(init: std.process.Init) !void {
     const startup_size = targetPhysicalSize(win32.GetDpiForSystem());
     win.setSize(startup_size.width, startup_size.height);
     win.setKiosk(false);
-    win.setResizable(false);
+    win.setResizable(true);
 
     _ = try win.bind("closeDialog", closeDialog);
     _ = try win.bind("loadConfig", loadConfig);
