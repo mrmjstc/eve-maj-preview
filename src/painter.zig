@@ -386,7 +386,7 @@ pub const Painter = struct {
     drag_hint_bitmap: ?gdi_overlay.OverlayBitmap = null,
     /// Sole "who's focused" source of truth; write only via reconcileThumbnailStates.
     active_source_hwnd: ?win32.HWND = null,
-    /// Last EVE thumbnail hwnd that held focus; used by checkAutoMinimize's exemptLastActiveOnFocusLoss option to identify which client to spare once EVE itself has no window focused.
+    /// Last EVE thumbnail hwnd that held focus; used by the auto-minimize exemption options to keep the most recently active client visible in the relevant focus-loss scenarios.
     last_focused_source_hwnd: ?win32.HWND = null,
     /// Most recent foreground window that belongs to neither an EVE client nor this process; used by HotkeyAction.ReturnToLastApp.
     last_non_eve_foreground: ?win32.HWND = null,
@@ -974,10 +974,19 @@ pub const Painter = struct {
             if (input.isThumbnailDragging(thumbnail)) continue;
             if (thumbnail.isFocused(self.active_source_hwnd)) continue;
             if (win32.isWindowIconic(thumbnail.source_hwnd)) continue;
+
+            const is_last_focused = self.last_focused_source_hwnd != null and thumbnail.source_hwnd == self.last_focused_source_hwnd;
+            const active_hwm_is_eve = if (self.active_source_hwnd) |hwnd| self.hwnd_to_thumbnail_index.contains(hwnd) else false;
+            const is_other_eve_client_focused = active_hwm_is_eve and self.active_source_hwnd != thumbnail.source_hwnd;
+
             // Before any EVE window has been genuinely focused this session, last_focused_source_hwnd is null; exempt everyone rather than minimize all clients with no known "last active".
             if (self.config.autoMinimize.exemptLastActiveOnFocusLoss and
                 !eve_has_focus and
-                (self.last_focused_source_hwnd == null or thumbnail.source_hwnd == self.last_focused_source_hwnd)) continue;
+                (self.last_focused_source_hwnd == null or is_last_focused)) continue;
+            if (self.config.autoMinimize.exemptLastActiveWhenAnyEveFocused and
+                is_last_focused and
+                is_other_eve_client_focused) continue;
+
             if (now.elapsedSince(thumbnail.inactive_since) < delay_ms) continue;
             if (thumbnail.cached_excluded_from_minimize) continue;
             if (!win32.isWindow(thumbnail.source_hwnd)) continue;
@@ -1074,14 +1083,32 @@ pub const Painter = struct {
     /// Sole writer of active_source_hwnd, the single source of truth for who's focused; call instead of setting it directly.
     pub fn reconcileThumbnailStates(self: *Painter, should_be_active_hwnd: ?win32.HWND) void {
         const old_active = self.active_source_hwnd;
+        const old_active_is_eve = if (old_active) |hwnd| self.hwnd_to_thumbnail_index.contains(hwnd) else false;
+        const new_active_is_eve = if (should_be_active_hwnd) |hwnd| self.hwnd_to_thumbnail_index.contains(hwnd) else false;
+
         self.active_source_hwnd = should_be_active_hwnd;
         const active_changed = old_active != should_be_active_hwnd;
-        const any_eve_has_focus = if (should_be_active_hwnd) |hwnd| self.hwnd_to_thumbnail_index.contains(hwnd) else false;
-        if (any_eve_has_focus) self.last_focused_source_hwnd = should_be_active_hwnd.?;
+
+        // Track the previous EVE-focused window, not the currently active one.
+        // This keeps the last client you were on protected while another EVE client is foregrounded,
+        // and preserves that protection when focus leaves EVE entirely until a new EVE client is activated.
+        if (should_be_active_hwnd) |new_hwnd| {
+            if (new_active_is_eve) {
+                if (old_active_is_eve and old_active != null and old_active.? != new_hwnd) {
+                    self.last_focused_source_hwnd = old_active.?;
+                } else if (self.last_focused_source_hwnd == null) {
+                    self.last_focused_source_hwnd = new_hwnd;
+                }
+            }
+            // Otherwise: non-EVE foreground window, keep the previous EVE-focused client as the protected target.
+        } else {
+            // No foreground window or app deactivated; retain the last known EVE-focused client while EVE has no focus.
+            // Don't clear it here; the exemptLastActiveOnFocusLoss check relies on this value.
+        }
 
         for (self.thumbnails.items) |*thumbnail| {
             // Unhide automatically-hidden thumbnails when EVE gains focus; manual hiding persists until the user toggles visibility.
-            if (thumbnail.visibility_state == .HiddenAutomatic and any_eve_has_focus) {
+            if (thumbnail.visibility_state == .HiddenAutomatic and new_active_is_eve) {
                 thumbnail.setVisibility(.Visible);
                 thumbnail.needs_render = true;
             }

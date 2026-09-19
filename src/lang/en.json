@@ -322,6 +322,8 @@
   "field.autoMinimizeExcludedCharacters.label": "Auto-Minimize Excluded Characters",
   "field.autoMinimizeExemptLastActive.hint": "Exempts whichever client you focused most recently, even past the delay.",
   "field.autoMinimizeExemptLastActive.label": "Keep Last-Active Client Visible",
+  "field.autoMinimizeExemptLastActiveWhenAnyEveFocused.hint": "Keeps the most recently focused client from auto-minimizing even when a different EVE client is currently in focus.",
+  "field.autoMinimizeExemptLastActiveWhenAnyEveFocused.label": "Keep Last-Active Client Visible While Another EVE Client Has Focus",
   "field.autoMovePositionEnabled.label": "Automatically Move to Saved Position on Login",
   "field.autoRegisterProtocol.hint": "Needed for links like evemajpreview://cycle-next to work from other apps.",
   "field.autoRegisterProtocol.label": "Auto-Register Protocol Handler",

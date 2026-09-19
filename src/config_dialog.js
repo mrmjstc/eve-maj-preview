@@ -401,6 +401,7 @@ const CONFIG_SCHEMA = [
     { id: 'autoMinimizeEnabled', path: 'autoMinimize.enabled' },
     { id: 'autoMinimizeDelay', path: 'autoMinimize.delayMs', transform: 'ms' },
     { id: 'autoMinimizeExemptLastActive', path: 'autoMinimize.exemptLastActiveOnFocusLoss' },
+    { id: 'autoMinimizeExemptLastActiveWhenAnyEveFocused', path: 'autoMinimize.exemptLastActiveWhenAnyEveFocused' },
 
     { id: 'autoMovePositionEnabled', path: 'autoMovePosition.enabled' },
 

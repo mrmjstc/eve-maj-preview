@@ -2793,6 +2793,8 @@ pub const Config = struct {
         delayMs: u32 = 5000,
         /// Keep the last-focused EVE client exempt from auto-minimize while EVE itself has no window focused.
         exemptLastActiveOnFocusLoss: bool = true,
+        /// Keep the last-focused EVE client exempt from auto-minimize even when another EVE client has focus.
+        exemptLastActiveWhenAnyEveFocused: bool = false,
 
         pub const DELAY_MS_MAX: u32 = 10000;
 
