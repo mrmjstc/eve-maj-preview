@@ -2637,6 +2637,8 @@ pub const Config = struct {
         regionFitReorderLoggedOut: bool = true,
         /// Whether "Start Region Selection" temporarily hides visible thumbnails so they don't obscure the drag-to-select overlay.
         hideThumbnailsDuringRegionSelect: bool = true,
+        /// Caps RegionFit's cell size at the configured thumbnail size instead of always maximizing to fill the region.
+        regionFitLimitToThumbnailSize: bool = false,
 
         /// A separate auto-fit holding area for not-yet-logged-in "EVE" placeholders; coexists with RegionFit by carving them out of that grid entirely.
         notLoggedInSpaceEnabled: bool = false,
@@ -3603,6 +3605,9 @@ pub const Config = struct {
         if (obj.get("hideThumbnailsDuringRegionSelect")) |v| {
             if (v == .bool) display.hideThumbnailsDuringRegionSelect = v.bool;
         }
+        if (obj.get("regionFitLimitToThumbnailSize")) |v| {
+            if (v == .bool) display.regionFitLimitToThumbnailSize = v.bool;
+        }
         if (obj.get("notLoggedInSpaceEnabled")) |v| {
             if (v == .bool) display.notLoggedInSpaceEnabled = v.bool;
         }
@@ -4363,6 +4368,7 @@ pub const Config = struct {
         const new_layout_mode = fresh.display.layoutMode;
         const new_region_fit_direction = fresh.display.regionFitDirection;
         const new_hide_thumbnails_during_region_select = fresh.display.hideThumbnailsDuringRegionSelect;
+        const new_region_fit_limit_to_thumbnail_size = fresh.display.regionFitLimitToThumbnailSize;
         const new_new_thumbnail_spacing = fresh.display.newThumbnailSpacing;
         const new_monitor_index = fresh.display.monitorIndex;
         const new_use_monitor_work_area = fresh.display.useMonitorWorkArea;
@@ -4453,6 +4459,7 @@ pub const Config = struct {
         self.display.layoutMode = new_layout_mode;
         self.display.regionFitDirection = new_region_fit_direction;
         self.display.hideThumbnailsDuringRegionSelect = new_hide_thumbnails_during_region_select;
+        self.display.regionFitLimitToThumbnailSize = new_region_fit_limit_to_thumbnail_size;
         self.display.newThumbnailSpacing = new_new_thumbnail_spacing;
         self.display.monitorIndex = new_monitor_index;
         self.display.useMonitorWorkArea = new_use_monitor_work_area;

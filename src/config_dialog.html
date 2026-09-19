@@ -281,13 +281,19 @@
 
                     <div class="section">
                         <div class="section-heading">
-                            <h3 data-i18n="tab.thumbnails.section.thumbnail-space.heading">Thumbnail Space</h3>
+                            <h3 data-i18n="tab.thumbnails.section.region-fit.heading">Thumbnail Space</h3>
                             <div class="section-heading-actions">
                                 <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
                                 <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
                             </div>
                         </div>
-                        <p class="hint" data-i18n="field.regionFit.hint">Drag a rectangle on screen; thumbnails auto-fit to fill it and reflow as characters log in/out.</p>
+                        <p class="hint" data-i18n="tab.thumbnails.section.region-fit.hint">Drag a rectangle on screen; thumbnails auto-fit to fill it and reflow as characters log in/out.</p>
+
+                        <label>
+                            <input type="checkbox" id="regionFitLimitToThumbnailSize">
+                            <span class="label-body" data-i18n="field.regionFitLimitToThumbnailSize.label">Cap Thumbnail Size to Configured Dimensions</span>
+                        </label>
+                        <p class="hint hint-extra" data-i18n="field.regionFitLimitToThumbnailSize.hint">Stops thumbnails from growing past the Thumbnail Size setting, leaving unused space in the region instead. Also applies to the Not-Logged-In Thumbnail Space below.</p>
 
                         <label>
                             <input type="checkbox" id="regionFitEnabled" onchange="toggleRegionFitOptions()">
@@ -367,7 +373,7 @@
                         </div>
                     </div>
 
-                    <div class="section">
+                    <div class="section no-subheader">
                         <div class="section-heading">
                             <h3 data-i18n="tab.thumbnails.section.not-logged-in-space.heading">Not-Logged-In Thumbnail Space</h3>
                             <div class="section-heading-actions">
@@ -375,7 +381,7 @@
                                 <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
                             </div>
                         </div>
-                        <p class="hint" data-i18n="field.notLoggedInSpace.hint">Drag a separate rectangle for not-yet-logged-in placeholders; auto-fits the same way Region Fit does, and works alongside it.</p>
+                        <p class="hint" data-i18n="tab.thumbnails.section.not-logged-in-space.hint">Drag a separate rectangle for not-yet-logged-in placeholders; auto-fits the same way as Thumbnail Space, and works alongside it.</p>
 
                         <label>
                             <input type="checkbox" id="notLoggedInSpaceEnabled" onchange="toggleNotLoggedInSpaceOptions()">
