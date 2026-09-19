@@ -375,7 +375,8 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
     "enableDragging": true,
     "animationStyle": "NoAnimation",
     "clickTrigger": "MouseDown",
-    "clickThrough": false
+    "clickThrough": false,
+    "hoverCursor": "Default"
   }
 }
 ```
@@ -389,6 +390,12 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
   - `"MouseDown"` (default): Activate immediately on mouse button press
   - `"MouseUp"`: Activate on mouse button release
 - `clickThrough`: Make thumbnails ignore all mouse input (default: `false`), so clicks and drags pass through to whatever is behind them on screen. Disables click-to-focus, shift-click exclusion toggling, and dragging on every thumbnail while enabled.
+- `hoverCursor`: System mouse cursor shown while hovering a thumbnail (thumbnails only, not the Client List or History panels)
+  - `"Default"` (default): The standard arrow
+  - `"Hand"`: Link-select hand
+  - `"Crosshair"`: Precision-select crosshair
+  - `"Move"`: Four-way move arrows
+  - `"Help"`: Arrow with a question mark
 
 **Animation Style Details:**
 

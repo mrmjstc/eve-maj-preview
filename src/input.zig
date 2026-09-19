@@ -663,6 +663,21 @@ fn handleOverlayLButtonUp(hwnd: win32.HWND) void {
     g_click_state = .{};
 }
 
+/// Shared WM_SETCURSOR handling for both the thumbnail and text overlay window procs; returns whether it set the cursor.
+fn applyHoverCursor() bool {
+    const resource: win32.LPCSTR = switch (main_mod.g_config.interaction.hoverCursor) {
+        .Default => return false,
+        .Hand => win32.IDC_HAND,
+        .Crosshair => win32.IDC_CROSS,
+        .Move => win32.IDC_SIZEALL,
+        .Help => win32.IDC_HELP,
+    };
+    // SetCursor(null) hides the cursor, so a failed load must fall back to the class cursor.
+    const cursor = win32.LoadCursorA(null, resource) orelse return false;
+    _ = win32.SetCursor(cursor);
+    return true;
+}
+
 /// Window procedure for thumbnail windows: handles input events and the auto-hide timer when no EVE window has focus.
 fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
@@ -707,6 +722,10 @@ fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: w
         win32.WM_MOUSEMOVE => {
             handleDrag(hwnd, lParam);
             return 0;
+        },
+        win32.WM_SETCURSOR => {
+            if (applyHoverCursor()) return 1;
+            return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         win32.WM_ACTIVATE => {
             if (getLinkedWindow(hwnd)) |text_hwnd| {
@@ -771,6 +790,10 @@ fn textWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPara
         win32.WM_MOUSEMOVE => {
             handleDrag(hwnd, lParam);
             return 0;
+        },
+        win32.WM_SETCURSOR => {
+            if (applyHoverCursor()) return 1;
+            return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         win32.WM_CLOSE => {
             _ = win32.DestroyWindow(hwnd);

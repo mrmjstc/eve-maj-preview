@@ -30,6 +30,15 @@ pub const ClickTrigger = enum {
     MouseUp,
 };
 
+/// System cursor shown while hovering a thumbnail; `Default` leaves the window class's arrow in place.
+pub const HoverCursor = enum {
+    Default,
+    Hand,
+    Crosshair,
+    Move,
+    Help,
+};
+
 pub const TextPosition = enum {
     TopLeft,
     TopCenter,

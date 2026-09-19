@@ -304,6 +304,7 @@ const CONFIG_SCHEMA = [
     { id: 'animationStyle', path: 'interaction.animationStyle' },
     { id: 'clickTrigger', path: 'interaction.clickTrigger' },
     { id: 'clickThrough', path: 'interaction.clickThrough' },
+    { id: 'hoverCursor', path: 'interaction.hoverCursor', default: 'Default' },
 
     { id: 'snappingEnabled', path: 'snapping.enabled' },
     { id: 'snappingThreshold', path: 'snapping.threshold' },

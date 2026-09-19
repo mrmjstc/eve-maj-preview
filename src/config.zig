@@ -2788,6 +2788,7 @@ pub const Config = struct {
         animationStyle: types.AnimationStyle = .NoAnimation,
         clickTrigger: types.ClickTrigger = .MouseDown,
         clickThrough: bool = false,
+        hoverCursor: types.HoverCursor = .Default,
     };
 
     pub const AutoMinimizeConfig = struct {
