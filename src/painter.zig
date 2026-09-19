@@ -386,8 +386,8 @@ pub const Painter = struct {
     drag_hint_bitmap: ?gdi_overlay.OverlayBitmap = null,
     /// Sole "who's focused" source of truth; write only via reconcileThumbnailStates.
     active_source_hwnd: ?win32.HWND = null,
-    /// Last EVE thumbnail hwnd that held focus; used by checkAutoMinimize's exemptLastActiveOnFocusLoss option to identify which client to spare once EVE itself has no window focused.
-    last_focused_source_hwnd: ?win32.HWND = null,
+    /// Last EVE client hwnd that held focus on each monitor; used by checkAutoMinimize's exemptLastActiveOnFocusLoss option to spare one client per monitor once EVE itself has no window focused.
+    last_focused_by_monitor: std.AutoHashMap(win32.HMONITOR, win32.HWND),
     /// Most recent foreground window that belongs to neither an EVE client nor this process; used by HotkeyAction.ReturnToLastApp.
     last_non_eve_foreground: ?win32.HWND = null,
 
@@ -488,6 +488,7 @@ pub const Painter = struct {
             .io = io,
             .thumbnails = .empty,
             .hwnd_to_thumbnail_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
+            .last_focused_by_monitor = std.AutoHashMap(win32.HMONITOR, win32.HWND).init(allocator),
             .thumbnail_hwnd_to_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
             .text_hwnd_to_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
             .cached_fonts = std.AutoHashMap(u32, FontCacheEntry).init(allocator),
@@ -593,6 +594,7 @@ pub const Painter = struct {
         self.notified_queue.deinit(self.allocator);
         self.region_select_hidden_hwnds.deinit(self.allocator);
         self.hwnd_to_thumbnail_index.deinit();
+        self.last_focused_by_monitor.deinit();
         self.thumbnail_hwnd_to_index.deinit();
         self.text_hwnd_to_index.deinit();
     }
@@ -958,7 +960,34 @@ pub const Painter = struct {
         return scout_ptr.getWindows();
     }
 
-    /// Minimizes each EVE window `autoMinimize.delayMs` after it last stopped being Active/Minimized (see ThumbnailWindow.inactive_since); call once per tick.
+    /// A monitor with no live recorded last-active client exempts everyone on it rather than minimize clients with no known "last active".
+    fn isLastActiveOnItsMonitor(self: *const Painter, source_hwnd: win32.HWND) bool {
+        const monitor = win32.MonitorFromWindow(source_hwnd, win32.MONITOR_DEFAULTTONEAREST) orelse return true;
+        const last_active = self.last_focused_by_monitor.get(monitor) orelse return true;
+        if (!self.hwnd_to_thumbnail_index.contains(last_active)) return true;
+        return last_active == source_hwnd;
+    }
+
+    fn recordLastFocused(self: *Painter, source_hwnd: win32.HWND) void {
+        const monitor = win32.MonitorFromWindow(source_hwnd, win32.MONITOR_DEFAULTTONEAREST) orelse return;
+
+        // A window that moved monitors must not stay recorded under its old one.
+        var stale: ?win32.HMONITOR = null;
+        var it = self.last_focused_by_monitor.iterator();
+        while (it.next()) |entry| {
+            if (entry.value_ptr.* == source_hwnd and entry.key_ptr.* != monitor) {
+                stale = entry.key_ptr.*;
+                break;
+            }
+        }
+        if (stale) |old_monitor| _ = self.last_focused_by_monitor.remove(old_monitor);
+
+        self.last_focused_by_monitor.put(monitor, source_hwnd) catch |err| {
+            slog.err("Failed to record last-focused client for monitor: {}", .{err});
+        };
+    }
+
+    /// Minimizes each EVE window `autoMinimize.delayMs` after it last stopped being Active/Minimized (see ThumbnailWindow.inactive_since); call once per tick. Each monitor's last-active client is spared while focus is on another monitor.
     fn checkAutoMinimize(self: *Painter) void {
         if (!self.config.autoMinimize.enabled) return;
         if (self.thumbnails.items.len == 0) return;
@@ -969,15 +998,19 @@ pub const Painter = struct {
 
         // active_source_hwnd is the literal foreground window, so it's non-null even on a non-EVE app.
         const eve_has_focus = if (self.active_source_hwnd) |hwnd| self.hwnd_to_thumbnail_index.contains(hwnd) else false;
+        const focused_monitor = if (eve_has_focus) win32.MonitorFromWindow(self.active_source_hwnd.?, win32.MONITOR_DEFAULTTONEAREST) else null;
 
         for (self.thumbnails.items) |*thumbnail| {
             if (input.isThumbnailDragging(thumbnail)) continue;
             if (thumbnail.isFocused(self.active_source_hwnd)) continue;
             if (win32.isWindowIconic(thumbnail.source_hwnd)) continue;
-            // Before any EVE window has been genuinely focused this session, last_focused_source_hwnd is null; exempt everyone rather than minimize all clients with no known "last active".
-            if (self.config.autoMinimize.exemptLastActiveOnFocusLoss and
-                !eve_has_focus and
-                (self.last_focused_source_hwnd == null or thumbnail.source_hwnd == self.last_focused_source_hwnd)) continue;
+            // Checked after the iconic skip: a minimized window is parked off-screen and reports the wrong monitor.
+            const on_other_monitor = if (focused_monitor) |monitor|
+                win32.MonitorFromWindow(thumbnail.source_hwnd, win32.MONITOR_DEFAULTTONEAREST) != monitor
+            else
+                false;
+            const spared_by_focus_loss = self.config.autoMinimize.exemptLastActiveOnFocusLoss and !eve_has_focus;
+            if ((on_other_monitor or spared_by_focus_loss) and self.isLastActiveOnItsMonitor(thumbnail.source_hwnd)) continue;
             if (now.elapsedSince(thumbnail.inactive_since) < delay_ms) continue;
             if (thumbnail.cached_excluded_from_minimize) continue;
             if (!win32.isWindow(thumbnail.source_hwnd)) continue;
@@ -1077,7 +1110,7 @@ pub const Painter = struct {
         self.active_source_hwnd = should_be_active_hwnd;
         const active_changed = old_active != should_be_active_hwnd;
         const any_eve_has_focus = if (should_be_active_hwnd) |hwnd| self.hwnd_to_thumbnail_index.contains(hwnd) else false;
-        if (any_eve_has_focus) self.last_focused_source_hwnd = should_be_active_hwnd.?;
+        if (any_eve_has_focus) self.recordLastFocused(should_be_active_hwnd.?);
 
         for (self.thumbnails.items) |*thumbnail| {
             // Unhide automatically-hidden thumbnails when EVE gains focus; manual hiding persists until the user toggles visibility.
