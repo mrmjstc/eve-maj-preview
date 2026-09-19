@@ -404,7 +404,7 @@ pub const Painter = struct {
                 return .{ .width = grid.cell_width, .height = grid.cell_height };
             }
             if (regionRectFromConfig(cfg)) |region| {
-                const grid = calculateRegionFitGrid(region, total_count, cfg.spacing, cfg.spacing, self.regionFitAspectRatio());
+                const grid = calculateRegionFitGrid(region, total_count, cfg.spacing, cfg.spacing, self.regionFitAspectRatio(), self.regionFitMaxCellSize(region));
                 return .{ .width = grid.cell_width, .height = grid.cell_height };
             }
         }
@@ -1397,10 +1397,10 @@ pub const Painter = struct {
 
         const cfg = &self.config.display;
         // region/grid are invariant across every thumbnail this pass; compute once instead of per-thumbnail (see repositionAllThumbnails).
-        const region_fit_grid: ?RegionFitGrid = if (isRegionFitActive(cfg))
-            calculateRegionFitGrid(regionRectFromConfig(cfg).?, self.regionFitGridCount(), cfg.spacing, cfg.spacing, self.regionFitAspectRatio())
-        else
-            null;
+        const region_fit_grid: ?RegionFitGrid = if (isRegionFitActive(cfg)) blk: {
+            const region = regionRectFromConfig(cfg).?;
+            break :blk calculateRegionFitGrid(region, self.regionFitGridCount(), cfg.spacing, cfg.spacing, self.regionFitAspectRatio(), self.regionFitMaxCellSize(region));
+        } else null;
 
         for (self.thumbnails.items) |*thumbnail| {
             // Must run for every thumbnail, not just win32_enabled ones: list_view.zig reads these cache fields directly.
@@ -1479,7 +1479,7 @@ pub const Painter = struct {
         const region_fit: ?struct { region: win32.RECT, grid: RegionFitGrid } = if (region_fit_active) blk: {
             const region = regionRectFromConfig(cfg).?;
             const grid_count = if (display_order) |order| order.count else total_count;
-            break :blk .{ .region = region, .grid = calculateRegionFitGrid(region, grid_count, cfg.spacing, cfg.spacing, self.regionFitAspectRatio()) };
+            break :blk .{ .region = region, .grid = calculateRegionFitGrid(region, grid_count, cfg.spacing, cfg.spacing, self.regionFitAspectRatio(), self.regionFitMaxCellSize(region)) };
         } else null;
 
         // Own auto-fit grid for not-logged-in placeholders, invariant across the pass just like RegionFit's.
@@ -2184,10 +2184,10 @@ pub const Painter = struct {
         return count;
     }
 
-    /// notLoggedInSpace's own auto-fit grid - same aspect-preserving column/row search as RegionFit's Thumbnail Space, but with its own spacing.
+    /// notLoggedInSpace's own auto-fit grid - same aspect-preserving column/row search as RegionFit's Thumbnail Space, but with its own spacing. Shares regionFitLimitToThumbnailSize with RegionFit since both cap against the same configured thumbnail size.
     fn notLoggedInSpaceGrid(self: *const Painter, space: win32.RECT, count: usize) RegionFitGrid {
         const cfg = &self.config.display;
-        return calculateRegionFitGrid(space, count, cfg.notLoggedInSpaceSpacing, cfg.notLoggedInSpaceSpacing, self.regionFitAspectRatio());
+        return calculateRegionFitGrid(space, count, cfg.notLoggedInSpaceSpacing, cfg.notLoggedInSpaceSpacing, self.regionFitAspectRatio(), self.regionFitMaxCellSize(space));
     }
 
     /// Auto-fits not-logged-in placeholders into `space`: same grid-fit as RegionFit's Thumbnail Space, just with its own item count, spacing, and region.
@@ -2219,7 +2219,7 @@ pub const Painter = struct {
         // Checked before saved positions, which it replaces entirely while active.
         if (cfg.layoutMode == .RegionFit) {
             if (regionRectFromConfig(cfg)) |region| {
-                return calculateRegionFitPosition(cfg, region, index, total_count, self.regionFitAspectRatio());
+                return calculateRegionFitPosition(cfg, region, index, total_count, self.regionFitAspectRatio(), self.regionFitMaxCellSize(region));
             }
         }
 
@@ -2278,9 +2278,20 @@ pub const Painter = struct {
         return cfg.layoutMode == .RegionFit and regionRectFromConfig(cfg) != null;
     }
 
-    /// RegionFit ignores the configured absolute thumbnail size, but keeps its shape.
+    /// RegionFit always keeps the configured thumbnail's shape; regionFitLimitToThumbnailSize additionally caps its absolute size (see regionFitMaxCellSize).
     fn regionFitAspectRatio(self: *const Painter) f32 {
         return @as(f32, @floatFromInt(self.config.thumbnail.width)) / @as(f32, @floatFromInt(self.config.thumbnail.height));
+    }
+
+    const RegionFitCap = struct { width: i32, height: i32 };
+
+    /// Physical-pixel cap on RegionFit's cell size, DPI-scaled for the region's own monitor (which may differ from the app's configured monitor); null when regionFitLimitToThumbnailSize is off.
+    fn regionFitMaxCellSize(self: *const Painter, region: win32.RECT) ?RegionFitCap {
+        if (!self.config.display.regionFitLimitToThumbnailSize) return null;
+        const center = win32.POINT{ .x = @divTrunc(region.left + region.right, 2), .y = @divTrunc(region.top + region.bottom, 2) };
+        const dpi = if (win32.MonitorFromPoint(center, win32.MONITOR_DEFAULTTONEAREST)) |monitor| getMonitorDpi(monitor) else defaultDpi();
+        const scale = dpiToScale(dpi);
+        return .{ .width = scalePixels(self.config.thumbnail.width, scale), .height = scalePixels(self.config.thumbnail.height, scale) };
     }
 
     /// Floors at 1px (a Win32 API-validity floor, not a usability minimum).
@@ -2296,62 +2307,56 @@ pub const Painter = struct {
         return .{ .width = @max(width, 1), .height = @max(height, 1) };
     }
 
-    /// Like fitAspect, but height follows box_width unclamped, so a column's cell size never shrinks just to squeeze in one more row.
-    fn naturalCellForWidth(box_width: i32, aspect_ratio: f32) struct { width: i32, height: i32 } {
-        if (box_width <= 0) return .{ .width = 1, .height = 1 };
-        const height: i32 = @intFromFloat(@round(@as(f32, @floatFromInt(box_width)) / aspect_ratio));
-        return .{ .width = box_width, .height = @max(height, 1) };
+    fn regionFitGridForDims(region_width: i32, region_height: i32, columns: u32, rows: u32, spacing_x: i32, spacing_y: i32, aspect_ratio: f32, max_cell: ?RegionFitCap) RegionFitGrid {
+        const box_width = @max(@divTrunc(region_width - spacing_x * (@as(i32, @intCast(columns)) - 1), @as(i32, @intCast(columns))), 1);
+        const box_height = @max(@divTrunc(region_height - spacing_y * (@as(i32, @intCast(rows)) - 1), @as(i32, @intCast(rows))), 1);
+        const fit_width = if (max_cell) |cap| @min(box_width, cap.width) else box_width;
+        const fit_height = if (max_cell) |cap| @min(box_height, cap.height) else box_height;
+        const cell = fitAspect(fit_width, fit_height, aspect_ratio);
+        return .{ .columns = columns, .rows = rows, .box_width = box_width, .box_height = box_height, .cell_width = cell.width, .cell_height = cell.height };
     }
 
-    /// Fills column 1 to its natural (unshrunk) capacity before starting another column, so cell size stays put until a column is actually full.
-    fn calculateRegionFitGridPortrait(region: win32.RECT, n: u32, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
-        const region_width = region.right - region.left;
-        const region_height = region.bottom - region.top;
-
-        var columns: u32 = 1;
-        while (true) : (columns += 1) {
-            const box_width = @max(@divTrunc(region_width - spacing_x * (@as(i32, @intCast(columns)) - 1), @as(i32, @intCast(columns))), 1);
-            const cell = naturalCellForWidth(box_width, aspect_ratio);
-            const rows_per_column: u32 = @intCast(@max(@divTrunc(region_height + spacing_y, cell.height + spacing_y), 1));
-            if (columns * rows_per_column >= n) {
-                return .{ .columns = columns, .rows = rows_per_column, .box_width = box_width, .box_height = cell.height, .cell_width = cell.width, .cell_height = cell.height };
-            }
-        }
+    fn regionFitCellArea(grid: RegionFitGrid) i64 {
+        return @as(i64, grid.cell_width) * @as(i64, grid.cell_height);
     }
 
-    /// Picks the column count that maximizes per-cell area once cells are fit to aspect_ratio.
-    fn calculateRegionFitGridLandscape(region: win32.RECT, n: u32, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
-        const region_width = region.right - region.left;
-        const region_height = region.bottom - region.top;
-
-        var best = RegionFitGrid{ .columns = 1, .rows = n, .box_width = 1, .box_height = 1, .cell_width = 1, .cell_height = 1 };
-        var best_area: i64 = -1;
-
-        var columns: u32 = 1;
-        while (columns <= n) : (columns += 1) {
-            const rows: u32 = (n + columns - 1) / columns;
-            // Clamp instead of skipping, so spacing that overruns a tiny region still yields a usable grid.
-            const box_width = @max(@divTrunc(region_width - spacing_x * (@as(i32, @intCast(columns)) - 1), @as(i32, @intCast(columns))), 1);
-            const box_height = @max(@divTrunc(region_height - spacing_y * (@as(i32, @intCast(rows)) - 1), @as(i32, @intCast(rows))), 1);
-
-            const cell = fitAspect(box_width, box_height, aspect_ratio);
-            const area = @as(i64, cell.width) * @as(i64, cell.height);
-            if (area > best_area) {
-                best_area = area;
-                best = .{ .columns = columns, .rows = rows, .box_width = box_width, .box_height = box_height, .cell_width = cell.width, .cell_height = cell.height };
-            }
-        }
-
-        return best;
+    /// How many cap-sized cells fit along one axis; used only to break area ties under a size cap (see calculateRegionFitGrid).
+    fn regionFitAxisCapacity(dimension: i32, spacing: i32, cell_dimension: i32) u32 {
+        return @intCast(@max(@divTrunc(dimension + spacing, cell_dimension + spacing), 1));
     }
 
-    fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, spacing_y: i32, aspect_ratio: f32) RegionFitGrid {
+    /// Grows one column or row at a time from a single full-region cell, whichever yields the bigger cell, so the grid grows incrementally instead of re-optimizing from scratch per count.
+    fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, spacing_y: i32, aspect_ratio: f32, max_cell: ?RegionFitCap) RegionFitGrid {
         const n: u32 = @intCast(@max(count, 1));
-        const is_portrait = (region.bottom - region.top) > (region.right - region.left);
-        return if (is_portrait)
-            calculateRegionFitGridPortrait(region, n, spacing_x, spacing_y, aspect_ratio)
+        const region_width = region.right - region.left;
+        const region_height = region.bottom - region.top;
+
+        // Under a size cap, growing either axis often yields the same capped cell size; break that tie toward whichever axis has more natural room, so one column/row fills up before a second one starts.
+        const prefer_rows_on_tie = if (max_cell) |cap|
+            regionFitAxisCapacity(region_height, spacing_y, cap.height) >= regionFitAxisCapacity(region_width, spacing_x, cap.width)
         else
-            calculateRegionFitGridLandscape(region, n, spacing_x, spacing_y, aspect_ratio);
+            false;
+
+        var columns: u32 = 1;
+        var rows: u32 = 1;
+        var grid = regionFitGridForDims(region_width, region_height, columns, rows, spacing_x, spacing_y, aspect_ratio, max_cell);
+
+        while (columns * rows < n) {
+            const grow_columns = regionFitGridForDims(region_width, region_height, columns + 1, rows, spacing_x, spacing_y, aspect_ratio, max_cell);
+            const grow_rows = regionFitGridForDims(region_width, region_height, columns, rows + 1, spacing_x, spacing_y, aspect_ratio, max_cell);
+            const area_columns = regionFitCellArea(grow_columns);
+            const area_rows = regionFitCellArea(grow_rows);
+            const take_columns = if (area_columns != area_rows) area_columns > area_rows else !prefer_rows_on_tie;
+            if (take_columns) {
+                columns += 1;
+                grid = grow_columns;
+            } else {
+                rows += 1;
+                grid = grow_rows;
+            }
+        }
+
+        return grid;
     }
 
     /// BTT/RTL directions stay within [0, rows/columns) since the region is fixed-size.
@@ -2369,8 +2374,8 @@ pub const Painter = struct {
     }
 
     /// index/total_count here are display-order ranks (see computeRegionFitDisplayOrder), not raw thumbnails-array positions.
-    fn calculateRegionFitPosition(cfg: *const config_mod.Config.DisplayConfig, region: win32.RECT, index: usize, total_count: usize, aspect_ratio: f32) config_mod.Position {
-        const grid = calculateRegionFitGrid(region, total_count, cfg.spacing, cfg.spacing, aspect_ratio);
+    fn calculateRegionFitPosition(cfg: *const config_mod.Config.DisplayConfig, region: win32.RECT, index: usize, total_count: usize, aspect_ratio: f32, max_cell: ?RegionFitCap) config_mod.Position {
+        const grid = calculateRegionFitGrid(region, total_count, cfg.spacing, cfg.spacing, aspect_ratio, max_cell);
         return regionFitPositionForGrid(region, grid, index, cfg.regionFitDirection, cfg.spacing);
     }
 
@@ -2764,10 +2769,10 @@ pub const Painter = struct {
         defer raw.deinit(allocator);
 
         const cfg = &self.config.display;
-        const region_fit_grid: ?RegionFitGrid = if (isRegionFitActive(cfg))
-            calculateRegionFitGrid(regionRectFromConfig(cfg).?, self.regionFitGridCount(), cfg.spacing, cfg.spacing, self.regionFitAspectRatio())
-        else
-            null;
+        const region_fit_grid: ?RegionFitGrid = if (isRegionFitActive(cfg)) blk: {
+            const region = regionRectFromConfig(cfg).?;
+            break :blk calculateRegionFitGrid(region, self.regionFitGridCount(), cfg.spacing, cfg.spacing, self.regionFitAspectRatio(), self.regionFitMaxCellSize(region));
+        } else null;
 
         for (self.config.characters.items) |char_config| {
             if (std.mem.eql(u8, char_config.name, exclude_character)) continue;

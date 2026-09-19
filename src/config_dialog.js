@@ -375,6 +375,7 @@ const CONFIG_SCHEMA = [
     { id: 'regionFitOrder', path: 'display.regionFitOrder' },
     { id: 'regionFitReorderLoggedOut', path: 'display.regionFitReorderLoggedOut' },
     { id: 'hideThumbnailsDuringRegionSelect', path: 'display.hideThumbnailsDuringRegionSelect', default: true },
+    { id: 'regionFitLimitToThumbnailSize', path: 'display.regionFitLimitToThumbnailSize', default: false },
     { id: 'notLoggedInSpaceEnabled', path: 'display.notLoggedInSpaceEnabled', default: false },
     { id: 'notLoggedInSpaceSpacing', path: 'display.notLoggedInSpaceSpacing' },
     { id: 'notLoggedInSpaceX', path: 'display.notLoggedInSpaceX', transform: 'nullable' },
@@ -871,7 +872,7 @@ const THUMBNAIL_PREVIEW_FIELD_IDS = [
     'notifInfoPanelWidth', 'notifInfoPanelHeight', 'notifInfoPanelMaxRows', 'notifInfoPanelShowTimestamp', 'notifInfoPanelShowCategoryFilters',
     'notifInfoPanelOpacity', 'notifInfoPanelFontName', 'notifInfoPanelFontSize', 'notifInfoPanelFontWeight',
     'spacing', 'newThumbnailSpacing', 'layoutMode', 'regionFitDirection',
-    'regionFitEnabled', 'regionFitOrder', 'regionFitReorderLoggedOut', 'hideThumbnailsDuringRegionSelect', 'regionX', 'regionY', 'regionWidth', 'regionHeight',
+    'regionFitEnabled', 'regionFitOrder', 'regionFitReorderLoggedOut', 'hideThumbnailsDuringRegionSelect', 'regionFitLimitToThumbnailSize', 'regionX', 'regionY', 'regionWidth', 'regionHeight',
     'notLoggedInSpaceEnabled', 'notLoggedInSpaceSpacing', 'notLoggedInSpaceX', 'notLoggedInSpaceY', 'notLoggedInSpaceWidth', 'notLoggedInSpaceHeight',
     'monitorIndex', 'useMonitorWorkArea', 'honorSavedPositions',
     'notificationsEnabled', 'notificationPosition', 'notificationOffsetX', 'notificationOffsetY',
@@ -978,6 +979,7 @@ function buildThumbnailPreviewPatch(includePositions = false) {
             regionFitOrder: getFieldValue('regionFitOrder'),
             regionFitReorderLoggedOut: getFieldValue('regionFitReorderLoggedOut'),
             hideThumbnailsDuringRegionSelect: getFieldValue('hideThumbnailsDuringRegionSelect'),
+            regionFitLimitToThumbnailSize: getFieldValue('regionFitLimitToThumbnailSize'),
             regionX: getNullableFieldValue('regionX'),
             regionY: getNullableFieldValue('regionY'),
             regionWidth: getNullableFieldValue('regionWidth'),
@@ -1351,9 +1353,19 @@ function buildSectionNav() {
         const list = document.createElement('div');
         list.className = 'subheader-list';
 
+        let lastNavSection = null;
         panel.querySelectorAll('.section').forEach((section, index) => {
             if (section.style.display === 'none') return;
             if (section.classList.contains('advanced-section') && !document.body.classList.contains('advanced-mode')) return;
+
+            if (section.classList.contains('no-subheader')) {
+                // Piggybacks on the nearest preceding real entry, so that entry highlights this section too (see setActiveSection).
+                if (lastNavSection) {
+                    lastNavSection._linkedSections.push(section);
+                    section._navItem = lastNavSection._navItem;
+                }
+                return;
+            }
 
             const heading = section.querySelector('h3');
             if (!heading) return;
@@ -1369,6 +1381,8 @@ function buildSectionNav() {
             list.appendChild(item);
 
             section._navItem = item;
+            section._linkedSections = [section];
+            lastNavSection = section;
         });
 
         tabItem.insertAdjacentElement('afterend', list);
@@ -1394,7 +1408,8 @@ function setActiveSection(section) {
     document.querySelectorAll('.section-active').forEach(el => el.classList.remove('section-active'));
     document.querySelectorAll('.subheader-item-active').forEach(el => el.classList.remove('subheader-item-active'));
     if (!section) return;
-    section.classList.add('section-active');
+    // A no-subheader section (e.g. Not-Logged-In Thumbnail Space) shares its nav entry with the section it's linked to, so both light up together.
+    (section._linkedSections || [section]).forEach(s => s.classList.add('section-active'));
     if (section._navItem) {
         section._navItem.classList.add('subheader-item-active');
     }
