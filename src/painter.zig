@@ -966,26 +966,33 @@ pub const Painter = struct {
         const now = win32.Ticks.now();
         const delay_ms: u64 = self.config.autoMinimize.delayMs;
         var minimized_any = false;
+        const foreground_hwnd = win32.GetForegroundWindow();
+        // Windows can briefly report no foreground window while focus moves between EVE clients.
+        // Do not auto-minimize during that transition; the next tick will evaluate the real target.
+        if (foreground_hwnd == null) return;
 
-        // active_source_hwnd is the literal foreground window, so it's non-null even on a non-EVE app.
-        const eve_has_focus = if (self.active_source_hwnd) |hwnd| self.hwnd_to_thumbnail_index.contains(hwnd) else false;
+        const foreground_is_eve = if (foreground_hwnd) |hwnd| self.hwnd_to_thumbnail_index.contains(hwnd) else false;
+        // Do not minimize any EVE client while another application is foreground.
+        // This avoids treating a non-EVE focus transition as an inactive-client decision.
+        if (!foreground_is_eve) return;
+
+        var foreground_excludes_auto_minimize = false;
+        if (foreground_hwnd) |hwnd| {
+            if (self.getThumbnailBySourceHwnd(hwnd)) |thumbnail| {
+                foreground_excludes_auto_minimize = thumbnail.cached_excluded_from_minimize;
+            }
+        }
 
         for (self.thumbnails.items) |*thumbnail| {
             if (input.isThumbnailDragging(thumbnail)) continue;
-            if (thumbnail.isFocused(self.active_source_hwnd)) continue;
+            if (thumbnail.isFocused(foreground_hwnd)) continue;
             if (win32.isWindowIconic(thumbnail.source_hwnd)) continue;
 
             const is_last_focused = self.last_focused_source_hwnd != null and thumbnail.source_hwnd == self.last_focused_source_hwnd;
-            const active_hwm_is_eve = if (self.active_source_hwnd) |hwnd| self.hwnd_to_thumbnail_index.contains(hwnd) else false;
-            const is_other_eve_client_focused = active_hwm_is_eve and self.active_source_hwnd != thumbnail.source_hwnd;
 
-            // Before any EVE window has been genuinely focused this session, last_focused_source_hwnd is null; exempt everyone rather than minimize all clients with no known "last active".
-            if (self.config.autoMinimize.exemptLastActiveOnFocusLoss and
-                !eve_has_focus and
-                (self.last_focused_source_hwnd == null or is_last_focused)) continue;
-            if (self.config.autoMinimize.exemptLastActiveWhenAnyEveFocused and
-                is_last_focused and
-                is_other_eve_client_focused) continue;
+            // Spare the previously active client when focus leaves EVE, or when another focused
+            // EVE character is excluded from auto-minimize.
+            if (is_last_focused and (!foreground_is_eve or foreground_excludes_auto_minimize)) continue;
 
             if (now.elapsedSince(thumbnail.inactive_since) < delay_ms) continue;
             if (thumbnail.cached_excluded_from_minimize) continue;
@@ -996,13 +1003,11 @@ pub const Painter = struct {
             slog.info("Auto-minimized {s} (inactive {}ms)", .{ thumbnail.character_name, now.elapsedSince(thumbnail.inactive_since) });
         }
 
-        if (minimized_any) {
-            for (self.thumbnails.items) |*thumbnail| {
-                if (thumbnail.isFocused(self.active_source_hwnd) and win32.isWindow(thumbnail.source_hwnd)) {
-                    // Minimizing the other windows can transiently steal focus from the active one.
-                    input.forceSetForegroundWindow(thumbnail.source_hwnd);
-                    break;
-                }
+        if (minimized_any and foreground_is_eve) {
+            // Minimizing the other windows can transiently steal focus; restore the real foreground EVE client,
+            // rather than a possibly stale active_source_hwnd value.
+            if (foreground_hwnd) |hwnd| {
+                if (win32.isWindow(hwnd)) input.forceSetForegroundWindow(hwnd);
             }
         }
     }
@@ -1011,6 +1016,11 @@ pub const Painter = struct {
     pub fn minimizeAllClients(_: *Painter) void {
         const eve_windows = getEveWindowsOrLog("minimize all clients") orelse return;
         manager_mod.minimizeAllClients(eve_windows);
+    }
+
+    /// Returns whether an EVE source window is the last active client protected from automatic minimization.
+    pub fn isLastFocusedSource(self: *const Painter, source_hwnd: win32.HWND) bool {
+        return self.last_focused_source_hwnd != null and self.last_focused_source_hwnd.? == source_hwnd;
     }
 
     /// Move all EVE client windows with a saved position to that position (hotkey action).
@@ -1099,11 +1109,16 @@ pub const Painter = struct {
                 } else if (self.last_focused_source_hwnd == null) {
                     self.last_focused_source_hwnd = new_hwnd;
                 }
+            } else if (old_active_is_eve) {
+                // The client that was active immediately before leaving EVE is the one to spare.
+                self.last_focused_source_hwnd = old_active.?;
             }
             // Otherwise: non-EVE foreground window, keep the previous EVE-focused client as the protected target.
         } else {
             // No foreground window or app deactivated; retain the last known EVE-focused client while EVE has no focus.
-            // Don't clear it here; the exemptLastActiveOnFocusLoss check relies on this value.
+            // If Windows reports a transient null foreground during an EVE-to-EVE switch, the
+            // EVE client that just lost focus is still the last active client to protect.
+            if (old_active_is_eve) self.last_focused_source_hwnd = old_active.?;
         }
 
         for (self.thumbnails.items) |*thumbnail| {
@@ -4414,6 +4429,13 @@ fn winEventProc(
     const is_eve_window = painter.hwnd_to_thumbnail_index.contains(hwnd);
 
     if (!is_eve_window) {
+        // Keep active_source_hwnd and the last-active exemption current before the next timer tick.
+        // Without this, auto-minimize can evaluate a stale EVE focus during a rapid focus transition.
+        const current_foreground = win32.GetForegroundWindow();
+        if (current_foreground == hwnd) {
+            painter.reconcileThumbnailStates(hwnd);
+        }
+
         if (!isOwnProcessWindow(hwnd) and !isDesktopShellWindow(hwnd)) {
             painter.last_non_eve_foreground = hwnd;
         }

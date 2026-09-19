@@ -189,7 +189,11 @@ pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
 
         thumbnail.is_excluded_from_cycle = hotkey_manager.isCharacterExcluded(char_name);
 
-        if (thumbnail.is_excluded_from_cycle and painter.config.exclusion.autoMinimizeExcluded) {
+        if (thumbnail.is_excluded_from_cycle and
+            painter.config.exclusion.autoMinimizeExcluded and
+            !painter.isLastFocusedSource(source_hwnd) and
+            win32.GetForegroundWindow() != source_hwnd)
+        {
             _ = win32.ShowWindowAsync(source_hwnd, win32.SW_FORCEMINIMIZE);
         }
 
