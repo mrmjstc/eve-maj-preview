@@ -1546,6 +1546,8 @@ pub const Painter = struct {
                 // May still be sized from a previous RegionFit grid cell, so resize explicitly.
                 hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_NOTOPMOST, pos.x, pos.y, nl.grid.cell_width, nl.grid.cell_height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE) orelse return;
                 hdwp = win32.DeferWindowPos(hdwp, thumbnail.text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, nl.grid.cell_width, nl.grid.cell_height, win32.SWP_NOACTIVATE) orelse return;
+                const props = makeThumbnailProps(nl.grid.cell_width, nl.grid.cell_height, win32.DWM_TNP_RECTDESTINATION);
+                _ = win32.DwmUpdateThumbnailProperties(thumbnail.thumbnail_id, &props);
                 continue;
             }
 
@@ -1784,9 +1786,9 @@ pub const Painter = struct {
                 // RegionFit ignores the saved spot; the reflow below places it correctly instead.
                 if (thumbnail.win32_enabled and !isRegionFitActive(&self.config.display)) {
                     if (self.config.getCharacterPosition(change.new_name)) |saved_pos| {
-                        const thumb_size = self.getThumbnailSize(change.new_name, self.thumbnails.items.len, null);
-                        _ = win32.SetWindowPos(thumbnail.hwnd, win32.HWND_NOTOPMOST, saved_pos.x, saved_pos.y, thumb_size.width, thumb_size.height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
-                        _ = win32.SetWindowPos(thumbnail.text_hwnd, win32.HWND_TOPMOST, saved_pos.x, saved_pos.y, thumb_size.width, thumb_size.height, win32.SWP_NOACTIVATE);
+                        _ = win32.SetWindowPos(thumbnail.hwnd, win32.HWND_NOTOPMOST, saved_pos.x, saved_pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
+                        _ = win32.SetWindowPos(thumbnail.text_hwnd, win32.HWND_TOPMOST, saved_pos.x, saved_pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
+                        self.resizeThumbnailIfNeeded(thumbnail, null);
                         slog.info("Moved {s} thumbnail to saved position: ({}, {})", .{ change.new_name, saved_pos.x, saved_pos.y });
                     } else {
                         slog.debug("No saved thumbnail position for {s}, keeping current location", .{change.new_name});
