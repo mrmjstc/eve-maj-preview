@@ -34,7 +34,45 @@ pub const Command = union(enum) {
     RevertPreview: void,
     DialogSuspendHotkeys: void,
     DialogResumeHotkeys: void,
-    StartRegionSelect: void,
+    StartRegionSelect: RegionSelectRequest,
+};
+
+/// Zero-padded fixed-size copy of `text` (UTF-8), truncated at a character boundary so a NUL always fits.
+pub fn fixedText(comptime n: usize, text: []const u8) [n]u8 {
+    var out = std.mem.zeroes([n]u8);
+    var len = @min(text.len, n - 1);
+    while (len > 0 and len < text.len and (text[len] & 0xC0) == 0x80) len -= 1;
+    @memcpy(out[0..len], text[0..len]);
+    return out;
+}
+
+/// The overlay's on-screen text, translated by the config dialog since only it has the language files; English defaults if the dialog sends nothing.
+pub const RegionSelectLabels = extern struct {
+    save: [32]u8 = fixedText(32, "Save"),
+    cancel: [32]u8 = fixedText(32, "Cancel"),
+    hint_new: [192]u8 = fixedText(192, "Drag to draw the region, then drag its edges to adjust"),
+    hint_edit: [192]u8 = fixedText(192, "Drag the edges to resize, or the inside to move"),
+    hint_confirm: [192]u8 = fixedText(192, "Enter or Save to confirm, Esc or right-click to cancel"),
+};
+
+/// The text in a fixed-size, NUL-padded label buffer.
+pub fn labelText(buf: []const u8) []const u8 {
+    return std.mem.sliceTo(buf, 0);
+}
+
+pub const RegionSelectRequest = struct {
+    /// Hide the visible thumbnails for the duration of the selection so they don't cover the overlay.
+    hide_thumbnails: bool = false,
+    /// The region to adjust; null starts a fresh drag.
+    edit_region: ?win32.RECT = null,
+    labels: RegionSelectLabels = .{},
+};
+
+const RegionSelectRequestWire = extern struct {
+    hide_thumbnails: u32,
+    has_edit_region: u32,
+    edit_region: win32.RECT,
+    labels: RegionSelectLabels,
 };
 
 /// Format: evemajpreview://action/params
@@ -175,11 +213,17 @@ pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
             _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
             slog.debug("Sent dialog resume hotkeys", .{});
         },
-        .StartRegionSelect => {
+        .StartRegionSelect => |request| {
+            const wire = RegionSelectRequestWire{
+                .hide_thumbnails = @intFromBool(request.hide_thumbnails),
+                .has_edit_region = @intFromBool(request.edit_region != null),
+                .edit_region = request.edit_region orelse std.mem.zeroes(win32.RECT),
+                .labels = request.labels,
+            };
             const cds = win32.COPYDATASTRUCT{
                 .dwData = win32.PROTOCOL_START_REGION_SELECT,
-                .cbData = 0,
-                .lpData = null,
+                .cbData = @sizeOf(RegionSelectRequestWire),
+                .lpData = &wire,
             };
             _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
             slog.info("Sent start region select", .{});
@@ -187,11 +231,25 @@ pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
     }
 }
 
+/// Receiving side of `Command.StartRegionSelect`; a malformed payload falls back to a plain fresh drag.
+pub fn regionSelectRequestFromCopyData(cds: *const win32.COPYDATASTRUCT) RegionSelectRequest {
+    const data_ptr = cds.lpData orelse return .{};
+    if (cds.cbData != @sizeOf(RegionSelectRequestWire)) return .{};
+    var wire: RegionSelectRequestWire = undefined;
+    @memcpy(std.mem.asBytes(&wire), @as([*]const u8, @ptrCast(data_ptr))[0..@sizeOf(RegionSelectRequestWire)]);
+    return .{
+        .hide_thumbnails = wire.hide_thumbnails != 0,
+        .edit_region = if (wire.has_edit_region != 0) wire.edit_region else null,
+        .labels = wire.labels,
+    };
+}
+
+pub const RegionSelectStatus = enum(u32) { none, success, cancelled, too_small };
+
 /// Cross-process result of a "Start Region Selection" drag; a named shared-memory mapping since today's WM_COPYDATA IPC is one-way dialog->app.
 pub const RegionSelectResult = extern struct {
     sequence: u32 = 0,
-    /// 0 = none yet, 1 = success, 2 = cancelled
-    status: u32 = 0,
+    status: RegionSelectStatus = .none,
     x: i32 = 0,
     y: i32 = 0,
     width: i32 = 0,
@@ -236,7 +294,7 @@ pub fn readRegionSelectResult() ?RegionSelectResult {
 }
 
 /// Increments the sequence and writes a fresh result; called by the main app once a drag finishes or is cancelled.
-pub fn publishRegionSelectResult(status: u32, rect: win32.RECT) void {
+pub fn publishRegionSelectResult(status: RegionSelectStatus, rect: win32.RECT) void {
     const mapping = ensureRegionSelectMapping() orelse {
         slog.err("Failed to create region-select result mapping", .{});
         return;
@@ -255,8 +313,8 @@ pub fn publishRegionSelectResult(status: u32, rect: win32.RECT) void {
         .status = status,
         .x = rect.left,
         .y = rect.top,
-        .width = rect.right - rect.left,
-        .height = rect.bottom - rect.top,
+        .width = win32.rectWidth(rect),
+        .height = win32.rectHeight(rect),
     };
 }
 

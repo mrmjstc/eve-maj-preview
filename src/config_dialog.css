@@ -1439,6 +1439,17 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     margin-top: var(--space-2);
 }
 
+/* Like .button-row, but a trailing square icon button keeps its own width instead of taking an equal column. */
+.button-row-flex {
+    display: flex;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+}
+
+.button-row-flex > button:not(.button-icon) {
+    flex: 1;
+}
+
 /* The ore table reuses .notification-types-table (see above) wholesale for identical visual/scrolling behavior - this is the one thing that table never needed. */
 /* Wider than the shared number-input rule (sized for notifications' Duration/Throttle) - fetched ISK prices run up to 6+ digits. */
 .notification-types-table input.ore-price-input {

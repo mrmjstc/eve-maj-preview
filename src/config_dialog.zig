@@ -663,17 +663,55 @@ fn previewThumbnailConfig(e: *webui.Event) void {
 var g_region_select_baseline_sequence: u32 = 0;
 var g_region_select_pending: bool = false;
 
+/// What config_dialog.js sends to startRegionSelect; `region` is [x, y, width, height] in screen coordinates, or null to start a fresh drag. Empty labels keep the overlay's English defaults.
+const RegionSelectRequestJson = struct {
+    hide: bool = false,
+    region: ?[4]i32 = null,
+    labels: struct {
+        save: []const u8 = "",
+        cancel: []const u8 = "",
+        hintNew: []const u8 = "",
+        hintEdit: []const u8 = "",
+        hintConfirm: []const u8 = "",
+    } = .{},
+};
+
+fn setLabel(comptime n: usize, field: *[n]u8, text: []const u8) void {
+    if (text.len > 0) field.* = protocol.fixedText(n, text);
+}
+
+fn parseRegionSelectRequest(json: []const u8) protocol.RegionSelectRequest {
+    const parsed = std.json.parseFromSlice(RegionSelectRequestJson, g_allocator, json, .{ .ignore_unknown_fields = true }) catch |err| {
+        slog.warn("Ignoring malformed region-select request: {}", .{err});
+        return .{};
+    };
+    defer parsed.deinit();
+    const value = parsed.value;
+
+    var request = protocol.RegionSelectRequest{ .hide_thumbnails = value.hide };
+    if (value.region) |r| {
+        if (r[2] > 0 and r[3] > 0) request.edit_region = .{ .left = r[0], .top = r[1], .right = r[0] + r[2], .bottom = r[1] + r[3] };
+    }
+    setLabel(32, &request.labels.save, value.labels.save);
+    setLabel(32, &request.labels.cancel, value.labels.cancel);
+    setLabel(192, &request.labels.hint_new, value.labels.hintNew);
+    setLabel(192, &request.labels.hint_edit, value.labels.hintEdit);
+    setLabel(192, &request.labels.hint_confirm, value.labels.hintConfirm);
+    return request;
+}
+
 /// Triggers the main app's drag-to-select overlay; config_dialog.js's startRegionSelectFlow() then polls pollRegionSelectResult.
 fn startRegionSelect(e: *webui.Event) void {
     const hwnd = findMainAppWindow() orelse {
         e.returnString("{\"success\": false, \"error\": \"Main app is not running\"}");
         return;
     };
+    const request = parseRegionSelectRequest(e.getString());
 
     g_region_select_baseline_sequence = if (protocol.readRegionSelectResult()) |result| result.sequence else 0;
     g_region_select_pending = true;
 
-    protocol.sendCommandToInstance(hwnd, protocol.Command{ .StartRegionSelect = {} });
+    protocol.sendCommandToInstance(hwnd, protocol.Command{ .StartRegionSelect = request });
     e.returnString("{\"success\": true}");
 }
 
@@ -695,19 +733,21 @@ fn pollRegionSelectResult(e: *webui.Event) void {
 
     g_region_select_pending = false;
 
-    if (result.status == 1) {
-        var buf: [160]u8 = undefined;
-        const json = std.fmt.bufPrintZ(
-            &buf,
-            "{{\"done\": true, \"cancelled\": false, \"x\": {}, \"y\": {}, \"width\": {}, \"height\": {}}}",
-            .{ result.x, result.y, result.width, result.height },
-        ) catch {
-            e.returnString("{\"done\": true, \"cancelled\": true}");
-            return;
-        };
-        e.returnString(json);
-    } else {
-        e.returnString("{\"done\": true, \"cancelled\": true}");
+    switch (result.status) {
+        .success => {
+            var buf: [160]u8 = undefined;
+            const json = std.fmt.bufPrintZ(
+                &buf,
+                "{{\"done\": true, \"cancelled\": false, \"x\": {}, \"y\": {}, \"width\": {}, \"height\": {}}}",
+                .{ result.x, result.y, result.width, result.height },
+            ) catch {
+                e.returnString("{\"done\": true, \"cancelled\": true}");
+                return;
+            };
+            e.returnString(json);
+        },
+        .too_small => e.returnString("{\"done\": true, \"cancelled\": true, \"tooSmall\": true}"),
+        .none, .cancelled => e.returnString("{\"done\": true, \"cancelled\": true}"),
     }
 }
 

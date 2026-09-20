@@ -2635,7 +2635,7 @@ pub const Config = struct {
         regionFitOrder: types.RegionFitOrder = .Characters,
         /// Whether a logout moves a thumbnail to the end of the grid, or leaves it in place until another reflow.
         regionFitReorderLoggedOut: bool = true,
-        /// Whether "Start Region Selection" temporarily hides visible thumbnails so they don't obscure the drag-to-select overlay.
+        /// Whether selecting or editing the Thumbnail Space region temporarily hides visible thumbnails so they don't obscure the overlay; the dialog passes it along when it starts the selection.
         hideThumbnailsDuringRegionSelect: bool = true,
         /// Caps RegionFit's cell size at the configured thumbnail size instead of always maximizing to fill the region.
         regionFitLimitToThumbnailSize: bool = false,
@@ -2649,6 +2649,10 @@ pub const Config = struct {
         notLoggedInSpaceHeight: ?i32 = null,
         /// Independent of RegionFit's `spacing`, so each Thumbnail Space can be tuned separately.
         notLoggedInSpaceSpacing: i32 = 0,
+        /// Same cap as `regionFitLimitToThumbnailSize`, for the not-logged-in space's own cells.
+        notLoggedInSpaceLimitToThumbnailSize: bool = false,
+        /// Same as `hideThumbnailsDuringRegionSelect`, for the not-logged-in space's region.
+        notLoggedInSpaceHideThumbnailsDuringRegionSelect: bool = true,
 
         monitorIndex: ?u32 = null,
         useMonitorWorkArea: bool = true,
@@ -3641,6 +3645,12 @@ pub const Config = struct {
         if (obj.get("notLoggedInSpaceSpacing")) |v| {
             if (v == .integer) display.notLoggedInSpaceSpacing = std.math.cast(i32, v.integer) orelse display.notLoggedInSpaceSpacing;
         }
+        if (obj.get("notLoggedInSpaceLimitToThumbnailSize")) |v| {
+            if (v == .bool) display.notLoggedInSpaceLimitToThumbnailSize = v.bool;
+        }
+        if (obj.get("notLoggedInSpaceHideThumbnailsDuringRegionSelect")) |v| {
+            if (v == .bool) display.notLoggedInSpaceHideThumbnailsDuringRegionSelect = v.bool;
+        }
         if (obj.get("monitorIndex")) |v| {
             if (v == .integer) {
                 if (std.math.cast(u32, v.integer)) |val| display.monitorIndex = val;
@@ -4366,7 +4376,6 @@ pub const Config = struct {
         const new_spacing = fresh.display.spacing;
         const new_layout_mode = fresh.display.layoutMode;
         const new_region_fit_direction = fresh.display.regionFitDirection;
-        const new_hide_thumbnails_during_region_select = fresh.display.hideThumbnailsDuringRegionSelect;
         const new_region_fit_limit_to_thumbnail_size = fresh.display.regionFitLimitToThumbnailSize;
         const new_new_thumbnail_spacing = fresh.display.newThumbnailSpacing;
         const new_monitor_index = fresh.display.monitorIndex;
@@ -4382,6 +4391,7 @@ pub const Config = struct {
         const new_not_logged_in_space_width = fresh.display.notLoggedInSpaceWidth;
         const new_not_logged_in_space_height = fresh.display.notLoggedInSpaceHeight;
         const new_not_logged_in_space_spacing = fresh.display.notLoggedInSpaceSpacing;
+        const new_not_logged_in_space_limit_to_thumbnail_size = fresh.display.notLoggedInSpaceLimitToThumbnailSize;
 
         // Index-matched, like applyGroupBadgePreviewFromJson.
         for (self.hotkeyGroups.items, 0..) |*group, group_index| {
@@ -4457,7 +4467,6 @@ pub const Config = struct {
         self.display.spacing = new_spacing;
         self.display.layoutMode = new_layout_mode;
         self.display.regionFitDirection = new_region_fit_direction;
-        self.display.hideThumbnailsDuringRegionSelect = new_hide_thumbnails_during_region_select;
         self.display.regionFitLimitToThumbnailSize = new_region_fit_limit_to_thumbnail_size;
         self.display.newThumbnailSpacing = new_new_thumbnail_spacing;
         self.display.monitorIndex = new_monitor_index;
@@ -4473,6 +4482,7 @@ pub const Config = struct {
         self.display.notLoggedInSpaceWidth = new_not_logged_in_space_width;
         self.display.notLoggedInSpaceHeight = new_not_logged_in_space_height;
         self.display.notLoggedInSpaceSpacing = new_not_logged_in_space_spacing;
+        self.display.notLoggedInSpaceLimitToThumbnailSize = new_not_logged_in_space_limit_to_thumbnail_size;
     }
 
     /// Live-preview only: per-group badge flags in the config dialog's group order, matched to the running groups by index.

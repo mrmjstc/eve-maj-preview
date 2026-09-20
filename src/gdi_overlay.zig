@@ -115,13 +115,151 @@ pub fn toBufZ(comptime buf_size: usize, text: []const u8) [buf_size:0]u8 {
     return buf;
 }
 
-/// Measures the pixel width of `text` (truncated to `buf_size - 1` bytes) using the currently selected font.
-pub fn measureTextWidth(comptime buf_size: usize, dc: win32.HDC, text: []const u8) usize {
+/// Translucent black backing shared by the small hint boxes and labels drawn over the desktop.
+pub const HINT_BG_COLOR: u32 = 0xC8000000;
+
+/// Measures `text` (truncated to `buf_size - 1` bytes) using the currently selected font.
+pub fn measureTextSize(comptime buf_size: usize, dc: win32.HDC, text: []const u8) win32.SIZE {
     const buf = toBufZ(buf_size, text);
     const n = @min(text.len, buf_size - 1);
     var sz: win32.SIZE = undefined;
     _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(n), &sz);
-    return @intCast(@max(0, sz.cx));
+    return sz;
+}
+
+/// Measures the pixel width of `text` (truncated to `buf_size - 1` bytes) using the currently selected font.
+pub fn measureTextWidth(comptime buf_size: usize, dc: win32.HDC, text: []const u8) usize {
+    return @intCast(@max(0, measureTextSize(buf_size, dc, text).cx));
+}
+
+/// UTF-8 to UTF-16 into `out`, truncating to `buf_size` bytes; returns the number of UTF-16 units written.
+fn toWide(comptime buf_size: usize, text: []const u8, out: *[buf_size]u16) usize {
+    const len = @min(text.len, buf_size);
+    if (len == 0) return 0;
+    const written = win32.MultiByteToWideChar(win32.CP_UTF8, 0, text.ptr, @intCast(len), out, @intCast(buf_size));
+    return @intCast(@max(0, written));
+}
+
+/// Like `measureTextSize`, for UTF-8 text such as translated labels.
+pub fn measureTextSizeUtf8(comptime buf_size: usize, dc: win32.HDC, text: []const u8) win32.SIZE {
+    var wide: [buf_size]u16 = undefined;
+    const n = toWide(buf_size, text, &wide);
+    var sz = win32.SIZE{ .cx = 0, .cy = 0 };
+    _ = win32.GetTextExtentPoint32W(dc, &wide, @intCast(n), &sz);
+    return sz;
+}
+
+/// Like `drawText`, for UTF-8 text such as translated labels.
+pub fn drawTextUtf8(comptime buf_size: usize, dc: win32.HDC, x: i32, y: i32, text: []const u8, color: u32) void {
+    var wide: [buf_size]u16 = undefined;
+    const n = toWide(buf_size, text, &wide);
+    _ = win32.SetBkMode(dc, win32.TRANSPARENT);
+    _ = win32.SetTextColor(dc, toColorRef(color));
+    _ = win32.TextOutW(dc, x, y, &wide, @intCast(n));
+}
+
+/// Draws `text` (truncated to `buf_size - 1` bytes) with a transparent background in the currently selected font; `color` is 0xAARRGGBB.
+pub fn drawText(comptime buf_size: usize, dc: win32.HDC, x: i32, y: i32, text: []const u8, color: u32) void {
+    const buf = toBufZ(buf_size, text);
+    const n = @min(text.len, buf_size - 1);
+    _ = win32.SetBkMode(dc, win32.TRANSPARENT);
+    _ = win32.SetTextColor(dc, toColorRef(color));
+    _ = win32.TextOutA(dc, x, y, &buf, @intCast(n));
+}
+
+/// Corners are cut with per-row insets (no anti-aliasing), which is fine at the small radii UI buttons use.
+pub fn fillRoundedRect(pixels: [*]u32, stride: usize, height: usize, x: usize, y: usize, w: usize, h: usize, radius: usize, argb: u32) void {
+    const r = @min(radius, @min(w, h) / 2);
+    const radius_f: f32 = @floatFromInt(r);
+    var row: usize = 0;
+    while (row < h) : (row += 1) {
+        const from_edge = @min(row, h - 1 - row);
+        var inset: usize = 0;
+        if (from_edge < r) {
+            const dy = radius_f - @as(f32, @floatFromInt(from_edge)) - 0.5;
+            inset = @intFromFloat(@round(radius_f - @sqrt(radius_f * radius_f - dy * dy)));
+        }
+        fillRect(pixels, stride, height, x + inset, y + row, w - 2 * inset, 1, argb);
+    }
+}
+
+/// Null if `name` isn't installed, since CreateFontA silently substitutes another face. Matches by prefix because GDI can report a weight variant of a variable font (e.g. "Cascadia Code SemiBold") as the face.
+pub fn createInstalledFont(dc: win32.HDC, name: [:0]const u8, height_px: i32, weight: c_int) ?win32.HFONT {
+    const font = win32.CreateFontA(-height_px, 0, 0, 0, weight, 0, 0, 0, win32.DEFAULT_CHARSET, win32.OUT_DEFAULT_PRECIS, win32.CLIP_DEFAULT_PRECIS, win32.CLEARTYPE_QUALITY, win32.DEFAULT_PITCH, name.ptr) orelse return null;
+
+    const old_font = win32.SelectObject(dc, font);
+    var face: [64]u8 = undefined;
+    const face_len = win32.GetTextFaceA(dc, face.len, &face);
+    if (old_font) |of| _ = win32.SelectObject(dc, of);
+
+    if (face_len > 1 and std.ascii.startsWithIgnoreCase(face[0..@intCast(face_len - 1)], name)) return font;
+    _ = win32.DeleteObject(font);
+    return null;
+}
+
+pub const ButtonFace = struct {
+    fill: u32,
+    border: u32,
+    text_color: u32,
+    radius: usize,
+    border_px: usize,
+};
+
+/// A filled, bordered, rounded button with `label` centered in `font`; `rect` is in bitmap coordinates.
+pub fn drawButtonFace(bmp: *const OverlayBitmap, rect: win32.RECT, label: []const u8, font: win32.HFONT, face: ButtonFace) void {
+    const x: usize = @intCast(rect.left);
+    const y: usize = @intCast(rect.top);
+    const w: usize = @intCast(win32.rectWidth(rect));
+    const h: usize = @intCast(win32.rectHeight(rect));
+    fillRoundedRect(bmp.pixels, bmp.width, bmp.height, x, y, w, h, face.radius, face.border);
+    fillRoundedRect(bmp.pixels, bmp.width, bmp.height, x + face.border_px, y + face.border_px, w - 2 * face.border_px, h - 2 * face.border_px, face.radius -| face.border_px, face.fill);
+
+    const old_font = win32.SelectObject(bmp.mem_dc, font);
+    defer {
+        if (old_font) |of| _ = win32.SelectObject(bmp.mem_dc, of);
+    }
+    const label_buf_size = 32;
+    const text_size = measureTextSizeUtf8(label_buf_size, bmp.mem_dc, label);
+    const text_w: usize = @intCast(text_size.cx);
+    const text_h: usize = @intCast(text_size.cy);
+    const text_x: i32 = @intCast(x + (w -| text_w) / 2);
+    const text_y: i32 = @intCast(y + (h -| text_h) / 2);
+    drawTextUtf8(label_buf_size, bmp.mem_dc, text_x, text_y, label, face.text_color);
+    fixTextAlphaRect(bmp.pixels, bmp.width, bmp.height, text_x, text_y, text_w, text_h);
+}
+
+/// Draws a `thickness`-px outline of a rect placed anywhere inside a `buf_width`x`buf_height` pixel buffer, clamped to the buffer bounds.
+pub fn drawRectOutline(pixels: [*]u32, buf_width: usize, buf_height: usize, x: i32, y: i32, w: usize, h: usize, thickness: usize, color: u32) void {
+    const left: usize = @intCast(std.math.clamp(x, 0, @as(i32, @intCast(buf_width))));
+    const top: usize = @intCast(std.math.clamp(y, 0, @as(i32, @intCast(buf_height))));
+    const right = @min(buf_width, left + w);
+    const bottom = @min(buf_height, top + h);
+    if (right <= left or bottom <= top) return;
+
+    const t = @min(thickness, @min(right - left, bottom - top));
+    fillRect(pixels, buf_width, buf_height, left, top, right - left, t, color);
+    fillRect(pixels, buf_width, buf_height, left, bottom - t, right - left, t, color);
+    fillRect(pixels, buf_width, buf_height, left, top, t, bottom - top, color);
+    fillRect(pixels, buf_width, buf_height, right - t, top, t, bottom - top, color);
+}
+
+/// Pushes the bitmap to a layered window at its origin using per-pixel alpha, scaled by `opacity`.
+pub fn presentLayered(hwnd: win32.HWND, bmp: *const OverlayBitmap, opacity: u8) void {
+    const screen_dc = win32.GetDC(null) orelse {
+        slog.err("Failed to get screen DC to present layered overlay", .{});
+        return;
+    };
+    defer _ = win32.ReleaseDC(null, screen_dc);
+
+    const window_size = win32.SIZE{ .cx = @intCast(bmp.width), .cy = @intCast(bmp.height) };
+    const source_pos = win32.POINT{ .x = 0, .y = 0 };
+    var blend = win32.BLENDFUNCTION{
+        .BlendOp = win32.AC_SRC_OVER,
+        .BlendFlags = 0,
+        .SourceConstantAlpha = opacity,
+        .AlphaFormat = win32.AC_SRC_ALPHA,
+    };
+    _ = win32.UpdateLayeredWindow(hwnd, screen_dc, null, @constCast(&window_size), bmp.mem_dc, @constCast(&source_pos), 0, &blend, win32.ULW_ALPHA);
 }
 
 /// Longest prefix of `text` (plus "...") that fits within `max_w` pixels measured on `dc`, written into `out`; returns the prefix as-is (no ellipsis) if it already fits.

@@ -193,3 +193,21 @@ pub fn generateUniqueColorWithAvoidance(seed_string: []const u8, recent_colors: 
 pub fn withAlpha(rgb: u32, alpha: u8) u32 {
     return (@as(u32, alpha) << 24) | (rgb & 0x00FF_FFFF);
 }
+
+/// Mixes each channel `percent`% of the way toward white, keeping alpha.
+pub fn lighten(color: u32, percent: u32) u32 {
+    var out = color & 0xFF00_0000;
+    inline for (.{ 16, 8, 0 }) |shift| {
+        const channel = (color >> shift) & 0xFF;
+        out |= (channel + (255 - channel) * percent / 100) << shift;
+    }
+    return out;
+}
+
+/// Text color that stays readable on `background`: dark ink on light colors, light ink on dark ones.
+pub fn inkFor(background: u32) u32 {
+    const r = (background >> 16) & 0xFF;
+    const g = (background >> 8) & 0xFF;
+    const b = background & 0xFF;
+    return if (299 * r + 587 * g + 114 * b > 550 * 255) 0xFF1A1408 else 0xFFF5F0E6;
+}

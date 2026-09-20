@@ -376,7 +376,9 @@ const CONFIG_SCHEMA = [
     { id: 'regionFitOrder', path: 'display.regionFitOrder' },
     { id: 'regionFitReorderLoggedOut', path: 'display.regionFitReorderLoggedOut' },
     { id: 'hideThumbnailsDuringRegionSelect', path: 'display.hideThumbnailsDuringRegionSelect', default: true },
+    { id: 'notLoggedInSpaceHideThumbnailsDuringRegionSelect', path: 'display.notLoggedInSpaceHideThumbnailsDuringRegionSelect', default: true },
     { id: 'regionFitLimitToThumbnailSize', path: 'display.regionFitLimitToThumbnailSize', default: false },
+    { id: 'notLoggedInSpaceLimitToThumbnailSize', path: 'display.notLoggedInSpaceLimitToThumbnailSize', default: false },
     { id: 'notLoggedInSpaceEnabled', path: 'display.notLoggedInSpaceEnabled', default: false },
     { id: 'notLoggedInSpaceSpacing', path: 'display.notLoggedInSpaceSpacing' },
     { id: 'notLoggedInSpaceX', path: 'display.notLoggedInSpaceX', transform: 'nullable' },
@@ -874,7 +876,7 @@ const THUMBNAIL_PREVIEW_FIELD_IDS = [
     'notifInfoPanelOpacity', 'notifInfoPanelFontName', 'notifInfoPanelFontSize', 'notifInfoPanelFontWeight',
     'spacing', 'newThumbnailSpacing', 'layoutMode', 'regionFitDirection',
     'regionFitEnabled', 'regionFitOrder', 'regionFitReorderLoggedOut', 'hideThumbnailsDuringRegionSelect', 'regionFitLimitToThumbnailSize', 'regionX', 'regionY', 'regionWidth', 'regionHeight',
-    'notLoggedInSpaceEnabled', 'notLoggedInSpaceSpacing', 'notLoggedInSpaceX', 'notLoggedInSpaceY', 'notLoggedInSpaceWidth', 'notLoggedInSpaceHeight',
+    'notLoggedInSpaceEnabled', 'notLoggedInSpaceSpacing', 'notLoggedInSpaceLimitToThumbnailSize', 'notLoggedInSpaceHideThumbnailsDuringRegionSelect', 'notLoggedInSpaceX', 'notLoggedInSpaceY', 'notLoggedInSpaceWidth', 'notLoggedInSpaceHeight',
     'monitorIndex', 'useMonitorWorkArea', 'honorSavedPositions',
     'notificationsEnabled', 'notificationPosition', 'notificationOffsetX', 'notificationOffsetY',
     'notificationFontName', 'notificationFontSize', 'notificationFontWeight',
@@ -987,6 +989,8 @@ function buildThumbnailPreviewPatch(includePositions = false) {
             regionHeight: getNullableFieldValue('regionHeight'),
             notLoggedInSpaceEnabled: getFieldValue('notLoggedInSpaceEnabled'),
             notLoggedInSpaceSpacing: getFieldValue('notLoggedInSpaceSpacing'),
+            notLoggedInSpaceLimitToThumbnailSize: getFieldValue('notLoggedInSpaceLimitToThumbnailSize'),
+            notLoggedInSpaceHideThumbnailsDuringRegionSelect: getFieldValue('notLoggedInSpaceHideThumbnailsDuringRegionSelect'),
             notLoggedInSpaceX: getNullableFieldValue('notLoggedInSpaceX'),
             notLoggedInSpaceY: getNullableFieldValue('notLoggedInSpaceY'),
             notLoggedInSpaceWidth: getNullableFieldValue('notLoggedInSpaceWidth'),
@@ -1506,26 +1510,66 @@ const REGION_SELECT_POLL_MS = 300;
 const REGION_SELECT_TIMEOUT_MS = 120000;
 let regionSelectPollTimer = null;
 
-function stopRegionSelectPolling(button) {
+function stopRegionSelectPolling() {
     if (regionSelectPollTimer) {
         clearInterval(regionSelectPollTimer);
         regionSelectPollTimer = null;
     }
-    if (button) {
-        button.disabled = false;
-        if (button.dataset.originalText) button.textContent = button.dataset.originalText;
-    }
-    hideStatus();
 }
 
-// buttonId/fieldIds let the same drag-to-select overlay feed either RegionFit or notLoggedInSpace.
-async function startRegionSelectFlow(buttonId = 'defineRegionButton', fieldIds = { x: 'regionX', y: 'regionY', width: 'regionWidth', height: 'regionHeight' }) {
+const REGION_FIELD_IDS = { x: 'regionX', y: 'regionY', width: 'regionWidth', height: 'regionHeight', hideThumbnails: 'hideThumbnailsDuringRegionSelect' };
+const NOT_LOGGED_IN_FIELD_IDS = { x: 'notLoggedInSpaceX', y: 'notLoggedInSpaceY', width: 'notLoggedInSpaceWidth', height: 'notLoggedInSpaceHeight', hideThumbnails: 'notLoggedInSpaceHideThumbnailsDuringRegionSelect' };
+
+function currentRegionValues(fieldIds) {
+    const values = [fieldIds.x, fieldIds.y, fieldIds.width, fieldIds.height].map(id => currentConfig?.display?.[id]);
+    return values.every(Number.isInteger) && values[2] > 0 && values[3] > 0 ? values : null;
+}
+
+// Edit and clear need an existing region to act on, so they're greyed out until one is set.
+function refreshRegionButtons() {
+    const rows = [
+        [['editRegionButton', 'clearRegionButton'], REGION_FIELD_IDS],
+        [['editNotLoggedInSpaceButton', 'clearNotLoggedInSpaceButton'], NOT_LOGGED_IN_FIELD_IDS],
+    ];
+    for (const [buttonIds, fieldIds] of rows) {
+        const disabled = !currentRegionValues(fieldIds);
+        for (const buttonId of buttonIds) {
+            const button = document.getElementById(buttonId);
+            if (button) button.disabled = disabled;
+        }
+    }
+}
+
+function clearRegion(fieldIds) {
+    for (const id of [fieldIds.x, fieldIds.y, fieldIds.width, fieldIds.height]) {
+        setFieldValue(id, null);
+        currentConfig.display[id] = null;
+    }
+    refreshRegionButtons();
+    markAsChanged();
+    scheduleThumbnailPreview();
+}
+
+// fieldIds let the same overlay feed either RegionFit or notLoggedInSpace; edit adjusts the existing region's borders instead of dragging a new one.
+async function startRegionSelectFlow(fieldIds, edit = false) {
     if (typeof webui === 'undefined' || regionSelectPollTimer) return;
 
-    const button = document.getElementById(buttonId);
-
     try {
-        const { success, error } = JSON.parse(await webui.call('startRegionSelect'));
+        const regionToEdit = edit ? currentRegionValues(fieldIds) : null;
+        if (edit && !regionToEdit) return;
+        const request = {
+            hide: !!document.getElementById(fieldIds.hideThumbnails)?.checked,
+            region: regionToEdit,
+            // The overlay lives in the main app, which has no language files, so it gets its text from here.
+            labels: {
+                save: t('button.save-configuration.label'),
+                cancel: t('common.cancel'),
+                hintNew: t('overlay.regionHintNew'),
+                hintEdit: t('overlay.regionHintEdit'),
+                hintConfirm: t('overlay.regionHintConfirm'),
+            },
+        };
+        const { success, error } = JSON.parse(await webui.call('startRegionSelect', JSON.stringify(request)));
         if (!success) {
             showStatus(t('status.regionSelectFailedPrefix') + (error || ''), 'error');
             return;
@@ -1536,17 +1580,10 @@ async function startRegionSelectFlow(buttonId = 'defineRegionButton', fieldIds =
         return;
     }
 
-    if (button) {
-        button.disabled = true;
-        button.dataset.originalText = button.textContent;
-        button.textContent = 'Drag on screen... (Esc to cancel)';
-    }
-    showStatus(t('status.regionSelectDragHint'), 'info');
-
     const startedAt = Date.now();
     regionSelectPollTimer = setInterval(async () => {
         if (Date.now() - startedAt > REGION_SELECT_TIMEOUT_MS) {
-            stopRegionSelectPolling(button);
+            stopRegionSelectPolling();
             return;
         }
 
@@ -1554,7 +1591,8 @@ async function startRegionSelectFlow(buttonId = 'defineRegionButton', fieldIds =
             const result = JSON.parse(await webui.call('pollRegionSelectResult'));
             if (!result.done) return;
 
-            stopRegionSelectPolling(button);
+            stopRegionSelectPolling();
+            if (result.tooSmall) showStatus(t('status.regionSelectTooSmall'), 'info');
             if (result.cancelled) return;
 
             setFieldValue(fieldIds.x, result.x);
@@ -1565,11 +1603,13 @@ async function startRegionSelectFlow(buttonId = 'defineRegionButton', fieldIds =
             currentConfig.display[fieldIds.y] = result.y;
             currentConfig.display[fieldIds.width] = result.width;
             currentConfig.display[fieldIds.height] = result.height;
+            refreshRegionButtons();
             markAsChanged();
             scheduleThumbnailPreview();
+            showStatus(t('status.regionSet'), 'success');
         } catch (err) {
             logWarn('Failed to poll region select result:', err);
-            stopRegionSelectPolling(button);
+            stopRegionSelectPolling();
         }
     }, REGION_SELECT_POLL_MS);
 }
@@ -1676,6 +1716,7 @@ function populateFormFields() {
     toggleSnappingOptions();
     toggleRegionFitOptions();
     toggleNotLoggedInSpaceOptions();
+    refreshRegionButtons();
     toggleNotifInfoPanelOptions();
     toggleShiftClickExcludeOptions();
     toggleBorderOptions();

@@ -129,6 +129,10 @@ pub const GWL_EXSTYLE = -20;
 
 pub const IDC_ARROW: LPCSTR = @ptrFromInt(32512);
 pub const IDC_CROSS: LPCSTR = @ptrFromInt(32515);
+pub const IDC_SIZENESW: LPCSTR = @ptrFromInt(32643);
+pub const IDC_SIZENWSE: LPCSTR = @ptrFromInt(32642);
+pub const IDC_SIZEWE: LPCSTR = @ptrFromInt(32644);
+pub const IDC_SIZENS: LPCSTR = @ptrFromInt(32645);
 pub const IDC_SIZEALL: LPCSTR = @ptrFromInt(32646);
 pub const IDC_HAND: LPCSTR = @ptrFromInt(32649);
 pub const IDC_HELP: LPCSTR = @ptrFromInt(32651);
@@ -197,6 +201,35 @@ pub fn rectWidth(rect: RECT) LONG {
 
 pub fn rectHeight(rect: RECT) LONG {
     return rect.bottom - rect.top;
+}
+
+pub fn rectCenter(rect: RECT) POINT {
+    return .{ .x = rect.left + @divTrunc(rectWidth(rect), 2), .y = rect.top + @divTrunc(rectHeight(rect), 2) };
+}
+
+/// Half-open like GDI: the left/top edges are inside, right/bottom aren't.
+pub fn rectContains(rect: RECT, pt: POINT) bool {
+    return pt.x >= rect.left and pt.x < rect.right and pt.y >= rect.top and pt.y < rect.bottom;
+}
+
+/// Pulls each edge of `rect` into `bounds`.
+pub fn clampRect(rect: RECT, bounds: RECT) RECT {
+    return .{
+        .left = std.math.clamp(rect.left, bounds.left, bounds.right),
+        .top = std.math.clamp(rect.top, bounds.top, bounds.bottom),
+        .right = std.math.clamp(rect.right, bounds.left, bounds.right),
+        .bottom = std.math.clamp(rect.bottom, bounds.top, bounds.bottom),
+    };
+}
+
+pub fn dpiToScale(dpi: u32) f32 {
+    return @as(f32, @floatFromInt(dpi)) / 96.0;
+}
+
+/// Scales a logical (96-DPI) pixel value to the given monitor scale factor, rounding to nearest.
+pub fn scalePixels(value: i32, scale: f32) i32 {
+    if (scale == 1.0) return value;
+    return @intFromFloat(@round(@as(f32, @floatFromInt(value)) * scale));
 }
 
 pub const MSG = extern struct {
@@ -605,6 +638,7 @@ pub const VK_MENU = 0x12;
 pub const VK_LWIN = 0x5B;
 pub const VK_RWIN = 0x5C;
 pub const VK_ESCAPE = 0x1B;
+pub const VK_RETURN = 0x0D;
 
 // Identifies which side button triggered a WM_XBUTTONDOWN/UP message or MSLLHOOKSTRUCT event (packed into the high word of wParam/mouseData respectively).
 pub const XBUTTON1: WORD = 0x0001;
@@ -694,7 +728,10 @@ pub extern "kernel32" fn Sleep(dwMilliseconds: DWORD) callconv(.c) void;
 pub extern "kernel32" fn GetTickCount64() callconv(.c) u64;
 
 pub extern "gdi32" fn TextOutA(hdc: HDC, x: c_int, y: c_int, lpString: LPCSTR, c: c_int) callconv(.c) BOOL;
+pub extern "gdi32" fn GetTextFaceA(hdc: HDC, c: c_int, lpName: [*]u8) callconv(.c) c_int;
 pub extern "gdi32" fn GetTextExtentPoint32A(hdc: HDC, lpString: LPCSTR, c: c_int, psizl: *SIZE) callconv(.c) BOOL;
+pub const CP_UTF8: UINT = 65001;
+pub extern "kernel32" fn MultiByteToWideChar(CodePage: UINT, dwFlags: DWORD, lpMultiByteStr: [*]const u8, cbMultiByte: c_int, lpWideCharStr: [*]u16, cchWideChar: c_int) callconv(.c) c_int;
 pub extern "gdi32" fn TextOutW(hdc: HDC, x: c_int, y: c_int, lpString: [*]const u16, c: c_int) callconv(.c) BOOL;
 pub extern "gdi32" fn GetTextExtentPoint32W(hdc: HDC, lpString: [*]const u16, c: c_int, psizl: *SIZE) callconv(.c) BOOL;
 pub extern "gdi32" fn SetBkMode(hdc: HDC, mode: c_int) callconv(.c) c_int;
@@ -747,6 +784,7 @@ pub extern "dwmapi" fn DwmUpdateThumbnailProperties(
 pub const TRANSPARENT = 1;
 pub const PS_SOLID = 0;
 pub const FW_NORMAL = 400;
+pub const FW_SEMIBOLD = 600;
 pub const FW_BOLD = 700;
 pub const DEFAULT_CHARSET = 1;
 pub const OUT_DEFAULT_PRECIS = 0;
@@ -844,6 +882,26 @@ pub const MONITORINFO = extern struct {
     rcWork: RECT,
     dwFlags: DWORD,
 };
+
+/// The monitor containing `pt`, or the closest one if it's off every screen.
+pub fn nearestMonitor(pt: POINT) ?HMONITOR {
+    return MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+}
+
+/// Effective DPI of `monitor`, defaulting to 96 if the query fails.
+pub fn monitorDpi(monitor: HMONITOR) u32 {
+    var dpi_x: UINT = 96;
+    var dpi_y: UINT = 96;
+    _ = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y);
+    return dpi_x;
+}
+
+/// Full bounds of `monitor` (taskbar included), or null if the lookup fails.
+pub fn monitorRect(monitor: HMONITOR) ?RECT {
+    var info = MONITORINFO{ .cbSize = @sizeOf(MONITORINFO), .rcMonitor = undefined, .rcWork = undefined, .dwFlags = 0 };
+    if (GetMonitorInfoA(monitor, &info) == FALSE) return null;
+    return info.rcMonitor;
+}
 
 pub const MONITORENUMPROC = *const fn (
     hMonitor: HMONITOR,

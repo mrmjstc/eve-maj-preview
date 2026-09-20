@@ -230,7 +230,7 @@ Rather than a fixed per-thumbnail size and an unbounded grid, `RegionFit` mode f
 
 Cells are packed snugly against each other (using `spacing`, not stretched to fill the region) so any slack collects as one block at the region's far edge instead of gaps between thumbnails. It reflows automatically on login, and on logout if `regionFitReorderLoggedOut` is true; while active it fully replaces per-character manual dragging and the global/per-character thumbnail size (`thumbnail.width`/`height`, `CharacterThumbnailSize`) - those are ignored.
 
-The region itself is set via the config dialog's "Start Region Selection" button, which asks the running main app to show a full-desktop drag-to-select overlay; the captured rectangle is written into `regionX`/`regionY`/`regionWidth`/`regionHeight` (all `null` until first captured). If `hideThumbnailsDuringRegionSelect` (default `true`) is on, currently-visible thumbnails are hidden for the duration of that overlay so they don't cover it, then restored exactly as they were once it closes (a thumbnail already hidden beforehand, e.g. manually, is left alone).
+The region itself is set via the config dialog's "New Thumbnail Region" button, which asks the running main app to show a full-desktop drag-to-select overlay; the captured rectangle is written into `regionX`/`regionY`/`regionWidth`/`regionHeight` (all `null` until first captured). Once a region exists, "Edit Region" reopens the overlay with the region's edges and body draggable, and the x button clears it. The overlay finishes with Save/Cancel buttons (or Enter/Esc). If `hideThumbnailsDuringRegionSelect` (default `true`) is on, currently-visible thumbnails are hidden for the duration of that overlay so they don't cover it, then restored exactly as they were once it closes (a thumbnail already hidden beforehand, e.g. manually, is left alone).
 
 If `regionFitLimitToThumbnailSize` (default `false`) is on, cell size is additionally capped at the configured thumbnail size (`thumbnail.width`/`height`, DPI-scaled for the region's own monitor) instead of always growing to fill the region; once cells hit that cap, extra thumbnails just wrap into more rows/columns, leaving unused space in the region rather than shrinking further.
 
@@ -268,7 +268,7 @@ Fill order is controlled by two independent settings:
 
 ## Not-Logged-In Thumbnail Space
 
-A separate, optional auto-fit area just for not-yet-logged-in "EVE" placeholder windows, independent of `layoutMode`. When `notLoggedInSpaceEnabled` is on and `notLoggedInSpaceX`/`Y`/`Width`/`Height` are captured (same drag-to-select flow as Thumbnail Space, via its own "Start Region Selection" button), placeholders auto-fit to fill that rectangle - the same column/row/aspect-ratio grid-fit `RegionFit` itself uses (see above), sized for however many placeholders currently exist - instead of joining the regular unpositioned-thumbnail flow at `startX`/`startY`. It has its own `notLoggedInSpaceSpacing`, independent of `RegionFit`'s `spacing`.
+A separate, optional auto-fit area just for not-yet-logged-in "EVE" placeholder windows, independent of `layoutMode`. When `notLoggedInSpaceEnabled` is on and `notLoggedInSpaceX`/`Y`/`Width`/`Height` are captured (same drag-to-select flow as Thumbnail Space, via its own "New Thumbnail Region" button, with the same Edit Region and clear controls), placeholders auto-fit to fill that rectangle - the same column/row/aspect-ratio grid-fit `RegionFit` itself uses (see above), sized for however many placeholders currently exist - instead of joining the regular unpositioned-thumbnail flow at `startX`/`startY`. It has its own `notLoggedInSpaceSpacing`, independent of `RegionFit`'s `spacing`, its own `notLoggedInSpaceHideThumbnailsDuringRegionSelect` (default `true`, same as `hideThumbnailsDuringRegionSelect` for this space's overlay), and its own `notLoggedInSpaceLimitToThumbnailSize` (default `false`), which caps its cell size at the configured thumbnail size the same way `regionFitLimitToThumbnailSize` does for the Thumbnail Space.
 
 It coexists with `RegionFit`: placeholders are carved out of the `RegionFit` grid entirely (they don't take a cell, and don't count toward its cell-count math) and auto-fit into the not-logged-in space instead, reflowing back into the grid the moment they log in. Both grids reflow (resizing every member, not just the one that changed) whenever a placeholder crosses between them.
 
@@ -280,7 +280,8 @@ It coexists with `RegionFit`: placeholders are carved out of the `RegionFit` gri
     "notLoggedInSpaceY": 100,
     "notLoggedInSpaceWidth": 400,
     "notLoggedInSpaceHeight": 300,
-    "notLoggedInSpaceSpacing": 10
+    "notLoggedInSpaceSpacing": 10,
+    "notLoggedInSpaceLimitToThumbnailSize": false
   }
 }
 ```
@@ -315,7 +316,7 @@ All pixel-based values here (thumbnail size, `startX`/`startY`, spacing, font si
 - `layoutMode`: `Custom` or `RegionFit`
 - `regionX`, `regionY`, `regionWidth`, `regionHeight`: Thumbnail Space rectangle for `RegionFit` mode (null until captured) - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit)
 - `regionFitOrder`, `regionFitDirection`, `regionFitReorderLoggedOut`, `hideThumbnailsDuringRegionSelect`, `regionFitLimitToThumbnailSize`: `RegionFit` fill order, logout behavior, select-overlay hiding, and thumbnail-size cap - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit)
-- `notLoggedInSpaceEnabled`, `notLoggedInSpaceX`, `notLoggedInSpaceY`, `notLoggedInSpaceWidth`, `notLoggedInSpaceHeight`, `notLoggedInSpaceSpacing`: Separate auto-fit area just for not-logged-in placeholders - see [Not-Logged-In Thumbnail Space](#not-logged-in-thumbnail-space)
+- `notLoggedInSpaceEnabled`, `notLoggedInSpaceX`, `notLoggedInSpaceY`, `notLoggedInSpaceWidth`, `notLoggedInSpaceHeight`, `notLoggedInSpaceSpacing`, `notLoggedInSpaceLimitToThumbnailSize`, `notLoggedInSpaceHideThumbnailsDuringRegionSelect`: Separate auto-fit area just for not-logged-in placeholders - see [Not-Logged-In Thumbnail Space](#not-logged-in-thumbnail-space)
 - `monitorIndex`: Target monitor (0-based, null = absolute)
 - `useMonitorWorkArea`: Respect taskbar
 - `honorSavedPositions`: Use saved character positions

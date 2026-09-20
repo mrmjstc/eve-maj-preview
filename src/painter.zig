@@ -12,6 +12,7 @@ const notif_info_view = @import("notif_info_view.zig");
 const activity_tracker = @import("activity_tracker.zig");
 const gdi_overlay = @import("gdi_overlay.zig");
 const region_select = @import("region_select.zig");
+const protocol = @import("protocol.zig");
 const main_mod = @import("main.zig");
 const log = @import("log.zig");
 const slog = log.scoped("painter");
@@ -2012,14 +2013,22 @@ pub const Painter = struct {
 
         region_select.registerWindowClass(self.instance) catch return error.RegisterRegionSelectClassFailed;
         region_select.setOnFinishedCallback(regionSelectFinishedCallback);
-
         g_window_class_registered = true;
     }
 
     /// Starts the "Start Region Selection" drag-to-select overlay; the result reaches the config dialog asynchronously via protocol.publishRegionSelectResult.
-    pub fn startRegionSelect(self: *Painter) void {
-        if (self.config.display.hideThumbnailsDuringRegionSelect) self.hideThumbnailsForRegionSelect();
-        region_select.start(self.instance, self.config.accentColor);
+    pub fn startRegionSelect(self: *Painter, request: protocol.RegionSelectRequest) void {
+        if (request.hide_thumbnails) self.hideThumbnailsForRegionSelect();
+        const cursor_monitor = cursorMonitorBounds().monitor;
+        const label_font = self.characterNameFont(cursor_monitor) catch |err| blk: {
+            slog.err("Failed to get font for region-select label: {}", .{err});
+            break :blk null;
+        };
+        region_select.start(self.instance, self.config.accentColor, .{
+            .font = label_font,
+            .color = self.config.thumbnail.characterNameColor | 0xFF000000,
+        }, request.edit_region, request.labels);
+        self.showRegionSelectHint(&request.labels, request.edit_region != null);
     }
 
     /// Reflows every thumbnail's RegionFit grid slot after a rank/count change (bulk create loops, group membership); no-op outside RegionFit.
@@ -2102,7 +2111,19 @@ pub const Painter = struct {
     }
 
     /// Bounds of the monitor nearest `hwnd`, falling back to primary-monitor metrics (GetSystemMetrics only reports the primary monitor) if the lookup fails; also returns the resolved monitor handle, if any, for a DPI lookup.
-    pub fn nearestMonitorBounds(hwnd: win32.HWND) struct { bounds: win32.RECT, monitor: ?win32.HMONITOR } {
+    pub fn nearestMonitorBounds(hwnd: win32.HWND) MonitorBounds {
+        return monitorBounds(win32.MonitorFromWindow(hwnd, win32.MONITOR_DEFAULTTONEAREST));
+    }
+
+    const MonitorBounds = struct { bounds: win32.RECT, monitor: ?win32.HMONITOR };
+
+    fn cursorMonitorBounds() MonitorBounds {
+        var cursor = win32.POINT{ .x = 0, .y = 0 };
+        _ = win32.GetCursorPos(&cursor);
+        return monitorBounds(win32.nearestMonitor(cursor));
+    }
+
+    fn monitorBounds(nearest: ?win32.HMONITOR) MonitorBounds {
         var bounds = win32.RECT{
             .left = 0,
             .top = 0,
@@ -2110,10 +2131,9 @@ pub const Painter = struct {
             .bottom = win32.GetSystemMetrics(win32.SM_CYSCREEN),
         };
         var monitor: ?win32.HMONITOR = null;
-        if (win32.MonitorFromWindow(hwnd, win32.MONITOR_DEFAULTTONEAREST)) |m| {
-            var info = win32.MONITORINFO{ .cbSize = @sizeOf(win32.MONITORINFO), .rcMonitor = undefined, .rcWork = undefined, .dwFlags = 0 };
-            if (win32.GetMonitorInfoA(m, &info) != win32.FALSE) {
-                bounds = info.rcMonitor;
+        if (nearest) |m| {
+            if (win32.monitorRect(m)) |rect| {
+                bounds = rect;
                 monitor = m;
             }
         }
@@ -2122,10 +2142,7 @@ pub const Painter = struct {
 
     /// DPI for a specific monitor; used before a window exists on it yet.
     fn getMonitorDpi(hmonitor: win32.HMONITOR) u32 {
-        var dpi_x: win32.UINT = 96;
-        var dpi_y: win32.UINT = 96;
-        _ = win32.GetDpiForMonitor(hmonitor, win32.MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y);
-        return dpi_x;
+        return win32.monitorDpi(hmonitor);
     }
 
     /// DPI of whichever monitor a window currently sits on; queried live, nothing to invalidate.
@@ -2138,9 +2155,7 @@ pub const Painter = struct {
         return win32.GetDpiForSystem();
     }
 
-    fn dpiToScale(dpi: u32) f32 {
-        return @as(f32, @floatFromInt(dpi)) / 96.0;
-    }
+    const dpiToScale = win32.dpiToScale;
 
     fn resolveMonitorPlacement(cfg: *const config_mod.Config.DisplayConfig) ?MonitorPlacement {
         return if (cfg.monitorIndex) |monitor_idx| getMonitorPlacement(monitor_idx, cfg.useMonitorWorkArea) else null;
@@ -2217,10 +2232,10 @@ pub const Painter = struct {
         return count;
     }
 
-    /// notLoggedInSpace's own auto-fit grid - same aspect-preserving column/row search as RegionFit's Thumbnail Space, but with its own spacing. Shares regionFitLimitToThumbnailSize with RegionFit since both cap against the same configured thumbnail size.
+    /// notLoggedInSpace's own auto-fit grid - same aspect-preserving column/row search as RegionFit's Thumbnail Space, but with its own spacing and size cap.
     fn notLoggedInSpaceGrid(self: *const Painter, space: win32.RECT, count: usize) RegionFitGrid {
         const cfg = &self.config.display;
-        return calculateRegionFitGrid(space, count, cfg.notLoggedInSpaceSpacing, cfg.notLoggedInSpaceSpacing, self.regionFitAspectRatio(), self.regionFitMaxCellSize(space));
+        return calculateRegionFitGrid(space, count, cfg.notLoggedInSpaceSpacing, cfg.notLoggedInSpaceSpacing, self.regionFitAspectRatio(), self.thumbnailSizeCap(space, cfg.notLoggedInSpaceLimitToThumbnailSize));
     }
 
     /// Auto-fits not-logged-in placeholders into `space`: same grid-fit as RegionFit's Thumbnail Space, just with its own item count, spacing, and region.
@@ -2318,11 +2333,15 @@ pub const Painter = struct {
 
     const RegionFitCap = struct { width: i32, height: i32 };
 
-    /// Physical-pixel cap on RegionFit's cell size, DPI-scaled for the region's own monitor (which may differ from the app's configured monitor); null when regionFitLimitToThumbnailSize is off.
     fn regionFitMaxCellSize(self: *const Painter, region: win32.RECT) ?RegionFitCap {
-        if (!self.config.display.regionFitLimitToThumbnailSize) return null;
+        return self.thumbnailSizeCap(region, self.config.display.regionFitLimitToThumbnailSize);
+    }
+
+    /// Physical-pixel cap on a space's cell size, DPI-scaled for the space's own monitor (which may differ from the app's configured monitor); null when `limit_enabled` is off.
+    fn thumbnailSizeCap(self: *const Painter, region: win32.RECT, limit_enabled: bool) ?RegionFitCap {
+        if (!limit_enabled) return null;
         const center = win32.POINT{ .x = @divTrunc(region.left + region.right, 2), .y = @divTrunc(region.top + region.bottom, 2) };
-        const dpi = if (win32.MonitorFromPoint(center, win32.MONITOR_DEFAULTTONEAREST)) |monitor| getMonitorDpi(monitor) else defaultDpi();
+        const dpi = if (win32.nearestMonitor(center)) |monitor| getMonitorDpi(monitor) else defaultDpi();
         const scale = dpiToScale(dpi);
         return .{ .width = scalePixels(self.config.thumbnail.width, scale), .height = scalePixels(self.config.thumbnail.height, scale) };
     }
@@ -2944,35 +2963,14 @@ pub const Painter = struct {
             const rect_w: usize = @intCast(group.rect.right - group.rect.left);
             const rect_h: usize = @intCast(group.rect.bottom - group.rect.top);
 
-            drawRectOutline(overlay.pixels, overlay.width, overlay.height, local_x, local_y, rect_w, rect_h, 2, outline_color);
+            gdi_overlay.drawRectOutline(overlay.pixels, overlay.width, overlay.height, local_x, local_y, rect_w, rect_h, 2, outline_color);
 
             const dims = measureText(overlay.mem_dc, group.names);
             renderText(overlay.mem_dc, group.names, local_x, local_y, text_color);
             gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, local_x, local_y, dims.width, dims.height);
         }
 
-        const screen_dc = win32.GetDC(null) orelse return;
-        defer _ = win32.ReleaseDC(null, screen_dc);
-        const window_size = win32.SIZE{ .cx = @intCast(overlay.width), .cy = @intCast(overlay.height) };
-        const source_pos = win32.POINT{ .x = 0, .y = 0 };
-        var blend = win32.BLENDFUNCTION{
-            .BlendOp = win32.AC_SRC_OVER,
-            .BlendFlags = 0,
-            .SourceConstantAlpha = 255,
-            .AlphaFormat = win32.AC_SRC_ALPHA,
-        };
-
-        _ = win32.UpdateLayeredWindow(
-            hwnd,
-            screen_dc,
-            null,
-            @constCast(&window_size),
-            overlay.mem_dc,
-            @constCast(&source_pos),
-            0,
-            &blend,
-            win32.ULW_ALPHA,
-        );
+        gdi_overlay.presentLayered(hwnd, overlay, 255);
 
         _ = win32.ShowWindow(hwnd, win32.SW_SHOWNOACTIVATE);
     }
@@ -2986,24 +2984,34 @@ pub const Painter = struct {
 
     /// Shows (creating on first use) a topmost, click-through hint box centered on the monitor nearest `dragging_hwnd`; called once when a drag starts. Static for the duration of the drag.
     pub fn showDragHintOverlay(self: *Painter, dragging_hwnd: win32.HWND) void {
-        const line1 = "Hold Ctrl to move all thumbnails together";
-        const line2 = "Turn off dragging from the tray icon or settings";
-
         const nearest = nearestMonitorBounds(dragging_hwnd);
-        const bounds = nearest.bounds;
-        const monitor_dpi = if (nearest.monitor) |monitor| getMonitorDpi(monitor) else defaultDpi();
+        self.showHintBox("Hold Ctrl to move all thumbnails together", "Turn off dragging from the tray icon or settings", nearest.bounds, nearest.monitor);
+    }
 
-        const scale = dpiToScale(monitor_dpi);
-        const font = self.getCachedFont(.main, monitor_dpi, self.config.thumbnail.characterNameFontName, scalePixels(self.config.thumbnail.characterNameFontSize, scale), self.config.thumbnail.characterNameFontWeight) catch |err| {
-            slog.err("Failed to get font for drag hint overlay: {}", .{err});
+    /// Hint box centered on the monitor under the cursor, shown above the region-select overlay.
+    pub fn showRegionSelectHint(self: *Painter, labels: *const protocol.RegionSelectLabels, editing: bool) void {
+        const nearest = cursorMonitorBounds();
+        const line1 = protocol.labelText(if (editing) &labels.hint_edit else &labels.hint_new);
+        self.showHintBox(line1, protocol.labelText(&labels.hint_confirm), nearest.bounds, nearest.monitor);
+    }
+
+    fn characterNameFont(self: *Painter, monitor: ?win32.HMONITOR) !win32.HFONT {
+        const dpi = if (monitor) |m| getMonitorDpi(m) else defaultDpi();
+        const thumbnail = &self.config.thumbnail;
+        return self.getCachedFont(.main, dpi, thumbnail.characterNameFontName, scalePixels(thumbnail.characterNameFontSize, dpiToScale(dpi)), thumbnail.characterNameFontWeight);
+    }
+
+    fn showHintBox(self: *Painter, line1: []const u8, line2: []const u8, bounds: win32.RECT, monitor: ?win32.HMONITOR) void {
+        const font = self.characterNameFont(monitor) catch |err| {
+            slog.err("Failed to get font for hint overlay: {}", .{err});
             return;
         };
 
         const init_dc = win32.GetDC(null) orelse return;
         defer _ = win32.ReleaseDC(null, init_dc);
         const old_measure_font = win32.SelectObject(init_dc, font);
-        const dims1 = measureText(init_dc, line1);
-        const dims2 = measureText(init_dc, line2);
+        const dims1 = measureTextUtf8(init_dc, line1);
+        const dims2 = measureTextUtf8(init_dc, line2);
         if (old_measure_font) |of| _ = win32.SelectObject(init_dc, of);
 
         const line_gap = 4;
@@ -3049,43 +3057,22 @@ pub const Painter = struct {
 
         const overlay = &self.drag_hint_bitmap.?;
         clearPixels(overlay.pixels, overlay.width * overlay.height);
-        gdi_overlay.fillRect(overlay.pixels, overlay.width, overlay.height, 0, 0, overlay.width, overlay.height, color_mod.withAlpha(0x000000, 0xC8));
+        gdi_overlay.fillRect(overlay.pixels, overlay.width, overlay.height, 0, 0, overlay.width, overlay.height, gdi_overlay.HINT_BG_COLOR);
 
         const old_font = win32.SelectObject(overlay.mem_dc, font);
         defer {
             if (old_font) |of| _ = win32.SelectObject(overlay.mem_dc, of);
         }
 
-        const text_color: u32 = 0xFFFFFFFF;
-        renderText(overlay.mem_dc, line1, box_padding, box_padding, text_color);
+        const text_color: u32 = self.config.thumbnail.characterNameColor | 0xFF000000;
+        renderTextUtf8(overlay.mem_dc, line1, box_padding, box_padding, text_color);
         gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, box_padding, box_padding, dims1.width, dims1.height);
 
         const line2_y: i32 = @intCast(box_padding + dims1.height + line_gap);
-        renderText(overlay.mem_dc, line2, box_padding, line2_y, text_color);
+        renderTextUtf8(overlay.mem_dc, line2, box_padding, line2_y, text_color);
         gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, box_padding, line2_y, dims2.width, dims2.height);
 
-        const screen_dc = win32.GetDC(null) orelse return;
-        defer _ = win32.ReleaseDC(null, screen_dc);
-        const window_size = win32.SIZE{ .cx = @intCast(overlay.width), .cy = @intCast(overlay.height) };
-        const source_pos = win32.POINT{ .x = 0, .y = 0 };
-        var blend = win32.BLENDFUNCTION{
-            .BlendOp = win32.AC_SRC_OVER,
-            .BlendFlags = 0,
-            .SourceConstantAlpha = 255,
-            .AlphaFormat = win32.AC_SRC_ALPHA,
-        };
-
-        _ = win32.UpdateLayeredWindow(
-            hwnd,
-            screen_dc,
-            null,
-            @constCast(&window_size),
-            overlay.mem_dc,
-            @constCast(&source_pos),
-            0,
-            &blend,
-            win32.ULW_ALPHA,
-        );
+        gdi_overlay.presentLayered(hwnd, overlay, 255);
 
         _ = win32.ShowWindow(hwnd, win32.SW_SHOWNOACTIVATE);
     }
@@ -3097,11 +3084,7 @@ pub const Painter = struct {
     }
 };
 
-/// Scales a logical (96-DPI) pixel value to the given monitor scale factor, rounding to nearest.
-fn scalePixels(value: i32, scale: f32) i32 {
-    if (scale == 1.0) return value;
-    return @intFromFloat(@round(@as(f32, @floatFromInt(value)) * scale));
-}
+const scalePixels = win32.scalePixels;
 
 /// Clears all pixels to transparent via @memset on the typed slice.
 fn clearPixels(pixels: [*]u32, count: usize) void {
@@ -3414,21 +3397,6 @@ fn drawBorder(pixels: [*]u32, width: usize, height: usize, border_width: usize, 
     }
 }
 
-/// Draws a `thickness`-px outline of an arbitrary sub-rect within a `buf_width`x`buf_height` pixel buffer; unlike drawBorder (which frames the whole buffer), this frames a rect placed anywhere inside it. Clamped to the buffer bounds.
-fn drawRectOutline(pixels: [*]u32, buf_width: usize, buf_height: usize, x: i32, y: i32, w: usize, h: usize, thickness: usize, color: u32) void {
-    const left: usize = @intCast(std.math.clamp(x, 0, @as(i32, @intCast(buf_width))));
-    const top: usize = @intCast(std.math.clamp(y, 0, @as(i32, @intCast(buf_height))));
-    const right = @min(buf_width, left + w);
-    const bottom = @min(buf_height, top + h);
-    if (right <= left or bottom <= top) return;
-
-    const t = @min(thickness, @min(right - left, bottom - top));
-    gdi_overlay.fillRect(pixels, buf_width, buf_height, left, top, right - left, t, color);
-    gdi_overlay.fillRect(pixels, buf_width, buf_height, left, bottom - t, right - left, t, color);
-    gdi_overlay.fillRect(pixels, buf_width, buf_height, left, top, t, bottom - top, color);
-    gdi_overlay.fillRect(pixels, buf_width, buf_height, right - t, top, t, bottom - top, color);
-}
-
 /// Inserts comma thousands-separators into the leading run of ASCII digits in `text` (e.g. "12405.3 m3/min" -> "12,405.3 m3/min").
 fn insertThousandsSeparators(buf: []u8, text: []const u8) []const u8 {
     var digit_end: usize = 0;
@@ -3513,33 +3481,32 @@ fn fontSettingsChanged(cached_name: []const u8, cached_size: i32, cached_weight:
     return !stringsEqualFast(cached_name, new_name) or cached_size != new_size or cached_weight != new_weight;
 }
 
-fn toBufZ(text: []const u8) [TEXT_BUFFER_SIZE:0]u8 {
-    return gdi_overlay.toBufZ(TEXT_BUFFER_SIZE, text);
-}
-
 /// Measures text dimensions without rendering; the correct font must already be selected into `dc` by the caller.
 fn measureText(dc: win32.HDC, text: []const u8) TextDimensions {
-    const text_buffer = toBufZ(text);
-    const text_len = @min(text.len, text_buffer.len - 1);
-
-    var text_size: win32.SIZE = undefined;
-    _ = win32.GetTextExtentPoint32A(dc, &text_buffer, @intCast(text_len), &text_size);
-
+    const text_size = gdi_overlay.measureTextSize(TEXT_BUFFER_SIZE, dc, text);
     return .{
         .width = @intCast(@max(0, text_size.cx) + (TEXT_PADDING_X * 2)),
         .height = @intCast(@max(0, text_size.cy) + (TEXT_PADDING_Y * 2)),
     };
 }
 
+/// UTF-8 counterpart of measureText, for translated text.
+fn measureTextUtf8(dc: win32.HDC, text: []const u8) TextDimensions {
+    const text_size = gdi_overlay.measureTextSizeUtf8(TEXT_BUFFER_SIZE, dc, text);
+    return .{
+        .width = @intCast(@max(0, text_size.cx) + (TEXT_PADDING_X * 2)),
+        .height = @intCast(@max(0, text_size.cy) + (TEXT_PADDING_Y * 2)),
+    };
+}
+
+/// UTF-8 counterpart of renderText, for translated text.
+fn renderTextUtf8(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void {
+    gdi_overlay.drawTextUtf8(TEXT_BUFFER_SIZE, dc, x + TEXT_PADDING_X, y + TEXT_PADDING_Y, text, color);
+}
+
 /// Renders text onto the device context at the specified position; the correct font must already be selected into `dc` by the caller.
 fn renderText(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void {
-    _ = win32.SetBkMode(dc, win32.TRANSPARENT);
-    _ = win32.SetTextColor(dc, gdi_overlay.toColorRef(color));
-
-    const text_buffer = toBufZ(text);
-    const text_len = @min(text.len, text_buffer.len - 1);
-
-    _ = win32.TextOutA(dc, x + TEXT_PADDING_X, y + TEXT_PADDING_Y, &text_buffer, @intCast(text_len));
+    gdi_overlay.drawText(TEXT_BUFFER_SIZE, dc, x + TEXT_PADDING_X, y + TEXT_PADDING_Y, text, color);
 }
 
 fn renderThumbnailOverlay(thumbnail: *ThumbnailWindow, settings: RenderSettings, config: *const config_mod.Config) !void {
@@ -4424,8 +4391,8 @@ fn isExplorerOwned(hwnd: win32.HWND) bool {
 fn regionSelectFinishedCallback() void {
     const painter = g_painter_ptr orelse return;
     painter.restoreThumbnailsAfterRegionSelect();
+    painter.hideDragHintOverlay();
 }
-
 fn winEventProc(
     hWinEventHook: win32.HANDLE,
     event: win32.DWORD,

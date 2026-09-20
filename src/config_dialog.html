@@ -291,18 +291,18 @@
                         <p class="hint" data-i18n="tab.thumbnails.section.region-fit.hint">Drag a rectangle on screen; thumbnails auto-fit to fill it and reflow as characters log in/out.</p>
 
                         <label>
-                            <input type="checkbox" id="regionFitLimitToThumbnailSize">
-                            <span class="label-body" data-i18n="field.regionFitLimitToThumbnailSize.label">Cap Thumbnail Size to Configured Dimensions</span>
-                        </label>
-                        <p class="hint hint-extra" data-i18n="field.regionFitLimitToThumbnailSize.hint">Stops thumbnails from growing past the Thumbnail Size setting, leaving unused space in the region instead. Also applies to the Not-Logged-In Thumbnail Space below.</p>
-
-                        <label>
                             <input type="checkbox" id="regionFitEnabled" onchange="toggleRegionFitOptions()">
                             <span class="label-body" data-i18n="field.regionFitEnabled.label">Enable Thumbnail Space</span>
                         </label>
                         <p class="hint hint-extra" data-i18n="field.regionFitEnabled.hint">Switches this profile's layout mode to Region Fit, taking over thumbnail placement instead of using saved positions.</p>
 
                         <div id="regionFitOptions">
+                            <label>
+                                <input type="checkbox" id="regionFitLimitToThumbnailSize">
+                                <span class="label-body" data-i18n="field.regionFitLimitToThumbnailSize.label">Cap Thumbnail Size to Configured Dimensions</span>
+                            </label>
+                            <p class="hint hint-extra" data-i18n="field.regionFitLimitToThumbnailSize.hint">Stops thumbnails from growing past the Thumbnail Size setting, leaving unused space in the region instead.</p>
+
                             <div class="binding-list">
                                 <div class="binding">
                                     <label for="regionFitOrder" data-i18n="field.regionFitOrder.label">Order By</label>
@@ -340,11 +340,15 @@
                                 <p class="hint hint-extra" data-i18n="field.spacing.hint">Gap between thumbnails inside the Thumbnail Space.</p>
                             </div>
                             <label>
-                                <input type="checkbox" id="hideThumbnailsDuringRegionSelect">
+                                <input type="checkbox" id="hideThumbnailsDuringRegionSelect" checked>
                                 <span class="label-body" data-i18n="field.hideThumbnailsDuringRegionSelect.label">Hide Thumbnails During Region Selection</span>
                             </label>
                             <p class="hint hint-extra" data-i18n="field.hideThumbnailsDuringRegionSelect.hint">Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.</p>
-                            <button type="button" id="defineRegionButton" class="full-width-btn" onclick="startRegionSelectFlow()" data-i18n="field.regionFit.button">▭ Start Region Selection</button>
+                            <div class="button-row-flex">
+                                <button type="button" onclick="startRegionSelectFlow(REGION_FIELD_IDS)" data-i18n="field.newRegion.button">▭ New Thumbnail Region</button>
+                                <button type="button" id="editRegionButton" onclick="startRegionSelectFlow(REGION_FIELD_IDS, true)" data-i18n="field.editRegion.button" disabled>✎ Edit Region</button>
+                                <button type="button" id="clearRegionButton" class="button-icon button-icon-danger" onclick="confirmRemove('clearRegionButton', () => clearRegion(REGION_FIELD_IDS), '✓')" title="Clear region" data-i18n-title="field.clearRegion.title" disabled>&times;</button>
+                            </div>
                             <!-- Bound via CONFIG_SCHEMA; not something a user needs to see or edit. -->
                             <div class="binding-list" style="display: none;">
                                 <div class="binding">
@@ -390,6 +394,12 @@
                         </label>
 
                         <div id="notLoggedInSpaceOptions">
+                            <label>
+                                <input type="checkbox" id="notLoggedInSpaceLimitToThumbnailSize">
+                                <span class="label-body" data-i18n="field.regionFitLimitToThumbnailSize.label">Cap Thumbnail Size to Configured Dimensions</span>
+                            </label>
+                            <p class="hint hint-extra" data-i18n="field.regionFitLimitToThumbnailSize.hint">Stops thumbnails from growing past the Thumbnail Size setting, leaving unused space in the region instead.</p>
+
                             <div class="binding-list">
                                 <div class="binding">
                                     <label for="notLoggedInSpaceSpacing" data-i18n="field.notLoggedInSpaceSpacing.label">Spacing (px)</label>
@@ -397,7 +407,16 @@
                                 </div>
                                 <p class="hint hint-extra" data-i18n="field.notLoggedInSpaceSpacing.hint">Gap between placeholders inside this space.</p>
                             </div>
-                            <button type="button" id="defineNotLoggedInSpaceButton" class="full-width-btn" onclick="startRegionSelectFlow('defineNotLoggedInSpaceButton', { x: 'notLoggedInSpaceX', y: 'notLoggedInSpaceY', width: 'notLoggedInSpaceWidth', height: 'notLoggedInSpaceHeight' })" data-i18n="field.notLoggedInSpace.button">▭ Start Region Selection</button>
+                            <label>
+                                <input type="checkbox" id="notLoggedInSpaceHideThumbnailsDuringRegionSelect" checked>
+                                <span class="label-body" data-i18n="field.hideThumbnailsDuringRegionSelect.label">Hide Thumbnails During Region Selection</span>
+                            </label>
+                            <p class="hint hint-extra" data-i18n="field.hideThumbnailsDuringRegionSelect.hint">Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.</p>
+                            <div class="button-row-flex">
+                                <button type="button" onclick="startRegionSelectFlow(NOT_LOGGED_IN_FIELD_IDS)" data-i18n="field.newRegion.button">▭ New Thumbnail Region</button>
+                                <button type="button" id="editNotLoggedInSpaceButton" onclick="startRegionSelectFlow(NOT_LOGGED_IN_FIELD_IDS, true)" data-i18n="field.editRegion.button" disabled>✎ Edit Region</button>
+                                <button type="button" id="clearNotLoggedInSpaceButton" class="button-icon button-icon-danger" onclick="confirmRemove('clearNotLoggedInSpaceButton', () => clearRegion(NOT_LOGGED_IN_FIELD_IDS), '✓')" title="Clear region" data-i18n-title="field.clearRegion.title" disabled>&times;</button>
+                            </div>
                             <!-- Bound via CONFIG_SCHEMA; not something a user needs to see or edit. -->
                             <div class="binding-list" style="display: none;">
                                 <div class="binding">

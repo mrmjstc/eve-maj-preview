@@ -170,7 +170,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
                 },
                 win32.PROTOCOL_START_REGION_SELECT => {
                     if (g_painter) |painter_ptr| {
-                        painter_ptr.startRegionSelect();
+                        painter_ptr.startRegionSelect(protocol.regionSelectRequestFromCopyData(cds));
                     }
                 },
                 else => {},
