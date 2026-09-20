@@ -17,6 +17,7 @@ const config_html = @embedFile("config_dialog.html");
 const config_css = @embedFile("config_dialog.css");
 const config_js = @embedFile("config_dialog.js");
 const layout_preview_jpg = @embedFile("assets/layout_preview.jpg");
+const cascadia_code_woff2 = @embedFile("assets/fonts/CascadiaCode.woff2");
 
 const catalog_en = @embedFile("lang/en.json");
 const catalog_de = @embedFile("lang/de.json");
@@ -2242,6 +2243,17 @@ fn injectResources(allocator: std.mem.Allocator, lang: SupportedLang) ![:0]u8 {
         _ = encoder.encode(encoded, layout_preview_jpg);
         const temp = html;
         html = try std.mem.replaceOwned(u8, allocator, temp, layout_preview_placeholder, encoded);
+        allocator.free(temp);
+    }
+
+    const font_placeholder = "CASCADIA_CODE_WOFF2_PLACEHOLDER";
+    if (std.mem.indexOf(u8, html, font_placeholder)) |_| {
+        const encoder = std.base64.standard.Encoder;
+        const encoded = try allocator.alloc(u8, encoder.calcSize(cascadia_code_woff2.len));
+        defer allocator.free(encoded);
+        _ = encoder.encode(encoded, cascadia_code_woff2);
+        const temp = html;
+        html = try std.mem.replaceOwned(u8, allocator, temp, font_placeholder, encoded);
         allocator.free(temp);
     }
 

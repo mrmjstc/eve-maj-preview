@@ -1,3 +1,10 @@
+@font-face {
+    font-family: 'Cascadia Code';
+    src: url(data:font/woff2;base64,CASCADIA_CODE_WOFF2_PLACEHOLDER) format('woff2');
+    font-weight: 200 700;
+    font-display: block;
+}
+
 * {
     -webkit-user-drag: none;
     box-sizing: border-box;

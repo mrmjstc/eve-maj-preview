@@ -38,9 +38,11 @@ The build reads the app version from the `VERSION` file at the repo root and emb
 
 ## Dependencies
 
-[zig-webui](https://github.com/webui-dev/zig-webui) is fetched automatically by the Zig package manager per `build.zig.zon` and statically linked into `config.exe` for its UI.
+[zig-webui](https://github.com/webui-dev/zig-webui) is fetched automatically by the Zig package manager per `build.zig.zon` and statically linked into `config.exe` for its UI. webui, zig-webui and the CivetWeb server inside webui are MIT-licensed; their notices are in `webui-LICENSE.txt`, which ships in release packages and the installer.
 
 `config.exe` renders that UI via WebView2, which needs `WebView2Loader.dll` next to the exe at runtime (the target machine's WebView2 Runtime itself is preinstalled on Windows 10/11). `build.zig` installs `src/WebView2Loader.dll` into `zig-out\bin` alongside `config.exe`, the same way it installs `icon.ico`. It's redistributed under the terms in `WebView2Loader-LICENSE.txt` (BSD-style, from the `Microsoft.Web.WebView2` NuGet package), which ships alongside `config.exe` in release packages.
+
+Not every Windows install has [Cascadia Code](https://github.com/microsoft/cascadia-code) (v2407.24), so its fonts are bundled from `src/assets/fonts/`. `eve-maj-preview.exe` embeds the static Regular/SemiBold/Mono TTFs and registers them process-privately at startup (`fonts.zig`); `config.exe` embeds the variable WOFF2 as a base64 `@font-face`. They're licensed under the SIL OFL 1.1 (`CascadiaCode-LICENSE.txt`), which ships in release packages and the installer; unmodified files keep the Reserved Font Name.
 
 ## Installer
 

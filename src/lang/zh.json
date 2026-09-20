@@ -595,6 +595,7 @@
   "misc.import-settings-file-hint": "选择旧版 EVE-X Preview (.json)、EVE-O Preview (.json) 或 EVE-APM Preview (.ini) 文件,或 EVE-Maj Preview 配置文件 (.json) — 格式会自动检测。在你查看并点击保存前,不会保存任何内容。",
   "misc.import-settings-heading": "导入设置",
   "misc.license-text": "本项目为开源项目,基于 GNU General Public License v3.0 (GPLv3) 发布。许可证副本已随程序附带。",
+  "misc.license-third-party-text": "本程序附带第三方组件:Cascadia Code 字体(SIL Open Font License 1.1)、WebUI(MIT 许可证)和 WebView2Loader(BSD 风格许可证)。这些许可证文本已随程序附带。",
   "misc.main-app-status.disconnected": "已断开",
   "misc.main-app-status.title": "EVE-Maj Preview 主程序进程当前是否正在运行",
   "misc.profile-modal-title": "输入配置名称",

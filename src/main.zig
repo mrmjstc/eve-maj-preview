@@ -16,6 +16,7 @@ const tray = @import("tray.zig");
 const protocol = @import("protocol.zig");
 const update = @import("update.zig");
 const paste_upload = @import("paste_upload.zig");
+const fonts = @import("fonts.zig");
 const log = @import("log.zig");
 const slog = log.scoped("main");
 const build_options = @import("build_options");
@@ -652,6 +653,8 @@ fn mainImpl(init: std.process.Init) !void {
     defer g_chatlog_logged_out_names.deinit(g_allocator);
 
     slog.info("EVE-Maj Preview v{s}", .{build_options.version});
+
+    fonts.loadBundled();
 
     g_global_settings = try config_mod.GlobalSettings.load(g_allocator);
     defer g_global_settings.deinit();

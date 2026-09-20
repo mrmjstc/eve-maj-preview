@@ -736,6 +736,7 @@ pub extern "gdi32" fn TextOutW(hdc: HDC, x: c_int, y: c_int, lpString: [*]const 
 pub extern "gdi32" fn GetTextExtentPoint32W(hdc: HDC, lpString: [*]const u16, c: c_int, psizl: *SIZE) callconv(.c) BOOL;
 pub extern "gdi32" fn SetBkMode(hdc: HDC, mode: c_int) callconv(.c) c_int;
 pub extern "gdi32" fn SetTextColor(hdc: HDC, color: DWORD) callconv(.c) DWORD;
+pub extern "gdi32" fn AddFontMemResourceEx(pFileView: [*]const u8, cjSize: DWORD, pvReserved: ?*anyopaque, pNumFonts: *DWORD) callconv(.c) ?HANDLE;
 pub extern "gdi32" fn CreateFontA(
     cHeight: c_int,
     cWidth: c_int,

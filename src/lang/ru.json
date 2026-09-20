@@ -595,6 +595,7 @@
   "misc.import-settings-file-hint": "Выберите файл старого EVE-X Preview (.json), EVE-O Preview (.json), EVE-APM Preview (.ini) или профиль EVE-Maj Preview (.json) - формат определяется автоматически. Ничего не сохраняется, пока вы не проверите и не нажмёте «Сохранить».",
   "misc.import-settings-heading": "Импорт настроек",
   "misc.license-text": "Этот проект с открытым исходным кодом распространяется по лицензии GNU General Public License v3.0 (GPLv3). Копия лицензии входит в комплект приложения.",
+  "misc.license-third-party-text": "В приложение включены сторонние компоненты: шрифты Cascadia Code (SIL Open Font License 1.1), WebUI (лицензия MIT) и WebView2Loader (лицензия в стиле BSD). Тексты их лицензий входят в комплект приложения.",
   "misc.main-app-status.disconnected": "Не подключено",
   "misc.main-app-status.title": "Запущен ли сейчас основной процесс приложения EVE-Maj Preview",
   "misc.profile-modal-title": "Введите название профиля",

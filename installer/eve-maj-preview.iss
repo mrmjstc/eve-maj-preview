@@ -54,6 +54,8 @@ Source: "{#BinDir}\{#MyConfigExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BinDir}\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BinDir}\WebView2Loader.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\WebView2Loader-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\CascadiaCode-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\webui-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
