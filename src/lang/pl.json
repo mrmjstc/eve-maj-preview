@@ -875,7 +875,7 @@
   "tab.overlay-text.section.character-name.heading": "Nazwa postaci",
   "tab.overlay-text.section.group-badge.heading": "Odznaka grupy",
   "tab.overlay-text.section.system-color-overrides.heading": "Kolory systemów",
-  "tab.overlay-text.section.system-color-overrides.hint": "Zdefiniuj własne kolory dla konkretnych systemów słonecznych (używane tylko, gdy włączone są Unikalne kolory systemów).",
+  "tab.overlay-text.section.system-color-overrides.hint": "Zdefiniuj własne kolory dla konkretnych systemów słonecznych. Mają pierwszeństwo przed Unikalnymi kolorami systemów i kolorem domyślnym.",
   "tab.overlay-text.section.system-name.heading": "Nazwa systemu",
   "tab.overlay-text.section.text-display-system.heading": "Nakładki tekstowe",
   "tab.overlay-text.section.text-display-system.hint": "Nakładaj pasek tekstu na każdej miniaturze pokazujący nazwę postaci i/lub obecny system słoneczny. Podgląd poniżej nie jest w skali - przeciągnij, aby zmienić pozycję, kliknij, aby edytować.",

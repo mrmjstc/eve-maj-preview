@@ -875,7 +875,7 @@
   "tab.overlay-text.section.character-name.heading": "Имя персонажа",
   "tab.overlay-text.section.group-badge.heading": "Значок группы",
   "tab.overlay-text.section.system-color-overrides.heading": "Цвета систем",
-  "tab.overlay-text.section.system-color-overrides.hint": "Задайте пользовательские цвета для конкретных солнечных систем (используется, только если включены уникальные цвета систем).",
+  "tab.overlay-text.section.system-color-overrides.hint": "Задайте пользовательские цвета для конкретных солнечных систем. Они имеют приоритет над уникальными цветами систем и цветом по умолчанию.",
   "tab.overlay-text.section.system-name.heading": "Название системы",
   "tab.overlay-text.section.text-display-system.heading": "Текстовые оверлеи",
   "tab.overlay-text.section.text-display-system.hint": "Накладывает на каждое превью текстовую полосу с именем персонажа и/или текущей солнечной системой. Предпросмотр ниже не в масштабе - перетащите, чтобы переместить, кликните, чтобы изменить.",

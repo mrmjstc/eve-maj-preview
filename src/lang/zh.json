@@ -875,7 +875,7 @@
   "tab.overlay-text.section.character-name.heading": "角色名称",
   "tab.overlay-text.section.group-badge.heading": "分组徽章",
   "tab.overlay-text.section.system-color-overrides.heading": "星系颜色",
-  "tab.overlay-text.section.system-color-overrides.hint": "为特定星系定义自定义颜色 (仅在启用星系专属颜色时使用)。",
+  "tab.overlay-text.section.system-color-overrides.hint": "为特定星系定义自定义颜色。这些颜色优先于星系专属颜色和默认颜色。",
   "tab.overlay-text.section.system-name.heading": "星系名称",
   "tab.overlay-text.section.text-display-system.heading": "文字叠加层",
   "tab.overlay-text.section.text-display-system.hint": "在每个缩略图上叠加一条文字条,显示角色名称和/或当前所在星系。下方预览并非按比例显示 - 拖动以重新定位,点击以编辑。",

@@ -875,7 +875,7 @@
   "tab.overlay-text.section.character-name.heading": "Charaktername",
   "tab.overlay-text.section.group-badge.heading": "Gruppenabzeichen",
   "tab.overlay-text.section.system-color-overrides.heading": "Systemfarben",
-  "tab.overlay-text.section.system-color-overrides.hint": "Lege benutzerdefinierte Farben für bestimmte Sonnensysteme fest (nur verwendet, wenn \"Eindeutige Systemfarben\" aktiviert ist).",
+  "tab.overlay-text.section.system-color-overrides.hint": "Lege benutzerdefinierte Farben für bestimmte Sonnensysteme fest. Diese haben Vorrang vor \"Eindeutige Systemfarben\" und der Standardfarbe.",
   "tab.overlay-text.section.system-name.heading": "Systemname",
   "tab.overlay-text.section.text-display-system.heading": "Text-Overlays",
   "tab.overlay-text.section.text-display-system.hint": "Blendet auf jedem Vorschaubild einen Textstreifen mit dem Charakternamen und/oder aktuellen Sonnensystem ein. Die Vorschau unten ist nicht maßstabsgetreu – ziehen zum Verschieben, klicken zum Bearbeiten.",
