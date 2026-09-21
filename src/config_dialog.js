@@ -347,6 +347,7 @@ const CONFIG_SCHEMA = [
     // exclusionOverlayColor/exclusionOverlayOpacity are special-cased below.
     { id: 'useUniqueSystemColors', path: 'thumbnail.useUniqueSystemColors' },
     { id: 'useUniqueCharacterNameColors', path: 'thumbnail.useUniqueCharacterNameColors' },
+    { id: 'useUniqueCharacterBorderColors', path: 'thumbnail.useUniqueCharacterBorderColors' },
     { id: 'characterNameFontName', path: 'thumbnail.characterNameFontName' },
     { id: 'characterNameFontSize', path: 'thumbnail.characterNameFontSize' },
     { id: 'characterNameFontWeight', path: 'thumbnail.characterNameFontWeight' },
@@ -865,7 +866,7 @@ const THUMBNAIL_PREVIEW_FIELD_IDS = [
     'showText', 'showCharacterName', 'showSystemName', 'useUniqueSystemColors',
     'characterNameFontName', 'characterNameFontSize', 'characterNameFontWeight',
     'characterNamePosition', 'characterNameOffsetX', 'characterNameOffsetY', 'characterNameColor',
-    'useUniqueCharacterNameColors',
+    'useUniqueCharacterNameColors', 'useUniqueCharacterBorderColors',
     'systemNamePosition', 'systemNameOffsetX', 'systemNameOffsetY', 'systemNameColor',
     'systemNameFontName', 'systemNameFontSize', 'systemNameFontWeight',
     'showQuickGroupBadge', 'quickGroupBadgePosition', 'quickGroupBadgeOffsetX', 'quickGroupBadgeOffsetY', 'quickGroupBadgeColor',
@@ -939,6 +940,7 @@ function buildThumbnailPreviewPatch(includePositions = false) {
         characterNameColor: getFieldValue('characterNameColor'),
         characterNameBgColor: zigColorWithAlpha(getFieldValue('characterNameBgColor'), percentToOpacity(getFieldValue('characterNameBgOpacity'))),
         useUniqueCharacterNameColors: getFieldValue('useUniqueCharacterNameColors'),
+        useUniqueCharacterBorderColors: getFieldValue('useUniqueCharacterBorderColors'),
         systemNamePosition: getFieldValue('systemNamePosition'),
         systemNameOffsetX: getFieldValue('systemNameOffsetX'),
         systemNameOffsetY: getFieldValue('systemNameOffsetY'),
@@ -5900,56 +5902,15 @@ function selectCharacter(index) {
     selectMasterDetailRow('charactersList', index);
 }
 
-function generateUniqueColor(index) {
-    // Use golden ratio to distribute colors evenly around color wheel
-    const goldenRatio = 0.618033988749895;
-    const hue = (index * goldenRatio * 360) % 360;
-    // Use high saturation and medium lightness for vibrant, visible colors
-    const saturation = 75;
-    const lightness = 55;
-
-    const h = hue / 360;
-    const s = saturation / 100;
-    const l = lightness / 100;
-    
-    let r, g, b;
-    if (s === 0) {
-        r = g = b = l;
-    } else {
-        const hue2rgb = (p, q, t) => {
-            if (t < 0) t += 1;
-            if (t > 1) t -= 1;
-            if (t < 1/6) return p + (q - p) * 6 * t;
-            if (t < 1/2) return q;
-            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-            return p;
-        };
-        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-        const p = 2 * l - q;
-        r = hue2rgb(p, q, h + 1/3);
-        g = hue2rgb(p, q, h);
-        b = hue2rgb(p, q, h - 1/3);
-    }
-
-    const toHex = (x) => Math.round(x * 255).toString(16).padStart(2, '0').toUpperCase();
-    return `0xFF${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-
 function addCharacter() {
     if (!currentConfig) return;
     if (!currentConfig.characters) currentConfig.characters = [];
     saveCharacters();
 
-    const assignUniqueColors = document.getElementById('assignUniqueCharacterColors')?.checked || false;
-    
-    const colorIndex = currentConfig.characters.length;
     const newChar = {
         name: '',
         position: null, // Unset -> backend auto-arranges via layoutMode instead of pinning to (0,0)
-        borderColors: assignUniqueColors ? {
-            activeBorderColor: generateUniqueColor(colorIndex),
-            inactiveBorderColor: null
-        } : null,
+        borderColors: null,
         thumbnailSize: null,
         displayName: null,
         hotkey: null
@@ -7443,7 +7404,7 @@ function toggleInactiveBorderOptions() {
 }
 
 function toggleUniqueCharacterColors() {
-    const uniqueColorsCheckbox = document.getElementById('assignUniqueCharacterColors');
+    const uniqueColorsCheckbox = document.getElementById('useUniqueCharacterBorderColors');
     const focusedBorderColorOptions = document.getElementById('focusedBorderColorOptions');
     const inactiveBorderColorOptions = document.getElementById('inactiveBorderColorOptions');
 
@@ -7452,23 +7413,7 @@ function toggleUniqueCharacterColors() {
         // it dims along with the focused field instead of staying interactive while overridden.
         focusedBorderColorOptions?.classList.toggle('is-disabled', uniqueColorsCheckbox.checked);
         inactiveBorderColorOptions?.classList.toggle('is-disabled', uniqueColorsCheckbox.checked);
-
-        if (uniqueColorsCheckbox.checked) {
-            assignUniqueColorsToAllCharacters();
-        }
     }
-}
-
-function assignUniqueColorsToAllCharacters() {
-    if (!currentConfig.characters) return;
-    saveCharacters();
-    currentConfig.characters.forEach((char, index) => {
-        if (!char.borderColors) {
-            char.borderColors = {};
-        }
-        char.borderColors.activeBorderColor = generateUniqueColor(index);
-    });
-    populateCharacters();
 }
 
 function toggleTextDisplayOptions() {

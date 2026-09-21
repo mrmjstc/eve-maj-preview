@@ -2348,6 +2348,7 @@ pub const Config = struct {
         characterNameColor: u32 = 0xFFFFFF,
         characterNameBgColor: u32 = 0xE6000000,
         useUniqueCharacterNameColors: bool = false,
+        useUniqueCharacterBorderColors: bool = false,
         characterNameFontName: []const u8 = DEFAULT_FONT_NAME,
         characterNameFontSize: i32 = 12,
         characterNameFontWeight: types.FontWeight = .Regular,
@@ -2542,6 +2543,7 @@ pub const Config = struct {
             characterNameColor: Argb = .{ .value = (ThumbnailConfig{}).characterNameColor },
             characterNameBgColor: Argb = .{ .value = (ThumbnailConfig{}).characterNameBgColor },
             useUniqueCharacterNameColors: bool = (ThumbnailConfig{}).useUniqueCharacterNameColors,
+            useUniqueCharacterBorderColors: bool = (ThumbnailConfig{}).useUniqueCharacterBorderColors,
             characterNameFontName: []const u8 = DEFAULT_FONT_NAME,
             characterNameFontSize: i32 = (ThumbnailConfig{}).characterNameFontSize,
             characterNameFontWeight: types.FontWeight = (ThumbnailConfig{}).characterNameFontWeight,
@@ -2599,6 +2601,7 @@ pub const Config = struct {
                 .characterNameColor = .{ .value = self.characterNameColor },
                 .characterNameBgColor = .{ .value = self.characterNameBgColor },
                 .useUniqueCharacterNameColors = self.useUniqueCharacterNameColors,
+                .useUniqueCharacterBorderColors = self.useUniqueCharacterBorderColors,
                 .characterNameFontName = self.characterNameFontName,
                 .characterNameFontSize = self.characterNameFontSize,
                 .characterNameFontWeight = self.characterNameFontWeight,
@@ -2657,6 +2660,7 @@ pub const Config = struct {
                 .characterNameColor = w.characterNameColor.value,
                 .characterNameBgColor = w.characterNameBgColor.value,
                 .useUniqueCharacterNameColors = w.useUniqueCharacterNameColors,
+                .useUniqueCharacterBorderColors = w.useUniqueCharacterBorderColors,
                 .characterNameFontName = try allocator.dupe(u8, w.characterNameFontName),
                 .characterNameFontSize = w.characterNameFontSize,
                 .characterNameFontWeight = w.characterNameFontWeight,
@@ -3192,6 +3196,9 @@ pub const Config = struct {
         }
         if (obj.get("useUniqueCharacterNameColors")) |v| {
             if (v == .bool) thumb.useUniqueCharacterNameColors = v.bool;
+        }
+        if (obj.get("useUniqueCharacterBorderColors")) |v| {
+            if (v == .bool) thumb.useUniqueCharacterBorderColors = v.bool;
         }
         if (obj.get("characterNameFontName")) |v| {
             try updateOwnedFontName(allocator, &thumb.characterNameFontName, v);
@@ -4098,11 +4105,14 @@ pub const Config = struct {
         return null;
     }
 
-    pub fn getCharacterBorderColors(self: *const Config, character_name: []const u8) ?CharacterBorderColors {
-        if (self.findCharacterConst(character_name)) |char| {
-            return char.borderColors;
-        }
-        return null;
+    /// A character's own active border color wins; otherwise Unique Character Border Colors (if enabled) fills it in, leaving any inactive color as configured.
+    pub fn getCharacterBorderColors(self: *Config, character_name: []const u8) ?CharacterBorderColors {
+        const configured: ?CharacterBorderColors = if (self.findCharacterConst(character_name)) |char| char.borderColors else null;
+        if (!self.thumbnail.useUniqueCharacterBorderColors) return configured;
+
+        var colors = configured orelse CharacterBorderColors{};
+        if (colors.activeBorderColor == null) colors.activeBorderColor = self.autoCharacterColorFor(character_name);
+        return colors;
     }
 
     pub fn getCharacterSize(self: *const Config, character_name: []const u8) ?CharacterThumbnailSize {
@@ -4248,15 +4258,28 @@ pub const Config = struct {
 
         if (!self.thumbnail.useUniqueCharacterNameColors) return null;
 
+        return self.autoCharacterColorFor(character_name);
+    }
+
+    /// One stored color per character, shared by its name and border; steers clear of every character's own name and active border overrides.
+    fn autoCharacterColorFor(self: *Config, character_name: []const u8) u32 {
         self.loadAutoColors();
 
         var overrides: [color.AutoColors.max_avoided]u32 = undefined;
         var override_count: usize = 0;
         for (self.characters.items) |char| {
-            if (override_count == overrides.len) break;
-            const custom_color = char.nameColor orelse continue;
-            overrides[override_count] = custom_color;
-            override_count += 1;
+            if (char.nameColor) |custom_color| {
+                if (override_count == overrides.len) break;
+                overrides[override_count] = custom_color;
+                override_count += 1;
+            }
+            if (char.borderColors) |border| {
+                if (border.activeBorderColor) |custom_color| {
+                    if (override_count == overrides.len) break;
+                    overrides[override_count] = custom_color;
+                    override_count += 1;
+                }
+            }
         }
 
         return self.autoCharacterColors.colorFor(self.allocator, character_name, overrides[0..override_count]);
