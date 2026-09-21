@@ -4002,7 +4002,7 @@ pub const Config = struct {
 
     pub fn findSystemColor(self: *const Config, name: []const u8) ?u32 {
         for (self.systemColors.items) |*sc| {
-            if (std.mem.eql(u8, sc.name, name)) {
+            if (std.ascii.eqlIgnoreCase(std.mem.trim(u8, sc.name, " \t"), name)) {
                 return sc.color;
             }
         }

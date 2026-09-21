@@ -1101,6 +1101,8 @@ Define custom colors for specific solar systems:
 }
 ```
 
+> **Note**: `systemName` matching ignores case and leading/trailing spaces.
+
 > **Note**: The key is `systemName`, not `name` - an entry using the wrong key will fail to load and abort loading the entire profile.
 
 ## Config Dialog Accent Color
