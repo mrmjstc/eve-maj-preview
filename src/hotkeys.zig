@@ -1853,6 +1853,9 @@ pub const HotkeyManager = struct {
 
         self.updateExcludedCycleIndex(character_name);
 
+        const already_synced = if (self.last_all_clients_cycle_name) |last| std.mem.eql(u8, last, character_name) else false;
+        if (!already_synced) self.setLastAllClientsCycleName(character_name);
+
         var pc_it = self.hotkey_map.valueIterator();
         while (pc_it.next()) |action| {
             if (std.meta.activeTag(action.*) != .ActivateCharacter) continue;
