@@ -1093,15 +1093,16 @@ Define custom colors for specific solar systems:
 ```json
 {
   "systemColors": [
-    { "systemName": "Jita", "color": "0xFFD700" },
-    { "systemName": "Amarr", "color": "0xFFD700" },
-    { "systemName": "Rancer", "color": "0xFF0000" },
-    { "systemName": "Amamake", "color": "0xFF0000" }
+    { "systemName": "Jita, Amarr", "color": "0xFFD700" },
+    { "systemName": "Rancer, Amamake", "color": "0xFF0000" },
+    { "systemName": "J######", "color": "0x00BFFF" }
   ]
 }
 ```
 
-> **Note**: `systemName` matching ignores case and leading/trailing spaces.
+`systemName` is a comma-separated list of names and patterns. Matching ignores case and leading/trailing spaces around each name. Patterns support `*` (any text), `?` (any one character) and `#` (any one digit), so `J######` matches every wormhole system but not `Jita`.
+
+> **Note**: An exact name always beats a pattern, regardless of row order; otherwise the first matching row wins.
 
 > **Note**: The key is `systemName`, not `name` - an entry using the wrong key will fail to load and abort loading the entire profile.
 

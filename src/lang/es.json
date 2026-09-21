@@ -875,7 +875,7 @@
   "tab.overlay-text.section.character-name.heading": "Nombre del Personaje",
   "tab.overlay-text.section.group-badge.heading": "Insignia de Grupo",
   "tab.overlay-text.section.system-color-overrides.heading": "Colores de Sistema",
-  "tab.overlay-text.section.system-color-overrides.hint": "Define colores personalizados para sistemas solares específicos. Tienen prioridad sobre Colores de Sistema Únicos y el color predeterminado.",
+  "tab.overlay-text.section.system-color-overrides.hint": "Define colores personalizados para sistemas solares específicos. Tienen prioridad sobre Colores de Sistema Únicos y el color predeterminado. Separa los nombres con comas; * equivale a cualquier texto, ? a cualquier carácter, # a cualquier dígito (p. ej. J######).",
   "tab.overlay-text.section.system-name.heading": "Nombre del Sistema",
   "tab.overlay-text.section.text-display-system.heading": "Superposiciones de Texto",
   "tab.overlay-text.section.text-display-system.hint": "Superpone una franja de texto en cada miniatura que muestra el nombre del personaje y/o el sistema solar actual. La vista previa de abajo no está a escala - arrastra para reposicionar, haz clic para editar.",
