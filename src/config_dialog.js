@@ -407,6 +407,9 @@ const CONFIG_SCHEMA = [
     { id: 'autoMinimizeExemptLastActive', path: 'autoMinimize.exemptLastActiveOnFocusLoss' },
 
     { id: 'autoMovePositionEnabled', path: 'autoMovePosition.enabled' },
+    { id: 'autoMoveOnStartup', path: 'autoMovePosition.moveOnStartup' },
+    { id: 'autoMoveVerifyInterval', path: 'autoMovePosition.verifyIntervalMs', transform: 'ms' },
+    { id: 'autoMoveVerifyCount', path: 'autoMovePosition.verifyCount' },
 
     { id: 'enableShiftClickExclude', path: 'exclusion.enableShiftClickExclude' },
     { id: 'autoMinimizeExcludedCharacters', path: 'exclusion.autoMinimizeExcluded' },

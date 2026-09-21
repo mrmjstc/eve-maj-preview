@@ -29,7 +29,7 @@ pub fn minimizeAllClients(eve_windows: []const scout_mod.EveWindow) void {
 const SCREEN_EDGE_MARGIN: i32 = 30;
 
 /// Clamps `pos` to the current virtual screen, in case the screen configuration changed since save.
-fn clampToVirtualScreen(pos: config_mod.Position) config_mod.Position {
+pub fn clampToVirtualScreen(pos: config_mod.Position) config_mod.Position {
     const screen_left: i32 = win32.GetSystemMetrics(win32.SM_XVIRTUALSCREEN);
     const screen_top: i32 = win32.GetSystemMetrics(win32.SM_YVIRTUALSCREEN);
     const screen_width: i32 = win32.GetSystemMetrics(win32.SM_CXVIRTUALSCREEN);

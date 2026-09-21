@@ -2866,6 +2866,25 @@ pub const Config = struct {
 
     pub const AutoMovePositionConfig = struct {
         enabled: bool = false,
+        moveOnStartup: bool = false,
+        verifyIntervalMs: u32 = 2000,
+        verifyCount: u8 = 6,
+
+        pub const VERIFY_INTERVAL_MS_MIN: u32 = 250;
+        pub const VERIFY_INTERVAL_MS_MAX: u32 = 10000;
+        pub const VERIFY_COUNT_MAX: u8 = 30;
+
+        pub fn validate(self: *AutoMovePositionConfig) void {
+            if (self.verifyIntervalMs < VERIFY_INTERVAL_MS_MIN or self.verifyIntervalMs > VERIFY_INTERVAL_MS_MAX) {
+                const clamped = std.math.clamp(self.verifyIntervalMs, VERIFY_INTERVAL_MS_MIN, VERIFY_INTERVAL_MS_MAX);
+                slog.warn("Auto-move verify interval {} ms out of range, clamping to {}", .{ self.verifyIntervalMs, clamped });
+                self.verifyIntervalMs = clamped;
+            }
+            if (self.verifyCount > VERIFY_COUNT_MAX) {
+                slog.warn("Auto-move verify count {} too high, clamping to {}", .{ self.verifyCount, VERIFY_COUNT_MAX });
+                self.verifyCount = VERIFY_COUNT_MAX;
+            }
+        }
     };
 
     pub const ExclusionConfig = struct {
@@ -4178,6 +4197,7 @@ pub const Config = struct {
         self.display.validate();
         self.snapping.validate();
         self.autoMinimize.validate();
+        self.autoMovePosition.validate();
         self.chatlog.validate();
         self.combat.validate();
         self.mining.validate();
@@ -4237,6 +4257,9 @@ pub const Config = struct {
             .@"snapping.threshold" = Range{ .min = SnappingConfig.THRESHOLD_MIN, .max = SnappingConfig.THRESHOLD_MAX },
 
             .@"autoMinimize.delayMs" = Range{ .min = 0, .max = AutoMinimizeConfig.DELAY_MS_MAX },
+
+            .@"autoMovePosition.verifyIntervalMs" = Range{ .min = AutoMovePositionConfig.VERIFY_INTERVAL_MS_MIN, .max = AutoMovePositionConfig.VERIFY_INTERVAL_MS_MAX },
+            .@"autoMovePosition.verifyCount" = Range{ .min = 0, .max = AutoMovePositionConfig.VERIFY_COUNT_MAX },
 
             .@"chatlog.pollIntervalMs" = Range{ .min = ChatlogConfig.POLL_INTERVAL_MS_MIN, .max = ChatlogConfig.POLL_INTERVAL_MS_MAX },
             .@"chatlog.idlePollThreshold" = Range{ .min = ChatlogConfig.IDLE_POLL_THRESHOLD_MIN, .max = ChatlogConfig.IDLE_POLL_THRESHOLD_MAX },

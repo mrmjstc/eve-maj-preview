@@ -1200,14 +1200,39 @@
                     <div class="section">
                         <div class="section-heading">
                             <h3 data-i18n="tab.behavior.section.window-position.heading">Window Position</h3>
-                            <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                            <div class="section-heading-actions">
+                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
+                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
+                            </div>
                         </div>
                         <p class="hint" data-i18n="tab.behavior.section.window-position.hint">Saves each character's real EVE client window position, restored via the Move to Saved Positions hotkey or automatically on login. Set All copies the selected window's current position to every character; Clear All removes every saved position.</p>
 
                         <label>
                             <input type="checkbox" id="autoMovePositionEnabled">
-                            <span class="label-body" data-i18n="field.autoMovePositionEnabled.label">Automatically Move to Saved Position on Login</span>
+                            <span class="label-body" data-i18n="field.autoMovePositionEnabled.label">Restore Saved Position on Login</span>
                         </label>
+                        <p class="hint hint-extra" data-i18n="field.autoMovePositionEnabled.hint">Moves a client to its saved position when its character logs in.</p>
+
+                        <label>
+                            <input type="checkbox" id="autoMoveOnStartup">
+                            <span class="label-body" data-i18n="field.autoMoveOnStartup.label">Restore Saved Position on App Startup</span>
+                        </label>
+                        <p class="hint hint-extra" data-i18n="field.autoMoveOnStartup.hint">Moves clients already logged in when the app launches.</p>
+
+                        <div class="advanced-section">
+                            <div class="binding-list">
+                                <div class="binding">
+                                    <label for="autoMoveVerifyInterval" data-i18n="field.autoMoveVerifyInterval.label">Re-check Interval (s)</label>
+                                    <input type="number" id="autoMoveVerifyInterval" min="0.25" max="10" step="0.25">
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.autoMoveVerifyInterval.hint">How often a moved client's position is re-checked; EVE can shift its own window while loading.</p>
+                                <div class="binding">
+                                    <label for="autoMoveVerifyCount" data-i18n="field.autoMoveVerifyCount.label">Re-check Count</label>
+                                    <input type="number" id="autoMoveVerifyCount" min="0" max="30" step="1">
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.autoMoveVerifyCount.hint">How many times to re-check and re-apply the position after a move. 0 disables re-checking.</p>
+                            </div>
+                        </div>
 
                         <div class="field-row">
                             <select id="windowPositionSourceSelect" title="Copy Position From" data-i18n-title="field.windowPositionSourceSelect.label"></select>

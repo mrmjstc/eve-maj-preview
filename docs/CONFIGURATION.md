@@ -494,6 +494,27 @@ The last-focused client on each monitor (by the monitor its EVE window is on) is
 
 Exclusions are configured per character, not here - set `excludeFromMinimize` on the character entry (see [Per-Character Configuration](#per-character-configuration)).
 
+## Auto-Move Position
+
+Move EVE client windows to their saved window positions automatically:
+
+```json
+{
+  "autoMovePosition": {
+    "enabled": false,
+    "moveOnStartup": false,
+    "verifyIntervalMs": 2000,
+    "verifyCount": 6
+  }
+}
+```
+
+`enabled` moves a client when a character logs in. `moveOnStartup` moves clients that are already running when the application starts; it works independently of `enabled`.
+
+After each move, the client's position is re-checked every `verifyIntervalMs` (clamped `250`-`10000`), up to `verifyCount` times (clamped `0`-`30`; `0` disables re-checking), and re-applied if EVE shifted its own window while loading.
+
+Exclusions are configured per character - set `excludeFromAutoMove` on the character entry (see [Per-Character Configuration](#per-character-configuration)).
+
 ## Close All
 
 ```json

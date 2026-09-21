@@ -338,6 +338,14 @@ const NotifiedCharacterEntry = struct {
     notified_at_ms: win32.Ticks,
 };
 
+/// Re-checked after login because EVE can reposition its own window while still loading.
+const PendingAutoMove = struct {
+    hwnd: win32.HWND,
+    target: config_mod.Position,
+    last_move: win32.Ticks,
+    checks_left: u8,
+};
+
 /// One saved-position outline for the drag-time ghost overlay; `names` is the comma-joined list of every character sharing that exact rect.
 pub const GhostGroup = struct {
     rect: win32.RECT,
@@ -373,6 +381,7 @@ pub const Painter = struct {
     notified_queue: std.ArrayList(NotifiedCharacterEntry) = .empty,
     /// Thumbnails hideThumbnailsForRegionSelect hid, so restoreThumbnailsAfterRegionSelect only re-shows exactly those (not ones already manually hidden beforehand).
     region_select_hidden_hwnds: std.ArrayList(win32.HWND) = .empty,
+    pending_auto_moves: std.ArrayList(PendingAutoMove) = .empty,
     /// Ring buffer of the last NOTIF_HISTORY_CAPACITY notifications shown, across all characters, newest overwrites oldest; feeds notif_info_window.
     notification_history: [NOTIF_HISTORY_CAPACITY]NotificationHistoryEntry = undefined,
     notification_history_head: usize = 0,
@@ -598,6 +607,7 @@ pub const Painter = struct {
         for (self.notified_queue.items) |entry| self.allocator.free(entry.character_name);
         self.notified_queue.deinit(self.allocator);
         self.region_select_hidden_hwnds.deinit(self.allocator);
+        self.pending_auto_moves.deinit(self.allocator);
         self.hwnd_to_thumbnail_index.deinit();
         self.last_focused_by_monitor.deinit();
         self.thumbnail_hwnd_to_index.deinit();
@@ -1865,6 +1875,7 @@ pub const Painter = struct {
                 if (self.config.autoMovePosition.enabled and !self.config.isExcludedFromAutoMove(change.new_name)) {
                     if (self.config.getCharacterWindowPosition(change.new_name)) |window_pos| {
                         manager_mod.moveClientToPosition(thumbnail.source_hwnd, window_pos);
+                        self.queueAutoMoveVerification(thumbnail.source_hwnd, window_pos);
                         slog.info("Auto-moved {s} client window to saved position: ({}, {})", .{ change.new_name, window_pos.x, window_pos.y });
                     } else {
                         slog.debug("No saved window position for {s}, auto-move-on-login skipped", .{change.new_name});
@@ -1918,6 +1929,65 @@ pub const Painter = struct {
         return region_fit_active and (any_login_rank_change or (any_logout_rank_change and self.config.display.regionFitReorderLoggedOut));
     }
 
+    /// Callers gate on their own setting; only the per-character exclusion is checked here.
+    pub fn moveClientToSavedPosition(self: *Painter, hwnd: win32.HWND, character_name: []const u8) void {
+        if (self.config.isExcludedFromAutoMove(character_name)) return;
+        const pos = self.config.getCharacterWindowPosition(character_name) orelse return;
+        manager_mod.moveClientToPosition(hwnd, pos);
+        self.queueAutoMoveVerification(hwnd, pos);
+        slog.info("Moved {s} client window to saved position: ({}, {})", .{ character_name, pos.x, pos.y });
+    }
+
+    fn queueAutoMoveVerification(self: *Painter, hwnd: win32.HWND, pos: config_mod.Position) void {
+        if (self.config.autoMovePosition.verifyCount == 0) return;
+        const entry = PendingAutoMove{
+            .hwnd = hwnd,
+            .target = manager_mod.clampToVirtualScreen(pos),
+            .last_move = win32.Ticks.now(),
+            .checks_left = self.config.autoMovePosition.verifyCount,
+        };
+        for (self.pending_auto_moves.items) |*existing| {
+            if (existing.hwnd == hwnd) {
+                existing.* = entry;
+                return;
+            }
+        }
+        self.pending_auto_moves.append(self.allocator, entry) catch |err| {
+            slog.warn("Failed to queue auto-move verification: {}", .{err});
+        };
+    }
+
+    fn verifyPendingAutoMoves(self: *Painter) void {
+        const now = win32.Ticks.now();
+        var i: usize = 0;
+        while (i < self.pending_auto_moves.items.len) {
+            const entry = &self.pending_auto_moves.items[i];
+            if (!win32.isWindow(entry.hwnd) or entry.checks_left == 0) {
+                _ = self.pending_auto_moves.swapRemove(i);
+                continue;
+            }
+            if (now.elapsedSince(entry.last_move) < self.config.autoMovePosition.verifyIntervalMs) {
+                i += 1;
+                continue;
+            }
+
+            entry.checks_left -= 1;
+            entry.last_move = now;
+
+            var rect: win32.RECT = undefined;
+            if (!win32.toBool(win32.GetWindowRect(entry.hwnd, &rect))) {
+                slog.warn("Auto-move verification: GetWindowRect failed", .{});
+                _ = self.pending_auto_moves.swapRemove(i);
+                continue;
+            }
+            if (rect.left != entry.target.x or rect.top != entry.target.y) {
+                slog.info("Client drifted to ({}, {}) after auto-move, re-applying ({}, {})", .{ rect.left, rect.top, entry.target.x, entry.target.y });
+                manager_mod.moveClientToPosition(entry.hwnd, entry.target);
+            }
+            i += 1;
+        }
+    }
+
     /// Syncs thumbnail title text against Scout's latest scan, independent of character-name changes.
     fn syncThumbnailTitles(self: *Painter, eve_windows: []const scout_mod.EveWindow) void {
         for (eve_windows) |eve_window| {
@@ -1944,6 +2014,9 @@ pub const Painter = struct {
                     continue;
                 };
                 created_new = true;
+                if (self.config.autoMovePosition.enabled) {
+                    self.moveClientToSavedPosition(eve_window.hwnd, eve_window.character_name);
+                }
             }
         }
 
@@ -1956,6 +2029,7 @@ pub const Painter = struct {
         self.updateThumbnailStates();
         self.checkAutoMinimize();
         needs_region_reflow = self.applyNameChanges(name_changes, eve_windows) or needs_region_reflow;
+        self.verifyPendingAutoMoves();
         self.syncThumbnailTitles(eve_windows);
 
         // createThumbnail seeds title/character_name from eve_window, so new thumbnails need no re-sync.
@@ -2704,12 +2778,6 @@ pub const Painter = struct {
     }
 
     pub fn createThumbnail(self: *Painter, eve_window: *const scout_mod.EveWindow, initial_system_name: []const u8) !void {
-        if (self.config.autoMovePosition.enabled and !self.config.isExcludedFromAutoMove(eve_window.character_name)) {
-            if (self.config.getCharacterWindowPosition(eve_window.character_name)) |pos| {
-                manager_mod.moveClientToPosition(eve_window.hwnd, pos);
-            }
-        }
-
         if (self.config.display.viewMode != .Thumbnails) {
             return self.createTrackingOnlyEntry(eve_window, initial_system_name);
         }

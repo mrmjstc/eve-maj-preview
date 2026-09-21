@@ -867,6 +867,9 @@ fn mainImpl(init: std.process.Init) !void {
     const eve_windows = g_scout.?.getWindows();
     for (eve_windows) |*eve_window| {
         try g_painter.?.createThumbnail(eve_window, "");
+        if (g_config.autoMovePosition.moveOnStartup) {
+            g_painter.?.moveClientToSavedPosition(eve_window.hwnd, eve_window.character_name);
+        }
     }
     g_painter.?.reflowIfRegionFitActive();
 
