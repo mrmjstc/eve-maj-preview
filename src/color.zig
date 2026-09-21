@@ -1,194 +1,183 @@
 const std = @import("std");
+const log = @import("log.zig");
 
-/// Convert HSV color to RGB (0xRRGGBB format).
-fn hsvToRgb(h: u32, s: u8, val: u8) u32 {
-    const s_norm = @as(f32, @floatFromInt(s)) / 255.0;
-    const v_norm = @as(f32, @floatFromInt(val)) / 255.0;
+const slog = log.scoped("color");
 
-    const c = v_norm * s_norm;
-    const h_prime = @as(f32, @floatFromInt(h % 360)) / 60.0;
-    const x = c * (1.0 - @abs(@mod(h_prime, 2.0) - 1.0));
-    const m = v_norm - c;
+const Oklab = struct { l: f32, a: f32, b: f32 };
 
-    var r: f32 = 0;
-    var g: f32 = 0;
-    var b: f32 = 0;
-
-    const sector = @as(u8, @intFromFloat(h_prime));
-    switch (sector) {
-        0 => {
-            r = c;
-            g = x;
-            b = 0;
-        },
-        1 => {
-            r = x;
-            g = c;
-            b = 0;
-        },
-        2 => {
-            r = 0;
-            g = c;
-            b = x;
-        },
-        3 => {
-            r = 0;
-            g = x;
-            b = c;
-        },
-        4 => {
-            r = x;
-            g = 0;
-            b = c;
-        },
-        else => {
-            r = c;
-            g = 0;
-            b = x;
-        },
-    }
-
-    const r_byte = @as(u32, @intFromFloat((r + m) * 255.0));
-    const g_byte = @as(u32, @intFromFloat((g + m) * 255.0));
-    const b_byte = @as(u32, @intFromFloat((b + m) * 255.0));
-
-    return (r_byte << 16) | (g_byte << 8) | b_byte;
+fn srgbByteToLinear(byte: u32) f32 {
+    const c = @as(f32, @floatFromInt(byte & 0xFF)) / 255.0;
+    return if (c <= 0.04045) c / 12.92 else std.math.pow(f32, (c + 0.055) / 1.055, 2.4);
 }
 
-/// Uses golden ratio for even color distribution across the spectrum.
-fn generateUniqueColor(seed_string: []const u8) u32 {
-    if (seed_string.len == 0) return 0xFFFFFF;
-
-    const hash = std.hash.Wyhash.hash(0, seed_string);
-
-    const max_hash = @as(f64, @floatFromInt(std.math.maxInt(u64)));
-    const normalized = @as(f64, @floatFromInt(hash)) / max_hash;
-
-    const golden_ratio: f64 = 0.618033988749895;
-    const hue_fraction = @mod(normalized + golden_ratio, 1.0);
-    const hue = @as(u32, @intFromFloat(hue_fraction * 360.0));
-
-    // High saturation/value for vibrant colors, using different hash bits than hue to avoid correlation.
-    const saturation: u8 = 200 + @as(u8, @intCast((hash >> 20) % 36));
-    const value: u8 = 210 + @as(u8, @intCast((hash >> 40) % 26));
-
-    return hsvToRgb(hue, saturation, value);
+fn linearToSrgbByte(linear: f32) u32 {
+    const c = std.math.clamp(linear, 0.0, 1.0);
+    const encoded = if (c <= 0.0031308) c * 12.92 else 1.055 * std.math.pow(f32, c, 1.0 / 2.4) - 0.055;
+    return @intFromFloat(@round(encoded * 255.0));
 }
 
-const RgbColor = struct {
-    r: u8,
-    g: u8,
-    b: u8,
+fn rgbToOklab(rgb: u32) Oklab {
+    const r = srgbByteToLinear(rgb >> 16);
+    const g = srgbByteToLinear(rgb >> 8);
+    const b = srgbByteToLinear(rgb);
 
-    pub fn fromU32(rgb: u32) RgbColor {
-        return .{
-            .r = @as(u8, @intCast((rgb >> 16) & 0xFF)),
-            .g = @as(u8, @intCast((rgb >> 8) & 0xFF)),
-            .b = @as(u8, @intCast(rgb & 0xFF)),
-        };
-    }
-};
-
-const HsvColor = struct {
-    h: u32,
-    s: u8,
-    v: u8,
-};
-
-fn rgbToHsv(rgb: u32) HsvColor {
-    const color = RgbColor.fromU32(rgb);
-    const r = @as(f32, @floatFromInt(color.r)) / 255.0;
-    const g = @as(f32, @floatFromInt(color.g)) / 255.0;
-    const b = @as(f32, @floatFromInt(color.b)) / 255.0;
-
-    const max_val = @max(@max(r, g), b);
-    const min_val = @min(@min(r, g), b);
-    const delta = max_val - min_val;
-
-    const v = @as(u8, @intFromFloat(max_val * 255.0));
-
-    const s = if (max_val == 0.0) 0 else @as(u8, @intFromFloat((delta / max_val) * 255.0));
-
-    var h: f32 = 0.0;
-    if (delta != 0.0) {
-        if (max_val == r) {
-            h = 60.0 * @mod((g - b) / delta, 6.0);
-        } else if (max_val == g) {
-            h = 60.0 * (((b - r) / delta) + 2.0);
-        } else {
-            h = 60.0 * (((r - g) / delta) + 4.0);
-        }
-        if (h < 0.0) h += 360.0;
-    }
+    const l = std.math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = std.math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const s = std.math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
 
     return .{
-        .h = @as(u32, @intFromFloat(h)),
-        .s = s,
-        .v = v,
+        .l = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+        .a = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+        .b = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
     };
 }
 
-/// Returns a value from 0.0 (identical) to ~1.0 (very different).
-fn colorDistance(color1: u32, color2: u32) f32 {
-    const hsv1 = rgbToHsv(color1);
-    const hsv2 = rgbToHsv(color2);
+/// Null when the color falls outside the sRGB gamut.
+fn oklchToRgb(lightness: f32, chroma: f32, hue_degrees: f32) ?u32 {
+    const radians = hue_degrees * std.math.pi / 180.0;
+    const a = chroma * @cos(radians);
+    const b = chroma * @sin(radians);
 
-    // Hue wraps at 360, so distance is the shorter way around the circle (max 180)
-    const hue_diff = @abs(@as(i32, @intCast(hsv1.h)) - @as(i32, @intCast(hsv2.h)));
-    const hue_distance = @min(hue_diff, 360 - hue_diff);
-    const hue_norm = @as(f32, @floatFromInt(hue_distance)) / 180.0;
+    const l_ = lightness + 0.3963377774 * a + 0.2158037573 * b;
+    const m_ = lightness - 0.1055613458 * a - 0.0638541728 * b;
+    const s_ = lightness - 0.0894841775 * a - 1.2914855480 * b;
+    const l = l_ * l_ * l_;
+    const m = m_ * m_ * m_;
+    const s = s_ * s_ * s_;
 
-    const sat_diff = @abs(@as(i32, @intCast(hsv1.s)) - @as(i32, @intCast(hsv2.s)));
-    const sat_norm = @as(f32, @floatFromInt(sat_diff)) / 255.0;
+    const r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+    const g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+    const bl = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
 
-    const val_diff = @abs(@as(i32, @intCast(hsv1.v)) - @as(i32, @intCast(hsv2.v)));
-    const val_norm = @as(f32, @floatFromInt(val_diff)) / 255.0;
-
-    // Hue weighted 4x more than saturation/value, the most important channel for perceptual differentiation.
-    const weighted_distance = (hue_norm * 2.0 + sat_norm * 0.5 + val_norm * 0.5) / 3.0;
-
-    return weighted_distance;
+    const tolerance = 0.002;
+    for ([_]f32{ r, g, bl }) |channel| {
+        if (channel < -tolerance or channel > 1.0 + tolerance) return null;
+    }
+    return (linearToSrgbByte(r) << 16) | (linearToSrgbByte(g) << 8) | linearToSrgbByte(bl);
 }
 
-fn isTooSimilar(new_color: u32, recent_colors: []const u32, threshold: f32) bool {
-    for (recent_colors) |recent_color| {
-        const distance = colorDistance(new_color, recent_color);
-        if (distance < threshold) {
-            return true;
+fn oklabDistance(x: Oklab, y: Oklab) f32 {
+    const dl = x.l - y.l;
+    const da = x.a - y.a;
+    const db = x.b - y.b;
+    return @sqrt(dl * dl + da * da + db * db);
+}
+
+const distinct_hue_steps = 36;
+const distinct_lightness = [_]f32{ 0.70, 0.80, 0.90 };
+const distinct_chroma = [_]f32{ 0.10, 0.15, 0.20, 0.26 };
+const max_distinct_candidates = distinct_hue_steps * distinct_lightness.len * distinct_chroma.len;
+const max_distinct_taken = 128;
+
+const Candidate = struct { rgb: u32, lab: Oklab };
+
+// Filled on first use; only touched from the main thread.
+var candidate_table: [max_distinct_candidates]Candidate = undefined;
+var candidate_count: usize = 0;
+
+fn distinctCandidates() []const Candidate {
+    if (candidate_count == 0) {
+        for (0..distinct_hue_steps) |hue_step| {
+            const hue = @as(f32, @floatFromInt(hue_step)) * (360.0 / @as(f32, distinct_hue_steps));
+            for (distinct_lightness) |lightness| {
+                for (distinct_chroma) |chroma| {
+                    const rgb = oklchToRgb(lightness, chroma, hue) orelse continue;
+                    candidate_table[candidate_count] = .{ .rgb = rgb, .lab = rgbToOklab(rgb) };
+                    candidate_count += 1;
+                }
+            }
         }
     }
-    return false;
+    return candidate_table[0..candidate_count];
 }
 
-/// Adjusts the hue if the generated color is too similar to recent_colors (similarity_threshold: 0.0-1.0, recommend 0.3-0.4).
-pub fn generateUniqueColorWithAvoidance(seed_string: []const u8, recent_colors: []const u32, similarity_threshold: f32) u32 {
-    const base_color = generateUniqueColor(seed_string);
+/// Picks the palette color farthest (in OKLab) from every color in `taken`; with nothing taken, `seed_string` picks the starting point and breaks ties, so the result is deterministic. Returns 0xRRGGBB.
+pub fn pickDistinctColor(seed_string: []const u8, taken: []const u32) u32 {
+    const candidates = distinctCandidates();
+    const count = candidates.len;
 
-    if (recent_colors.len == 0) {
-        return base_color;
-    }
+    var taken_labs: [max_distinct_taken]Oklab = undefined;
+    const taken_count = @min(taken.len, max_distinct_taken);
+    for (taken[0..taken_count], 0..) |rgb, i| taken_labs[i] = rgbToOklab(rgb);
 
-    if (!isTooSimilar(base_color, recent_colors, similarity_threshold)) {
-        return base_color;
-    }
-
-    const hsv = rgbToHsv(base_color);
-
-    const hue_adjustments = [_]u32{ 60, 120, 180, 240, 300, 30, 90, 150, 210, 270, 330 };
-
-    for (hue_adjustments) |offset| {
-        const new_hue = (hsv.h + offset) % 360;
-        const adjusted_color = hsvToRgb(new_hue, hsv.s, hsv.v);
-
-        if (!isTooSimilar(adjusted_color, recent_colors, similarity_threshold)) {
-            return adjusted_color;
+    const start: usize = @intCast(std.hash.Wyhash.hash(0, seed_string) % count);
+    var best_rgb = candidates[start].rgb;
+    var best_distance: f32 = -1.0;
+    for (0..count) |offset| {
+        const candidate = candidates[(start + offset) % count];
+        var nearest = std.math.inf(f32);
+        for (taken_labs[0..taken_count]) |taken_lab| {
+            nearest = @min(nearest, oklabDistance(candidate.lab, taken_lab));
+        }
+        if (nearest > best_distance) {
+            best_distance = nearest;
+            best_rgb = candidate.rgb;
         }
     }
-
-    // If all adjustments still too similar (rare), return the 180° opposite
-    const opposite_hue = (hsv.h + 180) % 360;
-    return hsvToRgb(opposite_hue, hsv.s, hsv.v);
+    return best_rgb;
 }
+
+/// Names mapped to colors that stay fixed once assigned, least recently seen first; persistence is the owner's job (see `dirty`).
+pub const AutoColors = struct {
+    pub const max_entries = 64;
+    pub const max_avoided = 32;
+
+    pub const Entry = struct {
+        name: []const u8,
+        color: u32,
+    };
+
+    entries: std.ArrayList(Entry) = .empty,
+    /// Set whenever an entry is added or evicted; the owner clears it after persisting.
+    dirty: bool = false,
+
+    pub fn deinit(self: *AutoColors, allocator: std.mem.Allocator) void {
+        for (self.entries.items) |entry| allocator.free(entry.name);
+        self.entries.deinit(allocator);
+    }
+
+    /// Adds an already-assigned color (e.g. from persisted state) without marking the store dirty.
+    pub fn put(self: *AutoColors, allocator: std.mem.Allocator, name: []const u8, rgb: u32) !void {
+        const owned_name = try allocator.dupe(u8, name);
+        errdefer allocator.free(owned_name);
+        try self.entries.append(allocator, .{ .name = owned_name, .color = rgb });
+    }
+
+    /// The name's existing color, or a new one: the palette color farthest from `avoid` (at most `max_avoided` used) and every entry already assigned.
+    pub fn colorFor(self: *AutoColors, allocator: std.mem.Allocator, name: []const u8, avoid: []const u32) u32 {
+        for (self.entries.items, 0..) |entry, i| {
+            if (!std.ascii.eqlIgnoreCase(entry.name, name)) continue;
+            const seen = self.entries.orderedRemove(i);
+            self.entries.appendAssumeCapacity(seen);
+            return seen.color;
+        }
+
+        var taken: [max_avoided + max_entries]u32 = undefined;
+        const avoided = avoid[0..@min(avoid.len, max_avoided)];
+        @memcpy(taken[0..avoided.len], avoided);
+        var count = avoided.len;
+        for (self.entries.items) |entry| {
+            if (count == taken.len) break;
+            taken[count] = entry.color;
+            count += 1;
+        }
+
+        const picked = 0xFF000000 | pickDistinctColor(name, taken[0..count]);
+        self.record(allocator, name, picked);
+        return picked;
+    }
+
+    fn record(self: *AutoColors, allocator: std.mem.Allocator, name: []const u8, rgb: u32) void {
+        while (self.entries.items.len >= max_entries) {
+            const evicted = self.entries.orderedRemove(0);
+            allocator.free(evicted.name);
+        }
+        self.dirty = true;
+        self.put(allocator, name, rgb) catch |err| {
+            slog.err("Failed to record color for '{s}': {}", .{ name, err });
+        };
+    }
+};
 
 pub fn withAlpha(rgb: u32, alpha: u8) u32 {
     return (@as(u32, alpha) << 24) | (rgb & 0x00FF_FFFF);

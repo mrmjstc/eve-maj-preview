@@ -805,6 +805,26 @@ $script:SystemColorTestSteps = @(
     @{ System = 'Rens'; Expect = 'DEFAULT (no rule)' }
 )
 
+# Enable Unique System Colors first; systems with a System Colors override (e.g. the [y] test rows) show that color instead.
+function Start-UniqueColorTest {
+    $movers = @($clients.Keys | Where-Object { $clients[$_].LoggedIn })
+    if ($movers.Count -eq 0) { Write-Warning 'No logged-in clients.'; return }
+
+    $pool = @($script:EveSystemNames)
+    for ($idx = 0; $idx -lt $movers.Count; $idx++) {
+        $c = $clients[$movers[$idx]]
+        $dest = $pool[$idx % $pool.Count]
+        Add-GamelogJump -Path $c.Gamelog -From $c.System -To $dest | Out-Null
+        Add-ChatlogJump -Path $c.Chatlog -System $dest | Out-Null
+        $c.System = $dest
+        Save-CharacterState -CharName $movers[$idx] -ChatlogPath $c.Chatlog -GamelogPath $c.Gamelog -System $c.System
+        Write-Host ("{0,-20} -> {1}" -f $movers[$idx], $dest)
+    }
+    Write-Host ''
+    Write-Host 'Compare the thumbnails: every system (and, with Unique Character Name Colors on, every character) should have a clearly different color.' -ForegroundColor Cyan
+    Write-Host 'Then restart the app: each must keep its color (stored in colors.json next to profiles).' -ForegroundColor Cyan
+}
+
 function Start-SystemColorTest {
     param([string]$CharName, [int]$IntervalSeconds = 6)
 
@@ -870,6 +890,7 @@ $menu = @'
   [r] random 3-system route  [e] fire event type...     [x] notification storm (multi-alert test)
   [t] travel mode test (group jump, leave one behind)
   [y] system color test (patterns, comma lists, precedence)
+  [u] unique color test (every client in its own system)
   [q] quit (stops everyone)
 '@
 
@@ -993,6 +1014,7 @@ try {
             $name = Select-Character
             if ($name) { Start-SystemColorTest -CharName $name }
         }
+        'u' { Start-UniqueColorTest }
         'q' {
             break mainLoop
         }

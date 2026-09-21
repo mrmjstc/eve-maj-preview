@@ -38,6 +38,8 @@ pub fn clampProfileName(name: []const u8) []const u8 {
 const DEFAULT_FONT_NAME = "Segoe UI";
 const MAX_CONFIG_FILE_SIZE: u64 = 300 * 1024;
 
+const AUTO_COLORS_FILE = "colors.json";
+
 /// Frees a font-name field if fromWire duped it onto the heap; a no-op if it's still pointing at the DEFAULT_FONT_NAME literal.
 fn freeFontNameIfOwned(allocator: std.mem.Allocator, font_name: []const u8) void {
     if (font_name.ptr != DEFAULT_FONT_NAME.ptr) allocator.free(font_name);
@@ -930,6 +932,33 @@ pub const SystemColor = struct {
         return false;
     }
 };
+
+const AutoColorsFile = struct {
+    systemColors: []const Entry = &.{},
+    characterColors: []const Entry = &.{},
+
+    const Entry = struct {
+        name: []const u8,
+        color: Argb,
+    };
+};
+
+fn loadAutoEntries(allocator: std.mem.Allocator, store: *color.AutoColors, entries: []const AutoColorsFile.Entry) void {
+    for (entries) |entry| {
+        store.put(allocator, entry.name, entry.color.value) catch |err| {
+            slog.warn("Failed to load auto color '{s}': {}", .{ entry.name, err });
+            return;
+        };
+    }
+}
+
+fn autoEntriesToWire(allocator: std.mem.Allocator, store: *const color.AutoColors) ![]const AutoColorsFile.Entry {
+    const wires = try allocator.alloc(AutoColorsFile.Entry, store.entries.items.len);
+    for (store.entries.items, 0..) |entry, i| {
+        wires[i] = .{ .name = entry.name, .color = .{ .value = entry.color } };
+    }
+    return wires;
+}
 
 /// Case-insensitive glob: `*` any run, `?` any character, `#` any digit.
 fn globMatch(pattern: []const u8, text: []const u8) bool {
@@ -2000,9 +2029,10 @@ pub const Config = struct {
     characters: std.ArrayList(CharacterConfig),
     systemColors: std.ArrayList(SystemColor),
 
-    // Runtime-only, not persisted to the config file.
-    generatedColorCache: std.StringHashMap(u32),
-    generatedCharacterColorCache: std.StringHashMap(u32),
+    // Persisted to AUTO_COLORS_FILE rather than the profile so saving the profile mid live-preview can't leak unsaved edits.
+    autoSystemColors: color.AutoColors = .{},
+    autoCharacterColors: color.AutoColors = .{},
+    autoColorsLoaded: bool = false,
 
     hotkeyGroups: std.ArrayList(HotkeyGroup),
     requireEveFocus: bool = false,
@@ -2021,7 +2051,7 @@ pub const Config = struct {
     hotkeyPreviousNotified: ?u32 = null,
     hotkeyMoveToSavedPositions: ?u32 = null,
 
-    // profile_name/allocator/generatedColorCache/generatedCharacterColorCache are deliberately absent — either derived from the profile filename or pure runtime state, never persisted.
+    // profile_name/allocator/autoSystemColors/autoCharacterColors are deliberately absent — either derived from the profile filename or pure runtime state, never persisted.
     pub const Wire = struct {
         app: []const u8 = PROFILE_FORMAT_IDENTIFIER,
         formatVersion: u32 = PROFILE_FORMAT_VERSION,
@@ -3999,8 +4029,6 @@ pub const Config = struct {
             .windowFilters = default_filters,
             .characters = std.ArrayList(CharacterConfig).empty,
             .systemColors = std.ArrayList(SystemColor).empty,
-            .generatedColorCache = std.StringHashMap(u32).init(allocator),
-            .generatedCharacterColorCache = std.StringHashMap(u32).init(allocator),
             .hotkeyGroups = std.ArrayList(HotkeyGroup).empty,
             .hotkeyMinimizeAll = null,
             .hotkeyCloseAll = null,
@@ -4135,62 +4163,81 @@ pub const Config = struct {
         return character_name;
     }
 
-    /// Snapshot of every color already generated in `cache`, so a new color can be checked against the full active set instead of a small recency window; caller owns the returned slice and must free it with `allocator`.
-    fn collectCachedColors(allocator: std.mem.Allocator, cache: *const std.StringHashMap(u32)) ![]const u32 {
-        const colors = try allocator.alloc(u32, cache.count());
-        var it = cache.valueIterator();
-        var i: usize = 0;
-        while (it.next()) |value| : (i += 1) {
-            colors[i] = value.*;
-        }
-        return colors;
-    }
-
     /// Priority: custom color override, then unique generated color, then default.
     pub fn getSystemNameColor(self: *Config, system_name: []const u8) u32 {
         if (self.findSystemColor(system_name)) |custom_color| {
             return custom_color;
         }
 
-        if (self.thumbnail.useUniqueSystemColors) {
-            const allocator = self.generatedColorCache.allocator;
+        if (!self.thumbnail.useUniqueSystemColors) return self.thumbnail.systemNameColor;
 
-            if (self.generatedColorCache.get(system_name)) |cached_color| {
-                return cached_color;
-            }
+        self.loadAutoColors();
 
-            const similarity_threshold: f32 = 0.35;
-            const existing_colors = collectCachedColors(allocator, &self.generatedColorCache) catch |err| blk: {
-                slog.warn("Failed to snapshot existing system colors: {}", .{err});
-                break :blk &[_]u32{};
-            };
-            defer allocator.free(existing_colors);
+        var overrides: [color.AutoColors.max_avoided]u32 = undefined;
+        const override_count = @min(self.systemColors.items.len, overrides.len);
+        for (self.systemColors.items[0..override_count], 0..) |sc, i| overrides[i] = sc.color;
 
-            const generated_color = color.generateUniqueColorWithAvoidance(
-                system_name,
-                existing_colors,
-                similarity_threshold,
-            );
+        return self.autoSystemColors.colorFor(self.allocator, system_name, overrides[0..override_count]);
+    }
 
-            const gop = self.generatedColorCache.getOrPut(system_name) catch |err| {
-                slog.err("Failed to cache color for system '{s}': {}", .{ system_name, err });
-                return generated_color;
-            };
+    /// Writes pending auto colors; deferred to when the last thumbnail closes (and to deinit) so a session with EVE open never touches the disk for it.
+    pub fn flushAutoColors(self: *Config) void {
+        if (!self.autoSystemColors.dirty and !self.autoCharacterColors.dirty) return;
+        self.autoSystemColors.dirty = false;
+        self.autoCharacterColors.dirty = false;
+        self.saveAutoColors();
+    }
 
-            if (!gop.found_existing) {
-                const name_copy = allocator.dupe(u8, system_name) catch |err| {
-                    slog.err("Failed to allocate key for system '{s}': {}", .{ system_name, err });
-                    _ = self.generatedColorCache.remove(system_name);
-                    return generated_color;
-                };
-                gop.key_ptr.* = name_copy;
-                gop.value_ptr.* = generated_color;
-            }
+    fn loadAutoColors(self: *Config) void {
+        if (self.autoColorsLoaded) return;
+        self.autoColorsLoaded = true;
 
-            return gop.value_ptr.*;
-        }
+        const content = std.Io.Dir.cwd().readFileAlloc(g_io, AUTO_COLORS_FILE, self.allocator, .limited(MAX_CONFIG_FILE_SIZE)) catch |err| {
+            if (err != error.FileNotFound) slog.warn("Failed to read '{s}': {}", .{ AUTO_COLORS_FILE, err });
+            return;
+        };
+        defer self.allocator.free(content);
 
-        return self.thumbnail.systemNameColor;
+        const parsed_value = std.json.parseFromSlice(std.json.Value, self.allocator, content, .{}) catch |err| {
+            slog.warn("Failed to parse '{s}': {}", .{ AUTO_COLORS_FILE, err });
+            return;
+        };
+        defer parsed_value.deinit();
+
+        const parsed = std.json.parseFromValue(AutoColorsFile, self.allocator, parsed_value.value, .{ .ignore_unknown_fields = true }) catch |err| {
+            slog.warn("Failed to read auto colors from '{s}': {}", .{ AUTO_COLORS_FILE, err });
+            return;
+        };
+        defer parsed.deinit();
+
+        loadAutoEntries(self.allocator, &self.autoSystemColors, parsed.value.systemColors);
+        loadAutoEntries(self.allocator, &self.autoCharacterColors, parsed.value.characterColors);
+    }
+
+    fn saveAutoColors(self: *const Config) void {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+
+        const file = AutoColorsFile{
+            .systemColors = autoEntriesToWire(arena.allocator(), &self.autoSystemColors) catch |err| {
+                slog.warn("Failed to save system colors: {}", .{err});
+                return;
+            },
+            .characterColors = autoEntriesToWire(arena.allocator(), &self.autoCharacterColors) catch |err| {
+                slog.warn("Failed to save character colors: {}", .{err});
+                return;
+            },
+        };
+
+        const json = std.json.Stringify.valueAlloc(self.allocator, file, .{ .whitespace = .indent_2 }) catch |err| {
+            slog.warn("Failed to serialize auto colors: {}", .{err});
+            return;
+        };
+        defer self.allocator.free(json);
+
+        atomicWriteFile(self.allocator, g_io, AUTO_COLORS_FILE, json) catch |err| {
+            slog.warn("Failed to save '{s}': {}", .{ AUTO_COLORS_FILE, err });
+        };
     }
 
     /// Priority: manual per-character override, then auto-generated unique color (if enabled), else null; unlike getSystemNameColor, there's no dedicated default-color field here, so callers fall back to their own existing default when this returns null.
@@ -4201,41 +4248,18 @@ pub const Config = struct {
 
         if (!self.thumbnail.useUniqueCharacterNameColors) return null;
 
-        const allocator = self.generatedCharacterColorCache.allocator;
+        self.loadAutoColors();
 
-        if (self.generatedCharacterColorCache.get(character_name)) |cached_color| {
-            return cached_color;
+        var overrides: [color.AutoColors.max_avoided]u32 = undefined;
+        var override_count: usize = 0;
+        for (self.characters.items) |char| {
+            if (override_count == overrides.len) break;
+            const custom_color = char.nameColor orelse continue;
+            overrides[override_count] = custom_color;
+            override_count += 1;
         }
 
-        const similarity_threshold: f32 = 0.35;
-        const existing_colors = collectCachedColors(allocator, &self.generatedCharacterColorCache) catch |err| blk: {
-            slog.warn("Failed to snapshot existing character colors: {}", .{err});
-            break :blk &[_]u32{};
-        };
-        defer allocator.free(existing_colors);
-
-        const generated_color = color.generateUniqueColorWithAvoidance(
-            character_name,
-            existing_colors,
-            similarity_threshold,
-        );
-
-        const gop = self.generatedCharacterColorCache.getOrPut(character_name) catch |err| {
-            slog.err("Failed to cache color for character '{s}': {}", .{ character_name, err });
-            return generated_color;
-        };
-
-        if (!gop.found_existing) {
-            const name_copy = allocator.dupe(u8, character_name) catch |err| {
-                slog.err("Failed to allocate key for character '{s}': {}", .{ character_name, err });
-                _ = self.generatedCharacterColorCache.remove(character_name);
-                return generated_color;
-            };
-            gop.key_ptr.* = name_copy;
-            gop.value_ptr.* = generated_color;
-        }
-
-        return gop.value_ptr.*;
+        return self.autoCharacterColors.colorFor(self.allocator, character_name, overrides[0..override_count]);
     }
 
     pub fn validate(self: *Config) void {
@@ -4349,6 +4373,8 @@ pub const Config = struct {
     }
 
     pub fn deinit(self: *Config) void {
+        self.flushAutoColors();
+
         const allocator = self.allocator;
         allocator.free(self.profile_name);
 
@@ -4379,17 +4405,8 @@ pub const Config = struct {
         }
         self.systemColors.deinit(allocator);
 
-        var cache_it = self.generatedColorCache.iterator();
-        while (cache_it.next()) |entry| {
-            allocator.free(entry.key_ptr.*);
-        }
-        self.generatedColorCache.deinit();
-
-        var char_cache_it = self.generatedCharacterColorCache.iterator();
-        while (char_cache_it.next()) |entry| {
-            allocator.free(entry.key_ptr.*);
-        }
-        self.generatedCharacterColorCache.deinit();
+        self.autoSystemColors.deinit(allocator);
+        self.autoCharacterColors.deinit(allocator);
 
         for (self.hotkeyGroups.items) |*group| {
             group.deinit();

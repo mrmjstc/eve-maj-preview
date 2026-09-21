@@ -807,6 +807,7 @@ pub const Painter = struct {
 
         if (removed_any) {
             self.rebuildHwndIndex(false);
+            if (self.thumbnails.items.len == 0) self.config.flushAutoColors();
         }
 
         // A logout must reflow the survivors to refill the region.
@@ -4486,6 +4487,7 @@ fn windowDestroyProc(
     _ = painter.thumbnails.orderedRemove(index);
 
     painter.rebuildHwndIndex(false);
+    if (painter.thumbnails.items.len == 0) painter.config.flushAutoColors();
 }
 
 /// Toggles WS_EX_TRANSPARENT on an already-created window, so clickThrough can change live without recreating it.
