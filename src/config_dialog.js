@@ -7193,9 +7193,11 @@ function populateNotificationTypes() {
                         <input type="range" id="notif_${notifType.key}_soundVolume" min="0" max="100"
                                value="${config.sound_volume ?? 100}" data-value-target="notif_${notifType.key}_soundVolumeValue">
                         <span id="notif_${notifType.key}_soundVolumeValue">${config.sound_volume ?? 100}</span>
-                        <button type="button" class="btn-nowrap" id="notif_${notifType.key}_soundTestBtn" onclick="testSound('${notifType.key}')">${t('tab.notifications.detail.sound.test')}</button>
                     </div>
                 </div>
+            </div>
+            <div class="button-row">
+                <button type="button" id="notif_${notifType.key}_testBtn" onclick="testNotification('${notifType.key}')">${t('tab.notifications.detail.test.button')}</button>
             </div>
         </div>
     `;
@@ -7235,11 +7237,12 @@ function toggleNotificationTypeEnabled(typeKey) {
     const soundPathInput = document.getElementById(`notif_${typeKey}_soundPath`);
     const soundBrowseBtn = document.getElementById(`notif_${typeKey}_soundBrowseBtn`);
     const soundClearBtn = document.getElementById(`notif_${typeKey}_soundClearBtn`);
-    const soundTestBtn = document.getElementById(`notif_${typeKey}_soundTestBtn`);
     const soundVolumeInput = document.getElementById(`notif_${typeKey}_soundVolume`);
+    const testBtn = document.getElementById(`notif_${typeKey}_testBtn`);
 
     const isEnabled = enabledCheckbox && enabledCheckbox.checked;
 
+    if (testBtn) testBtn.disabled = !isEnabled;
     if (durationInput) durationInput.disabled = !isEnabled;
     if (suppressFocusedCheckbox) suppressFocusedCheckbox.disabled = !isEnabled;
     if (suppressClickedCheckbox) suppressClickedCheckbox.disabled = !isEnabled;
@@ -7249,13 +7252,12 @@ function toggleNotificationTypeEnabled(typeKey) {
     if (showBorderCheckbox) showBorderCheckbox.disabled = !isEnabled;
     // Sound alert is self-contained as well.
     if (soundEnabledCheckbox) soundEnabledCheckbox.disabled = !isEnabled;
-    // The checkbox only gates whether the alert fires for real - picking/clearing/testing a file and setting its
+    // The checkbox only gates whether the alert fires for real - picking/clearing a file and setting its
     // volume are always allowed while the type is enabled, regardless of the checkbox (browseSoundFile() checks
     // it automatically once a file is set).
     if (soundPathInput) soundPathInput.disabled = !isEnabled;
     if (soundBrowseBtn) soundBrowseBtn.disabled = !isEnabled;
     if (soundClearBtn) soundClearBtn.disabled = !isEnabled;
-    if (soundTestBtn) soundTestBtn.disabled = !isEnabled;
     if (soundVolumeInput) soundVolumeInput.disabled = !isEnabled;
     // Text color isn't tied to the border - it renders whenever the notification is enabled, regardless of border visibility.
     if (textColorEnabledCheckbox) textColorEnabledCheckbox.disabled = !isEnabled;
@@ -7297,28 +7299,6 @@ function syncNotifSwatchClearedState(checkboxId, inputId) {
         input.dataset.cleared = 'true';
         input.title = t('tab.notifications.detail.notSetInheritingDefaultColor');
     }
-}
-
-function resetNotificationColors(kind, defaultColorHtml) {
-    NOTIFICATION_TYPES.forEach((notifType) => {
-        const cb = document.getElementById(`notif_${notifType.key}_${kind}ColorEnabled`);
-        const input = document.getElementById(`notif_${notifType.key}_${kind}Color`);
-        if (cb) cb.checked = false;
-        if (input) {
-            input.value = defaultColorHtml();
-            input.dataset.cleared = 'true';
-            input.title = t('tab.notifications.detail.notSetInheritingDefaultColor');
-        }
-    });
-    markAsChanged();
-}
-
-function resetNotificationBorderColors() {
-    resetNotificationColors('border', notifDefaultBorderColorHtml);
-}
-
-function resetNotificationTextColors() {
-    resetNotificationColors('text', notifDefaultTextColorHtml);
 }
 
 // Returns the checkbox's checked state (or undefined if either element is missing) so callers that need to chain extra logic still can.
@@ -8307,21 +8287,50 @@ function clearSoundFile(typeKey) {
     }
 }
 
-async function testSound(typeKey) {
-    const input = document.getElementById(`notif_${typeKey}_soundPath`);
-    const path = input ? input.dataset.fullPath : '';
-    if (!path) return;
-    const volumeInput = document.getElementById(`notif_${typeKey}_soundVolume`);
-    const volume = volumeInput ? volumeInput.value : '100';
-    try {
-        if (typeof webui === 'undefined') {
-            logWarn('WebUI not available for testing sound');
-            return;
-        }
-        await webui.call('testSoundFile', path, volume);
-    } catch (error) {
-        logError('Failed to test sound:', error);
-    }
+// Null if the type's panel isn't rendered.
+function readNotificationTypeConfig(typeKey) {
+    const enabled = document.getElementById(`notif_${typeKey}_enabled`);
+    if (!enabled) return null;
+
+    const duration = document.getElementById(`notif_${typeKey}_duration`);
+    const suppressFocused = document.getElementById(`notif_${typeKey}_suppressFocused`);
+    const suppressClicked = document.getElementById(`notif_${typeKey}_suppressClicked`);
+    const throttle = document.getElementById(`notif_${typeKey}_throttle`);
+    const ttsTypeEnabled = document.getElementById(`notif_${typeKey}_tts`);
+    const soundTypeEnabled = document.getElementById(`notif_${typeKey}_soundEnabled`);
+    const soundPath = document.getElementById(`notif_${typeKey}_soundPath`);
+    const soundVolume = document.getElementById(`notif_${typeKey}_soundVolume`);
+    const showBorder = document.getElementById(`notif_${typeKey}_showBorder`);
+    const flashBorder = document.getElementById(`notif_${typeKey}_flashBorder`);
+    const borderColorEnabled = document.getElementById(`notif_${typeKey}_borderColorEnabled`);
+    const borderColorInput = document.getElementById(`notif_${typeKey}_borderColor`);
+    const textColorEnabled = document.getElementById(`notif_${typeKey}_textColorEnabled`);
+    const textColorInput = document.getElementById(`notif_${typeKey}_textColor`);
+
+    const durationValue = duration && duration.value ? parseFloat(duration.value) * 1000 : 5000;
+    const throttleValue = throttle && throttle.value ? parseFloat(throttle.value) * 1000 : 0;
+
+    return {
+        enabled: enabled.checked,
+        duration_ms: Math.round(durationValue),
+        suppress_when_focused: suppressFocused ? suppressFocused.checked : false,
+        suppress_when_clicked: suppressClicked ? suppressClicked.checked : false,
+        throttle_ms: Math.round(throttleValue),
+        tts_enabled: ttsTypeEnabled ? ttsTypeEnabled.checked : false,
+        sound_enabled: soundTypeEnabled ? soundTypeEnabled.checked : false,
+        sound_path: soundPath && soundPath.dataset.fullPath ? soundPath.dataset.fullPath : null,
+        sound_volume: soundVolume ? parseInt(soundVolume.value, 10) : 100,
+        show_border: showBorder ? showBorder.checked : false,
+        flash_border: flashBorder ? flashBorder.checked : false,
+        // null = use Alert state color; the override checkbox opts in.
+        border_color: (borderColorEnabled && borderColorEnabled.checked && borderColorInput && borderColorInput.value)
+            ? htmlColorToZig(borderColorInput.value)
+            : null,
+        // null = use default text color.
+        text_color: (textColorEnabled && textColorEnabled.checked && textColorInput && textColorInput.value)
+            ? htmlColorToZig(textColorInput.value)
+            : null,
+    };
 }
 
 function saveNotificationTypes() {
@@ -8330,66 +8339,34 @@ function saveNotificationTypes() {
     if (!currentConfig.thumbnail.notifications.type_configs) {
         currentConfig.thumbnail.notifications.type_configs = {};
     }
-    
+
     const typeConfigs = currentConfig.thumbnail.notifications.type_configs;
 
     NOTIFICATION_TYPES.forEach((notifType) => {
-        const enabled = document.getElementById(`notif_${notifType.key}_enabled`);
-        const duration = document.getElementById(`notif_${notifType.key}_duration`);
-        const suppressFocused = document.getElementById(`notif_${notifType.key}_suppressFocused`);
-        const suppressClicked = document.getElementById(`notif_${notifType.key}_suppressClicked`);
-        const throttle = document.getElementById(`notif_${notifType.key}_throttle`);
-        const ttsTypeEnabled = document.getElementById(`notif_${notifType.key}_tts`);
-        const soundTypeEnabled = document.getElementById(`notif_${notifType.key}_soundEnabled`);
-        const soundPath = document.getElementById(`notif_${notifType.key}_soundPath`);
-        const soundVolume = document.getElementById(`notif_${notifType.key}_soundVolume`);
-
-        if (!enabled) return;
-
-        if (!typeConfigs[notifType.key]) {
-            typeConfigs[notifType.key] = {};
-        }
-
-        const config = typeConfigs[notifType.key];
-
-        config.enabled = enabled.checked;
-
-        // Use explicit duration value (in seconds) or default to 5s, convert to ms for backend
-        const durationValue = duration && duration.value ? parseFloat(duration.value) * 1000 : 5000;
-        config.duration_ms = Math.round(durationValue);
-
-        config.suppress_when_focused = suppressFocused ? suppressFocused.checked : false;
-        config.suppress_when_clicked = suppressClicked ? suppressClicked.checked : false;
-
-        const throttleValue = throttle && throttle.value ? parseFloat(throttle.value) * 1000 : 0;
-        config.throttle_ms = Math.round(throttleValue);
-
-        config.tts_enabled = ttsTypeEnabled ? ttsTypeEnabled.checked : false;
-
-        config.sound_enabled = soundTypeEnabled ? soundTypeEnabled.checked : false;
-        config.sound_path = soundPath && soundPath.dataset.fullPath ? soundPath.dataset.fullPath : null;
-        config.sound_volume = soundVolume ? parseInt(soundVolume.value, 10) : 100;
-
-        const showBorder = document.getElementById(`notif_${notifType.key}_showBorder`);
-        config.show_border = showBorder ? showBorder.checked : false;
-
-        const flashBorder = document.getElementById(`notif_${notifType.key}_flashBorder`);
-        config.flash_border = flashBorder ? flashBorder.checked : false;
-
-        // null = use Alert state color; the override checkbox opts in.
-        const borderColorEnabled = document.getElementById(`notif_${notifType.key}_borderColorEnabled`);
-        const borderColorInput = document.getElementById(`notif_${notifType.key}_borderColor`);
-        config.border_color = (borderColorEnabled && borderColorEnabled.checked && borderColorInput && borderColorInput.value)
-            ? htmlColorToZig(borderColorInput.value)
-            : null;
-
-        // Save per-type notification text color override (null = use default text color).
-        const textColorEnabled = document.getElementById(`notif_${notifType.key}_textColorEnabled`);
-        const textColorInput = document.getElementById(`notif_${notifType.key}_textColor`);
-        config.text_color = (textColorEnabled && textColorEnabled.checked && textColorInput && textColorInput.value)
-            ? htmlColorToZig(textColorInput.value)
-            : null;
+        const fromForm = readNotificationTypeConfig(notifType.key);
+        if (!fromForm) return;
+        typeConfigs[notifType.key] = Object.assign(typeConfigs[notifType.key] || {}, fromForm);
     });
+}
+
+async function testNotification(typeKey) {
+    if (typeof webui === 'undefined' || !webuiReady) {
+        logWarn('WebUI not available for testing notification');
+        return;
+    }
+    const config = readNotificationTypeConfig(typeKey);
+    if (!config) return;
+    try {
+        await sendThumbnailPreview();
+        const { success } = JSON.parse(await webui.call('testNotification', JSON.stringify({
+            type: typeKey,
+            text: t('notification.' + typeKey + '.label'),
+            config,
+        })));
+        if (!success) showStatus(t('status.testNotificationMainAppNotRunning'), 'error');
+    } catch (error) {
+        logError('Failed to test notification:', error);
+    }
 }
 
 let searchState = {

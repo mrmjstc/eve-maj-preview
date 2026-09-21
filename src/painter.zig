@@ -72,6 +72,8 @@ pub const NotificationHistoryEntry = struct {
 /// Cap on simultaneously stacked notifications per thumbnail; kept small since the overlay is drawn onto a small thumbnail bitmap.
 const MAX_STACKED_NOTIFICATIONS: usize = 3;
 
+const TEST_NOTIFICATION_PERMANENT_FALLBACK_MS: u32 = 5000;
+
 /// One resolved (text, color) line of the stacked notification block; built by createRenderSettings, drawn by renderThumbnailOverlay.
 const NotificationLine = struct {
     text: []const u8 = "",
@@ -230,6 +232,8 @@ pub const ThumbnailWindow = struct {
     cached_overlay: ?gdi_overlay.OverlayBitmap = null,
 
     visibility_state: state_mod.VisibilityState = .Visible,
+    /// Set while a Test Notification has force-shown a hidden thumbnail; restored once its notifications clear.
+    test_restore_visibility: ?state_mod.VisibilityState = null,
     /// When checkAutoMinimize's delay should count from; refreshed every tick this thumbnail is Active or Minimized, left untouched otherwise so its frozen value is the moment it last became eligible.
     inactive_since: win32.Ticks = .{},
     /// Edge-detector so a minimize/restore with no accompanying focus change still marks this dirty for repaint.
@@ -1220,28 +1224,11 @@ pub const Painter = struct {
             self.trackNotifiedCharacter(thumbnail.character_name);
             self.pushNotificationHistory(source_hwnd, thumbnail.character_name, notification_text, notification_type);
 
-            // Speaks the same phrase the visual notification shows; self-contained, no global master switch.
-            if (type_config.tts_enabled) {
-                tts.setVoiceSettings(self.config.thumbnail.notifications.tts_volume, self.config.thumbnail.notifications.tts_rate);
-                if (self.config.thumbnail.notifications.tts_speak_character_name and thumbnail.character_name.len > 0) {
-                    const spoken_name = if (self.config.thumbnail.notifications.tts_use_display_name)
-                        thumbnail.cached_display_name
-                    else
-                        thumbnail.character_name;
-                    var speak_buf: [256]u8 = undefined;
-                    const spoken = std.fmt.bufPrint(&speak_buf, "{s}, {s}", .{ spoken_name, notification_text }) catch notification_text;
-                    tts.speakAlert(spoken);
-                } else {
-                    tts.speakAlert(notification_text);
-                }
-            }
-
-            // Self-contained too, like TTS above - there is no global sound master switch or shared volume.
-            if (type_config.sound_enabled) {
-                if (type_config.sound_path) |path| {
-                    sound.playAlert(path, type_config.sound_volume);
-                }
-            }
+            const spoken_name: ?[]const u8 = if (self.config.thumbnail.notifications.tts_speak_character_name and thumbnail.character_name.len > 0)
+                (if (self.config.thumbnail.notifications.tts_use_display_name) thumbnail.cached_display_name else thumbnail.character_name)
+            else
+                null;
+            self.playAlertEffects(type_config, notification_text, spoken_name);
 
             slog.debug("Queued notification for {s}: [{s}] {s} (border_color_override: {?})", .{ thumbnail.character_name, @tagName(notification_type), notification_text, type_config.border_color });
             return;
@@ -1249,6 +1236,81 @@ pub const Painter = struct {
 
         // Window not found - this can happen if thumbnail hasn't been created yet
         slog.debug("Window 0x{x} not found for notification update (thumbnail may not exist yet)", .{@intFromPtr(source_hwnd)});
+    }
+
+    /// Speaks the same phrase the visual notification shows and plays its sound; both are self-contained, with no global master switch or shared volume.
+    fn playAlertEffects(self: *Painter, type_config: config_mod.NotificationTypeConfig, text: []const u8, spoken_name: ?[]const u8) void {
+        if (type_config.tts_enabled) {
+            tts.setVoiceSettings(self.config.thumbnail.notifications.tts_volume, self.config.thumbnail.notifications.tts_rate);
+            if (spoken_name) |name| {
+                var speak_buf: [256]u8 = undefined;
+                const spoken = std.fmt.bufPrint(&speak_buf, "{s}, {s}", .{ name, text }) catch text;
+                tts.speakAlert(spoken);
+            } else {
+                tts.speakAlert(text);
+            }
+        }
+
+        if (type_config.sound_enabled) {
+            if (type_config.sound_path) |path| {
+                sound.playAlert(path, type_config.sound_volume);
+            }
+        }
+    }
+
+    /// Config dialog's "Test Notification": bypasses every suppression, force-shows hidden thumbnails for its duration, and skips history/cycle tracking; alerts play once rather than per thumbnail.
+    pub fn showTestNotification(
+        self: *Painter,
+        notification_type: types.NotificationType,
+        notification_text: []const u8,
+        type_config: config_mod.NotificationTypeConfig,
+    ) !void {
+        const now = win32.Ticks.now();
+        // A permanent (0) duration would never clear a test.
+        const duration_ms = if (type_config.duration_ms == 0) TEST_NOTIFICATION_PERMANENT_FALLBACK_MS else type_config.duration_ms;
+
+        for (self.thumbnails.items) |*thumbnail| {
+            self.pushNotification(thumbnail, .{
+                .text = try self.allocator.dupe(u8, notification_text),
+                .notification_type = notification_type,
+                .start_time = now,
+                .duration_ms = duration_ms,
+                .suppress_when_focused = type_config.suppress_when_focused,
+                .suppress_when_clicked = type_config.suppress_when_clicked,
+                .border_color_override = type_config.border_color,
+                .text_color_override = type_config.text_color,
+                .show_border = type_config.show_border,
+                .flash_border = type_config.flash_border,
+            });
+
+            // The alert blocks re-hiding, so the thumbnail stays up until updateNotifications() restores it.
+            if (!thumbnail.isVisible()) {
+                if (thumbnail.test_restore_visibility == null) thumbnail.test_restore_visibility = thumbnail.visibility_state;
+                thumbnail.setVisibility(.Visible);
+                self.renderThumbnailLogged(thumbnail, "test notification show");
+            }
+        }
+
+        self.playAlertEffects(type_config, notification_text, null);
+    }
+
+    /// Puts a thumbnail that a Test Notification force-showed back to its prior visibility.
+    fn restoreVisibilityAfterTest(self: *Painter, thumbnail: *ThumbnailWindow) void {
+        const prior = thumbnail.test_restore_visibility orelse return;
+        thumbnail.test_restore_visibility = null;
+
+        // Focus or the setting may have changed during the test, in which case auto-hiding no longer applies.
+        const restored: state_mod.VisibilityState = switch (prior) {
+            .HiddenAutomatic => if (self.config.thumbnail.hideWhenNoEveFocus and !self.isEveWindowForeground()) .HiddenAutomatic else .Visible,
+            else => prior,
+        };
+        thumbnail.setVisibility(restored);
+        self.renderThumbnailLogged(thumbnail, "test notification restore");
+    }
+
+    fn isEveWindowForeground(self: *const Painter) bool {
+        const foreground_hwnd = win32.GetForegroundWindow() orelse return false;
+        return self.hwnd_to_thumbnail_index.contains(foreground_hwnd);
     }
 
     /// Flags characters behind the group's current system by more than config.travel.window_seconds.
@@ -1724,6 +1786,10 @@ pub const Painter = struct {
             const any_expired = self.compactNotifications(thumbnail, Ctx{ .now = now });
             if (any_expired) {
                 thumbnail.needs_render = true;
+            }
+
+            if (thumbnail.test_restore_visibility != null and thumbnail.active_notifications[0] == null) {
+                self.restoreVisibilityAfterTest(thumbnail);
             }
 
             // Force a render each tick so the newest entry's alternating on/off flash phases actually paint.

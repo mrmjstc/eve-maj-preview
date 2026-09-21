@@ -1690,6 +1690,59 @@ pub const NotificationTypeConfig = struct {
     pub fn deinit(self: *NotificationTypeConfig, allocator: std.mem.Allocator) void {
         if (self.sound_path) |p| allocator.free(p);
     }
+
+    /// Merges only the fields present in `obj`; `sound_path` is duped with `allocator`, so a default-initialised config must be deinit'd.
+    pub fn applyJson(self: *NotificationTypeConfig, allocator: std.mem.Allocator, obj: std.json.ObjectMap) !void {
+        if (obj.get("enabled")) |v| {
+            if (v == .bool) self.enabled = v.bool;
+        }
+        if (obj.get("duration_ms")) |v| {
+            if (v == .integer) self.duration_ms = std.math.cast(u32, v.integer) orelse self.duration_ms;
+        }
+        if (obj.get("suppress_when_focused")) |v| {
+            if (v == .bool) self.suppress_when_focused = v.bool;
+        }
+        if (obj.get("suppress_when_clicked")) |v| {
+            if (v == .bool) self.suppress_when_clicked = v.bool;
+        }
+        if (obj.get("throttle_ms")) |v| {
+            if (v == .integer) self.throttle_ms = std.math.cast(u32, v.integer) orelse self.throttle_ms;
+        }
+        if (obj.get("tts_enabled")) |v| {
+            if (v == .bool) self.tts_enabled = v.bool;
+        }
+        if (obj.get("sound_enabled")) |v| {
+            if (v == .bool) self.sound_enabled = v.bool;
+        }
+        if (obj.get("sound_volume")) |v| {
+            if (v == .integer) {
+                if (std.math.cast(u8, v.integer)) |val| self.sound_volume = val;
+            }
+        }
+        if (obj.get("sound_path")) |v| {
+            try Config.updateOwnedOptionalString(allocator, &self.sound_path, v);
+        }
+        if (obj.get("show_border")) |v| {
+            if (v == .bool) self.show_border = v.bool;
+        }
+        if (obj.get("flash_border")) |v| {
+            if (v == .bool) self.flash_border = v.bool;
+        }
+        if (obj.get("border_color")) |v| {
+            if (v == .string) {
+                self.border_color = try Config.parseHexColor(v.string);
+            } else if (v == .null) {
+                self.border_color = null;
+            }
+        }
+        if (obj.get("text_color")) |v| {
+            if (v == .string) {
+                self.text_color = try Config.parseHexColor(v.string);
+            } else if (v == .null) {
+                self.text_color = null;
+            }
+        }
+    }
 };
 
 pub const TypeConfigMapWire = struct {
@@ -3223,57 +3276,7 @@ pub const Config = struct {
                         if (type_val == .object) {
                             const ntype = @field(types.NotificationType, field.name);
                             var type_config = notif.type_configs.get(ntype);
-
-                            if (type_val.object.get("enabled")) |v| {
-                                if (v == .bool) type_config.enabled = v.bool;
-                            }
-                            if (type_val.object.get("duration_ms")) |v| {
-                                if (v == .integer) type_config.duration_ms = std.math.cast(u32, v.integer) orelse type_config.duration_ms;
-                            }
-                            if (type_val.object.get("suppress_when_focused")) |v| {
-                                if (v == .bool) type_config.suppress_when_focused = v.bool;
-                            }
-                            if (type_val.object.get("suppress_when_clicked")) |v| {
-                                if (v == .bool) type_config.suppress_when_clicked = v.bool;
-                            }
-                            if (type_val.object.get("throttle_ms")) |v| {
-                                if (v == .integer) type_config.throttle_ms = std.math.cast(u32, v.integer) orelse type_config.throttle_ms;
-                            }
-                            if (type_val.object.get("tts_enabled")) |v| {
-                                if (v == .bool) type_config.tts_enabled = v.bool;
-                            }
-                            if (type_val.object.get("sound_enabled")) |v| {
-                                if (v == .bool) type_config.sound_enabled = v.bool;
-                            }
-                            if (type_val.object.get("sound_volume")) |v| {
-                                if (v == .integer) {
-                                    if (std.math.cast(u8, v.integer)) |val| type_config.sound_volume = val;
-                                }
-                            }
-                            if (type_val.object.get("sound_path")) |v| {
-                                try updateOwnedOptionalString(allocator, &type_config.sound_path, v);
-                            }
-                            if (type_val.object.get("show_border")) |v| {
-                                if (v == .bool) type_config.show_border = v.bool;
-                            }
-                            if (type_val.object.get("flash_border")) |v| {
-                                if (v == .bool) type_config.flash_border = v.bool;
-                            }
-                            if (type_val.object.get("border_color")) |v| {
-                                if (v == .string) {
-                                    type_config.border_color = try parseHexColor(v.string);
-                                } else if (v == .null) {
-                                    type_config.border_color = null;
-                                }
-                            }
-                            if (type_val.object.get("text_color")) |v| {
-                                if (v == .string) {
-                                    type_config.text_color = try parseHexColor(v.string);
-                                } else if (v == .null) {
-                                    type_config.text_color = null;
-                                }
-                            }
-
+                            try type_config.applyJson(allocator, type_val.object);
                             notif.type_configs.set(ntype, type_config);
                         }
                     }

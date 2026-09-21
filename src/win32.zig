@@ -89,6 +89,7 @@ pub const PROTOCOL_REVERT_PREVIEW: usize = 4;
 pub const PROTOCOL_DIALOG_SUSPEND_HOTKEYS: usize = 5;
 pub const PROTOCOL_DIALOG_RESUME_HOTKEYS: usize = 6;
 pub const PROTOCOL_START_REGION_SELECT: usize = 7;
+pub const PROTOCOL_TEST_NOTIFICATION: usize = 8;
 
 pub const SPI_GETANIMATION = 0x0048;
 pub const SPI_SETANIMATION = 0x0049;

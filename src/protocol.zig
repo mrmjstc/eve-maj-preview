@@ -35,6 +35,7 @@ pub const Command = union(enum) {
     DialogSuspendHotkeys: void,
     DialogResumeHotkeys: void,
     StartRegionSelect: RegionSelectRequest,
+    TestNotification: []const u8,
 };
 
 /// Zero-padded fixed-size copy of `text` (UTF-8), truncated at a character boundary so a NUL always fits.
@@ -227,6 +228,15 @@ pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
             };
             _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
             slog.info("Sent start region select", .{});
+        },
+        .TestNotification => |json| {
+            const cds = win32.COPYDATASTRUCT{
+                .dwData = win32.PROTOCOL_TEST_NOTIFICATION,
+                .cbData = @intCast(json.len),
+                .lpData = json.ptr,
+            };
+            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
+            slog.debug("Sent test notification ({} bytes)", .{json.len});
         },
     }
 }

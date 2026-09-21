@@ -2793,6 +2793,31 @@ input[type="range"]::-moz-range-thumb {
     height: 640px;
 }
 
+/* Only the form scrolls, so the Test Notification button stays pinned to the bottom of the panel. */
+#notificationTypesList .detail-stack {
+    display: flex;
+    flex-direction: column;
+    overflow-y: hidden;
+}
+
+#notificationTypesList .detail-panel.active {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+#notificationTypesList .detail-form {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    align-content: start;
+}
+
+#notificationTypesList .detail-panel > .button-row {
+    flex: none;
+}
+
 /* Same reasoning as #notificationTypesList above - Window Filters is one of
    several General sections, not a full tab, and has a much shorter detail
    form (just Enabled, Window Classes, Executable Names, Detect). */

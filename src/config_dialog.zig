@@ -8,7 +8,6 @@ const scout = @import("scout.zig");
 const ultra_potato = @import("ultra_potato.zig");
 const esi_prices = @import("esi_prices.zig");
 const update = @import("update.zig");
-const sound = @import("sound.zig");
 const log = @import("log.zig");
 
 const slog = log.scoped("config_dialog");
@@ -221,7 +220,6 @@ fn mainImpl(init: std.process.Init) !void {
     _ = try win.bind("browseChatlogDir", browseChatlogDir);
     _ = try win.bind("browseGamelogDir", browseGamelogDir);
     _ = try win.bind("browseSoundFile", browseSoundFile);
-    _ = try win.bind("testSoundFile", testSoundFile);
     _ = try win.bind("setCharacterWindowPosition", setCharacterWindowPosition);
     _ = try win.bind("clearCharacterWindowPosition", clearCharacterWindowPosition);
     _ = try win.bind("setAllCharacterWindowPositions", setAllCharacterWindowPositions);
@@ -232,6 +230,7 @@ fn mainImpl(init: std.process.Init) !void {
     _ = try win.bind("saveGlobalSettings", saveGlobalSettings);
     _ = try win.bind("fetchOrePrices", esi_prices.fetchOrePrices);
     _ = try win.bind("previewThumbnailConfig", previewThumbnailConfig);
+    _ = try win.bind("testNotification", testNotification);
     _ = try win.bind("suspendHotkeysForRecording", suspendHotkeysForRecording);
     _ = try win.bind("resumeHotkeysAfterRecording", resumeHotkeysAfterRecording);
     _ = try win.bind("switchProfileLive", switchProfileLive);
@@ -657,6 +656,18 @@ fn previewThumbnailConfig(e: *webui.Event) void {
         protocol.sendCommandToInstance(hwnd, protocol.Command{ .PreviewThumbnail = json_data });
     }
 
+    e.returnString("{\"success\": true}");
+}
+
+/// Fires one event type on the running app's thumbnails using the dialog's unsaved per-type values (see testNotification() in config_dialog.js).
+fn testNotification(e: *webui.Event) void {
+    const hwnd = findMainAppWindow() orelse {
+        slog.warn("Test notification skipped: main app window not found", .{});
+        e.returnString("{\"success\": false}");
+        return;
+    };
+
+    protocol.sendCommandToInstance(hwnd, protocol.Command{ .TestNotification = e.getString() });
     e.returnString("{\"success\": true}");
 }
 
@@ -2144,17 +2155,6 @@ fn browseSoundFile(e: *webui.Event) void {
     } else {
         e.returnString("");
     }
-}
-
-// Plays directly rather than via sound.zig's worker queue - only one test can run at a time here.
-fn testSoundFile(e: *webui.Event) void {
-    const path = e.getStringAt(0);
-    const volume_str = e.getStringAt(1);
-    const volume = std.fmt.parseInt(u8, volume_str, 10) catch 100;
-
-    sound.playBlocking(g_allocator, path, volume) catch |err| {
-        slog.warn("Test sound playback failed for '{s}': {}", .{ path, err });
-    };
 }
 
 /// Bound to config_dialog.js's window.onerror/unhandledrejection handlers and its
