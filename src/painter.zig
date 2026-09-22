@@ -344,6 +344,7 @@ const PendingAutoMove = struct {
     target: config_mod.Position,
     last_move: win32.Ticks,
     checks_left: u8,
+    last_seen: ?win32.POINT = null,
 };
 
 /// One saved-position outline for the drag-time ghost overlay; `names` is the comma-joined list of every character sharing that exact rect.
@@ -1958,12 +1959,13 @@ pub const Painter = struct {
         };
     }
 
+    /// Polls without touching the window until its position stops changing between two consecutive polls (i.e. EVE is done repositioning it), then corrects it exactly once. Re-applying on every poll while EVE is still mid-move would re-grab focus each time, making clients visibly jump.
     fn verifyPendingAutoMoves(self: *Painter) void {
         const now = win32.Ticks.now();
         var i: usize = 0;
         while (i < self.pending_auto_moves.items.len) {
             const entry = &self.pending_auto_moves.items[i];
-            if (!win32.isWindow(entry.hwnd) or entry.checks_left == 0) {
+            if (!win32.isWindow(entry.hwnd)) {
                 _ = self.pending_auto_moves.swapRemove(i);
                 continue;
             }
@@ -1971,8 +1973,6 @@ pub const Painter = struct {
                 i += 1;
                 continue;
             }
-
-            entry.checks_left -= 1;
             entry.last_move = now;
 
             var rect: win32.RECT = undefined;
@@ -1981,10 +1981,22 @@ pub const Painter = struct {
                 _ = self.pending_auto_moves.swapRemove(i);
                 continue;
             }
-            if (rect.left != entry.target.x or rect.top != entry.target.y) {
+
+            if (rect.left == entry.target.x and rect.top == entry.target.y) {
+                _ = self.pending_auto_moves.swapRemove(i);
+                continue;
+            }
+
+            entry.checks_left -= 1;
+            const settled = entry.last_seen != null and entry.last_seen.?.x == rect.left and entry.last_seen.?.y == rect.top;
+            if (settled or entry.checks_left == 0) {
                 slog.info("Client drifted to ({}, {}) after auto-move, re-applying ({}, {})", .{ rect.left, rect.top, entry.target.x, entry.target.y });
                 manager_mod.moveClientToPosition(entry.hwnd, entry.target);
+                _ = self.pending_auto_moves.swapRemove(i);
+                continue;
             }
+
+            entry.last_seen = .{ .x = rect.left, .y = rect.top };
             i += 1;
         }
     }
