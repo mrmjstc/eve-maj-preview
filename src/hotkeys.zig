@@ -845,7 +845,8 @@ pub const HotkeyManager = struct {
             },
         }
 
-        if (win32.GetForegroundWindow() != foreground_before) {
+        // Win's release always needs swallowing, focus-change or not - an unmatched keyup still opens the Start Menu.
+        if (win32.GetForegroundWindow() != foreground_before or vk_code == win32.VK_LWIN or vk_code == win32.VK_RWIN) {
             keyboard_hook.markSwallowRelease(vk_code);
         }
     }
@@ -1169,6 +1170,7 @@ pub const HotkeyManager = struct {
         slog.debug("Config dialog is recording a hotkey - unregistering live hotkeys", .{});
         self.dialog_suspended = true;
         self.unregisterAll(hwnd);
+        keyboard_hook.armWinKeyCapture(self.allocator);
     }
 
     /// Re-registers from the same in-memory config unregisterAll left untouched, so this restores exactly what was live before.
@@ -1176,6 +1178,7 @@ pub const HotkeyManager = struct {
         if (!self.dialog_suspended) return;
         slog.debug("Config dialog finished recording - re-registering hotkeys", .{});
         self.dialog_suspended = false;
+        keyboard_hook.disarmWinKeyCapture();
         self.registerHotkeys(hwnd) catch |err| {
             slog.err("Failed to re-register hotkeys after dialog recording: {}", .{err});
         };

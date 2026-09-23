@@ -328,6 +328,67 @@ pub fn publishRegionSelectResult(status: RegionSelectStatus, rect: win32.RECT) v
     };
 }
 
+/// Cross-process report of a captured bare Win-key press, mirroring RegionSelectResult - see keyboard_hook.zig's armWinKeyCapture.
+pub const WinKeyCaptureResult = extern struct {
+    sequence: u32 = 0,
+    /// MOD_CONTROL/MOD_ALT/MOD_SHIFT bits from virtual_keys.zig, held at the moment of capture.
+    modifiers: u32 = 0,
+};
+
+const WIN_KEY_CAPTURE_MAPPING_NAME = "Local\\EVE-Maj-Preview-WinKeyCaptureResult";
+
+var g_win_key_capture_mapping: ?win32.HANDLE = null;
+
+fn ensureWinKeyCaptureMapping() ?win32.HANDLE {
+    if (g_win_key_capture_mapping) |h| return h;
+    const mapping = win32.CreateFileMappingA(
+        win32.INVALID_HANDLE_VALUE,
+        null,
+        win32.PAGE_READWRITE,
+        0,
+        @sizeOf(WinKeyCaptureResult),
+        WIN_KEY_CAPTURE_MAPPING_NAME,
+    ) orelse {
+        slog.warn("Failed to create Win-key-capture file mapping", .{});
+        return null;
+    };
+    g_win_key_capture_mapping = mapping;
+    return mapping;
+}
+
+/// Reads the current result; returns null if the mapping doesn't exist yet (main app hasn't published a capture this run).
+pub fn readWinKeyCaptureResult() ?WinKeyCaptureResult {
+    const mapping = win32.OpenFileMappingA(win32.FILE_MAP_ALL_ACCESS, win32.FALSE, WIN_KEY_CAPTURE_MAPPING_NAME) orelse return null;
+    defer _ = win32.CloseHandle(mapping);
+
+    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(WinKeyCaptureResult)) orelse {
+        slog.warn("Failed to map view of Win-key-capture file mapping", .{});
+        return null;
+    };
+    defer _ = win32.UnmapViewOfFile(view);
+
+    const result_ptr: *const WinKeyCaptureResult = @ptrCast(@alignCast(view));
+    return result_ptr.*;
+}
+
+/// Increments the sequence and writes a fresh result; called by the main app's keyboard hook when a bare Win-key press is captured during dialog recording.
+pub fn publishWinKeyCaptureResult(modifiers: u32) void {
+    const mapping = ensureWinKeyCaptureMapping() orelse {
+        slog.err("Failed to create Win-key-capture result mapping", .{});
+        return;
+    };
+
+    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(WinKeyCaptureResult)) orelse {
+        slog.err("Failed to map Win-key-capture result view", .{});
+        return;
+    };
+    defer _ = win32.UnmapViewOfFile(view);
+
+    const result_ptr: *WinKeyCaptureResult = @ptrCast(@alignCast(view));
+    const next_sequence = result_ptr.sequence +% 1;
+    result_ptr.* = .{ .sequence = next_sequence, .modifiers = modifiers };
+}
+
 /// Returns the protocol URL if --protocol was passed (caller must free), otherwise null.
 pub fn checkCommandLine(process_args: std.process.Args, allocator: std.mem.Allocator) !?[]const u8 {
     // toSlice's result references several internal allocations, so it requires an arena rather than a plain allocator.

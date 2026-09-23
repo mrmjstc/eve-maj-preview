@@ -4394,6 +4394,37 @@ let recordingField = null;
 // Once a combo is captured, ignore further capture events until stopRecording() runs, or releasing a modifier after the main key would overwrite it with just the modifier.
 let recordingComboCaptured = false;
 
+// A bare Win press can't reach our DOM listeners (Windows steals focus for the Start Menu first), so this polls the main app's report instead - see keyboard_hook.zig's armWinKeyCapture.
+const WIN_KEY_CAPTURE_POLL_MS = 100;
+let winKeyCapturePollTimer = null;
+
+function startWinKeyCapturePolling() {
+    stopWinKeyCapturePolling();
+    winKeyCapturePollTimer = setInterval(async () => {
+        if (!recordingField || recordingComboCaptured) return;
+        try {
+            const result = JSON.parse(await webui.call('pollWinKeyCapture'));
+            if (!result.done || !recordingField || recordingComboCaptured) return;
+
+            let combo = [];
+            if (result.ctrl) combo.push('Ctrl');
+            if (result.alt) combo.push('Alt');
+            if (result.shift) combo.push('Shift');
+            combo.push('LWin');
+            finalizeCapture(combo);
+        } catch (error) {
+            logWarn('Failed to poll Win-key capture result:', error);
+        }
+    }, WIN_KEY_CAPTURE_POLL_MS);
+}
+
+function stopWinKeyCapturePolling() {
+    if (winKeyCapturePollTimer) {
+        clearInterval(winKeyCapturePollTimer);
+        winKeyCapturePollTimer = null;
+    }
+}
+
 // Fire-and-forget: recordHotkey()/stopRecording() must stay synchronous, and a missed round-trip (main app not running) is harmless.
 async function suspendMainAppHotkeysForRecording() {
     if (typeof webui === 'undefined') return;
@@ -4463,6 +4494,7 @@ function recordHotkey(fieldId) {
     document.addEventListener('mouseup', captureMouseButton, true);
     document.addEventListener('wheel', captureWheel, { capture: true, passive: false });
     document.addEventListener('contextmenu', preventContextMenu, true);
+    startWinKeyCapturePolling();
 }
 
 function buildModifierCombo(e) {
@@ -4645,6 +4677,7 @@ function stopRecording() {
     document.removeEventListener('mouseup', captureMouseButton, true);
     document.removeEventListener('wheel', captureWheel, { capture: true, passive: false });
     document.removeEventListener('contextmenu', preventContextMenu, true);
+    stopWinKeyCapturePolling();
 
     recordingField = null;
     recordingComboCaptured = false;

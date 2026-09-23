@@ -4,6 +4,7 @@
 const std = @import("std");
 const win32 = @import("win32.zig");
 const vk = @import("virtual_keys.zig");
+const protocol = @import("protocol.zig");
 const log = @import("log.zig");
 const slog = log.scoped("keyboard_hook");
 
@@ -12,6 +13,8 @@ var g_swallow_release: std.AutoHashMap(u32, bool) = undefined;
 var g_initialized = false;
 var g_hook: ?win32.HHOOK = null;
 var g_target_hwnd: ?win32.HWND = null;
+/// Set while the config dialog is recording a new binding; see armWinKeyCapture's doc comment.
+var g_capture_win_key = false;
 
 fn ensureInit(allocator: std.mem.Allocator) void {
     if (g_initialized) return;
@@ -74,6 +77,22 @@ pub fn markSwallowRelease(vk_code: u32) void {
     if (vk_code == 0) return;
     if (!g_initialized) return;
     if (g_swallow_release.getPtr(vk_code)) |swallow| swallow.* = true;
+}
+
+/// Recording tears the hook down entirely, so this keeps it alive to swallow Win down/up and report via protocol.publishWinKeyCaptureResult - otherwise Windows pops the Start Menu before the dialog sees anything.
+pub fn armWinKeyCapture(allocator: std.mem.Allocator) void {
+    ensureInit(allocator);
+    g_capture_win_key = true;
+    if (g_hook == null) {
+        installHook() catch {
+            g_capture_win_key = false;
+        };
+    }
+}
+
+pub fn disarmWinKeyCapture() void {
+    g_capture_win_key = false;
+    if (g_initialized and g_bindings.count() == 0) uninstallHook();
 }
 
 fn installHook() !void {
@@ -146,9 +165,15 @@ fn lowLevelKeyboardProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM
     // Per MSDN, a negative nCode must go straight to CallNextHookEx untouched, which the fallthrough below already does.
     if (nCode == win32.HC_ACTION) {
         const info = win32.lparamToPtr(win32.KBDLLHOOKSTRUCT, lParam);
+        const is_win_vk = info.vkCode == win32.VK_LWIN or info.vkCode == win32.VK_RWIN;
         if (wParam == win32.WM_KEYDOWN or wParam == win32.WM_SYSKEYDOWN) {
+            if (g_capture_win_key and is_win_vk) return 1;
             if (dispatchIfBound(info.vkCode)) return 1;
         } else if (wParam == win32.WM_KEYUP or wParam == win32.WM_SYSKEYUP) {
+            if (g_capture_win_key and is_win_vk) {
+                protocol.publishWinKeyCaptureResult(vk.currentModifiers() & ~vk.MOD_WIN);
+                return 1;
+            }
             if (g_swallow_release.fetchRemove(info.vkCode)) |entry| {
                 if (entry.value) return 1;
             }

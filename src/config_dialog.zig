@@ -1,6 +1,7 @@
 const std = @import("std");
 const webui = @import("webui");
 const protocol = @import("protocol.zig");
+const vk = @import("virtual_keys.zig");
 const win32 = @import("win32.zig");
 const build_options = @import("build_options");
 const config_mod = @import("config.zig");
@@ -259,6 +260,7 @@ fn mainImpl(init: std.process.Init) !void {
     _ = try win.bind("testNotification", testNotification);
     _ = try win.bind("suspendHotkeysForRecording", suspendHotkeysForRecording);
     _ = try win.bind("resumeHotkeysAfterRecording", resumeHotkeysAfterRecording);
+    _ = try win.bind("pollWinKeyCapture", pollWinKeyCapture);
     _ = try win.bind("switchProfileLive", switchProfileLive);
     _ = try win.bind("logClientMessage", logClientMessage);
     _ = try win.bind("getMainAppStatus", getMainAppStatus);
@@ -815,8 +817,14 @@ fn revertThumbnailPreviewInMainApp() void {
     }
 }
 
-/// Suspend the main app's global hotkeys during a Record capture so a bound key (e.g. cycle-client) doesn't fire while just being captured; called by config_dialog.js's recordHotkey().
+/// Baseline sequence when recording starts, so pollWinKeyCapture can tell a fresh capture from a stale one left over from a previous session.
+var g_win_key_capture_baseline_sequence: u32 = 0;
+var g_win_key_capture_pending: bool = false;
+
+/// Suspend the main app's global hotkeys during a Record capture so a bound key (e.g. cycle-client) doesn't fire while just being captured; called by config_dialog.js's recordHotkey(). Also arms Win-key capture (see keyboard_hook.zig).
 fn suspendHotkeysForRecording(e: *webui.Event) void {
+    g_win_key_capture_baseline_sequence = if (protocol.readWinKeyCaptureResult()) |result| result.sequence else 0;
+    g_win_key_capture_pending = true;
     if (findMainAppWindow()) |hwnd| {
         protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogSuspendHotkeys = {} });
     }
@@ -825,10 +833,45 @@ fn suspendHotkeysForRecording(e: *webui.Event) void {
 
 /// Resume hotkeys suspended by suspendHotkeysForRecording(); called by config_dialog.js's stopRecording() and unconditionally on dialog close as a safety net.
 fn resumeHotkeysAfterRecording(e: *webui.Event) void {
+    g_win_key_capture_pending = false;
     if (findMainAppWindow()) |hwnd| {
         protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogResumeHotkeys = {} });
     }
     e.returnString("{\"success\": true}");
+}
+
+/// Returns {"done": false} until the main app publishes a Win-key capture past the baseline (see keyboard_hook.zig's armWinKeyCapture).
+fn pollWinKeyCapture(e: *webui.Event) void {
+    if (!g_win_key_capture_pending) {
+        e.returnString("{\"done\": false}");
+        return;
+    }
+
+    const result = protocol.readWinKeyCaptureResult() orelse {
+        e.returnString("{\"done\": false}");
+        return;
+    };
+    if (result.sequence == g_win_key_capture_baseline_sequence) {
+        e.returnString("{\"done\": false}");
+        return;
+    }
+
+    g_win_key_capture_pending = false;
+
+    var buf: [96]u8 = undefined;
+    const json = std.fmt.bufPrintZ(
+        &buf,
+        "{{\"done\": true, \"ctrl\": {}, \"alt\": {}, \"shift\": {}}}",
+        .{
+            result.modifiers & vk.MOD_CONTROL != 0,
+            result.modifiers & vk.MOD_ALT != 0,
+            result.modifiers & vk.MOD_SHIFT != 0,
+        },
+    ) catch {
+        e.returnString("{\"done\": false}");
+        return;
+    };
+    e.returnString(json);
 }
 
 const STARTUP_RUN_KEY = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
