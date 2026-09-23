@@ -101,10 +101,12 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         win32.WM_HOTKEYS_STATE_CHANGED => {
             if (g_tray_icon) |*icon| {
                 if (g_hotkey_manager) |manager| {
-                    if (manager.areHotkeysSuspended()) {
-                        icon.showBalloon("EVE-Maj Preview", "Hotkeys suspended", win32.NIIF_WARNING);
-                    } else {
-                        icon.showBalloon("EVE-Maj Preview", "Hotkeys resumed", win32.NIIF_INFO);
+                    if (manager.config.suspendHotkeyNotification) {
+                        if (manager.areHotkeysSuspended()) {
+                            icon.showBalloon("EVE-Maj Preview", "Hotkeys suspended", win32.NIIF_WARNING);
+                        } else {
+                            icon.showBalloon("EVE-Maj Preview", "Hotkeys resumed", win32.NIIF_INFO);
+                        }
                     }
                 }
             }

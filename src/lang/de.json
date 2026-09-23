@@ -559,6 +559,7 @@
   "field.stateInactiveBorderWidth.placeholder": "Standard",
   "field.stateMinimizedBorderStyle.option.default": "Standard",
   "field.stateMinimizedBorderWidth.placeholder": "Standard",
+  "field.suspendHotkeyNotification.label": "Benachrichtigung beim Umschalten anzeigen",
   "field.syncOverlayStyling.hint": "Das Bearbeiten von Schriftart oder Hintergrund eines Overlays wendet es auf alle anderen an.",
   "field.syncOverlayStyling.label": "Schriftarten und Hintergründe synchronisieren",
   "field.systemNameColor.label": "Farbe des Systemnamens",

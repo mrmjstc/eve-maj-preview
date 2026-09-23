@@ -559,6 +559,7 @@
   "field.stateInactiveBorderWidth.placeholder": "默认",
   "field.stateMinimizedBorderStyle.option.default": "默认",
   "field.stateMinimizedBorderWidth.placeholder": "默认",
+  "field.suspendHotkeyNotification.label": "切换时显示通知",
   "field.syncOverlayStyling.hint": "编辑一个叠加层的字体或背景会应用到所有其他叠加层。",
   "field.syncOverlayStyling.label": "同步字体和背景",
   "field.systemNameColor.label": "星系名称颜色",

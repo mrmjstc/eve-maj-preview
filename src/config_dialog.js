@@ -420,6 +420,7 @@ const CONFIG_SCHEMA = [
     { id: 'requireEveFocus', path: 'hotkeys.requireEveFocus' },
     { id: 'resetGroupIndexOnNonGroupFocus', path: 'hotkeys.resetGroupIndexOnNonGroupFocus' },
     { id: 'allowHotkeyAutoRepeat', path: 'hotkeys.allowHotkeyAutoRepeat' },
+    { id: 'suspendHotkeyNotification', path: 'hotkeys.suspendHotkeyNotification' },
     { id: 'hotkeyMinimizeAll', path: 'hotkeys.hotkeyMinimizeAll', transform: 'vkhex' },
     { id: 'hotkeyCloseAll', path: 'hotkeys.hotkeyCloseAll', transform: 'vkhex' },
     { id: 'hotkeyToggleVisibility', path: 'hotkeys.hotkeyToggleVisibility', transform: 'vkhex' },

@@ -559,6 +559,7 @@
   "field.stateInactiveBorderWidth.placeholder": "Predeterminado",
   "field.stateMinimizedBorderStyle.option.default": "Predeterminado",
   "field.stateMinimizedBorderWidth.placeholder": "Predeterminado",
+  "field.suspendHotkeyNotification.label": "Mostrar Notificación al Alternar",
   "field.syncOverlayStyling.hint": "Editar la fuente o el fondo de una superposición lo aplica a todas las demás.",
   "field.syncOverlayStyling.label": "Sincronizar Fuentes y Fondos",
   "field.systemNameColor.label": "Color del Nombre del Sistema",

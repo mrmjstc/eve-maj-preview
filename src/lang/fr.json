@@ -559,6 +559,7 @@
   "field.stateInactiveBorderWidth.placeholder": "Par défaut",
   "field.stateMinimizedBorderStyle.option.default": "Par défaut",
   "field.stateMinimizedBorderWidth.placeholder": "Par défaut",
+  "field.suspendHotkeyNotification.label": "Afficher une notification lors du basculement",
   "field.syncOverlayStyling.hint": "Modifier la police ou le fond d'un overlay l'applique à tous les autres.",
   "field.syncOverlayStyling.label": "Synchroniser polices et fonds",
   "field.systemNameColor.label": "Couleur du nom de système",

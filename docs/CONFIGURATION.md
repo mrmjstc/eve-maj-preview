@@ -878,6 +878,7 @@ Detects a tracked character falling behind while the rest of the group jumps tog
   "hotkeys": {
     "requireEveFocus": false,
     "allowHotkeyAutoRepeat": false,
+    "suspendHotkeyNotification": true,
     "hotkeyMinimizeAll": null,
     "hotkeyCloseAll": null,
     "hotkeyToggleVisibility": null,
@@ -898,6 +899,8 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 **resetGroupIndexOnNonGroupFocus**: Reset a hotkey group's cycle position when focus leaves that group
 
 **allowHotkeyAutoRepeat**: When `false` (default), holding a keyboard hotkey down fires its action once; when `true`, Windows' key-repeat re-fires it while held. Mouse-button hotkeys always fire once per click regardless (mouse buttons don't auto-repeat).
+
+**suspendHotkeyNotification**: When `true` (default), pressing **hotkeySuspend** shows a tray balloon notification announcing whether hotkeys are now suspended or resumed.
 
 **Global Hotkeys**: Set to a virtual key code string (e.g., `"F9"`, `"F10"`, `"0x70"`), a modifier combo (e.g., `"Ctrl+F9"`, `"Alt+Shift+F1"`, `"LWin+M"`), or `null` to disable
 - **hotkeyMinimizeAll**: Minimize all EVE client windows
