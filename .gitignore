@@ -21,6 +21,7 @@ profiles/
 CLAUDE.md
 TODO
 build-release.ps1
+build-release-dev.ps1
 .claude/
 .vscode/launch.json
 nul
