@@ -367,6 +367,8 @@ pub const GlobalSettings = struct {
     advancedMode: bool,
     language: []const u8,
     oreTable: std.ArrayList(OrePriceEntry),
+    dialogX: ?i32,
+    dialogY: ?i32,
     needs_free: bool,
 
     pub fn init(allocator: std.mem.Allocator) GlobalSettings {
@@ -394,6 +396,8 @@ pub const GlobalSettings = struct {
             .advancedMode = false,
             .language = "en",
             .oreTable = std.ArrayList(OrePriceEntry).empty,
+            .dialogX = null,
+            .dialogY = null,
             .needs_free = false,
         };
     }
@@ -552,6 +556,12 @@ pub const GlobalSettings = struct {
         }
     }
 
+    pub fn saveDialogPosition(self: *GlobalSettings, x: i32, y: i32) !void {
+        self.dialogX = x;
+        self.dialogY = y;
+        try self.save();
+    }
+
     pub fn updateCharacterId(self: *GlobalSettings, character_name: []const u8, character_id: []const u8) !void {
         {
             try self.characterIdMapMutex.lock(g_io);
@@ -647,6 +657,8 @@ pub const GlobalSettings = struct {
         advancedMode: bool = false,
         language: []const u8 = "en",
         oreTable: []const OrePriceEntry.Wire = &.{},
+        dialogX: ?i32 = null,
+        dialogY: ?i32 = null,
     };
 
     pub fn toWire(self: *GlobalSettings, allocator: std.mem.Allocator) !Wire {
@@ -697,6 +709,8 @@ pub const GlobalSettings = struct {
             .advancedMode = self.advancedMode,
             .language = self.language,
             .oreTable = ore,
+            .dialogX = self.dialogX,
+            .dialogY = self.dialogY,
         };
     }
 
@@ -722,6 +736,8 @@ pub const GlobalSettings = struct {
         settings.autoRegisterProtocol = w.autoRegisterProtocol;
         settings.alwaysOnTop = w.alwaysOnTop;
         settings.advancedMode = w.advancedMode;
+        settings.dialogX = w.dialogX;
+        settings.dialogY = w.dialogY;
 
         for (w.profileSwitchHotkeys) |item_wire| {
             try settings.profileSwitchHotkeys.append(allocator, try ProfileSwitchHotkey.fromWire(item_wire, allocator));

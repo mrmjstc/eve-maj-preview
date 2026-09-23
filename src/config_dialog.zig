@@ -78,6 +78,9 @@ const DIALOG_WINDOW_TITLE = "EVE-Maj Preview Configuration";
 const DIALOG_DESIGN_WIDTH: f32 = 800.0;
 const DIALOG_DESIGN_HEIGHT: f32 = 950.0;
 
+/// Default spawn position; x isn't 0 since webui treats that as "unset" and centers the window instead.
+const DEFAULT_DIALOG_POSITION: win32.POINT = .{ .x = 20, .y = 20 };
+
 const PhysicalSize = struct { width: u32, height: u32 };
 
 /// Converts the 96-DPI design size into the physical pixels setSize/SetWindowPos expect at this DPI.
@@ -87,6 +90,15 @@ fn targetPhysicalSize(dpi: u32) PhysicalSize {
         .width = @intFromFloat(@round(DIALOG_DESIGN_WIDTH * scale)),
         .height = @intFromFloat(@round(DIALOG_DESIGN_HEIGHT * scale)),
     };
+}
+
+/// DPI of the monitor under `point`; falls back to 96 (unscaled) if it can't be resolved.
+fn dpiForPoint(point: win32.POINT) u32 {
+    const monitor = win32.MonitorFromPoint(point, win32.MONITOR_DEFAULTTONEAREST) orelse return 96;
+    var dpi_x: win32.UINT = 96;
+    var dpi_y: win32.UINT = 96;
+    _ = win32.GetDpiForMonitor(monitor, win32.MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y);
+    return dpi_x;
 }
 
 /// Set once by revealDialogWindow, once the WebView2 host window exists; consumed by setAlwaysOnTop.
@@ -199,11 +211,25 @@ fn mainImpl(init: std.process.Init) !void {
 
     var win = webui.newWindow();
 
-    // Physical-pixel size for per-monitor DPI awareness; GetDpiForSystem is just a startup guess, corrected in revealDialogWindow once the real monitor is known.
-    const startup_size = targetPhysicalSize(win32.GetDpiForSystem());
+    // Falls back to DEFAULT_DIALOG_POSITION, not webui's own centering, when nothing's been saved yet.
+    const initial_position: win32.POINT = if (startup_settings) |s|
+        (if (s.dialogX != null and s.dialogY != null)
+            win32.POINT{ .x = s.dialogX.?, .y = s.dialogY.? }
+        else
+            DEFAULT_DIALOG_POSITION)
+    else
+        DEFAULT_DIALOG_POSITION;
+
+    // Startup guess from the target position's monitor DPI; revealDialogWindow corrects it once the real monitor is known.
+    const startup_size = targetPhysicalSize(dpiForPoint(initial_position));
     win.setSize(startup_size.width, startup_size.height);
     win.setKiosk(false);
     win.setResizable(true);
+
+    // Before showWv, not after: webui reads win->x/win->y at creation time, so the first paint lands here instead of jumping.
+    if (initial_position.x >= 0 and initial_position.y >= 0) {
+        win.setPosition(@intCast(initial_position.x), @intCast(initial_position.y));
+    }
 
     _ = try win.bind("closeDialog", closeDialog);
     _ = try win.bind("loadConfig", loadConfig);
@@ -336,10 +362,29 @@ fn dialogWndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam
         return 0;
     }
 
+    if (msg == win32.WM_EXITSIZEMOVE) {
+        var rect: win32.RECT = undefined;
+        _ = win32.GetWindowRect(hwnd, &rect);
+        persistDialogPosition(rect.left, rect.top);
+    }
+
     if (g_dialog_orig_wndproc != 0) {
         return win32.CallWindowProcA(g_dialog_orig_wndproc, hwnd, msg, wParam, lParam);
     }
     return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
+}
+
+/// Reloads settings fresh from disk so this doesn't clobber changes made elsewhere since the dialog opened.
+fn persistDialogPosition(x: i32, y: i32) void {
+    var settings = config_mod.GlobalSettings.load(g_allocator) catch |err| {
+        slog.warn("Failed to load global settings to persist dialog position: {}", .{err});
+        return;
+    };
+    defer settings.deinit();
+
+    settings.saveDialogPosition(x, y) catch |err| {
+        slog.warn("Failed to save configuration dialog position: {}", .{err});
+    };
 }
 
 fn revealDialogWindow(win: anytype, initial_always_on_top: bool) void {
@@ -347,7 +392,7 @@ fn revealDialogWindow(win: anytype, initial_always_on_top: bool) void {
         g_dialog_hwnd = hwnd;
         installDpiChangeHandler(hwnd);
 
-        // Re-derive against the window's actual monitor DPI, since the startup size above was only a guess.
+        // Re-derive against the window's actual monitor DPI in case the startup guess was stale.
         const actual_dpi = win32.GetDpiForWindow(hwnd);
         const target = targetPhysicalSize(actual_dpi);
 
@@ -944,6 +989,16 @@ fn saveGlobalSettings(e: *webui.Event) void {
         return;
     };
     defer settings.deinit();
+
+    // Position is persisted independently on every drag (persistDialogPosition), so keep whatever is on disk here.
+    if (config_mod.GlobalSettings.load(allocator)) |current| {
+        var current_mut = current;
+        defer current_mut.deinit();
+        settings.dialogX = current_mut.dialogX;
+        settings.dialogY = current_mut.dialogY;
+    } else |err| {
+        slog.warn("Failed to load current global settings to preserve dialog position: {}", .{err});
+    }
 
     settings.save() catch |err| {
         slog.err("Failed to save global settings: {}", .{err});
