@@ -762,7 +762,7 @@ pub const HotkeyManager = struct {
         }
 
         // Only swallow the key's release if focus actually moved; a cycle with no eligible target never changes foreground.
-        const foreground_before = win32.GetForegroundWindow();
+        input.g_focus_switch_requested = false;
 
         switch (action) {
             .CycleGroup => |cycle| {
@@ -846,7 +846,7 @@ pub const HotkeyManager = struct {
         }
 
         // Win's release always needs swallowing, focus-change or not - an unmatched keyup still opens the Start Menu.
-        if (win32.GetForegroundWindow() != foreground_before or vk_code == win32.VK_LWIN or vk_code == win32.VK_RWIN) {
+        if (input.g_focus_switch_requested or vk_code == win32.VK_LWIN or vk_code == win32.VK_RWIN) {
             keyboard_hook.markSwallowRelease(vk_code);
         }
     }

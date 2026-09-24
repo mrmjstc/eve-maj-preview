@@ -107,6 +107,8 @@ const FOCUS_GRANT_COMBO_COUNT: u32 = 16;
 
 var g_focus_grant_hwnd: ?win32.HWND = null;
 var g_focus_grant_target: ?win32.HWND = null;
+/// The switch is async, so callers can't detect it via GetForegroundWindow right after requesting it.
+pub var g_focus_switch_requested = false;
 
 /// Call once at startup.
 pub fn installFocusGrant(hwnd: win32.HWND) void {
@@ -149,6 +151,7 @@ pub fn forceSetForegroundWindow(target_hwnd: win32.HWND) void {
     _ = win32.SetFocus(target_hwnd);
 
     g_focus_grant_target = target_hwnd;
+    g_focus_switch_requested = true;
     // keybd_event only injects this vk, so held modifiers stay held and still match a registration.
     win32.keybd_event(@intCast(FOCUS_GRANT_VK), 0, 0, 0);
     win32.keybd_event(@intCast(FOCUS_GRANT_VK), 0, win32.KEYEVENTF_KEYUP, 0);
