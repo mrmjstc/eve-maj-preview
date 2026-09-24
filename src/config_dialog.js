@@ -2431,9 +2431,22 @@ function extractSnapping(oldProfile, oldGlobal) {
     return { snappingPatch, hotkeysPatch, notes };
 }
 
+// The dialog seeds an empty-named entry so blank lists have a row to edit; imports would otherwise leave it as "Character 1"/"Hotkey Group 1".
+function removeUnnamedPlaceholders(list, imported, keyField) {
+    if (!imported.some(item => (item[keyField] || '').trim())) return;
+    const isEmptyValue = v => v == null || v === '' || v === false || (Array.isArray(v) && v.length === 0);
+    for (let i = list.length - 1; i >= 0; i--) {
+        const entry = list[i];
+        const pristine = !(entry[keyField] || '').trim()
+            && Object.entries(entry).every(([k, v]) => k === keyField || isEmptyValue(v));
+        if (pristine) list.splice(i, 1);
+    }
+}
+
 // Matches by name so patches from different sections don't clobber each other's fields; creates a new entry if the name isn't already present.
 function mergeCharacterPatch(cfg, characterPatches) {
     if (!cfg.characters) cfg.characters = [];
+    removeUnnamedPlaceholders(cfg.characters, characterPatches, 'name');
     characterPatches.forEach(cp => {
         const name = (cp.name || '').trim();
         if (!name) return;
@@ -3272,6 +3285,7 @@ async function scaleCharacterPatchPositions(characterPatches) {
 
 // Merges by name/systemName so re-running an import updates matching entries in place instead of duplicating them; unlike mergeCharacterPatch, imported items are already full entries so this overwrites wholesale.
 function mergeMajByKey(list, imported, keyField) {
+    removeUnnamedPlaceholders(list, imported, keyField);
     imported.forEach(item => {
         const key = (item[keyField] || '').trim();
         if (!key) return;
