@@ -398,6 +398,8 @@ const CONFIG_SCHEMA = [
     { id: 'notifInfoPanelFontWeight', path: 'display.notifInfoPanelFontWeight' },
     { id: 'notifInfoPanelMaxRows', path: 'display.notifInfoPanelMaxRows', default: 15 },
     { id: 'notifInfoPanelShowTimestamp', path: 'display.notifInfoPanelShowTimestamp' },
+    { id: 'notifInfoPanelMergeEnabled', path: 'display.notifInfoPanelMergeEnabled' },
+    { id: 'notifInfoPanelMergeWindowSec', path: 'display.notifInfoPanelMergeWindowSec', default: 10 },
     { id: 'notifInfoPanelShowCategoryFilters', path: 'display.notifInfoPanelShowCategoryFilters' },
     { id: 'rememberNotifInfoPanelPosition', path: 'display.rememberNotifInfoPanelPosition' },
     { id: 'hideNotifInfoPanelWhenNoCharacters', path: 'display.hideNotifInfoPanelWhenNoCharacters' },
@@ -878,6 +880,7 @@ const THUMBNAIL_PREVIEW_FIELD_IDS = [
     'thumbWidth', 'thumbHeight', 'thumbSizeSlider', 'hideWhenNoEveFocus',
     'listViewOpacity', 'listViewFontName', 'listViewFontSize', 'listViewFontWeight',
     'notifInfoPanelWidth', 'notifInfoPanelHeight', 'notifInfoPanelMaxRows', 'notifInfoPanelShowTimestamp', 'notifInfoPanelShowCategoryFilters',
+    'notifInfoPanelMergeEnabled', 'notifInfoPanelMergeWindowSec',
     'notifInfoPanelOpacity', 'notifInfoPanelFontName', 'notifInfoPanelFontSize', 'notifInfoPanelFontWeight',
     'spacing', 'newThumbnailSpacing', 'layoutMode', 'regionFitDirection',
     'regionFitEnabled', 'regionFitOrder', 'regionFitReorderLoggedOut', 'hideThumbnailsDuringRegionSelect', 'regionFitLimitToThumbnailSize', 'regionX', 'regionY', 'regionWidth', 'regionHeight',
@@ -976,6 +979,8 @@ function buildThumbnailPreviewPatch(includePositions = false) {
             notifInfoPanelMaxRows: getFieldValue('notifInfoPanelMaxRows'),
             notifInfoPanelShowTimestamp: getFieldValue('notifInfoPanelShowTimestamp'),
             notifInfoPanelShowCategoryFilters: getFieldValue('notifInfoPanelShowCategoryFilters'),
+            notifInfoPanelMergeEnabled: getFieldValue('notifInfoPanelMergeEnabled'),
+            notifInfoPanelMergeWindowSec: getFieldValue('notifInfoPanelMergeWindowSec'),
             notifInfoPanelOpacity: percentToOpacity(getFieldValue('notifInfoPanelOpacity')),
             notifInfoPanelFontName: getFieldValue('notifInfoPanelFontName'),
             notifInfoPanelFontSize: getFieldValue('notifInfoPanelFontSize'),
@@ -1724,6 +1729,7 @@ function populateFormFields() {
     toggleNotLoggedInSpaceOptions();
     refreshRegionButtons();
     toggleNotifInfoPanelOptions();
+    toggleNotifInfoPanelMergeOptions();
     toggleShiftClickExcludeOptions();
     toggleBorderOptions();
     toggleFocusedBorderOptions();
@@ -7325,6 +7331,10 @@ function toggleNotLoggedInSpaceOptions() {
 
 function toggleNotifInfoPanelOptions() {
     applyOptionToggle('showNotifInfoPanel', 'notifInfoPanelOptions');
+}
+
+function toggleNotifInfoPanelMergeOptions() {
+    applyOptionToggle('notifInfoPanelMergeEnabled', 'notifInfoPanelMergeOptions');
 }
 
 // regionFitEnabled isn't a saved field itself - it just drives the hidden layoutMode select's value.

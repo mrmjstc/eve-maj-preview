@@ -1660,6 +1660,19 @@
                                 <span class="label-body" data-i18n="field.notifInfoPanelShowCategoryFilters.label">Show Category Filters</span>
                             </label>
                             <p class="hint hint-extra" data-i18n="field.notifInfoPanelShowCategoryFilters.hint">Adds filter buttons for each notification category to the panel.</p>
+
+                            <label>
+                                <input type="checkbox" id="notifInfoPanelMergeEnabled" onchange="toggleNotifInfoPanelMergeOptions()">
+                                <span class="label-body" data-i18n="field.notifInfoPanelMergeEnabled.label">Merge Repeated Notifications</span>
+                            </label>
+                            <p class="hint hint-extra" data-i18n="field.notifInfoPanelMergeEnabled.hint">Combines identical notifications fired back to back into one row with a +N count. Click a merged row to expand it.</p>
+
+                            <div id="notifInfoPanelMergeOptions" class="binding-list">
+                                <div class="binding">
+                                    <label for="notifInfoPanelMergeWindowSec" data-i18n="field.notifInfoPanelMergeWindowSec.label">Merge Window (seconds)</label>
+                                    <input type="number" id="notifInfoPanelMergeWindowSec" min="1" max="300">
+                                </div>
+                            </div>
                         </div>
                     </div>
 

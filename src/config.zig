@@ -2760,8 +2760,8 @@ pub const Config = struct {
         showNotifInfoPanel: bool = false,
         notifInfoPanelX: i32 = 10,
         notifInfoPanelY: i32 = 250,
-        notifInfoPanelWidth: i32 = 200,
-        notifInfoPanelHeight: i32 = 224,
+        notifInfoPanelWidth: i32 = 300,
+        notifInfoPanelHeight: i32 = 400,
         rememberNotifInfoPanelPosition: bool = true,
         hideNotifInfoPanelWhenNoCharacters: bool = true,
         notifInfoPanelOpacity: u8 = 255,
@@ -2770,6 +2770,8 @@ pub const Config = struct {
         notifInfoPanelFontWeight: types.FontWeight = .Regular,
         notifInfoPanelMaxRows: i32 = 15,
         notifInfoPanelShowTimestamp: bool = false,
+        notifInfoPanelMergeEnabled: bool = false,
+        notifInfoPanelMergeWindowSec: i32 = 10,
         notifInfoPanelShowCategoryFilters: bool = true,
         notifInfoPanelShowFleet: bool = true,
         notifInfoPanelShowMining: bool = true,
@@ -2822,9 +2824,10 @@ pub const Config = struct {
         pub const NOTIF_PANEL_HEIGHT_MAX: i32 = 2160;
         pub const NOTIF_PANEL_FONT_SIZE_MIN: i32 = 6;
         pub const NOTIF_PANEL_FONT_SIZE_MAX: i32 = 72;
-        // Mirrors painter.NOTIF_HISTORY_CAPACITY, the ring buffer's actual size.
         pub const NOTIF_PANEL_MAX_ROWS_MIN: i32 = 1;
         pub const NOTIF_PANEL_MAX_ROWS_MAX: i32 = 30;
+        pub const NOTIF_PANEL_MERGE_WINDOW_MIN: i32 = 1;
+        pub const NOTIF_PANEL_MERGE_WINDOW_MAX: i32 = 300;
         pub const SPACING_MIN: i32 = 0;
         pub const SPACING_MAX: i32 = 500;
         pub const MONITOR_INDEX_MAX: u32 = 9;
@@ -2854,6 +2857,8 @@ pub const Config = struct {
             if (self.notifInfoPanelHeight > NOTIF_PANEL_HEIGHT_MAX) self.notifInfoPanelHeight = NOTIF_PANEL_HEIGHT_MAX;
             if (self.notifInfoPanelMaxRows < NOTIF_PANEL_MAX_ROWS_MIN) self.notifInfoPanelMaxRows = NOTIF_PANEL_MAX_ROWS_MIN;
             if (self.notifInfoPanelMaxRows > NOTIF_PANEL_MAX_ROWS_MAX) self.notifInfoPanelMaxRows = NOTIF_PANEL_MAX_ROWS_MAX;
+            if (self.notifInfoPanelMergeWindowSec < NOTIF_PANEL_MERGE_WINDOW_MIN) self.notifInfoPanelMergeWindowSec = NOTIF_PANEL_MERGE_WINDOW_MIN;
+            if (self.notifInfoPanelMergeWindowSec > NOTIF_PANEL_MERGE_WINDOW_MAX) self.notifInfoPanelMergeWindowSec = NOTIF_PANEL_MERGE_WINDOW_MAX;
 
             if (self.spacing < SPACING_MIN) self.spacing = SPACING_MIN;
             if (self.spacing > SPACING_MAX) {
@@ -3864,6 +3869,12 @@ pub const Config = struct {
         if (obj.get("notifInfoPanelShowTimestamp")) |v| {
             if (v == .bool) display.notifInfoPanelShowTimestamp = v.bool;
         }
+        if (obj.get("notifInfoPanelMergeEnabled")) |v| {
+            if (v == .bool) display.notifInfoPanelMergeEnabled = v.bool;
+        }
+        if (obj.get("notifInfoPanelMergeWindowSec")) |v| {
+            if (v == .integer) display.notifInfoPanelMergeWindowSec = std.math.cast(i32, v.integer) orelse display.notifInfoPanelMergeWindowSec;
+        }
         if (obj.get("notifInfoPanelShowCategoryFilters")) |v| {
             if (v == .bool) display.notifInfoPanelShowCategoryFilters = v.bool;
         }
@@ -4365,6 +4376,7 @@ pub const Config = struct {
             .@"display.notifInfoPanelHeight" = Range{ .min = DisplayConfig.NOTIF_PANEL_HEIGHT_MIN, .max = DisplayConfig.NOTIF_PANEL_HEIGHT_MAX },
             .@"display.notifInfoPanelFontSize" = Range{ .min = DisplayConfig.NOTIF_PANEL_FONT_SIZE_MIN, .max = DisplayConfig.NOTIF_PANEL_FONT_SIZE_MAX },
             .@"display.notifInfoPanelMaxRows" = Range{ .min = DisplayConfig.NOTIF_PANEL_MAX_ROWS_MIN, .max = DisplayConfig.NOTIF_PANEL_MAX_ROWS_MAX },
+            .@"display.notifInfoPanelMergeWindowSec" = Range{ .min = DisplayConfig.NOTIF_PANEL_MERGE_WINDOW_MIN, .max = DisplayConfig.NOTIF_PANEL_MERGE_WINDOW_MAX },
             .@"display.listViewOpacity" = Range{ .min = DisplayConfig.OPACITY_MIN, .max = 255 },
             .@"display.notifInfoPanelOpacity" = Range{ .min = DisplayConfig.OPACITY_MIN, .max = 255 },
 
@@ -4502,6 +4514,8 @@ pub const Config = struct {
         const new_notif_panel_font_weight = fresh.display.notifInfoPanelFontWeight;
         const new_notif_panel_max_rows = fresh.display.notifInfoPanelMaxRows;
         const new_notif_panel_show_timestamp = fresh.display.notifInfoPanelShowTimestamp;
+        const new_notif_panel_merge_enabled = fresh.display.notifInfoPanelMergeEnabled;
+        const new_notif_panel_merge_window_sec = fresh.display.notifInfoPanelMergeWindowSec;
         const new_notif_panel_show_category_filters = fresh.display.notifInfoPanelShowCategoryFilters;
         fresh.display.notifInfoPanelFontName = DEFAULT_FONT_NAME;
 
@@ -4595,6 +4609,8 @@ pub const Config = struct {
         self.display.notifInfoPanelFontWeight = new_notif_panel_font_weight;
         self.display.notifInfoPanelMaxRows = new_notif_panel_max_rows;
         self.display.notifInfoPanelShowTimestamp = new_notif_panel_show_timestamp;
+        self.display.notifInfoPanelMergeEnabled = new_notif_panel_merge_enabled;
+        self.display.notifInfoPanelMergeWindowSec = new_notif_panel_merge_window_sec;
         self.display.notifInfoPanelShowCategoryFilters = new_notif_panel_show_category_filters;
 
         self.display.spacing = new_spacing;

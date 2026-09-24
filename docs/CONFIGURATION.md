@@ -636,6 +636,10 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `TravelLeftBehind`: Character hasn't jumped with the group within Travel Mode's configured window - see [Travel Mode](#travel-mode)
 - `Generic`: Other game events
 
+**History Panel Merging** (`display` section):
+- `notifInfoPanelMergeEnabled`: Merge back-to-back identical notifications from different characters into one row with a `+N` count; clicking a merged row expands it (default: `false`)
+- `notifInfoPanelMergeWindowSec`: Max gap in seconds between consecutive notifications for them to merge, 1–300 (default: `10`)
+
 ## Chatlog Monitoring
 
 Monitor EVE Online chat and game logs for system changes and events:

@@ -59,6 +59,7 @@ pub const NotificationHistoryEntry = struct {
     timestamp_ms: win32.Ticks = .{},
     /// config.getCharacterNameColor(characterName()) resolved once at push time; a past entry's color is fixed once recorded, so notif_info_view.zig reads this instead of re-resolving from config every render tick.
     character_color: ?u32 = null,
+    unmerged: bool = false,
 
     pub fn characterName(self: *const NotificationHistoryEntry) []const u8 {
         return self.character_name_buf[0..self.character_name_len];
@@ -2132,6 +2133,14 @@ pub const Painter = struct {
             out[i] = self.notification_history[idx];
         }
         return out[0..n];
+    }
+
+    pub fn unmergeNotificationHistoryRange(self: *Painter, first: usize, last: usize) void {
+        var i = first;
+        while (i <= last and i < self.notification_history_count) : (i += 1) {
+            const idx = (self.notification_history_head + NOTIF_HISTORY_CAPACITY - 1 - i) % NOTIF_HISTORY_CAPACITY;
+            self.notification_history[idx].unmerged = true;
+        }
     }
 
     /// Appends a notification to the history ring buffer (overwrites the oldest entry once full); called from showNotification for every notification actually shown.

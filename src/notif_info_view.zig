@@ -72,6 +72,14 @@ pub var g_activate_fn: ?*const fn (win32.HWND) void = null;
 
 const NOTIF_INFO_WINDOW_CLASS = "EVE_NOTIFINFO_CLASS";
 
+/// `first`/`last` are newest-first history indices, equal unless merged.
+const HistoryRow = struct {
+    hwnd: win32.HWND,
+    count: usize,
+    first: usize,
+    last: usize,
+};
+
 pub const NotifInfoWindow = struct {
     hwnd: win32.HWND,
     instance: win32.HINSTANCE,
@@ -86,8 +94,7 @@ pub const NotifInfoWindow = struct {
     last_win_w: i32 = -1,
     last_win_h: i32 = -1,
     last_render_signature: ?u64 = null,
-    // Row index -> source hwnd for the history rows actually drawn this render, consumed by WM_LBUTTONDOWN.
-    history_row_hwnds: [painter_mod.NOTIF_HISTORY_CAPACITY]win32.HWND = undefined,
+    history_rows: [painter_mod.NOTIF_HISTORY_CAPACITY]HistoryRow = undefined,
     history_row_count: usize = 0,
     // Index-paired with CATEGORY_ORDER; recomputed every render, consumed by WM_LBUTTONDOWN's footer hit-test.
     category_button_rects: [CATEGORY_ORDER.len]ButtonRect = undefined,
@@ -234,6 +241,8 @@ pub const NotifInfoWindow = struct {
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelMaxRows));
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelShowTimestamp));
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelShowCategoryFilters));
+        h.update(std.mem.asBytes(&self.config.display.notifInfoPanelMergeEnabled));
+        h.update(std.mem.asBytes(&self.config.display.notifInfoPanelMergeWindowSec));
         for (CATEGORY_ORDER) |cat| {
             const enabled = categoryEnabled(self.config, cat);
             h.update(std.mem.asBytes(&enabled));
@@ -249,6 +258,7 @@ pub const NotifInfoWindow = struct {
         for (hist) |*e| {
             h.update(e.characterName());
             h.update(e.text());
+            h.update(std.mem.asBytes(&e.unmerged));
             const char_color = (e.character_color orelse ARGB_CHAR_NAME) & 0x00FF_FFFF;
             const text_color = self.resolveNotifTextColor(e.notification_type);
             h.update(std.mem.asBytes(&char_color));
@@ -346,22 +356,44 @@ pub const NotifInfoWindow = struct {
             const cap = @min(history_rows_fit, configured_max_rows);
 
             const max_w: usize = @intCast(@max(0, win_w - TEXT_LEFT - RIGHT_MARGIN));
+            const merge_enabled = self.config.display.notifInfoPanelMergeEnabled;
+            const merge_window_ms: u64 = @as(u64, @intCast(@max(0, self.config.display.notifInfoPanelMergeWindowSec))) * 1000;
             var shown: usize = 0;
-            for (hist) |*entry| {
-                if (shown >= cap) break;
+            for (hist, 0..) |*entry, i| {
                 if (!effectiveCategoryEnabled(self.config, types.notificationCategory(entry.notification_type))) continue;
 
-                const row_top = HEADER_HEIGHT + @as(i32, @intCast(shown)) * ROW_HEIGHT;
-                self.history_row_hwnds[shown] = entry.source_hwnd;
+                if (merge_enabled and shown > 0 and !entry.unmerged) {
+                    const row = &self.history_rows[shown - 1];
+                    const prev = &hist[row.last];
+                    if (!prev.unmerged and prev.notification_type == entry.notification_type and
+                        std.mem.eql(u8, prev.text(), entry.text()) and
+                        prev.timestamp_ms.elapsedSince(entry.timestamp_ms) <= merge_window_ms)
+                    {
+                        row.count += 1;
+                        row.last = i;
+                        continue;
+                    }
+                }
 
+                if (shown >= cap) break;
+                self.history_rows[shown] = .{ .hwnd = entry.source_hwnd, .count = 1, .first = i, .last = i };
+                shown += 1;
+            }
+            self.history_row_count = shown;
+
+            for (self.history_rows[0..shown], 0..) |row, row_i| {
+                const entry = &hist[row.first];
+                const row_top = HEADER_HEIGHT + @as(i32, @intCast(row_i)) * ROW_HEIGHT;
                 const char_color = (entry.character_color orelse ARGB_CHAR_NAME) & 0x00FF_FFFF;
                 const text_color = self.resolveNotifTextColor(entry.notification_type);
                 var ts_buf: [24]u8 = undefined;
                 const timestamp = if (show_timestamp) formatRelativeTime(&ts_buf, now, entry.timestamp_ms) else null;
-                drawHistoryRow(ov.mem_dc, entry.characterName(), entry.text(), TEXT_LEFT, row_top + 1, char_color, text_color, max_w, timestamp);
-                shown += 1;
+                if (row.count > 1) {
+                    drawMergedRow(ov.mem_dc, entry.text(), row.count, TEXT_LEFT, row_top + 1, char_color, text_color, max_w, timestamp);
+                } else {
+                    drawHistoryRow(ov.mem_dc, entry.characterName(), entry.text(), TEXT_LEFT, row_top + 1, char_color, text_color, max_w, timestamp);
+                }
             }
-            self.history_row_count = shown;
 
             if (shown == 0) {
                 const empty_text = if (hist.len == 0) "No notifications yet" else "All notifications filtered";
@@ -439,16 +471,42 @@ fn formatRelativeTime(buf: *[24]u8, now: win32.Ticks, entry_ts: win32.Ticks) []c
     return std.fmt.bufPrint(buf, "{d}h ago", .{elapsed_s / 3600}) catch "?h ago";
 }
 
+fn drawTimestampSuffix(dc: win32.HDC, x: i32, y: i32, max_w: usize, timestamp: ?[]const u8) usize {
+    const ts = timestamp orelse return max_w;
+    const ts_w = @min(measureTextWidth(dc, ts), max_w);
+    const gap_w = measureTextWidth(dc, " ");
+    drawText(dc, ts, x + @as(i32, @intCast(max_w - ts_w)), y, ARGB_TIMESTAMP);
+    return max_w -| (ts_w + gap_w);
+}
+
+fn drawMergedRow(dc: win32.HDC, msg: []const u8, count: usize, x: i32, y: i32, count_color: u32, msg_color: u32, max_w: usize, timestamp: ?[]const u8) void {
+    const remaining = drawTimestampSuffix(dc, x, y, max_w, timestamp);
+
+    var count_buf: [16]u8 = undefined;
+    const count_text = std.fmt.bufPrint(&count_buf, "+{d}", .{count}) catch unreachable;
+    const sep = ": ";
+    const count_w = measureTextWidth(dc, count_text);
+    const prefix_w = count_w + measureTextWidth(dc, sep);
+    if (prefix_w > remaining) {
+        drawTextTruncated(dc, count_text, x, y, count_color, remaining);
+        return;
+    }
+    drawText(dc, count_text, x, y, count_color);
+    drawText(dc, sep, x + @as(i32, @intCast(count_w)), y, msg_color);
+
+    const msg_max = remaining - prefix_w;
+    if (msg_max == 0) return;
+    const msg_x = x + @as(i32, @intCast(prefix_w));
+    if (measureTextWidth(dc, msg) <= msg_max) {
+        drawText(dc, msg, msg_x, y, msg_color);
+    } else {
+        drawTextTruncated(dc, msg, msg_x, y, msg_color, msg_max);
+    }
+}
+
 /// Draws "CharacterName: message" (name/message truncated to make room) followed by a right-aligned "timestamp" suffix, which is never dropped, even if it's all that fits.
 fn drawHistoryRow(dc: win32.HDC, name: []const u8, msg: []const u8, x: i32, y: i32, name_color: u32, msg_color: u32, max_w: usize, timestamp: ?[]const u8) void {
-    var remaining = max_w;
-
-    if (timestamp) |ts| {
-        const ts_w = @min(measureTextWidth(dc, ts), max_w);
-        const gap_w = measureTextWidth(dc, " ");
-        remaining = max_w -| (ts_w + gap_w);
-        drawText(dc, ts, x + @as(i32, @intCast(max_w - ts_w)), y, ARGB_TIMESTAMP);
-    }
+    const remaining = drawTimestampSuffix(dc, x, y, max_w, timestamp);
 
     const name_w = measureTextWidth(dc, name);
     if (name_w > remaining) {
@@ -550,8 +608,12 @@ fn notifInfoWindowProc(
                     const row: usize = @intCast(row_i);
 
                     if (row < niw.history_row_count) {
-                        if (g_activate_fn) |activate| {
-                            activate(niw.history_row_hwnds[row]);
+                        const hist_row = niw.history_rows[row];
+                        if (hist_row.count > 1) {
+                            p.unmergeNotificationHistoryRange(hist_row.first, hist_row.last);
+                            niw.last_render_signature = null;
+                        } else if (g_activate_fn) |activate| {
+                            activate(hist_row.hwnd);
                         }
                     }
                 }
