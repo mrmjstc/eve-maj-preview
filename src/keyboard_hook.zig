@@ -170,6 +170,8 @@ fn lowLevelKeyboardProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM
             if (g_capture_win_key and is_win_vk) return 1;
             if (dispatchIfBound(info.vkCode)) return 1;
         } else if (wParam == win32.WM_KEYUP or wParam == win32.WM_SYSKEYUP) {
+            // The conduit hotkey only consumes the down; a stray up reaching the new client makes it drop held modifiers.
+            if (info.vkCode == vk.VK_FOCUS_GRANT) return 1;
             if (g_capture_win_key and is_win_vk) {
                 protocol.publishWinKeyCaptureResult(vk.currentModifiers() & ~vk.MOD_WIN);
                 return 1;

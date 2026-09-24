@@ -10,6 +10,8 @@ pub const VK_PAUSE: u32 = 0x13;
 pub const VK_CAPITAL: u32 = 0x14;
 pub const VK_SHIFT: u32 = 0x10;
 pub const VK_CONTROL: u32 = win32.VK_CONTROL;
+/// Reserved/unassigned in the Windows VK table, so no physical key generates it.
+pub const VK_FOCUS_GRANT: u32 = 0xE8;
 pub const VK_MENU: u32 = win32.VK_MENU;
 pub const VK_LWIN: u32 = win32.VK_LWIN;
 pub const VK_SPACE: u32 = 0x20;

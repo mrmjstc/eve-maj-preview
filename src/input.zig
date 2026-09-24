@@ -1,6 +1,7 @@
 const std = @import("std");
 const win32 = @import("win32.zig");
 const types = @import("types.zig");
+const virtual_keys = @import("virtual_keys.zig");
 const log = @import("log.zig");
 const slog = log.scoped("input");
 const painter_mod = @import("painter.zig");
@@ -99,8 +100,7 @@ fn restoreAnimation() void {
 // dispatched via keyboard_hook.zig/mouse_hook.zig doesn't carry. The conduit hotkey below keeps a
 // permanently-registered, physically unreachable RegisterHotKey binding alive purely to borrow that
 // exemption on demand.
-// 0xE8 is reserved/unassigned in the Windows VK table - no physical key generates it.
-const FOCUS_GRANT_VK: win32.UINT = 0xE8;
+const FOCUS_GRANT_VK: win32.UINT = virtual_keys.VK_FOCUS_GRANT;
 const FOCUS_GRANT_ID_BASE: c_int = 9000;
 // MOD_ALT|MOD_CONTROL|MOD_SHIFT|MOD_WIN occupy bits 0-3, so every value 0-15 is already a valid combo.
 const FOCUS_GRANT_COMBO_COUNT: u32 = 16;
