@@ -306,6 +306,8 @@
   "field.allowHotkeyAutoRepeat.hint": "Maintenir un raccourci enfoncé répète son action au lieu de ne l'exécuter qu'une fois.",
   "field.allowHotkeyAutoRepeat.label": "Répéter le raccourci en le maintenant enfoncé",
   "field.alwaysOnTopToggle.label": "Toujours au premier plan",
+  "field.dialogScaleSelect.label": "Échelle de l'interface",
+  "field.dialogScaleSelect.auto": "Auto",
   "field.animationStyle.hint": "Aucune animation réduit instantanément ; Animation d'origine garde l'effet de réduction natif de Windows.",
   "field.animationStyle.label": "Style d'animation",
   "field.animationStyle.option.noanimation": "Aucune animation",

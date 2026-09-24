@@ -827,7 +827,8 @@ function markAsSaved() {
 // Delegated (not per-element) so rows added later at runtime are covered without needing to re-run this after every dynamic list rebuild.
 function isTrackedFormElement(element) {
     if (!element.matches || !element.matches('input, select, textarea')) return false;
-    return element.id !== 'search-filter' && element.id !== 'profile-select' && element.id !== 'ultraPotatoProfileSelect';
+    return element.id !== 'search-filter' && element.id !== 'profile-select' && element.id !== 'ultraPotatoProfileSelect' &&
+        element.id !== 'dialogScaleSelect';
 }
 
 function isChangeEventType(element) {
@@ -3757,11 +3758,11 @@ async function runImport() {
             ? t('dynamic.import.liveNowHint')
             : t('dynamic.import.reviewAndSaveHint');
         const summaryEl = document.getElementById('importSummary');
-        summaryEl.innerHTML = `<p class="hint" style="margin: 0 0 8px 0;">${escapeHtml(t('dynamic.import.completeHeading'))}</p>` +
-            '<ul style="margin: 0; padding-left: 18px;">' +
+        summaryEl.innerHTML = `<p class="hint" style="margin: 0 0 0.5rem 0;">${escapeHtml(t('dynamic.import.completeHeading'))}</p>` +
+            '<ul style="margin: 0; padding-left: 1.125rem;">' +
             allNotes.map(n => `<li>${escapeHtml(n)}</li>`).join('') +
             '</ul>' +
-            `<p class="hint" style="margin-top: 8px;">${hint}</p>`;
+            `<p class="hint" style="margin-top: 0.5rem;">${hint}</p>`;
         summaryEl.style.display = '';
 
         document.getElementById('import-step-file').style.display = 'none';
@@ -4240,15 +4241,15 @@ function alignBindingLabelColumns(scope = '.panel-content[data-panel="hotkeys"]'
     if (lists.every(list => list.getClientRects().length === 0)) return;
 
     // max-content first, so each label reports the width of its own text rather than of the column it was stretched to.
-    lists.forEach(list => { list.style.gridTemplateColumns = 'max-content minmax(140px, 1fr)'; });
+    lists.forEach(list => { list.style.gridTemplateColumns = 'max-content minmax(8.75rem, 1fr)'; });
 
     // A paired row's control hangs back into the gutter by this much, so its label needs that much less of the column.
-    const dirOffset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--binding-dir-offset')) || 0;
+    const dirOffset = remVarToPx('--binding-dir-offset');
     const widest = Math.max(0, ...Array.from(document.querySelectorAll(`${scope} .binding > label`))
         .map(label => label.getBoundingClientRect().width + (label.parentElement.classList.contains('binding-paired') ? dirOffset : 0)));
     if (!widest) return;
 
-    lists.forEach(list => { list.style.gridTemplateColumns = `${Math.ceil(widest)}px minmax(140px, 1fr)`; });
+    lists.forEach(list => { list.style.gridTemplateColumns = `${Math.ceil(widest)}px minmax(8.75rem, 1fr)`; });
 }
 
 // Called once at startup and again when the language changes, since the rows are built from t() rather than
@@ -4276,6 +4277,12 @@ function getAllHotkeyInputs() {
 }
 
 let hotkeyPlaceholderMeasureCtx = null;
+
+// Custom properties compute to their literal token ("1.375rem"), not px.
+function remVarToPx(name) {
+    const rootStyle = getComputedStyle(document.documentElement);
+    return (parseFloat(rootStyle.getPropertyValue(name)) || 0) * parseFloat(rootStyle.fontSize);
+}
 
 function hotkeyTextWidth(input, text) {
     if (!hotkeyPlaceholderMeasureCtx) hotkeyPlaceholderMeasureCtx = document.createElement('canvas').getContext('2d');
@@ -6334,7 +6341,7 @@ function populateHotkeyGroups() {
             <div class="detail-members" id="hkgroup_${index}_charsField" style="${group.temporaryMembership ? 'display:none' : ''}">
                 <label for="hkgroup_${index}_addChar">${t('dynamic.hotkeyGroup.charactersLabel')}</label>
                 <div class="hkgroup-chars-list" id="hkgroup_${index}_charsList" data-group-index="${index}">${renderHotkeyGroupCharRows(index, group.characters)}</div>
-                <div class="field-row" style="margin-top: 4px;">
+                <div class="field-row" style="margin-top: 0.25rem;">
                     <input type="text" id="hkgroup_${index}_addChar" autocomplete="off" placeholder="${t('dynamic.hotkeyGroup.addCharPlaceholder')}" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addHotkeyGroupCharacter(${index}); }">
                     <button type="button" onclick="addHotkeyGroupCharacter(${index})" class="btn-nowrap">${t('dynamic.hotkeyGroup.addBtnLabel')}</button>
                     <button type="button" id="hkgroup_${index}_fillBtn" onclick="fillHotkeyGroupFromClients(${index})" class="btn-nowrap">${t('status.fillFromClientsLabel')}</button>
@@ -6380,10 +6387,10 @@ function alignDetailPanelNameLabel(containerId) {
     if (form.getClientRects().length === 0) return;
 
     // max-content/0 first, so each label reports its own text width rather than a stretched or stale one.
-    form.style.gridTemplateColumns = 'max-content minmax(140px, 1fr)';
+    form.style.gridTemplateColumns = 'max-content minmax(8.75rem, 1fr)';
     nameLabel.style.minWidth = '0';
 
-    const dirOffset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--binding-dir-offset')) || 0;
+    const dirOffset = remVarToPx('--binding-dir-offset');
     const fieldWidths = Array.from(form.querySelectorAll(':scope > .detail-field > label'))
         .map(label => label.getBoundingClientRect().width + (label.parentElement.classList.contains('binding-paired') ? dirOffset : 0));
 
@@ -6391,7 +6398,7 @@ function alignDetailPanelNameLabel(containerId) {
     if (!widest) return;
 
     const widthPx = `${Math.ceil(widest)}px`;
-    document.querySelectorAll(`#${containerId} .detail-form`).forEach(f => { f.style.gridTemplateColumns = `${widthPx} minmax(140px, 1fr)`; });
+    document.querySelectorAll(`#${containerId} .detail-form`).forEach(f => { f.style.gridTemplateColumns = `${widthPx} minmax(8.75rem, 1fr)`; });
     document.querySelectorAll(`#${containerId} .detail-panel-name-label`).forEach(label => { label.style.minWidth = widthPx; });
 }
 
@@ -6674,6 +6681,7 @@ async function loadGlobalSettingsFromBackend() {
 
     setFieldValue('logLevel', currentGlobalSettings.logLevel || 'err');
     setFieldValue('languageSelect', currentGlobalSettings.language || 'en');
+    setFieldValue('dialogScaleSelect', String(currentGlobalSettings.dialogScale || 0));
     setFieldValue('hotkeyNextProfile', vkHexToFriendly(currentGlobalSettings.hotkeyNextProfile));
     setFieldValue('hotkeyPreviousProfile', vkHexToFriendly(currentGlobalSettings.hotkeyPreviousProfile));
     setFieldValue('hotkeyCycleAllClientsForward', vkHexToFriendly(currentGlobalSettings.hotkeyCycleAllClientsForward));
@@ -6723,6 +6731,22 @@ function toggleAdvancedMode() {
 function toggleSectionHint(btn) {
     const visible = btn.closest('.section').classList.toggle('hints-visible');
     btn.classList.toggle('hint-toggle-active', visible);
+}
+
+// Saved by the backend immediately, so it stays outside the save/unsaved-changes flow.
+async function changeDialogScale() {
+    const percent = parseInt(document.getElementById('dialogScaleSelect').value, 10) || 0;
+    if (!currentGlobalSettings) currentGlobalSettings = {};
+    currentGlobalSettings.dialogScale = percent;
+
+    try {
+        const result = JSON.parse(await webui.call('setDialogScale', percent));
+        document.documentElement.style.setProperty('--ui-scale', result.scale);
+        // Resize listeners already ran before the new scale applied.
+        window.dispatchEvent(new Event('resize'));
+    } catch (error) {
+        logError('Failed to apply UI scale:', error);
+    }
 }
 
 // Preference lives in global.settings.json so it applies across all profiles.
@@ -7848,7 +7872,7 @@ function placeOverlayChip(def) {
     if (def.fontSizeId) {
         // Not * scale: that's tuned for a few px of padding, but stretches a 12px font to ~32px at default stage zoom.
         const size = getFieldValue(def.fontSizeId);
-        if (size) chip.style.fontSize = `${size}px`;
+        if (size) chip.style.fontSize = `${size / 16}rem`;
     }
 
     const { width: W, height: H } = overlayStageContentSize(stage);

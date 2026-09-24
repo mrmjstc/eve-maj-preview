@@ -306,6 +306,8 @@
   "field.allowHotkeyAutoRepeat.hint": "Wird ein Hotkey gehalten, wiederholt sich die Aktion, statt nur einmal auszulösen.",
   "field.allowHotkeyAutoRepeat.label": "Hotkey beim Halten wiederholen",
   "field.alwaysOnTopToggle.label": "Immer im Vordergrund",
+  "field.dialogScaleSelect.label": "UI-Skalierung",
+  "field.dialogScaleSelect.auto": "Automatisch",
   "field.animationStyle.hint": "\"Keine Animation\" minimiert sofort; \"Originalanimation\" behält den nativen Windows-Minimiereffekt bei.",
   "field.animationStyle.label": "Animationsstil",
   "field.animationStyle.option.noanimation": "Keine Animation",

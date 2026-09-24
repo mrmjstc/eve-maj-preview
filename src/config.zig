@@ -369,6 +369,7 @@ pub const GlobalSettings = struct {
     oreTable: std.ArrayList(OrePriceEntry),
     dialogX: ?i32,
     dialogY: ?i32,
+    dialogScale: u16,
     needs_free: bool,
 
     pub fn init(allocator: std.mem.Allocator) GlobalSettings {
@@ -398,6 +399,7 @@ pub const GlobalSettings = struct {
             .oreTable = std.ArrayList(OrePriceEntry).empty,
             .dialogX = null,
             .dialogY = null,
+            .dialogScale = 0,
             .needs_free = false,
         };
     }
@@ -659,6 +661,7 @@ pub const GlobalSettings = struct {
         oreTable: []const OrePriceEntry.Wire = &.{},
         dialogX: ?i32 = null,
         dialogY: ?i32 = null,
+        dialogScale: u16 = 0,
     };
 
     pub fn toWire(self: *GlobalSettings, allocator: std.mem.Allocator) !Wire {
@@ -711,6 +714,7 @@ pub const GlobalSettings = struct {
             .oreTable = ore,
             .dialogX = self.dialogX,
             .dialogY = self.dialogY,
+            .dialogScale = self.dialogScale,
         };
     }
 
@@ -738,6 +742,7 @@ pub const GlobalSettings = struct {
         settings.advancedMode = w.advancedMode;
         settings.dialogX = w.dialogX;
         settings.dialogY = w.dialogY;
+        settings.dialogScale = w.dialogScale;
 
         for (w.profileSwitchHotkeys) |item_wire| {
             try settings.profileSwitchHotkeys.append(allocator, try ProfileSwitchHotkey.fromWire(item_wire, allocator));

@@ -306,6 +306,8 @@
   "field.allowHotkeyAutoRepeat.hint": "Mantener pulsado un hotkey repite su acción en lugar de activarse una sola vez.",
   "field.allowHotkeyAutoRepeat.label": "Repetir Hotkey al Mantener Pulsado",
   "field.alwaysOnTopToggle.label": "Siempre Encima",
+  "field.dialogScaleSelect.label": "Escala de la Interfaz",
+  "field.dialogScaleSelect.auto": "Automática",
   "field.animationStyle.hint": "Sin Animación minimiza al instante; Animación Original conserva el efecto nativo de minimizar de Windows.",
   "field.animationStyle.label": "Estilo de Animación",
   "field.animationStyle.option.noanimation": "Sin Animación",

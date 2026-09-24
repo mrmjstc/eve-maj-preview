@@ -48,26 +48,26 @@
     --color-purple: #a988d1;
     --color-sky: #7fb3d9;
     /* Three deliberate tiers: small chips, controls, containers. */
-    --radius-sm: 2px;
-    --radius: 3px;
-    --radius-lg: 4px;
+    --radius-sm: 0.125rem;
+    --radius: 0.1875rem;
+    --radius-lg: 0.25rem;
     --font-mono: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
 
     /* 4px grid. --space-2 is the rhythm nearly everything already used as a
        raw literal; the rest name what was likewise already a repeated literal. */
-    --space-1: 4px;
-    --space-2: 8px;
-    --space-3: 12px;
-    --space-4: 16px;
-    --space-5: 20px;
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
 
     /* h3 steps up from body so a section title reads a level above its
        content instead of matching it at the same size. */
-    --fs-micro: 9px;
-    --fs-small: 10px;
-    --fs-label: 11px;
-    --fs-body: 12px;
-    --fs-heading: 14px;
+    --fs-micro: 0.5625rem;
+    --fs-small: 0.625rem;
+    --fs-label: 0.6875rem;
+    --fs-body: 0.75rem;
+    --fs-heading: 0.875rem;
     --fw-normal: 400;
     --fw-medium: 500;
     --fw-semibold: 600;
@@ -77,13 +77,13 @@
 
     /* Named so the next dense context (a table row, a compact list) reuses
        this instead of re-deriving it from scratch. */
-    --control-h: 28px;
-    --control-h-dense: 22px;
+    --control-h: 1.75rem;
+    --control-h-dense: 1.375rem;
 
     /* One shadow per kind of floating surface, not one per instance. */
-    --shadow-raised: 0 2px 8px rgba(0, 0, 0, 0.5);
-    --shadow-overlay: 0 4px 16px rgba(0, 0, 0, 0.6);
-    --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.55);
+    --shadow-raised: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.5);
+    --shadow-overlay: 0 0.25rem 1rem rgba(0, 0, 0, 0.6);
+    --shadow-modal: 0 0.5rem 2rem rgba(0, 0, 0, 0.55);
 
     --z-guide: 1;
     --z-dragging: 2;
@@ -100,18 +100,23 @@
 
     /* Label rail to control in .detail-form. Shared with the group panel's title
        row, which lines its field up with that same rail from outside the grid. */
-    --detail-label-gap: 12px;
+    --detail-label-gap: 0.75rem;
     /* A direction glyph plus the gap after it. A paired binding hangs this much
        into its gutter so its field starts where an unpaired one's does. */
-    --binding-dir-offset: 22px;
+    --binding-dir-offset: 1.375rem;
     /* Hover/interaction only - state transitions (.section-active,
        .field-clamped, .main-app-status) keep their own slower timings. */
     --t-hover: 0.15s;
     /* For the div-acting-as-a-control rows (tab/accordion/roster/hint-toggle),
        which have no border of their own to recolor on focus. */
-    --focus-ring-inset: inset 0 0 0 2px rgba(var(--color-accent-rgb), 0.45);
+    --focus-ring-inset: inset 0 0 0 0.125rem rgba(var(--color-accent-rgb), 0.45);
 
     color-scheme: dark;
+}
+
+/* Scales every rem in this sheet for UI Scale; new sizes must be rem, not px. */
+html {
+    font-size: calc(16px * var(--ui-scale, 1));
 }
 
 html.pre-init {
@@ -178,8 +183,8 @@ body {
    longest instead of reserving space for one that isn't there. */
 #tabs-sidebar {
     background: var(--color-panel);
-    border-right: 1px solid var(--color-border);
-    padding: 6px 0;
+    border-right: 0.0625rem solid var(--color-border);
+    padding: 0.375rem 0;
     overflow-y: auto;
     flex-shrink: 0;
 }
@@ -187,24 +192,24 @@ body {
 .tab-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 14px 6px 8px;
+    gap: 0.5rem;
+    padding: 0.375rem 0.875rem 0.375rem 0.5rem;
     cursor: pointer;
     transition: background var(--t-hover), color var(--t-hover), border-color var(--t-hover);
     color: var(--color-muted);
     font-size: var(--fs-body);
     white-space: nowrap;
     font-weight: var(--fw-bold);
-    letter-spacing: 0.5px;
+    letter-spacing: 0.03125rem;
     text-transform: capitalize;
-    border-left: 2px solid transparent;
+    border-left: 0.125rem solid transparent;
 }
 
 .tab-glyph {
     flex: none;
-    width: 14px;
+    width: 0.875rem;
     text-align: center;
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--color-muted);
     transition: color var(--t-hover);
 }
@@ -254,7 +259,7 @@ body {
    even when transparent + 8px edge + 14px glyph + 8px gap), so a submenu
    label lines up under the tab label above it, not its glyph. */
 .subheader-item {
-    padding: 3px 10px 3px 32px;
+    padding: 0.1875rem 0.625rem 0.1875rem 2rem;
     cursor: pointer;
     transition: color var(--t-hover);
     color: var(--color-muted);
@@ -307,7 +312,7 @@ h3 {
     margin-top: var(--space-3);
     margin-bottom: var(--space-2);
     text-transform: capitalize;
-    letter-spacing: 1px;
+    letter-spacing: 0.0625rem;
 }
 
 h3:first-child {
@@ -320,9 +325,9 @@ h4 {
     font-weight: var(--fw-semibold);
     margin-top: var(--space-4);
     margin-bottom: var(--space-2);
-    letter-spacing: 0.2px;
-    border-bottom: 1px solid var(--color-border);
-    padding-bottom: 2px;
+    letter-spacing: 0.0125rem;
+    border-bottom: 0.0625rem solid var(--color-border);
+    padding-bottom: 0.125rem;
 }
 
 /* No h4:first-child reset here: .section > *:first-child already zeroes a
@@ -349,24 +354,24 @@ h4.modal-subheading {
 pre {
     font-family: monospace;
     line-height: 1.1;
-    margin: 0 0 16px 0;
+    margin: 0 0 1rem 0;
     overflow-x: auto;
     text-align: center;
-    font-size: 11px;
+    font-size: 0.6875rem;
 }
 
 #ascii-logo {
     cursor: pointer;
     user-select: none;
-    font-size: 10px;
-    margin-bottom: 12px;
+    font-size: 0.625rem;
+    margin-bottom: 0.75rem;
 }
 
 /* Contributor names read as a block rather than one long column. */
 .credits-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    column-gap: 16px;
+    column-gap: 1rem;
     line-height: 1.8;
 }
 
@@ -376,7 +381,7 @@ pre {
 
 /* Paragraph spacing */
 p {
-    margin: 6px 0;
+    margin: 0.375rem 0;
     line-height: var(--lh-body);
     font-size: var(--fs-body);
 }
@@ -386,7 +391,7 @@ p {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     background: var(--color-panel);
     font-size: var(--fs-label);
     margin-top: var(--space-2);
@@ -394,14 +399,14 @@ p {
 
 .notification-types-table th {
     background: var(--color-panel);
-    border-top: 1px solid var(--color-border);
-    border-right: 1px solid var(--color-border);
-    border-bottom: 1px solid var(--color-border);
-    padding: 4px 6px;
+    border-top: 0.0625rem solid var(--color-border);
+    border-right: 0.0625rem solid var(--color-border);
+    border-bottom: 0.0625rem solid var(--color-border);
+    padding: 0.25rem 0.375rem;
     text-align: center;
     color: var(--color-text);
     font-weight: 600;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.01875rem;
     line-height: 1.2;
     white-space: nowrap;
     position: sticky;
@@ -420,31 +425,31 @@ p {
 }
 
 .notification-types-table thead tr:last-child:not(:first-child) th {
-    top: calc(1.2em + 10px);
+    top: calc(1.2em + 0.625rem);
     font-weight: 500;
     color: var(--color-text-secondary);
     border-top: none;
 }
 
 .notification-types-table th.event-type-col {
-    min-width: 130px;
+    min-width: 8.125rem;
     text-align: left;
 }
 
 .notification-types-table th.category-col {
-    min-width: 28px;
+    min-width: 1.75rem;
 }
 
 .notification-types-table td {
-    border: 1px solid var(--color-border-faint);
-    padding: 4px 3px;
+    border: 0.0625rem solid var(--color-border-faint);
+    padding: 0.25rem 0.1875rem;
     vertical-align: middle;
     text-align: center;
 }
 
 .notification-types-table td.event-name-cell {
     text-align: left;
-    padding: 4px 6px;
+    padding: 0.25rem 0.375rem;
 }
 
 .notification-types-table tbody tr {
@@ -470,9 +475,9 @@ p {
 }
 
 .notification-types-table input[type="number"] {
-    width: 42px;
+    width: 2.625rem;
     height: var(--control-h-dense);
-    padding: 2px 4px;
+    padding: 0.125rem 0.25rem;
     margin: 0;
     font-size: var(--fs-small);
 }
@@ -526,20 +531,20 @@ p {
 }
 
 .notification-types-table tr.category-separator td {
-    border-top: 1px solid var(--color-border);
+    border-top: 0.0625rem solid var(--color-border);
 }
 
 .notification-types-table td.category-cell {
     background: var(--color-panel);
     color: var(--color-text);
     text-align: center;
-    padding: 8px 4px;
+    padding: 0.5rem 0.25rem;
     border-color: var(--color-border);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 0.0625rem solid var(--color-border);
     /* Pins the column to a fixed width regardless of content - large rowspans (as in the ore table, unlike notifications' short ones) can otherwise
        trip up auto table layout's handling of the vertical-rl label below, letting the column balloon to the label's unrotated horizontal width. */
-    width: 28px;
-    max-width: 28px;
+    width: 1.75rem;
+    max-width: 1.75rem;
     overflow: hidden;
     /* Anchors the absolutely-positioned label below at this cell's own box. */
     position: relative;
@@ -570,7 +575,7 @@ p {
     backface-visibility: hidden;
     display: inline-block;
     font-weight: var(--fw-semibold);
-    letter-spacing: 0.3px;
+    letter-spacing: 0.01875rem;
     font-size: var(--fs-label);
     white-space: nowrap;
 }
@@ -586,9 +591,9 @@ input.search-filter-input,
 #profile-select,
 .cp-hex-input {
     background-color: var(--color-surface);
-    border: 1px solid var(--color-border-strong);
+    border: 0.0625rem solid var(--color-border-strong);
     color: var(--color-text);
-    padding: 4px 8px;
+    padding: 0.25rem 0.5rem;
     font-family: var(--font-mono);
     font-size: var(--fs-body);
     width: 100%;
@@ -604,10 +609,10 @@ select {
     -webkit-appearance: none;
     background-image: linear-gradient(45deg, transparent 50%, var(--color-muted) 50%),
         linear-gradient(135deg, var(--color-muted) 50%, transparent 50%);
-    background-position: right 11px top 12px, right 7px top 12px;
-    background-size: 4px 4px, 4px 4px;
+    background-position: right 0.6875rem top 0.75rem, right 0.4375rem top 0.75rem;
+    background-size: 0.25rem 0.25rem, 0.25rem 0.25rem;
     background-repeat: no-repeat;
-    padding-right: 24px;
+    padding-right: 1.5rem;
 }
 
 input.recording {
@@ -661,12 +666,12 @@ label {
     font-weight: var(--fw-medium);
     font-size: var(--fs-body);
     display: block;
-    margin-bottom: 3px;
-    margin-top: 6px;
+    margin-bottom: 0.1875rem;
+    margin-top: 0.375rem;
     /* Matches the checkbox/radio label-body's 20px gutter (14px box + gap)
        below, so a field label's text and a checkbox/radio's text start at the
        same column. */
-    padding-left: 20px;
+    padding-left: 1.25rem;
     position: relative;
 }
 
@@ -678,7 +683,7 @@ label::before {
     content: '›';
     color: var(--color-muted);
     position: absolute;
-    left: 2px;
+    left: 0.125rem;
 }
 
 label:has(input[type="checkbox"])::before,
@@ -691,8 +696,8 @@ label:has(input[type="radio"]) {
     padding-left: 0;
     /* Matches .binding-list's margin-bottom so a checkbox-to-checkbox gap
        reads the same as a checkbox-to-field or field-to-field gap. */
-    margin-top: 8px;
-    margin-bottom: 8px;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
 }
 
 /* Checkbox styling - terminal style */
@@ -705,7 +710,7 @@ input[type="checkbox"] {
 
 input[type="checkbox"] + .label-body {
     position: relative;
-    padding-left: 20px;
+    padding-left: 1.25rem;
     cursor: pointer;
     display: inline-block;
 }
@@ -715,12 +720,12 @@ input[type="checkbox"] + .label-body::before {
     display: inline-block;
     position: absolute;
     left: 0;
-    top: 1px;
-    width: 14px;
-    height: 14px;
-    line-height: 14px;
+    top: 0.0625rem;
+    width: 0.875rem;
+    height: 0.875rem;
+    line-height: 0.875rem;
     text-align: center;
-    border: 1px solid var(--color-border-strong);
+    border: 0.0625rem solid var(--color-border-strong);
     box-sizing: border-box;
     color: var(--color-accent-ink);
     font-size: var(--fs-small);
@@ -741,8 +746,8 @@ input[type="checkbox"]:checked + .label-body::before {
    most likely to have it. :focus-visible, not :focus, so a mouse click doesn't
    ring it - matches every other control in the dialog. */
 input[type="checkbox"]:focus-visible + .label-body::before {
-    outline: 1px solid var(--color-accent);
-    outline-offset: 1px;
+    outline: 0.0625rem solid var(--color-accent);
+    outline-offset: 0.0625rem;
 }
 
 /* Hover gets its own quieter affordance (text-secondary) rather than the
@@ -764,7 +769,7 @@ input[type="radio"] {
 
 input[type="radio"] + .label-body {
     position: relative;
-    padding-left: 20px;
+    padding-left: 1.25rem;
     cursor: pointer;
     display: inline-block;
 }
@@ -774,11 +779,11 @@ input[type="radio"] + .label-body::before {
     display: inline-block;
     position: absolute;
     left: 0;
-    top: 1px;
-    width: 14px;
-    height: 14px;
+    top: 0.0625rem;
+    width: 0.875rem;
+    height: 0.875rem;
     box-sizing: border-box;
-    border: 1px solid var(--color-border-strong);
+    border: 0.0625rem solid var(--color-border-strong);
     border-radius: 50%;
     transition: border-color var(--t-hover);
 }
@@ -787,12 +792,12 @@ input[type="radio"]:checked + .label-body::before {
     border-color: var(--color-accent);
     /* Inset dot via a spread shadow rather than a second ::after - one layer
        to keep in sync with the box above. */
-    box-shadow: inset 0 0 0 3px var(--color-accent);
+    box-shadow: inset 0 0 0 0.1875rem var(--color-accent);
 }
 
 input[type="radio"]:focus-visible + .label-body::before {
-    outline: 1px solid var(--color-accent);
-    outline-offset: 1px;
+    outline: 0.0625rem solid var(--color-accent);
+    outline-offset: 0.0625rem;
 }
 
 label:hover input[type="radio"] + .label-body::before {
@@ -809,9 +814,9 @@ input[type="radio"]:disabled + .label-body {
    Only the frame and text match the theme. */
 input[type="file"] {
     background-color: var(--color-surface);
-    border: 1px solid var(--color-border-strong);
+    border: 0.0625rem solid var(--color-border-strong);
     color: var(--color-text);
-    padding: 4px 8px;
+    padding: 0.25rem 0.5rem;
     font-family: var(--font-mono);
     font-size: var(--fs-body);
     width: 100%;
@@ -826,10 +831,10 @@ input[type="file"]:focus-visible {
 
 input[type="file"]::file-selector-button {
     background-color: var(--color-surface-alt);
-    border: 1px solid var(--color-border-strong);
+    border: 0.0625rem solid var(--color-border-strong);
     color: var(--color-text);
-    padding: 3px 10px;
-    margin-right: 8px;
+    padding: 0.1875rem 0.625rem;
+    margin-right: 0.5rem;
     font-family: var(--font-mono);
     font-size: var(--fs-label);
     cursor: pointer;
@@ -867,7 +872,7 @@ input[type="checkbox"]:disabled + .label-body {
     gap: var(--space-3);
     padding: var(--space-3);
     margin-bottom: var(--space-3);
-    border: 1px solid var(--color-accent);
+    border: 0.0625rem solid var(--color-accent);
     border-radius: var(--radius-lg);
     background: rgba(var(--color-accent-rgb), 0.12);
     color: var(--color-text);
@@ -881,7 +886,7 @@ input[type="checkbox"]:disabled + .label-body {
     color: var(--color-muted);
     font-size: var(--fs-label);
     font-style: italic;
-    margin: 1px 0 2px;
+    margin: 0.0625rem 0 0.125rem;
 }
 
 /* The intro hint under a section/subsection heading gets the between-groups
@@ -899,12 +904,12 @@ h4 + .hint,
 h3:has(+ .hint),
 h4:has(+ .hint),
 .section-heading:has(+ .hint) {
-    margin-bottom: 2px;
+    margin-bottom: 0.125rem;
 }
 
 input:has(+ .hint),
 select:has(+ .hint) {
-    margin-bottom: 2px;
+    margin-bottom: 0.125rem;
 }
 
 /* A trailing hint after a control gets the same between-groups gap, whichever
@@ -918,11 +923,11 @@ select + .hint {
 /* Status message. display stays none until showStatus() sets it to flex -
    align-items only takes effect on a flex box, so that JS-set value matters. */
 .status-message {
-    padding: 6px 10px;
+    padding: 0.375rem 0.625rem;
     margin: 0;
     display: none;
     font-size: var(--fs-body);
-    border: 1px solid;
+    border: 0.0625rem solid;
     font-weight: var(--fw-medium);
     height: var(--control-h);
     box-sizing: border-box;
@@ -954,9 +959,9 @@ select + .hint {
 /* Button overrides */
 button {
     background-color: var(--color-surface);
-    border: 1px solid var(--color-border-strong);
+    border: 0.0625rem solid var(--color-border-strong);
     color: var(--color-text);
-    padding: 6px 12px;
+    padding: 0.375rem 0.75rem;
     font-family: var(--font-mono);
     font-size: var(--fs-body);
     cursor: pointer;
@@ -966,7 +971,7 @@ button {
     line-height: var(--lh-body);
     border-radius: var(--radius);
     text-transform: capitalize;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.03125rem;
 }
 
 button:hover {
@@ -1027,31 +1032,31 @@ button:active {
 /* Fixed footer */
 /* Profile Header */
 #profile-header {
-    height: 44px;
+    height: 2.75rem;
     background: var(--color-panel);
-    border-bottom: 1px solid var(--color-border);
-    padding: 8px 12px;
+    border-bottom: 0.0625rem solid var(--color-border);
+    padding: 0.5rem 0.75rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 0.5rem;
     flex-shrink: 0;
 }
 
 #profile-header-left {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
 }
 
 #app-brand {
     display: flex;
     align-items: baseline;
-    gap: 6px;
+    gap: 0.375rem;
     color: var(--color-text);
     font-weight: var(--fw-semibold);
     font-size: var(--fs-body);
-    letter-spacing: 0.2px;
+    letter-spacing: 0.0125rem;
     white-space: nowrap;
 }
 
@@ -1061,8 +1066,8 @@ button:active {
 }
 
 #profile-header-sep {
-    width: 1px;
-    height: 16px;
+    width: 0.0625rem;
+    height: 1rem;
     background: var(--color-border);
     flex-shrink: 0;
 }
@@ -1070,15 +1075,15 @@ button:active {
 #profile-header-right {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
 }
 
 .main-app-status {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 0.375rem;
     font-size: var(--fs-body);
-    letter-spacing: 0.3px;
+    letter-spacing: 0.01875rem;
     color: var(--color-muted);
     transition: color 0.3s;
 }
@@ -1097,33 +1102,33 @@ button:active {
 
 /* Same background as #profile-header - both are the dialog's chrome bars. */
 #footer {
-    height: 44px;
+    height: 2.75rem;
     background: var(--color-panel);
-    border-top: 1px solid var(--color-border);
-    padding: 8px 12px;
+    border-top: 0.0625rem solid var(--color-border);
+    padding: 0.5rem 0.75rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 0.5rem;
     flex-shrink: 0;
 }
 
 #footer-left {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
     flex: 1;
 }
 
 #search-container {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
 }
 
 .search-input-wrapper {
     position: relative;
-    width: 180px;
+    width: 11.25rem;
 }
 
 /* The Characters tab's search sits at the top of a section instead of a
@@ -1135,7 +1140,7 @@ button:active {
 
 /* Extends the shared control rule above; only what differs from it lives here. */
 input.search-filter-input {
-    padding: 6px 32px 6px 8px;
+    padding: 0.375rem 2rem 0.375rem 0.5rem;
     margin: 0;
     transition: border-color var(--t-hover);
     line-height: normal;
@@ -1148,7 +1153,7 @@ input.search-filter-input {
 .search-count {
     font-size: var(--fs-body);
     color: var(--color-muted);
-    min-width: 60px;
+    min-width: 3.75rem;
     margin: 0;
 }
 
@@ -1164,8 +1169,8 @@ input.search-filter-input {
 
 .button-clear {
     position: absolute;
-    right: 5px;
-    top: 3px;
+    right: 0.3125rem;
+    top: 0.1875rem;
     background: transparent;
     border: none;
     color: var(--color-muted);
@@ -1173,7 +1178,7 @@ input.search-filter-input {
     width: var(--control-h-dense);
     height: var(--control-h-dense);
     cursor: pointer;
-    font-size: 14px;
+    font-size: 0.875rem;
     font-family: var(--font-mono);
     transition: color var(--t-hover), background var(--t-hover);
     line-height: var(--control-h-dense);
@@ -1211,8 +1216,8 @@ input.search-filter-input {
        most of these glyphs sit optically above that box's own center, which
        reads as "too high". A couple px of top-only padding nudges the
        flex-centered content down without moving the button's own border. */
-    padding: 2px 0 0;
-    font-size: 15px;
+    padding: 0.125rem 0 0;
+    font-size: 0.9375rem;
     line-height: 1;
     color: var(--color-muted);
     display: inline-flex;
@@ -1249,7 +1254,7 @@ input.search-filter-input {
     width: var(--control-h);
     flex: none;
     padding: 0;
-    font-size: 14px;
+    font-size: 0.875rem;
     line-height: 1;
     color: var(--color-muted);
     display: none;
@@ -1274,21 +1279,21 @@ body.advanced-mode .hotkey-edit-btn {
 #footer-right {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
 }
 
 .changes-pending {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 0.25rem;
     font-size: var(--fs-body);
     /* The label's inherited line-height (1.4) is taller than the room this
        fixed-height pill leaves after its padding and border, so it centered
        within a box bigger than itself and read as riding low. */
     line-height: 1;
     color: var(--color-accent);
-    padding: 6px 8px;
-    border: 1px solid var(--color-accent);
+    padding: 0.375rem 0.5rem;
+    border: 0.0625rem solid var(--color-accent);
     border-radius: var(--radius-sm);
     background: rgba(var(--color-accent-rgb), 0.1);
     height: var(--control-h);
@@ -1316,7 +1321,7 @@ body.advanced-mode .hotkey-edit-btn {
 @keyframes slideInFade {
     from {
         opacity: 0;
-        transform: translateX(-10px);
+        transform: translateX(-0.625rem);
     }
     to {
         opacity: 1;
@@ -1326,7 +1331,7 @@ body.advanced-mode .hotkey-edit-btn {
 
 /* Extends the shared control rule above; only what differs from it lives here. */
 #profile-select {
-    min-width: 130px;
+    min-width: 8.125rem;
     line-height: normal;
     margin: 0;
     vertical-align: middle;
@@ -1334,7 +1339,7 @@ body.advanced-mode .hotkey-edit-btn {
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-    width: 8px;
+    width: 0.5rem;
 }
 
 ::-webkit-scrollbar-track {
@@ -1343,7 +1348,7 @@ body.advanced-mode .hotkey-edit-btn {
 
 ::-webkit-scrollbar-thumb {
     background: var(--color-border-strong);
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -1353,7 +1358,7 @@ body.advanced-mode .hotkey-edit-btn {
 /* Section containers */
 .section {
     background-color: var(--color-panel);
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     /* One step up from the 8px used everywhere else, so a section reads as a
        container with interior space rather than as one more 8px increment. */
     padding: var(--space-3);
@@ -1460,7 +1465,7 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 /* The ore table reuses .notification-types-table (see above) wholesale for identical visual/scrolling behavior - this is the one thing that table never needed. */
 /* Wider than the shared number-input rule (sized for notifications' Duration/Throttle) - fetched ISK prices run up to 6+ digits. */
 .notification-types-table input.ore-price-input {
-    width: 90px;
+    width: 5.625rem;
 }
 
 /* Grid for two-column layouts */
@@ -1501,14 +1506,14 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 #overlayLayoutStage {
     position: relative;
     width: 100%;
-    max-width: 540px;
+    max-width: 33.75rem;
     margin: 0 auto;
     aspect-ratio: 16 / 9;
     background-color: var(--color-bg);
     background-image: url('data:image/jpeg;base64,LAYOUT_PREVIEW_IMAGE_PLACEHOLDER');
     background-size: cover;
     background-position: center;
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     border-radius: var(--radius);
     overflow: hidden;
 }
@@ -1519,12 +1524,12 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     left: 0;
     display: flex;
     align-items: center;
-    gap: 4px;
-    font-size: 10px;
+    gap: 0.25rem;
+    font-size: 0.625rem;
     font-weight: 700;
     color: var(--color-accent-ink);
     background-color: var(--color-accent);
-    padding: 5px 10px;
+    padding: 0.3125rem 0.625rem;
     white-space: nowrap;
     cursor: grab;
     touch-action: none;
@@ -1539,10 +1544,10 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
    that off. Outside .overlay-chip-label so .dim's strike-through can't reach it. */
 .overlay-chip-handle {
     position: relative;
-    top: 1px;
+    top: 0.0625rem;
     flex: none;
     line-height: 1;
-    font-size: 14px;
+    font-size: 0.875rem;
     opacity: 0.6;
 }
 
@@ -1553,8 +1558,8 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 /* Amber, matching every other control's focus ring - was the one green
    outline in the dialog (green is otherwise reserved for the success state). */
 .overlay-chip:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 1px;
+    outline: 0.125rem solid var(--color-accent);
+    outline-offset: 0.0625rem;
 }
 
 .overlay-chip.dragging {
@@ -1568,13 +1573,13 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 }
 
 .overlay-chip.clamped {
-    box-shadow: 0 0 0 2px rgba(var(--color-error-rgb), 0.6);
+    box-shadow: 0 0 0 0.125rem rgba(var(--color-error-rgb), 0.6);
 }
 
 .overlay-chip.dim .overlay-chip-label {
     text-decoration: line-through;
     text-decoration-color: #000000;
-    text-decoration-thickness: 2px;
+    text-decoration-thickness: 0.125rem;
 }
 
 /* Shown while a dragged chip aligns with another chip's edge/center. */
@@ -1590,37 +1595,37 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 .overlay-guide-x {
     top: 0;
     bottom: 0;
-    width: 1px;
+    width: 0.0625rem;
 }
 
 .overlay-guide-y {
     left: 0;
     right: 0;
-    height: 1px;
+    height: 0.0625rem;
 }
 
 .overlay-popover {
     position: fixed;
     z-index: var(--z-popover);
     background-color: var(--color-panel);
-    border: 1px solid var(--color-border-strong);
-    padding: 10px 12px;
-    min-width: 220px;
+    border: 0.0625rem solid var(--color-border-strong);
+    padding: 0.625rem 0.75rem;
+    min-width: 13.75rem;
     box-shadow: var(--shadow-overlay);
     border-radius: var(--radius);
 }
 
 .overlay-popover-close {
     position: absolute;
-    top: 6px;
-    right: 6px;
+    top: 0.375rem;
+    right: 0.375rem;
     background: none;
     border: none;
     color: var(--color-muted);
     cursor: pointer;
-    font-size: 14px;
+    font-size: 0.875rem;
     line-height: 1;
-    padding: 0 4px;
+    padding: 0 0.25rem;
     width: auto;
     height: auto;
 }
@@ -1633,14 +1638,14 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 
 /* Leaves room for .overlay-popover-close so a long title doesn't run under it. */
 #overlayPopoverTitle {
-    padding-right: 20px;
+    padding-right: 1.25rem;
 }
 
 #overlayPopoverBody {
     display: grid;
-    grid-template-columns: auto minmax(70px, 1fr);
+    grid-template-columns: auto minmax(4.375rem, 1fr);
     align-items: center;
-    gap: 8px 12px;
+    gap: 0.5rem 0.75rem;
 }
 
 /* Lets each field's label/control pair become direct grid items of #overlayPopoverBody, so labels align into one column across all rows. */
@@ -1686,7 +1691,7 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 .overlay-popover-range-control {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 0.375rem;
 }
 
 .overlay-popover-range-control input[type="range"] {
@@ -1699,7 +1704,7 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
    field. Color swatches keep their fixed width instead of growing. */
 .field-row {
     display: flex;
-    gap: 8px;
+    gap: 0.5rem;
     align-items: center;
 }
 
@@ -1725,14 +1730,14 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
    every other tab and every bound key shares one left edge to scan down. */
 .binding-list {
     display: grid;
-    grid-template-columns: auto minmax(140px, 1fr);
+    grid-template-columns: auto minmax(8.75rem, 1fr);
     align-items: center;
-    gap: 8px var(--detail-label-gap);
+    gap: 0.5rem var(--detail-label-gap);
     /* Zeroed by .section > *:last-child when a list is the section's final
        element (most are); kept otherwise, so a flat list or heading that
        follows one - Profiles' custom hotkey rows, Outside EVE's App Hotkeys
        heading - gets the same 8px gap every other stacked block gets. */
-    margin-bottom: 8px;
+    margin-bottom: 0.5rem;
 }
 
 /* A .binding-list that sits in a half-width .row column instead of spanning
@@ -1742,16 +1747,16 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
    column and overflow it into its neighbor. Sized for its own short label. */
 .binding-list-compact {
     display: grid;
-    grid-template-columns: max-content minmax(60px, 1fr);
+    grid-template-columns: max-content minmax(3.75rem, 1fr);
     align-items: center;
-    gap: 6px var(--detail-label-gap);
-    padding: 4px 0;
+    gap: 0.375rem var(--detail-label-gap);
+    padding: 0.25rem 0;
 }
 
 /* A checkbox's own margin-bottom (3px) is too tight against a grid straight
    below it - Clients' Skip Characters Excluded sits right above clientBindings. */
 label + .binding-list {
-    margin-top: 8px;
+    margin-top: 0.5rem;
 }
 
 /* Lets the label, the control and the conflict note land in the rail directly
@@ -1792,11 +1797,11 @@ label + .binding-list {
 
 .binding-dir {
     /* Fixed, so the offset the row hangs by is known rather than measured. */
-    width: 14px;
+    width: 0.875rem;
     flex: none;
     text-align: center;
     color: var(--color-muted);
-    font-size: 14px;
+    font-size: 0.875rem;
     /* Keeps the taller glyph from stretching the row past its control height. */
     line-height: 1;
 }
@@ -1824,11 +1829,11 @@ label + .binding-list {
 
 .keycap-render {
     position: absolute;
-    inset: 1px;
+    inset: 0.0625rem;
     display: flex;
     align-items: center;
-    gap: 3px;
-    padding: 0 6px;
+    gap: 0.1875rem;
+    padding: 0 0.375rem;
     overflow: hidden;
     /* Clicks belong to the input underneath, which is what starts recording. */
     pointer-events: none;
@@ -1847,14 +1852,14 @@ label + .binding-list {
 
 .keycap {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 0.625rem;
     line-height: 1;
-    padding: 3px 5px;
+    padding: 0.1875rem 0.3125rem;
     color: var(--color-text);
     background: var(--color-surface-alt);
-    border: 1px solid var(--color-border-strong);
+    border: 0.0625rem solid var(--color-border-strong);
     /* The heavier bottom edge is what reads as a key rather than a chip. */
-    border-bottom-width: 2px;
+    border-bottom-width: 0.125rem;
     border-radius: var(--radius);
     text-transform: uppercase;
     white-space: nowrap;
@@ -1867,15 +1872,15 @@ label + .binding-list {
 
 .keycap-plus {
     color: var(--color-muted);
-    font-size: 9px;
+    font-size: 0.5625rem;
 }
 
 .section-heading {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 8px;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
 }
 
 .section-heading > h3 {
@@ -1885,19 +1890,19 @@ label + .binding-list {
 .section-heading-actions {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 0.375rem;
 }
 
 .button-icon.hint-toggle {
     width: auto;
     height: auto;
     position: relative;
-    top: -2px;
-    padding: 1px 5px;
+    top: -0.125rem;
+    padding: 0.0625rem 0.3125rem;
     font-size: var(--fs-micro);
     line-height: var(--lh-body);
     background: transparent;
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     border-radius: var(--radius-sm);
 }
 
@@ -1925,7 +1930,7 @@ label + .binding-list {
     color: var(--color-muted);
     font-size: var(--fs-label);
     font-style: italic;
-    margin: 1px 0 4px;
+    margin: 0.0625rem 0 0.25rem;
 }
 
 .section.hints-visible .hint-extra {
@@ -1946,14 +1951,14 @@ label + .binding-list {
 .scope-chip {
     flex: none;
     position: relative;
-    top: -2px;
-    padding: 1px 5px;
+    top: -0.125rem;
+    padding: 0.0625rem 0.3125rem;
     font-size: var(--fs-micro);
     font-weight: var(--fw-medium);
-    letter-spacing: 0.5px;
+    letter-spacing: 0.03125rem;
     text-transform: uppercase;
     color: var(--color-muted);
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     border-radius: var(--radius-sm);
 }
 
@@ -1990,7 +1995,7 @@ label + .binding-list {
 .notif-cell-inline {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 0.25rem;
 }
 
 /* Color input styling */
@@ -2000,9 +2005,9 @@ input[type="color"] {
     appearance: none;
     height: var(--control-h);
     width: var(--control-h);
-    padding: 3px;
+    padding: 0.1875rem;
     cursor: pointer;
-    border: 1px solid var(--color-border-strong);
+    border: 0.0625rem solid var(--color-border-strong);
     background-color: var(--color-surface);
     box-sizing: border-box;
     border-radius: var(--radius);
@@ -2052,15 +2057,15 @@ input[type="color"]::-moz-color-swatch {
 .swatch-wrap:has(input[data-cleared="true"])::after {
     content: '';
     position: absolute;
-    inset: 4px;
+    inset: 0.25rem;
     pointer-events: none;
     opacity: 0.35;
     background: linear-gradient(
         to top right,
-        transparent calc(50% - 1px),
-        var(--color-destructive) calc(50% - 1px),
-        var(--color-destructive) calc(50% + 1px),
-        transparent calc(50% + 1px)
+        transparent calc(50% - 0.0625rem),
+        var(--color-destructive) calc(50% - 0.0625rem),
+        var(--color-destructive) calc(50% + 0.0625rem),
+        transparent calc(50% + 0.0625rem)
     );
 }
 
@@ -2077,8 +2082,8 @@ input[type="color"]::-moz-color-swatch {
    overflow if it ever lands somewhere narrower than 160px. */
 .color-with-hex {
     display: flex;
-    gap: 8px;
-    width: 160px;
+    gap: 0.5rem;
+    width: 10rem;
     max-width: 100%;
 }
 
@@ -2102,10 +2107,10 @@ input[type="color"]::-moz-color-swatch {
     z-index: var(--z-color-picker);
     display: none;
     background: var(--color-panel);
-    border: 1px solid var(--color-border-strong);
+    border: 0.0625rem solid var(--color-border-strong);
     box-shadow: var(--shadow-overlay);
     padding: var(--space-3);
-    width: 200px;
+    width: 12.5rem;
     box-sizing: border-box;
     font-family: var(--font-mono);
     border-radius: var(--radius);
@@ -2118,9 +2123,9 @@ input[type="color"]::-moz-color-swatch {
 .cp-sv-area {
     position: relative;
     width: 100%;
-    height: 130px;
+    height: 8.125rem;
     cursor: crosshair;
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     border-radius: var(--radius);
 }
 
@@ -2140,24 +2145,24 @@ input[type="color"]::-moz-color-swatch {
 
 .cp-sv-thumb {
     position: absolute;
-    width: 10px;
-    height: 10px;
-    border: 2px solid #ffffff;
-    box-shadow: 0 0 0 1px #000000;
+    width: 0.625rem;
+    height: 0.625rem;
+    border: 0.125rem solid #ffffff;
+    box-shadow: 0 0 0 0.0625rem #000000;
     transform: translate(-50%, -50%);
     pointer-events: none;
 }
 
 .cp-hue-row {
-    margin-top: 10px;
+    margin-top: 0.625rem;
 }
 
 .cp-hue-slider {
     position: relative;
     width: 100%;
-    height: 10px;
+    height: 0.625rem;
     cursor: pointer;
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     border-radius: var(--radius);
     background: linear-gradient(to right,
         #ff0000 0%, #ffff00 17%, #00ff00 33%,
@@ -2167,10 +2172,10 @@ input[type="color"]::-moz-color-swatch {
 .cp-hue-thumb {
     position: absolute;
     top: 50%;
-    width: 10px;
-    height: 16px;
+    width: 0.625rem;
+    height: 1rem;
     background: #ffffff;
-    border: 1px solid var(--color-border-strong);
+    border: 0.0625rem solid var(--color-border-strong);
     box-sizing: border-box;
     transform: translate(-50%, -50%);
     pointer-events: none;
@@ -2179,13 +2184,13 @@ input[type="color"]::-moz-color-swatch {
 .cp-hex-row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-top: 12px;
+    gap: 0.375rem;
+    margin-top: 0.75rem;
 }
 
 .cp-hex-prefix {
     color: var(--color-muted);
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 /* Extends the shared control rule above; only what differs from it lives here.
@@ -2201,9 +2206,9 @@ input[type="color"]::-moz-color-swatch {
 .cp-clear-btn {
     display: none;
     width: 100%;
-    margin-top: 10px;
+    margin-top: 0.625rem;
     margin-bottom: 0;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--color-muted);
 }
 
@@ -2224,7 +2229,7 @@ input[type="range"] {
     padding: 0;
     background: var(--color-border);
     outline: none;
-    height: 6px;
+    height: 0.375rem;
     border-radius: var(--radius);
 }
 
@@ -2233,39 +2238,39 @@ input[type="range"] {
    outside the track is what every other range implementation does, so it's
    what shows up here instead of nothing. */
 input[type="range"]:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 3px;
+    outline: 0.125rem solid var(--color-accent);
+    outline-offset: 0.1875rem;
 }
 
 input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 16px;
-    height: 16px;
+    width: 1rem;
+    height: 1rem;
     background: var(--color-accent);
     cursor: pointer;
-    border: 1px solid var(--color-border-strong);
+    border: 0.0625rem solid var(--color-border-strong);
     border-radius: 50%;
 }
 
 input[type="range"]::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
+    width: 1rem;
+    height: 1rem;
     background: var(--color-accent);
     cursor: pointer;
-    border: 1px solid var(--color-border-strong);
+    border: 0.0625rem solid var(--color-border-strong);
     border-radius: 50%;
 }
 
 /* Character accordion styles */
 .accordion {
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     /* Full-width left rail at the same 2px as .tab-item/.roster-row, so the
        expanded state below only has to change its color - not its width,
        which would shift the row. Not transparent: unlike those two, this
        element has a border box to complete. */
-    border-left: 2px solid var(--color-border);
-    margin-bottom: 8px;
+    border-left: 0.125rem solid var(--color-border);
+    margin-bottom: 0.5rem;
     border-radius: var(--radius-lg);
     overflow: hidden;
 }
@@ -2278,7 +2283,7 @@ input[type="range"]::-moz-range-thumb {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px;
+    padding: 0.5rem;
     background: var(--color-surface);
     cursor: pointer;
     transition: background var(--t-hover);
@@ -2297,15 +2302,15 @@ input[type="range"]::-moz-range-thumb {
 .accordion-title {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
     flex: 1;
 }
 
 .character-portrait {
-    width: 32px;
-    height: 32px;
+    width: 2rem;
+    height: 2rem;
     object-fit: cover;
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     background: var(--color-bg);
     flex-shrink: 0;
 }
@@ -2315,7 +2320,7 @@ input[type="range"]::-moz-range-thumb {
    inline-block because transforms don't apply to inline elements. */
 .accordion-toggle {
     font-family: var(--font-mono);
-    font-size: 14px;
+    font-size: 0.875rem;
     color: var(--color-muted);
     user-select: none;
     display: inline-block;
@@ -2334,12 +2339,12 @@ input[type="range"]::-moz-range-thumb {
    an h3, so a row inside a section would match the section's own heading.
    Matches .roster-name - same concept, same size. */
 .accordion-name {
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 700;
 }
 
 .accordion-content {
-    padding: 8px;
+    padding: 0.5rem;
     display: none;
 }
 
@@ -2407,27 +2412,27 @@ input[type="range"]::-moz-range-thumb {
    characters panel and the hotkey groups section. */
 .master-detail {
     display: flex;
-    gap: 8px;
+    gap: 0.5rem;
     flex: 1;
     min-height: 0;
 }
 
 .roster {
-    width: 190px;
+    width: 11.875rem;
     flex-shrink: 0;
     overflow-y: auto;
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     border-radius: var(--radius-lg);
 }
 
 /* Portraits are hidden for now, and rows no longer need to make room for one. */
 #charactersList .roster {
-    width: 175px;
+    width: 10.9375rem;
 }
 
 #hotkeyGroupsList .master-detail {
     flex-direction: column;
-    gap: 4px;
+    gap: 0.25rem;
 }
 
 /* Only a handful of profiles are expected, so the roster reads better as a
@@ -2442,15 +2447,15 @@ input[type="range"]::-moz-range-thumb {
     overflow: visible;
     border: none;
     border-radius: 0;
-    gap: 6px;
+    gap: 0.375rem;
 }
 
 #hotkeyGroupsList .roster-row {
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-surface);
     font-weight: var(--fw-bold);
-    letter-spacing: 0.5px;
+    letter-spacing: 0.03125rem;
 }
 
 #hotkeyGroupsList .roster-row:hover {
@@ -2463,21 +2468,21 @@ input[type="range"]::-moz-range-thumb {
 }
 
 #hotkeyGroupsList .roster-name {
-    max-width: 160px;
+    max-width: 10rem;
 }
 
 /* Plain button (not a tab chip) so it reads as an action, not another profile. */
 #hotkeyGroupsList .hkgroup-tab-add {
-    margin-left: 4px;
+    margin-left: 0.25rem;
 }
 
 .roster-row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 8px 6px 6px;
-    border-bottom: 1px solid var(--color-border-faint);
-    border-left: 2px solid transparent;
+    gap: 0.375rem;
+    padding: 0.375rem 0.5rem 0.375rem 0.375rem;
+    border-bottom: 0.0625rem solid var(--color-border-faint);
+    border-left: 0.125rem solid transparent;
     cursor: pointer;
     color: var(--color-muted);
 }
@@ -2511,20 +2516,20 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .roster-row .character-portrait {
-    width: 24px;
-    height: 24px;
+    width: 1.5rem;
+    height: 1.5rem;
 }
 
 .roster-name {
     flex: 1;
-    font-size: 12px;
+    font-size: 0.75rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .roster-hotkey-badge {
-    font-size: 10px;
+    font-size: 0.625rem;
     color: var(--color-muted);
     white-space: nowrap;
 }
@@ -2544,20 +2549,20 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .roster-row.drag-over-top {
-    box-shadow: inset 0 2px 0 var(--color-accent);
+    box-shadow: inset 0 0.125rem 0 var(--color-accent);
 }
 
 .roster-row.drag-over-bottom {
-    box-shadow: inset 0 -2px 0 var(--color-accent);
+    box-shadow: inset 0 -0.125rem 0 var(--color-accent);
 }
 
 .detail-stack {
     flex: 1;
     min-width: 0;
     overflow-y: auto;
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     border-radius: var(--radius-lg);
-    padding: 8px;
+    padding: 0.5rem;
 }
 
 .detail-panel {
@@ -2572,10 +2577,10 @@ input[type="range"]::-moz-range-thumb {
 .detail-panel-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding-bottom: 8px;
-    margin-bottom: 8px;
-    border-bottom: 1px solid var(--color-border);
+    gap: 0.5rem;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 0.0625rem solid var(--color-border);
 }
 
 /* Keeps every input cue - border, background, caret - so it still reads as a
@@ -2633,9 +2638,9 @@ input[type="range"]::-moz-range-thumb {
    swatches adrift in 190px columns. */
 .detail-form {
     display: grid;
-    grid-template-columns: auto minmax(140px, 1fr);
+    grid-template-columns: auto minmax(8.75rem, 1fr);
     align-items: center;
-    gap: 8px var(--detail-label-gap);
+    gap: 0.5rem var(--detail-label-gap);
 }
 
 /* Lets each label/control pair become direct grid items, so every label lands
@@ -2699,7 +2704,7 @@ input[type="range"]::-moz-range-thumb {
 .detail-checks {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 0.375rem;
 }
 
 /* Beats label:has(input[type="checkbox"])'s margin on specificity (the
@@ -2713,7 +2718,7 @@ input[type="range"]::-moz-range-thumb {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 0.5rem;
 }
 
 /* A bare .label-body (no preceding checkbox here) gets no color from any
@@ -2728,7 +2733,7 @@ input[type="range"]::-moz-range-thumb {
 /* Narrower than the default 160px .color-with-hex - these rows sit one to a
    line under a shared "Colors" heading instead of owning a full form row. */
 .detail-color-rows .color-with-hex {
-    width: 110px;
+    width: 6.875rem;
 }
 
 /* Button labels here run long ("Save Current Position"), and .field-row is
@@ -2784,13 +2789,13 @@ input[type="range"]::-moz-range-thumb {
 .hkgroup-chars-list {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 4px;
+    gap: 0.25rem;
 }
 
 /* Fixed height, not flex:1 like Characters/Hotkey Groups - this list sits mid-page
    among other Notifications sections rather than alone filling its own tab. */
 #notificationTypesList .master-detail {
-    height: 640px;
+    height: 40rem;
 }
 
 /* Only the form scrolls, so the Test Notification button stays pinned to the bottom of the panel. */
@@ -2822,14 +2827,14 @@ input[type="range"]::-moz-range-thumb {
    several General sections, not a full tab, and has a much shorter detail
    form (just Enabled, Window Classes, Executable Names, Detect). */
 #windowFiltersList .master-detail {
-    height: 220px;
+    height: 13.75rem;
 }
 
 /* Sized to its widest event name (like #tabs-sidebar) instead of a guessed
    fixed width - capped so one unusually long localized label can't run away. */
 #notificationTypesList .roster {
     width: max-content;
-    max-width: 320px;
+    max-width: 20rem;
 }
 
 /* Duration/Limit fields in the Event Alerts detail form hold a couple of
@@ -2839,7 +2844,7 @@ input[type="range"]::-moz-range-thumb {
    the selector below (not just the bare class) is needed to outrank
    .field-row > input:not([type="color"])'s flex:1 at equal specificity. */
 .field-row > input.detail-number-input {
-    flex: 0 1 110px;
+    flex: 0 1 6.875rem;
     margin-left: auto;
 }
 
@@ -2858,19 +2863,19 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .hkgroup-char-row > button {
-    font-size: 13px;
+    font-size: 0.8125rem;
 }
 
 /* One step denser before the list gives up and scrolls, so a group that runs a
    couple of rows past the fold still shows whole. Past this, overflow-y takes
    over as usual. */
 .hkgroup-chars-list.chars-compact {
-    gap: 2px;
+    gap: 0.125rem;
 }
 
 .hkgroup-chars-list.chars-compact .hkgroup-char-row {
-    padding: 0 4px;
-    gap: 4px;
+    padding: 0 0.25rem;
+    gap: 0.25rem;
 }
 
 .hkgroup-chars-list.chars-compact .hkgroup-char-row > input {
@@ -2879,8 +2884,8 @@ input[type="range"]::-moz-range-thumb {
 
 .hkgroup-chars-list.chars-compact .hkgroup-char-row > .drag-index-chip,
 .hkgroup-chars-list.chars-compact .hkgroup-char-row > button {
-    width: 20px;
-    height: 20px;
+    width: 1.25rem;
+    height: 1.25rem;
 }
 
 /* Spans the columns the rows divide into, so the text reads as one line under
@@ -2901,21 +2906,21 @@ input[type="range"]::-moz-range-thumb {
 .hkgroup-char-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 3px 6px;
-    border: 1px solid var(--color-border);
+    gap: 0.5rem;
+    padding: 0.1875rem 0.375rem;
+    border: 0.0625rem solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-surface);
 }
 
 .drag-index-chip {
-    font-size: 11px;
-    min-width: 16px;
+    font-size: 0.6875rem;
+    min-width: 1rem;
     text-align: center;
     background: var(--color-surface-alt);
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     border-radius: var(--radius);
-    padding: 1px 2px;
+    padding: 0.0625rem 0.125rem;
     cursor: grab;
 }
 
@@ -2933,21 +2938,21 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .hkgroup-char-row.drag-over-top {
-    box-shadow: inset 0 2px 0 var(--color-accent);
+    box-shadow: inset 0 0.125rem 0 var(--color-accent);
 }
 
 .hkgroup-char-row.drag-over-bottom {
-    box-shadow: inset 0 -2px 0 var(--color-accent);
+    box-shadow: inset 0 -0.125rem 0 var(--color-accent);
 }
 
 /* Member rows sit side by side, so their insertion point reads as the leading
    or trailing edge rather than a line above or below the whole row. */
 .hkgroup-chars-list .hkgroup-char-row.drag-over-top {
-    box-shadow: inset 2px 0 0 var(--color-accent);
+    box-shadow: inset 0.125rem 0 0 var(--color-accent);
 }
 
 .hkgroup-chars-list .hkgroup-char-row.drag-over-bottom {
-    box-shadow: inset -2px 0 0 var(--color-accent);
+    box-shadow: inset -0.125rem 0 0 var(--color-accent);
 }
 
 /* Character remove button confirmation state */
@@ -2972,7 +2977,7 @@ button.confirm-delete:hover {
     width: 100%;
     height: 100%;
     background-color: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(0.25rem);
     animation: fadeIn 0.2s ease-in;
 }
 
@@ -2988,9 +2993,9 @@ button.confirm-delete:hover {
 
 .modal-content {
     background: var(--color-panel);
-    border: 1px solid var(--color-border-strong);
-    padding: 16px;
-    width: 380px;
+    border: 0.0625rem solid var(--color-border-strong);
+    padding: 1rem;
+    width: 23.75rem;
     max-width: 90%;
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-modal);
@@ -2999,7 +3004,7 @@ button.confirm-delete:hover {
 }
 
 .modal-content.modal-wide {
-    width: 560px;
+    width: 35rem;
     max-height: 96vh;
     overflow-y: auto;
     text-align: left;
@@ -3012,7 +3017,7 @@ button.confirm-delete:hover {
 /* Matches the tight h3-to-hint gap every section uses (h3:has(+ .hint) above) - the import
    modal's own hint is one div deeper, past what that adjacent-sibling selector can reach. */
 #import-settings-modal > .modal-content > h3 {
-    margin-bottom: 2px;
+    margin-bottom: 0.125rem;
 }
 
 /* This label sits above its own select like a group heading, not a checkbox/radio's inline
@@ -3034,9 +3039,9 @@ button.confirm-delete:hover {
     grid-template-columns: 1fr 1fr;
     column-gap: var(--space-4);
     align-content: start;
-    max-height: 380px;
+    max-height: 23.75rem;
     overflow-y: auto;
-    border: 1px solid var(--color-border);
+    border: 0.0625rem solid var(--color-border);
     border-radius: var(--radius-lg);
     padding: var(--space-2) var(--space-3);
 }
@@ -3066,12 +3071,12 @@ button.confirm-delete:hover {
    a modal and a detail panel. */
 .button-remove,
 .modal-buttons button {
-    min-width: 80px;
+    min-width: 5rem;
 }
 
 @keyframes slideIn {
     from {
-        transform: translateY(-20px);
+        transform: translateY(-1.25rem);
         opacity: 0;
     }
     to {

@@ -306,6 +306,8 @@
   "field.allowHotkeyAutoRepeat.hint": "按住热键会重复触发操作,而不是只触发一次。",
   "field.allowHotkeyAutoRepeat.label": "按住时重复触发热键",
   "field.alwaysOnTopToggle.label": "始终置顶",
+  "field.dialogScaleSelect.label": "界面缩放",
+  "field.dialogScaleSelect.auto": "自动",
   "field.animationStyle.hint": "无动画会立即最小化;原生动画会保留 Windows 原生的最小化效果。",
   "field.animationStyle.label": "动画样式",
   "field.animationStyle.option.noanimation": "无动画",

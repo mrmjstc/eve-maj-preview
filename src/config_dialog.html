@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="pre-init">
+<html lang="en" class="pre-init" style="--ui-scale: UI_SCALE_PLACEHOLDER">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -100,7 +100,7 @@
                         </div>
                         <p class="hint" data-i18n="misc.app-description">A modern, lightweight window preview tool for EVE Online, built with Zig.</p>
 
-                        <div style="margin: 12px 0;">
+                        <div style="margin: 0.75rem 0;">
                             <p class="hint"><strong data-i18n="misc.version-label">Version:</strong> <span id="app-version">0.0.2</span></p>
                             <p class="hint"><strong data-i18n="misc.repository-label">Repository:</strong> <a href="https://github.com/mrmjstc/eve-maj-preview" onclick="return openExternalLink(event)" class="external-link">github.com/mrmjstc/eve-maj-preview</a></p>
                             <p class="hint"><strong data-i18n="misc.discord-label">Discord:</strong> <a href="https://discord.gg/w7Gjnjr7uM" onclick="return openExternalLink(event)" class="external-link">discord.gg/w7Gjnjr7uM</a></p>
@@ -128,6 +128,7 @@
                             <li>Yabu Kusanagi</li>
                             <li>Sevey</li>
                             <li>GlassBlunt</li>
+                            <li>The Llama</li>
                         </ul>
                     </div>
 
@@ -160,6 +161,17 @@
                                 <label for="languageSelect" data-i18n="tab.about.section.language.heading">Language</label>
                                 <select id="languageSelect" onchange="switchLanguage(this.value)"></select>
                             </div>
+                            <div class="binding">
+                                <label for="dialogScaleSelect" data-i18n="field.dialogScaleSelect.label">UI Scale</label>
+                                <select id="dialogScaleSelect" onchange="changeDialogScale()">
+                                    <option value="0" data-i18n="field.dialogScaleSelect.auto">Auto</option>
+                                    <option value="100">100%</option>
+                                    <option value="125">125%</option>
+                                    <option value="150">150%</option>
+                                    <option value="175">175%</option>
+                                    <option value="200">200%</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -168,7 +180,7 @@
                             <h3 data-i18n="tab.about.section.snake.heading">Ssssnake!</h3>
                         </div>
                         <p class="hint" data-i18n="tab.about.section.snake.hint">Use arrow keys to play. Press ESC to close.</p>
-                        <canvas width="400" height="400" id="snake-game" style="border: 1px solid white; margin: 0 auto; display: block;"></canvas>
+                        <canvas width="400" height="400" id="snake-game" style="width: 25rem; height: 25rem; border: 0.0625rem solid white; margin: 0 auto; display: block;"></canvas>
                     </div>
                 </div>
 
@@ -2659,8 +2671,8 @@
     <div id="live-switch-modal" class="modal">
         <div class="modal-content">
             <h3 data-i18n="misc.switch-profile-heading">Switch profile?</h3>
-            <p id="live-switch-message" style="margin: 0 0 12px 0;"></p>
-            <p class="hint" style="margin: 0 0 12px 0;" data-i18n="misc.switch-profile-hint">Making it live reloads thumbnails, hotkeys, and chatlog monitoring now. Editing alone leaves the running overlay untouched until you save or choose Make It Live.</p>
+            <p id="live-switch-message" style="margin: 0 0 0.75rem 0;"></p>
+            <p class="hint" style="margin: 0 0 0.75rem 0;" data-i18n="misc.switch-profile-hint">Making it live reloads thumbnails, hotkeys, and chatlog monitoring now. Editing alone leaves the running overlay untouched until you save or choose Make It Live.</p>
             <div class="modal-buttons">
                 <button id="live-switch-modal-live" class="button-primary" data-i18n="button.live-switch-modal-live.label">Make It Live</button>
                 <button id="live-switch-modal-edit" class="button-outline" data-i18n="button.live-switch-modal-edit.label">Just Edit</button>
@@ -2672,7 +2684,7 @@
     <div id="unsaved-close-modal" class="modal">
         <div class="modal-content">
             <h3 data-i18n="misc.unsaved-close-heading">Unsaved Changes</h3>
-            <p style="margin: 0 0 12px 0;" data-i18n="misc.unsaved-close-hint">You have unsaved changes. Save them before closing, or close without saving?</p>
+            <p style="margin: 0 0 0.75rem 0;" data-i18n="misc.unsaved-close-hint">You have unsaved changes. Save them before closing, or close without saving?</p>
             <div class="modal-buttons">
                 <button id="unsaved-close-modal-save" class="button-primary" data-i18n="button.unsaved-close-modal-save.label">Save</button>
                 <button id="unsaved-close-modal-discard" class="button-danger" data-i18n="button.unsaved-close-modal-discard.label">Discard</button>
@@ -2684,7 +2696,7 @@
     <div id="hotkey-conflict-modal" class="modal">
         <div class="modal-content">
             <h3 data-i18n="misc.hotkey-conflict-heading">Hotkey Conflict</h3>
-            <p id="hotkey-conflict-message" style="margin: 0 0 12px 0; white-space: pre-line;"></p>
+            <p id="hotkey-conflict-message" style="margin: 0 0 0.75rem 0; white-space: pre-line;"></p>
             <div class="modal-buttons">
                 <button id="hotkey-conflict-modal-ok" class="button-primary" data-i18n="common.ok">OK</button>
             </div>
@@ -2694,11 +2706,11 @@
     <div id="update-available-modal" class="modal">
         <div class="modal-content modal-wide">
             <h3 data-i18n="misc.update-available-heading">Update Available!</h3>
-            <p style="margin: 0 0 12px 0;">
+            <p style="margin: 0 0 0.75rem 0;">
                 <span data-i18n="misc.update-available-body">A new version is available:</span>
                 <a id="update-available-link" href="#" onclick="return openExternalLink(event)" class="external-link"></a>
             </p>
-            <div id="update-available-notes" style="display: none; white-space: pre-wrap; text-align: left; margin: 0 0 12px 0;"></div>
+            <div id="update-available-notes" style="display: none; white-space: pre-wrap; text-align: left; margin: 0 0 0.75rem 0;"></div>
             <div class="modal-buttons">
                 <button id="update-available-modal-close" class="button-outline" data-i18n="common.close">Close</button>
             </div>
@@ -2710,11 +2722,11 @@
             <h3 data-i18n="misc.import-settings-heading">Import Settings</h3>
 
             <div id="import-step-file">
-                <p class="hint" style="margin: 0 0 8px 0;" data-i18n="misc.import-settings-file-hint">Select an old EVE-X Preview (.json), EVE-O Preview (.json), or EVE-APM Preview (.ini) file, or an EVE-Maj Preview profile (.json) — format is detected automatically. Nothing is saved until you review and click Save.</p>
+                <p class="hint" style="margin: 0 0 0.5rem 0;" data-i18n="misc.import-settings-file-hint">Select an old EVE-X Preview (.json), EVE-O Preview (.json), or EVE-APM Preview (.ini) file, or an EVE-Maj Preview profile (.json) — format is detected automatically. Nothing is saved until you review and click Save.</p>
                 <input type="file" id="importFileInput" accept=".json,.ini" onchange="handleImportFileSelected(event)">
-                <p id="importFileStatus" class="hint" style="margin: 8px 0 0 0;"></p>
+                <p id="importFileStatus" class="hint" style="margin: 0.5rem 0 0 0;"></p>
 
-                <div id="importBackupsSection" style="margin-top: 16px; display: none;">
+                <div id="importBackupsSection" style="margin-top: 1rem; display: none;">
                     <label for="importBackupSelect" data-i18n="field.importBackupSelect.label">Restore from backup</label>
                     <div class="field-row">
                         <select id="importBackupSelect"></select>
@@ -2724,12 +2736,12 @@
             </div>
 
             <div id="import-step-options" style="display: none;">
-                <div id="importSourceProfileRow" style="margin-top: 12px;">
+                <div id="importSourceProfileRow" style="margin-top: 0.75rem;">
                     <label for="importSourceProfile" data-i18n="field.importSourceProfile.label">Old profile to import from</label>
                     <select id="importSourceProfile" onchange="onImportSourceProfileChanged()"></select>
                 </div>
 
-                <div style="margin-top: 12px;">
+                <div style="margin-top: 0.75rem;">
                     <h4 class="modal-subheading" data-i18n="misc.import-dest-label">Import into</h4>
                     <label>
                         <input type="radio" name="importDest" id="import-dest-current" value="current" checked onchange="onImportDestChanged()">
@@ -2739,13 +2751,13 @@
                         <input type="radio" name="importDest" id="import-dest-new" value="new" onchange="onImportDestChanged()">
                         <span class="label-body" data-i18n="field.import-dest-new.label">New profile</span>
                     </label>
-                    <div id="importNewProfileRow" class="field-row" style="display: none; margin-top: 6px;">
+                    <div id="importNewProfileRow" class="field-row" style="display: none; margin-top: 0.375rem;">
                         <input type="text" id="importNewProfileName" maxlength="16" placeholder="New profile name" data-i18n-placeholder="field.importNewProfileName.placeholder">
                         <input type="color" id="importAccentColor" />
                     </div>
                 </div>
 
-                <div style="margin-top: 12px;">
+                <div style="margin-top: 0.75rem;">
                     <h4 class="modal-subheading" data-i18n="misc.import-sections-label">Sections to import</h4>
                     <div id="importSectionsList"></div>
                 </div>
@@ -2753,7 +2765,7 @@
 
             <div id="importSummary" style="display: none;"></div>
 
-            <div class="modal-buttons" style="margin-top: 12px;">
+            <div class="modal-buttons" style="margin-top: 0.75rem;">
                 <button id="import-modal-run" class="button-primary" onclick="runImport()" disabled data-i18n="common.import">Import</button>
                 <button id="import-modal-cancel" class="button-outline" onclick="closeImportModal()" data-i18n="common.cancel">Cancel</button>
             </div>

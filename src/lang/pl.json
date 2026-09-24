@@ -306,6 +306,8 @@
   "field.allowHotkeyAutoRepeat.hint": "Przytrzymanie skrótu powtarza jego akcję zamiast uruchomić ją raz.",
   "field.allowHotkeyAutoRepeat.label": "Powtarzaj skrót przy przytrzymaniu",
   "field.alwaysOnTopToggle.label": "Zawsze na wierzchu",
+  "field.dialogScaleSelect.label": "Skala interfejsu",
+  "field.dialogScaleSelect.auto": "Automatycznie",
   "field.animationStyle.hint": "Brak animacji minimalizuje natychmiast; Oryginalna animacja zachowuje natywny efekt minimalizacji Windows.",
   "field.animationStyle.label": "Styl animacji",
   "field.animationStyle.option.noanimation": "Brak animacji",

@@ -306,6 +306,8 @@
   "field.allowHotkeyAutoRepeat.hint": "Удержание хоткея повторяет действие вместо однократного срабатывания.",
   "field.allowHotkeyAutoRepeat.label": "Повтор хоткея при удержании",
   "field.alwaysOnTopToggle.label": "Поверх всех окон",
+  "field.dialogScaleSelect.label": "Масштаб интерфейса",
+  "field.dialogScaleSelect.auto": "Авто",
   "field.animationStyle.hint": "«Без анимации» сворачивает мгновенно; «Стандартная анимация» сохраняет родной эффект сворачивания Windows.",
   "field.animationStyle.label": "Стиль анимации",
   "field.animationStyle.option.noanimation": "Без анимации",

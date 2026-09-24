@@ -84,9 +84,11 @@ const DEFAULT_DIALOG_POSITION: win32.POINT = .{ .x = 20, .y = 20 };
 
 const PhysicalSize = struct { width: u32, height: u32 };
 
+var g_ui_scale: f32 = 1.0;
+
 /// Converts the 96-DPI design size into the physical pixels setSize/SetWindowPos expect at this DPI.
 fn targetPhysicalSize(dpi: u32) PhysicalSize {
-    const scale = @as(f32, @floatFromInt(dpi)) / 96.0;
+    const scale = @as(f32, @floatFromInt(dpi)) / 96.0 * g_ui_scale;
     return .{
         .width = @intFromFloat(@round(DIALOG_DESIGN_WIDTH * scale)),
         .height = @intFromFloat(@round(DIALOG_DESIGN_HEIGHT * scale)),
@@ -100,6 +102,26 @@ fn dpiForPoint(point: win32.POINT) u32 {
     var dpi_y: win32.UINT = 96;
     _ = win32.GetDpiForMonitor(monitor, win32.MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y);
     return dpi_x;
+}
+
+/// Only monitors at 96 DPI, since Windows already scales the rest.
+fn autoDialogScalePercent(point: win32.POINT, dpi: u32) u16 {
+    if (dpi != 96) return 100;
+    const monitor = win32.nearestMonitor(point) orelse return 100;
+    const rect = win32.monitorRect(monitor) orelse {
+        slog.warn("Failed to read monitor bounds for auto dialog scale", .{});
+        return 100;
+    };
+    // Height, not width: super-ultrawides are 5120 wide but only 1440 tall.
+    const height = win32.rectHeight(rect);
+    if (height >= 2160) return 150;
+    if (height >= 1440) return 125;
+    return 100;
+}
+
+fn resolveDialogScale(percent: u16, point: win32.POINT) f32 {
+    const resolved = if (percent == 0) autoDialogScalePercent(point, dpiForPoint(point)) else std.math.clamp(percent, 50, 300);
+    return @as(f32, @floatFromInt(resolved)) / 100.0;
 }
 
 /// Set once by revealDialogWindow, once the WebView2 host window exists; consumed by setAlwaysOnTop.
@@ -221,6 +243,8 @@ fn mainImpl(init: std.process.Init) !void {
     else
         DEFAULT_DIALOG_POSITION;
 
+    g_ui_scale = resolveDialogScale(if (startup_settings) |s| s.dialogScale else 0, initial_position);
+
     // Startup guess from the target position's monitor DPI; revealDialogWindow corrects it once the real monitor is known.
     const startup_size = targetPhysicalSize(dpiForPoint(initial_position));
     win.setSize(startup_size.width, startup_size.height);
@@ -268,13 +292,14 @@ fn mainImpl(init: std.process.Init) !void {
     _ = try win.bind("openUrlInBrowser", openUrlInBrowser);
     _ = try win.bind("getValidationRanges", getValidationRanges);
     _ = try win.bind("setAlwaysOnTop", setAlwaysOnTop);
+    _ = try win.bind("setDialogScale", setDialogScale);
     _ = try win.bind("scanUltraPotatoProfiles", scanUltraPotatoProfiles);
     _ = try win.bind("applyUltraPotatoMode", applyUltraPotatoMode);
     _ = try win.bind("scaleLegacyPositions", scaleLegacyPositions);
     _ = try win.bind("startRegionSelect", startRegionSelect);
     _ = try win.bind("pollRegionSelectResult", pollRegionSelectResult);
 
-    const html_with_resources = try injectResources(allocator, active_lang);
+    const html_with_resources = try injectResources(allocator, active_lang, g_ui_scale);
     defer allocator.free(html_with_resources);
 
     slog.debug("Opening configuration dialog in WebView2 mode", .{});
@@ -431,6 +456,43 @@ fn applyAlwaysOnTop(enabled: bool) void {
 
 fn setAlwaysOnTop(e: *webui.Event) void {
     applyAlwaysOnTop(e.getBool());
+}
+
+fn setDialogScale(e: *webui.Event) void {
+    const percent: u16 = @intCast(std.math.clamp(e.getInt(), 0, 300));
+
+    if (config_mod.GlobalSettings.load(g_allocator)) |loaded| {
+        var settings = loaded;
+        defer settings.deinit();
+        settings.dialogScale = percent;
+        settings.save() catch |err| slog.warn("Failed to save dialog scale: {}", .{err});
+    } else |err| {
+        slog.warn("Failed to load global settings to save dialog scale: {}", .{err});
+    }
+
+    if (g_dialog_hwnd) |hwnd| {
+        var rect: win32.RECT = undefined;
+        _ = win32.GetWindowRect(hwnd, &rect);
+        const center: win32.POINT = .{ .x = @divTrunc(rect.left + rect.right, 2), .y = @divTrunc(rect.top + rect.bottom, 2) };
+        g_ui_scale = resolveDialogScale(percent, center);
+
+        const target = targetPhysicalSize(win32.GetDpiForWindow(hwnd));
+        _ = win32.SetWindowPos(
+            hwnd,
+            win32.HWND_NOTOPMOST,
+            0,
+            0,
+            @intCast(target.width),
+            @intCast(target.height),
+            win32.SWP_NOMOVE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE,
+        );
+    } else {
+        slog.warn("Dialog window not available yet, UI scale not applied", .{});
+    }
+
+    var buf: [32]u8 = undefined;
+    const json = std.fmt.bufPrintZ(&buf, "{{\"scale\": {d:.2}}}", .{g_ui_scale}) catch unreachable;
+    e.returnString(json);
 }
 
 fn closeDialog(e: *webui.Event) void {
@@ -2324,13 +2386,22 @@ fn buildAllCatalogsJson(allocator: std.mem.Allocator) ![]u8 {
     return buf.toOwnedSlice(allocator);
 }
 
-fn injectResources(allocator: std.mem.Allocator, lang: SupportedLang) ![:0]u8 {
+fn injectResources(allocator: std.mem.Allocator, lang: SupportedLang, ui_scale: f32) ![:0]u8 {
     var html = try allocator.dupe(u8, config_html);
 
     const css_placeholder = "/* Styles will be injected here by WebUI */";
     if (std.mem.indexOf(u8, html, css_placeholder)) |_| {
         allocator.free(html);
         html = try std.mem.replaceOwned(u8, allocator, config_html, css_placeholder, config_css);
+    }
+
+    const ui_scale_placeholder = "UI_SCALE_PLACEHOLDER";
+    if (std.mem.indexOf(u8, html, ui_scale_placeholder)) |_| {
+        var scale_buf: [16]u8 = undefined;
+        const scale_str = std.fmt.bufPrint(&scale_buf, "{d:.2}", .{ui_scale}) catch unreachable;
+        const temp = html;
+        html = try std.mem.replaceOwned(u8, allocator, temp, ui_scale_placeholder, scale_str);
+        allocator.free(temp);
     }
 
     const layout_preview_placeholder = "LAYOUT_PREVIEW_IMAGE_PLACEHOLDER";
