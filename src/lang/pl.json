@@ -196,6 +196,7 @@
   "dynamic.import.evex.autoMinimize.title": "Automatyczna minimalizacja",
   "dynamic.import.evex.characterColorsHotkeys.title": "Kolory postaci i skróty klawiszowe",
   "dynamic.import.evex.characterPositions.title": "Pozycje i rozmiary postaci",
+  "dynamic.import.evex.globalHotkeys.hint": "Skrót widoczności, powtarzanie przy przytrzymaniu, blokada pozycji",
   "dynamic.import.evex.hotkeyGroups.title": "Grupy skrótów",
   "dynamic.import.evex.hotkeySkippedNote": "Pominięto skrót dla \"{name}\": \"{raw}\" nie można przedstawić jako skrótu klawiszowego (przyciski myszy/niestandardowe kombinacje nie są obsługiwane).",
   "dynamic.import.evex.importedBorderColorsForCharsNote": "Zaimportowano własne kolory obramowania dla {n} postaci.",

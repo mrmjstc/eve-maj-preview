@@ -196,6 +196,7 @@
   "dynamic.import.evex.autoMinimize.title": "Auto-Minimizar",
   "dynamic.import.evex.characterColorsHotkeys.title": "Colores y Hotkeys de Personajes",
   "dynamic.import.evex.characterPositions.title": "Posiciones y Tamaños de Personajes",
+  "dynamic.import.evex.globalHotkeys.hint": "Hotkey de visibilidad, repetición al mantener, bloquear posiciones",
   "dynamic.import.evex.hotkeyGroups.title": "Grupos de Hotkeys",
   "dynamic.import.evex.hotkeySkippedNote": "Se omitió el hotkey de \"{name}\": \"{raw}\" no se puede representar como hotkey de teclado (no se admiten botones del ratón/combinaciones personalizadas).",
   "dynamic.import.evex.importedBorderColorsForCharsNote": "Se importaron colores de borde personalizados para {n} personaje(s).",

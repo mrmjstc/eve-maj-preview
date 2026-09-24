@@ -196,6 +196,7 @@
   "dynamic.import.evex.autoMinimize.title": "自动最小化",
   "dynamic.import.evex.characterColorsHotkeys.title": "角色颜色与热键",
   "dynamic.import.evex.characterPositions.title": "角色位置与大小",
+  "dynamic.import.evex.globalHotkeys.hint": "切换可见性热键、按住重复循环、锁定位置",
   "dynamic.import.evex.hotkeyGroups.title": "热键分组",
   "dynamic.import.evex.hotkeySkippedNote": "已跳过 “{name}” 的热键:“{raw}” 无法表示为键盘热键(不支持鼠标按键/自定义组合)。",
   "dynamic.import.evex.importedBorderColorsForCharsNote": "已为 {n} 个角色导入自定义边框颜色。",

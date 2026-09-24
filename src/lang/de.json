@@ -196,6 +196,7 @@
   "dynamic.import.evex.autoMinimize.title": "Auto-Minimieren",
   "dynamic.import.evex.characterColorsHotkeys.title": "Charakterfarben & Hotkeys",
   "dynamic.import.evex.characterPositions.title": "Charakterpositionen & -größen",
+  "dynamic.import.evex.globalHotkeys.hint": "Sichtbarkeits-Hotkey, Wiederholen bei gehaltener Taste, Positionen sperren",
   "dynamic.import.evex.hotkeyGroups.title": "Hotkey-Gruppen",
   "dynamic.import.evex.hotkeySkippedNote": "Hotkey für \"{name}\" übersprungen: \"{raw}\" lässt sich nicht als Tastatur-Hotkey abbilden (Maustasten/benutzerdefinierte Kombinationen werden nicht unterstützt).",
   "dynamic.import.evex.importedBorderColorsForCharsNote": "Benutzerdefinierte Randfarben für {n} Charakter(e) importiert.",

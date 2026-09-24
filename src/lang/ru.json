@@ -196,6 +196,7 @@
   "dynamic.import.evex.autoMinimize.title": "Автосворачивание",
   "dynamic.import.evex.characterColorsHotkeys.title": "Цвета персонажей и хоткеи",
   "dynamic.import.evex.characterPositions.title": "Позиции и размеры персонажей",
+  "dynamic.import.evex.globalHotkeys.hint": "Хоткей видимости, повтор при удержании, блокировка позиций",
   "dynamic.import.evex.hotkeyGroups.title": "Группы хоткеев",
   "dynamic.import.evex.hotkeySkippedNote": "Хоткей для «{name}» пропущен: «{raw}» нельзя представить как клавиатурный хоткей (кнопки мыши/пользовательские комбинации не поддерживаются).",
   "dynamic.import.evex.importedBorderColorsForCharsNote": "Импортированы пользовательские цвета рамки для {n} персонажей.",

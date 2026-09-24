@@ -2191,7 +2191,8 @@ function computeImportSections(oldProfile, oldGlobal) {
 
     const ts = oldProfile['Thumbnail Settings'] || {};
     const tsl = oldGlobal.ThumbnailStartLocation || {};
-    const hasThumbAppearance = Object.keys(ts).length > 0 || Object.keys(tsl).length > 0;
+    const hasThumbAppearance = Object.keys(ts).length > 0 || Object.keys(tsl).length > 0 ||
+        ('ShowSystemName' in oldGlobal) || ('HideActiveThumbnail' in oldGlobal);
 
     const positions = oldProfile['Thumbnail Positions'] || {};
     const hasPositions = Object.keys(positions).length > 0;
@@ -2212,6 +2213,9 @@ function computeImportSections(oldProfile, oldGlobal) {
     const hasSnapping = ('ThumbnailSnap' in oldGlobal) || ('ThumbnailSnap_Distance' in oldGlobal) ||
         (typeof oldGlobal.Suspend_Hotkeys_Hotkey === 'string' && oldGlobal.Suspend_Hotkeys_Hotkey.trim() !== '');
 
+    const hasGlobalHotkeys = ['HideShowThumbnailsHotkey', 'CycleWhileHeld', 'LockPositions'].some(k => k in oldGlobal);
+    const hasChatlog = ['EnableChatLogMonitoring', 'EnableGameLogMonitoring', 'ChatLogDirectory', 'GameLogDirectory'].some(k => k in oldGlobal);
+
     return [
         { id: 'thumbnailAppearance', title: t('dynamic.import.evex.thumbnailAppearance.title'), hint: t('dynamic.import.evex.thumbnailAppearance.hint'), available: hasThumbAppearance },
         { id: 'characterPositions', title: t('dynamic.import.evex.characterPositions.title'), hint: t('dynamic.import.characterPositionsHint').replace('{n}', Object.keys(positions).length), available: hasPositions },
@@ -2219,6 +2223,8 @@ function computeImportSections(oldProfile, oldGlobal) {
         { id: 'hotkeyGroups', title: t('dynamic.import.evex.hotkeyGroups.title'), hint: t('dynamic.import.hotkeyGroupsCountHint').replace('{n}', Object.keys(groups).length), available: hasGroups },
         { id: 'autoMinimize', title: t('dynamic.import.evex.autoMinimize.title'), hint: t('dynamic.import.evex.autoMinimize.hint'), available: hasAutoMinimize },
         { id: 'snapping', title: t('dynamic.import.evex.snapping.title'), hint: t('dynamic.import.evex.snapping.hint'), available: hasSnapping },
+        { id: 'globalHotkeys', title: t('dynamic.import.apm.globalHotkeys.title'), hint: t('dynamic.import.evex.globalHotkeys.hint'), available: hasGlobalHotkeys },
+        { id: 'chatlog', title: t('dynamic.import.apm.chatlog.title'), hint: t('dynamic.import.apm.chatlog.hint'), available: hasChatlog },
     ];
 }
 
@@ -2308,7 +2314,52 @@ function extractThumbnailAppearance(oldProfile, oldGlobal) {
     if (num(tsl.width) !== null) patch.width = num(tsl.width);
     if (num(tsl.height) !== null) patch.height = num(tsl.height);
 
+    const showSystemName = legacyFlag(oldGlobal.ShowSystemName);
+    if (showSystemName !== null) patch.showSystemName = showSystemName;
+    const hideActive = legacyFlag(oldGlobal.HideActiveThumbnail);
+    if (hideActive !== null) patch.activeThumbnailHidden = hideActive;
+
     return { patch, notes: [t('dynamic.import.thumbnailAppearanceImportedNote')] };
+}
+
+function legacyFlag(v) {
+    const n = legacyNum(v);
+    return n === null ? null : n !== 0;
+}
+
+function extractEvexGlobalHotkeys(oldGlobal) {
+    const hotkeysPatch = {};
+    const interactionPatch = {};
+    const notes = [];
+
+    const toggleRaw = oldGlobal.HideShowThumbnailsHotkey;
+    if (typeof toggleRaw === 'string' && toggleRaw.trim() !== '') {
+        const hex = legacyHotkeyToVkHex(toggleRaw);
+        if (hex) {
+            hotkeysPatch.hotkeyToggleVisibility = hex;
+        } else {
+            notes.push(t('dynamic.import.apm.globalHotkeyUnsupportedNote').replace('{label}', t('dynamic.import.apm.actionLabel.toggleVisibility')));
+        }
+    }
+
+    const cycleWhileHeld = legacyFlag(oldGlobal.CycleWhileHeld);
+    if (cycleWhileHeld !== null) hotkeysPatch.allowHotkeyAutoRepeat = cycleWhileHeld;
+
+    const lockPositions = legacyFlag(oldGlobal.LockPositions);
+    if (lockPositions !== null) interactionPatch.enableDragging = !lockPositions;
+
+    notes.push(t('dynamic.import.apm.globalHotkeysImportedNote'));
+    return { hotkeysPatch, interactionPatch, notes };
+}
+
+function extractEvexChatlog(oldGlobal) {
+    const patch = {};
+    const chatEnabled = legacyFlag(oldGlobal.EnableChatLogMonitoring);
+    const gameEnabled = legacyFlag(oldGlobal.EnableGameLogMonitoring);
+    if (chatEnabled !== null || gameEnabled !== null) patch.enabled = !!(chatEnabled || gameEnabled);
+    if (typeof oldGlobal.ChatLogDirectory === 'string' && oldGlobal.ChatLogDirectory.trim() !== '') patch.chatlogDir = oldGlobal.ChatLogDirectory.trim();
+    if (typeof oldGlobal.GameLogDirectory === 'string' && oldGlobal.GameLogDirectory.trim() !== '') patch.gamelogDir = oldGlobal.GameLogDirectory.trim();
+    return { patch, notes: [t('dynamic.import.apm.chatlogImportedNote')] };
 }
 
 function extractCharacterPositions(oldProfile) {
@@ -3517,6 +3568,17 @@ async function applyEvexImport(checked, allNotes) {
         const { snappingPatch, hotkeysPatch, notes } = extractSnapping(oldProfile, oldGlobal);
         currentConfig.snapping = Object.assign({}, currentConfig.snapping, snappingPatch);
         currentConfig.hotkeys = Object.assign({}, currentConfig.hotkeys, hotkeysPatch);
+        allNotes.push(...notes);
+    }
+    if (checked('globalHotkeys')) {
+        const { hotkeysPatch, interactionPatch, notes } = extractEvexGlobalHotkeys(oldGlobal);
+        currentConfig.hotkeys = Object.assign({}, currentConfig.hotkeys, hotkeysPatch);
+        currentConfig.interaction = Object.assign({}, currentConfig.interaction, interactionPatch);
+        allNotes.push(...notes);
+    }
+    if (checked('chatlog')) {
+        const { patch, notes } = extractEvexChatlog(oldGlobal);
+        currentConfig.chatlog = Object.assign({}, currentConfig.chatlog, patch);
         allNotes.push(...notes);
     }
 }
