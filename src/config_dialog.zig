@@ -598,7 +598,9 @@ fn findMainAppWindow() ?win32.HWND {
 /// Polled by the dialog's status indicator to reflect whether the main app is running, using the same window lookup the IPC commands already rely on.
 fn getMainAppStatus(e: *webui.Event) void {
     const running = findMainAppWindow() != null;
-    e.returnString(if (running) "{\"running\": true}" else "{\"running\": false}");
+    var buf: [64]u8 = undefined;
+    const json = std.fmt.bufPrintZ(&buf, "{{\"running\": {s}, \"groupRevision\": {d}}}", .{ if (running) "true" else "false", protocol.readGroupMembershipRevision() }) catch unreachable;
+    e.returnString(json);
 }
 
 fn getUpdateStatus(e: *webui.Event) void {

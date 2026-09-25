@@ -12,6 +12,7 @@ const slog = log.scoped("hotkeys");
 const painter_mod = @import("painter.zig");
 const tray_mod = @import("tray.zig");
 const main_mod = @import("main.zig");
+const protocol = @import("protocol.zig");
 
 // Static buffers for profile names; must stay valid until the async WM_SWITCH_PROFILE handler runs.
 var g_profile_cycle_buffer: [256]u8 = undefined;
@@ -1359,6 +1360,14 @@ pub const HotkeyManager = struct {
 
         // Membership changed - old index may now point at a shifted member
         group.currentIndex = null;
+
+        if (!group.temporaryMembership) {
+            if (self.config.saveCurrentProfile(self.allocator)) {
+                protocol.bumpGroupMembershipRevision();
+            } else |err| {
+                slog.err("Failed to save group {} [{s}] membership: {}", .{ group_index, group.name, err });
+            }
+        }
 
         // Badge must be refreshed before the reflow below, so its own render pass bakes in the new label instead of the reflow drawing it once with the stale one and renderThumbnail below redrawing it again.
         self.painter.refreshGroupBadge(thumbnail);

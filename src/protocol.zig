@@ -268,24 +268,30 @@ pub const RegionSelectResult = extern struct {
 
 const REGION_SELECT_MAPPING_NAME = "Local\\EVE-Maj-Preview-RegionSelectResult";
 
-// A named file mapping only lives while a handle to it stays open somewhere, so this is kept open for the process's lifetime rather than per-write.
+// A named file mapping only lives while a handle to it stays open somewhere, so these are kept open for the process's lifetime rather than per-write.
 var g_region_select_mapping: ?win32.HANDLE = null;
+var g_group_revision_mapping: ?win32.HANDLE = null;
+var g_win_key_capture_mapping: ?win32.HANDLE = null;
 
-fn ensureRegionSelectMapping() ?win32.HANDLE {
-    if (g_region_select_mapping) |h| return h;
+fn ensureMapping(slot: *?win32.HANDLE, name: [*:0]const u8, size: win32.DWORD) ?win32.HANDLE {
+    if (slot.*) |h| return h;
     const mapping = win32.CreateFileMappingA(
         win32.INVALID_HANDLE_VALUE,
         null,
         win32.PAGE_READWRITE,
         0,
-        @sizeOf(RegionSelectResult),
-        REGION_SELECT_MAPPING_NAME,
+        size,
+        name,
     ) orelse {
-        slog.warn("Failed to create region-select file mapping", .{});
+        slog.warn("Failed to create file mapping {s}", .{name});
         return null;
     };
-    g_region_select_mapping = mapping;
+    slot.* = mapping;
     return mapping;
+}
+
+fn ensureRegionSelectMapping() ?win32.HANDLE {
+    return ensureMapping(&g_region_select_mapping, REGION_SELECT_MAPPING_NAME, @sizeOf(RegionSelectResult));
 }
 
 /// Reads the current result; returns null if the mapping doesn't exist yet (main app hasn't published a result this run).
@@ -337,23 +343,8 @@ pub const WinKeyCaptureResult = extern struct {
 
 const WIN_KEY_CAPTURE_MAPPING_NAME = "Local\\EVE-Maj-Preview-WinKeyCaptureResult";
 
-var g_win_key_capture_mapping: ?win32.HANDLE = null;
-
 fn ensureWinKeyCaptureMapping() ?win32.HANDLE {
-    if (g_win_key_capture_mapping) |h| return h;
-    const mapping = win32.CreateFileMappingA(
-        win32.INVALID_HANDLE_VALUE,
-        null,
-        win32.PAGE_READWRITE,
-        0,
-        @sizeOf(WinKeyCaptureResult),
-        WIN_KEY_CAPTURE_MAPPING_NAME,
-    ) orelse {
-        slog.warn("Failed to create Win-key-capture file mapping", .{});
-        return null;
-    };
-    g_win_key_capture_mapping = mapping;
-    return mapping;
+    return ensureMapping(&g_win_key_capture_mapping, WIN_KEY_CAPTURE_MAPPING_NAME, @sizeOf(WinKeyCaptureResult));
 }
 
 /// Reads the current result; returns null if the mapping doesn't exist yet (main app hasn't published a capture this run).
@@ -387,6 +378,40 @@ pub fn publishWinKeyCaptureResult(modifiers: u32) void {
     const result_ptr: *WinKeyCaptureResult = @ptrCast(@alignCast(view));
     const next_sequence = result_ptr.sequence +% 1;
     result_ptr.* = .{ .sequence = next_sequence, .modifiers = modifiers };
+}
+
+const GROUP_REVISION_MAPPING_NAME = "Local\\EVE-Maj-Preview-GroupMembershipRevision";
+
+/// Tells an open config dialog the main app saved new hotkey group members.
+pub fn bumpGroupMembershipRevision() void {
+    const mapping = ensureMapping(&g_group_revision_mapping, GROUP_REVISION_MAPPING_NAME, @sizeOf(u32)) orelse {
+        slog.err("Failed to create group membership revision mapping", .{});
+        return;
+    };
+
+    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(u32)) orelse {
+        slog.err("Failed to map group membership revision view", .{});
+        return;
+    };
+    defer _ = win32.UnmapViewOfFile(view);
+
+    const revision_ptr: *u32 = @ptrCast(@alignCast(view));
+    revision_ptr.* +%= 1;
+}
+
+/// 0 when the main app isn't running or hasn't saved any group membership yet.
+pub fn readGroupMembershipRevision() u32 {
+    const mapping = win32.OpenFileMappingA(win32.FILE_MAP_ALL_ACCESS, win32.FALSE, GROUP_REVISION_MAPPING_NAME) orelse return 0;
+    defer _ = win32.CloseHandle(mapping);
+
+    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(u32)) orelse {
+        slog.warn("Failed to map view of group membership revision mapping", .{});
+        return 0;
+    };
+    defer _ = win32.UnmapViewOfFile(view);
+
+    const revision_ptr: *const u32 = @ptrCast(@alignCast(view));
+    return revision_ptr.*;
 }
 
 /// Returns the protocol URL if --protocol was passed (caller must free), otherwise null.

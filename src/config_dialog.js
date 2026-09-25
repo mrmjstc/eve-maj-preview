@@ -1494,22 +1494,71 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 // Polls whether the main app process is running, so the status indicator reflects it being closed/reopened while this dialog stays open.
-const MAIN_APP_STATUS_POLL_MS = 3000;
+const MAIN_APP_STATUS_POLL_MS = 500;
 const MAX_PROFILE_NAME_LENGTH = 16;
+
+let mainAppStatusPollInFlight = false;
+let lastGroupRevision = null;
+// Last-known on-disk members per group index, so a sync skips groups the app didn't change.
+let diskGroupMembers = [];
+// Keyed by group object so it survives unsaved renames/reorders and stays out of saveConfig's JSON.
+let diskGroupIndex = new WeakMap();
 
 async function updateMainAppStatus() {
     const statusEl = document.getElementById('main-app-status');
     if (!statusEl || typeof webui === 'undefined') return;
+    // A member sync re-reads the profile, which can outlast one poll interval.
+    if (mainAppStatusPollInFlight) return;
+    mainAppStatusPollInFlight = true;
 
     try {
         const response = await webui.call('getMainAppStatus');
-        const { running } = JSON.parse(response);
+        const { running, groupRevision } = JSON.parse(response);
         statusEl.classList.toggle('status-online', running);
         statusEl.classList.toggle('status-offline', !running);
         statusEl.innerHTML = `<span class="indicator-dot">●</span> ${running ? 'Connected' : 'Disconnected'}`;
+
+        if (lastGroupRevision !== null && groupRevision !== lastGroupRevision) {
+            await syncHotkeyGroupMembersFromDisk();
+        }
+        lastGroupRevision = groupRevision;
     } catch (err) {
         logWarn('Failed to poll main app status:', err);
+    } finally {
+        mainAppStatusPollInFlight = false;
     }
+}
+
+// Only call when the dialog's groups match disk (load or successful save).
+function snapshotDiskGroupMembers(groups) {
+    diskGroupMembers = (groups || []).map(g => JSON.stringify(g.characters || []));
+    diskGroupIndex = new WeakMap((groups || []).map((g, i) => [g, i]));
+}
+
+// Keeps a later Save here from reverting assign-key edits the main app already saved.
+async function syncHotkeyGroupMembersFromDisk() {
+    if (!currentConfig || !currentConfig.hotkeyGroups) return;
+
+    const diskConfig = JSON.parse(await webui.call('loadConfig'));
+    if (diskConfig.error || !Array.isArray(diskConfig.hotkeyGroups)) {
+        logWarn('Failed to reload hotkey group members:', diskConfig.error);
+        return;
+    }
+
+    const wasClean = !hasRealUnsavedChanges();
+    saveHotkeyGroups();
+    diskConfig.hotkeyGroups.forEach((diskGroup, diskIndex) => {
+        if (diskGroup.temporaryMembership) return;
+        const diskChars = JSON.stringify(diskGroup.characters || []);
+        if (diskGroupMembers[diskIndex] === diskChars) return;
+        diskGroupMembers[diskIndex] = diskChars;
+
+        const index = currentConfig.hotkeyGroups.findIndex(g => diskGroupIndex.get(g) === diskIndex);
+        if (index === -1 || currentConfig.hotkeyGroups[index].temporaryMembership) return;
+        currentConfig.hotkeyGroups[index].characters = [...(diskGroup.characters || [])];
+        refreshHotkeyGroupCharsList(index);
+    });
+    if (wasClean) markAsSaved();
 }
 
 function startMainAppStatusPolling() {
@@ -1645,6 +1694,7 @@ async function loadConfigurationFromBackend() {
         if (typeof webui !== 'undefined') {
             const configJson = await webui.call('loadConfig');
             currentConfig = JSON.parse(configJson);
+            snapshotDiskGroupMembers(currentConfig.hotkeyGroups);
             populateFormFields();
             markAsSaved();
             showStatus(t('status.loaded'), 'success');
@@ -3989,6 +4039,7 @@ async function saveConfigurationImpl() {
             }
 
             if (result && result.success) {
+                snapshotDiskGroupMembers(currentConfig.hotkeyGroups);
                 markAsSaved();
             }
         } else {
