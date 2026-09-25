@@ -250,20 +250,7 @@ pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
             _ = win32.ShowWindowAsync(source_hwnd, win32.SW_FORCEMINIMIZE);
         }
 
-        const notification_text = if (thumbnail.is_excluded_from_cycle) "Excluded" else "Included";
-
-        painter.pushNotification(thumbnail, .{
-            .text = painter.allocator.dupe(u8, notification_text) catch {
-                slog.err("Failed to allocate notification text", .{});
-                return;
-            },
-            .notification_type = .Generic,
-            .start_time = win32.Ticks.now(),
-            .duration_ms = 3000,
-            .suppress_when_focused = false,
-            .suppress_when_clicked = false,
-            .show_border = false,
-        });
+        painter.notify(source_hwnd, .CycleExclusion, "{s}", .{if (thumbnail.is_excluded_from_cycle) "Excluded" else "Included"});
 
         painter.renderThumbnail(thumbnail) catch |err| {
             slog.err("Failed to render thumbnail after exclusion toggle: {}", .{err});

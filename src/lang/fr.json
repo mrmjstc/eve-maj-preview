@@ -632,6 +632,7 @@
   "notification.ConduitJump.label": "Saut de conduit",
   "notification.ConversationInvite.label": "Invitation à une conversation",
   "notification.CrystalBroke.label": "Cristal brisé",
+  "notification.CycleExclusion.label": "Exclusion du cycle",
   "notification.Decloak.label": "Sortie de camouflage",
   "notification.Docking.label": "Arrimage",
   "notification.FleetDisband.label": "Dissolution de la flotte",

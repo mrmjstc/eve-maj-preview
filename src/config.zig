@@ -1749,8 +1749,8 @@ pub const NotificationTypeConfig = struct {
 
     pub fn defaultFor(ntype: types.NotificationType) NotificationTypeConfig {
         return switch (ntype) {
-            // Confirms a deliberate keypress, so quick repeats must not be throttled away.
-            .GroupMembership => .{ .duration_ms = 3000, .throttle_ms = 0 },
+            // Confirms a deliberate user action, so quick repeats must not be throttled away.
+            .GroupMembership, .CycleExclusion => .{ .duration_ms = 3000, .throttle_ms = 0 },
             else => .{},
         };
     }

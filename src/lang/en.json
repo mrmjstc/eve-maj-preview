@@ -632,6 +632,7 @@
   "notification.ConduitJump.label": "Conduit Jump",
   "notification.ConversationInvite.label": "Conversation Invite",
   "notification.CrystalBroke.label": "Crystal Broke",
+  "notification.CycleExclusion.label": "Cycle Exclusion",
   "notification.Decloak.label": "Decloak",
   "notification.Docking.label": "Docking",
   "notification.FleetDisband.label": "Fleet Disband",

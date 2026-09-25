@@ -1251,6 +1251,19 @@ pub const Painter = struct {
         slog.debug("Window 0x{x} not found for notification update (thumbnail may not exist yet)", .{@intFromPtr(source_hwnd)});
     }
 
+    /// Feedback for a user action (hotkey, click) on one client's thumbnail, subject to that type's notification settings.
+    pub fn notify(self: *Painter, source_hwnd: win32.HWND, ntype: types.NotificationType, comptime fmt: []const u8, args: anytype) void {
+        const text = std.fmt.allocPrint(self.allocator, fmt, args) catch |err| {
+            slog.err("Failed to format {s} notification: {}", .{ @tagName(ntype), err });
+            return;
+        };
+        defer self.allocator.free(text);
+
+        self.showNotification(source_hwnd, text, ntype) catch |err| {
+            slog.err("Failed to show {s} notification: {}", .{ @tagName(ntype), err });
+        };
+    }
+
     /// Speaks the same phrase the visual notification shows and plays its sound; both are self-contained, with no global master switch or shared volume.
     fn playAlertEffects(self: *Painter, type_config: config_mod.NotificationTypeConfig, text: []const u8, spoken_name: ?[]const u8) void {
         if (type_config.tts_enabled) {

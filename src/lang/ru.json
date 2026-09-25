@@ -632,6 +632,7 @@
   "notification.ConduitJump.label": "Прыжок через портал",
   "notification.ConversationInvite.label": "Приглашение в диалог",
   "notification.CrystalBroke.label": "Кристалл сломан",
+  "notification.CycleExclusion.label": "Исключение из цикла",
   "notification.Decloak.label": "Снятие маскировки",
   "notification.Docking.label": "Стыковка",
   "notification.FleetDisband.label": "Флот распущен",

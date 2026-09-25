@@ -7166,6 +7166,7 @@ const NOTIFICATION_TYPES = [
     { key: 'TravelLeftBehind', category: 'navigation' },
     { key: 'ConversationInvite', category: 'general' },
     { key: 'GroupMembership', category: 'general' },
+    { key: 'CycleExclusion', category: 'general' },
     { key: 'Generic', category: 'general' }
 ];
 

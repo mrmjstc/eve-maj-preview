@@ -632,6 +632,7 @@
   "notification.ConduitJump.label": "Skok przez kanał",
   "notification.ConversationInvite.label": "Zaproszenie do rozmowy",
   "notification.CrystalBroke.label": "Kryształ pękł",
+  "notification.CycleExclusion.label": "Wykluczenie z cyklu",
   "notification.Decloak.label": "Wykrycie z ukrycia",
   "notification.Docking.label": "Dokowanie",
   "notification.FleetDisband.label": "Rozwiązanie floty",

@@ -632,6 +632,7 @@
   "notification.ConduitJump.label": "通道跳跃",
   "notification.ConversationInvite.label": "对话邀请",
   "notification.CrystalBroke.label": "晶体破裂",
+  "notification.CycleExclusion.label": "循环排除",
   "notification.Decloak.label": "脱离隐形",
   "notification.Docking.label": "停靠",
   "notification.FleetDisband.label": "舰队解散",

@@ -407,7 +407,7 @@ By default (`"NoAnimation"`), the application temporarily disables Windows syste
 - **Right-click + Drag**: Move thumbnail position (hold Ctrl to move all thumbnails)
 - **Shift + Left-click**: Toggle character exclusion from hotkey cycling
   - Excluded characters show a visual overlay (default: semi-transparent red "X"; see [Exclusion Overlay](#exclusion-overlay) for other styles)
-  - "Excluded" or "Included" notification appears for 5 seconds
+  - "Excluded" or "Included" notification appears (the `CycleExclusion` notification type, 3s by default)
   - Excluded characters are skipped when using hotkey group cycling (if the character belongs to a group) and when using Cycle All Clients with `cycleAllClientsRespectExclusions` enabled - works even for characters that don't belong to any hotkey group
   - Exclusion state is temporary (resets when application restarts)
   - Can also be toggled via `hotkeyToggleExclusion` for the focused EVE window
@@ -635,6 +635,7 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `SystemChange`: Jumped to new solar system
 - `TravelLeftBehind`: Character hasn't jumped with the group within Travel Mode's configured window - see [Travel Mode](#travel-mode)
 - `GroupMembership`: Character added to or removed from a hotkey group via its assign key; defaults to a 3s duration with no throttle
+- `CycleExclusion`: Character excluded from or included in hotkey cycling; defaults to a 3s duration with no throttle
 - `Generic`: Other game events
 
 **History Panel Merging** (`display` section):
