@@ -61,7 +61,8 @@ pub fn moveClientToPosition(hwnd: win32.HWND, pos: config_mod.Position) void {
 }
 
 /// Move every EVE client window with a saved position to that position (hotkey action / auto-move-on-login).
-pub fn moveAllClientsToSavedPositions(eve_windows: []const scout_mod.EveWindow, config: *const config_mod.Config) void {
+/// `painter` is anything with Painter.notify's signature, told about each client actually moved.
+pub fn moveAllClientsToSavedPositions(eve_windows: []const scout_mod.EveWindow, config: *const config_mod.Config, painter: anytype) void {
     slog.info("Moving all EVE clients to saved positions (hotkey action)", .{});
 
     var moved_count: usize = 0;
@@ -69,6 +70,7 @@ pub fn moveAllClientsToSavedPositions(eve_windows: []const scout_mod.EveWindow, 
         if (config.isExcludedFromAutoMove(eve_window.character_name)) continue;
         const pos = config.getCharacterWindowPosition(eve_window.character_name) orelse continue;
         moveClientToPosition(eve_window.hwnd, pos);
+        painter.notify(eve_window.hwnd, .SavedPositionMove, "Moved to saved position", .{});
         moved_count += 1;
         slog.debug("Moved {s} to saved position ({}, {})", .{ eve_window.character_name, pos.x, pos.y });
     }

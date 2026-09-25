@@ -592,15 +592,10 @@ pub const MOD_WIN = 0x0008;
 pub const MOD_NOREPEAT = 0x4000;
 
 pub const NIM_ADD = 0x00000000;
-pub const NIM_MODIFY = 0x00000001;
 pub const NIM_DELETE = 0x00000002;
 pub const NIF_MESSAGE = 0x00000001;
 pub const NIF_ICON = 0x00000002;
 pub const NIF_TIP = 0x00000004;
-pub const NIF_INFO = 0x00000010;
-
-pub const NIIF_INFO = 0x00000001;
-pub const NIIF_WARNING = 0x00000002;
 
 pub const TPM_RIGHTBUTTON = 0x0002;
 pub const TPM_BOTTOMALIGN = 0x0020;

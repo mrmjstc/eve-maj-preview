@@ -422,7 +422,6 @@ const CONFIG_SCHEMA = [
     { id: 'requireEveFocus', path: 'hotkeys.requireEveFocus' },
     { id: 'resetGroupIndexOnNonGroupFocus', path: 'hotkeys.resetGroupIndexOnNonGroupFocus' },
     { id: 'allowHotkeyAutoRepeat', path: 'hotkeys.allowHotkeyAutoRepeat' },
-    { id: 'suspendHotkeyNotification', path: 'hotkeys.suspendHotkeyNotification' },
     { id: 'hotkeyMinimizeAll', path: 'hotkeys.hotkeyMinimizeAll', transform: 'vkhex' },
     { id: 'hotkeyCloseAll', path: 'hotkeys.hotkeyCloseAll', transform: 'vkhex' },
     { id: 'hotkeyToggleVisibility', path: 'hotkeys.hotkeyToggleVisibility', transform: 'vkhex' },
@@ -7167,6 +7166,10 @@ const NOTIFICATION_TYPES = [
     { key: 'ConversationInvite', category: 'general' },
     { key: 'GroupMembership', category: 'general' },
     { key: 'CycleExclusion', category: 'general' },
+    { key: 'HotkeySuspend', category: 'general' },
+    { key: 'ProfileSwitch', category: 'general' },
+    { key: 'AutoMinimizeToggle', category: 'general' },
+    { key: 'SavedPositionMove', category: 'general' },
     { key: 'Generic', category: 'general' }
 ];
 

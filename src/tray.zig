@@ -89,24 +89,6 @@ pub const TrayIcon = struct {
         slog.debug("System tray icon removed", .{});
     }
 
-    /// Show a Windows tray balloon notification; `title`/`text` are truncated to fit szInfoTitle/szInfo (63/255 bytes) if longer.
-    pub fn showBalloon(self: *TrayIcon, title: []const u8, text: []const u8, info_flags: win32.DWORD) void {
-        const title_len = @min(title.len, self.nid.szInfoTitle.len - 1);
-        @memcpy(self.nid.szInfoTitle[0..title_len], title[0..title_len]);
-        self.nid.szInfoTitle[title_len] = 0;
-
-        const text_len = @min(text.len, self.nid.szInfo.len - 1);
-        @memcpy(self.nid.szInfo[0..text_len], text[0..text_len]);
-        self.nid.szInfo[text_len] = 0;
-
-        self.nid.dwInfoFlags = info_flags;
-        self.nid.uFlags |= win32.NIF_INFO;
-
-        if (win32.Shell_NotifyIconA(win32.NIM_MODIFY, &self.nid) == 0) {
-            slog.warn("Failed to show tray balloon notification", .{});
-        }
-    }
-
     pub fn handleTrayMessage(self: *TrayIcon, lParam: win32.LPARAM, current_profile: []const u8, config: *const config_mod.Config, hotkey_manager: ?*hotkeys_mod.HotkeyManager, painter: ?*painter_mod.Painter) void {
         if (lParam == win32.WM_RBUTTONUP) {
             self.showContextMenu(current_profile, config, hotkey_manager, painter);

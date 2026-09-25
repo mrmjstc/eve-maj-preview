@@ -105,6 +105,10 @@ pub const NotificationType = enum {
     TravelLeftBehind,
     GroupMembership,
     CycleExclusion,
+    HotkeySuspend,
+    ProfileSwitch,
+    AutoMinimizeToggle,
+    SavedPositionMove,
     Generic,
 };
 
@@ -123,7 +127,7 @@ pub fn notificationCategory(t: NotificationType) NotificationCategory {
         .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .CrystalBroke => .Mining,
         .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .BombLauncherEmpty, .SelfDestruct, .WarpBubble => .Combat,
         .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind => .Navigation,
-        .ConversationInvite, .GroupMembership, .CycleExclusion, .Generic => .General,
+        .ConversationInvite, .GroupMembership, .CycleExclusion, .HotkeySuspend, .ProfileSwitch, .AutoMinimizeToggle, .SavedPositionMove, .Generic => .General,
     };
 }
 

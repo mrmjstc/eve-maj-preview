@@ -103,15 +103,9 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             return 0;
         },
         win32.WM_HOTKEYS_STATE_CHANGED => {
-            if (g_tray_icon) |*icon| {
+            if (g_painter) |painter_ptr| {
                 if (g_hotkey_manager) |manager| {
-                    if (manager.config.suspendHotkeyNotification) {
-                        if (manager.areHotkeysSuspended()) {
-                            icon.showBalloon("EVE-Maj Preview", "Hotkeys suspended", win32.NIIF_WARNING);
-                        } else {
-                            icon.showBalloon("EVE-Maj Preview", "Hotkeys resumed", win32.NIIF_INFO);
-                        }
-                    }
+                    painter_ptr.notifyAll(.HotkeySuspend, "Hotkeys {s}", .{if (manager.areHotkeysSuspended()) "suspended" else "resumed"});
                 }
             }
             return 0;
@@ -941,6 +935,9 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         };
     };
 
+    // A config dialog Save reloads the same profile, which isn't a switch.
+    const profile_changed = !std.mem.eql(u8, g_config.profile_name, new_config.profile_name);
+
     const keep_chatlog_monitor = g_chatlog_monitor != null and
         g_config.chatlog.enabled == new_config.chatlog.enabled and
         g_config.chatlog.useThreading == new_config.chatlog.useThreading and
@@ -1167,6 +1164,12 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     const new_interval = g_config.timer.scanIntervalMs;
     _ = win32.SetTimer(timer_hwnd, TIMER_ID, new_interval, null);
     slog.debug("Updated timer interval to {} ms", .{new_interval});
+
+    if (profile_changed) {
+        const name = g_config.profile_name;
+        const display_name = if (std.mem.endsWith(u8, name, ".json")) name[0 .. name.len - ".json".len] else name;
+        g_painter.?.notifyAll(.ProfileSwitch, "Profile: {s}", .{display_name});
+    }
 
     slog.info("=== Profile reload complete: {s} ===", .{new_profile_name});
 }

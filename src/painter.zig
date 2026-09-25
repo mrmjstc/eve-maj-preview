@@ -1058,7 +1058,7 @@ pub const Painter = struct {
     /// Move all EVE client windows with a saved position to that position (hotkey action).
     pub fn moveAllClientsToSavedPositions(self: *Painter) void {
         const eve_windows = getEveWindowsOrLog("move all clients to saved positions") orelse return;
-        manager_mod.moveAllClientsToSavedPositions(eve_windows, self.config);
+        manager_mod.moveAllClientsToSavedPositions(eve_windows, self.config, self);
     }
 
     /// Close all EVE client windows except those in the exclude list (hotkey action).
@@ -1120,6 +1120,7 @@ pub const Painter = struct {
         self.config.autoMinimize.enabled = !self.config.autoMinimize.enabled;
         const state = if (self.config.autoMinimize.enabled) "enabled" else "disabled";
         slog.info("Auto-minimize toggled: {s}", .{state});
+        self.notifyAll(.AutoMinimizeToggle, "Auto-minimize {s}", .{if (self.config.autoMinimize.enabled) "on" else "off"});
     }
 
     /// Sole writer of active_source_hwnd, the single source of truth for who's focused; call instead of setting it directly.
@@ -1192,63 +1193,77 @@ pub const Painter = struct {
         notification_text: []const u8,
         notification_type: types.NotificationType,
     ) !void {
-        if (self.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
-            if (!self.config.thumbnail.notifications.enabled) return;
-            if (self.config.isNotificationMuted(thumbnail.character_name)) return;
+        try self.showNotificationWith(source_hwnd, notification_text, notification_type, .{});
+    }
 
-            const type_config = self.config.thumbnail.notifications.getTypeConfig(notification_type);
+    const NotifyOptions = struct {
+        /// Game events feed the "cycle to recently notified" queue; user-action feedback must not.
+        track_notified: bool = true,
+        record_history: bool = true,
+    };
 
-            if (!type_config.enabled) return;
-
-            const is_focused = thumbnail.isFocused(self.active_source_hwnd);
-            if (type_config.suppress_when_focused and is_focused) {
-                return;
-            }
-
-            const now = win32.Ticks.now();
-
-            if (type_config.suppress_when_clicked) {
-                if (now.elapsedSince(thumbnail.last_click_time) < self.config.thumbnail.notifications.suppress_click_duration_ms) {
-                    return;
-                }
-            }
-
-            if (type_config.throttle_ms > 0) {
-                const last = thumbnail.last_notification_time_by_type.get(notification_type);
-                if (!last.isZero() and now.elapsedSince(last) < type_config.throttle_ms) {
-                    return;
-                }
-            }
-            thumbnail.last_notification_time_by_type.set(notification_type, now);
-
-            self.pushNotification(thumbnail, .{
-                .text = try self.allocator.dupe(u8, notification_text),
-                .notification_type = notification_type,
-                .start_time = now,
-                .duration_ms = type_config.duration_ms,
-                .suppress_when_focused = type_config.suppress_when_focused,
-                .suppress_when_clicked = type_config.suppress_when_clicked,
-                .border_color_override = type_config.border_color,
-                .text_color_override = type_config.text_color,
-                .show_border = type_config.show_border,
-                .flash_border = type_config.flash_border,
-            });
-
-            self.trackNotifiedCharacter(thumbnail.character_name);
-            self.pushNotificationHistory(source_hwnd, thumbnail.character_name, notification_text, notification_type);
-
-            const spoken_name: ?[]const u8 = if (self.config.thumbnail.notifications.tts_speak_character_name and thumbnail.character_name.len > 0)
-                (if (self.config.thumbnail.notifications.tts_use_display_name) thumbnail.cached_display_name else thumbnail.character_name)
-            else
-                null;
-            self.playAlertEffects(type_config, notification_text, spoken_name);
-
-            slog.debug("Queued notification for {s}: [{s}] {s} (border_color_override: {?})", .{ thumbnail.character_name, @tagName(notification_type), notification_text, type_config.border_color });
+    fn showNotificationWith(self: *Painter, source_hwnd: win32.HWND, notification_text: []const u8, notification_type: types.NotificationType, options: NotifyOptions) !void {
+        const thumbnail = self.getThumbnailBySourceHwnd(source_hwnd) orelse {
+            slog.debug("Window 0x{x} not found for notification update (thumbnail may not exist yet)", .{@intFromPtr(source_hwnd)});
             return;
+        };
+        if (!try self.queueNotification(thumbnail, notification_text, notification_type, options)) return;
+
+        const spoken_name: ?[]const u8 = if (self.config.thumbnail.notifications.tts_speak_character_name and thumbnail.character_name.len > 0)
+            (if (self.config.thumbnail.notifications.tts_use_display_name) thumbnail.cached_display_name else thumbnail.character_name)
+        else
+            null;
+        self.playAlertEffects(self.config.thumbnail.notifications.getTypeConfig(notification_type), notification_text, spoken_name);
+    }
+
+    /// Applies the type's enable/mute/suppress/throttle rules and queues the notification; false if it was filtered out.
+    fn queueNotification(self: *Painter, thumbnail: *ThumbnailWindow, notification_text: []const u8, notification_type: types.NotificationType, options: NotifyOptions) !bool {
+        if (!self.config.thumbnail.notifications.enabled) return false;
+        if (self.config.isNotificationMuted(thumbnail.character_name)) return false;
+
+        const type_config = self.config.thumbnail.notifications.getTypeConfig(notification_type);
+
+        if (!type_config.enabled) return false;
+
+        const is_focused = thumbnail.isFocused(self.active_source_hwnd);
+        if (type_config.suppress_when_focused and is_focused) {
+            return false;
         }
 
-        // Window not found - this can happen if thumbnail hasn't been created yet
-        slog.debug("Window 0x{x} not found for notification update (thumbnail may not exist yet)", .{@intFromPtr(source_hwnd)});
+        const now = win32.Ticks.now();
+
+        if (type_config.suppress_when_clicked) {
+            if (now.elapsedSince(thumbnail.last_click_time) < self.config.thumbnail.notifications.suppress_click_duration_ms) {
+                return false;
+            }
+        }
+
+        if (type_config.throttle_ms > 0) {
+            const last = thumbnail.last_notification_time_by_type.get(notification_type);
+            if (!last.isZero() and now.elapsedSince(last) < type_config.throttle_ms) {
+                return false;
+            }
+        }
+        thumbnail.last_notification_time_by_type.set(notification_type, now);
+
+        self.pushNotification(thumbnail, .{
+            .text = try self.allocator.dupe(u8, notification_text),
+            .notification_type = notification_type,
+            .start_time = now,
+            .duration_ms = type_config.duration_ms,
+            .suppress_when_focused = type_config.suppress_when_focused,
+            .suppress_when_clicked = type_config.suppress_when_clicked,
+            .border_color_override = type_config.border_color,
+            .text_color_override = type_config.text_color,
+            .show_border = type_config.show_border,
+            .flash_border = type_config.flash_border,
+        });
+
+        if (options.track_notified) self.trackNotifiedCharacter(thumbnail.character_name);
+        if (options.record_history) self.pushNotificationHistory(thumbnail.source_hwnd, thumbnail.character_name, notification_text, notification_type);
+
+        slog.debug("Queued notification for {s}: [{s}] {s} (border_color_override: {?})", .{ thumbnail.character_name, @tagName(notification_type), notification_text, type_config.border_color });
+        return true;
     }
 
     /// Feedback for a user action (hotkey, click) on one client's thumbnail, subject to that type's notification settings.
@@ -1259,9 +1274,28 @@ pub const Painter = struct {
         };
         defer self.allocator.free(text);
 
-        self.showNotification(source_hwnd, text, ntype) catch |err| {
+        self.showNotificationWith(source_hwnd, text, ntype, .{ .track_notified = false }) catch |err| {
             slog.err("Failed to show {s} notification: {}", .{ @tagName(ntype), err });
         };
+    }
+
+    /// Feedback for a global user action on every thumbnail; kept out of history, and sound/speech play once rather than per thumbnail.
+    pub fn notifyAll(self: *Painter, ntype: types.NotificationType, comptime fmt: []const u8, args: anytype) void {
+        const text = std.fmt.allocPrint(self.allocator, fmt, args) catch |err| {
+            slog.err("Failed to format {s} notification: {}", .{ @tagName(ntype), err });
+            return;
+        };
+        defer self.allocator.free(text);
+
+        var shown = false;
+        for (self.thumbnails.items) |*thumbnail| {
+            const queued = self.queueNotification(thumbnail, text, ntype, .{ .track_notified = false, .record_history = false }) catch |err| {
+                slog.err("Failed to show {s} notification for {s}: {}", .{ @tagName(ntype), thumbnail.character_name, err });
+                continue;
+            };
+            shown = shown or queued;
+        }
+        if (shown) self.playAlertEffects(self.config.thumbnail.notifications.getTypeConfig(ntype), text, null);
     }
 
     /// Speaks the same phrase the visual notification shows and plays its sound; both are self-contained, with no global master switch or shared volume.

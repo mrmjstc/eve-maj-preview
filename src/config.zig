@@ -1750,7 +1750,7 @@ pub const NotificationTypeConfig = struct {
     pub fn defaultFor(ntype: types.NotificationType) NotificationTypeConfig {
         return switch (ntype) {
             // Confirms a deliberate user action, so quick repeats must not be throttled away.
-            .GroupMembership, .CycleExclusion => .{ .duration_ms = 3000, .throttle_ms = 0 },
+            .GroupMembership, .CycleExclusion, .HotkeySuspend, .ProfileSwitch, .AutoMinimizeToggle, .SavedPositionMove => .{ .duration_ms = 3000, .throttle_ms = 0 },
             else => .{},
         };
     }
@@ -2080,7 +2080,6 @@ pub const Config = struct {
     requireEveFocus: bool = false,
     resetGroupIndexOnNonGroupFocus: bool = false,
     allowHotkeyAutoRepeat: bool = false,
-    suspendHotkeyNotification: bool = true,
 
     hotkeyMinimizeAll: ?u32 = null,
     hotkeyCloseAll: ?u32 = null,
@@ -2128,7 +2127,6 @@ pub const Config = struct {
         requireEveFocus: bool = false,
         resetGroupIndexOnNonGroupFocus: bool = false,
         allowHotkeyAutoRepeat: bool = false,
-        suspendHotkeyNotification: bool = true,
         hotkeyMinimizeAll: ?VkCode = null,
         hotkeyCloseAll: ?VkCode = null,
         hotkeyToggleVisibility: ?VkCode = null,
@@ -2182,7 +2180,6 @@ pub const Config = struct {
                 .requireEveFocus = self.requireEveFocus,
                 .resetGroupIndexOnNonGroupFocus = self.resetGroupIndexOnNonGroupFocus,
                 .allowHotkeyAutoRepeat = self.allowHotkeyAutoRepeat,
-                .suspendHotkeyNotification = self.suspendHotkeyNotification,
                 .hotkeyMinimizeAll = wrapVk(self.hotkeyMinimizeAll),
                 .hotkeyCloseAll = wrapVk(self.hotkeyCloseAll),
                 .hotkeyToggleVisibility = wrapVk(self.hotkeyToggleVisibility),
@@ -2224,7 +2221,6 @@ pub const Config = struct {
         cfg.requireEveFocus = w.hotkeys.requireEveFocus;
         cfg.resetGroupIndexOnNonGroupFocus = w.hotkeys.resetGroupIndexOnNonGroupFocus;
         cfg.allowHotkeyAutoRepeat = w.hotkeys.allowHotkeyAutoRepeat;
-        cfg.suspendHotkeyNotification = w.hotkeys.suspendHotkeyNotification;
         cfg.hotkeyMinimizeAll = unwrapVk(w.hotkeys.hotkeyMinimizeAll);
         cfg.hotkeyCloseAll = unwrapVk(w.hotkeys.hotkeyCloseAll);
         cfg.hotkeyToggleVisibility = unwrapVk(w.hotkeys.hotkeyToggleVisibility);

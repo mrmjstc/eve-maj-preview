@@ -636,6 +636,10 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `TravelLeftBehind`: Character hasn't jumped with the group within Travel Mode's configured window - see [Travel Mode](#travel-mode)
 - `GroupMembership`: Character added to or removed from a hotkey group via its assign key; defaults to a 3s duration with no throttle
 - `CycleExclusion`: Character excluded from or included in hotkey cycling; defaults to a 3s duration with no throttle
+- `HotkeySuspend`: Hotkeys suspended or resumed; shown on every client
+- `ProfileSwitch`: Switched to another profile; shown on every client once the new profile has loaded
+- `AutoMinimizeToggle`: Auto-minimize toggled on or off by its hotkey; shown on every client
+- `SavedPositionMove`: Client window moved by the "move to saved positions" hotkey; shown only on the clients that moved
 - `Generic`: Other game events
 
 **History Panel Merging** (`display` section):
@@ -884,7 +888,6 @@ Detects a tracked character falling behind while the rest of the group jumps tog
   "hotkeys": {
     "requireEveFocus": false,
     "allowHotkeyAutoRepeat": false,
-    "suspendHotkeyNotification": true,
     "hotkeyMinimizeAll": null,
     "hotkeyCloseAll": null,
     "hotkeyToggleVisibility": null,
@@ -906,7 +909,7 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 
 **allowHotkeyAutoRepeat**: When `false` (default), holding a keyboard hotkey down fires its action once; when `true`, Windows' key-repeat re-fires it while held. Mouse-button hotkeys always fire once per click regardless (mouse buttons don't auto-repeat).
 
-**suspendHotkeyNotification**: When `true` (default), pressing **hotkeySuspend** shows a tray balloon notification announcing whether hotkeys are now suspended or resumed.
+Pressing **hotkeySuspend** fires a `HotkeySuspend` notification on every client (see [Notification System](#notification-system)).
 
 **Global Hotkeys**: Set to a virtual key code string (e.g., `"F9"`, `"F10"`, `"0x70"`), a modifier combo (e.g., `"Ctrl+F9"`, `"Alt+Shift+F1"`, `"LWin+M"`), or `null` to disable
 - **hotkeyMinimizeAll**: Minimize all EVE client windows
