@@ -559,8 +559,7 @@ fn notifInfoWindowProc(
 ) callconv(.c) win32.LRESULT {
     switch (msg) {
         win32.WM_NCHITTEST => {
-            const dragging_enabled = if (painter_mod.g_painter_ptr) |p| p.config.interaction.enableDragging else true;
-            return gdi_overlay.panelHeaderHitTest(hwnd, lParam, HEADER_HEIGHT, dragging_enabled);
+            return gdi_overlay.panelHeaderHitTest(hwnd, lParam, HEADER_HEIGHT);
         },
 
         win32.WM_ENTERSIZEMOVE => {

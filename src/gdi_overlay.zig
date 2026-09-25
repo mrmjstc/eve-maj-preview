@@ -339,12 +339,12 @@ var g_panel_drag_anchor_cursor: win32.POINT = .{ .x = 0, .y = 0 };
 var g_panel_drag_anchor_rect: win32.RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
 
 /// WM_NCHITTEST for a panel whose header (the top `header_height` px) is its only drag handle.
-pub fn panelHeaderHitTest(hwnd: win32.HWND, lParam: win32.LPARAM, header_height: i32, dragging_enabled: bool) win32.LRESULT {
+pub fn panelHeaderHitTest(hwnd: win32.HWND, lParam: win32.LPARAM, header_height: i32) win32.LRESULT {
     const sy: i32 = @as(i32, @intCast(@as(i16, @truncate(lParam >> 16))));
     var wr: win32.RECT = undefined;
     _ = win32.GetWindowRect(hwnd, &wr);
     const cy = sy - wr.top;
-    if (dragging_enabled and cy < header_height) return HTCAPTION;
+    if (cy < header_height) return HTCAPTION;
     return HTCLIENT;
 }
 
