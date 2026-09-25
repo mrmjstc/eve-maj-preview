@@ -639,6 +639,7 @@
   "notification.FleetInvite.label": "Приглашение во флот",
   "notification.FleetRegroup.label": "Флот перегруппирован",
   "notification.Generic.label": "Общее",
+  "notification.GroupMembership.label": "Членство в группе",
   "notification.JumpCloning.label": "Джамп-клонирование",
   "notification.JumpRange.label": "Дальность прыжка",
   "notification.MiningCompression.label": "Сжатие руды",

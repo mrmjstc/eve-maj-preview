@@ -639,6 +639,7 @@
   "notification.FleetInvite.label": "Flotteneinladung",
   "notification.FleetRegroup.label": "Flotte neu formiert",
   "notification.Generic.label": "Allgemein",
+  "notification.GroupMembership.label": "Gruppenmitgliedschaft",
   "notification.JumpCloning.label": "Jump Cloning",
   "notification.JumpRange.label": "Sprungreichweite",
   "notification.MiningCompression.label": "Mining-Kompression",

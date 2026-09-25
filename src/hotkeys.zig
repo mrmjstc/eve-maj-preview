@@ -13,6 +13,7 @@ const painter_mod = @import("painter.zig");
 const tray_mod = @import("tray.zig");
 const main_mod = @import("main.zig");
 const protocol = @import("protocol.zig");
+const types = @import("types.zig");
 
 // Static buffers for profile names; must stay valid until the async WM_SWITCH_PROFILE handler runs.
 var g_profile_cycle_buffer: [256]u8 = undefined;
@@ -1375,6 +1376,26 @@ pub const HotkeyManager = struct {
         if (self.config.display.regionFitOrder == .HotkeyGroups) self.painter.reflowIfRegionFitActive();
         self.painter.renderThumbnail(thumbnail) catch |err| {
             slog.err("Failed to render thumbnail after group assignment: {}", .{err});
+        };
+
+        const verb = if (added) "Added to" else "Removed from";
+        if (group.name.len > 0) {
+            self.notify(thumbnail.source_hwnd, .GroupMembership, "{s} {s}", .{ verb, group.name });
+        } else {
+            self.notify(thumbnail.source_hwnd, .GroupMembership, "{s} Hotkey Group {}", .{ verb, group_index + 1 });
+        }
+    }
+
+    /// Shows hotkey feedback on one client's thumbnail, subject to that type's notification settings.
+    fn notify(self: *HotkeyManager, source_hwnd: win32.HWND, ntype: types.NotificationType, comptime fmt: []const u8, args: anytype) void {
+        const text = std.fmt.allocPrint(self.allocator, fmt, args) catch |err| {
+            slog.err("Failed to format {s} notification: {}", .{ @tagName(ntype), err });
+            return;
+        };
+        defer self.allocator.free(text);
+
+        self.painter.showNotification(source_hwnd, text, ntype) catch |err| {
+            slog.err("Failed to show {s} notification: {}", .{ @tagName(ntype), err });
         };
     }
 

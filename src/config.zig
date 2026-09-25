@@ -1747,6 +1747,21 @@ pub const NotificationTypeConfig = struct {
         sound_volume: u8 = (NotificationTypeConfig{}).sound_volume,
     };
 
+    pub fn defaultFor(ntype: types.NotificationType) NotificationTypeConfig {
+        return switch (ntype) {
+            // Confirms a deliberate keypress, so quick repeats must not be throttled away.
+            .GroupMembership => .{ .duration_ms = 3000, .throttle_ms = 0 },
+            else => .{},
+        };
+    }
+
+    // A const, not a fn: evaluated once instead of per comptime Wire field default, which exceeded the branch quota.
+    pub const defaults_by_type = blk: {
+        var map = std.enums.EnumArray(types.NotificationType, NotificationTypeConfig).initFill(.{});
+        for (std.enums.values(types.NotificationType)) |ntype| map.set(ntype, defaultFor(ntype));
+        break :blk map;
+    };
+
     pub fn toWire(self: NotificationTypeConfig) Wire {
         return .{
             .enabled = self.enabled,
@@ -1842,7 +1857,13 @@ pub const NotificationTypeConfig = struct {
 };
 
 pub const TypeConfigMapWire = struct {
-    map: std.enums.EnumArray(types.NotificationType, NotificationTypeConfig.Wire) = .initFill(.{}),
+    map: std.enums.EnumArray(types.NotificationType, NotificationTypeConfig.Wire) = default_wire_map,
+
+    const default_wire_map = blk: {
+        var map = std.enums.EnumArray(types.NotificationType, NotificationTypeConfig.Wire).initFill(.{});
+        for (std.enums.values(types.NotificationType)) |ntype| map.set(ntype, NotificationTypeConfig.defaults_by_type.get(ntype).toWire());
+        break :blk map;
+    };
 
     pub fn jsonStringify(self: TypeConfigMapWire, jw: anytype) !void {
         try jw.beginObject();
@@ -1871,7 +1892,7 @@ pub const TypeConfigMapWire = struct {
 };
 
 pub const NotificationConfig = struct {
-    enabled: bool = false,
+    enabled: bool = true,
     position: types.TextPosition = .Center,
     offset_x: i32 = 0,
     offset_y: i32 = 0,
@@ -1895,7 +1916,7 @@ pub const NotificationConfig = struct {
 
     pub fn init() NotificationConfig {
         return NotificationConfig{
-            .type_configs = std.enums.EnumArray(types.NotificationType, NotificationTypeConfig).initFill(.{}),
+            .type_configs = NotificationTypeConfig.defaults_by_type,
         };
     }
 

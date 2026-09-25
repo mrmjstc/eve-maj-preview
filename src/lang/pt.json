@@ -639,6 +639,7 @@
   "notification.FleetInvite.label": "Convite de Frota",
   "notification.FleetRegroup.label": "Frota Reagrupada",
   "notification.Generic.label": "Genérico",
+  "notification.GroupMembership.label": "Associação ao Grupo",
   "notification.JumpCloning.label": "Clonagem de Salto",
   "notification.JumpRange.label": "Alcance de Salto",
   "notification.MiningCompression.label": "Compressão de Mineração",

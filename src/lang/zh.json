@@ -639,6 +639,7 @@
   "notification.FleetInvite.label": "舰队邀请",
   "notification.FleetRegroup.label": "舰队重新集合",
   "notification.Generic.label": "通用",
+  "notification.GroupMembership.label": "分组成员",
   "notification.JumpCloning.label": "跳跃克隆",
   "notification.JumpRange.label": "跳跃范围",
   "notification.MiningCompression.label": "采矿压缩",

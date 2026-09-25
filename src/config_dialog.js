@@ -7165,6 +7165,7 @@ const NOTIFICATION_TYPES = [
     { key: 'SystemChange', category: 'navigation' },
     { key: 'TravelLeftBehind', category: 'navigation' },
     { key: 'ConversationInvite', category: 'general' },
+    { key: 'GroupMembership', category: 'general' },
     { key: 'Generic', category: 'general' }
 ];
 

@@ -579,7 +579,7 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 ```
 
 **Notification Settings:**
-- `enabled`: Master switch for notification system (per-character mute is set via `notificationsMuted` on the character entry - see [Per-Character Configuration](#per-character-configuration))
+- `enabled`: Master switch for notification system (per-character mute is set via `notificationsMuted` on the character entry - see [Per-Character Configuration](#per-character-configuration)) (default: `true`)
 - `position`: Where notifications appear on thumbnails (see Text Positions above)
 - `offset_x`/`offset_y`: Fine-tune notification position (pixels)
 - `suppress_click_duration_ms`: How long to suppress after click, applies per-type when that type's `suppress_when_clicked` is `true` (milliseconds, default: `2000`)
@@ -634,6 +634,7 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `ConduitJump`: Jumped via Conduit Field to a new system
 - `SystemChange`: Jumped to new solar system
 - `TravelLeftBehind`: Character hasn't jumped with the group within Travel Mode's configured window - see [Travel Mode](#travel-mode)
+- `GroupMembership`: Character added to or removed from a hotkey group via its assign key; defaults to a 3s duration with no throttle
 - `Generic`: Other game events
 
 **History Panel Merging** (`display` section):

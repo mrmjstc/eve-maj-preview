@@ -103,6 +103,7 @@ pub const NotificationType = enum {
     ConduitJump,
     SystemChange,
     TravelLeftBehind,
+    GroupMembership,
     Generic,
 };
 
@@ -121,7 +122,7 @@ pub fn notificationCategory(t: NotificationType) NotificationCategory {
         .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .CrystalBroke => .Mining,
         .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .BombLauncherEmpty, .SelfDestruct, .WarpBubble => .Combat,
         .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind => .Navigation,
-        .ConversationInvite, .Generic => .General,
+        .ConversationInvite, .GroupMembership, .Generic => .General,
     };
 }
 
