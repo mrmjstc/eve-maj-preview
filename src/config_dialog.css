@@ -2116,6 +2116,54 @@ input[type="color"]::-moz-color-swatch {
     border-radius: var(--radius);
 }
 
+#client-suggest {
+    position: fixed;
+    z-index: var(--z-popover);
+    display: none;
+    max-height: 12rem;
+    overflow-y: auto;
+    background: var(--color-panel);
+    border: 0.0625rem solid var(--color-border-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-overlay);
+    font-family: var(--font-mono);
+    font-size: var(--fs-body);
+}
+
+#client-suggest.open {
+    display: block;
+}
+
+/* Mirrors .roster-row so a suggestion reads like the character list it came from. */
+.client-suggest-row {
+    padding: 0.375rem 0.5rem 0.375rem 0.375rem;
+    border-bottom: 0.0625rem solid var(--color-border-faint);
+    border-left: 0.125rem solid transparent;
+    color: var(--color-muted);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.client-suggest-row:last-child {
+    border-bottom: none;
+}
+
+.client-suggest-row:hover,
+.client-suggest-row.active {
+    background: var(--color-surface);
+    color: var(--color-text);
+}
+
+.client-suggest-row.active {
+    border-left-color: var(--color-accent);
+}
+
+.client-suggest-match {
+    color: var(--color-accent);
+}
+
 #custom-color-picker.open {
     display: block;
 }

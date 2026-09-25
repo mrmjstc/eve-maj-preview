@@ -5686,7 +5686,7 @@ function populateCharacters() {
         <div class="detail-panel ${index === selectedCharacterIndex ? 'active' : ''}" data-index="${index}">
             <div class="detail-panel-header">
                 <label class="detail-panel-name-label" for="char_${index}_name">${t('common.characterName')}</label>
-                <input type="text" class="detail-panel-name-input" id="char_${index}_name" value="${char.name || ''}" placeholder="${t('common.characterName')}" oninput="updateCharacterHeaderName(${index})">
+                <input type="text" class="detail-panel-name-input" id="char_${index}_name" value="${char.name || ''}" placeholder="${t('common.characterName')}" autocomplete="off" data-suggest-siblings="#charactersList .detail-panel-name-input" onfocus="suggestOpenClients(this)" oninput="updateCharacterHeaderName(${index})">
                 <button type="button" id="char_${index}_removeBtn" onclick="confirmRemoveCharacter(${index})">${t('common.remove')}</button>
             </div>
             <div class="detail-form">
@@ -6392,7 +6392,7 @@ function populateHotkeyGroups() {
                 <label for="hkgroup_${index}_addChar">${t('dynamic.hotkeyGroup.charactersLabel')}</label>
                 <div class="hkgroup-chars-list" id="hkgroup_${index}_charsList" data-group-index="${index}">${renderHotkeyGroupCharRows(index, group.characters)}</div>
                 <div class="field-row" style="margin-top: 0.25rem;">
-                    <input type="text" id="hkgroup_${index}_addChar" autocomplete="off" placeholder="${t('dynamic.hotkeyGroup.addCharPlaceholder')}" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addHotkeyGroupCharacter(${index}); }">
+                    <input type="text" id="hkgroup_${index}_addChar" autocomplete="off" data-suggest-siblings="#hkgroup_${index}_charsList .hkgroup-char-input" onfocus="suggestOpenClients(this)" placeholder="${t('dynamic.hotkeyGroup.addCharPlaceholder')}" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addHotkeyGroupCharacter(${index}); }">
                     <button type="button" onclick="addHotkeyGroupCharacter(${index})" class="btn-nowrap">${t('dynamic.hotkeyGroup.addBtnLabel')}</button>
                     <button type="button" id="hkgroup_${index}_fillBtn" onclick="fillHotkeyGroupFromClients(${index})" class="btn-nowrap">${t('status.fillFromClientsLabel')}</button>
                 </div>
@@ -6508,7 +6508,7 @@ function renderHotkeyGroupCharRows(groupIndex, characters) {
     return characters.map((name, charIndex) => `
         <div class="hkgroup-char-row" data-char-index="${charIndex}">
             <span class="drag-index-chip character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(charIndex + 1).padStart(2, '0')}</span>
-            <input type="text" class="hkgroup-char-input" value="${name}" placeholder="${t('common.characterName')}">
+            <input type="text" class="hkgroup-char-input" value="${name}" placeholder="${t('common.characterName')}" autocomplete="off" data-suggest-siblings="#hkgroup_${groupIndex}_charsList .hkgroup-char-input" onfocus="suggestOpenClients(this)">
             <button type="button" class="button-icon button-icon-danger" onclick="removeHotkeyGroupCharacter(${groupIndex}, ${charIndex})" title="${t('common.remove')}">×</button>
         </div>
     `).join('');
@@ -6584,7 +6584,138 @@ function addHotkeyGroupCharacter(groupIndex) {
 
     input.value = '';
     input.focus();
+    suggestOpenClients(input);
 }
+
+// Themed stand-in for <datalist>, whose native popup can't be styled. Names already used by the input's data-suggest-siblings are hidden.
+const suggestOpenClients = (() => {
+    let panel = null;
+    let activeInput = null;
+    let names = [];
+    let matches = [];
+    let highlighted = -1;
+
+    function ensurePanel() {
+        if (panel) return;
+        panel = document.createElement('div');
+        panel.id = 'client-suggest';
+        panel.setAttribute('role', 'listbox');
+        // Keeps focus in the input, so its blur doesn't close the panel before the click lands.
+        panel.addEventListener('mousedown', e => e.preventDefault());
+        panel.addEventListener('click', e => {
+            const row = e.target.closest('.client-suggest-row');
+            if (row) pick(parseInt(row.dataset.index, 10));
+        });
+        document.body.appendChild(panel);
+    }
+
+    function renderRow(name, i, query) {
+        const at = name.toLowerCase().indexOf(query);
+        const label = query
+            ? escapeHtml(name.slice(0, at)) + `<span class="client-suggest-match">${escapeHtml(name.slice(at, at + query.length))}</span>` + escapeHtml(name.slice(at + query.length))
+            : escapeHtml(name);
+        return `<div class="client-suggest-row${i === highlighted ? ' active' : ''}" role="option" data-index="${i}">${label}</div>`;
+    }
+
+    function render() {
+        const query = activeInput.value.trim().toLowerCase();
+        matches = names.filter(name => name.toLowerCase().includes(query) && name.toLowerCase() !== query);
+        highlighted = Math.min(highlighted, matches.length - 1);
+
+        if (matches.length === 0) {
+            panel.classList.remove('open');
+            return;
+        }
+        panel.innerHTML = matches.map((name, i) => renderRow(name, i, query)).join('');
+        panel.classList.add('open');
+        position();
+    }
+
+    function position() {
+        const rect = activeInput.getBoundingClientRect();
+        panel.style.left = rect.left + 'px';
+        panel.style.width = rect.width + 'px';
+        const below = rect.bottom + 2;
+        const fitsBelow = below + panel.offsetHeight <= window.innerHeight;
+        panel.style.top = (fitsBelow || rect.top < panel.offsetHeight ? below : rect.top - panel.offsetHeight - 2) + 'px';
+    }
+
+    function pick(i) {
+        const input = activeInput;
+        input.value = matches[i];
+        close();
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    // Capture phase, so Enter fills the input before inline handlers (e.g. the group Add box) read its value.
+    function onKeyDown(e) {
+        if (e.target !== activeInput) return;
+        const shown = panel.classList.contains('open');
+
+        if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && shown) {
+            e.preventDefault();
+            const step = e.key === 'ArrowDown' ? 1 : -1;
+            highlighted = (highlighted + step + matches.length) % matches.length;
+            render();
+            panel.children[highlighted]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter' && shown && highlighted >= 0) {
+            pick(highlighted);
+        } else if (e.key === 'Escape' && shown) {
+            e.stopPropagation();
+            panel.classList.remove('open');
+        } else if (e.key === 'Tab') {
+            close();
+        }
+    }
+
+    function onInput() {
+        highlighted = -1;
+        render();
+    }
+
+    function onScroll(e) {
+        if (!panel.contains(e.target)) close();
+    }
+
+    function close() {
+        if (!activeInput) return;
+        activeInput.removeEventListener('input', onInput);
+        activeInput.removeEventListener('blur', close);
+        document.removeEventListener('keydown', onKeyDown, true);
+        document.removeEventListener('scroll', onScroll, true);
+        window.removeEventListener('resize', close);
+        panel.classList.remove('open');
+        activeInput = null;
+    }
+
+    return async function open(input) {
+        if (typeof webui === 'undefined') return;
+
+        try {
+            const clientNames = JSON.parse(await webui.call('getOpenClients'));
+            if (document.activeElement !== input) return;
+
+            const siblings = input.dataset.suggestSiblings ? document.querySelectorAll(input.dataset.suggestSiblings) : [];
+            const taken = new Set(Array.from(siblings)
+                .filter(el => el !== input)
+                .map(el => el.value.trim().toLowerCase()));
+
+            ensurePanel();
+            close();
+            names = clientNames.filter(name => !taken.has(name.trim().toLowerCase()));
+            highlighted = -1;
+            activeInput = input;
+            input.addEventListener('input', onInput);
+            input.addEventListener('blur', close);
+            document.addEventListener('keydown', onKeyDown, true);
+            document.addEventListener('scroll', onScroll, true);
+            window.addEventListener('resize', close);
+            render();
+        } catch (error) {
+            logError('Failed to load open client suggestions:', error);
+        }
+    };
+})();
 
 // New members are appended, which since the list scrolls on its own can be below the fold.
 function scrollHotkeyGroupCharsToEnd(groupIndex) {
