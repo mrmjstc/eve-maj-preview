@@ -227,16 +227,22 @@ pub fn resolveThumbnailUnderCursor() ?*ThumbnailWindow {
     return painter.getThumbnailBySourceHwnd(source_hwnd);
 }
 
-/// Toggles character exclusion from hotkey cycling on Shift+Click, with visual feedback via a semi-transparent overlay.
 pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
     const painter = g_painter_ptr orelse return;
-    const hotkey_manager = painter_mod.g_hotkey_manager_ptr orelse return;
 
     if (!painter.config.exclusion.enableShiftClickExclude) {
         // Exclusion disabled: fall back to a plain click instead of swallowing the input
         handleThumbnailClick(source_hwnd);
         return;
     }
+
+    toggleCycleExclusion(source_hwnd);
+}
+
+/// Toggles character exclusion from hotkey cycling, with visual feedback via a semi-transparent overlay.
+pub fn toggleCycleExclusion(source_hwnd: win32.HWND) void {
+    const painter = g_painter_ptr orelse return;
+    const hotkey_manager = painter_mod.g_hotkey_manager_ptr orelse return;
 
     if (painter.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
         const char_name = thumbnail.character_name;

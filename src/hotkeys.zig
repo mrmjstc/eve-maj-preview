@@ -1092,7 +1092,7 @@ pub const HotkeyManager = struct {
         for (eve_windows) |eve_window| {
             if (eve_window.hwnd == foreground_hwnd) {
                 slog.info("Toggle exclusion hotkey pressed for: {s}", .{eve_window.character_name});
-                input.handleThumbnailShiftClick(eve_window.hwnd);
+                input.toggleCycleExclusion(eve_window.hwnd);
                 return;
             }
         }
