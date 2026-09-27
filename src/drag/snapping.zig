@@ -137,7 +137,7 @@ fn applyGhostSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i32, d
     // Non-thumbnail draggers (e.g. the notification history panel) own no character, so nothing is excluded from the ghost set.
     const character_name = if (painter.getThumbnailByOverlayHwnd(dragging_hwnd)) |t| t.character_name else "";
 
-    // GhostOverlay.show (called at drag-start by input.zig's startDrag / notifications/history_panel.zig's WM_ENTERSIZEMOVE) already computed
+    // GhostOverlay.show (called at drag-start by drag/thumbnail.zig's start / notifications/history_panel.zig's WM_ENTERSIZEMOVE) already computed
     // and cached this for the duration of the drag - reuse it instead of recomputing on every mouse move. Falls back
     // to a one-off computation for callers that snap without showing the ghost overlay first (list_view.zig's panel
     // drag never calls GhostOverlay.show/hide); the fallback is deliberately not written back into

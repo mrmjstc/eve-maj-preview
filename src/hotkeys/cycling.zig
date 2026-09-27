@@ -1,6 +1,6 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const input = @import("../input.zig");
+const activation = @import("../clients/activation.zig");
 const scout = @import("../scout.zig");
 const config_mod = @import("../config.zig");
 const strings = @import("../util/strings.zig");
@@ -140,7 +140,7 @@ pub fn activatePerCharacterGroup(m: *HotkeyManager, group: *bindings.CharacterGr
         if (m.scout.getHwndByName(char_name)) |hwnd| {
             group.current_index = idx;
             slog.info("Activating character: {s} ({}/{})", .{ char_name, idx + 1, num });
-            input.handleThumbnailClick(hwnd);
+            activation.activate(hwnd);
             return;
         }
     }
@@ -197,7 +197,7 @@ pub fn cycleGroup(m: *HotkeyManager, group: *config_mod.HotkeyGroup, forward: bo
             if (m.scout.getHwndByName(char_name)) |hwnd| {
                 group.currentIndex = idx;
                 slog.info("Cycling {s} to: {s} ({}/{})", .{ directionName(forward), char_name, idx + 1, total });
-                input.handleThumbnailClick(hwnd);
+                activation.activate(hwnd);
                 return;
             }
             continue;
@@ -211,7 +211,7 @@ pub fn cycleGroup(m: *HotkeyManager, group: *config_mod.HotkeyGroup, forward: bo
 
         group.currentIndex = idx;
         slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(forward), idx + 1, total });
-        input.handleThumbnailClick(hwnd);
+        activation.activate(hwnd);
         m.cycle.last_not_logged_in_hwnd = hwnd;
         return;
     }
@@ -237,7 +237,7 @@ pub fn cycleExcluded(m: *HotkeyManager, forward: bool) void {
         if (m.scout.getHwndByName(char_name)) |hwnd| {
             m.cycle.excluded_index = idx;
             slog.info("Cycling {s} to excluded character: {s} ({}/{})", .{ directionName(forward), char_name, idx + 1, num_excluded });
-            input.handleThumbnailClick(hwnd);
+            activation.activate(hwnd);
             return;
         }
         slog.debug("Excluded character {s} is not currently running, skipping", .{char_name});
@@ -270,7 +270,7 @@ pub fn cycleNotified(m: *HotkeyManager, forward: bool) void {
 
         if (m.scout.getHwndByName(char_name)) |hwnd| {
             slog.info("Cycling {s} to notified character: {s} ({}/{})", .{ directionName(forward), char_name, index + 1, num_notified });
-            input.handleThumbnailClick(hwnd);
+            activation.activate(hwnd);
             setOwnedCursorName(m.allocator, &m.cycle.last_notified_name, char_name, "notified");
             return;
         }
@@ -314,7 +314,7 @@ pub fn cycleAllClients(m: *HotkeyManager, forward: bool) void {
         if (respect_exclusions and m.isCharacterExcluded(w.character_name)) continue;
 
         slog.info("Cycling {s} to client: {s} ({}/{})", .{ directionName(forward), w.character_name, index + 1, num });
-        input.handleThumbnailClick(w.hwnd);
+        activation.activate(w.hwnd);
         setOwnedCursorName(m.allocator, &m.cycle.last_all_clients_name, w.character_name, "all-clients");
         return;
     }
@@ -352,7 +352,7 @@ pub fn cycleNotLoggedIn(m: *HotkeyManager, forward: bool) void {
 
         if (isHwndStillNotLoggedIn(windows, hwnd)) {
             slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(forward), index + 1, num });
-            input.handleThumbnailClick(hwnd);
+            activation.activate(hwnd);
             m.cycle.last_not_logged_in_hwnd = hwnd;
             return;
         }

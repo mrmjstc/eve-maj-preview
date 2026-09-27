@@ -3,7 +3,8 @@ const win32 = @import("platform/win32.zig");
 const gdi_overlay = @import("platform/gdi_overlay.zig");
 const scout = @import("scout.zig");
 const painter = @import("painter.zig");
-const input = @import("input.zig");
+const focus_grant = @import("platform/focus_grant.zig");
+const activation = @import("clients/activation.zig");
 const config_mod = @import("config.zig");
 const notification_mod = @import("notifications/notification.zig");
 const hotkeys = @import("hotkeys/manager.zig");
@@ -42,13 +43,13 @@ var g_combat_tracker: ?*activity_mod.CombatTracker = null;
 var g_mining_tracker: ?*activity_mod.MiningTracker = null;
 var g_bounty_tracker: ?*activity_mod.BountyTracker = null;
 var g_resource_tracker: ?*resource_tracker_mod.ResourceTracker = null;
-pub var g_config: config_mod.Config = undefined;
+var g_config: config_mod.Config = undefined;
 var g_global_settings: config_mod.GlobalSettings = undefined;
 var g_tray_icon: ?tray.TrayIcon = null;
 var g_update_checker: ?update.UpdateChecker = null;
-// Exported for other modules (mainly input.zig) to reach these without threading them through every call.
+var g_config_ptr: ?*config_mod.Config = null;
+// Exported for other modules to reach these without threading them through every call.
 pub var g_timer_hwnd: ?win32.HWND = null;
-pub var g_config_ptr: ?*config_mod.Config = null;
 pub var g_scout_ptr: ?*scout.Scout = null;
 
 // Scan throttling: only run expensive EnumWindows every N ticks
@@ -95,7 +96,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         },
         win32.WM_HOTKEY => {
             const id: c_int = @intCast(wParam);
-            if (!input.handleFocusGrantWmHotkey(id)) {
+            if (!focus_grant.handleWmHotkey(id)) {
                 if (hotkeys.g_hotkey_manager_ptr) |manager| {
                     manager.handleHotkeyPress(id, lParam);
                 }
@@ -135,7 +136,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
                         slog.info("Protocol handler: switch to character: {s}", .{char_name});
                         if (g_scout) |scout_ptr| {
                             if (scout_ptr.getHwndByName(char_name)) |target_hwnd| {
-                                input.handleThumbnailClick(target_hwnd);
+                                activation.activate(target_hwnd);
                             } else {
                                 slog.warn("Character '{s}' not found", .{char_name});
                             }
@@ -730,9 +731,7 @@ fn mainImpl(init: std.process.Init) !void {
         g_painter.?.* = try painter.Painter.init(g_allocator, &g_config);
     }
     painter.g_painter_ptr = g_painter;
-    input.g_painter_ptr = g_painter;
 
-    // Export config for direct access by input module
     g_config_ptr = &g_config;
 
     defer {
@@ -856,12 +855,12 @@ fn mainImpl(init: std.process.Init) !void {
     }
 
     const hotkey_manager = try createHotkeyManager();
-    input.installFocusGrant(timer_hwnd);
+    focus_grant.install(timer_hwnd);
     defer {
         destroyHotkeyManager();
         mouse_hook.deinit();
         keyboard_hook.deinit();
-        input.uninstallFocusGrant();
+        focus_grant.uninstall();
     }
 
     hotkey_manager.registerHotkeys(timer_hwnd) catch |err| {
@@ -969,7 +968,6 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         g_allocator.destroy(painter_ptr);
         g_painter = null;
         painter.g_painter_ptr = null;
-        input.g_painter_ptr = null;
         g_config_ptr = null;
         slog.debug("Cleaned up painter", .{});
     }
@@ -1008,7 +1006,6 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         return err;
     };
     painter.g_painter_ptr = g_painter;
-    input.g_painter_ptr = g_painter;
     g_config_ptr = &g_config;
     slog.debug("Reinitialized painter", .{});
 

@@ -1,6 +1,8 @@
 const std = @import("std");
 const win32 = @import("platform/win32.zig");
 const input = @import("input.zig");
+const activation = @import("clients/activation.zig");
+const thumbnail_drag = @import("drag/thumbnail.zig");
 const config_mod = @import("config.zig");
 const state_mod = @import("state.zig");
 const notification_mod = @import("notifications/notification.zig");
@@ -115,7 +117,7 @@ pub const ThumbnailWindow = struct {
     /// The single canonical "what should this render/style as" computation. The returned ThumbnailState
     /// is used purely as a style-lookup key (config.zig's getStateConfig) - never stored back onto the thumbnail.
     pub fn effectiveRenderState(self: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) ThumbnailState {
-        if (input.isThumbnailDragging(self)) return .Dragging;
+        if (thumbnail_drag.isDragging(self)) return .Dragging;
         if (!self.notifications.isEmpty()) return .Alert;
         if (self.isFocused(active_source_hwnd)) return .Active;
         if (win32.isWindowIconic(self.source_hwnd)) return .Minimized;
@@ -124,7 +126,7 @@ pub const ThumbnailWindow = struct {
 
     /// Sets visibility state, silently failing via tryTransitionVisibility if invalid.
     pub fn setVisibility(self: *ThumbnailWindow, new_visibility: state_mod.VisibilityState) void {
-        const blocks_hiding = !self.notifications.isEmpty() or input.isThumbnailDragging(self);
+        const blocks_hiding = !self.notifications.isEmpty() or thumbnail_drag.isDragging(self);
         if (new_visibility != .Visible and blocks_hiding) {
             slog.warn("Cannot hide {s} while alerting/dragging", .{self.character_name});
             return;
@@ -227,9 +229,9 @@ pub const Painter = struct {
         }
 
         // Lets the list window proc activate EVE clients without a direct list_view → input dependency.
-        list_view.g_activate_fn = input.handleThumbnailClick;
+        list_view.g_activate_fn = activation.activate;
         list_view.g_shift_click_fn = input.handleThumbnailShiftClick;
-        history_panel_mod.g_activate_fn = input.handleThumbnailClick;
+        history_panel_mod.g_activate_fn = activation.activate;
 
         if (cfg.display.viewMode == .ClientList) {
             painter.list_window = list_view.ListWindow.init(allocator, cfg, instance) catch |err| blk: {
@@ -516,7 +518,7 @@ pub const Painter = struct {
         self.reconcileThumbnailStates(win32.GetForegroundWindow());
 
         for (self.thumbnails.items) |*thumbnail| {
-            if (input.isThumbnailDragging(thumbnail)) continue;
+            if (thumbnail_drag.isDragging(thumbnail)) continue;
 
             const is_minimized = win32.isWindowIconic(thumbnail.source_hwnd);
             if (is_minimized != thumbnail.was_minimized) {
@@ -769,7 +771,7 @@ pub const Painter = struct {
         thumbnail.needs_render = true;
     }
 
-    /// Removes click-dismissable notifications (input.zig's click handler); returns whether anything was removed.
+    /// Removes click-dismissable notifications (clients/activation.zig's activate); returns whether anything was removed.
     pub fn dismissClickSuppressedNotifications(self: *Painter, thumbnail: *ThumbnailWindow) bool {
         const removed_any = thumbnail.notifications.dismissClickSuppressed(self.allocator);
         if (removed_any) thumbnail.needs_render = true;
@@ -1230,10 +1232,10 @@ pub const Painter = struct {
         // Black, not white COLOR_WINDOW: shows through whenever DWM has no live thumbnail frame to composite.
         const thumbnail_bg_brush = win32.CreateSolidBrush(0x00000000) orelse return error.CreateBrushFailed;
 
-        gdi_overlay.registerWindowClass(self.instance, input.getWindowProc(), WINDOW_CLASS_NAME, thumbnail_bg_brush) catch return error.RegisterClassFailed;
+        gdi_overlay.registerWindowClass(self.instance, input.windowProc, WINDOW_CLASS_NAME, thumbnail_bg_brush) catch return error.RegisterClassFailed;
 
         // No background brush for a layered window.
-        gdi_overlay.registerWindowClass(self.instance, input.getTextWindowProc(), TEXT_WINDOW_CLASS_NAME, null) catch return error.RegisterTextClassFailed;
+        gdi_overlay.registerWindowClass(self.instance, input.textWindowProc, TEXT_WINDOW_CLASS_NAME, null) catch return error.RegisterTextClassFailed;
 
         drag_overlays_mod.registerWindowClass(self.instance) catch return error.RegisterGhostClassFailed;
         gdi_overlay.registerHintBoxClass(self.instance) catch return error.RegisterHintBoxClassFailed;
@@ -1343,7 +1345,7 @@ pub const Painter = struct {
 
         const foreground_hwnd = win32.GetForegroundWindow();
         self.reconcileThumbnailStates(foreground_hwnd);
-        if (foreground_hwnd == thumbnail.source_hwnd) syncHotkeyFocus(thumbnail.character_name, thumbnail.source_hwnd);
+        if (foreground_hwnd == thumbnail.source_hwnd) hotkeys_mod.syncFocusedCharacter(thumbnail.character_name, thumbnail.source_hwnd);
     }
 
     /// ClientList and Nothing modes only need a data record, not real Win32 windows.
@@ -1484,11 +1486,6 @@ fn recordNonEveForeground(hwnd: win32.HWND) void {
     if (hotkeys_mod.g_hotkey_manager_ptr) |manager| manager.last_non_eve_foreground = hwnd;
 }
 
-/// Keeps HotkeyManager's cycle position in step when `hwnd` becomes the focused client.
-fn syncHotkeyFocus(character_name: []const u8, hwnd: win32.HWND) void {
-    if (hotkeys_mod.g_hotkey_manager_ptr) |manager| manager.updateFocusedCharacter(character_name, hwnd);
-}
-
 fn showThumbnailWindows(thumbnail: *const ThumbnailWindow, shown: bool) void {
     const cmd: c_int = if (shown) win32.SW_SHOW else win32.SW_HIDE;
     _ = win32.ShowWindow(thumbnail.hwnd, cmd);
@@ -1611,6 +1608,6 @@ fn winEventProc(
 
     if (painter.getThumbnailBySourceHwnd(hwnd)) |thumbnail| {
         slog.debug("Tracked window focused: {s}", .{thumbnail.character_name});
-        syncHotkeyFocus(thumbnail.character_name, hwnd);
+        hotkeys_mod.syncFocusedCharacter(thumbnail.character_name, hwnd);
     }
 }

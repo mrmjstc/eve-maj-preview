@@ -166,7 +166,7 @@ pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelSty
     grabForegroundFocus(hwnd);
 }
 
-/// Plain SetForegroundWindow (input.zig's forceSetForegroundWindow) only works when the calling process just received user input, which isn't true here since StartRegionSelect arrives over WM_COPYDATA - Windows' foreground-lock would otherwise silently eat it, leaving Escape going nowhere.
+/// Plain SetForegroundWindow (platform/focus_grant.zig's forceSetForegroundWindow) only works when the calling process just received user input, which isn't true here since StartRegionSelect arrives over WM_COPYDATA - Windows' foreground-lock would otherwise silently eat it, leaving Escape going nowhere.
 fn grabForegroundFocus(hwnd: win32.HWND) void {
     const current_thread = win32.GetCurrentThreadId();
     var attached = false;

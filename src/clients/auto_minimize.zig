@@ -1,6 +1,7 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const input = @import("../input.zig");
+const focus_grant = @import("../platform/focus_grant.zig");
+const thumbnail_drag = @import("../drag/thumbnail.zig");
 const log = @import("../log.zig");
 const slog = log.scoped("auto_minimize");
 const painter_mod = @import("../painter.zig");
@@ -58,7 +59,7 @@ pub const AutoMinimizer = struct {
         const now = win32.Ticks.now();
         // Refreshed even while disabled, so re-enabling doesn't count the disabled stretch as inactivity.
         for (painter.thumbnails.items) |*thumbnail| {
-            if (input.isThumbnailDragging(thumbnail)) continue;
+            if (thumbnail_drag.isDragging(thumbnail)) continue;
             if (thumbnail.isFocused(painter.active_source_hwnd) or win32.isWindowIconic(thumbnail.source_hwnd)) {
                 thumbnail.auto_minimize.inactive_since = now;
             }
@@ -75,7 +76,7 @@ pub const AutoMinimizer = struct {
         const focused_monitor = if (eve_has_focus) win32.MonitorFromWindow(painter.active_source_hwnd.?, win32.MONITOR_DEFAULTTONEAREST) else null;
 
         for (painter.thumbnails.items) |*thumbnail| {
-            if (input.isThumbnailDragging(thumbnail)) continue;
+            if (thumbnail_drag.isDragging(thumbnail)) continue;
             if (thumbnail.isFocused(painter.active_source_hwnd)) continue;
             if (win32.isWindowIconic(thumbnail.source_hwnd)) continue;
             // Checked after the iconic skip: a minimized window is parked off-screen and reports the wrong monitor.
@@ -98,7 +99,7 @@ pub const AutoMinimizer = struct {
             for (painter.thumbnails.items) |*thumbnail| {
                 if (thumbnail.isFocused(painter.active_source_hwnd) and win32.isWindow(thumbnail.source_hwnd)) {
                     // Minimizing the other windows can transiently steal focus from the active one.
-                    input.forceSetForegroundWindow(thumbnail.source_hwnd);
+                    focus_grant.forceSetForegroundWindow(thumbnail.source_hwnd);
                     break;
                 }
             }

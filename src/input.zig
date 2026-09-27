@@ -1,20 +1,14 @@
 const win32 = @import("platform/win32.zig");
-const types = @import("types.zig");
-const virtual_keys = @import("platform/virtual_keys.zig");
 const log = @import("log.zig");
 const slog = log.scoped("input");
 const painter_mod = @import("painter.zig");
 const hotkeys_mod = @import("hotkeys/manager.zig");
 const membership = @import("hotkeys/membership.zig");
+const activation = @import("clients/activation.zig");
+const thumbnail_drag = @import("drag/thumbnail.zig");
 const ThumbnailWindow = painter_mod.ThumbnailWindow;
-const Painter = painter_mod.Painter;
-const drag_overlays_mod = @import("drag/overlays.zig");
-const snapping = @import("drag/snapping.zig");
-const main_mod = @import("main.zig");
 
-pub var g_painter_ptr: ?*Painter = null;
-
-// Click state for mouse-up triggered clicks (left-click only; right-click uses DragState)
+// Click state for mouse-up triggered clicks (left-click only; right-click drags)
 const ClickState = struct {
     pending: bool = false,
     hwnd: ?win32.HWND = null,
@@ -24,199 +18,9 @@ const ClickState = struct {
 
 var g_click_state: ClickState = .{};
 
-const DragState = struct {
-    is_dragging: bool = false,
-    hwnd: ?win32.HWND = null,
-    offset_x: i32 = 0,
-    offset_y: i32 = 0,
-};
-
-var g_drag_state: DragState = .{};
-
-/// Whether this thumbnail (by either its overlay or text-overlay hwnd) is the one currently being dragged.
-pub fn isThumbnailDragging(thumbnail: *const ThumbnailWindow) bool {
-    return g_drag_state.is_dragging and (g_drag_state.hwnd == thumbnail.hwnd or g_drag_state.hwnd == thumbnail.text_hwnd);
-}
-
-var g_original_animation_setting: ?i32 = null;
-
-/// Temporarily disable Windows minimize/restore animations
-fn turnOffAnimation() void {
-    var anim_info = win32.ANIMATIONINFO{
-        .cbSize = @sizeOf(win32.ANIMATIONINFO),
-        .iMinAnimate = 0,
-    };
-
-    if (win32.toBool(win32.SystemParametersInfoA(
-        win32.SPI_GETANIMATION,
-        @sizeOf(win32.ANIMATIONINFO),
-        &anim_info,
-        0,
-    ))) {
-        if (g_original_animation_setting == null) {
-            g_original_animation_setting = anim_info.iMinAnimate;
-        }
-
-        if (anim_info.iMinAnimate != 0) {
-            anim_info.iMinAnimate = 0;
-            _ = win32.SystemParametersInfoA(
-                win32.SPI_SETANIMATION,
-                @sizeOf(win32.ANIMATIONINFO),
-                &anim_info,
-                0,
-            );
-        }
-    }
-}
-
-/// Restore Windows minimize/restore animations to original setting
-fn restoreAnimation() void {
-    if (g_original_animation_setting) |original| {
-        var anim_info = win32.ANIMATIONINFO{
-            .cbSize = @sizeOf(win32.ANIMATIONINFO),
-            .iMinAnimate = 0,
-        };
-
-        if (win32.toBool(win32.SystemParametersInfoA(
-            win32.SPI_GETANIMATION,
-            @sizeOf(win32.ANIMATIONINFO),
-            &anim_info,
-            0,
-        ))) {
-            if (anim_info.iMinAnimate != original) {
-                anim_info.iMinAnimate = original;
-                _ = win32.SystemParametersInfoA(
-                    win32.SPI_SETANIMATION,
-                    @sizeOf(win32.ANIMATIONINFO),
-                    &anim_info,
-                    0,
-                );
-            }
-        }
-    }
-}
-
-// SetForegroundWindow silently refuses unless the caller just received real input, which a hotkey
-// dispatched via keyboard_hook.zig/mouse_hook.zig doesn't carry. The conduit hotkey below keeps a
-// permanently-registered, physically unreachable RegisterHotKey binding alive purely to borrow that
-// exemption on demand.
-const FOCUS_GRANT_VK: win32.UINT = virtual_keys.VK_FOCUS_GRANT;
-const FOCUS_GRANT_ID_BASE: c_int = 9000;
-// MOD_ALT|MOD_CONTROL|MOD_SHIFT|MOD_WIN occupy bits 0-3, so every value 0-15 is already a valid combo.
-const FOCUS_GRANT_COMBO_COUNT: u32 = 16;
-
-var g_focus_grant_hwnd: ?win32.HWND = null;
-var g_focus_grant_target: ?win32.HWND = null;
-/// The switch is async, so callers can't detect it via GetForegroundWindow right after requesting it.
-pub var g_focus_switch_requested = false;
-
-/// Call once at startup.
-pub fn installFocusGrant(hwnd: win32.HWND) void {
-    g_focus_grant_hwnd = hwnd;
-    for (0..FOCUS_GRANT_COMBO_COUNT) |i| {
-        const mods: win32.UINT = @intCast(i);
-        const id = FOCUS_GRANT_ID_BASE + @as(c_int, @intCast(i));
-        if (!win32.toBool(win32.RegisterHotKey(hwnd, id, mods, FOCUS_GRANT_VK))) {
-            slog.err("Failed to register foreground-grant conduit hotkey {} (mods=0x{X})", .{ id, mods });
-        }
-    }
-}
-
-/// Call once at shutdown.
-pub fn uninstallFocusGrant() void {
-    const hwnd = g_focus_grant_hwnd orelse return;
-    for (0..FOCUS_GRANT_COMBO_COUNT) |i| {
-        _ = win32.UnregisterHotKey(hwnd, FOCUS_GRANT_ID_BASE + @as(c_int, @intCast(i)));
-    }
-    g_focus_grant_hwnd = null;
-}
-
-/// Returns false if id isn't the conduit hotkey, so the caller can dispatch it normally.
-pub fn handleFocusGrantWmHotkey(id: c_int) bool {
-    if (id < FOCUS_GRANT_ID_BASE or id >= FOCUS_GRANT_ID_BASE + @as(c_int, @intCast(FOCUS_GRANT_COMBO_COUNT))) return false;
-
-    const target = g_focus_grant_target orelse return true;
-    // Worth one immediate retry rather than leaving the user stuck on the wrong window.
-    if (!win32.toBool(win32.SetForegroundWindow(target))) {
-        _ = win32.SetForegroundWindow(target);
-    }
-    _ = win32.SetFocus(target);
-    return true;
-}
-
-/// Direct SetForegroundWindow is a same-process fast path; the conduit hotkey above is the reliable
-/// (async) path for the cross-process case, which plain SetForegroundWindow can't do alone.
-pub fn forceSetForegroundWindow(target_hwnd: win32.HWND) void {
-    _ = win32.SetForegroundWindow(target_hwnd);
-    _ = win32.SetFocus(target_hwnd);
-
-    g_focus_grant_target = target_hwnd;
-    g_focus_switch_requested = true;
-    // keybd_event only injects this vk, so held modifiers stay held and still match a registration.
-    win32.keybd_event(@intCast(FOCUS_GRANT_VK), 0, 0, 0);
-    win32.keybd_event(@intCast(FOCUS_GRANT_VK), 0, win32.KEYEVENTF_KEYUP, 0);
-}
-
-/// Activates and focuses the EVE client window when its thumbnail is clicked, handling minimized/maximized states.
-pub fn handleThumbnailClick(source_hwnd: win32.HWND) void {
-    const config = &main_mod.g_config;
-    handleThumbnailClickWithAnimation(source_hwnd, config.interaction.animationStyle);
-}
-
-fn handleThumbnailClickWithAnimation(source_hwnd: win32.HWND, animation_style: types.AnimationStyle) void {
-    if (!win32.isWindow(source_hwnd)) {
-        return;
-    }
-
-    // Get the current window placement to preserve maximized state
-    var placement: win32.WINDOWPLACEMENT = undefined;
-    placement.length = @sizeOf(win32.WINDOWPLACEMENT);
-    if (!win32.toBool(win32.GetWindowPlacement(source_hwnd, &placement))) {
-        slog.err("Failed to get window placement", .{});
-        return;
-    }
-
-    const was_minimized = (placement.showCmd == win32.SW_SHOWMINIMIZED);
-
-    forceSetForegroundWindow(source_hwnd);
-
-    // SW_RESTORE returns a maximized window to maximized, so no need to track was_maximized separately.
-    if (was_minimized) {
-        switch (animation_style) {
-            .NoAnimation => {
-                turnOffAnimation();
-                _ = win32.ShowWindowAsync(source_hwnd, win32.SW_RESTORE);
-                restoreAnimation();
-            },
-            .OriginalAnimation => {
-                _ = win32.ShowWindowAsync(source_hwnd, win32.SW_RESTORE);
-            },
-        }
-    }
-
-    // Update thumbnail states immediately so the active border shows without waiting for the event hook.
-    updateThumbnailStatesAfterFocus(source_hwnd);
-
-    // Dismiss any active notification with suppress_when_clicked set; must run after state is reconciled above.
-    if (g_painter_ptr) |painter| {
-        if (painter.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
-            thumbnail.last_click_time = win32.Ticks.now();
-
-            if (painter.dismissClickSuppressedNotifications(thumbnail)) {
-                painter.renderThumbnail(thumbnail) catch |err| {
-                    slog.err("Failed to render thumbnail after click-suppress clear: {}", .{err});
-                };
-                thumbnail.needs_render = false;
-            }
-        }
-    }
-
-    updateHotkeyCyclePosition(source_hwnd);
-}
-
 /// Resolves the thumbnail under the cursor, polled on demand since hotkey presses carry no SOURCE_HWND message.
 pub fn resolveThumbnailUnderCursor() ?*ThumbnailWindow {
-    const painter = g_painter_ptr orelse return null;
+    const painter = painter_mod.g_painter_ptr orelse return null;
 
     var pt: win32.POINT = undefined;
     if (!win32.toBool(win32.GetCursorPos(&pt))) return null;
@@ -228,262 +32,55 @@ pub fn resolveThumbnailUnderCursor() ?*ThumbnailWindow {
 }
 
 pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
-    const painter = g_painter_ptr orelse return;
+    const painter = painter_mod.g_painter_ptr orelse return;
 
     if (!painter.config.exclusion.enableShiftClickExclude) {
         // Exclusion disabled: fall back to a plain click instead of swallowing the input
-        handleThumbnailClick(source_hwnd);
+        activation.activate(source_hwnd);
         return;
     }
 
     if (hotkeys_mod.g_hotkey_manager_ptr) |manager| membership.toggleThumbnailExclusion(manager, source_hwnd);
 }
 
-/// Lets cycling resume from a manually-selected character's position
-fn updateHotkeyCyclePosition(focused_hwnd: win32.HWND) void {
-    const painter = g_painter_ptr orelse return;
-    const hotkey_manager = hotkeys_mod.g_hotkey_manager_ptr orelse return;
-
-    // Painter's lookup helper is O(1) and includes safety checks
-    if (painter.getThumbnailBySourceHwnd(focused_hwnd)) |thumbnail| {
-        hotkey_manager.updateFocusedCharacter(thumbnail.character_name, focused_hwnd);
-    }
-}
-
-/// Updates thumbnail states immediately after focus change, since the Windows event hook may fire late.
-fn updateThumbnailStatesAfterFocus(focused_hwnd: win32.HWND) void {
-    const painter = g_painter_ptr orelse return;
-
-    // Bail if focus already changed, to avoid races during rapid cycling
-    const current_foreground = win32.GetForegroundWindow();
-    if (current_foreground != focused_hwnd) {
-        slog.debug("Skipping updateThumbnailStatesAfterFocus - focus already changed (target={*}, current={*})", .{
-            focused_hwnd,
-            current_foreground,
-        });
-        return;
-    }
-
-    // Ensures only one thumbnail ends up active
-    painter.reconcileThumbnailStates(focused_hwnd);
-
-    // Rendering immediately avoids hotkey lag, but defers to the timer above a threshold to avoid blocking on rare bulk updates.
-    const MAX_IMMEDIATE_RENDERS: usize = 4;
-    painter.renderDirtyThumbnails(MAX_IMMEDIATE_RENDERS);
-}
-
-/// Start dragging a window (thumbnail or text overlay)
-fn startDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
-    if (g_painter_ptr) |painter| {
-        if (!painter.config.interaction.enableDragging) {
-            return;
-        }
-    }
-
-    const x = @as(i16, @truncate(lParam & 0xFFFF));
-    const y = @as(i16, @truncate((lParam >> 16) & 0xFFFF));
-
-    g_drag_state.is_dragging = true;
-    g_drag_state.hwnd = hwnd;
-    g_drag_state.offset_x = x;
-    g_drag_state.offset_y = y;
-
-    if (g_painter_ptr) |painter| {
-        if (painter.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
-            painter.renderThumbnail(thumbnail) catch |err| {
-                slog.err("Failed to render dragging thumbnail for {s}: {}", .{ thumbnail.character_name, err });
-            };
-            if (painter.config.snapping.showGhostPositionBorders) {
-                painter.ghost_overlay.show(painter, thumbnail.character_name);
-            }
-        }
-        drag_overlays_mod.showDragHint(painter, hwnd);
-    }
-
-    _ = win32.SetCapture(hwnd);
-}
-
-/// End dragging and save the thumbnail position
-fn endDrag(hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
-    if (g_drag_state.is_dragging and g_drag_state.hwnd == hwnd) {
-        // Cleared before rendering so effectiveRenderState sees the drag as already over.
-        g_drag_state.is_dragging = false;
-        g_drag_state.hwnd = null;
-        _ = win32.ReleaseCapture();
-
-        if (g_painter_ptr) |painter| {
-            if (painter.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
-                painter.renderThumbnail(thumbnail) catch |err| {
-                    slog.err("Failed to render thumbnail after drag for {s}: {}", .{ thumbnail.character_name, err });
-                };
-            }
-
-            painter.ghost_overlay.hide();
-            painter.hint_box.hide();
-
-            // Ctrl held during drag means all thumbnails moved together
-            const ctrl_pressed = win32.isCtrlPressed();
-            if (ctrl_pressed) {
-                for (painter.thumbnails.items) |*saved_thumbnail| {
-                    painter.saveThumbnailPosition(saved_thumbnail.hwnd);
-                }
-            } else {
-                painter.saveThumbnailPosition(thumbnail_hwnd);
-            }
-        }
-    }
-}
-
-/// Handles mouse move during drag; thumbnail and text-overlay windows are linked and moved together.
-fn handleDrag(hwnd: win32.HWND, lParam: win32.LPARAM) void {
-    if (!g_drag_state.is_dragging or g_drag_state.hwnd != hwnd) return;
-
-    if (!win32.isWindow(hwnd)) {
-        slog.warn("Window {*} became invalid during drag operation, canceling drag", .{hwnd});
-        g_drag_state.is_dragging = false;
-        g_drag_state.hwnd = null;
-        _ = win32.ReleaseCapture();
-
-        if (g_painter_ptr) |painter| {
-            painter.ghost_overlay.hide();
-            painter.hint_box.hide();
-        }
-        return;
-    }
-
-    const cursor_x = @as(i16, @truncate(lParam & 0xFFFF));
-    const cursor_y = @as(i16, @truncate((lParam >> 16) & 0xFFFF));
-
-    var rect: win32.RECT = undefined;
-    _ = win32.GetWindowRect(hwnd, &rect);
-
-    const new_x = rect.left + cursor_x - g_drag_state.offset_x;
-    const new_y = rect.top + cursor_y - g_drag_state.offset_y;
-
-    const width = win32.rectWidth(rect);
-    const height = win32.rectHeight(rect);
-
-    const ctrl_pressed = win32.isCtrlPressed();
-
-    if (ctrl_pressed) {
-        // Thumbnail-edge and ghost snapping don't apply to a group move; screen edges still do.
-        var delta_x = new_x - rect.left;
-        var delta_y = new_y - rect.top;
-
-        if (g_painter_ptr) |painter| {
-            if (painter.config.snapping.enabled and painter.config.snapping.screenEdges) {
-                const snapped = snapping.applyScreenEdgeSnapping(new_x, new_y, width, height, painter.config.snapping.threshold, hwnd);
-                delta_x = snapped.x - rect.left;
-                delta_y = snapped.y - rect.top;
-            }
-
-            var window_count: c_int = 0;
-            for (painter.thumbnails.items) |thumbnail| {
-                if (thumbnail.win32_enabled and win32.isWindow(thumbnail.hwnd) and win32.isWindow(thumbnail.text_hwnd)) {
-                    window_count += 2;
-                }
-            }
-
-            // Batched via DeferWindowPos so the whole group moves in one atomic DWM update instead of drifting apart across N sequential SetWindowPos calls.
-            if (window_count > 0) {
-                var hdwp = win32.BeginDeferWindowPos(window_count);
-                for (painter.thumbnails.items) |thumbnail| {
-                    if (!thumbnail.win32_enabled or !win32.isWindow(thumbnail.hwnd) or !win32.isWindow(thumbnail.text_hwnd)) {
-                        continue;
-                    }
-
-                    var thumb_rect: win32.RECT = undefined;
-                    _ = win32.GetWindowRect(thumbnail.hwnd, &thumb_rect);
-
-                    const new_thumb_x = thumb_rect.left + delta_x;
-                    const new_thumb_y = thumb_rect.top + delta_y;
-
-                    if (hdwp) |h| {
-                        hdwp = win32.DeferWindowPos(h, thumbnail.hwnd, win32.HWND_NOTOPMOST, new_thumb_x, new_thumb_y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
-                    }
-                    if (hdwp) |h| {
-                        hdwp = win32.DeferWindowPos(h, thumbnail.text_hwnd, win32.HWND_TOPMOST, new_thumb_x, new_thumb_y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
-                    }
-                }
-                if (hdwp) |h| {
-                    _ = win32.EndDeferWindowPos(h);
-                }
-            }
-        }
+fn dispatchClick(source_hwnd: win32.HWND, shift_pressed: bool) void {
+    if (shift_pressed) {
+        handleThumbnailShiftClick(source_hwnd);
     } else {
-        // Apply snapping only when dragging single thumbnail
-        const snapped = snapping.applySnapping(new_x, new_y, width, height, hwnd);
-
-        if (getLinkedWindow(hwnd)) |other_hwnd| {
-            // Z-order is keyed by identity (text overlay always TOPMOST above thumbnail), not by which window was grabbed, or the live thumbnail could hide the name/border until refocus.
-            const dragged = if (g_painter_ptr) |painter| painter.getThumbnailByOverlayHwnd(hwnd) else null;
-            const thumb_hwnd = if (dragged) |t| t.hwnd else hwnd;
-            const text_hwnd = if (dragged) |t| t.text_hwnd else other_hwnd;
-            _ = win32.SetWindowPos(thumb_hwnd, win32.HWND_NOTOPMOST, snapped.x, snapped.y, width, height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
-            _ = win32.SetWindowPos(text_hwnd, win32.HWND_TOPMOST, snapped.x, snapped.y, width, height, win32.SWP_NOACTIVATE);
-        }
+        activation.activate(source_hwnd);
     }
 }
 
-/// Returns the linked window stored in GWLP_USERDATA, or null if none is valid.
-fn getLinkedWindow(hwnd: win32.HWND) ?win32.HWND {
-    const linked_ptr = win32.GetWindowLongPtrA(hwnd, win32.GWLP_USERDATA);
-    const linked_hwnd = win32.userDataToHwnd(linked_ptr);
+fn handleLButtonDown(hwnd: win32.HWND) void {
+    const source_hwnd = win32.GetPropA(hwnd, "SOURCE_HWND") orelse return;
+    const painter = painter_mod.g_painter_ptr orelse return;
+    const shift_pressed = win32.isShiftPressed();
 
-    if (linked_hwnd) |hwnd_val| {
-        if (win32.isWindow(hwnd_val)) {
-            return hwnd_val;
-        }
-        slog.debug("Linked window handle {*} is no longer valid", .{hwnd_val});
-    }
-
-    return null;
-}
-
-/// Shared WM_LBUTTONDOWN handling for both the thumbnail and text overlay window procs.
-fn handleOverlayLButtonDown(hwnd: win32.HWND) void {
-    if (win32.GetPropA(hwnd, "SOURCE_HWND")) |source_hwnd| {
-        const config = &main_mod.g_config;
-        const shift_pressed = win32.isShiftPressed();
-
-        if (config.interaction.clickTrigger == .MouseDown) {
-            if (shift_pressed) {
-                handleThumbnailShiftClick(source_hwnd);
-            } else {
-                handleThumbnailClick(source_hwnd);
-            }
-        } else {
-            g_click_state = .{
-                .pending = true,
-                .hwnd = hwnd,
-                .source_hwnd = source_hwnd,
-                .shift_pressed = shift_pressed,
-            };
-        }
+    if (painter.config.interaction.clickTrigger == .MouseDown) {
+        dispatchClick(source_hwnd, shift_pressed);
+    } else {
+        g_click_state = .{
+            .pending = true,
+            .hwnd = hwnd,
+            .source_hwnd = source_hwnd,
+            .shift_pressed = shift_pressed,
+        };
     }
 }
 
-/// Shared WM_LBUTTONUP handling for both the thumbnail and text overlay window procs.
-fn handleOverlayLButtonUp(hwnd: win32.HWND) void {
-    const config = &main_mod.g_config;
-
-    if (config.interaction.clickTrigger == .MouseUp and g_click_state.pending) {
-        if (g_click_state.hwnd == hwnd) {
-            if (g_click_state.source_hwnd) |source_hwnd| {
-                if (g_click_state.shift_pressed) {
-                    handleThumbnailShiftClick(source_hwnd);
-                } else {
-                    handleThumbnailClick(source_hwnd);
-                }
-            }
-        }
-    }
+fn handleLButtonUp(hwnd: win32.HWND) void {
+    const click = g_click_state;
     g_click_state = .{};
+
+    const painter = painter_mod.g_painter_ptr orelse return;
+    if (painter.config.interaction.clickTrigger != .MouseUp or !click.pending or click.hwnd != hwnd) return;
+    if (click.source_hwnd) |source_hwnd| dispatchClick(source_hwnd, click.shift_pressed);
 }
 
-/// Shared WM_SETCURSOR handling for both the thumbnail and text overlay window procs; returns whether it set the cursor.
+/// Returns whether it set the cursor.
 fn applyHoverCursor() bool {
-    const resource: win32.LPCSTR = switch (main_mod.g_config.interaction.hoverCursor) {
+    const painter = painter_mod.g_painter_ptr orelse return false;
+    const resource: win32.LPCSTR = switch (painter.config.interaction.hoverCursor) {
         .Default => return false,
         .Hand => win32.IDC_HAND,
         .Crosshair => win32.IDC_CROSS,
@@ -496,56 +93,55 @@ fn applyHoverCursor() bool {
     return true;
 }
 
+/// Messages the thumbnail and its text overlay handle identically; null for anything else.
+fn handleSharedMessage(hwnd: win32.HWND, msg: win32.UINT, lParam: win32.LPARAM, is_text_overlay: bool) ?win32.LRESULT {
+    switch (msg) {
+        win32.WM_LBUTTONDOWN => handleLButtonDown(hwnd),
+        win32.WM_LBUTTONUP => handleLButtonUp(hwnd),
+        win32.WM_RBUTTONDOWN => thumbnail_drag.start(hwnd, lParam),
+        win32.WM_RBUTTONUP => {
+            // A drag started on the text overlay still saves the thumbnail's position.
+            const thumbnail_hwnd = if (is_text_overlay) win32.linkedWindow(hwnd) else hwnd;
+            if (thumbnail_hwnd) |thumb_hwnd| thumbnail_drag.end(hwnd, thumb_hwnd);
+        },
+        win32.WM_MOUSEMOVE => thumbnail_drag.move(hwnd, lParam),
+        win32.WM_SETCURSOR => {
+            if (!applyHoverCursor()) return null;
+            return 1;
+        },
+        win32.WM_CLOSE => {
+            _ = win32.DestroyWindow(hwnd);
+        },
+        win32.WM_DESTROY => {},
+        else => return null,
+    }
+    return 0;
+}
+
 /// Window procedure for thumbnail windows: handles input events and the auto-hide timer when no EVE window has focus.
-fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
+pub fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
         win32.WM_TIMER => {
             if (wParam == painter_mod.HIDE_DEBOUNCE_TIMER_ID) {
-                if (g_painter_ptr) |painter| painter.autoHideAfterFocusLoss(hwnd);
+                if (painter_mod.g_painter_ptr) |painter| painter.autoHideAfterFocusLoss(hwnd);
                 return 0;
             }
-            return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
-        },
-        win32.WM_LBUTTONDOWN => {
-            handleOverlayLButtonDown(hwnd);
-            return 0;
-        },
-        win32.WM_LBUTTONUP => {
-            handleOverlayLButtonUp(hwnd);
-            return 0;
-        },
-        win32.WM_RBUTTONDOWN => {
-            startDrag(hwnd, lParam);
-            return 0;
-        },
-        win32.WM_RBUTTONUP => {
-            endDrag(hwnd, hwnd);
-            return 0;
-        },
-        win32.WM_MOUSEMOVE => {
-            handleDrag(hwnd, lParam);
-            return 0;
-        },
-        win32.WM_SETCURSOR => {
-            if (applyHoverCursor()) return 1;
-            return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         win32.WM_ACTIVATE => {
-            if (getLinkedWindow(hwnd)) |text_hwnd| {
+            if (win32.linkedWindow(hwnd)) |text_hwnd| {
                 _ = win32.SetWindowPos(text_hwnd, win32.HWND_TOPMOST, 0, 0, 0, 0, win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
             }
-            return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         win32.WM_DPICHANGED => {
             // Position only; resizeThumbnailIfNeeded below re-derives size from our own scale formula.
             const suggested = win32.lparamToPtr(win32.RECT, lParam);
             _ = win32.SetWindowPos(hwnd, win32.HWND_NOTOPMOST, suggested.left, suggested.top, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
 
-            if (g_painter_ptr) |painter| {
+            if (painter_mod.g_painter_ptr) |painter| {
                 if (painter.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
                     painter.resizeThumbnailIfNeeded(thumbnail, null);
 
-                    if (getLinkedWindow(hwnd)) |text_hwnd| {
+                    if (win32.linkedWindow(hwnd)) |text_hwnd| {
                         var rect: win32.RECT = undefined;
                         _ = win32.GetWindowRect(hwnd, &rect);
                         _ = win32.SetWindowPos(text_hwnd, win32.HWND_TOPMOST, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, win32.SWP_NOACTIVATE);
@@ -558,63 +154,13 @@ fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: w
             }
             return 0;
         },
-        win32.WM_CLOSE => {
-            _ = win32.DestroyWindow(hwnd);
-            return 0;
-        },
-        win32.WM_DESTROY => {
-            return 0;
-        },
-        else => return win32.DefWindowProcA(hwnd, msg, wParam, lParam),
+        else => if (handleSharedMessage(hwnd, msg, lParam, false)) |result| return result,
     }
+    return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
 }
 
 /// Window procedure for text overlay windows: handles clicks and dragging
-fn textWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
-    switch (msg) {
-        win32.WM_LBUTTONDOWN => {
-            handleOverlayLButtonDown(hwnd);
-            return 0;
-        },
-        win32.WM_LBUTTONUP => {
-            handleOverlayLButtonUp(hwnd);
-            return 0;
-        },
-        win32.WM_RBUTTONDOWN => {
-            startDrag(hwnd, lParam);
-            return 0;
-        },
-        win32.WM_RBUTTONUP => {
-            if (getLinkedWindow(hwnd)) |thumb_hwnd| {
-                endDrag(hwnd, thumb_hwnd);
-            }
-            return 0;
-        },
-        win32.WM_MOUSEMOVE => {
-            handleDrag(hwnd, lParam);
-            return 0;
-        },
-        win32.WM_SETCURSOR => {
-            if (applyHoverCursor()) return 1;
-            return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
-        },
-        win32.WM_CLOSE => {
-            _ = win32.DestroyWindow(hwnd);
-            return 0;
-        },
-        win32.WM_DESTROY => {
-            return 0;
-        },
-        else => return win32.DefWindowProcA(hwnd, msg, wParam, lParam),
-    }
-}
-
-/// Used by Painter during window class registration.
-pub fn getWindowProc() *const fn (win32.HWND, win32.UINT, win32.WPARAM, win32.LPARAM) callconv(.c) win32.LRESULT {
-    return windowProc;
-}
-
-/// Used by Painter during window class registration.
-pub fn getTextWindowProc() *const fn (win32.HWND, win32.UINT, win32.WPARAM, win32.LPARAM) callconv(.c) win32.LRESULT {
-    return textWindowProc;
+pub fn textWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
+    if (handleSharedMessage(hwnd, msg, lParam, true)) |result| return result;
+    return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
 }

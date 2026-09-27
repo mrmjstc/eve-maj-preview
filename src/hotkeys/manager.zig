@@ -1,6 +1,6 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const input = @import("../input.zig");
+const focus_grant = @import("../platform/focus_grant.zig");
 const scout = @import("../scout.zig");
 const config_mod = @import("../config.zig");
 const protocol = @import("../protocol.zig");
@@ -27,6 +27,11 @@ pub var g_hotkey_manager_ptr: ?*HotkeyManager = null;
 pub fn isExcludedFromCycle(character_name: []const u8) bool {
     const manager = g_hotkey_manager_ptr orelse return false;
     return manager.isCharacterExcluded(character_name);
+}
+
+/// Keeps cycle positions in step when `hwnd` becomes the focused client; no-op before the manager exists.
+pub fn syncFocusedCharacter(character_name: []const u8, hwnd: win32.HWND) void {
+    if (g_hotkey_manager_ptr) |manager| manager.updateFocusedCharacter(character_name, hwnd);
 }
 
 fn countBound(items: anytype) usize {
@@ -295,12 +300,12 @@ pub const HotkeyManager = struct {
         }
 
         // Only swallow the key's release if focus actually moved; a cycle with no eligible target never changes foreground.
-        input.g_focus_switch_requested = false;
+        focus_grant.g_focus_switch_requested = false;
 
         self.runAction(action);
 
         // Win's release always needs swallowing, focus-change or not - an unmatched keyup still opens the Start Menu.
-        if (input.g_focus_switch_requested or vk_code == win32.VK_LWIN or vk_code == win32.VK_RWIN) {
+        if (focus_grant.g_focus_switch_requested or vk_code == win32.VK_LWIN or vk_code == win32.VK_RWIN) {
             keyboard_hook.markSwallowRelease(vk_code);
         }
     }

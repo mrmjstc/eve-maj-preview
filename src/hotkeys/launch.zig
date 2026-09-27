@@ -1,6 +1,6 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const input = @import("../input.zig");
+const focus_grant = @import("../platform/focus_grant.zig");
 const config_mod = @import("../config.zig");
 const paste_upload = @import("paste_upload.zig");
 const log = @import("../log.zig");
@@ -34,7 +34,7 @@ fn focusWindow(target: win32.HWND) void {
     if (win32.isWindowIconic(target)) {
         _ = win32.ShowWindowAsync(target, win32.SW_RESTORE);
     }
-    input.forceSetForegroundWindow(target);
+    focus_grant.forceSetForegroundWindow(target);
 }
 
 /// Clears `last_non_eve_foreground` if the window it names has since closed.

@@ -693,8 +693,8 @@ fn listWindowProc(
         },
 
         win32.WM_LBUTTONDOWN => {
-            const cx: i32 = @as(i32, @intCast(@as(i16, @truncate(lParam))));
-            const cy: i32 = @as(i32, @intCast(@as(i16, @truncate(lParam >> 16))));
+            const cx = win32.lparamX(lParam);
+            const cy = win32.lparamY(lParam);
             // Header clicks are handled by WM_NCHITTEST.
             if (cy < HEADER_HEIGHT) return 0;
 

@@ -607,14 +607,6 @@ fn registerWindowClass(instance: win32.HINSTANCE) !void {
     g_class_registered = true;
 }
 
-fn hiwordSigned(lParam: win32.LPARAM) i32 {
-    return @as(i32, @intCast(@as(i16, @truncate(lParam >> 16))));
-}
-
-fn lowordSigned(lParam: win32.LPARAM) i32 {
-    return @as(i32, @intCast(@as(i16, @truncate(lParam))));
-}
-
 fn notifInfoWindowProc(
     hwnd: win32.HWND,
     msg: win32.UINT,
@@ -653,7 +645,7 @@ fn notifInfoWindowProc(
         },
 
         win32.WM_LBUTTONDOWN => {
-            const cy: i32 = hiwordSigned(lParam);
+            const cy = win32.lparamY(lParam);
             if (cy < HEADER_HEIGHT) return 0;
 
             if (painter_mod.g_painter_ptr) |p| {
@@ -661,7 +653,7 @@ fn notifInfoWindowProc(
                     const show_filters = niw.config.display.notifInfoPanelShowCategoryFilters;
                     const footer_top = if (show_filters) niw.last_win_h - FOOTER_HEIGHT else niw.last_win_h;
                     if (show_filters and cy >= footer_top) {
-                        const cx: i32 = lowordSigned(lParam);
+                        const cx = win32.lparamX(lParam);
                         niw.handleFooterClick(cx);
                         return 0;
                     }

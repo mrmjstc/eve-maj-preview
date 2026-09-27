@@ -492,7 +492,7 @@ pub extern "user32" fn GetAsyncKeyState(vKey: c_int) callconv(.c) c_short;
 pub extern "user32" fn keybd_event(bVk: BYTE, bScan: BYTE, dwFlags: DWORD, dwExtraInfo: usize) callconv(.c) void;
 pub const KEYEVENTF_KEYUP: DWORD = 0x0002;
 
-// Not used for actual hotkeys (see keyboard_hook.zig/mouse_hook.zig) - only by input.zig's foreground-lock workaround.
+// Not used for actual hotkeys (see keyboard_hook.zig/mouse_hook.zig) - only by focus_grant.zig's foreground-lock workaround.
 pub extern "user32" fn RegisterHotKey(hWnd: ?HWND, id: c_int, fsModifiers: UINT, vk: UINT) callconv(.c) BOOL;
 pub extern "user32" fn UnregisterHotKey(hWnd: ?HWND, id: c_int) callconv(.c) BOOL;
 
@@ -1396,6 +1396,22 @@ pub inline fn hwndToUserData(hwnd: HWND) isize {
 pub inline fn userDataToHwnd(user_data: isize) ?HWND {
     if (user_data == 0) return null;
     return @ptrFromInt(@as(usize, @bitCast(user_data)));
+}
+
+/// The live window whose handle is stored in hwnd's GWLP_USERDATA, or null.
+pub fn linkedWindow(hwnd: HWND) ?HWND {
+    const linked = userDataToHwnd(GetWindowLongPtrA(hwnd, GWLP_USERDATA)) orelse return null;
+    return if (isWindow(linked)) linked else null;
+}
+
+/// GET_X_LPARAM: signed, since coordinates left of the primary monitor are negative.
+pub inline fn lparamX(lparam: LPARAM) i32 {
+    return @as(i16, @truncate(lparam));
+}
+
+/// GET_Y_LPARAM: signed, since coordinates above the primary monitor are negative.
+pub inline fn lparamY(lparam: LPARAM) i32 {
+    return @as(i16, @truncate(lparam >> 16));
 }
 
 pub inline fn ptrToLparam(ptr: anytype) LPARAM {
