@@ -145,7 +145,7 @@ fn findWindowByExecutable(executable_name: []const u8) ?win32.HWND {
     return ctx.found;
 }
 
-/// Cheap, order-sensitive fingerprint of the configured Characters list's names, used to detect when HotkeyManager's cached order map needs rebuilding. Mirrors the Wyhash-signature/skip-rebuild pattern list_view.zig and notif_info_view.zig use for their own per-tick caches.
+/// Cheap, order-sensitive fingerprint of the configured Characters list's names, used to detect when HotkeyManager's cached order map needs rebuilding. Mirrors the Wyhash-signature/skip-rebuild pattern list_view.zig and notifications/history_panel.zig use for their own per-tick caches.
 fn characterOrderSignature(characters: []const config_mod.CharacterConfig) u64 {
     var h = std.hash.Wyhash.init(0);
     for (characters) |char| h.update(char.name);
@@ -1377,12 +1377,12 @@ pub const HotkeyManager = struct {
             slog.err("Failed to render thumbnail after group assignment: {}", .{err});
         };
 
-        const verb = if (added) "Added to" else "Removed from";
-        if (group.name.len > 0) {
-            self.painter.notify(thumbnail.source_hwnd, .GroupMembership, "{s} {s}", .{ verb, group.name });
-        } else {
-            self.painter.notify(thumbnail.source_hwnd, .GroupMembership, "{s} Hotkey Group {}", .{ verb, group_index + 1 });
-        }
+        var group_label_buf: [40]u8 = undefined;
+        const group_label = if (group.name.len > 0)
+            group.name
+        else
+            std.fmt.bufPrint(&group_label_buf, "Hotkey Group {}", .{group_index + 1}) catch unreachable;
+        self.painter.notify(thumbnail.source_hwnd, .{ .ntype = .GroupMembership, .state = if (added) .added else .removed, .target = group_label });
     }
 
     /// Index of the first slice in `list` equal to `name`, or null.
@@ -1572,7 +1572,7 @@ pub const HotkeyManager = struct {
     fn cycleNotified(self: *HotkeyManager, forward: bool) void {
         const retention_ms: u64 = @as(u64, self.config.thumbnail.notifications.notified_cycle_retention_seconds) * 1000;
 
-        var names = self.painter.getNotifiedCharacterNames(self.allocator, retention_ms) catch |err| {
+        var names = self.painter.notified_queue.namesWithin(self.allocator, retention_ms) catch |err| {
             slog.err("Failed to build notified-character list: {}", .{err});
             return;
         };

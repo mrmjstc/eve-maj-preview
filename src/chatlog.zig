@@ -2,6 +2,8 @@ const std = @import("std");
 const win32 = @import("win32.zig");
 const log = @import("log.zig");
 const types = @import("types.zig");
+const notification_mod = @import("notifications/notification.zig");
+const gamelog_events = @import("notifications/gamelog_events.zig");
 const activity_mod = @import("activity_tracker.zig");
 const scout_mod = @import("scout.zig");
 const painter_mod = @import("painter.zig");
@@ -26,15 +28,16 @@ pub const SystemUpdateEvent = struct {
     }
 };
 
-/// Event sent from worker thread to main thread: show a notification.
+/// Event sent from worker thread to main thread: show a notification. Text is rendered on the main thread, where per-type config lives.
 pub const NotificationEvent = struct {
     character_name: []const u8,
-    text: []const u8,
-    ntype: types.NotificationType,
+    /// source/target are owned copies.
+    notification: notification_mod.Notification,
 
     pub fn deinit(self: *NotificationEvent, allocator: std.mem.Allocator) void {
         allocator.free(self.character_name);
-        allocator.free(self.text);
+        if (self.notification.source) |s| allocator.free(s);
+        if (self.notification.target) |t| allocator.free(t);
     }
 };
 
@@ -853,28 +856,28 @@ pub const ChatlogMonitor = struct {
     }
 
     /// Push a notification to the main thread. Safe to call from either thread - the
-    /// enabled/type/throttle checks in Painter.showNotification also run here, on drain.
-    fn queueNotification(self: *ChatlogMonitor, character_name: []const u8, text: []const u8, ntype: types.NotificationType) void {
-        const character_name_copy = self.allocator.dupe(u8, character_name) catch |err| {
-            slog.err("Failed to allocate character name for notification: {}", .{err});
-            return;
+    /// enabled/type/throttle checks in Painter.notify also run here, on drain.
+    fn queueNotification(self: *ChatlogMonitor, character_name: []const u8, n: notification_mod.Notification) void {
+        var event = NotificationEvent{
+            .character_name = "",
+            .notification = .{ .ntype = n.ntype, .state = n.state },
         };
-        const text_copy = self.allocator.dupe(u8, text) catch |err| {
-            slog.err("Failed to allocate text for notification: {}", .{err});
-            self.allocator.free(character_name_copy);
+        self.copyNotificationEvent(&event, character_name, n) catch |err| {
+            event.deinit(self.allocator);
+            slog.err("Failed to allocate {s} notification for {s}: {}", .{ @tagName(n.ntype), character_name, err });
             return;
-        };
-
-        const event = NotificationEvent{
-            .character_name = character_name_copy,
-            .text = text_copy,
-            .ntype = ntype,
         };
         self.notification_queue.push(event) catch |err| {
-            var mutable_event = event;
-            mutable_event.deinit(self.allocator);
+            event.deinit(self.allocator);
             slog.err("Failed to push notification event: {}", .{err});
         };
+    }
+
+    /// Fills `event` field by field so a partial failure leaves it safe to deinit.
+    fn copyNotificationEvent(self: *ChatlogMonitor, event: *NotificationEvent, character_name: []const u8, n: notification_mod.Notification) !void {
+        event.character_name = try self.allocator.dupe(u8, character_name);
+        if (n.source) |s| event.notification.source = try self.allocator.dupe(u8, s);
+        if (n.target) |t| event.notification.target = try self.allocator.dupe(u8, t);
     }
 
     /// Drain queued system-name updates and apply them to Painter. Main thread only -
@@ -920,9 +923,7 @@ pub const ChatlogMonitor = struct {
             const hwnd = scout_ptr.getHwndByName(event.character_name) orelse continue;
 
             if (self.painter) |painter_ptr| {
-                painter_ptr.showNotification(hwnd, event.text, event.ntype) catch |err| {
-                    slog.err("Failed to show notification for {s}: {}", .{ event.character_name, err });
-                };
+                painter_ptr.notify(hwnd, event.notification);
             }
         }
     }
@@ -1329,9 +1330,7 @@ pub const ChatlogMonitor = struct {
 
             // Only jumps pop a .SystemChange notification: undock and the chatlog's Local detection race the same event and would double-fire it.
             if (std.mem.eql(u8, event_type, "jump")) {
-                var buf: [64]u8 = undefined;
-                const text = std.fmt.bufPrint(&buf, "Jumped to {s}", .{system}) catch system;
-                self.queueNotification(state.character_name, text, .SystemChange);
+                self.queueNotification(state.character_name, .{ .ntype = .SystemChange, .target = system });
             }
 
             // Undock/chatlog-detect are same-system confirmations, not travel.
@@ -1361,16 +1360,10 @@ pub const ChatlogMonitor = struct {
             }
         }
 
-        var notify_buf: [64]u8 = undefined;
-        const notification_data = self.formatCombatNotificationWithType(stripped_text, &notify_buf) catch {
-            return;
-        };
+        const n = gamelog_events.classify(stripped_text) orelse return;
 
-        // Skip empty notification text (e.g., system jumps, hint messages)
-        if (notification_data.text.len == 0) return;
-
-        // Enabled/type/throttle gating happens in Painter.showNotification itself on drain, so it isn't duplicated here.
-        self.queueNotification(state.character_name, notification_data.text, notification_data.ntype);
+        // Enabled/type/throttle gating happens in Painter.notify itself on drain, so it isn't duplicated here.
+        self.queueNotification(state.character_name, n);
 
         slog.debug("Combat event: {s} -> {s}", .{ state.character_name, event_text });
     }
@@ -1542,225 +1535,6 @@ pub const ChatlogMonitor = struct {
         }
 
         return null;
-    }
-
-    const NotificationResult = struct { text: []const u8, ntype: types.NotificationType };
-
-    /// Format combat notification from HTML-stripped event text and classify type.
-    /// Returns slices borrowed from `event_text` - caller must keep it valid;
-    /// Painter.showNotification() copies before storing.
-    fn formatCombatNotificationWithType(self: *ChatlogMonitor, event_text: []const u8, buf: *[64]u8) !NotificationResult {
-        _ = self;
-
-        // EVE gamelog format: "[ timestamp ] (type) message"
-        var text_start: usize = 0;
-        if (std.mem.indexOf(u8, event_text, "]")) |close_bracket| {
-            text_start = close_bracket + 1;
-        }
-
-        const remaining = std.mem.trim(u8, event_text[text_start..], " \t\r\n");
-
-        if (std.mem.startsWith(u8, remaining, "(question)")) {
-            // Skip "(question) "
-            return parseQuestionEvent(remaining[10..]);
-        } else if (std.mem.startsWith(u8, remaining, "(notify)")) {
-            // Skip "(notify) "
-            return parseNotifyEvent(remaining[8..], buf);
-        } else if (std.mem.startsWith(u8, remaining, "(None)")) {
-            // Skip "(None) "
-            return parseNoneEvent(remaining[6..]);
-        } else if (std.mem.startsWith(u8, remaining, "(combat)")) {
-            // Skip "(combat) "
-            return parseCombatEvent(remaining[8..]);
-        } else if (std.mem.startsWith(u8, remaining, "(hint)")) {
-            // Skip hint spam
-            return .{ .text = "", .ntype = .Generic };
-        }
-
-        // Fallback: return cleaned text
-        return .{ .text = std.mem.trim(u8, remaining, " \t\r\n."), .ntype = .Generic };
-    }
-
-    /// Parse (question) type events
-    fn parseQuestionEvent(message: []const u8) NotificationResult {
-        const trimmed = std.mem.trim(u8, message, " \t\r\n");
-
-        // Fleet invite: "<a href...>NAME</a> wants you to join their fleet, do you accept?"
-        if (std.mem.indexOf(u8, trimmed, "wants you to join their fleet")) |_| {
-            return .{ .text = "Fleet invite", .ntype = .FleetInvite };
-        }
-
-        // Skip other question dialogs (confirmations, prompts)
-        return .{ .text = "", .ntype = .Generic };
-    }
-
-    /// Parse (notify) type events
-    fn parseNotifyEvent(message: []const u8, buf: *[64]u8) NotificationResult {
-        const trimmed = std.mem.trim(u8, message, " \t\r\n");
-
-        // Follow warp: "Following [leader] in warp"
-        if (std.mem.startsWith(u8, trimmed, "Following ") and std.mem.indexOf(u8, trimmed, " in warp") != null) {
-            return .{ .text = "Following", .ntype = .FleetFollow };
-        }
-
-        // Regroup: "Regrouping to [leader]"
-        if (std.mem.indexOf(u8, trimmed, "Regrouping to ") != null) {
-            return .{ .text = "Regrouping", .ntype = .FleetRegroup };
-        }
-
-        // Fleet disbanding: "Your fleet is disbanding"
-        if (std.mem.indexOf(u8, trimmed, "Your fleet is disbanding") != null) {
-            return .{ .text = "Fleet disbanding", .ntype = .FleetDisband };
-        }
-
-        // Jump clone: "Starting clone jumping"
-        if (std.mem.indexOf(u8, trimmed, "Starting clone jumping") != null) {
-            return .{ .text = "Jump Cloning", .ntype = .JumpCloning };
-        }
-
-        // Compression: "Successfully compressed [ore] into [count] [compressed]"
-        if (std.mem.indexOf(u8, trimmed, "Successfully compressed") != null) {
-            return .{ .text = "Compressed", .ntype = .MiningCompression };
-        }
-
-        // Asteroid depleted: "[miner] deactivates as it finds the resource it was harvesting
-        // a pale shadow of its former glory."
-        if (std.mem.indexOf(u8, trimmed, "a pale shadow of its former glory") != null) {
-            return .{ .text = "Asteroid Depleted", .ntype = .AsteroidDepleted };
-        }
-
-        // Cargo hold full: "Your [module] has completed operations. Ship's cargo hold is full."
-        if (std.mem.indexOf(u8, trimmed, "cargo hold is full") != null) {
-            return .{ .text = "Cargo full", .ntype = .CargoFull };
-        }
-
-        // Observatory decloak: "Your cloak deactivates due to a pulse from a Mobile Observatory..."
-        if (std.mem.indexOf(u8, trimmed, "cloak deactivates") != null and
-            std.mem.indexOf(u8, trimmed, "Mobile Observatory") != null)
-        {
-            return .{ .text = "Observatory Decloak", .ntype = .ObservatoryDecloak };
-        }
-
-        // Proximity decloak: "Your cloak deactivates due to proximity to [source]"
-        if (std.mem.indexOf(u8, trimmed, "cloak deactivates") != null) {
-            return .{ .text = "Decloaked", .ntype = .Decloak };
-        }
-
-        // Cloak failed: "Your cloaking systems are unable to activate due to your ship being within..."
-        if (std.mem.indexOf(u8, trimmed, "cloaking systems are unable to activate") != null) {
-            return .{ .text = "Can't cloak", .ntype = .CloakFailed };
-        }
-
-        // Crystal broke: "[module] deactivates due to the destruction of the [crystal]"
-        if (std.mem.indexOf(u8, trimmed, "deactivates due to the destruction") != null) {
-            return .{ .text = "Crystal broke", .ntype = .CrystalBroke };
-        }
-
-        // Bomb Launcher out of charges: "Bomb Launcher II has run out of charges"
-        if (std.mem.indexOf(u8, trimmed, "Bomb Launcher") != null and std.mem.indexOf(u8, trimmed, "has run out of charges") != null) {
-            return .{ .text = "Bomb Launcher Empty", .ntype = .BombLauncherEmpty };
-        }
-
-        // Checks for "Your" to avoid triggering on other players' self-destructs.
-        if (std.mem.indexOf(u8, trimmed, "Your") != null and std.mem.indexOf(u8, trimmed, "will self-destruct in") != null) {
-            return .{ .text = "Self-Destruct", .ntype = .SelfDestruct };
-        }
-        if (std.mem.indexOf(u8, trimmed, "You have aborted the self-destruct") != null) {
-            return .{ .text = "Self-Destruct Aborted", .ntype = .SelfDestruct };
-        }
-
-        // Docking: "You cannot do that while docking."
-        if (std.mem.indexOf(u8, trimmed, "You cannot do that while docking") != null) {
-            return .{ .text = "Docking", .ntype = .Docking };
-        }
-
-        // Autopilot reached: "Autopilot disabled - Waypoint reached"
-        if (std.mem.indexOf(u8, trimmed, "Autopilot disabled - Waypoint reached") != null) {
-            return .{ .text = "Waypoint reached", .ntype = .AutopilotReached };
-        }
-
-        // Autopilot approaching: "Autopilot approaching target"
-        if (std.mem.indexOf(u8, trimmed, "Autopilot approaching target") != null) {
-            return .{ .text = "Approaching", .ntype = .AutopilotApproaching };
-        }
-
-        // Jump range: "Please get within 2500 meters of the stargate to jump."
-        if (std.mem.indexOf(u8, trimmed, "get within") != null and std.mem.indexOf(u8, trimmed, "stargate to jump") != null) {
-            return .{ .text = "Can't Jump: Range", .ntype = .JumpRange };
-        }
-
-        // Warp disruption bubble: "You are within a warp disruption zone. Get 20000.0 meters
-        // from Warp Disrupt Probe to warp."
-        if (std.mem.indexOf(u8, trimmed, "within a warp disruption zone") != null) {
-            return .{ .text = "Warp Disrupted", .ntype = .WarpBubble };
-        }
-
-        // Aggression timer blocking jump: "The stargate denies you permission to jump for
-        // the moment due to your recent acts of aggression."
-        if (std.mem.indexOf(u8, trimmed, "recent acts of aggression") != null) {
-            return .{ .text = "Can't Jump: Aggression", .ntype = .AggressionCantJump };
-        }
-
-        // Same comma-termination quirk as parseConduitJumpFromGamelog (activating character's line ends in "...N passengers." instead of a period).
-        if (std.mem.indexOf(u8, trimmed, "Conduit Field") != null and
-            std.mem.indexOf(u8, trimmed, "jumps you to") != null)
-        {
-            if (std.mem.indexOf(u8, trimmed, "jumps you to ")) |idx| {
-                const after = trimmed[idx + "jumps you to ".len ..];
-                const end = std.mem.indexOfAny(u8, after, "\r\n.,") orelse after.len;
-                const system = std.mem.trim(u8, after[0..end], " \t");
-                if (system.len > 0) {
-                    const text = std.fmt.bufPrint(buf, "Taking Conduit to {s}", .{system}) catch system;
-                    return .{ .text = text, .ntype = .ConduitJump };
-                }
-            }
-            return .{ .text = "Conduit Jump", .ntype = .ConduitJump };
-        }
-
-        // Skip other generic notify messages
-        return .{ .text = "", .ntype = .Generic };
-    }
-
-    /// Parse (combat) type events for the rare cases worth a popup (e.g. being
-    /// scrambled). Plain damage/miss lines are handled by the DPS tracker
-    /// elsewhere and are intentionally skipped here to avoid popup spam.
-    /// `message` must already have HTML stripped by the caller.
-    fn parseCombatEvent(message: []const u8) NotificationResult {
-        const trimmed = std.mem.trim(u8, message, " \t\r\n");
-
-        // Must end in "to you!" - a scramble landing on someone else instead reads "...to [target name]!".
-        if (std.mem.indexOf(u8, trimmed, "Warp scramble attempt") != null and
-            std.mem.endsWith(u8, trimmed, "to you!"))
-        {
-            return .{ .text = "Warp Scrambled", .ntype = .WarpScrambled };
-        }
-
-        // Same "to you!" requirement as the scramble check above.
-        if (std.mem.indexOf(u8, trimmed, "Warp disruption attempt") != null and
-            std.mem.endsWith(u8, trimmed, "to you!"))
-        {
-            return .{ .text = "Warp Disrupted", .ntype = .WarpDisrupted };
-        }
-
-        // Skip other combat spam (damage/misses - handled by the DPS tracker, not popups)
-        return .{ .text = "", .ntype = .Generic };
-    }
-
-    /// Parse (None) type events
-    fn parseNoneEvent(message: []const u8) NotificationResult {
-        const trimmed = std.mem.trim(u8, message, " \t\r\n");
-
-        // System jump: "Jumping from [SystemA] to [SystemB]" - handled elsewhere
-        if (std.mem.startsWith(u8, trimmed, "Jumping from")) {
-            return .{ .text = "", .ntype = .SystemChange };
-        }
-
-        // Conversation invite: "<a href...>NAME</a> is inviting you to a conversation"
-        if (std.mem.indexOf(u8, trimmed, "is inviting you to a conversation") != null) {
-            return .{ .text = "Convo request", .ntype = .ConversationInvite };
-        }
-
-        return .{ .text = std.mem.trim(u8, trimmed, " \t\r\n."), .ntype = .Generic };
     }
 
     /// Parse timestamp from EVE log filename

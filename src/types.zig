@@ -72,65 +72,6 @@ pub const FontWeight = enum {
     }
 };
 
-/// Notification event types from EVE game logs
-pub const NotificationType = enum {
-    FleetInvite,
-    FleetFollow,
-    FleetRegroup,
-    FleetDisband,
-    ConversationInvite,
-    JumpCloning,
-    MiningCompression,
-    AsteroidDepleted,
-    MiningIdle,
-    MiningStopped,
-    CargoFull,
-    TakingDamage,
-    WarpScrambled,
-    WarpDisrupted,
-    Decloak,
-    ObservatoryDecloak,
-    CloakFailed,
-    CrystalBroke,
-    BombLauncherEmpty,
-    SelfDestruct,
-    Docking,
-    AutopilotReached,
-    AutopilotApproaching,
-    JumpRange,
-    AggressionCantJump,
-    WarpBubble,
-    ConduitJump,
-    SystemChange,
-    TravelLeftBehind,
-    GroupMembership,
-    CycleExclusion,
-    HotkeySuspend,
-    ProfileSwitch,
-    AutoMinimizeToggle,
-    SavedPositionMove,
-    Generic,
-};
-
-/// Mirrors the 5 categories config_dialog.js's NOTIFICATION_TYPES groups these into, for the History Panel's category filter buttons.
-pub const NotificationCategory = enum {
-    Fleet,
-    Mining,
-    Combat,
-    Navigation,
-    General,
-};
-
-pub fn notificationCategory(t: NotificationType) NotificationCategory {
-    return switch (t) {
-        .FleetInvite, .FleetFollow, .FleetRegroup, .FleetDisband => .Fleet,
-        .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .CrystalBroke => .Mining,
-        .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .BombLauncherEmpty, .SelfDestruct, .WarpBubble => .Combat,
-        .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind => .Navigation,
-        .ConversationInvite, .GroupMembership, .CycleExclusion, .HotkeySuspend, .ProfileSwitch, .AutoMinimizeToggle, .SavedPositionMove, .Generic => .General,
-    };
-}
-
 pub const LayoutMode = enum {
     Custom,
     RegionFit,

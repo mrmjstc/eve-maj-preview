@@ -6,14 +6,15 @@ const painter = @import("painter.zig");
 const input = @import("input.zig");
 const config_mod = @import("config.zig");
 const types = @import("types.zig");
+const notification_mod = @import("notifications/notification.zig");
 const hotkeys = @import("hotkeys.zig");
 const mouse_hook = @import("mouse_hook.zig");
 const keyboard_hook = @import("keyboard_hook.zig");
 const chatlog = @import("chatlog.zig");
 const activity_mod = @import("activity_tracker.zig");
 const resource_tracker_mod = @import("resource_tracker.zig");
-const tts = @import("tts.zig");
-const sound = @import("sound.zig");
+const tts = @import("notifications/tts.zig");
+const sound = @import("notifications/sound.zig");
 const tray = @import("tray.zig");
 const protocol = @import("protocol.zig");
 const update = @import("update.zig");
@@ -105,7 +106,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         win32.WM_HOTKEYS_STATE_CHANGED => {
             if (g_painter) |painter_ptr| {
                 if (g_hotkey_manager) |manager| {
-                    painter_ptr.notifyAll(.HotkeySuspend, "Hotkeys {s}", .{if (manager.areHotkeysSuspended()) "suspended" else "resumed"});
+                    painter_ptr.notifyAll(.{ .ntype = .HotkeySuspend, .state = if (manager.areHotkeysSuspended()) .suspended else .resumed });
                 }
             }
             return 0;
@@ -358,9 +359,7 @@ fn pushDpsUpdate(tracker: *activity_mod.CombatTracker, painter_ptr: *painter.Pai
     painter_ptr.updateDpsForCharacter(eve_window.hwnd, dps.incoming, dps.outgoing);
 
     if (tracker.checkDamageAlert(eve_window.character_name, now_ms)) {
-        painter_ptr.showNotification(eve_window.hwnd, "Taking damage", .TakingDamage) catch |err| {
-            slog.warn("Failed to show taking-damage notification: {}", .{err});
-        };
+        painter_ptr.notify(eve_window.hwnd, .{ .ntype = .TakingDamage });
     }
 }
 
@@ -372,16 +371,12 @@ fn pushMiningUpdate(tracker: *activity_mod.MiningTracker, painter_ptr: *painter.
 
     const alert_window_ms: i64 = @as(i64, g_config.mining.idle_alert_window_seconds) * std.time.ms_per_s;
     if (tracker.checkIdleAlert(eve_window.character_name, now_ms, alert_window_ms, g_config.mining.idle_alert_threshold)) {
-        painter_ptr.showNotification(eve_window.hwnd, "Laser idle", .MiningIdle) catch |err| {
-            slog.warn("Failed to show mining idle notification: {}", .{err});
-        };
+        painter_ptr.notify(eve_window.hwnd, .{ .ntype = .MiningIdle });
     }
 
     const stopped_window_ms: i64 = @as(i64, g_config.mining.stopped_alert_window_seconds) * std.time.ms_per_s;
     if (tracker.checkStoppedAlert(eve_window.character_name, now_ms, stopped_window_ms)) {
-        painter_ptr.showNotification(eve_window.hwnd, "Mining stopped", .MiningStopped) catch |err| {
-            slog.warn("Failed to show mining stopped notification: {}", .{err});
-        };
+        painter_ptr.notify(eve_window.hwnd, .{ .ntype = .MiningStopped });
     }
 }
 
@@ -1168,7 +1163,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     if (profile_changed) {
         const name = g_config.profile_name;
         const display_name = if (std.mem.endsWith(u8, name, ".json")) name[0 .. name.len - ".json".len] else name;
-        g_painter.?.notifyAll(.ProfileSwitch, "Profile: {s}", .{display_name});
+        g_painter.?.notifyAll(.{ .ntype = .ProfileSwitch, .target = display_name });
     }
 
     slog.info("=== Profile reload complete: {s} ===", .{new_profile_name});
@@ -1261,7 +1256,7 @@ fn applyThumbnailPreview(json_data: []const u8) !void {
     }
 }
 
-/// Fires one event type on every thumbnail from the config dialog's unsaved per-type values; payload is `{type, text, config}`.
+/// Fires one event type on every thumbnail from the config dialog's unsaved per-type values; payload is `{type, config}`.
 fn showTestNotification(json_data: []const u8) !void {
     const parsed = try std.json.parseFromSlice(std.json.Value, g_allocator, json_data, .{});
     defer parsed.deinit();
@@ -1273,16 +1268,12 @@ fn showTestNotification(json_data: []const u8) !void {
         .string => |s| s,
         else => return error.InvalidJsonFormat,
     };
-    const text = switch (obj.get("text") orelse return error.InvalidJsonFormat) {
-        .string => |s| s,
-        else => return error.InvalidJsonFormat,
-    };
     const config_obj = switch (obj.get("config") orelse return error.InvalidJsonFormat) {
         .object => |o| o,
         else => return error.InvalidJsonFormat,
     };
 
-    const ntype = std.meta.stringToEnum(types.NotificationType, type_name) orelse {
+    const ntype = std.meta.stringToEnum(notification_mod.NotificationType, type_name) orelse {
         slog.warn("Unknown notification type in test request: {s}", .{type_name});
         return error.InvalidNotificationType;
     };
@@ -1292,7 +1283,7 @@ fn showTestNotification(json_data: []const u8) !void {
     try type_config.applyJson(g_allocator, config_obj);
 
     const painter_ptr = g_painter orelse return;
-    try painter_ptr.showTestNotification(ntype, text, type_config);
+    try painter_ptr.showTestNotification(ntype, type_config);
 }
 
 /// Discards live-previewed appearance and layout changes by reloading that section from disk, repainting, and repositioning; sent when the config dialog closes, a no-op if Save was already clicked.

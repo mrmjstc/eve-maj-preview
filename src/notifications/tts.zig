@@ -1,6 +1,6 @@
 const std = @import("std");
 const windows = std.os.windows;
-const log = @import("log.zig");
+const log = @import("../log.zig");
 const slog = log.scoped("tts");
 
 const IID_IDispatch = windows.GUID{

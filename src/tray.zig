@@ -300,7 +300,7 @@ pub const TrayIcon = struct {
         if (command_id == win32.IDM_CLEAR_NOTIF_HISTORY) {
             slog.info("Clear notification history requested from system tray", .{});
             if (painter_mod.g_painter_ptr) |painter_ptr| {
-                painter_ptr.clearNotificationHistory();
+                painter_ptr.notification_history.clear();
             } else {
                 slog.err("Painter not available for clear notification history", .{});
             }

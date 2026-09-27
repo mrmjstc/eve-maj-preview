@@ -8644,7 +8644,6 @@ async function testNotification(typeKey) {
         await sendThumbnailPreview();
         const { success } = JSON.parse(await webui.call('testNotification', JSON.stringify({
             type: typeKey,
-            text: t('notification.' + typeKey + '.label'),
             config,
         })));
         if (!success) showStatus(t('status.testNotificationMainAppNotRunning'), 'error');

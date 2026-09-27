@@ -1,14 +1,16 @@
 const std = @import("std");
-const win32 = @import("win32.zig");
-const config_mod = @import("config.zig");
-const types = @import("types.zig");
-const gdi_overlay = @import("gdi_overlay.zig");
-const color_mod = @import("color.zig");
-const log = @import("log.zig");
-const slog = log.scoped("notif_info_view");
+const win32 = @import("../win32.zig");
+const config_mod = @import("../config.zig");
+const types = @import("../types.zig");
+const notification_mod = @import("notification.zig");
+const gdi_overlay = @import("../gdi_overlay.zig");
+const color_mod = @import("../color.zig");
+const log = @import("../log.zig");
+const slog = log.scoped("history_panel");
 
-// Only used by const-pointer params so the painter ↔ notif_info_view import cycle stays invisible at struct-size level; mirrors list_view.zig's own ThumbnailWindow re-import.
-const painter_mod = @import("painter.zig");
+// Only used by const-pointer params so the painter ↔ history_panel import cycle stays invisible at struct-size level; mirrors list_view.zig's own ThumbnailWindow re-import.
+const painter_mod = @import("../painter.zig");
+const notification_history_mod = @import("history.zig");
 
 const HEADER_HEIGHT: i32 = 18;
 const FOOTER_HEIGHT: i32 = 18;
@@ -34,12 +36,12 @@ const ARGB_BUTTON_INACTIVE_TEXT: u32 = ARGB_EMPTY_TEXT;
 const TIMESTAMP_BUCKET_MS: u64 = 15_000;
 
 // Order and labels for the footer's category filter buttons; index-paired with each other and with NotifInfoWindow.category_button_rects.
-const CATEGORY_ORDER = [_]types.NotificationCategory{ .Fleet, .Mining, .Combat, .Navigation, .General };
+const CATEGORY_ORDER = [_]notification_mod.NotificationCategory{ .Fleet, .Mining, .Combat, .Navigation, .General };
 const CATEGORY_LABELS = [_][]const u8{ "FLT", "MIN", "CBT", "NAV", "GEN" };
 
 const ButtonRect = struct { left: i32 = 0, right: i32 = 0 };
 
-fn categoryEnabled(cfg: *const config_mod.Config, cat: types.NotificationCategory) bool {
+fn categoryEnabled(cfg: *const config_mod.Config, cat: notification_mod.NotificationCategory) bool {
     return switch (cat) {
         .Fleet => cfg.display.notifInfoPanelShowFleet,
         .Mining => cfg.display.notifInfoPanelShowMining,
@@ -49,7 +51,7 @@ fn categoryEnabled(cfg: *const config_mod.Config, cat: types.NotificationCategor
     };
 }
 
-fn setCategoryEnabled(cfg: *config_mod.Config, cat: types.NotificationCategory, value: bool) void {
+fn setCategoryEnabled(cfg: *config_mod.Config, cat: notification_mod.NotificationCategory, value: bool) void {
     switch (cat) {
         .Fleet => cfg.display.notifInfoPanelShowFleet = value,
         .Mining => cfg.display.notifInfoPanelShowMining = value,
@@ -60,17 +62,80 @@ fn setCategoryEnabled(cfg: *config_mod.Config, cat: types.NotificationCategory, 
 }
 
 /// With the filter buttons hidden (notifInfoPanelShowCategoryFilters off), notifications aren't silently dropped by a filter state the user can't see or change - everything shows.
-fn effectiveCategoryEnabled(cfg: *const config_mod.Config, cat: types.NotificationCategory) bool {
+fn effectiveCategoryEnabled(cfg: *const config_mod.Config, cat: notification_mod.NotificationCategory) bool {
     if (!cfg.display.notifInfoPanelShowCategoryFilters) return true;
     return categoryEnabled(cfg, cat);
 }
 
 var g_class_registered: bool = false;
 
-/// Set by Painter.init() so the window proc can activate EVE clients without a direct notif_info_view → input circular dependency.
+/// Set by Painter.init() so the window proc can activate EVE clients without a direct history_panel → input circular dependency.
 pub var g_activate_fn: ?*const fn (win32.HWND) void = null;
 
 const NOTIF_INFO_WINDOW_CLASS = "EVE_NOTIFINFO_CLASS";
+
+/// Owns the History Panel window and when it's on-screen: display.showNotifInfoPanel creates it, hideNotifInfoPanelWhenNoCharacters auto-hides it, and the tray toggle can force it visible.
+pub const HistoryPanel = struct {
+    window: ?NotifInfoWindow = null,
+    /// Tray-toggle override: forces the panel visible past hideNotifInfoPanelWhenNoCharacters until characters go logged-in -> logged-out again.
+    force_visible: bool = false,
+    /// Last-seen "any character logged in", used to detect the logged-in -> logged-out edge that clears force_visible.
+    had_characters: bool = false,
+
+    pub fn init(allocator: std.mem.Allocator, cfg: *config_mod.Config, instance: win32.HINSTANCE) HistoryPanel {
+        if (!cfg.display.showNotifInfoPanel) return .{};
+        const window = NotifInfoWindow.init(allocator, cfg, instance) catch |err| {
+            slog.err("Failed to create History Panel window: {}", .{err});
+            return .{};
+        };
+        return .{ .window = window };
+    }
+
+    pub fn deinit(self: *HistoryPanel) void {
+        if (self.window) |*window| window.deinit();
+        self.window = null;
+    }
+
+    /// Whether the panel is actually on-screen, accounting for hideNotifInfoPanelWhenNoCharacters and the tray-toggle override; drives both the render/hide gate and the tray menu's checked state.
+    pub fn isVisible(self: *const HistoryPanel, cfg: *const config_mod.Config, any_character_logged_in: bool) bool {
+        if (self.window == null) return false;
+        if (!cfg.display.hideNotifInfoPanelWhenNoCharacters) return true;
+        return any_character_logged_in or self.force_visible;
+    }
+
+    /// Keyed on isVisible() rather than window existence, so it turns fully off (not re-hidden) when toggled while visible, and forces it on immediately - even with no characters logged in - when toggled while off/auto-hidden.
+    pub fn toggle(self: *HistoryPanel, allocator: std.mem.Allocator, cfg: *config_mod.Config, instance: win32.HINSTANCE, any_character_logged_in: bool) void {
+        if (self.isVisible(cfg, any_character_logged_in)) {
+            self.deinit();
+            cfg.display.showNotifInfoPanel = false;
+            self.force_visible = false;
+            return;
+        }
+        if (self.window == null) {
+            self.window = NotifInfoWindow.init(allocator, cfg, instance) catch |err| {
+                slog.err("Failed to create History Panel window: {}", .{err});
+                return;
+            };
+        }
+        cfg.display.showNotifInfoPanel = true;
+        self.force_visible = true;
+    }
+
+    /// Per-tick: renders the panel from the painter's live history, or hides it.
+    pub fn update(self: *HistoryPanel, painter: *const painter_mod.Painter, any_character_logged_in: bool) void {
+        if (self.had_characters and !any_character_logged_in) self.force_visible = false;
+        self.had_characters = any_character_logged_in;
+
+        const window = if (self.window) |*w| w else return;
+        if (self.isVisible(painter.config, any_character_logged_in)) {
+            window.render(painter) catch |err| {
+                slog.err("Failed to render History Panel window: {}", .{err});
+            };
+        } else {
+            window.hide();
+        }
+    }
+};
 
 /// `first`/`last` are newest-first history indices, equal unless merged.
 const HistoryRow = struct {
@@ -94,7 +159,7 @@ pub const NotifInfoWindow = struct {
     last_win_w: i32 = -1,
     last_win_h: i32 = -1,
     last_render_signature: ?u64 = null,
-    history_rows: [painter_mod.NOTIF_HISTORY_CAPACITY]HistoryRow = undefined,
+    history_rows: [notification_history_mod.CAPACITY]HistoryRow = undefined,
     history_row_count: usize = 0,
     // Index-paired with CATEGORY_ORDER; recomputed every render, consumed by WM_LBUTTONDOWN's footer hit-test.
     category_button_rects: [CATEGORY_ORDER.len]ButtonRect = undefined,
@@ -202,7 +267,7 @@ pub const NotifInfoWindow = struct {
     }
 
     /// Notification text color for a history row: the notification type's configured color, else the thumbnail overlay's default text color.
-    fn resolveNotifTextColor(self: *const NotifInfoWindow, ntype: types.NotificationType) u32 {
+    fn resolveNotifTextColor(self: *const NotifInfoWindow, ntype: notification_mod.NotificationType) u32 {
         const type_cfg = self.config.thumbnail.notifications.getTypeConfig(ntype);
         return (type_cfg.text_color orelse self.config.thumbnail.characterNameColor) & 0x00FF_FFFF;
     }
@@ -225,7 +290,6 @@ pub const NotifInfoWindow = struct {
             self.config.saveNotifInfoPanelCategoryFilter(self.allocator) catch |err| {
                 slog.err("Failed to save notification history panel category filter: {}", .{err});
             };
-            self.last_render_signature = null;
             return;
         }
     }
@@ -247,14 +311,13 @@ pub const NotifInfoWindow = struct {
             const enabled = categoryEnabled(self.config, cat);
             h.update(std.mem.asBytes(&enabled));
         }
-        h.update(std.mem.asBytes(&painter.notification_history_count));
-        h.update(std.mem.asBytes(&painter.notification_history_head));
+        h.update(std.mem.asBytes(&painter.notification_history.revision));
 
         const show_timestamp = self.config.display.notifInfoPanelShowTimestamp;
         const now = win32.Ticks.now();
 
-        var entries: [painter_mod.NOTIF_HISTORY_CAPACITY]painter_mod.NotificationHistoryEntry = undefined;
-        const hist = painter.getNotificationHistory(&entries);
+        var entries: [notification_history_mod.CAPACITY]notification_history_mod.Entry = undefined;
+        const hist = painter.notification_history.snapshot(&entries);
         for (hist) |*e| {
             h.update(e.characterName());
             h.update(e.text());
@@ -351,8 +414,8 @@ pub const NotifInfoWindow = struct {
             const header_text_y = @max(0, @divTrunc(HEADER_HEIGHT - header_text_h, 2));
             drawText(ov.mem_dc, header_text, TEXT_LEFT, header_text_y, ARGB_HDR_TEXT);
 
-            var entries: [painter_mod.NOTIF_HISTORY_CAPACITY]painter_mod.NotificationHistoryEntry = undefined;
-            const hist = painter.getNotificationHistory(&entries);
+            var entries: [notification_history_mod.CAPACITY]notification_history_mod.Entry = undefined;
+            const hist = painter.notification_history.snapshot(&entries);
             const cap = @min(history_rows_fit, configured_max_rows);
 
             const max_w: usize = @intCast(@max(0, win_w - TEXT_LEFT - RIGHT_MARGIN));
@@ -360,7 +423,7 @@ pub const NotifInfoWindow = struct {
             const merge_window_ms: u64 = @as(u64, @intCast(@max(0, self.config.display.notifInfoPanelMergeWindowSec))) * 1000;
             var shown: usize = 0;
             for (hist, 0..) |*entry, i| {
-                if (!effectiveCategoryEnabled(self.config, types.notificationCategory(entry.notification_type))) continue;
+                if (!effectiveCategoryEnabled(self.config, notification_mod.notificationCategory(entry.notification_type))) continue;
 
                 if (merge_enabled and shown > 0 and !entry.unmerged) {
                     const row = &self.history_rows[shown - 1];
@@ -581,7 +644,7 @@ fn notifInfoWindowProc(
         win32.WM_EXITSIZEMOVE => {
             if (painter_mod.g_painter_ptr) |p| {
                 p.hideGhostOverlay();
-                if (p.notif_info_window) |*niw| {
+                if (p.history_panel.window) |*niw| {
                     niw.saveWindowPosition();
                 }
             }
@@ -593,7 +656,7 @@ fn notifInfoWindowProc(
             if (cy < HEADER_HEIGHT) return 0;
 
             if (painter_mod.g_painter_ptr) |p| {
-                if (p.notif_info_window) |*niw| {
+                if (p.history_panel.window) |*niw| {
                     const show_filters = niw.config.display.notifInfoPanelShowCategoryFilters;
                     const footer_top = if (show_filters) niw.last_win_h - FOOTER_HEIGHT else niw.last_win_h;
                     if (show_filters and cy >= footer_top) {
@@ -609,8 +672,7 @@ fn notifInfoWindowProc(
                     if (row < niw.history_row_count) {
                         const hist_row = niw.history_rows[row];
                         if (hist_row.count > 1) {
-                            p.unmergeNotificationHistoryRange(hist_row.first, hist_row.last);
-                            niw.last_render_signature = null;
+                            p.notification_history.unmergeRange(hist_row.first, hist_row.last);
                         } else if (g_activate_fn) |activate| {
                             activate(hist_row.hwnd);
                         }

@@ -4,6 +4,7 @@ const log = @import("log.zig");
 const vk = @import("virtual_keys.zig");
 const state_mod = @import("state.zig");
 const types = @import("types.zig");
+const notification_mod = @import("notifications/notification.zig");
 const color = @import("color.zig");
 
 const slog = log.scoped("config");
@@ -1747,18 +1748,15 @@ pub const NotificationTypeConfig = struct {
         sound_volume: u8 = (NotificationTypeConfig{}).sound_volume,
     };
 
-    pub fn defaultFor(ntype: types.NotificationType) NotificationTypeConfig {
-        return switch (ntype) {
-            // Confirms a deliberate user action, so quick repeats must not be throttled away.
-            .GroupMembership, .CycleExclusion, .HotkeySuspend, .ProfileSwitch, .AutoMinimizeToggle, .SavedPositionMove => .{ .duration_ms = 3000, .throttle_ms = 0 },
-            else => .{},
-        };
+    pub fn defaultFor(ntype: notification_mod.NotificationType) NotificationTypeConfig {
+        // Confirms a deliberate user action, so quick repeats must not be throttled away.
+        return if (notification_mod.isUserAction(ntype)) .{ .duration_ms = 3000, .throttle_ms = 0 } else .{};
     }
 
     // A const, not a fn: evaluated once instead of per comptime Wire field default, which exceeded the branch quota.
     pub const defaults_by_type = blk: {
-        var map = std.enums.EnumArray(types.NotificationType, NotificationTypeConfig).initFill(.{});
-        for (std.enums.values(types.NotificationType)) |ntype| map.set(ntype, defaultFor(ntype));
+        var map = std.enums.EnumArray(notification_mod.NotificationType, NotificationTypeConfig).initFill(.{});
+        for (std.enums.values(notification_mod.NotificationType)) |ntype| map.set(ntype, defaultFor(ntype));
         break :blk map;
     };
 
@@ -1857,19 +1855,19 @@ pub const NotificationTypeConfig = struct {
 };
 
 pub const TypeConfigMapWire = struct {
-    map: std.enums.EnumArray(types.NotificationType, NotificationTypeConfig.Wire) = default_wire_map,
+    map: std.enums.EnumArray(notification_mod.NotificationType, NotificationTypeConfig.Wire) = default_wire_map,
 
     const default_wire_map = blk: {
-        var map = std.enums.EnumArray(types.NotificationType, NotificationTypeConfig.Wire).initFill(.{});
-        for (std.enums.values(types.NotificationType)) |ntype| map.set(ntype, NotificationTypeConfig.defaults_by_type.get(ntype).toWire());
+        var map = std.enums.EnumArray(notification_mod.NotificationType, NotificationTypeConfig.Wire).initFill(.{});
+        for (std.enums.values(notification_mod.NotificationType)) |ntype| map.set(ntype, NotificationTypeConfig.defaults_by_type.get(ntype).toWire());
         break :blk map;
     };
 
     pub fn jsonStringify(self: TypeConfigMapWire, jw: anytype) !void {
         try jw.beginObject();
-        inline for (std.meta.fields(types.NotificationType)) |f| {
+        inline for (std.meta.fields(notification_mod.NotificationType)) |f| {
             try jw.objectField(f.name);
-            try jw.write(self.map.get(@field(types.NotificationType, f.name)));
+            try jw.write(self.map.get(@field(notification_mod.NotificationType, f.name)));
         }
         try jw.endObject();
     }
@@ -1879,7 +1877,7 @@ pub const TypeConfigMapWire = struct {
         if (source != .object) return result;
         var it = source.object.iterator();
         while (it.next()) |entry| {
-            const ntype = std.meta.stringToEnum(types.NotificationType, entry.key_ptr.*) orelse continue;
+            const ntype = std.meta.stringToEnum(notification_mod.NotificationType, entry.key_ptr.*) orelse continue;
             const type_wire = try std.json.parseFromValue(NotificationTypeConfig.Wire, allocator, entry.value_ptr.*, opts);
             defer type_wire.deinit();
             var wire_value = type_wire.value;
@@ -1912,7 +1910,7 @@ pub const NotificationConfig = struct {
     // Seconds a character stays eligible in the "cycle to recently notified character" queue after their last notification before aging out; re-notifying resets this window.
     notified_cycle_retention_seconds: u32 = 30,
 
-    type_configs: std.enums.EnumArray(types.NotificationType, NotificationTypeConfig),
+    type_configs: std.enums.EnumArray(notification_mod.NotificationType, NotificationTypeConfig),
 
     pub fn init() NotificationConfig {
         return NotificationConfig{
@@ -1920,7 +1918,7 @@ pub const NotificationConfig = struct {
         };
     }
 
-    pub fn getTypeConfig(self: *const NotificationConfig, ntype: types.NotificationType) NotificationTypeConfig {
+    pub fn getTypeConfig(self: *const NotificationConfig, ntype: notification_mod.NotificationType) NotificationTypeConfig {
         return self.type_configs.get(ntype);
     }
 
@@ -1943,9 +1941,9 @@ pub const NotificationConfig = struct {
     };
 
     pub fn toWire(self: *const NotificationConfig) Wire {
-        var map: std.enums.EnumArray(types.NotificationType, NotificationTypeConfig.Wire) = .initFill(.{});
-        inline for (std.meta.fields(types.NotificationType)) |f| {
-            const ntype = @field(types.NotificationType, f.name);
+        var map: std.enums.EnumArray(notification_mod.NotificationType, NotificationTypeConfig.Wire) = .initFill(.{});
+        inline for (std.meta.fields(notification_mod.NotificationType)) |f| {
+            const ntype = @field(notification_mod.NotificationType, f.name);
             map.set(ntype, self.type_configs.get(ntype).toWire());
         }
         return .{
@@ -1968,9 +1966,9 @@ pub const NotificationConfig = struct {
     }
 
     pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !NotificationConfig {
-        var map: std.enums.EnumArray(types.NotificationType, NotificationTypeConfig) = .initFill(.{});
-        inline for (std.meta.fields(types.NotificationType)) |f| {
-            const ntype = @field(types.NotificationType, f.name);
+        var map: std.enums.EnumArray(notification_mod.NotificationType, NotificationTypeConfig) = .initFill(.{});
+        inline for (std.meta.fields(notification_mod.NotificationType)) |f| {
+            const ntype = @field(notification_mod.NotificationType, f.name);
             map.set(ntype, try NotificationTypeConfig.fromWire(w.type_configs.map.get(ntype), allocator));
         }
         return .{
@@ -2543,8 +2541,8 @@ pub const Config = struct {
                 self.notifications.suppress_click_duration_ms = SUPPRESS_CLICK_DURATION_MS_MAX;
             }
 
-            inline for (std.meta.fields(types.NotificationType)) |field| {
-                const ntype = @field(types.NotificationType, field.name);
+            inline for (std.meta.fields(notification_mod.NotificationType)) |field| {
+                const ntype = @field(notification_mod.NotificationType, field.name);
                 var type_config = self.notifications.type_configs.get(ntype);
                 var changed = false;
                 if (type_config.duration_ms > NOTIFICATION_DURATION_MS_MAX) {
@@ -3420,10 +3418,10 @@ pub const Config = struct {
         }
         if (obj.get("type_configs")) |type_configs_val| {
             if (type_configs_val == .object) {
-                inline for (std.meta.fields(types.NotificationType)) |field| {
+                inline for (std.meta.fields(notification_mod.NotificationType)) |field| {
                     if (type_configs_val.object.get(field.name)) |type_val| {
                         if (type_val == .object) {
-                            const ntype = @field(types.NotificationType, field.name);
+                            const ntype = @field(notification_mod.NotificationType, field.name);
                             var type_config = notif.type_configs.get(ntype);
                             try type_config.applyJson(allocator, type_val.object);
                             notif.type_configs.set(ntype, type_config);

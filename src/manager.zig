@@ -70,7 +70,7 @@ pub fn moveAllClientsToSavedPositions(eve_windows: []const scout_mod.EveWindow, 
         if (config.isExcludedFromAutoMove(eve_window.character_name)) continue;
         const pos = config.getCharacterWindowPosition(eve_window.character_name) orelse continue;
         moveClientToPosition(eve_window.hwnd, pos);
-        painter.notify(eve_window.hwnd, .SavedPositionMove, "Moved to saved position", .{});
+        painter.notify(eve_window.hwnd, .{ .ntype = .SavedPositionMove });
         moved_count += 1;
         slog.debug("Moved {s} to saved position ({}, {})", .{ eve_window.character_name, pos.x, pos.y });
     }

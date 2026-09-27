@@ -1,4 +1,3 @@
-const std = @import("std");
 const win32 = @import("win32.zig");
 const types = @import("types.zig");
 const virtual_keys = @import("virtual_keys.zig");
@@ -256,7 +255,7 @@ pub fn toggleCycleExclusion(source_hwnd: win32.HWND) void {
             _ = win32.ShowWindowAsync(source_hwnd, win32.SW_FORCEMINIMIZE);
         }
 
-        painter.notify(source_hwnd, .CycleExclusion, "{s}", .{if (thumbnail.is_excluded_from_cycle) "Excluded" else "Included"});
+        painter.notify(source_hwnd, .{ .ntype = .CycleExclusion, .state = if (thumbnail.is_excluded_from_cycle) .excluded else .included });
 
         painter.renderThumbnail(thumbnail) catch |err| {
             slog.err("Failed to render thumbnail after exclusion toggle: {}", .{err});
@@ -599,7 +598,7 @@ fn applyGhostSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i32, d
     // Non-thumbnail draggers (e.g. the notification history panel) own no character, so nothing is excluded from the ghost set.
     const character_name = if (painter.getThumbnailByOverlayHwnd(dragging_hwnd)) |t| t.character_name else "";
 
-    // showGhostOverlay (called at drag-start by startDrag / notif_info_view.zig's WM_ENTERSIZEMOVE) already computed
+    // showGhostOverlay (called at drag-start by startDrag / notifications/history_panel.zig's WM_ENTERSIZEMOVE) already computed
     // and cached this for the duration of the drag - reuse it instead of recomputing on every mouse move. Falls back
     // to a one-off computation for callers that snap without showing the ghost overlay first (list_view.zig's panel
     // drag never calls showGhostOverlay/hideGhostOverlay); the fallback is deliberately not written back into

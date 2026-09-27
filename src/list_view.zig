@@ -311,8 +311,7 @@ pub const ListWindow = struct {
                 const badge_color = self.resolveActiveBadgeColor(t);
                 h.update(std.mem.asBytes(&badge_color));
             }
-            for (t.active_notifications) |maybe_notif| {
-                const notif = maybe_notif orelse break;
+            for (t.notifications.items()) |notif| {
                 h.update(notif.text);
                 h.update(std.mem.asBytes(&notif.border_color_override));
                 h.update(std.mem.asBytes(&notif.text_color_override));
@@ -502,7 +501,7 @@ pub const ListWindow = struct {
                 self.withListAlpha(RGB_ROW_INACTIVE)
             else if (is_alert) blk: {
                 // Tint row slightly with the newest stacked notification's border color if available
-                if (thumb.active_notifications[0]) |notif| {
+                if (thumb.notifications.newest()) |notif| {
                     if (notif.border_color_override) |nc| {
                         const r: u32 = (((nc >> 16) & 0xFF) * 35 / 255 + 0x1A) & 0xFF;
                         const g: u32 = (((nc >> 8) & 0xFF) * 35 / 255 + 0x1A) & 0xFF;
@@ -562,7 +561,7 @@ pub const ListWindow = struct {
                 const stat_text = self.buildStatText(&stat_buf, thumb);
 
                 // Compact list rows only have room for one right-hand slot; the newest stacked notification wins.
-                const right_text: []const u8 = if (thumb.active_notifications[0]) |notif|
+                const right_text: []const u8 = if (thumb.notifications.newest()) |notif|
                     notif.text
                 else if (stat_text.len > 0)
                     stat_text
@@ -571,7 +570,7 @@ pub const ListWindow = struct {
                 else
                     "";
 
-                const right_col: u32 = if (thumb.active_notifications[0]) |notif|
+                const right_col: u32 = if (thumb.notifications.newest()) |notif|
                     (notif.text_color_override orelse ARGB_NOTIF_TEXT) & 0xFFFFFF
                 else if (stat_text.len > 0)
                     self.statColor(thumb)
