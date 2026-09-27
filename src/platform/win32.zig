@@ -962,6 +962,13 @@ pub const CTRL_SHUTDOWN_EVENT: DWORD = 6;
 pub const PHANDLER_ROUTINE = *const fn (DWORD) callconv(.c) BOOL;
 pub extern "kernel32" fn SetConsoleCtrlHandler(HandlerRoutine: PHANDLER_ROUTINE, Add: BOOL) callconv(.c) BOOL;
 
+pub const STD_INPUT_HANDLE: DWORD = @bitCast(@as(i32, -10));
+pub const ENABLE_QUICK_EDIT_MODE: DWORD = 0x0040;
+pub const ENABLE_EXTENDED_FLAGS: DWORD = 0x0080;
+pub extern "kernel32" fn GetStdHandle(nStdHandle: DWORD) callconv(.c) ?HANDLE;
+pub extern "kernel32" fn GetConsoleMode(hConsoleHandle: HANDLE, lpMode: *DWORD) callconv(.c) BOOL;
+pub extern "kernel32" fn SetConsoleMode(hConsoleHandle: HANDLE, dwMode: DWORD) callconv(.c) BOOL;
+
 pub fn getWindowTitle(hwnd: HWND, allocator: std.mem.Allocator) ![]const u8 {
     var title_buffer: [64:0]u8 = undefined;
     const title_len = GetWindowTextA(hwnd, &title_buffer, title_buffer.len);

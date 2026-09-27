@@ -52,6 +52,22 @@ pub fn openDebugConsole() void {
     console_ready = true;
     // Closing the console window kills the process before any `defer` can run, so buffered lines are flushed from its ctrl handler instead.
     _ = win32.SetConsoleCtrlHandler(consoleCtrlHandler, win32.TRUE);
+    disableQuickEdit();
+}
+
+/// A click in a QuickEdit console starts a selection that blocks every console write until it ends, freezing whichever thread logs next.
+fn disableQuickEdit() void {
+    const slog = scoped("log");
+    const input = win32.GetStdHandle(win32.STD_INPUT_HANDLE) orelse {
+        slog.warn("No console input handle; clicking the debug console can pause the app", .{});
+        return;
+    };
+    var mode: win32.DWORD = 0;
+    if (!win32.toBool(win32.GetConsoleMode(input, &mode)) or
+        !win32.toBool(win32.SetConsoleMode(input, (mode & ~win32.ENABLE_QUICK_EDIT_MODE) | win32.ENABLE_EXTENDED_FLAGS)))
+    {
+        slog.warn("Failed to disable console QuickEdit; clicking the debug console can pause the app", .{});
+    }
 }
 
 fn consoleCtrlHandler(ctrl_type: win32.DWORD) callconv(.c) win32.BOOL {

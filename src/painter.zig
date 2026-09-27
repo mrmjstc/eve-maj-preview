@@ -1144,6 +1144,11 @@ pub const Painter = struct {
                 }
             }
 
+            // Cycle cursors are keyed by name and a rename fires no focus event, so the focused window must re-sync under its new one.
+            if (win32.GetForegroundWindow() == thumbnail.source_hwnd) {
+                hotkeys_mod.syncFocusedCharacter(thumbnail.character_name, thumbnail.source_hwnd);
+            }
+
             self.renderThumbnailLogged(thumbnail, "name change");
 
             slog.info("Updated thumbnail for {s}", .{thumbnail.character_name});
