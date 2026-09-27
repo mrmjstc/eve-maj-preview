@@ -664,7 +664,7 @@ pub extern "kernel32" fn GetModuleFileNameA(hModule: ?HMODULE, lpFilename: LPSTR
 pub const ALL_PROCESSOR_GROUPS: WORD = 0xFFFF;
 pub extern "kernel32" fn GetActiveProcessorCount(GroupNumber: WORD) callconv(.c) DWORD;
 
-/// resource_tracker.zig only reads WorkingSetSize; the rest exists so the extern struct matches the real Win32 layout.
+/// activity/resources.zig only reads WorkingSetSize; the rest exists so the extern struct matches the real Win32 layout.
 pub const PROCESS_MEMORY_COUNTERS = extern struct {
     cb: DWORD,
     PageFaultCount: DWORD,

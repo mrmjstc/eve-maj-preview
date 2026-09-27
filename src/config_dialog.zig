@@ -196,13 +196,8 @@ fn mainImpl(init: std.process.Init) !void {
     }
     defer if (startup_settings) |*s| s.deinit();
 
-    // Same as main.zig: Windows GUI subsystem doesn't create a console by default, so pop one when Debug logging is on.
     if (startup_settings) |s| {
-        if (s.logLevel == .debug) {
-            _ = win32.AllocConsole();
-            log.setConsoleReady(true);
-            _ = win32.SetConsoleCtrlHandler(consoleCtrlHandler, win32.TRUE);
-        }
+        if (s.logLevel == .debug) log.openDebugConsole();
     }
 
     // config.exe is a separate executable (see build.zig) with its own g_update_status, so it can't reuse main.zig's check result.
@@ -313,7 +308,7 @@ fn mainImpl(init: std.process.Init) !void {
 
     revertThumbnailPreviewInMainApp();
     // Safety net: ensure hotkeys aren't left suspended if the dialog closes mid-recording.
-    if (findMainAppWindow()) |hwnd| {
+    if (protocol.findExistingInstance()) |hwnd| {
         protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogResumeHotkeys = {} });
     }
 
@@ -331,16 +326,6 @@ fn focusExistingDialog() void {
         _ = win32.ShowWindow(hwnd, win32.SW_RESTORE);
     }
     _ = win32.SetForegroundWindow(hwnd);
-}
-
-fn consoleCtrlHandler(ctrl_type: win32.DWORD) callconv(.c) win32.BOOL {
-    switch (ctrl_type) {
-        win32.CTRL_C_EVENT, win32.CTRL_BREAK_EVENT, win32.CTRL_CLOSE_EVENT, win32.CTRL_LOGOFF_EVENT, win32.CTRL_SHUTDOWN_EVENT => {
-            log.flush();
-        },
-        else => {},
-    }
-    return win32.FALSE;
 }
 
 fn logWindowAndClientRects(hwnd: win32.HWND, label: []const u8) void {
@@ -588,16 +573,9 @@ fn saveConfig(e: *webui.Event) void {
     e.returnString("{\"success\": true}");
 }
 
-/// Window class of the main app's hidden timer window, used to find its instance for WM_COPYDATA IPC (profile reload, live thumbnail preview, preview revert).
-const MAIN_APP_TIMER_CLASS_NAME = "EVE_TIMER_CLASS";
-
-fn findMainAppWindow() ?win32.HWND {
-    return protocol.findExistingInstance(MAIN_APP_TIMER_CLASS_NAME);
-}
-
 /// Polled by the dialog's status indicator to reflect whether the main app is running, using the same window lookup the IPC commands already rely on.
 fn getMainAppStatus(e: *webui.Event) void {
-    const running = findMainAppWindow() != null;
+    const running = protocol.findExistingInstance() != null;
     var buf: [64]u8 = undefined;
     const json = std.fmt.bufPrintZ(&buf, "{{\"running\": {s}, \"groupRevision\": {d}}}", .{ if (running) "true" else "false", protocol.readGroupMembershipRevision() }) catch unreachable;
     e.returnString(json);
@@ -696,7 +674,7 @@ fn sendProfileSwitchToMainApp(profile_name: []const u8) void {
 
     slog.debug("Attempting to switch profile in main app: {s}", .{profile_name});
 
-    if (findMainAppWindow()) |hwnd| {
+    if (protocol.findExistingInstance()) |hwnd| {
         const profile_name_copy = allocator.dupe(u8, profile_name) catch {
             slog.err("Failed to allocate memory for profile name", .{});
             return;
@@ -758,7 +736,7 @@ fn switchProfileLive(e: *webui.Event) void {
 fn previewThumbnailConfig(e: *webui.Event) void {
     const json_data = e.getString();
 
-    if (findMainAppWindow()) |hwnd| {
+    if (protocol.findExistingInstance()) |hwnd| {
         protocol.sendCommandToInstance(hwnd, protocol.Command{ .PreviewThumbnail = json_data });
     }
 
@@ -767,7 +745,7 @@ fn previewThumbnailConfig(e: *webui.Event) void {
 
 /// Fires one event type on the running app's thumbnails using the dialog's unsaved per-type values (see testNotification() in config_dialog.js).
 fn testNotification(e: *webui.Event) void {
-    const hwnd = findMainAppWindow() orelse {
+    const hwnd = protocol.findExistingInstance() orelse {
         slog.warn("Test notification skipped: main app window not found", .{});
         e.returnString("{\"success\": false}");
         return;
@@ -820,7 +798,7 @@ fn parseRegionSelectRequest(json: []const u8) protocol.RegionSelectRequest {
 
 /// Triggers the main app's drag-to-select overlay; config_dialog.js's startRegionSelectFlow() then polls pollRegionSelectResult.
 fn startRegionSelect(e: *webui.Event) void {
-    const hwnd = findMainAppWindow() orelse {
+    const hwnd = protocol.findExistingInstance() orelse {
         e.returnString("{\"success\": false, \"error\": \"Main app is not running\"}");
         return;
     };
@@ -871,7 +849,7 @@ fn pollRegionSelectResult(e: *webui.Event) void {
 
 /// Tell the running main app to discard any live preview and reload thumbnail appearance from disk; called on dialog close, a no-op if the profile was saved first.
 fn revertThumbnailPreviewInMainApp() void {
-    if (findMainAppWindow()) |hwnd| {
+    if (protocol.findExistingInstance()) |hwnd| {
         protocol.sendCommandToInstance(hwnd, protocol.Command{ .RevertPreview = {} });
     }
 }
@@ -884,7 +862,7 @@ var g_win_key_capture_pending: bool = false;
 fn suspendHotkeysForRecording(e: *webui.Event) void {
     g_win_key_capture_baseline_sequence = if (protocol.readWinKeyCaptureResult()) |result| result.sequence else 0;
     g_win_key_capture_pending = true;
-    if (findMainAppWindow()) |hwnd| {
+    if (protocol.findExistingInstance()) |hwnd| {
         protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogSuspendHotkeys = {} });
     }
     e.returnString("{\"success\": true}");
@@ -893,7 +871,7 @@ fn suspendHotkeysForRecording(e: *webui.Event) void {
 /// Resume hotkeys suspended by suspendHotkeysForRecording(); called by config_dialog.js's stopRecording() and unconditionally on dialog close as a safety net.
 fn resumeHotkeysAfterRecording(e: *webui.Event) void {
     g_win_key_capture_pending = false;
-    if (findMainAppWindow()) |hwnd| {
+    if (protocol.findExistingInstance()) |hwnd| {
         protocol.sendCommandToInstance(hwnd, protocol.Command{ .DialogResumeHotkeys = {} });
     }
     e.returnString("{\"success\": true}");
@@ -1818,41 +1796,16 @@ fn getConfigData(e: *webui.Event) void {
 fn listProfiles(e: *webui.Event) void {
     const allocator = g_allocator;
 
-    var profiles = std.ArrayList([]const u8).empty;
+    var profiles = config_mod.GlobalSettings.enumerateProfiles(allocator) catch |err| {
+        slog.err("Failed to enumerate profiles: {}", .{err});
+        e.returnString("{\"profiles\": [], \"current\": \"default.json\"}");
+        return;
+    };
     defer {
         for (profiles.items) |profile| {
             allocator.free(profile);
         }
         profiles.deinit(allocator);
-    }
-
-    var dir = std.Io.Dir.cwd().openDir(g_io, "profiles", .{ .iterate = true }) catch |err| {
-        slog.err("Failed to open profiles directory: {}", .{err});
-        e.returnString("{\"profiles\": [], \"current\": \"default.json\"}");
-        return;
-    };
-    defer dir.close(g_io);
-
-    var iter = dir.iterate();
-    while (true) {
-        const entry = iter.next(g_io) catch |err| {
-            slog.warn("Failed to enumerate profiles directory: {}", .{err});
-            break;
-        } orelse break;
-        if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".json")) {
-            if (std.mem.eql(u8, entry.name, "global.settings.json")) {
-                continue;
-            }
-            const profile_name = allocator.dupe(u8, entry.name) catch |err| {
-                slog.warn("Failed to copy profile name '{s}': {}", .{ entry.name, err });
-                continue;
-            };
-            profiles.append(allocator, profile_name) catch |err| {
-                slog.warn("Failed to record profile '{s}': {}", .{ entry.name, err });
-                allocator.free(profile_name);
-                continue;
-            };
-        }
     }
 
     const current_profile = currentProfileFilename();

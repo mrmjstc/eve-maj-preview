@@ -1,7 +1,7 @@
 const std = @import("std");
-const win32 = @import("platform/win32.zig");
-const scout = @import("clients/scout.zig");
-const log = @import("log.zig");
+const win32 = @import("../platform/win32.zig");
+const scout = @import("../clients/scout.zig");
+const log = @import("../log.zig");
 const slog = log.scoped("resource_tracker");
 
 pub const ProcessResourceStats = struct {
@@ -20,7 +20,7 @@ const CpuSample = struct {
 const VRAM_COUNTER_PATH = "\\GPU Process Memory(*)\\Dedicated Usage";
 const PID_TOKEN = "pid_";
 
-/// Main-thread only - no locking, unlike activity_tracker.zig's trackers which are fed cross-thread.
+/// Main-thread only - no locking, unlike tracker.zig's trackers which are fed cross-thread.
 pub const ResourceTracker = struct {
     allocator: std.mem.Allocator,
     cpu_samples: std.AutoHashMap(win32.DWORD, CpuSample),

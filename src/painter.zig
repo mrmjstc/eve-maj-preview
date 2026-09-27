@@ -57,7 +57,7 @@ pub const ThumbnailWindow = struct {
     needs_render: bool = false,
     win32_enabled: bool = true,
 
-    // Null means not enough span yet to trust a rate (see activity_tracker.zig).
+    // Null means not enough span yet to trust a rate (see activity/tracker.zig).
     last_incoming_dps: ?f32 = null,
     last_outgoing_dps: ?f32 = null,
     last_mining_rate: ?f32 = null,
@@ -147,6 +147,41 @@ pub const ThumbnailWindow = struct {
 };
 
 pub var g_painter_ptr: ?*Painter = null;
+
+/// Each thumbnail's last-known system name, copied before a reload tears Painter down so the new thumbnails can be seeded instead of starting blank.
+pub const SystemNameSnapshot = struct {
+    allocator: std.mem.Allocator,
+    /// Keyed by source_hwnd, which stays stable across the thumbnails' teardown and recreation.
+    names: std.AutoHashMap(win32.HWND, []const u8),
+
+    pub fn init(allocator: std.mem.Allocator) SystemNameSnapshot {
+        return .{ .allocator = allocator, .names = .init(allocator) };
+    }
+
+    pub fn deinit(self: *SystemNameSnapshot) void {
+        var it = self.names.valueIterator();
+        while (it.next()) |name| self.allocator.free(name.*);
+        self.names.deinit();
+    }
+
+    pub fn capture(self: *SystemNameSnapshot, painter: *const Painter) void {
+        for (painter.thumbnails.items) |thumb| {
+            if (thumb.system_name.len == 0) continue;
+            const copy = self.allocator.dupe(u8, thumb.system_name) catch |err| {
+                slog.warn("Failed to snapshot system name for reload: {}", .{err});
+                continue;
+            };
+            self.names.put(thumb.source_hwnd, copy) catch |err| {
+                slog.warn("Failed to record system name snapshot for reload: {}", .{err});
+                self.allocator.free(copy);
+            };
+        }
+    }
+
+    pub fn get(self: *const SystemNameSnapshot, source_hwnd: win32.HWND) ?[]const u8 {
+        return self.names.get(source_hwnd);
+    }
+};
 
 // Global so registration persists across Painter instances, not just one.
 var g_window_class_registered: bool = false;
@@ -1139,23 +1174,43 @@ pub const Painter = struct {
     }
 
     /// Synchronizes thumbnails with Scout's window list, creating thumbnails for new windows; returns true if any were created.
-    fn syncThumbnailsWithWindows(self: *Painter, eve_windows: []const scout_mod.EveWindow) bool {
+    pub const PopulateOptions = struct {
+        /// Moves each new client window to its saved position (auto-move).
+        move_to_saved: bool,
+        /// Seeds each new thumbnail's system name, so a reload doesn't show them blank.
+        system_names: ?*const SystemNameSnapshot = null,
+    };
+
+    /// Startup/reload: creates every window's thumbnail, then reflows once, since createThumbnail sizes each one against the count so far.
+    pub fn populate(self: *Painter, eve_windows: []const scout_mod.EveWindow, opts: PopulateOptions) void {
+        if (self.addMissingThumbnails(eve_windows, opts) and self.hasCountDependentLayout()) self.repositionAllThumbnails();
+    }
+
+    /// Creates a thumbnail for each window not yet tracked, logging and skipping failures; returns whether any were created.
+    fn addMissingThumbnails(self: *Painter, eve_windows: []const scout_mod.EveWindow, opts: PopulateOptions) bool {
         var created_new = false;
 
         for (eve_windows) |eve_window| {
-            if (!self.hasThumbnail(eve_window.hwnd)) {
-                self.createThumbnail(&eve_window, "") catch |err| {
-                    slog.err("Failed to create thumbnail for {s}: {}", .{ eve_window.character_name, err });
-                    continue;
-                };
-                created_new = true;
-                if (self.config.autoMovePosition.enabled) {
-                    self.auto_move.moveToSavedPosition(self.config, eve_window.hwnd, eve_window.character_name);
-                }
+            if (self.hasThumbnail(eve_window.hwnd)) continue;
+
+            const system_name = if (opts.system_names) |names| (names.get(eve_window.hwnd) orelse "") else "";
+            self.createThumbnail(&eve_window, system_name) catch |err| {
+                slog.err("Failed to create thumbnail for {s}: {}", .{ eve_window.character_name, err });
+                continue;
+            };
+            created_new = true;
+
+            if (opts.move_to_saved) {
+                self.auto_move.moveToSavedPosition(self.config, eve_window.hwnd, eve_window.character_name);
             }
         }
 
         return created_new;
+    }
+
+    /// RegionFit and the not-logged-in space size every cell from the thumbnail count, so any arrival reflows them all.
+    fn hasCountDependentLayout(self: *const Painter) bool {
+        return placement_mod.isRegionFitActive(&self.config.display) or placement_mod.notLoggedInSpaceRectFromConfig(&self.config.display) != null;
     }
 
     /// Main update cycle - performs all Painter operations for a single tick
@@ -1168,9 +1223,8 @@ pub const Painter = struct {
         self.syncThumbnailTitles(eve_windows);
 
         // createThumbnail seeds title/character_name from eve_window, so new thumbnails need no re-sync.
-        const created_new = self.syncThumbnailsWithWindows(eve_windows);
-        // A new arrival changes RegionFit's and/or notLoggedInSpace's grid count, so every member must reflow to the recomputed cell size.
-        needs_region_reflow = (created_new and (placement_mod.isRegionFitActive(&self.config.display) or placement_mod.notLoggedInSpaceRectFromConfig(&self.config.display) != null)) or needs_region_reflow;
+        const created_new = self.addMissingThumbnails(eve_windows, .{ .move_to_saved = self.config.autoMovePosition.enabled });
+        needs_region_reflow = (created_new and self.hasCountDependentLayout()) or needs_region_reflow;
 
         // Coalesced into one reflow, since any combination of the three triggers above can fire in the same tick.
         if (needs_region_reflow) self.repositionAllThumbnails();
@@ -1338,7 +1392,7 @@ pub const Painter = struct {
         slog.info("Created tracking entry for {s} ({s} mode)", .{ eve_window.character_name, @tagName(self.config.display.viewMode) });
     }
 
-    pub fn createThumbnail(self: *Painter, eve_window: *const scout_mod.EveWindow, initial_system_name: []const u8) !void {
+    fn createThumbnail(self: *Painter, eve_window: *const scout_mod.EveWindow, initial_system_name: []const u8) !void {
         if (self.config.display.viewMode != .Thumbnails) {
             return self.createTrackingOnlyEntry(eve_window, initial_system_name);
         }

@@ -1241,7 +1241,7 @@ pub const CombatConfig = struct {
     outgoing_offset_y: i32 = 0,
     incoming_show_prefix: bool = true,
     outgoing_show_prefix: bool = true,
-    // Comma-separated, case-insensitive substring match against the parsed weapon name (see activity_tracker.parseCombatLine/isWeaponExcluded); matching hits still count toward DPS stats, just don't retrigger the Taking Damage alert.
+    // Comma-separated, case-insensitive substring match against the parsed weapon name (see activity/tracker.zig's parseCombatLine/isWeaponExcluded); matching hits still count toward DPS stats, just don't retrigger the Taking Damage alert.
     damage_alert_excluded_weapons: []const u8 = "",
 
     pub const WINDOW_SECONDS_MIN: u32 = 1;
@@ -1591,7 +1591,7 @@ pub const BountyConfig = struct {
     }
 };
 
-/// Per-process CPU/RAM/VRAM overlay; single combined label like BountyConfig, no alert machinery - see resource_tracker.zig.
+/// Per-process CPU/RAM/VRAM overlay; single combined label like BountyConfig, no alert machinery - see activity/resources.zig.
 pub const ResourcesConfig = struct {
     enabled: bool = false,
     show_cpu: bool = true,

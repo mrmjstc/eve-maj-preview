@@ -1,5 +1,5 @@
 const std = @import("std");
-const log = @import("log.zig");
+const log = @import("../log.zig");
 const slog = log.scoped("activity_tracker");
 
 /// A single parsed combat event (one damage hit, incoming or outgoing).

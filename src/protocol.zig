@@ -36,6 +36,14 @@ pub const Command = union(enum) {
     DialogResumeHotkeys: void,
     StartRegionSelect: RegionSelectRequest,
     TestNotification: []const u8,
+
+    /// Frees what parseUrl allocated; commands built any other way borrow their payloads.
+    pub fn deinit(self: Command, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .Switch, .Profile => |name| allocator.free(name),
+            else => {},
+        }
+    }
 };
 
 /// Zero-padded fixed-size copy of `text` (UTF-8), truncated at a character boundary so a NUL always fits.
@@ -150,28 +158,38 @@ fn urlDecode(allocator: std.mem.Allocator, encoded: []const u8) ![]const u8 {
     return result.toOwnedSlice(allocator);
 }
 
-pub fn findExistingInstance(class_name: [*:0]const u8) ?win32.HWND {
-    return win32.FindWindowA(class_name, null);
+/// Window class of the main app's hidden timer window, the target of every WM_COPYDATA command; config.exe and a second CLI invocation find the running instance by it.
+pub const MAIN_WINDOW_CLASS = "EVE_TIMER_CLASS";
+
+pub fn findExistingInstance() ?win32.HWND {
+    return win32.FindWindowA(MAIN_WINDOW_CLASS, null);
+}
+
+/// Hands a --protocol URL to the already-running instance; protocol URLs never start one.
+pub fn forwardToRunningInstance(url: []const u8, allocator: std.mem.Allocator) !void {
+    const existing_hwnd = findExistingInstance() orelse {
+        slog.warn("No existing instance found, protocol command ignored", .{});
+        return error.NoExistingInstance;
+    };
+
+    const cmd = parseUrl(url, allocator) catch |err| {
+        slog.err("Failed to parse protocol URL: {}", .{err});
+        return err;
+    };
+    defer cmd.deinit(allocator);
+
+    sendCommandToInstance(existing_hwnd, cmd);
+    slog.info("Protocol command sent successfully", .{});
 }
 
 pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
     switch (cmd) {
         .Switch => |char_name| {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_SWITCH_CHARACTER,
-                .cbData = @intCast(char_name.len),
-                .lpData = char_name.ptr,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
+            sendCopyData(hwnd, win32.PROTOCOL_SWITCH_CHARACTER, char_name);
             slog.info("Sent switch to '{s}'", .{char_name});
         },
         .Profile => |profile_name| {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_SWITCH_PROFILE,
-                .cbData = @intCast(profile_name.len),
-                .lpData = profile_name.ptr,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
+            sendCopyData(hwnd, win32.PROTOCOL_SWITCH_PROFILE, profile_name);
             slog.info("Sent load profile '{s}'", .{profile_name});
         },
         .Hotkey => |hotkey_action| {
@@ -179,39 +197,19 @@ pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
             slog.info("Sent hotkey action '{s}'", .{@tagName(hotkey_action)});
         },
         .PreviewThumbnail => |json| {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_PREVIEW_THUMBNAIL,
-                .cbData = @intCast(json.len),
-                .lpData = json.ptr,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
+            sendCopyData(hwnd, win32.PROTOCOL_PREVIEW_THUMBNAIL, json);
             slog.debug("Sent thumbnail preview patch ({} bytes)", .{json.len});
         },
         .RevertPreview => {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_REVERT_PREVIEW,
-                .cbData = 0,
-                .lpData = null,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
+            sendCopyData(hwnd, win32.PROTOCOL_REVERT_PREVIEW, "");
             slog.info("Sent revert preview", .{});
         },
         .DialogSuspendHotkeys => {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_DIALOG_SUSPEND_HOTKEYS,
-                .cbData = 0,
-                .lpData = null,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
+            sendCopyData(hwnd, win32.PROTOCOL_DIALOG_SUSPEND_HOTKEYS, "");
             slog.debug("Sent dialog suspend hotkeys", .{});
         },
         .DialogResumeHotkeys => {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_DIALOG_RESUME_HOTKEYS,
-                .cbData = 0,
-                .lpData = null,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
+            sendCopyData(hwnd, win32.PROTOCOL_DIALOG_RESUME_HOTKEYS, "");
             slog.debug("Sent dialog resume hotkeys", .{});
         },
         .StartRegionSelect => |request| {
@@ -221,32 +219,38 @@ pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
                 .edit_region = request.edit_region orelse std.mem.zeroes(win32.RECT),
                 .labels = request.labels,
             };
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_START_REGION_SELECT,
-                .cbData = @sizeOf(RegionSelectRequestWire),
-                .lpData = &wire,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
+            sendCopyData(hwnd, win32.PROTOCOL_START_REGION_SELECT, std.mem.asBytes(&wire));
             slog.info("Sent start region select", .{});
         },
         .TestNotification => |json| {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_TEST_NOTIFICATION,
-                .cbData = @intCast(json.len),
-                .lpData = json.ptr,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
+            sendCopyData(hwnd, win32.PROTOCOL_TEST_NOTIFICATION, json);
             slog.debug("Sent test notification ({} bytes)", .{json.len});
         },
     }
 }
 
+/// Synchronous, so `payload` only has to outlive the call; an empty payload is sent as a null lpData.
+fn sendCopyData(hwnd: win32.HWND, kind: usize, payload: []const u8) void {
+    const cds = win32.COPYDATASTRUCT{
+        .dwData = kind,
+        .cbData = @intCast(payload.len),
+        .lpData = if (payload.len > 0) payload.ptr else null,
+    };
+    _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
+}
+
+/// Receiving side of sendCopyData; null for a message sent without a payload.
+pub fn copyDataBytes(cds: *const win32.COPYDATASTRUCT) ?[]const u8 {
+    const data_ptr = cds.lpData orelse return null;
+    return @as([*]const u8, @ptrCast(data_ptr))[0..cds.cbData];
+}
+
 /// Receiving side of `Command.StartRegionSelect`; a malformed payload falls back to a plain fresh drag.
 pub fn regionSelectRequestFromCopyData(cds: *const win32.COPYDATASTRUCT) RegionSelectRequest {
-    const data_ptr = cds.lpData orelse return .{};
-    if (cds.cbData != @sizeOf(RegionSelectRequestWire)) return .{};
+    const bytes = copyDataBytes(cds) orelse return .{};
+    if (bytes.len != @sizeOf(RegionSelectRequestWire)) return .{};
     var wire: RegionSelectRequestWire = undefined;
-    @memcpy(std.mem.asBytes(&wire), @as([*]const u8, @ptrCast(data_ptr))[0..@sizeOf(RegionSelectRequestWire)]);
+    @memcpy(std.mem.asBytes(&wire), bytes);
     return .{
         .hide_thumbnails = wire.hide_thumbnails != 0,
         .edit_region = if (wire.has_edit_region != 0) wire.edit_region else null,
@@ -432,6 +436,26 @@ pub fn checkCommandLine(process_args: std.process.Args, allocator: std.mem.Alloc
     }
 
     return null;
+}
+
+/// Registers the evemajpreview:// handler unless it already is; failures are logged, not fatal.
+pub fn ensureRegistered(allocator: std.mem.Allocator) void {
+    if (isRegistered()) {
+        slog.debug("Protocol handler already registered", .{});
+        return;
+    }
+
+    slog.info("Protocol handler not registered, attempting auto-registration...", .{});
+    const success = register(allocator) catch |err| blk: {
+        slog.warn("Failed to auto-register protocol handler: {}", .{err});
+        slog.warn("You may need to run as administrator or manually register using register-protocol.reg", .{});
+        break :blk false;
+    };
+    if (success) {
+        slog.info("Protocol handler successfully registered", .{});
+    } else {
+        slog.warn("Protocol handler registration returned false", .{});
+    }
 }
 
 pub fn isRegistered() bool {

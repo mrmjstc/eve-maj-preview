@@ -3,7 +3,7 @@ const win32 = @import("platform/win32.zig");
 const log = @import("log.zig");
 const notification_mod = @import("notifications/notification.zig");
 const gamelog_events = @import("notifications/gamelog_events.zig");
-const activity_mod = @import("activity_tracker.zig");
+const activity_mod = @import("activity/tracker.zig");
 const scout_mod = @import("clients/scout.zig");
 const painter_mod = @import("painter.zig");
 const config_mod = @import("config.zig");
@@ -196,8 +196,13 @@ pub const ChatlogMonitor = struct {
     threading_enabled: bool = false,
     pending_characters: std.StringHashMap(void),
     pending_characters_mutex: std.Io.Mutex,
+    /// Reused by update() to avoid a per-tick alloc; main thread only, borrowed slices only.
+    tick_names: std.ArrayList([]const u8),
+    tick_logged_out_names: std.ArrayList([]const u8),
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, chatlog_dir: []const u8, gamelog_dir: []const u8, global_settings_ref: ?*config_mod.GlobalSettings, idle_poll_threshold: u32, max_poll_multiplier: u8, poll_interval_ms: u32) !*ChatlogMonitor {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, cfg: *const config_mod.ChatlogConfig, global_settings_ref: ?*config_mod.GlobalSettings) !*ChatlogMonitor {
+        const chatlog_dir = cfg.chatlogDir;
+        const gamelog_dir = cfg.gamelogDir;
         if (!std.unicode.utf8ValidateSlice(chatlog_dir)) {
             slog.err("Chatlog directory path contains invalid UTF-8", .{});
             return error.InvalidUtf8;
@@ -222,8 +227,8 @@ pub const ChatlogMonitor = struct {
         monitor.combat_tracker = null;
         monitor.mining_tracker = null;
         monitor.bounty_tracker = null;
-        monitor.idle_poll_threshold = idle_poll_threshold;
-        monitor.max_poll_multiplier = max_poll_multiplier;
+        monitor.damage_alert_excluded_weapons = "";
+        monitor.applySettings(cfg);
         monitor.last_sync_poll_ms = .{};
         monitor.pending_scan_index = 0;
         monitor.pending_chatlog_signaled = false;
@@ -238,7 +243,8 @@ pub const ChatlogMonitor = struct {
         monitor.threading_enabled = false;
         monitor.pending_characters = std.StringHashMap(void).init(allocator);
         monitor.pending_characters_mutex = .init;
-        monitor.poll_interval_ms = poll_interval_ms;
+        monitor.tick_names = .empty;
+        monitor.tick_logged_out_names = .empty;
 
         monitor.chatlog_watcher = monitor.setupDirectoryWatcher(chatlog_dir);
         errdefer if (monitor.chatlog_watcher != win32.INVALID_HANDLE_VALUE) {
@@ -257,6 +263,13 @@ pub const ChatlogMonitor = struct {
     }
 
     /// Stops the worker thread only - log_files/monitored_paths are left intact.
+    /// The polling knobs a profile reload can change without rebuilding the monitor.
+    pub fn applySettings(self: *ChatlogMonitor, cfg: *const config_mod.ChatlogConfig) void {
+        self.idle_poll_threshold = cfg.idlePollThreshold;
+        self.max_poll_multiplier = cfg.maxPollMultiplier;
+        self.poll_interval_ms = cfg.pollIntervalMs;
+    }
+
     pub fn stopWorkerThread(self: *ChatlogMonitor) void {
         if (!self.threading_enabled) return;
 
@@ -438,6 +451,9 @@ pub const ChatlogMonitor = struct {
             self.allocator.free(key.*);
         }
         self.monitored_paths.deinit();
+
+        self.tick_names.deinit(self.allocator);
+        self.tick_logged_out_names.deinit(self.allocator);
 
         self.allocator.free(self.chatlog_dir);
         self.allocator.free(self.gamelog_dir);
@@ -753,8 +769,31 @@ pub const ChatlogMonitor = struct {
         return false;
     }
 
-    /// Main update cycle - performs all Chatlog operations for a single tick
-    pub fn update(self: *ChatlogMonitor, character_names: []const []const u8, closed_windows: []const scout_mod.ClosedWindow, logged_out_names: []const []const u8) !void {
+    /// Main update cycle - performs all Chatlog operations for a single tick, driven by that tick's Scout result.
+    pub fn update(self: *ChatlogMonitor, scout_result: *const scout_mod.UpdateResult) !void {
+        self.tick_names.clearRetainingCapacity();
+        self.tick_logged_out_names.clearRetainingCapacity();
+
+        for (scout_result.windows) |eve_window| {
+            self.tick_names.append(self.allocator, eve_window.character_name) catch |err| {
+                slog.warn("Failed to track {s} for chatlog update: {}", .{ eve_window.character_name, err });
+                continue;
+            };
+        }
+
+        for (scout_result.name_changes.items) |change| {
+            if (scout_mod.isGenericCharacterName(change.new_name) and !scout_mod.isGenericCharacterName(change.old_name)) {
+                self.tick_logged_out_names.append(self.allocator, change.old_name) catch |err| {
+                    slog.warn("Failed to track logged-out name {s} for chatlog update: {}", .{ change.old_name, err });
+                    continue;
+                };
+            }
+        }
+
+        try self.applyTick(self.tick_names.items, scout_result.closed_windows.items, self.tick_logged_out_names.items);
+    }
+
+    fn applyTick(self: *ChatlogMonitor, character_names: []const []const u8, closed_windows: []const scout_mod.ClosedWindow, logged_out_names: []const []const u8) !void {
         // In Phase 1 (synchronous mode), handle I/O directly on main thread
         if (!self.threading_enabled) {
             // pollLogFiles()'s per-file backoff assumes fixed-interval calls, which this UI-tick-driven path doesn't guarantee.

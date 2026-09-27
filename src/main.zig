@@ -11,8 +11,7 @@ const hotkeys = @import("hotkeys/manager.zig");
 const mouse_hook = @import("hotkeys/mouse_hook.zig");
 const keyboard_hook = @import("hotkeys/keyboard_hook.zig");
 const chatlog = @import("chatlog.zig");
-const activity_mod = @import("activity_tracker.zig");
-const resource_tracker_mod = @import("resource_tracker.zig");
+const activity = @import("activity/runtime.zig");
 const tts = @import("notifications/tts.zig");
 const sound = @import("notifications/sound.zig");
 const travel_left_behind = @import("travel/left_behind.zig");
@@ -21,26 +20,17 @@ const protocol = @import("protocol.zig");
 const update = @import("update.zig");
 const paste_upload = @import("hotkeys/paste_upload.zig");
 const fonts = @import("platform/fonts.zig");
+const crash = @import("crash.zig");
 const log = @import("log.zig");
 const slog = log.scoped("main");
 const build_options = @import("build_options");
 
-const LPARAM = win32.LPARAM;
-const WPARAM = win32.WPARAM;
-const HWND = win32.HWND;
-const UINT = win32.UINT;
-const LRESULT = win32.LRESULT;
-
 const TIMER_ID: usize = 1;
-const TIMER_CLASS_NAME = "EVE_TIMER_CLASS";
 
 var g_allocator: std.mem.Allocator = undefined;
 var g_io: std.Io = undefined;
 var g_chatlog_monitor: ?*chatlog.ChatlogMonitor = null;
-var g_combat_tracker: ?*activity_mod.CombatTracker = null;
-var g_mining_tracker: ?*activity_mod.MiningTracker = null;
-var g_bounty_tracker: ?*activity_mod.BountyTracker = null;
-var g_resource_tracker: ?*resource_tracker_mod.ResourceTracker = null;
+var g_trackers: activity.Trackers = undefined;
 var g_config: config_mod.Config = undefined;
 var g_global_settings: config_mod.GlobalSettings = undefined;
 var g_tray_icon: ?tray.TrayIcon = null;
@@ -53,17 +43,8 @@ var g_scan_tick_counter: u32 = 0;
 // 20 ticks at 50ms/tick is roughly 1 second between scans.
 const SCAN_INTERVAL_TICKS: u32 = 20;
 
-// Throttles how often each activity stat is pushed to painter.
-var g_last_dps_update_ms: i64 = 0;
-var g_last_mining_update_ms: i64 = 0;
-var g_last_bounty_update_ms: i64 = 0;
-var g_last_resource_update_ms: i64 = 0;
 var g_last_travel_check_ms: win32.Ticks = .{};
 const TRAVEL_CHECK_INTERVAL_MS: u64 = 2000;
-
-// Reused across timer ticks to avoid a per-tick alloc; borrowed slices only, no ownership.
-var g_chatlog_char_names: std.ArrayList([]const u8) = .empty;
-var g_chatlog_logged_out_names: std.ArrayList([]const u8) = .empty;
 
 fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
@@ -110,53 +91,38 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         win32.WM_SWITCH_PROFILE => {
             if (tray.TrayIcon.takePendingProfileName()) |new_profile| {
                 slog.info("Switching to profile: {s}", .{new_profile});
-                reloadWithProfile(new_profile) catch |err| {
-                    slog.err("Failed to switch profile to {s}: {}", .{ new_profile, err });
-                };
+                switchProfile(new_profile);
             }
             return 0;
         },
         win32.WM_COPYDATA => {
-            const cds = @as(*const win32.COPYDATASTRUCT, @ptrFromInt(@as(usize, @bitCast(lParam))));
+            const cds = win32.lparamToPtr(win32.COPYDATASTRUCT, lParam);
+            const payload = protocol.copyDataBytes(cds);
 
             switch (cds.dwData) {
-                win32.PROTOCOL_SWITCH_CHARACTER => {
-                    if (cds.lpData) |data_ptr| {
-                        const char_name = @as([*]const u8, @ptrCast(data_ptr))[0..cds.cbData];
-                        slog.info("Protocol handler: switch to character: {s}", .{char_name});
-                        if (scout.g_scout_ptr) |scout_ptr| {
-                            if (scout_ptr.getHwndByName(char_name)) |target_hwnd| {
-                                activation.activate(target_hwnd);
-                            } else {
-                                slog.warn("Character '{s}' not found", .{char_name});
-                            }
+                win32.PROTOCOL_SWITCH_CHARACTER => if (payload) |char_name| {
+                    slog.info("Protocol handler: switch to character: {s}", .{char_name});
+                    if (scout.g_scout_ptr) |scout_ptr| {
+                        if (scout_ptr.getHwndByName(char_name)) |target_hwnd| {
+                            activation.activate(target_hwnd);
+                        } else {
+                            slog.warn("Character '{s}' not found", .{char_name});
                         }
                     }
                 },
-                win32.PROTOCOL_SWITCH_PROFILE => {
-                    if (cds.lpData) |data_ptr| {
-                        const profile_name = @as([*]const u8, @ptrCast(data_ptr))[0..cds.cbData];
-                        slog.info("Protocol handler: switch to profile: {s}", .{profile_name});
-                        reloadWithProfile(profile_name) catch |err| {
-                            slog.err("Failed to switch profile to {s}: {}", .{ profile_name, err });
-                        };
-                    }
+                win32.PROTOCOL_SWITCH_PROFILE => if (payload) |profile_name| {
+                    slog.info("Protocol handler: switch to profile: {s}", .{profile_name});
+                    switchProfile(profile_name);
                 },
-                win32.PROTOCOL_PREVIEW_THUMBNAIL => {
-                    if (cds.lpData) |data_ptr| {
-                        const json_data = @as([*]const u8, @ptrCast(data_ptr))[0..cds.cbData];
-                        applyThumbnailPreview(json_data) catch |err| {
-                            slog.err("Failed to apply thumbnail preview: {}", .{err});
-                        };
-                    }
+                win32.PROTOCOL_PREVIEW_THUMBNAIL => if (payload) |json_data| {
+                    applyThumbnailPreview(json_data) catch |err| {
+                        slog.err("Failed to apply thumbnail preview: {}", .{err});
+                    };
                 },
-                win32.PROTOCOL_TEST_NOTIFICATION => {
-                    if (cds.lpData) |data_ptr| {
-                        const json_data = @as([*]const u8, @ptrCast(data_ptr))[0..cds.cbData];
-                        showTestNotification(json_data) catch |err| {
-                            slog.err("Failed to show test notification: {}", .{err});
-                        };
-                    }
+                win32.PROTOCOL_TEST_NOTIFICATION => if (payload) |json_data| {
+                    showTestNotification(json_data) catch |err| {
+                        slog.err("Failed to show test notification: {}", .{err});
+                    };
                 },
                 win32.PROTOCOL_REVERT_PREVIEW => revertThumbnailPreview(),
                 win32.PROTOCOL_DIALOG_SUSPEND_HOTKEYS => {
@@ -193,7 +159,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
 }
 
 /// Runs one WM_TIMER tick: scan for EVE windows, then push the results through
-/// the painter, chatlog monitor, and combat/mining trackers.
+/// the painter, chatlog monitor, and activity trackers.
 fn onTimerTick() void {
     g_scan_tick_counter += 1;
     const force_scan = (g_scan_tick_counter >= SCAN_INTERVAL_TICKS);
@@ -217,80 +183,14 @@ fn onTimerTick() void {
     }
 
     if (g_chatlog_monitor) |monitor| {
-        g_chatlog_char_names.clearRetainingCapacity();
-        g_chatlog_logged_out_names.clearRetainingCapacity();
-
-        for (scout_result.windows) |eve_window| {
-            g_chatlog_char_names.append(g_allocator, eve_window.character_name) catch |err| {
-                slog.warn("Failed to track {s} for chatlog update: {}", .{ eve_window.character_name, err });
-                continue;
-            };
-        }
-
-        for (scout_result.name_changes.items) |change| {
-            if (scout.isGenericCharacterName(change.new_name) and !scout.isGenericCharacterName(change.old_name)) {
-                g_chatlog_logged_out_names.append(g_allocator, change.old_name) catch |err| {
-                    slog.warn("Failed to track logged-out name {s} for chatlog update: {}", .{ change.old_name, err });
-                    continue;
-                };
-            }
-        }
-
-        monitor.update(g_chatlog_char_names.items, scout_result.closed_windows.items, g_chatlog_logged_out_names.items) catch |err| {
+        monitor.update(&scout_result) catch |err| {
             slog.err("Failed to update Chatlog Monitor: {}", .{err});
         };
     }
 
-    // Unwrapped to i64 below since activity_tracker.zig's windows still do plain i64 arithmetic.
     const now = win32.Ticks.now();
-    const now_ms: i64 = @intCast(now.ms);
-
-    if (g_combat_tracker) |tracker| {
-        const interval_ms: i64 = @intCast(g_config.combat.update_interval_ms);
-        updateThrottledTracker(
-            activity_mod.CombatTracker,
-            pushDpsUpdate,
-            tracker,
-            now_ms,
-            &g_last_dps_update_ms,
-            interval_ms,
-            scout_result.windows,
-        );
-    }
-
-    if (g_mining_tracker) |tracker| {
-        const interval_ms: i64 = @intCast(g_config.mining.update_interval_ms);
-        updateThrottledTracker(
-            activity_mod.MiningTracker,
-            pushMiningUpdate,
-            tracker,
-            now_ms,
-            &g_last_mining_update_ms,
-            interval_ms,
-            scout_result.windows,
-        );
-    }
-
-    if (g_bounty_tracker) |tracker| {
-        const interval_ms: i64 = @intCast(g_config.bounty.update_interval_ms);
-        updateThrottledTracker(
-            activity_mod.BountyTracker,
-            pushBountyUpdate,
-            tracker,
-            now_ms,
-            &g_last_bounty_update_ms,
-            interval_ms,
-            scout_result.windows,
-        );
-    }
-
-    if (g_resource_tracker != null) {
-        const interval_ms: i64 = @intCast(g_config.resources.update_interval_ms);
-        if (now_ms - g_last_resource_update_ms >= interval_ms) {
-            g_last_resource_update_ms = now_ms;
-            sampleAndPushResourceStats(now_ms);
-        }
-    }
+    // Unwrapped to i64 since activity/tracker.zig's windows still do plain i64 arithmetic.
+    g_trackers.tick(&g_config, scout_result.windows, @intCast(now.ms));
 
     if (painter.g_painter_ptr) |painter_ptr| {
         if (now.elapsedSince(g_last_travel_check_ms) >= TRAVEL_CHECK_INTERVAL_MS) {
@@ -300,244 +200,13 @@ fn onTimerTick() void {
     }
 }
 
-/// Shared throttle/dispatch loop for the combat/mining/bounty trackers: refreshes and pushes values into the painter (and flushes dirty overlays) once per `interval_ms`. refreshAll is a pure recompute from ring-buffer contents with no side effects that need to happen more often than the values are actually read, so it's gated behind the same throttle as the perWindow loop below rather than running every tick.
-fn updateThrottledTracker(
-    comptime T: type,
-    comptime perWindow: fn (*T, *painter.Painter, scout.EveWindow, i64) void,
-    tracker: *T,
-    now_ms: i64,
-    last_update_ms: *i64,
-    interval_ms: i64,
-    windows: []const scout.EveWindow,
-) void {
-    if (now_ms - last_update_ms.* < interval_ms) return;
-    last_update_ms.* = now_ms;
-
-    _ = tracker.refreshAll(now_ms);
-
-    const painter_ptr = painter.g_painter_ptr orelse return;
-    for (windows) |eve_window| {
-        perWindow(tracker, painter_ptr, eve_window, now_ms);
-    }
-    painter_ptr.renderDirtyThumbnails(null);
-}
-
-fn pushDpsUpdate(tracker: *activity_mod.CombatTracker, painter_ptr: *painter.Painter, eve_window: scout.EveWindow, now_ms: i64) void {
-    const dps = tracker.getDps(eve_window.character_name);
-
-    painter_ptr.updateDpsForCharacter(eve_window.hwnd, dps.incoming, dps.outgoing);
-
-    if (tracker.checkDamageAlert(eve_window.character_name, now_ms)) {
-        painter_ptr.notify(eve_window.hwnd, .{ .ntype = .TakingDamage });
-    }
-}
-
-fn pushMiningUpdate(tracker: *activity_mod.MiningTracker, painter_ptr: *painter.Painter, eve_window: scout.EveWindow, now_ms: i64) void {
-    const rate = tracker.getRate(eve_window.character_name);
-    const isk_rate = tracker.getIskRate(eve_window.character_name);
-
-    painter_ptr.updateMiningForCharacter(eve_window.hwnd, rate, isk_rate);
-
-    const alert_window_ms: i64 = @as(i64, g_config.mining.idle_alert_window_seconds) * std.time.ms_per_s;
-    if (tracker.checkIdleAlert(eve_window.character_name, now_ms, alert_window_ms, g_config.mining.idle_alert_threshold)) {
-        painter_ptr.notify(eve_window.hwnd, .{ .ntype = .MiningIdle });
-    }
-
-    const stopped_window_ms: i64 = @as(i64, g_config.mining.stopped_alert_window_seconds) * std.time.ms_per_s;
-    if (tracker.checkStoppedAlert(eve_window.character_name, now_ms, stopped_window_ms)) {
-        painter_ptr.notify(eve_window.hwnd, .{ .ntype = .MiningStopped });
-    }
-}
-
-fn pushBountyUpdate(tracker: *activity_mod.BountyTracker, painter_ptr: *painter.Painter, eve_window: scout.EveWindow, now_ms: i64) void {
-    _ = now_ms;
-    const isk_rate = tracker.getIskRate(eve_window.character_name);
-
-    painter_ptr.updateBountyForCharacter(eve_window.hwnd, isk_rate);
-}
-
-fn createTracker(comptime T: type, allocator: std.mem.Allocator, io: std.Io, window_seconds: u32) !*T {
-    const ptr = try allocator.create(T);
-    ptr.* = T.init(allocator, io, window_seconds);
-    return ptr;
-}
-
-/// Doesn't fit createAndWireTracker/recreateTracker (no chatlog_monitor field, no window_seconds); fail-soft like recreateTracker.
-fn ensureResourceTracker() void {
-    if (!g_config.resources.enabled) {
-        teardownResourceTracker();
-        return;
-    }
-    if (g_resource_tracker != null) return;
-    const ptr = g_allocator.create(resource_tracker_mod.ResourceTracker) catch |err| {
-        slog.err("Failed to create resource tracker: {}", .{err});
-        return;
-    };
-    ptr.* = resource_tracker_mod.ResourceTracker.init(g_allocator);
-    g_resource_tracker = ptr;
-    slog.debug("Resource usage tracking enabled", .{});
-}
-
-fn teardownResourceTracker() void {
-    if (g_resource_tracker) |ptr| {
-        ptr.deinit();
-        g_allocator.destroy(ptr);
-        g_resource_tracker = null;
-    }
-}
-
-/// Uses Scout's retained window list rather than a fresh scan, so it's cheap enough to call from a live-preview handler too.
-fn sampleAndPushResourceStats(now_ms: i64) void {
-    const tracker = g_resource_tracker orelse return;
-    const scout_ptr = scout.g_scout_ptr orelse return;
-    const windows = scout_ptr.getWindows();
-    tracker.sampleAll(windows, now_ms);
-
-    const painter_ptr = painter.g_painter_ptr orelse return;
-    for (windows) |eve_window| {
-        const stats = tracker.getStats(eve_window.process_id);
-        painter_ptr.updateResourceStatsForCharacter(eve_window.hwnd, stats.cpu_percent, stats.ram_mb, stats.vram_mb, stats.has_vram);
-    }
-    painter_ptr.renderDirtyThumbnails(null);
-}
-
-/// Logs only when `kind` is given, so a mainImpl teardown defer racing process exit can opt out.
-fn destroyTracker(comptime T: type, tracker_global: *?*T, kind: ?[]const u8) void {
-    if (tracker_global.*) |tracker| {
-        tracker.deinit();
-        g_allocator.destroy(tracker);
-        tracker_global.* = null;
-        if (kind) |k| slog.debug("Cleaned up {s} tracker", .{k});
-    }
-}
-
-/// Startup path: creates and wires the T tracker if enabled, propagating creation failure (fail-fast).
-fn createAndWireTracker(
-    comptime T: type,
-    comptime monitor_field: []const u8,
-    tracker_global: *?*T,
-    enabled: bool,
-    window_seconds: u32,
-    label: []const u8,
-) !void {
-    if (!enabled) return;
-    tracker_global.* = try createTracker(T, g_allocator, g_io, window_seconds);
-    if (g_chatlog_monitor) |monitor| @field(monitor, monitor_field) = tracker_global.*.?;
-    slog.debug("{s} tracking enabled ({d}s window)", .{ label, window_seconds });
-}
-
-/// Like createAndWireTracker, but fail-soft: a reload shouldn't abort the app over one tracker. Returns whether it's now active.
-fn recreateTracker(
-    comptime T: type,
-    comptime monitor_field: []const u8,
-    tracker_global: *?*T,
-    enabled: bool,
-    window_seconds: u32,
-    label: []const u8,
-    lower_name: []const u8,
-) bool {
-    if (!enabled) {
-        if (g_chatlog_monitor) |monitor| @field(monitor, monitor_field) = null;
-        slog.debug("{s} tracking disabled in new profile", .{label});
-        return false;
-    }
-    if (createTracker(T, g_allocator, g_io, window_seconds)) |tracker_ptr| {
-        tracker_global.* = tracker_ptr;
-        if (g_chatlog_monitor) |monitor| @field(monitor, monitor_field) = tracker_ptr;
-        slog.debug("{s} tracking enabled ({d}s window)", .{ label, window_seconds });
-        return true;
-    } else |err| {
-        slog.err("Failed to create {s} tracker: {}", .{ lower_name, err });
-        tracker_global.* = null;
-        if (g_chatlog_monitor) |monitor| @field(monitor, monitor_field) = null;
-        return false;
-    }
-}
-
-fn consoleCtrlHandler(ctrl_type: win32.DWORD) callconv(.c) win32.BOOL {
-    switch (ctrl_type) {
-        win32.CTRL_C_EVENT, win32.CTRL_BREAK_EVENT, win32.CTRL_CLOSE_EVENT, win32.CTRL_LOGOFF_EVENT, win32.CTRL_SHUTDOWN_EVENT => {
-            log.flush();
-        },
-        else => {},
-    }
-    // Never claim to have handled it: this only flushes, the OS's default behavior for the event (e.g. terminating the process) still applies.
-    return win32.FALSE;
-}
-
-/// Gets the panic message into eve-maj.log - Zig's default handler only writes to
-/// stderr, which is invisible in this Windows-subsystem build outside logLevel=debug.
-pub const panic = std.debug.FullPanic(handlePanic);
-
-fn handlePanic(msg: []const u8, ret_addr: ?usize) noreturn {
-    log.writeCrashLine("PANIC: {s}", .{msg});
-    std.debug.defaultPanic(msg, ret_addr);
-}
-
-// Overwritten on every crash - only the latest is kept, so a crash loop can't fill the disk.
-const MINIDUMP_FILE_NAME = std.unicode.utf8ToUtf16LeStringLiteral("eve-maj-crash.dmp");
-
-// dbghelp.dll (MiniDumpWriteDump) isn't thread-safe; this flag serializes writes and resets after each attempt so a later crash can still dump.
-var dump_write_in_progress = std.atomic.Value(bool).init(false);
-
-fn writeMinidump(info: *win32.EXCEPTION_POINTERS) void {
-    if (dump_write_in_progress.cmpxchgStrong(false, true, .acq_rel, .acquire) != null) return;
-    defer dump_write_in_progress.store(false, .release);
-
-    const file = win32.CreateFileW(MINIDUMP_FILE_NAME, win32.GENERIC_WRITE, win32.FILE_SHARE_READ, null, win32.CREATE_ALWAYS, win32.FILE_ATTRIBUTE_NORMAL, null);
-    if (file == win32.INVALID_HANDLE_VALUE) return;
-    defer _ = win32.CloseHandle(file);
-
-    var exc_info = win32.MINIDUMP_EXCEPTION_INFORMATION{
-        .ThreadId = win32.GetCurrentThreadId(),
-        .ExceptionPointers = info,
-        .ClientPointers = win32.FALSE,
-    };
-    const ok = win32.MiniDumpWriteDump(win32.GetCurrentProcess(), win32.GetCurrentProcessId(), file, win32.MiniDumpNormal, &exc_info, null, null);
-    if (ok == win32.FALSE) {
-        log.writeCrashLine("MiniDumpWriteDump failed, GetLastError=0x{x}", .{win32.GetLastError()});
-    }
-}
-
-// Runs before Zig's segfault handler rewrites OS faults into an indistinguishable @breakpoint(); logs only the fault types Zig treats specially, passing everything else through silently.
-fn firstChanceExceptionHandler(info: *win32.EXCEPTION_POINTERS) callconv(.c) win32.LONG {
-    const rec = info.ExceptionRecord orelse return win32.EXCEPTION_CONTINUE_SEARCH;
-    switch (rec.ExceptionCode) {
-        win32.EXCEPTION_ACCESS_VIOLATION, win32.EXCEPTION_ILLEGAL_INSTRUCTION, win32.EXCEPTION_DATATYPE_MISALIGNMENT, win32.EXCEPTION_STACK_OVERFLOW => {},
-        else => return win32.EXCEPTION_CONTINUE_SEARCH,
-    }
-
-    const base: usize = if (win32.GetModuleHandleA(null)) |h| @intFromPtr(h) else 0;
-    const addr: usize = if (rec.ExceptionAddress) |a| @intFromPtr(a) else 0;
-    if (rec.ExceptionCode == win32.EXCEPTION_ACCESS_VIOLATION and rec.NumberParameters >= 2) {
-        const is_write = rec.ExceptionInformation[0] == 1;
-        const fault_addr = rec.ExceptionInformation[1];
-        log.writeCrashLine("First-chance access violation ({s}) at address 0x{x}, code address 0x{x} (module base 0x{x}, RVA 0x{x})", .{ if (is_write) "write" else "read", fault_addr, addr, base, addr -% base });
-    } else {
-        log.writeCrashLine("First-chance exception 0x{x} at address 0x{x} (module base 0x{x}, RVA 0x{x})", .{ rec.ExceptionCode, addr, base, addr -% base });
-    }
-    return win32.EXCEPTION_CONTINUE_SEARCH;
-}
-
-// Last handler in the chain, after Zig's own panic/segfault handling already ran (if any); returns EXCEPTION_CONTINUE_SEARCH so Windows' normal handling still runs after.
-fn unhandledExceptionFilter(info: *win32.EXCEPTION_POINTERS) callconv(.c) win32.LONG {
-    const base: usize = if (win32.GetModuleHandleA(null)) |h| @intFromPtr(h) else 0;
-    if (info.ExceptionRecord) |rec| {
-        const addr: usize = if (rec.ExceptionAddress) |a| @intFromPtr(a) else 0;
-        // Wrapping sub: a wild jump could fault below the module base and this handler must not itself panic on overflow.
-        log.writeCrashLine("Unhandled exception 0x{x} at address 0x{x} (module base 0x{x}, RVA 0x{x})", .{ rec.ExceptionCode, addr, base, addr -% base });
-    } else {
-        log.writeCrashLine("Unhandled exception (no exception record), module base 0x{x}", .{base});
-    }
-    writeMinidump(info);
-    return win32.EXCEPTION_CONTINUE_SEARCH;
-}
+/// Routes panics into eve-maj.log; Zig only looks for `panic` in the root source file.
+pub const panic = std.debug.FullPanic(crash.handlePanic);
 
 pub fn main(init: std.process.Init) void {
     // Must precede any window/monitor API call, or Windows bitmap-stretches our windows on scaled monitors.
     _ = win32.SetProcessDpiAwarenessContext(win32.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    _ = win32.AddVectoredExceptionHandler(1, firstChanceExceptionHandler);
-    _ = win32.SetUnhandledExceptionFilter(unhandledExceptionFilter);
+    crash.install();
     defer log.deinitFile();
 
     mainImpl(init) catch |err| {
@@ -576,6 +245,7 @@ fn mainImpl(init: std.process.Init) !void {
     config_mod.setIo(g_io);
     config_mod.setEnvironMap(init.environ_map);
     g_allocator = init.gpa;
+    g_trackers = .{ .allocator = g_allocator, .io = g_io };
 
     setCwdToExeDir();
 
@@ -585,26 +255,7 @@ fn mainImpl(init: std.process.Init) !void {
 
     if (protocol_url) |url| {
         slog.info("Protocol handler invoked: {s}", .{url});
-
-        if (protocol.findExistingInstance(TIMER_CLASS_NAME)) |existing_hwnd| {
-            const cmd = protocol.parseUrl(url, g_allocator) catch |err| {
-                slog.err("Failed to parse protocol URL: {}", .{err});
-                return err;
-            };
-            defer switch (cmd) {
-                .Switch => |s| g_allocator.free(s),
-                .Profile => |p| g_allocator.free(p),
-                else => {},
-            };
-
-            protocol.sendCommandToInstance(existing_hwnd, cmd);
-
-            slog.info("Protocol command sent successfully", .{});
-            return;
-        } else {
-            slog.warn("No existing instance found, protocol command ignored", .{});
-            return error.NoExistingInstance;
-        }
+        return protocol.forwardToRunningInstance(url, g_allocator);
     }
 
     const mutex_name = std.unicode.utf8ToUtf16LeStringLiteral("Global\\EVE-Maj-Preview-SingleInstance");
@@ -621,9 +272,6 @@ fn mainImpl(init: std.process.Init) !void {
         slog.info("Another instance of EVE-Maj Preview is already running", .{});
         return error.AlreadyRunning;
     }
-
-    defer g_chatlog_char_names.deinit(g_allocator);
-    defer g_chatlog_logged_out_names.deinit(g_allocator);
 
     slog.info("EVE-Maj Preview v{s}", .{build_options.version});
 
@@ -673,34 +321,12 @@ fn mainImpl(init: std.process.Init) !void {
 
     g_config.logSettings();
 
-    if (g_global_settings.autoRegisterProtocol) {
-        if (!protocol.isRegistered()) {
-            slog.info("Protocol handler not registered, attempting auto-registration...", .{});
-            const success = protocol.register(g_allocator) catch |err| blk: {
-                slog.warn("Failed to auto-register protocol handler: {}", .{err});
-                slog.warn("You may need to run as administrator or manually register using register-protocol.reg", .{});
-                break :blk false;
-            };
-            if (success) {
-                slog.info("Protocol handler successfully registered", .{});
-            } else {
-                slog.warn("Protocol handler registration returned false", .{});
-            }
-        } else {
-            slog.debug("Protocol handler already registered", .{});
-        }
-    }
+    if (g_global_settings.autoRegisterProtocol) protocol.ensureRegistered(g_allocator);
 
     defer tts.shutdown();
     defer sound.shutdown();
 
-    // Allocate console in debug mode (Windows GUI subsystem doesn't create one by default)
-    if (g_global_settings.logLevel == .debug) {
-        _ = win32.AllocConsole();
-        log.setConsoleReady(true);
-        // Closing the console window kills the process before any `defer` can run, so flush buffered log lines from here instead of relying on shutdown cleanup.
-        _ = win32.SetConsoleCtrlHandler(consoleCtrlHandler, win32.TRUE);
-    }
+    if (g_global_settings.logLevel == .debug) log.openDebugConsole();
 
     const scout_ptr = try g_allocator.create(scout.Scout);
     scout_ptr.* = scout.Scout.init(g_allocator, &g_config);
@@ -714,48 +340,20 @@ fn mainImpl(init: std.process.Init) !void {
     defer destroyPainter();
 
     if (g_config.chatlog.enabled) {
-        g_chatlog_monitor = try chatlog.ChatlogMonitor.init(
-            g_allocator,
-            g_io,
-            g_config.chatlog.chatlogDir,
-            g_config.chatlog.gamelogDir,
-            &g_global_settings,
-            g_config.chatlog.idlePollThreshold,
-            g_config.chatlog.maxPollMultiplier,
-            g_config.chatlog.pollIntervalMs,
-        );
+        g_chatlog_monitor = try createChatlogMonitor();
     } else {
         slog.info("Chatlog monitoring disabled", .{});
     }
 
-    try createAndWireTracker(activity_mod.CombatTracker, "combat_tracker", &g_combat_tracker, g_config.combat.enabled, g_config.combat.window_seconds, "Combat DPS");
-    if (g_config.combat.enabled) {
-        if (g_chatlog_monitor) |monitor| monitor.damage_alert_excluded_weapons = g_config.combat.damage_alert_excluded_weapons;
-    }
-    defer destroyTracker(activity_mod.CombatTracker, &g_combat_tracker, null);
+    g_trackers.setup(&g_config, g_chatlog_monitor);
+    defer g_trackers.deinit();
 
-    try createAndWireTracker(activity_mod.MiningTracker, "mining_tracker", &g_mining_tracker, g_config.mining.enabled, g_config.mining.window_seconds, "Mining rate");
-    defer destroyTracker(activity_mod.MiningTracker, &g_mining_tracker, null);
+    // Registered after the trackers' defer so it runs first (LIFO): the worker thread must stop before the trackers are freed, since it may be mid-iteration reading them.
+    defer destroyChatlogMonitor();
 
-    try createAndWireTracker(activity_mod.BountyTracker, "bounty_tracker", &g_bounty_tracker, g_config.bounty.enabled, g_config.bounty.window_seconds, "Bounty rate");
-    defer destroyTracker(activity_mod.BountyTracker, &g_bounty_tracker, null);
-
-    ensureResourceTracker();
-    defer teardownResourceTracker();
-
-    // Registered after the tracker defers so it runs first (LIFO): the worker thread must stop before combat/mining trackers are freed, since it may be mid-iteration reading them.
-    defer {
-        if (g_chatlog_monitor) |monitor| {
-            monitor.deinit();
-            g_allocator.destroy(monitor);
-        }
-    }
-
-    // Start the worker thread only now that combat/mining trackers are wired in, so it never observes combat_tracker/mining_tracker as null when they should be set.
     if (g_chatlog_monitor) |monitor| {
-        if (g_config.chatlog.useThreading) {
-            try monitor.startWorkerThread();
-        }
+        // Started only now that the trackers are wired in, so it never observes them as null when they should be set.
+        startChatlogWorker(monitor);
         slog.debug("Chatlog monitoring enabled (threading: {})", .{g_config.chatlog.useThreading});
 
         for (g_config.characters.items) |char_config| {
@@ -768,11 +366,11 @@ fn mainImpl(init: std.process.Init) !void {
     const instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
 
     // Never shown (0x0, no ShowWindow), so the class's cursor is never actually displayed.
-    try gdi_overlay.registerWindowClass(instance, timerWindowProc, TIMER_CLASS_NAME, null);
+    try gdi_overlay.registerWindowClass(instance, timerWindowProc, protocol.MAIN_WINDOW_CLASS, null);
 
     const timer_hwnd = win32.CreateWindowExA(
         0,
-        TIMER_CLASS_NAME,
+        protocol.MAIN_WINDOW_CLASS,
         "EVE Timer Window",
         0,
         0,
@@ -808,24 +406,12 @@ fn mainImpl(init: std.process.Init) !void {
 
     // Create thumbnail windows for each EVE client (fast - no I/O blocking)
     const eve_windows = scout_ptr.getWindows();
-    for (eve_windows) |*eve_window| {
-        try painter_ptr.createThumbnail(eve_window, "");
-        if (g_config.autoMovePosition.moveOnStartup) {
-            painter_ptr.auto_move.moveToSavedPosition(&g_config, eve_window.hwnd, eve_window.character_name);
-        }
-    }
-    painter_ptr.reflowIfRegionFitActive();
+    painter_ptr.populate(eve_windows, .{ .move_to_saved = g_config.autoMovePosition.moveOnStartup });
 
     // Register with chatlog monitor after thumbnails are visible (deferred I/O)
-    if (g_chatlog_monitor) |monitor| {
-        for (eve_windows) |eve_window| {
-            monitor.addCharacter(eve_window.character_name) catch |err| {
-                slog.err("Failed to add {s} to chatlog monitor: {}", .{ eve_window.character_name, err });
-            };
-        }
-    }
+    if (g_chatlog_monitor) |monitor| addChatlogCharacters(monitor, eve_windows);
 
-    const hotkey_manager = try createHotkeyManager();
+    try createHotkeyManager(timer_hwnd);
     focus_grant.install(timer_hwnd);
     defer {
         destroyHotkeyManager();
@@ -833,10 +419,6 @@ fn mainImpl(init: std.process.Init) !void {
         keyboard_hook.deinit();
         focus_grant.uninstall();
     }
-
-    hotkey_manager.registerHotkeys(timer_hwnd) catch |err| {
-        slog.warn("Failed to register hotkeys: {} - continuing without hotkey support", .{err});
-    };
 
     const TIMER_INTERVAL: win32.UINT = g_config.timer.scanIntervalMs;
     const timer_id = win32.SetTimer(timer_hwnd, TIMER_ID, TIMER_INTERVAL, null);
@@ -869,13 +451,16 @@ fn destroyPainter() void {
     g_allocator.destroy(old_painter);
 }
 
-/// Publishes the manager through hotkeys.g_hotkey_manager_ptr, which is also how main.zig reaches it.
-fn createHotkeyManager() !*hotkeys.HotkeyManager {
+/// Publishes the manager through hotkeys.g_hotkey_manager_ptr, which is also how main.zig reaches it, then registers its hotkeys; a registration failure is logged, not fatal.
+fn createHotkeyManager(timer_hwnd: win32.HWND) !void {
     const manager = try g_allocator.create(hotkeys.HotkeyManager);
     errdefer g_allocator.destroy(manager);
     manager.* = try hotkeys.HotkeyManager.init(g_allocator, &g_config, &g_global_settings, scout.g_scout_ptr.?, painter.g_painter_ptr.?);
     hotkeys.g_hotkey_manager_ptr = manager;
-    return manager;
+
+    manager.registerHotkeys(timer_hwnd) catch |err| {
+        slog.warn("Failed to register hotkeys: {} - continuing without hotkey support", .{err});
+    };
 }
 
 fn destroyHotkeyManager() void {
@@ -883,6 +468,50 @@ fn destroyHotkeyManager() void {
     hotkeys.g_hotkey_manager_ptr = null;
     manager.deinit();
     g_allocator.destroy(manager);
+}
+
+/// Created with its worker thread stopped, so the trackers can be wired in before it runs.
+fn createChatlogMonitor() !*chatlog.ChatlogMonitor {
+    return chatlog.ChatlogMonitor.init(g_allocator, g_io, &g_config.chatlog, &g_global_settings);
+}
+
+fn destroyChatlogMonitor() void {
+    const monitor = g_chatlog_monitor orelse return;
+    g_chatlog_monitor = null;
+    monitor.deinit();
+    g_allocator.destroy(monitor);
+}
+
+/// Without threading, the monitor does its log I/O inline on the main thread's tick instead.
+fn startChatlogWorker(monitor: *chatlog.ChatlogMonitor) void {
+    if (!g_config.chatlog.useThreading) return;
+    monitor.startWorkerThread() catch |err| {
+        slog.warn("Failed to start chatlog worker thread: {}", .{err});
+    };
+}
+
+fn addChatlogCharacters(monitor: *chatlog.ChatlogMonitor, windows: []const scout.EveWindow) void {
+    for (windows) |eve_window| {
+        monitor.addCharacter(eve_window.character_name) catch |err| {
+            slog.err("Failed to add {s} to chatlog monitor: {}", .{ eve_window.character_name, err });
+        };
+    }
+}
+
+fn switchProfile(profile_name: []const u8) void {
+    reloadWithProfile(profile_name) catch |err| {
+        slog.err("Failed to switch profile to {s}: {}", .{ profile_name, err });
+    };
+}
+
+/// Picks up windows the new profile's filters match and drops those they no longer do; a failed scan keeps the already-tracked windows.
+fn rescanWindows() []const scout.EveWindow {
+    const scout_ptr = scout.g_scout_ptr orelse return &.{};
+    scout_ptr.scanForEveWindows() catch |err| {
+        slog.err("Failed to scan for EVE windows: {}", .{err});
+    };
+    scout_ptr.pruneNonMatchingWindows();
+    return scout_ptr.getWindows();
 }
 
 /// Completely reinitializes all subsystems with a newly loaded profile's configuration.
@@ -910,45 +539,23 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         std.mem.eql(u8, g_config.chatlog.gamelogDir, new_config.chatlog.gamelogDir);
 
     if (keep_chatlog_monitor) {
-        // Pause (not destroy) so the worker thread can't race the pointer swaps below.
+        // Pause (not destroy) so the worker thread can't race the tracker swap below.
         g_chatlog_monitor.?.stopWorkerThread();
         slog.debug("Paused chatlog monitor for reload (scan state preserved)", .{});
-    } else if (g_chatlog_monitor) |monitor| {
-        monitor.deinit();
-        g_allocator.destroy(monitor);
-        g_chatlog_monitor = null;
+    } else if (g_chatlog_monitor != null) {
+        destroyChatlogMonitor();
         slog.debug("Cleaned up chatlog monitor", .{});
     }
 
-    // Must run after chatlog monitor teardown.
-    destroyTracker(activity_mod.CombatTracker, &g_combat_tracker, "combat");
-    destroyTracker(activity_mod.MiningTracker, &g_mining_tracker, "mining");
-    destroyTracker(activity_mod.BountyTracker, &g_bounty_tracker, "bounty");
+    // Must run after the chatlog worker is stopped above.
+    g_trackers.releaseForReload();
 
     destroyHotkeyManager();
     slog.debug("Cleaned up hotkey manager", .{});
 
-    // Snapshot last-known system names before the painter tears down thumbnails, so new ones can be seeded instead of going blank; keyed by source_hwnd, stable across teardown/recreate.
-    var last_known_systems = std.AutoHashMap(win32.HWND, []const u8).init(g_allocator);
-    defer {
-        var it = last_known_systems.valueIterator();
-        while (it.next()) |v| g_allocator.free(v.*);
-        last_known_systems.deinit();
-    }
-    if (painter.g_painter_ptr) |painter_ptr| {
-        for (painter_ptr.thumbnails.items) |thumb| {
-            if (thumb.system_name.len > 0) {
-                const copy = g_allocator.dupe(u8, thumb.system_name) catch |err| {
-                    slog.warn("Failed to snapshot system name for reload: {}", .{err});
-                    continue;
-                };
-                last_known_systems.put(thumb.source_hwnd, copy) catch |err| {
-                    slog.warn("Failed to record system name snapshot for reload: {}", .{err});
-                    g_allocator.free(copy);
-                };
-            }
-        }
-    }
+    var last_known_systems = painter.SystemNameSnapshot.init(g_allocator);
+    defer last_known_systems.deinit();
+    if (painter.g_painter_ptr) |painter_ptr| last_known_systems.capture(painter_ptr);
 
     destroyPainter();
     slog.debug("Cleaned up painter", .{});
@@ -982,101 +589,44 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     };
     slog.debug("Reinitialized painter", .{});
 
+    const eve_windows = rescanWindows();
+    new_painter.populate(eve_windows, .{
+        // Clients are already where the user put them; only startup and new arrivals auto-move.
+        .move_to_saved = false,
+        // Only seeded if monitoring stays on to refresh it, or a stale name would freeze on screen forever.
+        .system_names = if (g_config.chatlog.enabled) &last_known_systems else null,
+    });
+    slog.debug("Recreated {} thumbnail(s)", .{eve_windows.len});
 
-    if (scout.g_scout_ptr) |scout_ptr| {
-        scan_blk: {
-            scout_ptr.scanForEveWindows() catch |err| {
-                slog.err("Failed to scan for EVE windows: {}", .{err});
-                break :scan_blk;
-            };
-            scout_ptr.pruneNonMatchingWindows();
+    if (keep_chatlog_monitor) {
+        g_chatlog_monitor.?.applySettings(&g_config.chatlog);
+        slog.debug("Applied reload settings to paused chatlog monitor", .{});
+    } else if (g_config.chatlog.enabled) {
+        g_chatlog_monitor = createChatlogMonitor() catch |err| blk: {
+            slog.warn("Failed to initialize chatlog monitor: {}", .{err});
+            break :blk null;
+        };
+    } else {
+        slog.info("Chatlog monitoring disabled in new profile", .{});
+    }
 
-            const eve_windows = scout_ptr.getWindows();
-            for (eve_windows) |eve_window| {
-                // Only if monitoring stays on to refresh it, or a stale name would freeze on screen forever.
-                const initial_system_name = if (g_config.chatlog.enabled) (last_known_systems.get(eve_window.hwnd) orelse "") else "";
-                new_painter.createThumbnail(&eve_window, initial_system_name) catch |err| {
-                    slog.err("Failed to create thumbnail for {s}: {}", .{ eve_window.character_name, err });
-                };
-            }
-            new_painter.reflowIfRegionFitActive();
-            slog.debug("Recreated {} thumbnail(s)", .{eve_windows.len});
+    // Wired while the worker is stopped (paused above, or not started yet), so it never reads a tracker mid-swap.
+    g_trackers.setup(&g_config, g_chatlog_monitor);
 
-            if (keep_chatlog_monitor) {
-                if (g_chatlog_monitor) |monitor| {
-                    monitor.idle_poll_threshold = g_config.chatlog.idlePollThreshold;
-                    monitor.max_poll_multiplier = g_config.chatlog.maxPollMultiplier;
-                    monitor.poll_interval_ms = g_config.chatlog.pollIntervalMs;
-                }
-                slog.debug("Applied reload settings to paused chatlog monitor", .{});
-            } else if (g_config.chatlog.enabled) {
-                chatlog_blk: {
-                    g_chatlog_monitor = chatlog.ChatlogMonitor.init(
-                        g_allocator,
-                        g_io,
-                        g_config.chatlog.chatlogDir,
-                        g_config.chatlog.gamelogDir,
-                        &g_global_settings,
-                        g_config.chatlog.idlePollThreshold,
-                        g_config.chatlog.maxPollMultiplier,
-                        g_config.chatlog.pollIntervalMs,
-                    ) catch |err| {
-                        slog.warn("Failed to initialize chatlog monitor: {}", .{err});
-                        g_chatlog_monitor = null;
-                        break :chatlog_blk;
-                    };
-
-                    if (g_chatlog_monitor) |monitor| {
-                        // Start the worker thread before adding characters, so addCharacter() queues work instead of blocking the message loop with log I/O.
-                        if (g_config.chatlog.useThreading) {
-                            monitor.startWorkerThread() catch |err| {
-                                slog.warn("Failed to start chatlog worker thread: {}", .{err});
-                            };
-                        }
-
-                        for (eve_windows) |eve_window| {
-                            monitor.addCharacter(eve_window.character_name) catch |err| {
-                                slog.err("Failed to add {s} to chatlog monitor: {}", .{ eve_window.character_name, err });
-                            };
-                        }
-                    }
-                    slog.info("Reinitialized chatlog monitoring (threading: {})", .{g_config.chatlog.useThreading});
-                }
-            } else {
-                slog.info("Chatlog monitoring disabled in new profile", .{});
-            }
-        }
-
-        const combat_active = recreateTracker(activity_mod.CombatTracker, "combat_tracker", &g_combat_tracker, g_config.combat.enabled, g_config.combat.window_seconds, "Combat DPS", "combat");
-        if (combat_active) {
-            if (g_chatlog_monitor) |monitor| monitor.damage_alert_excluded_weapons = g_config.combat.damage_alert_excluded_weapons;
-        }
-
-        _ = recreateTracker(activity_mod.MiningTracker, "mining_tracker", &g_mining_tracker, g_config.mining.enabled, g_config.mining.window_seconds, "Mining rate", "mining");
-
-        _ = recreateTracker(activity_mod.BountyTracker, "bounty_tracker", &g_bounty_tracker, g_config.bounty.enabled, g_config.bounty.window_seconds, "Bounty rate", "bounty");
-
-        ensureResourceTracker();
-
-        // Resume the paused worker only now that combat/mining trackers above are repointed (or nulled) - resuming any earlier risks it processing a queued event against trackers just destroyed.
+    if (g_chatlog_monitor) |monitor| {
+        // Started before adding characters, so addCharacter() queues work instead of blocking the message loop with log I/O.
+        startChatlogWorker(monitor);
         if (keep_chatlog_monitor) {
-            if (g_chatlog_monitor) |monitor| {
-                if (g_config.chatlog.useThreading) {
-                    monitor.startWorkerThread() catch |err| {
-                        slog.warn("Failed to resume chatlog worker thread: {}", .{err});
-                    };
-                }
-            }
             slog.info("Resumed chatlog monitoring without rescanning logs (threading: {})", .{g_config.chatlog.useThreading});
+        } else {
+            addChatlogCharacters(monitor, eve_windows);
+            slog.info("Reinitialized chatlog monitoring (threading: {})", .{g_config.chatlog.useThreading});
         }
     }
 
-    const hotkey_manager = createHotkeyManager() catch |err| {
+    createHotkeyManager(timer_hwnd) catch |err| {
         slog.err("Failed to create hotkey manager: {}", .{err});
         return err;
-    };
-    hotkey_manager.registerHotkeys(timer_hwnd) catch |err| {
-        slog.warn("Failed to register hotkeys: {}", .{err});
     };
     slog.debug("Reinitialized hotkey manager", .{});
 
@@ -1141,36 +691,20 @@ fn applyThumbnailPreview(json_data: []const u8) !void {
     }
 
     // Combat/Mining/Bounty/Resources overlays each live outside ThumbnailConfig, so they ride along as their own top-level keys in the same patch object.
-    if (obj.get("combat")) |combat_val| {
-        if (combat_val == .object) {
-            config_mod.Config.parseJsonCombatConfig(&g_config.combat, combat_val.object, g_allocator) catch |err| {
-                slog.err("Failed to apply combat overlay preview: {}", .{err});
-            };
-            g_config.combat.validate();
-        }
-    }
-    if (obj.get("mining")) |mining_val| {
-        if (mining_val == .object) {
-            config_mod.Config.parseJsonMiningConfig(&g_config.mining, mining_val.object, g_allocator) catch |err| {
-                slog.err("Failed to apply mining overlay preview: {}", .{err});
-            };
-            g_config.mining.validate();
-        }
-    }
-    if (obj.get("bounty")) |bounty_val| {
-        if (bounty_val == .object) {
-            config_mod.Config.parseJsonBountyConfig(&g_config.bounty, bounty_val.object, g_allocator) catch |err| {
-                slog.err("Failed to apply bounty overlay preview: {}", .{err});
-            };
-            g_config.bounty.validate();
-        }
-    }
-    if (obj.get("resources")) |resources_val| {
-        if (resources_val == .object) {
-            config_mod.Config.parseJsonResourcesConfig(&g_config.resources, resources_val.object, g_allocator) catch |err| {
-                slog.err("Failed to apply resources overlay preview: {}", .{err});
-            };
-            g_config.resources.validate();
+    inline for (.{
+        .{ "combat", config_mod.Config.parseJsonCombatConfig },
+        .{ "mining", config_mod.Config.parseJsonMiningConfig },
+        .{ "bounty", config_mod.Config.parseJsonBountyConfig },
+        .{ "resources", config_mod.Config.parseJsonResourcesConfig },
+    }) |section| {
+        const key = section[0];
+        if (obj.get(key)) |section_val| {
+            if (section_val == .object) {
+                section[1](&@field(g_config, key), section_val.object, g_allocator) catch |err| {
+                    slog.err("Failed to apply " ++ key ++ " overlay preview: {}", .{err});
+                };
+                @field(g_config, key).validate();
+            }
         }
     }
 

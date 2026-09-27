@@ -20,7 +20,7 @@ pub const LogLevel = enum {
 var current_level: LogLevel = .err;
 // std.debug.print's stderr handle is resolved once and cached forever on first use (Io.Threaded's
 // global debug-io singleton), so calling it before AllocConsole() permanently poisons it with a
-// stale pre-console handle. Guard it until main.zig confirms the console actually exists.
+// stale pre-console handle. Guard it until openDebugConsole() has actually created one.
 var console_ready = false;
 
 pub const LOG_FILE_NAME = "eve-maj.log";
@@ -46,9 +46,23 @@ pub fn setIo(io: std.Io) void {
     g_io = io;
 }
 
-/// Call once AllocConsole() has actually run; before that, std.debug.print's console mirror is skipped entirely (see console_ready doc comment).
-pub fn setConsoleReady(ready: bool) void {
-    console_ready = ready;
+/// Pops a console for debug logging, since the Windows GUI subsystem doesn't create one; std.debug.print's console mirror stays off until this runs (see console_ready).
+pub fn openDebugConsole() void {
+    _ = win32.AllocConsole();
+    console_ready = true;
+    // Closing the console window kills the process before any `defer` can run, so buffered lines are flushed from its ctrl handler instead.
+    _ = win32.SetConsoleCtrlHandler(consoleCtrlHandler, win32.TRUE);
+}
+
+fn consoleCtrlHandler(ctrl_type: win32.DWORD) callconv(.c) win32.BOOL {
+    switch (ctrl_type) {
+        win32.CTRL_C_EVENT, win32.CTRL_BREAK_EVENT, win32.CTRL_CLOSE_EVENT, win32.CTRL_LOGOFF_EVENT, win32.CTRL_SHUTDOWN_EVENT => {
+            flush();
+        },
+        else => {},
+    }
+    // Never claim to have handled it: this only flushes, the OS's default behavior for the event (e.g. terminating the process) still applies.
+    return win32.FALSE;
 }
 
 /// Lazily opens the log file so a session that never logs never touches disk.
