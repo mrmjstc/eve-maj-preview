@@ -1,9 +1,9 @@
 const std = @import("std");
-const win32 = @import("win32.zig");
+const win32 = @import("platform/win32.zig");
 const config_mod = @import("config.zig");
 const log = @import("log.zig");
 const update = @import("update.zig");
-const manager_mod = @import("manager.zig");
+const client_actions = @import("clients/actions.zig");
 const hotkeys_mod = @import("hotkeys.zig");
 const painter_mod = @import("painter.zig");
 const main_mod = @import("main.zig");
@@ -327,7 +327,7 @@ pub const TrayIcon = struct {
         if (command_id == win32.IDM_CLOSE_ALL_CLIENTS) {
             slog.info("Close all clients requested from system tray", .{});
             if (main_mod.g_scout_ptr) |scout_ptr| {
-                manager_mod.closeAllClients(scout_ptr.getWindows(), config);
+                client_actions.closeAllClients(scout_ptr.getWindows(), config);
             } else {
                 slog.err("Scout not available for close all clients", .{});
             }

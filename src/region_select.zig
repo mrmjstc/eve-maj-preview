@@ -1,8 +1,8 @@
 const std = @import("std");
-const win32 = @import("win32.zig");
-const gdi_overlay = @import("gdi_overlay.zig");
+const win32 = @import("platform/win32.zig");
+const gdi_overlay = @import("platform/gdi_overlay.zig");
 const protocol = @import("protocol.zig");
-const color_mod = @import("color.zig");
+const color_mod = @import("util/color.zig");
 const log = @import("log.zig");
 const slog = log.scoped("region_select");
 

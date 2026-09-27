@@ -1,11 +1,10 @@
 const std = @import("std");
-const win32 = @import("win32.zig");
-const gdi_overlay = @import("gdi_overlay.zig");
+const win32 = @import("platform/win32.zig");
+const gdi_overlay = @import("platform/gdi_overlay.zig");
 const scout = @import("scout.zig");
 const painter = @import("painter.zig");
 const input = @import("input.zig");
 const config_mod = @import("config.zig");
-const types = @import("types.zig");
 const notification_mod = @import("notifications/notification.zig");
 const hotkeys = @import("hotkeys.zig");
 const mouse_hook = @import("mouse_hook.zig");
@@ -15,11 +14,12 @@ const activity_mod = @import("activity_tracker.zig");
 const resource_tracker_mod = @import("resource_tracker.zig");
 const tts = @import("notifications/tts.zig");
 const sound = @import("notifications/sound.zig");
+const travel_left_behind = @import("travel/left_behind.zig");
 const tray = @import("tray.zig");
 const protocol = @import("protocol.zig");
 const update = @import("update.zig");
 const paste_upload = @import("paste_upload.zig");
-const fonts = @import("fonts.zig");
+const fonts = @import("platform/fonts.zig");
 const log = @import("log.zig");
 const slog = log.scoped("main");
 const build_options = @import("build_options");
@@ -326,7 +326,7 @@ fn onTimerTick() void {
     if (g_painter) |painter_ptr| {
         if (now.elapsedSince(g_last_travel_check_ms) >= TRAVEL_CHECK_INTERVAL_MS) {
             g_last_travel_check_ms = now;
-            painter_ptr.checkTravelLeftBehind(now);
+            travel_left_behind.check(painter_ptr, now);
         }
     }
 }
@@ -350,7 +350,7 @@ fn updateThrottledTracker(
     for (windows) |eve_window| {
         perWindow(tracker, painter_ptr, eve_window, now_ms);
     }
-    painter_ptr.processDirtyDpsOverlays();
+    painter_ptr.renderDirtyThumbnails(null);
 }
 
 fn pushDpsUpdate(tracker: *activity_mod.CombatTracker, painter_ptr: *painter.Painter, eve_window: scout.EveWindow, now_ms: i64) void {
@@ -429,7 +429,7 @@ fn sampleAndPushResourceStats(now_ms: i64) void {
         const stats = tracker.getStats(eve_window.process_id);
         painter_ptr.updateResourceStatsForCharacter(eve_window.hwnd, stats.cpu_percent, stats.ram_mb, stats.vram_mb, stats.has_vram);
     }
-    painter_ptr.processDirtyDpsOverlays();
+    painter_ptr.renderDirtyThumbnails(null);
 }
 
 /// Logs only when `kind` is given, so a mainImpl teardown defer racing process exit can opt out.
@@ -749,7 +749,7 @@ fn mainImpl(init: std.process.Init) !void {
     g_painter = try g_allocator.create(painter.Painter);
     {
         errdefer g_allocator.destroy(g_painter.?);
-        g_painter.?.* = try painter.Painter.init(g_allocator, g_io, &g_config);
+        g_painter.?.* = try painter.Painter.init(g_allocator, &g_config);
     }
     painter.g_painter_ptr = g_painter;
     input.g_painter_ptr = g_painter;
@@ -863,7 +863,7 @@ fn mainImpl(init: std.process.Init) !void {
     for (eve_windows) |*eve_window| {
         try g_painter.?.createThumbnail(eve_window, "");
         if (g_config.autoMovePosition.moveOnStartup) {
-            g_painter.?.moveClientToSavedPosition(eve_window.hwnd, eve_window.character_name);
+            g_painter.?.auto_move.moveToSavedPosition(&g_config, eve_window.hwnd, eve_window.character_name);
         }
     }
     g_painter.?.reflowIfRegionFitActive();
@@ -882,7 +882,7 @@ fn mainImpl(init: std.process.Init) !void {
         errdefer g_allocator.destroy(g_hotkey_manager.?);
         g_hotkey_manager.?.* = try hotkeys.HotkeyManager.init(g_allocator, &g_config, &g_global_settings, g_scout.?, g_painter.?);
     }
-    painter.g_hotkey_manager_ptr = g_hotkey_manager;
+    hotkeys.g_hotkey_manager_ptr = g_hotkey_manager;
     input.installFocusGrant(timer_hwnd);
     defer {
         if (g_hotkey_manager) |manager| {
@@ -890,7 +890,7 @@ fn mainImpl(init: std.process.Init) !void {
             manager.deinit();
             g_allocator.destroy(manager);
         }
-        painter.g_hotkey_manager_ptr = null;
+        hotkeys.g_hotkey_manager_ptr = null;
         mouse_hook.deinit();
         keyboard_hook.deinit();
         input.uninstallFocusGrant();
@@ -964,7 +964,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         manager.deinit();
         g_allocator.destroy(manager);
         g_hotkey_manager = null;
-        painter.g_hotkey_manager_ptr = null;
+        hotkeys.g_hotkey_manager_ptr = null;
         slog.debug("Cleaned up hotkey manager", .{});
     }
 
@@ -1027,7 +1027,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         slog.err("Failed to create painter: {}", .{err});
         return err;
     };
-    g_painter.?.* = painter.Painter.init(g_allocator, g_io, &g_config) catch |err| {
+    g_painter.?.* = painter.Painter.init(g_allocator, &g_config) catch |err| {
         g_allocator.destroy(g_painter.?);
         g_painter = null;
         slog.err("Failed to initialize painter: {}", .{err});
@@ -1149,7 +1149,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         slog.err("Failed to initialize hotkey manager: {}", .{err});
         return err;
     };
-    painter.g_hotkey_manager_ptr = g_hotkey_manager;
+    hotkeys.g_hotkey_manager_ptr = g_hotkey_manager;
 
     g_hotkey_manager.?.registerHotkeys(timer_hwnd) catch |err| {
         slog.warn("Failed to register hotkeys: {}", .{err});

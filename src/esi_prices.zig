@@ -1,6 +1,6 @@
 const std = @import("std");
 const webui = @import("webui");
-const http_client = @import("http_client.zig");
+const http_client = @import("util/http_client.zig");
 const log = @import("log.zig");
 const slog = log.scoped("esi_prices");
 

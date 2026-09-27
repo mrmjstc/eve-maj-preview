@@ -1,12 +1,14 @@
 const std = @import("std");
-const win32 = @import("win32.zig");
+const win32 = @import("platform/win32.zig");
 const config_mod = @import("config.zig");
 const types = @import("types.zig");
-const gdi_overlay = @import("gdi_overlay.zig");
-const color_mod = @import("color.zig");
+const gdi_overlay = @import("platform/gdi_overlay.zig");
+const color_mod = @import("util/color.zig");
 const log = @import("log.zig");
 const slog = log.scoped("list_view");
 const painter_mod = @import("painter.zig");
+const format = @import("util/format.zig");
+const drag_panel = @import("drag/panel.zig");
 const ThumbnailWindow = painter_mod.ThumbnailWindow;
 
 pub const LIST_WIDTH: i32 = 230;
@@ -78,7 +80,7 @@ pub const ListWindow = struct {
     // -1 forces a resize on the first render.
     last_win_w: i32 = -1,
     last_win_h: i32 = -1,
-    /// Hash of all render-affecting state from the previous completed render; lets render() skip the GDI redraw when nothing changed (mirrors Painter's renderSettingsEqual).
+    /// Hash of all render-affecting state from the previous completed render; lets render() skip the GDI redraw when nothing changed (mirrors thumbnail/overlay.zig's renderSettingsEqual).
     last_render_signature: ?u64 = null,
 
     pub fn init(
@@ -151,7 +153,7 @@ pub const ListWindow = struct {
         _ = win32.DestroyWindow(self.hwnd);
     }
 
-    /// Recreates `font` if name/size/weight changed since last built (e.g. a live-previewed edit, see PROTOCOL_PREVIEW_THUMBNAIL); mirrors Painter.getCachedFont's dirty-check for List View's single shared font.
+    /// Recreates `font` if name/size/weight changed since last built (e.g. a live-previewed edit, see PROTOCOL_PREVIEW_THUMBNAIL); mirrors FontCache.get's dirty-check for List View's single shared font.
     fn ensureFont(self: *ListWindow) !void {
         const cfg = self.config.display;
         try gdi_overlay.ensureFont(
@@ -370,7 +372,7 @@ pub const ListWindow = struct {
             if (thumb.last_bounty_isk_rate) |isk_rate| {
                 var isk_buf: [16]u8 = undefined;
                 const period_secs: f32 = if (bounty_cfg.isk_rate_unit == .hour) 3600.0 else 60.0;
-                const isk_abbrev = painter_mod.formatIskAbbrev(&isk_buf, isk_rate * period_secs);
+                const isk_abbrev = format.formatIskAbbrev(&isk_buf, isk_rate * period_secs);
                 writer.print("{s}{s}", .{ isk_prefix, isk_abbrev }) catch {};
             } else {
                 writer.print("{s}??", .{isk_prefix}) catch {};
@@ -463,8 +465,7 @@ pub const ListWindow = struct {
         const W: usize = @intCast(win_w);
         const H: usize = @intCast(win_h);
 
-        // Clear to fully transparent
-        @memset(ov.pixels[0 .. W * H], 0);
+        ov.clear();
 
         gdi_overlay.fillRect(ov.pixels, W, H, 0, 0, W, @intCast(HEADER_HEIGHT), self.withListAlpha(RGB_HEADER));
 
@@ -668,17 +669,17 @@ fn listWindowProc(
 ) callconv(.c) win32.LRESULT {
     switch (msg) {
         win32.WM_NCHITTEST => {
-            return gdi_overlay.panelHeaderHitTest(hwnd, lParam, HEADER_HEIGHT);
+            return drag_panel.panelHeaderHitTest(hwnd, lParam, HEADER_HEIGHT);
         },
 
         win32.WM_ENTERSIZEMOVE => {
-            gdi_overlay.beginPanelDrag(hwnd);
+            drag_panel.beginPanelDrag(hwnd);
             return 0;
         },
 
         win32.WM_MOVING => {
             const rect: *win32.RECT = @ptrFromInt(@as(usize, @intCast(lParam)));
-            gdi_overlay.updatePanelDragRect(hwnd, rect);
+            drag_panel.updatePanelDragRect(hwnd, rect);
             return win32.TRUE;
         },
 

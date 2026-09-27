@@ -1,16 +1,17 @@
 const std = @import("std");
-const win32 = @import("../win32.zig");
+const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const types = @import("../types.zig");
 const notification_mod = @import("notification.zig");
-const gdi_overlay = @import("../gdi_overlay.zig");
-const color_mod = @import("../color.zig");
+const gdi_overlay = @import("../platform/gdi_overlay.zig");
+const color_mod = @import("../util/color.zig");
 const log = @import("../log.zig");
 const slog = log.scoped("history_panel");
 
 // Only used by const-pointer params so the painter ↔ history_panel import cycle stays invisible at struct-size level; mirrors list_view.zig's own ThumbnailWindow re-import.
 const painter_mod = @import("../painter.zig");
 const notification_history_mod = @import("history.zig");
+const drag_panel = @import("../drag/panel.zig");
 
 const HEADER_HEIGHT: i32 = 18;
 const FOOTER_HEIGHT: i32 = 18;
@@ -372,7 +373,7 @@ pub const NotifInfoWindow = struct {
         const W: usize = @intCast(win_w);
         const H: usize = @intCast(win_h);
 
-        @memset(ov.pixels[0 .. W * H], 0);
+        ov.clear();
 
         const show_filters = self.config.display.notifInfoPanelShowCategoryFilters;
         const footer_top: i32 = if (show_filters) @max(HEADER_HEIGHT, win_h - FOOTER_HEIGHT) else win_h;
@@ -622,28 +623,28 @@ fn notifInfoWindowProc(
 ) callconv(.c) win32.LRESULT {
     switch (msg) {
         win32.WM_NCHITTEST => {
-            return gdi_overlay.panelHeaderHitTest(hwnd, lParam, HEADER_HEIGHT);
+            return drag_panel.panelHeaderHitTest(hwnd, lParam, HEADER_HEIGHT);
         },
 
         win32.WM_ENTERSIZEMOVE => {
-            gdi_overlay.beginPanelDrag(hwnd);
+            drag_panel.beginPanelDrag(hwnd);
 
             if (painter_mod.g_painter_ptr) |p| {
                 // No single character owns this panel, so nothing is excluded - every saved position shows as a ghost.
-                p.showGhostOverlay("");
+                p.ghost_overlay.show(p, "");
             }
             return 0;
         },
 
         win32.WM_MOVING => {
             const rect: *win32.RECT = @ptrFromInt(@as(usize, @intCast(lParam)));
-            gdi_overlay.updatePanelDragRect(hwnd, rect);
+            drag_panel.updatePanelDragRect(hwnd, rect);
             return win32.TRUE;
         },
 
         win32.WM_EXITSIZEMOVE => {
             if (painter_mod.g_painter_ptr) |p| {
-                p.hideGhostOverlay();
+                p.ghost_overlay.hide();
                 if (p.history_panel.window) |*niw| {
                     niw.saveWindowPosition();
                 }

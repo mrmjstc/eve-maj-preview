@@ -2,8 +2,8 @@
 // trigger (e.g. plain "Shift"). Matches are re-posted as WM_HOTKEY, mirroring mouse_hook.zig, so
 // HotkeyManager.handleHotkeyPress doesn't need to know whether a press came from mouse or keyboard.
 const std = @import("std");
-const win32 = @import("win32.zig");
-const vk = @import("virtual_keys.zig");
+const win32 = @import("platform/win32.zig");
+const vk = @import("platform/virtual_keys.zig");
 const protocol = @import("protocol.zig");
 const log = @import("log.zig");
 const slog = log.scoped("keyboard_hook");

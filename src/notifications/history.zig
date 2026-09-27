@@ -1,4 +1,4 @@
-const win32 = @import("../win32.zig");
+const win32 = @import("../platform/win32.zig");
 const notification = @import("notification.zig");
 
 /// Mirrors config.zig's DisplayConfig.NOTIF_PANEL_MAX_ROWS_MAX.

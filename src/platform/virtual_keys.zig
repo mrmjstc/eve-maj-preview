@@ -1,6 +1,6 @@
 const std = @import("std");
 const win32 = @import("win32.zig");
-const log = @import("log.zig");
+const log = @import("../log.zig");
 const slog = log.scoped("virtual_keys");
 
 pub const VK_F1: u32 = 0x70;

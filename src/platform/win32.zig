@@ -989,6 +989,42 @@ pub fn queryProcessExePath(process_id: DWORD, exe_path_buf: *[260:0]u8) ?[]const
     return exe_path_buf[0..@intCast(path_len)];
 }
 
+/// Toggles WS_EX_TRANSPARENT on an already-created window, so clickThrough can change live without recreating it.
+pub fn setClickThroughStyle(hwnd: HWND, enabled: bool) void {
+    const current = GetWindowLongPtrA(hwnd, GWL_EXSTYLE);
+    const new_style = if (enabled) current | WS_EX_TRANSPARENT else current & ~@as(isize, WS_EX_TRANSPARENT);
+    if (new_style != current) {
+        _ = SetWindowLongPtrA(hwnd, GWL_EXSTYLE, new_style);
+    }
+}
+
+/// True if hwnd belongs to this process, so its own dialogs/panels never get recorded as a "last non-EVE app".
+pub fn isOwnProcessWindow(hwnd: HWND) bool {
+    var process_id: DWORD = 0;
+    _ = GetWindowThreadProcessId(hwnd, &process_id);
+    return process_id != 0 and process_id == GetCurrentProcessId();
+}
+
+/// True if hwnd is the desktop shell (Progman or a WorkerW), which isn't a real "app" to return focus to.
+pub fn isDesktopShellWindow(hwnd: HWND) bool {
+    var class_buf: [32]u8 = undefined;
+    const class_name = getClassNameBuf(hwnd, &class_buf) orelse return false;
+    return std.mem.eql(u8, class_name, "Progman") or std.mem.eql(u8, class_name, "WorkerW");
+}
+
+/// True if hwnd belongs to explorer.exe (taskbar, tray, Start menu, etc.), which should always be able to sit above our thumbnails.
+pub fn isExplorerOwned(hwnd: HWND) bool {
+    var process_id: DWORD = 0;
+    _ = GetWindowThreadProcessId(hwnd, &process_id);
+    if (process_id == 0) return false;
+
+    var exe_path: [260:0]u8 = undefined;
+    const path_slice = queryProcessExePath(process_id, &exe_path) orelse return false;
+    const suffix = "\\explorer.exe";
+    if (path_slice.len < suffix.len) return false;
+    return std.ascii.eqlIgnoreCase(path_slice[path_slice.len - suffix.len ..], suffix);
+}
+
 /// Full path of the current process's own executable. Replaces std.fs.selfExePath, removed in Zig 0.16.
 pub fn selfExePath(buf: []u8) ![]const u8 {
     const len = GetModuleFileNameA(null, @ptrCast(buf.ptr), @intCast(buf.len));

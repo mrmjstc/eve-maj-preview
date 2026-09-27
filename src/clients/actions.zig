@@ -1,9 +1,9 @@
 const std = @import("std");
-const win32 = @import("win32.zig");
-const config_mod = @import("config.zig");
-const scout_mod = @import("scout.zig");
-const log = @import("log.zig");
-const slog = log.scoped("manager");
+const win32 = @import("../platform/win32.zig");
+const config_mod = @import("../config.zig");
+const scout_mod = @import("../scout.zig");
+const log = @import("../log.zig");
+const slog = log.scoped("client_actions");
 
 /// Minimize all EVE client windows (hotkey action), regardless of their current state
 pub fn minimizeAllClients(eve_windows: []const scout_mod.EveWindow) void {

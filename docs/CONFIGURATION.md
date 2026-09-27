@@ -923,7 +923,7 @@ Pressing **hotkeySuspend** fires a `HotkeySuspend` notification on every client 
 - **hotkeyCycleNotified**: Cycle forward to the character that most recently triggered a notification (see [Notified-Character Cycling](#notified-character-cycling))
 - **hotkeyPreviousNotified**: Cycle backward through recently notified characters
 - **hotkeyMoveToSavedPositions**: Move all EVE client windows to their saved positions (respects per-character `excludeFromAutoMove`)
-**Virtual Key Codes**: See [virtual_keys.zig](src/virtual_keys.zig) for full list
+**Virtual Key Codes**: See [virtual_keys.zig](../src/platform/virtual_keys.zig) for full list
 
 **Modifier Combos**: Any global hotkey field, hotkey group key, per-character hotkey, or profile-switch hotkey can be prefixed with one or more modifiers, combined with `+`: `Ctrl`/`Control`, `Alt`, `Shift`, `Win`/`LWin`/`RWin` (e.g. `"Ctrl+Alt+F9"`).
 

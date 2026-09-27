@@ -1,11 +1,11 @@
 const std = @import("std");
-const win32 = @import("win32.zig");
+const win32 = @import("platform/win32.zig");
 const log = @import("log.zig");
-const vk = @import("virtual_keys.zig");
+const vk = @import("platform/virtual_keys.zig");
 const state_mod = @import("state.zig");
 const types = @import("types.zig");
 const notification_mod = @import("notifications/notification.zig");
-const color = @import("color.zig");
+const color = @import("util/color.zig");
 
 const slog = log.scoped("config");
 
@@ -3954,7 +3954,7 @@ pub const Config = struct {
         return std.fmt.parseInt(u32, hex_str, 16) catch error.InvalidColorFormat;
     }
 
-    /// Skips no-op updates - a live-preview resend of the same font name would otherwise dangle Painter's borrowed cached_fonts pointer.
+    /// Skips no-op updates - a live-preview resend of the same font name would otherwise dangle the font-name slices thumbnails and RenderSettings borrow from config.
     fn updateOwnedFontName(allocator: std.mem.Allocator, field: *[]const u8, v: std.json.Value) !void {
         if (v != .string or std.mem.eql(u8, field.*, v.string)) return;
         const old_font = field.*;

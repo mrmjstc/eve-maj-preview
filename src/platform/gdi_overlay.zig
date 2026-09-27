@@ -1,7 +1,7 @@
 const std = @import("std");
 const win32 = @import("win32.zig");
-const types = @import("types.zig");
-const log = @import("log.zig");
+const types = @import("../types.zig");
+const log = @import("../log.zig");
 const slog = log.scoped("gdi_overlay");
 
 /// Top-down 32bpp DIB section selected into its own memory DC, for GDI text/shape rendering
@@ -13,6 +13,11 @@ pub const OverlayBitmap = struct {
     width: usize,
     height: usize,
     old_bitmap: win32.HANDLE,
+
+    /// Clears every pixel to fully transparent.
+    pub fn clear(self: *const OverlayBitmap) void {
+        @memset(self.pixels[0 .. self.width * self.height], 0);
+    }
 
     pub fn create(screen_dc: win32.HDC, width: i32, height: i32) !OverlayBitmap {
         const mem_dc = win32.CreateCompatibleDC(screen_dc) orelse return error.CreateDCFailed;
@@ -331,49 +336,7 @@ pub fn registerWindowClass(
     }
 }
 
-const HTCAPTION: win32.LRESULT = 2;
-const HTCLIENT: win32.LRESULT = 1;
-
-// Anchors a drag to the cursor position at WM_ENTERSIZEMOVE, since WM_MOVING's rect reflects prior snap overrides; a single shared pair is safe since only one window can be mid-drag at a time.
-var g_panel_drag_anchor_cursor: win32.POINT = .{ .x = 0, .y = 0 };
-var g_panel_drag_anchor_rect: win32.RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
-
-/// WM_NCHITTEST for a panel whose header (the top `header_height` px) is its only drag handle.
-pub fn panelHeaderHitTest(hwnd: win32.HWND, lParam: win32.LPARAM, header_height: i32) win32.LRESULT {
-    const sy: i32 = @as(i32, @intCast(@as(i16, @truncate(lParam >> 16))));
-    var wr: win32.RECT = undefined;
-    _ = win32.GetWindowRect(hwnd, &wr);
-    const cy = sy - wr.top;
-    if (cy < header_height) return HTCAPTION;
-    return HTCLIENT;
-}
-
-/// Call from WM_ENTERSIZEMOVE before any other drag-start handling.
-pub fn beginPanelDrag(hwnd: win32.HWND) void {
-    _ = win32.GetCursorPos(&g_panel_drag_anchor_cursor);
-    _ = win32.GetWindowRect(hwnd, &g_panel_drag_anchor_rect);
-}
-
-/// Call from WM_MOVING to recompute the truly-intended position from the absolute cursor delta since drag start (ignoring Windows' possibly already-snapped `rect`) and snap it via input.applySnapping.
-pub fn updatePanelDragRect(hwnd: win32.HWND, rect: *win32.RECT) void {
-    const width = rect.right - rect.left;
-    const height = rect.bottom - rect.top;
-
-    var cursor: win32.POINT = undefined;
-    _ = win32.GetCursorPos(&cursor);
-    const intended_x = g_panel_drag_anchor_rect.left + (cursor.x - g_panel_drag_anchor_cursor.x);
-    const intended_y = g_panel_drag_anchor_rect.top + (cursor.y - g_panel_drag_anchor_cursor.y);
-
-    const input_mod = @import("input.zig");
-    const snapped = input_mod.applySnapping(intended_x, intended_y, width, height, hwnd);
-
-    rect.left = snapped.x;
-    rect.top = snapped.y;
-    rect.right = snapped.x + width;
-    rect.bottom = snapped.y + height;
-}
-
-/// For a single-font-at-a-time caller; painter.zig's per-slot/DPI cache (`Painter.getCachedFont`) needs its own since it juggles many fonts at once.
+/// For a single-font-at-a-time caller; thumbnail/font_cache.zig's per-slot/DPI `FontCache` needs its own since it juggles many fonts at once.
 pub fn ensureFont(
     allocator: std.mem.Allocator,
     context: []const u8,
@@ -427,3 +390,106 @@ pub fn ensureFont(
     cached_size.* = want_size;
     cached_weight.* = want_weight;
 }
+
+const HINT_BOX_CLASS_NAME = "EVE_HINT_BOX_CLASS";
+// Same per-line padding the thumbnail overlay gives its text runs.
+const HINT_LINE_PAD_X = 5;
+const HINT_LINE_PAD_Y = 2;
+
+pub fn registerHintBoxClass(instance: win32.HINSTANCE) !void {
+    try registerWindowClass(instance, win32.DefWindowProcA, HINT_BOX_CLASS_NAME, null);
+}
+
+fn hintLineSize(dc: win32.HDC, text: []const u8) struct { width: usize, height: usize } {
+    const size = measureTextSizeUtf8(256, dc, text);
+    return .{
+        .width = @intCast(@max(0, size.cx) + HINT_LINE_PAD_X * 2),
+        .height = @intCast(@max(0, size.cy) + HINT_LINE_PAD_Y * 2),
+    };
+}
+
+/// A topmost, click-through two-line hint box centered in given bounds, shared by dragging and region select. Created lazily, hidden (not destroyed) between uses.
+pub const HintBox = struct {
+    hwnd: ?win32.HWND = null,
+    bitmap: ?OverlayBitmap = null,
+
+    pub fn deinit(self: *HintBox) void {
+        if (self.bitmap) |bitmap| bitmap.destroy();
+        if (self.hwnd) |hwnd| _ = win32.DestroyWindow(hwnd);
+    }
+
+    pub fn show(self: *HintBox, instance: win32.HINSTANCE, font: win32.HFONT, text_color: u32, line1: []const u8, line2: []const u8, bounds: win32.RECT) void {
+        const init_dc = win32.GetDC(null) orelse return;
+        defer _ = win32.ReleaseDC(null, init_dc);
+        const old_measure_font = win32.SelectObject(init_dc, font);
+        const dims1 = hintLineSize(init_dc, line1);
+        const dims2 = hintLineSize(init_dc, line2);
+        if (old_measure_font) |of| _ = win32.SelectObject(init_dc, of);
+
+        const line_gap = 4;
+        const box_padding = 10;
+        const content_width = @max(dims1.width, dims2.width);
+        const content_height = dims1.height + dims2.height + line_gap;
+        const width: i32 = @intCast(content_width + box_padding * 2);
+        const height: i32 = @intCast(content_height + box_padding * 2);
+
+        const x = bounds.left + @divTrunc((bounds.right - bounds.left) - width, 2);
+        const y = bounds.top + @divTrunc((bounds.bottom - bounds.top) - height, 2);
+
+        if (self.hwnd) |hwnd| {
+            _ = win32.SetWindowPos(hwnd, win32.HWND_TOPMOST, x, y, width, height, win32.SWP_NOACTIVATE);
+        } else {
+            self.hwnd = win32.CreateWindowExA(
+                win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_NOACTIVATE | win32.WS_EX_TRANSPARENT,
+                HINT_BOX_CLASS_NAME,
+                "",
+                win32.WS_POPUP,
+                x,
+                y,
+                width,
+                height,
+                null,
+                null,
+                instance,
+                null,
+            ) orelse {
+                slog.err("Failed to create hint box window", .{});
+                return;
+            };
+        }
+
+        const hwnd = self.hwnd.?;
+
+        if (OverlayBitmap.needsResize(self.bitmap, width, height)) {
+            OverlayBitmap.recreate(&self.bitmap, init_dc, width, height) catch |err| {
+                slog.err("Failed to allocate hint box bitmap: {}", .{err});
+                return;
+            };
+        }
+
+        const overlay = &self.bitmap.?;
+        fillRect(overlay.pixels, overlay.width, overlay.height, 0, 0, overlay.width, overlay.height, HINT_BG_COLOR);
+
+        const old_font = win32.SelectObject(overlay.mem_dc, font);
+        defer {
+            if (old_font) |of| _ = win32.SelectObject(overlay.mem_dc, of);
+        }
+
+        drawTextUtf8(256, overlay.mem_dc, box_padding + HINT_LINE_PAD_X, box_padding + HINT_LINE_PAD_Y, line1, text_color);
+        fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, box_padding, box_padding, dims1.width, dims1.height);
+
+        const line2_y: i32 = @intCast(box_padding + dims1.height + line_gap);
+        drawTextUtf8(256, overlay.mem_dc, box_padding + HINT_LINE_PAD_X, line2_y + HINT_LINE_PAD_Y, line2, text_color);
+        fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, box_padding, line2_y, dims2.width, dims2.height);
+
+        presentLayered(hwnd, overlay, 255);
+
+        _ = win32.ShowWindow(hwnd, win32.SW_SHOWNOACTIVATE);
+    }
+
+    pub fn hide(self: *HintBox) void {
+        if (self.hwnd) |hwnd| {
+            _ = win32.ShowWindow(hwnd, win32.SW_HIDE);
+        }
+    }
+};

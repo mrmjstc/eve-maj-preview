@@ -2,8 +2,8 @@
 // (mirroring keyboard_hook.zig's WH_KEYBOARD_LL) and re-posts matches as WM_HOTKEY, keeping
 // hotkey dispatch agnostic to whether a press came from the mouse or the keyboard.
 const std = @import("std");
-const win32 = @import("win32.zig");
-const vk = @import("virtual_keys.zig");
+const win32 = @import("platform/win32.zig");
+const vk = @import("platform/virtual_keys.zig");
 const log = @import("log.zig");
 const slog = log.scoped("mouse_hook");
 

@@ -1,5 +1,5 @@
 const std = @import("std");
-const log = @import("log.zig");
+const log = @import("../log.zig");
 const slog = log.scoped("http_client");
 
 pub const FetchOptions = struct {

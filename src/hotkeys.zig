@@ -1,20 +1,25 @@
 const std = @import("std");
-const win32 = @import("win32.zig");
+const win32 = @import("platform/win32.zig");
 const input = @import("input.zig");
 const paste_upload = @import("paste_upload.zig");
 const scout = @import("scout.zig");
 const config_mod = @import("config.zig");
-const vk = @import("virtual_keys.zig");
+const vk = @import("platform/virtual_keys.zig");
 const mouse_hook = @import("mouse_hook.zig");
 const keyboard_hook = @import("keyboard_hook.zig");
 const log = @import("log.zig");
 const slog = log.scoped("hotkeys");
 const painter_mod = @import("painter.zig");
+const client_actions = @import("clients/actions.zig");
+const auto_minimize = @import("clients/auto_minimize.zig");
 const tray_mod = @import("tray.zig");
 const main_mod = @import("main.zig");
 const protocol = @import("protocol.zig");
 
 // Static buffers for profile names; must stay valid until the async WM_SWITCH_PROFILE handler runs.
+/// Set by main.zig for code that can't be handed the manager directly (window procs, Painter, travel).
+pub var g_hotkey_manager_ptr: ?*HotkeyManager = null;
+
 var g_profile_cycle_buffer: [256]u8 = undefined;
 var g_profile_switch_buffer: [256]u8 = undefined;
 
@@ -205,6 +210,8 @@ pub const HotkeyManager = struct {
     last_all_clients_cycle_name: ?[]const u8 = null,
     /// HWND (not name) cycleNotLoggedIn() last jumped to; every not-logged-in window shares the name "EVE" so name can't disambiguate.
     last_not_logged_in_cycle_hwnd: ?win32.HWND = null,
+    /// Most recent foreground window belonging to neither an EVE client nor this process; ReturnToLastApp's target, recorded by Painter's foreground hook.
+    last_non_eve_foreground: ?win32.HWND = null,
     /// Fallback exclusion list for shift-click-excluded characters that belong to no hotkey group; checked by isCharacterExcluded().
     manually_excluded_characters: std.ArrayList([]const u8) = .empty,
     /// Cache for buildCharacterOrderedIndices: character-name -> configured-order-index, rebuilt only when characterOrderSignature detects the character list's names/order actually changed. Avoids rebuilding a StringHashMap on every cycle-hotkey press, since config.characters changes far less often than hotkeys are pressed.
@@ -868,7 +875,7 @@ pub const HotkeyManager = struct {
 
     fn handleMinimizeAll(self: *HotkeyManager) void {
         slog.info("Minimize all hotkey pressed", .{});
-        self.painter.minimizeAllClients();
+        client_actions.minimizeAllClients(self.scout.getWindows());
     }
 
     pub fn handleMinimizeAllRequest(self: *HotkeyManager) void {
@@ -878,7 +885,7 @@ pub const HotkeyManager = struct {
 
     fn handleCloseAll(self: *HotkeyManager) void {
         slog.info("Close all hotkey pressed", .{});
-        self.painter.closeAllClients();
+        client_actions.closeAllClients(self.scout.getWindows(), self.config);
     }
 
     pub fn handleCloseAllRequest(self: *HotkeyManager) void {
@@ -888,7 +895,7 @@ pub const HotkeyManager = struct {
 
     fn handleMoveToSavedPositions(self: *HotkeyManager) void {
         slog.info("Move to saved positions hotkey pressed", .{});
-        self.painter.moveAllClientsToSavedPositions();
+        client_actions.moveAllClientsToSavedPositions(self.scout.getWindows(), self.config, self.painter);
     }
 
     pub fn handleMoveToSavedPositionsRequest(self: *HotkeyManager) void {
@@ -897,14 +904,14 @@ pub const HotkeyManager = struct {
     }
 
     fn handleReturnToLastApp(self: *HotkeyManager) void {
-        const target = self.painter.last_non_eve_foreground orelse {
+        const target = self.last_non_eve_foreground orelse {
             slog.debug("Return to last app hotkey pressed - no previous non-EVE window recorded", .{});
             return;
         };
 
         if (!win32.isWindow(target)) {
             slog.debug("Return to last app hotkey pressed - previous window no longer exists", .{});
-            self.painter.last_non_eve_foreground = null;
+            self.last_non_eve_foreground = null;
             return;
         }
 
@@ -972,7 +979,7 @@ pub const HotkeyManager = struct {
 
     fn handleToggleAutoMinimize(self: *HotkeyManager) void {
         slog.info("Toggle auto-minimize hotkey pressed", .{});
-        self.painter.toggleAutoMinimize();
+        auto_minimize.toggle(self.painter);
     }
 
     pub fn handleToggleVisibilityRequest(self: *HotkeyManager) void {
