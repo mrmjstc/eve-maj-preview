@@ -1,7 +1,7 @@
 const std = @import("std");
 const win32 = @import("platform/win32.zig");
 const gdi_overlay = @import("platform/gdi_overlay.zig");
-const scout = @import("scout.zig");
+const scout = @import("clients/scout.zig");
 const painter = @import("painter.zig");
 const focus_grant = @import("platform/focus_grant.zig");
 const activation = @import("clients/activation.zig");
@@ -390,7 +390,7 @@ fn teardownResourceTracker() void {
 fn sampleAndPushResourceStats(now_ms: i64) void {
     const tracker = g_resource_tracker orelse return;
     const scout_ptr = scout.g_scout_ptr orelse return;
-    const windows = scout_ptr.windows.items;
+    const windows = scout_ptr.getWindows();
     tracker.sampleAll(windows, now_ms);
 
     const painter_ptr = painter.g_painter_ptr orelse return;
@@ -703,10 +703,7 @@ fn mainImpl(init: std.process.Init) !void {
     }
 
     const scout_ptr = try g_allocator.create(scout.Scout);
-    {
-        errdefer g_allocator.destroy(scout_ptr);
-        scout_ptr.* = try scout.Scout.init(g_allocator, &g_config);
-    }
+    scout_ptr.* = scout.Scout.init(g_allocator, &g_config);
     scout_ptr.setGlobalInstance();
     defer {
         scout_ptr.deinit();

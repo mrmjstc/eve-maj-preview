@@ -2,7 +2,7 @@ const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const types = @import("../types.zig");
-const scout_mod = @import("../scout.zig");
+const scout_mod = @import("../clients/scout.zig");
 const log = @import("../log.zig");
 const slog = log.scoped("layout");
 // Only for the ThumbnailWindow type; painter.zig imports this module back.

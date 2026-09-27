@@ -14,7 +14,7 @@ const auto_move_mod = @import("clients/auto_move.zig");
 const travel_left_behind = @import("travel/left_behind.zig");
 const hotkeys_mod = @import("hotkeys/manager.zig");
 const drag_overlays_mod = @import("drag/overlays.zig");
-const scout_mod = @import("scout.zig");
+const scout_mod = @import("clients/scout.zig");
 const list_view = @import("list_view.zig");
 const history_panel_mod = @import("notifications/history_panel.zig");
 const gdi_overlay = @import("platform/gdi_overlay.zig");
@@ -200,29 +200,13 @@ pub const Painter = struct {
 
         try painter.registerWindowClass();
 
-        painter.focus_event_hook = win32.SetWinEventHook(
-            win32.EVENT_SYSTEM_FOREGROUND,
-            win32.EVENT_SYSTEM_FOREGROUND,
-            null,
-            winEventProc,
-            0,
-            0,
-            win32.WINEVENT_OUTOFCONTEXT,
-        );
+        painter.focus_event_hook = win32.setWinEventHook(win32.EVENT_SYSTEM_FOREGROUND, winEventProc);
 
         if (painter.focus_event_hook == null) {
             slog.err("Failed to set up focus event hook", .{});
         }
 
-        painter.destroy_event_hook = win32.SetWinEventHook(
-            win32.EVENT_OBJECT_DESTROY,
-            win32.EVENT_OBJECT_DESTROY,
-            null,
-            windowDestroyProc,
-            0,
-            0,
-            win32.WINEVENT_OUTOFCONTEXT,
-        );
+        painter.destroy_event_hook = win32.setWinEventHook(win32.EVENT_OBJECT_DESTROY, windowDestroyProc);
 
         if (painter.destroy_event_hook == null) {
             slog.err("Failed to set up destroy event hook", .{});
@@ -1499,22 +1483,7 @@ fn makeThumbnailProps(width: i32, height: i32, flags: u32) win32.DWM_THUMBNAIL_P
     };
 }
 
-fn windowDestroyProc(
-    hWinEventHook: win32.HANDLE,
-    event: win32.DWORD,
-    hwnd: win32.HWND,
-    idObject: win32.LONG,
-    idChild: win32.LONG,
-    idEventThread: win32.DWORD,
-    dwmsEventTime: win32.DWORD,
-) callconv(.c) void {
-    _ = hWinEventHook;
-    _ = event;
-    _ = idObject;
-    _ = idChild;
-    _ = idEventThread;
-    _ = dwmsEventTime;
-
+fn windowDestroyProc(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, _: win32.LONG, _: win32.LONG, _: win32.DWORD, _: win32.DWORD) callconv(.c) void {
     const painter = g_painter_ptr orelse return;
 
     const index = painter.resolveThumbnailIndexForDestroy(hwnd) orelse return;
@@ -1529,22 +1498,7 @@ fn regionSelectFinishedCallback() void {
     painter.restoreThumbnailsAfterRegionSelect();
     painter.hint_box.hide();
 }
-fn winEventProc(
-    hWinEventHook: win32.HANDLE,
-    event: win32.DWORD,
-    hwnd: win32.HWND,
-    idObject: win32.LONG,
-    idChild: win32.LONG,
-    idEventThread: win32.DWORD,
-    dwmsEventTime: win32.DWORD,
-) callconv(.c) void {
-    _ = hWinEventHook;
-    _ = event;
-    _ = idObject;
-    _ = idChild;
-    _ = idEventThread;
-    _ = dwmsEventTime;
-
+fn winEventProc(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, _: win32.LONG, _: win32.LONG, _: win32.DWORD, _: win32.DWORD) callconv(.c) void {
     const painter = g_painter_ptr orelse return;
 
     // O(1) lookup: Check if it's one of our thumbnail windows (early exit - most common case)

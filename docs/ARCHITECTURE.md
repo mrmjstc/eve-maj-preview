@@ -53,7 +53,7 @@ Each tracked character is a `ThumbnailWindow`: `hwnd`/`text_hwnd`/`thumbnail_id`
 
 ## Window discovery → rendering pipeline
 
-**`scout.zig`**'s `Scout` owns discovery. `scanForEveWindows()` drives `EnumWindows`, filtering each window by class name against `config.windowFilters` (cheap pre-filter) before checking the process executable path (cached per-PID). `trinityWindow`-class windows get a character name parsed from the title; other filters use their configured `name`. Three `SetWinEventHook`s (`EVENT_OBJECT_NAMECHANGE`/`CREATE`/`DESTROY`) catch window lifecycle events between polls; `Scout.update()` reconciles these with the periodic full rescan.
+**`clients/scout.zig`**'s `Scout` owns discovery. `scanForEveWindows()` drives `EnumWindows`, matching each window against `config.windowFilters` by class name first (cheap pre-filter), then by executable path, which is checked once per process and cached by PID; `findMatchingFilter` is the one matcher used for both new windows and re-checking tracked ones after a config reload. `trinityWindow`-class windows get a character name parsed from the title; other filters use their configured `name`. Three `SetWinEventHook`s (`EVENT_OBJECT_NAMECHANGE`/`CREATE`/`DESTROY`) catch window lifecycle events between polls; `Scout.update()` reconciles these with the periodic full rescan.
 
 Rendering is split four ways:
 

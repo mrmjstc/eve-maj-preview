@@ -1,6 +1,6 @@
 const std = @import("std");
 const win32 = @import("platform/win32.zig");
-const scout = @import("scout.zig");
+const scout = @import("clients/scout.zig");
 const log = @import("log.zig");
 const slog = log.scoped("resource_tracker");
 

@@ -6,7 +6,7 @@ const update = @import("update.zig");
 const client_actions = @import("clients/actions.zig");
 const hotkeys_mod = @import("hotkeys/manager.zig");
 const painter_mod = @import("painter.zig");
-const scout_mod = @import("scout.zig");
+const scout_mod = @import("clients/scout.zig");
 const main_mod = @import("main.zig");
 const slog = log.scoped("tray");
 
