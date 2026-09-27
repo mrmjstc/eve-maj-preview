@@ -6,9 +6,9 @@ const painter = @import("painter.zig");
 const input = @import("input.zig");
 const config_mod = @import("config.zig");
 const notification_mod = @import("notifications/notification.zig");
-const hotkeys = @import("hotkeys.zig");
-const mouse_hook = @import("mouse_hook.zig");
-const keyboard_hook = @import("keyboard_hook.zig");
+const hotkeys = @import("hotkeys/manager.zig");
+const mouse_hook = @import("hotkeys/mouse_hook.zig");
+const keyboard_hook = @import("hotkeys/keyboard_hook.zig");
 const chatlog = @import("chatlog.zig");
 const activity_mod = @import("activity_tracker.zig");
 const resource_tracker_mod = @import("resource_tracker.zig");
@@ -18,7 +18,7 @@ const travel_left_behind = @import("travel/left_behind.zig");
 const tray = @import("tray.zig");
 const protocol = @import("protocol.zig");
 const update = @import("update.zig");
-const paste_upload = @import("paste_upload.zig");
+const paste_upload = @import("hotkeys/paste_upload.zig");
 const fonts = @import("platform/fonts.zig");
 const log = @import("log.zig");
 const slog = log.scoped("main");
@@ -37,7 +37,6 @@ var g_allocator: std.mem.Allocator = undefined;
 var g_io: std.Io = undefined;
 var g_scout: ?*scout.Scout = null;
 var g_painter: ?*painter.Painter = null;
-var g_hotkey_manager: ?*hotkeys.HotkeyManager = null;
 var g_chatlog_monitor: ?*chatlog.ChatlogMonitor = null;
 var g_combat_tracker: ?*activity_mod.CombatTracker = null;
 var g_mining_tracker: ?*activity_mod.MiningTracker = null;
@@ -76,14 +75,14 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
                 // Safety check: only access g_config if it's been initialized (g_config_ptr is set after initialization)
                 const profile_name = if (g_config_ptr) |cfg| cfg.profile_name else "";
                 const cfg = g_config_ptr orelse &g_config;
-                icon.handleTrayMessage(lParam, profile_name, cfg, g_hotkey_manager, g_painter);
+                icon.handleTrayMessage(lParam, profile_name, cfg, hotkeys.g_hotkey_manager_ptr, g_painter);
             }
             return 0;
         },
         win32.WM_COMMAND => {
             const command_id = @as(u16, @truncate(wParam));
             const cfg = g_config_ptr orelse &g_config;
-            if (tray.TrayIcon.handleMenuCommand(command_id, cfg, g_allocator, g_hotkey_manager)) {
+            if (tray.TrayIcon.handleMenuCommand(command_id, cfg, g_allocator, hotkeys.g_hotkey_manager_ptr)) {
                 return 0;
             }
             return 0;
@@ -97,7 +96,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         win32.WM_HOTKEY => {
             const id: c_int = @intCast(wParam);
             if (!input.handleFocusGrantWmHotkey(id)) {
-                if (g_hotkey_manager) |manager| {
+                if (hotkeys.g_hotkey_manager_ptr) |manager| {
                     manager.handleHotkeyPress(id, lParam);
                 }
             }
@@ -105,7 +104,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         },
         win32.WM_HOTKEYS_STATE_CHANGED => {
             if (g_painter) |painter_ptr| {
-                if (g_hotkey_manager) |manager| {
+                if (hotkeys.g_hotkey_manager_ptr) |manager| {
                     painter_ptr.notifyAll(.{ .ntype = .HotkeySuspend, .state = if (manager.areHotkeysSuspended()) .suspended else .resumed });
                 }
             }
@@ -170,12 +169,12 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
                 },
                 win32.PROTOCOL_REVERT_PREVIEW => revertThumbnailPreview(),
                 win32.PROTOCOL_DIALOG_SUSPEND_HOTKEYS => {
-                    if (g_hotkey_manager) |manager| {
-                        manager.dialogSuspendHotkeys(hwnd);
+                    if (hotkeys.g_hotkey_manager_ptr) |manager| {
+                        manager.dialogSuspendHotkeys();
                     }
                 },
                 win32.PROTOCOL_DIALOG_RESUME_HOTKEYS => {
-                    if (g_hotkey_manager) |manager| {
+                    if (hotkeys.g_hotkey_manager_ptr) |manager| {
                         manager.dialogResumeHotkeys(hwnd);
                     }
                 },
@@ -195,28 +194,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
                 return 0;
             };
             slog.info("Protocol handler: {s}", .{@tagName(action)});
-            if (g_hotkey_manager) |manager| {
-                switch (action) {
-                    .minimize_all => manager.handleMinimizeAllRequest(),
-                    .close_all => manager.handleCloseAllRequest(),
-                    .toggle_visibility => manager.handleToggleVisibilityRequest(),
-                    .next_profile => manager.handleNextProfileRequest(),
-                    .previous_profile => manager.handlePreviousProfileRequest(),
-                    .toggle_exclusion => manager.handleToggleExclusionRequest(),
-                    .next_excluded => manager.handleNextExcludedRequest(),
-                    .previous_excluded => manager.handlePreviousExcludedRequest(),
-                    .suspend_hotkeys => manager.handleSuspendHotkeysRequest(),
-                    .toggle_auto_minimize => manager.handleToggleAutoMinimizeRequest(),
-                    .cycle_notified => manager.handleCycleNotifiedRequest(),
-                    .previous_notified => manager.handlePreviousNotifiedRequest(),
-                    .next_all_clients => manager.handleCycleAllClientsRequest(true),
-                    .previous_all_clients => manager.handleCycleAllClientsRequest(false),
-                    .next_not_logged_in => manager.handleCycleNotLoggedInRequest(true),
-                    .previous_not_logged_in => manager.handleCycleNotLoggedInRequest(false),
-                    .move_to_saved_positions => manager.handleMoveToSavedPositionsRequest(),
-                    .return_to_last_app => manager.handleReturnToLastAppRequest(),
-                }
-            }
+            if (hotkeys.g_hotkey_manager_ptr) |manager| manager.runGlobalAction(action);
             return 0;
         },
         else => return win32.DefWindowProcA(hwnd, msg, wParam, lParam),
@@ -877,26 +855,16 @@ fn mainImpl(init: std.process.Init) !void {
         }
     }
 
-    g_hotkey_manager = try g_allocator.create(hotkeys.HotkeyManager);
-    {
-        errdefer g_allocator.destroy(g_hotkey_manager.?);
-        g_hotkey_manager.?.* = try hotkeys.HotkeyManager.init(g_allocator, &g_config, &g_global_settings, g_scout.?, g_painter.?);
-    }
-    hotkeys.g_hotkey_manager_ptr = g_hotkey_manager;
+    const hotkey_manager = try createHotkeyManager();
     input.installFocusGrant(timer_hwnd);
     defer {
-        if (g_hotkey_manager) |manager| {
-            manager.unregisterAll(timer_hwnd);
-            manager.deinit();
-            g_allocator.destroy(manager);
-        }
-        hotkeys.g_hotkey_manager_ptr = null;
+        destroyHotkeyManager();
         mouse_hook.deinit();
         keyboard_hook.deinit();
         input.uninstallFocusGrant();
     }
 
-    g_hotkey_manager.?.registerHotkeys(timer_hwnd) catch |err| {
+    hotkey_manager.registerHotkeys(timer_hwnd) catch |err| {
         slog.warn("Failed to register hotkeys: {} - continuing without hotkey support", .{err});
     };
 
@@ -913,6 +881,22 @@ fn mainImpl(init: std.process.Init) !void {
         _ = win32.TranslateMessage(&msg);
         _ = win32.DispatchMessageA(&msg);
     }
+}
+
+/// Publishes the manager through hotkeys.g_hotkey_manager_ptr, which is also how main.zig reaches it.
+fn createHotkeyManager() !*hotkeys.HotkeyManager {
+    const manager = try g_allocator.create(hotkeys.HotkeyManager);
+    errdefer g_allocator.destroy(manager);
+    manager.* = try hotkeys.HotkeyManager.init(g_allocator, &g_config, &g_global_settings, g_scout.?, g_painter.?);
+    hotkeys.g_hotkey_manager_ptr = manager;
+    return manager;
+}
+
+fn destroyHotkeyManager() void {
+    const manager = hotkeys.g_hotkey_manager_ptr orelse return;
+    hotkeys.g_hotkey_manager_ptr = null;
+    manager.deinit();
+    g_allocator.destroy(manager);
 }
 
 /// Completely reinitializes all subsystems with a newly loaded profile's configuration.
@@ -939,11 +923,6 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         std.mem.eql(u8, g_config.chatlog.chatlogDir, new_config.chatlog.chatlogDir) and
         std.mem.eql(u8, g_config.chatlog.gamelogDir, new_config.chatlog.gamelogDir);
 
-    if (g_hotkey_manager) |manager| {
-        manager.unregisterAll(timer_hwnd);
-        slog.debug("Unregistered hotkeys", .{});
-    }
-
     if (keep_chatlog_monitor) {
         // Pause (not destroy) so the worker thread can't race the pointer swaps below.
         g_chatlog_monitor.?.stopWorkerThread();
@@ -960,13 +939,8 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     destroyTracker(activity_mod.MiningTracker, &g_mining_tracker, "mining");
     destroyTracker(activity_mod.BountyTracker, &g_bounty_tracker, "bounty");
 
-    if (g_hotkey_manager) |manager| {
-        manager.deinit();
-        g_allocator.destroy(manager);
-        g_hotkey_manager = null;
-        hotkeys.g_hotkey_manager_ptr = null;
-        slog.debug("Cleaned up hotkey manager", .{});
-    }
+    destroyHotkeyManager();
+    slog.debug("Cleaned up hotkey manager", .{});
 
     // Snapshot last-known system names before the painter tears down thumbnails, so new ones can be seeded instead of going blank; keyed by source_hwnd, stable across teardown/recreate.
     var last_known_systems = std.AutoHashMap(win32.HWND, []const u8).init(g_allocator);
@@ -1133,25 +1107,11 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         }
     }
 
-    g_hotkey_manager = g_allocator.create(hotkeys.HotkeyManager) catch |err| {
+    const hotkey_manager = createHotkeyManager() catch |err| {
         slog.err("Failed to create hotkey manager: {}", .{err});
         return err;
     };
-    g_hotkey_manager.?.* = hotkeys.HotkeyManager.init(
-        g_allocator,
-        &g_config,
-        &g_global_settings,
-        g_scout.?,
-        g_painter.?,
-    ) catch |err| {
-        g_allocator.destroy(g_hotkey_manager.?);
-        g_hotkey_manager = null;
-        slog.err("Failed to initialize hotkey manager: {}", .{err});
-        return err;
-    };
-    hotkeys.g_hotkey_manager_ptr = g_hotkey_manager;
-
-    g_hotkey_manager.?.registerHotkeys(timer_hwnd) catch |err| {
+    hotkey_manager.registerHotkeys(timer_hwnd) catch |err| {
         slog.warn("Failed to register hotkeys: {}", .{err});
     };
     slog.debug("Reinitialized hotkey manager", .{});

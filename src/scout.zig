@@ -62,7 +62,7 @@ pub const Scout = struct {
     pending_closed: std.ArrayList(ClosedWindow),
     // Pending name changes detected by title change event hook
     pending_name_changes: std.ArrayList(NameChange),
-    /// FIFO queue of windows currently not logged in, oldest-logged-out first; fed by updateWindowTitle/enumWindowsCallback, consumed by HotkeyManager.cycleNotLoggedIn via getNotLoggedInHwnds.
+    /// FIFO queue of windows currently not logged in, oldest-logged-out first; fed by updateWindowTitle/enumWindowsCallback, consumed by hotkeys/cycling.zig's cycleNotLoggedIn via getNotLoggedInHwnds.
     not_logged_in_queue: std.ArrayList(win32.HWND),
     // Flag set by create event hook to trigger immediate scan
     pending_scan: bool,

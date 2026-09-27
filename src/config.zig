@@ -1027,7 +1027,7 @@ pub const HotkeyGroup = struct {
     temporaryMembership: bool = false,
     /// Draws the group's name on its members' thumbnails.
     showBadge: bool = false,
-    /// When true, cycling appends still-queued not-logged-in clients (see HotkeyManager.cycleNotLoggedIn) to the end of this group's cycle order.
+    /// When true, cycling appends still-queued not-logged-in clients (see hotkeys/cycling.zig's cycleNotLoggedIn) to the end of this group's cycle order.
     includeNotLoggedIn: bool = false,
     /// null = not yet cycled; see cycleGroup.
     currentIndex: ?usize = null,

@@ -2,67 +2,55 @@
 // trigger (e.g. plain "Shift"). Matches are re-posted as WM_HOTKEY, mirroring mouse_hook.zig, so
 // HotkeyManager.handleHotkeyPress doesn't need to know whether a press came from mouse or keyboard.
 const std = @import("std");
-const win32 = @import("platform/win32.zig");
-const vk = @import("platform/virtual_keys.zig");
-const protocol = @import("protocol.zig");
-const log = @import("log.zig");
+const win32 = @import("../platform/win32.zig");
+const vk = @import("../platform/virtual_keys.zig");
+const protocol = @import("../protocol.zig");
+const log = @import("../log.zig");
 const slog = log.scoped("keyboard_hook");
+const HookBindings = @import("hook_bindings.zig").HookBindings;
 
-var g_bindings: std.AutoHashMap(u32, c_int) = undefined;
-var g_swallow_release: std.AutoHashMap(u32, bool) = undefined;
-var g_initialized = false;
-var g_hook: ?win32.HHOOK = null;
-var g_target_hwnd: ?win32.HWND = null;
+var g_hook: HookBindings = .{
+    .hook_type = win32.WH_KEYBOARD_LL,
+    .proc = lowLevelKeyboardProc,
+    .name = "keyboard",
+    .on_uninstall = clearSwallowState,
+};
+/// Held hotkey keys; the value is whether to swallow the key's release.
+var g_swallow_release: ?std.AutoHashMap(u32, bool) = null;
 /// Set while the config dialog is recording a new binding; see armWinKeyCapture's doc comment.
 var g_capture_win_key = false;
 
-fn ensureInit(allocator: std.mem.Allocator) void {
-    if (g_initialized) return;
-    g_bindings = std.AutoHashMap(u32, c_int).init(allocator);
-    g_swallow_release = std.AutoHashMap(u32, bool).init(allocator);
-    g_initialized = true;
-}
-
 /// Register a keyboard hotkey (combined vk from virtual_keys.zig); installs the low-level hook on first registration.
 pub fn register(allocator: std.mem.Allocator, target_hwnd: win32.HWND, combined_vk: u32, id: c_int) !void {
-    ensureInit(allocator);
-    g_target_hwnd = target_hwnd;
-    try g_bindings.put(combined_vk, id);
-    if (g_hook == null) {
-        installHook() catch |err| {
-            _ = g_bindings.remove(combined_vk);
-            return err;
-        };
-    }
+    try g_hook.register(allocator, target_hwnd, combined_vk, id);
 }
 
 pub fn unregister(combined_vk: u32) void {
-    if (!g_initialized) return;
-    _ = g_bindings.remove(combined_vk);
-    if (g_bindings.count() == 0) uninstallHook();
+    g_hook.unregister(combined_vk);
 }
 
 /// Remove all keyboard bindings and uninstall the hook; safe to call even if nothing was ever registered.
 pub fn unregisterAll() void {
-    if (!g_initialized) return;
-    g_bindings.clearRetainingCapacity();
-    uninstallHook();
+    g_hook.unregisterAll();
 }
 
 /// Call only once at true process shutdown, never from a reload path that may register() again.
 pub fn deinit() void {
-    if (!g_initialized) return;
-    g_bindings.deinit();
-    g_swallow_release.deinit();
-    g_initialized = false;
+    g_hook.deinit();
+    if (g_swallow_release) |*map| map.deinit();
+    g_swallow_release = null;
+}
+
+fn clearSwallowState() void {
+    if (g_swallow_release) |*map| map.clearRetainingCapacity();
 }
 
 /// Distinguishes a repeat WM_HOTKEY from a new press; vk_code == 0 (mouse-button hotkeys) is always fresh.
 pub fn trackPress(allocator: std.mem.Allocator, vk_code: u32) bool {
     if (vk_code == 0) return true;
-    ensureInit(allocator);
+    if (g_swallow_release == null) g_swallow_release = .init(allocator);
 
-    const gop = g_swallow_release.getOrPut(vk_code) catch |err| {
+    const gop = g_swallow_release.?.getOrPut(vk_code) catch |err| {
         slog.warn("Failed to track hotkey press for vk 0x{X}: {}", .{ vk_code, err });
         return true;
     };
@@ -75,16 +63,15 @@ pub fn trackPress(allocator: std.mem.Allocator, vk_code: u32) bool {
 /// Arms release-swallowing for vk_code once its action has moved focus, so the previously-focused client still believes the key is held.
 pub fn markSwallowRelease(vk_code: u32) void {
     if (vk_code == 0) return;
-    if (!g_initialized) return;
-    if (g_swallow_release.getPtr(vk_code)) |swallow| swallow.* = true;
+    const map = if (g_swallow_release) |*m| m else return;
+    if (map.getPtr(vk_code)) |swallow| swallow.* = true;
 }
 
 /// Recording tears the hook down entirely, so this keeps it alive to swallow Win down/up and report via protocol.publishWinKeyCaptureResult - otherwise Windows pops the Start Menu before the dialog sees anything.
-pub fn armWinKeyCapture(allocator: std.mem.Allocator) void {
-    ensureInit(allocator);
+pub fn armWinKeyCapture() void {
     g_capture_win_key = true;
-    if (g_hook == null) {
-        installHook() catch {
+    if (g_hook.hook == null) {
+        g_hook.install() catch {
             g_capture_win_key = false;
         };
     }
@@ -92,26 +79,7 @@ pub fn armWinKeyCapture(allocator: std.mem.Allocator) void {
 
 pub fn disarmWinKeyCapture() void {
     g_capture_win_key = false;
-    if (g_initialized and g_bindings.count() == 0) uninstallHook();
-}
-
-fn installHook() !void {
-    const hmod = win32.GetModuleHandleA(null);
-    g_hook = win32.SetWindowsHookExA(win32.WH_KEYBOARD_LL, lowLevelKeyboardProc, hmod, 0);
-    if (g_hook == null) {
-        slog.err("Failed to install low-level keyboard hook", .{});
-        return error.KeyboardHookInstallFailed;
-    }
-    slog.debug("Low-level keyboard hook installed", .{});
-}
-
-fn uninstallHook() void {
-    if (g_hook) |hook| {
-        _ = win32.UnhookWindowsHookEx(hook);
-        g_hook = null;
-        slog.debug("Low-level keyboard hook removed", .{});
-    }
-    g_swallow_release.clearRetainingCapacity();
+    if (g_hook.isEmpty()) g_hook.uninstall();
 }
 
 /// WH_KEYBOARD_LL reports the side-specific vk for Ctrl/Alt/Shift/Win (e.g. VK_LSHIFT), never the generic one.
@@ -136,29 +104,11 @@ fn selfModifierBit(base_vk: u32) u32 {
     };
 }
 
-/// Re-posts a match as WM_HOTKEY; returns whether the event should be swallowed. Falls back to the
-/// bare (no-modifier) binding if the exact combo isn't bound, so an unrelated held modifier doesn't
-/// block it; a more specific binding, if one exists, still wins outright.
 fn dispatchIfBound(raw_vk: u32) bool {
     const base_vk = normalizeModifierVk(raw_vk);
-    const mods = vk.currentModifiers() & ~selfModifierBit(base_vk);
-    const combined = vk.combineKey(base_vk, mods);
-
-    var id: c_int = undefined;
-    if (g_bindings.get(combined)) |exact_id| {
-        id = exact_id;
-    } else if (mods != 0) {
-        id = g_bindings.get(vk.combineKey(base_vk, 0)) orelse return false;
-    } else {
-        return false;
-    }
-
-    if (g_target_hwnd) |hwnd| {
-        // Encode raw_vk into HIWORD(lParam) like a real WM_HOTKEY message, so hotkeyVkFromLparam needs no changes.
-        const lparam: win32.LPARAM = @bitCast(@as(usize, raw_vk << 16));
-        _ = win32.PostMessageA(hwnd, win32.WM_HOTKEY, @intCast(id), lparam);
-    }
-    return true;
+    // Encode raw_vk into HIWORD(lParam) like a real WM_HOTKEY message, so hotkeyVkFromLparam needs no changes.
+    const lparam: win32.LPARAM = @bitCast(@as(usize, raw_vk << 16));
+    return g_hook.dispatch(base_vk, vk.currentModifiers() & ~selfModifierBit(base_vk), lparam);
 }
 
 fn lowLevelKeyboardProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
@@ -176,8 +126,10 @@ fn lowLevelKeyboardProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM
                 protocol.publishWinKeyCaptureResult(vk.currentModifiers() & ~vk.MOD_WIN);
                 return 1;
             }
-            if (g_swallow_release.fetchRemove(info.vkCode)) |entry| {
-                if (entry.value) return 1;
+            if (g_swallow_release) |*map| {
+                if (map.fetchRemove(info.vkCode)) |entry| {
+                    if (entry.value) return 1;
+                }
             }
         }
     }

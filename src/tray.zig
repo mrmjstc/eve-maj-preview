@@ -4,7 +4,7 @@ const config_mod = @import("config.zig");
 const log = @import("log.zig");
 const update = @import("update.zig");
 const client_actions = @import("clients/actions.zig");
-const hotkeys_mod = @import("hotkeys.zig");
+const hotkeys_mod = @import("hotkeys/manager.zig");
 const painter_mod = @import("painter.zig");
 const main_mod = @import("main.zig");
 const slog = log.scoped("tray");
@@ -309,7 +309,7 @@ pub const TrayIcon = struct {
 
         if (command_id == win32.IDM_SUSPEND_HOTKEYS) {
             if (hotkey_manager) |hkm| {
-                hkm.handleSuspendHotkeysRequest();
+                hkm.runGlobalAction(.suspend_hotkeys);
             }
             return true;
         }
@@ -317,7 +317,7 @@ pub const TrayIcon = struct {
         if (command_id == win32.IDM_RESTORE_SAVED_POSITIONS) {
             slog.info("Restore saved positions requested from system tray", .{});
             if (hotkey_manager) |hkm| {
-                hkm.handleMoveToSavedPositionsRequest();
+                hkm.runGlobalAction(.move_to_saved_positions);
             } else {
                 slog.err("Hotkey manager not available for restore saved positions", .{});
             }

@@ -1,6 +1,6 @@
 const std = @import("std");
-const win32 = @import("platform/win32.zig");
-const log = @import("log.zig");
+const win32 = @import("../platform/win32.zig");
+const log = @import("../log.zig");
 const slog = log.scoped("paste_upload");
 
 var g_io: std.Io = undefined;
@@ -69,12 +69,7 @@ fn postAndFollowRedirect(allocator: std.mem.Allocator, url: []const u8, body: []
 }
 
 fn openFallback(url: []const u8) void {
-    var url_buf: [1024]u8 = undefined;
-    const url_z = std.fmt.bufPrintZ(&url_buf, "{s}", .{url}) catch {
-        slog.warn("URL too long to open: {s}", .{url});
-        return;
-    };
-    if (!win32.shellOpen(url_z.ptr, null)) {
+    if (!win32.shellOpenUrl(url)) {
         slog.err("Failed to open URL: {s}", .{url});
     }
 }

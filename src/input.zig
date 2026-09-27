@@ -4,7 +4,8 @@ const virtual_keys = @import("platform/virtual_keys.zig");
 const log = @import("log.zig");
 const slog = log.scoped("input");
 const painter_mod = @import("painter.zig");
-const hotkeys_mod = @import("hotkeys.zig");
+const hotkeys_mod = @import("hotkeys/manager.zig");
+const membership = @import("hotkeys/membership.zig");
 const ThumbnailWindow = painter_mod.ThumbnailWindow;
 const Painter = painter_mod.Painter;
 const drag_overlays_mod = @import("drag/overlays.zig");
@@ -235,37 +236,7 @@ pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
         return;
     }
 
-    toggleCycleExclusion(source_hwnd);
-}
-
-/// Toggles character exclusion from hotkey cycling, with visual feedback via a semi-transparent overlay.
-pub fn toggleCycleExclusion(source_hwnd: win32.HWND) void {
-    const painter = g_painter_ptr orelse return;
-    const hotkey_manager = hotkeys_mod.g_hotkey_manager_ptr orelse return;
-
-    if (painter.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
-        const char_name = thumbnail.character_name;
-
-        // Toggles exclusion in every group containing this character, or a group-independent list if it's in none.
-        hotkey_manager.toggleCharacterExclusion(char_name);
-
-        thumbnail.is_excluded_from_cycle = hotkey_manager.isCharacterExcluded(char_name);
-
-        if (thumbnail.is_excluded_from_cycle and painter.config.exclusion.autoMinimizeExcluded) {
-            _ = win32.ShowWindowAsync(source_hwnd, win32.SW_FORCEMINIMIZE);
-        }
-
-        painter.notify(source_hwnd, .{ .ntype = .CycleExclusion, .state = if (thumbnail.is_excluded_from_cycle) .excluded else .included });
-
-        painter.renderThumbnail(thumbnail) catch |err| {
-            slog.err("Failed to render thumbnail after exclusion toggle: {}", .{err});
-        };
-
-        slog.info("Toggled cycle exclusion for {s}: {s}", .{
-            char_name,
-            if (thumbnail.is_excluded_from_cycle) "Excluded" else "Included",
-        });
-    }
+    if (hotkeys_mod.g_hotkey_manager_ptr) |manager| membership.toggleThumbnailExclusion(manager, source_hwnd);
 }
 
 /// Lets cycling resume from a manually-selected character's position

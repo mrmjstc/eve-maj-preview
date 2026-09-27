@@ -10,7 +10,7 @@ const notified_queue_mod = @import("notifications/notified_queue.zig");
 const auto_minimize_mod = @import("clients/auto_minimize.zig");
 const auto_move_mod = @import("clients/auto_move.zig");
 const travel_left_behind = @import("travel/left_behind.zig");
-const hotkeys_mod = @import("hotkeys.zig");
+const hotkeys_mod = @import("hotkeys/manager.zig");
 const drag_overlays_mod = @import("drag/overlays.zig");
 const scout_mod = @import("scout.zig");
 const list_view = @import("list_view.zig");
@@ -1121,7 +1121,7 @@ pub const Painter = struct {
 
             // Update exclusion state when character name becomes known (e.g., "EVE" -> "Probe Enthusiast")
             if (was_generic and now_specific) {
-                const is_excluded = isExcludedFromCycle(change.new_name);
+                const is_excluded = hotkeys_mod.isExcludedFromCycle(change.new_name);
                 if (is_excluded != thumbnail.is_excluded_from_cycle) {
                     thumbnail.is_excluded_from_cycle = is_excluded;
                     if (is_excluded) slog.info("Restored exclusion state for {s}", .{change.new_name});
@@ -1321,7 +1321,7 @@ pub const Painter = struct {
             .cached_group_badge_label = strings.group_badge_label,
             .auto_minimize = .{ .inactive_since = win32.Ticks.now() },
             .visibility_state = self.determineInitialVisibility(eve_window.hwnd),
-            .is_excluded_from_cycle = isExcludedFromCycle(eve_window.character_name),
+            .is_excluded_from_cycle = hotkeys_mod.isExcludedFromCycle(eve_window.character_name),
             .win32_enabled = win32_enabled,
         };
         thumbnail.refreshConfigCache(self.config);
@@ -1478,12 +1478,6 @@ pub const Painter = struct {
 
 const scalePixels = win32.scalePixels;
 const dpiToScale = win32.dpiToScale;
-
-/// Cycle-exclusion state is owned by HotkeyManager; false before the manager exists.
-fn isExcludedFromCycle(character_name: []const u8) bool {
-    const manager = hotkeys_mod.g_hotkey_manager_ptr orelse return false;
-    return manager.isCharacterExcluded(character_name);
-}
 
 /// ReturnToLastApp's target belongs to HotkeyManager; Painter's foreground hook is just where it's observed.
 fn recordNonEveForeground(hwnd: win32.HWND) void {

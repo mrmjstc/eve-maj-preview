@@ -664,12 +664,7 @@ fn getUpdateStatus(e: *webui.Event) void {
 /// Opens a URL in the OS default browser rather than a WebView2 popup, which is what a plain `<a target="_blank">` would spawn instead.
 fn openUrlInBrowser(e: *webui.Event) void {
     const url = e.getString();
-    var buf: [1024]u8 = undefined;
-    const url_z = std.fmt.bufPrintZ(&buf, "{s}", .{url}) catch {
-        slog.warn("URL too long to open in browser: {s}", .{url});
-        return;
-    };
-    if (!win32.shellOpen(url_z.ptr, null)) {
+    if (!win32.shellOpenUrl(url)) {
         slog.err("Failed to open URL in browser: {s}", .{url});
     }
 }
@@ -1428,13 +1423,8 @@ fn enumRunningWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.
     var class_name: [64:0]u8 = undefined;
     const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return win32.TRUE;
 
-    var process_id: win32.DWORD = 0;
-    _ = win32.GetWindowThreadProcessId(hwnd, &process_id);
-    if (process_id == 0) return win32.TRUE;
-
     var exe_path: [260:0]u8 = undefined;
-    const exe_path_slice = win32.queryProcessExePath(process_id, &exe_path) orelse return win32.TRUE;
-    const exe_name = std.fs.path.basename(exe_path_slice);
+    const exe_name = win32.windowExeName(hwnd, &exe_path) orelse return win32.TRUE;
     if (exe_name.len == 0) return win32.TRUE;
 
     for (ctx.entries.items) |existing| {

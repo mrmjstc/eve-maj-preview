@@ -1,7 +1,7 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const painter_mod = @import("../painter.zig");
-const hotkeys_mod = @import("../hotkeys.zig");
+const hotkeys_mod = @import("../hotkeys/manager.zig");
 
 const Painter = painter_mod.Painter;
 
@@ -18,13 +18,6 @@ pub const ThumbnailState = struct {
     }
 };
 
-fn isExcluded(character_name: []const u8) bool {
-    if (hotkeys_mod.g_hotkey_manager_ptr) |mgr| {
-        return mgr.isCharacterExcluded(character_name);
-    }
-    return false;
-}
-
 /// Flags characters behind the group's current system by more than config.travel.window_seconds.
 pub fn check(painter: *Painter, now: win32.Ticks) void {
     const cfg = painter.config.travel;
@@ -32,7 +25,7 @@ pub fn check(painter: *Painter, now: win32.Ticks) void {
 
     var eligible_count: usize = 0;
     for (painter.thumbnails.items) |*thumb| {
-        if (thumb.travel.last_jump_ms.isZero() or isExcluded(thumb.character_name)) continue;
+        if (thumb.travel.last_jump_ms.isZero() or hotkeys_mod.isExcludedFromCycle(thumb.character_name)) continue;
         eligible_count += 1;
     }
     if (eligible_count < 2) return;
@@ -42,12 +35,12 @@ pub fn check(painter: *Painter, now: win32.Ticks) void {
     var group_arrival_ms: win32.Ticks = .{};
 
     for (painter.thumbnails.items) |*candidate| {
-        if (candidate.travel.last_jump_ms.isZero() or isExcluded(candidate.character_name)) continue;
+        if (candidate.travel.last_jump_ms.isZero() or hotkeys_mod.isExcludedFromCycle(candidate.character_name)) continue;
 
         var count: usize = 0;
         var arrival_ms: win32.Ticks = .{};
         for (painter.thumbnails.items) |*other| {
-            if (other.travel.last_jump_ms.isZero() or isExcluded(other.character_name)) continue;
+            if (other.travel.last_jump_ms.isZero() or hotkeys_mod.isExcludedFromCycle(other.character_name)) continue;
             if (!std.mem.eql(u8, other.system_name, candidate.system_name)) continue;
             count += 1;
             if (other.travel.last_jump_ms.ms > arrival_ms.ms) arrival_ms = other.travel.last_jump_ms;
@@ -71,7 +64,7 @@ pub fn check(painter: *Painter, now: win32.Ticks) void {
     if (now.elapsedSince(group_arrival_ms) < window_ms) return;
 
     for (painter.thumbnails.items) |*thumb| {
-        if (thumb.travel.last_jump_ms.isZero() or isExcluded(thumb.character_name)) continue;
+        if (thumb.travel.last_jump_ms.isZero() or hotkeys_mod.isExcludedFromCycle(thumb.character_name)) continue;
         if (std.mem.eql(u8, thumb.system_name, group_system)) continue;
         if (thumb.travel.alert_fired) continue;
 
