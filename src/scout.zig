@@ -583,8 +583,8 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
     return win32.TRUE;
 }
 
-// Global Scout pointer for event callback (similar to Painter's architecture)
-var g_scout_ptr: ?*Scout = null;
+/// Set by setGlobalInstance for the WinEvent callbacks and other modules; also main.zig's only handle.
+pub var g_scout_ptr: ?*Scout = null;
 
 fn nameChangeCallback(
     hWinEventHook: win32.HANDLE,

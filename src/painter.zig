@@ -228,11 +228,6 @@ pub const Painter = struct {
             slog.err("Failed to set up destroy event hook", .{});
         }
 
-        // Lets the list window proc activate EVE clients without a direct list_view → input dependency.
-        list_view.g_activate_fn = activation.activate;
-        list_view.g_shift_click_fn = input.handleThumbnailShiftClick;
-        history_panel_mod.g_activate_fn = activation.activate;
-
         if (cfg.display.viewMode == .ClientList) {
             painter.list_window = list_view.ListWindow.init(allocator, cfg, instance) catch |err| blk: {
                 slog.err("Failed to create list window: {}", .{err});

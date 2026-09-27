@@ -175,8 +175,6 @@ pub const ChatlogMonitor = struct {
     gamelog_dir: []const u8,
     chatlog_watcher: win32.HANDLE,
     gamelog_watcher: win32.HANDLE,
-    painter: ?*painter_mod.Painter = null,
-    scout: ?*scout_mod.Scout = null,
     global_settings: ?*config_mod.GlobalSettings = null,
     combat_tracker: ?*activity_mod.CombatTracker = null,
     mining_tracker: ?*activity_mod.MiningTracker = null,
@@ -199,7 +197,7 @@ pub const ChatlogMonitor = struct {
     pending_characters: std.StringHashMap(void),
     pending_characters_mutex: std.Io.Mutex,
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, chatlog_dir: []const u8, gamelog_dir: []const u8, painter_ref: ?*painter_mod.Painter, scout_ref: ?*scout_mod.Scout, global_settings_ref: ?*config_mod.GlobalSettings, idle_poll_threshold: u32, max_poll_multiplier: u8, poll_interval_ms: u32) !*ChatlogMonitor {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, chatlog_dir: []const u8, gamelog_dir: []const u8, global_settings_ref: ?*config_mod.GlobalSettings, idle_poll_threshold: u32, max_poll_multiplier: u8, poll_interval_ms: u32) !*ChatlogMonitor {
         if (!std.unicode.utf8ValidateSlice(chatlog_dir)) {
             slog.err("Chatlog directory path contains invalid UTF-8", .{});
             return error.InvalidUtf8;
@@ -220,8 +218,6 @@ pub const ChatlogMonitor = struct {
         errdefer allocator.free(monitor.chatlog_dir);
         monitor.gamelog_dir = try allocator.dupe(u8, gamelog_dir);
         errdefer allocator.free(monitor.gamelog_dir);
-        monitor.painter = painter_ref;
-        monitor.scout = scout_ref;
         monitor.global_settings = global_settings_ref;
         monitor.combat_tracker = null;
         monitor.mining_tracker = null;
@@ -890,13 +886,13 @@ pub const ChatlogMonitor = struct {
         for (events.items) |*event| {
             defer event.deinit(self.allocator);
 
-            const scout_ptr = self.scout orelse continue;
+            const scout_ptr = scout_mod.g_scout_ptr orelse continue;
             const hwnd = scout_ptr.getHwndByName(event.character_name) orelse {
                 slog.warn("No HWND for {s}, skipping system update", .{event.character_name});
                 continue;
             };
 
-            if (self.painter) |painter_ptr| {
+            if (painter_mod.g_painter_ptr) |painter_ptr| {
                 painter_ptr.updateSystemNameByHwnd(hwnd, event.system_name, event.event_ts, event.is_jump) catch |err| {
                     slog.err("Failed to update system name for {s}: {}", .{ event.character_name, err });
                     scout_ptr.clearHwndForCharacter(event.character_name);
@@ -918,10 +914,10 @@ pub const ChatlogMonitor = struct {
         for (events.items) |*event| {
             defer event.deinit(self.allocator);
 
-            const scout_ptr = self.scout orelse continue;
+            const scout_ptr = scout_mod.g_scout_ptr orelse continue;
             const hwnd = scout_ptr.getHwndByName(event.character_name) orelse continue;
 
-            if (self.painter) |painter_ptr| {
+            if (painter_mod.g_painter_ptr) |painter_ptr| {
                 painter_ptr.notify(hwnd, event.notification);
             }
         }

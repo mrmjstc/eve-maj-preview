@@ -36,8 +36,6 @@ const TIMER_CLASS_NAME = "EVE_TIMER_CLASS";
 
 var g_allocator: std.mem.Allocator = undefined;
 var g_io: std.Io = undefined;
-var g_scout: ?*scout.Scout = null;
-var g_painter: ?*painter.Painter = null;
 var g_chatlog_monitor: ?*chatlog.ChatlogMonitor = null;
 var g_combat_tracker: ?*activity_mod.CombatTracker = null;
 var g_mining_tracker: ?*activity_mod.MiningTracker = null;
@@ -47,10 +45,8 @@ var g_config: config_mod.Config = undefined;
 var g_global_settings: config_mod.GlobalSettings = undefined;
 var g_tray_icon: ?tray.TrayIcon = null;
 var g_update_checker: ?update.UpdateChecker = null;
-var g_config_ptr: ?*config_mod.Config = null;
 // Exported for other modules to reach these without threading them through every call.
 pub var g_timer_hwnd: ?win32.HWND = null;
-pub var g_scout_ptr: ?*scout.Scout = null;
 
 // Scan throttling: only run expensive EnumWindows every N ticks
 var g_scan_tick_counter: u32 = 0;
@@ -73,19 +69,13 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
     switch (msg) {
         win32.WM_TRAYICON => {
             if (g_tray_icon) |*icon| {
-                // Safety check: only access g_config if it's been initialized (g_config_ptr is set after initialization)
-                const profile_name = if (g_config_ptr) |cfg| cfg.profile_name else "";
-                const cfg = g_config_ptr orelse &g_config;
-                icon.handleTrayMessage(lParam, profile_name, cfg, hotkeys.g_hotkey_manager_ptr, g_painter);
+                icon.handleTrayMessage(lParam, &g_config);
             }
             return 0;
         },
         win32.WM_COMMAND => {
             const command_id = @as(u16, @truncate(wParam));
-            const cfg = g_config_ptr orelse &g_config;
-            if (tray.TrayIcon.handleMenuCommand(command_id, cfg, g_allocator, hotkeys.g_hotkey_manager_ptr)) {
-                return 0;
-            }
+            _ = tray.TrayIcon.handleMenuCommand(command_id, &g_config, g_allocator);
             return 0;
         },
         win32.WM_TIMER => {
@@ -104,7 +94,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             return 0;
         },
         win32.WM_HOTKEYS_STATE_CHANGED => {
-            if (g_painter) |painter_ptr| {
+            if (painter.g_painter_ptr) |painter_ptr| {
                 if (hotkeys.g_hotkey_manager_ptr) |manager| {
                     painter_ptr.notifyAll(.{ .ntype = .HotkeySuspend, .state = if (manager.areHotkeysSuspended()) .suspended else .resumed });
                 }
@@ -112,7 +102,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             return 0;
         },
         win32.WM_TOGGLE_VISIBILITY => {
-            if (g_painter) |painter_ptr| {
+            if (painter.g_painter_ptr) |painter_ptr| {
                 painter_ptr.toggleAllThumbnailsVisibility();
             }
             return 0;
@@ -134,7 +124,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
                     if (cds.lpData) |data_ptr| {
                         const char_name = @as([*]const u8, @ptrCast(data_ptr))[0..cds.cbData];
                         slog.info("Protocol handler: switch to character: {s}", .{char_name});
-                        if (g_scout) |scout_ptr| {
+                        if (scout.g_scout_ptr) |scout_ptr| {
                             if (scout_ptr.getHwndByName(char_name)) |target_hwnd| {
                                 activation.activate(target_hwnd);
                             } else {
@@ -180,7 +170,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
                     }
                 },
                 win32.PROTOCOL_START_REGION_SELECT => {
-                    if (g_painter) |painter_ptr| {
+                    if (painter.g_painter_ptr) |painter_ptr| {
                         painter_ptr.startRegionSelect(protocol.regionSelectRequestFromCopyData(cds));
                     }
                 },
@@ -211,14 +201,14 @@ fn onTimerTick() void {
         g_scan_tick_counter = 0;
     }
 
-    const scout_ptr = g_scout orelse return;
+    const scout_ptr = scout.g_scout_ptr orelse return;
     var scout_result = scout_ptr.update(force_scan) catch |err| {
         slog.err("Failed to update Scout: {}", .{err});
         return;
     };
     defer scout_result.deinit(g_allocator);
 
-    if (g_painter) |painter_ptr| {
+    if (painter.g_painter_ptr) |painter_ptr| {
         painter_ptr.update(scout_result.windows, scout_result.closed_windows.items, scout_result.name_changes.items) catch |err| {
             slog.err("Failed to update Painter: {}", .{err});
         };
@@ -302,7 +292,7 @@ fn onTimerTick() void {
         }
     }
 
-    if (g_painter) |painter_ptr| {
+    if (painter.g_painter_ptr) |painter_ptr| {
         if (now.elapsedSince(g_last_travel_check_ms) >= TRAVEL_CHECK_INTERVAL_MS) {
             g_last_travel_check_ms = now;
             travel_left_behind.check(painter_ptr, now);
@@ -325,7 +315,7 @@ fn updateThrottledTracker(
 
     _ = tracker.refreshAll(now_ms);
 
-    const painter_ptr = g_painter orelse return;
+    const painter_ptr = painter.g_painter_ptr orelse return;
     for (windows) |eve_window| {
         perWindow(tracker, painter_ptr, eve_window, now_ms);
     }
@@ -399,11 +389,11 @@ fn teardownResourceTracker() void {
 /// Uses Scout's retained window list rather than a fresh scan, so it's cheap enough to call from a live-preview handler too.
 fn sampleAndPushResourceStats(now_ms: i64) void {
     const tracker = g_resource_tracker orelse return;
-    const scout_ptr = g_scout orelse return;
+    const scout_ptr = scout.g_scout_ptr orelse return;
     const windows = scout_ptr.windows.items;
     tracker.sampleAll(windows, now_ms);
 
-    const painter_ptr = g_painter orelse return;
+    const painter_ptr = painter.g_painter_ptr orelse return;
     for (windows) |eve_window| {
         const stats = tracker.getStats(eve_window.process_id);
         painter_ptr.updateResourceStatsForCharacter(eve_window.hwnd, stats.cpu_percent, stats.ram_mb, stats.vram_mb, stats.has_vram);
@@ -712,33 +702,19 @@ fn mainImpl(init: std.process.Init) !void {
         _ = win32.SetConsoleCtrlHandler(consoleCtrlHandler, win32.TRUE);
     }
 
-    g_scout = try g_allocator.create(scout.Scout);
+    const scout_ptr = try g_allocator.create(scout.Scout);
     {
-        errdefer g_allocator.destroy(g_scout.?);
-        g_scout.?.* = try scout.Scout.init(g_allocator, &g_config);
+        errdefer g_allocator.destroy(scout_ptr);
+        scout_ptr.* = try scout.Scout.init(g_allocator, &g_config);
     }
-    g_scout.?.setGlobalInstance();
-    g_scout_ptr = g_scout;
+    scout_ptr.setGlobalInstance();
     defer {
-        g_scout.?.deinit();
-        g_allocator.destroy(g_scout.?);
-        g_scout_ptr = null;
+        scout_ptr.deinit();
+        g_allocator.destroy(scout_ptr);
     }
 
-    g_painter = try g_allocator.create(painter.Painter);
-    {
-        errdefer g_allocator.destroy(g_painter.?);
-        g_painter.?.* = try painter.Painter.init(g_allocator, &g_config);
-    }
-    painter.g_painter_ptr = g_painter;
-
-    g_config_ptr = &g_config;
-
-    defer {
-        g_painter.?.deinit();
-        g_allocator.destroy(g_painter.?);
-        g_config_ptr = null;
-    }
+    const painter_ptr = try createPainter();
+    defer destroyPainter();
 
     if (g_config.chatlog.enabled) {
         g_chatlog_monitor = try chatlog.ChatlogMonitor.init(
@@ -746,8 +722,6 @@ fn mainImpl(init: std.process.Init) !void {
             g_io,
             g_config.chatlog.chatlogDir,
             g_config.chatlog.gamelogDir,
-            g_painter.?,
-            g_scout.?,
             &g_global_settings,
             g_config.chatlog.idlePollThreshold,
             g_config.chatlog.maxPollMultiplier,
@@ -833,17 +807,17 @@ fn mainImpl(init: std.process.Init) !void {
         slog.info("Update checks are disabled", .{});
     }
 
-    try g_scout.?.scanForEveWindows();
+    try scout_ptr.scanForEveWindows();
 
     // Create thumbnail windows for each EVE client (fast - no I/O blocking)
-    const eve_windows = g_scout.?.getWindows();
+    const eve_windows = scout_ptr.getWindows();
     for (eve_windows) |*eve_window| {
-        try g_painter.?.createThumbnail(eve_window, "");
+        try painter_ptr.createThumbnail(eve_window, "");
         if (g_config.autoMovePosition.moveOnStartup) {
-            g_painter.?.auto_move.moveToSavedPosition(&g_config, eve_window.hwnd, eve_window.character_name);
+            painter_ptr.auto_move.moveToSavedPosition(&g_config, eve_window.hwnd, eve_window.character_name);
         }
     }
-    g_painter.?.reflowIfRegionFitActive();
+    painter_ptr.reflowIfRegionFitActive();
 
     // Register with chatlog monitor after thumbnails are visible (deferred I/O)
     if (g_chatlog_monitor) |monitor| {
@@ -882,11 +856,27 @@ fn mainImpl(init: std.process.Init) !void {
     }
 }
 
+/// Publishes the painter through painter.g_painter_ptr, which is also how main.zig reaches it.
+fn createPainter() !*painter.Painter {
+    const new_painter = try g_allocator.create(painter.Painter);
+    errdefer g_allocator.destroy(new_painter);
+    new_painter.* = try painter.Painter.init(g_allocator, &g_config);
+    painter.g_painter_ptr = new_painter;
+    return new_painter;
+}
+
+fn destroyPainter() void {
+    const old_painter = painter.g_painter_ptr orelse return;
+    painter.g_painter_ptr = null;
+    old_painter.deinit();
+    g_allocator.destroy(old_painter);
+}
+
 /// Publishes the manager through hotkeys.g_hotkey_manager_ptr, which is also how main.zig reaches it.
 fn createHotkeyManager() !*hotkeys.HotkeyManager {
     const manager = try g_allocator.create(hotkeys.HotkeyManager);
     errdefer g_allocator.destroy(manager);
-    manager.* = try hotkeys.HotkeyManager.init(g_allocator, &g_config, &g_global_settings, g_scout.?, g_painter.?);
+    manager.* = try hotkeys.HotkeyManager.init(g_allocator, &g_config, &g_global_settings, scout.g_scout_ptr.?, painter.g_painter_ptr.?);
     hotkeys.g_hotkey_manager_ptr = manager;
     return manager;
 }
@@ -948,7 +938,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         while (it.next()) |v| g_allocator.free(v.*);
         last_known_systems.deinit();
     }
-    if (g_painter) |painter_ptr| {
+    if (painter.g_painter_ptr) |painter_ptr| {
         for (painter_ptr.thumbnails.items) |thumb| {
             if (thumb.system_name.len > 0) {
                 const copy = g_allocator.dupe(u8, thumb.system_name) catch |err| {
@@ -963,14 +953,8 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         }
     }
 
-    if (g_painter) |painter_ptr| {
-        painter_ptr.deinit();
-        g_allocator.destroy(painter_ptr);
-        g_painter = null;
-        painter.g_painter_ptr = null;
-        g_config_ptr = null;
-        slog.debug("Cleaned up painter", .{});
-    }
+    destroyPainter();
+    slog.debug("Cleaned up painter", .{});
 
     g_config.deinit();
     slog.debug("Cleaned up old config", .{});
@@ -995,26 +979,14 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         slog.warn("Failed to update global settings: {}", .{err});
     };
 
-    g_painter = g_allocator.create(painter.Painter) catch |err| {
+    const new_painter = createPainter() catch |err| {
         slog.err("Failed to create painter: {}", .{err});
         return err;
     };
-    g_painter.?.* = painter.Painter.init(g_allocator, &g_config) catch |err| {
-        g_allocator.destroy(g_painter.?);
-        g_painter = null;
-        slog.err("Failed to initialize painter: {}", .{err});
-        return err;
-    };
-    painter.g_painter_ptr = g_painter;
-    g_config_ptr = &g_config;
     slog.debug("Reinitialized painter", .{});
 
-    // Repoint a preserved chatlog monitor at the new painter (its old target is now freed).
-    if (g_chatlog_monitor) |monitor| {
-        monitor.painter = g_painter.?;
-    }
 
-    if (g_scout) |scout_ptr| {
+    if (scout.g_scout_ptr) |scout_ptr| {
         scan_blk: {
             scout_ptr.scanForEveWindows() catch |err| {
                 slog.err("Failed to scan for EVE windows: {}", .{err});
@@ -1026,11 +998,11 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
             for (eve_windows) |eve_window| {
                 // Only if monitoring stays on to refresh it, or a stale name would freeze on screen forever.
                 const initial_system_name = if (g_config.chatlog.enabled) (last_known_systems.get(eve_window.hwnd) orelse "") else "";
-                g_painter.?.createThumbnail(&eve_window, initial_system_name) catch |err| {
+                new_painter.createThumbnail(&eve_window, initial_system_name) catch |err| {
                     slog.err("Failed to create thumbnail for {s}: {}", .{ eve_window.character_name, err });
                 };
             }
-            g_painter.?.reflowIfRegionFitActive();
+            new_painter.reflowIfRegionFitActive();
             slog.debug("Recreated {} thumbnail(s)", .{eve_windows.len});
 
             if (keep_chatlog_monitor) {
@@ -1047,8 +1019,6 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
                         g_io,
                         g_config.chatlog.chatlogDir,
                         g_config.chatlog.gamelogDir,
-                        g_painter.?,
-                        scout_ptr,
                         &g_global_settings,
                         g_config.chatlog.idlePollThreshold,
                         g_config.chatlog.maxPollMultiplier,
@@ -1120,7 +1090,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     if (profile_changed) {
         const name = g_config.profile_name;
         const display_name = if (std.mem.endsWith(u8, name, ".json")) name[0 .. name.len - ".json".len] else name;
-        g_painter.?.notifyAll(.{ .ntype = .ProfileSwitch, .target = display_name });
+        new_painter.notifyAll(.{ .ntype = .ProfileSwitch, .target = display_name });
     }
 
     slog.info("=== Profile reload complete: {s} ===", .{new_profile_name});
@@ -1207,7 +1177,7 @@ fn applyThumbnailPreview(json_data: []const u8) !void {
         }
     }
 
-    if (g_painter) |painter_ptr| {
+    if (painter.g_painter_ptr) |painter_ptr| {
         painter_ptr.refreshAllThumbnailVisuals();
         if (layout_changed) painter_ptr.repositionAllThumbnails();
     }
@@ -1239,7 +1209,7 @@ fn showTestNotification(json_data: []const u8) !void {
     defer type_config.deinit(g_allocator);
     try type_config.applyJson(g_allocator, config_obj);
 
-    const painter_ptr = g_painter orelse return;
+    const painter_ptr = painter.g_painter_ptr orelse return;
     try painter_ptr.showTestNotification(ntype, type_config);
 }
 
@@ -1250,7 +1220,7 @@ fn revertThumbnailPreview() void {
         return;
     };
 
-    if (g_painter) |painter_ptr| {
+    if (painter.g_painter_ptr) |painter_ptr| {
         painter_ptr.refreshAllThumbnailVisuals();
         painter_ptr.repositionAllThumbnails();
     }

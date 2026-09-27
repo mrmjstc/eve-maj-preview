@@ -10,6 +10,7 @@ const slog = log.scoped("history_panel");
 
 // Only used by const-pointer params so the painter ↔ history_panel import cycle stays invisible at struct-size level; mirrors list_view.zig's own ThumbnailWindow re-import.
 const painter_mod = @import("../painter.zig");
+const activation = @import("../clients/activation.zig");
 const notification_history_mod = @import("history.zig");
 const drag_panel = @import("../drag/panel.zig");
 
@@ -70,8 +71,6 @@ fn effectiveCategoryEnabled(cfg: *const config_mod.Config, cat: notification_mod
 
 var g_class_registered: bool = false;
 
-/// Set by Painter.init() so the window proc can activate EVE clients without a direct history_panel → input circular dependency.
-pub var g_activate_fn: ?*const fn (win32.HWND) void = null;
 
 const NOTIF_INFO_WINDOW_CLASS = "EVE_NOTIFINFO_CLASS";
 
@@ -666,8 +665,8 @@ fn notifInfoWindowProc(
                         const hist_row = niw.history_rows[row];
                         if (hist_row.count > 1) {
                             p.notification_history.unmergeRange(hist_row.first, hist_row.last);
-                        } else if (g_activate_fn) |activate| {
-                            activate(hist_row.hwnd);
+                        } else {
+                            activation.activate(hist_row.hwnd);
                         }
                     }
                 }

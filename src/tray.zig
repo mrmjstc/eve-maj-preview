@@ -6,6 +6,7 @@ const update = @import("update.zig");
 const client_actions = @import("clients/actions.zig");
 const hotkeys_mod = @import("hotkeys/manager.zig");
 const painter_mod = @import("painter.zig");
+const scout_mod = @import("scout.zig");
 const main_mod = @import("main.zig");
 const slog = log.scoped("tray");
 
@@ -89,16 +90,17 @@ pub const TrayIcon = struct {
         slog.debug("System tray icon removed", .{});
     }
 
-    pub fn handleTrayMessage(self: *TrayIcon, lParam: win32.LPARAM, current_profile: []const u8, config: *const config_mod.Config, hotkey_manager: ?*hotkeys_mod.HotkeyManager, painter: ?*painter_mod.Painter) void {
+    pub fn handleTrayMessage(self: *TrayIcon, lParam: win32.LPARAM, config: *const config_mod.Config) void {
         if (lParam == win32.WM_RBUTTONUP) {
-            self.showContextMenu(current_profile, config, hotkey_manager, painter);
+            self.showContextMenu(config);
         } else if (lParam == win32.WM_LBUTTONDBLCLK) {
             slog.info("Opening configuration dialog from system tray double-click", .{});
             openConfigDialog();
         }
     }
 
-    fn showContextMenu(self: *TrayIcon, current_profile: []const u8, config: *const config_mod.Config, hotkey_manager: ?*hotkeys_mod.HotkeyManager, painter: ?*painter_mod.Painter) void {
+    fn showContextMenu(self: *TrayIcon, config: *const config_mod.Config) void {
+        const painter = painter_mod.g_painter_ptr;
         var cursor_pos: win32.POINT = undefined;
         if (win32.GetCursorPos(&cursor_pos) == 0) {
             slog.err("Failed to get cursor position", .{});
@@ -140,7 +142,7 @@ pub const TrayIcon = struct {
                 };
                 defer self.allocator.free(profile_z);
 
-                const flags: u32 = if (std.mem.eql(u8, profile, current_profile))
+                const flags: u32 = if (std.mem.eql(u8, profile, config.profile_name))
                     win32.MF_STRING | win32.MF_CHECKED
                 else
                     win32.MF_STRING;
@@ -199,7 +201,7 @@ pub const TrayIcon = struct {
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLEAR_NOTIF_HISTORY, "Clear Notification History");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
-        if (hotkey_manager) |hkm| {
+        if (hotkeys_mod.g_hotkey_manager_ptr) |hkm| {
             const suspend_flags: u32 = if (hkm.areHotkeysSuspended())
                 win32.MF_STRING | win32.MF_CHECKED
             else
@@ -239,7 +241,7 @@ pub const TrayIcon = struct {
         };
     }
 
-    pub fn handleMenuCommand(command_id: u16, config: *config_mod.Config, allocator: std.mem.Allocator, hotkey_manager: ?*hotkeys_mod.HotkeyManager) bool {
+    pub fn handleMenuCommand(command_id: u16, config: *config_mod.Config, allocator: std.mem.Allocator) bool {
         if (command_id == win32.IDM_EXIT) {
             slog.info("Exit requested from system tray", .{});
             win32.PostQuitMessage(0);
@@ -308,7 +310,7 @@ pub const TrayIcon = struct {
         }
 
         if (command_id == win32.IDM_SUSPEND_HOTKEYS) {
-            if (hotkey_manager) |hkm| {
+            if (hotkeys_mod.g_hotkey_manager_ptr) |hkm| {
                 hkm.runGlobalAction(.suspend_hotkeys);
             }
             return true;
@@ -316,7 +318,7 @@ pub const TrayIcon = struct {
 
         if (command_id == win32.IDM_RESTORE_SAVED_POSITIONS) {
             slog.info("Restore saved positions requested from system tray", .{});
-            if (hotkey_manager) |hkm| {
+            if (hotkeys_mod.g_hotkey_manager_ptr) |hkm| {
                 hkm.runGlobalAction(.move_to_saved_positions);
             } else {
                 slog.err("Hotkey manager not available for restore saved positions", .{});
@@ -326,7 +328,7 @@ pub const TrayIcon = struct {
 
         if (command_id == win32.IDM_CLOSE_ALL_CLIENTS) {
             slog.info("Close all clients requested from system tray", .{});
-            if (main_mod.g_scout_ptr) |scout_ptr| {
+            if (scout_mod.g_scout_ptr) |scout_ptr| {
                 client_actions.closeAllClients(scout_ptr.getWindows(), config);
             } else {
                 slog.err("Scout not available for close all clients", .{});

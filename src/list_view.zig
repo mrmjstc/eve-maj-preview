@@ -7,6 +7,8 @@ const color_mod = @import("util/color.zig");
 const log = @import("log.zig");
 const slog = log.scoped("list_view");
 const painter_mod = @import("painter.zig");
+const input = @import("input.zig");
+const activation = @import("clients/activation.zig");
 const format = @import("util/format.zig");
 const drag_panel = @import("drag/panel.zig");
 const ThumbnailWindow = painter_mod.ThumbnailWindow;
@@ -41,9 +43,6 @@ const BADGE_DISABLED_X: u32 = 0xFFCC4444;
 
 var g_class_registered: bool = false;
 
-/// Set by Painter.init() so the window proc can activate EVE clients without a direct list_view → input circular dependency.
-pub var g_activate_fn: ?*const fn (win32.HWND) void = null;
-pub var g_shift_click_fn: ?*const fn (win32.HWND) void = null;
 
 const LIST_WINDOW_CLASS = "EVE_LIST_CLASS";
 
@@ -709,15 +708,9 @@ fn listWindowProc(
                     if (index < lv.row_source_hwnds.items.len) {
                         const source_hwnd = lv.row_source_hwnds.items[index];
                         if (shift_pressed) {
-                            if (g_shift_click_fn) |toggle_exclusion| {
-                                toggle_exclusion(source_hwnd);
-                            }
-                        } else if (g_activate_fn) |activate| {
-                            activate(source_hwnd);
+                            input.handleThumbnailShiftClick(source_hwnd);
                         } else {
-                            // Fallback: basic foreground activation
-                            _ = win32.ShowWindow(source_hwnd, win32.SW_RESTORE);
-                            _ = win32.SetForegroundWindow(source_hwnd);
+                            activation.activate(source_hwnd);
                         }
                     }
                 }
