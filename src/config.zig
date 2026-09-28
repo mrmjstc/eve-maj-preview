@@ -30,6 +30,7 @@ pub const MAX_PROFILE_NAME_LEN: usize = 16;
 pub const atomicWriteFile = files.atomicWriteFile;
 pub const profilePath = profiles.path;
 pub const loadProfile = profiles.load;
+pub const listProfiles = profiles.list;
 pub const saveProfile = profiles.save;
 pub const writeDefaultProfile = profiles.writeDefault;
 
@@ -288,18 +289,13 @@ pub const Config = struct {
 
         var overrides: [color.AutoColors.max_avoided]u32 = undefined;
         var override_count: usize = 0;
-        for (self.characters.items) |char| {
-            if (char.nameColor) |custom_color| {
-                if (override_count == overrides.len) break;
+        collect: for (self.characters.items) |char| {
+            const border_color = if (char.borderColors) |border| border.activeBorderColor else null;
+            for ([_]?u32{ char.nameColor, border_color }) |maybe_color| {
+                const custom_color = maybe_color orelse continue;
+                if (override_count == overrides.len) break :collect;
                 overrides[override_count] = custom_color;
                 override_count += 1;
-            }
-            if (char.borderColors) |border| {
-                if (border.activeBorderColor) |custom_color| {
-                    if (override_count == overrides.len) break;
-                    overrides[override_count] = custom_color;
-                    override_count += 1;
-                }
             }
         }
 
@@ -328,7 +324,6 @@ pub const Config = struct {
         self.allocator.free(self.profile_name);
     }
 
-    /// One log call per JSON line, since the logger silently drops any single write over 2048 bytes.
     pub fn logSettings(self: *const Config) void {
         slog.info("Config loaded from profile: {s}", .{self.profile_name});
         wire.logJson(self.allocator, self);
@@ -405,10 +400,5 @@ pub const Config = struct {
 
         try self.saveCurrentProfile(allocator);
         slog.debug("Saved History Panel position for profile '{s}': ({}, {})", .{ self.profile_name, pos.x, pos.y });
-    }
-
-    pub fn saveHistoryPanelCategoryFilter(self: *Config, allocator: std.mem.Allocator) !void {
-        try self.saveCurrentProfile(allocator);
-        slog.debug("Saved History Panel category filter for profile '{s}'", .{self.profile_name});
     }
 };

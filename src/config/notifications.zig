@@ -13,26 +13,17 @@ pub const NotificationTypeConfig = struct {
     duration_ms: u32 = 10000,
     suppress_when_focused: bool = false,
     suppress_when_clicked: bool = false,
-    /// 0 = no throttling; otherwise repeats of this type are dropped until this many ms have passed since the last one actually shown (per thumbnail).
     throttle_ms: u32 = 10000,
-    /// null = fall back to the Alert state's borderColor (or inactive border).
     border_color: ?u32 = null,
-    /// null = fall back to the thumbnail's normal textColor.
     text_color: ?u32 = null,
-    /// false suppresses the border entirely, overriding the Alert state's showBorder and any border_color above.
     show_border: bool = false,
-    /// Flashes on/off a few times on start, then settles into an always-on border; no effect when show_border is false.
     flash_border: bool = false,
-    /// Self-contained - there is no global TTS master switch.
     tts_enabled: bool = false,
-    /// Self-contained too - there is no global sound master switch either.
     sound_enabled: bool = false,
-    /// Absolute path to a .wav/.mp3 file; may be set while sound_enabled is false so the picked file isn't lost by unchecking.
     sound_path: ?[]const u8 = null,
     sound_volume: u8 = 100,
 
     pub fn defaultFor(ntype: notification_mod.NotificationType) NotificationTypeConfig {
-        // Confirms a deliberate user action, so quick repeats must not be throttled away.
         return if (notification_mod.isUserAction(ntype)) .{ .duration_ms = 3000, .throttle_ms = 0 } else .{};
     }
 
@@ -168,10 +159,8 @@ pub const NotificationConfig = struct {
     tts_volume: u8 = 100,
     tts_rate: i8 = 0,
     tts_speak_character_name: bool = true,
-    /// Only used with tts_speak_character_name; a character without a display name is spoken by name.
     tts_use_display_name: bool = false,
 
-    /// Seconds a character stays in the recently-notified cycle after its latest notification.
     notified_cycle_retention_seconds: u32 = 30,
 
     type_configs: NotificationTypeConfigs = .{},
@@ -182,7 +171,6 @@ pub const NotificationConfig = struct {
         .font_size = ranges_mod.FONT_SIZE,
         .suppress_click_duration_ms = .{ 0, 60000 },
         .tts_volume = ranges_mod.PERCENT,
-        // SAPI's native range.
         .tts_rate = .{ -10, 10 },
         .notified_cycle_retention_seconds = .{ 5, 600 },
     };

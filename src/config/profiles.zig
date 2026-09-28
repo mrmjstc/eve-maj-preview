@@ -42,6 +42,38 @@ fn loadFile(allocator: std.mem.Allocator, profile_path: []const u8, name: []cons
     };
 }
 
+/// The profile file names in PROFILES_DIR, e.g. "default.json"; caller owns the list and its strings.
+pub fn list(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
+    var names = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (names.items) |name| allocator.free(name);
+        names.deinit(allocator);
+    }
+
+    var dir = std.Io.Dir.cwd().openDir(files.g_io, files.PROFILES_DIR, .{ .iterate = true }) catch |err| {
+        if (err == error.FileNotFound) {
+            slog.debug("Profiles directory not found", .{});
+            return names;
+        }
+        return err;
+    };
+    defer dir.close(files.g_io);
+
+    const global_settings_name = std.fs.path.basename(files.GLOBAL_SETTINGS_FILE);
+    var iter = dir.iterate();
+    while (try iter.next(files.g_io)) |entry| {
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".json")) continue;
+        if (std.mem.eql(u8, entry.name, global_settings_name)) continue;
+
+        const name = try allocator.dupe(u8, entry.name);
+        errdefer allocator.free(name);
+        try names.append(allocator, name);
+    }
+
+    slog.debug("Found {} profile(s)", .{names.items.len});
+    return names;
+}
+
 pub fn save(cfg: *const Config, allocator: std.mem.Allocator, file_path: []const u8) !void {
     const json = try cfg.toJsonString(allocator);
     defer allocator.free(json);

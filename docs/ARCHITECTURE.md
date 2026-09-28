@@ -105,7 +105,7 @@ Not just JSON schema - it's the shared model layer with both a wire format and r
 - `global.zig` - `GlobalConfig` and the cross-profile hotkey bindings and ore price table it owns.
 - Every type that holds saved settings is named `XxxConfig` (`ThumbnailConfig`, `SystemColorConfig`, `HotkeyGroupConfig`, `GlobalConfig`, ...); plain values (`Position`, `Argb`, `VkCode`, `OreEntry`) aren't.
 - `files.zig` - the process-wide `std.Io`/environment handles (`setIo`, `setEnvironMap`), file names and size limit, `atomicWriteFile`, `%VAR%` expansion.
-- `profiles.zig` - profile files on disk: `profilePath`, `loadProfile` (creating the profiles folder and default profile, falling back to the default profile or to defaults), `saveProfile`, `writeDefaultProfile`.
+- `profiles.zig` - profile files on disk: `profilePath`, `listProfiles`, `loadProfile` (creating the profiles folder and default profile, falling back to the default profile or to defaults), `saveProfile`, `writeDefaultProfile`.
 - `chatlog.zig`'s `ChatlogConfig.fromWire` also fills empty log folders with EVE's defaults under the shell's Documents folder.
 - `auto_colors.zig` - `AutoColorStore`, the generated system/character colours, kept in `colors.json` rather than the profile and loaded on first use.
 

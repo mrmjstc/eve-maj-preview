@@ -15,7 +15,7 @@ var g_profile_switch_buffer: [256]u8 = undefined;
 pub fn cycle(allocator: std.mem.Allocator, current_profile: []const u8, forward: bool) void {
     slog.info("{s} profile hotkey pressed", .{if (forward) "Next" else "Previous"});
 
-    var profiles = config_mod.GlobalConfig.enumerateProfiles(allocator) catch |err| {
+    var profiles = config_mod.listProfiles(allocator) catch |err| {
         slog.err("Failed to enumerate profiles: {}", .{err});
         return;
     };

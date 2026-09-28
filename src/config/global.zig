@@ -343,39 +343,6 @@ pub const GlobalConfig = struct {
         return try allocator.dupe(u8, id);
     }
 
-    pub fn enumerateProfiles(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
-        var profiles = std.ArrayList([]const u8).empty;
-        errdefer {
-            for (profiles.items) |profile| {
-                allocator.free(profile);
-            }
-            profiles.deinit(allocator);
-        }
-
-        var dir = std.Io.Dir.cwd().openDir(files.g_io, files.PROFILES_DIR, .{ .iterate = true }) catch |err| {
-            if (err == error.FileNotFound) {
-                slog.debug("Profiles directory not found", .{});
-                return profiles;
-            }
-            return err;
-        };
-        defer dir.close(files.g_io);
-
-        var iter = dir.iterate();
-        while (try iter.next(files.g_io)) |entry| {
-            if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".json")) {
-                if (std.mem.eql(u8, entry.name, "global.settings.json")) {
-                    continue;
-                }
-                const profile_name = try allocator.dupe(u8, entry.name);
-                try profiles.append(allocator, profile_name);
-            }
-        }
-
-        slog.debug("Found {} profile(s)", .{profiles.items.len});
-        return profiles;
-    }
-
     pub const Wire = wire.Wire(GlobalConfig);
 
     pub fn toWire(self: *GlobalConfig, allocator: std.mem.Allocator) !Wire {

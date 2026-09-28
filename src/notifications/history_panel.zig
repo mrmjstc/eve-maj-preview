@@ -287,7 +287,7 @@ pub const HistoryPanelWindow = struct {
             if (cx < rect.left or cx >= rect.right) continue;
 
             setCategoryEnabled(self.config, cat, !categoryEnabled(self.config, cat));
-            self.config.saveHistoryPanelCategoryFilter(self.allocator) catch |err| {
+            self.config.saveCurrentProfile(self.allocator) catch |err| {
                 slog.err("Failed to save History Panel category filter: {}", .{err});
             };
             return;

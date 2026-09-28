@@ -1787,7 +1787,7 @@ fn getConfigData(e: *webui.Event) void {
 fn listProfiles(e: *webui.Event) void {
     const allocator = g_allocator;
 
-    var profiles = config_mod.GlobalConfig.enumerateProfiles(allocator) catch |err| {
+    var profiles = config_mod.listProfiles(allocator) catch |err| {
         slog.err("Failed to enumerate profiles: {}", .{err});
         e.returnString("{\"profiles\": [], \"current\": \"default.json\"}");
         return;

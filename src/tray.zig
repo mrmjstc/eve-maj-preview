@@ -119,7 +119,7 @@ pub const TrayIcon = struct {
         };
         // Submenu is destroyed automatically when the parent menu is destroyed.
 
-        const profiles = config_mod.GlobalConfig.enumerateProfiles(self.allocator) catch |err| blk: {
+        const profiles = config_mod.listProfiles(self.allocator) catch |err| blk: {
             slog.err("Failed to enumerate profiles: {}", .{err});
             break :blk std.ArrayList([]const u8).empty;
         };
