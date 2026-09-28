@@ -42,6 +42,7 @@ pub fn applyOps(arena: std.mem.Allocator, args: struct { doc: session.Doc, ops: 
 /// Saving another profile's draft also makes it the running profile.
 /// The global settings are taken in by the restart that follows, once nothing else is reading them.
 pub fn saveSession(arena: std.mem.Allocator) !rpc.RawJson {
+    slog.info("Saving configuration (profile dirty: {}, global dirty: {})", .{ session.profileDirty(), session.globalDirty() });
     const global_draft: ?*config_mod.GlobalConfig = if (session.globalDirty()) try session.global() else null;
 
     if (session.editsDraft()) {

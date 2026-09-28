@@ -43,6 +43,7 @@ pub fn end() void {
 
     const store = &main_mod.g_store;
     if (!store.isDirty()) return;
+    slog.info("Dropping unsaved edits to the running profile", .{});
     store.discard() catch |err| {
         slog.err("Failed to drop unsaved edits to the running profile: {}", .{err});
         return;
