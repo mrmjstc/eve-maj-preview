@@ -51,6 +51,7 @@ fn countBound(items: anytype) usize {
 pub const HotkeyManager = struct {
     allocator: std.mem.Allocator,
     config: *const config_mod.Config,
+    store: *config_mod.ProfileStore,
     global_settings: *const config_mod.GlobalConfig,
     scout: *scout.Scout,
     painter: *painter_mod.Painter,
@@ -64,13 +65,16 @@ pub const HotkeyManager = struct {
     /// Most recent foreground window belonging to neither an EVE client nor this process; ReturnToLastApp's target, recorded by Painter's foreground hook.
     last_non_eve_foreground: ?win32.HWND = null,
 
-    pub fn init(allocator: std.mem.Allocator, cfg: *const config_mod.Config, gs: *const config_mod.GlobalConfig, s: *scout.Scout, p: *painter_mod.Painter) !HotkeyManager {
+    /// Reads the profile's saved copy, since hotkeys only change on Save.
+    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, gs: *const config_mod.GlobalConfig, s: *scout.Scout, p: *painter_mod.Painter) !HotkeyManager {
+        const cfg = &store.saved;
         const group_count = cfg.hotkeyGroups.items.len;
         var cycle = try cycling.CycleState.init(allocator, group_count);
         errdefer cycle.deinit(allocator);
         return HotkeyManager{
             .allocator = allocator,
             .config = cfg,
+            .store = store,
             .global_settings = gs,
             .scout = s,
             .painter = p,

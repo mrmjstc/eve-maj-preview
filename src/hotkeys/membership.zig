@@ -153,7 +153,7 @@ pub fn toggleThumbnailExclusion(m: *HotkeyManager, source_hwnd: win32.HWND) void
     m.exclusions.toggle(m.allocator, m.config, char_name);
     // The excluded list's order changed, so its cycle position no longer means anything.
     m.cycle.excluded_index = null;
-    thumbnail.is_excluded_from_cycle = m.exclusions.contains(m.config, char_name);
+    m.painter.refreshExclusion(thumbnail);
 
     if (thumbnail.is_excluded_from_cycle and m.config.exclusion.autoMinimizeExcluded) {
         _ = win32.ShowWindowAsync(source_hwnd, win32.SW_FORCEMINIMIZE);
@@ -186,7 +186,7 @@ pub fn assignHoveredToGroup(m: *HotkeyManager, group_index: usize) void {
     const group = &m.config.hotkeyGroups.items[group_index];
     const char_name = thumbnail.character_name;
 
-    const added = m.painter.store.toggleGroupMember(group_index, char_name) catch |err| {
+    const added = m.store.toggleGroupMember(group_index, char_name) catch |err| {
         slog.err("Failed to toggle {s} in group {} [{s}]: {}", .{ char_name, group_index, group.name, err });
         return;
     };

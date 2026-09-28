@@ -169,6 +169,15 @@ pub const ThumbnailWindow = struct {
         _ = win32.ShowWindow(self.text_hwnd, cmd);
     }
 
+    /// Moves (and, given a size, resizes) both windows, keeping the text overlay above the thumbnail.
+    pub fn moveTo(self: *const ThumbnailWindow, x: i32, y: i32, size: ?Size) void {
+        const w = if (size) |s| s.width else 0;
+        const h = if (size) |s| s.height else 0;
+        const size_flag: u32 = if (size == null) win32.SWP_NOSIZE else 0;
+        _ = win32.SetWindowPos(self.hwnd, win32.HWND_NOTOPMOST, x, y, w, h, size_flag | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
+        _ = win32.SetWindowPos(self.text_hwnd, win32.HWND_TOPMOST, x, y, w, h, size_flag | win32.SWP_NOACTIVATE);
+    }
+
     /// Queues moving (and, given a size, resizing) both windows; the DWM thumbnail's own rect is updated straight away, since DeferWindowPos won't.
     pub fn deferPlace(self: *const ThumbnailWindow, hdwp: win32.HDWP, x: i32, y: i32, size: ?Size) ?win32.HDWP {
         const w = if (size) |s| s.width else 0;

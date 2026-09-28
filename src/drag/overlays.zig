@@ -7,7 +7,7 @@ const slog = log.scoped("drag_overlays");
 const painter_mod = @import("../painter.zig");
 const draw = @import("../thumbnail/draw.zig");
 const monitors = @import("../layout/monitors.zig");
-const placement = @import("../layout/placement.zig");
+const arrange = @import("../thumbnail/arrange.zig");
 
 const Painter = painter_mod.Painter;
 
@@ -31,11 +31,7 @@ pub fn collectGhostGroups(painter: *const Painter, exclude_character: []const u8
     var raw = std.ArrayList(RawEntry).empty;
     defer raw.deinit(allocator);
 
-    const cfg = &painter.config.display;
-    const region_fit_grid: ?placement.RegionFitGrid = if (placement.isRegionFitActive(cfg)) blk: {
-        const region = placement.regionRectFromConfig(cfg).?;
-        break :blk placement.calculateRegionFitGrid(region, painter.layout().regionFitGridCount(), cfg.spacing, cfg.spacing, painter.layout().regionFitAspectRatio(), painter.layout().regionFitMaxCellSize(region));
-    } else null;
+    const region_fit_grid = if (arrange.regionFit(painter, painter.layout().regionFitGridCount())) |rf| rf.grid else null;
 
     for (painter.config.characters.items) |char_config| {
         if (std.mem.eql(u8, char_config.name, exclude_character)) continue;

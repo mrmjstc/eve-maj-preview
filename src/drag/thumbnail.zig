@@ -5,6 +5,7 @@ const painter_mod = @import("../painter.zig");
 const ThumbnailWindow = painter_mod.ThumbnailWindow;
 const overlays = @import("overlays.zig");
 const snapping = @import("snapping.zig");
+const arrange = @import("../thumbnail/arrange.zig");
 
 // Right-button drag of a thumbnail and its linked text overlay; holding Ctrl moves every thumbnail together.
 
@@ -60,9 +61,7 @@ pub fn end(hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
 
     // Ctrl held during drag means all thumbnails moved together
     if (win32.isCtrlPressed()) {
-        for (painter.thumbnails.items) |*saved_thumbnail| {
-            painter.saveThumbnailPosition(saved_thumbnail.hwnd);
-        }
+        painter.saveAllThumbnailPositions();
     } else {
         painter.saveThumbnailPosition(thumbnail_hwnd);
     }
@@ -109,50 +108,23 @@ pub fn move(hwnd: win32.HWND, lParam: win32.LPARAM) void {
                 delta_y = snapped.y - rect.top;
             }
 
-            var window_count: c_int = 0;
+            // Batched so the whole group moves in one DWM update instead of drifting apart across separate moves.
+            var hdwp = arrange.beginDefer(painter) orelse return;
             for (painter.thumbnails.items) |thumbnail| {
-                if (thumbnail.win32_enabled and win32.isWindow(thumbnail.hwnd) and win32.isWindow(thumbnail.text_hwnd)) {
-                    window_count += 2;
-                }
+                if (!thumbnail.win32_enabled or !win32.isWindow(thumbnail.hwnd) or !win32.isWindow(thumbnail.text_hwnd)) continue;
+
+                var thumb_rect: win32.RECT = undefined;
+                _ = win32.GetWindowRect(thumbnail.hwnd, &thumb_rect);
+                hdwp = thumbnail.deferPlace(hdwp, thumb_rect.left + delta_x, thumb_rect.top + delta_y, null) orelse return;
             }
-
-            // Batched via DeferWindowPos so the whole group moves in one atomic DWM update instead of drifting apart across N sequential SetWindowPos calls.
-            if (window_count > 0) {
-                var hdwp = win32.BeginDeferWindowPos(window_count);
-                for (painter.thumbnails.items) |thumbnail| {
-                    if (!thumbnail.win32_enabled or !win32.isWindow(thumbnail.hwnd) or !win32.isWindow(thumbnail.text_hwnd)) {
-                        continue;
-                    }
-
-                    var thumb_rect: win32.RECT = undefined;
-                    _ = win32.GetWindowRect(thumbnail.hwnd, &thumb_rect);
-
-                    const new_thumb_x = thumb_rect.left + delta_x;
-                    const new_thumb_y = thumb_rect.top + delta_y;
-
-                    if (hdwp) |h| {
-                        hdwp = win32.DeferWindowPos(h, thumbnail.hwnd, win32.HWND_NOTOPMOST, new_thumb_x, new_thumb_y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
-                    }
-                    if (hdwp) |h| {
-                        hdwp = win32.DeferWindowPos(h, thumbnail.text_hwnd, win32.HWND_TOPMOST, new_thumb_x, new_thumb_y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
-                    }
-                }
-                if (hdwp) |h| {
-                    _ = win32.EndDeferWindowPos(h);
-                }
-            }
+            _ = win32.EndDeferWindowPos(hdwp);
         }
     } else {
         // Apply snapping only when dragging single thumbnail
         const snapped = snapping.applySnapping(new_x, new_y, width, height, hwnd);
 
-        if (win32.linkedWindow(hwnd)) |other_hwnd| {
-            // Z-order is keyed by identity (text overlay always TOPMOST above thumbnail), not by which window was grabbed, or the live thumbnail could hide the name/border until refocus.
-            const dragged = if (painter_mod.g_painter_ptr) |painter| painter.getThumbnailByOverlayHwnd(hwnd) else null;
-            const thumb_hwnd = if (dragged) |t| t.hwnd else hwnd;
-            const text_hwnd = if (dragged) |t| t.text_hwnd else other_hwnd;
-            _ = win32.SetWindowPos(thumb_hwnd, win32.HWND_NOTOPMOST, snapped.x, snapped.y, width, height, win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
-            _ = win32.SetWindowPos(text_hwnd, win32.HWND_TOPMOST, snapped.x, snapped.y, width, height, win32.SWP_NOACTIVATE);
-        }
+        const painter = painter_mod.g_painter_ptr orelse return;
+        const dragged = painter.getThumbnailByOverlayHwnd(hwnd) orelse return;
+        dragged.moveTo(snapped.x, snapped.y, .{ .width = width, .height = height });
     }
 }

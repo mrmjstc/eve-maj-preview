@@ -12,10 +12,10 @@ const Painter = painter_mod.Painter;
 const ThumbnailWindow = window.ThumbnailWindow;
 const Size = window.Size;
 
-const RegionFit = struct { region: win32.RECT, grid: placement.RegionFitGrid };
+pub const RegionFit = struct { region: win32.RECT, grid: placement.RegionFitGrid };
 
 /// The RegionFit grid for `count` cells, or null outside RegionFit; the same for every thumbnail in a pass, so compute it once.
-fn regionFit(p: *const Painter, count: usize) ?RegionFit {
+pub fn regionFit(p: *const Painter, count: usize) ?RegionFit {
     const cfg = &p.config.display;
     if (!placement.isRegionFitActive(cfg)) return null;
     // isRegionFitActive guarantees a region.
@@ -71,11 +71,7 @@ pub fn refreshVisuals(p: *Painter) void {
 
         if (!thumbnail.win32_enabled) continue;
 
-        if (p.config.thumbnail.hideWhenNoEveFocus and !any_eve_has_focus) {
-            if (thumbnail.visibility_state == .Visible) thumbnail.setVisibility(.HiddenAutomatic);
-        } else if (thumbnail.visibility_state == .HiddenAutomatic) {
-            thumbnail.setVisibility(.Visible);
-        }
+        _ = p.applyAutoVisibility(thumbnail, any_eve_has_focus);
 
         // Opacity is otherwise only applied at window creation.
         _ = win32.SetLayeredWindowAttributes(thumbnail.hwnd, 0, thumbnail.cached_opacity, win32.LWA_ALPHA);
@@ -87,7 +83,7 @@ pub fn refreshVisuals(p: *Painter) void {
 }
 
 /// A batched DeferWindowPos sized for both windows of every win32_enabled thumbnail; null if there's nothing to move or it fails.
-fn beginDefer(p: *const Painter) ?win32.HDWP {
+pub fn beginDefer(p: *const Painter) ?win32.HDWP {
     var window_count: c_int = 0;
     for (p.thumbnails.items) |thumbnail| {
         if (thumbnail.win32_enabled) window_count += 2;

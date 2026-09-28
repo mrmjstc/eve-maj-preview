@@ -320,16 +320,30 @@ pub const Painter = struct {
         self.hide_timer_pending = false;
     }
 
-    /// The hide-debounce timer fired: no EVE window has focus, so auto-hide every visible thumbnail until one does.
+    /// The hide-debounce timer fired, so no EVE window has had focus for hideDebounceMs.
     pub fn autoHideAfterFocusLoss(self: *Painter) void {
         self.cancelHideTimer();
-        slog.debug("Hide debounce timer fired, hiding all thumbnails", .{});
+        slog.debug("Hide debounce timer fired", .{});
 
+        // Checked again, since the setting or focus may have changed while the timer ran.
+        const eve_has_focus = self.isEveWindowForeground();
         for (self.thumbnails.items) |*thumbnail| {
-            if (thumbnail.visibility_state != .Visible) continue;
-            thumbnail.setVisibility(.HiddenAutomatic);
-            self.renderThumbnailLogged(thumbnail, "auto-hide");
+            if (self.applyAutoVisibility(thumbnail, eve_has_focus)) self.renderThumbnailLogged(thumbnail, "auto-hide");
         }
+    }
+
+    /// The auto-hide rule: hidden while "hide when no EVE window has focus" is on and none has.
+    pub fn autoVisibility(self: *const Painter, eve_has_focus: bool) state_mod.VisibilityState {
+        return if (self.config.thumbnail.hideWhenNoEveFocus and !eve_has_focus) .HiddenAutomatic else .Visible;
+    }
+
+    /// Moves a thumbnail between visible and auto-hidden by autoVisibility, leaving one hidden by hand alone; returns whether it changed.
+    pub fn applyAutoVisibility(self: *const Painter, thumbnail: *ThumbnailWindow, eve_has_focus: bool) bool {
+        if (thumbnail.visibility_state == .HiddenManual) return false;
+        const target = self.autoVisibility(eve_has_focus);
+        if (thumbnail.visibility_state == target) return false;
+        thumbnail.setVisibility(target);
+        return thumbnail.visibility_state == target;
     }
 
     /// Hides every visible thumbnail, adding the windows it hid to `hidden` so showThumbnails brings back only those, not ones already hidden.
@@ -363,16 +377,31 @@ pub const Painter = struct {
         if (any_eve_has_focus) self.auto_minimize.recordFocus(should_be_active_hwnd.?);
 
         for (self.thumbnails.items) |*thumbnail| {
-            // Manual hiding persists until the user toggles visibility.
-            if (thumbnail.visibility_state == .HiddenAutomatic and any_eve_has_focus) {
-                thumbnail.setVisibility(.Visible);
-                thumbnail.needs_render = true;
-            }
+            // Losing focus hides only after the debounce timer, so only regaining it applies here.
+            if (any_eve_has_focus and self.applyAutoVisibility(thumbnail, true)) thumbnail.needs_render = true;
 
             if (active_changed and (thumbnail.source_hwnd == old_active or thumbnail.source_hwnd == should_be_active_hwnd)) {
                 thumbnail.needs_render = true;
             }
         }
+    }
+
+    /// `hwnd`, a tracked client, took focus; returns false if focus has already moved on, since focus events can arrive late during rapid cycling.
+    pub fn onClientFocused(self: *Painter, hwnd: win32.HWND) bool {
+        self.cancelHideTimer();
+
+        const current_foreground = win32.GetForegroundWindow();
+        if (current_foreground != hwnd) {
+            slog.debug("Ignoring stale focus change (target={*}, current foreground={*})", .{ hwnd, current_foreground });
+            return false;
+        }
+
+        self.reconcileThumbnailStates(hwnd);
+        if (self.getThumbnailBySourceHwnd(hwnd)) |thumbnail| {
+            slog.debug("Tracked window focused: {s}", .{thumbnail.character_name});
+            hotkeys_mod.syncFocusedCharacter(thumbnail.character_name, hwnd);
+        }
+        return true;
     }
 
     pub fn isEveWindowForeground(self: *const Painter) bool {
@@ -508,8 +537,7 @@ pub const Painter = struct {
         // RegionFit ignores the saved spot; applyNameChanges' reflow places it instead.
         if (thumbnail.win32_enabled and !placement_mod.isRegionFitActive(&self.config.display)) {
             if (self.config.getCharacterPosition(name)) |saved_pos| {
-                _ = win32.SetWindowPos(thumbnail.hwnd, win32.HWND_NOTOPMOST, saved_pos.x, saved_pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
-                _ = win32.SetWindowPos(thumbnail.text_hwnd, win32.HWND_TOPMOST, saved_pos.x, saved_pos.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
+                thumbnail.moveTo(saved_pos.x, saved_pos.y, null);
                 self.resizeThumbnailIfNeeded(thumbnail, null);
                 slog.info("Moved {s} thumbnail to saved position: ({}, {})", .{ name, saved_pos.x, saved_pos.y });
             } else {
@@ -521,11 +549,16 @@ pub const Painter = struct {
             self.auto_move.moveToSavedPosition(self.config, thumbnail.source_hwnd, name);
         }
 
-        const is_excluded = hotkeys_mod.isExcludedFromCycle(name);
-        if (is_excluded != thumbnail.is_excluded_from_cycle) {
-            thumbnail.is_excluded_from_cycle = is_excluded;
-            if (is_excluded) slog.info("Restored exclusion state for {s}", .{name});
-        }
+        self.refreshExclusion(thumbnail);
+    }
+
+    /// Mirrors the hotkey manager's cycle exclusion onto the thumbnail, which draws it; the only writer of is_excluded_from_cycle.
+    pub fn refreshExclusion(self: *Painter, thumbnail: *ThumbnailWindow) void {
+        _ = self;
+        const is_excluded = hotkeys_mod.isExcludedFromCycle(thumbnail.character_name);
+        if (is_excluded == thumbnail.is_excluded_from_cycle) return;
+        thumbnail.is_excluded_from_cycle = is_excluded;
+        thumbnail.needs_render = true;
     }
 
     /// The client is back at the login screen: it has no system and its notifications no longer apply.
@@ -638,12 +671,6 @@ pub const Painter = struct {
         self.history_panel.toggle(self.allocator, self.store, self.instance, self.anyCharacterLoggedIn());
     }
 
-    fn determineInitialVisibility(self: *const Painter, source_hwnd: win32.HWND) state_mod.VisibilityState {
-        // source_hwnd isn't tracked yet, so isEveWindowForeground alone would miss it.
-        const any_eve_has_focus = win32.GetForegroundWindow() == source_hwnd or self.isEveWindowForeground();
-        return if (self.config.thumbnail.hideWhenNoEveFocus and !any_eve_has_focus) .HiddenAutomatic else .Visible;
-    }
-
     const ThumbnailStrings = struct {
         title: []const u8,
         character_name: []const u8,
@@ -684,11 +711,12 @@ pub const Painter = struct {
             .system_name = strings.system_name,
             .cached_group_badge_label = strings.group_badge_label,
             .auto_minimize = .{ .inactive_since = win32.Ticks.now() },
-            .visibility_state = self.determineInitialVisibility(eve_window.hwnd),
-            .is_excluded_from_cycle = hotkeys_mod.isExcludedFromCycle(eve_window.character_name),
+            // The new client isn't tracked yet, so isEveWindowForeground alone would miss it.
+            .visibility_state = self.autoVisibility(win32.GetForegroundWindow() == eve_window.hwnd or self.isEveWindowForeground()),
             .win32_enabled = win32_enabled,
         };
         thumbnail.refreshConfigCache(self.config, &self.auto_colors);
+        self.refreshExclusion(&thumbnail);
         return thumbnail;
     }
 
@@ -739,15 +767,32 @@ pub const Painter = struct {
         slog.info("Created thumbnail for {s}", .{name});
     }
 
+    /// Saves where the thumbnail with window `hwnd` now sits.
     pub fn saveThumbnailPosition(self: *Painter, hwnd: win32.HWND) void {
-        if (!win32.isWindow(hwnd)) return;
-
         const thumbnail = self.getThumbnailByOverlayHwnd(hwnd) orelse return;
+        const entry = positionOf(thumbnail) orelse return;
+        self.store.setCharacterPositions(&.{entry});
+    }
 
+    /// After a group drag: every thumbnail's position, in one profile write.
+    pub fn saveAllThumbnailPositions(self: *Painter) void {
+        var entries: std.ArrayList(config_mod.ProfileStore.CharacterPosition) = .empty;
+        defer entries.deinit(self.allocator);
+        for (self.thumbnails.items) |*thumbnail| {
+            const entry = positionOf(thumbnail) orelse continue;
+            entries.append(self.allocator, entry) catch |err| {
+                slog.err("Failed to collect thumbnail positions to save: {}", .{err});
+                return;
+            };
+        }
+        self.store.setCharacterPositions(entries.items);
+    }
+
+    fn positionOf(thumbnail: *const ThumbnailWindow) ?config_mod.ProfileStore.CharacterPosition {
+        if (!thumbnail.win32_enabled) return null;
         var rect: win32.RECT = undefined;
-        _ = win32.GetWindowRect(hwnd, &rect);
-
-        self.store.setCharacterPosition(thumbnail.character_name, .{ .x = rect.left, .y = rect.top });
+        if (win32.GetWindowRect(thumbnail.hwnd, &rect) == 0) return null;
+        return .{ .name = thumbnail.character_name, .pos = .{ .x = rect.left, .y = rect.top } };
     }
 };
 
@@ -787,19 +832,5 @@ fn winEventProc(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, _: win32.LONG
         return;
     }
 
-    painter.cancelHideTimer();
-
-    // WINEVENT_OUTOFCONTEXT delivery can lag behind the focus change, so during rapid cycling this may already be stale.
-    const current_foreground = win32.GetForegroundWindow();
-    if (current_foreground != hwnd) {
-        slog.debug("Ignoring stale focus event (event hwnd={*}, current foreground={*})", .{ hwnd, current_foreground });
-        return;
-    }
-
-    painter.reconcileThumbnailStates(hwnd);
-
-    if (painter.getThumbnailBySourceHwnd(hwnd)) |thumbnail| {
-        slog.debug("Tracked window focused: {s}", .{thumbnail.character_name});
-        hotkeys_mod.syncFocusedCharacter(thumbnail.character_name, hwnd);
-    }
+    _ = painter.onClientFocused(hwnd);
 }

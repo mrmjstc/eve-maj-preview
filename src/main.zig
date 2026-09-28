@@ -476,7 +476,7 @@ fn destroyPainter() void {
 fn createHotkeyManager(timer_hwnd: win32.HWND) !void {
     const manager = try g_allocator.create(hotkeys.HotkeyManager);
     errdefer g_allocator.destroy(manager);
-    manager.* = try hotkeys.HotkeyManager.init(g_allocator, &g_store.saved, &g_global_settings, scout.g_scout_ptr.?, painter.g_painter_ptr.?);
+    manager.* = try hotkeys.HotkeyManager.init(g_allocator, &g_store, &g_global_settings, scout.g_scout_ptr.?, painter.g_painter_ptr.?);
     hotkeys.g_hotkey_manager_ptr = manager;
 
     manager.registerHotkeys(timer_hwnd) catch |err| {

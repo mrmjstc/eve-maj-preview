@@ -4,7 +4,6 @@ const log = @import("../log.zig");
 const slog = log.scoped("activation");
 const painter_mod = @import("../painter.zig");
 const hotkeys_mod = @import("../hotkeys/manager.zig");
-const Painter = painter_mod.Painter;
 
 var g_original_animation_setting: ?i32 = null;
 
@@ -62,39 +61,18 @@ pub fn activate(source_hwnd: win32.HWND) void {
         }
     }
 
-    // Update thumbnail states immediately so the active border shows without waiting for the event hook.
-    updateThumbnailStatesAfterFocus(painter, source_hwnd);
+    // Handled now rather than when the foreground hook fires, which can be late, so the active border shows at once.
+    _ = painter.onClientFocused(source_hwnd);
 
-    const thumbnail = painter.getThumbnailBySourceHwnd(source_hwnd) orelse return;
-    thumbnail.last_click_time = win32.Ticks.now();
-
-    // Dismiss any active notification with suppress_when_clicked set; must run after state is reconciled above.
-    if (painter.dismissClickSuppressedNotifications(thumbnail)) {
-        painter.renderThumbnail(thumbnail) catch |err| {
-            slog.err("Failed to render thumbnail after click-suppress clear: {}", .{err});
-        };
-        thumbnail.needs_render = false;
+    if (painter.getThumbnailBySourceHwnd(source_hwnd)) |thumbnail| {
+        thumbnail.last_click_time = win32.Ticks.now();
+        // After focus is reconciled above, since that decides which notifications a click dismisses.
+        _ = painter.dismissClickSuppressedNotifications(thumbnail);
+        // Even if focus hasn't landed yet (a restored client can lag), so rapid cycling moves on from this one.
+        hotkeys_mod.syncFocusedCharacter(thumbnail.character_name, source_hwnd);
     }
 
-    hotkeys_mod.syncFocusedCharacter(thumbnail.character_name, source_hwnd);
-}
-
-/// Updates thumbnail states immediately after focus change, since the Windows event hook may fire late.
-fn updateThumbnailStatesAfterFocus(painter: *Painter, focused_hwnd: win32.HWND) void {
-    // Bail if focus already changed, to avoid races during rapid cycling
-    const current_foreground = win32.GetForegroundWindow();
-    if (current_foreground != focused_hwnd) {
-        slog.debug("Skipping updateThumbnailStatesAfterFocus - focus already changed (target={*}, current={*})", .{
-            focused_hwnd,
-            current_foreground,
-        });
-        return;
-    }
-
-    // Ensures only one thumbnail ends up active
-    painter.reconcileThumbnailStates(focused_hwnd);
-
-    // Rendering immediately avoids hotkey lag, but defers to the timer above a threshold to avoid blocking on rare bulk updates.
+    // Rendering now avoids hotkey lag; past a few, the rest wait for the timer so a rare bulk update can't block.
     const MAX_IMMEDIATE_RENDERS: usize = 4;
     painter.renderDirtyThumbnails(MAX_IMMEDIATE_RENDERS);
 }

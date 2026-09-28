@@ -40,17 +40,28 @@ pub const ProfileStore = struct {
         self.emit(paths, writeFieldSets);
     }
 
-    pub fn setCharacterPosition(self: *ProfileStore, character_name: []const u8, pos: config_mod.Position) void {
-        const existed = self.live.findCharacter(character_name) != null;
-        inline for (.{ &self.live, &self.saved }) |cfg| {
-            const char = cfg.getOrCreateCharacter(cfg.allocator, character_name) catch |err| {
-                slog.err("Failed to add '{s}' to profile '{s}' for its position: {}", .{ character_name, cfg.profile_name, err });
-                return;
+    pub const CharacterPosition = struct { name: []const u8, pos: config_mod.Position };
+
+    /// Saved once for the whole batch, so a group drag writes the profile once rather than per thumbnail.
+    pub fn setCharacterPositions(self: *ProfileStore, entries: []const CharacterPosition) void {
+        for (entries) |entry| {
+            const existed = self.live.findCharacter(entry.name) != null;
+            setPosition(&self.live, entry) catch |err| {
+                slog.err("Failed to add '{s}' to profile '{s}' for its position: {}", .{ entry.name, self.live.profile_name, err });
+                continue;
             };
-            char.position = pos;
+            setPosition(&self.saved, entry) catch |err| {
+                slog.err("Failed to add '{s}' to profile '{s}' for its position: {}", .{ entry.name, self.saved.profile_name, err });
+                continue;
+            };
+            self.emitCharacter(entry.name, existed, "position");
         }
         self.persist();
-        self.emitCharacter(character_name, existed, "position");
+    }
+
+    fn setPosition(cfg: *Config, entry: CharacterPosition) !void {
+        const char = try cfg.getOrCreateCharacter(cfg.allocator, entry.name);
+        char.position = entry.pos;
     }
 
     /// Sets `character_name`'s saved game-window position, or with a null name every character's; clearing a missing character is a no-op.
