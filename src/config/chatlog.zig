@@ -15,7 +15,6 @@ pub const ChatlogConfig = struct {
     pollIntervalMs: u32 = 500,
     idlePollThreshold: u32 = 600,
     maxPollMultiplier: u8 = 2,
-    useThreading: bool = true,
 
     pub const ranges = .{
         .pollIntervalMs = .{ 100, 5000 },

@@ -374,7 +374,7 @@ fn mainImpl(init: std.process.Init) !void {
     if (g_chatlog_monitor) |monitor| {
         // Started only now that the trackers are wired in, so it never observes them as null when they should be set.
         startChatlogWorker(monitor);
-        slog.debug("Chatlog monitoring enabled (threading: {})", .{g_store.live.chatlog.useThreading});
+        slog.debug("Chatlog monitoring enabled", .{});
 
         for (g_store.live.characters.items) |char_config| {
             monitor.resolveCharacterId(char_config.name) catch |err| {
@@ -505,9 +505,7 @@ fn destroyChatlogMonitor() void {
     g_allocator.destroy(monitor);
 }
 
-/// Without threading, the monitor does its log I/O inline on the main thread's tick instead.
 fn startChatlogWorker(monitor: *chatlog.ChatlogMonitor) void {
-    if (!g_store.saved.chatlog.useThreading) return;
     monitor.startWorkerThread() catch |err| {
         slog.warn("Failed to start chatlog worker thread: {}", .{err});
     };
@@ -670,13 +668,12 @@ fn restartSubsystems(timer_hwnd: win32.HWND, replacement: ?config_mod.ProfileSto
     g_trackers.setup(&g_store.saved, g_chatlog_monitor);
 
     if (g_chatlog_monitor) |monitor| {
-        // Started before adding characters, so addCharacter() queues work instead of blocking the message loop with log I/O.
         startChatlogWorker(monitor);
         if (keep_chatlog_monitor) {
-            slog.info("Resumed chatlog monitoring without rescanning logs (threading: {})", .{g_store.saved.chatlog.useThreading});
+            slog.info("Resumed chatlog monitoring without rescanning logs", .{});
         } else {
             addChatlogCharacters(monitor, eve_windows);
-            slog.info("Reinitialized chatlog monitoring (threading: {})", .{g_store.saved.chatlog.useThreading});
+            slog.info("Reinitialized chatlog monitoring", .{});
         }
     }
 

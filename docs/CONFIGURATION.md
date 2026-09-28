@@ -658,8 +658,7 @@ Monitor EVE Online chat and game logs for system changes and events:
     "gamelogDir": "C:/Users/YourName/Documents/EVE/logs/Gamelogs",
     "pollIntervalMs": 500,
     "idlePollThreshold": 20,
-    "maxPollMultiplier": 8,
-    "useThreading": true
+    "maxPollMultiplier": 8
   }
 }
 ```
@@ -671,11 +670,7 @@ Monitor EVE Online chat and game logs for system changes and events:
 
 Variables are expanded when the configuration is loaded. If a variable doesn't exist, the literal text is preserved in the path.
 
-**Threading Support**: When enabled (default: `true`), chatlog monitoring runs in a dedicated worker thread with async I/O processing:
-- Prevents blocking the main thread during file operations
-- Improves UI responsiveness and thumbnail rendering performance
-- Uses thread-safe event queues for communication between worker and main threads
-- Set to `false` to disable threading and run chatlog monitoring synchronously (useful for debugging)
+**Threading**: Chatlog monitoring always runs on its own worker thread, so reading logs never holds up the thumbnails. (The old `useThreading` setting is ignored if a profile still has it.)
 
 **Polling Optimization**: The chatlog monitor uses exponential backoff to reduce CPU usage for inactive log files:
 - Files with no changes accumulate idle poll counts
