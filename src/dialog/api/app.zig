@@ -102,7 +102,7 @@ pub fn startRegionSelect(_: std.mem.Allocator, args: struct {
     setLabel(192, &request.labels.hint_edit, args.labels.hintEdit);
     setLabel(192, &request.labels.hint_confirm, args.labels.hintConfirm);
 
-    if (request.hide_thumbnails) painter.hideThumbnailsForRegionSelect();
+    if (request.hide_thumbnails) painter.hideVisibleThumbnails(host.allocator(), &g_region_select_hidden);
     const cursor = monitors.cursorMonitorBounds();
     const text_color = painter.config.thumbnail.characterNameColor | 0xFF000000;
     const label_font = painter.font_cache.characterNameFont(&painter.config.thumbnail, monitors.dpiForMonitor(cursor.monitor)) catch |err| blk: {
@@ -120,9 +120,16 @@ pub fn startRegionSelect(_: std.mem.Allocator, args: struct {
     }
 }
 
+/// The thumbnail windows a region selection hid, to show again once it ends.
+var g_region_select_hidden: std.ArrayList(win32.HWND) = .empty;
+
 fn onRegionSelectFinished() void {
+    defer {
+        g_region_select_hidden.deinit(host.allocator());
+        g_region_select_hidden = .empty;
+    }
     const painter = painter_mod.g_painter_ptr orelse return;
-    painter.restoreThumbnailsAfterRegionSelect();
+    painter.showThumbnails(g_region_select_hidden.items);
     painter.hint_box.hide();
 }
 

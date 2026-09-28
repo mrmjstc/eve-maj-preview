@@ -68,6 +68,8 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         win32.WM_TIMER => {
             if (wParam == TIMER_ID) {
                 onTimerTick();
+            } else if (wParam == painter.HIDE_DEBOUNCE_TIMER_ID) {
+                if (painter.g_painter_ptr) |painter_ptr| painter_ptr.autoHideAfterFocusLoss();
             }
             return 0;
         },

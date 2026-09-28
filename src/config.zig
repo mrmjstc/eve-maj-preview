@@ -17,6 +17,7 @@ const behavior = @import("config/behavior.zig");
 const auto_colors = @import("config/auto_colors.zig");
 const profiles = @import("config/profiles.zig");
 const store = @import("config/store.zig");
+const strings = @import("util/strings.zig");
 
 const slog = log.scoped("config");
 
@@ -246,6 +247,18 @@ pub const Config = struct {
 
     pub fn getDisplayName(self: *const Config, character_name: []const u8) []const u8 {
         return self.characterSetting(character_name, "displayName", null) orelse character_name;
+    }
+
+    /// The badge-enabled groups `character_name` is in, comma-joined by name or 1-based number ("1, Miners"); "" when none. Owned by the caller.
+    pub fn groupBadgeLabel(self: *const Config, allocator: std.mem.Allocator, character_name: []const u8) ![]const u8 {
+        var label: std.Io.Writer.Allocating = .init(allocator);
+        errdefer label.deinit();
+        for (self.hotkeyGroups.items, 1..) |*group, number| {
+            if (!group.showBadge or strings.indexOfString(group.characters.items, character_name) == null) continue;
+            if (label.written().len > 0) try label.writer.writeAll(", ");
+            if (group.name.len > 0) try label.writer.writeAll(group.name) else try label.writer.print("{}", .{number});
+        }
+        return label.toOwnedSlice();
     }
 
     pub fn validate(self: *Config) void {

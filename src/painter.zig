@@ -21,13 +21,14 @@ const overlay_mod = @import("thumbnail/overlay.zig");
 const font_cache_mod = @import("thumbnail/font_cache.zig");
 const placement_mod = @import("layout/placement.zig");
 const monitors_mod = @import("layout/monitors.zig");
+const main_mod = @import("main.zig");
 const log = @import("log.zig");
 const slog = log.scoped("painter");
 
 pub const ThumbnailWindow = window_mod.ThumbnailWindow;
 
-/// Timer on the first thumbnail window that auto-hides every thumbnail once no EVE window has had focus for hideDebounceMs.
-pub const HIDE_DEBOUNCE_TIMER_ID: usize = 1;
+/// Timer on main.zig's timer window, beside its tick timer (1), that auto-hides every thumbnail once no EVE window has had focus for hideDebounceMs.
+pub const HIDE_DEBOUNCE_TIMER_ID: usize = 2;
 
 pub var g_painter_ptr: ?*Painter = null;
 
@@ -68,28 +69,20 @@ pub const SystemNameSnapshot = struct {
 
 pub const Painter = struct {
     allocator: std.mem.Allocator,
+    /// Searched linearly: there are only ever a few dozen, and an index would go stale on every removal.
     thumbnails: std.ArrayList(ThumbnailWindow),
-    // source_hwnd → index, for O(1) lookups.
-    hwnd_to_thumbnail_index: std.AutoHashMap(win32.HWND, usize),
-    // thumbnail.hwnd → index, for O(1) lookups.
-    thumbnail_hwnd_to_index: std.AutoHashMap(win32.HWND, usize),
-    // thumbnail.text_hwnd → index, for O(1) lookups.
-    text_hwnd_to_index: std.AutoHashMap(win32.HWND, usize),
-    last_hwnd_index_rebuild: win32.Ticks = .{},
     instance: win32.HINSTANCE,
     /// Read-only, so every runtime change goes through `store` and reaches both the running and the saved copy.
     config: *const config_mod.Config,
     store: *config_mod.ProfileStore,
     focus_event_hook: ?win32.HANDLE = null,
     destroy_event_hook: ?win32.HANDLE = null,
-    hide_debounce_timer_hwnd: ?win32.HWND = null,
+    hide_timer_pending: bool = false,
     font_cache: font_cache_mod.FontCache,
     /// Non-null when viewMode == .ClientList; owns the compact list panel window.
     list_window: ?list_view.ListWindow = null,
     history_panel: history_panel_mod.HistoryPanel = .{},
     notified_queue: notified_queue_mod.NotifiedQueue = .{},
-    /// Thumbnails hideThumbnailsForRegionSelect hid, so restoreThumbnailsAfterRegionSelect only re-shows exactly those (not ones already manually hidden beforehand).
-    region_select_hidden_hwnds: std.ArrayList(win32.HWND) = .empty,
     auto_move: auto_move_mod.AutoMoveVerifier,
     /// Feeds history_panel.
     notification_history: notification_history_mod.NotificationHistory = .{},
@@ -119,13 +112,10 @@ pub const Painter = struct {
         var painter: Painter = .{
             .allocator = allocator,
             .thumbnails = .empty,
-            .hwnd_to_thumbnail_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
             .auto_minimize = .init(allocator),
             .auto_colors = .init(allocator),
             .auto_move = .init(allocator),
             .ghost_overlay = .init(allocator),
-            .thumbnail_hwnd_to_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
-            .text_hwnd_to_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
             .font_cache = .init(allocator),
             .instance = instance,
             .config = cfg,
@@ -135,16 +125,9 @@ pub const Painter = struct {
         try window_mod.registerClasses(instance);
 
         painter.focus_event_hook = win32.setWinEventHook(win32.EVENT_SYSTEM_FOREGROUND, winEventProc);
-
-        if (painter.focus_event_hook == null) {
-            slog.err("Failed to set up focus event hook", .{});
-        }
-
+        if (painter.focus_event_hook == null) slog.err("Failed to set up focus event hook", .{});
         painter.destroy_event_hook = win32.setWinEventHook(win32.EVENT_OBJECT_DESTROY, windowDestroyProc);
-
-        if (painter.destroy_event_hook == null) {
-            slog.err("Failed to set up destroy event hook", .{});
-        }
+        if (painter.destroy_event_hook == null) slog.err("Failed to set up destroy event hook", .{});
 
         if (cfg.display.viewMode == .ClientList) {
             painter.list_window = list_view.ListWindow.init(allocator, store, instance) catch |err| blk: {
@@ -160,38 +143,27 @@ pub const Painter = struct {
 
     pub fn deinit(self: *Painter) void {
         g_painter_ptr = null;
+        // The timer outlives this Painter on the main window, and would otherwise hide the next one's thumbnails.
+        self.cancelHideTimer();
 
-        // Destroy list window first (before unhooking events)
         if (self.list_window) |*lw| {
             lw.deinit();
             self.list_window = null;
         }
-
         self.history_panel.deinit();
-
         self.font_cache.deinit();
 
-        if (self.focus_event_hook) |hook| {
-            _ = win32.UnhookWinEvent(hook);
-        }
-        if (self.destroy_event_hook) |hook| {
-            _ = win32.UnhookWinEvent(hook);
-        }
+        if (self.focus_event_hook) |hook| _ = win32.UnhookWinEvent(hook);
+        if (self.destroy_event_hook) |hook| _ = win32.UnhookWinEvent(hook);
 
         self.ghost_overlay.deinit();
         self.hint_box.deinit();
 
-        for (self.thumbnails.items) |thumbnail| {
-            self.destroyThumbnail(thumbnail);
-        }
+        for (self.thumbnails.items) |thumbnail| self.destroyThumbnail(thumbnail);
         self.thumbnails.deinit(self.allocator);
         self.notified_queue.deinit(self.allocator);
-        self.region_select_hidden_hwnds.deinit(self.allocator);
         self.auto_move.deinit();
-        self.hwnd_to_thumbnail_index.deinit();
         self.auto_minimize.deinit();
-        self.thumbnail_hwnd_to_index.deinit();
-        self.text_hwnd_to_index.deinit();
         self.auto_colors.deinit();
     }
 
@@ -201,16 +173,12 @@ pub const Painter = struct {
 
     /// Single point for rendering any thumbnail overlay; skips the re-render when RenderSettings haven't changed.
     pub fn renderThumbnail(self: *Painter, thumbnail: *ThumbnailWindow) !void {
-        // ClientList mode renders via ListWindow.render() instead; Nothing mode renders nothing
+        // ClientList mode renders via ListWindow.render() instead.
         if (!thumbnail.win32_enabled) return;
         const settings = overlay_mod.createRenderSettings(self.config, thumbnail, self.active_source_hwnd);
 
         if (thumbnail.render_cache.settings) |cached| {
-            if (overlay_mod.renderSettingsEqual(cached, settings)) {
-                return;
-            }
-
-            // Only visibility changed? Just show/hide windows without re-rendering
+            if (overlay_mod.renderSettingsEqual(cached, settings)) return;
             if (overlay_mod.renderSettingsOnlyVisibilityChanged(cached, settings)) {
                 thumbnail.show(settings.show_thumbnail);
                 thumbnail.render_cache.settings = settings;
@@ -245,169 +213,57 @@ pub const Painter = struct {
         thumbnail.notifications.deinit(self.allocator);
     }
 
-    /// Drops the thumbnail at `index` from the list and lookup maps and destroys it. Later entries' indices shift, so callers run finishRemovals once they're done.
     fn removeThumbnailAt(self: *Painter, index: usize) void {
-        const thumbnail = self.thumbnails.orderedRemove(index);
-        _ = self.hwnd_to_thumbnail_index.remove(thumbnail.source_hwnd);
-        _ = self.thumbnail_hwnd_to_index.remove(thumbnail.hwnd);
-        _ = self.text_hwnd_to_index.remove(thumbnail.text_hwnd);
-        self.destroyThumbnail(thumbnail);
-    }
-
-    fn finishRemovals(self: *Painter) void {
-        self.rebuildHwndIndex(false);
+        self.destroyThumbnail(self.thumbnails.orderedRemove(index));
         if (self.thumbnails.items.len == 0) self.auto_colors.flush();
     }
 
     pub fn hasThumbnail(self: *const Painter, source_hwnd: win32.HWND) bool {
-        return self.hwnd_to_thumbnail_index.contains(source_hwnd);
+        return self.indexOfSource(source_hwnd) != null;
     }
 
-    /// Remove thumbnails whose source / related windows are gone (defensive cleanup)
+    /// Returns whether a reflow is needed to refill the region.
     pub fn cleanupClosedThumbnails(self: *Painter, closed_windows: []const scout_mod.ClosedWindow) bool {
         // By source_hwnd, not name: multiple windows can share a name (e.g. "EVE").
         var removed_any = false;
         for (closed_windows) |cw| {
-            var i: usize = 0;
-            while (i < self.thumbnails.items.len) {
-                const thumbnail = self.thumbnails.items[i];
-                if (thumbnail.source_hwnd == cw.hwnd) {
-                    slog.info("Cleaning up closed thumbnail for {s}", .{thumbnail.character_name});
-                    self.removeThumbnailAt(i);
-                    removed_any = true;
-                    break;
-                }
-                i += 1;
-            }
+            const index = self.indexOfSource(cw.hwnd) orelse continue;
+            slog.info("Cleaning up closed thumbnail for {s}", .{self.thumbnails.items[index].character_name});
+            self.removeThumbnailAt(index);
+            removed_any = true;
         }
-
-        if (removed_any) self.finishRemovals();
-
-        // A logout must reflow the survivors to refill the region.
         return removed_any and placement_mod.isRegionFitActive(&self.config.display);
     }
 
-    /// Rebuilds all HWND → index mappings; call after removing thumbnails to keep indices consistent. `force` bypasses the rate limit when the caller needs a correct index immediately.
-    fn rebuildHwndIndex(self: *Painter, force: bool) void {
-        const now = win32.Ticks.now();
-        if (!force and now.elapsedSince(self.last_hwnd_index_rebuild) < 100) {
-            slog.debug("Skipping HWND index rebuild (rate limited: {}ms since last rebuild)", .{now.elapsedSince(self.last_hwnd_index_rebuild)});
-            return;
-        }
-
-        self.last_hwnd_index_rebuild = now;
-        slog.debug("Rebuilding HWND index for {} thumbnails...", .{self.thumbnails.items.len});
-
-        self.hwnd_to_thumbnail_index.clearRetainingCapacity();
-        self.thumbnail_hwnd_to_index.clearRetainingCapacity();
-        self.text_hwnd_to_index.clearRetainingCapacity();
-        for (self.thumbnails.items, 0..) |*thumbnail, index| {
-            self.hwnd_to_thumbnail_index.put(thumbnail.source_hwnd, index) catch |err| {
-                slog.err("Failed to rebuild HWND index for {s}: {}", .{ thumbnail.character_name, err });
-            };
-            // Thumbnail / text window HWNDs only exist in Thumbnails view mode
-            if (thumbnail.win32_enabled) {
-                self.thumbnail_hwnd_to_index.put(thumbnail.hwnd, index) catch |err| {
-                    slog.err("Failed to rebuild thumbnail HWND index for {s}: {}", .{ thumbnail.character_name, err });
-                };
-                self.text_hwnd_to_index.put(thumbnail.text_hwnd, index) catch |err| {
-                    slog.err("Failed to rebuild text HWND index for {s}: {}", .{ thumbnail.character_name, err });
-                };
-            }
-        }
-    }
-
-    /// Resolves hwnd to its thumbnails[] index; only matches Painter's own thumbnail/text windows, since a source EVE window closing is Scout's call (closed_windows -> cleanupClosedThumbnails).
-    fn resolveThumbnailIndexForDestroy(self: *Painter, hwnd: win32.HWND) ?usize {
-        const raw_index = self.thumbnail_hwnd_to_index.get(hwnd) orelse
-            self.text_hwnd_to_index.get(hwnd) orelse return null;
-
-        if (raw_index < self.thumbnails.items.len) {
-            const candidate = self.thumbnails.items[raw_index];
-            if (candidate.hwnd == hwnd or candidate.text_hwnd == hwnd) {
-                return raw_index;
-            }
-        }
-
-        self.rebuildHwndIndex(true);
-        const retry_index = self.thumbnail_hwnd_to_index.get(hwnd) orelse
-            self.text_hwnd_to_index.get(hwnd) orelse return null;
-        if (retry_index >= self.thumbnails.items.len) return null;
-
-        const candidate = self.thumbnails.items[retry_index];
-        if (candidate.hwnd == hwnd or candidate.text_hwnd == hwnd) {
-            return retry_index;
+    fn indexOfSource(self: *const Painter, source_hwnd: win32.HWND) ?usize {
+        for (self.thumbnails.items, 0..) |thumbnail, i| {
+            if (thumbnail.source_hwnd == source_hwnd) return i;
         }
         return null;
     }
 
-    /// Gets a thumbnail by source EVE window HWND with O(1) lookup; rebuilds the index and retries once if the entry is stale.
+    /// Matches a thumbnail's own window or its text overlay, never a source EVE window.
+    fn indexOfOverlay(self: *const Painter, hwnd: win32.HWND) ?usize {
+        for (self.thumbnails.items, 0..) |thumbnail, i| {
+            // Outside Thumbnails mode the handles are sentinels.
+            if (thumbnail.win32_enabled and (thumbnail.hwnd == hwnd or thumbnail.text_hwnd == hwnd)) return i;
+        }
+        return null;
+    }
+
+    /// Don't keep the pointer across anything that adds or removes thumbnails.
     pub fn getThumbnailBySourceHwnd(self: *Painter, source_hwnd: win32.HWND) ?*ThumbnailWindow {
-        const index = self.hwnd_to_thumbnail_index.get(source_hwnd) orelse return null;
-
-        if (index < self.thumbnails.items.len) {
-            const thumbnail = &self.thumbnails.items[index];
-            if (thumbnail.source_hwnd == source_hwnd) {
-                return thumbnail;
-            }
-        }
-
-        slog.warn("HWND index mismatch for 0x{x} at index {}. Rebuilding index...", .{ @intFromPtr(source_hwnd), index });
-
-        // Force past the rate limit: a mismatch means the map is stale right now, not just due for its next routine rebuild.
-        self.rebuildHwndIndex(true);
-        const retry_index = self.hwnd_to_thumbnail_index.get(source_hwnd) orelse return null;
-        if (retry_index >= self.thumbnails.items.len) return null;
-
-        const thumbnail = &self.thumbnails.items[retry_index];
-        if (thumbnail.source_hwnd == source_hwnd) return thumbnail;
-        return null;
+        return &self.thumbnails.items[self.indexOfSource(source_hwnd) orelse return null];
     }
 
-    /// Resolved fresh each call so a cached pointer can't dangle across a reallocation.
+    /// Don't keep the pointer across anything that adds or removes thumbnails.
     pub fn getThumbnailByOverlayHwnd(self: *Painter, hwnd: win32.HWND) ?*ThumbnailWindow {
-        const index = self.thumbnail_hwnd_to_index.get(hwnd) orelse self.text_hwnd_to_index.get(hwnd) orelse return null;
-        if (index >= self.thumbnails.items.len) return null;
-        const thumbnail = &self.thumbnails.items[index];
-        if (thumbnail.hwnd == hwnd or thumbnail.text_hwnd == hwnd) return thumbnail;
-        return null;
+        return &self.thumbnails.items[self.indexOfOverlay(hwnd) orelse return null];
     }
 
-    /// Comma-joined names of the badge-enabled groups `character_name` belongs to; "" when none.
-    fn buildGroupBadgeLabel(self: *Painter, character_name: []const u8) ![]const u8 {
-        var label_buf = std.ArrayList(u8).empty;
-        defer label_buf.deinit(self.allocator);
-
-        for (self.config.hotkeyGroups.items, 0..) |*group, index| {
-            if (!group.showBadge) continue;
-
-            var is_member = false;
-            for (group.characters.items) |char_name| {
-                if (std.mem.eql(u8, char_name, character_name)) {
-                    is_member = true;
-                    break;
-                }
-            }
-            if (!is_member) continue;
-
-            if (label_buf.items.len > 0) {
-                try label_buf.appendSlice(self.allocator, ", ");
-            }
-            if (group.name.len > 0) {
-                try label_buf.appendSlice(self.allocator, group.name);
-            } else {
-                var index_buf: [20]u8 = undefined;
-                const index_str = try std.fmt.bufPrint(&index_buf, "{}", .{index + 1});
-                try label_buf.appendSlice(self.allocator, index_str);
-            }
-        }
-
-        return self.allocator.dupe(u8, label_buf.items);
-    }
-
-    /// Recompute and cache a thumbnail's group badge label after its membership changed.
+    /// After the character's group membership changed.
     pub fn refreshGroupBadge(self: *Painter, thumbnail: *ThumbnailWindow) void {
-        const new_label = self.buildGroupBadgeLabel(thumbnail.character_name) catch |err| {
+        const new_label = self.config.groupBadgeLabel(self.allocator, thumbnail.character_name) catch |err| {
             slog.err("Failed to build group badge label for {s}: {}", .{ thumbnail.character_name, err });
             return;
         };
@@ -416,7 +272,7 @@ pub const Painter = struct {
         thumbnail.render_cache.group_badge.dims = null;
     }
 
-    /// Reconciles focus, then marks thumbnails dirty whose minimized state changed; call periodically from the timer.
+    /// Reconciles focus, then marks thumbnails dirty whose minimized state changed.
     pub fn updateThumbnailStates(self: *Painter) void {
         if (self.thumbnails.items.len == 0) return;
 
@@ -433,33 +289,40 @@ pub const Painter = struct {
         }
     }
 
-    /// Toggle all thumbnails between hidden and visible, preserving active/inactive state (hotkey action).
+    /// The toggle-visibility hotkey: the first thumbnail decides the direction, and manual hiding persists through focus changes.
     pub fn toggleAllThumbnailsVisibility(self: *Painter) void {
         if (self.thumbnails.items.len == 0) {
             slog.debug("No thumbnails to toggle visibility", .{});
             return;
         }
 
-        const first_vis = self.thumbnails.items[0].visibility_state;
-        const new_visibility: state_mod.VisibilityState = if (first_vis == .Visible)
-            .HiddenManual
-        else
-            .Visible;
-
+        const new_visibility: state_mod.VisibilityState = if (self.thumbnails.items[0].visibility_state == .Visible) .HiddenManual else .Visible;
         slog.info("Toggling all thumbnails visibility: {}", .{new_visibility});
 
-        // Toggle all thumbnails (manual hiding persists through focus changes)
         for (self.thumbnails.items) |*thumbnail| {
             thumbnail.setVisibility(new_visibility);
-
             self.renderThumbnailLogged(thumbnail, "visibility toggle");
         }
     }
 
-    /// The hide-debounce timer fired on `timer_hwnd`: no EVE window has focus, so auto-hide every visible thumbnail (re-shown once EVE regains focus).
-    pub fn autoHideAfterFocusLoss(self: *Painter, timer_hwnd: win32.HWND) void {
-        _ = win32.KillTimer(timer_hwnd, HIDE_DEBOUNCE_TIMER_ID);
-        self.hide_debounce_timer_hwnd = null;
+    fn startHideTimer(self: *Painter) void {
+        const timer_hwnd = main_mod.g_timer_hwnd orelse return;
+        if (win32.SetTimer(timer_hwnd, HIDE_DEBOUNCE_TIMER_ID, self.config.thumbnail.hideDebounceMs, null) == 0) {
+            slog.err("Failed to start hide debounce timer", .{});
+            return;
+        }
+        self.hide_timer_pending = true;
+    }
+
+    fn cancelHideTimer(self: *Painter) void {
+        if (!self.hide_timer_pending) return;
+        if (main_mod.g_timer_hwnd) |timer_hwnd| _ = win32.KillTimer(timer_hwnd, HIDE_DEBOUNCE_TIMER_ID);
+        self.hide_timer_pending = false;
+    }
+
+    /// The hide-debounce timer fired: no EVE window has focus, so auto-hide every visible thumbnail until one does.
+    pub fn autoHideAfterFocusLoss(self: *Painter) void {
+        self.cancelHideTimer();
         slog.debug("Hide debounce timer fired, hiding all thumbnails", .{});
 
         for (self.thumbnails.items) |*thumbnail| {
@@ -469,28 +332,26 @@ pub const Painter = struct {
         }
     }
 
-    /// Hides every currently-visible thumbnail so it doesn't obscure the "Start Region Selection" overlay.
-    pub fn hideThumbnailsForRegionSelect(self: *Painter) void {
-        self.region_select_hidden_hwnds.clearRetainingCapacity();
+    /// Hides every visible thumbnail, adding the windows it hid to `hidden` so showThumbnails brings back only those, not ones already hidden.
+    pub fn hideVisibleThumbnails(self: *Painter, allocator: std.mem.Allocator, hidden: *std.ArrayList(win32.HWND)) void {
         for (self.thumbnails.items) |*thumbnail| {
             if (!thumbnail.isVisible()) continue;
             thumbnail.setVisibility(.HiddenManual);
-            if (thumbnail.isVisible()) continue; // setVisibility silently refused (alerting/dragging) - nothing to restore later.
-            self.region_select_hidden_hwnds.append(self.allocator, thumbnail.hwnd) catch |err| {
-                slog.err("Failed to record thumbnail for region-select restore: {}", .{err});
+            // Refused while alerting or dragging.
+            if (thumbnail.isVisible()) continue;
+            hidden.append(allocator, thumbnail.hwnd) catch |err| {
+                slog.err("Failed to remember a hidden thumbnail to show again: {}", .{err});
             };
-            self.renderThumbnailLogged(thumbnail, "region select hide");
+            self.renderThumbnailLogged(thumbnail, "hide");
         }
     }
 
-    /// Restores visibility for thumbnails hideThumbnailsForRegionSelect hid.
-    pub fn restoreThumbnailsAfterRegionSelect(self: *Painter) void {
-        for (self.region_select_hidden_hwnds.items) |hwnd| {
+    pub fn showThumbnails(self: *Painter, hwnds: []const win32.HWND) void {
+        for (hwnds) |hwnd| {
             const thumbnail = self.getThumbnailByOverlayHwnd(hwnd) orelse continue;
             thumbnail.setVisibility(.Visible);
-            self.renderThumbnailLogged(thumbnail, "region select restore");
+            self.renderThumbnailLogged(thumbnail, "show");
         }
-        self.region_select_hidden_hwnds.clearRetainingCapacity();
     }
 
     /// Sole writer of active_source_hwnd, the single source of truth for who's focused; call instead of setting it directly.
@@ -502,7 +363,7 @@ pub const Painter = struct {
         if (any_eve_has_focus) self.auto_minimize.recordFocus(should_be_active_hwnd.?);
 
         for (self.thumbnails.items) |*thumbnail| {
-            // Unhide automatically-hidden thumbnails when EVE gains focus; manual hiding persists until the user toggles visibility.
+            // Manual hiding persists until the user toggles visibility.
             if (thumbnail.visibility_state == .HiddenAutomatic and any_eve_has_focus) {
                 thumbnail.setVisibility(.Visible);
                 thumbnail.needs_render = true;
@@ -519,23 +380,10 @@ pub const Painter = struct {
         return self.hasThumbnail(foreground_hwnd);
     }
 
-    /// Updates system name for a character using HWND (O(1) lookup); see ThumbnailWindow.system_name_event_ts and .travel for `event_ts`/`is_jump`.
+    /// See ThumbnailWindow.system_name_event_ts and .travel for `event_ts` and `is_jump`.
     pub fn updateSystemNameByHwnd(self: *Painter, source_hwnd: win32.HWND, system_name: []const u8, event_ts: u64, is_jump: bool) !void {
-        const thumbnail = self.getThumbnailBySourceHwnd(source_hwnd) orelse blk: {
-            // Window not found on first attempt - defensively rebuild HWND index and retry
-            slog.debug("Window 0x{x} not found for system update, rebuilding HWND index...", .{@intFromPtr(source_hwnd)});
-            self.rebuildHwndIndex(true);
-
-            if (self.getThumbnailBySourceHwnd(source_hwnd)) |thumb| {
-                slog.info("Successfully found window 0x{x} after index rebuild for {s}", .{ @intFromPtr(source_hwnd), thumb.character_name });
-                break :blk thumb;
-            }
-
-            slog.warn("Window 0x{x} not found even after index rebuild (thumbnail may not exist)", .{@intFromPtr(source_hwnd)});
-            slog.debug("Currently tracking {} thumbnails:", .{self.thumbnails.items.len});
-            for (self.thumbnails.items) |*thumb| {
-                slog.debug("  - {s}: source_hwnd=0x{x}", .{ thumb.character_name, @intFromPtr(thumb.source_hwnd) });
-            }
+        const thumbnail = self.getThumbnailBySourceHwnd(source_hwnd) orelse {
+            slog.debug("No thumbnail for window 0x{x} to show system {s}", .{ @intFromPtr(source_hwnd), system_name });
             return;
         };
 
@@ -559,8 +407,7 @@ pub const Painter = struct {
         slog.debug("Updated system for {s}: {s}", .{ thumbnail.character_name, system_name });
     }
 
-    /// Renders every thumbnail with needs_render set. If max_immediate is given and more thumbnails
-    /// than that are dirty, renders only up to the cap now and leaves the rest dirty for the timer.
+    /// Renders every thumbnail with needs_render set; past `max_immediate`, the rest stay dirty for the next tick.
     pub fn renderDirtyThumbnails(self: *Painter, max_immediate: ?usize) void {
         var rendered: usize = 0;
         for (self.thumbnails.items) |*thumbnail| {
@@ -698,7 +545,7 @@ pub const Painter = struct {
         slog.debug("Cleared system name for logged out client", .{});
     }
 
-    /// Syncs thumbnail title text against Scout's latest scan, independent of character-name changes.
+    /// Titles can change without the character name changing.
     fn syncThumbnailTitles(self: *Painter, eve_windows: []const scout_mod.EveWindow) void {
         for (eve_windows) |eve_window| {
             const thumbnail = self.getThumbnailBySourceHwnd(eve_window.hwnd) orelse continue;
@@ -747,7 +594,6 @@ pub const Painter = struct {
         return created_new;
     }
 
-    /// Main update cycle - performs all Painter operations for a single tick
     pub fn update(self: *Painter, eve_windows: []const scout_mod.EveWindow, closed_windows: []const scout_mod.ClosedWindow, name_changes: []const scout_mod.NameChange) !void {
         var needs_region_reflow = self.cleanupClosedThumbnails(closed_windows);
         self.updateThumbnailStates();
@@ -763,7 +609,6 @@ pub const Painter = struct {
         // Coalesced into one reflow, since any combination of the three triggers above can fire in the same tick.
         if (needs_region_reflow) self.repositionAllThumbnails();
 
-        // Thumbnail-mode only — ClientList has no Win32 windows to redraw here.
         self.renderDirtyThumbnails(null);
 
         if (self.list_window) |*lw| {
@@ -775,7 +620,7 @@ pub const Painter = struct {
         self.history_panel.update(self, self.anyCharacterLoggedIn());
     }
 
-    /// True when at least one tracked EVE client currently has a real (non-generic) character name, i.e. is logged in.
+    /// Whether any client is past the login screen.
     pub fn anyCharacterLoggedIn(self: *const Painter) bool {
         for (self.thumbnails.items) |thumbnail| {
             if (!scout_mod.isGenericCharacterName(thumbnail.character_name)) return true;
@@ -793,17 +638,10 @@ pub const Painter = struct {
         self.history_panel.toggle(self.allocator, self.store, self.instance, self.anyCharacterLoggedIn());
     }
 
-    fn determineInitialVisibility(
-        self: *const Painter,
-        source_hwnd: win32.HWND,
-    ) state_mod.VisibilityState {
+    fn determineInitialVisibility(self: *const Painter, source_hwnd: win32.HWND) state_mod.VisibilityState {
         // source_hwnd isn't tracked yet, so isEveWindowForeground alone would miss it.
         const any_eve_has_focus = win32.GetForegroundWindow() == source_hwnd or self.isEveWindowForeground();
-
-        return if (self.config.thumbnail.hideWhenNoEveFocus and !any_eve_has_focus)
-            .HiddenAutomatic
-        else
-            .Visible;
+        return if (self.config.thumbnail.hideWhenNoEveFocus and !any_eve_has_focus) .HiddenAutomatic else .Visible;
     }
 
     const ThumbnailStrings = struct {
@@ -822,7 +660,7 @@ pub const Painter = struct {
         errdefer allocator.free(char_name_copy);
         const sys_name_copy = try allocator.dupe(u8, system_name);
         errdefer allocator.free(sys_name_copy);
-        const group_badge_label_copy = try self.buildGroupBadgeLabel(character_name);
+        const group_badge_label_copy = try self.config.groupBadgeLabel(allocator, character_name);
         errdefer allocator.free(group_badge_label_copy);
 
         return .{
@@ -854,18 +692,9 @@ pub const Painter = struct {
         return thumbnail;
     }
 
-    /// Appends and indexes a fully built thumbnail, then reconciles focus since its window may already be the foreground one.
+    /// Reconciles focus afterwards, since the new client's window may already be the foreground one.
     fn addThumbnail(self: *Painter, thumbnail: ThumbnailWindow) !void {
         try self.thumbnails.append(self.allocator, thumbnail);
-        // Keeps a failed put() below from leaving a freed/destroyed entry behind in the list.
-        errdefer _ = self.thumbnails.pop();
-        const new_index = self.thumbnails.items.len - 1;
-        try self.hwnd_to_thumbnail_index.put(thumbnail.source_hwnd, new_index);
-        // Thumbnail / text window HWNDs only exist in Thumbnails view mode.
-        if (thumbnail.win32_enabled) {
-            try self.thumbnail_hwnd_to_index.put(thumbnail.hwnd, new_index);
-            try self.text_hwnd_to_index.put(thumbnail.text_hwnd, new_index);
-        }
 
         const foreground_hwnd = win32.GetForegroundWindow();
         self.reconcileThumbnailStates(foreground_hwnd);
@@ -874,7 +703,7 @@ pub const Painter = struct {
 
     /// ClientList and Nothing modes only need a data record, not real Win32 windows.
     fn createTrackingOnlyEntry(self: *Painter, eve_window: *const scout_mod.EveWindow, initial_system_name: []const u8) !void {
-        // Sentinel HWND, never passed to Win32 APIs since win32_enabled is false.
+        // Never passed to Win32, since win32_enabled is false.
         const sentinel: win32.HWND = @ptrFromInt(1);
         const thumbnail = try self.newThumbnailRecord(eve_window, initial_system_name, .{ .hwnd = sentinel, .text_hwnd = sentinel, .thumbnail_id = sentinel }, false);
         errdefer self.freeThumbnailData(thumbnail);
@@ -924,19 +753,16 @@ pub const Painter = struct {
 
 fn windowDestroyProc(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, _: win32.LONG, _: win32.LONG, _: win32.DWORD, _: win32.DWORD) callconv(.c) void {
     const painter = g_painter_ptr orelse return;
-
-    const index = painter.resolveThumbnailIndexForDestroy(hwnd) orelse return;
-
+    // Only our own windows: a source EVE window closing is Scout's to report (see cleanupClosedThumbnails).
+    const index = painter.indexOfOverlay(hwnd) orelse return;
     slog.info("Window closed (event), removing thumbnail for {s}", .{painter.thumbnails.items[index].character_name});
     painter.removeThumbnailAt(index);
-    painter.finishRemovals();
 }
 
 fn winEventProc(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, _: win32.LONG, _: win32.LONG, _: win32.DWORD, _: win32.DWORD) callconv(.c) void {
     const painter = g_painter_ptr orelse return;
 
-    // O(1) lookup: Check if it's one of our thumbnail windows (early exit - most common case)
-    if (painter.thumbnail_hwnd_to_index.contains(hwnd) or painter.text_hwnd_to_index.contains(hwnd)) {
+    if (painter.indexOfOverlay(hwnd) != null) {
         slog.debug("Thumbnail window got focus (ignoring): {*}", .{hwnd});
         return;
     }
@@ -947,40 +773,23 @@ fn winEventProc(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, _: win32.LONG
         arrange.reassertTopmost(painter);
     }
 
-    const is_eve_window = painter.hasThumbnail(hwnd);
-
-    if (!is_eve_window) {
+    if (!painter.hasThumbnail(hwnd)) {
         if (!win32.isOwnProcessWindow(hwnd) and !win32.isDesktopShellWindow(hwnd)) {
             hotkeys_mod.recordNonEveForeground(hwnd);
         }
 
         if (painter.config.thumbnail.hideWhenNoEveFocus) {
             slog.debug("Untracked window focused (hwnd={*}), starting {}ms debounce timer (hideWhenNoEveFocus=true)", .{ hwnd, painter.config.thumbnail.hideDebounceMs });
-            // Only use thumbnail HWNDs in thumbnail mode (list mode has no valid thumbnail HWNDs)
-            if (painter.thumbnails.items.len > 0 and painter.thumbnails.items[0].win32_enabled) {
-                const timer_hwnd = painter.thumbnails.items[0].hwnd;
-                if (win32.SetTimer(timer_hwnd, HIDE_DEBOUNCE_TIMER_ID, painter.config.thumbnail.hideDebounceMs, null) != 0) {
-                    painter.hide_debounce_timer_hwnd = timer_hwnd;
-                } else {
-                    slog.err("Failed to start hide debounce timer", .{});
-                }
-            }
+            painter.startHideTimer();
         } else {
             slog.debug("Untracked window focused (hwnd={*}), ignoring (hideWhenNoEveFocus=false)", .{hwnd});
         }
         return;
     }
 
-    // Cancel any pending hide timer since an EVE window now has focus
-    if (painter.hide_debounce_timer_hwnd) |timer_hwnd| {
-        _ = win32.KillTimer(timer_hwnd, HIDE_DEBOUNCE_TIMER_ID);
-        painter.hide_debounce_timer_hwnd = null;
-        slog.debug("Cancelled hide debounce timer (tracked window focused)", .{});
-    }
+    painter.cancelHideTimer();
 
-    // WINEVENT_OUTOFCONTEXT delivery can lag well behind the actual focus change; during rapid
-    // cycling a stale event can arrive after focus has already moved on again, so drop it rather
-    // than reconciling the active border back to a target that's no longer current.
+    // WINEVENT_OUTOFCONTEXT delivery can lag behind the focus change, so during rapid cycling this may already be stale.
     const current_foreground = win32.GetForegroundWindow();
     if (current_foreground != hwnd) {
         slog.debug("Ignoring stale focus event (event hwnd={*}, current foreground={*})", .{ hwnd, current_foreground });

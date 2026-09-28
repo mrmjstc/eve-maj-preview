@@ -118,15 +118,9 @@ fn handleSharedMessage(hwnd: win32.HWND, msg: win32.UINT, lParam: win32.LPARAM, 
     return 0;
 }
 
-/// Window procedure for thumbnail windows: handles input events and the auto-hide timer when no EVE window has focus.
+/// Window procedure for thumbnail windows.
 pub fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
-        win32.WM_TIMER => {
-            if (wParam == painter_mod.HIDE_DEBOUNCE_TIMER_ID) {
-                if (painter_mod.g_painter_ptr) |painter| painter.autoHideAfterFocusLoss(hwnd);
-                return 0;
-            }
-        },
         win32.WM_ACTIVATE => {
             if (win32.linkedWindow(hwnd)) |text_hwnd| {
                 _ = win32.SetWindowPos(text_hwnd, win32.HWND_TOPMOST, 0, 0, 0, 0, win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
