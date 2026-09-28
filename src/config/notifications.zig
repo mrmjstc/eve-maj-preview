@@ -135,19 +135,15 @@ pub const NotificationTypeConfigs = struct {
         return out;
     }
 
-    /// Merges each type present in `value` into that type's settings; other types are left as they are.
-    pub fn applyPatch(self: *NotificationTypeConfigs, value: std.json.Value, allocator: std.mem.Allocator) !void {
-        if (value != .object) {
-            slog.warn("Ignoring non-object type_configs in preview patch", .{});
-            return;
-        }
-        inline for (std.meta.fields(notification_mod.NotificationType)) |f| {
-            if (value.object.get(f.name)) |type_value| {
-                if (type_value == .object) {
-                    try wire.applyPatch(NotificationTypeConfig, self.map.getPtr(@field(notification_mod.NotificationType, f.name)), type_value.object, allocator);
-                }
-            }
-        }
+    /// One type's settings by name, so an edit path can reach them (see config/patch.zig).
+    pub fn childAt(self: *NotificationTypeConfigs, key: []const u8) ?*NotificationTypeConfig {
+        const ntype = std.meta.stringToEnum(notification_mod.NotificationType, key) orelse return null;
+        return self.map.getPtr(ntype);
+    }
+
+    pub fn childAtConst(self: *const NotificationTypeConfigs, key: []const u8) ?*const NotificationTypeConfig {
+        const ntype = std.meta.stringToEnum(notification_mod.NotificationType, key) orelse return null;
+        return self.map.getPtrConst(ntype);
     }
 };
 

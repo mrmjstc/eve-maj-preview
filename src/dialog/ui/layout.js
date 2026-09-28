@@ -1,10 +1,10 @@
 // Tabs, section navigation, the status bar, and closing the window.
-import { hasRealUnsavedChanges } from './changes.js';
+import { hasUnsavedChanges } from './changes.js';
 import { logError, rpc } from './core.js';
 import { fitHotkeyGroupCharsList, selectedHotkeyGroupIndex } from './hotkey_groups.js';
 import { alignBindingLabelColumns, updateHotkeyPlaceholders } from './hotkeys.js';
 import { refreshOverlayLayoutPreview } from './overlay_layout.js';
-import { saveConfiguration } from './session.js';
+import { flushEdits, saveConfiguration } from './session.js';
 import { alignDetailPanelNameLabel } from './widgets.js';
 
 // Checked per call so a mid-session OS change is picked up. scrollIntoView takes
@@ -164,14 +164,14 @@ function setActiveSection(section) {
 }
 
 export async function closeDialog() {
-    if (hasRealUnsavedChanges()) {
+    await flushEdits();
+    if (hasUnsavedChanges()) {
         const choice = await showUnsavedCloseModal();
         if (choice === 'cancel') return;
         if (choice === 'save') {
             await saveConfiguration();
-            // Save can fail (validation, hotkey conflict) without throwing - the fingerprint still
-            // won't match the saved baseline in that case, so don't close out from under the error.
-            if (hasRealUnsavedChanges()) return;
+            // Save can fail (validation, hotkey conflict) without throwing, so don't close out from under the error.
+            if (hasUnsavedChanges()) return;
         }
     }
     doCloseDialog();
@@ -218,7 +218,7 @@ function showUnsavedCloseModal() {
 // Best-effort guard for the native title-bar close button / Alt+F4, which don't go through closeDialog() above.
 // Browsers (and Chromium-based webviews) show their own fixed dialog here - the returnValue text itself is ignored by modern engines, only whether it's set matters.
 window.addEventListener('beforeunload', (e) => {
-    if (hasRealUnsavedChanges()) {
+    if (hasUnsavedChanges()) {
         e.preventDefault();
         e.returnValue = '';
     }

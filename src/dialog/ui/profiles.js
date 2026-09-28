@@ -1,12 +1,12 @@
 // Profile list, switching, creating, copying, deleting, resetting and restoring backups.
 import { app } from './state.js';
 import { DEFAULT_ACCENT_COLOR_HTML, applyAccentColorTheme, htmlColorToZig, zigColorToHtml } from './colors.js';
-import { listenForAppEvent, logError, rpc } from './core.js';
+import { logError, rpc } from './core.js';
 import { populateProfileSwitchHotkeys } from './global_hotkeys.js';
 import { t } from './i18n.js';
 import { closeImportModal } from './import.js';
 import { showStatus } from './layout.js';
-import { loadConfigurationFromBackend } from './session.js';
+import { openSession } from './session.js';
 import { confirmRemove } from './widgets.js';
 
 // Backup filenames are "<unixSeconds>_<originalFilename>.json", stamped by deleteProfile().
@@ -95,16 +95,10 @@ async function restoreProfileBackup(filename, displayName) {
 
 export const MAX_PROFILE_NAME_LENGTH = 16;
 
-// The app switches profile on its own too (tray, hotkeys), so previews follow whichever one it runs.
-listenForAppEvent('profileSwitched', ({ name }) => {
-    app.liveConfirmedProfile = name;
-});
-
 export async function loadProfileList() {
     try {
         if (typeof webui !== 'undefined') {
             const data = await rpc('listProfiles');
-            app.liveConfirmedProfile = data.live;
 
             const profileSelect = document.getElementById('profile-select');
             profileSelect.innerHTML = '';
@@ -145,22 +139,21 @@ export async function switchProfile(deferLivePush = false, forceLive = false) {
             profileSelect.value = app.dialogEditingProfile;
             return choice;
         }
-        if (choice === 'live') {
-            if (deferLivePush) {
-                app.liveConfirmedProfile = selectedProfile;
-            } else {
-                try {
-                    if (typeof webui !== 'undefined') {
-                        await rpc('switchProfileLive', { name: selectedProfile });
-                    }
-                    app.liveConfirmedProfile = selectedProfile;
-                } catch (error) {
-                    logError('Failed to make profile live:', error);
-                    showStatus(t('status.makeProfileLiveFailedPrefix') + error.message, 'error');
+        if (choice === 'live' && !deferLivePush) {
+            try {
+                if (typeof webui !== 'undefined') {
+                    // The window follows the app onto it, and the profileSwitched event reopens the session.
+                    await rpc('switchProfileLive', { name: selectedProfile });
+                    app.dialogEditingProfile = selectedProfile;
+                    showStatus(t('status.profileSwitchedSuccess'), 'success');
+                    return liveChoice;
                 }
+            } catch (error) {
+                logError('Failed to make profile live:', error);
+                showStatus(t('status.makeProfileLiveFailedPrefix') + error.message, 'error');
             }
         }
-        // choice === 'edit' -> leave liveConfirmedProfile as-is, so preview stays suppressed until confirmed live or saved.
+        // choice === 'edit' -> the window edits a draft, which doesn't preview until it's saved.
     }
 
     showStatus(t('status.switchingToProfilePrefix') + selectedProfile.replace(/\.json$/, '') + '...', 'info');
@@ -170,7 +163,7 @@ export async function switchProfile(deferLivePush = false, forceLive = false) {
             await rpc('switchProfile', { name: selectedProfile });
             app.dialogEditingProfile = selectedProfile;
             showStatus(t('status.profileSwitchedSuccess'), 'success');
-            await loadConfigurationFromBackend();
+            await openSession();
         } else {
             showStatus(t('status.mockSwitchPrefix') + selectedProfile, 'info');
         }
@@ -362,7 +355,7 @@ export function deleteCurrentProfile() {
                 // The backend moved the window onto the profile the app now runs.
                 await loadProfileList();
                 app.dialogEditingProfile = profileSelect.value;
-                await loadConfigurationFromBackend();
+                await openSession();
                 await populateProfileSwitchHotkeys();
 
                 showStatus(t('status.profileDeletedSuccess'), 'success');
@@ -387,7 +380,7 @@ export function resetCurrentProfile() {
         try {
             if (typeof webui !== 'undefined') {
                 await rpc('resetProfile', { name: currentProfile });
-                await loadConfigurationFromBackend();
+                await openSession();
                 showStatus(t('status.profileResetDone').replace('{name}', currentDisplayName), 'success');
             } else {
                 showStatus(t('status.mockResetPrefix') + currentProfile, 'info');

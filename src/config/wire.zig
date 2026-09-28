@@ -88,7 +88,7 @@ pub const StringMap = struct {
 };
 
 /// A `u32`/`?u32` field whose name ends in "color"/"Color" is an ARGB colour, saved as a hex string.
-fn isColorField(comptime name: []const u8) bool {
+pub fn isColorField(comptime name: []const u8) bool {
     // Compared by hand: std.mem.endsWith costs enough comptime branches to matter across every nested field.
     if (name.len < 5) return false;
     const tail = name[name.len - 5 ..];
@@ -96,32 +96,32 @@ fn isColorField(comptime name: []const u8) bool {
 }
 
 /// A `u32`/`?u32` field named "hotkey…" or "…Key" is a virtual-key code, saved as a hex string.
-fn isKeyField(comptime name: []const u8) bool {
+pub fn isKeyField(comptime name: []const u8) bool {
     if (name.len >= 6 and name[0] == 'h' and name[1] == 'o' and name[2] == 't' and name[3] == 'k' and name[4] == 'e' and name[5] == 'y') return true;
     return name.len >= 3 and name[name.len - 3] == 'K' and name[name.len - 2] == 'e' and name[name.len - 1] == 'y';
 }
 
 /// Generated or hand-written, a type with a `Wire` saves, loads, frees and patches itself.
-fn isNested(comptime T: type) bool {
+pub fn isNested(comptime T: type) bool {
     return @typeInfo(T) == .@"struct" and @hasDecl(T, "Wire");
 }
 
 /// The section type inside an optional nested section, e.g. CharacterConfig's `?CharacterBorderColorsConfig`.
-fn OptionalNested(comptime T: type) ?type {
+pub fn OptionalNested(comptime T: type) ?type {
     const info = @typeInfo(T);
     if (info != .optional or !isNested(info.optional.child)) return null;
     return info.optional.child;
 }
 
 /// The item type of a `std.ArrayList` field, which is saved as a JSON array.
-fn ListItem(comptime T: type) ?type {
+pub fn ListItem(comptime T: type) ?type {
     if (@typeInfo(T) != .@"struct" or !@hasField(T, "items") or !@hasField(T, "capacity")) return null;
     const Item = @typeInfo(@FieldType(T, "items")).pointer.child;
     return if (T == std.ArrayList(Item)) Item else null;
 }
 
 /// A string-to-string map field, which is saved as a JSON object (see StringMap).
-fn isStringMap(comptime T: type) bool {
+pub fn isStringMap(comptime T: type) bool {
     return T == std.StringHashMap([]const u8);
 }
 
@@ -135,12 +135,12 @@ fn isSaved(comptime R: type, comptime name: []const u8) bool {
 }
 
 /// A field in `R.wire_defaults` loads with that default when its key is missing, for defaults a runtime field can't hold (e.g. a non-empty list).
-fn hasWireDefault(comptime R: type, comptime name: []const u8) bool {
+pub fn hasWireDefault(comptime R: type, comptime name: []const u8) bool {
     if (!@hasDecl(R, "wire_defaults")) return false;
     return @hasField(@TypeOf(R.wire_defaults), name);
 }
 
-fn savedFields(comptime R: type) []const std.builtin.Type.StructField {
+pub fn savedFields(comptime R: type) []const std.builtin.Type.StructField {
     comptime {
         var out: []const std.builtin.Type.StructField = &.{};
         for (@typeInfo(R).@"struct".fields) |f| {
@@ -388,9 +388,14 @@ pub fn clone(comptime T: type, value: T, allocator: std.mem.Allocator) !T {
 }
 
 /// `out` must still hold its defaults; on failure it holds only what was copied, so `deinit` frees it.
+/// Runtime fields are copied too when they hold no pointers (a list item's id); the caller sets the rest.
 pub fn cloneInto(comptime R: type, value: *const R, allocator: std.mem.Allocator, out: *R) !void {
-    inline for (comptime savedFields(R)) |f| {
-        @field(out, f.name) = try cloneField(f.type, @field(value, f.name), allocator);
+    inline for (@typeInfo(R).@"struct".fields) |f| {
+        if (comptime isSaved(R, f.name)) {
+            @field(out, f.name) = try cloneField(f.type, @field(value, f.name), allocator);
+        } else if (comptime !hasPointers(f.type)) {
+            @field(out, f.name) = @field(value, f.name);
+        }
     }
 }
 
@@ -471,58 +476,4 @@ pub fn logJson(allocator: std.mem.Allocator, settings: anytype) void {
 
 fn freeOwnedString(allocator: std.mem.Allocator, s: []const u8, default: []const u8) void {
     if (s.len != 0 and s.ptr != default.ptr) allocator.free(s);
-}
-
-/// Nested sections are merged, unknown keys ignored, and a malformed value is logged and skipped so it can't discard the rest.
-pub fn applyPatch(comptime R: type, target: *R, obj: std.json.ObjectMap, allocator: std.mem.Allocator) !void {
-    var scratch = std.heap.ArenaAllocator.init(allocator);
-    defer scratch.deinit();
-
-    inline for (@typeInfo(R).@"struct".fields) |f| {
-        if (obj.get(f.name)) |json_value| {
-            if (comptime isNested(f.type)) {
-                try patchNested(f.type, &@field(target, f.name), json_value, allocator);
-            } else if (std.json.parseFromValueLeaky(@FieldType(Wire(R), f.name), scratch.allocator(), json_value, .{})) |wire_value| {
-                if (comptime OptionalNested(f.type) != null) {
-                    const replacement = try fieldFromWire(f.type, wire_value, allocator);
-                    freeField(f.type, &@field(target, f.name), null, allocator);
-                    @field(target, f.name) = replacement;
-                } else if (f.type == []const u8) {
-                    try replaceString(allocator, &@field(target, f.name), wire_value, f.defaultValue().?);
-                } else if (f.type == ?[]const u8) {
-                    try replaceOptionalString(allocator, &@field(target, f.name), wire_value);
-                } else {
-                    @field(target, f.name) = plainFromWire(f.type, wire_value);
-                }
-            } else |err| {
-                slog.warn("Ignoring invalid {s}.{s} in preview patch: {}", .{ @typeName(R), f.name, err });
-            }
-        }
-    }
-}
-
-/// A type with its own `applyPatch` (e.g. a keyed map) handles the value itself; otherwise it must be an object merged field by field.
-fn patchNested(comptime T: type, target: *T, json_value: std.json.Value, allocator: std.mem.Allocator) !void {
-    if (comptime @hasDecl(T, "applyPatch")) return T.applyPatch(target, json_value, allocator);
-    if (json_value != .object) {
-        slog.warn("Ignoring non-object {s} in preview patch", .{@typeName(T)});
-        return;
-    }
-    try applyPatch(T, target, json_value.object, allocator);
-}
-
-/// Unchanged strings keep their allocation, since thumbnails and render settings borrow slices of them.
-fn replaceString(allocator: std.mem.Allocator, field: *[]const u8, new_value: []const u8, default: []const u8) !void {
-    if (std.mem.eql(u8, field.*, new_value)) return;
-    const old = field.*;
-    field.* = try allocator.dupe(u8, new_value);
-    freeOwnedString(allocator, old, default);
-}
-
-fn replaceOptionalString(allocator: std.mem.Allocator, field: *?[]const u8, new_value: ?[]const u8) !void {
-    const old = field.*;
-    if (old == null and new_value == null) return;
-    if (old != null and new_value != null and std.mem.eql(u8, old.?, new_value.?)) return;
-    field.* = if (new_value) |s| try allocator.dupe(u8, s) else null;
-    if (old) |s| allocator.free(s);
 }

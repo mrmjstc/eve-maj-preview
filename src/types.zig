@@ -21,8 +21,8 @@ pub const ExclusionOverlayStyle = enum {
 
 /// Animation style for window operations (restore, minimize)
 pub const AnimationStyle = enum {
-    OriginalAnimation,
     NoAnimation,
+    OriginalAnimation,
 };
 
 pub const ClickTrigger = enum {
@@ -104,7 +104,7 @@ pub const RegionFitDirection = enum {
     RowFirst_LTR_BTT,
     RowFirst_RTL_BTT,
     ColumnFirst_TTB_LTR,
-    ColumnFirst_BTT_LTR,
     ColumnFirst_TTB_RTL,
+    ColumnFirst_BTT_LTR,
     ColumnFirst_BTT_RTL,
 };

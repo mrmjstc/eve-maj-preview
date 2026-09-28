@@ -3,7 +3,7 @@ import { app } from './state.js';
 import { markAsChanged } from './changes.js';
 import { reselectAfterRemoval } from './characters.js';
 import { escapeHtml, logError, rpc } from './core.js';
-import { renderHotkeyInputHtml, updateHotkeyConflictHighlights, vkHexToFriendly } from './hotkeys.js';
+import { hotkeyToSaved, renderHotkeyInputHtml, updateHotkeyConflictHighlights, vkHexToFriendly } from './hotkeys.js';
 import { t } from './i18n.js';
 import { scrollBehavior, showStatus } from './layout.js';
 import { alignDetailPanelNameLabel, moveArrayItem, selectMasterDetailRow, setupDragReorder, syncAccordionHeaderName } from './widgets.js';
@@ -78,7 +78,7 @@ export function populateHotkeyGroups() {
                             <span class="label-body">${t('dynamic.hotkeyGroup.temporaryMembershipLabel')}</span>
                         </label>
                         <label>
-                            <input type="checkbox" id="hkgroup_${index}_showBadge" ${group.showBadge ? 'checked' : ''} onchange="scheduleThumbnailPreview()">
+                            <input type="checkbox" id="hkgroup_${index}_showBadge" ${group.showBadge ? 'checked' : ''}>
                             <span class="label-body">${t('dynamic.hotkeyGroup.showBadgeLabel')}</span>
                         </label>
                     </div>
@@ -488,9 +488,9 @@ export function saveHotkeyGroups() {
         const charsList = document.getElementById(`hkgroup_${index}_charsList`);
 
         if (name) group.name = name.value || '';
-        if (forward) group.forwardKey = forward.value || null;
-        if (backward) group.backwardKey = backward.value || null;
-        if (assign) group.assignKey = assign.value || null;
+        if (forward) group.forwardKey = hotkeyToSaved(forward.value);
+        if (backward) group.backwardKey = hotkeyToSaved(backward.value);
+        if (assign) group.assignKey = hotkeyToSaved(assign.value);
         if (includeNotLoggedIn) group.includeNotLoggedIn = includeNotLoggedIn.checked;
         if (temporaryMembership) group.temporaryMembership = temporaryMembership.checked;
         if (showBadge) group.showBadge = showBadge.checked;

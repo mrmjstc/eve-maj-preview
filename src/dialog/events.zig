@@ -29,9 +29,11 @@ pub fn winKeyCaptured(modifiers: u32) void {
     });
 }
 
-/// An assign key saved new hotkey group members.
-pub fn groupMembersChanged() void {
-    emit("groupMembersChanged", null);
+/// The app changed the running profile itself (a drag, the tray, an assign key), as edit ops (see config/patch.zig).
+/// Wired up as config/store.zig's on_runtime_change.
+pub fn liveProfileChanged(ops_json: []const u8) void {
+    if (!host.isOpen() or !host.editsLiveProfile()) return;
+    emitJson("liveProfileChanged", ops_json);
 }
 
 /// The app now runs `profile_name`, so previews target it.
@@ -47,6 +49,11 @@ fn emit(comptime name: []const u8, payload: anytype) void {
         return;
     };
     defer allocator.free(json);
+    emitJson(name, json);
+}
+
+fn emitJson(comptime name: []const u8, json: []const u8) void {
+    const allocator = host.allocator();
     const script = std.fmt.allocPrintSentinel(allocator, "window.onAppEvent && window.onAppEvent(\"" ++ name ++ "\", {s});", .{json}, 0) catch |err| {
         slog.err("Failed to build {s} event script: {}", .{ name, err });
         return;

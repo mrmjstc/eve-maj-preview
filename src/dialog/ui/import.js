@@ -1,14 +1,13 @@
 // Importing settings from EVE-X, EVE-APM, EVE-O and other EVE-Maj profiles.
 import { app } from './state.js';
-import { markAsChanged } from './changes.js';
+import { hasUnsavedChanges, markAsChanged } from './changes.js';
 import { DEFAULT_ACCENT_COLOR_HTML, applyAccentColorTheme, htmlColorToZig, zigColorWithAlpha } from './colors.js';
 import { escapeHtml, logError, logWarn, rpc } from './core.js';
 import { populateFormFields } from './form.js';
 import { t } from './i18n.js';
 import { showStatus } from './layout.js';
-import { sendThumbnailPreview } from './preview.js';
 import { MAX_PROFILE_NAME_LENGTH, loadImportBackupsList, loadProfileList, switchProfile } from './profiles.js';
-import { saveConfiguration } from './session.js';
+import { flushEdits, saveConfiguration } from './session.js';
 
 // Live-previews the import modal's accent color pick the same way showProfileNameModal does.
 export function initImportAccentColorPreview() {
@@ -1624,7 +1623,7 @@ export async function runImport() {
         return !!(el && el.checked && !el.disabled);
     };
 
-    // A brand-new profile only auto-saves if "Live" was picked, since previewThumbnailConfig can't retarget the main app to a different profile.
+    // A brand-new profile only auto-saves if "Live" was picked; otherwise it stays a draft for review, which doesn't preview.
     let autoSaveAfterImport = false;
     let previewAfterImport = false;
 
@@ -1682,10 +1681,10 @@ export async function runImport() {
         if (autoSaveAfterImport) {
             await saveConfiguration();
         } else if (previewAfterImport) {
-            await sendThumbnailPreview(true);
+            await flushEdits();
         }
 
-        const hint = autoSaveAfterImport && !app.hasUnsavedChanges
+        const hint = autoSaveAfterImport && !hasUnsavedChanges()
             ? t('dynamic.import.liveNowHint')
             : t('dynamic.import.reviewAndSaveHint');
         const summaryEl = document.getElementById('importSummary');

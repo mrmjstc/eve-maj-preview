@@ -2,7 +2,7 @@
 import { app } from './state.js';
 import { markAsChanged } from './changes.js';
 import { escapeHtml, logError, rpc } from './core.js';
-import { applyValidationRangesToInputs } from './form.js';
+import { applySchemaToInputs } from './binding.js';
 import { t } from './i18n.js';
 import { showStatus } from './layout.js';
 
@@ -19,7 +19,7 @@ export function populateOreTable() {
     const tbody = document.getElementById('oreTableBody');
     if (!tbody) return;
 
-    const entries = app.currentGlobalSettings?.oreTable || [];
+    const entries = app.oreCatalog.map(entry => ({ ...entry, price: orePrice(entry) }));
 
     const displayOrder = entries.map((entry, index) => ({ entry, index }));
     displayOrder.sort((a, b) => {
@@ -47,21 +47,35 @@ export function populateOreTable() {
         row.innerHTML = `
             ${isFirstInCategory ? `<td rowspan="${categoryRowCounts[category]}" class="category-cell"><span class="category-cell-label">${escapeHtml(category)}</span></td>` : ''}
             <td class="event-name-cell">${escapeHtml(entry.name || '')}</td>
-            <td><input type="number" class="ore-price-input" id="ore_${index}_price" value="${entry.price ?? 0}" data-range="oreTable.price" step="0.01"></td>
+            <td><input type="number" class="ore-price-input" id="ore_${index}_price" value="${entry.price ?? 0}" data-range="global.oreTable.*.price" step="0.01"></td>
         `;
         tbody.appendChild(row);
     });
-    applyValidationRangesToInputs(tbody);
+    applySchemaToInputs(tbody);
 }
 
+// The global settings only hold the prices that differ from the catalog's.
+function orePrice(entry) {
+    const override = app.currentGlobalSettings?.oreTable?.find(o => o.name === entry.name);
+    return override ? override.price : entry.price;
+}
+
+// Keeps existing overrides in their saved order, so reading back an untouched table changes nothing.
 export function saveOreTable() {
-    if (!app.currentGlobalSettings?.oreTable) return;
+    const settings = app.currentGlobalSettings;
+    if (!settings?.oreTable || !document.getElementById('oreTableBody')?.children.length) return;
 
-    app.currentGlobalSettings.oreTable.forEach((entry, index) => {
-        const price = document.getElementById(`ore_${index}_price`);
-
-        if (price) entry.price = parseFloat(price.value) || 0;
+    const prices = new Map();
+    app.oreCatalog.forEach((entry, index) => {
+        const field = document.getElementById(`ore_${index}_price`);
+        if (field) prices.set(entry.name, parseFloat(field.value) || 0);
     });
+    const table = settings.oreTable.map(o => prices.has(o.name) ? { ...o, price: prices.get(o.name) } : o);
+    for (const entry of app.oreCatalog) {
+        const price = prices.get(entry.name);
+        if (price !== undefined && price !== entry.price && !table.some(o => o.name === entry.name)) table.push({ name: entry.name, price });
+    }
+    settings.oreTable = table;
 }
 
 let isFetchingOrePrices = false;
@@ -69,10 +83,7 @@ let isFetchingOrePrices = false;
 // Looks up each row's Jita buy price via ESI (public, no key needed) - see dialog/tools/esi_prices.zig for the actual request.
 export async function fetchOrePrices() {
     if (isFetchingOrePrices) return;
-    if (!app.currentGlobalSettings?.oreTable?.length) return;
-
-    saveOreTable();
-    const names = app.currentGlobalSettings.oreTable.map(e => e.name).filter(n => n);
+    const names = app.oreCatalog.map(e => e.name).filter(n => n);
     if (names.length === 0) return;
 
     isFetchingOrePrices = true;
@@ -84,15 +95,15 @@ export async function fetchOrePrices() {
         const prices = await rpc('fetchOrePrices', { names });
 
         let updated = 0;
-        app.currentGlobalSettings.oreTable.forEach(entry => {
-            if (Object.prototype.hasOwnProperty.call(prices, entry.name)) {
-                entry.price = prices[entry.name];
+        app.oreCatalog.forEach((entry, index) => {
+            const field = document.getElementById(`ore_${index}_price`);
+            if (field && Object.prototype.hasOwnProperty.call(prices, entry.name)) {
+                field.value = prices[entry.name];
                 updated++;
             }
         });
 
         markAsChanged();
-        populateOreTable();
         showStatus(t('status.orePricesUpdated').replace('{updated}', updated).replace('{total}', names.length), updated > 0 ? 'success' : 'error');
     } catch (error) {
         logError('Failed to fetch ore prices:', error);

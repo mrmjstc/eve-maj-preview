@@ -165,7 +165,7 @@ pub const Config = struct {
         return fromWire(.{}, allocator, profile_name);
     }
 
-    fn characterIndex(self: *const Config, name: []const u8) ?usize {
+    pub fn characterIndex(self: *const Config, name: []const u8) ?usize {
         for (self.characters.items, 0..) |char, i| {
             if (std.mem.eql(u8, char.name, name)) return i;
         }
@@ -250,17 +250,6 @@ pub const Config = struct {
     pub fn validate(self: *Config) void {
         ranges_mod.clamp(Config, self);
         for (self.characters.items) |*char| char.validate();
-    }
-
-    /// Sections are keyed by config path, list items and per-type settings by kind (e.g. "characters.opacity").
-    pub fn buildValidationRangesJson(allocator: std.mem.Allocator) ![]u8 {
-        return allocator.dupe(u8, comptime ranges_mod.json(.{
-            .{ "", Config },
-            .{ "characters.", CharacterConfig },
-            .{ "notificationType.", NotificationTypeConfig },
-            .{ "oreTable.", OrePriceConfig },
-            .{ "global.", GlobalConfig },
-        }));
     }
 
     pub fn deinit(self: *Config) void {

@@ -262,6 +262,14 @@ pub const ChatlogMonitor = struct {
         return monitor;
     }
 
+    /// Whether this monitor already watches what `cfg` asks for, so a reload can keep it and its scan state.
+    pub fn runsWith(self: *const ChatlogMonitor, cfg: *const config_mod.ChatlogConfig) bool {
+        return cfg.enabled and
+            cfg.useThreading == self.threading_enabled and
+            std.mem.eql(u8, cfg.chatlogDir, self.chatlog_dir) and
+            std.mem.eql(u8, cfg.gamelogDir, self.gamelog_dir);
+    }
+
     /// Stops the worker thread only - log_files/monitored_paths are left intact.
     /// The polling knobs a profile reload can change without rebuilding the monitor.
     pub fn applySettings(self: *ChatlogMonitor, cfg: *const config_mod.ChatlogConfig) void {

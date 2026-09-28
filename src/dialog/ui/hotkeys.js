@@ -1,83 +1,64 @@
 // Hotkey display, recording and conflict detection.
+import { app } from './state.js';
 import { markAsChanged } from './changes.js';
 import { escapeHtml, listenForAppEvent, logWarn, rpc } from './core.js';
 import { t } from './i18n.js';
 
-// Mirrors the Zig-side writeVirtualKey() in virtual_keys.zig - keep these two in sync.
-function friendlyBaseKeyName(vkCode) {
-    if (vkCode >= 0x70 && vkCode <= 0x87) return 'F' + (vkCode - 0x70 + 1);
-    if (vkCode >= 0x41 && vkCode <= 0x5A) return String.fromCharCode(vkCode);
-    if (vkCode >= 0x30 && vkCode <= 0x39) return String.fromCharCode(vkCode);
-    if (vkCode >= 0x60 && vkCode <= 0x69) return 'Numpad' + (vkCode - 0x60);
-    // Spellings must match parseBaseKey() exactly since this text round-trips back through it on save.
-    const named = {
-        // A bare modifier used as the trigger key itself (e.g. plain "Shift", or "Ctrl+Shift" with Shift as the trigger).
-        0x10: 'Shift',
-        0x11: 'Ctrl',
-        0x12: 'Alt',
-        0x5B: 'Win',
-        0x09: 'Tab',
-        0x13: 'Pause',
-        0x14: 'CapsLock',
-        0x90: 'NumLock',
-        0x91: 'ScrollLock',
-        0x20: 'Space',
-        0x21: 'PageUp',
-        0x22: 'PageDown',
-        0x23: 'End',
-        0x24: 'Home',
-        0x25: 'Left',
-        0x26: 'Up',
-        0x27: 'Right',
-        0x28: 'Down',
-        0x2D: 'Insert',
-        0x2E: 'Delete',
-        0x6A: 'NumpadMultiply',
-        0x6B: 'NumpadAdd',
-        0x6D: 'NumpadSubtract',
-        0x6E: 'NumpadDecimal',
-        0x6F: 'NumpadDivide',
-        0x05: 'XButton1',
-        0x06: 'XButton2',
-        0x0A: 'WheelUp',
-        0x0B: 'WheelDown',
-        0xBA: ';',
-        0xBB: '=',
-        0xBC: ',',
-        0xBD: '-',
-        0xBE: '.',
-        0xBF: '/',
-        0xC0: '`',
-        0xDB: '[',
-        0xDC: '\\',
-        0xDD: ']',
-        0xDE: "'",
-    };
-    if (named[vkCode]) return named[vkCode];
-    return '0x' + vkCode.toString(16).toUpperCase().padStart(2, '0');
+// A key and its modifier flags packed into one value, as combineKey in virtual_keys.zig does.
+const VK_MASK = 0xFF;
+const MOD_SHIFT_AMOUNT = 8;
+// Aliases the app also accepts for a modifier (see parseModifierToken in virtual_keys.zig).
+const MODIFIER_ALIASES = { control: 'ctrl', lwin: 'win', rwin: 'win' };
+
+function keyNames() {
+    return app.schema?.keys || [];
 }
 
-// Tokens that aren't hex VK codes are returned unchanged; a hex token can pack modifier flags in bits 8-11 (see virtual_keys.zig), expanded into a "Ctrl+Alt+..." prefix here.
-export function vkHexToFriendly(str) {
-    if (!str) return str;
-    const tokens = str.split('+');
-    const converted = tokens.map(token => {
-        const t = token.trim();
-        if (!/^0[xX][0-9a-fA-F]+$/.test(t)) return t;
-        const combined = parseInt(t, 16);
-        const vkCode = combined & 0xFF;
-        const mods = (combined >> 8) & 0x0F;
+function modifierNames() {
+    return app.schema?.modifiers || [];
+}
 
-        const parts = [];
-        if (mods & 0x02) parts.push('Ctrl');
-        if (mods & 0x01) parts.push('Alt');
-        if (mods & 0x04) parts.push('Shift');
-        if (mods & 0x08) parts.push('LWin');
-        parts.push(friendlyBaseKeyName(vkCode));
+function keyNameFor(vk) {
+    return keyNames().find(key => key.vk === vk)?.name;
+}
 
-        return parts.join('+');
-    });
-    return converted.join('+');
+// The app's own spelling (see writeVirtualKey in virtual_keys.zig), e.g. "Ctrl+F9".
+function formatHotkey(combined) {
+    const modifiers = combined >> MOD_SHIFT_AMOUNT;
+    const vk = combined & VK_MASK;
+    const parts = modifierNames().filter(modifier => modifiers & modifier.flag).map(modifier => modifier.name);
+    parts.push(keyNameFor(vk) ?? 'VK' + vk.toString(16).toUpperCase());
+    return parts.join('+');
+}
+
+// "0x0278" as saved or "Ctrl+F9" as shown, packed; null if it doesn't name a key the app knows.
+function parseHotkey(text) {
+    const value = (text || '').trim();
+    if (!value) return null;
+    if (/^0x[0-9a-f]+$/i.test(value)) return parseInt(value, 16);
+    const tokens = value.split('+').map(token => token.trim().toLowerCase()).filter(Boolean);
+    const keyToken = tokens.pop();
+    let modifiers = 0;
+    for (const token of tokens) {
+        const name = MODIFIER_ALIASES[token] || token;
+        const modifier = modifierNames().find(m => m.name.toLowerCase() === name);
+        if (!modifier) return null;
+        modifiers |= modifier.flag;
+    }
+    const key = keyNames().find(k => k.name.toLowerCase() === keyToken);
+    return key ? key.vk | (modifiers << MOD_SHIFT_AMOUNT) : null;
+}
+
+export function vkHexToFriendly(text) {
+    const combined = parseHotkey(text);
+    return combined == null ? text : formatHotkey(combined);
+}
+
+// The field's value in the spelling the app saves ("0x0278"), so it compares equal to what the app sends back.
+export function hotkeyToSaved(text) {
+    const combined = parseHotkey(text);
+    if (combined == null) return text ? text.trim() || null : null;
+    return '0x' + combined.toString(16).toUpperCase().padStart(2, '0');
 }
 
 // The .keycap-render span draws the bound combo as key caps over the input, which keeps its own text transparent;
@@ -123,6 +104,7 @@ function refreshHotkeyKeycaps() {
 const HOTKEY_BINDINGS = [
     {
         containerId: 'windowActionBindings',
+        pathPrefix: 'hotkeys.',
         rows: [
             { id: 'hotkeyCloseAll', labelKey: 'field.hotkeyCloseAll.label', exampleKey: 'field.hotkeyCloseAll.placeholder' },
             { id: 'hotkeyMinimizeAll', labelKey: 'field.hotkeyMinimizeAll.label', exampleKey: 'field.hotkeyMinimizeAll.placeholder' },
@@ -133,6 +115,7 @@ const HOTKEY_BINDINGS = [
     },
     {
         containerId: 'cyclingBindings',
+        pathPrefix: 'hotkeys.',
         rows: [
             { labelKey: 'field.pair.excludedCharacters.label', pair: [
                 { id: 'hotkeyPreviousExcluded', exampleKey: 'common.hotkeyExampleOpenBracket' },
@@ -147,12 +130,14 @@ const HOTKEY_BINDINGS = [
     },
     {
         containerId: 'suspendBindings',
+        pathPrefix: 'hotkeys.',
         rows: [
             { id: 'hotkeySuspend', labelKey: 'field.hotkeySuspend.label', exampleKey: 'field.hotkeySuspend.placeholder' },
         ],
     },
     {
         containerId: 'profileBindings',
+        pathPrefix: 'global.',
         rows: [
             { labelKey: 'field.pair.profile.label', pair: [
                 { id: 'hotkeyPreviousProfile', exampleKey: 'field.hotkeyPreviousProfile.placeholder' },
@@ -162,6 +147,7 @@ const HOTKEY_BINDINGS = [
     },
     {
         containerId: 'clientBindings',
+        pathPrefix: 'global.',
         rows: [
             { labelKey: 'field.pair.loggedInClients.label', pair: [
                 { id: 'hotkeyCycleAllClientsBackward', exampleKey: 'common.hotkeyExampleOpenBracket' },
@@ -175,23 +161,24 @@ const HOTKEY_BINDINGS = [
     },
     {
         containerId: 'windowFocusBindings',
+        pathPrefix: 'global.',
         rows: [
             { id: 'hotkeyReturnToLastApp', labelKey: 'field.hotkeyReturnToLastApp.label', exampleKey: 'field.hotkeyReturnToLastApp.placeholder' },
         ],
     },
 ];
 
-function renderHotkeyBindingField(field, row, directionKey) {
+function renderHotkeyBindingField(field, row, directionKey, pathPrefix) {
     const glyph = directionKey ? `<span class="binding-dir" aria-hidden="true">${directionKey === 'common.previous' ? '←' : '→'}</span>` : '';
     // The pair shares one visible label, so each half names itself for screen readers and for the conflict messages.
     const ariaLabel = directionKey ? ` aria-label="${escapeHtml(`${t(row.labelKey)} (${t(directionKey)})`)}"` : '';
-    return `<div class="field-row">${glyph}${renderHotkeyInputHtml(field.id, '', t(field.exampleKey), ariaLabel)}</div>`;
+    return `<div class="field-row">${glyph}${renderHotkeyInputHtml(field.id, '', t(field.exampleKey), `${ariaLabel} data-path="${pathPrefix}${field.id}"`)}</div>`;
 }
 
-function renderHotkeyBindingRow(row) {
+function renderHotkeyBindingRow(row, pathPrefix) {
     const fields = row.pair
-        ? renderHotkeyBindingField(row.pair[0], row, 'common.previous') + renderHotkeyBindingField(row.pair[1], row, 'common.next')
-        : renderHotkeyBindingField(row, row);
+        ? renderHotkeyBindingField(row.pair[0], row, 'common.previous', pathPrefix) + renderHotkeyBindingField(row.pair[1], row, 'common.next', pathPrefix)
+        : renderHotkeyBindingField(row, row, null, pathPrefix);
     const firstId = row.pair ? row.pair[0].id : row.id;
 
     const hint = row.hintKey ? `<p class="hint hint-extra">${t(row.hintKey)}</p>` : '';
@@ -239,7 +226,7 @@ export function renderHotkeyBindings() {
         if (!container) return;
 
         const bound = new Map(Array.from(container.querySelectorAll('input.hotkey-input')).map(input => [input.id, input.value]));
-        container.innerHTML = section.rows.map(renderHotkeyBindingRow).join('');
+        container.innerHTML = section.rows.map(row => renderHotkeyBindingRow(row, section.pathPrefix)).join('');
         bound.forEach((value, id) => {
             const input = document.getElementById(id);
             if (input) input.value = value;
@@ -287,16 +274,8 @@ function normalizeHotkeyValue(value) {
     if (!value) return null;
     const v = value.trim();
     if (!v || v === t('common.hotkeyRecordingPrompt') || v === t('common.hotkeyWaitingForInput')) return null;
-    // Some fields display raw "0xNN" hex while others display friendly names - run everything through vkHexToFriendly so the same physical key compares equal.
-    const friendly = vkHexToFriendly(v).toLowerCase();
-
-    // Modifier order is irrelevant to the OS ("Ctrl+Alt+F9" == "Alt+Ctrl+F9") but not to a string compare - canonicalize order before comparing.
-    const tokens = friendly.split('+').map(t => t.trim()).filter(Boolean);
-    if (tokens.length <= 1) return friendly;
-    const mainKey = tokens[tokens.length - 1];
-    const modifierOrder = ['ctrl', 'control', 'alt', 'shift', 'win', 'lwin', 'rwin'];
-    const modifiers = tokens.slice(0, -1).sort((a, b) => modifierOrder.indexOf(a) - modifierOrder.indexOf(b));
-    return [...modifiers, mainKey].join('+');
+    const combined = parseHotkey(v);
+    return combined == null ? v.toLowerCase() : String(combined);
 }
 
 // Uses the field's <label for="..."> text if one exists, otherwise the name in its enclosing accordion/detail panel, disambiguating forward/backward.
@@ -408,12 +387,7 @@ let recordingComboCaptured = false;
 // A bare Win press can't reach our DOM listeners (Windows steals focus for the Start Menu first), so the app's keyboard hook reports it instead - see keyboard_hook.zig's armWinKeyCapture.
 listenForAppEvent('winKeyCaptured', (result) => {
     if (!recordingField || recordingComboCaptured) return;
-    const combo = [];
-    if (result.ctrl) combo.push('Ctrl');
-    if (result.alt) combo.push('Alt');
-    if (result.shift) combo.push('Shift');
-    combo.push('LWin');
-    finalizeCapture(combo);
+    finalizeCapture(VK_LWIN, modifierFlags({ ctrlKey: result.ctrl, altKey: result.alt, shiftKey: result.shift, metaKey: false }));
 });
 
 // Fire-and-forget, since recordHotkey()/stopRecording() must stay synchronous.
@@ -487,136 +461,39 @@ export function recordHotkey(fieldId) {
     document.addEventListener('contextmenu', preventContextMenu, true);
 }
 
-function buildModifierCombo(e) {
-    let combo = [];
-    if (e.ctrlKey) combo.push('Ctrl');
-    if (e.altKey) combo.push('Alt');
-    if (e.shiftKey) combo.push('Shift');
-    if (e.metaKey) combo.push('LWin');
-    return combo;
+const VK_SHIFT = 0x10;
+const VK_CONTROL = 0x11;
+const VK_MENU = 0x12;
+const VK_LWIN = 0x5B;
+const VK_RWIN = 0x5C;
+const VK_XBUTTON1 = 0x05;
+const VK_XBUTTON2 = 0x06;
+const VK_WHEELUP = 0x0A;
+const VK_WHEELDOWN = 0x0B;
+const MODIFIER_KEYS = { [VK_CONTROL]: 'Ctrl', [VK_MENU]: 'Alt', [VK_SHIFT]: 'Shift', [VK_LWIN]: 'Win', [VK_RWIN]: 'Win' };
+
+function modifierFlags(e) {
+    const held = { Ctrl: e.ctrlKey, Alt: e.altKey, Shift: e.shiftKey, Win: e.metaKey };
+    return modifierNames().reduce((flags, modifier) => (held[modifier.name] ? flags | modifier.flag : flags), 0);
 }
 
 // Modifier state at keyup only reflects modifiers still held, so main keys are captured here on keydown instead, while modifiers are still reliably reflected.
+// keyCode is the Windows virtual-key code in WebView2, so it's right for any keyboard layout; keys the app can't bind are ignored.
 function captureKeyDown(e) {
     if (!recordingField || recordingComboCaptured) return;
-
-    const key = e.key;
-    if (key === 'Escape') return;
+    if (e.key === 'Escape') return;
 
     e.preventDefault();
     e.stopPropagation();
 
-    if (key === 'Control' || key === 'Alt' || key === 'Shift' || key === 'Meta') return;
-
-    let combo = buildModifierCombo(e);
-    combo.push(mapMainKey(key, e.code));
-
-    finalizeCapture(combo);
+    if (MODIFIER_KEYS[e.keyCode] || !keyNameFor(e.keyCode)) return;
+    finalizeCapture(e.keyCode, modifierFlags(e));
 }
 
-function mapMainKey(key, code) {
-    const codeMap = {
-        'Digit0': '0',
-        'Digit1': '1',
-        'Digit2': '2',
-        'Digit3': '3',
-        'Digit4': '4',
-        'Digit5': '5',
-        'Digit6': '6',
-        'Digit7': '7',
-        'Digit8': '8',
-        'Digit9': '9',
-        'Numpad0': 'Numpad0',
-        'Numpad1': 'Numpad1',
-        'Numpad2': 'Numpad2',
-        'Numpad3': 'Numpad3',
-        'Numpad4': 'Numpad4',
-        'Numpad5': 'Numpad5',
-        'Numpad6': 'Numpad6',
-        'Numpad7': 'Numpad7',
-        'Numpad8': 'Numpad8',
-        'Numpad9': 'Numpad9',
-        'NumpadDivide': 'NumpadDivide',
-        'NumpadMultiply': 'NumpadMultiply',
-        'NumpadSubtract': 'NumpadSubtract',
-        'NumpadAdd': 'NumpadAdd',
-        'NumpadEnter': 'NumpadEnter',
-        'NumpadDecimal': 'NumpadDecimal',
-    };
-
-    if (code && codeMap[code]) {
-        return codeMap[code];
-    } else {
-        const keyMap = {
-                ' ': 'Space',
-                'Enter': 'Enter',
-                'Escape': 'Esc',
-                'Tab': 'Tab',
-                'Backspace': 'Backspace',
-                'Delete': 'Delete',
-                'Insert': 'Insert',
-                'Home': 'Home',
-                'End': 'End',
-                'PageUp': 'PageUp',
-                'PageDown': 'PageDown',
-                'ArrowUp': 'Up',
-                'ArrowDown': 'Down',
-                'ArrowLeft': 'Left',
-                'ArrowRight': 'Right',
-                'F1': 'F1', 'F2': 'F2', 'F3': 'F3', 'F4': 'F4',
-                'F5': 'F5', 'F6': 'F6', 'F7': 'F7', 'F8': 'F8',
-                'F9': 'F9', 'F10': 'F10', 'F11': 'F11', 'F12': 'F12',
-                'F13': 'F13', 'F14': 'F14', 'F15': 'F15', 'F16': 'F16',
-                'F17': 'F17', 'F18': 'F18', 'F19': 'F19', 'F20': 'F20',
-                'F21': 'F21', 'F22': 'F22', 'F23': 'F23', 'F24': 'F24',
-                'CapsLock': 'CapsLock',
-                'NumLock': 'NumLock',
-                'ScrollLock': 'ScrollLock',
-                'PrintScreen': 'PrintScreen',
-                'Pause': 'Pause',
-                'ContextMenu': 'AppsKey',
-                'AudioVolumeUp': 'Volume_Up',
-                'AudioVolumeDown': 'Volume_Down',
-                'AudioVolumeMute': 'Volume_Mute',
-                'MediaPlayPause': 'Media_Play_Pause',
-                'MediaStop': 'Media_Stop',
-                'MediaTrackNext': 'Media_Next',
-                'MediaTrackPrevious': 'Media_Prev',
-                'BrowserBack': 'Browser_Back',
-                'BrowserForward': 'Browser_Forward',
-                'BrowserRefresh': 'Browser_Refresh',
-                'BrowserStop': 'Browser_Stop',
-                'BrowserSearch': 'Browser_Search',
-                'BrowserFavorites': 'Browser_Favorites',
-                'BrowserHome': 'Browser_Home',
-                
-                // One OEM key can produce two chars via Shift (e.g. ';'/':'); both normalize to the unshifted spelling since Shift is captured separately above. '+' maps to '=' since a trailing '+' would be ambiguous with the modifier-combo delimiter.
-                ';': ';',
-                '=': '=',
-                '+': '=',
-                ',': ',',
-                '-': '-',
-                '.': '.',
-                '/': '/',
-                '?': '/',
-                '`': '`',
-                '[': '[',
-                '\\': '\\',
-                ']': ']',
-                "'": "'",
-        };
-
-        return keyMap[key] || key.toUpperCase();
-    }
-}
-
-function finalizeCapture(combo) {
-    if (combo.length === 0) return;
-
+function finalizeCapture(vk, modifiers) {
     recordingComboCaptured = true;
-    const hotkeyString = combo.join('+');
     const input = document.getElementById(recordingField);
-    input.value = hotkeyString;
+    input.value = formatHotkey(vk | (modifiers << MOD_SHIFT_AMOUNT));
     markAsChanged();
 
     setTimeout(() => stopRecording(), 300);
@@ -637,15 +514,12 @@ function captureKey(e) {
     }
 
     if (recordingComboCaptured) return;
-    if (key !== 'Control' && key !== 'Alt' && key !== 'Shift' && key !== 'Meta') return;
+    const name = MODIFIER_KEYS[e.keyCode];
+    if (!name) return;
 
-    let combo = buildModifierCombo(e);
-    if (key === 'Control' && !combo.includes('Ctrl')) combo.push('Ctrl');
-    else if (key === 'Alt' && !combo.includes('Alt')) combo.push('Alt');
-    else if (key === 'Shift' && !combo.includes('Shift')) combo.push('Shift');
-    else if (key === 'Meta' && !combo.includes('LWin')) combo.push('LWin');
-
-    finalizeCapture(combo);
+    // The released modifier is the trigger; the others still held are its modifiers.
+    const own = modifierNames().find(modifier => modifier.name === name)?.flag || 0;
+    finalizeCapture(e.keyCode === VK_RWIN ? VK_LWIN : e.keyCode, modifierFlags(e) & ~own);
 }
 
 function stopRecording() {
@@ -692,6 +566,7 @@ export function toggleManualHotkeyEdit(fieldId) {
         stopRecording();
     }
 
+    input.dataset.beforeManualEdit = input.value;
     input.readOnly = false;
     input.classList.add('manual-editing');
     input.focus();
@@ -718,7 +593,12 @@ function commitManualHotkeyEdit(fieldId) {
 
     const button = input.closest('.field-row')?.querySelector('.hotkey-edit-btn');
 
-    input.value = input.value.trim();
+    // Only names the app knows are kept, shown in its own spelling; anything else goes back to what was there.
+    const typed = input.value.trim();
+    const combined = parseHotkey(typed);
+    if (typed && combined == null) logWarn('Not a key the app can bind: ' + typed);
+    input.value = !typed ? '' : combined == null ? input.dataset.beforeManualEdit || '' : formatHotkey(combined);
+    delete input.dataset.beforeManualEdit;
     input.readOnly = true;
     input.classList.remove('manual-editing');
     markAsChanged();
@@ -736,20 +616,9 @@ function captureMouseButton(e) {
     e.preventDefault();
     e.stopPropagation();
 
-    const button = e.button;
-    let combo = buildModifierCombo(e);
-
     // Only XButton1/XButton2 are wired up as working hotkeys (see mouse_hook.zig) - LButton/RButton are already used locally for thumbnail drag/click, and MButton has no hook support.
-    const mouseMap = {
-        3: 'XButton1',
-        4: 'XButton2'
-    };
-
-    const mouseButton = mouseMap[button];
-    if (mouseButton) {
-        combo.push(mouseButton);
-        finalizeCapture(combo);
-    }
+    const vk = { 3: VK_XBUTTON1, 4: VK_XBUTTON2 }[e.button];
+    if (vk) finalizeCapture(vk, modifierFlags(e));
 }
 
 // Also wired up as a working hotkey via the same low-level mouse hook as XButton1/XButton2 (see mouse_hook.zig).
@@ -759,12 +628,8 @@ function captureWheel(e) {
     e.preventDefault();
     e.stopPropagation();
 
-    let combo = buildModifierCombo(e);
-
     // deltaY < 0 is scrolled up/away from the user, > 0 is scrolled down/toward the user
-    combo.push(e.deltaY < 0 ? 'WheelUp' : 'WheelDown');
-
-    finalizeCapture(combo);
+    finalizeCapture(e.deltaY < 0 ? VK_WHEELUP : VK_WHEELDOWN, modifierFlags(e));
 }
 
 function preventContextMenu(e) {

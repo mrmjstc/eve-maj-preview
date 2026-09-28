@@ -3,7 +3,6 @@ const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const strings = @import("../util/strings.zig");
 const input = @import("../input.zig");
-const dialog_events = @import("../dialog/events.zig");
 const log = @import("../log.zig");
 const slog = log.scoped("hotkeys");
 const HotkeyManager = @import("manager.zig").HotkeyManager;
@@ -199,8 +198,6 @@ pub fn assignHoveredToGroup(m: *HotkeyManager, group_index: usize) void {
 
     // Membership changed - old index may now point at a shifted member
     m.cycle.group_cursors[group_index] = null;
-
-    if (!group.temporaryMembership) dialog_events.groupMembersChanged();
 
     // Badge must be refreshed before the reflow below, so its own render pass bakes in the new label instead of the reflow drawing it once with the stale one and renderThumbnail below redrawing it again.
     m.painter.refreshGroupBadge(thumbnail);

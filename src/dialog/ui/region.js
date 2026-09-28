@@ -5,7 +5,6 @@ import { listenForAppEvent, logWarn, rpc } from './core.js';
 import { setFieldValue } from './form.js';
 import { t } from './i18n.js';
 import { showStatus } from './layout.js';
-import { scheduleThumbnailPreview } from './preview.js';
 
 // The app draws the drag overlay; the result comes back as a regionSelected event, routed to whichever fields started it.
 let regionSelectTarget = null;
@@ -27,7 +26,6 @@ listenForAppEvent('regionSelected', (result) => {
     app.currentConfig.display[fieldIds.height] = result.height;
     refreshRegionButtons();
     markAsChanged();
-    scheduleThumbnailPreview();
     showStatus(t('status.regionSet'), 'success');
 });
 
@@ -61,7 +59,6 @@ export function clearRegion(fieldIds) {
     }
     refreshRegionButtons();
     markAsChanged();
-    scheduleThumbnailPreview();
 }
 
 // fieldIds let the same overlay feed either RegionFit or notLoggedInSpace; edit adjusts the existing region's borders instead of dragging a new one.

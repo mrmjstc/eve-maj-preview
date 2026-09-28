@@ -1,7 +1,7 @@
 // The drag-and-drop overlay text layout preview.
 import { app } from './state.js';
 import { isChangeEventType } from './changes.js';
-import { FONT_OPTIONS, POSITION_OPTIONS, getFieldValue } from './form.js';
+import { getFieldValue } from './form.js';
 import { fitHotkeyGroupCharsList, selectedHotkeyGroupIndex } from './hotkey_groups.js';
 import { labelColumnRealignJobs, updateHotkeyPlaceholders } from './hotkeys.js';
 import { t } from './i18n.js';
@@ -229,18 +229,28 @@ function overlayAnchorBoxPos(anchor, w, h, W, H) {
     }
 }
 
+// The TextPosition anchors laid out as the thirds of the thumbnail they sit in.
+const OVERLAY_ZONES = [
+    ['TopLeft', 'TopCenter', 'TopRight'],
+    ['LeftCenter', 'Center', 'RightCenter'],
+    ['BottomLeft', 'BottomCenter', 'BottomRight'],
+];
+
 // Invisible to the user - a drop just picks the nearest of these thirds as its stored anchor.
 function overlayZoneForPoint(px, py, W, H) {
     const col = px < W / 3 ? 0 : px < (2 * W) / 3 ? 1 : 2;
     const row = py < H / 3 ? 0 : py < (2 * H) / 3 ? 1 : 2;
-    return POSITION_OPTIONS[row * 3 + col][0];
+    return OVERLAY_ZONES[row][col];
 }
 
 function overlayClamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
-// Unbounded only until the backend's ranges arrive; saving clamps through the same tables anyway.
+// The field's own bounds, which the schema sets (see binding.js).
 function overlayOffsetRange(fieldId) {
-    return app.FIELD_RANGES[fieldId] || { min: -Infinity, max: Infinity };
+    const field = document.getElementById(fieldId);
+    const min = parseFloat(field?.min);
+    const max = parseFloat(field?.max);
+    return { min: isNaN(min) ? -Infinity : min, max: isNaN(max) ? Infinity : max };
 }
 
 // Stage is drawn larger than the real thumbnail for grabbability, but offsetX/Y are stored in real pixels.
@@ -427,17 +437,11 @@ function buildOverlayPopoverField(f, def) {
         control.appendChild(valueSpan);
         wrap.appendChild(control);
         return wrap;
-    } else if (f.type === 'font-name') {
+    } else if (f.type === 'font-name' || f.type === 'font-weight') {
+        // Offers the same choices as the form's own select, which it stands in for.
         input = document.createElement('select');
-        FONT_OPTIONS.forEach(name => input.add(new Option(name, name)));
-        input.value = real ? real.value : FONT_OPTIONS[0];
-        input.addEventListener('change', () => { setOverlayFieldValue(f.id, input.value); maybeSyncOverlayStyle(def); });
-    } else if (f.type === 'font-weight') {
-        input = document.createElement('select');
-        [['Regular', t('common.fontWeightOption.regular')], ['Bold', t('common.fontWeightOption.bold')],
-         ['Italic', t('common.fontWeightOption.italic')], ['BoldItalic', t('common.fontWeightOption.boldItalic')]]
-            .forEach(([value, text]) => input.add(new Option(text, value)));
-        input.value = real ? real.value : 'Regular';
+        Array.from(real?.options || []).forEach(option => input.add(new Option(option.text, option.value)));
+        if (real) input.value = real.value;
         input.addEventListener('change', () => { setOverlayFieldValue(f.id, input.value); maybeSyncOverlayStyle(def); });
     }
 

@@ -191,6 +191,9 @@ pub const GlobalConfig = struct {
 
     pub const runtime_fields = .{ "allocator", "characterIdMapMutex" };
 
+    /// Saved, but changed by the app as it runs rather than by the settings form.
+    pub const running_fields = .{ "lastUsedProfile", "dialogX", "dialogY", "dialogScale", "characterIdMap" };
+
     pub const ranges = .{
         .dialogScale = .{ 50, 300 },
     };
@@ -329,19 +332,21 @@ pub const GlobalConfig = struct {
         try self.save();
     }
 
-    /// Adds `source`'s character IDs this doesn't have yet, e.g. ones resolved while the dialog was open.
-    pub fn mergeCharacterIds(self: *GlobalConfig, source: *GlobalConfig) !void {
-        try source.characterIdMapMutex.lock(files.g_io);
-        defer source.characterIdMapMutex.unlock(files.g_io);
-        var it = source.characterIdMap.iterator();
-        while (it.next()) |entry| {
-            if (self.characterIdMap.contains(entry.key_ptr.*)) continue;
-            const name = try self.allocator.dupe(u8, entry.key_ptr.*);
-            errdefer self.allocator.free(name);
-            const id = try self.allocator.dupe(u8, entry.value_ptr.*);
-            errdefer self.allocator.free(id);
-            try self.characterIdMap.put(name, id);
+    /// Takes `edited`'s settings other than running_fields, leaving it holding the replaced values to free.
+    /// Locked, since the chatlog worker may be saving these meanwhile.
+    pub fn adopt(self: *GlobalConfig, edited: *GlobalConfig) !void {
+        try self.characterIdMapMutex.lock(files.g_io);
+        defer self.characterIdMapMutex.unlock(files.g_io);
+        inline for (comptime wire.savedFields(GlobalConfig)) |f| {
+            if (comptime !isRunningField(f.name)) std.mem.swap(f.type, &@field(self, f.name), &@field(edited, f.name));
         }
+    }
+
+    fn isRunningField(comptime name: []const u8) bool {
+        inline for (running_fields) |running| {
+            if (comptime std.mem.eql(u8, name, running)) return true;
+        }
+        return false;
     }
 
     pub fn hasCharacterId(self: *GlobalConfig, character_name: []const u8) !bool {

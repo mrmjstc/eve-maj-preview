@@ -1,4 +1,4 @@
-//! Numeric bounds, declared once per settings type in `ranges`, enforced by `clamp` and sent to the dialog by `json`.
+//! Numeric bounds, declared once per settings type in `ranges`, enforced by `clamp` and sent to the dialog by config/schema.zig.
 const std = @import("std");
 const log = @import("../log.zig");
 
@@ -87,30 +87,3 @@ fn shortTypeName(comptime R: type) []const u8 {
     return full[dot + 1 ..];
 }
 
-/// `roots` is a tuple of `.{ key_prefix, Type }` pairs, e.g. `.{ "characters.", CharacterConfig }`.
-pub fn json(comptime roots: anytype) []const u8 {
-    comptime {
-        @setEvalBranchQuota(1_000_000);
-        var body: []const u8 = "";
-        for (0..roots.len) |i| body = body ++ entries(roots[i][1], roots[i][0]);
-        // Drops the trailing comma.
-        return "{" ++ (if (body.len == 0) body else body[0 .. body.len - 1]) ++ "}";
-    }
-}
-
-fn entries(comptime R: type, comptime prefix: []const u8) []const u8 {
-    var out: []const u8 = "";
-    if (@hasDecl(R, "ranges")) {
-        for (@typeInfo(@TypeOf(R.ranges)).@"struct".fields) |f| {
-            const bounds = @field(R.ranges, f.name);
-            out = out ++ std.fmt.comptimePrint("\"{s}{s}\":{{\"min\":{d},\"max\":{d}}},", .{ prefix, f.name, bounds[0], bounds[1] });
-        }
-    }
-    for (@typeInfo(R).@"struct".fields) |f| {
-        const T = if (@typeInfo(f.type) == .optional) @typeInfo(f.type).optional.child else f.type;
-        if (@typeInfo(T) == .@"struct" and @hasDecl(T, "ranges")) {
-            out = out ++ entries(T, prefix ++ f.name ++ ".");
-        }
-    }
-    return out;
-}

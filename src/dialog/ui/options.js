@@ -1,6 +1,6 @@
 // Showing and hiding dependent options as their parent settings change.
 import { logError, logWarn, rpc } from './core.js';
-import { NOTIFICATION_TYPES, toggleNotificationTypeEnabled } from './notifications.js';
+import { notificationTypes, toggleNotificationTypeEnabled } from './notifications.js';
 import { setOverlayCheckboxValue } from './overlay_layout.js';
 
 // Returns the checkbox's checked state (or undefined if either element is missing) so callers that need to chain extra logic still can.
@@ -221,9 +221,7 @@ export function toggleNotificationOptions() {
             });
 
             // Re-apply per-row state so border color pickers aren't spuriously enabled when their per-type checkbox is unchecked.
-            if (isEnabled && typeof NOTIFICATION_TYPES !== 'undefined') {
-                NOTIFICATION_TYPES.forEach(nt => toggleNotificationTypeEnabled(nt.key));
-            }
+            if (isEnabled) notificationTypes().forEach(nt => toggleNotificationTypeEnabled(nt.key));
         }
     }
 }

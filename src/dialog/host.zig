@@ -5,7 +5,10 @@ const webui = @import("webui");
 const win32 = @import("../platform/win32.zig");
 const log = @import("../log.zig");
 const main_mod = @import("../main.zig");
+const config_store = @import("../config/store.zig");
 const rpc = @import("rpc.zig");
+const events = @import("events.zig");
+const session = @import("session.zig");
 const resources = @import("resources.zig");
 
 const slog = log.scoped("dialog");
@@ -36,6 +39,7 @@ var g_editing_profile: ?[]u8 = null;
 
 pub fn init(allocator_: std.mem.Allocator) void {
     g_allocator = allocator_;
+    config_store.on_runtime_change = events.liveProfileChanged;
 }
 
 pub fn allocator() std.mem.Allocator {
@@ -219,6 +223,7 @@ fn windowProc(window: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam:
 
 fn onClosed() void {
     slog.info("Configuration window closed", .{});
+    session.end();
     main_mod.onDialogClosed();
     resetWindow();
 }

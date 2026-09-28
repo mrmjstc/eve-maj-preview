@@ -84,7 +84,7 @@ pub fn serveFile(path: []const u8) ?[]const u8 {
 /// Every module under ui/; one missing here is a 404 that stops the page loading.
 const modules = [_][]const u8{
     "main",          "core",           "state",          "i18n",
-    "colors",        "form",           "changes",        "preview",
+    "colors",        "form",           "changes",        "binding",
     "layout",        "session",        "region",         "profiles",
     "import",        "hotkeys",        "update",         "snake",
     "widgets",       "window_filters", "characters",     "system_colors",

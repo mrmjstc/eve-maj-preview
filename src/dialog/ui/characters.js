@@ -1,13 +1,14 @@
 // The Characters list, portraits and saved game-window positions.
 import { app } from './state.js';
+import { applySchemaToInputs } from './binding.js';
 import { markAsChanged } from './changes.js';
 import { zigColorToHtml } from './colors.js';
 import { escapeHtml, logError, rpc } from './core.js';
-import { applyValidationRangesToInputs, opacityToPercent } from './form.js';
-import { renderHotkeyInputHtml, updateHotkeyConflictHighlights, vkHexToFriendly } from './hotkeys.js';
+import { opacityToPercent, resolveCharacterOpacity, resolveOptionalColor } from './form.js';
+import { hotkeyToSaved, renderHotkeyInputHtml, updateHotkeyConflictHighlights, vkHexToFriendly } from './hotkeys.js';
 import { t } from './i18n.js';
 import { showStatus } from './layout.js';
-import { resolveCharacterOpacity, resolveOptionalColor } from './preview.js';
+import { flushEdits } from './session.js';
 import { alignDetailPanelNameLabel, confirmRemove, makeRosterSearchFilter, moveArrayItem, selectMasterDetailRow, setupDragReorder, syncAccordionHeaderName } from './widgets.js';
 
 export function addCharacterIfMissing(name) {
@@ -56,7 +57,7 @@ function applyCharacterPortrait(img, name) {
     }
 }
 
-// loadConfigurationFromBackend() and loadGlobalSettingsFromBackend() (which owns characterIdMap) fire concurrently, so whichever resolves first must not leave portraits permanently blank.
+// The roster draws before the global settings (which hold characterIdMap) are shown, so this runs again once they are.
 export function refreshCharacterPortraits() {
     (app.currentConfig?.characters || []).forEach((char, index) => {
         applyCharacterPortrait(document.getElementById(`char_${index}_portrait`), char.name);
@@ -155,16 +156,16 @@ export function populateCharacters() {
                 <div class="detail-field">
                     <label for="char_${index}_width">${t('dynamic.character.thumbnailSizeHeading')}</label>
                     <div class="field-row detail-size">
-                        <input type="number" id="char_${index}_width" value="${char.thumbnailSize?.width || ''}" placeholder="${t('dynamic.character.widthPlaceholder')}" data-range="characters.thumbnailSize.width">
+                        <input type="number" id="char_${index}_width" value="${char.thumbnailSize?.width || ''}" placeholder="${t('dynamic.character.widthPlaceholder')}" data-range="characters.*.thumbnailSize.width">
                         <span class="detail-size-x">&times;</span>
-                        <input type="number" id="char_${index}_height" value="${char.thumbnailSize?.height || ''}" placeholder="${t('dynamic.character.heightPlaceholder')}" data-range="characters.thumbnailSize.height">
+                        <input type="number" id="char_${index}_height" value="${char.thumbnailSize?.height || ''}" placeholder="${t('dynamic.character.heightPlaceholder')}" data-range="characters.*.thumbnailSize.height">
                     </div>
                     <p class="hint hint-extra">${t('dynamic.character.thumbnailSizeHint')}</p>
                 </div>
                 <div class="detail-field">
                     <label for="char_${index}_opacity">${t('dynamic.character.opacityLabel')}</label>
                     <div class="field-row">
-                        <input type="range" id="char_${index}_opacity" data-range="characters.opacity" data-range-transform="opacity" value="${char.opacity != null ? opacityToPercent(char.opacity) : opacityToPercent(app.currentConfig.thumbnail.thumbnailOpacity)}" data-value-target="char_${index}_opacityValue">
+                        <input type="range" id="char_${index}_opacity" data-range="characters.*.opacity" data-unit="%" value="${char.opacity != null ? opacityToPercent(char.opacity) : opacityToPercent(app.currentConfig.thumbnail.thumbnailOpacity)}" data-value-target="char_${index}_opacityValue">
                         <span id="char_${index}_opacityValue">${char.opacity != null ? opacityToPercent(char.opacity) : opacityToPercent(app.currentConfig.thumbnail.thumbnailOpacity)}</span>%
                     </div>
                     <p class="hint hint-extra">${t('dynamic.character.opacityHint')}</p>
@@ -270,21 +271,22 @@ export function populateCharacters() {
     setupCharacterDragAndDrop();
     updateHotkeyConflictHighlights();
     applyCharacterFilter();
-    applyValidationRangesToInputs(container);
+    applySchemaToInputs(container);
     // innerHTML above replaced the elements the last measuring pass sized.
     alignDetailPanelNameLabel('charactersList');
 }
 
-// Saves this character's live window position, written straight to disk (not behind Save).
+// Saved at once for the running profile, like a drag; another profile's draft keeps it until Save.
+// Edits are flushed first, so the app already knows a character added here and doesn't create a second one.
 export async function setCharacterWindowPosition(index) {
     const char = app.currentConfig.characters?.[index];
     if (!char) return;
 
     try {
+        await flushEdits();
         const pos = await rpc('setCharacterWindowPosition', { name: char.name || '' });
         char.windowPosition = pos;
-        const display = document.getElementById(`char_${index}_windowPositionDisplay`);
-        if (display) display.textContent = `${pos.x}, ${pos.y}`;
+        refreshCharacterWindowPosition(index);
         showStatus(t('status.windowPositionSet'), 'success');
     } catch (error) {
         logError('Failed to set character window position:', error);
@@ -292,20 +294,25 @@ export async function setCharacterWindowPosition(index) {
     }
 }
 
+export function refreshCharacterWindowPosition(index) {
+    const pos = app.currentConfig.characters?.[index]?.windowPosition;
+    const display = document.getElementById(`char_${index}_windowPositionDisplay`);
+    if (display) display.textContent = pos ? `${pos.x}, ${pos.y}` : t('dynamic.character.windowPositionNotSet');
+}
+
 export function confirmClearCharacterWindowPosition(index) {
     confirmRemove(`char_${index}_clearWindowPositionBtn`, () => clearCharacterWindowPosition(index), '✓');
 }
 
-// Clears this character's saved window position (written straight to disk, same as set).
 async function clearCharacterWindowPosition(index) {
     const char = app.currentConfig.characters?.[index];
     if (!char) return;
 
     try {
+        await flushEdits();
         await rpc('clearCharacterWindowPosition', { name: char.name || '' });
         char.windowPosition = null;
-        const display = document.getElementById(`char_${index}_windowPositionDisplay`);
-        if (display) display.textContent = t('dynamic.character.windowPositionNotSet');
+        refreshCharacterWindowPosition(index);
         showStatus(t('status.windowPositionCleared'), 'success');
     } catch (error) {
         logError('Failed to clear character window position:', error);
@@ -344,6 +351,7 @@ export async function setAllCharacterWindowPositions() {
     }
 
     try {
+        await flushEdits();
         const pos = await rpc('setAllCharacterWindowPositions', { name: sourceName });
         (app.currentConfig.characters || []).forEach(char => {
             char.windowPosition = { x: pos.x, y: pos.y };
@@ -360,9 +368,9 @@ export function confirmClearAllCharacterWindowPositions() {
     confirmRemove('clearAllWindowPositionsBtn', clearAllCharacterWindowPositions);
 }
 
-// Clears every character's saved window position (written straight to disk, same as set*WindowPosition).
 async function clearAllCharacterWindowPositions() {
     try {
+        await flushEdits();
         await rpc('clearAllCharacterWindowPositions');
         (app.currentConfig.characters || []).forEach(char => {
             char.windowPosition = null;
@@ -508,7 +516,6 @@ export function removeCharacterByName(name) {
     const target = name.trim().toLowerCase();
     const index = app.currentConfig.characters.findIndex(c => (c.name || '').trim().toLowerCase() === target);
     if (index === -1) return;
-    app.deletedCharacterNames.add(target);
     const selectedChar = app.currentConfig.characters[selectedCharacterIndex];
     app.currentConfig.characters.splice(index, 1);
     selectedCharacterIndex = reselectAfterRemoval(app.currentConfig.characters, selectedChar, index);
@@ -518,7 +525,6 @@ export function removeCharacterByName(name) {
 function removeCharacter(index) {
     if (app.currentConfig.characters && app.currentConfig.characters[index]) {
         saveCharacters();
-        app.deletedCharacterNames.add((app.currentConfig.characters[index].name || '').trim().toLowerCase());
         const selectedChar = app.currentConfig.characters[selectedCharacterIndex];
         app.currentConfig.characters.splice(index, 1);
         selectedCharacterIndex = reselectAfterRemoval(app.currentConfig.characters, selectedChar, index);
@@ -548,7 +554,7 @@ export function saveCharacters() {
 
         if (name) char.name = name.value;
         if (displayName) char.displayName = displayName.value || null;
-        if (hotkey) char.hotkey = hotkey.value || null;
+        if (hotkey) char.hotkey = hotkeyToSaved(hotkey.value);
         if (excludeMinimize) char.excludeFromMinimize = excludeMinimize.checked;
         if (excludeCloseAll) char.excludeFromCloseAll = excludeCloseAll.checked;
         if (excludeAutoMove) char.excludeFromAutoMove = excludeAutoMove.checked;

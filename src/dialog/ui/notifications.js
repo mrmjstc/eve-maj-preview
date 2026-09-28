@@ -2,71 +2,25 @@
 import { app } from './state.js';
 import { htmlColorToZig, zigColorToHtml } from './colors.js';
 import { escapeHtml, logError, logWarn, rpc } from './core.js';
-import { applyValidationRangesToInputs, soundFileBaseName } from './form.js';
+import { applySchemaToInputs, defaultFor } from './binding.js';
+import { soundFileBaseName } from './form.js';
 import { t } from './i18n.js';
 import { showStatus } from './layout.js';
 import { toggleNotificationOptions } from './options.js';
-import { sendThumbnailPreview } from './preview.js';
+import { flushEdits } from './session.js';
 import { makeRosterSearchFilter, selectMasterDetailRow } from './widgets.js';
 
-// Same idea as applyBackendDefaultColors(), for the notification table's per-type text/border swatches.
-export function refreshNotificationColorDefaults() {
-    if (!app.defaultConfig) return;
-    const textDefault = notifDefaultTextColorHtml();
-    const borderDefault = notifDefaultBorderColorHtml();
-    document.querySelectorAll('input[id$="_textColor"][data-optional-color]').forEach(el => {
-        el.dataset.defaultColor = textDefault;
-    });
-    document.querySelectorAll('input[id$="_borderColor"][data-optional-color]').forEach(el => {
-        el.dataset.defaultColor = borderDefault;
-    });
+// In the app's order, grouped by category (see config/schema.zig).
+export function notificationTypes() {
+    return (app.schema?.notificationTypes || []).map(type => ({ ...type, key: type.name }));
 }
 
-export const NOTIFICATION_TYPES = [
-    { key: 'FleetInvite', category: 'fleet' },
-    { key: 'FleetFollow', category: 'fleet' },
-    { key: 'FleetRegroup', category: 'fleet' },
-    { key: 'FleetDisband', category: 'fleet' },
-    { key: 'MiningCompression', category: 'mining' },
-    { key: 'AsteroidDepleted', category: 'mining' },
-    { key: 'MiningIdle', category: 'mining' },
-    { key: 'MiningStopped', category: 'mining' },
-    { key: 'CargoFull', category: 'mining' },
-    { key: 'CrystalBroke', category: 'mining' },
-    { key: 'TakingDamage', category: 'combat' },
-    { key: 'WarpScrambled', category: 'combat' },
-    { key: 'WarpDisrupted', category: 'combat' },
-    { key: 'Decloak', category: 'combat' },
-    { key: 'ObservatoryDecloak', category: 'combat' },
-    { key: 'CloakFailed', category: 'combat' },
-    { key: 'BombLauncherEmpty', category: 'combat' },
-    { key: 'SelfDestruct', category: 'combat' },
-    { key: 'WarpBubble', category: 'combat' },
-    { key: 'Docking', category: 'navigation' },
-    { key: 'AutopilotReached', category: 'navigation' },
-    { key: 'AutopilotApproaching', category: 'navigation' },
-    { key: 'JumpRange', category: 'navigation' },
-    { key: 'AggressionCantJump', category: 'navigation' },
-    { key: 'ConduitJump', category: 'navigation' },
-    { key: 'JumpCloning', category: 'navigation' },
-    { key: 'SystemChange', category: 'navigation' },
-    { key: 'TravelLeftBehind', category: 'navigation' },
-    { key: 'ConversationInvite', category: 'general' },
-    { key: 'GroupMembership', category: 'general' },
-    { key: 'CycleExclusion', category: 'general' },
-    { key: 'HotkeySuspend', category: 'general' },
-    { key: 'ProfileSwitch', category: 'general' },
-    { key: 'AutoMinimizeToggle', category: 'general' },
-    { key: 'SavedPositionMove', category: 'general' },
-    { key: 'Generic', category: 'general' }
-];
-
-// Single source for the notification table's default swatch colors, falling back to '#FFFFFF'/'#606060' until defaultConfig loads. Border is an approximation - the true fallback is the Alert state's border color, which isn't wired up in this dialog yet.
+// Border is an approximation - the true fallback is the Alert state's border color, which isn't wired up in this dialog yet.
 function notifDefaultTextColorHtml() {
-    return app.defaultConfig?.thumbnail?.characterNameColor != null ? zigColorToHtml(app.defaultConfig.thumbnail.characterNameColor) : '#FFFFFF';
+    return zigColorToHtml(defaultFor('thumbnail.characterNameColor'));
 }
 function notifDefaultBorderColorHtml() {
-    return app.defaultConfig?.thumbnail?.inactiveBorderColor != null ? zigColorToHtml(app.defaultConfig.thumbnail.inactiveBorderColor) : '#606060';
+    return zigColorToHtml(defaultFor('thumbnail.inactiveBorderColor'));
 }
 
 // Which event type's detail panel is showing in the master-detail Event Alerts view.
@@ -88,11 +42,12 @@ export function populateNotificationTypes() {
     }
 
     const typeConfigs = app.currentConfig.thumbnail.notifications.type_configs;
+    const types = notificationTypes();
 
-    if (selectedNotificationTypeIndex >= NOTIFICATION_TYPES.length) selectedNotificationTypeIndex = NOTIFICATION_TYPES.length - 1;
+    if (selectedNotificationTypeIndex >= types.length) selectedNotificationTypeIndex = types.length - 1;
     if (selectedNotificationTypeIndex < 0) selectedNotificationTypeIndex = 0;
 
-    const rosterRows = NOTIFICATION_TYPES.map((notifType, index) => {
+    const rosterRows = types.map((notifType, index) => {
         const eventLabel = t('notification.' + notifType.key + '.label');
 
         return `
@@ -102,7 +57,7 @@ export function populateNotificationTypes() {
         `;
     }).join('');
 
-    const detailPanels = NOTIFICATION_TYPES.map((notifType, index) => {
+    const detailPanels = types.map((notifType, index) => {
         const config = typeConfigs[notifType.key] || {};
         const hasBorderColor = config.border_color != null;
         const borderColorHtml = hasBorderColor ? zigColorToHtml(config.border_color) : notifDefaultBorderColorHtml();
@@ -125,13 +80,13 @@ export function populateNotificationTypes() {
                         </label>
                         <div class="field-row">
                             <label for="notif_${notifType.key}_duration" title="${t('tab.notifications.table.duration.title')}">${t('tab.notifications.table.duration.heading')}</label>
-                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_duration" data-range="notificationType.duration_ms" data-range-transform="ms" step="0.1"
+                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_duration" data-range="thumbnail.notifications.type_configs.*.duration_ms" data-unit="s" step="0.1"
                                    value="${config.duration_ms && config.duration_ms > 0 ? config.duration_ms / 1000 : 5}">
                         </div>
                         <p class="hint hint-extra">${t('tab.notifications.detail.duration.hint')}</p>
                         <div class="field-row">
                             <label for="notif_${notifType.key}_throttle" title="${t('tab.notifications.table.throttle.title')}">${t('tab.notifications.table.throttle.heading')}</label>
-                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_throttle" data-range="notificationType.throttle_ms" data-range-transform="ms" step="1"
+                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_throttle" data-range="thumbnail.notifications.type_configs.*.throttle_ms" data-unit="s" step="1"
                                    title="${t('tab.notifications.table.throttle.title')}"
                                    value="${config.throttle_ms !== undefined ? config.throttle_ms / 1000 : 10}">
                         </div>
@@ -243,7 +198,7 @@ export function populateNotificationTypes() {
                     <label></label>
                     <div class="field-row">
                         <label for="notif_${notifType.key}_soundVolume">${t('field.soundVolume.label')}</label>
-                        <input type="range" id="notif_${notifType.key}_soundVolume" data-range="notificationType.sound_volume"
+                        <input type="range" id="notif_${notifType.key}_soundVolume" data-range="thumbnail.notifications.type_configs.*.sound_volume"
                                value="${config.sound_volume ?? 100}" data-value-target="notif_${notifType.key}_soundVolumeValue">
                         <span id="notif_${notifType.key}_soundVolumeValue">${config.sound_volume ?? 100}</span>
                     </div>
@@ -263,10 +218,10 @@ export function populateNotificationTypes() {
         </div>
     `;
 
-    NOTIFICATION_TYPES.forEach((notifType) => toggleNotificationTypeEnabled(notifType.key));
+    types.forEach((notifType) => toggleNotificationTypeEnabled(notifType.key));
     toggleNotificationOptions();
     applyNotificationTypeFilter();
-    applyValidationRangesToInputs(container);
+    applySchemaToInputs(container);
 }
 
 export function selectNotificationType(index) {
@@ -442,7 +397,7 @@ export function saveNotificationTypes() {
 
     const typeConfigs = app.currentConfig.thumbnail.notifications.type_configs;
 
-    NOTIFICATION_TYPES.forEach((notifType) => {
+    notificationTypes().forEach((notifType) => {
         const fromForm = readNotificationTypeConfig(notifType.key);
         if (!fromForm) return;
         typeConfigs[notifType.key] = Object.assign(typeConfigs[notifType.key] || {}, fromForm);
@@ -454,11 +409,10 @@ export async function testNotification(typeKey) {
         logWarn('WebUI not available for testing notification');
         return;
     }
-    const config = readNotificationTypeConfig(typeKey);
-    if (!config) return;
     try {
-        await sendThumbnailPreview();
-        await rpc('testNotification', { json: JSON.stringify({ type: typeKey, config }) });
+        // The app tests with the settings it holds, so the form's latest edits go first.
+        await flushEdits();
+        await rpc('testNotification', { type: typeKey });
     } catch (error) {
         logError('Failed to test notification:', error);
         showStatus(t('status.testNotificationFailedPrefix') + error.message, 'error');

@@ -1,11 +1,12 @@
 // Entry point: wires up the page once the DOM is ready, and exposes the handlers inline on* attributes call.
 import { app } from './state.js';
+import { loadSchema } from './binding.js';
 import { setupChangeDetection } from './changes.js';
 import { addCharacter, clearCharacterSearch, confirmClearAllCharacterWindowPositions, confirmClearCharacterWindowPosition, confirmRemoveCharacter, onCharacterSearchInput, populateCharactersFromClients, refreshWindowPositionSourceOptions, selectCharacter, setAllCharacterWindowPositions, setCharacterWindowPosition, updateCharacterHeaderName } from './characters.js';
-import { waitForWebUI } from './core.js';
-import { loadDefaultConfig, loadValidationRanges, populateLanguageSelect, populateSharedSelectOptions } from './form.js';
+import { logError, waitForWebUI } from './core.js';
+import { populateLanguageSelect, populateSharedSelectOptions } from './form.js';
 import { addAppHotkey, addUrlHotkey, applyPickedWindowForAppHotkey, pickRunningWindowForAppHotkey, removeAppHotkey, removeUrlHotkey, updateUrlHotkeyUploadClipboardVisibility } from './global_hotkeys.js';
-import { changeDialogScale, loadGlobalSettingsFromBackend, toggleAdvancedMode, toggleAlwaysOnTop, toggleSectionHint } from './global_settings.js';
+import { changeDialogScale, toggleAdvancedMode, toggleAlwaysOnTop, toggleSectionHint } from './global_settings.js';
 import { addHotkeyGroup, addHotkeyGroupCharacter, fillHotkeyGroupFromClients, removeHotkeyGroup, removeHotkeyGroupCharacter, selectHotkeyGroup, suggestOpenClients, toggleHotkeyGroupMembershipEditor, updateHotkeyGroupHeaderName } from './hotkey_groups.js';
 import { alignBindingLabelColumns, clearHotkey, recordHotkey, renderHotkeyBindings, toggleManualHotkeyEdit } from './hotkeys.js';
 import { applyTranslations, switchLanguage, t } from './i18n.js';
@@ -15,11 +16,10 @@ import { browseSoundFile, clearNotificationTypeSearch, clearSoundFile, onNotific
 import { browseChatlogDir, browseGamelogDir, initCombatShowRequiresEnabled, onThumbHeightInput, onThumbSizeSlider, onThumbWidthInput, toggleAspectRatioSlider, toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotLoggedInSpaceOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, toggleNotificationOptions, toggleQuickGroupBadgeOptions, toggleRegionFitOptions, toggleResourcesOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterColors, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
 import { fetchOrePrices } from './ore_table.js';
 import { initOverlayLayoutPreview } from './overlay_layout.js';
-import { scheduleThumbnailPreview, setupThumbnailPreview } from './preview.js';
 import { copyCurrentProfile, createNewProfile, deleteCurrentProfile, loadProfileList, resetCurrentProfile, restoreSelectedProfileBackup, switchProfile } from './profiles.js';
 import { NOT_LOGGED_IN_FIELD_IDS, REGION_FIELD_IDS, clearRegion, startRegionSelectFlow } from './region.js';
 import { clearSearch, onSearchInput, searchState } from './search.js';
-import { loadAppVersion, loadConfigurationFromBackend, saveConfiguration } from './session.js';
+import { loadAppVersion, openSession, saveConfiguration } from './session.js';
 import { addSystemColor, removeSystemColor } from './system_colors.js';
 import { applyUltraPotatoMode, scanUltraPotatoProfiles } from './ultra_potato.js';
 import { checkForUpdateNotification, openExternalLink } from './update.js';
@@ -32,7 +32,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     populateLanguageSelect();
     populateSharedSelectOptions();
     setupChangeDetection();
-    setupThumbnailPreview();
     initOverlayLayoutPreview();
     initCombatShowRequiresEnabled();
     initImportAccentColorPreview();
@@ -56,20 +55,21 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     const ready = await waitForWebUI();
     if (ready) {
-        // Fire independent calls immediately instead of serializing a round trip each - only loadProfileList()'s completion is needed below.
+        // Fire independent calls immediately instead of serializing a round trip each.
         const profileListLoaded = loadProfileList();
-        loadConfigurationFromBackend();
-        const globalSettingsLoaded = loadGlobalSettingsFromBackend();
+        // The form binds by the schema, so the session waits for it.
+        const sessionOpened = loadSchema().then(openSession, (error) => {
+            logError('Failed to load the settings schema:', error);
+            showStatus(t('status.failedPrefix') + error.message, 'error');
+        });
         loadAppVersion();
-        loadDefaultConfig();
-        loadValidationRanges();
         refreshWindowPositionSourceOptions();
         scanUltraPotatoProfiles();
 
         await profileListLoaded;
         app.dialogEditingProfile = document.getElementById('profile-select').value;
 
-        await globalSettingsLoaded;
+        await sessionOpened;
         checkForUpdateNotification();
     } else {
         showStatus(t('status.webuiInitFailed'), 'error');
@@ -138,7 +138,6 @@ Object.assign(window, {
     runImport,
     saveConfiguration,
     scanUltraPotatoProfiles,
-    scheduleThumbnailPreview,
     selectCharacter,
     selectHotkeyGroup,
     selectNotificationType,

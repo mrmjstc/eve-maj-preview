@@ -2,7 +2,7 @@
 import { app } from './state.js';
 import { markAsChanged } from './changes.js';
 import { escapeHtml } from './core.js';
-import { alignBindingLabelColumns, renderHotkeyInputHtml, updateHotkeyConflictHighlights, vkHexToFriendly } from './hotkeys.js';
+import { alignBindingLabelColumns, hotkeyToSaved, renderHotkeyInputHtml, updateHotkeyConflictHighlights, vkHexToFriendly } from './hotkeys.js';
 import { t } from './i18n.js';
 import { getAvailableProfileNames } from './profiles.js';
 import { scrollContentPanelToBottom } from './widgets.js';
@@ -42,19 +42,24 @@ export async function populateProfileSwitchHotkeys() {
     updateHotkeyConflictHighlights();
 }
 
+// Keeps the saved order and entries without a row, so reading back an untouched form changes nothing.
 export function saveProfileSwitchHotkeys() {
     if (!app.currentGlobalSettings) return;
     const container = document.getElementById('profileSwitchHotkeysList');
     if (!container) return;
 
-    const result = [];
+    const shown = new Map();
     container.querySelectorAll('[data-profile]').forEach(row => {
         const profile = row.dataset.profile;
-        const hotkey = document.getElementById(`pshotkey_${profileHotkeyFieldId(profile)}_hotkey`);
-        if (hotkey && hotkey.value) {
-            result.push({ hotkey: hotkey.value, targetProfile: profile });
-        }
+        shown.set(profile, hotkeyToSaved(document.getElementById(`pshotkey_${profileHotkeyFieldId(profile)}_hotkey`)?.value));
     });
+    const entries = app.currentGlobalSettings.profileSwitchHotkeys || [];
+    const result = entries
+        .filter(entry => !shown.has(entry.targetProfile) || shown.get(entry.targetProfile))
+        .map(entry => shown.has(entry.targetProfile) ? { ...entry, hotkey: shown.get(entry.targetProfile) } : entry);
+    for (const [profile, hotkey] of shown) {
+        if (hotkey && !entries.some(entry => entry.targetProfile === profile)) result.push({ hotkey, targetProfile: profile });
+    }
     app.currentGlobalSettings.profileSwitchHotkeys = result;
 }
 
@@ -116,7 +121,7 @@ export function saveAppHotkeys() {
         const hotkey = document.getElementById(`apphotkey_${index}_hotkey`);
 
         if (exe) entry.executableName = exe.value.trim();
-        if (hotkey) entry.hotkey = hotkey.value || null;
+        if (hotkey) entry.hotkey = hotkeyToSaved(hotkey.value);
     });
 }
 
@@ -217,7 +222,7 @@ export function saveUrlHotkeys() {
         const uploadClipboard = document.getElementById(`urlhotkey_${index}_uploadClipboard`);
 
         if (url) entry.url = url.value.trim();
-        if (hotkey) entry.hotkey = hotkey.value || null;
+        if (hotkey) entry.hotkey = hotkeyToSaved(hotkey.value);
         if (uploadClipboard) entry.uploadClipboard = uploadClipboard.checked && isAdashboardUrl(entry.url);
     });
 }

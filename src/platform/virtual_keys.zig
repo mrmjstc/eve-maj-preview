@@ -49,6 +49,17 @@ pub const VK_ADD: u32 = 0x6B;
 pub const VK_SUBTRACT: u32 = 0x6D;
 pub const VK_DECIMAL: u32 = 0x6E;
 pub const VK_DIVIDE: u32 = 0x6F;
+pub const VK_BACK: u32 = 0x08;
+pub const VK_RETURN: u32 = 0x0D;
+pub const VK_SNAPSHOT: u32 = 0x2C;
+pub const VK_APPS: u32 = 0x5D;
+pub const VK_VOLUME_MUTE: u32 = 0xAD;
+pub const VK_VOLUME_DOWN: u32 = 0xAE;
+pub const VK_VOLUME_UP: u32 = 0xAF;
+pub const VK_MEDIA_NEXT_TRACK: u32 = 0xB0;
+pub const VK_MEDIA_PREV_TRACK: u32 = 0xB1;
+pub const VK_MEDIA_STOP: u32 = 0xB2;
+pub const VK_MEDIA_PLAY_PAUSE: u32 = 0xB3;
 pub const MOD_ALT: u32 = 0x0001;
 pub const MOD_CONTROL: u32 = 0x0002;
 pub const MOD_SHIFT: u32 = 0x0004;
@@ -88,90 +99,96 @@ pub fn currentModifiers() u32 {
     return mods;
 }
 
+pub const KeyName = struct { vk: u32, name: []const u8 };
+
+/// Every key a binding can use, in the spelling it's shown and typed in; the config dialog's recorder offers exactly these.
+pub const key_names: []const KeyName = blk: {
+    @setEvalBranchQuota(10_000);
+    var list: []const KeyName = &.{};
+    for (1..25) |n| list = list ++ &[_]KeyName{.{ .vk = VK_F1 + @as(u32, @intCast(n)) - 1, .name = std.fmt.comptimePrint("F{d}", .{n}) }};
+    for ('A'..'Z' + 1) |c| list = list ++ &[_]KeyName{.{ .vk = @intCast(c), .name = &[_]u8{@intCast(c)} }};
+    for ('0'..'9' + 1) |c| list = list ++ &[_]KeyName{.{ .vk = @intCast(c), .name = &[_]u8{@intCast(c)} }};
+    for (0..10) |n| list = list ++ &[_]KeyName{.{ .vk = VK_NUMPAD0 + @as(u32, @intCast(n)), .name = std.fmt.comptimePrint("Numpad{d}", .{n}) }};
+    list = list ++ &[_]KeyName{
+        // A bare modifier as the trigger key itself, e.g. plain "Shift", or "Ctrl+Shift" with Shift as the trigger.
+        .{ .vk = VK_CONTROL, .name = "Ctrl" },
+        .{ .vk = VK_MENU, .name = "Alt" },
+        .{ .vk = VK_SHIFT, .name = "Shift" },
+        .{ .vk = VK_LWIN, .name = "Win" },
+        .{ .vk = VK_TAB, .name = "Tab" },
+        .{ .vk = VK_RETURN, .name = "Enter" },
+        .{ .vk = VK_BACK, .name = "Backspace" },
+        .{ .vk = VK_PAUSE, .name = "Pause" },
+        .{ .vk = VK_CAPITAL, .name = "CapsLock" },
+        .{ .vk = VK_NUMLOCK, .name = "NumLock" },
+        .{ .vk = VK_SCROLL, .name = "ScrollLock" },
+        .{ .vk = VK_SNAPSHOT, .name = "PrintScreen" },
+        .{ .vk = VK_APPS, .name = "Menu" },
+        .{ .vk = VK_SPACE, .name = "Space" },
+        .{ .vk = VK_PRIOR, .name = "PageUp" },
+        .{ .vk = VK_NEXT, .name = "PageDown" },
+        .{ .vk = VK_END, .name = "End" },
+        .{ .vk = VK_HOME, .name = "Home" },
+        .{ .vk = VK_LEFT, .name = "Left" },
+        .{ .vk = VK_UP, .name = "Up" },
+        .{ .vk = VK_RIGHT, .name = "Right" },
+        .{ .vk = VK_DOWN, .name = "Down" },
+        .{ .vk = VK_INSERT, .name = "Insert" },
+        .{ .vk = VK_DELETE, .name = "Delete" },
+        .{ .vk = VK_MULTIPLY, .name = "NumpadMultiply" },
+        .{ .vk = VK_ADD, .name = "NumpadAdd" },
+        .{ .vk = VK_SUBTRACT, .name = "NumpadSubtract" },
+        .{ .vk = VK_DECIMAL, .name = "NumpadDecimal" },
+        .{ .vk = VK_DIVIDE, .name = "NumpadDivide" },
+        .{ .vk = VK_VOLUME_MUTE, .name = "VolumeMute" },
+        .{ .vk = VK_VOLUME_DOWN, .name = "VolumeDown" },
+        .{ .vk = VK_VOLUME_UP, .name = "VolumeUp" },
+        .{ .vk = VK_MEDIA_NEXT_TRACK, .name = "MediaNext" },
+        .{ .vk = VK_MEDIA_PREV_TRACK, .name = "MediaPrevious" },
+        .{ .vk = VK_MEDIA_STOP, .name = "MediaStop" },
+        .{ .vk = VK_MEDIA_PLAY_PAUSE, .name = "MediaPlayPause" },
+        .{ .vk = VK_XBUTTON1, .name = "XButton1" },
+        .{ .vk = VK_XBUTTON2, .name = "XButton2" },
+        .{ .vk = VK_WHEELUP, .name = "WheelUp" },
+        .{ .vk = VK_WHEELDOWN, .name = "WheelDown" },
+        .{ .vk = VK_OEM_1, .name = ";" },
+        .{ .vk = VK_OEM_PLUS, .name = "=" },
+        .{ .vk = VK_OEM_COMMA, .name = "," },
+        .{ .vk = VK_OEM_MINUS, .name = "-" },
+        .{ .vk = VK_OEM_PERIOD, .name = "." },
+        .{ .vk = VK_OEM_2, .name = "/" },
+        .{ .vk = VK_OEM_3, .name = "`" },
+        .{ .vk = VK_OEM_4, .name = "[" },
+        .{ .vk = VK_OEM_5, .name = "\\" },
+        .{ .vk = VK_OEM_6, .name = "]" },
+        .{ .vk = VK_OEM_7, .name = "'" },
+    };
+    break :blk list;
+};
+
+/// The prefix each modifier flag is written with, in the order they're written.
+pub const modifier_names = [_]struct { flag: u32, name: []const u8 }{
+    .{ .flag = MOD_CONTROL, .name = "Ctrl" },
+    .{ .flag = MOD_ALT, .name = "Alt" },
+    .{ .flag = MOD_SHIFT, .name = "Shift" },
+    .{ .flag = MOD_WIN, .name = "Win" },
+};
+
+pub fn keyName(vk_code: u32) ?[]const u8 {
+    for (key_names) |key| {
+        if (key.vk == vk_code) return key.name;
+    }
+    return null;
+}
+
 /// Write virtual key code (plus any modifiers) as a human-readable string, e.g. "Ctrl+F9"
 pub fn writeVirtualKey(writer: anytype, combined: u32) !void {
     const modifiers = extractModifiers(combined);
-    if (modifiers & MOD_CONTROL != 0) try writer.writeAll("Ctrl+");
-    if (modifiers & MOD_ALT != 0) try writer.writeAll("Alt+");
-    if (modifiers & MOD_SHIFT != 0) try writer.writeAll("Shift+");
-    if (modifiers & MOD_WIN != 0) try writer.writeAll("Win+");
-
+    for (modifier_names) |modifier| {
+        if (modifiers & modifier.flag != 0) try writer.print("{s}+", .{modifier.name});
+    }
     const vk_code = extractVk(combined);
-
-    // A bare-modifier binding (base key is itself Ctrl/Alt/Shift/Win); modifiers is always 0 in this case.
-    const bare_modifier_name: ?[]const u8 = switch (vk_code) {
-        VK_CONTROL => "Ctrl",
-        VK_MENU => "Alt",
-        VK_SHIFT => "Shift",
-        VK_LWIN => "Win",
-        else => null,
-    };
-    if (bare_modifier_name) |name| {
-        try writer.writeAll(name);
-        return;
-    }
-
-    if (vk_code >= VK_F1 and vk_code <= VK_F24) {
-        try writer.print("F{d}", .{vk_code - VK_F1 + 1});
-        return;
-    }
-
-    if (vk_code >= 'A' and vk_code <= 'Z') {
-        try writer.writeByte(@intCast(vk_code));
-        return;
-    }
-
-    if (vk_code >= '0' and vk_code <= '9') {
-        try writer.writeByte(@intCast(vk_code));
-        return;
-    }
-
-    if (vk_code >= VK_NUMPAD0 and vk_code <= VK_NUMPAD9) {
-        try writer.print("Numpad{d}", .{vk_code - VK_NUMPAD0});
-        return;
-    }
-
-    const key_name: ?[]const u8 = switch (vk_code) {
-        VK_TAB => "Tab",
-        VK_PAUSE => "Pause",
-        VK_CAPITAL => "CapsLock",
-        VK_NUMLOCK => "NumLock",
-        VK_SCROLL => "ScrollLock",
-        VK_SPACE => "Space",
-        VK_PRIOR => "PageUp",
-        VK_NEXT => "PageDown",
-        VK_END => "End",
-        VK_HOME => "Home",
-        VK_LEFT => "Left",
-        VK_UP => "Up",
-        VK_RIGHT => "Right",
-        VK_DOWN => "Down",
-        VK_INSERT => "Insert",
-        VK_DELETE => "Delete",
-        VK_MULTIPLY => "NumpadMultiply",
-        VK_ADD => "NumpadAdd",
-        VK_SUBTRACT => "NumpadSubtract",
-        VK_DECIMAL => "NumpadDecimal",
-        VK_DIVIDE => "NumpadDivide",
-        VK_XBUTTON1 => "XButton1",
-        VK_XBUTTON2 => "XButton2",
-        VK_WHEELUP => "WheelUp",
-        VK_WHEELDOWN => "WheelDown",
-        VK_OEM_1 => ";",
-        VK_OEM_PLUS => "=",
-        VK_OEM_COMMA => ",",
-        VK_OEM_MINUS => "-",
-        VK_OEM_PERIOD => ".",
-        VK_OEM_2 => "/",
-        VK_OEM_3 => "`",
-        VK_OEM_4 => "[",
-        VK_OEM_5 => "\\",
-        VK_OEM_6 => "]",
-        VK_OEM_7 => "'",
-        else => null,
-    };
-
-    if (key_name) |name| {
+    if (keyName(vk_code)) |name| {
         try writer.writeAll(name);
     } else {
         try writer.print("VK{X}", .{vk_code});
@@ -188,90 +205,32 @@ fn parseModifierToken(token: []const u8) ?u32 {
     return null;
 }
 
-/// Parse a single (non-combo) key token into its base virtual key code.
-/// Supports: F1-F24, A-Z, 0-9, ; = , - . / ` [ \ ] ', Space, PageUp, PageDown, End, Home,
-///           Left, Up, Right, Down, Insert, Delete, Numpad0-Numpad9, NumpadMultiply,
-///           NumpadAdd, NumpadSubtract, NumpadDecimal, NumpadDivide, and a bare modifier
-///           (Ctrl, Alt, Shift, Win/LWin/RWin) used as the trigger key itself.
+/// A name from key_names, or one of the aliases hand-edited profiles may use (a shifted OEM character, "Control", "LWin", "RWin").
 fn parseBaseKey(key_str: []const u8) ?u32 {
     if (key_str.len == 0) return null;
+    for (key_names) |key| {
+        if (std.ascii.eqlIgnoreCase(key.name, key_str)) return key.vk;
+    }
 
     if (key_str.len == 1) {
-        const ch = std.ascii.toUpper(key_str[0]);
-        if (ch >= 'A' and ch <= 'Z') {
-            return ch;
-        }
-        if (ch >= '0' and ch <= '9') {
-            return ch;
-        }
-
-        // '+' itself is never a valid base key here since it's the modifier-combo delimiter (see splitScalar below); only '=' maps to VK_OEM_PLUS.
-        const oem_vk: ?u32 = switch (key_str[0]) {
-            ';', ':' => VK_OEM_1,
-            '=' => VK_OEM_PLUS,
-            ',', '<' => VK_OEM_COMMA,
-            '-', '_' => VK_OEM_MINUS,
-            '.', '>' => VK_OEM_PERIOD,
-            '/', '?' => VK_OEM_2,
-            '`', '~' => VK_OEM_3,
-            '[', '{' => VK_OEM_4,
-            '\\', '|' => VK_OEM_5,
-            ']', '}' => VK_OEM_6,
-            '\'', '"' => VK_OEM_7,
+        // '+' itself is never a valid base key here since it's the modifier-combo delimiter; only '=' maps to VK_OEM_PLUS.
+        const shifted_vk: ?u32 = switch (key_str[0]) {
+            ':' => VK_OEM_1,
+            '<' => VK_OEM_COMMA,
+            '_' => VK_OEM_MINUS,
+            '>' => VK_OEM_PERIOD,
+            '?' => VK_OEM_2,
+            '~' => VK_OEM_3,
+            '{' => VK_OEM_4,
+            '|' => VK_OEM_5,
+            '}' => VK_OEM_6,
+            '"' => VK_OEM_7,
             else => null,
         };
-        if (oem_vk) |vk_code| return vk_code;
+        if (shifted_vk) |vk_code| return vk_code;
     }
-
-    if (key_str.len >= 2 and (key_str[0] == 'F' or key_str[0] == 'f')) {
-        const num_str = key_str[1..];
-        const num = std.fmt.parseInt(u32, num_str, 10) catch |err| {
-            slog.warn("Failed to parse function key number '{s}': {}", .{ num_str, err });
-            return null;
-        };
-        if (num >= 1 and num <= 24) {
-            return VK_F1 + (num - 1);
-        }
-    }
-
-    // A bare modifier as the base/trigger key itself, e.g. "Shift" alone or "Ctrl+Shift" (Ctrl held, Shift as trigger).
-    if (std.ascii.eqlIgnoreCase(key_str, "ctrl") or std.ascii.eqlIgnoreCase(key_str, "control")) return VK_CONTROL;
-    if (std.ascii.eqlIgnoreCase(key_str, "alt")) return VK_MENU;
-    if (std.ascii.eqlIgnoreCase(key_str, "shift")) return VK_SHIFT;
-    if (std.ascii.eqlIgnoreCase(key_str, "win") or std.ascii.eqlIgnoreCase(key_str, "lwin") or std.ascii.eqlIgnoreCase(key_str, "rwin")) return VK_LWIN;
-
-    if (std.ascii.eqlIgnoreCase(key_str, "tab")) return VK_TAB;
-    if (std.ascii.eqlIgnoreCase(key_str, "pause")) return VK_PAUSE;
-    if (std.ascii.eqlIgnoreCase(key_str, "capslock")) return VK_CAPITAL;
-    if (std.ascii.eqlIgnoreCase(key_str, "numlock")) return VK_NUMLOCK;
-    if (std.ascii.eqlIgnoreCase(key_str, "scrolllock")) return VK_SCROLL;
-    if (std.ascii.eqlIgnoreCase(key_str, "space")) return VK_SPACE;
-    if (std.ascii.eqlIgnoreCase(key_str, "pageup")) return VK_PRIOR;
-    if (std.ascii.eqlIgnoreCase(key_str, "pagedown")) return VK_NEXT;
-    if (std.ascii.eqlIgnoreCase(key_str, "end")) return VK_END;
-    if (std.ascii.eqlIgnoreCase(key_str, "home")) return VK_HOME;
-    if (std.ascii.eqlIgnoreCase(key_str, "left")) return VK_LEFT;
-    if (std.ascii.eqlIgnoreCase(key_str, "up")) return VK_UP;
-    if (std.ascii.eqlIgnoreCase(key_str, "right")) return VK_RIGHT;
-    if (std.ascii.eqlIgnoreCase(key_str, "down")) return VK_DOWN;
-    if (std.ascii.eqlIgnoreCase(key_str, "insert")) return VK_INSERT;
-    if (std.ascii.eqlIgnoreCase(key_str, "delete")) return VK_DELETE;
-    if (std.ascii.eqlIgnoreCase(key_str, "xbutton1")) return VK_XBUTTON1;
-    if (std.ascii.eqlIgnoreCase(key_str, "xbutton2")) return VK_XBUTTON2;
-    if (std.ascii.eqlIgnoreCase(key_str, "wheelup")) return VK_WHEELUP;
-    if (std.ascii.eqlIgnoreCase(key_str, "wheeldown")) return VK_WHEELDOWN;
-
-    if (key_str.len > "numpad".len and std.ascii.eqlIgnoreCase(key_str[0.."numpad".len], "numpad")) {
-        const rest = key_str["numpad".len..];
-        if (rest.len == 1 and rest[0] >= '0' and rest[0] <= '9') {
-            return VK_NUMPAD0 + (rest[0] - '0');
-        }
-        if (std.ascii.eqlIgnoreCase(rest, "multiply")) return VK_MULTIPLY;
-        if (std.ascii.eqlIgnoreCase(rest, "add")) return VK_ADD;
-        if (std.ascii.eqlIgnoreCase(rest, "subtract")) return VK_SUBTRACT;
-        if (std.ascii.eqlIgnoreCase(rest, "decimal")) return VK_DECIMAL;
-        if (std.ascii.eqlIgnoreCase(rest, "divide")) return VK_DIVIDE;
-    }
+    if (std.ascii.eqlIgnoreCase(key_str, "control")) return VK_CONTROL;
+    if (std.ascii.eqlIgnoreCase(key_str, "lwin") or std.ascii.eqlIgnoreCase(key_str, "rwin")) return VK_LWIN;
 
     slog.warn("Unrecognized key format: '{s}'", .{key_str});
     return null;

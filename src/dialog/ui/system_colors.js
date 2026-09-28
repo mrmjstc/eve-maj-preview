@@ -4,7 +4,6 @@ import { escapeHtml } from './core.js';
 import { markAsChanged } from './changes.js';
 import { htmlColorToZig, zigColorToHtml } from './colors.js';
 import { t } from './i18n.js';
-import { scheduleThumbnailPreview } from './preview.js';
 import { scrollContentPanelToBottom } from './widgets.js';
 
 export function populateSystemColors() {
@@ -32,7 +31,6 @@ export function addSystemColor() {
     app.currentConfig.systemColors.push({ systemName: '', color: '0xFFFFFFFF' });
     markAsChanged();
     populateSystemColors();
-    scheduleThumbnailPreview();
     scrollContentPanelToBottom();
 }
 
@@ -42,7 +40,6 @@ export function removeSystemColor(index) {
         app.currentConfig.systemColors.splice(index, 1);
         markAsChanged();
         populateSystemColors();
-        scheduleThumbnailPreview();
     }
 }
 

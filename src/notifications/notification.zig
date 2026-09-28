@@ -8,7 +8,6 @@ pub const NotificationType = enum {
     FleetRegroup,
     FleetDisband,
     ConversationInvite,
-    JumpCloning,
     MiningCompression,
     AsteroidDepleted,
     MiningIdle,
@@ -30,6 +29,7 @@ pub const NotificationType = enum {
     AggressionCantJump,
     WarpBubble,
     ConduitJump,
+    JumpCloning,
     SystemChange,
     TravelLeftBehind,
     GroupMembership,
@@ -41,7 +41,7 @@ pub const NotificationType = enum {
     Generic,
 };
 
-/// Mirrors the 5 categories dialog/ui/notifications.js's NOTIFICATION_TYPES groups these into, for the History Panel's category filter buttons.
+/// For the History Panel's category filter buttons, and the order the config dialog lists types in (see config/schema.zig).
 pub const NotificationCategory = enum {
     Fleet,
     Mining,

@@ -1,5 +1,6 @@
 // Conversions between the backend's 0xAARRGGBB colours and the form's #rrggbb inputs, plus the accent theme.
 import { app } from './state.js';
+import { defaultFor } from './binding.js';
 
 export function zigColorToHtml(color) {
     if (!color) return '#000000';
@@ -29,7 +30,7 @@ export const DEFAULT_ACCENT_COLOR_HTML = '#d9a441';
 // Retints the dialog's --color-accent* CSS variables from the active profile's accentColor
 // (or, when previewing a not-yet-saved pick, overrideZig), so every profile can carry its own chrome color.
 export function applyAccentColorTheme(overrideZig) {
-    const accentZig = overrideZig || (app.currentConfig && app.currentConfig.accentColor) || (app.defaultConfig && app.defaultConfig.accentColor);
+    const accentZig = overrideZig || app.currentConfig?.accentColor || defaultFor('accentColor');
     const hex = zigColorToHtml(accentZig || htmlColorToZig(DEFAULT_ACCENT_COLOR_HTML));
 
     const r = parseInt(hex.slice(1, 3), 16);

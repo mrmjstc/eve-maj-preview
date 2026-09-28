@@ -52,6 +52,10 @@ pub const CharacterConfig = struct {
     hideThumbnail: bool = false,
     notificationsMuted: bool = false,
     opacity: ?u8 = null,
+    /// Identifies this entry to the config dialog while its name and position in the list change; 0 until assigned (see config/patch.zig).
+    id: u32 = 0,
+
+    pub const runtime_fields = .{"id"};
 
     pub const ranges = .{
         .opacity = ranges_mod.OPACITY,

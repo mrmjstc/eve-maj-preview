@@ -21,9 +21,11 @@ pub fn switchProfile(_: std.mem.Allocator, args: struct { name: []const u8 }) !v
     try host.setEditingProfile(args.name);
 }
 
-/// "Make It Live": the app switches to `name`.
+/// "Make It Live": the app switches to `name`, and the window edits it; the profileSwitched event that follows reopens the session.
 pub fn switchProfileLive(_: std.mem.Allocator, args: struct { name: []const u8 }) !void {
     try config_mod.validateProfileName(args.name);
+    // Before the switch, so the session it reopens is `name`'s rather than a draft of the old one.
+    try host.setEditingProfile(args.name);
     main_mod.switchProfile(args.name);
 }
 

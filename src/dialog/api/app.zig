@@ -8,6 +8,8 @@ const painter_mod = @import("../../painter.zig");
 const hotkeys_mod = @import("../../hotkeys/manager.zig");
 const region_select = @import("../../region_select.zig");
 const host = @import("../host.zig");
+const session = @import("../session.zig");
+const patch = @import("../../config/patch.zig");
 const log = @import("../../log.zig");
 
 const slog = log.scoped("dialog");
@@ -54,25 +56,25 @@ pub fn getOpenClients(arena: std.mem.Allocator) ![]const []const u8 {
 }
 
 /// Saves `name`'s live game-window position as where auto-move puts it.
-pub fn setCharacterWindowPosition(arena: std.mem.Allocator, args: struct { name: []const u8 }) !config_mod.Position {
+pub fn setCharacterWindowPosition(_: std.mem.Allocator, args: struct { name: []const u8 }) !config_mod.Position {
     const pos = try liveWindowPosition(args.name);
-    try setWindowPositions(arena, args.name, pos);
+    try setWindowPositions(args.name, pos);
     return pos;
 }
 
-pub fn clearCharacterWindowPosition(arena: std.mem.Allocator, args: struct { name: []const u8 }) !void {
-    try setWindowPositions(arena, args.name, null);
+pub fn clearCharacterWindowPosition(_: std.mem.Allocator, args: struct { name: []const u8 }) !void {
+    try setWindowPositions(args.name, null);
 }
 
 /// Every character gets `name`'s live game-window position.
-pub fn setAllCharacterWindowPositions(arena: std.mem.Allocator, args: struct { name: []const u8 }) !config_mod.Position {
+pub fn setAllCharacterWindowPositions(_: std.mem.Allocator, args: struct { name: []const u8 }) !config_mod.Position {
     const pos = try liveWindowPosition(args.name);
-    try setWindowPositions(arena, null, pos);
+    try setWindowPositions(null, pos);
     return pos;
 }
 
-pub fn clearAllCharacterWindowPositions(arena: std.mem.Allocator) !void {
-    try setWindowPositions(arena, null, null);
+pub fn clearAllCharacterWindowPositions(_: std.mem.Allocator) !void {
+    try setWindowPositions(null, null);
 }
 
 /// `region` is [x, y, width, height] to adjust, or null for a fresh drag; empty labels keep the overlay's English text.
@@ -131,13 +133,12 @@ fn liveWindowPosition(character_name: []const u8) !config_mod.Position {
     return .{ .x = rect.left, .y = rect.top };
 }
 
-fn setWindowPositions(arena: std.mem.Allocator, character_name: ?[]const u8, pos: ?config_mod.Position) !void {
-    if (host.editsLiveProfile()) return main_mod.g_store.setWindowPosition(character_name, pos);
-    // A profile the app isn't running only exists on disk.
-    const name = host.editingProfile();
-    var cfg = try config_mod.loadProfile(arena, name);
-    try config_mod.applyWindowPosition(&cfg, character_name, pos);
-    try config_mod.saveProfile(&cfg, arena, try config_mod.profilePath(arena, name));
+/// Saved at once for the running profile, like a drag; another profile's draft keeps it until Save.
+fn setWindowPositions(character_name: ?[]const u8, pos: ?config_mod.Position) !void {
+    if (!session.editsDraft()) return main_mod.g_store.setWindowPosition(character_name, pos);
+    const draft = session.profile();
+    try config_mod.applyWindowPosition(draft, character_name, pos);
+    patch.assignIds(config_mod.Config, draft);
 }
 
 /// 0 if it can't be read.

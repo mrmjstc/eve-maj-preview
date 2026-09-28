@@ -1,86 +1,112 @@
-//! Loading, saving and previewing the profile and global settings the window edits.
+//! The profile and global settings the window edits, as documents changed by edit ops (see config/patch.zig) until Save or Discard.
 const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
 const config_mod = @import("../../config.zig");
+const patch = @import("../../config/patch.zig");
+const schema = @import("../../config/schema.zig");
+const notification_mod = @import("../../notifications/notification.zig");
+const painter_mod = @import("../../painter.zig");
+const protocol = @import("../../protocol.zig");
 const main_mod = @import("../../main.zig");
 const host = @import("../host.zig");
+const session = @import("../session.zig");
 const rpc = @import("../rpc.zig");
 const log = @import("../../log.zig");
 
 const slog = log.scoped("dialog");
 
-/// What's saved rather than what's previewed, so reloading the form drops unsaved edits.
-pub fn loadConfig(arena: std.mem.Allocator) !rpc.RawJson {
-    if (host.editsLiveProfile()) return .{ .text = try main_mod.g_store.saved.toJsonString(arena) };
-    const cfg = try config_mod.loadProfile(arena, host.editingProfile());
-    return .{ .text = try cfg.toJsonString(arena) };
+/// Starts over from what's saved, dropping unsaved edits.
+pub fn openSession(arena: std.mem.Allocator) !rpc.RawJson {
+    try session.begin();
+    return snapshot(arena);
 }
 
-/// The built-in defaults, for "Clear to Default".
-pub fn getDefaultConfig(arena: std.mem.Allocator) !rpc.RawJson {
-    const cfg = try config_mod.Config.getDefaultsWithProfile(arena, host.editingProfile());
-    return .{ .text = try cfg.toJsonString(arena) };
+/// The documents as edited so far, to resync after a failed edit.
+pub fn getSession(arena: std.mem.Allocator) !rpc.RawJson {
+    return snapshot(arena);
 }
 
-/// Validated and clamped before it's written, then made the running profile.
-pub fn saveConfig(arena: std.mem.Allocator, args: struct { json: []const u8 }) !void {
-    // Copied, since the reload below replaces what editingProfile() may point into.
-    const name = try arena.dupe(u8, host.editingProfile());
-    const cfg = try config_mod.Config.buildConfigFromJson(arena, args.json, name);
-    const path = try config_mod.profilePath(arena, name);
-    try config_mod.saveProfile(&cfg, arena, path);
-    main_mod.switchProfile(name);
+/// Returns one result per op (see session.apply) and whether the document now differs from what's saved.
+pub fn applyOps(arena: std.mem.Allocator, args: struct { doc: session.Doc, ops: []const patch.Op }) !rpc.RawJson {
+    var out: std.Io.Writer.Allocating = .init(arena);
+    var jw: std.json.Stringify = .{ .writer = &out.writer };
+    try jw.beginObject();
+    try jw.objectField("results");
+    try session.apply(&jw, arena, args.doc, args.ops);
+    try jw.objectField("dirty");
+    try writeDirty(&jw);
+    try jw.endObject();
+    return .{ .text = out.written() };
 }
 
-pub fn getValidationRanges(arena: std.mem.Allocator) !rpc.RawJson {
-    return .{ .text = try config_mod.Config.buildValidationRangesJson(arena) };
-}
-
-/// GlobalConfig only saves a price per ore; this adds the built-in name, category and volume the ore table shows.
-pub fn loadGlobalSettings(arena: std.mem.Allocator) !std.json.Value {
-    const settings = &main_mod.g_global_settings;
-    var value = try std.json.parseFromSliceLeaky(std.json.Value, arena, try settings.toJsonString(arena), .{});
-    if (value != .object) return error.InvalidGlobalSettings;
-
-    var rows = std.json.Array.init(arena);
-    for (config_mod.DEFAULT_ORE_TABLE) |entry| {
-        var row: std.json.ObjectMap = .empty;
-        try row.put(arena, "name", .{ .string = entry.name });
-        try row.put(arena, "category", .{ .string = entry.category });
-        try row.put(arena, "volumeM3", .{ .float = entry.volumeM3 });
-        try row.put(arena, "price", .{ .float = settings.orePrice(entry.name) orelse entry.price });
-        try rows.append(.{ .object = row });
+/// Saving another profile's draft also makes it the running profile.
+pub fn saveSession(arena: std.mem.Allocator) !rpc.RawJson {
+    const global_changed = session.globalDirty();
+    if (global_changed) try session.adoptGlobal();
+    // The hotkey manager reads the adopted settings, so it's rebuilt even if a later step fails.
+    errdefer if (global_changed) main_mod.applySavedSettings() catch |err| {
+        slog.err("Failed to apply the new global settings after a failed save: {}", .{err});
+    };
+    if (global_changed) {
+        const settings = &main_mod.g_global_settings;
+        try settings.save();
+        log.setLevel(settings.logLevel);
+        applyRunOnStartup(settings.runOnStartup);
+        if (settings.autoRegisterProtocol) protocol.ensureRegistered(host.allocator());
     }
-    try value.object.put(arena, "oreTable", .{ .array = rows });
-    return value;
+
+    if (session.editsDraft()) {
+        const draft = session.profile();
+        try config_mod.saveProfile(draft, arena, try config_mod.profilePath(arena, draft.profile_name));
+        const name = try arena.dupe(u8, draft.profile_name);
+        session.dropProfileDraft();
+        main_mod.switchProfile(name);
+    } else {
+        const profile_changed = main_mod.g_store.isDirty();
+        if (profile_changed) try main_mod.g_store.commit();
+        if (profile_changed or global_changed) try main_mod.applySavedSettings();
+    }
+    return snapshot(arena);
 }
 
-/// The running app reloads these with the profile Save that follows.
-pub fn saveGlobalSettings(arena: std.mem.Allocator, args: struct { json: []const u8 }) !void {
-    const value = try std.json.parseFromSliceLeaky(std.json.Value, arena, args.json, .{});
-    // Unknown fields include the ore table's display-only name, category and volume.
-    const saved = try std.json.parseFromValueLeaky(config_mod.GlobalConfig.Wire, arena, value, .{ .ignore_unknown_fields = true });
-    var settings = try config_mod.GlobalConfig.fromWire(saved, host.allocator());
-    defer settings.deinit();
-
-    // Changed by the app while the window was open, not by this form.
-    const running = &main_mod.g_global_settings;
-    settings.dialogX = running.dialogX;
-    settings.dialogY = running.dialogY;
-    try settings.mergeCharacterIds(running);
-
-    try settings.save();
-    applyRunOnStartup(settings.runOnStartup);
+/// Every setting's kind, default, bounds and options (see config/schema.zig).
+pub fn getSchema(arena: std.mem.Allocator) !rpc.RawJson {
+    var out: std.Io.Writer.Allocating = .init(arena);
+    var jw: std.json.Stringify = .{ .writer = &out.writer };
+    try schema.write(&jw);
+    return .{ .text = out.written() };
 }
 
-/// Previews only reach the running profile; editing another one waits for Save.
-pub fn previewThumbnailConfig(_: std.mem.Allocator, args: struct { json: []const u8 }) !void {
-    if (!host.editsLiveProfile()) return;
-    try main_mod.applyThumbnailPreview(args.json);
+/// Fires `type` on every thumbnail with the settings the window has for it, saved or not.
+pub fn testNotification(_: std.mem.Allocator, args: struct { @"type": []const u8 }) !void {
+    const ntype = std.meta.stringToEnum(notification_mod.NotificationType, args.@"type") orelse return error.InvalidNotificationType;
+    const painter = painter_mod.g_painter_ptr orelse return;
+    try painter.showTestNotification(ntype, session.profile().thumbnail.notifications.getTypeConfig(ntype));
 }
 
-pub fn testNotification(_: std.mem.Allocator, args: struct { json: []const u8 }) !void {
-    try main_mod.showTestNotification(args.json);
+/// `oreCatalog` is the built-in ore list the ore table shows, whose prices the global settings' oreTable overrides.
+fn snapshot(arena: std.mem.Allocator) !rpc.RawJson {
+    var out: std.Io.Writer.Allocating = .init(arena);
+    var jw: std.json.Stringify = .{ .writer = &out.writer };
+    try jw.beginObject();
+    try jw.objectField("profileName");
+    try jw.write(session.profile().profile_name);
+    try jw.objectField("editsDraft");
+    try jw.write(session.editsDraft());
+    try jw.objectField("profile");
+    try session.writeProfile(&jw);
+    try jw.objectField("global");
+    try session.writeGlobal(&jw);
+    try jw.objectField("oreCatalog");
+    try jw.write(config_mod.DEFAULT_ORE_TABLE);
+    try jw.objectField("dirty");
+    try writeDirty(&jw);
+    try jw.endObject();
+    return .{ .text = out.written() };
+}
+
+fn writeDirty(jw: *std.json.Stringify) !void {
+    try jw.write(.{ .profile = session.profileDirty(), .global = session.globalDirty() });
 }
 
 const STARTUP_RUN_KEY = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
