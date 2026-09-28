@@ -723,7 +723,7 @@ pub const Painter = struct {
 
         // Game events feed the "cycle to recently notified" queue; feedback on the user's own action must not.
         if (!notification_mod.isUserAction(notification_type)) self.notified_queue.track(self.allocator, thumbnail.character_name);
-        if (record_history) self.notification_history.push(thumbnail.source_hwnd, thumbnail.character_name, notification_text, notification_type, self.auto_colors.characterNameColor(self.config, thumbnail.character_name));
+        if (record_history) self.notification_history.push(thumbnail.source_hwnd, thumbnail.character_name, notification_text, notification_type, thumbnail.cached_character_color);
 
         slog.debug("Queued notification for {s}: [{s}] {s} (border_color_override: {?})", .{ thumbnail.character_name, @tagName(notification_type), notification_text, type_config.border_color });
         return true;

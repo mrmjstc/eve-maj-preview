@@ -275,7 +275,6 @@ pub const RenderCache = struct {
 
 pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *ThumbnailWindow, settings: RenderSettings, config: *const config_mod.Config) !void {
     const hwnd = thumbnail.text_hwnd;
-    const character_name = thumbnail.character_name;
     const system_name = thumbnail.system_name;
 
     const width = settings.overlay_width;
@@ -315,7 +314,7 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
         if (old_main_font) |of| _ = win32.SelectObject(overlay.mem_dc, of);
     }
 
-    const display_name = config.getDisplayName(character_name);
+    const display_name = thumbnail.cached_display_name;
 
     var char_text_dims: TextDimensions = .{ .width = 0, .height = 0 };
     if (settings.show_character_name) {
