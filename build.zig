@@ -91,4 +91,15 @@ pub fn build(b: *std.Build) void {
 
     const config_step = b.step("config", "Run the app with the configuration window open");
     config_step.dependOn(&config_run.step);
+
+    // Debug, for the safety checks the release build's default optimize mode leaves out.
+    const tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tests.zig"),
+            .target = target,
+            .optimize = .Debug,
+        }),
+    });
+    const test_step = b.step("test", "Run the unit tests");
+    test_step.dependOn(&b.addRunArtifact(tests).step);
 }

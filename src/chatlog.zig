@@ -8,6 +8,8 @@ const scout_mod = @import("clients/scout.zig");
 const painter_mod = @import("painter.zig");
 const config_mod = @import("config.zig");
 const CharacterIds = @import("chatlog/character_ids.zig").CharacterIds;
+const lines_mod = @import("chatlog/lines.zig");
+const utf16 = @import("chatlog/utf16.zig");
 const slog = log.scoped("chatlog");
 
 /// Event sent from worker thread to main thread: apply a system-name update.
@@ -103,9 +105,6 @@ pub fn EventQueue(comptime T: type) type {
     };
 }
 
-/// Caps memory use on malformed logs; 4KB covers combat logs with color tags (up to 2-3KB).
-const MAX_LINE_LENGTH = 4000;
-
 /// Minimum line length to consider (timestamp + space = ~20 chars)
 const MIN_LINE_LENGTH = 25;
 
@@ -119,38 +118,6 @@ const MAX_BACKWARD_SCAN_BYTES: u64 = 8 * 1024 * 1024;
 /// win32.Ticks unwrapped to i64, for activity trackers' plain integer arithmetic.
 fn trackerNowMs() i64 {
     return @intCast(win32.Ticks.now().ms);
-}
-
-/// How much of `data` is whole UTF-16 LE characters: drops an odd trailing byte, and a trailing high surrogate whose pair hasn't been written yet.
-fn completeUtf16Len(data: []const u8) usize {
-    var len = data.len & ~@as(usize, 1);
-    if (len >= 2) {
-        const last = @as(u16, data[len - 2]) | (@as(u16, data[len - 1]) << 8);
-        if (std.unicode.utf16IsHighSurrogate(last)) len -= 2;
-    }
-    return len;
-}
-
-/// Swaps any surrogate without its pair for U+FFFD, so one bad character doesn't lose the rest of the chunk.
-fn replaceUnpairedSurrogates(units: []u16) void {
-    var i: usize = 0;
-    while (i < units.len) : (i += 1) {
-        const unit = units[i];
-        if (std.unicode.utf16IsHighSurrogate(unit) and i + 1 < units.len and std.unicode.utf16IsLowSurrogate(units[i + 1])) {
-            i += 1;
-        } else if (std.unicode.utf16IsHighSurrogate(unit) or std.unicode.utf16IsLowSurrogate(unit)) {
-            units[i] = std.unicode.replacement_character;
-        }
-    }
-}
-
-/// Packs little-endian byte pairs from `src` into `dst` (dst.len == src.len / 2).
-fn packUtf16LeBytes(dst: []u16, src: []const u8) void {
-    var i: usize = 0;
-    while (i < dst.len) : (i += 1) {
-        const byte_idx = i * 2;
-        dst[i] = @as(u16, src[byte_idx]) | (@as(u16, src[byte_idx + 1]) << 8);
-    }
 }
 
 pub const LogFileState = struct {
@@ -169,10 +136,7 @@ pub const LogFileState = struct {
     cycle_counter: u32 = 0,
     poll_interval_multiplier: u8 = 1,
     utf8_buffer: std.ArrayList(u8),
-    /// The start of a line whose newline hasn't been written yet.
-    line_buffer: std.ArrayList(u8),
-    /// Set once a buffered line outgrows MAX_LINE_LENGTH; the rest of it is dropped up to its newline.
-    skipping_long_line: bool = false,
+    lines: lines_mod.LineAssembler = .{},
     u16_buffer: std.ArrayList(u16),
     system_name_buffer: std.ArrayList(u8),
     long_line_warnings: u32 = 0,
@@ -181,7 +145,7 @@ pub const LogFileState = struct {
         allocator.free(self.file_path);
         allocator.free(self.character_name);
         self.utf8_buffer.deinit(allocator);
-        self.line_buffer.deinit(allocator);
+        self.lines.deinit(allocator);
         self.u16_buffer.deinit(allocator);
         self.system_name_buffer.deinit(allocator);
     }
@@ -641,7 +605,6 @@ pub const ChatlogMonitor = struct {
                 .character_name = character_name_copy,
                 .is_chatlog = is_chatlog,
                 .utf8_buffer = .empty,
-                .line_buffer = .empty,
                 .u16_buffer = .empty,
                 .system_name_buffer = .empty,
             };
@@ -683,8 +646,7 @@ pub const ChatlogMonitor = struct {
                     // Temporary failure - reset state but keep trying
                     state.position = 0;
                     state.last_size = 0;
-                    state.line_buffer.clearRetainingCapacity();
-                    state.skipping_long_line = false;
+                    state.lines.reset();
                     continue;
                 },
                 error.BadPathName => {
@@ -1059,71 +1021,42 @@ pub const ChatlogMonitor = struct {
         state.position = file_stat.size;
     }
 
-    /// Scan backwards through the log file for the most recent system (chatlog and gamelog).
-    /// Returns as soon as a match is found, so this stays cheap despite the generous bound.
-    fn findSystemBackward(self: *ChatlogMonitor, state: *LogFileState, file: std.Io.File, file_size: u64) !?SystemMatch {
+    /// Scans back from the end of the log for its most recent system, stopping at the first chunk with one.
+    /// The returned system is copied into state.system_name_buffer, since the chunk it was found in doesn't outlive this.
+    fn findSystemBackward(self: *ChatlogMonitor, state: *LogFileState, file: std.Io.File, file_size: u64) !?lines_mod.SystemMatch {
         if (file_size == 0) return null;
 
         var buffer: [SCAN_CHUNK_SIZE]u8 = undefined;
         // Even for chatlogs, so every chunk (whose size and overlap are even too) starts on a UTF-16 character; an odd size means EVE is mid-write.
         var scan_pos: u64 = if (state.is_chatlog) file_size & ~@as(u64, 1) else file_size;
-        // Chatlog: smaller overlap; Gamelog: larger, for complete messages
+        // Overlapping chunks catch a line split across a chunk boundary.
         const overlap: u64 = if (state.is_chatlog) 128 else 256;
-        const scan_floor: u64 = if (file_size > MAX_BACKWARD_SCAN_BYTES) file_size - MAX_BACKWARD_SCAN_BYTES else 0;
+        const scan_floor: u64 = file_size -| MAX_BACKWARD_SCAN_BYTES;
 
         while (scan_pos > scan_floor) {
             const chunk_size = @min(SCAN_CHUNK_SIZE, scan_pos);
             const start_pos = scan_pos - chunk_size;
-
             const bytes_read = try file.readPositionalAll(self.io, buffer[0..chunk_size], start_pos);
             if (bytes_read == 0) break;
-
             const chunk = buffer[0..bytes_read];
 
-            if (state.is_chatlog) {
-                // In UTF-16 LE, "Channel" appears as: C\0h\0a\0n\0n\0e\0l\0
-                if (containsUtf16Pattern(chunk, "Channel")) {
-                    if (try self.decodeUtf16Le(state, chunk)) |text| {
-                        if (try self.extractSystemFromChatlog(state, text)) |match| {
-                            return match;
-                        }
-                    }
-                }
-            } else {
-                // Gamelog: quick keyword check before parsing
-                if (std.mem.indexOf(u8, chunk, "Jumping from") != null or
-                    std.mem.indexOf(u8, chunk, "Undocking from") != null)
-                {
-                    if (try self.extractSystemFromGamelog(state, chunk)) |match| {
-                        return match;
-                    }
-                }
+            const found = if (state.is_chatlog) blk: {
+                // Checked in the raw bytes first, so most chunks are never decoded.
+                if (!utf16.containsAscii(chunk, "Channel")) break :blk null;
+                const text = try self.decodeUtf16Le(state, chunk) orelse break :blk null;
+                break :blk lines_mod.lastSystemInChat(text);
+            } else lines_mod.lastSystemInGame(chunk);
+
+            if (found) |match| {
+                state.system_name_buffer.clearRetainingCapacity();
+                try state.system_name_buffer.appendSlice(self.allocator, match.system);
+                return .{ .system = state.system_name_buffer.items, .event_ts = match.event_ts };
             }
 
-            // Move back with overlap to catch patterns split across chunk boundaries
             scan_pos = if (start_pos > overlap) start_pos + overlap else 0;
         }
 
         return null;
-    }
-
-    fn containsUtf16Pattern(data: []const u8, pattern: []const u8) bool {
-        if (data.len < pattern.len * 2) return false;
-
-        // Search for pattern in UTF-16 LE (each char = 2 bytes, low byte first)
-        var i: usize = 0;
-        while (i + (pattern.len * 2) <= data.len) : (i += 2) {
-            var match = true;
-            for (pattern, 0..) |c, j| {
-                const idx = i + (j * 2);
-                if (idx + 1 >= data.len or data[idx] != c or data[idx + 1] != 0) {
-                    match = false;
-                    break;
-                }
-            }
-            if (match) return true;
-        }
-        return false;
     }
 
     fn readNewLines(self: *ChatlogMonitor, state: *LogFileState, file: std.Io.File) !void {
@@ -1151,14 +1084,13 @@ pub const ChatlogMonitor = struct {
         // File truncated (log rotation)
         if (current_size < state.last_size) {
             state.position = 0;
-            state.line_buffer.clearRetainingCapacity();
-            state.skipping_long_line = false;
+            state.lines.reset();
         }
 
         var buffer: [4096]u8 = undefined;
         const bytes_read = try file.readPositionalAll(self.io, &buffer, state.position);
         // A chatlog read can stop mid-character while EVE is still writing; the rest is read next poll.
-        const usable = if (state.is_chatlog) completeUtf16Len(buffer[0..bytes_read]) else bytes_read;
+        const usable = if (state.is_chatlog) utf16.completeLen(buffer[0..bytes_read]) else bytes_read;
 
         if (usable == 0) {
             if (bytes_read == 0) {
@@ -1179,185 +1111,73 @@ pub const ChatlogMonitor = struct {
 
         if (state.is_chatlog) {
             if (try self.decodeUtf16Le(state, buffer[0..usable])) |text| {
-                try self.processTextLines(state, text);
+                try state.lines.feed(self.allocator, text, LineHandler{ .monitor = self, .state = state });
             }
         } else {
-            try self.processTextLines(state, buffer[0..usable]);
+            try state.lines.feed(self.allocator, buffer[0..usable], LineHandler{ .monitor = self, .state = state });
         }
 
         state.had_activity = true;
     }
 
-    /// Decodes UTF-16 LE to UTF-8 into the state's reused buffers. An odd trailing byte is ignored, and a stray surrogate becomes U+FFFD rather than losing the chunk.
     fn decodeUtf16Le(self: *ChatlogMonitor, state: *LogFileState, data: []const u8) !?[]u8 {
-        const u16_count = data.len / 2;
-        if (u16_count == 0) return null;
-
-        state.u16_buffer.clearRetainingCapacity();
-        try state.u16_buffer.resize(self.allocator, u16_count);
-        packUtf16LeBytes(state.u16_buffer.items, data[0 .. u16_count * 2]);
-
-        // UTF-16 can be up to 3 bytes per code unit in UTF-8 (worst case for non-BMP characters)
-        state.utf8_buffer.clearRetainingCapacity();
-        try state.utf8_buffer.resize(self.allocator, u16_count * 3);
-
-        const bytes_written = std.unicode.utf16LeToUtf8(state.utf8_buffer.items, state.u16_buffer.items) catch blk: {
-            replaceUnpairedSurrogates(state.u16_buffer.items);
-            break :blk std.unicode.utf16LeToUtf8(state.utf8_buffer.items, state.u16_buffer.items) catch return null;
-        };
-        try state.utf8_buffer.resize(self.allocator, bytes_written);
-        return state.utf8_buffer.items;
+        return utf16.decode(self.allocator, &state.u16_buffer, &state.utf8_buffer, data);
     }
 
-    /// Parses each complete line in `text`, joining a line split across reads and holding back a trailing incomplete one for the next.
-    fn processTextLines(self: *ChatlogMonitor, state: *LogFileState, text: []const u8) !void {
-        var rest = text;
-        while (std.mem.indexOfScalar(u8, rest, '\n')) |newline| {
-            const piece = rest[0..newline];
-            rest = rest[newline + 1 ..];
-            if (state.line_buffer.items.len == 0 and !state.skipping_long_line) {
-                try self.handleLine(state, piece);
-                continue;
-            }
-            try self.bufferPartialLine(state, piece);
-            if (!state.skipping_long_line) try self.handleLine(state, state.line_buffer.items);
-            state.line_buffer.clearRetainingCapacity();
-            state.skipping_long_line = false;
+    /// Where a file's complete lines go.
+    const LineHandler = struct {
+        monitor: *ChatlogMonitor,
+        state: *LogFileState,
+
+        pub fn onLine(self: LineHandler, line: []const u8) void {
+            const trimmed = std.mem.trim(u8, line, " \r\t");
+            if (trimmed.len > 0) self.monitor.parseLine(self.state, trimmed);
         }
-        if (rest.len > 0) try self.bufferPartialLine(state, rest);
-    }
 
-    /// A line longer than any worth parsing is dropped rather than buffered without bound.
-    fn bufferPartialLine(self: *ChatlogMonitor, state: *LogFileState, bytes: []const u8) !void {
-        if (state.skipping_long_line) return;
-        if (state.line_buffer.items.len + bytes.len > MAX_LINE_LENGTH) {
-            self.warnLongLine(state, state.line_buffer.items.len + bytes.len);
-            state.line_buffer.clearRetainingCapacity();
-            state.skipping_long_line = true;
-            return;
+        pub fn onLongLine(self: LineHandler, len: usize) void {
+            self.monitor.warnLongLine(self.state, len);
         }
-        try state.line_buffer.appendSlice(self.allocator, bytes);
-    }
-
-    fn handleLine(self: *ChatlogMonitor, state: *LogFileState, line: []const u8) !void {
-        const trimmed = std.mem.trim(u8, line, " \r\t");
-        if (trimmed.len > 0) try self.parseLine(state, trimmed);
-    }
+    };
 
     /// Only the first few and then every 100th, since a malformed log can produce thousands.
     fn warnLongLine(self: *ChatlogMonitor, state: *LogFileState, len: usize) void {
         _ = self;
         state.long_line_warnings += 1;
         if (state.long_line_warnings <= 3 or state.long_line_warnings % 100 == 0) {
-            slog.warn("Dropping line ({} bytes, over the {}-byte cap) for {s} (warning #{})", .{ len, MAX_LINE_LENGTH, state.character_name, state.long_line_warnings });
+            slog.warn("Dropping line ({} bytes, over the {}-byte cap) for {s} (warning #{})", .{ len, lines_mod.MAX_LINE_LENGTH, state.character_name, state.long_line_warnings });
         }
     }
 
-    /// Parse a single log line (optimized with single-pass scanning)
-    fn parseLine(self: *ChatlogMonitor, state: *LogFileState, line: []const u8) !void {
+    fn parseLine(self: *ChatlogMonitor, state: *LogFileState, line: []const u8) void {
         var clean_line = line;
-        if (state.has_bom and line.len >= 3 and line[0] == 0xEF and line[1] == 0xBB and line[2] == 0xBF) {
+        // Gamelogs start with a UTF-8 BOM, which lands on their first line.
+        if (state.has_bom and std.mem.startsWith(u8, line, "\xEF\xBB\xBF")) {
             clean_line = line[3..];
-            // BOM only appears once at file start
             state.has_bom = false;
         }
 
-        if (clean_line.len < MIN_LINE_LENGTH) {
-            return;
-        }
-
-        if (clean_line.len > MAX_LINE_LENGTH) {
+        if (clean_line.len < MIN_LINE_LENGTH) return;
+        if (clean_line.len > lines_mod.MAX_LINE_LENGTH) {
             self.warnLongLine(state, clean_line.len);
             return;
         }
 
-        // Fast pre-filter: Check for relevant keywords before expensive parsing
         if (state.is_chatlog) {
-            // "EVE System" posts the "Channel changed to Local" line.
-            if (std.mem.indexOf(u8, clean_line, "EVE System")) |_| {
-                if (try self.parseSystemChangeFromChat(state, clean_line)) |system| {
-                    self.handleSystemChange(state, system, .chatlog);
-                }
-            }
+            if (lines_mod.parseChatLine(clean_line)) |system| self.handleSystemChange(state, system, .chatlog);
             return;
         }
 
-        // Gamelog lines are "[ timestamp ] (type) message"; dispatch on the first character after the timestamp to avoid multiple full scans.
-        // Skip timestamp: "[ YYYY.MM.DD HH:MM:SS ] " (~28 chars)
-        var search_start: usize = 0;
-        if (std.mem.indexOf(u8, clean_line, "] ")) |close_bracket| {
-            search_start = close_bracket + 2;
-        }
-
-        if (search_start >= clean_line.len) return;
-        const message_part = clean_line[search_start..];
-
-        const first_char = message_part[0];
-
-        switch (first_char) {
-            'J' => {
-                if (std.mem.startsWith(u8, message_part, "Jumping from")) {
-                    if (try self.parseJumpFromGamelog(state, clean_line)) |system| {
-                        self.handleSystemChange(state, system, .jump);
-                    }
-                }
-            },
-            'U' => {
-                if (std.mem.startsWith(u8, message_part, "Undocking from")) {
-                    if (try self.parseUndockFromGamelog(state, clean_line)) |system| {
-                        self.handleSystemChange(state, system, .undock);
-                    }
-                }
-            },
-            '(' => {
-                if (message_part.len < 2) return;
-
-                switch (message_part[1]) {
-                    'n' => {
-                        if (std.mem.startsWith(u8, message_part, "(notify)")) {
-                            // A conduit jump moves the character as well as showing a notification.
-                            if (gamelog_events.conduitDestination(clean_line)) |system| {
-                                self.handleSystemChange(state, system, .conduit);
-                            }
-                            self.handleGamelogEvent(state, clean_line);
-                        }
-                    },
-                    'q' => {
-                        if (std.mem.startsWith(u8, message_part, "(question)")) {
-                            self.handleGamelogEvent(state, clean_line);
-                        }
-                    },
-                    'c' => {
-                        if (std.mem.startsWith(u8, message_part, "(combat)")) {
-                            self.handleGamelogEvent(state, clean_line);
-                        }
-                    },
-                    'm' => {
-                        if (std.mem.startsWith(u8, message_part, "(mining)")) {
-                            self.handleMiningEvent(state, clean_line);
-                        }
-                    },
-                    'b' => {
-                        if (std.mem.startsWith(u8, message_part, "(bounty)")) {
-                            self.handleBountyEvent(state, clean_line);
-                        }
-                    },
-                    'N' => {
-                        if (std.mem.startsWith(u8, message_part, "(None)")) {
-                            self.handleGamelogEvent(state, clean_line);
-                        }
-                    },
-                    else => {},
-                }
-            },
-            else => {},
-        }
+        const parsed = lines_mod.parseGameLine(clean_line);
+        if (parsed.system) |change| self.handleSystemChange(state, change.system, change.source);
+        if (parsed.activity) |activity| switch (activity) {
+            .event => self.handleGamelogEvent(state, clean_line),
+            .mining => self.handleMiningEvent(state, clean_line),
+            .bounty => self.handleBountyEvent(state, clean_line),
+        };
     }
 
-    const SystemChangeSource = enum { chatlog, jump, undock, conduit };
-
     /// Ignores a repeat of the last system; `system` is borrowed and copied into the queued events.
-    fn handleSystemChange(self: *ChatlogMonitor, state: *LogFileState, system: []const u8, source: SystemChangeSource) void {
+    fn handleSystemChange(self: *ChatlogMonitor, state: *LogFileState, system: []const u8, source: lines_mod.SystemSource) void {
         const system_hash = std.hash.Wyhash.hash(0, system);
         const is_different = (state.last_system_hash != system_hash);
 
@@ -1429,184 +1249,6 @@ pub const ChatlogMonitor = struct {
         };
     }
 
-    /// Finds `needle` in line, then `secondary` after it, and returns the trimmed text between
-    /// `secondary` and the next newline, copied into state.system_name_buffer.
-    /// Returns borrowed slice from state.system_name_buffer - valid until next parse.
-    fn extractSystemAfterMarkers(self: *ChatlogMonitor, state: *LogFileState, line: []const u8, needle: []const u8, secondary: []const u8) !?[]const u8 {
-        const pos = std.mem.indexOf(u8, line, needle) orelse return null;
-        const after_needle = line[pos + needle.len ..];
-        const marker_pos = std.mem.indexOf(u8, after_needle, secondary) orelse return null;
-        const dest_start = marker_pos + secondary.len;
-        if (dest_start >= after_needle.len) return null;
-
-        const remaining = after_needle[dest_start..];
-        const newline_pos = std.mem.indexOfAny(u8, remaining, "\r\n") orelse remaining.len;
-        const system = std.mem.trim(u8, remaining[0..newline_pos], " \t");
-
-        state.system_name_buffer.clearRetainingCapacity();
-        try state.system_name_buffer.appendSlice(self.allocator, system);
-        return state.system_name_buffer.items;
-    }
-
-    /// Parse "Channel changed to Local : SystemName" from chatlog
-    fn parseSystemChangeFromChat(self: *ChatlogMonitor, state: *LogFileState, line: []const u8) !?[]const u8 {
-        return self.extractSystemAfterMarkers(state, line, "Channel changed to Local", ":");
-    }
-
-    /// Parse "Jumping from [SystemA] to [SystemB]" from gamelog
-    fn parseJumpFromGamelog(self: *ChatlogMonitor, state: *LogFileState, line: []const u8) !?[]const u8 {
-        return self.extractSystemAfterMarkers(state, line, "Jumping from", " to ");
-    }
-
-    /// Parse "Undocking from [Station] in [System]" from gamelog
-    fn parseUndockFromGamelog(self: *ChatlogMonitor, state: *LogFileState, line: []const u8) !?[]const u8 {
-        return self.extractSystemAfterMarkers(state, line, "Undocking from", " in ");
-    }
-
-    /// A system name paired with its event's in-game timestamp, so chatlog and gamelog
-    /// scans can be compared for recency instead of trusting whichever ran last.
-    const SystemMatch = struct {
-        // Borrowed from state.system_name_buffer
-        system: []const u8,
-        // 0 if the line's timestamp couldn't be parsed
-        event_ts: u64,
-    };
-
-    /// Parse the "[ YYYY.MM.DD HH:MM:SS ]" timestamp immediately preceding `needle_pos` in `text`.
-    /// Bounded to ~38 chars so a chunk-boundary truncation can't pick up an earlier line's bracket.
-    fn parseLineTimestamp(text: []const u8, needle_pos: usize) u64 {
-        const window_start = if (needle_pos > 64) needle_pos - 64 else 0;
-        const before = text[window_start..needle_pos];
-        const open = window_start + (std.mem.lastIndexOfScalar(u8, before, '[') orelse return 0);
-        const close = std.mem.indexOfScalarPos(u8, text, open, ']') orelse return 0;
-        const inner = std.mem.trim(u8, text[open + 1 .. close], " \t");
-
-        // Expected: "YYYY.MM.DD HH:MM:SS"
-        if (inner.len < 19) return 0;
-        if (inner[4] != '.' or inner[7] != '.' or inner[10] != ' ' or inner[13] != ':' or inner[16] != ':') return 0;
-
-        const year = std.fmt.parseInt(u64, inner[0..4], 10) catch return 0;
-        const month = std.fmt.parseInt(u64, inner[5..7], 10) catch return 0;
-        const day = std.fmt.parseInt(u64, inner[8..10], 10) catch return 0;
-        const hour = std.fmt.parseInt(u64, inner[11..13], 10) catch return 0;
-        const minute = std.fmt.parseInt(u64, inner[14..16], 10) catch return 0;
-        const second = std.fmt.parseInt(u64, inner[17..19], 10) catch return 0;
-
-        return (year * 10000 + month * 100 + day) * 1000000 + (hour * 10000 + minute * 100 + second);
-    }
-
-    /// Extract system name from chatlog text (for initial state)
-    fn extractSystemFromChatlog(self: *ChatlogMonitor, state: *LogFileState, text: []const u8) !?SystemMatch {
-        var last_pos: ?usize = null;
-        var search_pos: usize = 0;
-        const needle = "Channel changed to Local";
-
-        while (std.mem.indexOfPos(u8, text, search_pos, needle)) |pos| {
-            last_pos = pos;
-            search_pos = pos + 1;
-        }
-
-        if (last_pos) |pos| {
-            const system = try self.parseSystemChangeFromChat(state, text[pos..]) orelse return null;
-            return SystemMatch{ .system = system, .event_ts = parseLineTimestamp(text, pos) };
-        }
-        return null;
-    }
-
-    /// Extract system name from gamelog text (for initial state)
-    fn extractSystemFromGamelog(self: *ChatlogMonitor, state: *LogFileState, text: []const u8) !?SystemMatch {
-        var last_jump_pos: ?usize = null;
-        var last_undock_pos: ?usize = null;
-        var search_pos: usize = 0;
-
-        while (std.mem.indexOfPos(u8, text, search_pos, "Jumping from")) |pos| {
-            last_jump_pos = pos;
-            search_pos = pos + 1;
-        }
-
-        search_pos = 0;
-        while (std.mem.indexOfPos(u8, text, search_pos, "Undocking from")) |pos| {
-            last_undock_pos = pos;
-            search_pos = pos + 1;
-        }
-
-        // Use whichever is later in the file
-        const use_jump = if (last_jump_pos) |jump_pos|
-            if (last_undock_pos) |undock_pos| jump_pos > undock_pos else true
-        else
-            false;
-
-        if (use_jump) {
-            if (last_jump_pos) |pos| {
-                const system = try self.parseJumpFromGamelog(state, text[pos..]) orelse return null;
-                return SystemMatch{ .system = system, .event_ts = parseLineTimestamp(text, pos) };
-            }
-        } else {
-            if (last_undock_pos) |pos| {
-                const system = try self.parseUndockFromGamelog(state, text[pos..]) orelse return null;
-                return SystemMatch{ .system = system, .event_ts = parseLineTimestamp(text, pos) };
-            }
-        }
-
-        return null;
-    }
-
-    /// Parse timestamp from EVE log filename
-    /// Chatlogs: Local_YYYYMMDD_HHMMSS_[character_id].txt -> YYYYMMDDHHMMSS
-    /// Gamelogs: YYYYMMDD_HHMMSS_[charactern_id].txt -> YYYYMMDDHHMMSS
-    /// Returns 0 if parsing fails
-    fn parseLogTimestamp(filename: []const u8, is_chatlog: bool) u64 {
-        const name_no_ext = if (std.mem.endsWith(u8, filename, ".txt"))
-            filename[0 .. filename.len - 4]
-        else
-            filename;
-
-        const timestamp_part = if (is_chatlog) blk: {
-            if (std.mem.startsWith(u8, name_no_ext, "Local_")) {
-                break :blk name_no_ext[6..];
-            } else {
-                // Invalid chatlog filename
-                return 0;
-            }
-        } else name_no_ext;
-
-        // 15 = length of "YYYYMMDD_HHMMSS"
-        if (timestamp_part.len < 15) return 0;
-
-        const date_part = timestamp_part[0..8];
-        const date = std.fmt.parseInt(u64, date_part, 10) catch return 0;
-
-        // Parse time part (HHMMSS) - skip underscore at position 8
-        if (timestamp_part.len < 15 or timestamp_part[8] != '_') return 0;
-        const time_part = timestamp_part[9..15];
-        const time = std.fmt.parseInt(u64, time_part, 10) catch return 0;
-
-        // Combine: YYYYMMDD * 1000000 + HHMMSS (ignores any suffix after position 15)
-        return date * 1000000 + time;
-    }
-
-    /// Extract character ID from log filename
-    /// Chatlogs: Local_YYYYMMDD_HHMMSS_1234567890.txt -> "1234567890"
-    /// Gamelogs: YYYYMMDD_HHMMSS_1234567890.txt -> "1234567890"
-    /// Returns null if extraction fails
-    fn extractCharacterId(filename: []const u8) ?[]const u8 {
-        const name = if (std.mem.endsWith(u8, filename, ".txt"))
-            filename[0 .. filename.len - 4]
-        else
-            filename;
-
-        if (std.mem.lastIndexOf(u8, name, "_")) |last_underscore| {
-            const character_id = name[last_underscore + 1 ..];
-            if (character_id.len >= 8 and character_id.len <= 13) {
-                for (character_id) |c| {
-                    if (!std.ascii.isDigit(c)) return null;
-                }
-                return character_id;
-            }
-        }
-        return null;
-    }
-
     /// Decode a WIN32_FIND_DATAW's null-terminated UTF-16 filename into `buf` (caller-owned).
     /// Returns null on decode failure.
     fn decodeFindDataName(find_data: *const win32.WIN32_FIND_DATAW, buf: []u8) ?[]const u8 {
@@ -1661,10 +1303,10 @@ pub const ChatlogMonitor = struct {
             // Defensive: Gamelogs dir shouldn't contain Local_ files, but guard anyway
             if (!is_chatlog and std.mem.startsWith(u8, name, "Local_")) continue;
 
-            const file_id = extractCharacterId(name) orelse continue;
+            const file_id = lines_mod.characterIdFromFileName(name) orelse continue;
             if (!std.mem.eql(u8, file_id, character_id)) continue;
 
-            const ts = parseLogTimestamp(name, is_chatlog);
+            const ts = lines_mod.logFileTimestamp(name, is_chatlog);
             if (ts == 0 or ts <= best_ts) continue;
 
             best_ts = ts;
@@ -1694,7 +1336,7 @@ pub const ChatlogMonitor = struct {
             const name = decodeFindDataName(&find_data, &name_buf) orelse continue;
 
             if (!is_chatlog and std.mem.startsWith(u8, name, "Local_")) continue;
-            if (parseLogTimestamp(name, is_chatlog) == 0) continue;
+            if (lines_mod.logFileTimestamp(name, is_chatlog) == 0) continue;
 
             const name_copy = self.allocator.dupe(u8, name) catch |err| {
                 slog.warn("Failed to copy log candidate name '{s}': {}", .{ name, err });
@@ -1743,8 +1385,8 @@ pub const ChatlogMonitor = struct {
 
         std.mem.sort([]const u8, candidates.items, is_chatlog, struct {
             fn lessThan(chatlog: bool, a: []const u8, b: []const u8) bool {
-                const a_ts = parseLogTimestamp(a, chatlog);
-                const b_ts = parseLogTimestamp(b, chatlog);
+                const a_ts = lines_mod.logFileTimestamp(a, chatlog);
+                const b_ts = lines_mod.logFileTimestamp(b, chatlog);
                 // Descending order (newest first)
                 return a_ts > b_ts;
             }
@@ -1764,7 +1406,7 @@ pub const ChatlogMonitor = struct {
             if (!std.mem.eql(u8, name, char_name)) continue;
 
             // Found match! Cache the character ID for next time
-            if (extractCharacterId(candidate)) |new_id| {
+            if (lines_mod.characterIdFromFileName(candidate)) |new_id| {
                 if (self.character_ids) |ids| {
                     ids.put(char_name, new_id) catch |err| {
                         slog.warn("Failed to cache character ID for {s}: {}", .{ char_name, err });
@@ -1788,47 +1430,18 @@ pub const ChatlogMonitor = struct {
         return self.findLogFile(self.gamelog_dir, false, character_name);
     }
 
-    /// Extract character name from log file (read "Listener: CharName" line)
+    /// The character a log belongs to, from the "Listener:" line in its header; owned by the caller.
     fn extractCharacterFromLog(self: *ChatlogMonitor, file_path: []const u8, is_chatlog: bool) !?[]u8 {
         const file = try std.Io.Dir.cwd().openFile(self.io, file_path, .{});
         defer file.close(self.io);
 
-        // Read first 512 bytes to find Listener line
-        var buffer: [512]u8 = undefined;
-        const bytes_read = try file.readPositionalAll(self.io, &buffer, 0);
+        var header: [512]u8 = undefined;
+        const bytes_read = try file.readPositionalAll(self.io, &header, 0);
 
-        if (is_chatlog) {
-            // UTF-16 LE - decode first (allocate temporary buffer since we don't have a state here)
-            const u16_count = bytes_read / 2;
-            if (u16_count == 0) return null;
-
-            const u16_buffer = try self.allocator.alloc(u16, u16_count);
-            defer self.allocator.free(u16_buffer);
-
-            packUtf16LeBytes(u16_buffer, buffer[0 .. u16_count * 2]);
-
-            const utf8_len = u16_count * 3;
-            const text = try self.allocator.alloc(u8, utf8_len);
-            defer self.allocator.free(text);
-
-            const bytes_written = try std.unicode.utf16LeToUtf8(text, u16_buffer);
-            return try self.extractListenerName(text[0..bytes_written]);
-        } else {
-            return try self.extractListenerName(buffer[0..bytes_read]);
-        }
-    }
-
-    /// Extract "Listener: CharacterName" from log header
-    fn extractListenerName(self: *ChatlogMonitor, text: []const u8) !?[]u8 {
-        const needle = "Listener:";
-        if (std.mem.indexOf(u8, text, needle)) |pos| {
-            const after_needle = text[pos + needle.len ..];
-            const end = std.mem.indexOfAny(u8, after_needle, "\r\n") orelse after_needle.len;
-            const name = std.mem.trim(u8, after_needle[0..end], " \t");
-            if (name.len > 0) {
-                return try self.allocator.dupe(u8, name);
-            }
-        }
-        return null;
+        var units: [header.len / 2]u16 = undefined;
+        var decoded: [units.len * 3]u8 = undefined;
+        const text = if (is_chatlog) (utf16.decodeInto(&units, &decoded, header[0..bytes_read]) orelse return null) else header[0..bytes_read];
+        const name = lines_mod.listenerName(text) orelse return null;
+        return try self.allocator.dupe(u8, name);
     }
 };

@@ -28,6 +28,12 @@ To build and launch it with the configuration window open (the same as `eve-maj-
 zig build config
 ```
 
+To run the unit tests (listed in `src/tests.zig`), which cover log parsing and don't need EVE or the app running:
+
+```powershell
+zig build test
+```
+
 ## Version
 
 The build reads the app version from the `VERSION` file at the repo root and embeds it via `build_options`. Bump `VERSION` (not `build.zig.zon`) to change the version reported by the built executables.
