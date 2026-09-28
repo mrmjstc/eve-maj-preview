@@ -24,7 +24,7 @@ const LABEL_PADDING_X: usize = 10;
 const LABEL_PADDING_Y: usize = 4;
 const LABEL_CURSOR_OFFSET: i32 = 16;
 
-// Save/Cancel mirror the config dialog's buttons (config_dialog.css): sizes are CSS px scaled by monitor DPI, colors are its palette.
+// Save/Cancel mirror the config dialog's buttons (dialog/ui/style.css): sizes are CSS px scaled by monitor DPI, colors are its palette.
 const BUTTON_WIDTH: i32 = 80;
 const BUTTON_HEIGHT: i32 = 28;
 const BUTTON_GAP: i32 = 8;

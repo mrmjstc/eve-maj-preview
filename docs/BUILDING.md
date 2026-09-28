@@ -38,7 +38,7 @@ The build reads the app version from the `VERSION` file at the repo root and emb
 
 The window renders via WebView2, which needs `WebView2Loader.dll` next to the exe at runtime (the target machine's WebView2 Runtime itself is preinstalled on Windows 10/11); it's only loaded when the window first opens. `build.zig` installs `src/WebView2Loader.dll` into `zig-out\bin` alongside the exe, the same way it installs `icon.ico`. It's redistributed under the terms in `WebView2Loader-LICENSE.txt` (BSD-style, from the `Microsoft.Web.WebView2` NuGet package), which ships alongside it in release packages.
 
-Not every Windows install has [Cascadia Code](https://github.com/microsoft/cascadia-code) (v2407.24), so its fonts are bundled from `src/assets/fonts/`. `eve-maj-preview.exe` embeds the static Regular/SemiBold/Mono TTFs and registers them process-privately at startup (`platform/fonts.zig`); the configuration window's page embeds the variable WOFF2 as a base64 `@font-face`. They're licensed under the SIL OFL 1.1 (`CascadiaCode-LICENSE.txt`), which ships in release packages and the installer; unmodified files keep the Reserved Font Name.
+Not every Windows install has [Cascadia Code](https://github.com/microsoft/cascadia-code) (v2407.24), so its fonts are bundled from `src/assets/fonts/`. `eve-maj-preview.exe` embeds the static Regular/SemiBold/Mono TTFs and registers them process-privately at startup (`platform/fonts.zig`); the configuration window serves the variable WOFF2 to its page for an `@font-face`. They're licensed under the SIL OFL 1.1 (`CascadiaCode-LICENSE.txt`), which ships in release packages and the installer; unmodified files keep the Reserved Font Name.
 
 ## Installer
 

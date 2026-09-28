@@ -41,7 +41,7 @@ pub const NotificationType = enum {
     Generic,
 };
 
-/// Mirrors the 5 categories config_dialog.js's NOTIFICATION_TYPES groups these into, for the History Panel's category filter buttons.
+/// Mirrors the 5 categories dialog/ui/notifications.js's NOTIFICATION_TYPES groups these into, for the History Panel's category filter buttons.
 pub const NotificationCategory = enum {
     Fleet,
     Mining,

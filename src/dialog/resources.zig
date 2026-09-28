@@ -1,15 +1,9 @@
-//! The configuration window's page, assembled from the embedded HTML, CSS, JS, fonts and language catalogs.
+//! The configuration window's files: the page, built per window, and the static modules, styles, font, image and language catalogs it loads.
 const std = @import("std");
 const files = @import("../config/files.zig");
 const log = @import("../log.zig");
 
 const slog = log.scoped("dialog");
-
-const page_html = @embedFile("../config_dialog.html");
-const page_css = @embedFile("../config_dialog.css");
-const page_js = @embedFile("../config_dialog.js");
-const layout_preview_jpg = @embedFile("../assets/layout_preview.jpg");
-const cascadia_code_woff2 = @embedFile("../assets/fonts/CascadiaCode.woff2");
 
 /// Add a language by dropping src/lang/xx.json in and adding one variant here plus one arm each in `catalog()` and `displayName()`.
 pub const Lang = enum {
@@ -55,92 +49,95 @@ pub const Lang = enum {
 
 /// Caller owns the returned page.
 pub fn buildPage(allocator: std.mem.Allocator, lang: Lang, ui_scale: f32) ![:0]u8 {
-    var html: []u8 = try allocator.dupe(u8, page_html);
-    defer allocator.free(html);
-
     var scale_buf: [16]u8 = undefined;
-    const scale_str = std.fmt.bufPrint(&scale_buf, "{d:.2}", .{ui_scale}) catch unreachable;
-
-    const layout_preview = try base64(allocator, layout_preview_jpg);
-    defer allocator.free(layout_preview);
-    const font = try base64(allocator, cascadia_code_woff2);
-    defer allocator.free(font);
-
-    const catalog_js = try std.fmt.allocPrint(allocator, "window.__I18N__ = {s};", .{lang.catalog()});
-    defer allocator.free(catalog_js);
-    const langs_js = try buildLangListScript(allocator);
-    defer allocator.free(langs_js);
-    const all_catalogs_js = try buildAllCatalogsScript(allocator);
-    defer allocator.free(all_catalogs_js);
-    const html_lang = try std.fmt.allocPrint(allocator, "<html lang=\"{s}\" class=\"pre-init\">", .{@tagName(lang)});
-    defer allocator.free(html_lang);
-
+    const scale = std.fmt.bufPrint(&scale_buf, "{d:.2}", .{ui_scale}) catch unreachable;
     const favicon = faviconTag(allocator) catch |err| blk: {
-        slog.warn("Failed to load icon.ico for favicon: {}", .{err});
+        slog.warn("Failed to load icon.ico for the favicon: {}", .{err});
         break :blk try allocator.dupe(u8, "");
     };
     defer allocator.free(favicon);
 
     const replacements = [_][2][]const u8{
-        .{ "/* Styles will be injected here by WebUI */", page_css },
-        .{ "UI_SCALE_PLACEHOLDER", scale_str },
-        .{ "LAYOUT_PREVIEW_IMAGE_PLACEHOLDER", layout_preview },
-        .{ "CASCADIA_CODE_WOFF2_PLACEHOLDER", font },
-        .{ "// Script will be injected here by WebUI", page_js },
-        .{ "<!-- Favicon will be injected here by WebUI -->", favicon },
-        .{ "window.__I18N__ = {}; /* Translations will be injected here by WebUI */", catalog_js },
-        .{ "window.__I18N_LANGS__ = {}; /* Language list will be injected here by WebUI */", langs_js },
-        .{ "window.__I18N_ALL__ = {}; /* All translations will be injected here by WebUI */", all_catalogs_js },
-        .{ "<html lang=\"en\" class=\"pre-init\">", html_lang },
+        .{ "LANG_PLACEHOLDER", @tagName(lang) },
+        .{ "UI_SCALE_PLACEHOLDER", scale },
+        .{ "FAVICON_PLACEHOLDER", favicon },
     };
+    var page: []u8 = try allocator.dupe(u8, @embedFile("ui/index.html"));
+    defer allocator.free(page);
     for (replacements) |r| {
-        const replaced = try std.mem.replaceOwned(u8, allocator, html, r[0], r[1]);
-        allocator.free(html);
-        html = replaced;
+        const replaced = try std.mem.replaceOwned(u8, allocator, page, r[0], r[1]);
+        allocator.free(page);
+        page = replaced;
     }
-
-    return allocator.dupeZ(u8, html);
+    return allocator.dupeZ(u8, page);
 }
 
-fn base64(allocator: std.mem.Allocator, data: []const u8) ![]u8 {
-    const encoder = std.base64.standard.Encoder;
-    const encoded = try allocator.alloc(u8, encoder.calcSize(data.len));
-    _ = encoder.encode(encoded, data);
-    return encoded;
+/// webui's file handler: a complete HTTP response for one of the page's static files, or null to let webui handle the path.
+pub fn serveFile(path: []const u8) ?[]const u8 {
+    const name = std.mem.trimStart(u8, path, "/");
+    for (static_files) |static| {
+        if (std.mem.eql(u8, name, static.name)) return static.response;
+    }
+    return null;
+}
+
+/// Every module under ui/; one missing here is a 404 that stops the page loading.
+const modules = [_][]const u8{
+    "main",          "core",           "state",          "i18n",
+    "colors",        "form",           "changes",        "preview",
+    "layout",        "session",        "region",         "profiles",
+    "import",        "hotkeys",        "update",         "snake",
+    "widgets",       "window_filters", "characters",     "system_colors",
+    "ultra_potato",  "hotkey_groups",  "global_settings", "global_hotkeys",
+    "ore_table",     "notifications",  "options",        "overlay_layout",
+    "search",        "color_picker",
+};
+
+const StaticFile = struct { name: []const u8, response: []const u8 };
+
+/// Built at compile time, so serving a file is a lookup; webui never frees memory it didn't allocate itself.
+const static_files = blk: {
+    @setEvalBranchQuota(100_000);
+    var list: []const StaticFile = &.{
+        staticFile("style.css", "text/css; charset=utf-8", @embedFile("ui/style.css")),
+        staticFile("catalogs.js", "text/javascript; charset=utf-8", catalogsModule()),
+        staticFile("CascadiaCode.woff2", "font/woff2", @embedFile("../assets/fonts/CascadiaCode.woff2")),
+        staticFile("layout_preview.jpg", "image/jpeg", @embedFile("../assets/layout_preview.jpg")),
+    };
+    for (modules) |module| {
+        list = list ++ &[_]StaticFile{staticFile(module ++ ".js", "text/javascript; charset=utf-8", @embedFile("ui/" ++ module ++ ".js"))};
+    }
+    break :blk list;
+};
+
+fn staticFile(comptime name: []const u8, comptime content_type: []const u8, comptime body: []const u8) StaticFile {
+    return .{
+        .name = name,
+        .response = "HTTP/1.1 200 OK\r\nContent-Type: " ++ content_type ++ "\r\nContent-Length: " ++ std.fmt.comptimePrint("{d}", .{body.len}) ++ "\r\nCache-Control: no-store\r\n\r\n" ++ body,
+    };
+}
+
+/// Every catalog, so switching language needs no reload, plus each language's own name for the language list.
+fn catalogsModule() []const u8 {
+    comptime {
+        var catalogs: []const u8 = "export const catalogs = {";
+        var names: []const u8 = "export const languageNames = {";
+        for (std.meta.fields(Lang), 0..) |field, i| {
+            const lang: Lang = @enumFromInt(field.value);
+            const separator = if (i == 0) "" else ",";
+            catalogs = catalogs ++ separator ++ "\"" ++ field.name ++ "\":" ++ lang.catalog();
+            names = names ++ separator ++ "\"" ++ field.name ++ "\":\"" ++ lang.displayName() ++ "\"";
+        }
+        return catalogs ++ "};\n" ++ names ++ "};\n";
+    }
 }
 
 fn faviconTag(allocator: std.mem.Allocator) ![]u8 {
     const icon_data = try std.Io.Dir.cwd().readFileAlloc(files.g_io, "icon.ico", allocator, .limited(1024 * 1024));
     defer allocator.free(icon_data);
-    const encoded = try base64(allocator, icon_data);
+    const encoder = std.base64.standard.Encoder;
+    const encoded = try allocator.alloc(u8, encoder.calcSize(icon_data.len));
     defer allocator.free(encoded);
+    _ = encoder.encode(encoded, icon_data);
     return std.fmt.allocPrint(allocator, "<link rel=\"icon\" type=\"image/x-icon\" href=\"data:image/x-icon;base64,{s}\">", .{encoded});
-}
-
-/// `{"en":"English",...}` from every Lang variant, so the language dropdown can't drift from `catalog()`.
-fn buildLangListScript(allocator: std.mem.Allocator) ![]u8 {
-    var buf: std.ArrayList(u8) = .empty;
-    defer buf.deinit(allocator);
-    try buf.appendSlice(allocator, "window.__I18N_LANGS__ = {");
-    inline for (std.meta.fields(Lang), 0..) |field, i| {
-        if (i != 0) try buf.append(allocator, ',');
-        const lang: Lang = @enumFromInt(field.value);
-        try buf.print(allocator, "\"{s}\":\"{s}\"", .{ field.name, lang.displayName() });
-    }
-    try buf.appendSlice(allocator, "};");
-    return buf.toOwnedSlice(allocator);
-}
-
-/// Every catalog at once, so switching language needs no reload.
-fn buildAllCatalogsScript(allocator: std.mem.Allocator) ![]u8 {
-    var buf: std.ArrayList(u8) = .empty;
-    defer buf.deinit(allocator);
-    try buf.appendSlice(allocator, "window.__I18N_ALL__ = {");
-    inline for (std.meta.fields(Lang), 0..) |field, i| {
-        if (i != 0) try buf.append(allocator, ',');
-        const lang: Lang = @enumFromInt(field.value);
-        try buf.print(allocator, "\"{s}\":{s}", .{ field.name, lang.catalog() });
-    }
-    try buf.appendSlice(allocator, "};");
-    return buf.toOwnedSlice(allocator);
 }

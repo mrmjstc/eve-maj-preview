@@ -1,6 +1,6 @@
 @font-face {
     font-family: 'Cascadia Code';
-    src: url(data:font/woff2;base64,CASCADIA_CODE_WOFF2_PLACEHOLDER) format('woff2');
+    src: url('CascadiaCode.woff2') format('woff2');
     font-weight: 200 700;
     font-display: block;
 }
@@ -149,7 +149,7 @@ body {
 
 /* Honors the OS "reduce motion" setting across every animation and transition
    here - the accordion chevron, panel fades, the status pulse, modal slide-ins.
-   Smooth scrolling is handled in config_dialog.js instead: scrollIntoView's
+   Smooth scrolling is handled in layout.js instead: scrollIntoView's
    behavior option is a JS argument, so no stylesheet rule can override it. */
 @media (prefers-reduced-motion: reduce) {
     *,
@@ -1465,7 +1465,7 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
 }
 
 /* Raw position/font/color fields the drag-to-position Layout Preview replaces.
-   Permanently hidden, not toggled - config_dialog.js still reads/writes them,
+   Permanently hidden, not toggled - overlay_layout.js still reads/writes them,
    it just never shows them (see the comment on that class there). Was 8
    repeated inline display:none, 2 of them also inline margin-top:16px, which
    is unreachable once the element never renders. */
@@ -1488,7 +1488,7 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     margin: 0 auto;
     aspect-ratio: 16 / 9;
     background-color: var(--color-bg);
-    background-image: url('data:image/jpeg;base64,LAYOUT_PREVIEW_IMAGE_PLACEHOLDER');
+    background-image: url('layout_preview.jpg');
     background-size: cover;
     background-position: center;
     border: 0.0625rem solid var(--color-border);
@@ -1944,7 +1944,7 @@ label + .binding-list {
     min-width: 0;
 }
 
-/* Replaces what were ~30 repeated inline styles across config_dialog.html/js:
+/* Replaces what were ~30 repeated inline styles across index.html and the dialog modules:
    one class per repeated spacing/layout decision instead of restating it at
    each call site. */
 .field-group {
@@ -2048,7 +2048,7 @@ input[type="color"]::-moz-color-swatch {
 }
 
 /* A persistent hex companion next to a swatch - built by initInlineColorHex()
-   in config_dialog.js, which wraps every input[type="color"] (or its
+   in color_picker.js, which wraps every input[type="color"] (or its
    .swatch-wrap, where one exists) in this at render time, including ones
    created after page load. The swatch stays a fixed square; the hex input
    fills whatever space remains. Excluded from the notification table's
@@ -2380,7 +2380,7 @@ input[type="range"]::-moz-range-thumb {
 
 
 /* Drag-to-reorder handle. Always paired with .drag-index-chip on the same
-   element (see config_dialog.js) - that rule comes later in the cascade and
+   element (see widgets.js) - that rule comes later in the cascade and
    owns font-size/padding at equal specificity, so only what it doesn't set
    belongs here. */
 .character-drag-handle {
@@ -2423,7 +2423,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* The plain divs populateCharacters()/populateHotkeyGroups() render into (see
-   config_dialog.html) sit between .section and .master-detail - without flex
+   index.html) sit between .section and .master-detail - without flex
    sizing here too, .master-detail's flex:1 has nothing to grow into and just
    falls back to its content height. */
 #charactersList,

@@ -1,19 +1,14 @@
 <!DOCTYPE html>
-<html lang="en" class="pre-init" style="--ui-scale: UI_SCALE_PLACEHOLDER">
+<!-- The language, UI scale and favicon are filled in per window by dialog/resources.zig; everything else is served as static files. -->
+<html lang="LANG_PLACEHOLDER" class="pre-init" style="--ui-scale: UI_SCALE_PLACEHOLDER">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title data-i18n="misc.document-title">EVE-Maj Preview Configuration</title>
-    <!-- Favicon will be injected here by WebUI -->
+    FAVICON_PLACEHOLDER
     <script src="webui.js"></script>
-    <script id="i18n-catalog">
-        window.__I18N__ = {}; /* Translations will be injected here by WebUI */
-        window.__I18N_LANGS__ = {}; /* Language list will be injected here by WebUI */
-        window.__I18N_ALL__ = {}; /* All translations will be injected here by WebUI */
-    </script>
-    <style id="config-styles">
-        /* Styles will be injected here by WebUI */
-    </style>
+    <link rel="stylesheet" href="style.css">
+    <script type="module" src="main.js"></script>
 </head>
 <body>
     <div id="window-container">
@@ -259,7 +254,7 @@
                         <p class="hint" data-i18n="tab.thumbnails.section.thumbnail-dimensions.hint">Set the pixel size each thumbnail is rendered at.</p>
 
                         <!-- min/max on the number inputs below are a fallback for before
-                             loadValidationRanges() (config_dialog.js) fetches the real
+                             loadValidationRanges() (form.js) fetches the real
                              backend bounds from Config.zig and overwrites them - see
                              applyValidationRangesToInputs(). Keep them roughly accurate,
                              but the enforced clamp always comes from the Zig side. -->
@@ -2352,7 +2347,7 @@
 
                 </div>
 
-                <!-- Advanced tab: fully wired (see THUMBNAIL_STATE_OVERRIDES / applyStateOverridesToForm/FromForm in config_dialog.js, and getStateConfig in config.zig/painter.zig) but hidden, sidebar entry included, pending a decision on whether to expose it. Uncomment this panel, its sidebar tab-item above, and the matching JS to re-enable.
+                <!-- Advanced tab: fully wired (see THUMBNAIL_STATE_OVERRIDES / applyStateOverridesToForm/FromForm in form.js, and getStateConfig in config.zig/painter.zig) but hidden, sidebar entry included, pending a decision on whether to expose it. Uncomment this panel, its sidebar tab-item above, and the matching JS to re-enable.
                 <div class="panel-content advanced-tab-panel" data-panel="advanced">
                     <div class="section">
                         <h3 data-i18n="tab.advanced.section.state-overrides.heading">State Overrides</h3>
@@ -2762,9 +2757,5 @@
             </div>
         </div>
     </div>
-
-    <script id="config-script">
-        // Script will be injected here by WebUI
-    </script>
 </body>
 </html>

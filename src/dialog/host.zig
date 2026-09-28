@@ -160,6 +160,7 @@ fn openWindow() !void {
     // Before showing, since webui reads the position at creation, so the first paint lands here instead of jumping.
     if (position.x >= 0 and position.y >= 0) win.setPosition(@intCast(position.x), @intCast(position.y));
     try rpc.bind(win);
+    win.setFileHandler(resources.serveFile);
 
     g_page = try resources.buildPage(g_allocator, resources.Lang.fromCode(settings.language), uiScale());
     g_show_result.store(.pending, .release);
