@@ -1,6 +1,5 @@
 const std = @import("std");
 const log = @import("log.zig");
-const color = @import("util/color.zig");
 const wire = @import("config/wire.zig");
 const ranges_mod = @import("config/ranges.zig");
 const files = @import("config/files.zig");
@@ -80,11 +79,11 @@ pub const AutoMovePositionConfig = behavior.AutoMovePositionConfig;
 pub const ExclusionConfig = behavior.ExclusionConfig;
 pub const CloseAllConfig = behavior.CloseAllConfig;
 pub const HotkeysConfig = hotkeys.HotkeysConfig;
+pub const AutoColorStore = auto_colors.AutoColorStore;
 
 pub const Config = struct {
     allocator: std.mem.Allocator,
     profile_name: []const u8,
-    autoColors: auto_colors.AutoColorStore = .{},
     /// Reset to the current values after loading; formatVersion is only read to migrate older profiles.
     app: []const u8 = PROFILE_FORMAT_IDENTIFIER,
     formatVersion: u32 = PROFILE_FORMAT_VERSION,
@@ -110,7 +109,7 @@ pub const Config = struct {
     hotkeyGroups: std.ArrayList(HotkeyGroupConfig) = .empty,
     hotkeys: HotkeysConfig = .{},
 
-    pub const runtime_fields = .{ "allocator", "profile_name", "autoColors" };
+    pub const runtime_fields = .{ "allocator", "profile_name" };
 
     /// A profile without a windowFilters key gets the EVE filter; an empty list stays empty.
     pub const wire_defaults = .{
@@ -212,16 +211,6 @@ pub const Config = struct {
         return self.characterSetting(character_name, "windowPosition", null);
     }
 
-    /// A character's own active border colour wins, else the unique auto colour if enabled; the inactive one is left as set.
-    pub fn getCharacterBorderColors(self: *Config, character_name: []const u8) ?CharacterBorderColorsConfig {
-        const configured = self.characterSetting(character_name, "borderColors", null);
-        if (!self.thumbnail.useUniqueCharacterBorderColors) return configured;
-
-        var colors = configured orelse CharacterBorderColorsConfig{};
-        if (colors.activeBorderColor == null) colors.activeBorderColor = self.autoCharacterColorFor(character_name);
-        return colors;
-    }
-
     pub fn getCharacterSize(self: *const Config, character_name: []const u8) ?CharacterThumbnailSizeConfig {
         return self.characterSetting(character_name, "thumbnailSize", null);
     }
@@ -254,54 +243,6 @@ pub const Config = struct {
         return self.characterSetting(character_name, "displayName", null) orelse character_name;
     }
 
-    /// Priority: custom color override, then unique generated color, then default.
-    pub fn getSystemNameColor(self: *Config, system_name: []const u8) u32 {
-        if (self.findSystemColor(system_name)) |custom_color| {
-            return custom_color;
-        }
-
-        if (!self.thumbnail.useUniqueSystemColors) return self.thumbnail.systemNameColor;
-
-        self.autoColors.load(self.allocator);
-
-        var overrides: [color.AutoColors.max_avoided]u32 = undefined;
-        const override_count = @min(self.systemColors.items.len, overrides.len);
-        for (self.systemColors.items[0..override_count], 0..) |sc, i| overrides[i] = sc.color;
-
-        return self.autoColors.system.colorFor(self.allocator, system_name, overrides[0..override_count]);
-    }
-
-    pub fn flushAutoColors(self: *Config) void {
-        self.autoColors.flush(self.allocator);
-    }
-
-    /// The character's own override, then the unique auto colour if enabled; null means the caller's own default.
-    pub fn getCharacterNameColor(self: *Config, character_name: []const u8) ?u32 {
-        if (self.characterSetting(character_name, "nameColor", null)) |custom_color| return custom_color;
-        if (!self.thumbnail.useUniqueCharacterNameColors) return null;
-
-        return self.autoCharacterColorFor(character_name);
-    }
-
-    /// One stored color per character, shared by its name and border; steers clear of every character's own name and active border overrides.
-    fn autoCharacterColorFor(self: *Config, character_name: []const u8) u32 {
-        self.autoColors.load(self.allocator);
-
-        var overrides: [color.AutoColors.max_avoided]u32 = undefined;
-        var override_count: usize = 0;
-        collect: for (self.characters.items) |char| {
-            const border_color = if (char.borderColors) |border| border.activeBorderColor else null;
-            for ([_]?u32{ char.nameColor, border_color }) |maybe_color| {
-                const custom_color = maybe_color orelse continue;
-                if (override_count == overrides.len) break :collect;
-                overrides[override_count] = custom_color;
-                override_count += 1;
-            }
-        }
-
-        return self.autoColors.character.colorFor(self.allocator, character_name, overrides[0..override_count]);
-    }
-
     pub fn validate(self: *Config) void {
         ranges_mod.clamp(Config, self);
         for (self.characters.items) |*char| char.validate();
@@ -319,7 +260,6 @@ pub const Config = struct {
     }
 
     pub fn deinit(self: *Config) void {
-        self.autoColors.deinit(self.allocator);
         wire.deinit(Config, self, self.allocator);
         self.allocator.free(self.profile_name);
     }

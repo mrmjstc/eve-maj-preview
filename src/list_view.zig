@@ -187,7 +187,7 @@ pub const ListWindow = struct {
     fn resolveActiveBadgeColor(self: *const ListWindow, thumb: *const ThumbnailWindow) u32 {
         var color = self.config.thumbnail.active.borderColor orelse self.config.thumbnail.borderColor;
 
-        // cached_border_colors is kept in sync by painter.zig on name change; reuse it instead of re-scanning config.characters every tick (getCharacterBorderColors is a linear scan).
+        // cached_border_colors is kept in sync by painter.zig on name change; reuse it instead of re-scanning config.characters every tick (AutoColorStore.characterBorderColors is a linear scan).
         if (thumb.cached_border_colors) |colors| {
             if (colors.activeBorderColor) |override_color| {
                 color = override_color;
@@ -302,7 +302,7 @@ pub const ListWindow = struct {
             h.update(std.mem.asBytes(&t.has_mining_data));
             h.update(std.mem.asBytes(&t.has_bounty_data));
             if (t.system_name.len > 0) {
-                // cached_system_color is kept in sync by painter.zig on system-name change; reuse it instead of re-resolving from config every tick (getSystemNameColor does a lookup per call).
+                // cached_system_color is kept in sync by painter.zig on system-name change; reuse it instead of re-resolving from config every tick (AutoColorStore.systemNameColor does a lookup per call).
                 h.update(std.mem.asBytes(&t.cached_system_color));
             }
             if (t.cached_character_color) |cc| {

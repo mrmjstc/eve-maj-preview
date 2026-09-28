@@ -98,11 +98,11 @@ pub const ThumbnailWindow = struct {
     cached_group_badge_label: []const u8,
 
     /// Re-resolves every config-derived cached_* field (except the owned group badge label) for the current character_name/system_name.
-    pub fn refreshConfigCache(self: *ThumbnailWindow, config: *config_mod.Config) void {
-        self.cached_system_color = if (self.system_name.len > 0) config.getSystemNameColor(self.system_name) else config.thumbnail.systemNameColor;
-        self.cached_character_color = config.getCharacterNameColor(self.character_name);
+    pub fn refreshConfigCache(self: *ThumbnailWindow, config: *const config_mod.Config, auto_colors: *config_mod.AutoColorStore) void {
+        self.cached_system_color = if (self.system_name.len > 0) auto_colors.systemNameColor(config, self.system_name) else config.thumbnail.systemNameColor;
+        self.cached_character_color = auto_colors.characterNameColor(config, self.character_name);
         self.cached_display_name = config.getDisplayName(self.character_name);
-        self.cached_border_colors = config.getCharacterBorderColors(self.character_name);
+        self.cached_border_colors = auto_colors.characterBorderColors(config, self.character_name);
         self.cached_excluded_from_minimize = config.isExcludedFromMinimize(self.character_name);
         self.cached_hide_thumbnail = config.isThumbnailHidden(self.character_name);
         self.cached_thumbnail_size = config.getCharacterSize(self.character_name);
@@ -215,6 +215,8 @@ pub const Painter = struct {
     /// Sole "who's focused" source of truth; write only via reconcileThumbnailStates.
     active_source_hwnd: ?win32.HWND = null,
     auto_minimize: auto_minimize_mod.AutoMinimizer,
+    /// Unique system/character colours; lives as long as this Painter, which a profile reload recreates along with Config.
+    auto_colors: config_mod.AutoColorStore,
 
     pub fn init(allocator: std.mem.Allocator, cfg: *config_mod.Config) !Painter {
         const instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
@@ -224,6 +226,7 @@ pub const Painter = struct {
             .thumbnails = .empty,
             .hwnd_to_thumbnail_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
             .auto_minimize = .init(allocator),
+            .auto_colors = .init(allocator),
             .auto_move = .init(allocator),
             .ghost_overlay = .init(allocator),
             .thumbnail_hwnd_to_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
@@ -293,6 +296,7 @@ pub const Painter = struct {
         self.auto_minimize.deinit();
         self.thumbnail_hwnd_to_index.deinit();
         self.text_hwnd_to_index.deinit();
+        self.auto_colors.deinit();
     }
 
     pub fn layout(self: *const Painter) placement_mod.Layout {
@@ -365,7 +369,7 @@ pub const Painter = struct {
 
     fn finishRemovals(self: *Painter) void {
         self.rebuildHwndIndex(false);
-        if (self.thumbnails.items.len == 0) self.config.flushAutoColors();
+        if (self.thumbnails.items.len == 0) self.auto_colors.flush();
     }
 
     pub fn hasThumbnail(self: *const Painter, source_hwnd: win32.HWND) bool {
@@ -653,7 +657,7 @@ pub const Painter = struct {
 
         thumbnail.system_name = new_name;
         thumbnail.system_name_event_ts = event_ts;
-        thumbnail.cached_system_color = self.config.getSystemNameColor(system_name);
+        thumbnail.cached_system_color = self.auto_colors.systemNameColor(self.config, system_name);
         thumbnail.render_cache.system_name.dims = null;
         slog.debug("System '{s}' color resolved to: 0x{X:0>6}", .{ system_name, thumbnail.cached_system_color & 0xFFFFFF });
 
@@ -719,7 +723,7 @@ pub const Painter = struct {
 
         // Game events feed the "cycle to recently notified" queue; feedback on the user's own action must not.
         if (!notification_mod.isUserAction(notification_type)) self.notified_queue.track(self.allocator, thumbnail.character_name);
-        if (record_history) self.notification_history.push(thumbnail.source_hwnd, thumbnail.character_name, notification_text, notification_type, self.config.getCharacterNameColor(thumbnail.character_name));
+        if (record_history) self.notification_history.push(thumbnail.source_hwnd, thumbnail.character_name, notification_text, notification_type, self.auto_colors.characterNameColor(self.config, thumbnail.character_name));
 
         slog.debug("Queued notification for {s}: [{s}] {s} (border_color_override: {?})", .{ thumbnail.character_name, @tagName(notification_type), notification_text, type_config.border_color });
         return true;
@@ -812,7 +816,7 @@ pub const Painter = struct {
 
         for (self.thumbnails.items) |*thumbnail| {
             // Must run for every thumbnail, not just win32_enabled ones: list_view.zig reads these cache fields directly.
-            thumbnail.refreshConfigCache(self.config);
+            thumbnail.refreshConfigCache(self.config, &self.auto_colors);
             self.refreshGroupBadge(thumbnail);
             // RenderSettings' equality check only compares character_name, so it can miss a change to one of the resolved fields above, and a display-name-only edit doesn't touch the font that otherwise triggers re-measurement; this only runs on debounced (~120ms) preview edits.
             thumbnail.render_cache.invalidate();
@@ -1099,7 +1103,7 @@ pub const Painter = struct {
             thumbnail.title = new_title_dup;
             thumbnail.character_name = new_char_dup;
             thumbnail.render_cache.character_name.dims = null;
-            thumbnail.refreshConfigCache(self.config);
+            thumbnail.refreshConfigCache(self.config, &self.auto_colors);
             self.refreshGroupBadge(thumbnail);
 
             // If character logged in (changed from "EVE" to actual name), move the thumbnail box to its remembered spot
@@ -1370,7 +1374,7 @@ pub const Painter = struct {
             .is_excluded_from_cycle = hotkeys_mod.isExcludedFromCycle(eve_window.character_name),
             .win32_enabled = win32_enabled,
         };
-        thumbnail.refreshConfigCache(self.config);
+        thumbnail.refreshConfigCache(self.config, &self.auto_colors);
         return thumbnail;
     }
 
