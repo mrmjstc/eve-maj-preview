@@ -7,6 +7,7 @@ const scout_mod = @import("../../clients/scout.zig");
 const painter_mod = @import("../../painter.zig");
 const hotkeys_mod = @import("../../hotkeys/manager.zig");
 const region_select = @import("../../region_select.zig");
+const monitors = @import("../../layout/monitors.zig");
 const host = @import("../host.zig");
 const session = @import("../session.zig");
 const patch = @import("../../config/patch.zig");
@@ -100,7 +101,29 @@ pub fn startRegionSelect(_: std.mem.Allocator, args: struct {
     setLabel(192, &request.labels.hint_new, args.labels.hintNew);
     setLabel(192, &request.labels.hint_edit, args.labels.hintEdit);
     setLabel(192, &request.labels.hint_confirm, args.labels.hintConfirm);
-    painter.startRegionSelect(request);
+
+    if (request.hide_thumbnails) painter.hideThumbnailsForRegionSelect();
+    const cursor = monitors.cursorMonitorBounds();
+    const text_color = painter.config.thumbnail.characterNameColor | 0xFF000000;
+    const label_font = painter.font_cache.characterNameFont(&painter.config.thumbnail, monitors.dpiForMonitor(cursor.monitor)) catch |err| blk: {
+        slog.err("Failed to get font for region-select label: {}", .{err});
+        break :blk null;
+    };
+    region_select.start(painter.instance, painter.config.accentColor, .{ .font = label_font, .color = text_color }, request.edit_region, request.labels, onRegionSelectFinished) catch |err| {
+        onRegionSelectFinished();
+        return err;
+    };
+    if (label_font) |font| {
+        const labels = &request.labels;
+        const line1 = region_select.labelText(if (request.edit_region != null) &labels.hint_edit else &labels.hint_new);
+        painter.hint_box.show(painter.instance, font, text_color, line1, region_select.labelText(&labels.hint_confirm), cursor.bounds);
+    }
+}
+
+fn onRegionSelectFinished() void {
+    const painter = painter_mod.g_painter_ptr orelse return;
+    painter.restoreThumbnailsAfterRegionSelect();
+    painter.hint_box.hide();
 }
 
 /// Unregisters the app's hotkeys so the key being recorded doesn't fire; a bare Win press arrives as a winKeyCaptured event.

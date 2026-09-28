@@ -290,13 +290,13 @@ pub const ListWindow = struct {
             h.update(t.system_name);
             h.update(std.mem.asBytes(&render_state));
             h.update(std.mem.asBytes(&t.is_excluded_from_cycle));
-            h.update(std.mem.asBytes(&t.last_incoming_dps));
-            h.update(std.mem.asBytes(&t.last_outgoing_dps));
-            h.update(std.mem.asBytes(&t.last_mining_rate));
-            h.update(std.mem.asBytes(&t.last_bounty_isk_rate));
-            h.update(std.mem.asBytes(&t.has_dps_data));
-            h.update(std.mem.asBytes(&t.has_mining_data));
-            h.update(std.mem.asBytes(&t.has_bounty_data));
+            h.update(std.mem.asBytes(&t.stats.incoming_dps));
+            h.update(std.mem.asBytes(&t.stats.outgoing_dps));
+            h.update(std.mem.asBytes(&t.stats.mining_rate));
+            h.update(std.mem.asBytes(&t.stats.bounty_isk_rate));
+            h.update(std.mem.asBytes(&t.stats.has_dps));
+            h.update(std.mem.asBytes(&t.stats.has_mining));
+            h.update(std.mem.asBytes(&t.stats.has_bounty));
             if (t.system_name.len > 0) {
                 // cached_system_color is kept in sync by painter.zig on system-name change; reuse it instead of re-resolving from config every tick (AutoColorStore.systemNameColor does a lookup per call).
                 h.update(std.mem.asBytes(&t.cached_system_color));
@@ -326,19 +326,19 @@ pub const ListWindow = struct {
         const bounty_cfg = &self.config.bounty;
         var wrote = false;
 
-        if (combat_cfg.enabled and thumb.has_dps_data) {
+        if (combat_cfg.enabled and thumb.stats.has_dps) {
             const in_prefix: []const u8 = if (combat_cfg.incoming_show_prefix) "IN:" else "";
             const out_prefix: []const u8 = if (combat_cfg.outgoing_show_prefix) "OUT:" else "";
-            if (combat_cfg.show_incoming and (thumb.last_incoming_dps == null or thumb.last_incoming_dps.? > 0)) {
-                if (thumb.last_incoming_dps) |dps|
+            if (combat_cfg.show_incoming and (thumb.stats.incoming_dps == null or thumb.stats.incoming_dps.? > 0)) {
+                if (thumb.stats.incoming_dps) |dps|
                     writer.print("{s}{d:.0}", .{ in_prefix, dps }) catch {}
                 else
                     writer.print("{s}??", .{in_prefix}) catch {};
                 wrote = true;
             }
-            if (combat_cfg.show_outgoing and (thumb.last_outgoing_dps == null or thumb.last_outgoing_dps.? > 0)) {
+            if (combat_cfg.show_outgoing and (thumb.stats.outgoing_dps == null or thumb.stats.outgoing_dps.? > 0)) {
                 if (wrote) writer.writeByte(' ') catch {};
-                if (thumb.last_outgoing_dps) |dps|
+                if (thumb.stats.outgoing_dps) |dps|
                     writer.print("{s}{d:.0}", .{ out_prefix, dps }) catch {}
                 else
                     writer.print("{s}??", .{out_prefix}) catch {};
@@ -346,10 +346,10 @@ pub const ListWindow = struct {
             }
         }
 
-        if (mining_cfg.enabled and thumb.has_mining_data and (thumb.last_mining_rate == null or thumb.last_mining_rate.? > 0)) {
+        if (mining_cfg.enabled and thumb.stats.has_mining and (thumb.stats.mining_rate == null or thumb.stats.mining_rate.? > 0)) {
             if (wrote) writer.writeByte(' ') catch {};
             const m_prefix: []const u8 = if (mining_cfg.show_prefix) "M:" else "";
-            if (thumb.last_mining_rate) |rate| {
+            if (thumb.stats.mining_rate) |rate| {
                 const rate_per_min = rate * 60.0;
                 if (rate_per_min < 10.0) {
                     writer.print("{s}{d:.1}", .{ m_prefix, rate_per_min }) catch {};
@@ -361,10 +361,10 @@ pub const ListWindow = struct {
             }
         }
 
-        if (bounty_cfg.enabled and thumb.has_bounty_data and (thumb.last_bounty_isk_rate == null or thumb.last_bounty_isk_rate.? > 0)) {
+        if (bounty_cfg.enabled and thumb.stats.has_bounty and (thumb.stats.bounty_isk_rate == null or thumb.stats.bounty_isk_rate.? > 0)) {
             if (wrote) writer.writeByte(' ') catch {};
             const isk_prefix: []const u8 = if (bounty_cfg.show_prefix) "ISK:" else "";
-            if (thumb.last_bounty_isk_rate) |isk_rate| {
+            if (thumb.stats.bounty_isk_rate) |isk_rate| {
                 var isk_buf: [16]u8 = undefined;
                 const period_secs: f32 = if (bounty_cfg.isk_rate_unit == .hour) 3600.0 else 60.0;
                 const isk_abbrev = format.formatIskAbbrev(&isk_buf, isk_rate * period_secs);
@@ -383,10 +383,10 @@ pub const ListWindow = struct {
         const mining_cfg = &self.config.mining;
         const bounty_cfg = &self.config.bounty;
 
-        if (combat_cfg.enabled and thumb.has_dps_data and combat_cfg.show_incoming and (thumb.last_incoming_dps == null or thumb.last_incoming_dps.? > 0)) return combat_cfg.incoming_color & 0xFFFFFF;
-        if (combat_cfg.enabled and thumb.has_dps_data and combat_cfg.show_outgoing and (thumb.last_outgoing_dps == null or thumb.last_outgoing_dps.? > 0)) return combat_cfg.outgoing_color & 0xFFFFFF;
-        if (mining_cfg.enabled and thumb.has_mining_data and (thumb.last_mining_rate == null or thumb.last_mining_rate.? > 0)) return mining_cfg.color & 0xFFFFFF;
-        if (bounty_cfg.enabled and thumb.has_bounty_data and (thumb.last_bounty_isk_rate == null or thumb.last_bounty_isk_rate.? > 0)) return bounty_cfg.color & 0xFFFFFF;
+        if (combat_cfg.enabled and thumb.stats.has_dps and combat_cfg.show_incoming and (thumb.stats.incoming_dps == null or thumb.stats.incoming_dps.? > 0)) return combat_cfg.incoming_color & 0xFFFFFF;
+        if (combat_cfg.enabled and thumb.stats.has_dps and combat_cfg.show_outgoing and (thumb.stats.outgoing_dps == null or thumb.stats.outgoing_dps.? > 0)) return combat_cfg.outgoing_color & 0xFFFFFF;
+        if (mining_cfg.enabled and thumb.stats.has_mining and (thumb.stats.mining_rate == null or thumb.stats.mining_rate.? > 0)) return mining_cfg.color & 0xFFFFFF;
+        if (bounty_cfg.enabled and thumb.stats.has_bounty and (thumb.stats.bounty_isk_rate == null or thumb.stats.bounty_isk_rate.? > 0)) return bounty_cfg.color & 0xFFFFFF;
         return ARGB_SYS_TEXT & 0xFFFFFF;
     }
 

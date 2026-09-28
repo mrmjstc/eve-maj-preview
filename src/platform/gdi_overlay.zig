@@ -396,8 +396,12 @@ const HINT_BOX_CLASS_NAME = "EVE_HINT_BOX_CLASS";
 const HINT_LINE_PAD_X = 5;
 const HINT_LINE_PAD_Y = 2;
 
-pub fn registerHintBoxClass(instance: win32.HINSTANCE) !void {
+var g_hint_box_class_registered = false;
+
+fn registerHintBoxClass(instance: win32.HINSTANCE) !void {
+    if (g_hint_box_class_registered) return;
     try registerWindowClass(instance, win32.DefWindowProcA, HINT_BOX_CLASS_NAME, null);
+    g_hint_box_class_registered = true;
 }
 
 fn hintLineSize(dc: win32.HDC, text: []const u8) struct { width: usize, height: usize } {
@@ -439,6 +443,10 @@ pub const HintBox = struct {
         if (self.hwnd) |hwnd| {
             _ = win32.SetWindowPos(hwnd, win32.HWND_TOPMOST, x, y, width, height, win32.SWP_NOACTIVATE);
         } else {
+            registerHintBoxClass(instance) catch |err| {
+                slog.err("Failed to register the hint box window class: {}", .{err});
+                return;
+            };
             self.hwnd = win32.CreateWindowExA(
                 win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_NOACTIVATE | win32.WS_EX_TRANSPARENT,
                 HINT_BOX_CLASS_NAME,

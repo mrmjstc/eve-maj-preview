@@ -6,14 +6,12 @@ const types = @import("../types.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const log = @import("../log.zig");
 const slog = log.scoped("overlay");
-// Only for the ThumbnailWindow type; painter.zig imports this module back.
-const painter_mod = @import("../painter.zig");
 const notification_stack_mod = @import("../notifications/stack.zig");
 const draw = @import("draw.zig");
 const font_cache_mod = @import("font_cache.zig");
 const format = @import("../util/format.zig");
 
-const ThumbnailWindow = painter_mod.ThumbnailWindow;
+const ThumbnailWindow = @import("window.zig").ThumbnailWindow;
 const TextPosition = types.TextPosition;
 const BorderStyle = types.BorderStyle;
 const TextDimensions = draw.TextDimensions;
@@ -479,10 +477,10 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
     var dps_out_dims: TextDimensions = .{ .width = 0, .height = 0 };
     if (config.combat.enabled and config.thumbnail.showText) {
         const combat_cfg = &config.combat;
-        if (combat_cfg.show_incoming and thumbnail.has_dps_data and (thumbnail.last_incoming_dps == null or thumbnail.last_incoming_dps.? > 0)) {
+        if (combat_cfg.show_incoming and thumbnail.stats.has_dps and (thumbnail.stats.incoming_dps == null or thumbnail.stats.incoming_dps.? > 0)) {
             const f = try fonts.get(.combat, dpi, combat_cfg.incoming_font_name, scalePixels(combat_cfg.incoming_font_size, dpi_scale), combat_cfg.incoming_font_weight);
             _ = win32.SelectObject(overlay.mem_dc, f);
-            dps_in_text = if (thumbnail.last_incoming_dps) |dps|
+            dps_in_text = if (thumbnail.stats.incoming_dps) |dps|
                 (if (combat_cfg.incoming_show_prefix)
                     std.fmt.bufPrint(&dps_in_buf, "IN: {d:.0}", .{dps}) catch "IN: ---"
                 else
@@ -494,10 +492,10 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
             draw_line_count += 1;
             _ = win32.SelectObject(overlay.mem_dc, font);
         }
-        if (combat_cfg.show_outgoing and thumbnail.has_dps_data and (thumbnail.last_outgoing_dps == null or thumbnail.last_outgoing_dps.? > 0)) {
+        if (combat_cfg.show_outgoing and thumbnail.stats.has_dps and (thumbnail.stats.outgoing_dps == null or thumbnail.stats.outgoing_dps.? > 0)) {
             const f = try fonts.get(.combat_outgoing, dpi, combat_cfg.outgoing_font_name, scalePixels(combat_cfg.outgoing_font_size, dpi_scale), combat_cfg.outgoing_font_weight);
             _ = win32.SelectObject(overlay.mem_dc, f);
-            dps_out_text = if (thumbnail.last_outgoing_dps) |dps|
+            dps_out_text = if (thumbnail.stats.outgoing_dps) |dps|
                 (if (combat_cfg.outgoing_show_prefix)
                     std.fmt.bufPrint(&dps_out_buf, "OUT: {d:.0}", .{dps}) catch "OUT: ---"
                 else
@@ -523,11 +521,11 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
     var mining_isk_dims: TextDimensions = .{ .width = 0, .height = 0 };
     var mining_block_x: i32 = 0;
     var mining_block_width: usize = 0;
-    if (config.mining.enabled and config.thumbnail.showText and thumbnail.has_mining_data and (thumbnail.last_mining_rate == null or thumbnail.last_mining_rate.? > 0)) {
+    if (config.mining.enabled and config.thumbnail.showText and thumbnail.stats.has_mining and (thumbnail.stats.mining_rate == null or thumbnail.stats.mining_rate.? > 0)) {
         const mining_cfg = &config.mining;
         const mf = try fonts.get(.mining, dpi, mining_cfg.font_name, scalePixels(mining_cfg.font_size, dpi_scale), mining_cfg.font_weight);
         _ = win32.SelectObject(overlay.mem_dc, mf);
-        if (thumbnail.last_mining_rate) |rate| {
+        if (thumbnail.stats.mining_rate) |rate| {
             // Displayed per-minute rather than per-second so low-yield ore doesn't round to "0".
             const rate_per_min = rate * 60.0;
             var raw_buf: [16]u8 = undefined;
@@ -549,7 +547,7 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
         if (mining_cfg.show_isk_rate) {
             const period_secs: f32 = if (mining_cfg.isk_rate_unit == .hour) 3600.0 else 60.0;
             const unit_suffix: []const u8 = if (mining_cfg.isk_rate_unit == .hour) "hr" else "min";
-            if (thumbnail.last_mining_isk_rate) |isk_rate| {
+            if (thumbnail.stats.mining_isk_rate) |isk_rate| {
                 var isk_buf: [16]u8 = undefined;
                 const isk_abbrev = format.formatIskAbbrev(&isk_buf, isk_rate * period_secs);
                 mining_isk_text = std.fmt.bufPrint(&mining_isk_buf, "{s} ISK/{s}", .{ isk_abbrev, unit_suffix }) catch "";
@@ -599,13 +597,13 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
     var bounty_text: []const u8 = "";
     var bounty_pos: TextOrigin = .{ .x = 0, .y = 0 };
     var bounty_dims: TextDimensions = .{ .width = 0, .height = 0 };
-    if (config.bounty.enabled and config.thumbnail.showText and thumbnail.has_bounty_data and (thumbnail.last_bounty_isk_rate == null or thumbnail.last_bounty_isk_rate.? > 0)) {
+    if (config.bounty.enabled and config.thumbnail.showText and thumbnail.stats.has_bounty and (thumbnail.stats.bounty_isk_rate == null or thumbnail.stats.bounty_isk_rate.? > 0)) {
         const bounty_cfg = &config.bounty;
         const bf = try fonts.get(.bounty, dpi, bounty_cfg.font_name, scalePixels(bounty_cfg.font_size, dpi_scale), bounty_cfg.font_weight);
         _ = win32.SelectObject(overlay.mem_dc, bf);
         const period_secs: f32 = if (bounty_cfg.isk_rate_unit == .hour) 3600.0 else 60.0;
         const unit_suffix: []const u8 = if (bounty_cfg.isk_rate_unit == .hour) "hr" else "min";
-        if (thumbnail.last_bounty_isk_rate) |isk_rate| {
+        if (thumbnail.stats.bounty_isk_rate) |isk_rate| {
             var isk_buf: [16]u8 = undefined;
             const isk_abbrev = format.formatIskAbbrev(&isk_buf, isk_rate * period_secs);
             bounty_text = if (bounty_cfg.show_prefix)
@@ -641,23 +639,23 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
     var resources_line_count: usize = 0;
     var resources_block_x: i32 = 0;
     var resources_block_width: usize = 0;
-    if (config.resources.enabled and config.thumbnail.showText and thumbnail.has_resource_data) {
+    if (config.resources.enabled and config.thumbnail.showText and thumbnail.stats.has_resources) {
         const resources_cfg = &config.resources;
         const rf = try fonts.get(.resources, dpi, resources_cfg.font_name, scalePixels(resources_cfg.font_size, dpi_scale), resources_cfg.font_weight);
         _ = win32.SelectObject(overlay.mem_dc, rf);
 
         if (resources_cfg.show_cpu) {
-            resources_texts[resources_line_count] = std.fmt.bufPrint(&resources_line_bufs[resources_line_count], "CPU: {d:.0}%", .{thumbnail.last_cpu_percent}) catch "";
+            resources_texts[resources_line_count] = std.fmt.bufPrint(&resources_line_bufs[resources_line_count], "CPU: {d:.0}%", .{thumbnail.stats.cpu_percent}) catch "";
             resources_dims[resources_line_count] = draw.measureText(overlay.mem_dc, resources_texts[resources_line_count]);
             resources_line_count += 1;
         }
         if (resources_cfg.show_ram) {
-            resources_texts[resources_line_count] = std.fmt.bufPrint(&resources_line_bufs[resources_line_count], "RAM: {d:.0}MB", .{thumbnail.last_ram_mb}) catch "";
+            resources_texts[resources_line_count] = std.fmt.bufPrint(&resources_line_bufs[resources_line_count], "RAM: {d:.0}MB", .{thumbnail.stats.ram_mb}) catch "";
             resources_dims[resources_line_count] = draw.measureText(overlay.mem_dc, resources_texts[resources_line_count]);
             resources_line_count += 1;
         }
-        if (resources_cfg.show_vram and thumbnail.has_vram_data) {
-            resources_texts[resources_line_count] = std.fmt.bufPrint(&resources_line_bufs[resources_line_count], "VRAM: {d:.0}MB", .{thumbnail.last_vram_mb}) catch "";
+        if (resources_cfg.show_vram and thumbnail.stats.has_vram) {
+            resources_texts[resources_line_count] = std.fmt.bufPrint(&resources_line_bufs[resources_line_count], "VRAM: {d:.0}MB", .{thumbnail.stats.vram_mb}) catch "";
             resources_dims[resources_line_count] = draw.measureText(overlay.mem_dc, resources_texts[resources_line_count]);
             resources_line_count += 1;
         }
@@ -1006,19 +1004,19 @@ pub fn createRenderSettings(cfg: *const config_mod.Config, thumbnail: *const Thu
         .overlay_height = overlay_height,
         // -1.0 stands in for "calculating" (null) here — no real rate is negative, and this struct only needs
         // equality for cache invalidation, not the calculating/zero distinction the render code below cares about.
-        .dps_incoming = if (cfg.combat.enabled) (thumbnail.last_incoming_dps orelse -1.0) else 0.0,
-        .dps_outgoing = if (cfg.combat.enabled) (thumbnail.last_outgoing_dps orelse -1.0) else 0.0,
-        .mining_rate = if (cfg.mining.enabled) (thumbnail.last_mining_rate orelse -1.0) else 0.0,
-        .mining_isk_rate = if (cfg.mining.enabled and cfg.mining.show_isk_rate) (thumbnail.last_mining_isk_rate orelse -1.0) else 0.0,
-        .bounty_isk_rate = if (cfg.bounty.enabled) (thumbnail.last_bounty_isk_rate orelse -1.0) else 0.0,
-        .resource_cpu_percent = if (cfg.resources.enabled) thumbnail.last_cpu_percent else 0.0,
-        .resource_ram_mb = if (cfg.resources.enabled) thumbnail.last_ram_mb else 0.0,
-        .resource_vram_mb = if (cfg.resources.enabled) thumbnail.last_vram_mb else 0.0,
-        .has_dps_data = thumbnail.has_dps_data,
-        .has_mining_data = thumbnail.has_mining_data,
-        .has_bounty_data = thumbnail.has_bounty_data,
-        .has_resource_data = cfg.resources.enabled and thumbnail.has_resource_data,
-        .has_vram_data = thumbnail.has_vram_data,
+        .dps_incoming = if (cfg.combat.enabled) (thumbnail.stats.incoming_dps orelse -1.0) else 0.0,
+        .dps_outgoing = if (cfg.combat.enabled) (thumbnail.stats.outgoing_dps orelse -1.0) else 0.0,
+        .mining_rate = if (cfg.mining.enabled) (thumbnail.stats.mining_rate orelse -1.0) else 0.0,
+        .mining_isk_rate = if (cfg.mining.enabled and cfg.mining.show_isk_rate) (thumbnail.stats.mining_isk_rate orelse -1.0) else 0.0,
+        .bounty_isk_rate = if (cfg.bounty.enabled) (thumbnail.stats.bounty_isk_rate orelse -1.0) else 0.0,
+        .resource_cpu_percent = if (cfg.resources.enabled) thumbnail.stats.cpu_percent else 0.0,
+        .resource_ram_mb = if (cfg.resources.enabled) thumbnail.stats.ram_mb else 0.0,
+        .resource_vram_mb = if (cfg.resources.enabled) thumbnail.stats.vram_mb else 0.0,
+        .has_dps_data = thumbnail.stats.has_dps,
+        .has_mining_data = thumbnail.stats.has_mining,
+        .has_bounty_data = thumbnail.stats.has_bounty,
+        .has_resource_data = cfg.resources.enabled and thumbnail.stats.has_resources,
+        .has_vram_data = thumbnail.stats.has_vram,
         .dps_incoming_color = cfg.combat.incoming_color,
         .dps_outgoing_color = cfg.combat.outgoing_color,
         .mining_color = cfg.mining.color,

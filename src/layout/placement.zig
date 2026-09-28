@@ -5,11 +5,9 @@ const types = @import("../types.zig");
 const scout_mod = @import("../clients/scout.zig");
 const log = @import("../log.zig");
 const slog = log.scoped("layout");
-// Only for the ThumbnailWindow type; painter.zig imports this module back.
-const painter_mod = @import("../painter.zig");
 const monitors = @import("monitors.zig");
 
-const ThumbnailWindow = painter_mod.ThumbnailWindow;
+const ThumbnailWindow = @import("../thumbnail/window.zig").ThumbnailWindow;
 const scalePixels = win32.scalePixels;
 const dpiToScale = win32.dpiToScale;
 

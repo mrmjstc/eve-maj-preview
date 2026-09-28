@@ -91,7 +91,7 @@ var g_size_nwse_cursor: ?win32.HCURSOR = null;
 var g_size_nesw_cursor: ?win32.HCURSOR = null;
 var g_size_all_cursor: ?win32.HCURSOR = null;
 
-pub fn registerWindowClass(instance: win32.HINSTANCE) !void {
+fn registerWindowClass(instance: win32.HINSTANCE) !void {
     if (g_window_class_registered) return;
     g_cross_cursor = win32.LoadCursorA(null, win32.IDC_CROSS);
     g_arrow_cursor = win32.LoadCursorA(null, win32.IDC_ARROW);
@@ -103,11 +103,6 @@ pub fn registerWindowClass(instance: win32.HINSTANCE) !void {
     g_hand_cursor = win32.LoadCursorA(null, win32.IDC_HAND);
     try gdi_overlay.registerWindowClass(instance, wndProc, WINDOW_CLASS_NAME, null);
     g_window_class_registered = true;
-}
-
-/// Called once the overlay closes, whether the drag was committed or cancelled.
-pub fn setOnFinishedCallback(cb: ?*const fn () void) void {
-    g_on_finished = cb;
 }
 
 /// Zero-padded fixed-size copy of `text` (UTF-8), truncated at a character boundary so a NUL always fits.
@@ -145,7 +140,10 @@ pub const Status = enum { success, cancelled, too_small };
 
 /// Starts (or resets, if already in progress) the drag-to-select overlay; the result goes to the config dialog as a regionSelected event.
 /// accent_color is 0xAARRGGBB, forced fully opaque. With `edit_region`, that region's edges are adjusted instead of dragging a new one.
-pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelStyle, edit_region: ?win32.RECT, labels: Labels) void {
+/// `on_finished` runs once the overlay closes, whether the selection was committed or cancelled, but not if this fails.
+pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelStyle, edit_region: ?win32.RECT, labels: Labels, on_finished: *const fn () void) !void {
+    try registerWindowClass(instance);
+    g_on_finished = on_finished;
     g_border_color = accent_color | 0xFF000000;
     g_label_style = label_style;
     g_labels = labels;
@@ -183,10 +181,7 @@ pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelSty
             null,
             instance,
             null,
-        ) orelse {
-            slog.err("Failed to create region-select overlay window", .{});
-            return;
-        };
+        ) orelse return error.CreateWindowFailed;
     }
 
     const hwnd = g_hwnd.?;

@@ -34,6 +34,11 @@ pub fn syncFocusedCharacter(character_name: []const u8, hwnd: win32.HWND) void {
     if (g_hotkey_manager_ptr) |manager| manager.updateFocusedCharacter(character_name, hwnd);
 }
 
+/// The window ReturnToLastApp goes back to.
+pub fn recordNonEveForeground(hwnd: win32.HWND) void {
+    if (g_hotkey_manager_ptr) |manager| manager.last_non_eve_foreground = hwnd;
+}
+
 fn countBound(items: anytype) usize {
     var n: usize = 0;
     for (items) |item| {

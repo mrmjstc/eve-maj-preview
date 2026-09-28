@@ -78,8 +78,12 @@ pub fn collectGhostGroups(painter: *const Painter, exclude_character: []const u8
     return groups.toOwnedSlice(allocator);
 }
 
-pub fn registerWindowClass(instance: win32.HINSTANCE) !void {
+var g_class_registered = false;
+
+fn registerWindowClass(instance: win32.HINSTANCE) !void {
+    if (g_class_registered) return;
     try gdi_overlay.registerWindowClass(instance, win32.DefWindowProcA, WINDOW_CLASS_NAME, null);
+    g_class_registered = true;
 }
 
 /// A topmost, click-through overlay outlining every other saved position while a thumbnail or panel is dragged. Created lazily, hidden (not destroyed) between drags.
@@ -142,6 +146,10 @@ pub const GhostOverlay = struct {
         if (self.hwnd) |hwnd| {
             _ = win32.SetWindowPos(hwnd, win32.HWND_TOPMOST, bounds.left, bounds.top, width, height, win32.SWP_NOACTIVATE);
         } else {
+            registerWindowClass(painter.instance) catch |err| {
+                slog.err("Failed to register the ghost overlay window class: {}", .{err});
+                return;
+            };
             self.hwnd = win32.CreateWindowExA(
                 win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_NOACTIVATE | win32.WS_EX_TRANSPARENT,
                 WINDOW_CLASS_NAME,
