@@ -2,6 +2,7 @@
 import { app } from './state.js';
 import { applyDocToForm, readFormToDoc } from './binding.js';
 import { languageNames } from './catalogs.js';
+import { markAsChanged } from './changes.js';
 import { ensureBlankRosterEntries, populateCharacters } from './characters.js';
 import { syncSwatchHexInput } from './color_picker.js';
 import { applyAccentColorTheme, htmlColorToZig, zigColorToHtml } from './colors.js';
@@ -52,6 +53,8 @@ document.addEventListener('change', (e) => {
     if (clamped !== value) {
         field.value = clamped;
         flashClampedField(field);
+        // The out-of-range value was held back while it was typed (see binding.js), so the clamped one is what gets sent.
+        markAsChanged();
     }
 });
 

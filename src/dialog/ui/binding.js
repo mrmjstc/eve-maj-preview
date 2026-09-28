@@ -3,7 +3,7 @@
 // Inputs can also say how the setting shows:
 //   data-unit           "s" for milliseconds, "%" for 0-255 opacity
 //   data-part           "rgb" or "alpha", for one colour split across a swatch and an opacity slider
-//   data-inherit        a path whose value this one takes while unset; setting it back to that value unsets it again
+//   data-inherit        a path whose value this one shows while unset, until the user moves it; setting it back to that value unsets it again
 //   data-null-checkbox  the id of a checkbox that must be ticked for this value to be set
 //   data-format         "csv" for a list of strings typed comma-separated, "items" for one on a container of [data-item] inputs,
 //                       "path" for a file shown by its name with the full path in data-full-path
@@ -131,7 +131,14 @@ function showValue(el) {
     let value = valueAt(path);
     const format = el.dataset.format;
     if (format === 'items') return;
-    if (value == null && el.dataset.inherit) value = valueAt(el.dataset.inherit);
+    if (el.dataset.inherit) {
+        if (value == null) {
+            value = valueAt(el.dataset.inherit);
+            el.dataset.inheriting = 'true';
+        } else {
+            delete el.dataset.inheriting;
+        }
+    }
 
     if (el.type === 'checkbox') {
         el.checked = !!value;
@@ -179,12 +186,18 @@ function readValue(el) {
         }
         case 'int':
         case 'float': {
+            if (el.dataset.inheriting === 'true') {
+                // Follows what it inherits, which may have just changed, rather than turning the old value into a setting of its own.
+                setInputValue(el, toDisplay(valueAt(el.dataset.inherit), el.dataset.unit));
+                return null;
+            }
             if (el.value === '') return spec.nullable ? null : undefined;
             const number = parseFloat(el.value);
             if (isNaN(number)) return undefined;
+            // "3" on the way to "300" waits until it's in range or the field is left, where the form clamps it (see form.js).
+            if (el === document.activeElement && !inBounds(el, number)) return undefined;
             if (el.dataset.inherit && number === toDisplay(valueAt(el.dataset.inherit), el.dataset.unit)) return null;
             const value = fromDisplay(number, el.dataset.unit);
-            // Out-of-range values go as typed: the app clamps them and the form shows what it kept.
             return spec.kind === 'int' ? Math.round(value) : value;
         }
         case 'string': {
@@ -196,6 +209,15 @@ function readValue(el) {
             return el.value;
     }
 }
+
+function inBounds(el, number) {
+    return (el.min === '' || number >= parseFloat(el.min)) && (el.max === '' || number <= parseFloat(el.max));
+}
+
+// Moving an inheriting input gives it a value of its own.
+document.addEventListener('input', (e) => {
+    if (e.target.dataset?.inheriting) delete e.target.dataset.inheriting;
+});
 
 // The nearest enclosing nullable section, e.g. "characters.3.borderColors" for "characters.3.borderColors.activeBorderColor".
 function nullableSection(path) {

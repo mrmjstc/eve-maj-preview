@@ -7,7 +7,8 @@ const wire = @import("wire.zig");
 pub const Op = struct {
     op: []const u8,
     path: []const std.json.Value,
-    value: ?std.json.Value = null,
+    /// Not optional: std.json would read a `null` value, which unsets a setting, as the field being absent.
+    value: std.json.Value = .null,
     /// Where `insert` and `move` put the item; `insert` appends without one.
     index: ?usize = null,
 };
@@ -156,7 +157,7 @@ fn applyField(comptime F: type, comptime name: []const u8, ptr: *F, default: ?F,
     if (path.len == 0) {
         switch (kind) {
             .set => {
-                try setValue(F, name, ptr, default, op.value orelse return error.MissingValue, ctx);
+                try setValue(F, name, ptr, default, op.value, ctx);
                 return null;
             },
             .insert => if (comptime wire.ListItem(F)) |Item| {
@@ -170,7 +171,7 @@ fn applyField(comptime F: type, comptime name: []const u8, ptr: *F, default: ?F,
             const index = try findItem(Item, ptr.items, path[0]);
             if (path.len > 1) return applyIn(Item, &ptr.items[index], path[1..], kind, op, ctx);
             switch (kind) {
-                .set => try replaceItem(Item, ptr, index, op.value orelse return error.MissingValue, ctx),
+                .set => try replaceItem(Item, ptr, index, op.value, ctx),
                 .remove => {
                     var removed = ptr.orderedRemove(index);
                     wire.free(Item, &removed, ctx.allocator);
@@ -210,7 +211,7 @@ fn replaceItem(comptime Item: type, list: *std.ArrayList(Item), index: usize, js
 }
 
 fn insertItem(comptime Item: type, list: *std.ArrayList(Item), op: Op, ctx: Context) !u32 {
-    const json = op.value orelse return error.MissingValue;
+    const json = op.value;
     const saved = std.json.parseFromValueLeaky(wire.WireOf(Item), ctx.arena, json, .{ .ignore_unknown_fields = true }) catch return error.InvalidValue;
     var fresh = try wire.decode(Item, saved, ctx.allocator);
     errdefer wire.free(Item, &fresh, ctx.allocator);

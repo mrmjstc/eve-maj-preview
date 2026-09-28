@@ -318,9 +318,9 @@ export function deleteCurrentProfile() {
         
         try {
             if (typeof webui !== 'undefined') {
-                await rpc('deleteProfile', { name: currentProfile });
-                // The app moved the window onto the profile it now runs, which the reopened session lists.
-                await openSession();
+                // The app moved the window onto the profile it now runs; when that meant a switch, its profileSwitched event reopens the session.
+                const { reloaded } = await rpc('deleteProfile', { name: currentProfile });
+                if (!reloaded) await openSession();
 
                 showStatus(t('status.profileDeletedSuccess'), 'success');
             } else {
@@ -343,8 +343,9 @@ export function resetCurrentProfile() {
 
         try {
             if (typeof webui !== 'undefined') {
-                await rpc('resetProfile', { name: currentProfile });
-                await openSession();
+                // Resetting the running profile reloads the app, whose profileSwitched event reopens the session.
+                const { reloaded } = await rpc('resetProfile', { name: currentProfile });
+                if (!reloaded) await openSession();
                 showStatus(t('status.profileResetDone').replace('{name}', currentDisplayName), 'success');
             } else {
                 showStatus(t('status.mockResetPrefix') + currentProfile, 'info');

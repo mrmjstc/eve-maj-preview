@@ -180,7 +180,7 @@ async function sendEdits(name) {
     try {
         reply = await rpc('applyOps', { doc: name, ops: ops.map(({ item, ...op }) => op) });
     } catch (error) {
-        logError('The app rejected an edit, reloading its copy:', error);
+        logError(`The app rejected an edit to ${ops.map(op => op.path.join('.')).join(', ')}, reloading its copy:`, error);
         showStatus(t('status.failedPrefix') + error.message, 'error');
         await adoptSnapshot(await rpc('getSession'));
         return;
@@ -248,6 +248,10 @@ async function adoptSnapshot(snapshot) {
     populateFormFields();
     await applyGlobalSettingsToForm();
     setDirty(snapshot.dirty);
+    // Filling the form fires its change handlers, which schedule a flush; the form now shows what the app has, so there's
+    // nothing to send, and after a rejected edit sending would only repeat it.
+    clearTimeout(flushTimer);
+    flushTimer = null;
 }
 
 // A drag, the tray or an assign key changed the running profile the window edits.

@@ -74,7 +74,7 @@ pub const DisplayConfig = struct {
     const SCREEN_Y = ranges_mod.SCREEN_Y;
     const REGION_WIDTH = .{ 1, SCREEN_X[1] - SCREEN_X[0] };
     const REGION_HEIGHT = .{ 1, SCREEN_Y[1] - SCREEN_Y[0] };
-    const SPACING = .{ 0, 500 };
+    const SPACING = .{ 0, 200 };
     pub const NOTIF_PANEL_MAX_ROWS = .{ 1, 30 };
 
     pub const ranges = .{

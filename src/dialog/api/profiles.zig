@@ -43,20 +43,27 @@ pub fn restoreProfileBackup(arena: std.mem.Allocator, args: struct { backup: []c
 
 /// Moved to a backup rather than deleted; deleting the running profile first switches the app to the default one.
 /// The window goes on to edit whichever profile the app then runs.
-pub fn deleteProfile(_: std.mem.Allocator, args: struct { name: []const u8 }) !void {
+/// `reloaded` when the app switched profile, whose profileSwitched event reopens the window's session.
+pub fn deleteProfile(_: std.mem.Allocator, args: struct { name: []const u8 }) !Reloaded {
     // Checked before the switch below, which a refused delete mustn't cause.
     try config_mod.checkProfileDeletable(args.name);
-    if (std.mem.eql(u8, args.name, main_mod.g_store.live.profile_name)) main_mod.switchProfile(config_mod.DEFAULT_PROFILE);
+    const running = std.mem.eql(u8, args.name, main_mod.g_store.live.profile_name);
+    if (running) main_mod.switchProfile(config_mod.DEFAULT_PROFILE);
     try config_mod.deleteProfileToBackup(host.allocator(), args.name);
     if (std.mem.eql(u8, args.name, host.editingProfile())) try host.setEditingProfile(main_mod.g_store.live.profile_name);
+    return .{ .reloaded = running };
 }
 
-/// Resetting the running profile reloads the app onto its defaults.
-pub fn resetProfile(_: std.mem.Allocator, args: struct { name: []const u8 }) !void {
+/// Resetting the running profile reloads the app onto its defaults; `reloaded` as for deleteProfile.
+pub fn resetProfile(_: std.mem.Allocator, args: struct { name: []const u8 }) !Reloaded {
     try config_mod.validateProfileName(args.name);
     try config_mod.writeDefaultProfile(host.allocator(), args.name, null);
-    if (std.mem.eql(u8, args.name, main_mod.g_store.live.profile_name)) main_mod.switchProfile(args.name);
+    const running = std.mem.eql(u8, args.name, main_mod.g_store.live.profile_name);
+    if (running) main_mod.switchProfile(args.name);
+    return .{ .reloaded = running };
 }
+
+const Reloaded = struct { reloaded: bool };
 
 fn parseAccentColor(hex: ?[]const u8) !?u32 {
     const text = hex orelse return null;
