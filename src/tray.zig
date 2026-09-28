@@ -6,6 +6,7 @@ const update = @import("update.zig");
 const client_actions = @import("clients/actions.zig");
 const hotkeys_mod = @import("hotkeys/manager.zig");
 const painter_mod = @import("painter.zig");
+const auto_minimize = @import("clients/auto_minimize.zig");
 const scout_mod = @import("clients/scout.zig");
 const main_mod = @import("main.zig");
 const slog = log.scoped("tray");
@@ -165,7 +166,8 @@ pub const TrayIcon = struct {
             win32.MF_STRING;
         _ = win32.AppendMenuA(menu, dragging_flags, win32.IDM_TOGGLE_DRAGGING, "Enable Dragging");
 
-        const auto_minimize_flags: u32 = if (config.autoMinimize.enabled)
+        const auto_minimize_enabled = if (painter) |p| p.auto_minimize.isEnabled(p) else config.autoMinimize.enabled;
+        const auto_minimize_flags: u32 = if (auto_minimize_enabled)
             win32.MF_STRING | win32.MF_CHECKED
         else
             win32.MF_STRING;
@@ -234,14 +236,8 @@ pub const TrayIcon = struct {
         );
     }
 
-    /// Saves `config` to its current profile file, logging (but not propagating) any failure.
-    fn saveCurrentProfile(config: *const config_mod.Config, allocator: std.mem.Allocator, context: []const u8) void {
-        config.saveCurrentProfile(allocator) catch |err| {
-            slog.err("Failed to save config after toggling {s}: {}", .{ context, err });
-        };
-    }
-
-    pub fn handleMenuCommand(command_id: u16, config: *config_mod.Config, allocator: std.mem.Allocator) bool {
+    pub fn handleMenuCommand(command_id: u16, store: *config_mod.ProfileStore) bool {
+        const config = &store.live;
         if (command_id == win32.IDM_EXIT) {
             slog.info("Exit requested from system tray", .{});
             win32.PostQuitMessage(0);
@@ -249,10 +245,9 @@ pub const TrayIcon = struct {
         }
 
         if (command_id == win32.IDM_TOGGLE_DRAGGING) {
-            config.interaction.enableDragging = !config.interaction.enableDragging;
-            const state = if (config.interaction.enableDragging) "enabled" else "disabled";
-            slog.info("Thumbnail dragging toggled: {s}", .{state});
-            saveCurrentProfile(config, allocator, "dragging");
+            const enabled = !config.interaction.enableDragging;
+            store.update(.{ .interaction = .{ .enableDragging = enabled } });
+            slog.info("Thumbnail dragging toggled: {s}", .{if (enabled) "enabled" else "disabled"});
             return true;
         }
 
@@ -263,18 +258,18 @@ pub const TrayIcon = struct {
         }
 
         if (command_id == win32.IDM_TOGGLE_AUTO_MINIMIZE) {
-            // Toggle the auto-minimize setting temporarily (not saved)
-            config.autoMinimize.enabled = !config.autoMinimize.enabled;
-            const state = if (config.autoMinimize.enabled) "enabled" else "disabled";
-            slog.info("Auto-minimize toggled: {s}", .{state});
+            if (painter_mod.g_painter_ptr) |painter_ptr| {
+                auto_minimize.toggle(painter_ptr);
+            } else {
+                slog.err("Painter not available for toggle auto-minimize", .{});
+            }
             return true;
         }
 
         if (command_id == win32.IDM_TOGGLE_TRAVEL_MODE) {
-            config.travel.enabled = !config.travel.enabled;
-            const state = if (config.travel.enabled) "enabled" else "disabled";
-            slog.info("Travel Mode toggled: {s}", .{state});
-            saveCurrentProfile(config, allocator, "Travel Mode");
+            const enabled = !config.travel.enabled;
+            store.update(.{ .travel = .{ .enabled = enabled } });
+            slog.info("Travel Mode toggled: {s}", .{if (enabled) "enabled" else "disabled"});
             return true;
         }
 
@@ -292,7 +287,6 @@ pub const TrayIcon = struct {
             slog.info("Toggle history panel requested from system tray", .{});
             if (painter_mod.g_painter_ptr) |painter_ptr| {
                 painter_ptr.toggleHistoryPanel();
-                saveCurrentProfile(config, allocator, "history panel");
             } else {
                 slog.err("Painter not available for toggle history panel", .{});
             }

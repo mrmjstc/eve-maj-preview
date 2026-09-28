@@ -1196,6 +1196,20 @@ fn loadCurrentProfileOrRespond(e: *webui.Event, allocator: std.mem.Allocator) ?c
     };
 }
 
+/// Sets one character's saved game-window position, or with a null name every character's, then saves the profile.
+fn saveWindowPositions(allocator: std.mem.Allocator, cfg: *config_mod.Config, character_name: ?[]const u8, pos: ?config_mod.Position) !void {
+    if (character_name) |name| {
+        if (pos == null and cfg.findCharacter(name) == null) return;
+        const char = try cfg.getOrCreateCharacter(allocator, name);
+        char.windowPosition = pos;
+    } else {
+        for (cfg.characters.items) |*char| char.windowPosition = pos;
+    }
+    const path = try config_mod.profilePath(allocator, cfg.profile_name);
+    defer allocator.free(path);
+    try config_mod.saveProfile(cfg, allocator, path);
+}
+
 /// Saves `character_name`'s live window's current position as its saved game-window position.
 fn setCharacterWindowPosition(e: *webui.Event) void {
     const character_name = e.getString();
@@ -1215,7 +1229,7 @@ fn setCharacterWindowPosition(e: *webui.Event) void {
     var cfg = loadCurrentProfileOrRespond(e, allocator) orelse return;
     defer cfg.deinit();
 
-    cfg.saveCharacterWindowPosition(allocator, character_name, pos) catch |err| {
+    saveWindowPositions(allocator, &cfg, character_name, pos) catch |err| {
         slog.err("Failed to save window position for '{s}': {}", .{ character_name, err });
         e.returnString("{\"success\": false, \"error\": \"Failed to save\"}");
         return;
@@ -1239,7 +1253,7 @@ fn clearCharacterWindowPosition(e: *webui.Event) void {
     var cfg = loadCurrentProfileOrRespond(e, allocator) orelse return;
     defer cfg.deinit();
 
-    cfg.clearCharacterWindowPosition(allocator, character_name) catch |err| {
+    saveWindowPositions(allocator, &cfg, character_name, null) catch |err| {
         slog.err("Failed to clear window position for '{s}': {}", .{ character_name, err });
         e.returnString("{\"success\": false, \"error\": \"Failed to save\"}");
         return;
@@ -1267,7 +1281,7 @@ fn setAllCharacterWindowPositions(e: *webui.Event) void {
     var cfg = loadCurrentProfileOrRespond(e, allocator) orelse return;
     defer cfg.deinit();
 
-    cfg.saveAllCharacterWindowPositions(allocator, pos) catch |err| {
+    saveWindowPositions(allocator, &cfg, null, pos) catch |err| {
         slog.err("Failed to save window positions for all characters: {}", .{err});
         e.returnString("{\"success\": false, \"error\": \"Failed to save\"}");
         return;
@@ -1290,7 +1304,7 @@ fn clearAllCharacterWindowPositions(e: *webui.Event) void {
     var cfg = loadCurrentProfileOrRespond(e, allocator) orelse return;
     defer cfg.deinit();
 
-    cfg.clearAllCharacterWindowPositions(allocator) catch |err| {
+    saveWindowPositions(allocator, &cfg, null, null) catch |err| {
         slog.err("Failed to clear window positions for all characters: {}", .{err});
         e.returnString("{\"success\": false, \"error\": \"Failed to save\"}");
         return;

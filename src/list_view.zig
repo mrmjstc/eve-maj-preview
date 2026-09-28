@@ -64,7 +64,8 @@ pub const ListWindow = struct {
     hwnd: win32.HWND,
     instance: win32.HINSTANCE,
     allocator: std.mem.Allocator,
-    config: *config_mod.Config,
+    store: *config_mod.ProfileStore,
+    config: *const config_mod.Config,
     font: ?win32.HFONT = null,
     // Tracks the settings `font` was created from so ensureFont() can detect a live-previewed change and recreate it.
     // Owns a copy rather than aliasing config.display.listViewFontName, which config frees/replaces on a genuine rename.
@@ -84,9 +85,10 @@ pub const ListWindow = struct {
 
     pub fn init(
         allocator: std.mem.Allocator,
-        cfg: *config_mod.Config,
+        store: *config_mod.ProfileStore,
         instance: win32.HINSTANCE,
     ) !ListWindow {
+        const cfg = &store.live;
         try registerWindowClass(instance);
 
         const hwnd = win32.CreateWindowExA(
@@ -134,6 +136,7 @@ pub const ListWindow = struct {
             .hwnd = hwnd,
             .instance = instance,
             .allocator = allocator,
+            .store = store,
             .config = cfg,
             .font = font,
             .cached_font_name = cached_font_name,
@@ -174,14 +177,7 @@ pub const ListWindow = struct {
         var rect: win32.RECT = undefined;
         _ = win32.GetWindowRect(self.hwnd, &rect);
 
-        const pos = config_mod.Position{
-            .x = rect.left,
-            .y = rect.top,
-        };
-
-        self.config.saveListViewPosition(self.allocator, pos) catch |err| {
-            slog.err("Failed to save list view position: {}", .{err});
-        };
+        self.store.update(.{ .display = .{ .startX = rect.left, .startY = rect.top } });
     }
 
     fn resolveActiveBadgeColor(self: *const ListWindow, thumb: *const ThumbnailWindow) u32 {

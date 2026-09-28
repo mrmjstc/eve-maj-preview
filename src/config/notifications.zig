@@ -73,6 +73,13 @@ pub const NotificationTypeConfigs = struct {
         for (&self.map.values) |*type_config| wire.free(NotificationTypeConfig, type_config, allocator);
     }
 
+    pub fn clone(self: NotificationTypeConfigs, allocator: std.mem.Allocator) !NotificationTypeConfigs {
+        var out: NotificationTypeConfigs = .{};
+        errdefer out.deinit(allocator);
+        for (&out.map.values, self.map.values) |*dst, src| dst.* = try wire.clone(NotificationTypeConfig, src, allocator);
+        return out;
+    }
+
     pub const Wire = struct {
         map: std.enums.EnumArray(notification_mod.NotificationType, NotificationTypeConfig.Wire) = default_wire_map,
 

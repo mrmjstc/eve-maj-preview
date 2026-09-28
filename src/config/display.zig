@@ -109,32 +109,5 @@ pub const DisplayConfig = struct {
         ranges_mod.clamp(DisplayConfig, self);
     }
 
-    /// Changed by the running app rather than the dialog, so a preview revert keeps them.
-    pub const live_fields = .{
-        "startX",
-        "startY",
-        "notifInfoPanelX",
-        "notifInfoPanelY",
-        "showNotifInfoPanel",
-        "notifInfoPanelShowFleet",
-        "notifInfoPanelShowMining",
-        "notifInfoPanelShowCombat",
-        "notifInfoPanelShowNavigation",
-        "notifInfoPanelShowGeneral",
-    };
-
-    /// Won't compile for a field missing from `live_fields`, so a revert can't silently undo a runtime change.
-    pub fn setLive(self: *DisplayConfig, comptime field: []const u8, value: @FieldType(DisplayConfig, field)) void {
-        if (comptime !isLiveField(field)) @compileError(field ++ " is changed at runtime, so it must be listed in DisplayConfig.live_fields");
-        @field(self, field) = value;
-    }
-
-    fn isLiveField(comptime field: []const u8) bool {
-        inline for (live_fields) |live| {
-            if (comptime std.mem.eql(u8, live, field)) return true;
-        }
-        return false;
-    }
-
     pub const Wire = wire.Wire(DisplayConfig);
 };

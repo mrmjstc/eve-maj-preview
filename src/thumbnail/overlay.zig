@@ -782,7 +782,7 @@ fn resolveTextBgColor(state_cfg: config_mod.StateVisualConfig, base_color: u32, 
 }
 
 /// Builds RenderSettings from Painter config; the single point where a thumbnail's effective render state determines all visual properties.
-pub fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) RenderSettings {
+pub fn createRenderSettings(cfg: *const config_mod.Config, thumbnail: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) RenderSettings {
     const state = thumbnail.effectiveRenderState(active_source_hwnd);
     const character_name = thumbnail.character_name;
     const system_name = thumbnail.system_name;

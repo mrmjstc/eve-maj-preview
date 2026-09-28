@@ -457,6 +457,17 @@ pub const ChatlogMonitor = struct {
 
         self.allocator.free(self.chatlog_dir);
         self.allocator.free(self.gamelog_dir);
+        if (self.damage_alert_excluded_weapons.len > 0) self.allocator.free(self.damage_alert_excluded_weapons);
+    }
+
+    /// Owned, since the worker thread reads it while a dialog preview may replace the config's copy; call only while the worker is stopped.
+    pub fn setDamageAlertExcludedWeapons(self: *ChatlogMonitor, weapons: []const u8) void {
+        const owned: []const u8 = if (weapons.len == 0) "" else self.allocator.dupe(u8, weapons) catch |err| {
+            slog.err("Failed to copy damage alert weapon filter, keeping the previous one: {}", .{err});
+            return;
+        };
+        if (self.damage_alert_excluded_weapons.len > 0) self.allocator.free(self.damage_alert_excluded_weapons);
+        self.damage_alert_excluded_weapons = owned;
     }
 
     /// Add a character to monitor (finds and tracks their chat and game logs).

@@ -1,4 +1,4 @@
-//! Patches the dialog's unsaved edits into the running config, and restores them from disk if it closes unsaved.
+//! Patches the dialog's unsaved edits into the running config; ProfileStore.discard undoes them if it closes unsaved.
 const std = @import("std");
 const config_mod = @import("../config.zig");
 const notification_mod = @import("../notifications/notification.zig");
@@ -8,7 +8,7 @@ const log = @import("../log.zig");
 const slog = log.scoped("config");
 const Config = config_mod.Config;
 
-/// Sections the dialog sends under their own key beside the thumbnail fields; revert restores the same set.
+/// Sections the dialog sends under their own key beside the thumbnail fields.
 const sections = .{ "display", "combat", "mining", "bounty", "resources" };
 
 pub const Applied = struct {
@@ -63,43 +63,6 @@ pub fn apply(cfg: *Config, allocator: std.mem.Allocator, json_data: []const u8) 
     return applied;
 }
 
-/// Restores everything `apply` can change from the profile on disk, which is a no-op in effect if the dialog saved first.
-pub fn revert(cfg: *Config, allocator: std.mem.Allocator) !void {
-    var fresh = try config_mod.loadProfile(allocator, cfg.profile_name);
-    // Swapped-out preview values end up in `fresh`, so this frees them.
-    defer fresh.deinit();
-
-    // Index-matched, like applyGroupBadges.
-    for (cfg.hotkeyGroups.items, 0..) |*group, i| {
-        group.showBadge = i < fresh.hotkeyGroups.items.len and fresh.hotkeyGroups.items[i].showBadge;
-    }
-
-    revertCharacters(cfg, &fresh, allocator);
-
-    inline for (config_mod.DisplayConfig.live_fields) |name| @field(fresh.display, name) = @field(cfg.display, name);
-    inline for (.{"thumbnail"} ++ sections) |key| {
-        std.mem.swap(@TypeOf(@field(cfg, key)), &@field(cfg, key), &@field(fresh, key));
-    }
-    std.mem.swap(std.ArrayList(config_mod.SystemColorConfig), &cfg.systemColors, &fresh.systemColors);
-}
-
-/// Matched by name; a character created by a preview and never saved is removed, so a revert leaves no residue.
-fn revertCharacters(cfg: *Config, fresh: *Config, allocator: std.mem.Allocator) void {
-    var i = cfg.characters.items.len;
-    while (i > 0) {
-        i -= 1;
-        const char = &cfg.characters.items[i];
-        if (fresh.findCharacter(char.name)) |saved| {
-            std.mem.swap(config_mod.CharacterConfig, char, saved);
-            // Keeps the running name allocation, which other state may still be keyed on.
-            std.mem.swap([]const u8, &char.name, &saved.name);
-        } else {
-            wire.free(config_mod.CharacterConfig, char, allocator);
-            _ = cfg.characters.orderedRemove(i);
-        }
-    }
-}
-
 /// Replaces the whole list, keeping the old one if any entry fails to parse.
 fn replaceSystemColors(cfg: *Config, allocator: std.mem.Allocator, colors: []const std.json.Value) !void {
     var scratch = std.heap.ArenaAllocator.init(allocator);
@@ -127,7 +90,7 @@ fn applyGroupBadges(cfg: *Config, flags: []const std.json.Value) void {
     }
 }
 
-/// Matched by name; an unsaved "Populate from Open Clients" character gets a live entry to preview against, which revert removes again.
+/// Matched by name; an unsaved "Populate from Open Clients" character gets a live entry to preview against, which a discard removes again.
 fn applyCharacterOverrides(cfg: *Config, allocator: std.mem.Allocator, overrides: []const std.json.Value) !void {
     for (overrides) |item| {
         if (item != .object) continue;

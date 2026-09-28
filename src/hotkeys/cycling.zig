@@ -79,7 +79,11 @@ const CharacterOrderCache = struct {
 
 fn characterOrderSignature(characters: []const config_mod.CharacterConfig) u64 {
     var h = std.hash.Wyhash.init(0);
-    for (characters) |char| h.update(char.name);
+    for (characters) |char| {
+        h.update(char.name);
+        // The map's keys borrow these names, so a reallocated but equal name (a discarded dialog preview) must rebuild it too.
+        h.update(std.mem.asBytes(&char.name.ptr));
+    }
     return h.final();
 }
 

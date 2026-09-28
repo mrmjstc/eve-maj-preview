@@ -187,8 +187,8 @@ pub fn assignHoveredToGroup(m: *HotkeyManager, group_index: usize) void {
     const group = &m.config.hotkeyGroups.items[group_index];
     const char_name = thumbnail.character_name;
 
-    const added = toggleStringMembership(m.allocator, &group.characters, char_name) catch {
-        slog.err("Failed to toggle {s} in group {} [{s}]", .{ char_name, group_index, group.name });
+    const added = m.painter.store.toggleGroupMember(group_index, char_name) catch |err| {
+        slog.err("Failed to toggle {s} in group {} [{s}]: {}", .{ char_name, group_index, group.name, err });
         return;
     };
     if (added) {
@@ -200,13 +200,7 @@ pub fn assignHoveredToGroup(m: *HotkeyManager, group_index: usize) void {
     // Membership changed - old index may now point at a shifted member
     m.cycle.group_cursors[group_index] = null;
 
-    if (!group.temporaryMembership) {
-        if (m.config.saveCurrentProfile(m.allocator)) {
-            protocol.bumpGroupMembershipRevision();
-        } else |err| {
-            slog.err("Failed to save group {} [{s}] membership: {}", .{ group_index, group.name, err });
-        }
-    }
+    if (!group.temporaryMembership) protocol.bumpGroupMembershipRevision();
 
     // Badge must be refreshed before the reflow below, so its own render pass bakes in the new label instead of the reflow drawing it once with the stale one and renderThumbnail below redrawing it again.
     m.painter.refreshGroupBadge(thumbnail);

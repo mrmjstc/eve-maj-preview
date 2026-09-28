@@ -35,7 +35,7 @@ pub const Trackers = struct {
             m.combat_tracker = self.combat;
             m.mining_tracker = self.mining;
             m.bounty_tracker = self.bounty;
-            m.damage_alert_excluded_weapons = cfg.combat.damage_alert_excluded_weapons;
+            m.setDamageAlertExcludedWeapons(cfg.combat.damage_alert_excluded_weapons);
         }
     }
 

@@ -377,6 +377,68 @@ pub fn freeList(comptime T: type, list: *std.ArrayList(T), allocator: std.mem.Al
     list.* = .empty;
 }
 
+/// Unlike an encode/decode round trip, keeps state a type's `toWire` leaves out (a temporary group's members).
+pub fn clone(comptime T: type, value: T, allocator: std.mem.Allocator) !T {
+    if (comptime !isNested(T)) return cloneField(T, value, allocator);
+    if (comptime @hasDecl(T, "clone")) return value.clone(allocator);
+    var out: T = .{};
+    errdefer free(T, &out, allocator);
+    try cloneInto(T, &value, allocator, &out);
+    return out;
+}
+
+/// `out` must still hold its defaults; on failure it holds only what was copied, so `deinit` frees it.
+pub fn cloneInto(comptime R: type, value: *const R, allocator: std.mem.Allocator, out: *R) !void {
+    inline for (comptime savedFields(R)) |f| {
+        @field(out, f.name) = try cloneField(f.type, @field(value, f.name), allocator);
+    }
+}
+
+fn cloneField(comptime T: type, value: T, allocator: std.mem.Allocator) !T {
+    if (comptime isNested(T)) return clone(T, value, allocator);
+    if (comptime OptionalNested(T)) |N| return if (value) |v| try clone(N, v, allocator) else null;
+    if (comptime ListItem(T)) |Item| {
+        var list: T = .empty;
+        errdefer freeList(Item, &list, allocator);
+        try list.ensureTotalCapacity(allocator, value.items.len);
+        for (value.items) |item| list.appendAssumeCapacity(try cloneField(Item, item, allocator));
+        return list;
+    }
+    if (comptime isStringMap(T)) {
+        var map = T.init(allocator);
+        errdefer freeStringMap(allocator, &map);
+        var it = value.iterator();
+        while (it.next()) |entry| {
+            const key = try allocator.dupe(u8, entry.key_ptr.*);
+            errdefer allocator.free(key);
+            const map_value = try allocator.dupe(u8, entry.value_ptr.*);
+            errdefer allocator.free(map_value);
+            try map.put(key, map_value);
+        }
+        return map;
+    }
+    // Empty stays a literal, which freeOwnedString skips.
+    if (T == []const u8) return if (value.len == 0) "" else try allocator.dupe(u8, value);
+    if (T == ?[]const u8) return if (value) |s| try allocator.dupe(u8, s) else null;
+    if (comptime hasPointers(T)) @compileError(@typeName(T) ++ " holds pointers, so it needs its own clone to avoid sharing them");
+    return value;
+}
+
+pub fn hasPointers(comptime T: type) bool {
+    switch (@typeInfo(T)) {
+        .pointer => return true,
+        .optional => |o| return hasPointers(o.child),
+        .array => |a| return hasPointers(a.child),
+        inline .@"struct", .@"union" => |info| {
+            inline for (info.fields) |f| {
+                if (hasPointers(f.type)) return true;
+            }
+            return false;
+        },
+        else => return false,
+    }
+}
+
 /// Parses `json_text` into `T` via std.json.Value, since Argb and VkCode only implement jsonParseFromValue.
 pub fn parse(comptime T: type, allocator: std.mem.Allocator, json_text: []const u8) !std.json.Parsed(T) {
     const tree = try std.json.parseFromSlice(std.json.Value, allocator, json_text, .{});

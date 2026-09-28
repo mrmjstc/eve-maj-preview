@@ -32,7 +32,7 @@ var g_allocator: std.mem.Allocator = undefined;
 var g_io: std.Io = undefined;
 var g_chatlog_monitor: ?*chatlog.ChatlogMonitor = null;
 var g_trackers: activity.Trackers = undefined;
-var g_config: config_mod.Config = undefined;
+var g_store: config_mod.ProfileStore = undefined;
 var g_global_settings: config_mod.GlobalConfig = undefined;
 var g_tray_icon: ?tray.TrayIcon = null;
 var g_update_checker: ?update.UpdateChecker = null;
@@ -51,13 +51,13 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
     switch (msg) {
         win32.WM_TRAYICON => {
             if (g_tray_icon) |*icon| {
-                icon.handleTrayMessage(lParam, &g_config);
+                icon.handleTrayMessage(lParam, &g_store.live);
             }
             return 0;
         },
         win32.WM_COMMAND => {
             const command_id = @as(u16, @truncate(wParam));
-            _ = tray.TrayIcon.handleMenuCommand(command_id, &g_config, g_allocator);
+            _ = tray.TrayIcon.handleMenuCommand(command_id, &g_store);
             return 0;
         },
         win32.WM_TIMER => {
@@ -191,7 +191,7 @@ fn onTimerTick() void {
 
     const now = win32.Ticks.now();
     // Unwrapped to i64 since activity/tracker.zig's windows still do plain i64 arithmetic.
-    g_trackers.tick(&g_config, scout_result.windows, @intCast(now.ms));
+    g_trackers.tick(&g_store.live, scout_result.windows, @intCast(now.ms));
 
     if (painter.g_painter_ptr) |painter_ptr| {
         if (now.elapsedSince(g_last_travel_check_ms) >= TRAVEL_CHECK_INTERVAL_MS) {
@@ -314,13 +314,13 @@ fn mainImpl(init: std.process.Init) !void {
         }
     }
 
-    g_config = try config_mod.loadProfile(g_allocator, profile_name);
-    defer g_config.deinit();
+    g_store = try config_mod.ProfileStore.init(try config_mod.loadProfile(g_allocator, profile_name));
+    defer g_store.deinit();
 
     // Not profile_name: loadProfile() may have fallen back to default, and this heals global settings to match.
-    try g_global_settings.updateLastUsed(g_config.profile_name);
+    try g_global_settings.updateLastUsed(g_store.live.profile_name);
 
-    g_config.logSettings();
+    g_store.live.logSettings();
 
     if (g_global_settings.autoRegisterProtocol) protocol.ensureRegistered(g_allocator);
 
@@ -330,7 +330,7 @@ fn mainImpl(init: std.process.Init) !void {
     if (g_global_settings.logLevel == .debug) log.openDebugConsole();
 
     const scout_ptr = try g_allocator.create(scout.Scout);
-    scout_ptr.* = scout.Scout.init(g_allocator, &g_config);
+    scout_ptr.* = scout.Scout.init(g_allocator, &g_store.live);
     scout_ptr.setGlobalInstance();
     defer {
         scout_ptr.deinit();
@@ -340,13 +340,13 @@ fn mainImpl(init: std.process.Init) !void {
     const painter_ptr = try createPainter();
     defer destroyPainter();
 
-    if (g_config.chatlog.enabled) {
+    if (g_store.live.chatlog.enabled) {
         g_chatlog_monitor = try createChatlogMonitor();
     } else {
         slog.info("Chatlog monitoring disabled", .{});
     }
 
-    g_trackers.setup(&g_config, g_chatlog_monitor);
+    g_trackers.setup(&g_store.live, g_chatlog_monitor);
     defer g_trackers.deinit();
 
     // Registered after the trackers' defer so it runs first (LIFO): the worker thread must stop before the trackers are freed, since it may be mid-iteration reading them.
@@ -355,9 +355,9 @@ fn mainImpl(init: std.process.Init) !void {
     if (g_chatlog_monitor) |monitor| {
         // Started only now that the trackers are wired in, so it never observes them as null when they should be set.
         startChatlogWorker(monitor);
-        slog.debug("Chatlog monitoring enabled (threading: {})", .{g_config.chatlog.useThreading});
+        slog.debug("Chatlog monitoring enabled (threading: {})", .{g_store.live.chatlog.useThreading});
 
-        for (g_config.characters.items) |char_config| {
+        for (g_store.live.characters.items) |char_config| {
             monitor.resolveCharacterId(char_config.name) catch |err| {
                 slog.warn("Failed to queue ID backfill for {s}: {}", .{ char_config.name, err });
             };
@@ -407,7 +407,7 @@ fn mainImpl(init: std.process.Init) !void {
 
     // Create thumbnail windows for each EVE client (fast - no I/O blocking)
     const eve_windows = scout_ptr.getWindows();
-    painter_ptr.populate(eve_windows, .{ .move_to_saved = g_config.autoMovePosition.moveOnStartup });
+    painter_ptr.populate(eve_windows, .{ .move_to_saved = g_store.live.autoMovePosition.moveOnStartup });
 
     // Register with chatlog monitor after thumbnails are visible (deferred I/O)
     if (g_chatlog_monitor) |monitor| addChatlogCharacters(monitor, eve_windows);
@@ -421,7 +421,7 @@ fn mainImpl(init: std.process.Init) !void {
         focus_grant.uninstall();
     }
 
-    const TIMER_INTERVAL: win32.UINT = g_config.timer.scanIntervalMs;
+    const TIMER_INTERVAL: win32.UINT = g_store.live.timer.scanIntervalMs;
     const timer_id = win32.SetTimer(timer_hwnd, TIMER_ID, TIMER_INTERVAL, null);
     if (timer_id == 0) {
         slog.err("Failed to create timer", .{});
@@ -440,7 +440,7 @@ fn mainImpl(init: std.process.Init) !void {
 fn createPainter() !*painter.Painter {
     const new_painter = try g_allocator.create(painter.Painter);
     errdefer g_allocator.destroy(new_painter);
-    new_painter.* = try painter.Painter.init(g_allocator, &g_config);
+    new_painter.* = try painter.Painter.init(g_allocator, &g_store);
     painter.g_painter_ptr = new_painter;
     return new_painter;
 }
@@ -456,7 +456,7 @@ fn destroyPainter() void {
 fn createHotkeyManager(timer_hwnd: win32.HWND) !void {
     const manager = try g_allocator.create(hotkeys.HotkeyManager);
     errdefer g_allocator.destroy(manager);
-    manager.* = try hotkeys.HotkeyManager.init(g_allocator, &g_config, &g_global_settings, scout.g_scout_ptr.?, painter.g_painter_ptr.?);
+    manager.* = try hotkeys.HotkeyManager.init(g_allocator, &g_store.live, &g_global_settings, scout.g_scout_ptr.?, painter.g_painter_ptr.?);
     hotkeys.g_hotkey_manager_ptr = manager;
 
     manager.registerHotkeys(timer_hwnd) catch |err| {
@@ -473,7 +473,7 @@ fn destroyHotkeyManager() void {
 
 /// Created with its worker thread stopped, so the trackers can be wired in before it runs.
 fn createChatlogMonitor() !*chatlog.ChatlogMonitor {
-    return chatlog.ChatlogMonitor.init(g_allocator, g_io, &g_config.chatlog, &g_global_settings);
+    return chatlog.ChatlogMonitor.init(g_allocator, g_io, &g_store.live.chatlog, &g_global_settings);
 }
 
 fn destroyChatlogMonitor() void {
@@ -485,7 +485,7 @@ fn destroyChatlogMonitor() void {
 
 /// Without threading, the monitor does its log I/O inline on the main thread's tick instead.
 fn startChatlogWorker(monitor: *chatlog.ChatlogMonitor) void {
-    if (!g_config.chatlog.useThreading) return;
+    if (!g_store.live.chatlog.useThreading) return;
     monitor.startWorkerThread() catch |err| {
         slog.warn("Failed to start chatlog worker thread: {}", .{err});
     };
@@ -522,22 +522,28 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     const timer_hwnd = g_timer_hwnd orelse return error.NoTimerWindow;
 
     // Loaded up front so we can decide below whether chatlog monitoring needs a rebuild.
-    const new_config = config_mod.loadProfile(g_allocator, new_profile_name) catch |err| blk: {
+    const loaded = config_mod.loadProfile(g_allocator, new_profile_name) catch |err| blk: {
         slog.err("Failed to load new profile, reverting to default", .{});
         break :blk config_mod.loadProfile(g_allocator, config_mod.DEFAULT_PROFILE) catch {
             // Original profile-load error, not the fallback's.
             return err;
         };
     };
+    // Built before anything is torn down, so a failure here leaves the running profile intact.
+    var new_store = config_mod.ProfileStore.init(loaded) catch |err| {
+        slog.err("Failed to set up profile '{s}': {}", .{ new_profile_name, err });
+        return err;
+    };
+    const new_config = &new_store.live;
 
     // A config dialog Save reloads the same profile, which isn't a switch.
-    const profile_changed = !std.mem.eql(u8, g_config.profile_name, new_config.profile_name);
+    const profile_changed = !std.mem.eql(u8, g_store.live.profile_name, new_config.profile_name);
 
     const keep_chatlog_monitor = g_chatlog_monitor != null and
-        g_config.chatlog.enabled == new_config.chatlog.enabled and
-        g_config.chatlog.useThreading == new_config.chatlog.useThreading and
-        std.mem.eql(u8, g_config.chatlog.chatlogDir, new_config.chatlog.chatlogDir) and
-        std.mem.eql(u8, g_config.chatlog.gamelogDir, new_config.chatlog.gamelogDir);
+        g_store.live.chatlog.enabled == new_config.chatlog.enabled and
+        g_store.live.chatlog.useThreading == new_config.chatlog.useThreading and
+        std.mem.eql(u8, g_store.live.chatlog.chatlogDir, new_config.chatlog.chatlogDir) and
+        std.mem.eql(u8, g_store.live.chatlog.gamelogDir, new_config.chatlog.gamelogDir);
 
     if (keep_chatlog_monitor) {
         // Pause (not destroy) so the worker thread can't race the tracker swap below.
@@ -561,13 +567,13 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     destroyPainter();
     slog.debug("Cleaned up painter", .{});
 
-    g_config.deinit();
+    g_store.deinit();
     slog.debug("Cleaned up old config", .{});
 
-    g_config = new_config;
+    g_store = new_store;
 
     slog.info("Loaded new config: {s}", .{new_profile_name});
-    g_config.logSettings();
+    g_store.live.logSettings();
 
     // Picks up hotkey/profile-switch/log-level edits made via the config dialog while running, since g_global_settings is otherwise only loaded once at startup.
     if (config_mod.GlobalConfig.load(g_allocator)) |reloaded| {
@@ -595,14 +601,14 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         // Clients are already where the user put them; only startup and new arrivals auto-move.
         .move_to_saved = false,
         // Only seeded if monitoring stays on to refresh it, or a stale name would freeze on screen forever.
-        .system_names = if (g_config.chatlog.enabled) &last_known_systems else null,
+        .system_names = if (g_store.live.chatlog.enabled) &last_known_systems else null,
     });
     slog.debug("Recreated {} thumbnail(s)", .{eve_windows.len});
 
     if (keep_chatlog_monitor) {
-        g_chatlog_monitor.?.applySettings(&g_config.chatlog);
+        g_chatlog_monitor.?.applySettings(&g_store.live.chatlog);
         slog.debug("Applied reload settings to paused chatlog monitor", .{});
-    } else if (g_config.chatlog.enabled) {
+    } else if (g_store.live.chatlog.enabled) {
         g_chatlog_monitor = createChatlogMonitor() catch |err| blk: {
             slog.warn("Failed to initialize chatlog monitor: {}", .{err});
             break :blk null;
@@ -612,16 +618,16 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     }
 
     // Wired while the worker is stopped (paused above, or not started yet), so it never reads a tracker mid-swap.
-    g_trackers.setup(&g_config, g_chatlog_monitor);
+    g_trackers.setup(&g_store.live, g_chatlog_monitor);
 
     if (g_chatlog_monitor) |monitor| {
         // Started before adding characters, so addCharacter() queues work instead of blocking the message loop with log I/O.
         startChatlogWorker(monitor);
         if (keep_chatlog_monitor) {
-            slog.info("Resumed chatlog monitoring without rescanning logs (threading: {})", .{g_config.chatlog.useThreading});
+            slog.info("Resumed chatlog monitoring without rescanning logs (threading: {})", .{g_store.live.chatlog.useThreading});
         } else {
             addChatlogCharacters(monitor, eve_windows);
-            slog.info("Reinitialized chatlog monitoring (threading: {})", .{g_config.chatlog.useThreading});
+            slog.info("Reinitialized chatlog monitoring (threading: {})", .{g_store.live.chatlog.useThreading});
         }
     }
 
@@ -631,12 +637,12 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     };
     slog.debug("Reinitialized hotkey manager", .{});
 
-    const new_interval = g_config.timer.scanIntervalMs;
+    const new_interval = g_store.live.timer.scanIntervalMs;
     _ = win32.SetTimer(timer_hwnd, TIMER_ID, new_interval, null);
     slog.debug("Updated timer interval to {} ms", .{new_interval});
 
     if (profile_changed) {
-        const name = g_config.profile_name;
+        const name = g_store.live.profile_name;
         const display_name = if (std.mem.endsWith(u8, name, ".json")) name[0 .. name.len - ".json".len] else name;
         new_painter.notifyAll(.{ .ntype = .ProfileSwitch, .target = display_name });
     }
@@ -646,7 +652,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
 
 /// Merges a live-preview patch (changed fields only) into the running config, repaints, and repositions thumbnails; unlike reloadWithProfile() it never touches hotkeys/chatlog/identity, so it's cheap enough to run on every keystroke/slider drag in the dialog.
 fn applyThumbnailPreview(json_data: []const u8) !void {
-    const applied = try config_preview.apply(&g_config, g_allocator, json_data);
+    const applied = try config_preview.apply(&g_store.live, g_allocator, json_data);
     if (painter.g_painter_ptr) |painter_ptr| {
         painter_ptr.refreshAllThumbnailVisuals();
         if (applied.layout) painter_ptr.repositionAllThumbnails();
@@ -661,9 +667,9 @@ fn showTestNotification(json_data: []const u8) !void {
     try painter_ptr.showTestNotification(request.ntype, request.config);
 }
 
-/// Discards live-previewed appearance and layout changes by reloading that section from disk, repainting, and repositioning; sent when the config dialog closes, a no-op if Save was already clicked.
+/// Drops unsaved dialog edits, keeping runtime changes made meanwhile; sent when the config dialog closes, a no-op if Save was already clicked.
 fn revertThumbnailPreview() void {
-    config_preview.revert(&g_config, g_allocator) catch |err| {
+    g_store.discard() catch |err| {
         slog.err("Failed to revert thumbnail preview: {}", .{err});
         return;
     };

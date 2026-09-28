@@ -53,13 +53,13 @@ fn categoryEnabled(cfg: *const config_mod.Config, cat: notification_mod.Notifica
     };
 }
 
-fn setCategoryEnabled(cfg: *config_mod.Config, cat: notification_mod.NotificationCategory, value: bool) void {
+fn setCategoryEnabled(store: *config_mod.ProfileStore, cat: notification_mod.NotificationCategory, value: bool) void {
     switch (cat) {
-        .Fleet => cfg.display.setLive("notifInfoPanelShowFleet", value),
-        .Mining => cfg.display.setLive("notifInfoPanelShowMining", value),
-        .Combat => cfg.display.setLive("notifInfoPanelShowCombat", value),
-        .Navigation => cfg.display.setLive("notifInfoPanelShowNavigation", value),
-        .General => cfg.display.setLive("notifInfoPanelShowGeneral", value),
+        .Fleet => store.update(.{ .display = .{ .notifInfoPanelShowFleet = value } }),
+        .Mining => store.update(.{ .display = .{ .notifInfoPanelShowMining = value } }),
+        .Combat => store.update(.{ .display = .{ .notifInfoPanelShowCombat = value } }),
+        .Navigation => store.update(.{ .display = .{ .notifInfoPanelShowNavigation = value } }),
+        .General => store.update(.{ .display = .{ .notifInfoPanelShowGeneral = value } }),
     }
 }
 
@@ -82,9 +82,9 @@ pub const HistoryPanel = struct {
     /// Last-seen "any character logged in", used to detect the logged-in -> logged-out edge that clears force_visible.
     had_characters: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator, cfg: *config_mod.Config, instance: win32.HINSTANCE) HistoryPanel {
-        if (!cfg.display.showNotifInfoPanel) return .{};
-        const window = HistoryPanelWindow.init(allocator, cfg, instance) catch |err| {
+    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) HistoryPanel {
+        if (!store.live.display.showNotifInfoPanel) return .{};
+        const window = HistoryPanelWindow.init(allocator, store, instance) catch |err| {
             slog.err("Failed to create History Panel window: {}", .{err});
             return .{};
         };
@@ -104,20 +104,20 @@ pub const HistoryPanel = struct {
     }
 
     /// Keyed on isVisible() rather than window existence, so it turns fully off (not re-hidden) when toggled while visible, and forces it on immediately - even with no characters logged in - when toggled while off/auto-hidden.
-    pub fn toggle(self: *HistoryPanel, allocator: std.mem.Allocator, cfg: *config_mod.Config, instance: win32.HINSTANCE, any_character_logged_in: bool) void {
-        if (self.isVisible(cfg, any_character_logged_in)) {
+    pub fn toggle(self: *HistoryPanel, allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE, any_character_logged_in: bool) void {
+        if (self.isVisible(&store.live, any_character_logged_in)) {
             self.deinit();
-            cfg.display.setLive("showNotifInfoPanel", false);
+            store.update(.{ .display = .{ .showNotifInfoPanel = false } });
             self.force_visible = false;
             return;
         }
         if (self.window == null) {
-            self.window = HistoryPanelWindow.init(allocator, cfg, instance) catch |err| {
+            self.window = HistoryPanelWindow.init(allocator, store, instance) catch |err| {
                 slog.err("Failed to create History Panel window: {}", .{err});
                 return;
             };
         }
-        cfg.display.setLive("showNotifInfoPanel", true);
+        store.update(.{ .display = .{ .showNotifInfoPanel = true } });
         self.force_visible = true;
     }
 
@@ -149,7 +149,8 @@ pub const HistoryPanelWindow = struct {
     hwnd: win32.HWND,
     instance: win32.HINSTANCE,
     allocator: std.mem.Allocator,
-    config: *config_mod.Config,
+    store: *config_mod.ProfileStore,
+    config: *const config_mod.Config,
     font: ?win32.HFONT = null,
     // Owns a copy rather than aliasing config.display.notifInfoPanelFontName, which config frees/replaces on a genuine rename.
     cached_font_name: []const u8 = "",
@@ -166,9 +167,10 @@ pub const HistoryPanelWindow = struct {
 
     pub fn init(
         allocator: std.mem.Allocator,
-        cfg: *config_mod.Config,
+        store: *config_mod.ProfileStore,
         instance: win32.HINSTANCE,
     ) !HistoryPanelWindow {
+        const cfg = &store.live;
         try registerWindowClass(instance);
 
         const hwnd = win32.CreateWindowExA(
@@ -215,6 +217,7 @@ pub const HistoryPanelWindow = struct {
             .hwnd = hwnd,
             .instance = instance,
             .allocator = allocator,
+            .store = store,
             .config = cfg,
             .font = font,
             .cached_font_name = cached_font_name,
@@ -256,14 +259,7 @@ pub const HistoryPanelWindow = struct {
         var rect: win32.RECT = undefined;
         _ = win32.GetWindowRect(self.hwnd, &rect);
 
-        const pos = config_mod.Position{
-            .x = rect.left,
-            .y = rect.top,
-        };
-
-        self.config.saveHistoryPanelPosition(self.allocator, pos) catch |err| {
-            slog.err("Failed to save History Panel position: {}", .{err});
-        };
+        self.store.update(.{ .display = .{ .notifInfoPanelX = rect.left, .notifInfoPanelY = rect.top } });
     }
 
     /// Notification text color for a history row: the notification type's configured color, else the thumbnail overlay's default text color.
@@ -286,10 +282,7 @@ pub const HistoryPanelWindow = struct {
             const rect = self.category_button_rects[i];
             if (cx < rect.left or cx >= rect.right) continue;
 
-            setCategoryEnabled(self.config, cat, !categoryEnabled(self.config, cat));
-            self.config.saveCurrentProfile(self.allocator) catch |err| {
-                slog.err("Failed to save History Panel category filter: {}", .{err});
-            };
+            setCategoryEnabled(self.store, cat, !categoryEnabled(self.config, cat));
             return;
         }
     }

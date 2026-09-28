@@ -16,6 +16,7 @@ const display = @import("config/display.zig");
 const behavior = @import("config/behavior.zig");
 const auto_colors = @import("config/auto_colors.zig");
 const profiles = @import("config/profiles.zig");
+const store = @import("config/store.zig");
 
 const slog = log.scoped("config");
 
@@ -32,6 +33,7 @@ pub const loadProfile = profiles.load;
 pub const listProfiles = profiles.list;
 pub const saveProfile = profiles.save;
 pub const writeDefaultProfile = profiles.writeDefault;
+pub const ProfileStore = store.ProfileStore;
 
 /// Byte slicing is safe: the dialog only allows ASCII profile names.
 pub fn clampProfileName(name: []const u8) []const u8 {
@@ -269,76 +271,10 @@ pub const Config = struct {
         wire.logJson(self.allocator, self);
     }
 
-    pub fn saveCurrentProfile(self: *const Config, allocator: std.mem.Allocator) !void {
-        const profile_path = try profiles.path(allocator, self.profile_name);
-        defer allocator.free(profile_path);
-        try profiles.save(self, allocator, profile_path);
-    }
-
-    /// Persists the entire config as JSON, not just this one field.
-    pub fn saveCharacterPosition(self: *Config, allocator: std.mem.Allocator, character_name: []const u8, pos: Position) !void {
-        const char_config = try self.getOrCreateCharacter(allocator, character_name);
-        const is_new = (char_config.position == null);
-        char_config.position = pos;
-
-        try self.saveCurrentProfile(allocator);
-
-        if (is_new) {
-            slog.debug("Created new position for '{s}' in profile '{s}': ({}, {})", .{ character_name, self.profile_name, pos.x, pos.y });
-        } else {
-            slog.debug("Updated position for '{s}' in profile '{s}': ({}, {})", .{ character_name, self.profile_name, pos.x, pos.y });
-        }
-    }
-
-    pub fn saveCharacterWindowPosition(self: *Config, allocator: std.mem.Allocator, character_name: []const u8, pos: Position) !void {
-        const char_config = try self.getOrCreateCharacter(allocator, character_name);
-        char_config.windowPosition = pos;
-
-        try self.saveCurrentProfile(allocator);
-        slog.debug("Saved window position for '{s}' in profile '{s}': ({}, {})", .{ character_name, self.profile_name, pos.x, pos.y });
-    }
-
-    /// No-op if `character_name` has no saved window position (or doesn't exist yet).
-    pub fn clearCharacterWindowPosition(self: *Config, allocator: std.mem.Allocator, character_name: []const u8) !void {
-        const char_config = self.findCharacter(character_name) orelse return;
-        if (char_config.windowPosition == null) return;
-        char_config.windowPosition = null;
-
-        try self.saveCurrentProfile(allocator);
-        slog.debug("Cleared window position for '{s}' in profile '{s}'", .{ character_name, self.profile_name });
-    }
-
-    pub fn saveAllCharacterWindowPositions(self: *Config, allocator: std.mem.Allocator, pos: Position) !void {
-        for (self.characters.items) |*char| {
-            char.windowPosition = pos;
-        }
-
-        try self.saveCurrentProfile(allocator);
-        slog.debug("Saved window position for all {} character(s) in profile '{s}': ({}, {})", .{ self.characters.items.len, self.profile_name, pos.x, pos.y });
-    }
-
-    pub fn clearAllCharacterWindowPositions(self: *Config, allocator: std.mem.Allocator) !void {
-        for (self.characters.items) |*char| {
-            char.windowPosition = null;
-        }
-
-        try self.saveCurrentProfile(allocator);
-        slog.debug("Cleared window position for all {} character(s) in profile '{s}'", .{ self.characters.items.len, self.profile_name });
-    }
-
-    pub fn saveListViewPosition(self: *Config, allocator: std.mem.Allocator, pos: Position) !void {
-        self.display.setLive("startX", pos.x);
-        self.display.setLive("startY", pos.y);
-
-        try self.saveCurrentProfile(allocator);
-        slog.debug("Saved list view position for profile '{s}': ({}, {})", .{ self.profile_name, pos.x, pos.y });
-    }
-
-    pub fn saveHistoryPanelPosition(self: *Config, allocator: std.mem.Allocator, pos: Position) !void {
-        self.display.setLive("notifInfoPanelX", pos.x);
-        self.display.setLive("notifInfoPanelY", pos.y);
-
-        try self.saveCurrentProfile(allocator);
-        slog.debug("Saved History Panel position for profile '{s}': ({}, {})", .{ self.profile_name, pos.x, pos.y });
+    pub fn clone(self: *const Config, allocator: std.mem.Allocator) !Config {
+        var out: Config = .{ .allocator = allocator, .profile_name = try allocator.dupe(u8, self.profile_name) };
+        errdefer out.deinit();
+        try wire.cloneInto(Config, self, allocator, &out);
+        return out;
     }
 };

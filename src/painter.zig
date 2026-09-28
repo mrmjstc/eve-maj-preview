@@ -196,7 +196,9 @@ pub const Painter = struct {
     text_hwnd_to_index: std.AutoHashMap(win32.HWND, usize),
     last_hwnd_index_rebuild: win32.Ticks = .{},
     instance: win32.HINSTANCE,
-    config: *config_mod.Config,
+    /// Read-only, so every runtime change goes through `store` and reaches both the running and the saved copy.
+    config: *const config_mod.Config,
+    store: *config_mod.ProfileStore,
     focus_event_hook: ?win32.HANDLE = null,
     destroy_event_hook: ?win32.HANDLE = null,
     hide_debounce_timer_hwnd: ?win32.HWND = null,
@@ -218,8 +220,9 @@ pub const Painter = struct {
     /// Unique system/character colours; lives as long as this Painter, which a profile reload recreates along with Config.
     auto_colors: config_mod.AutoColorStore,
 
-    pub fn init(allocator: std.mem.Allocator, cfg: *config_mod.Config) !Painter {
+    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore) !Painter {
         const instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
+        const cfg = &store.live;
 
         var painter: Painter = .{
             .allocator = allocator,
@@ -234,6 +237,7 @@ pub const Painter = struct {
             .font_cache = .init(allocator),
             .instance = instance,
             .config = cfg,
+            .store = store,
         };
 
         try painter.registerWindowClass();
@@ -251,13 +255,13 @@ pub const Painter = struct {
         }
 
         if (cfg.display.viewMode == .ClientList) {
-            painter.list_window = list_view.ListWindow.init(allocator, cfg, instance) catch |err| blk: {
+            painter.list_window = list_view.ListWindow.init(allocator, store, instance) catch |err| blk: {
                 slog.err("Failed to create list window: {}", .{err});
                 break :blk null;
             };
         }
 
-        painter.history_panel = history_panel_mod.HistoryPanel.init(allocator, cfg, instance);
+        painter.history_panel = history_panel_mod.HistoryPanel.init(allocator, store, instance);
 
         return painter;
     }
@@ -1271,7 +1275,7 @@ pub const Painter = struct {
 
     /// Tray menu's "Show History Panel" item.
     pub fn toggleHistoryPanel(self: *Painter) void {
-        self.history_panel.toggle(self.allocator, self.config, self.instance, self.anyCharacterLoggedIn());
+        self.history_panel.toggle(self.allocator, self.store, self.instance, self.anyCharacterLoggedIn());
     }
 
     fn registerWindowClass(self: *Painter) !void {
@@ -1515,14 +1519,7 @@ pub const Painter = struct {
         var rect: win32.RECT = undefined;
         _ = win32.GetWindowRect(hwnd, &rect);
 
-        const pos = config_mod.Position{
-            .x = rect.left,
-            .y = rect.top,
-        };
-
-        self.config.saveCharacterPosition(self.allocator, thumbnail.character_name, pos) catch |err| {
-            slog.err("Failed to save position for {s}: {}", .{ thumbnail.character_name, err });
-        };
+        self.store.setCharacterPosition(thumbnail.character_name, .{ .x = rect.left, .y = rect.top });
     }
 };
 
