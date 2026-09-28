@@ -1,7 +1,7 @@
 const std = @import("std");
 const win32 = @import("platform/win32.zig");
 const gdi_overlay = @import("platform/gdi_overlay.zig");
-const protocol = @import("protocol.zig");
+const dialog_events = @import("dialog/events.zig");
 const color_mod = @import("util/color.zig");
 const log = @import("log.zig");
 const slog = log.scoped("region_select");
@@ -67,7 +67,7 @@ var g_last_redraw: win32.Ticks = undefined;
 var g_cross_cursor: ?win32.HCURSOR = null;
 var g_on_finished: ?*const fn () void = null;
 var g_label_style: LabelStyle = .{ .font = null, .color = 0xFFFFFFFF };
-var g_labels = protocol.RegionSelectLabels{};
+var g_labels = Labels{};
 
 const Handle = enum { none, move, left, right, top, bottom, top_left, top_right, bottom_left, bottom_right };
 const Button = enum { save, cancel };
@@ -110,10 +110,42 @@ pub fn setOnFinishedCallback(cb: ?*const fn () void) void {
     g_on_finished = cb;
 }
 
-/// Starts (or resets, if already in progress) the drag-to-select overlay; publishes the result via
-/// protocol.publishRegionSelectResult. accent_color is 0xAARRGGBB, forced fully opaque.
-/// With `edit_region`, that region's edges are adjusted instead of dragging a new one.
-pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelStyle, edit_region: ?win32.RECT, labels: protocol.RegionSelectLabels) void {
+/// Zero-padded fixed-size copy of `text` (UTF-8), truncated at a character boundary so a NUL always fits.
+pub fn fixedText(comptime n: usize, text: []const u8) [n]u8 {
+    var out = std.mem.zeroes([n]u8);
+    var len = @min(text.len, n - 1);
+    while (len > 0 and len < text.len and (text[len] & 0xC0) == 0x80) len -= 1;
+    @memcpy(out[0..len], text[0..len]);
+    return out;
+}
+
+/// The text in a fixed-size, NUL-padded label buffer.
+pub fn labelText(buf: []const u8) []const u8 {
+    return std.mem.sliceTo(buf, 0);
+}
+
+/// The overlay's on-screen text, translated by the config dialog since only it has the language files; English defaults if it sends nothing.
+pub const Labels = struct {
+    save: [32]u8 = fixedText(32, "Save"),
+    cancel: [32]u8 = fixedText(32, "Cancel"),
+    hint_new: [192]u8 = fixedText(192, "Drag to draw the region, then drag its edges to adjust"),
+    hint_edit: [192]u8 = fixedText(192, "Drag the edges to resize, or the inside to move"),
+    hint_confirm: [192]u8 = fixedText(192, "Enter or Save to confirm, Esc or right-click to cancel"),
+};
+
+pub const Request = struct {
+    /// Hide the visible thumbnails for the duration of the selection so they don't cover the overlay.
+    hide_thumbnails: bool = false,
+    /// The region to adjust; null starts a fresh drag.
+    edit_region: ?win32.RECT = null,
+    labels: Labels = .{},
+};
+
+pub const Status = enum { success, cancelled, too_small };
+
+/// Starts (or resets, if already in progress) the drag-to-select overlay; the result goes to the config dialog as a regionSelected event.
+/// accent_color is 0xAARRGGBB, forced fully opaque. With `edit_region`, that region's edges are adjusted instead of dragging a new one.
+pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelStyle, edit_region: ?win32.RECT, labels: Labels) void {
     g_border_color = accent_color | 0xFF000000;
     g_label_style = label_style;
     g_labels = labels;
@@ -367,7 +399,7 @@ fn scaled(css_px: i32) i32 {
 /// Wide enough for the longer translated label; CJK glyphs count double. Estimated, since layout also runs from hit testing where there's no DC to measure with.
 fn buttonWidthCss() i32 {
     var widest: i32 = 0;
-    for ([_][]const u8{ protocol.labelText(&g_labels.save), protocol.labelText(&g_labels.cancel) }) |label| {
+    for ([_][]const u8{ labelText(&g_labels.save), labelText(&g_labels.cancel) }) |label| {
         var units: i32 = 0;
         for (label) |byte| {
             if ((byte & 0xC0) == 0x80) continue;
@@ -462,8 +494,8 @@ fn drawButtons(bmp: *const gdi_overlay.OverlayBitmap) void {
     if (g_edit_handle != .none) return;
     ensureButtonFonts(bmp.mem_dc);
     const rects = buttonRects();
-    drawButton(bmp, rects[@intFromEnum(Button.save)], protocol.labelText(&g_labels.save), .save);
-    drawButton(bmp, rects[@intFromEnum(Button.cancel)], protocol.labelText(&g_labels.cancel), .cancel);
+    drawButton(bmp, rects[@intFromEnum(Button.save)], labelText(&g_labels.save), .save);
+    drawButton(bmp, rects[@intFromEnum(Button.cancel)], labelText(&g_labels.cancel), .cancel);
 }
 
 fn redraw() void {
@@ -505,16 +537,16 @@ fn finish(cancelled: bool) void {
 
     const empty_rect = win32.RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
     if (cancelled) {
-        protocol.publishRegionSelectResult(.cancelled, empty_rect);
+        dialog_events.regionSelected(.cancelled, empty_rect);
         return;
     }
 
     const rect = if (g_edit_mode) g_edit_rect else normalizedSelection();
     if (!isBigEnough(rect)) {
-        protocol.publishRegionSelectResult(.too_small, empty_rect);
+        dialog_events.regionSelected(.too_small, empty_rect);
         return;
     }
-    protocol.publishRegionSelectResult(.success, rect);
+    dialog_events.regionSelected(.success, rect);
 }
 
 fn wndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {

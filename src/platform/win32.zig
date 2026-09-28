@@ -80,16 +80,17 @@ pub const WM_SWITCH_PROFILE = WM_APP + 4;
 pub const WM_PROTOCOL_HOTKEY = WM_APP + 7;
 pub const WM_HOTKEYS_STATE_CHANGED = WM_APP + 12;
 pub const WM_TOGGLE_VISIBILITY = WM_APP + 13;
+pub const WM_DIALOG_RPC = WM_APP + 14;
+pub const WM_DIALOG_MOVED = WM_APP + 15;
 pub const WM_COMMAND = 0x0111;
 
 pub const PROTOCOL_SWITCH_CHARACTER: usize = 1;
 pub const PROTOCOL_SWITCH_PROFILE: usize = 2;
-pub const PROTOCOL_PREVIEW_THUMBNAIL: usize = 3;
-pub const PROTOCOL_REVERT_PREVIEW: usize = 4;
-pub const PROTOCOL_DIALOG_SUSPEND_HOTKEYS: usize = 5;
-pub const PROTOCOL_DIALOG_RESUME_HOTKEYS: usize = 6;
-pub const PROTOCOL_START_REGION_SELECT: usize = 7;
-pub const PROTOCOL_TEST_NOTIFICATION: usize = 8;
+// 3-8 were the old config.exe's commands; skipped so a stale copy can't be misread.
+pub const PROTOCOL_OPEN_CONFIG: usize = 9;
+
+pub const SMTO_ABORTIFHUNG: UINT = 0x0002;
+pub extern "user32" fn SendMessageTimeoutA(hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM, fuFlags: UINT, uTimeout: UINT, lpdwResult: ?*usize) callconv(.c) LRESULT;
 
 pub const SPI_GETANIMATION = 0x0048;
 pub const SPI_SETANIMATION = 0x0049;
@@ -151,6 +152,7 @@ pub const KEY_READ: DWORD = 0x20019;
 pub const REG_SZ: DWORD = 1;
 pub const REG_OPTION_NON_VOLATILE: DWORD = 0;
 pub const ERROR_SUCCESS: LONG = 0;
+pub const ERROR_FILE_NOT_FOUND: LONG = 2;
 
 pub const POINT = extern struct {
     x: LONG,

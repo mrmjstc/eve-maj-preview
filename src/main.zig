@@ -25,6 +25,9 @@ const crash = @import("crash.zig");
 const log = @import("log.zig");
 const slog = log.scoped("main");
 const build_options = @import("build_options");
+const dialog_host = @import("dialog/host.zig");
+const dialog_rpc = @import("dialog/rpc.zig");
+const dialog_events = @import("dialog/events.zig");
 
 const TIMER_ID: usize = 1;
 
@@ -32,8 +35,9 @@ var g_allocator: std.mem.Allocator = undefined;
 var g_io: std.Io = undefined;
 var g_chatlog_monitor: ?*chatlog.ChatlogMonitor = null;
 var g_trackers: activity.Trackers = undefined;
-var g_store: config_mod.ProfileStore = undefined;
-var g_global_settings: config_mod.GlobalConfig = undefined;
+// Public for the configuration window, which edits them in this process.
+pub var g_store: config_mod.ProfileStore = undefined;
+pub var g_global_settings: config_mod.GlobalConfig = undefined;
 var g_tray_icon: ?tray.TrayIcon = null;
 var g_update_checker: ?update.UpdateChecker = null;
 // Exported for other modules to reach these without threading them through every call.
@@ -115,34 +119,17 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
                     slog.info("Protocol handler: switch to profile: {s}", .{profile_name});
                     switchProfile(profile_name);
                 },
-                win32.PROTOCOL_PREVIEW_THUMBNAIL => if (payload) |json_data| {
-                    applyThumbnailPreview(json_data) catch |err| {
-                        slog.err("Failed to apply thumbnail preview: {}", .{err});
-                    };
-                },
-                win32.PROTOCOL_TEST_NOTIFICATION => if (payload) |json_data| {
-                    showTestNotification(json_data) catch |err| {
-                        slog.err("Failed to show test notification: {}", .{err});
-                    };
-                },
-                win32.PROTOCOL_REVERT_PREVIEW => revertThumbnailPreview(),
-                win32.PROTOCOL_DIALOG_SUSPEND_HOTKEYS => {
-                    if (hotkeys.g_hotkey_manager_ptr) |manager| {
-                        manager.dialogSuspendHotkeys();
-                    }
-                },
-                win32.PROTOCOL_DIALOG_RESUME_HOTKEYS => {
-                    if (hotkeys.g_hotkey_manager_ptr) |manager| {
-                        manager.dialogResumeHotkeys(hwnd);
-                    }
-                },
-                win32.PROTOCOL_START_REGION_SELECT => {
-                    if (painter.g_painter_ptr) |painter_ptr| {
-                        painter_ptr.startRegionSelect(protocol.regionSelectRequestFromCopyData(cds));
-                    }
-                },
+                win32.PROTOCOL_OPEN_CONFIG => dialog_host.open(),
                 else => {},
             }
+            return 0;
+        },
+        win32.WM_DIALOG_RPC => {
+            dialog_rpc.runOnMainThread(lParam);
+            return 0;
+        },
+        win32.WM_DIALOG_MOVED => {
+            dialog_host.onMoved(lParam);
             return 0;
         },
         win32.WM_PROTOCOL_HOTKEY => {
@@ -199,6 +186,8 @@ fn onTimerTick() void {
             travel_left_behind.check(painter_ptr, now);
         }
     }
+
+    dialog_host.tick();
 }
 
 /// Routes panics into eve-maj.log; Zig only looks for `panic` in the root source file.
@@ -217,6 +206,16 @@ pub fn main(init: std.process.Init) void {
         }
         std.process.exit(1);
     };
+}
+
+fn hasArgument(process_args: std.process.Args, flag: []const u8) !bool {
+    // toSlice's result references several internal allocations, so it requires an arena rather than a plain allocator.
+    var arena = std.heap.ArenaAllocator.init(g_allocator);
+    defer arena.deinit();
+    for (try process_args.toSlice(arena.allocator())) |arg| {
+        if (std.mem.eql(u8, arg, flag)) return true;
+    }
+    return false;
 }
 
 /// Run-key startup entries launch with an arbitrary working directory, not the exe's folder.
@@ -246,6 +245,7 @@ fn mainImpl(init: std.process.Init) !void {
     config_mod.setIo(g_io);
     config_mod.setEnvironMap(init.environ_map);
     g_allocator = init.gpa;
+    dialog_host.init(g_allocator);
     g_trackers = .{ .allocator = g_allocator, .io = g_io };
 
     setCwdToExeDir();
@@ -259,6 +259,9 @@ fn mainImpl(init: std.process.Init) !void {
         return protocol.forwardToRunningInstance(url, g_allocator);
     }
 
+    // Read before the mutex, since GetLastError must be checked right after creating it.
+    const open_config = try hasArgument(init.minimal.args, "--config");
+
     const mutex_name = std.unicode.utf8ToUtf16LeStringLiteral("Global\\EVE-Maj-Preview-SingleInstance");
     const instance_mutex = win32.CreateMutexW(null, win32.TRUE, mutex_name);
 
@@ -270,6 +273,12 @@ fn mainImpl(init: std.process.Init) !void {
 
     const last_error = win32.GetLastError();
     if (last_error == win32.ERROR_ALREADY_EXISTS) {
+        if (open_config) {
+            if (protocol.findExistingInstance()) |hwnd| {
+                protocol.sendCommandToInstance(hwnd, .{ .OpenConfig = {} });
+                return;
+            }
+        }
         slog.info("Another instance of EVE-Maj Preview is already running", .{});
         return error.AlreadyRunning;
     }
@@ -303,6 +312,8 @@ fn mainImpl(init: std.process.Init) !void {
                 slog.err("--profile requires a profile name", .{});
                 return error.InvalidArguments;
             }
+        } else if (std.mem.eql(u8, args2[j], "--config")) {
+            // Handled before the instance check above.
         } else if (std.mem.eql(u8, args2[j], "--protocol")) {
             // Skip protocol arg (already handled above)
             if (j + 1 < args2.len) {
@@ -386,6 +397,7 @@ fn mainImpl(init: std.process.Init) !void {
     defer _ = win32.DestroyWindow(timer_hwnd);
 
     g_timer_hwnd = timer_hwnd;
+    defer dialog_host.shutdown();
 
     g_tray_icon = try tray.TrayIcon.init(g_allocator, timer_hwnd);
     defer if (g_tray_icon) |*icon| icon.deinit();
@@ -428,6 +440,8 @@ fn mainImpl(init: std.process.Init) !void {
         return error.SetTimerFailed;
     }
     defer _ = win32.KillTimer(timer_hwnd, TIMER_ID);
+
+    if (open_config) dialog_host.open();
 
     var msg: win32.MSG = undefined;
     while (win32.GetMessageA(&msg, null, 0, 0) != 0) {
@@ -499,7 +513,7 @@ fn addChatlogCharacters(monitor: *chatlog.ChatlogMonitor, windows: []const scout
     }
 }
 
-fn switchProfile(profile_name: []const u8) void {
+pub fn switchProfile(profile_name: []const u8) void {
     reloadWithProfile(profile_name) catch |err| {
         slog.err("Failed to switch profile to {s}: {}", .{ profile_name, err });
     };
@@ -647,11 +661,12 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
         new_painter.notifyAll(.{ .ntype = .ProfileSwitch, .target = display_name });
     }
 
+    dialog_events.profileSwitched(g_store.live.profile_name);
     slog.info("=== Profile reload complete: {s} ===", .{new_profile_name});
 }
 
 /// Merges a live-preview patch (changed fields only) into the running config, repaints, and repositions thumbnails; unlike reloadWithProfile() it never touches hotkeys/chatlog/identity, so it's cheap enough to run on every keystroke/slider drag in the dialog.
-fn applyThumbnailPreview(json_data: []const u8) !void {
+pub fn applyThumbnailPreview(json_data: []const u8) !void {
     const applied = try config_preview.apply(&g_store.live, g_allocator, json_data);
     if (painter.g_painter_ptr) |painter_ptr| {
         painter_ptr.refreshAllThumbnailVisuals();
@@ -660,14 +675,22 @@ fn applyThumbnailPreview(json_data: []const u8) !void {
 }
 
 /// Fires one event type on every thumbnail from the config dialog's unsaved per-type values; payload is `{type, config}`.
-fn showTestNotification(json_data: []const u8) !void {
+pub fn showTestNotification(json_data: []const u8) !void {
     var request = try config_preview.parseTestNotification(g_allocator, json_data);
     defer request.deinit(g_allocator);
     const painter_ptr = painter.g_painter_ptr orelse return;
     try painter_ptr.showTestNotification(request.ntype, request.config);
 }
 
-/// Drops unsaved dialog edits, keeping runtime changes made meanwhile; sent when the config dialog closes, a no-op if Save was already clicked.
+/// Drops unsaved edits, and resumes hotkeys in case it closed mid-recording.
+pub fn onDialogClosed() void {
+    revertThumbnailPreview();
+    if (hotkeys.g_hotkey_manager_ptr) |manager| {
+        if (g_timer_hwnd) |timer| manager.dialogResumeHotkeys(timer);
+    }
+}
+
+/// Drops unsaved dialog edits, keeping runtime changes made meanwhile; a no-op if Save was already clicked.
 fn revertThumbnailPreview() void {
     g_store.discard() catch |err| {
         slog.err("Failed to revert thumbnail preview: {}", .{err});

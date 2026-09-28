@@ -6,9 +6,133 @@ const Config = @import("../config.zig").Config;
 
 const slog = log.scoped("config");
 
+/// A profile's display name, without ".json"; longer names from older versions still load.
+pub const MAX_NAME_LEN: usize = 16;
+const BACKUP_DIR = "backup";
+
 /// Caller owns the returned slice.
 pub fn path(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
     return std.fs.path.join(allocator, &[_][]const u8{ files.PROFILES_DIR, name });
+}
+
+/// Only a plain `<name>.json` file name, so a name from the dialog can't reach outside PROFILES_DIR.
+pub fn validateName(name: []const u8) !void {
+    if (!std.mem.endsWith(u8, name, ".json")) return error.InvalidProfileName;
+    const stem = name[0 .. name.len - ".json".len];
+    if (stem.len == 0 or stem[0] == '.') return error.InvalidProfileName;
+    if (std.mem.indexOfAny(u8, stem, "/\\:*?\"<>|") != null) return error.InvalidProfileName;
+    if (std.mem.eql(u8, name, std.fs.path.basename(files.GLOBAL_SETTINGS_FILE))) return error.InvalidProfileName;
+}
+
+/// "<name>.json" for a display name typed by the user; caller owns the result.
+pub fn fileNameFor(allocator: std.mem.Allocator, display_name: []const u8) ![]u8 {
+    if (display_name.len == 0 or display_name.len > MAX_NAME_LEN) return error.InvalidProfileName;
+    const name = try std.fmt.allocPrint(allocator, "{s}.json", .{display_name});
+    errdefer allocator.free(name);
+    try validateName(name);
+    return name;
+}
+
+/// A new default profile; fails with ProfileAlreadyExists rather than overwriting one.
+pub fn create(allocator: std.mem.Allocator, name: []const u8, accent_color: ?u32) !void {
+    try validateName(name);
+    const profile_path = try path(allocator, name);
+    defer allocator.free(profile_path);
+    // Claims the name first, so two creates of the same name can't both succeed.
+    const file = std.Io.Dir.cwd().createFile(files.g_io, profile_path, .{ .exclusive = true }) catch |err| switch (err) {
+        error.PathAlreadyExists => return error.ProfileAlreadyExists,
+        else => return err,
+    };
+    file.close(files.g_io);
+    try writeDefault(allocator, name, accent_color);
+}
+
+/// Copies `source` to a new profile `target`, optionally with its own accent colour; never overwrites.
+pub fn copy(allocator: std.mem.Allocator, source: []const u8, target: []const u8, accent_color: ?u32) !void {
+    try validateName(source);
+    const source_path = try path(allocator, source);
+    defer allocator.free(source_path);
+    try copyFrom(allocator, source_path, target, accent_color);
+}
+
+/// Restores a file from PROFILES_DIR/backup (see deleteToBackup) as the new profile `target`.
+pub fn restoreBackup(allocator: std.mem.Allocator, backup: []const u8, target: []const u8, accent_color: ?u32) !void {
+    try validateName(backup);
+    const source_path = try std.fs.path.join(allocator, &.{ files.PROFILES_DIR, BACKUP_DIR, backup });
+    defer allocator.free(source_path);
+    try copyFrom(allocator, source_path, target, accent_color);
+}
+
+fn copyFrom(allocator: std.mem.Allocator, source_path: []const u8, target: []const u8, accent_color: ?u32) !void {
+    try validateName(target);
+    const target_path = try path(allocator, target);
+    defer allocator.free(target_path);
+
+    const cwd = std.Io.Dir.cwd();
+    cwd.copyFile(source_path, cwd, target_path, files.g_io, .{ .replace = false }) catch |err| switch (err) {
+        error.PathAlreadyExists => return error.ProfileAlreadyExists,
+        else => return err,
+    };
+
+    const color = accent_color orelse return;
+    var cfg = try load(allocator, target);
+    defer cfg.deinit();
+    cfg.accentColor = color;
+    try save(&cfg, allocator, target_path);
+}
+
+/// Moves the profile into PROFILES_DIR/backup, named `<unix time>_<name>` so the newest sorts first.
+pub fn deleteToBackup(allocator: std.mem.Allocator, name: []const u8) !void {
+    try validateName(name);
+    if (std.mem.eql(u8, name, files.DEFAULT_PROFILE)) return error.CannotDeleteDefaultProfile;
+
+    const profile_path = try path(allocator, name);
+    defer allocator.free(profile_path);
+    const backup_dir = try path(allocator, BACKUP_DIR);
+    defer allocator.free(backup_dir);
+
+    const cwd = std.Io.Dir.cwd();
+    cwd.createDir(files.g_io, backup_dir, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+
+    const backup_path = try std.fmt.allocPrint(allocator, "{s}{c}{d}_{s}", .{ backup_dir, std.fs.path.sep, std.Io.Clock.real.now(files.g_io).toSeconds(), name });
+    defer allocator.free(backup_path);
+    try cwd.rename(profile_path, cwd, backup_path, files.g_io);
+    slog.info("Moved profile '{s}' to {s}", .{ name, backup_path });
+}
+
+/// Backed-up profile file names, newest first; caller owns the list and its strings.
+pub fn listBackups(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
+    var names = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (names.items) |name| allocator.free(name);
+        names.deinit(allocator);
+    }
+
+    const backup_dir = try path(allocator, BACKUP_DIR);
+    defer allocator.free(backup_dir);
+    var dir = std.Io.Dir.cwd().openDir(files.g_io, backup_dir, .{ .iterate = true }) catch |err| switch (err) {
+        error.FileNotFound => return names,
+        else => return err,
+    };
+    defer dir.close(files.g_io);
+
+    var iter = dir.iterate();
+    while (try iter.next(files.g_io)) |entry| {
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".json")) continue;
+        const name = try allocator.dupe(u8, entry.name);
+        errdefer allocator.free(name);
+        try names.append(allocator, name);
+    }
+
+    std.mem.sort([]const u8, names.items, {}, struct {
+        fn newerFirst(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.order(u8, a, b) == .gt;
+        }
+    }.newerFirst);
+    return names;
 }
 
 /// A missing profile falls back to DEFAULT_PROFILE, and a malformed one to its defaults.

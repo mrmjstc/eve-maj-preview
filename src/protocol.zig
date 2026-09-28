@@ -30,12 +30,8 @@ pub const Command = union(enum) {
     Switch: []const u8,
     Profile: []const u8,
     Hotkey: GlobalAction,
-    PreviewThumbnail: []const u8,
-    RevertPreview: void,
-    DialogSuspendHotkeys: void,
-    DialogResumeHotkeys: void,
-    StartRegionSelect: RegionSelectRequest,
-    TestNotification: []const u8,
+    /// Sent by a second `--config` launch so the running instance opens its configuration window.
+    OpenConfig: void,
 
     /// Frees what parseUrl allocated; commands built any other way borrow their payloads.
     pub fn deinit(self: Command, allocator: std.mem.Allocator) void {
@@ -44,44 +40,6 @@ pub const Command = union(enum) {
             else => {},
         }
     }
-};
-
-/// Zero-padded fixed-size copy of `text` (UTF-8), truncated at a character boundary so a NUL always fits.
-pub fn fixedText(comptime n: usize, text: []const u8) [n]u8 {
-    var out = std.mem.zeroes([n]u8);
-    var len = @min(text.len, n - 1);
-    while (len > 0 and len < text.len and (text[len] & 0xC0) == 0x80) len -= 1;
-    @memcpy(out[0..len], text[0..len]);
-    return out;
-}
-
-/// The overlay's on-screen text, translated by the config dialog since only it has the language files; English defaults if the dialog sends nothing.
-pub const RegionSelectLabels = extern struct {
-    save: [32]u8 = fixedText(32, "Save"),
-    cancel: [32]u8 = fixedText(32, "Cancel"),
-    hint_new: [192]u8 = fixedText(192, "Drag to draw the region, then drag its edges to adjust"),
-    hint_edit: [192]u8 = fixedText(192, "Drag the edges to resize, or the inside to move"),
-    hint_confirm: [192]u8 = fixedText(192, "Enter or Save to confirm, Esc or right-click to cancel"),
-};
-
-/// The text in a fixed-size, NUL-padded label buffer.
-pub fn labelText(buf: []const u8) []const u8 {
-    return std.mem.sliceTo(buf, 0);
-}
-
-pub const RegionSelectRequest = struct {
-    /// Hide the visible thumbnails for the duration of the selection so they don't cover the overlay.
-    hide_thumbnails: bool = false,
-    /// The region to adjust; null starts a fresh drag.
-    edit_region: ?win32.RECT = null,
-    labels: RegionSelectLabels = .{},
-};
-
-const RegionSelectRequestWire = extern struct {
-    hide_thumbnails: u32,
-    has_edit_region: u32,
-    edit_region: win32.RECT,
-    labels: RegionSelectLabels,
 };
 
 /// Format: evemajpreview://action/params
@@ -158,7 +116,7 @@ fn urlDecode(allocator: std.mem.Allocator, encoded: []const u8) ![]const u8 {
     return result.toOwnedSlice(allocator);
 }
 
-/// Window class of the main app's hidden timer window, the target of every WM_COPYDATA command; config.exe and a second CLI invocation find the running instance by it.
+/// Window class of the main app's hidden timer window, the target of every WM_COPYDATA command; a second CLI invocation finds the running instance by it.
 pub const MAIN_WINDOW_CLASS = "EVE_TIMER_CLASS";
 
 pub fn findExistingInstance() ?win32.HWND {
@@ -196,35 +154,9 @@ pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
             _ = win32.SendMessageA(hwnd, win32.WM_PROTOCOL_HOTKEY, @intFromEnum(hotkey_action), 0);
             slog.info("Sent hotkey action '{s}'", .{@tagName(hotkey_action)});
         },
-        .PreviewThumbnail => |json| {
-            sendCopyData(hwnd, win32.PROTOCOL_PREVIEW_THUMBNAIL, json);
-            slog.debug("Sent thumbnail preview patch ({} bytes)", .{json.len});
-        },
-        .RevertPreview => {
-            sendCopyData(hwnd, win32.PROTOCOL_REVERT_PREVIEW, "");
-            slog.info("Sent revert preview", .{});
-        },
-        .DialogSuspendHotkeys => {
-            sendCopyData(hwnd, win32.PROTOCOL_DIALOG_SUSPEND_HOTKEYS, "");
-            slog.debug("Sent dialog suspend hotkeys", .{});
-        },
-        .DialogResumeHotkeys => {
-            sendCopyData(hwnd, win32.PROTOCOL_DIALOG_RESUME_HOTKEYS, "");
-            slog.debug("Sent dialog resume hotkeys", .{});
-        },
-        .StartRegionSelect => |request| {
-            const wire = RegionSelectRequestWire{
-                .hide_thumbnails = @intFromBool(request.hide_thumbnails),
-                .has_edit_region = @intFromBool(request.edit_region != null),
-                .edit_region = request.edit_region orelse std.mem.zeroes(win32.RECT),
-                .labels = request.labels,
-            };
-            sendCopyData(hwnd, win32.PROTOCOL_START_REGION_SELECT, std.mem.asBytes(&wire));
-            slog.info("Sent start region select", .{});
-        },
-        .TestNotification => |json| {
-            sendCopyData(hwnd, win32.PROTOCOL_TEST_NOTIFICATION, json);
-            slog.debug("Sent test notification ({} bytes)", .{json.len});
+        .OpenConfig => {
+            sendCopyData(hwnd, win32.PROTOCOL_OPEN_CONFIG, "");
+            slog.info("Sent open configuration", .{});
         },
     }
 }
@@ -243,179 +175,6 @@ fn sendCopyData(hwnd: win32.HWND, kind: usize, payload: []const u8) void {
 pub fn copyDataBytes(cds: *const win32.COPYDATASTRUCT) ?[]const u8 {
     const data_ptr = cds.lpData orelse return null;
     return @as([*]const u8, @ptrCast(data_ptr))[0..cds.cbData];
-}
-
-/// Receiving side of `Command.StartRegionSelect`; a malformed payload falls back to a plain fresh drag.
-pub fn regionSelectRequestFromCopyData(cds: *const win32.COPYDATASTRUCT) RegionSelectRequest {
-    const bytes = copyDataBytes(cds) orelse return .{};
-    if (bytes.len != @sizeOf(RegionSelectRequestWire)) return .{};
-    var wire: RegionSelectRequestWire = undefined;
-    @memcpy(std.mem.asBytes(&wire), bytes);
-    return .{
-        .hide_thumbnails = wire.hide_thumbnails != 0,
-        .edit_region = if (wire.has_edit_region != 0) wire.edit_region else null,
-        .labels = wire.labels,
-    };
-}
-
-pub const RegionSelectStatus = enum(u32) { none, success, cancelled, too_small };
-
-/// Cross-process result of a "Start Region Selection" drag; a named shared-memory mapping since today's WM_COPYDATA IPC is one-way dialog->app.
-pub const RegionSelectResult = extern struct {
-    sequence: u32 = 0,
-    status: RegionSelectStatus = .none,
-    x: i32 = 0,
-    y: i32 = 0,
-    width: i32 = 0,
-    height: i32 = 0,
-};
-
-const REGION_SELECT_MAPPING_NAME = "Local\\EVE-Maj-Preview-RegionSelectResult";
-
-// A named file mapping only lives while a handle to it stays open somewhere, so these are kept open for the process's lifetime rather than per-write.
-var g_region_select_mapping: ?win32.HANDLE = null;
-var g_group_revision_mapping: ?win32.HANDLE = null;
-var g_win_key_capture_mapping: ?win32.HANDLE = null;
-
-fn ensureMapping(slot: *?win32.HANDLE, name: [*:0]const u8, size: win32.DWORD) ?win32.HANDLE {
-    if (slot.*) |h| return h;
-    const mapping = win32.CreateFileMappingA(
-        win32.INVALID_HANDLE_VALUE,
-        null,
-        win32.PAGE_READWRITE,
-        0,
-        size,
-        name,
-    ) orelse {
-        slog.warn("Failed to create file mapping {s}", .{name});
-        return null;
-    };
-    slot.* = mapping;
-    return mapping;
-}
-
-fn ensureRegionSelectMapping() ?win32.HANDLE {
-    return ensureMapping(&g_region_select_mapping, REGION_SELECT_MAPPING_NAME, @sizeOf(RegionSelectResult));
-}
-
-/// Reads the current result; returns null if the mapping doesn't exist yet (main app hasn't published a result this run).
-pub fn readRegionSelectResult() ?RegionSelectResult {
-    const mapping = win32.OpenFileMappingA(win32.FILE_MAP_ALL_ACCESS, win32.FALSE, REGION_SELECT_MAPPING_NAME) orelse return null;
-    defer _ = win32.CloseHandle(mapping);
-
-    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(RegionSelectResult)) orelse {
-        slog.warn("Failed to map view of region-select file mapping", .{});
-        return null;
-    };
-    defer _ = win32.UnmapViewOfFile(view);
-
-    const result_ptr: *const RegionSelectResult = @ptrCast(@alignCast(view));
-    return result_ptr.*;
-}
-
-/// Increments the sequence and writes a fresh result; called by the main app once a drag finishes or is cancelled.
-pub fn publishRegionSelectResult(status: RegionSelectStatus, rect: win32.RECT) void {
-    const mapping = ensureRegionSelectMapping() orelse {
-        slog.err("Failed to create region-select result mapping", .{});
-        return;
-    };
-
-    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(RegionSelectResult)) orelse {
-        slog.err("Failed to map region-select result view", .{});
-        return;
-    };
-    defer _ = win32.UnmapViewOfFile(view);
-
-    const result_ptr: *RegionSelectResult = @ptrCast(@alignCast(view));
-    const next_sequence = result_ptr.sequence +% 1;
-    result_ptr.* = .{
-        .sequence = next_sequence,
-        .status = status,
-        .x = rect.left,
-        .y = rect.top,
-        .width = win32.rectWidth(rect),
-        .height = win32.rectHeight(rect),
-    };
-}
-
-/// Cross-process report of a captured bare Win-key press, mirroring RegionSelectResult - see keyboard_hook.zig's armWinKeyCapture.
-pub const WinKeyCaptureResult = extern struct {
-    sequence: u32 = 0,
-    /// MOD_CONTROL/MOD_ALT/MOD_SHIFT bits from virtual_keys.zig, held at the moment of capture.
-    modifiers: u32 = 0,
-};
-
-const WIN_KEY_CAPTURE_MAPPING_NAME = "Local\\EVE-Maj-Preview-WinKeyCaptureResult";
-
-fn ensureWinKeyCaptureMapping() ?win32.HANDLE {
-    return ensureMapping(&g_win_key_capture_mapping, WIN_KEY_CAPTURE_MAPPING_NAME, @sizeOf(WinKeyCaptureResult));
-}
-
-/// Reads the current result; returns null if the mapping doesn't exist yet (main app hasn't published a capture this run).
-pub fn readWinKeyCaptureResult() ?WinKeyCaptureResult {
-    const mapping = win32.OpenFileMappingA(win32.FILE_MAP_ALL_ACCESS, win32.FALSE, WIN_KEY_CAPTURE_MAPPING_NAME) orelse return null;
-    defer _ = win32.CloseHandle(mapping);
-
-    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(WinKeyCaptureResult)) orelse {
-        slog.warn("Failed to map view of Win-key-capture file mapping", .{});
-        return null;
-    };
-    defer _ = win32.UnmapViewOfFile(view);
-
-    const result_ptr: *const WinKeyCaptureResult = @ptrCast(@alignCast(view));
-    return result_ptr.*;
-}
-
-/// Increments the sequence and writes a fresh result; called by the main app's keyboard hook when a bare Win-key press is captured during dialog recording.
-pub fn publishWinKeyCaptureResult(modifiers: u32) void {
-    const mapping = ensureWinKeyCaptureMapping() orelse {
-        slog.err("Failed to create Win-key-capture result mapping", .{});
-        return;
-    };
-
-    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(WinKeyCaptureResult)) orelse {
-        slog.err("Failed to map Win-key-capture result view", .{});
-        return;
-    };
-    defer _ = win32.UnmapViewOfFile(view);
-
-    const result_ptr: *WinKeyCaptureResult = @ptrCast(@alignCast(view));
-    const next_sequence = result_ptr.sequence +% 1;
-    result_ptr.* = .{ .sequence = next_sequence, .modifiers = modifiers };
-}
-
-const GROUP_REVISION_MAPPING_NAME = "Local\\EVE-Maj-Preview-GroupMembershipRevision";
-
-/// Tells an open config dialog the main app saved new hotkey group members.
-pub fn bumpGroupMembershipRevision() void {
-    const mapping = ensureMapping(&g_group_revision_mapping, GROUP_REVISION_MAPPING_NAME, @sizeOf(u32)) orelse {
-        slog.err("Failed to create group membership revision mapping", .{});
-        return;
-    };
-
-    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(u32)) orelse {
-        slog.err("Failed to map group membership revision view", .{});
-        return;
-    };
-    defer _ = win32.UnmapViewOfFile(view);
-
-    const revision_ptr: *u32 = @ptrCast(@alignCast(view));
-    revision_ptr.* +%= 1;
-}
-
-/// 0 when the main app isn't running or hasn't saved any group membership yet.
-pub fn readGroupMembershipRevision() u32 {
-    const mapping = win32.OpenFileMappingA(win32.FILE_MAP_ALL_ACCESS, win32.FALSE, GROUP_REVISION_MAPPING_NAME) orelse return 0;
-    defer _ = win32.CloseHandle(mapping);
-
-    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(u32)) orelse {
-        slog.warn("Failed to map view of group membership revision mapping", .{});
-        return 0;
-    };
-    defer _ = win32.UnmapViewOfFile(view);
-
-    const revision_ptr: *const u32 = @ptrCast(@alignCast(view));
-    return revision_ptr.*;
 }
 
 /// Returns the protocol URL if --protocol was passed (caller must free), otherwise null.

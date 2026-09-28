@@ -15,7 +15,7 @@ It's **never** going to let you input broadcast, display cropped portions of you
 ## Features
 
 - **Live Thumbnails**: Real-time DWM thumbnails of EVE client windows
-- **Configuration Editor**: Standalone interface (`config.exe`) for editing settings without touching files directly
+- **Configuration Editor**: A settings window for editing profiles without touching files directly
 - **Compact List View**: Single-panel alternative to thumbnails, one row per client with state, name, and system/notification text
 - **Multi-Application Support**: Configurable window filters to track any Windows app
 - **Notification System**: Per-type event alerts with suppression, border color/flash, and text-to-speech options
@@ -38,8 +38,8 @@ It's **never** going to let you input broadcast, display cropped portions of you
 
 1. Download the latest release
 2. Extract to your desired location
-3. Run `config.exe` for configuration
-4. Run `eve-maj-preview.exe` for thumbnails
+3. Run `eve-maj-preview.exe`
+4. Double-click the tray icon (or run `eve-maj-preview.exe --config`) to open the configuration window
 
 ## Usage
 
@@ -64,7 +64,7 @@ The application will:
 
 ### Configuration Editor
 
-Right-click the system tray icon and choose **Open Configuration** to launch `config.exe`, a standalone editor for the current profile's settings.
+Right-click the system tray icon and choose **Open Configuration** (or double-click the icon) to open the settings window for the current profile. Changes preview live on your thumbnails and are only kept once you Save.
 
 ### Protocol Handler
 

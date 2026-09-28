@@ -1,6 +1,6 @@
 const std = @import("std");
-const log = @import("log.zig");
-const config_mod = @import("config.zig");
+const log = @import("../../log.zig");
+const config_mod = @import("../../config.zig");
 
 const slog = log.scoped("ultra_potato");
 
@@ -21,14 +21,6 @@ pub const Profile = struct {
     path: []const u8,
     label: []const u8,
 };
-
-pub fn freeProfiles(allocator: std.mem.Allocator, profiles: []Profile) void {
-    for (profiles) |p| {
-        allocator.free(p.path);
-        allocator.free(p.label);
-    }
-    allocator.free(profiles);
-}
 
 /// Scans %LOCALAPPDATA%\CCP\EVE\*\settings*\ for core_public__.yaml files - EVE's shared graphics settings, one per client install / settings profile (multiboxers keep several, e.g. settings_Default, settings_<CharName>).
 pub fn scanProfiles(allocator: std.mem.Allocator, io: std.Io, environ_map: *const std.process.Environ.Map) ![]Profile {
@@ -106,11 +98,6 @@ pub const ApplyResult = struct {
     changed: bool,
     error_message: ?[:0]const u8,
 };
-
-pub fn freeApplyResults(allocator: std.mem.Allocator, results: []ApplyResult) void {
-    for (results) |r| allocator.free(r.path);
-    allocator.free(results);
-}
 
 pub fn applyToFiles(allocator: std.mem.Allocator, io: std.Io, paths: []const []const u8) ![]ApplyResult {
     var results = try allocator.alloc(ApplyResult, paths.len);

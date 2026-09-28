@@ -61,6 +61,18 @@ pub fn build(b: *std.Build) void {
         .file = b.path("app.rc"),
     });
 
+    // The configuration window is a WebView2 page hosted in this process.
+    const zig_webui = b.dependency("zig_webui", .{
+        .target = target,
+        .optimize = optimize,
+        .enable_tls = false,
+        .is_static = true,
+    });
+    exe.root_module.addImport("webui", zig_webui.module("webui"));
+
+    const webview2_loader = b.addInstallBinFile(b.path("src/WebView2Loader.dll"), "WebView2Loader.dll");
+    exe.step.dependOn(&webview2_loader.step);
+
     const tray_icon = b.addInstallBinFile(b.path("icon.ico"), "icon.ico");
     exe.step.dependOn(&tray_icon.step);
 
@@ -76,55 +88,10 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    // Add zig-webui dependency for configuration dialog
-    const zig_webui = b.dependency("zig_webui", .{
-        .target = target,
-        .optimize = optimize,
-        .enable_tls = false,
-        .is_static = true,
-    });
+    const config_run = b.addRunArtifact(exe);
+    config_run.addArg("--config");
+    config_run.step.dependOn(b.getInstallStep());
 
-    const config_dialog = b.addExecutable(.{
-        .name = "config",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/config_dialog.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-
-    config_dialog.subsystem = .Windows;
-
-    // Resource file includes the app icon, so the taskbar shows the tray icon instead of the default exe icon.
-    config_dialog.root_module.addWin32ResourceFile(.{
-        .file = b.path("app.rc"),
-    });
-
-    config_dialog.root_module.addImport("webui", zig_webui.module("webui"));
-
-    config_dialog.root_module.linkSystemLibrary("c", .{});
-    config_dialog.root_module.linkSystemLibrary("user32", .{});
-    config_dialog.root_module.linkSystemLibrary("gdi32", .{});
-    config_dialog.root_module.linkSystemLibrary("shell32", .{});
-    config_dialog.root_module.linkSystemLibrary("psapi", .{});
-    config_dialog.root_module.linkSystemLibrary("winmm", .{});
-    config_dialog.root_module.linkSystemLibrary("mfplat", .{});
-    config_dialog.root_module.linkSystemLibrary("mfreadwrite", .{});
-
-    config_dialog.root_module.addOptions("build_options", options);
-
-    const webview2_loader = b.addInstallBinFile(b.path("src/WebView2Loader.dll"), "WebView2Loader.dll");
-    config_dialog.step.dependOn(&webview2_loader.step);
-
-    b.installArtifact(config_dialog);
-
-    const config_dialog_run = b.addRunArtifact(config_dialog);
-    config_dialog_run.step.dependOn(b.getInstallStep());
-
-    if (b.args) |args| {
-        config_dialog_run.addArgs(args);
-    }
-
-    const config_dialog_step = b.step("config", "Run the configuration dialog");
-    config_dialog_step.dependOn(&config_dialog_run.step);
+    const config_step = b.step("config", "Run the app with the configuration window open");
+    config_step.dependOn(&config_run.step);
 }

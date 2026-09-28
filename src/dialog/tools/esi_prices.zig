@@ -1,16 +1,7 @@
 const std = @import("std");
-const webui = @import("webui");
-const http_client = @import("util/http_client.zig");
-const log = @import("log.zig");
+const http_client = @import("../../util/http_client.zig");
+const log = @import("../../log.zig");
 const slog = log.scoped("esi_prices");
-
-var g_allocator: std.mem.Allocator = undefined;
-var g_io: std.Io = undefined;
-
-pub fn init(allocator: std.mem.Allocator, io: std.Io) void {
-    g_allocator = allocator;
-    g_io = io;
-}
 
 const ESI_BASE = "https://esi.evetech.net/latest";
 const ESI_JITA_REGION_ID = 10000002;
@@ -127,11 +118,12 @@ const PriceLookup = struct {
 
 const PriceFetchContext = struct {
     allocator: std.mem.Allocator,
+    io: std.Io,
     client: *std.http.Client,
     lookups: []const PriceLookup,
     next_index: std.atomic.Value(usize),
     results_mutex: std.Io.Mutex = .init,
-    results: *std.json.ObjectMap,
+    results: *std.ArrayList(Price),
 };
 
 /// Pulls lookups off ctx's shared index until exhausted; safe to run on several threads (including the caller's) at once.
@@ -143,53 +135,54 @@ fn priceFetchWorker(ctx: *PriceFetchContext) void {
         const lookup = ctx.lookups[i];
         const price = fetchJitaBuyPrice(ctx.allocator, ctx.client, lookup.type_id) orelse continue;
 
-        ctx.results_mutex.lock(g_io) catch |err| {
+        ctx.results_mutex.lock(ctx.io) catch |err| {
             slog.warn("Failed to lock price results mutex for {s}: {}", .{ lookup.name, err });
             continue;
         };
-        defer ctx.results_mutex.unlock(g_io);
-        ctx.results.put(ctx.allocator, lookup.name, .{ .float = price }) catch |err| {
+        defer ctx.results_mutex.unlock(ctx.io);
+        ctx.results.append(ctx.allocator, .{ .name = lookup.name, .price = price }) catch |err| {
             slog.warn("Failed to store price for {s}: {}", .{ lookup.name, err });
         };
     }
 }
 
-/// Looks up each ore name's Jita buy price via its compressed variant (readily liquid there) using the public ESI API - no key required.
-/// Request body: JSON array of ore names. Response: JSON object of {name: price}, omitting names with no market match.
-pub fn fetchOrePrices(e: *webui.Event) void {
-    const allocator = g_allocator;
-    const json_data = e.getString();
+pub const Price = struct {
+    name: []const u8,
+    price: f64,
+};
 
-    var client: std.http.Client = .{ .allocator = allocator, .io = g_io };
+/// Serialized as a `{name: price}` object.
+pub const Prices = struct {
+    items: []const Price,
+
+    pub fn jsonStringify(self: Prices, jw: anytype) !void {
+        try jw.beginObject();
+        for (self.items) |p| {
+            try jw.objectField(p.name);
+            try jw.write(p.price);
+        }
+        try jw.endObject();
+    }
+};
+
+/// Looks up each ore name's Jita buy price via its compressed variant (readily liquid there) using the public ESI API - no key required.
+/// Names with no market match are left out. `gpa` must be thread-safe, since the requests run in parallel; the result is allocated from `out`.
+pub fn fetchOrePrices(gpa: std.mem.Allocator, out: std.mem.Allocator, io: std.Io, names: []const []const u8) !Prices {
+    var client: std.http.Client = .{ .allocator = gpa, .io = io };
     defer client.deinit();
 
-    const parsed_names = std.json.parseFromSlice([]const []const u8, allocator, json_data, .{}) catch |err| {
-        slog.warn("Failed to parse fetchOrePrices request: {}", .{err});
-        e.returnString("{}");
-        return;
-    };
-    defer parsed_names.deinit();
-
-    var type_ids = resolveOreTypeIds(allocator, &client, parsed_names.value) catch |err| {
-        slog.warn("Failed to resolve ore type ids via ESI: {}", .{err});
-        e.returnString("{}");
-        return;
-    };
+    var type_ids = try resolveOreTypeIds(gpa, &client, names);
     defer {
         var key_it = type_ids.keyIterator();
-        while (key_it.next()) |k| allocator.free(k.*);
+        while (key_it.next()) |k| gpa.free(k.*);
         type_ids.deinit();
     }
 
-    var results: std.json.ObjectMap = .empty;
-    defer results.deinit(allocator);
+    var results: std.ArrayList(Price) = .empty;
+    defer results.deinit(gpa);
 
-    const lookups = allocator.alloc(PriceLookup, type_ids.count()) catch |err| {
-        slog.warn("Failed to allocate price lookup buffer: {}", .{err});
-        e.returnString("{}");
-        return;
-    };
-    defer allocator.free(lookups);
+    const lookups = try gpa.alloc(PriceLookup, type_ids.count());
+    defer gpa.free(lookups);
     {
         var idx: usize = 0;
         var it = type_ids.iterator();
@@ -200,7 +193,8 @@ pub fn fetchOrePrices(e: *webui.Event) void {
 
     if (lookups.len > 0) {
         var ctx = PriceFetchContext{
-            .allocator = allocator,
+            .allocator = gpa,
+            .io = io,
             .client = &client,
             .lookups = lookups,
             .next_index = std.atomic.Value(usize).init(0),
@@ -223,18 +217,7 @@ pub fn fetchOrePrices(e: *webui.Event) void {
         }
     }
 
-    const json = std.json.Stringify.valueAlloc(allocator, std.json.Value{ .object = results }, .{}) catch |err| {
-        slog.warn("Failed to serialize ESI price response: {}", .{err});
-        e.returnString("{}");
-        return;
-    };
-    defer allocator.free(json);
-    const json_z = allocator.dupeZ(u8, json) catch |err| {
-        slog.warn("Failed to null-terminate ESI price response: {}", .{err});
-        e.returnString("{}");
-        return;
-    };
-    defer allocator.free(json_z);
-
-    e.returnString(json_z);
+    const copied = try out.alloc(Price, results.items.len);
+    for (results.items, copied) |r, *c| c.* = .{ .name = try out.dupe(u8, r.name), .price = r.price };
+    return .{ .items = copied };
 }

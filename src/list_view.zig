@@ -155,7 +155,7 @@ pub const ListWindow = struct {
         _ = win32.DestroyWindow(self.hwnd);
     }
 
-    /// Recreates `font` if name/size/weight changed since last built (e.g. a live-previewed edit, see PROTOCOL_PREVIEW_THUMBNAIL); mirrors FontCache.get's dirty-check for List View's single shared font.
+    /// Recreates `font` if name/size/weight changed since last built (e.g. a live-previewed edit); mirrors FontCache.get's dirty-check for List View's single shared font.
     fn ensureFont(self: *ListWindow) !void {
         const cfg = self.config.display;
         try gdi_overlay.ensureFont(

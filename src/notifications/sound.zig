@@ -319,12 +319,11 @@ fn packVolume(volume_percent: u8) u32 {
     return (level << 16) | level;
 }
 
-/// Decodes and plays `path` (WAV/MP3), blocking until done; public so config.exe's "Test Sound" button can call it directly, bypassing the worker queue below.
-pub fn playBlocking(allocator: std.mem.Allocator, path: []const u8, volume_percent: u8) !void {
+/// Decodes and plays `path` (WAV/MP3), blocking until done; the worker queue below is its only caller.
+fn playBlocking(allocator: std.mem.Allocator, path: []const u8, volume_percent: u8) !void {
     const path_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, path);
     defer allocator.free(path_w);
 
-    // MF state is per-process, not shared with the main app's process - config.exe's direct callers need this too.
     if (MFStartup(MF_VERSION, MFSTARTUP_LITE) < 0) return error.MFStartupFailed;
     defer _ = MFShutdown();
 

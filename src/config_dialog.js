@@ -9,9 +9,33 @@ function formatLogArgs(args) {
     }).join(' ');
 }
 
+// The backend's one entry point (dialog/rpc.zig): resolves with the call's data, or rejects with an Error whose `code` is the Zig error name.
+async function rpc(method, args = {}) {
+    const reply = JSON.parse(await webui.call('rpc', method, JSON.stringify(args)));
+    if (reply.ok) return reply.data;
+    const error = new Error(reply.error.message);
+    error.code = reply.error.code;
+    throw error;
+}
+
+// Pushed by dialog/events.zig as window.onAppEvent(name, payload).
+const appEventHandlers = {};
+function listenForAppEvent(name, handler) {
+    (appEventHandlers[name] ||= []).push(handler);
+}
+window.onAppEvent = (name, payload) => {
+    for (const handler of appEventHandlers[name] || []) {
+        try {
+            handler(payload);
+        } catch (error) {
+            logError(`Handler for app event ${name} failed:`, error);
+        }
+    }
+};
+
 function sendClientLog(level, message) {
     if (typeof webui !== 'undefined') {
-        webui.call('logClientMessage', level, message).catch(() => {});
+        rpc('logClientMessage', { level, message }).catch(() => {});
     }
 }
 
@@ -191,9 +215,7 @@ async function loadImportBackupsList() {
     }
 
     try {
-        const response = await webui.call('listProfileBackups', '');
-        const result = JSON.parse(response);
-        const backups = Array.isArray(result.backups) ? result.backups : [];
+        const { backups } = await rpc('listProfileBackups');
 
         if (backups.length === 0) {
             section.style.display = 'none';
@@ -238,26 +260,15 @@ async function restoreProfileBackup(filename, displayName) {
 
     try {
         if (typeof webui !== 'undefined') {
-            const payload = JSON.stringify({
-                source: 'backup\\' + filename,
-                target: sanitizedName,
-                accentColor: htmlColorToZig(accentColor)
-            });
-            const response = await webui.call('copyProfile', payload);
-            const result = JSON.parse(response);
+            await rpc('restoreProfileBackup', { backup: filename, target: sanitizedName, accentColor: htmlColorToZig(accentColor) });
+            showStatus(t('status.profileRestoredSuccess'), 'success');
+            closeImportModal();
+            await loadProfileList();
+            await populateProfileSwitchHotkeys();
 
-            if (result.success) {
-                showStatus(t('status.profileRestoredSuccess'), 'success');
-                closeImportModal();
-                await loadProfileList();
-                await populateProfileSwitchHotkeys();
-
-                const profileSelect = document.getElementById('profile-select');
-                profileSelect.value = sanitizedName + '.json';
-                await switchProfile();
-            } else {
-                showStatus(t('status.restoreProfileFailedPrefix') + (result.error || t('status.unknownError')), 'error');
-            }
+            const profileSelect = document.getElementById('profile-select');
+            profileSelect.value = sanitizedName + '.json';
+            await switchProfile();
         } else {
             showStatus(t('status.mockCopyPrefix') + filename + t('status.mockCopyMiddle') + sanitizedName, 'info');
         }
@@ -635,8 +646,7 @@ function applyRangeToInput(field) {
 
 async function loadValidationRanges() {
     try {
-        const response = await webui.call('getValidationRanges');
-        VALIDATION_RANGES = JSON.parse(response) || {};
+        VALIDATION_RANGES = await rpc('getValidationRanges');
     } catch (error) {
         logWarn('Failed to load validation ranges:', error);
         VALIDATION_RANGES = {};
@@ -805,7 +815,7 @@ async function waitForWebUI() {
     while (attempts < maxAttempts) {
         if (typeof webui !== 'undefined' && webui.call) {
             try {
-                await webui.call('getConfigData');
+                await rpc('getAppVersion');
                 webuiReady = true;
                 return true;
             } catch (error) {
@@ -1199,7 +1209,7 @@ async function sendThumbnailPreview(includePositions = false) {
     // Never push a preview onto a profile the dialog hasn't confirmed is actually running - see switchProfile()'s live-switch modal.
     if (!dialogEditingProfile || dialogEditingProfile !== liveConfirmedProfile) return;
     try {
-        await webui.call('previewThumbnailConfig', JSON.stringify(buildThumbnailPreviewPatch(includePositions)));
+        await rpc('previewThumbnailConfig', { json: JSON.stringify(buildThumbnailPreviewPatch(includePositions)) });
     } catch (error) {
         logWarn('Failed to send thumbnail preview:', error);
     }
@@ -1274,15 +1284,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         loadAppVersion();
         loadDefaultConfig();
         loadValidationRanges();
-        startMainAppStatusPolling();
         refreshWindowPositionSourceOptions();
         scanUltraPotatoProfiles();
 
         await profileListLoaded;
-        // Best-effort assumption: whatever profile the app loaded with is live. Only "Make It Live" or a Save updates liveConfirmedProfile after this.
-        const initialProfile = document.getElementById('profile-select').value;
-        dialogEditingProfile = initialProfile;
-        liveConfirmedProfile = initialProfile;
+        dialogEditingProfile = document.getElementById('profile-select').value;
 
         await globalSettingsLoaded;
         checkForUpdateNotification();
@@ -1463,7 +1469,7 @@ async function closeDialog() {
 
 function doCloseDialog() {
     if (typeof webui !== 'undefined') {
-        webui.call('closeDialog');
+        rpc('closeDialog').catch((error) => logError('Failed to close the dialog:', error));
     }
 }
 
@@ -1508,41 +1514,16 @@ window.addEventListener('beforeunload', (e) => {
     }
 });
 
-// Polls whether the main app process is running, so the status indicator reflects it being closed/reopened while this dialog stays open.
-const MAIN_APP_STATUS_POLL_MS = 500;
 const MAX_PROFILE_NAME_LENGTH = 16;
 
-let mainAppStatusPollInFlight = false;
-let lastGroupRevision = null;
 // Last-known on-disk members per group index, so a sync skips groups the app didn't change.
 let diskGroupMembers = [];
 // Keyed by group object so it survives unsaved renames/reorders and stays out of saveConfig's JSON.
 let diskGroupIndex = new WeakMap();
 
-async function updateMainAppStatus() {
-    const statusEl = document.getElementById('main-app-status');
-    if (!statusEl || typeof webui === 'undefined') return;
-    // A member sync re-reads the profile, which can outlast one poll interval.
-    if (mainAppStatusPollInFlight) return;
-    mainAppStatusPollInFlight = true;
-
-    try {
-        const response = await webui.call('getMainAppStatus');
-        const { running, groupRevision } = JSON.parse(response);
-        statusEl.classList.toggle('status-online', running);
-        statusEl.classList.toggle('status-offline', !running);
-        statusEl.innerHTML = `<span class="indicator-dot">●</span> ${running ? 'Connected' : 'Disconnected'}`;
-
-        if (lastGroupRevision !== null && groupRevision !== lastGroupRevision) {
-            await syncHotkeyGroupMembersFromDisk();
-        }
-        lastGroupRevision = groupRevision;
-    } catch (err) {
-        logWarn('Failed to poll main app status:', err);
-    } finally {
-        mainAppStatusPollInFlight = false;
-    }
-}
+listenForAppEvent('groupMembersChanged', () => {
+    syncHotkeyGroupMembersFromDisk().catch((error) => logWarn('Failed to reload hotkey group members:', error));
+});
 
 // Only call when the dialog's groups match disk (load or successful save).
 function snapshotDiskGroupMembers(groups) {
@@ -1554,11 +1535,7 @@ function snapshotDiskGroupMembers(groups) {
 async function syncHotkeyGroupMembersFromDisk() {
     if (!currentConfig || !currentConfig.hotkeyGroups) return;
 
-    const diskConfig = JSON.parse(await webui.call('loadConfig'));
-    if (diskConfig.error || !Array.isArray(diskConfig.hotkeyGroups)) {
-        logWarn('Failed to reload hotkey group members:', diskConfig.error);
-        return;
-    }
+    const diskConfig = await rpc('loadConfig');
 
     const wasClean = !hasRealUnsavedChanges();
     saveHotkeyGroups();
@@ -1576,22 +1553,29 @@ async function syncHotkeyGroupMembersFromDisk() {
     if (wasClean) markAsSaved();
 }
 
-function startMainAppStatusPolling() {
-    updateMainAppStatus();
-    setInterval(updateMainAppStatus, MAIN_APP_STATUS_POLL_MS);
-}
+// The app draws the drag overlay; the result comes back as a regionSelected event, routed to whichever fields started it.
+let regionSelectTarget = null;
 
-// The main app owns the drag overlay; this dialog triggers it and polls the result (pollRegionSelectResult), since WM_COPYDATA IPC is one-way dialog->app.
-const REGION_SELECT_POLL_MS = 300;
-const REGION_SELECT_TIMEOUT_MS = 120000;
-let regionSelectPollTimer = null;
+listenForAppEvent('regionSelected', (result) => {
+    const fieldIds = regionSelectTarget;
+    regionSelectTarget = null;
+    if (!fieldIds) return;
+    if (result.tooSmall) showStatus(t('status.regionSelectTooSmall'), 'info');
+    if (result.cancelled) return;
 
-function stopRegionSelectPolling() {
-    if (regionSelectPollTimer) {
-        clearInterval(regionSelectPollTimer);
-        regionSelectPollTimer = null;
-    }
-}
+    setFieldValue(fieldIds.x, result.x);
+    setFieldValue(fieldIds.y, result.y);
+    setFieldValue(fieldIds.width, result.width);
+    setFieldValue(fieldIds.height, result.height);
+    currentConfig.display[fieldIds.x] = result.x;
+    currentConfig.display[fieldIds.y] = result.y;
+    currentConfig.display[fieldIds.width] = result.width;
+    currentConfig.display[fieldIds.height] = result.height;
+    refreshRegionButtons();
+    markAsChanged();
+    scheduleThumbnailPreview();
+    showStatus(t('status.regionSet'), 'success');
+});
 
 const REGION_FIELD_IDS = { x: 'regionX', y: 'regionY', width: 'regionWidth', height: 'regionHeight', hideThumbnails: 'hideThumbnailsDuringRegionSelect' };
 const NOT_LOGGED_IN_FIELD_IDS = { x: 'notLoggedInSpaceX', y: 'notLoggedInSpaceY', width: 'notLoggedInSpaceWidth', height: 'notLoggedInSpaceHeight', hideThumbnails: 'notLoggedInSpaceHideThumbnailsDuringRegionSelect' };
@@ -1628,15 +1612,15 @@ function clearRegion(fieldIds) {
 
 // fieldIds let the same overlay feed either RegionFit or notLoggedInSpace; edit adjusts the existing region's borders instead of dragging a new one.
 async function startRegionSelectFlow(fieldIds, edit = false) {
-    if (typeof webui === 'undefined' || regionSelectPollTimer) return;
+    if (typeof webui === 'undefined') return;
 
+    const regionToEdit = edit ? currentRegionValues(fieldIds) : null;
+    if (edit && !regionToEdit) return;
     try {
-        const regionToEdit = edit ? currentRegionValues(fieldIds) : null;
-        if (edit && !regionToEdit) return;
-        const request = {
+        await rpc('startRegionSelect', {
             hide: !!document.getElementById(fieldIds.hideThumbnails)?.checked,
             region: regionToEdit,
-            // The overlay lives in the main app, which has no language files, so it gets its text from here.
+            // The overlay is drawn by the app, which has no language files, so it gets its text from here.
             labels: {
                 save: t('button.save-configuration.label'),
                 cancel: t('common.cancel'),
@@ -1644,59 +1628,19 @@ async function startRegionSelectFlow(fieldIds, edit = false) {
                 hintEdit: t('overlay.regionHintEdit'),
                 hintConfirm: t('overlay.regionHintConfirm'),
             },
-        };
-        const { success, error } = JSON.parse(await webui.call('startRegionSelect', JSON.stringify(request)));
-        if (!success) {
-            showStatus(t('status.regionSelectFailedPrefix') + (error || ''), 'error');
-            return;
-        }
+        });
+        regionSelectTarget = fieldIds;
     } catch (err) {
         logWarn('Failed to start region select:', err);
-        showStatus(t('status.regionSelectFailedPrefix') + err, 'error');
-        return;
+        showStatus(t('status.regionSelectFailedPrefix') + err.message, 'error');
     }
-
-    const startedAt = Date.now();
-    regionSelectPollTimer = setInterval(async () => {
-        if (Date.now() - startedAt > REGION_SELECT_TIMEOUT_MS) {
-            stopRegionSelectPolling();
-            return;
-        }
-
-        try {
-            const result = JSON.parse(await webui.call('pollRegionSelectResult'));
-            if (!result.done) return;
-
-            stopRegionSelectPolling();
-            if (result.tooSmall) showStatus(t('status.regionSelectTooSmall'), 'info');
-            if (result.cancelled) return;
-
-            setFieldValue(fieldIds.x, result.x);
-            setFieldValue(fieldIds.y, result.y);
-            setFieldValue(fieldIds.width, result.width);
-            setFieldValue(fieldIds.height, result.height);
-            currentConfig.display[fieldIds.x] = result.x;
-            currentConfig.display[fieldIds.y] = result.y;
-            currentConfig.display[fieldIds.width] = result.width;
-            currentConfig.display[fieldIds.height] = result.height;
-            refreshRegionButtons();
-            markAsChanged();
-            scheduleThumbnailPreview();
-            showStatus(t('status.regionSet'), 'success');
-        } catch (err) {
-            logWarn('Failed to poll region select result:', err);
-            stopRegionSelectPolling();
-        }
-    }, REGION_SELECT_POLL_MS);
 }
 
 async function loadAppVersion() {
     try {
-        const data = JSON.parse(await webui.call('getConfigData'));
+        const version = await rpc('getAppVersion');
         const versionEl = document.getElementById('app-version');
-        if (versionEl && data.version) {
-            versionEl.textContent = data.version;
-        }
+        if (versionEl) versionEl.textContent = version;
     } catch (error) {
         logWarn('Failed to load app version:', error);
     }
@@ -1707,8 +1651,7 @@ async function loadConfigurationFromBackend() {
 
     try {
         if (typeof webui !== 'undefined') {
-            const configJson = await webui.call('loadConfig');
-            currentConfig = JSON.parse(configJson);
+            currentConfig = await rpc('loadConfig');
             snapshotDiskGroupMembers(currentConfig.hotkeyGroups);
             populateFormFields();
             markAsSaved();
@@ -1726,8 +1669,7 @@ async function loadConfigurationFromBackend() {
 async function loadDefaultConfig() {
     try {
         if (typeof webui === 'undefined') return;
-        const json = await webui.call('getDefaultConfig');
-        defaultConfig = JSON.parse(json);
+        defaultConfig = await rpc('getDefaultConfig');
         applyBackendDefaultColors();
         refreshNotificationColorDefaults();
     } catch (error) {
@@ -1914,12 +1856,17 @@ function getNullableFieldValue(fieldId) {
     return isNaN(parsed) ? null : parsed;
 }
 
+// The app switches profile on its own too (tray, hotkeys), so previews follow whichever one it runs.
+listenForAppEvent('profileSwitched', ({ name }) => {
+    liveConfirmedProfile = name;
+});
+
 async function loadProfileList() {
     try {
         if (typeof webui !== 'undefined') {
-            const response = await webui.call('listProfiles');
-            const data = JSON.parse(response);
-            
+            const data = await rpc('listProfiles');
+            liveConfirmedProfile = data.live;
+
             const profileSelect = document.getElementById('profile-select');
             profileSelect.innerHTML = '';
             
@@ -1965,7 +1912,7 @@ async function switchProfile(deferLivePush = false, forceLive = false) {
             } else {
                 try {
                     if (typeof webui !== 'undefined') {
-                        await webui.call('switchProfileLive', selectedProfile);
+                        await rpc('switchProfileLive', { name: selectedProfile });
                     }
                     liveConfirmedProfile = selectedProfile;
                 } catch (error) {
@@ -1981,20 +1928,10 @@ async function switchProfile(deferLivePush = false, forceLive = false) {
 
     try {
         if (typeof webui !== 'undefined') {
-            const response = await webui.call('switchProfile', selectedProfile);
-            const result = JSON.parse(response);
-
-            if (result.success) {
-                // Keep the in-memory snapshot in sync so a later Save doesn't overwrite the backend's lastUsedProfile update with a stale value.
-                if (!currentGlobalSettings) currentGlobalSettings = {};
-                currentGlobalSettings.lastUsedProfile = selectedProfile;
-                dialogEditingProfile = selectedProfile;
-
-                showStatus(t('status.profileSwitchedSuccess'), 'success');
-                await loadConfigurationFromBackend();
-            } else {
-                showStatus(t('status.switchProfileFailedPrefix') + (result.error || t('status.unknownError')), 'error');
-            }
+            await rpc('switchProfile', { name: selectedProfile });
+            dialogEditingProfile = selectedProfile;
+            showStatus(t('status.profileSwitchedSuccess'), 'success');
+            await loadConfigurationFromBackend();
         } else {
             showStatus(t('status.mockSwitchPrefix') + selectedProfile, 'info');
         }
@@ -2056,20 +1993,14 @@ async function createNewProfile() {
 
     try {
         if (typeof webui !== 'undefined') {
-            const response = await webui.call('createProfile', sanitizedName, htmlColorToZig(accentColor));
-            const result = JSON.parse(response);
+            await rpc('createProfile', { name: sanitizedName, accentColor: htmlColorToZig(accentColor) });
+            showStatus(t('status.profileCreatedSuccess'), 'success');
+            await loadProfileList();
+            await populateProfileSwitchHotkeys();
 
-            if (result.success) {
-                showStatus(t('status.profileCreatedSuccess'), 'success');
-                await loadProfileList();
-                await populateProfileSwitchHotkeys();
-
-                const profileSelect = document.getElementById('profile-select');
-                profileSelect.value = sanitizedName + '.json';
-                await switchProfile();
-            } else {
-                showStatus(t('status.createProfileFailedPrefix') + (result.error || t('status.unknownError')), 'error');
-            }
+            const profileSelect = document.getElementById('profile-select');
+            profileSelect.value = sanitizedName + '.json';
+            await switchProfile();
         } else {
             showStatus(t('status.mockCreateProfilePrefix') + sanitizedName, 'info');
         }
@@ -2099,24 +2030,13 @@ async function copyCurrentProfile() {
 
     try {
         if (typeof webui !== 'undefined') {
-            const payload = JSON.stringify({
-                source: currentProfile,
-                target: sanitizedName,
-                accentColor: htmlColorToZig(accentColor)
-            });
-            const response = await webui.call('copyProfile', payload);
-            const result = JSON.parse(response);
+            await rpc('copyProfile', { source: currentProfile, target: sanitizedName, accentColor: htmlColorToZig(accentColor) });
+            showStatus(t('status.profileCopiedSuccess'), 'success');
+            await loadProfileList();
+            await populateProfileSwitchHotkeys();
 
-            if (result.success) {
-                showStatus(t('status.profileCopiedSuccess'), 'success');
-                await loadProfileList();
-                await populateProfileSwitchHotkeys();
-
-                profileSelect.value = sanitizedName + '.json';
-                await switchProfile();
-            } else {
-                showStatus(t('status.copyProfileFailedPrefix') + (result.error || t('status.unknownError')), 'error');
-            }
+            profileSelect.value = sanitizedName + '.json';
+            await switchProfile();
         } else {
             showStatus(t('status.mockCopyPrefix') + currentProfile + t('status.mockCopyMiddle') + sanitizedName, 'info');
         }
@@ -3386,14 +3306,13 @@ function computeMajImportSections(data) {
     });
 }
 
-// Legacy tools (EVE-O/EVE-X/EVE-APM, and this app before its DPI-awareness change) captured positions while DPI-unaware, in a virtualized 96-DPI space Windows silently rescaled - scaleLegacyPositions (config_dialog.zig) converts them to real physical pixels via the current monitor's DPI.
+// Legacy tools (EVE-O/EVE-X/EVE-APM, and this app before its DPI-awareness change) captured positions while DPI-unaware, in a virtualized 96-DPI space Windows silently rescaled - scaleLegacyPositions (dialog/api/background.zig) converts them to real physical pixels via the current monitor's DPI.
 async function scaleCharacterPatchPositions(characterPatches) {
     if (typeof webui === 'undefined') return;
     const withPos = characterPatches.filter(cp => cp.position);
     if (withPos.length === 0) return;
     try {
-        const response = await webui.call('scaleLegacyPositions', JSON.stringify(withPos.map(cp => cp.position)));
-        const scaled = JSON.parse(response);
+        const scaled = await rpc('scaleLegacyPositions', { positions: withPos.map(cp => cp.position) });
         withPos.forEach((cp, i) => { if (scaled[i]) cp.position = scaled[i]; });
     } catch (error) {
         logWarn('Failed to scale legacy positions:', error);
@@ -3775,10 +3694,10 @@ async function runImport() {
 
             const accentColorInput = document.getElementById('importAccentColor');
             const accentColor = accentColorInput ? htmlColorToZig(accentColorInput.value) : '';
-            const response = await webui.call('createProfile', sanitized, accentColor);
-            const result = JSON.parse(response);
-            if (!result.success) {
-                showStatus(t('status.createProfileFailedPrefix') + (result.error || t('status.unknownError')), 'error');
+            try {
+                await rpc('createProfile', { name: sanitized, accentColor });
+            } catch (error) {
+                showStatus(t('status.createProfileFailedPrefix') + error.message, 'error');
                 runBtn.disabled = false;
                 return;
             }
@@ -3914,19 +3833,14 @@ function deleteCurrentProfile() {
         
         try {
             if (typeof webui !== 'undefined') {
-                const response = await webui.call('deleteProfile', currentProfile);
-                const result = JSON.parse(response);
-                
-                if (result.success) {
-                    profileSelect.value = 'default.json';
-                    await switchProfile(false, true);
-                    await loadProfileList();
-                    await populateProfileSwitchHotkeys();
+                await rpc('deleteProfile', { name: currentProfile });
+                // The backend moved the window onto the profile the app now runs.
+                await loadProfileList();
+                dialogEditingProfile = profileSelect.value;
+                await loadConfigurationFromBackend();
+                await populateProfileSwitchHotkeys();
 
-                    showStatus(t('status.profileDeletedSuccess'), 'success');
-                } else {
-                    showStatus(t('status.deleteProfileFailedPrefix') + (result.error || t('status.unknownError')), 'error');
-                }
+                showStatus(t('status.profileDeletedSuccess'), 'success');
             } else {
                 showStatus(t('status.mockDeletePrefix') + currentProfile, 'info');
             }
@@ -3947,15 +3861,9 @@ function resetCurrentProfile() {
 
         try {
             if (typeof webui !== 'undefined') {
-                const response = await webui.call('resetProfile', currentProfile);
-                const result = JSON.parse(response);
-
-                if (result.success) {
-                    await loadConfigurationFromBackend();
-                    showStatus(t('status.profileResetDone').replace('{name}', currentDisplayName), 'success');
-                } else {
-                    showStatus(t('status.resetProfileFailedPrefix') + (result.error || t('status.unknownError')), 'error');
-                }
+                await rpc('resetProfile', { name: currentProfile });
+                await loadConfigurationFromBackend();
+                showStatus(t('status.profileResetDone').replace('{name}', currentDisplayName), 'success');
             } else {
                 showStatus(t('status.mockResetPrefix') + currentProfile, 'info');
             }
@@ -4036,27 +3944,18 @@ async function saveConfigurationImpl() {
 
     try {
         if (typeof webui !== 'undefined') {
-            // Must hit disk before saveConfig's reloadProfileInMainApp() blocks until the main app re-reads global.settings.json, or every reload picks up a stale generation.
+            // Before saveConfig, whose profile reload is what picks up the new global settings.
             if (currentGlobalSettings) {
-                await webui.call('saveGlobalSettings', JSON.stringify(currentGlobalSettings, null, 2));
+                await rpc('saveGlobalSettings', { json: JSON.stringify(currentGlobalSettings) });
             }
 
-            const response = await webui.call('saveConfig', JSON.stringify(currentConfig, null, 2));
-            const result = JSON.parse(response);
-
-            if (result.success) {
-                showStatus(t('status.configSavedSuccess'), 'success');
-                // Saving always pushes this profile live (see saveConfig's reloadProfileInMainApp()), so live preview can resume for it.
-                liveConfirmedProfile = dialogEditingProfile;
-                deletedCharacterNames.clear();
-            } else {
-                showStatus(t('status.saveFailedPrefix') + (result.error || t('status.unknownError')), 'error');
-            }
-
-            if (result && result.success) {
-                snapshotDiskGroupMembers(currentConfig.hotkeyGroups);
-                markAsSaved();
-            }
+            await rpc('saveConfig', { json: JSON.stringify(currentConfig) });
+            showStatus(t('status.configSavedSuccess'), 'success');
+            // Saving always makes this profile the running one (see saveConfig in dialog/api/session.zig), so live preview can resume for it.
+            liveConfirmedProfile = dialogEditingProfile;
+            deletedCharacterNames.clear();
+            snapshotDiskGroupMembers(currentConfig.hotkeyGroups);
+            markAsSaved();
         } else {
             showStatus(t('status.configSavedMock'), 'success');
             markAsSaved();
@@ -4488,7 +4387,7 @@ function showHotkeyConflictModal(message) {
     okBtn.addEventListener('click', handleClose);
 }
 
-// The dialog's own update check (config_dialog.zig main()) is a background HTTP request that may still be in flight on the first call.
+// The app's update check is a background HTTP request that may still be in flight on the first call.
 const UPDATE_STATUS_RETRY_DELAY_MS = 4000;
 
 async function checkForUpdateNotification(isRetry) {
@@ -4496,8 +4395,7 @@ async function checkForUpdateNotification(isRetry) {
 
     try {
         if (typeof webui === 'undefined') return;
-        const json = await webui.call('getUpdateStatus');
-        const status = JSON.parse(json);
+        const status = await rpc('getUpdateStatus');
         if (status.available) {
             showUpdateAvailableModal(status.version, status.url, status.notes);
         } else if (!isRetry) {
@@ -4539,7 +4437,7 @@ function showUpdateAvailableModal(version, url, notes) {
 function openExternalLink(event) {
     event.preventDefault();
     if (typeof webui !== 'undefined') {
-        webui.call('openUrlInBrowser', event.currentTarget.href)
+        rpc('openUrlInBrowser', { url: event.currentTarget.href })
             .catch(error => logError('Failed to open release URL:', error));
     }
     return false;
@@ -4549,42 +4447,22 @@ let recordingField = null;
 // Once a combo is captured, ignore further capture events until stopRecording() runs, or releasing a modifier after the main key would overwrite it with just the modifier.
 let recordingComboCaptured = false;
 
-// A bare Win press can't reach our DOM listeners (Windows steals focus for the Start Menu first), so this polls the main app's report instead - see keyboard_hook.zig's armWinKeyCapture.
-const WIN_KEY_CAPTURE_POLL_MS = 100;
-let winKeyCapturePollTimer = null;
+// A bare Win press can't reach our DOM listeners (Windows steals focus for the Start Menu first), so the app's keyboard hook reports it instead - see keyboard_hook.zig's armWinKeyCapture.
+listenForAppEvent('winKeyCaptured', (result) => {
+    if (!recordingField || recordingComboCaptured) return;
+    const combo = [];
+    if (result.ctrl) combo.push('Ctrl');
+    if (result.alt) combo.push('Alt');
+    if (result.shift) combo.push('Shift');
+    combo.push('LWin');
+    finalizeCapture(combo);
+});
 
-function startWinKeyCapturePolling() {
-    stopWinKeyCapturePolling();
-    winKeyCapturePollTimer = setInterval(async () => {
-        if (!recordingField || recordingComboCaptured) return;
-        try {
-            const result = JSON.parse(await webui.call('pollWinKeyCapture'));
-            if (!result.done || !recordingField || recordingComboCaptured) return;
-
-            let combo = [];
-            if (result.ctrl) combo.push('Ctrl');
-            if (result.alt) combo.push('Alt');
-            if (result.shift) combo.push('Shift');
-            combo.push('LWin');
-            finalizeCapture(combo);
-        } catch (error) {
-            logWarn('Failed to poll Win-key capture result:', error);
-        }
-    }, WIN_KEY_CAPTURE_POLL_MS);
-}
-
-function stopWinKeyCapturePolling() {
-    if (winKeyCapturePollTimer) {
-        clearInterval(winKeyCapturePollTimer);
-        winKeyCapturePollTimer = null;
-    }
-}
-
-// Fire-and-forget: recordHotkey()/stopRecording() must stay synchronous, and a missed round-trip (main app not running) is harmless.
+// Fire-and-forget, since recordHotkey()/stopRecording() must stay synchronous.
 async function suspendMainAppHotkeysForRecording() {
     if (typeof webui === 'undefined') return;
     try {
-        await webui.call('suspendHotkeysForRecording');
+        await rpc('suspendHotkeysForRecording');
     } catch (error) {
         logWarn('Failed to suspend main app hotkeys for recording:', error);
     }
@@ -4593,7 +4471,7 @@ async function suspendMainAppHotkeysForRecording() {
 async function resumeMainAppHotkeysAfterRecording() {
     if (typeof webui === 'undefined') return;
     try {
-        await webui.call('resumeHotkeysAfterRecording');
+        await rpc('resumeHotkeysAfterRecording');
     } catch (error) {
         logWarn('Failed to resume main app hotkeys after recording:', error);
     }
@@ -4649,7 +4527,6 @@ function recordHotkey(fieldId) {
     document.addEventListener('mouseup', captureMouseButton, true);
     document.addEventListener('wheel', captureWheel, { capture: true, passive: false });
     document.addEventListener('contextmenu', preventContextMenu, true);
-    startWinKeyCapturePolling();
 }
 
 function buildModifierCombo(e) {
@@ -4832,7 +4709,6 @@ function stopRecording() {
     document.removeEventListener('mouseup', captureMouseButton, true);
     document.removeEventListener('wheel', captureWheel, { capture: true, passive: false });
     document.removeEventListener('contextmenu', preventContextMenu, true);
-    stopWinKeyCapturePolling();
 
     recordingField = null;
     recordingComboCaptured = false;
@@ -5426,8 +5302,7 @@ async function pickRunningWindowFor(idPrefix, index) {
     try {
         let windows = [];
         if (typeof webui !== 'undefined') {
-            const result = await webui.call('getRunningWindows');
-            windows = JSON.parse(result);
+            windows = await rpc('getRunningWindows');
         }
 
         if (windows.length === 0) {
@@ -5560,8 +5435,7 @@ function saveSystemColors() {
 async function reloadLivePositions() {
     try {
         if (typeof webui !== 'undefined') {
-            const configJson = await webui.call('loadConfig');
-            const savedConfig = JSON.parse(configJson);
+            const savedConfig = await rpc('loadConfig');
 
             if (savedConfig.characters && Array.isArray(savedConfig.characters)) {
                 if (!currentConfig.characters) currentConfig.characters = [];
@@ -5844,19 +5718,14 @@ async function setCharacterWindowPosition(index) {
     if (!char) return;
 
     try {
-        const result = await webui.call('setCharacterWindowPosition', char.name || '');
-        const data = JSON.parse(result);
-        if (!data.success) {
-            showStatus(t('status.saveFailedPrefix') + (data.error || ''), 'error');
-            return;
-        }
-
-        char.windowPosition = { x: data.x, y: data.y };
+        const pos = await rpc('setCharacterWindowPosition', { name: char.name || '' });
+        char.windowPosition = pos;
         const display = document.getElementById(`char_${index}_windowPositionDisplay`);
-        if (display) display.textContent = `${data.x}, ${data.y}`;
+        if (display) display.textContent = `${pos.x}, ${pos.y}`;
         showStatus(t('status.windowPositionSet'), 'success');
     } catch (error) {
         logError('Failed to set character window position:', error);
+        showStatus(t('status.saveFailedPrefix') + error.message, 'error');
     }
 }
 
@@ -5870,19 +5739,14 @@ async function clearCharacterWindowPosition(index) {
     if (!char) return;
 
     try {
-        const result = await webui.call('clearCharacterWindowPosition', char.name || '');
-        const data = JSON.parse(result);
-        if (!data.success) {
-            showStatus(t('status.saveFailedPrefix') + (data.error || ''), 'error');
-            return;
-        }
-
+        await rpc('clearCharacterWindowPosition', { name: char.name || '' });
         char.windowPosition = null;
         const display = document.getElementById(`char_${index}_windowPositionDisplay`);
         if (display) display.textContent = t('dynamic.character.windowPositionNotSet');
         showStatus(t('status.windowPositionCleared'), 'success');
     } catch (error) {
         logError('Failed to clear character window position:', error);
+        showStatus(t('status.saveFailedPrefix') + error.message, 'error');
     }
 }
 
@@ -5893,15 +5757,14 @@ async function refreshWindowPositionSourceOptions() {
 
     const previousValue = select.value;
     try {
-        const result = await webui.call('getOpenClients');
-        const names = JSON.parse(result);
+        const names = await rpc('getOpenClients');
         if (names.length === 0) {
-            select.innerHTML = `<option value="">${t('status.noOpenClients')}</option>`;
+            select.innerHTML = `<option value="">${escapeHtml(t('status.noOpenClients'))}</option>`;
             select.disabled = true;
             return;
         }
         select.disabled = false;
-        select.innerHTML = names.map(name => `<option value="${name}">${name}</option>`).join('');
+        select.innerHTML = names.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
         if (names.includes(previousValue)) select.value = previousValue;
     } catch (error) {
         logError('Failed to refresh window position source options:', error);
@@ -5919,8 +5782,7 @@ async function scanUltraPotatoProfiles() {
     if (applyBtn) applyBtn.disabled = true;
 
     try {
-        const result = await webui.call('scanUltraPotatoProfiles');
-        const profiles = JSON.parse(result);
+        const profiles = await rpc('scanUltraPotatoProfiles');
 
         if (profiles.length === 0) {
             select.innerHTML = `<option value="">${escapeHtml(t('tab.behavior.section.ultra-potato.none-found'))}</option>`;
@@ -5958,13 +5820,7 @@ async function applyUltraPotatoMode() {
     showStatus(t('status.ultraPotatoApplying'), 'info');
 
     try {
-        const response = await webui.call('applyUltraPotatoMode', JSON.stringify(paths));
-        const data = JSON.parse(response);
-
-        if (!data.success) {
-            showStatus(data.error || t('status.ultraPotatoFailed'), 'error');
-            return;
-        }
+        const data = await rpc('applyUltraPotatoMode', { paths });
 
         const changed = data.results.filter(r => r.ok && r.changed).length;
         const alreadySet = data.results.filter(r => r.ok && !r.changed).length;
@@ -6006,20 +5862,15 @@ async function setAllCharacterWindowPositions() {
     }
 
     try {
-        const result = await webui.call('setAllCharacterWindowPositions', sourceName);
-        const data = JSON.parse(result);
-        if (!data.success) {
-            showStatus(t('status.saveFailedPrefix') + (data.error || ''), 'error');
-            return;
-        }
-
+        const pos = await rpc('setAllCharacterWindowPositions', { name: sourceName });
         (currentConfig.characters || []).forEach(char => {
-            char.windowPosition = { x: data.x, y: data.y };
+            char.windowPosition = { x: pos.x, y: pos.y };
         });
         populateCharacters();
         showStatus(t('status.windowPositionSet'), 'success');
     } catch (error) {
         logError('Failed to set all character window positions:', error);
+        showStatus(t('status.saveFailedPrefix') + error.message, 'error');
     }
 }
 
@@ -6030,13 +5881,7 @@ function confirmClearAllCharacterWindowPositions() {
 // Clears every character's saved window position (written straight to disk, same as set*WindowPosition).
 async function clearAllCharacterWindowPositions() {
     try {
-        const result = await webui.call('clearAllCharacterWindowPositions');
-        const data = JSON.parse(result);
-        if (!data.success) {
-            showStatus(t('status.saveFailedPrefix') + (data.error || ''), 'error');
-            return;
-        }
-
+        await rpc('clearAllCharacterWindowPositions');
         (currentConfig.characters || []).forEach(char => {
             char.windowPosition = null;
         });
@@ -6044,6 +5889,7 @@ async function clearAllCharacterWindowPositions() {
         showStatus(t('status.windowPositionCleared'), 'success');
     } catch (error) {
         logError('Failed to clear all character window positions:', error);
+        showStatus(t('status.saveFailedPrefix') + error.message, 'error');
     }
 }
 
@@ -6133,8 +5979,7 @@ async function populateCharactersFromClients() {
     try {
         let names = [];
         if (typeof webui !== 'undefined') {
-            const result = await webui.call('getOpenClients');
-            names = JSON.parse(result);
+            names = await rpc('getOpenClients');
         }
 
         if (names.length === 0) {
@@ -6709,7 +6554,7 @@ const suggestOpenClients = (() => {
         if (typeof webui === 'undefined') return;
 
         try {
-            const clientNames = JSON.parse(await webui.call('getOpenClients'));
+            const clientNames = await rpc('getOpenClients');
             if (document.activeElement !== input) return;
 
             const siblings = input.dataset.suggestSiblings ? document.querySelectorAll(input.dataset.suggestSiblings) : [];
@@ -6774,8 +6619,7 @@ async function fillHotkeyGroupFromClients(index) {
     try {
         let names = [];
         if (typeof webui !== 'undefined') {
-            const result = await webui.call('getOpenClients');
-            names = JSON.parse(result);
+            names = await rpc('getOpenClients');
         }
 
         if (names.length === 0) {
@@ -6855,8 +6699,7 @@ function saveHotkeyGroups() {
 async function loadGlobalSettingsFromBackend() {
     try {
         if (typeof webui !== 'undefined') {
-            const json = await webui.call('loadGlobalSettings');
-            currentGlobalSettings = JSON.parse(json);
+            currentGlobalSettings = await rpc('loadGlobalSettings');
         } else {
             currentGlobalSettings = {};
         }
@@ -6938,7 +6781,7 @@ async function changeDialogScale() {
     currentGlobalSettings.dialogScale = percent;
 
     try {
-        const result = JSON.parse(await webui.call('setDialogScale', percent));
+        const result = await rpc('setDialogScale', { percent });
         document.documentElement.style.setProperty('--ui-scale', result.scale);
         // Resize listeners already ran before the new scale applied.
         window.dispatchEvent(new Event('resize'));
@@ -6954,15 +6797,14 @@ function toggleAlwaysOnTop() {
     if (!currentGlobalSettings) currentGlobalSettings = {};
     currentGlobalSettings.alwaysOnTop = enabled;
 
-    webui.call('setAlwaysOnTop', enabled).catch(() => {});
+    rpc('setAlwaysOnTop', { enabled }).catch((error) => logWarn('Failed to set always on top:', error));
 }
 
 async function getAvailableProfileNames() {
     try {
         if (typeof webui !== 'undefined') {
-            const response = await webui.call('listProfiles');
-            const data = JSON.parse(response);
-            return data.profiles || [];
+            const data = await rpc('listProfiles');
+            return data.profiles;
         }
     } catch (error) {
         logError('Failed to load profile list for profile switch hotkeys:', error);
@@ -7260,8 +7102,7 @@ async function fetchOrePrices() {
     showStatus(t('status.fetchingOrePrices').replace('{n}', names.length), 'info');
 
     try {
-        const response = await webui.call('fetchOrePrices', JSON.stringify(names));
-        const prices = JSON.parse(response);
+        const prices = await rpc('fetchOrePrices', { names });
 
         let updated = 0;
         currentGlobalSettings.oreTable.forEach(entry => {
@@ -8532,11 +8373,11 @@ function toggleTravelOptions() {
     countRow.style.display = isPercent ? 'none' : '';
 }
 
-async function browseLogDir(webuiMethod, inputId, label) {
+async function browseLogDir(method, inputId, label) {
     try {
         if (typeof webui !== 'undefined') {
-            const result = await webui.call(webuiMethod);
-            if (result && result !== '') {
+            const result = await rpc(method);
+            if (result) {
                 const input = document.getElementById(inputId);
                 if (input) {
                     input.value = result;
@@ -8564,8 +8405,8 @@ async function browseSoundFile(typeKey) {
             logWarn('WebUI not available for browsing sound file');
             return;
         }
-        const result = await webui.call('browseSoundFile');
-        if (result && result !== '') {
+        const result = await rpc('browseSoundFile');
+        if (result) {
             const input = document.getElementById(`notif_${typeKey}_soundPath`);
             if (input) {
                 input.value = soundFileBaseName(result);
@@ -8661,13 +8502,10 @@ async function testNotification(typeKey) {
     if (!config) return;
     try {
         await sendThumbnailPreview();
-        const { success } = JSON.parse(await webui.call('testNotification', JSON.stringify({
-            type: typeKey,
-            config,
-        })));
-        if (!success) showStatus(t('status.testNotificationMainAppNotRunning'), 'error');
+        await rpc('testNotification', { json: JSON.stringify({ type: typeKey, config }) });
     } catch (error) {
         logError('Failed to test notification:', error);
+        showStatus(t('status.testNotificationFailedPrefix') + error.message, 'error');
     }
 }
 

@@ -44,6 +44,13 @@ pub const ProfileStore = struct {
         self.persist();
     }
 
+    /// Sets `character_name`'s saved game-window position, or with a null name every character's; clearing a missing character is a no-op.
+    pub fn setWindowPosition(self: *ProfileStore, character_name: ?[]const u8, pos: ?config_mod.Position) !void {
+        try applyWindowPosition(&self.live, character_name, pos);
+        try applyWindowPosition(&self.saved, character_name, pos);
+        self.persist();
+    }
+
     /// Returns whether `character_name` is now in the group; a temporary group's members are never saved.
     pub fn toggleGroupMember(self: *ProfileStore, group_index: usize, character_name: []const u8) !bool {
         const group = &self.live.hotkeyGroups.items[group_index];
@@ -73,6 +80,17 @@ pub const ProfileStore = struct {
         };
     }
 };
+
+/// Shared with the dialog's edits to a profile the app isn't running, which only exist on disk.
+pub fn applyWindowPosition(cfg: *Config, character_name: ?[]const u8, pos: ?config_mod.Position) !void {
+    if (character_name) |name| {
+        if (pos == null and cfg.findCharacter(name) == null) return;
+        const char = try cfg.getOrCreateCharacter(cfg.allocator, name);
+        char.windowPosition = pos;
+    } else {
+        for (cfg.characters.items) |*char| char.windowPosition = pos;
+    }
+}
 
 /// Idempotent, so both copies end up agreeing even if they didn't before.
 fn setMembership(cfg: *Config, group_index: usize, character_name: []const u8, member: bool) !void {

@@ -329,6 +329,21 @@ pub const GlobalConfig = struct {
         try self.save();
     }
 
+    /// Adds `source`'s character IDs this doesn't have yet, e.g. ones resolved while the dialog was open.
+    pub fn mergeCharacterIds(self: *GlobalConfig, source: *GlobalConfig) !void {
+        try source.characterIdMapMutex.lock(files.g_io);
+        defer source.characterIdMapMutex.unlock(files.g_io);
+        var it = source.characterIdMap.iterator();
+        while (it.next()) |entry| {
+            if (self.characterIdMap.contains(entry.key_ptr.*)) continue;
+            const name = try self.allocator.dupe(u8, entry.key_ptr.*);
+            errdefer self.allocator.free(name);
+            const id = try self.allocator.dupe(u8, entry.value_ptr.*);
+            errdefer self.allocator.free(id);
+            try self.characterIdMap.put(name, id);
+        }
+    }
+
     pub fn hasCharacterId(self: *GlobalConfig, character_name: []const u8) !bool {
         try self.characterIdMapMutex.lock(files.g_io);
         defer self.characterIdMapMutex.unlock(files.g_io);

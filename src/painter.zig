@@ -19,7 +19,6 @@ const list_view = @import("list_view.zig");
 const history_panel_mod = @import("notifications/history_panel.zig");
 const gdi_overlay = @import("platform/gdi_overlay.zig");
 const region_select = @import("region_select.zig");
-const protocol = @import("protocol.zig");
 const log = @import("log.zig");
 const slog = log.scoped("painter");
 const alert_effects = @import("notifications/alert_effects.zig");
@@ -1297,8 +1296,8 @@ pub const Painter = struct {
         g_window_class_registered = true;
     }
 
-    /// Starts the "Start Region Selection" drag-to-select overlay; the result reaches the config dialog asynchronously via protocol.publishRegionSelectResult.
-    pub fn startRegionSelect(self: *Painter, request: protocol.RegionSelectRequest) void {
+    /// Starts the "Start Region Selection" drag-to-select overlay; the result reaches the config dialog as a regionSelected event.
+    pub fn startRegionSelect(self: *Painter, request: region_select.Request) void {
         if (request.hide_thumbnails) self.hideThumbnailsForRegionSelect();
         const cursor = monitors_mod.cursorMonitorBounds();
         const text_color = self.config.thumbnail.characterNameColor | 0xFF000000;
@@ -1311,8 +1310,8 @@ pub const Painter = struct {
             .color = text_color,
         }, request.edit_region, request.labels);
         if (label_font) |font| {
-            const line1 = protocol.labelText(if (request.edit_region != null) &request.labels.hint_edit else &request.labels.hint_new);
-            self.hint_box.show(self.instance, font, text_color, line1, protocol.labelText(&request.labels.hint_confirm), cursor.bounds);
+            const line1 = region_select.labelText(if (request.edit_region != null) &request.labels.hint_edit else &request.labels.hint_new);
+            self.hint_box.show(self.instance, font, text_color, line1, region_select.labelText(&request.labels.hint_confirm), cursor.bounds);
         }
     }
 

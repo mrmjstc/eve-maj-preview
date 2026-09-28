@@ -4,7 +4,7 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const vk = @import("../platform/virtual_keys.zig");
-const protocol = @import("../protocol.zig");
+const dialog_events = @import("../dialog/events.zig");
 const log = @import("../log.zig");
 const slog = log.scoped("keyboard_hook");
 const HookBindings = @import("hook_bindings.zig").HookBindings;
@@ -67,7 +67,7 @@ pub fn markSwallowRelease(vk_code: u32) void {
     if (map.getPtr(vk_code)) |swallow| swallow.* = true;
 }
 
-/// Recording tears the hook down entirely, so this keeps it alive to swallow Win down/up and report via protocol.publishWinKeyCaptureResult - otherwise Windows pops the Start Menu before the dialog sees anything.
+/// Recording tears the hook down entirely, so this keeps it alive to swallow Win down/up and report it to the dialog as a winKeyCaptured event - otherwise Windows pops the Start Menu before the dialog sees anything.
 pub fn armWinKeyCapture() void {
     g_capture_win_key = true;
     if (g_hook.hook == null) {
@@ -123,7 +123,7 @@ fn lowLevelKeyboardProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM
             // The conduit hotkey only consumes the down; a stray up reaching the new client makes it drop held modifiers.
             if (info.vkCode == vk.VK_FOCUS_GRANT) return 1;
             if (g_capture_win_key and is_win_vk) {
-                protocol.publishWinKeyCaptureResult(vk.currentModifiers() & ~vk.MOD_WIN);
+                dialog_events.winKeyCaptured(vk.currentModifiers() & ~vk.MOD_WIN);
                 return 1;
             }
             if (g_swallow_release) |*map| {

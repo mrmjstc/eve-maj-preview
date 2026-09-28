@@ -26,19 +26,21 @@ pub const environMap = files.environMap;
 pub const PROFILES_DIR = files.PROFILES_DIR;
 pub const DEFAULT_PROFILE = files.DEFAULT_PROFILE;
 pub const GLOBAL_SETTINGS_FILE = files.GLOBAL_SETTINGS_FILE;
-pub const MAX_PROFILE_NAME_LEN: usize = 16;
 pub const atomicWriteFile = files.atomicWriteFile;
 pub const profilePath = profiles.path;
 pub const loadProfile = profiles.load;
 pub const listProfiles = profiles.list;
 pub const saveProfile = profiles.save;
 pub const writeDefaultProfile = profiles.writeDefault;
+pub const createProfile = profiles.create;
+pub const copyProfile = profiles.copy;
+pub const restoreProfileBackup = profiles.restoreBackup;
+pub const deleteProfileToBackup = profiles.deleteToBackup;
+pub const listProfileBackups = profiles.listBackups;
+pub const validateProfileName = profiles.validateName;
+pub const profileFileName = profiles.fileNameFor;
 pub const ProfileStore = store.ProfileStore;
-
-/// Byte slicing is safe: the dialog only allows ASCII profile names.
-pub fn clampProfileName(name: []const u8) []const u8 {
-    return if (name.len > MAX_PROFILE_NAME_LEN) name[0..MAX_PROFILE_NAME_LEN] else name;
-}
+pub const applyWindowPosition = store.applyWindowPosition;
 
 /// Independent of the release version; bump PROFILE_FORMAT_VERSION only for schema changes that need a migration.
 pub const PROFILE_FORMAT_IDENTIFIER = "eve-maj-preview";

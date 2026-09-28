@@ -7,6 +7,7 @@ const client_actions = @import("clients/actions.zig");
 const hotkeys_mod = @import("hotkeys/manager.zig");
 const painter_mod = @import("painter.zig");
 const auto_minimize = @import("clients/auto_minimize.zig");
+const dialog_host = @import("dialog/host.zig");
 const scout_mod = @import("clients/scout.zig");
 const main_mod = @import("main.zig");
 const slog = log.scoped("tray");
@@ -96,7 +97,7 @@ pub const TrayIcon = struct {
             self.showContextMenu(config);
         } else if (lParam == win32.WM_LBUTTONDBLCLK) {
             slog.info("Opening configuration dialog from system tray double-click", .{});
-            openConfigDialog();
+            dialog_host.open();
         }
     }
 
@@ -253,7 +254,7 @@ pub const TrayIcon = struct {
 
         if (command_id == win32.IDM_OPEN_CONFIG) {
             slog.info("Opening configuration dialog from system tray", .{});
-            openConfigDialog();
+            dialog_host.open();
             return true;
         }
 
@@ -366,30 +367,3 @@ pub const TrayIcon = struct {
         return result;
     }
 };
-
-/// Launch config.exe, which is installed alongside the main executable
-fn openConfigDialog() void {
-    var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const exe_dir = win32.selfExeDirPath(&exe_dir_buf) catch {
-        slog.err("Failed to determine executable directory", .{});
-        return;
-    };
-
-    var dir_z_buf: [std.fs.max_path_bytes + 1]u8 = undefined;
-    const exe_dir_z = std.fmt.bufPrintZ(&dir_z_buf, "{s}", .{exe_dir}) catch {
-        slog.err("Executable directory path too long", .{});
-        return;
-    };
-
-    var path_buf: [std.fs.max_path_bytes + 16]u8 = undefined;
-    const config_exe_path = std.fmt.bufPrintZ(&path_buf, "{s}\\config.exe", .{exe_dir}) catch {
-        slog.err("Failed to build config.exe path", .{});
-        return;
-    };
-
-    slog.info("Launching configuration dialog: {s}", .{config_exe_path});
-
-    if (!win32.shellOpen(config_exe_path.ptr, exe_dir_z.ptr)) {
-        slog.err("Failed to launch config.exe", .{});
-    }
-}
