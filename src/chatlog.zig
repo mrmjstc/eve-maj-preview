@@ -9,19 +9,17 @@ const painter_mod = @import("painter.zig");
 const config_mod = @import("config.zig");
 const CharacterIds = @import("chatlog/character_ids.zig").CharacterIds;
 const lines_mod = @import("chatlog/lines.zig");
-const utf16 = @import("chatlog/utf16.zig");
+const tail = @import("chatlog/tail.zig");
+const discovery = @import("chatlog/discovery.zig");
 const slog = log.scoped("chatlog");
 
-/// Event sent from worker thread to main thread: apply a system-name update.
-/// hwnd is resolved by the receiver (main thread) via Scout, not by the sender -
-/// only the main thread may touch Scout/Painter, since both are mutated every
-/// tick by the main thread and aren't synchronized for cross-thread access.
+/// From the worker; the hwnd is resolved on the main thread, the only one that may touch Scout and Painter.
 pub const SystemUpdateEvent = struct {
     character_name: []const u8,
     system_name: []const u8,
-    // 0 = no staleness check (live-tail lines are already strictly ordered)
+    // 0 skips the staleness check; live-tail lines arrive in order.
     event_ts: u64,
-    // True only for stargate/conduit jumps; feeds Travel Mode's last-jump tracking.
+    // Stargate and conduit jumps only, for Travel Mode.
     is_jump: bool = false,
 
     pub fn deinit(self: *SystemUpdateEvent, allocator: std.mem.Allocator) void {
@@ -30,7 +28,7 @@ pub const SystemUpdateEvent = struct {
     }
 };
 
-/// Event sent from worker thread to main thread: show a notification. Text is rendered on the main thread, where per-type config lives.
+/// From the worker; the text is rendered on the main thread, where per-type config lives.
 pub const NotificationEvent = struct {
     character_name: []const u8,
     /// source/target are owned copies.
@@ -43,15 +41,12 @@ pub const NotificationEvent = struct {
     }
 };
 
-/// Commands sent from main thread to worker thread
+/// Main thread to worker; names are owned by the command.
 pub const ChatlogCommand = union(enum) {
     add_character: struct {
-        // Owned by command, must be freed by receiver
         name: []const u8,
     },
-    // Owned by command, must be freed by receiver
     remove_character: []const u8,
-    // Owned by command, must be freed by receiver
     resolve_character_id: struct {
         name: []const u8,
     },
@@ -67,7 +62,6 @@ pub const ChatlogCommand = union(enum) {
     }
 };
 
-/// Thread-safe event queue for cross-thread communication
 pub fn EventQueue(comptime T: type) type {
     return struct {
         mutex: std.Io.Mutex,
@@ -105,61 +99,22 @@ pub fn EventQueue(comptime T: type) type {
     };
 }
 
-/// Minimum line length to consider (timestamp + space = ~20 chars)
+/// Shorter lines can't hold a timestamp and a message.
 const MIN_LINE_LENGTH = 25;
-
-/// Optimized chunk size for backward scanning (8KB)
-const SCAN_CHUNK_SIZE = 8192;
-
-/// Upper bound on how far findSystemBackward scans back from EOF. This runs
-/// synchronously on the main thread by default, so it's bounded, not unbounded.
-const MAX_BACKWARD_SCAN_BYTES: u64 = 8 * 1024 * 1024;
 
 /// win32.Ticks unwrapped to i64, for activity trackers' plain integer arithmetic.
 fn trackerNowMs() i64 {
     return @intCast(win32.Ticks.now().ms);
 }
 
-pub const LogFileState = struct {
-    file_path: []const u8,
-    character_name: []const u8,
-    position: u64 = 0,
-    last_size: u64 = 0,
-    last_modified: i64 = 0,
-    // true for chatlog (UTF-16 LE), false for gamelog (UTF-8)
-    is_chatlog: bool,
-    had_activity: bool = false,
-    disabled: bool = false,
-    has_bom: bool = false,
-    last_system_hash: u64 = 0,
-    idle_checks: u32 = 0,
-    cycle_counter: u32 = 0,
-    poll_interval_multiplier: u8 = 1,
-    utf8_buffer: std.ArrayList(u8),
-    lines: lines_mod.LineAssembler = .{},
-    u16_buffer: std.ArrayList(u16),
-    system_name_buffer: std.ArrayList(u8),
-    long_line_warnings: u32 = 0,
-
-    pub fn deinit(self: *LogFileState, allocator: std.mem.Allocator) void {
-        allocator.free(self.file_path);
-        allocator.free(self.character_name);
-        self.utf8_buffer.deinit(allocator);
-        self.lines.deinit(allocator);
-        self.u16_buffer.deinit(allocator);
-        self.system_name_buffer.deinit(allocator);
-    }
-};
+const LogFile = tail.LogFile;
 
 pub const ChatlogMonitor = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
-    log_files: std.ArrayList(LogFileState),
+    log_files: std.ArrayList(LogFile),
     monitored_paths: std.StringHashMap(void),
-    chatlog_dir: []const u8,
-    gamelog_dir: []const u8,
-    chatlog_watcher: win32.HANDLE,
-    gamelog_watcher: win32.HANDLE,
+    finder: discovery.LogFinder,
     /// Read for ore prices, which only change while the worker is stopped.
     global_settings: ?*config_mod.GlobalConfig = null,
     character_ids: ?*CharacterIds = null,
@@ -172,8 +127,8 @@ pub const ChatlogMonitor = struct {
     poll_interval_ms: u32 = 50,
     last_sync_poll_ms: win32.Ticks = .{},
     pending_scan_index: usize = 0,
-    pending_chatlog_signaled: bool = false,
-    pending_gamelog_signaled: bool = false,
+    /// The folder changes a rescan still in progress is for.
+    pending_changes: discovery.Changes = .{},
     pending_scan_names: std.ArrayList([]u8) = .empty,
     worker_thread: ?std.Thread = null,
     command_queue: EventQueue(ChatlogCommand),
@@ -183,35 +138,22 @@ pub const ChatlogMonitor = struct {
     threading_enabled: bool = false,
     pending_characters: std.StringHashMap(void),
     pending_characters_mutex: std.Io.Mutex,
-    /// Worker thread only: every character added and not removed, including ones with no log files yet, so directory changes keep looking for them.
+    /// Worker only: every added character, including ones with no logs yet, so folder changes keep looking for them.
     wanted_characters: std.StringHashMap(void),
-    /// Reused by update() to avoid a per-tick alloc; main thread only, borrowed slices only.
+    /// Reused each tick; main thread only, borrowed slices.
     tick_names: std.ArrayList([]const u8),
     tick_logged_out_names: std.ArrayList([]const u8),
 
     pub fn init(allocator: std.mem.Allocator, io: std.Io, cfg: *const config_mod.ChatlogConfig, global_settings_ref: ?*config_mod.GlobalConfig, character_ids: ?*CharacterIds) !*ChatlogMonitor {
-        const chatlog_dir = cfg.chatlogDir;
-        const gamelog_dir = cfg.gamelogDir;
-        if (!std.unicode.utf8ValidateSlice(chatlog_dir)) {
-            slog.err("Chatlog directory path contains invalid UTF-8", .{});
-            return error.InvalidUtf8;
-        }
-        if (!std.unicode.utf8ValidateSlice(gamelog_dir)) {
-            slog.err("Gamelog directory path contains invalid UTF-8", .{});
-            return error.InvalidUtf8;
-        }
-
         const monitor = try allocator.create(ChatlogMonitor);
         errdefer allocator.destroy(monitor);
+        monitor.finder = try discovery.LogFinder.init(allocator, io, cfg.chatlogDir, cfg.gamelogDir, character_ids);
+        errdefer monitor.finder.deinit();
 
         monitor.allocator = allocator;
         monitor.io = io;
         monitor.log_files = .empty;
         monitor.monitored_paths = std.StringHashMap(void).init(allocator);
-        monitor.chatlog_dir = try allocator.dupe(u8, chatlog_dir);
-        errdefer allocator.free(monitor.chatlog_dir);
-        monitor.gamelog_dir = try allocator.dupe(u8, gamelog_dir);
-        errdefer allocator.free(monitor.gamelog_dir);
         monitor.global_settings = global_settings_ref;
         monitor.character_ids = character_ids;
         monitor.combat_tracker = null;
@@ -221,8 +163,7 @@ pub const ChatlogMonitor = struct {
         monitor.applySettings(cfg);
         monitor.last_sync_poll_ms = .{};
         monitor.pending_scan_index = 0;
-        monitor.pending_chatlog_signaled = false;
-        monitor.pending_gamelog_signaled = false;
+        monitor.pending_changes = .{};
         monitor.pending_scan_names = .empty;
 
         monitor.worker_thread = null;
@@ -237,19 +178,6 @@ pub const ChatlogMonitor = struct {
         monitor.tick_names = .empty;
         monitor.tick_logged_out_names = .empty;
 
-        monitor.chatlog_watcher = monitor.setupDirectoryWatcher(chatlog_dir);
-        errdefer if (monitor.chatlog_watcher != win32.INVALID_HANDLE_VALUE) {
-            _ = win32.FindCloseChangeNotification(monitor.chatlog_watcher);
-        };
-        monitor.gamelog_watcher = monitor.setupDirectoryWatcher(gamelog_dir);
-
-        if (monitor.chatlog_watcher != win32.INVALID_HANDLE_VALUE or monitor.gamelog_watcher != win32.INVALID_HANDLE_VALUE) {
-            slog.debug("File system watchers initialized for log directories (chatlog={}, gamelog={})", .{
-                monitor.chatlog_watcher != win32.INVALID_HANDLE_VALUE,
-                monitor.gamelog_watcher != win32.INVALID_HANDLE_VALUE,
-            });
-        }
-
         return monitor;
     }
 
@@ -257,12 +185,11 @@ pub const ChatlogMonitor = struct {
     pub fn runsWith(self: *const ChatlogMonitor, cfg: *const config_mod.ChatlogConfig) bool {
         return cfg.enabled and
             cfg.useThreading == self.threading_enabled and
-            std.mem.eql(u8, cfg.chatlogDir, self.chatlog_dir) and
-            std.mem.eql(u8, cfg.gamelogDir, self.gamelog_dir);
+            std.mem.eql(u8, cfg.chatlogDir, self.finder.chatlog_dir) and
+            std.mem.eql(u8, cfg.gamelogDir, self.finder.gamelog_dir);
     }
 
-    /// Stops the worker thread only - log_files/monitored_paths are left intact.
-    /// The polling knobs a profile reload can change without rebuilding the monitor.
+    /// The polling settings a profile reload can change without rebuilding the monitor.
     pub fn applySettings(self: *ChatlogMonitor, cfg: *const config_mod.ChatlogConfig) void {
         self.idle_poll_threshold = cfg.idlePollThreshold;
         self.max_poll_multiplier = cfg.maxPollMultiplier;
@@ -292,7 +219,6 @@ pub const ChatlogMonitor = struct {
         slog.info("Chatlog worker thread started", .{});
     }
 
-    /// Worker thread main loop - runs I/O operations asynchronously
     fn workerThreadMain(monitor: *ChatlogMonitor) void {
         slog.info("Worker thread started (TID: {})", .{std.Thread.getCurrentId()});
 
@@ -308,7 +234,7 @@ pub const ChatlogMonitor = struct {
                 slog.err("Worker thread poll error: {}", .{err});
             };
 
-            // Check for new files (blocking I/O) - use longer time budget since we're not blocking UI
+            // A longer budget than the main thread's, since nothing waits on the worker.
             const time_budget_ns = 100 * std.time.ns_per_ms;
             var characters = monitor.getCurrentCharacterList() catch |err| {
                 slog.err("Worker thread failed to get character list: {}", .{err});
@@ -321,14 +247,12 @@ pub const ChatlogMonitor = struct {
                 slog.err("Worker thread scan error: {}", .{err});
             };
 
-            // Sleep briefly to avoid busy-wait
             win32.Sleep(monitor.poll_interval_ms);
         }
 
         slog.info("Worker thread exiting (processed {} loops)", .{loop_count});
     }
 
-    /// Process commands from main thread (add/remove characters, shutdown)
     fn processCommands(self: *ChatlogMonitor) !void {
         var commands = std.ArrayList(ChatlogCommand).empty;
         defer commands.deinit(self.allocator);
@@ -342,14 +266,14 @@ pub const ChatlogMonitor = struct {
                     slog.debug("Worker: Add character {s}", .{data.name});
                     self.wantCharacter(data.name);
 
-                    if (self.findChatlogForCharacter(data.name)) |chatlog_path| {
+                    if (self.finder.find(data.name, true)) |chatlog_path| {
                         defer self.allocator.free(chatlog_path);
                         self.addLogFile(chatlog_path, data.name, true) catch |err| {
                             slog.err("Worker: Failed to add chatlog for {s}: {}", .{ data.name, err });
                         };
                     }
 
-                    if (self.findGamelogForCharacter(data.name)) |gamelog_path| {
+                    if (self.finder.find(data.name, false)) |gamelog_path| {
                         defer self.allocator.free(gamelog_path);
                         self.addLogFile(gamelog_path, data.name, false) catch |err| {
                             slog.err("Worker: Failed to add gamelog for {s}: {}", .{ data.name, err });
@@ -369,9 +293,9 @@ pub const ChatlogMonitor = struct {
                     if (already_cached) continue;
 
                     slog.debug("Worker: Resolving character ID for {s}", .{data.name});
-                    if (self.findChatlogForCharacter(data.name)) |path| {
+                    if (self.finder.find(data.name, true)) |path| {
                         self.allocator.free(path);
-                    } else if (self.findGamelogForCharacter(data.name)) |path| {
+                    } else if (self.finder.find(data.name, false)) |path| {
                         self.allocator.free(path);
                     }
                 },
@@ -446,19 +370,13 @@ pub const ChatlogMonitor = struct {
         self.clearPendingScanNames();
         self.pending_scan_names.deinit(self.allocator);
 
-        if (self.chatlog_watcher != win32.INVALID_HANDLE_VALUE) {
-            _ = win32.FindCloseChangeNotification(self.chatlog_watcher);
-        }
-        if (self.gamelog_watcher != win32.INVALID_HANDLE_VALUE) {
-            _ = win32.FindCloseChangeNotification(self.gamelog_watcher);
-        }
+        self.finder.deinit();
 
         for (self.log_files.items) |*state| {
-            state.deinit(self.allocator);
+            state.deinit(self.allocator, self.io);
         }
         self.log_files.deinit(self.allocator);
 
-        // Free HashMap keys (values are void)
         var key_iter = self.monitored_paths.keyIterator();
         while (key_iter.next()) |key| {
             self.allocator.free(key.*);
@@ -468,8 +386,6 @@ pub const ChatlogMonitor = struct {
         self.tick_names.deinit(self.allocator);
         self.tick_logged_out_names.deinit(self.allocator);
 
-        self.allocator.free(self.chatlog_dir);
-        self.allocator.free(self.gamelog_dir);
         if (self.damage_alert_excluded_weapons.len > 0) self.allocator.free(self.damage_alert_excluded_weapons);
     }
 
@@ -483,8 +399,6 @@ pub const ChatlogMonitor = struct {
         self.damage_alert_excluded_weapons = owned;
     }
 
-    /// Add a character to monitor (finds and tracks their chat and game logs).
-    /// Queues a command for the worker thread if threading is enabled, otherwise does the I/O synchronously.
     pub fn addCharacter(self: *ChatlogMonitor, character_name: []const u8) !void {
         if (self.threading_enabled) {
             try self.pending_characters_mutex.lock(self.io);
@@ -506,13 +420,12 @@ pub const ChatlogMonitor = struct {
             return;
         }
 
-        // Sync mode: I/O on main thread, added only on an exact character name match.
-        if (self.findChatlogForCharacter(character_name)) |chatlog_path| {
+        if (self.finder.find(character_name, true)) |chatlog_path| {
             try self.addLogFile(chatlog_path, character_name, true);
             self.allocator.free(chatlog_path);
         }
 
-        if (self.findGamelogForCharacter(character_name)) |gamelog_path| {
+        if (self.finder.find(character_name, false)) |gamelog_path| {
             try self.addLogFile(gamelog_path, character_name, false);
             self.allocator.free(gamelog_path);
         }
@@ -533,23 +446,21 @@ pub const ChatlogMonitor = struct {
         try self.command_queue.push(cmd);
     }
 
-    /// Remove all log files for a character (called when character logs out)
     pub fn removeCharacter(self: *ChatlogMonitor, character_name: []const u8) void {
         var i: usize = 0;
         while (i < self.log_files.items.len) {
             const state = &self.log_files.items[i];
             if (std.mem.eql(u8, state.character_name, character_name)) {
-                // Log before cleanup (while file_path is still valid)
                 slog.info("Stopped monitoring {s} for {s}: {s}", .{
                     if (state.is_chatlog) "chatlog" else "gamelog",
                     character_name,
-                    state.file_path,
+                    state.path,
                 });
 
-                _ = self.monitored_paths.remove(state.file_path);
+                _ = self.monitored_paths.remove(state.path);
 
                 var removed = self.log_files.orderedRemove(i);
-                removed.deinit(self.allocator);
+                removed.deinit(self.allocator, self.io);
 
                 if (self.combat_tracker) |tracker| {
                     tracker.removeCharacter(character_name);
@@ -563,7 +474,6 @@ pub const ChatlogMonitor = struct {
                     tracker.removeCharacter(character_name);
                 }
 
-                // Don't increment i, check same index again
             } else {
                 i += 1;
             }
@@ -571,228 +481,117 @@ pub const ChatlogMonitor = struct {
     }
 
     fn addLogFile(self: *ChatlogMonitor, file_path: []const u8, character_name: []const u8, is_chatlog: bool) !void {
-        if (self.monitored_paths.contains(file_path)) {
-            return;
-        }
+        if (self.monitored_paths.contains(file_path)) return;
 
+        // A newer file for the same character and kind replaces the old one: EVE started a new session.
         var i: usize = 0;
         while (i < self.log_files.items.len) {
             const state = &self.log_files.items[i];
             if (state.is_chatlog == is_chatlog and std.mem.eql(u8, state.character_name, character_name)) {
-                slog.info("Log rotated for {s} ({s}): {s} -> {s}", .{
-                    character_name,
-                    if (is_chatlog) "chatlog" else "gamelog",
-                    state.file_path,
-                    file_path,
-                });
-
-                _ = self.monitored_paths.remove(state.file_path);
+                slog.info("Log rotated for {s} ({s}): {s} -> {s}", .{ character_name, if (is_chatlog) "chatlog" else "gamelog", state.path, file_path });
+                _ = self.monitored_paths.remove(state.path);
                 var removed = self.log_files.orderedRemove(i);
-                removed.deinit(self.allocator);
+                removed.deinit(self.allocator, self.io);
             } else {
                 i += 1;
             }
         }
 
         {
-            const duped_path = try self.allocator.dupe(u8, file_path);
-            errdefer self.allocator.free(duped_path);
-            const character_name_copy = try self.allocator.dupe(u8, character_name);
-            errdefer self.allocator.free(character_name_copy);
-
-            const state: LogFileState = .{
-                .file_path = duped_path,
-                .character_name = character_name_copy,
-                .is_chatlog = is_chatlog,
-                .utf8_buffer = .empty,
-                .u16_buffer = .empty,
-                .system_name_buffer = .empty,
-            };
-
-            try self.log_files.append(self.allocator, state);
+            var entry = try LogFile.init(self.allocator, file_path, character_name, is_chatlog);
+            errdefer entry.deinit(self.allocator, self.io);
+            try self.log_files.append(self.allocator, entry);
         }
-
         const new_entry = &self.log_files.items[self.log_files.items.len - 1];
 
         {
-            // Must dupe again since HashMap owns the key
-            const hashmap_key = try self.allocator.dupe(u8, new_entry.file_path);
-            errdefer self.allocator.free(hashmap_key);
-            try self.monitored_paths.put(hashmap_key, {});
+            // The map owns its own copy of the key.
+            const key = try self.allocator.dupe(u8, new_entry.path);
+            errdefer self.allocator.free(key);
+            try self.monitored_paths.put(key, {});
         }
 
-        try self.readInitialState(new_entry);
+        const found = new_entry.start(self.allocator, self.io) catch |err| {
+            slog.warn("Failed to open {s} for initial read: {}", .{ file_path, err });
+            return err;
+        };
+        if (found) |match| {
+            slog.debug("Initial system for {s}: {s} (event_ts={})", .{ character_name, match.system, match.event_ts });
+            // Not a jump: it's where the character already was.
+            self.queueSystemUpdate(character_name, match.system, match.event_ts, false);
+        }
 
-        slog.info("Monitoring {s} for {s}: {s}", .{
-            if (is_chatlog) "chatlog" else "gamelog",
-            character_name,
-            file_path,
-        });
+        slog.info("Monitoring {s} for {s}: {s}", .{ if (is_chatlog) "chatlog" else "gamelog", character_name, file_path });
     }
 
     pub fn pollLogFiles(self: *ChatlogMonitor) !void {
+        const backoff: tail.Backoff = .{ .idle_threshold = self.idle_poll_threshold, .max_multiplier = self.max_poll_multiplier };
         for (self.log_files.items) |*state| {
-            if (state.disabled) continue;
-
-            // Exponential backoff: only poll every Nth cycle based on multiplier
-            state.cycle_counter += 1;
-            if (state.cycle_counter < state.poll_interval_multiplier) {
-                continue;
-            }
-            state.cycle_counter = 0;
-
-            const file = std.Io.Dir.cwd().openFile(self.io, state.file_path, .{}) catch |err| switch (err) {
-                error.FileNotFound => {
-                    // Temporary failure - reset state but keep trying
-                    state.position = 0;
-                    state.last_size = 0;
-                    state.lines.reset();
-                    continue;
-                },
-                error.BadPathName => {
-                    // Permanent failure - disable this state forever
-                    slog.warn("Disabling log file {s} due to BadPathName", .{state.character_name});
-                    state.disabled = true;
-                    continue;
-                },
-                else => {
-                    // Other errors - skip this iteration but keep trying
-                    slog.warn("Failed to open {s}: {}", .{ state.file_path, err });
-                    continue;
-                },
-            };
-            defer file.close(self.io);
-
-            self.readNewLines(state, file) catch |err| {
-                slog.err("Error reading {s}: {}", .{ state.file_path, err });
-                continue;
+            state.poll(self.allocator, self.io, backoff, LineHandler{ .monitor = self, .state = state }) catch |err| {
+                slog.err("Error reading {s}: {}", .{ state.path, err });
             };
         }
     }
 
-    fn setupDirectoryWatcher(self: *ChatlogMonitor, dir_path: []const u8) win32.HANDLE {
-        const path_w = std.unicode.utf8ToUtf16LeAllocZ(self.allocator, dir_path) catch |err| {
-            slog.warn("Failed to convert path to UTF-16 for {s}: {} - chatlog monitoring will be disabled for this directory", .{ dir_path, err });
-            return win32.INVALID_HANDLE_VALUE;
-        };
-        defer self.allocator.free(path_w);
-
-        // Watch for new files only (FILE_NOTIFY_CHANGE_FILE_NAME)
-        const handle = win32.FindFirstChangeNotificationW(
-            path_w.ptr,
-            // Don't watch subdirectories
-            win32.FALSE,
-            win32.FILE_NOTIFY_CHANGE_FILE_NAME,
-        );
-
-        if (handle == win32.INVALID_HANDLE_VALUE) {
-            slog.warn("Failed to setup directory watcher for {s} - chatlog monitoring will be disabled for this directory", .{dir_path});
-            return win32.INVALID_HANDLE_VALUE;
-        }
-
-        return handle;
-    }
-
-    /// Free and clear the owned scan-name snapshot (call on scan completion or teardown).
     fn clearPendingScanNames(self: *ChatlogMonitor) void {
         for (self.pending_scan_names.items) |name| self.allocator.free(name);
         self.pending_scan_names.clearRetainingCapacity();
     }
 
-    /// Check for new log files using file system watchers with time budget (non-blocking)
-    /// This handles both new character logins AND log rotation for existing characters
-    /// Returns true if more work is pending (exceeded time budget), false if complete
+    /// Rescans `character_names` for new logs once EVE creates files in their folders, within `max_time_ns` per call; returns whether work remains.
     pub fn checkNewLogFiles(self: *ChatlogMonitor, character_names: []const []const u8, max_time_ns: u64) !bool {
-        const start_time = std.Io.Timestamp.now(self.io, .real).toNanoseconds();
+        const start_time = std.Io.Timestamp.now(self.io, .awake).toNanoseconds();
 
-        // Check if we're continuing previous work or starting new scan
-        if (!self.pending_chatlog_signaled and !self.pending_gamelog_signaled) {
-            const chatlog_signaled = if (self.chatlog_watcher != win32.INVALID_HANDLE_VALUE)
-                win32.WaitForSingleObject(self.chatlog_watcher, 0) == win32.WAIT_OBJECT_0
-            else
-                false;
-            const gamelog_signaled = if (self.gamelog_watcher != win32.INVALID_HANDLE_VALUE)
-                win32.WaitForSingleObject(self.gamelog_watcher, 0) == win32.WAIT_OBJECT_0
-            else
-                false;
-
-            if (!chatlog_signaled and !gamelog_signaled) {
-                // No new files, no work to do
-                return false;
-            }
-
-            self.pending_chatlog_signaled = chatlog_signaled;
-            self.pending_gamelog_signaled = gamelog_signaled;
+        if (!self.pending_changes.any()) {
+            const changes = self.finder.changes();
+            if (!changes.any()) return false;
+            self.pending_changes = changes;
             self.pending_scan_index = 0;
 
-            // Snapshot into owned memory: character_names aliases Scout.windows, which orderedRemove() can reshuffle mid-scan.
+            // Copied, since the names may be freed or moved while the scan spans several calls.
             self.clearPendingScanNames();
             for (character_names) |name| {
                 const copy = try self.allocator.dupe(u8, name);
+                errdefer self.allocator.free(copy);
                 try self.pending_scan_names.append(self.allocator, copy);
             }
-
-            slog.debug("New log file scan started (chatlog={}, gamelog={})", .{ chatlog_signaled, gamelog_signaled });
+            slog.debug("New log file scan started (chatlog={}, gamelog={})", .{ changes.chatlog, changes.gamelog });
         }
 
         const scan_names = self.pending_scan_names.items;
-
-        // Process characters incrementally with time budget
         while (self.pending_scan_index < scan_names.len) : (self.pending_scan_index += 1) {
-            const elapsed = std.Io.Timestamp.now(self.io, .real).toNanoseconds() - start_time;
+            const elapsed = std.Io.Timestamp.now(self.io, .awake).toNanoseconds() - start_time;
             if (elapsed > max_time_ns) {
-                slog.debug("Time budget exceeded at character {}/{} ({}ns > {}ns), deferring remaining work", .{
-                    self.pending_scan_index,
-                    scan_names.len,
-                    elapsed,
-                    max_time_ns,
-                });
+                slog.debug("Log file scan paused at character {}/{}, continuing next time", .{ self.pending_scan_index, scan_names.len });
                 return true;
             }
 
             const char_name = scan_names[self.pending_scan_index];
-
-            // Skip generic "EVE" name (logged out or loading windows)
             if (scout_mod.isGenericCharacterName(char_name)) continue;
 
-            if (self.pending_chatlog_signaled) {
-                if (self.findChatlogForCharacter(char_name)) |chatlog_path| {
+            // addLogFile skips a file it already monitors.
+            if (self.pending_changes.chatlog) {
+                if (self.finder.find(char_name, true)) |chatlog_path| {
                     defer self.allocator.free(chatlog_path);
-                    // addLogFile automatically skips if already monitoring this path
                     try self.addLogFile(chatlog_path, char_name, true);
                 }
             }
-
-            if (self.pending_gamelog_signaled) {
-                if (self.findGamelogForCharacter(char_name)) |gamelog_path| {
+            if (self.pending_changes.gamelog) {
+                if (self.finder.find(char_name, false)) |gamelog_path| {
                     defer self.allocator.free(gamelog_path);
-                    // addLogFile automatically skips if already monitoring this path
                     try self.addLogFile(gamelog_path, char_name, false);
                 }
             }
         }
 
-        // All characters processed - reset watchers and clear pending state
-        if (self.pending_chatlog_signaled) {
-            if (self.chatlog_watcher != win32.INVALID_HANDLE_VALUE) {
-                _ = win32.FindNextChangeNotification(self.chatlog_watcher);
-            }
-            self.pending_chatlog_signaled = false;
-        }
-        if (self.pending_gamelog_signaled) {
-            if (self.gamelog_watcher != win32.INVALID_HANDLE_VALUE) {
-                _ = win32.FindNextChangeNotification(self.gamelog_watcher);
-            }
-            self.pending_gamelog_signaled = false;
-        }
+        self.finder.rearm(self.pending_changes);
+        self.pending_changes = .{};
         self.clearPendingScanNames();
         self.pending_scan_index = 0;
-
         slog.debug("Log file scan completed", .{});
         return false;
     }
 
-    /// Main update cycle - performs all Chatlog operations for a single tick, driven by that tick's Scout result.
     pub fn update(self: *ChatlogMonitor, scout_result: *const scout_mod.UpdateResult) !void {
         self.tick_names.clearRetainingCapacity();
         self.tick_logged_out_names.clearRetainingCapacity();
@@ -817,7 +616,6 @@ pub const ChatlogMonitor = struct {
     }
 
     fn applyTick(self: *ChatlogMonitor, character_names: []const []const u8, closed_windows: []const scout_mod.ClosedWindow, logged_out_names: []const []const u8) !void {
-        // In Phase 1 (synchronous mode), handle I/O directly on main thread
         if (!self.threading_enabled) {
             // pollLogFiles()'s per-file backoff assumes fixed-interval calls, which this UI-tick-driven path doesn't guarantee.
             const now = win32.Ticks.now();
@@ -834,14 +632,13 @@ pub const ChatlogMonitor = struct {
                 self.removeCharacter(name);
             }
 
-            // 2ms time budget (safe for 60fps); continues next frame if work remains
+            // Short enough not to hold up a UI tick; the rest continues next tick.
             const time_budget_ns = 2 * std.time.ns_per_ms;
             _ = try self.checkNewLogFiles(character_names, time_budget_ns);
         } else {
             try self.pending_characters_mutex.lock(self.io);
             defer self.pending_characters_mutex.unlock(self.io);
 
-            // Phase 2: Send commands to worker thread
             for (closed_windows) |cw| {
                 if (self.pending_characters.fetchRemove(cw.character_name)) |entry| {
                     self.allocator.free(entry.key);
@@ -865,7 +662,6 @@ pub const ChatlogMonitor = struct {
             }
 
             for (character_names) |char_name| {
-                // Skip generic "EVE" name (logged out or loading windows)
                 if (scout_mod.isGenericCharacterName(char_name)) continue;
 
                 if (self.pending_characters.contains(char_name)) continue;
@@ -886,8 +682,7 @@ pub const ChatlogMonitor = struct {
         try self.drainNotificationQueue();
     }
 
-    /// Push a system-name update to the main thread. Safe to call from either thread -
-    /// resolution against Painter/Scout happens on drain, on the main thread only.
+    /// Safe from either thread; Painter and Scout are only touched when the main thread drains it.
     fn queueSystemUpdate(self: *ChatlogMonitor, character_name: []const u8, system_name: []const u8, event_ts: u64, is_jump: bool) void {
         const character_name_copy = self.allocator.dupe(u8, character_name) catch |err| {
             slog.err("Failed to allocate character name for system update: {}", .{err});
@@ -936,8 +731,7 @@ pub const ChatlogMonitor = struct {
         if (n.target) |t| event.notification.target = try self.allocator.dupe(u8, t);
     }
 
-    /// Drain queued system-name updates and apply them to Painter. Main thread only -
-    /// resolves hwnd via Scout here, since Scout is otherwise touched only by the main thread's tick.
+    /// Main thread only: Scout and Painter aren't safe to touch from the worker.
     fn drainResultQueue(self: *ChatlogMonitor) !void {
         var events = std.ArrayList(SystemUpdateEvent).empty;
         defer events.deinit(self.allocator);
@@ -964,8 +758,7 @@ pub const ChatlogMonitor = struct {
         }
     }
 
-    /// Drain queued notifications and apply them to Painter. Main thread only, same
-    /// reasoning as drainResultQueue.
+    /// Main thread only, like drainResultQueue.
     fn drainNotificationQueue(self: *ChatlogMonitor) !void {
         var events = std.ArrayList(NotificationEvent).empty;
         defer events.deinit(self.allocator);
@@ -984,150 +777,10 @@ pub const ChatlogMonitor = struct {
         }
     }
 
-    /// Read initial state from log file with optimized backward scanning
-    fn readInitialState(self: *ChatlogMonitor, state: *LogFileState) !void {
-        const file = std.Io.Dir.cwd().openFile(self.io, state.file_path, .{}) catch |err| {
-            slog.warn("Failed to open {s} for initial read: {}", .{ state.file_path, err });
-            return err;
-        };
-        defer file.close(self.io);
-
-        const file_stat = try file.stat(self.io);
-        state.last_size = file_stat.size;
-        state.last_modified = @intCast(file_stat.mtime.nanoseconds);
-
-        // Check for UTF-8 BOM at file start (only for gamelogs, chatlogs are UTF-16)
-        if (!state.is_chatlog and file_stat.size >= 3) {
-            var bom_buf: [3]u8 = undefined;
-            const bom_read = try file.readPositionalAll(self.io, &bom_buf, 0);
-            if (bom_read == 3 and bom_buf[0] == 0xEF and bom_buf[1] == 0xBB and bom_buf[2] == 0xBF) {
-                state.has_bom = true;
-            }
-        }
-
-        const match = try self.findSystemBackward(state, file, file_stat.size);
-
-        if (match) |m| {
-            slog.debug("Initial system for {s}: {s} (event_ts={})", .{ state.character_name, m.system, m.event_ts });
-
-            // is_jump=false: this seeds initial state, it isn't a live jump.
-            self.queueSystemUpdate(state.character_name, m.system, m.event_ts, false);
-
-            // No need to free - m.system is a borrowed slice from system_name_buffer
-        } else if (file_stat.size > MAX_BACKWARD_SCAN_BYTES) {
-            slog.warn("No system found for {s} within the last {} bytes of {s}; initial system name unavailable until next channel change or jump", .{ state.character_name, MAX_BACKWARD_SCAN_BYTES, state.file_path });
-        }
-
-        state.position = file_stat.size;
-    }
-
-    /// Scans back from the end of the log for its most recent system, stopping at the first chunk with one.
-    /// The returned system is copied into state.system_name_buffer, since the chunk it was found in doesn't outlive this.
-    fn findSystemBackward(self: *ChatlogMonitor, state: *LogFileState, file: std.Io.File, file_size: u64) !?lines_mod.SystemMatch {
-        if (file_size == 0) return null;
-
-        var buffer: [SCAN_CHUNK_SIZE]u8 = undefined;
-        // Even for chatlogs, so every chunk (whose size and overlap are even too) starts on a UTF-16 character; an odd size means EVE is mid-write.
-        var scan_pos: u64 = if (state.is_chatlog) file_size & ~@as(u64, 1) else file_size;
-        // Overlapping chunks catch a line split across a chunk boundary.
-        const overlap: u64 = if (state.is_chatlog) 128 else 256;
-        const scan_floor: u64 = file_size -| MAX_BACKWARD_SCAN_BYTES;
-
-        while (scan_pos > scan_floor) {
-            const chunk_size = @min(SCAN_CHUNK_SIZE, scan_pos);
-            const start_pos = scan_pos - chunk_size;
-            const bytes_read = try file.readPositionalAll(self.io, buffer[0..chunk_size], start_pos);
-            if (bytes_read == 0) break;
-            const chunk = buffer[0..bytes_read];
-
-            const found = if (state.is_chatlog) blk: {
-                // Checked in the raw bytes first, so most chunks are never decoded.
-                if (!utf16.containsAscii(chunk, "Channel")) break :blk null;
-                const text = try self.decodeUtf16Le(state, chunk) orelse break :blk null;
-                break :blk lines_mod.lastSystemInChat(text);
-            } else lines_mod.lastSystemInGame(chunk);
-
-            if (found) |match| {
-                state.system_name_buffer.clearRetainingCapacity();
-                try state.system_name_buffer.appendSlice(self.allocator, match.system);
-                return .{ .system = state.system_name_buffer.items, .event_ts = match.event_ts };
-            }
-
-            scan_pos = if (start_pos > overlap) start_pos + overlap else 0;
-        }
-
-        return null;
-    }
-
-    fn readNewLines(self: *ChatlogMonitor, state: *LogFileState, file: std.Io.File) !void {
-        const file_stat = try file.stat(self.io);
-        const current_size = file_stat.size;
-        const current_modified: i64 = @intCast(file_stat.mtime.nanoseconds);
-
-        if (current_size == state.last_size and current_modified == state.last_modified) {
-            state.had_activity = false;
-            state.idle_checks += 1;
-
-            if (state.idle_checks >= self.idle_poll_threshold and state.poll_interval_multiplier < self.max_poll_multiplier) {
-                const old_multiplier = state.poll_interval_multiplier;
-                state.poll_interval_multiplier *= 2;
-                state.idle_checks = 0;
-                const log_type = if (state.is_chatlog) "chatlog" else "gamelog";
-                slog.debug("Poll backoff {s} ({s}): {}x -> {}x", .{ state.character_name, log_type, old_multiplier, state.poll_interval_multiplier });
-            }
-            return;
-        }
-
-        state.idle_checks = 0;
-        state.poll_interval_multiplier = 1;
-
-        // File truncated (log rotation)
-        if (current_size < state.last_size) {
-            state.position = 0;
-            state.lines.reset();
-        }
-
-        var buffer: [4096]u8 = undefined;
-        const bytes_read = try file.readPositionalAll(self.io, &buffer, state.position);
-        // A chatlog read can stop mid-character while EVE is still writing; the rest is read next poll.
-        const usable = if (state.is_chatlog) utf16.completeLen(buffer[0..bytes_read]) else bytes_read;
-
-        if (usable == 0) {
-            if (bytes_read == 0) {
-                state.last_size = current_size;
-                state.last_modified = current_modified;
-            }
-            state.had_activity = false;
-            return;
-        }
-
-        state.position += usable;
-
-        // Only update last_size/last_modified once caught up, so unread data triggers another poll
-        if (state.position >= current_size) {
-            state.last_size = current_size;
-            state.last_modified = current_modified;
-        }
-
-        if (state.is_chatlog) {
-            if (try self.decodeUtf16Le(state, buffer[0..usable])) |text| {
-                try state.lines.feed(self.allocator, text, LineHandler{ .monitor = self, .state = state });
-            }
-        } else {
-            try state.lines.feed(self.allocator, buffer[0..usable], LineHandler{ .monitor = self, .state = state });
-        }
-
-        state.had_activity = true;
-    }
-
-    fn decodeUtf16Le(self: *ChatlogMonitor, state: *LogFileState, data: []const u8) !?[]u8 {
-        return utf16.decode(self.allocator, &state.u16_buffer, &state.utf8_buffer, data);
-    }
-
     /// Where a file's complete lines go.
     const LineHandler = struct {
         monitor: *ChatlogMonitor,
-        state: *LogFileState,
+        state: *LogFile,
 
         pub fn onLine(self: LineHandler, line: []const u8) void {
             const trimmed = std.mem.trim(u8, line, " \r\t");
@@ -1140,7 +793,7 @@ pub const ChatlogMonitor = struct {
     };
 
     /// Only the first few and then every 100th, since a malformed log can produce thousands.
-    fn warnLongLine(self: *ChatlogMonitor, state: *LogFileState, len: usize) void {
+    fn warnLongLine(self: *ChatlogMonitor, state: *LogFile, len: usize) void {
         _ = self;
         state.long_line_warnings += 1;
         if (state.long_line_warnings <= 3 or state.long_line_warnings % 100 == 0) {
@@ -1148,14 +801,7 @@ pub const ChatlogMonitor = struct {
         }
     }
 
-    fn parseLine(self: *ChatlogMonitor, state: *LogFileState, line: []const u8) void {
-        var clean_line = line;
-        // Gamelogs start with a UTF-8 BOM, which lands on their first line.
-        if (state.has_bom and std.mem.startsWith(u8, line, "\xEF\xBB\xBF")) {
-            clean_line = line[3..];
-            state.has_bom = false;
-        }
-
+    fn parseLine(self: *ChatlogMonitor, state: *LogFile, clean_line: []const u8) void {
         if (clean_line.len < MIN_LINE_LENGTH) return;
         if (clean_line.len > lines_mod.MAX_LINE_LENGTH) {
             self.warnLongLine(state, clean_line.len);
@@ -1177,14 +823,14 @@ pub const ChatlogMonitor = struct {
     }
 
     /// Ignores a repeat of the last system; `system` is borrowed and copied into the queued events.
-    fn handleSystemChange(self: *ChatlogMonitor, state: *LogFileState, system: []const u8, source: lines_mod.SystemSource) void {
+    fn handleSystemChange(self: *ChatlogMonitor, state: *LogFile, system: []const u8, source: lines_mod.SystemSource) void {
         const system_hash = std.hash.Wyhash.hash(0, system);
         const is_different = (state.last_system_hash != system_hash);
 
         if (is_different) {
             state.last_system_hash = system_hash;
 
-            // Only jumps pop a .SystemChange notification: undock and the chatlog's Local detection race the same event and would double-fire it.
+            // Only jumps notify: undock and Local detection report the same arrival and would fire it twice.
             if (source == .jump) {
                 self.queueNotification(state.character_name, .{ .ntype = .SystemChange, .target = system });
             }
@@ -1192,23 +838,22 @@ pub const ChatlogMonitor = struct {
             // Undock/chatlog-detect are same-system confirmations, not travel.
             const is_jump = source == .jump or source == .conduit;
 
-            // event_ts=0: live tailing has no timestamp but doesn't need one - lines are strictly ordered
+            // 0: live lines arrive in order, so need no staleness check.
             self.queueSystemUpdate(state.character_name, system, 0, is_jump);
 
             slog.info("System change ({s}): {s} -> {s}", .{ @tagName(source), state.character_name, system });
         }
     }
 
-    /// Feeds the DPS tracker and queues any notification a (notify)/(question)/(combat)/(None) line warrants.
-    fn handleGamelogEvent(self: *ChatlogMonitor, state: *LogFileState, event_text: []const u8) void {
-        // Stripped once and shared below - re-stripping per call would double the cost on this, the highest-volume line type.
+    /// Feeds the DPS tracker and queues any notification the line warrants.
+    fn handleGamelogEvent(self: *ChatlogMonitor, state: *LogFile, event_text: []const u8) void {
+        // Stripped once for both uses; this is the highest-volume line type.
         var stripped_buf: [512]u8 = undefined;
         const stripped_text = activity_mod.stripHtml(event_text, &stripped_buf);
 
-        // Combat DPS tracking (independent of notification settings)
         if (self.combat_tracker) |tracker| {
             if (activity_mod.parseCombatLine(stripped_text)) |parsed| {
-                // Weapon-filtered incoming hits still count toward DPS stats but shouldn't retrigger the Taking Damage alert (see CombatWindow.addEntry).
+                // Filtered weapons still count toward DPS but mustn't retrigger Taking Damage.
                 const counts_for_alert = !activity_mod.isWeaponExcluded(parsed.weapon, self.damage_alert_excluded_weapons);
                 tracker.addEntry(state.character_name, parsed.amount, parsed.is_incoming, trackerNowMs(), counts_for_alert) catch |err| {
                     slog.warn("Failed to record combat entry for {s}: {}", .{ state.character_name, err });
@@ -1222,9 +867,8 @@ pub const ChatlogMonitor = struct {
         slog.debug("Gamelog event: {s} -> {s}", .{ state.character_name, event_text });
     }
 
-    /// Parses the log line, looks up the ore's m3/unit and ISK/unit in GlobalConfig.oreTable, and records both in the mining tracker.
-    /// A missing price (unset by the user) contributes 0 ISK rather than dropping the yield - only a missing volume does that, since m3 can't be computed at all without it.
-    fn handleMiningEvent(self: *ChatlogMonitor, state: *LogFileState, event_text: []const u8) void {
+    /// A missing price counts as 0 ISK; only a missing volume drops the yield, since m3 can't be computed without it.
+    fn handleMiningEvent(self: *ChatlogMonitor, state: *LogFile, event_text: []const u8) void {
         const tracker = self.mining_tracker orelse return;
         const parsed = activity_mod.parseMiningLine(event_text) orelse return;
         const gs = self.global_settings orelse return;
@@ -1241,207 +885,11 @@ pub const ChatlogMonitor = struct {
         };
     }
 
-    fn handleBountyEvent(self: *ChatlogMonitor, state: *LogFileState, event_text: []const u8) void {
+    fn handleBountyEvent(self: *ChatlogMonitor, state: *LogFile, event_text: []const u8) void {
         const tracker = self.bounty_tracker orelse return;
         const isk = activity_mod.parseBountyLine(event_text) orelse return;
         tracker.addEntry(state.character_name, isk, trackerNowMs()) catch |err| {
             slog.warn("Failed to record bounty entry for {s}: {}", .{ state.character_name, err });
         };
-    }
-
-    /// Decode a WIN32_FIND_DATAW's null-terminated UTF-16 filename into `buf` (caller-owned).
-    /// Returns null on decode failure.
-    fn decodeFindDataName(find_data: *const win32.WIN32_FIND_DATAW, buf: []u8) ?[]const u8 {
-        const raw: []const u16 = find_data.cFileName[0..];
-        const len = std.mem.indexOfScalar(u16, raw, 0) orelse raw.len;
-        const written = std.unicode.utf16LeToUtf8(buf, raw[0..len]) catch |err| {
-            slog.warn("Failed to decode log filename: {}", .{err});
-            return null;
-        };
-        return buf[0..written];
-    }
-
-    /// Open a Win32 find handle scoped to `dir_path`, filtered at the filesystem level to
-    /// "Local_*.txt" for chatlogs or "*.txt" for gamelogs.
-    fn openLogFindHandle(self: *ChatlogMonitor, dir_path: []const u8, is_chatlog: bool, find_data: *win32.WIN32_FIND_DATAW) ?win32.HANDLE {
-        const pattern = if (is_chatlog) "Local_*.txt" else "*.txt";
-        const search_path = std.fs.path.join(self.allocator, &[_][]const u8{ dir_path, pattern }) catch |err| {
-            slog.warn("Failed to build log search path for {s}: {}", .{ dir_path, err });
-            return null;
-        };
-        defer self.allocator.free(search_path);
-
-        const search_path_w = std.unicode.utf8ToUtf16LeAllocZ(self.allocator, search_path) catch |err| {
-            slog.warn("Failed to convert log search path to UTF-16 for {s}: {}", .{ dir_path, err });
-            return null;
-        };
-        defer self.allocator.free(search_path_w);
-
-        const handle = win32.FindFirstFileW(search_path_w.ptr, find_data);
-        if (handle == win32.INVALID_HANDLE_VALUE) return null;
-        return handle;
-    }
-
-    /// Fast path: single OS-filtered sweep matching a known character ID. No
-    /// allocation, no sort, no depth cap - tracks only the newest match.
-    fn findNewestMatchingId(self: *ChatlogMonitor, dir_path: []const u8, is_chatlog: bool, character_id: []const u8) ?[]u8 {
-        var find_data: win32.WIN32_FIND_DATAW = undefined;
-        const handle = self.openLogFindHandle(dir_path, is_chatlog, &find_data) orelse return null;
-        defer _ = win32.FindClose(handle);
-
-        var best_ts: u64 = 0;
-        var best_buf: [win32.MAX_PATH * 3]u8 = undefined;
-        var best_len: usize = 0;
-
-        var have_entry = true;
-        while (have_entry) : (have_entry = win32.FindNextFileW(handle, &find_data) != win32.FALSE) {
-            if (find_data.dwFileAttributes & win32.FILE_ATTRIBUTE_DIRECTORY != 0) continue;
-
-            var name_buf: [win32.MAX_PATH * 3]u8 = undefined;
-            const name = decodeFindDataName(&find_data, &name_buf) orelse continue;
-
-            // Defensive: Gamelogs dir shouldn't contain Local_ files, but guard anyway
-            if (!is_chatlog and std.mem.startsWith(u8, name, "Local_")) continue;
-
-            const file_id = lines_mod.characterIdFromFileName(name) orelse continue;
-            if (!std.mem.eql(u8, file_id, character_id)) continue;
-
-            const ts = lines_mod.logFileTimestamp(name, is_chatlog);
-            if (ts == 0 or ts <= best_ts) continue;
-
-            best_ts = ts;
-            @memcpy(best_buf[0..name.len], name);
-            best_len = name.len;
-        }
-
-        if (best_len == 0) return null;
-        return std.fs.path.join(self.allocator, &[_][]const u8{ dir_path, best_buf[0..best_len] }) catch |err| {
-            slog.warn("Failed to build path for matched log file: {}", .{err});
-            return null;
-        };
-    }
-
-    /// Collect every candidate filename (OS-filtered as above). Used only when a
-    /// character's ID isn't cached yet.
-    fn collectLogCandidates(self: *ChatlogMonitor, dir_path: []const u8, is_chatlog: bool, out: *std.ArrayList([]const u8)) void {
-        var find_data: win32.WIN32_FIND_DATAW = undefined;
-        const handle = self.openLogFindHandle(dir_path, is_chatlog, &find_data) orelse return;
-        defer _ = win32.FindClose(handle);
-
-        var have_entry = true;
-        while (have_entry) : (have_entry = win32.FindNextFileW(handle, &find_data) != win32.FALSE) {
-            if (find_data.dwFileAttributes & win32.FILE_ATTRIBUTE_DIRECTORY != 0) continue;
-
-            var name_buf: [win32.MAX_PATH * 3]u8 = undefined;
-            const name = decodeFindDataName(&find_data, &name_buf) orelse continue;
-
-            if (!is_chatlog and std.mem.startsWith(u8, name, "Local_")) continue;
-            if (lines_mod.logFileTimestamp(name, is_chatlog) == 0) continue;
-
-            const name_copy = self.allocator.dupe(u8, name) catch |err| {
-                slog.warn("Failed to copy log candidate name '{s}': {}", .{ name, err });
-                continue;
-            };
-            out.append(self.allocator, name_copy) catch |err| {
-                slog.warn("Failed to record log candidate '{s}': {}", .{ name, err });
-                self.allocator.free(name_copy);
-                continue;
-            };
-        }
-    }
-
-    /// Finds the newest log file belonging to `character_name`, always searching
-    /// the entire directory (no depth cap).
-    fn findLogFile(
-        self: *ChatlogMonitor,
-        dir_path: []const u8,
-        is_chatlog: bool,
-        char_name: []const u8,
-    ) ?[]u8 {
-        // Fast path: character ID already cached from a previous match.
-        if (self.character_ids) |ids| {
-            if (ids.get(self.allocator, char_name) catch |err| blk: {
-                slog.warn("Failed to look up cached character ID for {s}: {}", .{ char_name, err });
-                break :blk null;
-            }) |id| {
-                defer self.allocator.free(id);
-                if (self.findNewestMatchingId(dir_path, is_chatlog, id)) |path| {
-                    return path;
-                }
-                // Cached ID matched nothing (stale) - fall through to the slow path
-            }
-        }
-
-        // Slow path: ID unknown or stale, so check every candidate's "Listener:" header, newest first.
-        var candidates: std.ArrayList([]const u8) = .empty;
-        defer {
-            for (candidates.items) |candidate| {
-                self.allocator.free(candidate);
-            }
-            candidates.deinit(self.allocator);
-        }
-
-        self.collectLogCandidates(dir_path, is_chatlog, &candidates);
-
-        std.mem.sort([]const u8, candidates.items, is_chatlog, struct {
-            fn lessThan(chatlog: bool, a: []const u8, b: []const u8) bool {
-                const a_ts = lines_mod.logFileTimestamp(a, chatlog);
-                const b_ts = lines_mod.logFileTimestamp(b, chatlog);
-                // Descending order (newest first)
-                return a_ts > b_ts;
-            }
-        }.lessThan);
-
-        for (candidates.items) |candidate| {
-            const full_path = std.fs.path.join(self.allocator, &[_][]const u8{ dir_path, candidate }) catch |err| {
-                slog.warn("Failed to build path for candidate '{s}': {}", .{ candidate, err });
-                continue;
-            };
-            defer self.allocator.free(full_path);
-
-            const log_char_name = self.extractCharacterFromLog(full_path, is_chatlog) catch continue;
-            const name = log_char_name orelse continue;
-            defer self.allocator.free(name);
-
-            if (!std.mem.eql(u8, name, char_name)) continue;
-
-            // Found match! Cache the character ID for next time
-            if (lines_mod.characterIdFromFileName(candidate)) |new_id| {
-                if (self.character_ids) |ids| {
-                    ids.put(char_name, new_id) catch |err| {
-                        slog.warn("Failed to cache character ID for {s}: {}", .{ char_name, err });
-                    };
-                }
-            }
-            return std.fs.path.join(self.allocator, &[_][]const u8{ dir_path, candidate }) catch |err| {
-                slog.warn("Failed to build path for matched candidate '{s}': {}", .{ candidate, err });
-                continue;
-            };
-        }
-
-        return null;
-    }
-
-    fn findChatlogForCharacter(self: *ChatlogMonitor, character_name: []const u8) ?[]u8 {
-        return self.findLogFile(self.chatlog_dir, true, character_name);
-    }
-
-    fn findGamelogForCharacter(self: *ChatlogMonitor, character_name: []const u8) ?[]u8 {
-        return self.findLogFile(self.gamelog_dir, false, character_name);
-    }
-
-    /// The character a log belongs to, from the "Listener:" line in its header; owned by the caller.
-    fn extractCharacterFromLog(self: *ChatlogMonitor, file_path: []const u8, is_chatlog: bool) !?[]u8 {
-        const file = try std.Io.Dir.cwd().openFile(self.io, file_path, .{});
-        defer file.close(self.io);
-
-        var header: [512]u8 = undefined;
-        const bytes_read = try file.readPositionalAll(self.io, &header, 0);
-
-        var units: [header.len / 2]u16 = undefined;
-        var decoded: [units.len * 3]u8 = undefined;
-        const text = if (is_chatlog) (utf16.decodeInto(&units, &decoded, header[0..bytes_read]) orelse return null) else header[0..bytes_read];
-        const name = lines_mod.listenerName(text) orelse return null;
-        return try self.allocator.dupe(u8, name);
     }
 };

@@ -1,5 +1,4 @@
-//! What EVE's log lines and file names say, with no I/O: which lines move a character to another system or feed an activity tracker,
-//! their timestamps, a log's owner from its header and file name, and joining lines that arrive split across reads.
+//! What EVE's log lines and file names say, with no I/O.
 const std = @import("std");
 const gamelog_events = @import("../notifications/gamelog_events.zig");
 
@@ -11,7 +10,6 @@ pub const SystemSource = enum { chatlog, jump, undock, conduit };
 /// `system` borrows from the parsed line.
 pub const SystemChange = struct { system: []const u8, source: SystemSource };
 
-/// Which handler a gamelog line goes to, given the whole line.
 pub const Activity = enum { event, mining, bounty };
 
 pub const GameLine = struct {
@@ -30,7 +28,7 @@ pub fn parseChatLine(line: []const u8) ?[]const u8 {
     return localSystem(line[pos..]);
 }
 
-/// Gamelog lines are "[ time ] (type) message"; dispatches on the message's first characters so each line is scanned once.
+/// Dispatches on the message's first characters, so each line is scanned once.
 pub fn parseGameLine(line: []const u8) GameLine {
     const close = std.mem.indexOf(u8, line, "] ") orelse return .{};
     const message = line[close + 2 ..];
@@ -73,7 +71,7 @@ fn jumpDestination(text: []const u8) ?[]const u8 {
     return nonEmpty(untilLineEnd(text[to + " to ".len ..]));
 }
 
-/// `text` starts at "Undocking from <station> to <system> solar system."; the last " to ", since a station's name can contain one.
+/// The last " to ", since a station's name can contain one.
 fn undockDestination(text: []const u8) ?[]const u8 {
     const line = untilLineEnd(text);
     const to = std.mem.lastIndexOf(u8, line, " to ") orelse return null;
@@ -91,7 +89,7 @@ fn nonEmpty(text: []const u8) ?[]const u8 {
     return if (text.len == 0) null else text;
 }
 
-/// A system found scanning back through a log, with its line's timestamp so chatlog and gamelog finds can be compared for recency.
+/// With its line's timestamp, so chatlog and gamelog finds can be compared for recency.
 pub const SystemMatch = struct {
     /// Borrows from the scanned text.
     system: []const u8,
@@ -99,14 +97,13 @@ pub const SystemMatch = struct {
     event_ts: u64,
 };
 
-/// The latest Local channel change in a stretch of chatlog text.
 pub fn lastSystemInChat(text: []const u8) ?SystemMatch {
     const pos = std.mem.lastIndexOf(u8, text, LOCAL_CHANGE) orelse return null;
     const system = localSystem(text[pos..]) orelse return null;
     return .{ .system = system, .event_ts = lineTimestamp(text, pos) };
 }
 
-/// The latest jump or undock in a stretch of gamelog text.
+/// Whichever of jump and undock is later.
 pub fn lastSystemInGame(text: []const u8) ?SystemMatch {
     const jump = std.mem.lastIndexOf(u8, text, JUMP);
     const undock = std.mem.lastIndexOf(u8, text, UNDOCK);
@@ -116,8 +113,7 @@ pub fn lastSystemInGame(text: []const u8) ?SystemMatch {
     return .{ .system = system, .event_ts = lineTimestamp(text, pos) };
 }
 
-/// The "[ YYYY.MM.DD HH:MM:SS ]" timestamp just before `pos`, as YYYYMMDDHHMMSS; 0 if there isn't one.
-/// Bounded to 64 bytes back, so a chunk cut mid-line can't pick up an earlier line's bracket.
+/// YYYYMMDDHHMMSS, or 0; looks only 64 bytes back, so a chunk cut mid-line can't borrow an earlier line's bracket.
 pub fn lineTimestamp(text: []const u8, pos: usize) u64 {
     const window_start = pos -| 64;
     const open = window_start + (std.mem.lastIndexOfScalar(u8, text[window_start..pos], '[') orelse return 0);
@@ -136,8 +132,7 @@ pub fn lineTimestamp(text: []const u8, pos: usize) u64 {
     return (year * 10000 + month * 100 + day) * 1000000 + (hour * 10000 + minute * 100 + second);
 }
 
-/// A log file's creation time from its name, as YYYYMMDDHHMMSS; 0 if the name isn't a log's.
-/// Chatlogs are "Local_YYYYMMDD_HHMMSS_<id>.txt", gamelogs "YYYYMMDD_HHMMSS_<id>.txt".
+/// YYYYMMDDHHMMSS from "[Local_]YYYYMMDD_HHMMSS_<id>.txt", or 0.
 pub fn logFileTimestamp(file_name: []const u8, is_chatlog: bool) u64 {
     var stamp = withoutTxt(file_name);
     if (is_chatlog) {
@@ -150,7 +145,6 @@ pub fn logFileTimestamp(file_name: []const u8, is_chatlog: bool) u64 {
     return date * 1000000 + time;
 }
 
-/// The character ID a log file's name ends with.
 pub fn characterIdFromFileName(file_name: []const u8) ?[]const u8 {
     const name = withoutTxt(file_name);
     const underscore = std.mem.lastIndexOfScalar(u8, name, '_') orelse return null;
@@ -164,7 +158,6 @@ fn withoutTxt(file_name: []const u8) []const u8 {
     return if (std.mem.endsWith(u8, file_name, ".txt")) file_name[0 .. file_name.len - ".txt".len] else file_name;
 }
 
-/// The character a log belongs to, from the "Listener:" line in its header.
 pub fn listenerName(header: []const u8) ?[]const u8 {
     const needle = "Listener:";
     const pos = std.mem.indexOf(u8, header, needle) orelse return null;
@@ -187,8 +180,7 @@ pub const LineAssembler = struct {
         self.skipping = false;
     }
 
-    /// Calls `handler.onLine(line)` for each complete line in `text`, and `handler.onLongLine(len)` for each held line too long to keep.
-    /// `line` is only valid during the call.
+    /// Calls `handler.onLine` per complete line, valid only during the call, and `handler.onLongLine` per line too long to keep.
     pub fn feed(self: *LineAssembler, allocator: std.mem.Allocator, text: []const u8, handler: anytype) !void {
         var rest = text;
         while (std.mem.indexOfScalar(u8, rest, '\n')) |newline| {

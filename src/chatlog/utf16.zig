@@ -1,4 +1,4 @@
-//! UTF-16 LE, the encoding of EVE's chatlogs: decoding only whole characters, and finding ASCII text in the raw bytes.
+//! Decoding EVE's UTF-16 LE chatlogs, only ever whole characters.
 const std = @import("std");
 
 /// How much of `data` is whole characters: drops an odd trailing byte, and a trailing high surrogate whose pair hasn't been written yet.
@@ -11,8 +11,7 @@ pub fn completeLen(data: []const u8) usize {
     return len;
 }
 
-/// Decodes `data` into `out`, which needs 3 bytes per UTF-16 unit, using `units` (one per byte pair) as scratch. An odd trailing byte is ignored, and a
-/// surrogate without its pair becomes U+FFFD rather than losing the rest. Null when there's nothing to decode.
+/// `out` needs 3 bytes per UTF-16 unit and `units` one per byte pair; an unpaired surrogate becomes U+FFFD rather than losing the rest.
 pub fn decodeInto(units: []u16, out: []u8, data: []const u8) ?[]u8 {
     const count = data.len / 2;
     if (count == 0) return null;
@@ -26,7 +25,6 @@ pub fn decodeInto(units: []u16, out: []u8, data: []const u8) ?[]u8 {
     return out[0..written];
 }
 
-/// Decodes into reused buffers, growing them as needed.
 pub fn decode(allocator: std.mem.Allocator, units: *std.ArrayList(u16), out: *std.ArrayList(u8), data: []const u8) !?[]u8 {
     try units.resize(allocator, data.len / 2);
     try out.resize(allocator, (data.len / 2) * 3);
@@ -45,7 +43,7 @@ fn replaceUnpairedSurrogates(units: []u16) void {
     }
 }
 
-/// Whether ASCII `pattern` appears in `data`, raw UTF-16 LE starting on a character boundary, without decoding it.
+/// Without decoding; `data` must start on a character boundary.
 pub fn containsAscii(data: []const u8, pattern: []const u8) bool {
     if (data.len < pattern.len * 2) return false;
     var i: usize = 0;
