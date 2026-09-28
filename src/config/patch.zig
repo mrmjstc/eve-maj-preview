@@ -137,6 +137,7 @@ fn writeFieldAt(jw: anytype, comptime F: type, comptime name: []const u8, ptr: *
             return writeAt(jw, Item, &ptr.items[index], path[1..]);
         } else return error.ListIsNotKeyed;
     }
+    if (comptime isKeyedMap(F)) return writeAt(jw, F, ptr, path);
     if (comptime OptionalStruct(F)) |N| {
         if (ptr.*) |*v| return writeAt(jw, N, v, path);
         return jw.write(null);
@@ -198,6 +199,7 @@ fn applyField(comptime F: type, comptime name: []const u8, ptr: *F, default: ?F,
             return null;
         } else return error.ListIsNotKeyed;
     }
+    if (comptime isKeyedMap(F)) return applyIn(F, ptr, path, kind, op, ctx);
     if (comptime OptionalStruct(F)) |N| {
         // Editing one field of an unset override starts it from the defaults, and zero where there are none (Position).
         if (ptr.* == null) ptr.* = std.mem.zeroInit(N, .{});
