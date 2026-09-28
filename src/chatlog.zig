@@ -121,6 +121,29 @@ fn trackerNowMs() i64 {
     return @intCast(win32.Ticks.now().ms);
 }
 
+/// How much of `data` is whole UTF-16 LE characters: drops an odd trailing byte, and a trailing high surrogate whose pair hasn't been written yet.
+fn completeUtf16Len(data: []const u8) usize {
+    var len = data.len & ~@as(usize, 1);
+    if (len >= 2) {
+        const last = @as(u16, data[len - 2]) | (@as(u16, data[len - 1]) << 8);
+        if (std.unicode.utf16IsHighSurrogate(last)) len -= 2;
+    }
+    return len;
+}
+
+/// Swaps any surrogate without its pair for U+FFFD, so one bad character doesn't lose the rest of the chunk.
+fn replaceUnpairedSurrogates(units: []u16) void {
+    var i: usize = 0;
+    while (i < units.len) : (i += 1) {
+        const unit = units[i];
+        if (std.unicode.utf16IsHighSurrogate(unit) and i + 1 < units.len and std.unicode.utf16IsLowSurrogate(units[i + 1])) {
+            i += 1;
+        } else if (std.unicode.utf16IsHighSurrogate(unit) or std.unicode.utf16IsLowSurrogate(unit)) {
+            units[i] = std.unicode.replacement_character;
+        }
+    }
+}
+
 /// Packs little-endian byte pairs from `src` into `dst` (dst.len == src.len / 2).
 fn packUtf16LeBytes(dst: []u16, src: []const u8) void {
     var i: usize = 0;
@@ -130,17 +153,12 @@ fn packUtf16LeBytes(dst: []u16, src: []const u8) void {
     }
 }
 
-/// Maximum size for partial line buffer (combat logs with color tags can be long)
-const MAX_PARTIAL_LINE_SIZE = 1024;
-
 pub const LogFileState = struct {
     file_path: []const u8,
     character_name: []const u8,
     position: u64 = 0,
     last_size: u64 = 0,
     last_modified: i64 = 0,
-    partial_line_buffer: [MAX_PARTIAL_LINE_SIZE]u8 = undefined,
-    partial_line_len: usize = 0,
     // true for chatlog (UTF-16 LE), false for gamelog (UTF-8)
     is_chatlog: bool,
     had_activity: bool = false,
@@ -151,10 +169,12 @@ pub const LogFileState = struct {
     cycle_counter: u32 = 0,
     poll_interval_multiplier: u8 = 1,
     utf8_buffer: std.ArrayList(u8),
+    /// The start of a line whose newline hasn't been written yet.
     line_buffer: std.ArrayList(u8),
+    /// Set once a buffered line outgrows MAX_LINE_LENGTH; the rest of it is dropped up to its newline.
+    skipping_long_line: bool = false,
     u16_buffer: std.ArrayList(u16),
     system_name_buffer: std.ArrayList(u8),
-    excessive_data_warnings: u32 = 0,
     long_line_warnings: u32 = 0,
 
     pub fn deinit(self: *LogFileState, allocator: std.mem.Allocator) void {
@@ -199,6 +219,8 @@ pub const ChatlogMonitor = struct {
     threading_enabled: bool = false,
     pending_characters: std.StringHashMap(void),
     pending_characters_mutex: std.Io.Mutex,
+    /// Worker thread only: every character added and not removed, including ones with no log files yet, so directory changes keep looking for them.
+    wanted_characters: std.StringHashMap(void),
     /// Reused by update() to avoid a per-tick alloc; main thread only, borrowed slices only.
     tick_names: std.ArrayList([]const u8),
     tick_logged_out_names: std.ArrayList([]const u8),
@@ -247,6 +269,7 @@ pub const ChatlogMonitor = struct {
         monitor.threading_enabled = false;
         monitor.pending_characters = std.StringHashMap(void).init(allocator);
         monitor.pending_characters_mutex = .init;
+        monitor.wanted_characters = std.StringHashMap(void).init(allocator);
         monitor.tick_names = .empty;
         monitor.tick_logged_out_names = .empty;
 
@@ -353,6 +376,7 @@ pub const ChatlogMonitor = struct {
             switch (mutable_cmd.*) {
                 .add_character => |data| {
                     slog.debug("Worker: Add character {s}", .{data.name});
+                    self.wantCharacter(data.name);
 
                     if (self.findChatlogForCharacter(data.name)) |chatlog_path| {
                         defer self.allocator.free(chatlog_path);
@@ -370,6 +394,7 @@ pub const ChatlogMonitor = struct {
                 },
                 .remove_character => |char_name| {
                     slog.debug("Worker: Remove character {s}", .{char_name});
+                    if (self.wanted_characters.fetchRemove(char_name)) |entry| self.allocator.free(entry.key);
                     self.removeCharacter(char_name);
                 },
                 .resolve_character_id => |data| {
@@ -398,16 +423,24 @@ pub const ChatlogMonitor = struct {
         }
     }
 
-    /// Get current list of monitored character names (for worker thread).
-    /// Borrowed from log_files, not duped - safe since only the worker thread mutates it.
+    fn wantCharacter(self: *ChatlogMonitor, name: []const u8) void {
+        if (self.wanted_characters.contains(name)) return;
+        const owned = self.allocator.dupe(u8, name) catch |err| {
+            slog.err("Worker: failed to remember {s} to watch for its logs: {}", .{ name, err });
+            return;
+        };
+        self.wanted_characters.put(owned, {}) catch |err| {
+            slog.err("Worker: failed to remember {s} to watch for its logs: {}", .{ name, err });
+            self.allocator.free(owned);
+        };
+    }
+
+    /// The characters a directory change is checked against, borrowed from wanted_characters; worker thread only.
     fn getCurrentCharacterList(self: *ChatlogMonitor) !std.ArrayList([]const u8) {
         var list = std.ArrayList([]const u8).empty;
         errdefer list.deinit(self.allocator);
-
-        for (self.log_files.items) |*state| {
-            try list.append(self.allocator, state.character_name);
-        }
-
+        var names = self.wanted_characters.keyIterator();
+        while (names.next()) |name| try list.append(self.allocator, name.*);
         return list;
     }
 
@@ -441,6 +474,10 @@ pub const ChatlogMonitor = struct {
             self.allocator.free(key.*);
         }
         self.pending_characters.deinit();
+
+        var wanted_iter = self.wanted_characters.keyIterator();
+        while (wanted_iter.next()) |key| self.allocator.free(key.*);
+        self.wanted_characters.deinit();
 
         self.clearPendingScanNames();
         self.pending_scan_names.deinit(self.allocator);
@@ -646,7 +683,8 @@ pub const ChatlogMonitor = struct {
                     // Temporary failure - reset state but keep trying
                     state.position = 0;
                     state.last_size = 0;
-                    state.partial_line_len = 0;
+                    state.line_buffer.clearRetainingCapacity();
+                    state.skipping_long_line = false;
                     continue;
                 },
                 error.BadPathName => {
@@ -1027,7 +1065,8 @@ pub const ChatlogMonitor = struct {
         if (file_size == 0) return null;
 
         var buffer: [SCAN_CHUNK_SIZE]u8 = undefined;
-        var scan_pos: u64 = file_size;
+        // Even for chatlogs, so every chunk (whose size and overlap are even too) starts on a UTF-16 character; an odd size means EVE is mid-write.
+        var scan_pos: u64 = if (state.is_chatlog) file_size & ~@as(u64, 1) else file_size;
         // Chatlog: smaller overlap; Gamelog: larger, for complete messages
         const overlap: u64 = if (state.is_chatlog) 128 else 256;
         const scan_floor: u64 = if (file_size > MAX_BACKWARD_SCAN_BYTES) file_size - MAX_BACKWARD_SCAN_BYTES else 0;
@@ -1112,20 +1151,25 @@ pub const ChatlogMonitor = struct {
         // File truncated (log rotation)
         if (current_size < state.last_size) {
             state.position = 0;
-            state.partial_line_len = 0;
+            state.line_buffer.clearRetainingCapacity();
+            state.skipping_long_line = false;
         }
 
         var buffer: [4096]u8 = undefined;
         const bytes_read = try file.readPositionalAll(self.io, &buffer, state.position);
+        // A chatlog read can stop mid-character while EVE is still writing; the rest is read next poll.
+        const usable = if (state.is_chatlog) completeUtf16Len(buffer[0..bytes_read]) else bytes_read;
 
-        if (bytes_read == 0) {
-            state.last_size = current_size;
-            state.last_modified = current_modified;
+        if (usable == 0) {
+            if (bytes_read == 0) {
+                state.last_size = current_size;
+                state.last_modified = current_modified;
+            }
             state.had_activity = false;
             return;
         }
 
-        state.position += bytes_read;
+        state.position += usable;
 
         // Only update last_size/last_modified once caught up, so unread data triggers another poll
         if (state.position >= current_size) {
@@ -1134,125 +1178,78 @@ pub const ChatlogMonitor = struct {
         }
 
         if (state.is_chatlog) {
-            // UTF-16 LE chatlog (uses pooled buffer, no defer needed)
-            if (try self.decodeUtf16Le(state, buffer[0..bytes_read])) |text| {
+            if (try self.decodeUtf16Le(state, buffer[0..usable])) |text| {
                 try self.processTextLines(state, text);
             }
         } else {
-            try self.processTextLines(state, buffer[0..bytes_read]);
+            try self.processTextLines(state, buffer[0..usable]);
         }
 
         state.had_activity = true;
     }
 
-    /// Decode UTF-16 LE to UTF-8 using pooled buffers (zero heap allocations)
+    /// Decodes UTF-16 LE to UTF-8 into the state's reused buffers. An odd trailing byte is ignored, and a stray surrogate becomes U+FFFD rather than losing the chunk.
     fn decodeUtf16Le(self: *ChatlogMonitor, state: *LogFileState, data: []const u8) !?[]u8 {
-        // Odd length: caught file mid-write, bytes unrecoverable.
-        if (data.len % 2 != 0) {
-            slog.warn("Dropping {} odd-length byte(s) mid-write for {s}", .{ data.len, state.character_name });
-            return null;
-        }
-        if (data.len < 2) return null;
-
         const u16_count = data.len / 2;
+        if (u16_count == 0) return null;
 
         state.u16_buffer.clearRetainingCapacity();
         try state.u16_buffer.resize(self.allocator, u16_count);
-
-        packUtf16LeBytes(state.u16_buffer.items, data);
+        packUtf16LeBytes(state.u16_buffer.items, data[0 .. u16_count * 2]);
 
         // UTF-16 can be up to 3 bytes per code unit in UTF-8 (worst case for non-BMP characters)
-        const utf8_len = u16_count * 3;
-
         state.utf8_buffer.clearRetainingCapacity();
-        try state.utf8_buffer.resize(self.allocator, utf8_len);
+        try state.utf8_buffer.resize(self.allocator, u16_count * 3);
 
-        const bytes_written = std.unicode.utf16LeToUtf8(state.utf8_buffer.items, state.u16_buffer.items) catch {
-            return null;
+        const bytes_written = std.unicode.utf16LeToUtf8(state.utf8_buffer.items, state.u16_buffer.items) catch blk: {
+            replaceUnpairedSurrogates(state.u16_buffer.items);
+            break :blk std.unicode.utf16LeToUtf8(state.utf8_buffer.items, state.u16_buffer.items) catch return null;
         };
-
         try state.utf8_buffer.resize(self.allocator, bytes_written);
-
         return state.utf8_buffer.items;
     }
 
-    /// Process text lines (either from chatlog or gamelog)
-    /// Optimized to minimize copying when handling partial lines
+    /// Parses each complete line in `text`, joining a line split across reads and holding back a trailing incomplete one for the next.
     fn processTextLines(self: *ChatlogMonitor, state: *LogFileState, text: []const u8) !void {
-        const had_partial = state.partial_line_len > 0;
-
-        if (had_partial) {
-            // First read after partial was saved - need to restore it
-            state.line_buffer.clearRetainingCapacity();
-            try state.line_buffer.appendSlice(self.allocator, state.partial_line_buffer[0..state.partial_line_len]);
-            state.partial_line_len = 0;
-        } else if (state.line_buffer.items.len > 0) {
-            // Already has partial data from previous call - keep it (no clear/copy needed)
-        } else {
-            state.line_buffer.clearRetainingCapacity();
-        }
-
-        // Protection against unbounded growth from malformed logs without newlines
-        if (state.line_buffer.items.len + text.len > MAX_LINE_LENGTH * 2) {
-            state.excessive_data_warnings += 1;
-
-            // Rate limit warnings: log only first 3 occurrences, then every 100th
-            if (state.excessive_data_warnings <= 3 or state.excessive_data_warnings % 100 == 0) {
-                const preview_len = @min(text.len, 40);
-                slog.warn("Discarding accumulated line data ({} bytes buffered + {} bytes new = {} total) for {s} - no newline found (warning #{}, preview: {s})", .{
-                    state.line_buffer.items.len,
-                    text.len,
-                    state.line_buffer.items.len + text.len,
-                    state.character_name,
-                    state.excessive_data_warnings,
-                    text[0..preview_len],
-                });
+        var rest = text;
+        while (std.mem.indexOfScalar(u8, rest, '\n')) |newline| {
+            const piece = rest[0..newline];
+            rest = rest[newline + 1 ..];
+            if (state.line_buffer.items.len == 0 and !state.skipping_long_line) {
+                try self.handleLine(state, piece);
+                continue;
             }
-
+            try self.bufferPartialLine(state, piece);
+            if (!state.skipping_long_line) try self.handleLine(state, state.line_buffer.items);
             state.line_buffer.clearRetainingCapacity();
-            state.partial_line_len = 0;
-            // Don't append the text that caused the overflow - skip this chunk entirely
+            state.skipping_long_line = false;
+        }
+        if (rest.len > 0) try self.bufferPartialLine(state, rest);
+    }
+
+    /// A line longer than any worth parsing is dropped rather than buffered without bound.
+    fn bufferPartialLine(self: *ChatlogMonitor, state: *LogFileState, bytes: []const u8) !void {
+        if (state.skipping_long_line) return;
+        if (state.line_buffer.items.len + bytes.len > MAX_LINE_LENGTH) {
+            self.warnLongLine(state, state.line_buffer.items.len + bytes.len);
+            state.line_buffer.clearRetainingCapacity();
+            state.skipping_long_line = true;
             return;
         }
+        try state.line_buffer.appendSlice(self.allocator, bytes);
+    }
 
-        try state.line_buffer.appendSlice(self.allocator, text);
+    fn handleLine(self: *ChatlogMonitor, state: *LogFileState, line: []const u8) !void {
+        const trimmed = std.mem.trim(u8, line, " \r\t");
+        if (trimmed.len > 0) try self.parseLine(state, trimmed);
+    }
 
-        var line_iter = std.mem.splitScalar(u8, state.line_buffer.items, '\n');
-        var line_count: usize = 0;
-
-        while (line_iter.next()) |line| {
-            line_count += 1;
-
-            const is_last = line_iter.peek() == null;
-            if (is_last and !std.mem.endsWith(u8, text, "\n")) {
-                // Incomplete line - keep it in line_buffer for next read
-                const line_start = @intFromPtr(line.ptr) - @intFromPtr(state.line_buffer.items.ptr);
-
-                if (line.len > MAX_PARTIAL_LINE_SIZE) {
-                    // Line too long - save truncated version to fixed buffer
-                    @memcpy(state.partial_line_buffer[0..MAX_PARTIAL_LINE_SIZE], line[0..MAX_PARTIAL_LINE_SIZE]);
-                    state.partial_line_len = MAX_PARTIAL_LINE_SIZE;
-                    slog.warn("Partial line truncated from {} to {} bytes", .{ line.len, MAX_PARTIAL_LINE_SIZE });
-                    state.line_buffer.clearRetainingCapacity();
-                } else if (line_start > 0) {
-                    // Move incomplete line to start of buffer (sliding window)
-                    std.mem.copyForwards(u8, state.line_buffer.items[0..line.len], line);
-                    try state.line_buffer.resize(self.allocator, line.len);
-                } else {
-                    // Already at start - just resize to keep only incomplete line
-                    try state.line_buffer.resize(self.allocator, line.len);
-                }
-                break;
-            }
-
-            const trimmed = std.mem.trim(u8, line, " \r\t");
-            if (trimmed.len > 0) {
-                try self.parseLine(state, trimmed);
-            }
-        }
-
-        if (line_count > 0 and std.mem.endsWith(u8, text, "\n")) {
-            state.line_buffer.clearRetainingCapacity();
+    /// Only the first few and then every 100th, since a malformed log can produce thousands.
+    fn warnLongLine(self: *ChatlogMonitor, state: *LogFileState, len: usize) void {
+        _ = self;
+        state.long_line_warnings += 1;
+        if (state.long_line_warnings <= 3 or state.long_line_warnings % 100 == 0) {
+            slog.warn("Dropping line ({} bytes, over the {}-byte cap) for {s} (warning #{})", .{ len, MAX_LINE_LENGTH, state.character_name, state.long_line_warnings });
         }
     }
 
@@ -1270,10 +1267,7 @@ pub const ChatlogMonitor = struct {
         }
 
         if (clean_line.len > MAX_LINE_LENGTH) {
-            state.long_line_warnings += 1;
-            if (state.long_line_warnings <= 3 or state.long_line_warnings % 100 == 0) {
-                slog.warn("Dropping line ({} bytes, over the {}-byte cap) for {s} (warning #{})", .{ clean_line.len, MAX_LINE_LENGTH, state.character_name, state.long_line_warnings });
-            }
+            self.warnLongLine(state, clean_line.len);
             return;
         }
 
