@@ -23,7 +23,7 @@ pub const SnappingConfig = struct {
     showGhostPositionBorders: bool = true,
 
     pub const ranges = .{
-        .threshold = .{ 0, 100 },
+        .threshold = .{ 0, 20 },
     };
 
     pub fn validate(self: *SnappingConfig) void {
