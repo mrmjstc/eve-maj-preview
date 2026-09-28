@@ -26,16 +26,17 @@ var console_ready = false;
 pub const LOG_FILE_NAME = "eve-maj.log";
 const LOG_FILE_NAME_OLD = "eve-maj.log.old";
 // Rotated to .old at this size rather than trimmed, so a write never costs more than a size check plus (rarely) a rename.
-const MAX_LOG_FILE_BYTES: u64 = 5 * 1024 * 1024;
+const MAX_LOG_FILE_BYTES: u64 = 20 * 1024 * 1024;
 
 var g_io: std.Io = undefined;
 var log_file: ?std.Io.File = null;
-var log_file_size: u64 = 0;
 var log_mutex: std.Io.Mutex = .init;
 
 // Buffers debug/info lines so the frequent debug-level scan tick costs a memcpy, not a write() syscall.
 var log_buf: [16 * 1024]u8 = undefined;
 var log_buf_len: usize = 0;
+
+const TRUNCATED_MARKER = "...[truncated]\n";
 
 pub fn setLevel(level: LogLevel) void {
     current_level = level;
@@ -85,16 +86,11 @@ fn consoleCtrlHandler(ctrl_type: win32.DWORD) callconv(.c) win32.BOOL {
 /// Must be called with log_mutex held.
 fn ensureFileOpen() bool {
     if (log_file != null) return true;
-
-    const file = std.Io.Dir.cwd().createFile(g_io, LOG_FILE_NAME, .{ .truncate = false }) catch return false;
-    const end_pos = file.length(g_io) catch 0;
-    log_file = file;
-    log_file_size = end_pos;
+    log_file = std.Io.Dir.cwd().createFile(g_io, LOG_FILE_NAME, .{ .truncate = false }) catch return false;
     return true;
 }
 
-/// Used by the console control handler, since closing that window kills the process before any `defer` can run.
-pub fn flush() void {
+fn flush() void {
     log_mutex.lock(g_io) catch return;
     defer log_mutex.unlock(g_io);
     flushLocked();
@@ -122,28 +118,49 @@ fn formatTimestamp(buf: *[23]u8) []const u8 {
     }) catch "????-??-?? ??:??:??.???";
 }
 
+/// Keeps what fits of an overlong line, marked as cut, rather than losing it.
+fn formatLine(buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
+    var writer: std.Io.Writer = .fixed(buf);
+    writer.print(fmt, args) catch {
+        @memcpy(buf[buf.len - TRUNCATED_MARKER.len ..], TRUNCATED_MARKER);
+        return buf;
+    };
+    return writer.buffered();
+}
+
 /// Rotates to .old (discarding any previous .old) and starts fresh. Must be called with log_mutex held.
+/// If another program holds the log so it can't be renamed, keeps appending to it instead; the next flush tries again.
 fn rotate() void {
     if (log_file) |f| f.close(g_io);
     log_file = null;
 
-    std.Io.Dir.cwd().deleteFile(g_io, LOG_FILE_NAME_OLD) catch {};
-    std.Io.Dir.cwd().rename(LOG_FILE_NAME, std.Io.Dir.cwd(), LOG_FILE_NAME_OLD, g_io) catch {};
+    const cwd = std.Io.Dir.cwd();
+    cwd.deleteFile(g_io, LOG_FILE_NAME_OLD) catch {};
+    const renamed = blk: {
+        cwd.rename(LOG_FILE_NAME, cwd, LOG_FILE_NAME_OLD, g_io) catch break :blk false;
+        break :blk true;
+    };
+    log_file = cwd.createFile(g_io, LOG_FILE_NAME, .{ .truncate = renamed }) catch null;
+}
 
-    log_file = std.Io.Dir.cwd().createFile(g_io, LOG_FILE_NAME, .{}) catch null;
-    log_file_size = 0;
+/// Appends `bytes` at the file's current end, rotating first if it's full. Must be called with log_mutex held.
+/// The end is read rather than tracked, since another instance (a second launch forwarding a command) may have appended since.
+fn appendLocked(bytes: []const u8) void {
+    if (!ensureFileOpen()) return;
+    var end = log_file.?.length(g_io) catch return;
+    if (end >= MAX_LOG_FILE_BYTES) {
+        rotate();
+        const file = log_file orelse return;
+        end = file.length(g_io) catch return;
+    }
+    log_file.?.writePositionalAll(g_io, bytes, end) catch return;
 }
 
 /// Writes any buffered lines to disk. Must be called with log_mutex held.
 fn flushLocked() void {
     if (log_buf_len == 0) return;
     defer log_buf_len = 0;
-
-    if (log_file_size >= MAX_LOG_FILE_BYTES) rotate();
-    const file = log_file orelse return;
-
-    file.writePositionalAll(g_io, log_buf[0..log_buf_len], log_file_size) catch return;
-    log_file_size += log_buf_len;
+    appendLocked(log_buf[0..log_buf_len]);
 }
 
 /// Retries tryLock briefly to avoid missing the crash line, but bails instead of deadlocking if this thread already holds the lock (e.g. panicked inside the logger).
@@ -158,18 +175,9 @@ pub fn writeCrashLine(comptime fmt: []const u8, args: anytype) void {
     defer log_mutex.unlock(g_io);
 
     flushLocked();
-    if (ensureFileOpen()) {
-        var ts_buf: [23]u8 = undefined;
-        const ts = formatTimestamp(&ts_buf);
-        var line_buf: [512]u8 = undefined;
-        const line = std.fmt.bufPrint(&line_buf, "[{s}][CRASH] " ++ fmt ++ "\n", .{ts} ++ args) catch "[CRASH] (message too long to format)\n";
-        if (log_file) |f| {
-            f.writePositionalAll(g_io, line, log_file_size) catch {};
-            log_file_size += line.len;
-        }
-    }
-    if (log_file) |f| f.close(g_io);
-    log_file = null;
+    var ts_buf: [23]u8 = undefined;
+    var line_buf: [512]u8 = undefined;
+    appendLocked(formatLine(&line_buf, "[{s}][CRASH] " ++ fmt ++ "\n", .{formatTimestamp(&ts_buf)} ++ args));
 }
 
 // Callers already passed shouldLog(); warnings/errors flush immediately so they survive a crash right after.
@@ -177,10 +185,8 @@ inline fn writeToFile(comptime level: LogLevel, ts: []const u8, comptime scope: 
     log_mutex.lock(g_io) catch return;
     defer log_mutex.unlock(g_io);
 
-    if (!ensureFileOpen()) return;
-
     var line_buf: [2048]u8 = undefined;
-    const line = std.fmt.bufPrint(&line_buf, "[{s}][{s}][{s}] " ++ fmt ++ "\n", .{ ts, comptime level.asString(), scope } ++ args) catch return;
+    const line = formatLine(&line_buf, "[{s}][{s}][{s}] " ++ fmt ++ "\n", .{ ts, comptime level.asString(), scope } ++ args);
 
     if (line.len > log_buf.len - log_buf_len) flushLocked();
     @memcpy(log_buf[log_buf_len..][0..line.len], line);

@@ -200,6 +200,8 @@ pub const panic = std.debug.FullPanic(crash.handlePanic);
 pub fn main(init: std.process.Init) void {
     // Must precede any window/monitor API call, or Windows bitmap-stretches our windows on scaled monitors.
     _ = win32.SetProcessDpiAwarenessContext(win32.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    // Before the crash handlers, which log.
+    log.setIo(init.io);
     crash.install();
     defer log.deinitFile();
 
@@ -241,7 +243,6 @@ fn setCwdToExeDir() void {
 
 fn mainImpl(init: std.process.Init) !void {
     g_io = init.io;
-    log.setIo(g_io);
     tts.setIo(g_io);
     sound.setIo(g_io);
     update.setIo(g_io);
