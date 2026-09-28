@@ -289,14 +289,20 @@ pub const Painter = struct {
         }
     }
 
-    /// The toggle-visibility hotkey: the first thumbnail decides the direction, and manual hiding persists through focus changes.
+    /// Whether the thumbnails count as shown, for the toggle and the tray's checkmark; the first one speaks for all, and none counts as shown.
+    pub fn thumbnailsShown(self: *const Painter) bool {
+        if (self.thumbnails.items.len == 0) return true;
+        return self.thumbnails.items[0].visibility_state == .Visible;
+    }
+
+    /// The toggle-visibility hotkey and tray item; manual hiding persists through focus changes.
     pub fn toggleAllThumbnailsVisibility(self: *Painter) void {
         if (self.thumbnails.items.len == 0) {
             slog.debug("No thumbnails to toggle visibility", .{});
             return;
         }
 
-        const new_visibility: state_mod.VisibilityState = if (self.thumbnails.items[0].visibility_state == .Visible) .HiddenManual else .Visible;
+        const new_visibility: state_mod.VisibilityState = if (self.thumbnailsShown()) .HiddenManual else .Visible;
         slog.info("Toggling all thumbnails visibility: {}", .{new_visibility});
 
         for (self.thumbnails.items) |*thumbnail| {

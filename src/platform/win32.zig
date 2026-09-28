@@ -79,7 +79,6 @@ pub const WM_TRAYICON = WM_USER + 1;
 pub const WM_SWITCH_PROFILE = WM_APP + 4;
 pub const WM_PROTOCOL_HOTKEY = WM_APP + 7;
 pub const WM_HOTKEYS_STATE_CHANGED = WM_APP + 12;
-pub const WM_TOGGLE_VISIBILITY = WM_APP + 13;
 pub const WM_DIALOG_RPC = WM_APP + 14;
 pub const WM_DIALOG_MOVED = WM_APP + 15;
 pub const WM_COMMAND = 0x0111;

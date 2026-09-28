@@ -44,6 +44,10 @@ var g_update_checker: ?update.UpdateChecker = null;
 // Exported for other modules to reach these without threading them through every call.
 pub var g_timer_hwnd: ?win32.HWND = null;
 
+const PROFILE_NAME_BUF = 256;
+var g_pending_profile_buf: [PROFILE_NAME_BUF]u8 = undefined;
+var g_pending_profile: ?[]const u8 = null;
+
 // Scan throttling: only run expensive EnumWindows every N ticks
 var g_scan_tick_counter: u32 = 0;
 // 20 ticks at 50ms/tick is roughly 1 second between scans.
@@ -61,8 +65,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             return 0;
         },
         win32.WM_COMMAND => {
-            const command_id = @as(u16, @truncate(wParam));
-            _ = tray.TrayIcon.handleMenuCommand(command_id, &g_store);
+            if (g_tray_icon) |*icon| icon.handleMenuCommand(@truncate(wParam), &g_store);
             return 0;
         },
         win32.WM_TIMER => {
@@ -90,17 +93,15 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             }
             return 0;
         },
-        win32.WM_TOGGLE_VISIBILITY => {
-            if (painter.g_painter_ptr) |painter_ptr| {
-                painter_ptr.toggleAllThumbnailsVisibility();
-            }
-            return 0;
-        },
         win32.WM_SWITCH_PROFILE => {
-            if (tray.TrayIcon.takePendingProfileName()) |new_profile| {
-                slog.info("Switching to profile: {s}", .{new_profile});
-                switchProfile(new_profile);
-            }
+            const pending = g_pending_profile orelse return 0;
+            g_pending_profile = null;
+            // Copied out, so a switch requested while this one runs can't overwrite the name in use.
+            var name_buf: [PROFILE_NAME_BUF]u8 = undefined;
+            const name = name_buf[0..pending.len];
+            @memcpy(name, pending);
+            slog.info("Switching to profile: {s}", .{name});
+            switchProfile(name);
             return 0;
         },
         win32.WM_COPYDATA => {
@@ -517,6 +518,22 @@ fn addChatlogCharacters(monitor: *chatlog.ChatlogMonitor, windows: []const scout
             slog.err("Failed to add {s} to chatlog monitor: {}", .{ eve_window.character_name, err });
         };
     }
+}
+
+/// Switches on the next message-loop turn rather than inside the tray menu or hotkey handler asking, which the switch would tear down under it.
+/// Keeps its own copy of `profile_name`, so the caller's may be freed straight away.
+pub fn requestProfileSwitch(profile_name: []const u8) void {
+    if (profile_name.len > g_pending_profile_buf.len) {
+        slog.err("Profile name too long to switch to: {s}", .{profile_name});
+        return;
+    }
+    const timer_hwnd = g_timer_hwnd orelse {
+        slog.err("Timer window not available for profile switch", .{});
+        return;
+    };
+    @memcpy(g_pending_profile_buf[0..profile_name.len], profile_name);
+    g_pending_profile = g_pending_profile_buf[0..profile_name.len];
+    _ = win32.PostMessageA(timer_hwnd, win32.WM_SWITCH_PROFILE, 0, 0);
 }
 
 pub fn switchProfile(profile_name: []const u8) void {

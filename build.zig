@@ -73,9 +73,6 @@ pub fn build(b: *std.Build) void {
     const webview2_loader = b.addInstallBinFile(b.path("src/WebView2Loader.dll"), "WebView2Loader.dll");
     exe.step.dependOn(&webview2_loader.step);
 
-    const tray_icon = b.addInstallBinFile(b.path("icon.ico"), "icon.ico");
-    exe.step.dependOn(&tray_icon.step);
-
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);

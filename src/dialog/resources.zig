@@ -1,9 +1,5 @@
 //! The configuration window's files: the page, built per window, and the static modules, styles, font, image and language catalogs it loads.
 const std = @import("std");
-const files = @import("../config/files.zig");
-const log = @import("../log.zig");
-
-const slog = log.scoped("dialog");
 
 /// Add a language by dropping src/lang/xx.json in and adding one variant here plus one arm each in `catalog()` and `displayName()`.
 pub const Lang = enum {
@@ -51,16 +47,10 @@ pub const Lang = enum {
 pub fn buildPage(allocator: std.mem.Allocator, lang: Lang, ui_scale: f32) ![:0]u8 {
     var scale_buf: [16]u8 = undefined;
     const scale = std.fmt.bufPrint(&scale_buf, "{d:.2}", .{ui_scale}) catch unreachable;
-    const favicon = faviconTag(allocator) catch |err| blk: {
-        slog.warn("Failed to load icon.ico for the favicon: {}", .{err});
-        break :blk try allocator.dupe(u8, "");
-    };
-    defer allocator.free(favicon);
-
     const replacements = [_][2][]const u8{
         .{ "LANG_PLACEHOLDER", @tagName(lang) },
         .{ "UI_SCALE_PLACEHOLDER", scale },
-        .{ "FAVICON_PLACEHOLDER", favicon },
+        .{ "FAVICON_PLACEHOLDER", FAVICON_TAG },
     };
     var page: []u8 = try allocator.dupe(u8, @embedFile("ui/index.html"));
     defer allocator.free(page);
@@ -132,12 +122,13 @@ fn catalogsModule() []const u8 {
     }
 }
 
-fn faviconTag(allocator: std.mem.Allocator) ![]u8 {
-    const icon_data = try std.Io.Dir.cwd().readFileAlloc(files.g_io, "icon.ico", allocator, .limited(1024 * 1024));
-    defer allocator.free(icon_data);
+/// The app icon inlined as a data URL, encoded at compile time.
+const FAVICON_TAG = blk: {
+    const icon = @embedFile("../assets/icon.ico");
     const encoder = std.base64.standard.Encoder;
-    const encoded = try allocator.alloc(u8, encoder.calcSize(icon_data.len));
-    defer allocator.free(encoded);
-    _ = encoder.encode(encoded, icon_data);
-    return std.fmt.allocPrint(allocator, "<link rel=\"icon\" type=\"image/x-icon\" href=\"data:image/x-icon;base64,{s}\">", .{encoded});
-}
+    @setEvalBranchQuota(1_000_000);
+    var encoded: [encoder.calcSize(icon.len)]u8 = undefined;
+    _ = encoder.encode(&encoded, icon);
+    const final = encoded;
+    break :blk "<link rel=\"icon\" type=\"image/x-icon\" href=\"data:image/x-icon;base64," ++ final ++ "\">";
+};

@@ -36,7 +36,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
 OutputBaseFilename=eve-maj-preview-v{#MyAppVersion}-setup
-SetupIconFile=..\icon.ico
+SetupIconFile=..\src\assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2
 SolidCompression=yes
@@ -51,7 +51,6 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#BinDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#BinDir}\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BinDir}\WebView2Loader.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\WebView2Loader-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\CascadiaCode-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
