@@ -1,8 +1,7 @@
 // Profile list, switching, creating, copying, deleting, resetting and restoring backups.
 import { app } from './state.js';
-import { DEFAULT_ACCENT_COLOR_HTML, applyAccentColorTheme, htmlColorToZig, zigColorToHtml } from './colors.js';
+import { applyAccentColorTheme, defaultAccentColorHtml, htmlColorToZig, zigColorToHtml } from './colors.js';
 import { logError, rpc } from './core.js';
-import { populateProfileSwitchHotkeys } from './global_hotkeys.js';
 import { t } from './i18n.js';
 import { closeImportModal } from './import.js';
 import { showStatus } from './layout.js';
@@ -78,12 +77,7 @@ async function restoreProfileBackup(filename, displayName) {
             await rpc('restoreProfileBackup', { backup: filename, target: sanitizedName, accentColor: htmlColorToZig(accentColor) });
             showStatus(t('status.profileRestoredSuccess'), 'success');
             closeImportModal();
-            await loadProfileList();
-            await populateProfileSwitchHotkeys();
-
-            const profileSelect = document.getElementById('profile-select');
-            profileSelect.value = sanitizedName + '.json';
-            await switchProfile();
+            await switchProfile(false, false, sanitizedName + '.json');
         } else {
             showStatus(t('status.mockCopyPrefix') + filename + t('status.mockCopyMiddle') + sanitizedName, 'info');
         }
@@ -98,40 +92,19 @@ export function cleanProfileName(name) {
     return name.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, app.schema.profileNameMaxLength);
 }
 
-export async function loadProfileList() {
-    try {
-        if (typeof webui !== 'undefined') {
-            const data = await rpc('listProfiles');
-
-            const profileSelect = document.getElementById('profile-select');
-            profileSelect.innerHTML = '';
-            
-            if (data.profiles && data.profiles.length > 0) {
-                data.profiles.forEach(profile => {
-                    const option = document.createElement('option');
-                    option.value = profile;
-                    option.textContent = profile.replace(/\.json$/, '');
-                    if (profile === data.current) {
-                        option.selected = true;
-                    }
-                    profileSelect.appendChild(option);
-                });
-            } else {
-                const option = document.createElement('option');
-                option.value = 'default.json';
-                option.textContent = t('common.defaultProfileLabel');
-                profileSelect.appendChild(option);
-            }
-        }
-    } catch (error) {
-        logError('Failed to load profile list:', error);
-    }
+// From the profiles the session listed, with the one the window edits selected.
+export function renderProfileSelect() {
+    const profileSelect = document.getElementById('profile-select');
+    const profiles = app.profiles.length > 0 ? app.profiles : ['default.json'];
+    profileSelect.replaceChildren(...profiles.map(profile => new Option(profile.replace(/\.json$/, ''), profile)));
+    profileSelect.value = app.dialogEditingProfile;
 }
 
 // deferLivePush skips the immediate switchProfileLive call for a profile runImport() just created (still empty) - runImport() does the actual live push once it has real data to save.
-export async function switchProfile(deferLivePush = false, forceLive = false) {
+// `target` is a profile just created, which the dropdown doesn't list until the session reopens.
+export async function switchProfile(deferLivePush = false, forceLive = false, target = null) {
     const profileSelect = document.getElementById('profile-select');
-    const selectedProfile = profileSelect.value;
+    const selectedProfile = target ?? profileSelect.value;
     let liveChoice = null;
 
     // Ask before making it live, since that means an immediate thumbnail/hotkey/chatlog reload in the running app.
@@ -230,12 +203,7 @@ export async function createNewProfile() {
         if (typeof webui !== 'undefined') {
             await rpc('createProfile', { name: sanitizedName, accentColor: htmlColorToZig(accentColor) });
             showStatus(t('status.profileCreatedSuccess'), 'success');
-            await loadProfileList();
-            await populateProfileSwitchHotkeys();
-
-            const profileSelect = document.getElementById('profile-select');
-            profileSelect.value = sanitizedName + '.json';
-            await switchProfile();
+            await switchProfile(false, false, sanitizedName + '.json');
         } else {
             showStatus(t('status.mockCreateProfilePrefix') + sanitizedName, 'info');
         }
@@ -267,11 +235,7 @@ export async function copyCurrentProfile() {
         if (typeof webui !== 'undefined') {
             await rpc('copyProfile', { source: currentProfile, target: sanitizedName, accentColor: htmlColorToZig(accentColor) });
             showStatus(t('status.profileCopiedSuccess'), 'success');
-            await loadProfileList();
-            await populateProfileSwitchHotkeys();
-
-            profileSelect.value = sanitizedName + '.json';
-            await switchProfile();
+            await switchProfile(false, false, sanitizedName + '.json');
         } else {
             showStatus(t('status.mockCopyPrefix') + currentProfile + t('status.mockCopyMiddle') + sanitizedName, 'info');
         }
@@ -281,7 +245,7 @@ export async function copyCurrentProfile() {
     }
 }
 
-function showProfileNameModal(title, defaultValue = '', defaultColor = DEFAULT_ACCENT_COLOR_HTML) {
+function showProfileNameModal(title, defaultValue = '', defaultColor = defaultAccentColorHtml()) {
     return new Promise((resolve) => {
         const modal = document.getElementById('profile-name-modal');
         const titleEl = document.getElementById('profile-modal-title');
@@ -355,11 +319,8 @@ export function deleteCurrentProfile() {
         try {
             if (typeof webui !== 'undefined') {
                 await rpc('deleteProfile', { name: currentProfile });
-                // The backend moved the window onto the profile the app now runs.
-                await loadProfileList();
-                app.dialogEditingProfile = profileSelect.value;
+                // The app moved the window onto the profile it now runs, which the reopened session lists.
                 await openSession();
-                await populateProfileSwitchHotkeys();
 
                 showStatus(t('status.profileDeletedSuccess'), 'success');
             } else {
@@ -395,14 +356,3 @@ export function resetCurrentProfile() {
     }, '✓');
 }
 
-export async function getAvailableProfileNames() {
-    try {
-        if (typeof webui !== 'undefined') {
-            const data = await rpc('listProfiles');
-            return data.profiles;
-        }
-    } catch (error) {
-        logError('Failed to load profile list for profile switch hotkeys:', error);
-    }
-    return [];
-}

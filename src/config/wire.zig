@@ -55,38 +55,6 @@ pub const VkCode = struct {
     }
 };
 
-/// String-to-string map, serialized as a JSON object (used for characterIdMap).
-pub const StringMap = struct {
-    entries: []const Entry = &.{},
-
-    pub const Entry = struct {
-        key: []const u8,
-        value: []const u8,
-    };
-
-    pub fn jsonStringify(self: StringMap, jw: anytype) !void {
-        try jw.beginObject();
-        for (self.entries) |e| {
-            try jw.objectField(e.key);
-            try jw.write(e.value);
-        }
-        try jw.endObject();
-    }
-
-    pub fn jsonParseFromValue(allocator: std.mem.Allocator, source: std.json.Value, _: std.json.ParseOptions) !StringMap {
-        if (source != .object) return .{};
-        const entries = try allocator.alloc(Entry, source.object.count());
-        var it = source.object.iterator();
-        var i: usize = 0;
-        while (it.next()) |entry| : (i += 1) {
-            if (entry.value_ptr.* != .string) return error.UnexpectedToken;
-            // Copied, since `parse` frees the source tree before the result is used.
-            entries[i] = .{ .key = try allocator.dupe(u8, entry.key_ptr.*), .value = try allocator.dupe(u8, entry.value_ptr.string) };
-        }
-        return .{ .entries = entries };
-    }
-};
-
 /// A `u32`/`?u32` field whose name ends in "color"/"Color" is an ARGB colour, saved as a hex string.
 pub fn isColorField(comptime name: []const u8) bool {
     // Compared by hand: std.mem.endsWith costs enough comptime branches to matter across every nested field.
@@ -120,12 +88,7 @@ pub fn ListItem(comptime T: type) ?type {
     return if (T == std.ArrayList(Item)) Item else null;
 }
 
-/// A string-to-string map field, which is saved as a JSON object (see StringMap).
-pub fn isStringMap(comptime T: type) bool {
-    return T == std.StringHashMap([]const u8);
-}
-
-/// A field named in `R.runtime_fields` (an allocator, a mutex) only exists while the app runs and isn't saved.
+/// A field named in `R.runtime_fields` (an allocator, an id) only exists while the app runs and isn't saved.
 fn isSaved(comptime R: type, comptime name: []const u8) bool {
     if (!@hasDecl(R, "runtime_fields")) return true;
     inline for (R.runtime_fields) |runtime| {
@@ -179,7 +142,6 @@ pub fn FieldWire(comptime T: type, comptime name: []const u8) type {
     if (isNested(T)) return T.Wire;
     if (OptionalNested(T)) |N| return ?N.Wire;
     if (ListItem(T)) |Item| return []const WireOf(Item);
-    if (isStringMap(T)) return StringMap;
     if (isColorField(name)) {
         if (T == u32) return Argb;
         if (T == ?u32) return ?Argb;
@@ -200,7 +162,6 @@ pub fn fieldToWire(comptime T: type, comptime name: []const u8, value: T) FieldW
         if (WireOf(Item) != Item) @compileError(name ++ "'s items have their own saved form, so save it with toWireAlloc");
         return value.items;
     }
-    if (comptime isStringMap(T)) @compileError(name ++ " is a map, so save it with toWireAlloc");
     return switch (FieldWire(T, name)) {
         Argb, VkCode => .{ .value = value },
         ?Argb, ?VkCode => if (value) |v| .{ .value = v } else null,
@@ -216,18 +177,9 @@ fn plainFromWire(comptime T: type, value: anytype) T {
     };
 }
 
-/// Allocates list and map conversions from `allocator`, an arena freed once the result is serialized.
+/// Allocates list conversions from `allocator`, an arena freed once the result is serialized.
 fn fieldToWireAlloc(comptime T: type, comptime name: []const u8, allocator: std.mem.Allocator, value: T) !FieldWire(T, name) {
     if (comptime ListItem(T)) |Item| return encodeList(Item, allocator, value.items);
-    if (comptime isStringMap(T)) {
-        const entries = try allocator.alloc(StringMap.Entry, value.count());
-        var it = value.iterator();
-        var i: usize = 0;
-        while (it.next()) |entry| : (i += 1) {
-            entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* };
-        }
-        return .{ .entries = entries };
-    }
     return fieldToWire(T, name, value);
 }
 
@@ -241,34 +193,9 @@ pub fn fieldFromWire(comptime T: type, w_value: anytype, allocator: std.mem.Allo
         try decodeList(Item, &list, allocator, w_value);
         return list;
     }
-    if (comptime isStringMap(T)) {
-        var map = T.init(allocator);
-        errdefer freeStringMap(allocator, &map);
-        for (w_value.entries) |entry| {
-            const key = try allocator.dupe(u8, entry.key);
-            errdefer allocator.free(key);
-            const value = try allocator.dupe(u8, entry.value);
-            errdefer allocator.free(value);
-            // A key repeated in the JSON keeps its last value.
-            if (try map.fetchPut(key, value)) |old| {
-                allocator.free(old.key);
-                allocator.free(old.value);
-            }
-        }
-        return map;
-    }
     if (T == []const u8) return try allocator.dupe(u8, w_value);
     if (T == ?[]const u8) return if (w_value) |s| try allocator.dupe(u8, s) else null;
     return plainFromWire(T, w_value);
-}
-
-fn freeStringMap(allocator: std.mem.Allocator, map: *std.StringHashMap([]const u8)) void {
-    var it = map.iterator();
-    while (it.next()) |entry| {
-        allocator.free(entry.key_ptr.*);
-        allocator.free(entry.value_ptr.*);
-    }
-    map.deinit();
 }
 
 /// Frees what `fieldFromWire` allocated; `default` is the field's default, which a string may still point at.
@@ -279,8 +206,6 @@ pub fn freeField(comptime T: type, value: *T, default: ?T, allocator: std.mem.Al
         if (value.*) |*v| free(N, v, allocator);
     } else if (comptime ListItem(T)) |Item| {
         freeList(Item, value, allocator);
-    } else if (comptime isStringMap(T)) {
-        freeStringMap(allocator, value);
     } else if (T == []const u8) {
         freeOwnedString(allocator, value.*, default orelse "");
     } else if (T == ?[]const u8) {
@@ -299,7 +224,7 @@ pub fn Wire(comptime R: type) type {
         var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
         for (fields, 0..) |f, i| {
             const W = FieldWire(f.type, f.name);
-            const wire_default: W = if (hasWireDefault(R, f.name)) @field(R.wire_defaults, f.name) else if (ListItem(f.type) != null) &.{} else if (isStringMap(f.type)) .{} else field_default: {
+            const wire_default: W = if (hasWireDefault(R, f.name)) @field(R.wire_defaults, f.name) else if (ListItem(f.type) != null) &.{} else field_default: {
                 const default = f.defaultValue() orelse @compileError(@typeName(R) ++ "." ++ f.name ++ " needs a default value to be saved");
                 // deinit frees any non-null optional string, so a literal default would be freed.
                 if (f.type == ?[]const u8) {
@@ -408,19 +333,6 @@ fn cloneField(comptime T: type, value: T, allocator: std.mem.Allocator) !T {
         try list.ensureTotalCapacity(allocator, value.items.len);
         for (value.items) |item| list.appendAssumeCapacity(try cloneField(Item, item, allocator));
         return list;
-    }
-    if (comptime isStringMap(T)) {
-        var map = T.init(allocator);
-        errdefer freeStringMap(allocator, &map);
-        var it = value.iterator();
-        while (it.next()) |entry| {
-            const key = try allocator.dupe(u8, entry.key_ptr.*);
-            errdefer allocator.free(key);
-            const map_value = try allocator.dupe(u8, entry.value_ptr.*);
-            errdefer allocator.free(map_value);
-            try map.put(key, map_value);
-        }
-        return map;
     }
     // Empty stays a literal, which freeOwnedString skips.
     if (T == []const u8) return if (value.len == 0) "" else try allocator.dupe(u8, value);

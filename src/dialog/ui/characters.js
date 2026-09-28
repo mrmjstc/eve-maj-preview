@@ -39,7 +39,7 @@ function applyCharacterFilter() { characterSearchFilter.apply(); }
 
 // Character IDs are learned at runtime from chatlog filenames and cached in global settings, so a freshly added or renamed character has no portrait until the app has seen a chatlog for it.
 function characterPortraitUrl(name) {
-    const id = app.currentGlobalSettings?.characterIdMap?.[(name || '').trim()];
+    const id = app.characterIds[(name || '').trim()];
     return id ? `https://images.evetech.net/characters/${id}/portrait?size=128` : null;
 }
 
@@ -55,7 +55,6 @@ function applyCharacterPortrait(img, name) {
     }
 }
 
-// The roster draws before the global settings (which hold characterIdMap) are shown, so this runs again once they are.
 export function refreshCharacterPortraits() {
     (app.currentConfig?.characters || []).forEach((char, index) => {
         applyCharacterPortrait(document.getElementById(`char_${index}_portrait`), char.name);

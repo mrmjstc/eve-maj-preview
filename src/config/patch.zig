@@ -98,15 +98,6 @@ fn writeValue(jw: anytype, comptime T: type, comptime name: []const u8, value: *
         for (value.items) |*item| try writeValue(jw, Item, name, item);
         return jw.endArray();
     }
-    if (comptime wire.isStringMap(T)) {
-        try jw.beginObject();
-        var it = value.iterator();
-        while (it.next()) |entry| {
-            try jw.objectField(entry.key_ptr.*);
-            try jw.write(entry.value_ptr.*);
-        }
-        return jw.endObject();
-    }
     return jw.write(wire.fieldToWire(T, name, value.*));
 }
 

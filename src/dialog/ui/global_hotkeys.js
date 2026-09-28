@@ -5,7 +5,6 @@ import { markAsChanged } from './changes.js';
 import { escapeHtml } from './core.js';
 import { alignBindingLabelColumns, hotkeyToSaved, renderHotkeyInputHtml, updateHotkeyConflictHighlights, vkHexToFriendly } from './hotkeys.js';
 import { t } from './i18n.js';
-import { getAvailableProfileNames } from './profiles.js';
 import { scrollContentPanelToBottom } from './widgets.js';
 import { pickRunningWindowFor, resolvePickedWindow } from './window_filters.js';
 
@@ -20,7 +19,7 @@ export async function populateProfileSwitchHotkeys() {
     const container = document.getElementById('profileSwitchHotkeysList');
     if (!container) return;
 
-    const profiles = await getAvailableProfileNames();
+    const profiles = app.profiles;
     const entries = app.currentGlobalSettings?.profileSwitchHotkeys || [];
 
     container.innerHTML = profiles.map(profile => {

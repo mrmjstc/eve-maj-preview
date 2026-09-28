@@ -11,6 +11,7 @@ const hotkeys = @import("hotkeys/manager.zig");
 const mouse_hook = @import("hotkeys/mouse_hook.zig");
 const keyboard_hook = @import("hotkeys/keyboard_hook.zig");
 const chatlog = @import("chatlog.zig");
+const CharacterIds = @import("chatlog/character_ids.zig").CharacterIds;
 const activity = @import("activity/runtime.zig");
 const tts = @import("notifications/tts.zig");
 const sound = @import("notifications/sound.zig");
@@ -37,6 +38,7 @@ var g_trackers: activity.Trackers = undefined;
 // Public for the configuration window, which edits them in this process.
 pub var g_store: config_mod.ProfileStore = undefined;
 pub var g_global_settings: config_mod.GlobalConfig = undefined;
+pub var g_character_ids: CharacterIds = undefined;
 var g_tray_icon: ?tray.TrayIcon = null;
 var g_update_checker: ?update.UpdateChecker = null;
 // Exported for other modules to reach these without threading them through every call.
@@ -288,6 +290,9 @@ fn mainImpl(init: std.process.Init) !void {
 
     g_global_settings = try config_mod.GlobalConfig.load(g_allocator);
     defer g_global_settings.deinit();
+    // Before the chatlog monitor, whose shutdown defer then runs first.
+    g_character_ids = .load(g_allocator);
+    defer g_character_ids.deinit();
     log.setLevel(g_global_settings.logLevel);
     g_global_settings.logSettings();
 
@@ -486,7 +491,7 @@ fn destroyHotkeyManager() void {
 
 /// Created with its worker thread stopped, so the trackers can be wired in before it runs.
 fn createChatlogMonitor() !*chatlog.ChatlogMonitor {
-    return chatlog.ChatlogMonitor.init(g_allocator, g_io, &g_store.saved.chatlog, &g_global_settings);
+    return chatlog.ChatlogMonitor.init(g_allocator, g_io, &g_store.saved.chatlog, &g_global_settings, &g_character_ids);
 }
 
 fn destroyChatlogMonitor() void {
@@ -513,9 +518,14 @@ fn addChatlogCharacters(monitor: *chatlog.ChatlogMonitor, windows: []const scout
 }
 
 pub fn switchProfile(profile_name: []const u8) void {
-    reloadWithProfile(profile_name) catch |err| {
+    reloadWithProfile(profile_name, null) catch |err| {
         slog.err("Failed to switch profile to {s}: {}", .{ profile_name, err });
     };
+}
+
+/// After the config dialog saved `profile_name` from a draft; `global_draft`, if given, becomes the running global settings too.
+pub fn switchToSavedProfile(profile_name: []const u8, global_draft: ?*config_mod.GlobalConfig) !void {
+    try reloadWithProfile(profile_name, global_draft);
 }
 
 /// Picks up windows the new profile's filters match and drops those they no longer do; a failed scan keeps the already-tracked windows.
@@ -528,7 +538,7 @@ fn rescanWindows() []const scout.EveWindow {
     return scout_ptr.getWindows();
 }
 
-fn reloadWithProfile(new_profile_name: []const u8) !void {
+fn reloadWithProfile(new_profile_name: []const u8, global_draft: ?*config_mod.GlobalConfig) !void {
     slog.info("=== Starting profile reload: {s} ===", .{new_profile_name});
 
     const timer_hwnd = g_timer_hwnd orelse return error.NoTimerWindow;
@@ -547,7 +557,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     };
 
     const profile_changed = !std.mem.eql(u8, g_store.live.profile_name, new_store.live.profile_name);
-    try restartSubsystems(timer_hwnd, new_store);
+    try restartSubsystems(timer_hwnd, new_store, global_draft);
 
     if (profile_changed) {
         const name = g_store.live.profile_name;
@@ -560,13 +570,14 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
 }
 
 /// After the config dialog saves the running profile or global settings: the parts that only read them at setup (hotkeys, chatlog, timer, window filters) start over.
-pub fn applySavedSettings() !void {
+/// `global_draft`, if given, becomes the running global settings (see GlobalConfig.adopt), leaving it holding the replaced values.
+pub fn applySavedSettings(global_draft: ?*config_mod.GlobalConfig) !void {
     const timer_hwnd = g_timer_hwnd orelse return error.NoTimerWindow;
-    try restartSubsystems(timer_hwnd, null);
+    try restartSubsystems(timer_hwnd, null, global_draft);
 }
 
 /// Tears down and rebuilds everything set up from the profile; `replacement`, owned from here on, becomes the running store.
-fn restartSubsystems(timer_hwnd: win32.HWND, replacement: ?config_mod.ProfileStore) !void {
+fn restartSubsystems(timer_hwnd: win32.HWND, replacement: ?config_mod.ProfileStore, global_draft: ?*config_mod.GlobalConfig) !void {
     var pending = replacement;
     errdefer if (pending) |*store| store.deinit();
     const next: *const config_mod.Config = if (pending) |*store| &store.saved else &g_store.saved;
@@ -582,8 +593,9 @@ fn restartSubsystems(timer_hwnd: win32.HWND, replacement: ?config_mod.ProfileSto
         slog.debug("Cleaned up chatlog monitor", .{});
     }
 
-    // Must run after the chatlog worker is stopped above.
+    // Both must run after the chatlog worker is stopped above, since it reads the trackers and the ore prices.
     g_trackers.releaseForReload();
+    if (global_draft) |draft| g_global_settings.adopt(draft);
 
     destroyHotkeyManager();
     slog.debug("Cleaned up hotkey manager", .{});

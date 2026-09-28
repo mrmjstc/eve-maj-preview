@@ -176,7 +176,6 @@ pub const GlobalConfig = struct {
     profileSwitchHotkeys: std.ArrayList(ProfileSwitchHotkeyConfig) = .empty,
     appHotkeys: std.ArrayList(AppHotkeyConfig) = .empty,
     urlHotkeys: std.ArrayList(UrlHotkeyConfig) = .empty,
-    characterIdMap: std.StringHashMap([]const u8),
     disableUpdateChecks: bool = false,
     runOnStartup: bool = false,
     autoRegisterProtocol: bool = true,
@@ -187,12 +186,11 @@ pub const GlobalConfig = struct {
     dialogX: ?i32 = null,
     dialogY: ?i32 = null,
     dialogScale: u16 = 0,
-    characterIdMapMutex: std.Io.Mutex = .init,
 
-    pub const runtime_fields = .{ "allocator", "characterIdMapMutex" };
+    pub const runtime_fields = .{"allocator"};
 
     /// Saved, but changed by the app as it runs rather than by the settings form.
-    pub const running_fields = .{ "lastUsedProfile", "dialogX", "dialogY", "dialogScale", "characterIdMap" };
+    pub const running_fields = .{ "lastUsedProfile", "dialogX", "dialogY", "dialogScale" };
 
     pub const ranges = .{
         .dialogScale = .{ 50, 300 },
@@ -306,37 +304,9 @@ pub const GlobalConfig = struct {
         try self.save();
     }
 
-    pub fn updateCharacterId(self: *GlobalConfig, character_name: []const u8, character_id: []const u8) !void {
-        {
-            try self.characterIdMapMutex.lock(files.g_io);
-            defer self.characterIdMapMutex.unlock(files.g_io);
-
-            if (self.characterIdMap.get(character_name)) |existing_id| {
-                if (std.mem.eql(u8, existing_id, character_id)) {
-                    return;
-                }
-            }
-
-            const name_copy = try self.allocator.dupe(u8, character_name);
-            errdefer self.allocator.free(name_copy);
-            const id_copy = try self.allocator.dupe(u8, character_id);
-            errdefer self.allocator.free(id_copy);
-
-            if (try self.characterIdMap.fetchPut(name_copy, id_copy)) |old_entry| {
-                self.allocator.free(old_entry.key);
-                self.allocator.free(old_entry.value);
-            }
-        }
-
-        slog.info("Cached character ID: {s} -> {s}", .{ character_name, character_id });
-        try self.save();
-    }
-
     /// Takes `edited`'s settings other than running_fields, leaving it holding the replaced values to free.
-    /// Locked, since the chatlog worker may be saving these meanwhile.
-    pub fn adopt(self: *GlobalConfig, edited: *GlobalConfig) !void {
-        try self.characterIdMapMutex.lock(files.g_io);
-        defer self.characterIdMapMutex.unlock(files.g_io);
+    /// Only while the chatlog worker is stopped, since it reads the ore prices.
+    pub fn adopt(self: *GlobalConfig, edited: *GlobalConfig) void {
         inline for (comptime wire.savedFields(GlobalConfig)) |f| {
             if (comptime !isRunningField(f.name)) std.mem.swap(f.type, &@field(self, f.name), &@field(edited, f.name));
         }
@@ -349,31 +319,15 @@ pub const GlobalConfig = struct {
         return false;
     }
 
-    pub fn hasCharacterId(self: *GlobalConfig, character_name: []const u8) !bool {
-        try self.characterIdMapMutex.lock(files.g_io);
-        defer self.characterIdMapMutex.unlock(files.g_io);
-        return self.characterIdMap.contains(character_name);
-    }
-
-    /// Caller owns the returned slice.
-    pub fn getCharacterId(self: *GlobalConfig, allocator: std.mem.Allocator, character_name: []const u8) !?[]const u8 {
-        try self.characterIdMapMutex.lock(files.g_io);
-        defer self.characterIdMapMutex.unlock(files.g_io);
-        const id = self.characterIdMap.get(character_name) orelse return null;
-        return try allocator.dupe(u8, id);
-    }
-
     pub const Wire = wire.Wire(GlobalConfig);
 
-    pub fn toWire(self: *GlobalConfig, allocator: std.mem.Allocator) !Wire {
-        try self.characterIdMapMutex.lock(files.g_io);
-        defer self.characterIdMapMutex.unlock(files.g_io);
+    pub fn toWire(self: *const GlobalConfig, allocator: std.mem.Allocator) !Wire {
         return wire.toWireAlloc(GlobalConfig, allocator, self);
     }
 
     /// The only way a GlobalConfig is built, so its strings are always owned (see updateLastUsed).
     pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !GlobalConfig {
-        var settings: GlobalConfig = .{ .allocator = allocator, .characterIdMap = .init(allocator) };
+        var settings: GlobalConfig = .{ .allocator = allocator };
         errdefer settings.deinit();
         try wire.fromWireInto(GlobalConfig, w, allocator, &settings);
         settings.validate();

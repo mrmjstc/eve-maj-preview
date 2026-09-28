@@ -1,11 +1,10 @@
 // The import dialog. The app recognises and reads the file (EVE-X, EVE-APM, EVE-O or another EVE-Maj profile, see config/import/) and applies the chosen sections as unsaved edits.
-import { app } from './state.js';
 import { hasUnsavedChanges } from './changes.js';
-import { applyAccentColorTheme, DEFAULT_ACCENT_COLOR_HTML, htmlColorToZig } from './colors.js';
+import { applyAccentColorTheme, defaultAccentColorHtml, htmlColorToZig } from './colors.js';
 import { escapeHtml, logError, rpc } from './core.js';
 import { t } from './i18n.js';
 import { showStatus } from './layout.js';
-import { cleanProfileName, loadImportBackupsList, loadProfileList, switchProfile } from './profiles.js';
+import { cleanProfileName, loadImportBackupsList, switchProfile } from './profiles.js';
 import { flushEdits, reloadSession, saveConfiguration } from './session.js';
 
 const DETECTED_STATUS = {
@@ -150,8 +149,8 @@ export function onImportDestChanged() {
     const isNew = document.getElementById('import-dest-new').checked;
     document.getElementById('importNewProfileRow').style.display = isNew ? '' : 'none';
     if (isNew) {
-        document.getElementById('importAccentColor').value = DEFAULT_ACCENT_COLOR_HTML;
-        applyAccentColorTheme(htmlColorToZig(DEFAULT_ACCENT_COLOR_HTML));
+        document.getElementById('importAccentColor').value = defaultAccentColorHtml();
+        applyAccentColorTheme(htmlColorToZig(defaultAccentColorHtml()));
     } else {
         applyAccentColorTheme();
     }
@@ -191,9 +190,7 @@ export async function runImport() {
                 return;
             }
 
-            await loadProfileList();
-            document.getElementById('profile-select').value = name + '.json';
-            const switchChoice = await switchProfile(true);
+            const switchChoice = await switchProfile(true, false, name + '.json');
             if (switchChoice === 'cancel') {
                 // The window still edits the old profile, which importing now would write into instead.
                 runBtn.disabled = false;

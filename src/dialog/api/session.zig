@@ -40,31 +40,29 @@ pub fn applyOps(arena: std.mem.Allocator, args: struct { doc: session.Doc, ops: 
 }
 
 /// Saving another profile's draft also makes it the running profile.
+/// The global settings are taken in by the restart that follows, once nothing else is reading them.
 pub fn saveSession(arena: std.mem.Allocator) !rpc.RawJson {
-    const global_changed = session.globalDirty();
-    if (global_changed) try session.adoptGlobal();
-    // The hotkey manager reads the adopted settings, so it's rebuilt even if a later step fails.
-    errdefer if (global_changed) main_mod.applySavedSettings() catch |err| {
-        slog.err("Failed to apply the new global settings after a failed save: {}", .{err});
-    };
-    if (global_changed) {
-        const settings = &main_mod.g_global_settings;
-        try settings.save();
-        log.setLevel(settings.logLevel);
-        applyRunOnStartup(settings.runOnStartup);
-        if (settings.autoRegisterProtocol) protocol.ensureRegistered(host.allocator());
-    }
+    const global_draft: ?*config_mod.GlobalConfig = if (session.globalDirty()) try session.global() else null;
 
     if (session.editsDraft()) {
         const draft = session.profile();
         try config_mod.saveProfile(draft, arena, try config_mod.profilePath(arena, draft.profile_name));
         const name = try arena.dupe(u8, draft.profile_name);
         session.dropProfileDraft();
-        main_mod.switchProfile(name);
+        try main_mod.switchToSavedProfile(name, global_draft);
     } else {
         const profile_changed = main_mod.g_store.isDirty();
         if (profile_changed) try main_mod.g_store.commit();
-        if (profile_changed or global_changed) try main_mod.applySavedSettings();
+        if (profile_changed or global_draft != null) try main_mod.applySavedSettings(global_draft);
+    }
+
+    if (global_draft != null) {
+        try session.resetGlobalDraft();
+        const settings = &main_mod.g_global_settings;
+        try settings.save();
+        log.setLevel(settings.logLevel);
+        applyRunOnStartup(settings.runOnStartup);
+        if (settings.autoRegisterProtocol) protocol.ensureRegistered(host.allocator());
     }
     return snapshot(arena);
 }
@@ -84,7 +82,8 @@ pub fn testNotification(_: std.mem.Allocator, args: struct { @"type": []const u8
     try painter.showTestNotification(ntype, session.profile().thumbnail.notifications.getTypeConfig(ntype));
 }
 
-/// `oreCatalog` is the built-in ore list the ore table shows, whose prices the global settings' oreTable overrides.
+/// `oreCatalog` is the built-in ore list the ore table shows, whose prices the global settings' oreTable overrides;
+/// `profiles` lists every profile for the dropdown and the profile-switch hotkeys, and `characterIds` gives the portraits.
 fn snapshot(arena: std.mem.Allocator) !rpc.RawJson {
     var out: std.Io.Writer.Allocating = .init(arena);
     var jw: std.json.Stringify = .{ .writer = &out.writer };
@@ -99,6 +98,10 @@ fn snapshot(arena: std.mem.Allocator) !rpc.RawJson {
     try session.writeGlobal(&jw);
     try jw.objectField("oreCatalog");
     try jw.write(config_mod.DEFAULT_ORE_TABLE);
+    try jw.objectField("profiles");
+    try jw.write((try config_mod.listProfiles(arena)).items);
+    try jw.objectField("characterIds");
+    try main_mod.g_character_ids.write(&jw);
     try jw.objectField("dirty");
     try writeDirty(&jw);
     try jw.endObject();

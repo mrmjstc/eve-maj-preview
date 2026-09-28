@@ -25,13 +25,17 @@ export function htmlColorToZig(htmlColor) {
     return '0xFF' + rgb.toUpperCase();
 }
 
-export const DEFAULT_ACCENT_COLOR_HTML = '#d9a441';
+export function defaultAccentColorHtml() {
+    return zigColorToHtml(defaultFor('accentColor'));
+}
 
 // Retints the dialog's --color-accent* CSS variables from the active profile's accentColor
 // (or, when previewing a not-yet-saved pick, overrideZig), so every profile can carry its own chrome color.
 export function applyAccentColorTheme(overrideZig) {
     const accentZig = overrideZig || app.currentConfig?.accentColor || defaultFor('accentColor');
-    const hex = zigColorToHtml(accentZig || htmlColorToZig(DEFAULT_ACCENT_COLOR_HTML));
+    // Until the schema arrives, the stylesheet's own accent shows.
+    if (!accentZig) return;
+    const hex = zigColorToHtml(accentZig);
 
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);

@@ -13,6 +13,7 @@ import { t } from './i18n.js';
 import { showStatus, switchTab } from './layout.js';
 import { populateNotificationTypes } from './notifications.js';
 import { saveOreTable } from './ore_table.js';
+import { renderProfileSelect } from './profiles.js';
 import { populateSystemColors } from './system_colors.js';
 import { populateWindowFilters } from './window_filters.js';
 
@@ -238,6 +239,10 @@ async function adoptSnapshot(snapshot) {
     app.currentGlobalSettings = snapshot.global;
     app.oreCatalog = snapshot.oreCatalog;
     app.editsDraft = snapshot.editsDraft;
+    app.profiles = snapshot.profiles;
+    app.characterIds = snapshot.characterIds;
+    app.dialogEditingProfile = snapshot.profileName;
+    renderProfileSelect();
     confirmed.profile = clone(snapshot.profile);
     confirmed.global = clone(snapshot.global);
     populateFormFields();

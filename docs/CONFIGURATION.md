@@ -969,7 +969,6 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **hotkeyReturnToLastApp**: Refocus whichever non-EVE window last held focus (e.g. jump back to your browser or Discord after switching into EVE). Stays active regardless of which profile is loaded; editable from the config dialog's Hotkeys tab ("Outside EVE" section).
 - **disableUpdateChecks**: Set to `true` to disable automatic update checks on startup (default: `false`)
 - **autoRegisterProtocol**: See [Registration](#registration) under Protocol Handler (default: `true`)
-- **characterIdMap**: Internal mapping of character names to session IDs (managed automatically)
 
 **Profile Cycling Features:**
 - Cycle forward/backward through profiles with wraparound
@@ -1119,6 +1118,8 @@ Define custom colors for specific solar systems:
 > **Note**: An exact name always beats a pattern, regardless of row order; otherwise the first matching row wins.
 
 With `useUniqueSystemColors` on, systems without an override get an automatically assigned color: the palette color farthest from your overrides and every other assigned color. `useUniqueCharacterNameColors` does the same for character names, and `useUniqueCharacterBorderColors` for the focused border (a character's own `borderColors.activeBorderColor` wins); a character gets one stored color used for both, avoiding every character's own `nameColor` and active border color. Assignments are kept for the 64 most recently seen systems and 64 most recently seen characters in `colors.json` next to the `profiles` folder (shared by all profiles), written when the last EVE client closes or the app exits; delete the file to reassign them.
+
+Chatlog monitoring also keeps each character's EVE character ID, read from its log file names, in `character_ids.json` next to the `profiles` folder, so later lookups skip reading log headers; it's managed automatically, and deleting it only means the IDs are found again from the logs.
 
 > **Note**: The key is `systemName`, not `name` - an entry using the wrong key will fail to load and abort loading the entire profile.
 

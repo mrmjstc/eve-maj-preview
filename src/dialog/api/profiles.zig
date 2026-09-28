@@ -4,12 +4,6 @@ const config_mod = @import("../../config.zig");
 const main_mod = @import("../../main.zig");
 const host = @import("../host.zig");
 
-/// `current` is the profile the window edits, `live` the one the app runs.
-pub fn listProfiles(arena: std.mem.Allocator) !struct { profiles: []const []const u8, current: []const u8, live: []const u8 } {
-    const names = try config_mod.listProfiles(arena);
-    return .{ .profiles = names.items, .current = host.editingProfile(), .live = main_mod.g_store.live.profile_name };
-}
-
 pub fn listProfileBackups(arena: std.mem.Allocator) !struct { backups: []const []const u8 } {
     const names = try config_mod.listProfileBackups(arena);
     return .{ .backups = names.items };
@@ -50,8 +44,8 @@ pub fn restoreProfileBackup(arena: std.mem.Allocator, args: struct { backup: []c
 /// Moved to a backup rather than deleted; deleting the running profile first switches the app to the default one.
 /// The window goes on to edit whichever profile the app then runs.
 pub fn deleteProfile(_: std.mem.Allocator, args: struct { name: []const u8 }) !void {
-    try config_mod.validateProfileName(args.name);
-    if (std.mem.eql(u8, args.name, config_mod.DEFAULT_PROFILE)) return error.CannotDeleteDefaultProfile;
+    // Checked before the switch below, which a refused delete mustn't cause.
+    try config_mod.checkProfileDeletable(args.name);
     if (std.mem.eql(u8, args.name, main_mod.g_store.live.profile_name)) main_mod.switchProfile(config_mod.DEFAULT_PROFILE);
     try config_mod.deleteProfileToBackup(host.allocator(), args.name);
     if (std.mem.eql(u8, args.name, host.editingProfile())) try host.setEditingProfile(main_mod.g_store.live.profile_name);

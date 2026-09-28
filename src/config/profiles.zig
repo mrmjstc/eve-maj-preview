@@ -82,9 +82,14 @@ fn copyFrom(allocator: std.mem.Allocator, source_path: []const u8, target: []con
 }
 
 /// Moves the profile into PROFILES_DIR/backup, named `<unix time>_<name>` so the newest sorts first.
-pub fn deleteToBackup(allocator: std.mem.Allocator, name: []const u8) !void {
+/// Any profile but the default one, which the app falls back to.
+pub fn checkDeletable(name: []const u8) !void {
     try validateName(name);
     if (std.mem.eql(u8, name, files.DEFAULT_PROFILE)) return error.CannotDeleteDefaultProfile;
+}
+
+pub fn deleteToBackup(allocator: std.mem.Allocator, name: []const u8) !void {
+    try checkDeletable(name);
 
     const profile_path = try path(allocator, name);
     defer allocator.free(profile_path);

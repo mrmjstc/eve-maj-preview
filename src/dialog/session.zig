@@ -135,11 +135,9 @@ fn touchesLayout(ops: []const patch.Op) bool {
     return false;
 }
 
-/// Makes the global draft the running settings, keeping what the app itself changed meanwhile.
-pub fn adoptGlobal() !void {
+/// After the app adopted the global draft (see GlobalConfig.adopt), which then holds the replaced values: it starts over from the running settings.
+pub fn resetGlobalDraft() !void {
     const draft = try global();
-    try main_mod.g_global_settings.adopt(draft);
-    // `draft` now holds the replaced values, so it starts over from the running settings.
     const fresh = try cloneGlobal(host.allocator(), &main_mod.g_global_settings);
     draft.deinit();
     g_global_draft = fresh;

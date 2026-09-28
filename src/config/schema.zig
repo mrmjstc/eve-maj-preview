@@ -52,11 +52,6 @@ fn writeField(jw: *std.json.Stringify, comptime R: type, comptime f: std.builtin
         if (comptime @typeInfo(Item) == .@"struct") try writeFields(jw, Item, path ++ ".*.");
         return;
     }
-    if (comptime wire.isStringMap(F)) {
-        try jw.objectField(path);
-        try jw.write(.{ .kind = "map" });
-        return;
-    }
     if (comptime @typeInfo(F) == .@"struct") {
         if (comptime patch.isKeyedMap(F)) {
             try jw.objectField(path);

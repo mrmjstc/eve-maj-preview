@@ -14,5 +14,8 @@ export const app = {
     webuiReady: false,
     // Every setting's kind, default, bounds and options, from the app (see binding.js).
     schema: null,
+    // The profile the window edits, every profile there is, and each character's EVE ID for portraits, as of the last session snapshot.
     dialogEditingProfile: null,
+    profiles: [],
+    characterIds: {},
 };

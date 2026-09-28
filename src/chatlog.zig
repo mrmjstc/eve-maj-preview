@@ -7,6 +7,7 @@ const activity_mod = @import("activity/tracker.zig");
 const scout_mod = @import("clients/scout.zig");
 const painter_mod = @import("painter.zig");
 const config_mod = @import("config.zig");
+const CharacterIds = @import("chatlog/character_ids.zig").CharacterIds;
 const slog = log.scoped("chatlog");
 
 /// Event sent from worker thread to main thread: apply a system-name update.
@@ -175,7 +176,9 @@ pub const ChatlogMonitor = struct {
     gamelog_dir: []const u8,
     chatlog_watcher: win32.HANDLE,
     gamelog_watcher: win32.HANDLE,
+    /// Read for ore prices, which only change while the worker is stopped.
     global_settings: ?*config_mod.GlobalConfig = null,
+    character_ids: ?*CharacterIds = null,
     combat_tracker: ?*activity_mod.CombatTracker = null,
     mining_tracker: ?*activity_mod.MiningTracker = null,
     bounty_tracker: ?*activity_mod.BountyTracker = null,
@@ -200,7 +203,7 @@ pub const ChatlogMonitor = struct {
     tick_names: std.ArrayList([]const u8),
     tick_logged_out_names: std.ArrayList([]const u8),
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, cfg: *const config_mod.ChatlogConfig, global_settings_ref: ?*config_mod.GlobalConfig) !*ChatlogMonitor {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, cfg: *const config_mod.ChatlogConfig, global_settings_ref: ?*config_mod.GlobalConfig, character_ids: ?*CharacterIds) !*ChatlogMonitor {
         const chatlog_dir = cfg.chatlogDir;
         const gamelog_dir = cfg.gamelogDir;
         if (!std.unicode.utf8ValidateSlice(chatlog_dir)) {
@@ -224,6 +227,7 @@ pub const ChatlogMonitor = struct {
         monitor.gamelog_dir = try allocator.dupe(u8, gamelog_dir);
         errdefer allocator.free(monitor.gamelog_dir);
         monitor.global_settings = global_settings_ref;
+        monitor.character_ids = character_ids;
         monitor.combat_tracker = null;
         monitor.mining_tracker = null;
         monitor.bounty_tracker = null;
@@ -369,7 +373,7 @@ pub const ChatlogMonitor = struct {
                     self.removeCharacter(char_name);
                 },
                 .resolve_character_id => |data| {
-                    const already_cached = if (self.global_settings) |gs| gs.hasCharacterId(data.name) catch |err| blk: {
+                    const already_cached = if (self.character_ids) |ids| ids.contains(data.name) catch |err| blk: {
                         slog.err("Worker: failed to check character ID cache for {s}: {}", .{ data.name, err });
                         break :blk false;
                     } else false;
@@ -1719,8 +1723,8 @@ pub const ChatlogMonitor = struct {
         char_name: []const u8,
     ) ?[]u8 {
         // Fast path: character ID already cached from a previous match.
-        if (self.global_settings) |gs| {
-            if (gs.getCharacterId(self.allocator, char_name) catch |err| blk: {
+        if (self.character_ids) |ids| {
+            if (ids.get(self.allocator, char_name) catch |err| blk: {
                 slog.warn("Failed to look up cached character ID for {s}: {}", .{ char_name, err });
                 break :blk null;
             }) |id| {
@@ -1767,8 +1771,8 @@ pub const ChatlogMonitor = struct {
 
             // Found match! Cache the character ID for next time
             if (extractCharacterId(candidate)) |new_id| {
-                if (self.global_settings) |gs| {
-                    gs.updateCharacterId(char_name, new_id) catch |err| {
+                if (self.character_ids) |ids| {
+                    ids.put(char_name, new_id) catch |err| {
                         slog.warn("Failed to cache character ID for {s}: {}", .{ char_name, err });
                     };
                 }

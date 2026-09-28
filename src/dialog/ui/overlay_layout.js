@@ -1,5 +1,4 @@
 // The drag-and-drop overlay text layout preview.
-import { app } from './state.js';
 import { isChangeEventType } from './changes.js';
 import { getFieldValue } from './form.js';
 import { fitHotkeyGroupCharsList, selectedHotkeyGroupIndex } from './hotkey_groups.js';

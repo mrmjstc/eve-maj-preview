@@ -1,5 +1,4 @@
 // Entry point: wires up the page once the DOM is ready, and exposes the handlers inline on* attributes call.
-import { app } from './state.js';
 import { loadSchema } from './binding.js';
 import { setupChangeDetection } from './changes.js';
 import { addCharacter, clearCharacterSearch, confirmClearAllCharacterWindowPositions, confirmClearCharacterWindowPosition, confirmRemoveCharacter, onCharacterSearchInput, populateCharactersFromClients, refreshWindowPositionSourceOptions, selectCharacter, setAllCharacterWindowPositions, setCharacterWindowPosition, updateCharacterHeaderName } from './characters.js';
@@ -12,12 +11,12 @@ import { alignBindingLabelColumns, clearHotkey, recordHotkey, renderHotkeyBindin
 import { applyTranslations, switchLanguage, t } from './i18n.js';
 import { closeImportModal, handleImportFileSelected, initImportAccentColorPreview, onImportDestChanged, onImportSourceProfileChanged, openImportModal, runImport } from './import.js';
 import { buildSectionNav, closeDialog, initDelegatedKeyboardActivation, initializeTabs, showStatus } from './layout.js';
-import { browseSoundFile, clearNotificationTypeSearch, clearSoundFile, onNotificationTypeSearchInput, selectNotificationType, testNotification, toggleNotifBorderColor, toggleNotifShowBorder, toggleNotifSoundEnabled, toggleNotifTextColor, toggleNotificationTypeEnabled } from './notifications.js';
-import { browseChatlogDir, browseGamelogDir, initCombatShowRequiresEnabled, onThumbHeightInput, onThumbSizeSlider, onThumbWidthInput, toggleAspectRatioSlider, toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotLoggedInSpaceOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, toggleNotificationOptions, toggleQuickGroupBadgeOptions, toggleRegionFitOptions, toggleResourcesOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterColors, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
+import { browseSoundFile, clearNotificationTypeSearch, clearSoundFile, onNotificationTypeSearchInput, selectNotificationType, testNotification, toggleNotifBorderColor, toggleNotificationTypeEnabled, toggleNotifShowBorder, toggleNotifSoundEnabled, toggleNotifTextColor } from './notifications.js';
+import { browseChatlogDir, browseGamelogDir, initCombatShowRequiresEnabled, onThumbHeightInput, onThumbSizeSlider, onThumbWidthInput, toggleAspectRatioSlider, toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotificationOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, toggleNotLoggedInSpaceOptions, toggleQuickGroupBadgeOptions, toggleRegionFitOptions, toggleResourcesOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterColors, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
 import { fetchOrePrices } from './ore_table.js';
 import { initOverlayLayoutPreview } from './overlay_layout.js';
-import { copyCurrentProfile, createNewProfile, deleteCurrentProfile, loadProfileList, resetCurrentProfile, restoreSelectedProfileBackup, switchProfile } from './profiles.js';
-import { NOT_LOGGED_IN_FIELD_IDS, REGION_FIELD_IDS, clearRegion, startRegionSelectFlow } from './region.js';
+import { copyCurrentProfile, createNewProfile, deleteCurrentProfile, resetCurrentProfile, restoreSelectedProfileBackup, switchProfile } from './profiles.js';
+import { clearRegion, NOT_LOGGED_IN_FIELD_IDS, REGION_FIELD_IDS, startRegionSelectFlow } from './region.js';
 import { clearSearch, onSearchInput, searchState } from './search.js';
 import { loadAppVersion, openSession, saveConfiguration } from './session.js';
 import { addSystemColor, removeSystemColor } from './system_colors.js';
@@ -56,7 +55,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     const ready = await waitForWebUI();
     if (ready) {
         // Fire independent calls immediately instead of serializing a round trip each.
-        const profileListLoaded = loadProfileList();
         // The form binds by the schema, so the session waits for it.
         const sessionOpened = loadSchema().then(openSession, (error) => {
             logError('Failed to load the settings schema:', error);
@@ -65,9 +63,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         loadAppVersion();
         refreshWindowPositionSourceOptions();
         scanUltraPotatoProfiles();
-
-        await profileListLoaded;
-        app.dialogEditingProfile = document.getElementById('profile-select').value;
 
         await sessionOpened;
         checkForUpdateNotification();
