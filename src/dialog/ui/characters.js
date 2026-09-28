@@ -1,11 +1,9 @@
 // The Characters list, portraits and saved game-window positions.
 import { app } from './state.js';
-import { applySchemaToInputs } from './binding.js';
+import { applyDocToForm, applySchemaToInputs, readFormToDoc } from './binding.js';
 import { markAsChanged } from './changes.js';
-import { zigColorToHtml } from './colors.js';
 import { escapeHtml, logError, rpc } from './core.js';
-import { opacityToPercent, resolveCharacterOpacity, resolveOptionalColor } from './form.js';
-import { hotkeyToSaved, renderHotkeyInputHtml, updateHotkeyConflictHighlights, vkHexToFriendly } from './hotkeys.js';
+import { renderHotkeyInputHtml, updateHotkeyConflictHighlights, vkHexToFriendly } from './hotkeys.js';
 import { t } from './i18n.js';
 import { showStatus } from './layout.js';
 import { flushEdits } from './session.js';
@@ -140,33 +138,33 @@ export function populateCharacters() {
         <div class="detail-panel ${index === selectedCharacterIndex ? 'active' : ''}" data-index="${index}">
             <div class="detail-panel-header">
                 <label class="detail-panel-name-label" for="char_${index}_name">${t('common.characterName')}</label>
-                <input type="text" class="detail-panel-name-input" id="char_${index}_name" value="${escapeHtml(char.name || '')}" placeholder="${t('common.characterName')}" autocomplete="off" data-suggest-siblings="#charactersList .detail-panel-name-input" onfocus="suggestOpenClients(this)" oninput="updateCharacterHeaderName(${index})">
+                <input type="text" class="detail-panel-name-input" id="char_${index}_name" data-path="characters.${index}.name" placeholder="${t('common.characterName')}" autocomplete="off" data-suggest-siblings="#charactersList .detail-panel-name-input" onfocus="suggestOpenClients(this)" oninput="updateCharacterHeaderName(${index})">
                 <button type="button" id="char_${index}_removeBtn" onclick="confirmRemoveCharacter(${index})">${t('common.remove')}</button>
             </div>
             <div class="detail-form">
                 <div class="detail-field">
                     <label for="char_${index}_displayName">${t('dynamic.character.displayNameLabel')}</label>
-                    <input type="text" id="char_${index}_displayName" value="${escapeHtml(char.displayName || '')}" placeholder="${t('dynamic.character.displayNamePlaceholder')}">
+                    <input type="text" id="char_${index}_displayName" data-path="characters.${index}.displayName" placeholder="${t('dynamic.character.displayNamePlaceholder')}">
                     <p class="hint hint-extra">${t('dynamic.character.displayNameHint')}</p>
                 </div>
                 <div class="detail-field">
                     <label for="char_${index}_hotkey">${t('common.hotkeyLabel')}</label>
-                    <div class="field-row">${renderHotkeyInputHtml(`char_${index}_hotkey`, vkHexToFriendly(char.hotkey) || '', t('dynamic.character.hotkeyPlaceholder'))}</div>
+                    <div class="field-row">${renderHotkeyInputHtml(`char_${index}_hotkey`, '', t('dynamic.character.hotkeyPlaceholder'), ` data-path="characters.${index}.hotkey"`)}</div>
                 </div>
                 <div class="detail-field">
                     <label for="char_${index}_width">${t('dynamic.character.thumbnailSizeHeading')}</label>
                     <div class="field-row detail-size">
-                        <input type="number" id="char_${index}_width" value="${char.thumbnailSize?.width || ''}" placeholder="${t('dynamic.character.widthPlaceholder')}" data-range="characters.*.thumbnailSize.width">
+                        <input type="number" id="char_${index}_width" data-path="characters.${index}.thumbnailSize.width" placeholder="${t('dynamic.character.widthPlaceholder')}">
                         <span class="detail-size-x">&times;</span>
-                        <input type="number" id="char_${index}_height" value="${char.thumbnailSize?.height || ''}" placeholder="${t('dynamic.character.heightPlaceholder')}" data-range="characters.*.thumbnailSize.height">
+                        <input type="number" id="char_${index}_height" data-path="characters.${index}.thumbnailSize.height" placeholder="${t('dynamic.character.heightPlaceholder')}">
                     </div>
                     <p class="hint hint-extra">${t('dynamic.character.thumbnailSizeHint')}</p>
                 </div>
                 <div class="detail-field">
                     <label for="char_${index}_opacity">${t('dynamic.character.opacityLabel')}</label>
                     <div class="field-row">
-                        <input type="range" id="char_${index}_opacity" data-range="characters.*.opacity" data-unit="%" value="${char.opacity != null ? opacityToPercent(char.opacity) : opacityToPercent(app.currentConfig.thumbnail.thumbnailOpacity)}" data-value-target="char_${index}_opacityValue">
-                        <span id="char_${index}_opacityValue">${char.opacity != null ? opacityToPercent(char.opacity) : opacityToPercent(app.currentConfig.thumbnail.thumbnailOpacity)}</span>%
+                        <input type="range" id="char_${index}_opacity" data-path="characters.${index}.opacity" data-unit="%" data-inherit="thumbnail.thumbnailOpacity" data-value-target="char_${index}_opacityValue">
+                        <span id="char_${index}_opacityValue"></span>%
                     </div>
                     <p class="hint hint-extra">${t('dynamic.character.opacityHint')}</p>
                 </div>
@@ -176,7 +174,7 @@ export function populateCharacters() {
                         <div class="color-row">
                             <span class="label-body">${t('dynamic.character.activeBorderColorLabel')}</span>
                             <div class="swatch-wrap">
-                                <input type="color" id="char_${index}_activeColor" data-optional-color="true" ${!char.borderColors?.activeBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.activeBorderColor) || '#FFFF00'}">
+                                <input type="color" id="char_${index}_activeColor" data-path="characters.${index}.borderColors.activeBorderColor" data-optional-color="true" data-default-color="#FFFF00">
                             </div>
                         </div>
                     </div>
@@ -187,7 +185,7 @@ export function populateCharacters() {
                         <div class="color-row">
                             <span class="label-body">${t('dynamic.character.inactiveBorderColorLabel')}</span>
                             <div class="swatch-wrap">
-                                <input type="color" id="char_${index}_inactiveColor" data-optional-color="true" ${!char.borderColors?.inactiveBorderColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.borderColors?.inactiveBorderColor) || '#606060'}">
+                                <input type="color" id="char_${index}_inactiveColor" data-path="characters.${index}.borderColors.inactiveBorderColor" data-optional-color="true" data-default-color="#606060">
                             </div>
                         </div>
                     </div>
@@ -198,7 +196,7 @@ export function populateCharacters() {
                         <div class="color-row">
                             <span class="label-body">${t('field.characterNameColor.label')}</span>
                             <div class="swatch-wrap">
-                                <input type="color" id="char_${index}_nameColor" data-optional-color="true" ${!char.nameColor ? `data-cleared="true" title="${t('common.notSetInheritingColor')}"` : ''} value="${zigColorToHtml(char.nameColor)}">
+                                <input type="color" id="char_${index}_nameColor" data-path="characters.${index}.nameColor" data-optional-color="true">
                             </div>
                         </div>
                     </div>
@@ -207,7 +205,7 @@ export function populateCharacters() {
                     <label>${t('dynamic.character.behaviorHeading')}</label>
                     <div class="detail-checks">
                         <label>
-                            <input type="checkbox" id="char_${index}_excludeMinimize" ${char.excludeFromMinimize ? 'checked' : ''}>
+                            <input type="checkbox" id="char_${index}_excludeMinimize" data-path="characters.${index}.excludeFromMinimize">
                             <span class="label-body">${t('dynamic.character.excludeMinimizeLabel')}</span>
                         </label>
                     </div>
@@ -216,7 +214,7 @@ export function populateCharacters() {
                     <label></label>
                     <div class="detail-checks">
                         <label>
-                            <input type="checkbox" id="char_${index}_excludeCloseAll" ${char.excludeFromCloseAll ? 'checked' : ''}>
+                            <input type="checkbox" id="char_${index}_excludeCloseAll" data-path="characters.${index}.excludeFromCloseAll">
                             <span class="label-body">${t('dynamic.character.excludeCloseAllLabel')}</span>
                         </label>
                     </div>
@@ -225,7 +223,7 @@ export function populateCharacters() {
                     <label></label>
                     <div class="detail-checks">
                         <label>
-                            <input type="checkbox" id="char_${index}_excludeAutoMove" ${char.excludeFromAutoMove ? 'checked' : ''}>
+                            <input type="checkbox" id="char_${index}_excludeAutoMove" data-path="characters.${index}.excludeFromAutoMove">
                             <span class="label-body">${t('dynamic.character.excludeAutoMoveLabel')}</span>
                         </label>
                     </div>
@@ -234,7 +232,7 @@ export function populateCharacters() {
                     <label></label>
                     <div class="detail-checks">
                         <label>
-                            <input type="checkbox" id="char_${index}_hideThumbnail" ${char.hideThumbnail ? 'checked' : ''}>
+                            <input type="checkbox" id="char_${index}_hideThumbnail" data-path="characters.${index}.hideThumbnail">
                             <span class="label-body">${t('dynamic.character.hideThumbnailLabel')}</span>
                         </label>
                     </div>
@@ -243,7 +241,7 @@ export function populateCharacters() {
                     <label></label>
                     <div class="detail-checks">
                         <label>
-                            <input type="checkbox" id="char_${index}_notificationsMuted" ${char.notificationsMuted ? 'checked' : ''}>
+                            <input type="checkbox" id="char_${index}_notificationsMuted" data-path="characters.${index}.notificationsMuted">
                             <span class="label-body">${t('dynamic.character.muteNotificationsLabel')}</span>
                         </label>
                     </div>
@@ -268,10 +266,11 @@ export function populateCharacters() {
         </div>
     `;
 
+    applySchemaToInputs(container);
+    applyDocToForm(path => path.startsWith('characters.'), container);
     setupCharacterDragAndDrop();
     updateHotkeyConflictHighlights();
     applyCharacterFilter();
-    applySchemaToInputs(container);
     // innerHTML above replaced the elements the last measuring pass sized.
     alignDetailPanelNameLabel('charactersList');
 }
@@ -534,49 +533,5 @@ function removeCharacter(index) {
 }
 
 export function saveCharacters() {
-    if (!app.currentConfig.characters) return;
-    
-    app.currentConfig.characters.forEach((char, index) => {
-        const name = document.getElementById(`char_${index}_name`);
-        const displayName = document.getElementById(`char_${index}_displayName`);
-        const hotkey = document.getElementById(`char_${index}_hotkey`);
-        const width = document.getElementById(`char_${index}_width`);
-        const height = document.getElementById(`char_${index}_height`);
-        const activeColor = document.getElementById(`char_${index}_activeColor`);
-        const inactiveColor = document.getElementById(`char_${index}_inactiveColor`);
-        const nameColor = document.getElementById(`char_${index}_nameColor`);
-        const excludeMinimize = document.getElementById(`char_${index}_excludeMinimize`);
-        const excludeCloseAll = document.getElementById(`char_${index}_excludeCloseAll`);
-        const excludeAutoMove = document.getElementById(`char_${index}_excludeAutoMove`);
-        const hideThumbnail = document.getElementById(`char_${index}_hideThumbnail`);
-        const notificationsMuted = document.getElementById(`char_${index}_notificationsMuted`);
-        const opacity = document.getElementById(`char_${index}_opacity`);
-
-        if (name) char.name = name.value;
-        if (displayName) char.displayName = displayName.value || null;
-        if (hotkey) char.hotkey = hotkeyToSaved(hotkey.value);
-        if (excludeMinimize) char.excludeFromMinimize = excludeMinimize.checked;
-        if (excludeCloseAll) char.excludeFromCloseAll = excludeCloseAll.checked;
-        if (excludeAutoMove) char.excludeFromAutoMove = excludeAutoMove.checked;
-        if (hideThumbnail) char.hideThumbnail = hideThumbnail.checked;
-        if (notificationsMuted) char.notificationsMuted = notificationsMuted.checked;
-        char.opacity = resolveCharacterOpacity(opacity);
-        // Position is saved automatically when thumbnails are dragged, don't overwrite from dialog
-
-        const w = width ? parseInt(width.value) : null;
-        const h = height ? parseInt(height.value) : null;
-        if (w || h) {
-            char.thumbnailSize = { width: w, height: h };
-        } else {
-            char.thumbnailSize = null;
-        }
-        
-        const activeOut = resolveOptionalColor(activeColor, !!(char.borderColors && char.borderColors.activeBorderColor));
-        const inactiveOut = resolveOptionalColor(inactiveColor, !!(char.borderColors && char.borderColors.inactiveBorderColor));
-        char.borderColors = (activeOut || inactiveOut)
-            ? { activeBorderColor: activeOut, inactiveBorderColor: inactiveOut }
-            : null;
-
-        char.nameColor = resolveOptionalColor(nameColor, !!char.nameColor);
-    });
+    readFormToDoc(path => path.startsWith('characters.'));
 }

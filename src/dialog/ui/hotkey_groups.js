@@ -1,9 +1,10 @@
 // Hotkey groups and their members.
 import { app } from './state.js';
+import { applyDocToForm, readFormToDoc } from './binding.js';
 import { markAsChanged } from './changes.js';
 import { reselectAfterRemoval } from './characters.js';
 import { escapeHtml, logError, rpc } from './core.js';
-import { hotkeyToSaved, renderHotkeyInputHtml, updateHotkeyConflictHighlights, vkHexToFriendly } from './hotkeys.js';
+import { renderHotkeyInputHtml, updateHotkeyConflictHighlights } from './hotkeys.js';
 import { t } from './i18n.js';
 import { scrollBehavior, showStatus } from './layout.js';
 import { alignDetailPanelNameLabel, moveArrayItem, selectMasterDetailRow, setupDragReorder, syncAccordionHeaderName } from './widgets.js';
@@ -50,35 +51,35 @@ export function populateHotkeyGroups() {
         <div class="detail-panel ${index === selectedHotkeyGroupIndex ? 'active' : ''}" data-index="${index}">
             <div class="detail-panel-header">
                 <label class="detail-panel-name-label" for="hkgroup_${index}_name">${t('dynamic.hotkeyGroup.nameLabel')}</label>
-                <input type="text" class="detail-panel-name-input" id="hkgroup_${index}_name" value="${escapeHtml(group.name || '')}" placeholder="${t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (index + 1)}" oninput="updateHotkeyGroupHeaderName(${index})">
+                <input type="text" class="detail-panel-name-input" id="hkgroup_${index}_name" data-path="hotkeyGroups.${index}.name" placeholder="${t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (index + 1)}" oninput="updateHotkeyGroupHeaderName(${index})">
                 <button type="button" id="hkgroup_${index}_removeBtn" onclick="confirmRemove('hkgroup_${index}_removeBtn', () => removeHotkeyGroup(${index}))">${t('common.remove')}</button>
             </div>
             <div class="detail-form">
                 <div class="detail-field binding-paired">
                     <label for="hkgroup_${index}_backward">${t('dynamic.hotkeyGroup.cycleKeysLabel')}</label>
                     <div class="binding-control">
-                        <div class="field-row"><span class="binding-dir" aria-hidden="true">←</span>${renderHotkeyInputHtml(`hkgroup_${index}_backward`, vkHexToFriendly(group.backwardKey) || '', t('dynamic.hotkeyGroup.backwardPlaceholder'), ` aria-label="${escapeHtml(t('dynamic.hotkeyGroup.backwardKeyLabel'))}"`)}</div>
-                        <div class="field-row"><span class="binding-dir" aria-hidden="true">→</span>${renderHotkeyInputHtml(`hkgroup_${index}_forward`, vkHexToFriendly(group.forwardKey) || '', t('dynamic.hotkeyGroup.forwardPlaceholder'), ` aria-label="${escapeHtml(t('dynamic.hotkeyGroup.forwardKeyLabel'))}"`)}</div>
+                        <div class="field-row"><span class="binding-dir" aria-hidden="true">←</span>${renderHotkeyInputHtml(`hkgroup_${index}_backward`, '', t('dynamic.hotkeyGroup.backwardPlaceholder'), ` aria-label="${escapeHtml(t('dynamic.hotkeyGroup.backwardKeyLabel'))}" data-path="hotkeyGroups.${index}.backwardKey"`)}</div>
+                        <div class="field-row"><span class="binding-dir" aria-hidden="true">→</span>${renderHotkeyInputHtml(`hkgroup_${index}_forward`, '', t('dynamic.hotkeyGroup.forwardPlaceholder'), ` aria-label="${escapeHtml(t('dynamic.hotkeyGroup.forwardKeyLabel'))}" data-path="hotkeyGroups.${index}.forwardKey"`)}</div>
                     </div>
                 </div>
                 <div class="detail-field">
                     <label for="hkgroup_${index}_assign">${t('dynamic.hotkeyGroup.assignKeyLabel')}</label>
-                    <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_assign`, vkHexToFriendly(group.assignKey) || '', t('dynamic.hotkeyGroup.assignPlaceholder'))}</div>
+                    <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_assign`, '', t('dynamic.hotkeyGroup.assignPlaceholder'), ` data-path="hotkeyGroups.${index}.assignKey"`)}</div>
                     <p class="hint hint-extra">${t('dynamic.hotkeyGroup.assignKeyHint')}</p>
                 </div>
                 <div class="detail-field detail-field-top">
                     <label>${t('dynamic.hotkeyGroup.behaviorHeading')}</label>
                     <div class="detail-checks">
                         <label>
-                            <input type="checkbox" id="hkgroup_${index}_includeNotLoggedIn" ${group.includeNotLoggedIn ? 'checked' : ''}>
+                            <input type="checkbox" id="hkgroup_${index}_includeNotLoggedIn" data-path="hotkeyGroups.${index}.includeNotLoggedIn">
                             <span class="label-body">${t('dynamic.hotkeyGroup.includeNotLoggedInLabel')}</span>
                         </label>
                         <label>
-                            <input type="checkbox" id="hkgroup_${index}_temporaryMembership" ${group.temporaryMembership ? 'checked' : ''} onchange="toggleHotkeyGroupMembershipEditor(${index})">
+                            <input type="checkbox" id="hkgroup_${index}_temporaryMembership" data-path="hotkeyGroups.${index}.temporaryMembership" onchange="toggleHotkeyGroupMembershipEditor(${index})">
                             <span class="label-body">${t('dynamic.hotkeyGroup.temporaryMembershipLabel')}</span>
                         </label>
                         <label>
-                            <input type="checkbox" id="hkgroup_${index}_showBadge" ${group.showBadge ? 'checked' : ''}>
+                            <input type="checkbox" id="hkgroup_${index}_showBadge" data-path="hotkeyGroups.${index}.showBadge">
                             <span class="label-body">${t('dynamic.hotkeyGroup.showBadgeLabel')}</span>
                         </label>
                     </div>
@@ -87,7 +88,7 @@ export function populateHotkeyGroups() {
             <p class="hint" id="hkgroup_${index}_tempHint" style="${group.temporaryMembership ? '' : 'display:none'}">${t('dynamic.hotkeyGroup.temporaryMembershipHint')}</p>
             <div class="detail-members" id="hkgroup_${index}_charsField" style="${group.temporaryMembership ? 'display:none' : ''}">
                 <label for="hkgroup_${index}_addChar">${t('dynamic.hotkeyGroup.charactersLabel')}</label>
-                <div class="hkgroup-chars-list" id="hkgroup_${index}_charsList" data-group-index="${index}">${renderHotkeyGroupCharRows(index, group.characters)}</div>
+                <div class="hkgroup-chars-list" id="hkgroup_${index}_charsList" data-group-index="${index}" data-path="hotkeyGroups.${index}.characters" data-format="items">${renderHotkeyGroupCharRows(index, group.characters)}</div>
                 <div class="field-row" style="margin-top: 0.25rem;">
                     <input type="text" id="hkgroup_${index}_addChar" autocomplete="off" data-suggest-siblings="#hkgroup_${index}_charsList .hkgroup-char-input" onfocus="suggestOpenClients(this)" placeholder="${t('dynamic.hotkeyGroup.addCharPlaceholder')}" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addHotkeyGroupCharacter(${index}); }">
                     <button type="button" onclick="addHotkeyGroupCharacter(${index})" class="btn-nowrap">${t('dynamic.hotkeyGroup.addBtnLabel')}</button>
@@ -104,6 +105,7 @@ export function populateHotkeyGroups() {
         </div>
     `;
 
+    applyDocToForm(path => path.startsWith('hotkeyGroups.'), container);
     setupHotkeyGroupDragAndDrop();
     setupHotkeyGroupCharDragAndDrop();
     updateHotkeyConflictHighlights();
@@ -176,7 +178,7 @@ function renderHotkeyGroupCharRows(groupIndex, characters) {
     return characters.map((name, charIndex) => `
         <div class="hkgroup-char-row" data-char-index="${charIndex}">
             <span class="drag-index-chip character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(charIndex + 1).padStart(2, '0')}</span>
-            <input type="text" class="hkgroup-char-input" value="${escapeHtml(name)}" placeholder="${t('common.characterName')}" autocomplete="off" data-suggest-siblings="#hkgroup_${groupIndex}_charsList .hkgroup-char-input" onfocus="suggestOpenClients(this)">
+            <input type="text" class="hkgroup-char-input" data-item value="${escapeHtml(name)}" placeholder="${t('common.characterName')}" autocomplete="off" data-suggest-siblings="#hkgroup_${groupIndex}_charsList .hkgroup-char-input" onfocus="suggestOpenClients(this)">
             <button type="button" class="button-icon button-icon-danger" onclick="removeHotkeyGroupCharacter(${groupIndex}, ${charIndex})" title="${t('common.remove')}">×</button>
         </div>
     `).join('');
@@ -475,29 +477,5 @@ export function updateHotkeyGroupHeaderName(index) {
 }
 
 export function saveHotkeyGroups() {
-    if (!app.currentConfig.hotkeyGroups) return;
-    
-    app.currentConfig.hotkeyGroups.forEach((group, index) => {
-        const name = document.getElementById(`hkgroup_${index}_name`);
-        const forward = document.getElementById(`hkgroup_${index}_forward`);
-        const backward = document.getElementById(`hkgroup_${index}_backward`);
-        const assign = document.getElementById(`hkgroup_${index}_assign`);
-        const includeNotLoggedIn = document.getElementById(`hkgroup_${index}_includeNotLoggedIn`);
-        const temporaryMembership = document.getElementById(`hkgroup_${index}_temporaryMembership`);
-        const showBadge = document.getElementById(`hkgroup_${index}_showBadge`);
-        const charsList = document.getElementById(`hkgroup_${index}_charsList`);
-
-        if (name) group.name = name.value || '';
-        if (forward) group.forwardKey = hotkeyToSaved(forward.value);
-        if (backward) group.backwardKey = hotkeyToSaved(backward.value);
-        if (assign) group.assignKey = hotkeyToSaved(assign.value);
-        if (includeNotLoggedIn) group.includeNotLoggedIn = includeNotLoggedIn.checked;
-        if (temporaryMembership) group.temporaryMembership = temporaryMembership.checked;
-        if (showBadge) group.showBadge = showBadge.checked;
-        if (charsList) {
-            group.characters = Array.from(charsList.querySelectorAll('.hkgroup-char-input'))
-                .map(input => input.value.trim())
-                .filter(s => s);
-        }
-    });
+    readFormToDoc(path => path.startsWith('hotkeyGroups.'));
 }

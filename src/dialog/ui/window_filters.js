@@ -1,5 +1,6 @@
 // The Window Filters list and its running-window picker.
 import { app } from './state.js';
+import { applyDocToForm, defaultFor, readFormToDoc } from './binding.js';
 import { markAsChanged } from './changes.js';
 import { removeCharacterByName } from './characters.js';
 import { escapeHtml, logError, rpc } from './core.js';
@@ -15,8 +16,9 @@ export function populateWindowFilters() {
     if (!container) return;
 
     const filters = app.currentConfig.windowFilters || [];
-    // The default EVE filter is implicit and not user-editable.
-    const editableIndexes = filters.reduce((acc, f, i) => { if (f.name !== 'EVE Online') acc.push(i); return acc; }, []);
+    // The built-in EVE filter (the list's default) isn't user-editable.
+    const builtInName = defaultFor('windowFilters')?.[0]?.name;
+    const editableIndexes = filters.reduce((acc, f, i) => { if (f.name !== builtInName) acc.push(i); return acc; }, []);
 
     if (editableIndexes.length === 0) {
         container.innerHTML = `
@@ -53,22 +55,22 @@ export function populateWindowFilters() {
             <div class="detail-panel ${index === selectedWindowFilterIndex ? 'active' : ''}" data-index="${index}">
                 <div class="detail-panel-header">
                     <label class="detail-panel-name-label" for="filter_${index}_name">${t('dynamic.windowFilter.nameLabel')}</label>
-                    <input type="text" class="detail-panel-name-input" id="filter_${index}_name" value="${escapeHtml(filter.name || '')}" placeholder="${t('dynamic.windowFilter.namePlaceholder')}" oninput="updateWindowFilterHeaderName(${index})">
+                    <input type="text" class="detail-panel-name-input" id="filter_${index}_name" data-path="windowFilters.${index}.name" placeholder="${t('dynamic.windowFilter.namePlaceholder')}" oninput="updateWindowFilterHeaderName(${index})">
                     <button type="button" id="filter_${index}_removeBtn" onclick="confirmRemove('filter_${index}_removeBtn', () => removeWindowFilter(${index}))">${t('common.remove')}</button>
                 </div>
                 <label>
-                    <input type="checkbox" id="filter_${index}_enabled" ${filter.enabled ? 'checked' : ''}>
+                    <input type="checkbox" id="filter_${index}_enabled" data-path="windowFilters.${index}.enabled">
                     <span class="label-body">${t('common.enabledLabel')}</span>
                 </label>
                 <div class="detail-form">
                     <div class="detail-field">
                         <label for="filter_${index}_classes">${t('dynamic.windowFilter.classesLabel')}</label>
-                        <input type="text" id="filter_${index}_classes" value="${escapeHtml((filter.class_names || []).join(', '))}" placeholder="${t('dynamic.windowFilter.classesPlaceholder')}">
+                        <input type="text" id="filter_${index}_classes" data-path="windowFilters.${index}.class_names" data-format="csv" placeholder="${t('dynamic.windowFilter.classesPlaceholder')}">
                         <p class="hint hint-extra">${t('dynamic.windowFilter.classesHint')}</p>
                     </div>
                     <div class="detail-field">
                         <label for="filter_${index}_exes">${t('dynamic.windowFilter.exesLabel')}</label>
-                        <input type="text" id="filter_${index}_exes" value="${escapeHtml((filter.executable_names || []).join(', '))}" placeholder="${t('dynamic.windowFilter.exesPlaceholder')}">
+                        <input type="text" id="filter_${index}_exes" data-path="windowFilters.${index}.executable_names" data-format="csv" placeholder="${t('dynamic.windowFilter.exesPlaceholder')}">
                     </div>
                     <div class="detail-field">
                         <label>${t('dynamic.windowFilter.detectLabel')}</label>
@@ -87,6 +89,7 @@ export function populateWindowFilters() {
         </div>
     `;
 
+    applyDocToForm(path => path.startsWith('windowFilters.'), container);
     // innerHTML above replaced the elements the last measuring pass sized.
     alignDetailPanelNameLabel('windowFiltersList');
 }
@@ -130,19 +133,7 @@ export function removeWindowFilter(index) {
 }
 
 export function saveWindowFilters() {
-    if (!app.currentConfig.windowFilters) return;
-    
-    app.currentConfig.windowFilters.forEach((filter, index) => {
-        const enabled = document.getElementById(`filter_${index}_enabled`);
-        const name = document.getElementById(`filter_${index}_name`);
-        const classes = document.getElementById(`filter_${index}_classes`);
-        const exes = document.getElementById(`filter_${index}_exes`);
-        
-        if (enabled) filter.enabled = enabled.checked;
-        if (name) filter.name = name.value;
-        if (classes) filter.class_names = classes.value.split(',').map(s => s.trim()).filter(s => s);
-        if (exes) filter.executable_names = exes.value.split(',').map(s => s.trim()).filter(s => s);
-    });
+    readFormToDoc(path => path.startsWith('windowFilters.'));
 }
 
 export async function pickRunningWindowFor(idPrefix, index) {

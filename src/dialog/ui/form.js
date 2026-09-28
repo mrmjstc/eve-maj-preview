@@ -1,13 +1,14 @@
 // Fills the form from the documents and reads it back: the bound fields (see binding.js), shared option lists, and the few fields stored differently from how they show.
-import { languageNames } from './catalogs.js';
 import { app } from './state.js';
-import { ensureBlankRosterEntries, populateCharacters } from './characters.js';
 import { applyDocToForm, readFormToDoc } from './binding.js';
+import { languageNames } from './catalogs.js';
+import { ensureBlankRosterEntries, populateCharacters } from './characters.js';
 import { syncSwatchHexInput } from './color_picker.js';
 import { applyAccentColorTheme, htmlColorToZig, zigColorToHtml } from './colors.js';
 import { populateHotkeyGroups } from './hotkey_groups.js';
+import { updateHotkeyConflictHighlights } from './hotkeys.js';
 import { populateNotificationTypes } from './notifications.js';
-import { toggleAspectRatioSlider, toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotLoggedInSpaceOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, toggleNotificationOptions, toggleQuickGroupBadgeOptions, toggleRegionFitOptions, toggleResourcesOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
+import { toggleAspectRatioSlider, toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotificationOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, toggleNotLoggedInSpaceOptions, toggleQuickGroupBadgeOptions, toggleRegionFitOptions, toggleResourcesOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
 import { refreshOverlayLayoutPreview, syncOverlayStyleFromCharacterName } from './overlay_layout.js';
 import { refreshRegionButtons } from './region.js';
 import { populateSystemColors } from './system_colors.js';
@@ -37,6 +38,7 @@ export function applyPathsToForm(paths) {
     applyDocToForm(path => paths.includes(path));
     applySpecialFieldsToForm();
     refreshDependentOptions();
+    updateHotkeyConflictHighlights();
 }
 
 // Native min/max only affects spinner UI, not typed values, so clamp visually on 'change' (not 'input', which would fight mid-keystroke) once the user commits a value.
@@ -170,33 +172,6 @@ function setCheckboxValue(fieldId, value) {
     const field = document.getElementById(fieldId);
     if (!field) return;
     field.checked = !!value;
-}
-
-// Opacity is stored internally as 0-255 (matches the win32 alpha channel) but shown in the UI as a 0-100% slider
-export function opacityToPercent(value) {
-    return Math.round(Math.max(0, Math.min(255, value)) / 255 * 100);
-}
-
-function percentToOpacity(percent) {
-    return Math.round(Math.max(0, Math.min(100, percent)) / 100 * 255);
-}
-
-export function soundFileBaseName(path) {
-    return path ? path.split(/[\\/]/).pop() : '';
-}
-
-// A color counts as "set" if it was already set on load, or the user changed it from the #000000 default; "Clear to Default" sets dataset.cleared to override this.
-export function resolveOptionalColor(input, hadValue) {
-    if (!input || input.dataset.cleared === 'true') return null;
-    const changed = input.value.toUpperCase() !== '#000000';
-    return (hadValue || changed) ? htmlColorToZig(input.value) : null;
-}
-
-// No separate "override enabled" toggle - a slider left at the current global opacity reads as "inherit" (null); moving it away from that value is what marks it as a per-character override.
-export function resolveCharacterOpacity(field) {
-    if (!field) return null;
-    const percent = parseInt(field.value);
-    return (percent !== opacityToPercent(app.currentConfig.thumbnail.thumbnailOpacity)) ? percentToOpacity(percent) : null;
 }
 
 export function getFieldValue(fieldId) {

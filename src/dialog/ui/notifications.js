@@ -1,9 +1,8 @@
 // Per-type notification settings, sounds and the Test button.
 import { app } from './state.js';
-import { htmlColorToZig, zigColorToHtml } from './colors.js';
-import { escapeHtml, logError, logWarn, rpc } from './core.js';
-import { applySchemaToInputs, defaultFor } from './binding.js';
-import { soundFileBaseName } from './form.js';
+import { applyDocToForm, applySchemaToInputs, baseName, defaultFor, readFormToDoc } from './binding.js';
+import { zigColorToHtml } from './colors.js';
+import { logError, logWarn, rpc } from './core.js';
 import { t } from './i18n.js';
 import { showStatus } from './layout.js';
 import { toggleNotificationOptions } from './options.js';
@@ -35,13 +34,6 @@ export function populateNotificationTypes() {
     const container = document.getElementById('notificationTypesList');
     if (!container) return;
 
-    if (!app.currentConfig.thumbnail) app.currentConfig.thumbnail = {};
-    if (!app.currentConfig.thumbnail.notifications) app.currentConfig.thumbnail.notifications = {};
-    if (!app.currentConfig.thumbnail.notifications.type_configs) {
-        app.currentConfig.thumbnail.notifications.type_configs = {};
-    }
-
-    const typeConfigs = app.currentConfig.thumbnail.notifications.type_configs;
     const types = notificationTypes();
 
     if (selectedNotificationTypeIndex >= types.length) selectedNotificationTypeIndex = types.length - 1;
@@ -57,14 +49,7 @@ export function populateNotificationTypes() {
         `;
     }).join('');
 
-    const detailPanels = types.map((notifType, index) => {
-        const config = typeConfigs[notifType.key] || {};
-        const hasBorderColor = config.border_color != null;
-        const borderColorHtml = hasBorderColor ? zigColorToHtml(config.border_color) : notifDefaultBorderColorHtml();
-        const hasTextColor = config.text_color != null;
-        const textColorHtml = hasTextColor ? zigColorToHtml(config.text_color) : notifDefaultTextColorHtml();
-
-        return `
+    const detailPanels = types.map((notifType, index) => `
         <div class="detail-panel ${index === selectedNotificationTypeIndex ? 'active' : ''}" data-index="${index}">
             <div class="detail-panel-header">
                 <span class="detail-panel-name-label">${t('notification.' + notifType.key + '.label')}</span>
@@ -74,21 +59,19 @@ export function populateNotificationTypes() {
                     <label>${t('tab.notifications.table.notification.heading')}</label>
                     <div class="detail-checks">
                         <label title="${t('tab.notifications.table.enabled.title')}">
-                            <input type="checkbox" id="notif_${notifType.key}_enabled" ${config.enabled ? 'checked' : ''}
+                            <input type="checkbox" id="notif_${notifType.key}_enabled" data-path="thumbnail.notifications.type_configs.${notifType.key}.enabled"
                                    onchange="toggleNotificationTypeEnabled('${notifType.key}')">
                             <span class="label-body">${t('tab.notifications.detail.enabled.heading')}</span>
                         </label>
                         <div class="field-row">
                             <label for="notif_${notifType.key}_duration" title="${t('tab.notifications.table.duration.title')}">${t('tab.notifications.table.duration.heading')}</label>
-                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_duration" data-range="thumbnail.notifications.type_configs.*.duration_ms" data-unit="s" step="0.1"
-                                   value="${config.duration_ms && config.duration_ms > 0 ? config.duration_ms / 1000 : 5}">
+                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_duration" data-path="thumbnail.notifications.type_configs.${notifType.key}.duration_ms" data-unit="s" step="0.1">
                         </div>
                         <p class="hint hint-extra">${t('tab.notifications.detail.duration.hint')}</p>
                         <div class="field-row">
                             <label for="notif_${notifType.key}_throttle" title="${t('tab.notifications.table.throttle.title')}">${t('tab.notifications.table.throttle.heading')}</label>
-                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_throttle" data-range="thumbnail.notifications.type_configs.*.throttle_ms" data-unit="s" step="1"
-                                   title="${t('tab.notifications.table.throttle.title')}"
-                                   value="${config.throttle_ms !== undefined ? config.throttle_ms / 1000 : 10}">
+                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_throttle" data-path="thumbnail.notifications.type_configs.${notifType.key}.throttle_ms" data-unit="s" step="1"
+                                   title="${t('tab.notifications.table.throttle.title')}">
                         </div>
                         <p class="hint hint-extra">${t('tab.notifications.detail.throttle.hint')}</p>
                     </div>
@@ -97,37 +80,31 @@ export function populateNotificationTypes() {
                     <label>${t('dynamic.character.behaviorHeading')}</label>
                     <div class="detail-checks">
                         <label title="${t('tab.notifications.table.suppress-focused.title')}">
-                            <input type="checkbox" id="notif_${notifType.key}_suppressFocused"
-                                   ${config.suppress_when_focused ? 'checked' : ''}>
+                            <input type="checkbox" id="notif_${notifType.key}_suppressFocused" data-path="thumbnail.notifications.type_configs.${notifType.key}.suppress_when_focused">
                             <span class="label-body">${t('tab.notifications.detail.suppress-focused.heading')}</span>
                         </label>
                         <p class="hint hint-extra">${t('tab.notifications.detail.suppress-focused.hint')}</p>
                         <label title="${t('tab.notifications.table.suppress-clicked.title')}">
-                            <input type="checkbox" id="notif_${notifType.key}_suppressClicked"
-                                   ${config.suppress_when_clicked ? 'checked' : ''}>
+                            <input type="checkbox" id="notif_${notifType.key}_suppressClicked" data-path="thumbnail.notifications.type_configs.${notifType.key}.suppress_when_clicked">
                             <span class="label-body">${t('tab.notifications.detail.suppress-clicked.heading')}</span>
                         </label>
                         <p class="hint hint-extra">${t('tab.notifications.detail.suppress-clicked.hint')}</p>
                         <label title="${t('tab.notifications.table.speech.title')}">
-                            <input type="checkbox" id="notif_${notifType.key}_tts"
-                                   ${config.tts_enabled ? 'checked' : ''}>
+                            <input type="checkbox" id="notif_${notifType.key}_tts" data-path="thumbnail.notifications.type_configs.${notifType.key}.tts_enabled">
                             <span class="label-body">${t('tab.notifications.detail.speech.heading')}</span>
                         </label>
                         <label title="${t('tab.notifications.table.sound.title')}">
-                            <input type="checkbox" id="notif_${notifType.key}_soundEnabled"
-                                   ${config.sound_enabled ? 'checked' : ''}
+                            <input type="checkbox" id="notif_${notifType.key}_soundEnabled" data-path="thumbnail.notifications.type_configs.${notifType.key}.sound_enabled"
                                    onchange="toggleNotifSoundEnabled('${notifType.key}')">
                             <span class="label-body">${t('tab.notifications.detail.sound.heading')}</span>
                         </label>
                         <label title="${t('tab.notifications.table.border-show.title')}">
-                            <input type="checkbox" id="notif_${notifType.key}_showBorder"
-                                   ${config.show_border ? 'checked' : ''}
+                            <input type="checkbox" id="notif_${notifType.key}_showBorder" data-path="thumbnail.notifications.type_configs.${notifType.key}.show_border"
                                    onchange="toggleNotifShowBorder('${notifType.key}')">
                             <span class="label-body">${t('tab.notifications.detail.border-show.heading')}</span>
                         </label>
                         <label title="${t('tab.notifications.table.border-flash.title')}">
-                            <input type="checkbox" id="notif_${notifType.key}_flashBorder"
-                                   ${config.flash_border ? 'checked' : ''}>
+                            <input type="checkbox" id="notif_${notifType.key}_flashBorder" data-path="thumbnail.notifications.type_configs.${notifType.key}.flash_border">
                             <span class="label-body">${t('tab.notifications.detail.border-flash.heading')}</span>
                         </label>
                     </div>
@@ -140,17 +117,13 @@ export function populateNotificationTypes() {
                             <div class="notif-cell-inline">
                                 <input type="checkbox" id="notif_${notifType.key}_textColorEnabled"
                                        title="${t('tab.notifications.detail.text-color.enableTitle')}"
-                                       ${hasTextColor ? 'checked' : ''}
                                        onchange="toggleNotifTextColor('${notifType.key}')">
                                 <div class="swatch-wrap">
-                                    <input type="color" id="notif_${notifType.key}_textColor"
-                                           value="${textColorHtml}"
+                                    <input type="color" id="notif_${notifType.key}_textColor" data-path="thumbnail.notifications.type_configs.${notifType.key}.text_color"
                                            data-optional-color="true"
                                            data-default-color="${notifDefaultTextColorHtml()}"
                                            data-null-checkbox="notif_${notifType.key}_textColorEnabled"
                                            data-base-title="${t('tab.notifications.detail.text-color.activeTitle')}"
-                                           ${!hasTextColor ? 'data-cleared="true"' : ''}
-                                           title="${hasTextColor ? t('tab.notifications.detail.text-color.activeTitle') : t('tab.notifications.detail.text-color.notSetTitle')}"
                                            onchange="document.getElementById('notif_${notifType.key}_textColorEnabled').checked = true">
                                 </div>
                             </div>
@@ -165,17 +138,13 @@ export function populateNotificationTypes() {
                             <div class="notif-cell-inline">
                                 <input type="checkbox" id="notif_${notifType.key}_borderColorEnabled"
                                        title="${t('tab.notifications.detail.border-color.enableTitle')}"
-                                       ${hasBorderColor ? 'checked' : ''}
                                        onchange="toggleNotifBorderColor('${notifType.key}')">
                                 <div class="swatch-wrap">
-                                    <input type="color" id="notif_${notifType.key}_borderColor"
-                                           value="${borderColorHtml}"
+                                    <input type="color" id="notif_${notifType.key}_borderColor" data-path="thumbnail.notifications.type_configs.${notifType.key}.border_color"
                                            data-optional-color="true"
                                            data-default-color="${notifDefaultBorderColorHtml()}"
                                            data-null-checkbox="notif_${notifType.key}_borderColorEnabled"
                                            data-base-title="${t('tab.notifications.detail.border-color.activeTitle')}"
-                                           ${!hasBorderColor ? 'data-cleared="true"' : ''}
-                                           title="${hasBorderColor ? t('tab.notifications.detail.border-color.activeTitle') : t('tab.notifications.detail.border-color.notSetTitle')}"
                                            onchange="document.getElementById('notif_${notifType.key}_borderColorEnabled').checked = true">
                                 </div>
                             </div>
@@ -185,10 +154,7 @@ export function populateNotificationTypes() {
                 <div class="detail-field">
                     <label>${t('tab.notifications.detail.sound.pathLabel')}</label>
                     <div class="field-row">
-                        <input type="text" id="notif_${notifType.key}_soundPath" readonly
-                               data-full-path="${config.sound_path || ''}"
-                               value="${escapeHtml(soundFileBaseName(config.sound_path))}"
-                               title="${config.sound_path || ''}"
+                        <input type="text" id="notif_${notifType.key}_soundPath" readonly data-path="thumbnail.notifications.type_configs.${notifType.key}.sound_path" data-format="path"
                                placeholder="${t('tab.notifications.detail.sound.noFile')}">
                         <button type="button" class="btn-nowrap" id="notif_${notifType.key}_soundBrowseBtn" onclick="browseSoundFile('${notifType.key}')">${t('common.browse')}</button>
                         <button type="button" class="button-icon button-icon-danger" id="notif_${notifType.key}_soundClearBtn" onclick="clearSoundFile('${notifType.key}')" title="${t('tab.notifications.detail.sound.clear')}">&times;</button>
@@ -198,9 +164,8 @@ export function populateNotificationTypes() {
                     <label></label>
                     <div class="field-row">
                         <label for="notif_${notifType.key}_soundVolume">${t('field.soundVolume.label')}</label>
-                        <input type="range" id="notif_${notifType.key}_soundVolume" data-range="thumbnail.notifications.type_configs.*.sound_volume"
-                               value="${config.sound_volume ?? 100}" data-value-target="notif_${notifType.key}_soundVolumeValue">
-                        <span id="notif_${notifType.key}_soundVolumeValue">${config.sound_volume ?? 100}</span>
+                        <input type="range" id="notif_${notifType.key}_soundVolume" data-path="thumbnail.notifications.type_configs.${notifType.key}.sound_volume" data-value-target="notif_${notifType.key}_soundVolumeValue">
+                        <span id="notif_${notifType.key}_soundVolumeValue"></span>
                     </div>
                 </div>
             </div>
@@ -208,8 +173,7 @@ export function populateNotificationTypes() {
                 <button type="button" id="notif_${notifType.key}_testBtn" onclick="testNotification('${notifType.key}')">${t('tab.notifications.detail.test.button')}</button>
             </div>
         </div>
-    `;
-    }).join('');
+    `).join('');
 
     container.innerHTML = `
         <div class="master-detail">
@@ -218,10 +182,15 @@ export function populateNotificationTypes() {
         </div>
     `;
 
-    types.forEach((notifType) => toggleNotificationTypeEnabled(notifType.key));
+    applySchemaToInputs(container);
+    applyDocToForm(path => path.startsWith('thumbnail.notifications.type_configs.'), container);
+    types.forEach((notifType) => {
+        toggleNotifTextColor(notifType.key);
+        toggleNotifBorderColor(notifType.key);
+        toggleNotificationTypeEnabled(notifType.key);
+    });
     toggleNotificationOptions();
     applyNotificationTypeFilter();
-    applySchemaToInputs(container);
 }
 
 export function selectNotificationType(index) {
@@ -320,7 +289,7 @@ export async function browseSoundFile(typeKey) {
         if (result) {
             const input = document.getElementById(`notif_${typeKey}_soundPath`);
             if (input) {
-                input.value = soundFileBaseName(result);
+                input.value = baseName(result);
                 input.title = result;
                 input.dataset.fullPath = result;
             }
@@ -343,65 +312,8 @@ export function clearSoundFile(typeKey) {
 }
 
 // Null if the type's panel isn't rendered.
-function readNotificationTypeConfig(typeKey) {
-    const enabled = document.getElementById(`notif_${typeKey}_enabled`);
-    if (!enabled) return null;
-
-    const duration = document.getElementById(`notif_${typeKey}_duration`);
-    const suppressFocused = document.getElementById(`notif_${typeKey}_suppressFocused`);
-    const suppressClicked = document.getElementById(`notif_${typeKey}_suppressClicked`);
-    const throttle = document.getElementById(`notif_${typeKey}_throttle`);
-    const ttsTypeEnabled = document.getElementById(`notif_${typeKey}_tts`);
-    const soundTypeEnabled = document.getElementById(`notif_${typeKey}_soundEnabled`);
-    const soundPath = document.getElementById(`notif_${typeKey}_soundPath`);
-    const soundVolume = document.getElementById(`notif_${typeKey}_soundVolume`);
-    const showBorder = document.getElementById(`notif_${typeKey}_showBorder`);
-    const flashBorder = document.getElementById(`notif_${typeKey}_flashBorder`);
-    const borderColorEnabled = document.getElementById(`notif_${typeKey}_borderColorEnabled`);
-    const borderColorInput = document.getElementById(`notif_${typeKey}_borderColor`);
-    const textColorEnabled = document.getElementById(`notif_${typeKey}_textColorEnabled`);
-    const textColorInput = document.getElementById(`notif_${typeKey}_textColor`);
-
-    const durationValue = duration && duration.value ? parseFloat(duration.value) * 1000 : 5000;
-    const throttleValue = throttle && throttle.value ? parseFloat(throttle.value) * 1000 : 0;
-
-    return {
-        enabled: enabled.checked,
-        duration_ms: Math.round(durationValue),
-        suppress_when_focused: suppressFocused ? suppressFocused.checked : false,
-        suppress_when_clicked: suppressClicked ? suppressClicked.checked : false,
-        throttle_ms: Math.round(throttleValue),
-        tts_enabled: ttsTypeEnabled ? ttsTypeEnabled.checked : false,
-        sound_enabled: soundTypeEnabled ? soundTypeEnabled.checked : false,
-        sound_path: soundPath && soundPath.dataset.fullPath ? soundPath.dataset.fullPath : null,
-        sound_volume: soundVolume ? parseInt(soundVolume.value, 10) : 100,
-        show_border: showBorder ? showBorder.checked : false,
-        flash_border: flashBorder ? flashBorder.checked : false,
-        // null = use Alert state color; the override checkbox opts in.
-        border_color: (borderColorEnabled && borderColorEnabled.checked && borderColorInput && borderColorInput.value)
-            ? htmlColorToZig(borderColorInput.value)
-            : null,
-        // null = use default text color.
-        text_color: (textColorEnabled && textColorEnabled.checked && textColorInput && textColorInput.value)
-            ? htmlColorToZig(textColorInput.value)
-            : null,
-    };
-}
-
 export function saveNotificationTypes() {
-    if (!app.currentConfig.thumbnail) app.currentConfig.thumbnail = {};
-    if (!app.currentConfig.thumbnail.notifications) app.currentConfig.thumbnail.notifications = {};
-    if (!app.currentConfig.thumbnail.notifications.type_configs) {
-        app.currentConfig.thumbnail.notifications.type_configs = {};
-    }
-
-    const typeConfigs = app.currentConfig.thumbnail.notifications.type_configs;
-
-    notificationTypes().forEach((notifType) => {
-        const fromForm = readNotificationTypeConfig(notifType.key);
-        if (!fromForm) return;
-        typeConfigs[notifType.key] = Object.assign(typeConfigs[notifType.key] || {}, fromForm);
-    });
+    readFormToDoc(path => path.startsWith('thumbnail.notifications.type_configs.'));
 }
 
 export async function testNotification(typeKey) {

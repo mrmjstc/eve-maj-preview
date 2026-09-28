@@ -1,10 +1,11 @@
 // Settings shared by every profile, and the window's own scale and always-on-top.
 import { app } from './state.js';
+import { applyDocToForm } from './binding.js';
 import { refreshCharacterPortraits } from './characters.js';
 import { logError, logWarn, rpc } from './core.js';
-import { applyDocToForm } from './binding.js';
 import { setFieldValue } from './form.js';
 import { populateAppHotkeys, populateProfileSwitchHotkeys, populateUrlHotkeys } from './global_hotkeys.js';
+import { updateHotkeyConflictHighlights } from './hotkeys.js';
 import { buildSectionNav, switchTab } from './layout.js';
 import { populateOreTable } from './ore_table.js';
 
@@ -23,6 +24,7 @@ export async function applyGlobalSettingsToForm() {
     buildSectionNav();
 
     refreshCharacterPortraits();
+    updateHotkeyConflictHighlights();
 }
 
 // Preference lives in global.settings.json so it applies across all profiles.

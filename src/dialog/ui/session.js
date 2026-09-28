@@ -2,19 +2,19 @@
 // Edits are read back from the form, diffed against what the app last confirmed, and sent as edit ops (see config/patch.zig).
 import { app } from './state.js';
 import { setDirty } from './changes.js';
-import { addCharacterIfMissing, populateCharacters, refreshCharacterWindowPosition, saveCharacters } from './characters.js';
+import { addCharacterIfMissing, populateCharacters, refreshCharacterWindowPosition } from './characters.js';
 import { listenForAppEvent, logError, logWarn, rpc } from './core.js';
 import { applyPathsToForm, populateFormFields, readFormIntoConfig } from './form.js';
-import { saveAppHotkeys, saveProfileSwitchHotkeys, saveUrlHotkeys } from './global_hotkeys.js';
+import { saveProfileSwitchHotkeys } from './global_hotkeys.js';
 import { applyGlobalSettingsToForm } from './global_settings.js';
-import { populateHotkeyGroups, refreshHotkeyGroupCharsList, saveHotkeyGroups } from './hotkey_groups.js';
+import { populateHotkeyGroups, refreshHotkeyGroupCharsList } from './hotkey_groups.js';
 import { describeHotkeyConflicts, showHotkeyConflictModal, updateHotkeyConflictHighlights } from './hotkeys.js';
 import { t } from './i18n.js';
 import { showStatus, switchTab } from './layout.js';
-import { populateNotificationTypes, saveNotificationTypes } from './notifications.js';
+import { populateNotificationTypes } from './notifications.js';
 import { saveOreTable } from './ore_table.js';
-import { populateSystemColors, saveSystemColors } from './system_colors.js';
-import { populateWindowFilters, saveWindowFilters } from './window_filters.js';
+import { populateSystemColors } from './system_colors.js';
+import { populateWindowFilters } from './window_filters.js';
 
 const FLUSH_DELAY_MS = 120;
 // Lists whose items carry an `id`, so they're edited item by item rather than replaced whole.
@@ -136,14 +136,8 @@ function applyOp(root, op) {
 
 function readFormIntoDocs() {
     readFormIntoConfig();
-    saveWindowFilters();
-    saveSystemColors();
-    saveCharacters();
-    saveHotkeyGroups();
-    saveNotificationTypes();
+    // Keyed by profile and by ore rather than bound by path, so they read themselves back.
     saveProfileSwitchHotkeys();
-    saveAppHotkeys();
-    saveUrlHotkeys();
     saveOreTable();
 }
 

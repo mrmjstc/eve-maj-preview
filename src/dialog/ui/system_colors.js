@@ -1,8 +1,7 @@
 // The System Color Overrides list.
 import { app } from './state.js';
-import { escapeHtml } from './core.js';
+import { applyDocToForm, readFormToDoc } from './binding.js';
 import { markAsChanged } from './changes.js';
-import { htmlColorToZig, zigColorToHtml } from './colors.js';
 import { t } from './i18n.js';
 import { scrollContentPanelToBottom } from './widgets.js';
 
@@ -17,12 +16,13 @@ export function populateSystemColors() {
         const colorDiv = document.createElement('div');
         colorDiv.className = 'field-row list-container';
         colorDiv.innerHTML = `
-            <input type="text" id="systemColor_${index}_name" value="${escapeHtml(sc.systemName || '')}" placeholder="${t('dynamic.systemColor.namePlaceholder')}">
-            <input type="color" id="systemColor_${index}_color" value="${zigColorToHtml(sc.color)}">
+            <input type="text" id="systemColor_${index}_name" data-path="systemColors.${index}.systemName" placeholder="${t('dynamic.systemColor.namePlaceholder')}">
+            <input type="color" id="systemColor_${index}_color" data-path="systemColors.${index}.color">
             <button type="button" class="button-remove" id="systemColor_${index}_removeBtn" onclick="confirmRemove('systemColor_${index}_removeBtn', () => removeSystemColor(${index}))">${t('common.remove')}</button>
         `;
         container.appendChild(colorDiv);
     });
+    applyDocToForm(path => path.startsWith('systemColors.'), container);
 }
 
 export function addSystemColor() {
@@ -44,13 +44,5 @@ export function removeSystemColor(index) {
 }
 
 export function saveSystemColors() {
-    if (!app.currentConfig.systemColors) return;
-    
-    app.currentConfig.systemColors.forEach((sc, index) => {
-        const name = document.getElementById(`systemColor_${index}_name`);
-        const color = document.getElementById(`systemColor_${index}_color`);
-        
-        if (name) sc.systemName = name.value;
-        if (color) sc.color = htmlColorToZig(color.value);
-    });
+    readFormToDoc(path => path.startsWith('systemColors.'));
 }
