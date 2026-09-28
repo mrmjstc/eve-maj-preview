@@ -4,7 +4,7 @@ const slog = log.scoped("fonts");
 
 const BundledFont = struct { name: []const u8, data: []const u8 };
 
-// SemiBold is a separate face because GDI won't embolden Cascadia Code's variable-font weights (see region_select.zig).
+// SemiBold is a separate face because GDI won't embolden Cascadia Code's variable-font weights (see dialog/tools/region_select.zig).
 const BUNDLED_FONTS = [_]BundledFont{
     .{ .name = "Cascadia Code", .data = @embedFile("../assets/fonts/CascadiaCode-Regular.ttf") },
     .{ .name = "Cascadia Code SemiBold", .data = @embedFile("../assets/fonts/CascadiaCode-SemiBold.ttf") },
@@ -20,3 +20,24 @@ pub fn loadBundled() void {
         }
     }
 }
+
+pub const FontWeight = enum {
+    Regular,
+    Bold,
+    Italic,
+    BoldItalic,
+
+    /// Convert to Windows font weight value (for CreateFontA weight parameter)
+    pub fn toWin32Weight(self: FontWeight) i32 {
+        // 400/700 are the raw FW_NORMAL/FW_BOLD values
+        return switch (self) {
+            .Regular, .Italic => 400,
+            .Bold, .BoldItalic => 700,
+        };
+    }
+
+    /// Check if font should be italicized (for CreateFontA italic parameter)
+    pub fn isItalic(self: FontWeight) bool {
+        return self == .Italic or self == .BoldItalic;
+    }
+};

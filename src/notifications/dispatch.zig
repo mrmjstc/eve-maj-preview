@@ -1,7 +1,7 @@
 //! Decides whether a notification shows on a thumbnail, and puts it there with its sound, speech, history entry and recently-notified cycle entry.
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
-const state_mod = @import("../state.zig");
+const state_mod = @import("../thumbnail/state.zig");
 const painter_mod = @import("../painter.zig");
 const window = @import("../thumbnail/window.zig");
 const notification_mod = @import("notification.zig");

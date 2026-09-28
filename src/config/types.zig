@@ -1,3 +1,6 @@
+/// Kept with the other setting types, though defined where platform/ can use it.
+pub const FontWeight = @import("../platform/fonts.zig").FontWeight;
+
 pub const BorderStyle = enum {
     Solid,
     Dashed,
@@ -49,27 +52,6 @@ pub const TextPosition = enum {
     BottomLeft,
     BottomCenter,
     BottomRight,
-};
-
-pub const FontWeight = enum {
-    Regular,
-    Bold,
-    Italic,
-    BoldItalic,
-
-    /// Convert to Windows font weight value (for CreateFontA weight parameter)
-    pub fn toWin32Weight(self: FontWeight) i32 {
-        // 400/700 are the raw FW_NORMAL/FW_BOLD values
-        return switch (self) {
-            .Regular, .Italic => 400,
-            .Bold, .BoldItalic => 700,
-        };
-    }
-
-    /// Check if font should be italicized (for CreateFontA italic parameter)
-    pub fn isItalic(self: FontWeight) bool {
-        return self == .Italic or self == .BoldItalic;
-    }
 };
 
 pub const LayoutMode = enum {

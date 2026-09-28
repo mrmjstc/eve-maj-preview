@@ -1,6 +1,6 @@
 //! Layout, Client List and History Panel settings.
 const std = @import("std");
-const types = @import("../types.zig");
+const types = @import("types.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 

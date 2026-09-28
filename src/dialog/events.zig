@@ -2,7 +2,7 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const vk = @import("../platform/virtual_keys.zig");
-const region_select = @import("../region_select.zig");
+const region_select = @import("tools/region_select.zig");
 const host = @import("host.zig");
 const log = @import("../log.zig");
 

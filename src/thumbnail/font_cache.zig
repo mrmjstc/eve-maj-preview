@@ -1,6 +1,6 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const types = @import("../types.zig");
+const types = @import("../config/types.zig");
 const config_mod = @import("../config.zig");
 const log = @import("../log.zig");
 const slog = log.scoped("font_cache");

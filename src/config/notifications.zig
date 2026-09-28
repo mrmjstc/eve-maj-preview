@@ -1,7 +1,7 @@
 //! Notification popups: shared appearance and each type's own settings.
 const std = @import("std");
 const log = @import("../log.zig");
-const types = @import("../types.zig");
+const types = @import("types.zig");
 const notification_mod = @import("../notifications/notification.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");

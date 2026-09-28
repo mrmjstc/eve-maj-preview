@@ -1,7 +1,7 @@
 //! Thumbnail appearance, per-state visuals included.
 const std = @import("std");
-const types = @import("../types.zig");
-const state_mod = @import("../state.zig");
+const types = @import("types.zig");
+const state_mod = @import("../thumbnail/state.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 const NotificationConfig = @import("notifications.zig").NotificationConfig;

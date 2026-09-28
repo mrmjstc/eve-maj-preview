@@ -1,5 +1,5 @@
 const win32 = @import("../platform/win32.zig");
-const types = @import("../types.zig");
+const types = @import("../config/types.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 
 const TextPosition = types.TextPosition;

@@ -1,6 +1,6 @@
 const std = @import("std");
 const win32 = @import("win32.zig");
-const types = @import("../types.zig");
+const fonts = @import("fonts.zig");
 const log = @import("../log.zig");
 const slog = log.scoped("gdi_overlay");
 
@@ -338,10 +338,10 @@ pub fn ensureFont(
     font: *?win32.HFONT,
     cached_name: *[]const u8,
     cached_size: *i32,
-    cached_weight: *types.FontWeight,
+    cached_weight: *fonts.FontWeight,
     want_name: []const u8,
     want_size: i32,
-    want_weight: types.FontWeight,
+    want_weight: fonts.FontWeight,
 ) !void {
     const unchanged = font.* != null and
         std.mem.eql(u8, cached_name.*, want_name) and

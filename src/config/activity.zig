@@ -1,6 +1,6 @@
 //! Combat, mining, bounty and resource overlays, and the travel left-behind check.
 const std = @import("std");
-const types = @import("../types.zig");
+const types = @import("types.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 

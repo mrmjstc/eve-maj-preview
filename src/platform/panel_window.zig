@@ -1,7 +1,7 @@
 //! A topmost layered panel redrawn into a DIB, shared by the client list and the History Panel: its window, font, bitmap and redraw skipping.
 const std = @import("std");
 const win32 = @import("win32.zig");
-const types = @import("../types.zig");
+const fonts = @import("fonts.zig");
 const gdi_overlay = @import("gdi_overlay.zig");
 
 pub const PanelWindow = struct {
@@ -11,7 +11,7 @@ pub const PanelWindow = struct {
     // The settings `font` was made from; owns its name, since the config frees its own on a rename.
     font_name: []const u8 = "",
     font_size: i32 = 0,
-    font_weight: types.FontWeight = .Regular,
+    font_weight: fonts.FontWeight = .Regular,
     bitmap: ?gdi_overlay.OverlayBitmap = null,
     // -1 forces a resize on the first frame.
     width: i32 = -1,
@@ -44,7 +44,7 @@ pub const PanelWindow = struct {
     }
 
     /// Makes `font` match these settings, recreating it after a live-previewed change.
-    pub fn ensureFont(self: *PanelWindow, context: []const u8, name: []const u8, size: i32, weight: types.FontWeight) !void {
+    pub fn ensureFont(self: *PanelWindow, context: []const u8, name: []const u8, size: i32, weight: fonts.FontWeight) !void {
         try gdi_overlay.ensureFont(self.allocator, context, &self.font, &self.font_name, &self.font_size, &self.font_weight, name, size, weight);
     }
 

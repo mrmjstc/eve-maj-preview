@@ -1,5 +1,5 @@
 //! Scanning, snapping, click handling, auto-minimize, auto-move and exclusion settings.
-const types = @import("../types.zig");
+const types = @import("types.zig");
 const ranges_mod = @import("ranges.zig");
 
 pub const TimerConfig = struct {

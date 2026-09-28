@@ -1,11 +1,11 @@
-const win32 = @import("platform/win32.zig");
-const log = @import("log.zig");
+const win32 = @import("../platform/win32.zig");
+const log = @import("../log.zig");
 const slog = log.scoped("input");
-const painter_mod = @import("painter.zig");
-const hotkeys_mod = @import("hotkeys/manager.zig");
-const membership = @import("hotkeys/membership.zig");
-const activation = @import("clients/activation.zig");
-const thumbnail_drag = @import("drag/thumbnail.zig");
+const painter_mod = @import("../painter.zig");
+const hotkeys_mod = @import("../hotkeys/manager.zig");
+const membership = @import("../hotkeys/membership.zig");
+const activation = @import("../clients/activation.zig");
+const thumbnail_drag = @import("../drag/thumbnail.zig");
 const ThumbnailWindow = painter_mod.ThumbnailWindow;
 
 // Click state for mouse-up triggered clicks (left-click only; right-click drags)
