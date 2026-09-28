@@ -37,6 +37,27 @@ pub const ActivityStats = struct {
     // Separate from has_resources: VRAM can stay unavailable (no PDH support, no matching GPU instance) once CPU/RAM are known.
     has_vram: bool = false,
 
+    /// Whether each stat is shown: once its tracker has reported, as "??" while the rate is unknown, and not at all while it's zero.
+    pub fn showsIncoming(self: *const ActivityStats) bool {
+        return self.has_dps and shown(self.incoming_dps);
+    }
+
+    pub fn showsOutgoing(self: *const ActivityStats) bool {
+        return self.has_dps and shown(self.outgoing_dps);
+    }
+
+    pub fn showsMining(self: *const ActivityStats) bool {
+        return self.has_mining and shown(self.mining_rate);
+    }
+
+    pub fn showsBounty(self: *const ActivityStats) bool {
+        return self.has_bounty and shown(self.bounty_isk_rate);
+    }
+
+    fn shown(rate: ?f32) bool {
+        return rate == null or rate.? > 0;
+    }
+
     /// Each setter returns whether anything shown changed.
     pub fn setDps(self: *ActivityStats, incoming: ?f32, outgoing: ?f32) bool {
         const changed = !self.has_dps or self.incoming_dps != incoming or self.outgoing_dps != outgoing;

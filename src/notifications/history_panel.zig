@@ -1,14 +1,13 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
-const types = @import("../types.zig");
 const notification_mod = @import("notification.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
+const PanelWindow = @import("../platform/panel_window.zig").PanelWindow;
 const color_mod = @import("../util/color.zig");
 const log = @import("../log.zig");
 const slog = log.scoped("history_panel");
 
-// Only used by const-pointer params so the painter ↔ history_panel import cycle stays invisible at struct-size level; mirrors list_view.zig's own ThumbnailWindow re-import.
 const painter_mod = @import("../painter.zig");
 const activation = @import("../clients/activation.zig");
 const notification_history_mod = @import("history.zig");
@@ -70,7 +69,6 @@ fn effectiveCategoryEnabled(cfg: *const config_mod.Config, cat: notification_mod
 }
 
 var g_class_registered: bool = false;
-
 
 const HISTORY_PANEL_WINDOW_CLASS = "EVE_HISTORY_PANEL_CLASS";
 
@@ -146,120 +144,38 @@ const HistoryRow = struct {
 };
 
 pub const HistoryPanelWindow = struct {
-    hwnd: win32.HWND,
-    instance: win32.HINSTANCE,
-    allocator: std.mem.Allocator,
+    panel: PanelWindow,
     store: *config_mod.ProfileStore,
     config: *const config_mod.Config,
-    font: ?win32.HFONT = null,
-    // Owns a copy rather than aliasing config.display.notifInfoPanelFontName, which config frees/replaces on a genuine rename.
-    cached_font_name: []const u8 = "",
-    cached_font_size: i32 = 0,
-    cached_font_weight: types.FontWeight = .Regular,
-    overlay: ?gdi_overlay.OverlayBitmap = null,
-    last_win_w: i32 = -1,
-    last_win_h: i32 = -1,
-    last_render_signature: ?u64 = null,
     history_rows: [notification_history_mod.CAPACITY]HistoryRow = undefined,
     history_row_count: usize = 0,
     // Index-paired with CATEGORY_ORDER; recomputed every render, consumed by WM_LBUTTONDOWN's footer hit-test.
     category_button_rects: [CATEGORY_ORDER.len]ButtonRect = undefined,
 
-    pub fn init(
-        allocator: std.mem.Allocator,
-        store: *config_mod.ProfileStore,
-        instance: win32.HINSTANCE,
-    ) !HistoryPanelWindow {
-        const cfg = &store.live;
+    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) !HistoryPanelWindow {
+        const display = &store.live.display;
         try registerWindowClass(instance);
-
-        const hwnd = win32.CreateWindowExA(
-            win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW |
-                win32.WS_EX_NOACTIVATE | win32.WS_EX_LAYERED,
-            HISTORY_PANEL_WINDOW_CLASS,
-            "EVE Notification History",
-            win32.WS_POPUP,
-            cfg.display.notifInfoPanelX,
-            cfg.display.notifInfoPanelY,
-            cfg.display.notifInfoPanelWidth,
-            cfg.display.notifInfoPanelHeight,
-            null,
-            null,
-            instance,
-            null,
-        ) orelse return error.CreateWindowFailed;
-        errdefer _ = win32.DestroyWindow(hwnd);
-
-        const font_name_z = try allocator.dupeZ(u8, cfg.display.notifInfoPanelFontName);
-        defer allocator.free(font_name_z);
-
-        const cached_font_name = try allocator.dupe(u8, cfg.display.notifInfoPanelFontName);
-        errdefer allocator.free(cached_font_name);
-
-        const font = win32.CreateFontA(
-            -cfg.display.notifInfoPanelFontSize,
-            0,
-            0,
-            0,
-            cfg.display.notifInfoPanelFontWeight.toWin32Weight(),
-            if (cfg.display.notifInfoPanelFontWeight.isItalic()) 1 else 0,
-            0,
-            0,
-            win32.DEFAULT_CHARSET,
-            win32.OUT_DEFAULT_PRECIS,
-            win32.CLIP_DEFAULT_PRECIS,
-            win32.CLEARTYPE_QUALITY,
-            win32.DEFAULT_PITCH,
-            font_name_z,
-        );
-
-        return .{
-            .hwnd = hwnd,
-            .instance = instance,
-            .allocator = allocator,
-            .store = store,
-            .config = cfg,
-            .font = font,
-            .cached_font_name = cached_font_name,
-            .cached_font_size = cfg.display.notifInfoPanelFontSize,
-            .cached_font_weight = cfg.display.notifInfoPanelFontWeight,
-        };
+        const panel = try PanelWindow.create(allocator, instance, HISTORY_PANEL_WINDOW_CLASS, "EVE Notification History", .{
+            .left = display.notifInfoPanelX,
+            .top = display.notifInfoPanelY,
+            .right = display.notifInfoPanelX + display.notifInfoPanelWidth,
+            .bottom = display.notifInfoPanelY + display.notifInfoPanelHeight,
+        });
+        return .{ .panel = panel, .store = store, .config = &store.live };
     }
 
     pub fn deinit(self: *HistoryPanelWindow) void {
-        if (self.overlay) |o| o.destroy();
-        if (self.font) |f| _ = win32.DeleteObject(f);
-        self.allocator.free(self.cached_font_name);
-        _ = win32.DestroyWindow(self.hwnd);
+        self.panel.deinit();
     }
 
-    pub fn hide(self: *HistoryPanelWindow) void {
-        _ = win32.ShowWindow(self.hwnd, win32.SW_HIDE);
-    }
-
-    /// Recreates `font` if the panel's own font settings changed since last built (e.g. a live-previewed edit); mirrors list_view.zig's ensureFont, but tracks display.notifInfoPanelFont* rather than List View's own font settings.
-    fn ensureFont(self: *HistoryPanelWindow) !void {
-        const cfg = self.config.display;
-        try gdi_overlay.ensureFont(
-            self.allocator,
-            "History Panel",
-            &self.font,
-            &self.cached_font_name,
-            &self.cached_font_size,
-            &self.cached_font_weight,
-            cfg.notifInfoPanelFontName,
-            cfg.notifInfoPanelFontSize,
-            cfg.notifInfoPanelFontWeight,
-        );
+    pub fn hide(self: *const HistoryPanelWindow) void {
+        self.panel.hide();
     }
 
     fn saveWindowPosition(self: *HistoryPanelWindow) void {
         if (!self.config.display.rememberNotifInfoPanelPosition) return;
-
-        var rect: win32.RECT = undefined;
-        _ = win32.GetWindowRect(self.hwnd, &rect);
-
-        self.store.update(.{ .display = .{ .notifInfoPanelX = rect.left, .notifInfoPanelY = rect.top } });
+        const pos = self.panel.topLeft();
+        self.store.update(.{ .display = .{ .notifInfoPanelX = pos.x, .notifInfoPanelY = pos.y } });
     }
 
     /// Notification text color for a history row: the notification type's configured color, else the thumbnail overlay's default text color.
@@ -328,44 +244,19 @@ pub const HistoryPanelWindow = struct {
         return h.final();
     }
 
-    /// Re-render the panel from the painter's live notification history; called every painter update tick and skips the GDI redraw when the render signature matches the previous tick's.
+    /// Called every painter tick; redraws only when the render signature changed.
     pub fn render(self: *HistoryPanelWindow, painter: *const painter_mod.Painter) !void {
-        try self.ensureFont();
+        const display = &self.config.display;
+        try self.panel.ensureFont("History Panel", display.notifInfoPanelFontName, display.notifInfoPanelFontSize, display.notifInfoPanelFontWeight);
 
         const signature = self.computeRenderSignature(painter);
-        if (self.overlay != null and self.last_render_signature != null and self.last_render_signature.? == signature) {
-            _ = win32.ShowWindow(self.hwnd, win32.SW_SHOWNOACTIVATE);
-            return;
-        }
+        if (self.panel.isUnchanged(signature)) return;
 
-        const win_w: i32 = @max(1, self.config.display.notifInfoPanelWidth);
-        const win_h: i32 = @max(1, self.config.display.notifInfoPanelHeight);
-
-        if (win_w != self.last_win_w or win_h != self.last_win_h) {
-            _ = win32.SetWindowPos(
-                self.hwnd,
-                win32.HWND_TOPMOST,
-                0,
-                0,
-                win_w,
-                win_h,
-                win32.SWP_NOMOVE | win32.SWP_NOACTIVATE,
-            );
-            self.last_win_w = win_w;
-            self.last_win_h = win_h;
-        }
-
-        if (gdi_overlay.OverlayBitmap.needsResize(self.overlay, win_w, win_h)) {
-            const sdc = win32.GetDC(null) orelse return error.GetDCFailed;
-            defer _ = win32.ReleaseDC(null, sdc);
-            try gdi_overlay.OverlayBitmap.recreate(&self.overlay, sdc, win_w, win_h);
-        }
-
-        const ov = &self.overlay.?;
-        const W: usize = @intCast(win_w);
-        const H: usize = @intCast(win_h);
-
-        ov.clear();
+        const win_w: i32 = @max(1, display.notifInfoPanelWidth);
+        const win_h: i32 = @max(1, display.notifInfoPanelHeight);
+        const ov = try self.panel.beginFrame(win_w, win_h);
+        const W: usize = ov.width;
+        const H: usize = ov.height;
 
         const show_filters = self.config.display.notifInfoPanelShowCategoryFilters;
         const footer_top: i32 = if (show_filters) @max(HEADER_HEIGHT, win_h - FOOTER_HEIGHT) else win_h;
@@ -396,7 +287,7 @@ pub const HistoryPanelWindow = struct {
         const show_timestamp = self.config.display.notifInfoPanelShowTimestamp;
         const now = win32.Ticks.now();
 
-        if (self.font) |f| {
+        if (self.panel.font) |f| {
             const old = win32.SelectObject(ov.mem_dc, f);
             defer {
                 if (old) |o| _ = win32.SelectObject(ov.mem_dc, o);
@@ -483,33 +374,7 @@ pub const HistoryPanelWindow = struct {
         }
 
         gdi_overlay.fixTextAlpha(ov.pixels, W, H);
-
-        const sdc = win32.GetDC(null) orelse return error.GetDCFailed;
-        defer _ = win32.ReleaseDC(null, sdc);
-
-        const sz = win32.SIZE{ .cx = win_w, .cy = win_h };
-        const pt = win32.POINT{ .x = 0, .y = 0 };
-        var blend = win32.BLENDFUNCTION{
-            .BlendOp = win32.AC_SRC_OVER,
-            .BlendFlags = 0,
-            .SourceConstantAlpha = self.config.display.notifInfoPanelOpacity,
-            .AlphaFormat = win32.AC_SRC_ALPHA,
-        };
-
-        _ = win32.UpdateLayeredWindow(
-            self.hwnd,
-            sdc,
-            null,
-            @constCast(&sz),
-            ov.mem_dc,
-            @constCast(&pt),
-            0,
-            &blend,
-            win32.ULW_ALPHA,
-        );
-
-        _ = win32.ShowWindow(self.hwnd, win32.SW_SHOWNOACTIVATE);
-        self.last_render_signature = signature;
+        self.panel.present(display.notifInfoPanelOpacity, signature);
     }
 
     fn withAlpha(self: *const HistoryPanelWindow, rgb: u32) u32 {
@@ -599,76 +464,44 @@ fn registerWindowClass(instance: win32.HINSTANCE) !void {
     g_class_registered = true;
 }
 
-fn historyPanelWindowProc(
-    hwnd: win32.HWND,
-    msg: win32.UINT,
-    wParam: win32.WPARAM,
-    lParam: win32.LPARAM,
-) callconv(.c) win32.LRESULT {
+fn historyPanelWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
+    if (drag_panel.handleMessage(hwnd, msg, lParam, HEADER_HEIGHT)) |result| return result;
     switch (msg) {
-        win32.WM_NCHITTEST => {
-            return drag_panel.panelHeaderHitTest(hwnd, lParam, HEADER_HEIGHT);
-        },
-
         win32.WM_ENTERSIZEMOVE => {
             drag_panel.beginPanelDrag(hwnd);
-
-            if (painter_mod.g_painter_ptr) |p| {
-                // No single character owns this panel, so nothing is excluded - every saved position shows as a ghost.
-                p.ghost_overlay.show(p, "");
-            }
+            // No single character owns this panel, so every saved position shows as a ghost.
+            if (painter_mod.g_painter_ptr) |p| p.ghost_overlay.show(p, "");
             return 0;
         },
-
-        win32.WM_MOVING => {
-            const rect: *win32.RECT = @ptrFromInt(@as(usize, @intCast(lParam)));
-            drag_panel.updatePanelDragRect(hwnd, rect);
-            return win32.TRUE;
-        },
-
         win32.WM_EXITSIZEMOVE => {
-            if (painter_mod.g_painter_ptr) |p| {
-                p.ghost_overlay.hide();
-                if (p.history_panel.window) |*niw| {
-                    niw.saveWindowPosition();
-                }
-            }
+            const p = painter_mod.g_painter_ptr orelse return 0;
+            p.ghost_overlay.hide();
+            if (p.history_panel.window) |*niw| niw.saveWindowPosition();
             return 0;
         },
-
         win32.WM_LBUTTONDOWN => {
             const cy = win32.lparamY(lParam);
             if (cy < HEADER_HEIGHT) return 0;
 
-            if (painter_mod.g_painter_ptr) |p| {
-                if (p.history_panel.window) |*niw| {
-                    const show_filters = niw.config.display.notifInfoPanelShowCategoryFilters;
-                    const footer_top = if (show_filters) niw.last_win_h - FOOTER_HEIGHT else niw.last_win_h;
-                    if (show_filters and cy >= footer_top) {
-                        const cx = win32.lparamX(lParam);
-                        niw.handleFooterClick(cx);
-                        return 0;
-                    }
+            const p = painter_mod.g_painter_ptr orelse return 0;
+            const niw = if (p.history_panel.window) |*w| w else return 0;
+            const show_filters = niw.config.display.notifInfoPanelShowCategoryFilters;
+            const footer_top = if (show_filters) niw.panel.height - FOOTER_HEIGHT else niw.panel.height;
+            if (show_filters and cy >= footer_top) {
+                niw.handleFooterClick(win32.lparamX(lParam));
+                return 0;
+            }
 
-                    const row_i = @divTrunc(cy - HEADER_HEIGHT, ROW_HEIGHT);
-                    if (row_i < 0) return 0;
-                    const row: usize = @intCast(row_i);
-
-                    if (row < niw.history_row_count) {
-                        const hist_row = niw.history_rows[row];
-                        if (hist_row.count > 1) {
-                            p.notification_history.unmergeRange(hist_row.first, hist_row.last);
-                        } else {
-                            activation.activate(hist_row.hwnd);
-                        }
-                    }
-                }
+            const row: usize = @intCast(@divTrunc(cy - HEADER_HEIGHT, ROW_HEIGHT));
+            if (row >= niw.history_row_count) return 0;
+            const hist_row = niw.history_rows[row];
+            if (hist_row.count > 1) {
+                p.notification_history.unmergeRange(hist_row.first, hist_row.last);
+            } else {
+                activation.activate(hist_row.hwnd);
             }
             return 0;
         },
-
-        win32.WM_ERASEBKGND => return 1,
-
         else => return win32.DefWindowProcA(hwnd, msg, wParam, lParam),
     }
 }

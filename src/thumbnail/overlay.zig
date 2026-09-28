@@ -477,7 +477,7 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
     var dps_out_dims: TextDimensions = .{ .width = 0, .height = 0 };
     if (config.combat.enabled and config.thumbnail.showText) {
         const combat_cfg = &config.combat;
-        if (combat_cfg.show_incoming and thumbnail.stats.has_dps and (thumbnail.stats.incoming_dps == null or thumbnail.stats.incoming_dps.? > 0)) {
+        if (combat_cfg.show_incoming and thumbnail.stats.showsIncoming()) {
             const f = try fonts.get(.combat, dpi, combat_cfg.incoming_font_name, scalePixels(combat_cfg.incoming_font_size, dpi_scale), combat_cfg.incoming_font_weight);
             _ = win32.SelectObject(overlay.mem_dc, f);
             dps_in_text = if (thumbnail.stats.incoming_dps) |dps|
@@ -492,7 +492,7 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
             draw_line_count += 1;
             _ = win32.SelectObject(overlay.mem_dc, font);
         }
-        if (combat_cfg.show_outgoing and thumbnail.stats.has_dps and (thumbnail.stats.outgoing_dps == null or thumbnail.stats.outgoing_dps.? > 0)) {
+        if (combat_cfg.show_outgoing and thumbnail.stats.showsOutgoing()) {
             const f = try fonts.get(.combat_outgoing, dpi, combat_cfg.outgoing_font_name, scalePixels(combat_cfg.outgoing_font_size, dpi_scale), combat_cfg.outgoing_font_weight);
             _ = win32.SelectObject(overlay.mem_dc, f);
             dps_out_text = if (thumbnail.stats.outgoing_dps) |dps|
@@ -521,7 +521,7 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
     var mining_isk_dims: TextDimensions = .{ .width = 0, .height = 0 };
     var mining_block_x: i32 = 0;
     var mining_block_width: usize = 0;
-    if (config.mining.enabled and config.thumbnail.showText and thumbnail.stats.has_mining and (thumbnail.stats.mining_rate == null or thumbnail.stats.mining_rate.? > 0)) {
+    if (config.mining.enabled and config.thumbnail.showText and thumbnail.stats.showsMining()) {
         const mining_cfg = &config.mining;
         const mf = try fonts.get(.mining, dpi, mining_cfg.font_name, scalePixels(mining_cfg.font_size, dpi_scale), mining_cfg.font_weight);
         _ = win32.SelectObject(overlay.mem_dc, mf);
@@ -597,7 +597,7 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
     var bounty_text: []const u8 = "";
     var bounty_pos: TextOrigin = .{ .x = 0, .y = 0 };
     var bounty_dims: TextDimensions = .{ .width = 0, .height = 0 };
-    if (config.bounty.enabled and config.thumbnail.showText and thumbnail.stats.has_bounty and (thumbnail.stats.bounty_isk_rate == null or thumbnail.stats.bounty_isk_rate.? > 0)) {
+    if (config.bounty.enabled and config.thumbnail.showText and thumbnail.stats.showsBounty()) {
         const bounty_cfg = &config.bounty;
         const bf = try fonts.get(.bounty, dpi, bounty_cfg.font_name, scalePixels(bounty_cfg.font_size, dpi_scale), bounty_cfg.font_weight);
         _ = win32.SelectObject(overlay.mem_dc, bf);

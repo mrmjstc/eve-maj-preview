@@ -10,14 +10,22 @@ const HTCLIENT: win32.LRESULT = 1;
 var g_panel_drag_anchor_cursor: win32.POINT = .{ .x = 0, .y = 0 };
 var g_panel_drag_anchor_rect: win32.RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
 
-/// WM_NCHITTEST for a panel whose header (the top `header_height` px) is its only drag handle.
-pub fn panelHeaderHitTest(hwnd: win32.HWND, lParam: win32.LPARAM, header_height: i32) win32.LRESULT {
-    const sy = win32.lparamY(lParam);
-    var wr: win32.RECT = undefined;
-    _ = win32.GetWindowRect(hwnd, &wr);
-    const cy = sy - wr.top;
-    if (cy < header_height) return HTCAPTION;
-    return HTCLIENT;
+/// The messages every panel handles alike: its header (the top `header_height` px) drags it with snapping, and being layered it never erases a background.
+/// Null for any other message; the panel still calls beginPanelDrag itself on WM_ENTERSIZEMOVE.
+pub fn handleMessage(hwnd: win32.HWND, msg: win32.UINT, lParam: win32.LPARAM, header_height: i32) ?win32.LRESULT {
+    switch (msg) {
+        win32.WM_NCHITTEST => {
+            var window_rect: win32.RECT = undefined;
+            _ = win32.GetWindowRect(hwnd, &window_rect);
+            return if (win32.lparamY(lParam) - window_rect.top < header_height) HTCAPTION else HTCLIENT;
+        },
+        win32.WM_MOVING => {
+            updatePanelDragRect(hwnd, win32.lparamToPtr(win32.RECT, lParam));
+            return win32.TRUE;
+        },
+        win32.WM_ERASEBKGND => return 1,
+        else => return null,
+    }
 }
 
 /// Call from WM_ENTERSIZEMOVE before any other drag-start handling.
@@ -26,8 +34,8 @@ pub fn beginPanelDrag(hwnd: win32.HWND) void {
     _ = win32.GetWindowRect(hwnd, &g_panel_drag_anchor_rect);
 }
 
-/// Call from WM_MOVING to recompute the truly-intended position from the absolute cursor delta since drag start (ignoring Windows' possibly already-snapped `rect`) and snap it via snapping.applySnapping.
-pub fn updatePanelDragRect(hwnd: win32.HWND, rect: *win32.RECT) void {
+/// Recomputes the intended position from the cursor's movement since the drag began, ignoring Windows' possibly already-snapped `rect`, then snaps it.
+fn updatePanelDragRect(hwnd: win32.HWND, rect: *win32.RECT) void {
     const width = rect.right - rect.left;
     const height = rect.bottom - rect.top;
 
