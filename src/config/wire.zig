@@ -384,6 +384,29 @@ pub fn parse(comptime T: type, allocator: std.mem.Allocator, json_text: []const 
     return std.json.parseFromValue(T, allocator, tree.value, .{ .ignore_unknown_fields = true });
 }
 
+/// The indented JSON of `settings.toWire(arena)`, as saved to disk; caller owns the result.
+pub fn toJsonAlloc(allocator: std.mem.Allocator, settings: anytype) ![]u8 {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const saved = try settings.toWire(arena.allocator());
+    return std.json.Stringify.valueAlloc(allocator, saved, .{
+        .whitespace = .indent_2,
+        .emit_null_optional_fields = false,
+    });
+}
+
+/// One log call per JSON line, since the logger silently drops any single write over 2048 bytes.
+pub fn logJson(allocator: std.mem.Allocator, settings: anytype) void {
+    const json = toJsonAlloc(allocator, settings) catch |err| {
+        slog.warn("Failed to serialize {s} for logging: {}", .{ @typeName(@TypeOf(settings.*)), err });
+        return;
+    };
+    defer allocator.free(json);
+
+    var lines = std.mem.splitScalar(u8, json, '\n');
+    while (lines.next()) |line| slog.debug("{s}", .{line});
+}
+
 fn freeOwnedString(allocator: std.mem.Allocator, s: []const u8, default: []const u8) void {
     if (s.len != 0 and s.ptr != default.ptr) allocator.free(s);
 }

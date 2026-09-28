@@ -205,7 +205,7 @@ fn mainImpl(init: std.process.Init) !void {
         config_path = path;
     } else if (startup_settings) |s| {
         if (s.lastUsedProfile.len > 0) {
-            const profile_path = try std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, s.lastUsedProfile });
+            const profile_path = try config_mod.profilePath(allocator, s.lastUsedProfile);
             config_path = profile_path;
             config_path_allocated = profile_path;
         }
@@ -482,9 +482,9 @@ fn loadConfig(e: *webui.Event) void {
 
     slog.debug("Loading config from: {s}", .{config_path});
 
-    // Route through Config.loadProfile (not a raw file read) so fields missing from the on-disk JSON get the same Zig-side defaults as the main app, instead of showing up blank in the dialog.
+    // Route through loadProfile (not a raw file read) so fields missing from the on-disk JSON get the same Zig-side defaults as the main app, instead of showing up blank in the dialog.
     const profile_name = currentProfileFilename();
-    var cfg = config_mod.Config.loadProfile(allocator, profile_name) catch |err| {
+    var cfg = config_mod.loadProfile(allocator, profile_name) catch |err| {
         slog.err("Failed to load config profile '{s}': {}", .{ profile_name, err });
         e.returnString("{\"error\": \"Failed to open config file\"}");
         return;
@@ -551,7 +551,7 @@ fn saveConfig(e: *webui.Event) void {
     };
     defer cfg.deinit();
 
-    cfg.saveToJsonFile(allocator, config_path) catch |err| {
+    config_mod.saveProfile(&cfg, allocator, config_path) catch |err| {
         slog.err("Failed to write config file: {}", .{err});
         e.returnString("{\"success\": false, \"error\": \"Failed to write file\"}");
         return;
@@ -1189,7 +1189,7 @@ fn findWindowRectByCharacterName(character_name: []const u8) WindowRectError!win
 /// Loads the current profile's config, or writes a load-failure JSON response and returns null.
 fn loadCurrentProfileOrRespond(e: *webui.Event, allocator: std.mem.Allocator) ?config_mod.Config {
     const profile_name = currentProfileFilename();
-    return config_mod.Config.loadProfile(allocator, profile_name) catch |err| {
+    return config_mod.loadProfile(allocator, profile_name) catch |err| {
         slog.err("Failed to load config profile '{s}': {}", .{ profile_name, err });
         e.returnString("{\"success\": false, \"error\": \"Failed to load profile\"}");
         return null;
@@ -1948,7 +1948,7 @@ fn switchProfile(e: *webui.Event) void {
     slog.debug("Switching to profile: {s}", .{profile_name});
 
     const allocator = g_allocator;
-    const new_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, profile_name }) catch {
+    const new_path = config_mod.profilePath(allocator, profile_name) catch {
         e.returnString("{\"success\": false, \"error\": \"Failed to allocate path\"}");
         return;
     };
@@ -1976,19 +1976,11 @@ fn switchProfile(e: *webui.Event) void {
     e.returnString("{\"success\": true}");
 }
 
-/// Builds and writes a fresh default profile file named `filename` at `path`.
-fn writeDefaultProfileFile(allocator: std.mem.Allocator, path: []const u8, filename: []const u8, accent_color: ?u32) !void {
-    var defaults = try config_mod.Config.getDefaultsWithProfile(allocator, filename);
-    defer defaults.deinit();
-    if (accent_color) |c| defaults.accentColor = c;
-    try config_mod.Config.saveToJsonFile(&defaults, allocator, path);
-}
-
 fn createProfile(e: *webui.Event) void {
     const profile_name = config_mod.clampProfileName(e.getStringAt(0));
     const accent_color_str = e.getStringAt(1);
     const accent_color: ?u32 = if (accent_color_str.len > 0)
-        config_mod.Config.parseHexColor(accent_color_str) catch null
+        config_mod.parseHexColor(accent_color_str) catch null
     else
         null;
     const allocator = g_allocator;
@@ -1999,7 +1991,7 @@ fn createProfile(e: *webui.Event) void {
     };
     defer allocator.free(profile_filename);
 
-    const profile_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, profile_filename }) catch {
+    const profile_path = config_mod.profilePath(allocator, profile_filename) catch {
         e.returnString("{\"success\": false, \"error\": \"Memory allocation failed\"}");
         return;
     };
@@ -2007,7 +1999,8 @@ fn createProfile(e: *webui.Event) void {
 
     const file = std.Io.Dir.cwd().openFile(g_io, profile_path, .{}) catch |err| {
         if (err == error.FileNotFound) {
-            writeDefaultProfileFile(allocator, profile_path, profile_filename, accent_color) catch {
+            config_mod.writeDefaultProfile(allocator, profile_filename, accent_color) catch |write_err| {
+                slog.err("Failed to create profile '{s}': {}", .{ profile_filename, write_err });
                 e.returnString("{\"success\": false, \"error\": \"Failed to write profile\"}");
                 return;
             };
@@ -2025,7 +2018,7 @@ fn createProfile(e: *webui.Event) void {
 
 /// Overwrites a copied profile's accentColor in place, avoiding a full JS-side re-serialize.
 fn patchProfileAccentColor(allocator: std.mem.Allocator, filename: []const u8, accent_color: u32) void {
-    var cfg = config_mod.Config.loadProfile(allocator, filename) catch |err| {
+    var cfg = config_mod.loadProfile(allocator, filename) catch |err| {
         slog.warn("Failed to load copied profile '{s}' to patch accent color: {}", .{ filename, err });
         return;
     };
@@ -2033,13 +2026,13 @@ fn patchProfileAccentColor(allocator: std.mem.Allocator, filename: []const u8, a
 
     cfg.accentColor = accent_color;
 
-    const profile_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, filename }) catch |err| {
+    const profile_path = config_mod.profilePath(allocator, filename) catch |err| {
         slog.warn("Failed to allocate path to patch accent color for '{s}': {}", .{ filename, err });
         return;
     };
     defer allocator.free(profile_path);
 
-    config_mod.Config.saveToJsonFile(&cfg, allocator, profile_path) catch |err| {
+    config_mod.saveProfile(&cfg, allocator, profile_path) catch |err| {
         slog.warn("Failed to save patched accent color for '{s}': {}", .{ filename, err });
     };
 }
@@ -2081,11 +2074,11 @@ fn copyProfile(e: *webui.Event) void {
     const target_name = config_mod.clampProfileName(target_val.string);
 
     const accent_color: ?u32 = if (root.object.get("accentColor")) |v|
-        (if (v == .string) config_mod.Config.parseHexColor(v.string) catch null else null)
+        (if (v == .string) config_mod.parseHexColor(v.string) catch null else null)
     else
         null;
 
-    const source_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, source_name }) catch {
+    const source_path = config_mod.profilePath(allocator, source_name) catch {
         e.returnString("{\"success\": false, \"error\": \"Memory allocation failed\"}");
         return;
     };
@@ -2097,7 +2090,7 @@ fn copyProfile(e: *webui.Event) void {
     };
     defer allocator.free(target_filename);
 
-    const target_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, target_filename }) catch {
+    const target_path = config_mod.profilePath(allocator, target_filename) catch {
         e.returnString("{\"success\": false, \"error\": \"Memory allocation failed\"}");
         return;
     };
@@ -2132,7 +2125,7 @@ fn deleteProfile(e: *webui.Event) void {
         return;
     }
 
-    const profile_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, profile_name }) catch {
+    const profile_path = config_mod.profilePath(allocator, profile_name) catch {
         e.returnString("{\"success\": false, \"error\": \"Memory allocation failed\"}");
         return;
     };
@@ -2187,13 +2180,8 @@ fn resetProfile(e: *webui.Event) void {
     const profile_name = e.getString();
     const allocator = g_allocator;
 
-    const profile_path = std.fs.path.join(allocator, &[_][]const u8{ config_mod.PROFILES_DIR, profile_name }) catch {
-        e.returnString("{\"success\": false, \"error\": \"Memory allocation failed\"}");
-        return;
-    };
-    defer allocator.free(profile_path);
-
-    writeDefaultProfileFile(allocator, profile_path, profile_name, null) catch {
+    config_mod.writeDefaultProfile(allocator, profile_name, null) catch |err| {
+        slog.err("Failed to reset profile '{s}': {}", .{ profile_name, err });
         e.returnString("{\"success\": false, \"error\": \"Failed to write profile\"}");
         return;
     };

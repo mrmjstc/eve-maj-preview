@@ -144,7 +144,7 @@ fn applyToOneFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !A
         return .{ .path = path_copy, .success = true, .changed = false, .error_message = null };
     }
 
-    config_mod.Config.atomicWriteFile(allocator, io, path, outcome.text) catch |err| {
+    config_mod.atomicWriteFile(allocator, io, path, outcome.text) catch |err| {
         return .{ .path = path_copy, .success = false, .changed = false, .error_message = @errorName(err) };
     };
 

@@ -314,7 +314,7 @@ fn mainImpl(init: std.process.Init) !void {
         }
     }
 
-    g_config = try config_mod.Config.loadProfile(g_allocator, profile_name);
+    g_config = try config_mod.loadProfile(g_allocator, profile_name);
     defer g_config.deinit();
 
     // Not profile_name: loadProfile() may have fallen back to default, and this heals global settings to match.
@@ -522,9 +522,9 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     const timer_hwnd = g_timer_hwnd orelse return error.NoTimerWindow;
 
     // Loaded up front so we can decide below whether chatlog monitoring needs a rebuild.
-    const new_config = config_mod.Config.loadProfile(g_allocator, new_profile_name) catch |err| blk: {
+    const new_config = config_mod.loadProfile(g_allocator, new_profile_name) catch |err| blk: {
         slog.err("Failed to load new profile, reverting to default", .{});
-        break :blk config_mod.Config.load(g_allocator) catch {
+        break :blk config_mod.loadProfile(g_allocator, config_mod.DEFAULT_PROFILE) catch {
             // Original profile-load error, not the fallback's.
             return err;
         };

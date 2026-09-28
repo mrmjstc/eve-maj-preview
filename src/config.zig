@@ -1,5 +1,4 @@
 const std = @import("std");
-const win32 = @import("platform/win32.zig");
 const log = @import("log.zig");
 const color = @import("util/color.zig");
 const wire = @import("config/wire.zig");
@@ -17,6 +16,7 @@ const thumbnail = @import("config/thumbnail.zig");
 const display = @import("config/display.zig");
 const behavior = @import("config/behavior.zig");
 const auto_colors = @import("config/auto_colors.zig");
+const profiles = @import("config/profiles.zig");
 
 const slog = log.scoped("config");
 
@@ -27,6 +27,11 @@ pub const PROFILES_DIR = files.PROFILES_DIR;
 pub const DEFAULT_PROFILE = files.DEFAULT_PROFILE;
 pub const GLOBAL_SETTINGS_FILE = files.GLOBAL_SETTINGS_FILE;
 pub const MAX_PROFILE_NAME_LEN: usize = 16;
+pub const atomicWriteFile = files.atomicWriteFile;
+pub const profilePath = profiles.path;
+pub const loadProfile = profiles.load;
+pub const saveProfile = profiles.save;
+pub const writeDefaultProfile = profiles.writeDefault;
 
 /// Byte slicing is safe: the dialog only allows ASCII profile names.
 pub fn clampProfileName(name: []const u8) []const u8 {
@@ -41,6 +46,7 @@ pub const PROFILE_FORMAT_VERSION: u32 = 2;
 pub const clampValue = ranges_mod.clampValue;
 
 pub const Argb = wire.Argb;
+pub const parseHexColor = wire.parseHexColor;
 
 pub const OrePriceConfig = global.OrePriceConfig;
 pub const DEFAULT_ORE_TABLE = global.DEFAULT_ORE_TABLE;
@@ -123,18 +129,6 @@ pub const Config = struct {
         errdefer cfg.deinit();
         try wire.fromWireInto(Config, w, allocator, &cfg);
 
-        if (cfg.chatlog.chatlogDir.len == 0 or cfg.chatlog.gamelogDir.len == 0) {
-            const dirs = try defaultLogDirs(allocator);
-            if (cfg.chatlog.chatlogDir.len == 0) {
-                allocator.free(cfg.chatlog.chatlogDir);
-                cfg.chatlog.chatlogDir = dirs.chatlog;
-            } else allocator.free(dirs.chatlog);
-            if (cfg.chatlog.gamelogDir.len == 0) {
-                allocator.free(cfg.chatlog.gamelogDir);
-                cfg.chatlog.gamelogDir = dirs.gamelog;
-            } else allocator.free(dirs.gamelog);
-        }
-
         if (cfg.formatVersion < 2) {
             for (cfg.characters.items) |*char| {
                 if (char.position) |pos| char.position = pos.scaleFromLegacyDpiUnaware();
@@ -148,76 +142,12 @@ pub const Config = struct {
         return cfg;
     }
 
-    fn ensureProfilesDir(allocator: std.mem.Allocator) !void {
-        const cwd = std.Io.Dir.cwd();
-
-        cwd.createDir(files.g_io, PROFILES_DIR, .default_dir) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
-            else => return err,
-        };
-
-        const profile_path = try std.fs.path.join(allocator, &[_][]const u8{ PROFILES_DIR, DEFAULT_PROFILE });
-        defer allocator.free(profile_path);
-
-        cwd.access(files.g_io, profile_path, .{}) catch |err| switch (err) {
-            error.FileNotFound => {
-                slog.debug("Default profile not found, creating: {s}", .{profile_path});
-                try createDefaultProfile(allocator, profile_path);
-                slog.info("Created default profile: {s}", .{profile_path});
-            },
-            else => return err,
-        };
-    }
-
-    fn createDefaultProfile(allocator: std.mem.Allocator, path: []const u8) !void {
-        var default_config = try getDefaultsWithProfile(allocator, DEFAULT_PROFILE);
-        defer default_config.deinit();
-        try saveToJsonFile(&default_config, allocator, path);
-    }
-
-    pub const atomicWriteFile = files.atomicWriteFile;
-
     /// Caller owns the returned slice.
-    pub fn toJsonString(cfg: *const Config, allocator: std.mem.Allocator) ![]u8 {
-        var arena = std.heap.ArenaAllocator.init(allocator);
-        defer arena.deinit();
-        const saved = try cfg.toWire(arena.allocator());
-        return std.json.Stringify.valueAlloc(allocator, saved, .{
-            .whitespace = .indent_2,
-            .emit_null_optional_fields = false,
-        });
+    pub fn toJsonString(self: *const Config, allocator: std.mem.Allocator) ![]u8 {
+        return wire.toJsonAlloc(allocator, self);
     }
 
-    pub fn saveToJsonFile(cfg: *const Config, allocator: std.mem.Allocator, path: []const u8) !void {
-        const json = try cfg.toJsonString(allocator);
-        defer allocator.free(json);
-
-        try atomicWriteFile(allocator, files.g_io, path, json);
-        slog.info("Saved JSON config to: {s}", .{path});
-    }
-
-    /// A parse failure logs and falls back to this profile's defaults rather than propagating.
-    fn loadProfileFromJson(allocator: std.mem.Allocator, profile_path: []const u8, profile_name: []const u8) !Config {
-        const file = try std.Io.Dir.cwd().openFile(files.g_io, profile_path, .{});
-        defer file.close(files.g_io);
-
-        const file_size = try file.length(files.g_io);
-        if (file_size > files.MAX_CONFIG_FILE_SIZE) {
-            slog.err("Config file '{s}' too large: {} bytes (max: {} bytes)", .{ profile_path, file_size, files.MAX_CONFIG_FILE_SIZE });
-            return error.ConfigFileTooLarge;
-        }
-
-        const content = try allocator.alloc(u8, file_size);
-        defer allocator.free(content);
-        const bytes_read = try file.readPositionalAll(files.g_io, content, 0);
-
-        return buildConfigFromJson(allocator, content[0..bytes_read], profile_name) catch |err| {
-            slog.err("Failed to parse config file '{s}' ({}), falling back to defaults", .{ profile_path, err });
-            return getDefaultsWithProfile(allocator, profile_name);
-        };
-    }
-
-    /// Unlike loadProfileFromJson it propagates parse errors, so the dialog can reject a malformed save.
+    /// Unlike loadProfile it propagates parse errors, so the dialog can reject a malformed save.
     pub fn buildConfigFromJson(allocator: std.mem.Allocator, json_text: []const u8, profile_name: []const u8) !Config {
         const parsed = try wire.parse(Config.Wire, allocator, json_text);
         defer parsed.deinit();
@@ -225,66 +155,6 @@ pub const Config = struct {
         var config = try Config.fromWire(parsed.value, allocator, profile_name);
         config.validate();
         return config;
-    }
-
-    /// Accepts 0xRRGGBB, 0xAARRGGBB, #RRGGBB, or RRGGBB.
-    pub const parseHexColor = wire.parseHexColor;
-
-    pub fn loadProfile(allocator: std.mem.Allocator, profile_name: []const u8) !Config {
-        try ensureProfilesDir(allocator);
-
-        const profile_path = try std.fs.path.join(allocator, &[_][]const u8{ PROFILES_DIR, profile_name });
-        defer allocator.free(profile_path);
-
-        slog.info("Loading JSON config from: {s}", .{profile_path});
-        return loadProfileFromJson(allocator, profile_path, profile_name) catch |err| {
-            // ensureProfilesDir() above guarantees DEFAULT_PROFILE exists, so this can't recurse forever.
-            if (err == error.FileNotFound and !std.mem.eql(u8, profile_name, DEFAULT_PROFILE)) {
-                slog.warn("Profile '{s}' not found, falling back to default profile", .{profile_name});
-                return loadProfile(allocator, DEFAULT_PROFILE);
-            }
-            return err;
-        };
-    }
-
-    pub fn load(allocator: std.mem.Allocator) !Config {
-        return loadProfile(allocator, DEFAULT_PROFILE);
-    }
-
-    const FOLDERID_Documents = win32.GUID{
-        .Data1 = 0xFDD39AD0,
-        .Data2 = 0x238F,
-        .Data3 = 0x46AF,
-        .Data4 = [8]u8{ 0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7 },
-    };
-
-    /// Asks the shell rather than assuming %USERPROFILE%/Documents, which OneDrive can redirect; EVE logs to wherever this resolves.
-    fn getDocumentsDir(allocator: std.mem.Allocator) ![]u8 {
-        const path_utf8 = try win32.getKnownFolderPath(allocator, FOLDERID_Documents);
-        std.mem.replaceScalar(u8, path_utf8, '\\', '/');
-        return path_utf8;
-    }
-
-    /// Resolved from the OS at runtime, so it can't be a field default.
-    fn defaultLogDirs(allocator: std.mem.Allocator) !struct { chatlog: []u8, gamelog: []u8 } {
-        const documents_dir = getDocumentsDir(allocator) catch blk: {
-            slog.warn("Failed to resolve Documents known folder, falling back to USERPROFILE/Documents", .{});
-            const userprofile_raw = files.g_environ_map.get("USERPROFILE") orelse {
-                slog.warn("USERPROFILE environment variable not found", .{});
-                return error.MissingEnvironmentVariable;
-            };
-            const documents_dir = try std.fmt.allocPrint(allocator, "{s}/Documents", .{userprofile_raw});
-            std.mem.replaceScalar(u8, documents_dir, '\\', '/');
-            break :blk documents_dir;
-        };
-        defer allocator.free(documents_dir);
-
-        const chatlog_dir = try std.fmt.allocPrint(allocator, "{s}/EVE/logs/Chatlogs", .{documents_dir});
-        errdefer allocator.free(chatlog_dir);
-        const gamelog_dir = try std.fmt.allocPrint(allocator, "{s}/EVE/logs/Gamelogs", .{documents_dir});
-        errdefer allocator.free(gamelog_dir);
-
-        return .{ .chatlog = chatlog_dir, .gamelog = gamelog_dir };
     }
 
     pub fn getDefaultsWithProfile(allocator: std.mem.Allocator, profile_name: []const u8) !Config {
@@ -461,23 +331,13 @@ pub const Config = struct {
     /// One log call per JSON line, since the logger silently drops any single write over 2048 bytes.
     pub fn logSettings(self: *const Config) void {
         slog.info("Config loaded from profile: {s}", .{self.profile_name});
-
-        const json = self.toJsonString(self.allocator) catch |err| {
-            slog.warn("Failed to serialize config for logging: {}", .{err});
-            return;
-        };
-        defer self.allocator.free(json);
-
-        var lines = std.mem.splitScalar(u8, json, '\n');
-        while (lines.next()) |line| {
-            slog.debug("{s}", .{line});
-        }
+        wire.logJson(self.allocator, self);
     }
 
     pub fn saveCurrentProfile(self: *const Config, allocator: std.mem.Allocator) !void {
-        const profile_path = try std.fs.path.join(allocator, &[_][]const u8{ PROFILES_DIR, self.profile_name });
+        const profile_path = try profiles.path(allocator, self.profile_name);
         defer allocator.free(profile_path);
-        try saveToJsonFile(self, allocator, profile_path);
+        try profiles.save(self, allocator, profile_path);
     }
 
     /// Persists the entire config as JSON, not just this one field.

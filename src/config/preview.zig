@@ -65,7 +65,7 @@ pub fn apply(cfg: *Config, allocator: std.mem.Allocator, json_data: []const u8) 
 
 /// Restores everything `apply` can change from the profile on disk, which is a no-op in effect if the dialog saved first.
 pub fn revert(cfg: *Config, allocator: std.mem.Allocator) !void {
-    var fresh = try Config.loadProfile(allocator, cfg.profile_name);
+    var fresh = try config_mod.loadProfile(allocator, cfg.profile_name);
     // Swapped-out preview values end up in `fresh`, so this frees them.
     defer fresh.deinit();
 

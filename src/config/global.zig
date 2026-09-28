@@ -267,14 +267,7 @@ pub const GlobalConfig = struct {
 
     /// Caller owns the returned slice.
     pub fn toJsonString(self: *GlobalConfig, allocator: std.mem.Allocator) ![]u8 {
-        var arena = std.heap.ArenaAllocator.init(allocator);
-        defer arena.deinit();
-        const saved = try self.toWire(arena.allocator());
-
-        return std.json.Stringify.valueAlloc(allocator, saved, .{
-            .whitespace = .indent_2,
-            .emit_null_optional_fields = false,
-        });
+        return wire.toJsonAlloc(allocator, self);
     }
 
     pub fn save(self: *GlobalConfig) !void {
@@ -286,18 +279,8 @@ pub const GlobalConfig = struct {
         slog.debug("Saved global settings", .{});
     }
 
-    /// One log call per JSON line, like Config.logSettings.
     pub fn logSettings(self: *GlobalConfig) void {
-        const json = self.toJsonString(self.allocator) catch |err| {
-            slog.warn("Failed to serialize global settings for logging: {}", .{err});
-            return;
-        };
-        defer self.allocator.free(json);
-
-        var lines = std.mem.splitScalar(u8, json, '\n');
-        while (lines.next()) |line| {
-            slog.debug("{s}", .{line});
-        }
+        wire.logJson(self.allocator, self);
     }
 
     pub fn updateLastUsed(self: *GlobalConfig, profile_name: []const u8) !void {
