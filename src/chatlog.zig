@@ -889,8 +889,7 @@ pub const ChatlogMonitor = struct {
         };
     }
 
-    /// Push a notification to the main thread. Safe to call from either thread - the
-    /// enabled/type/throttle checks in Painter.notify also run here, on drain.
+    /// Safe from either thread; enabled/type/throttle gating happens in Painter.notify when the main thread drains it.
     fn queueNotification(self: *ChatlogMonitor, character_name: []const u8, n: notification_mod.Notification) void {
         var event = NotificationEvent{
             .character_name = "",
@@ -1257,13 +1256,12 @@ pub const ChatlogMonitor = struct {
 
         // Fast pre-filter: Check for relevant keywords before expensive parsing
         if (state.is_chatlog) {
-            // Chatlog: Look for "EVE System" (indicates "Channel changed to Local:")
+            // "EVE System" posts the "Channel changed to Local" line.
             if (std.mem.indexOf(u8, clean_line, "EVE System")) |_| {
                 if (try self.parseSystemChangeFromChat(state, clean_line)) |system| {
-                    self.handleSystemChange(state, system, "chatlog");
+                    self.handleSystemChange(state, system, .chatlog);
                 }
             }
-            // Early exit for chatlog - only one pattern to match
             return;
         }
 
@@ -1283,68 +1281,54 @@ pub const ChatlogMonitor = struct {
             'J' => {
                 if (std.mem.startsWith(u8, message_part, "Jumping from")) {
                     if (try self.parseJumpFromGamelog(state, clean_line)) |system| {
-                        self.handleSystemChange(state, system, "jump");
+                        self.handleSystemChange(state, system, .jump);
                     }
                 }
             },
             'U' => {
                 if (std.mem.startsWith(u8, message_part, "Undocking from")) {
                     if (try self.parseUndockFromGamelog(state, clean_line)) |system| {
-                        self.handleSystemChange(state, system, "undock");
+                        self.handleSystemChange(state, system, .undock);
                     }
                 }
             },
             '(' => {
-                // Event type markers - check second character for quick dispatch
                 if (message_part.len < 2) return;
 
                 switch (message_part[1]) {
                     'n' => {
-                        // "(notify)" - fleet commands, compression, decloak, etc.
                         if (std.mem.startsWith(u8, message_part, "(notify)")) {
-                            // Conduit Field jump: treat as a system change in addition to showing a notification
-                            if (std.mem.indexOf(u8, message_part, "Conduit Field") != null and
-                                std.mem.indexOf(u8, message_part, "jumps you to") != null)
-                            {
-                                if (try self.parseConduitJumpFromGamelog(state, clean_line)) |system| {
-                                    self.handleSystemChange(state, system, "conduit");
-                                }
+                            // A conduit jump moves the character as well as showing a notification.
+                            if (gamelog_events.conduitDestination(clean_line)) |system| {
+                                self.handleSystemChange(state, system, .conduit);
                             }
-                            self.handleCombatEvent(state, clean_line);
+                            self.handleGamelogEvent(state, clean_line);
                         }
                     },
                     'q' => {
-                        // "(question)" - fleet invites, confirmations
                         if (std.mem.startsWith(u8, message_part, "(question)")) {
-                            self.handleCombatEvent(state, clean_line);
+                            self.handleGamelogEvent(state, clean_line);
                         }
                     },
                     'c' => {
-                        // "(combat)" - damage, scrambles (usually filtered)
                         if (std.mem.startsWith(u8, message_part, "(combat)")) {
-                            self.handleCombatEvent(state, clean_line);
+                            self.handleGamelogEvent(state, clean_line);
                         }
                     },
                     'm' => {
-                        // "(mining)" - mining yields
                         if (std.mem.startsWith(u8, message_part, "(mining)")) {
                             self.handleMiningEvent(state, clean_line);
                         }
                     },
                     'b' => {
-                        // "(bounty)" - bounty payouts
                         if (std.mem.startsWith(u8, message_part, "(bounty)")) {
                             self.handleBountyEvent(state, clean_line);
                         }
                     },
                     'N' => {
-                        // "(None)" - system jumps, conversation invites
                         if (std.mem.startsWith(u8, message_part, "(None)")) {
-                            self.handleCombatEvent(state, clean_line);
+                            self.handleGamelogEvent(state, clean_line);
                         }
-                    },
-                    'h' => {
-                        // "(hint)" - skip these entirely
                     },
                     else => {},
                 }
@@ -1353,9 +1337,10 @@ pub const ChatlogMonitor = struct {
         }
     }
 
-    /// Handle system change with deduplication and event emission
-    /// Takes borrowed slice from system_name_buffer - will be copied into event
-    fn handleSystemChange(self: *ChatlogMonitor, state: *LogFileState, system: []const u8, event_type: []const u8) void {
+    const SystemChangeSource = enum { chatlog, jump, undock, conduit };
+
+    /// Ignores a repeat of the last system; `system` is borrowed and copied into the queued events.
+    fn handleSystemChange(self: *ChatlogMonitor, state: *LogFileState, system: []const u8, source: SystemChangeSource) void {
         const system_hash = std.hash.Wyhash.hash(0, system);
         const is_different = (state.last_system_hash != system_hash);
 
@@ -1363,22 +1348,22 @@ pub const ChatlogMonitor = struct {
             state.last_system_hash = system_hash;
 
             // Only jumps pop a .SystemChange notification: undock and the chatlog's Local detection race the same event and would double-fire it.
-            if (std.mem.eql(u8, event_type, "jump")) {
+            if (source == .jump) {
                 self.queueNotification(state.character_name, .{ .ntype = .SystemChange, .target = system });
             }
 
             // Undock/chatlog-detect are same-system confirmations, not travel.
-            const is_jump = std.mem.eql(u8, event_type, "jump") or std.mem.eql(u8, event_type, "conduit");
+            const is_jump = source == .jump or source == .conduit;
 
             // event_ts=0: live tailing has no timestamp but doesn't need one - lines are strictly ordered
             self.queueSystemUpdate(state.character_name, system, 0, is_jump);
 
-            slog.info("System change ({s}): {s} -> {s}", .{ event_type, state.character_name, system });
+            slog.info("System change ({s}): {s} -> {s}", .{ @tagName(source), state.character_name, system });
         }
     }
 
-    /// Handle combat event and update painter notification
-    fn handleCombatEvent(self: *ChatlogMonitor, state: *LogFileState, event_text: []const u8) void {
+    /// Feeds the DPS tracker and queues any notification a (notify)/(question)/(combat)/(None) line warrants.
+    fn handleGamelogEvent(self: *ChatlogMonitor, state: *LogFileState, event_text: []const u8) void {
         // Stripped once and shared below - re-stripping per call would double the cost on this, the highest-volume line type.
         var stripped_buf: [512]u8 = undefined;
         const stripped_text = activity_mod.stripHtml(event_text, &stripped_buf);
@@ -1395,11 +1380,9 @@ pub const ChatlogMonitor = struct {
         }
 
         const n = gamelog_events.classify(stripped_text) orelse return;
-
-        // Enabled/type/throttle gating happens in Painter.notify itself on drain, so it isn't duplicated here.
         self.queueNotification(state.character_name, n);
 
-        slog.debug("Combat event: {s} -> {s}", .{ state.character_name, event_text });
+        slog.debug("Gamelog event: {s} -> {s}", .{ state.character_name, event_text });
     }
 
     /// Parses the log line, looks up the ore's m3/unit and ISK/unit in GlobalConfig.oreTable, and records both in the mining tracker.
@@ -1451,26 +1434,6 @@ pub const ChatlogMonitor = struct {
     /// Parse "Channel changed to Local : SystemName" from chatlog
     fn parseSystemChangeFromChat(self: *ChatlogMonitor, state: *LogFileState, line: []const u8) !?[]const u8 {
         return self.extractSystemAfterMarkers(state, line, "Channel changed to Local", ":");
-    }
-
-    /// Parse "A Conduit Field activated by X jumps you to [System]." from gamelog notify.
-    /// The activating character's own line instead reads "...jumps you to [System], bringing
-    /// along N passengers." so the comma must terminate the system name too.
-    /// Returns borrowed slice from state.system_name_buffer - valid until next parse
-    fn parseConduitJumpFromGamelog(self: *ChatlogMonitor, state: *LogFileState, line: []const u8) !?[]const u8 {
-        const needle = "jumps you to ";
-        if (std.mem.indexOf(u8, line, needle)) |pos| {
-            const remaining = line[pos + needle.len ..];
-            const end_pos = std.mem.indexOfAny(u8, remaining, "\r\n.,") orelse remaining.len;
-            const system = std.mem.trim(u8, remaining[0..end_pos], " \t");
-
-            if (system.len == 0) return null;
-
-            state.system_name_buffer.clearRetainingCapacity();
-            try state.system_name_buffer.appendSlice(self.allocator, system);
-            return state.system_name_buffer.items;
-        }
-        return null;
     }
 
     /// Parse "Jumping from [SystemA] to [SystemB]" from gamelog

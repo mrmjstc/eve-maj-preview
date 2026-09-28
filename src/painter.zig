@@ -670,7 +670,7 @@ pub const Painter = struct {
             return;
         };
         var text_buf: [NOTIFICATION_TEXT_MAX]u8 = undefined;
-        const text = notification_mod.defaultText(n, &text_buf);
+        const text = self.renderText(n, &text_buf);
         const queued = self.queueNotification(thumbnail, text, n.ntype, true) catch |err| {
             slog.err("Failed to show {s} notification for {s}: {}", .{ @tagName(n.ntype), thumbnail.character_name, err });
             return;
@@ -682,6 +682,12 @@ pub const Painter = struct {
         else
             null;
         alert_effects.play(&self.config.thumbnail.notifications, self.config.thumbnail.notifications.getTypeConfig(n.ntype), text, spoken_name);
+    }
+
+    /// The single place a notification becomes text; the returned slice may point into `buf`.
+    fn renderText(self: *const Painter, n: notification_mod.Notification, buf: *[NOTIFICATION_TEXT_MAX]u8) []const u8 {
+        _ = self;
+        return notification_mod.defaultText(n, buf);
     }
 
     /// Applies the type's enable/mute/suppress/throttle rules and queues the notification; false if it was filtered out.
@@ -722,7 +728,7 @@ pub const Painter = struct {
     /// Shows `n` on every thumbnail for a global user action; kept out of history, and sound/speech play once rather than per thumbnail.
     pub fn notifyAll(self: *Painter, n: notification_mod.Notification) void {
         var text_buf: [NOTIFICATION_TEXT_MAX]u8 = undefined;
-        const text = notification_mod.defaultText(n, &text_buf);
+        const text = self.renderText(n, &text_buf);
 
         var shown = false;
         for (self.thumbnails.items) |*thumbnail| {
@@ -742,7 +748,7 @@ pub const Painter = struct {
         type_config: config_mod.NotificationTypeConfig,
     ) !void {
         var text_buf: [NOTIFICATION_TEXT_MAX]u8 = undefined;
-        const notification_text = notification_mod.defaultText(notification_mod.sample(notification_type), &text_buf);
+        const notification_text = self.renderText(notification_mod.sample(notification_type), &text_buf);
         const now = win32.Ticks.now();
         // A permanent (0) duration would never clear a test.
         const duration_ms = if (type_config.duration_ms == 0) TEST_NOTIFICATION_PERMANENT_FALLBACK_MS else type_config.duration_ms;
