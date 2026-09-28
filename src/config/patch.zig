@@ -34,6 +34,18 @@ pub fn isKeyedMap(comptime T: type) bool {
     return @typeInfo(T) == .@"struct" and @hasDecl(T, "childAt");
 }
 
+/// A struct edited field by field: a section with a generated `Wire`, or a plain one saved as its own fields (SnappingConfig, Position).
+fn isStruct(comptime T: type) bool {
+    return @typeInfo(T) == .@"struct" and wire.ListItem(T) == null and !isKeyedMap(T);
+}
+
+/// The struct inside an optional one, such as a character's `?Position`.
+fn OptionalStruct(comptime T: type) ?type {
+    const info = @typeInfo(T);
+    if (info != .optional or !isStruct(info.optional.child)) return null;
+    return info.optional.child;
+}
+
 pub fn ChildOf(comptime T: type) type {
     const Return = @typeInfo(@TypeOf(T.childAt)).@"fn".return_type.?;
     return @typeInfo(@typeInfo(Return).optional.child).pointer.child;
@@ -42,10 +54,10 @@ pub fn ChildOf(comptime T: type) type {
 /// Whether `path` names a section (or keyed map child) whose fields can be set one by one, rather than a value set whole.
 pub fn isSection(comptime T: type, path: []const []const u8) bool {
     if (comptime isKeyedMap(T)) return path.len == 0 or isSection(ChildOf(T), path[1..]);
-    if (comptime !wire.isNested(T)) return false;
+    if (comptime !isStruct(T)) return false;
     if (path.len == 0) return true;
     inline for (comptime wire.savedFields(T)) |f| {
-        if (std.mem.eql(u8, path[0], f.name)) return isSection(comptime (wire.OptionalNested(f.type) orelse f.type), path[1..]);
+        if (std.mem.eql(u8, path[0], f.name)) return isSection(comptime (OptionalStruct(f.type) orelse f.type), path[1..]);
     }
     return false;
 }
@@ -59,7 +71,7 @@ pub fn assignIds(comptime T: type, value: *T) void {
                     if (item.id == 0) item.id = nextId();
                 }
             }
-        } else if (comptime wire.isNested(f.type) and !isKeyedMap(f.type)) {
+        } else if (comptime isStruct(f.type)) {
             assignIds(f.type, &@field(value, f.name));
         }
     }
@@ -125,11 +137,11 @@ fn writeFieldAt(jw: anytype, comptime F: type, comptime name: []const u8, ptr: *
             return writeAt(jw, Item, &ptr.items[index], path[1..]);
         } else return error.ListIsNotKeyed;
     }
-    if (comptime wire.OptionalNested(F)) |N| {
+    if (comptime OptionalStruct(F)) |N| {
         if (ptr.*) |*v| return writeAt(jw, N, v, path);
         return jw.write(null);
     }
-    if (comptime wire.isNested(F)) return writeAt(jw, F, ptr, path);
+    if (comptime isStruct(F)) return writeAt(jw, F, ptr, path);
     return error.InvalidPath;
 }
 
@@ -186,12 +198,12 @@ fn applyField(comptime F: type, comptime name: []const u8, ptr: *F, default: ?F,
             return null;
         } else return error.ListIsNotKeyed;
     }
-    if (comptime wire.OptionalNested(F)) |N| {
-        // Editing one field of an unset override starts it from the defaults.
-        if (ptr.* == null) ptr.* = N{};
+    if (comptime OptionalStruct(F)) |N| {
+        // Editing one field of an unset override starts it from the defaults, and zero where there are none (Position).
+        if (ptr.* == null) ptr.* = std.mem.zeroInit(N, .{});
         return applyIn(N, &ptr.*.?, path, kind, op, ctx);
     }
-    if (comptime wire.isNested(F)) return applyIn(F, ptr, path, kind, op, ctx);
+    if (comptime isStruct(F)) return applyIn(F, ptr, path, kind, op, ctx);
     return error.InvalidPath;
 }
 
