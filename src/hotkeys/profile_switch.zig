@@ -15,7 +15,7 @@ var g_profile_switch_buffer: [256]u8 = undefined;
 pub fn cycle(allocator: std.mem.Allocator, current_profile: []const u8, forward: bool) void {
     slog.info("{s} profile hotkey pressed", .{if (forward) "Next" else "Previous"});
 
-    var profiles = config_mod.GlobalSettings.enumerateProfiles(allocator) catch |err| {
+    var profiles = config_mod.GlobalConfig.enumerateProfiles(allocator) catch |err| {
         slog.err("Failed to enumerate profiles: {}", .{err});
         return;
     };
@@ -38,7 +38,7 @@ pub fn cycle(allocator: std.mem.Allocator, current_profile: []const u8, forward:
     requestSwitch(&g_profile_cycle_buffer, target_profile);
 }
 
-pub fn switchTo(gs: *const config_mod.GlobalSettings, current_profile: []const u8, profile_index: usize) void {
+pub fn switchTo(gs: *const config_mod.GlobalConfig, current_profile: []const u8, profile_index: usize) void {
     if (profile_index >= gs.profileSwitchHotkeys.items.len) {
         slog.err("Invalid profile switch index {}", .{profile_index});
         return;

@@ -88,25 +88,16 @@ var g_ui_scale: f32 = 1.0;
 
 /// Converts the 96-DPI design size into the physical pixels setSize/SetWindowPos expect at this DPI.
 fn targetPhysicalSize(dpi: u32) PhysicalSize {
-    const scale = @as(f32, @floatFromInt(dpi)) / 96.0 * g_ui_scale;
+    const scale = win32.dpiToScale(dpi) * g_ui_scale;
     return .{
         .width = @intFromFloat(@round(DIALOG_DESIGN_WIDTH * scale)),
         .height = @intFromFloat(@round(DIALOG_DESIGN_HEIGHT * scale)),
     };
 }
 
-/// DPI of the monitor under `point`; falls back to 96 (unscaled) if it can't be resolved.
-fn dpiForPoint(point: win32.POINT) u32 {
-    const monitor = win32.MonitorFromPoint(point, win32.MONITOR_DEFAULTTONEAREST) orelse return 96;
-    var dpi_x: win32.UINT = 96;
-    var dpi_y: win32.UINT = 96;
-    _ = win32.GetDpiForMonitor(monitor, win32.MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y);
-    return dpi_x;
-}
-
 /// Only monitors at 96 DPI, since Windows already scales the rest.
 fn autoDialogScalePercent(point: win32.POINT, dpi: u32) u16 {
-    if (dpi != 96) return 100;
+    if (dpi != win32.USER_DEFAULT_SCREEN_DPI) return 100;
     const monitor = win32.nearestMonitor(point) orelse return 100;
     const rect = win32.monitorRect(monitor) orelse {
         slog.warn("Failed to read monitor bounds for auto dialog scale", .{});
@@ -120,7 +111,7 @@ fn autoDialogScalePercent(point: win32.POINT, dpi: u32) u16 {
 }
 
 fn resolveDialogScale(percent: u16, point: win32.POINT) f32 {
-    const resolved = if (percent == 0) autoDialogScalePercent(point, dpiForPoint(point)) else std.math.clamp(percent, 50, 300);
+    const resolved = if (percent == 0) autoDialogScalePercent(point, win32.dpiForPoint(point)) else percent;
     return @as(f32, @floatFromInt(resolved)) / 100.0;
 }
 
@@ -186,8 +177,8 @@ fn mainImpl(init: std.process.Init) !void {
 
     // Match the app's configured log level (same as main.zig) before logging anything else, or everything below defaults to err-only.
     var active_lang: SupportedLang = .en;
-    var startup_settings: ?config_mod.GlobalSettings = null;
-    if (config_mod.GlobalSettings.load(allocator)) |loaded| {
+    var startup_settings: ?config_mod.GlobalConfig = null;
+    if (config_mod.GlobalConfig.load(allocator)) |loaded| {
         startup_settings = loaded;
         log.setLevel(loaded.logLevel);
         active_lang = std.meta.stringToEnum(SupportedLang, loaded.language) orelse .en;
@@ -241,7 +232,7 @@ fn mainImpl(init: std.process.Init) !void {
     g_ui_scale = resolveDialogScale(if (startup_settings) |s| s.dialogScale else 0, initial_position);
 
     // Startup guess from the target position's monitor DPI; revealDialogWindow corrects it once the real monitor is known.
-    const startup_size = targetPhysicalSize(dpiForPoint(initial_position));
+    const startup_size = targetPhysicalSize(win32.dpiForPoint(initial_position));
     win.setSize(startup_size.width, startup_size.height);
     win.setKiosk(false);
     win.setResizable(true);
@@ -388,7 +379,7 @@ fn dialogWndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam
 
 /// Reloads settings fresh from disk so this doesn't clobber changes made elsewhere since the dialog opened.
 fn persistDialogPosition(x: i32, y: i32) void {
-    var settings = config_mod.GlobalSettings.load(g_allocator) catch |err| {
+    var settings = config_mod.GlobalConfig.load(g_allocator) catch |err| {
         slog.warn("Failed to load global settings to persist dialog position: {}", .{err});
         return;
     };
@@ -444,9 +435,9 @@ fn setAlwaysOnTop(e: *webui.Event) void {
 }
 
 fn setDialogScale(e: *webui.Event) void {
-    const percent: u16 = @intCast(std.math.clamp(e.getInt(), 0, 300));
+    const percent = config_mod.clampValue(config_mod.GlobalConfig, "dialogScale", std.math.lossyCast(u16, e.getInt()));
 
-    if (config_mod.GlobalSettings.load(g_allocator)) |loaded| {
+    if (config_mod.GlobalConfig.load(g_allocator)) |loaded| {
         var settings = loaded;
         defer settings.deinit();
         settings.dialogScale = percent;
@@ -965,14 +956,14 @@ fn applyRunOnStartup(enabled: bool) bool {
     return true;
 }
 
-/// GlobalSettings only persists a price per ore (see OrePriceEntry); this rebuilds the full name/category/volumeM3/price view the dialog renders,
+/// GlobalConfig only persists a price per ore (see OrePriceConfig); this rebuilds the full name/category/volumeM3/price view the dialog renders,
 /// filling each row's price from the persisted override if present or DEFAULT_ORE_TABLE's snapshot otherwise.
 fn loadGlobalSettings(e: *webui.Event) void {
     const allocator = g_allocator;
 
     slog.debug("Loading global settings from: {s}", .{config_mod.GLOBAL_SETTINGS_FILE});
 
-    var settings = config_mod.GlobalSettings.load(allocator) catch |err| {
+    var settings = config_mod.GlobalConfig.load(allocator) catch |err| {
         slog.warn("Failed to load global settings ({}), returning empty defaults", .{err});
         e.returnString("{}");
         return;
@@ -1043,7 +1034,7 @@ fn loadGlobalSettings(e: *webui.Event) void {
     e.returnString(json_z);
 }
 
-/// Parses the dialog's full-view payload (see loadGlobalSettings) back through GlobalSettings.Wire, which only keeps name/price from each oreTable
+/// Parses the dialog's full-view payload (see loadGlobalSettings) back through GlobalConfig.Wire, which only keeps name/price from each oreTable
 /// entry (ignore_unknown_fields drops category/volumeM3) - so only prices ever reach disk, not the fixed defaults sent along for display.
 fn saveGlobalSettings(e: *webui.Event) void {
     const json_data = e.getString();
@@ -1056,14 +1047,14 @@ fn saveGlobalSettings(e: *webui.Event) void {
     };
     defer parsed_value.deinit();
 
-    const parsed_wire = std.json.parseFromValue(config_mod.GlobalSettings.Wire, allocator, parsed_value.value, .{ .ignore_unknown_fields = true }) catch |err| {
+    const parsed_wire = std.json.parseFromValue(config_mod.GlobalConfig.Wire, allocator, parsed_value.value, .{ .ignore_unknown_fields = true }) catch |err| {
         slog.err("Failed to parse global settings into Wire: {}", .{err});
         e.returnString("{\"success\": false, \"error\": \"Invalid settings format\"}");
         return;
     };
     defer parsed_wire.deinit();
 
-    var settings = config_mod.GlobalSettings.fromWire(parsed_wire.value, allocator) catch |err| {
+    var settings = config_mod.GlobalConfig.fromWire(parsed_wire.value, allocator) catch |err| {
         slog.err("Failed to build global settings from wire: {}", .{err});
         e.returnString("{\"success\": false, \"error\": \"Failed to process settings\"}");
         return;
@@ -1071,7 +1062,7 @@ fn saveGlobalSettings(e: *webui.Event) void {
     defer settings.deinit();
 
     // Position is persisted independently on every drag (persistDialogPosition), so keep whatever is on disk here.
-    if (config_mod.GlobalSettings.load(allocator)) |current| {
+    if (config_mod.GlobalConfig.load(allocator)) |current| {
         var current_mut = current;
         defer current_mut.deinit();
         settings.dialogX = current_mut.dialogX;
@@ -1796,7 +1787,7 @@ fn getConfigData(e: *webui.Event) void {
 fn listProfiles(e: *webui.Event) void {
     const allocator = g_allocator;
 
-    var profiles = config_mod.GlobalSettings.enumerateProfiles(allocator) catch |err| {
+    var profiles = config_mod.GlobalConfig.enumerateProfiles(allocator) catch |err| {
         slog.err("Failed to enumerate profiles: {}", .{err});
         e.returnString("{\"profiles\": [], \"current\": \"default.json\"}");
         return;
@@ -1971,7 +1962,7 @@ fn switchProfile(e: *webui.Event) void {
 
     // Persist as the last used profile so the main app (and this dialog, next
     // time it's opened without a --profile arg) picks it up on restart.
-    if (config_mod.GlobalSettings.load(allocator)) |loaded| {
+    if (config_mod.GlobalConfig.load(allocator)) |loaded| {
         var settings = loaded;
         defer settings.deinit();
         settings.updateLastUsed(profile_name) catch |err| {

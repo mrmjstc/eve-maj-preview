@@ -14,7 +14,7 @@ pub const TextDimensions = struct {
     height: usize,
 };
 
-pub const TextPos = struct {
+pub const TextOrigin = struct {
     x: i32,
     y: i32,
 };
@@ -65,7 +65,7 @@ pub fn calculateTextPosition(
     overlay_height: usize,
     offset_x: i32,
     offset_y: i32,
-) TextPos {
+) TextOrigin {
     var x = alignedLineX(0, overlay_width, text_width, horizontalAlignOf(position));
     var y = alignedLineY(0, overlay_height, text_height, verticalAlignOf(position));
 

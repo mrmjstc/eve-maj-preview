@@ -175,7 +175,7 @@ pub const ChatlogMonitor = struct {
     gamelog_dir: []const u8,
     chatlog_watcher: win32.HANDLE,
     gamelog_watcher: win32.HANDLE,
-    global_settings: ?*config_mod.GlobalSettings = null,
+    global_settings: ?*config_mod.GlobalConfig = null,
     combat_tracker: ?*activity_mod.CombatTracker = null,
     mining_tracker: ?*activity_mod.MiningTracker = null,
     bounty_tracker: ?*activity_mod.BountyTracker = null,
@@ -200,7 +200,7 @@ pub const ChatlogMonitor = struct {
     tick_names: std.ArrayList([]const u8),
     tick_logged_out_names: std.ArrayList([]const u8),
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, cfg: *const config_mod.ChatlogConfig, global_settings_ref: ?*config_mod.GlobalSettings) !*ChatlogMonitor {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, cfg: *const config_mod.ChatlogConfig, global_settings_ref: ?*config_mod.GlobalConfig) !*ChatlogMonitor {
         const chatlog_dir = cfg.chatlogDir;
         const gamelog_dir = cfg.gamelogDir;
         if (!std.unicode.utf8ValidateSlice(chatlog_dir)) {
@@ -1402,7 +1402,7 @@ pub const ChatlogMonitor = struct {
         slog.debug("Combat event: {s} -> {s}", .{ state.character_name, event_text });
     }
 
-    /// Parses the log line, looks up the ore's m3/unit and ISK/unit in GlobalSettings.oreTable, and records both in the mining tracker.
+    /// Parses the log line, looks up the ore's m3/unit and ISK/unit in GlobalConfig.oreTable, and records both in the mining tracker.
     /// A missing price (unset by the user) contributes 0 ISK rather than dropping the yield - only a missing volume does that, since m3 can't be computed at all without it.
     fn handleMiningEvent(self: *ChatlogMonitor, state: *LogFileState, event_text: []const u8) void {
         const tracker = self.mining_tracker orelse return;

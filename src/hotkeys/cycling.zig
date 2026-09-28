@@ -7,11 +7,12 @@ const strings = @import("../util/strings.zig");
 const log = @import("../log.zig");
 const slog = log.scoped("hotkeys");
 const bindings = @import("bindings.zig");
-const membership = @import("membership.zig");
 const HotkeyManager = @import("manager.zig").HotkeyManager;
 
 /// Cursors for the cycles whose position isn't kept in config (hotkey groups) or hotkey_map (per-character hotkeys).
 pub const CycleState = struct {
+    /// Each hotkey group's position, in config.hotkeyGroups order; null = not yet cycled.
+    group_cursors: []?usize,
     /// Global across all groups; null = not yet cycled.
     excluded_index: ?usize = null,
     /// Owned; a name rather than an index since notified_queue mutates between presses.
@@ -22,7 +23,14 @@ pub const CycleState = struct {
     last_not_logged_in_hwnd: ?win32.HWND = null,
     character_order: CharacterOrderCache = .{},
 
+    pub fn init(allocator: std.mem.Allocator, group_count: usize) !CycleState {
+        const group_cursors = try allocator.alloc(?usize, group_count);
+        @memset(group_cursors, null);
+        return .{ .group_cursors = group_cursors };
+    }
+
     pub fn deinit(self: *CycleState, allocator: std.mem.Allocator) void {
+        allocator.free(self.group_cursors);
         if (self.last_notified_name) |name| allocator.free(name);
         if (self.last_all_clients_name) |name| allocator.free(name);
         self.character_order.deinit();
@@ -149,7 +157,9 @@ pub fn activatePerCharacterGroup(m: *HotkeyManager, group: *bindings.CharacterGr
 }
 
 /// Like cycleNotLoggedIn but scoped to one group, with not-logged-in clients appended after the group's characters when includeNotLoggedIn is set.
-pub fn cycleGroup(m: *HotkeyManager, group: *config_mod.HotkeyGroup, forward: bool) void {
+pub fn cycleGroup(m: *HotkeyManager, group_index: usize, forward: bool) void {
+    const group = &m.config.hotkeyGroups.items[group_index];
+    const cursor = &m.cycle.group_cursors[group_index];
     const num_chars = group.characters.items.len;
 
     var nli_hwnds: std.ArrayList(win32.HWND) = .empty;
@@ -173,7 +183,7 @@ pub fn cycleGroup(m: *HotkeyManager, group: *config_mod.HotkeyGroup, forward: bo
         if (indexOfHwnd(nli_hwnds.items, win32.GetForegroundWindow())) |i| found_index = num_chars + i;
     }
     if (found_index == null) {
-        if (group.currentIndex) |ci| {
+        if (cursor.*) |ci| {
             if (ci < num_chars) found_index = ci;
         }
     }
@@ -189,13 +199,13 @@ pub fn cycleGroup(m: *HotkeyManager, group: *config_mod.HotkeyGroup, forward: bo
         if (idx < num_chars) {
             const char_name = group.characters.items[idx];
 
-            if (membership.isCharacterExcludedInGroup(group, char_name)) {
+            if (m.exclusions.isExcludedInGroup(group_index, char_name)) {
                 slog.debug("Skipping excluded character: {s}", .{char_name});
                 continue;
             }
 
             if (m.scout.getHwndByName(char_name)) |hwnd| {
-                group.currentIndex = idx;
+                cursor.* = idx;
                 slog.info("Cycling {s} to: {s} ({}/{})", .{ directionName(forward), char_name, idx + 1, total });
                 activation.activate(hwnd);
                 return;
@@ -209,7 +219,7 @@ pub fn cycleGroup(m: *HotkeyManager, group: *config_mod.HotkeyGroup, forward: bo
             continue;
         }
 
-        group.currentIndex = idx;
+        cursor.* = idx;
         slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(forward), idx + 1, total });
         activation.activate(hwnd);
         m.cycle.last_not_logged_in_hwnd = hwnd;
@@ -222,7 +232,7 @@ pub fn cycleGroup(m: *HotkeyManager, group: *config_mod.HotkeyGroup, forward: bo
 /// Cycle through excluded characters in the order they were added to exclusion lists
 pub fn cycleExcluded(m: *HotkeyManager, forward: bool) void {
     slog.info("{s} excluded character hotkey pressed", .{if (forward) "Next" else "Previous"});
-    const excluded_list = m.exclusions.list(m.allocator, m.config);
+    const excluded_list = m.exclusions.list(m.allocator);
 
     const num_excluded = excluded_list.items.len;
     if (num_excluded == 0) {
@@ -395,27 +405,26 @@ pub fn syncToFocusedCharacter(m: *HotkeyManager, character_name: []const u8, hwn
         }
     }
 
-    syncGroupCycleIndex(m.config.hotkeyGroups.items, character_name, m.config.resetGroupIndexOnNonGroupFocus);
+    syncGroupCycleIndex(m.config.hotkeyGroups.items, m.cycle.group_cursors, character_name, m.config.hotkeys.resetGroupIndexOnNonGroupFocus);
 }
 
-/// Syncs currentIndex on every group in `groups` containing character_name. When reset_on_leave is set,
-/// clears currentIndex on groups character_name isn't in.
-fn syncGroupCycleIndex(groups: []config_mod.HotkeyGroup, character_name: []const u8, reset_on_leave: bool) void {
-    for (groups) |*group| {
+/// `cursors` parallels `groups`; reset_on_leave clears the cursor of groups character_name isn't in.
+fn syncGroupCycleIndex(groups: []const config_mod.HotkeyGroupConfig, cursors: []?usize, character_name: []const u8, reset_on_leave: bool) void {
+    for (groups, cursors) |*group, *cursor| {
         if (strings.indexOfString(group.characters.items, character_name)) |index| {
-            if (group.currentIndex == null or group.currentIndex.? != index) {
+            if (cursor.* == null or cursor.*.? != index) {
                 slog.debug("Updated hotkey group index: {s} now at position {}/{}", .{ character_name, index + 1, group.characters.items.len });
-                group.currentIndex = index;
+                cursor.* = index;
             }
-        } else if (reset_on_leave and group.currentIndex != null) {
+        } else if (reset_on_leave and cursor.* != null) {
             slog.debug("Reset hotkey group cycle index - {s} left this group", .{character_name});
-            group.currentIndex = null;
+            cursor.* = null;
         }
     }
 }
 
 fn syncExcludedCycleIndex(m: *HotkeyManager, character_name: []const u8) void {
-    const excluded_list = m.exclusions.list(m.allocator, m.config);
+    const excluded_list = m.exclusions.list(m.allocator);
     const index = strings.indexOfString(excluded_list.items, character_name) orelse return;
     if (m.cycle.excluded_index == null or m.cycle.excluded_index.? != index) {
         slog.debug("Updated excluded cycle index: {s} now at position {}/{}", .{ character_name, index + 1, excluded_list.items.len });

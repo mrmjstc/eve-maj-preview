@@ -185,7 +185,7 @@ pub const ListWindow = struct {
     }
 
     fn resolveActiveBadgeColor(self: *const ListWindow, thumb: *const ThumbnailWindow) u32 {
-        var color = self.config.thumbnail.active.getBorderColor(self.config.thumbnail.borderColor);
+        var color = self.config.thumbnail.active.borderColor orelse self.config.thumbnail.borderColor;
 
         // cached_border_colors is kept in sync by painter.zig on name change; reuse it instead of re-scanning config.characters every tick (getCharacterBorderColors is a linear scan).
         if (thumb.cached_border_colors) |colors| {

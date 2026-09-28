@@ -9,7 +9,7 @@ const painter_mod = @import("../painter.zig");
 const Painter = painter_mod.Painter;
 
 /// Per-thumbnail auto-minimize state; only AutoMinimizer.check writes it after creation.
-pub const ThumbnailState = struct {
+pub const AutoMinimizeState = struct {
     /// When check's delay counts from; refreshed every tick the thumbnail is Active or Minimized, left untouched otherwise so its frozen value is the moment it last became eligible.
     inactive_since: win32.Ticks,
 };
@@ -54,7 +54,7 @@ pub const AutoMinimizer = struct {
         };
     }
 
-    /// Minimizes each EVE window `autoMinimize.delayMs` after it last stopped being Active/Minimized (see ThumbnailState.inactive_since); call once per tick, right after focus is reconciled. Each monitor's last-active client is spared while focus is on another monitor.
+    /// Minimizes each EVE window `autoMinimize.delayMs` after it last stopped being Active/Minimized (see AutoMinimizeState.inactive_since); call once per tick, right after focus is reconciled. Each monitor's last-active client is spared while focus is on another monitor.
     pub fn check(self: *const AutoMinimizer, painter: *Painter) void {
         const now = win32.Ticks.now();
         // Refreshed even while disabled, so re-enabling doesn't count the disabled stretch as inactivity.

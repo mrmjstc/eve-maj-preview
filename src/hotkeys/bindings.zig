@@ -62,8 +62,8 @@ pub const ActionTag = std.meta.Tag(HotkeyAction);
 /// A single-key global action: which config field binds it, and the protocol URL action that also triggers it.
 pub const GlobalBinding = struct {
     action: ActionTag,
-    protocol: protocol.HotkeyAction,
-    /// Name of the ?u32 key field, on GlobalSettings when `in_global_settings`, else on the profile Config.
+    protocol: protocol.GlobalAction,
+    /// Name of the ?u32 key field, on GlobalConfig when `in_global_settings`, else on the profile's Config.hotkeys.
     field: []const u8,
     in_global_settings: bool = false,
     description: []const u8,
@@ -78,7 +78,7 @@ pub fn actionFor(comptime action: ActionTag) HotkeyAction {
     return @unionInit(HotkeyAction, @tagName(action), {});
 }
 
-pub fn fromProtocol(action: protocol.HotkeyAction) HotkeyAction {
+pub fn fromProtocol(action: protocol.GlobalAction) HotkeyAction {
     inline for (global_bindings) |binding| {
         if (binding.protocol == action) return actionFor(binding.action);
     }
@@ -86,12 +86,12 @@ pub fn fromProtocol(action: protocol.HotkeyAction) HotkeyAction {
 }
 
 comptime {
-    for (std.enums.values(protocol.HotkeyAction)) |tag| {
+    for (std.enums.values(protocol.GlobalAction)) |tag| {
         var matches: usize = 0;
         for (global_bindings) |binding| {
             if (binding.protocol == tag) matches += 1;
         }
-        if (matches != 1) @compileError("protocol.HotkeyAction." ++ @tagName(tag) ++ " must map to exactly one global binding");
+        if (matches != 1) @compileError("protocol.GlobalAction." ++ @tagName(tag) ++ " must map to exactly one global binding");
     }
 }
 

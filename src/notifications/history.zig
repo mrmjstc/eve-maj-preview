@@ -1,8 +1,8 @@
 const win32 = @import("../platform/win32.zig");
 const notification = @import("notification.zig");
+const config_mod = @import("../config.zig");
 
-/// Mirrors config.zig's DisplayConfig.NOTIF_PANEL_MAX_ROWS_MAX.
-pub const CAPACITY = 30;
+pub const CAPACITY = config_mod.DisplayConfig.NOTIF_PANEL_MAX_ROWS[1];
 
 /// One past notification retained for the History Panel; fixed-size buffers avoid a heap allocation per notification.
 pub const Entry = struct {

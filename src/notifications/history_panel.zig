@@ -37,7 +37,7 @@ const ARGB_BUTTON_INACTIVE_TEXT: u32 = ARGB_EMPTY_TEXT;
 // Granularity of the timestamp text baked into the render signature, so it doesn't redraw every scan tick.
 const TIMESTAMP_BUCKET_MS: u64 = 15_000;
 
-// Order and labels for the footer's category filter buttons; index-paired with each other and with NotifInfoWindow.category_button_rects.
+// Order and labels for the footer's category filter buttons; index-paired with each other and with HistoryPanelWindow.category_button_rects.
 const CATEGORY_ORDER = [_]notification_mod.NotificationCategory{ .Fleet, .Mining, .Combat, .Navigation, .General };
 const CATEGORY_LABELS = [_][]const u8{ "FLT", "MIN", "CBT", "NAV", "GEN" };
 
@@ -55,11 +55,11 @@ fn categoryEnabled(cfg: *const config_mod.Config, cat: notification_mod.Notifica
 
 fn setCategoryEnabled(cfg: *config_mod.Config, cat: notification_mod.NotificationCategory, value: bool) void {
     switch (cat) {
-        .Fleet => cfg.display.notifInfoPanelShowFleet = value,
-        .Mining => cfg.display.notifInfoPanelShowMining = value,
-        .Combat => cfg.display.notifInfoPanelShowCombat = value,
-        .Navigation => cfg.display.notifInfoPanelShowNavigation = value,
-        .General => cfg.display.notifInfoPanelShowGeneral = value,
+        .Fleet => cfg.display.setLive("notifInfoPanelShowFleet", value),
+        .Mining => cfg.display.setLive("notifInfoPanelShowMining", value),
+        .Combat => cfg.display.setLive("notifInfoPanelShowCombat", value),
+        .Navigation => cfg.display.setLive("notifInfoPanelShowNavigation", value),
+        .General => cfg.display.setLive("notifInfoPanelShowGeneral", value),
     }
 }
 
@@ -72,11 +72,11 @@ fn effectiveCategoryEnabled(cfg: *const config_mod.Config, cat: notification_mod
 var g_class_registered: bool = false;
 
 
-const NOTIF_INFO_WINDOW_CLASS = "EVE_NOTIFINFO_CLASS";
+const HISTORY_PANEL_WINDOW_CLASS = "EVE_HISTORY_PANEL_CLASS";
 
 /// Owns the History Panel window and when it's on-screen: display.showNotifInfoPanel creates it, hideNotifInfoPanelWhenNoCharacters auto-hides it, and the tray toggle can force it visible.
 pub const HistoryPanel = struct {
-    window: ?NotifInfoWindow = null,
+    window: ?HistoryPanelWindow = null,
     /// Tray-toggle override: forces the panel visible past hideNotifInfoPanelWhenNoCharacters until characters go logged-in -> logged-out again.
     force_visible: bool = false,
     /// Last-seen "any character logged in", used to detect the logged-in -> logged-out edge that clears force_visible.
@@ -84,7 +84,7 @@ pub const HistoryPanel = struct {
 
     pub fn init(allocator: std.mem.Allocator, cfg: *config_mod.Config, instance: win32.HINSTANCE) HistoryPanel {
         if (!cfg.display.showNotifInfoPanel) return .{};
-        const window = NotifInfoWindow.init(allocator, cfg, instance) catch |err| {
+        const window = HistoryPanelWindow.init(allocator, cfg, instance) catch |err| {
             slog.err("Failed to create History Panel window: {}", .{err});
             return .{};
         };
@@ -107,17 +107,17 @@ pub const HistoryPanel = struct {
     pub fn toggle(self: *HistoryPanel, allocator: std.mem.Allocator, cfg: *config_mod.Config, instance: win32.HINSTANCE, any_character_logged_in: bool) void {
         if (self.isVisible(cfg, any_character_logged_in)) {
             self.deinit();
-            cfg.display.showNotifInfoPanel = false;
+            cfg.display.setLive("showNotifInfoPanel", false);
             self.force_visible = false;
             return;
         }
         if (self.window == null) {
-            self.window = NotifInfoWindow.init(allocator, cfg, instance) catch |err| {
+            self.window = HistoryPanelWindow.init(allocator, cfg, instance) catch |err| {
                 slog.err("Failed to create History Panel window: {}", .{err});
                 return;
             };
         }
-        cfg.display.showNotifInfoPanel = true;
+        cfg.display.setLive("showNotifInfoPanel", true);
         self.force_visible = true;
     }
 
@@ -145,7 +145,7 @@ const HistoryRow = struct {
     last: usize,
 };
 
-pub const NotifInfoWindow = struct {
+pub const HistoryPanelWindow = struct {
     hwnd: win32.HWND,
     instance: win32.HINSTANCE,
     allocator: std.mem.Allocator,
@@ -168,13 +168,13 @@ pub const NotifInfoWindow = struct {
         allocator: std.mem.Allocator,
         cfg: *config_mod.Config,
         instance: win32.HINSTANCE,
-    ) !NotifInfoWindow {
+    ) !HistoryPanelWindow {
         try registerWindowClass(instance);
 
         const hwnd = win32.CreateWindowExA(
             win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW |
                 win32.WS_EX_NOACTIVATE | win32.WS_EX_LAYERED,
-            NOTIF_INFO_WINDOW_CLASS,
+            HISTORY_PANEL_WINDOW_CLASS,
             "EVE Notification History",
             win32.WS_POPUP,
             cfg.display.notifInfoPanelX,
@@ -223,23 +223,23 @@ pub const NotifInfoWindow = struct {
         };
     }
 
-    pub fn deinit(self: *NotifInfoWindow) void {
+    pub fn deinit(self: *HistoryPanelWindow) void {
         if (self.overlay) |o| o.destroy();
         if (self.font) |f| _ = win32.DeleteObject(f);
         self.allocator.free(self.cached_font_name);
         _ = win32.DestroyWindow(self.hwnd);
     }
 
-    pub fn hide(self: *NotifInfoWindow) void {
+    pub fn hide(self: *HistoryPanelWindow) void {
         _ = win32.ShowWindow(self.hwnd, win32.SW_HIDE);
     }
 
     /// Recreates `font` if the panel's own font settings changed since last built (e.g. a live-previewed edit); mirrors list_view.zig's ensureFont, but tracks display.notifInfoPanelFont* rather than List View's own font settings.
-    fn ensureFont(self: *NotifInfoWindow) !void {
+    fn ensureFont(self: *HistoryPanelWindow) !void {
         const cfg = self.config.display;
         try gdi_overlay.ensureFont(
             self.allocator,
-            "notification history panel",
+            "History Panel",
             &self.font,
             &self.cached_font_name,
             &self.cached_font_size,
@@ -250,7 +250,7 @@ pub const NotifInfoWindow = struct {
         );
     }
 
-    fn saveWindowPosition(self: *NotifInfoWindow) void {
+    fn saveWindowPosition(self: *HistoryPanelWindow) void {
         if (!self.config.display.rememberNotifInfoPanelPosition) return;
 
         var rect: win32.RECT = undefined;
@@ -261,18 +261,18 @@ pub const NotifInfoWindow = struct {
             .y = rect.top,
         };
 
-        self.config.saveNotifInfoPanelPosition(self.allocator, pos) catch |err| {
-            slog.err("Failed to save notification history panel position: {}", .{err});
+        self.config.saveHistoryPanelPosition(self.allocator, pos) catch |err| {
+            slog.err("Failed to save History Panel position: {}", .{err});
         };
     }
 
     /// Notification text color for a history row: the notification type's configured color, else the thumbnail overlay's default text color.
-    fn resolveNotifTextColor(self: *const NotifInfoWindow, ntype: notification_mod.NotificationType) u32 {
+    fn resolveNotifTextColor(self: *const HistoryPanelWindow, ntype: notification_mod.NotificationType) u32 {
         const type_cfg = self.config.thumbnail.notifications.getTypeConfig(ntype);
         return (type_cfg.text_color orelse self.config.thumbnail.characterNameColor) & 0x00FF_FFFF;
     }
 
-    fn updateCategoryButtonRects(self: *NotifInfoWindow, win_w: i32) void {
+    fn updateCategoryButtonRects(self: *HistoryPanelWindow, win_w: i32) void {
         const n: i64 = @intCast(CATEGORY_ORDER.len);
         for (0..CATEGORY_ORDER.len) |i| {
             const left: i32 = @intCast(@divTrunc(@as(i64, win_w) * @as(i64, @intCast(i)), n));
@@ -281,20 +281,20 @@ pub const NotifInfoWindow = struct {
         }
     }
 
-    fn handleFooterClick(self: *NotifInfoWindow, cx: i32) void {
+    fn handleFooterClick(self: *HistoryPanelWindow, cx: i32) void {
         for (CATEGORY_ORDER, 0..) |cat, i| {
             const rect = self.category_button_rects[i];
             if (cx < rect.left or cx >= rect.right) continue;
 
             setCategoryEnabled(self.config, cat, !categoryEnabled(self.config, cat));
-            self.config.saveNotifInfoPanelCategoryFilter(self.allocator) catch |err| {
-                slog.err("Failed to save notification history panel category filter: {}", .{err});
+            self.config.saveHistoryPanelCategoryFilter(self.allocator) catch |err| {
+                slog.err("Failed to save History Panel category filter: {}", .{err});
             };
             return;
         }
     }
 
-    fn computeRenderSignature(self: *const NotifInfoWindow, painter: *const painter_mod.Painter) u64 {
+    fn computeRenderSignature(self: *const HistoryPanelWindow, painter: *const painter_mod.Painter) u64 {
         var h = std.hash.Wyhash.init(0);
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelWidth));
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelHeight));
@@ -336,7 +336,7 @@ pub const NotifInfoWindow = struct {
     }
 
     /// Re-render the panel from the painter's live notification history; called every painter update tick and skips the GDI redraw when the render signature matches the previous tick's.
-    pub fn render(self: *NotifInfoWindow, painter: *const painter_mod.Painter) !void {
+    pub fn render(self: *HistoryPanelWindow, painter: *const painter_mod.Painter) !void {
         try self.ensureFont();
 
         const signature = self.computeRenderSignature(painter);
@@ -519,7 +519,7 @@ pub const NotifInfoWindow = struct {
         self.last_render_signature = signature;
     }
 
-    fn withAlpha(self: *const NotifInfoWindow, rgb: u32) u32 {
+    fn withAlpha(self: *const HistoryPanelWindow, rgb: u32) u32 {
         return color_mod.withAlpha(rgb, self.config.display.notifInfoPanelOpacity);
     }
 };
@@ -601,12 +601,12 @@ fn drawHistoryRow(dc: win32.HDC, name: []const u8, msg: []const u8, x: i32, y: i
 fn registerWindowClass(instance: win32.HINSTANCE) !void {
     if (g_class_registered) return;
 
-    try gdi_overlay.registerWindowClass(instance, notifInfoWindowProc, NOTIF_INFO_WINDOW_CLASS, null);
+    try gdi_overlay.registerWindowClass(instance, historyPanelWindowProc, HISTORY_PANEL_WINDOW_CLASS, null);
 
     g_class_registered = true;
 }
 
-fn notifInfoWindowProc(
+fn historyPanelWindowProc(
     hwnd: win32.HWND,
     msg: win32.UINT,
     wParam: win32.WPARAM,

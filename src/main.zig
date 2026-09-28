@@ -6,6 +6,7 @@ const painter = @import("painter.zig");
 const focus_grant = @import("platform/focus_grant.zig");
 const activation = @import("clients/activation.zig");
 const config_mod = @import("config.zig");
+const config_preview = @import("config/preview.zig");
 const notification_mod = @import("notifications/notification.zig");
 const hotkeys = @import("hotkeys/manager.zig");
 const mouse_hook = @import("hotkeys/mouse_hook.zig");
@@ -32,7 +33,7 @@ var g_io: std.Io = undefined;
 var g_chatlog_monitor: ?*chatlog.ChatlogMonitor = null;
 var g_trackers: activity.Trackers = undefined;
 var g_config: config_mod.Config = undefined;
-var g_global_settings: config_mod.GlobalSettings = undefined;
+var g_global_settings: config_mod.GlobalConfig = undefined;
 var g_tray_icon: ?tray.TrayIcon = null;
 var g_update_checker: ?update.UpdateChecker = null;
 // Exported for other modules to reach these without threading them through every call.
@@ -146,7 +147,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         },
         win32.WM_PROTOCOL_HOTKEY => {
             // wParam identifies which hotkey action the protocol handler requested
-            const action = std.enums.fromInt(protocol.HotkeyAction, wParam) orelse {
+            const action = std.enums.fromInt(protocol.GlobalAction, wParam) orelse {
                 slog.warn("Unknown protocol hotkey action: {}", .{wParam});
                 return 0;
             };
@@ -277,7 +278,7 @@ fn mainImpl(init: std.process.Init) !void {
 
     fonts.loadBundled();
 
-    g_global_settings = try config_mod.GlobalSettings.load(g_allocator);
+    g_global_settings = try config_mod.GlobalConfig.load(g_allocator);
     defer g_global_settings.deinit();
     log.setLevel(g_global_settings.logLevel);
     g_global_settings.logSettings();
@@ -569,7 +570,7 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
     g_config.logSettings();
 
     // Picks up hotkey/profile-switch/log-level edits made via the config dialog while running, since g_global_settings is otherwise only loaded once at startup.
-    if (config_mod.GlobalSettings.load(g_allocator)) |reloaded| {
+    if (config_mod.GlobalConfig.load(g_allocator)) |reloaded| {
         g_global_settings.deinit();
         g_global_settings = reloaded;
         log.setLevel(g_global_settings.logLevel);
@@ -645,108 +646,24 @@ fn reloadWithProfile(new_profile_name: []const u8) !void {
 
 /// Merges a live-preview patch (changed fields only) into the running config, repaints, and repositions thumbnails; unlike reloadWithProfile() it never touches hotkeys/chatlog/identity, so it's cheap enough to run on every keystroke/slider drag in the dialog.
 fn applyThumbnailPreview(json_data: []const u8) !void {
-    const parsed = try std.json.parseFromSlice(std.json.Value, g_allocator, json_data, .{});
-    defer parsed.deinit();
-
-    if (parsed.value != .object) return error.InvalidJsonFormat;
-    const obj = parsed.value.object;
-
-    try config_mod.Config.parseJsonThumbnailConfig(&g_config.thumbnail, obj, g_allocator);
-    g_config.thumbnail.validate();
-
-    // System color overrides live outside ThumbnailConfig (a top-level Config field), so they ride along in the same patch object instead of going through parseJsonThumbnailConfig.
-    if (obj.get("systemColors")) |colors_val| {
-        if (colors_val == .array) {
-            g_config.replaceSystemColorsFromJson(g_allocator, colors_val.array.items) catch |err| {
-                slog.err("Failed to apply system color overrides preview: {}", .{err});
-            };
-        }
-    }
-
-    // List View's own opacity/font settings live in DisplayConfig, not ThumbnailConfig - parsed separately from a nested "display" object in the same patch.
-    // startX/startY are deliberately never sent here, since they can be live-dragged in the running app.
-    var layout_changed = false;
-    if (obj.get("display")) |display_val| {
-        if (display_val == .object) {
-            config_mod.Config.parseJsonDisplayConfig(&g_config.display, display_val.object, g_allocator) catch |err| {
-                slog.err("Failed to apply display preview: {}", .{err});
-            };
-            g_config.display.validate();
-            layout_changed = true;
-        }
-    }
-
-    // Only the badge flags ride along; membership stays whatever the running app has, since a temporary group's members exist only here.
-    if (obj.get("hotkeyGroupBadges")) |badges_val| {
-        if (badges_val == .array) g_config.applyGroupBadgePreviewFromJson(badges_val.array.items);
-    }
-
-    // Matched by character name against the running character list.
-    if (obj.get("characterOverrides")) |overrides_val| {
-        if (overrides_val == .array) {
-            g_config.applyCharacterOverridesFromJson(g_allocator, overrides_val.array.items) catch |err| {
-                slog.err("Failed to apply character overrides preview: {}", .{err});
-            };
-        }
-    }
-
-    // Combat/Mining/Bounty/Resources overlays each live outside ThumbnailConfig, so they ride along as their own top-level keys in the same patch object.
-    inline for (.{
-        .{ "combat", config_mod.Config.parseJsonCombatConfig },
-        .{ "mining", config_mod.Config.parseJsonMiningConfig },
-        .{ "bounty", config_mod.Config.parseJsonBountyConfig },
-        .{ "resources", config_mod.Config.parseJsonResourcesConfig },
-    }) |section| {
-        const key = section[0];
-        if (obj.get(key)) |section_val| {
-            if (section_val == .object) {
-                section[1](&@field(g_config, key), section_val.object, g_allocator) catch |err| {
-                    slog.err("Failed to apply " ++ key ++ " overlay preview: {}", .{err});
-                };
-                @field(g_config, key).validate();
-            }
-        }
-    }
-
+    const applied = try config_preview.apply(&g_config, g_allocator, json_data);
     if (painter.g_painter_ptr) |painter_ptr| {
         painter_ptr.refreshAllThumbnailVisuals();
-        if (layout_changed) painter_ptr.repositionAllThumbnails();
+        if (applied.layout) painter_ptr.repositionAllThumbnails();
     }
 }
 
 /// Fires one event type on every thumbnail from the config dialog's unsaved per-type values; payload is `{type, config}`.
 fn showTestNotification(json_data: []const u8) !void {
-    const parsed = try std.json.parseFromSlice(std.json.Value, g_allocator, json_data, .{});
-    defer parsed.deinit();
-
-    if (parsed.value != .object) return error.InvalidJsonFormat;
-    const obj = parsed.value.object;
-
-    const type_name = switch (obj.get("type") orelse return error.MissingNotificationType) {
-        .string => |s| s,
-        else => return error.InvalidJsonFormat,
-    };
-    const config_obj = switch (obj.get("config") orelse return error.InvalidJsonFormat) {
-        .object => |o| o,
-        else => return error.InvalidJsonFormat,
-    };
-
-    const ntype = std.meta.stringToEnum(notification_mod.NotificationType, type_name) orelse {
-        slog.warn("Unknown notification type in test request: {s}", .{type_name});
-        return error.InvalidNotificationType;
-    };
-
-    var type_config: config_mod.NotificationTypeConfig = .{};
-    defer type_config.deinit(g_allocator);
-    try type_config.applyJson(g_allocator, config_obj);
-
+    var request = try config_preview.parseTestNotification(g_allocator, json_data);
+    defer request.deinit(g_allocator);
     const painter_ptr = painter.g_painter_ptr orelse return;
-    try painter_ptr.showTestNotification(ntype, type_config);
+    try painter_ptr.showTestNotification(request.ntype, request.config);
 }
 
 /// Discards live-previewed appearance and layout changes by reloading that section from disk, repainting, and repositioning; sent when the config dialog closes, a no-op if Save was already clicked.
 fn revertThumbnailPreview() void {
-    g_config.reloadThumbnailConfigFromDisk(g_allocator) catch |err| {
+    config_preview.revert(&g_config, g_allocator) catch |err| {
         slog.err("Failed to revert thumbnail preview: {}", .{err});
         return;
     };

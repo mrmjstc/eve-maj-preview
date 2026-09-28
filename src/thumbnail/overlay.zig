@@ -17,7 +17,7 @@ const ThumbnailWindow = painter_mod.ThumbnailWindow;
 const TextPosition = types.TextPosition;
 const BorderStyle = types.BorderStyle;
 const TextDimensions = draw.TextDimensions;
-const TextPos = draw.TextPos;
+const TextOrigin = draw.TextOrigin;
 const scalePixels = win32.scalePixels;
 
 /// One resolved (text, color) line of the stacked notification block; built by createRenderSettings, drawn by renderThumbnailOverlay.
@@ -218,8 +218,8 @@ pub fn renderSettingsOnlyVisibilityChanged(a: RenderSettings, b: RenderSettings)
 const DrawLine = struct {
     font: win32.HFONT,
     text: []const u8,
-    render_pos: TextPos,
-    bg_pos: TextPos,
+    render_pos: TextOrigin,
+    bg_pos: TextOrigin,
     bg_dims: TextDimensions,
     color: u32,
     bg_color: u32,
@@ -358,7 +358,7 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
         badge_dims = cache.group_badge.measure(overlay.mem_dc, badge_hfont, font, settings.group_badge_text, settings.group_badge_font_name, settings.group_badge_font_size, settings.group_badge_font_weight);
     }
 
-    const char_text_pos: TextPos = if (settings.show_character_name)
+    const char_text_pos: TextOrigin = if (settings.show_character_name)
         draw.calculateTextPosition(
             settings.character_name_position,
             char_text_dims.width,
@@ -369,9 +369,9 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
             settings.character_name_offset_y,
         )
     else
-        TextPos{ .x = 0, .y = 0 };
+        TextOrigin{ .x = 0, .y = 0 };
 
-    const system_text_pos: TextPos = if (settings.show_system_name)
+    const system_text_pos: TextOrigin = if (settings.show_system_name)
         draw.calculateTextPosition(
             settings.system_name_position,
             system_text_dims.width,
@@ -382,9 +382,9 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
             settings.system_name_offset_y,
         )
     else
-        TextPos{ .x = 0, .y = 0 };
+        TextOrigin{ .x = 0, .y = 0 };
 
-    const notifications_text_pos: TextPos = if (settings.show_notifications and has_notification_text)
+    const notifications_text_pos: TextOrigin = if (settings.show_notifications and has_notification_text)
         draw.calculateTextPosition(
             settings.notifications_position,
             notifications_text_dims.width,
@@ -395,9 +395,9 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
             settings.notifications_offset_y,
         )
     else
-        TextPos{ .x = 0, .y = 0 };
+        TextOrigin{ .x = 0, .y = 0 };
 
-    const badge_pos: TextPos = if (settings.show_group_badge)
+    const badge_pos: TextOrigin = if (settings.show_group_badge)
         draw.calculateTextPosition(
             settings.group_badge_position,
             badge_dims.width,
@@ -408,7 +408,7 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
             settings.group_badge_offset_y,
         )
     else
-        TextPos{ .x = 0, .y = 0 };
+        TextOrigin{ .x = 0, .y = 0 };
 
     // Collects every single-rect text run (character/system/badge/DPS/mining/bounty/resources) so their
     // background-fill, glyph-render, and alpha-fixup passes can share one loop each below. Notifications
@@ -474,8 +474,8 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
     var dps_out_buf: [32]u8 = undefined;
     var dps_in_text: []const u8 = "";
     var dps_out_text: []const u8 = "";
-    var dps_in_pos: TextPos = .{ .x = 0, .y = 0 };
-    var dps_out_pos: TextPos = .{ .x = 0, .y = 0 };
+    var dps_in_pos: TextOrigin = .{ .x = 0, .y = 0 };
+    var dps_out_pos: TextOrigin = .{ .x = 0, .y = 0 };
     var dps_in_dims: TextDimensions = .{ .width = 0, .height = 0 };
     var dps_out_dims: TextDimensions = .{ .width = 0, .height = 0 };
     if (config.combat.enabled and config.thumbnail.showText) {
@@ -518,8 +518,8 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
     var mining_isk_buf: [24]u8 = undefined;
     var mining_text: []const u8 = "";
     var mining_isk_text: []const u8 = "";
-    var mining_pos: TextPos = .{ .x = 0, .y = 0 };
-    var mining_isk_pos: TextPos = .{ .x = 0, .y = 0 };
+    var mining_pos: TextOrigin = .{ .x = 0, .y = 0 };
+    var mining_isk_pos: TextOrigin = .{ .x = 0, .y = 0 };
     var mining_dims: TextDimensions = .{ .width = 0, .height = 0 };
     var mining_isk_dims: TextDimensions = .{ .width = 0, .height = 0 };
     var mining_block_x: i32 = 0;
@@ -598,7 +598,7 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
     // Bounty text run is collected below and painted via the shared draw_lines loops after the border.
     var bounty_buf: [24]u8 = undefined;
     var bounty_text: []const u8 = "";
-    var bounty_pos: TextPos = .{ .x = 0, .y = 0 };
+    var bounty_pos: TextOrigin = .{ .x = 0, .y = 0 };
     var bounty_dims: TextDimensions = .{ .width = 0, .height = 0 };
     if (config.bounty.enabled and config.thumbnail.showText and thumbnail.has_bounty_data and (thumbnail.last_bounty_isk_rate == null or thumbnail.last_bounty_isk_rate.? > 0)) {
         const bounty_cfg = &config.bounty;
@@ -777,8 +777,8 @@ pub fn renderThumbnailOverlay(fonts: *font_cache_mod.FontCache, thumbnail: *Thum
 
 // Per-state override (if any) wins, then opacity is forced fully opaque when the window's own
 // Opacity setting should apply instead, so it isn't compounded with this color's own alpha.
-fn resolveTextBgColor(state_cfg: config_mod.Config.StateVisualConfig, base_color: u32, force_opaque: bool) u32 {
-    const resolved = state_cfg.getTextBgColor(base_color);
+fn resolveTextBgColor(state_cfg: config_mod.StateVisualConfig, base_color: u32, force_opaque: bool) u32 {
+    const resolved = state_cfg.textBgColor orelse base_color;
     return if (force_opaque) color_mod.withAlpha(resolved, 255) else resolved;
 }
 
@@ -833,7 +833,7 @@ pub fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const Thumbnail
     const effective_show_border = if (should_hide_all or notif_hides_border or notif_flash_hides_border)
         false
     else
-        state_cfg.getShowBorder(base_show_border);
+        state_cfg.showBorder orelse base_show_border;
 
     const effective_show_text = if (should_hide_all)
         false
@@ -862,7 +862,7 @@ pub fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const Thumbnail
     else
         (cfg.thumbnail.showText and cfg.thumbnail.showQuickGroupBadge);
 
-    var final_border_color = state_cfg.getBorderColor(base_border_color);
+    var final_border_color = state_cfg.borderColor orelse base_border_color;
 
     // When suppress_when_focused is true and the character is focused, the border falls back to normal Active appearance instead of the Alert override color.
     const is_suppressed_alert = if (state == .Alert) blk: {
@@ -883,7 +883,7 @@ pub fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const Thumbnail
     }
 
     // Fallback color for stacked notification lines that don't carry their own text_color_override.
-    const notification_base_text_color = state_cfg.getTextColor(cfg.thumbnail.characterNameColor);
+    const notification_base_text_color = state_cfg.textColor orelse cfg.thumbnail.characterNameColor;
 
     // Per-character border color has the highest precedence; a suppressed Alert is treated as Active for border purposes.
     if (thumbnail.cached_border_colors) |char_colors| {
@@ -899,7 +899,7 @@ pub fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const Thumbnail
     }
 
     // Unique Character Name Colors takes precedence over the per-state color, same as border color above.
-    var final_text_color = state_cfg.getTextColor(cfg.thumbnail.characterNameColor);
+    var final_text_color = state_cfg.textColor orelse cfg.thumbnail.characterNameColor;
     if (thumbnail.cached_character_color) |unique_color| {
         final_text_color = unique_color;
     }
@@ -979,9 +979,9 @@ pub fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const Thumbnail
         .notifications_font_size = scalePixels(cfg.thumbnail.notifications.font_size, dpi_scale),
         .notifications_font_weight = cfg.thumbnail.notifications.font_weight,
         .show_border = effective_show_border,
-        .border_width = state_cfg.getBorderWidth(base_border_width),
+        .border_width = state_cfg.borderWidth orelse base_border_width,
         .border_color = final_border_color,
-        .border_style = state_cfg.getBorderStyle(base_border_style),
+        .border_style = state_cfg.borderStyle orelse base_border_style,
         .show_exclusion_overlay = blk: {
             const show = thumbnail.is_excluded_from_cycle and is_visible;
             if (thumbnail.is_excluded_from_cycle) {
@@ -1001,7 +1001,7 @@ pub fn createRenderSettings(cfg: *config_mod.Config, thumbnail: *const Thumbnail
         .group_badge_font_size = scalePixels(cfg.thumbnail.quickGroupBadgeFontSize, dpi_scale),
         .group_badge_font_weight = cfg.thumbnail.quickGroupBadgeFontWeight,
         // visibility_state and per-character hideThumbnail take absolute priority over per-state showThumbnail config.
-        .show_thumbnail = if (!is_visible or char_hidden) false else state_cfg.getShowThumbnail(base_show_thumbnail),
+        .show_thumbnail = if (!is_visible or char_hidden) false else state_cfg.showThumbnail orelse base_show_thumbnail,
         .overlay_alpha = if (cfg.thumbnail.applyOpacityToOverlayTexts) thumbnail.cached_opacity else OVERLAY_ALPHA,
         .overlay_width = overlay_width,
         .overlay_height = overlay_height,

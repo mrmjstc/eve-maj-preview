@@ -5,7 +5,7 @@ const slog = log.scoped("protocol");
 
 /// Global hotkey actions; hotkeys/bindings.zig's global_bindings maps each to its HotkeyAction.
 /// Backing type must match win32.WPARAM (usize): sent as the WM_PROTOCOL_HOTKEY wParam.
-pub const HotkeyAction = enum(usize) {
+pub const GlobalAction = enum(usize) {
     minimize_all,
     close_all,
     toggle_visibility,
@@ -29,7 +29,7 @@ pub const HotkeyAction = enum(usize) {
 pub const Command = union(enum) {
     Switch: []const u8,
     Profile: []const u8,
-    Hotkey: HotkeyAction,
+    Hotkey: GlobalAction,
     PreviewThumbnail: []const u8,
     RevertPreview: void,
     DialogSuspendHotkeys: void,
@@ -120,9 +120,9 @@ pub fn parseUrl(url: []const u8, allocator: std.mem.Allocator) !Command {
             slog.err("Missing hotkey action in hotkey command", .{});
             return error.MissingParameter;
         };
-        const parsed_action = std.meta.stringToEnum(HotkeyAction, hotkey_action) orelse {
+        const parsed_action = std.meta.stringToEnum(GlobalAction, hotkey_action) orelse {
             slog.err("Unknown hotkey action: {s}", .{hotkey_action});
-            return error.UnknownHotkeyAction;
+            return error.UnknownGlobalAction;
         };
         return Command{ .Hotkey = parsed_action };
     } else {

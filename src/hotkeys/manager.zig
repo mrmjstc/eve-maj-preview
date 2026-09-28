@@ -46,7 +46,7 @@ fn countBound(items: anytype) usize {
 pub const HotkeyManager = struct {
     allocator: std.mem.Allocator,
     config: *const config_mod.Config,
-    global_settings: *const config_mod.GlobalSettings,
+    global_settings: *const config_mod.GlobalConfig,
     scout: *scout.Scout,
     painter: *painter_mod.Painter,
     hotkey_map: std.AutoHashMap(c_int, HotkeyAction),
@@ -54,12 +54,15 @@ pub const HotkeyManager = struct {
     hotkeys_suspended: bool = false,
     /// Whether the config dialog is recording a new hotkey; kept separate from hotkeys_suspended so the two don't clobber each other.
     dialog_suspended: bool = false,
-    cycle: cycling.CycleState = .{},
-    exclusions: membership.Exclusions = .{},
+    cycle: cycling.CycleState,
+    exclusions: membership.Exclusions,
     /// Most recent foreground window belonging to neither an EVE client nor this process; ReturnToLastApp's target, recorded by Painter's foreground hook.
     last_non_eve_foreground: ?win32.HWND = null,
 
-    pub fn init(allocator: std.mem.Allocator, cfg: *const config_mod.Config, gs: *const config_mod.GlobalSettings, s: *scout.Scout, p: *painter_mod.Painter) !HotkeyManager {
+    pub fn init(allocator: std.mem.Allocator, cfg: *const config_mod.Config, gs: *const config_mod.GlobalConfig, s: *scout.Scout, p: *painter_mod.Painter) !HotkeyManager {
+        const group_count = cfg.hotkeyGroups.items.len;
+        var cycle = try cycling.CycleState.init(allocator, group_count);
+        errdefer cycle.deinit(allocator);
         return HotkeyManager{
             .allocator = allocator,
             .config = cfg,
@@ -67,6 +70,8 @@ pub const HotkeyManager = struct {
             .scout = s,
             .painter = p,
             .hotkey_map = std.AutoHashMap(c_int, HotkeyAction).init(allocator),
+            .cycle = cycle,
+            .exclusions = try membership.Exclusions.init(allocator, group_count),
         };
     }
 
@@ -104,7 +109,7 @@ pub const HotkeyManager = struct {
     }
 
     fn bindingKey(self: *const HotkeyManager, comptime binding: bindings.GlobalBinding) ?u32 {
-        return if (binding.in_global_settings) @field(self.global_settings, binding.field) else @field(self.config, binding.field);
+        return if (binding.in_global_settings) @field(self.global_settings, binding.field) else @field(self.config.hotkeys, binding.field);
     }
 
     /// Returns false only if the binding has a key and registering it failed.
@@ -273,7 +278,7 @@ pub const HotkeyManager = struct {
         // Auto-repeat while a key is held isn't filtered by the keyboard hook, so this must run before every early return or held keys would re-fire.
         const vk_code = win32.hotkeyVkFromLparam(lparam);
         const is_repeat = !keyboard_hook.trackPress(self.allocator, vk_code);
-        if (is_repeat and !self.config.allowHotkeyAutoRepeat) {
+        if (is_repeat and !self.config.hotkeys.allowHotkeyAutoRepeat) {
             slog.debug("Hotkey {} ignored - key-repeat re-fire while held", .{hotkey_id});
             return;
         }
@@ -294,7 +299,7 @@ pub const HotkeyManager = struct {
             return;
         }
 
-        if (self.config.requireEveFocus and self.foregroundEveWindow() == null) {
+        if (self.config.hotkeys.requireEveFocus and self.foregroundEveWindow() == null) {
             slog.debug("Hotkey {} ignored - EVE window not in focus", .{hotkey_id});
             return;
         }
@@ -311,7 +316,7 @@ pub const HotkeyManager = struct {
     }
 
     /// Runs a global action requested outside a hotkey press (protocol URL, tray menu), bypassing the press-only suspend/focus gating.
-    pub fn runGlobalAction(self: *HotkeyManager, action: protocol.HotkeyAction) void {
+    pub fn runGlobalAction(self: *HotkeyManager, action: protocol.GlobalAction) void {
         var hotkey_action = bindings.fromProtocol(action);
         self.runAction(&hotkey_action);
     }
@@ -324,7 +329,7 @@ pub const HotkeyManager = struct {
                     slog.err("Invalid group index {}", .{cycle_group.group_index});
                     return;
                 }
-                cycling.cycleGroup(self, &self.config.hotkeyGroups.items[cycle_group.group_index], cycle_group.forward);
+                cycling.cycleGroup(self, cycle_group.group_index, cycle_group.forward);
             },
             .ActivateCharacter => |*character_group| cycling.activatePerCharacterGroup(self, character_group),
             .AssignGroup => |assign| membership.assignHoveredToGroup(self, assign.group_index),

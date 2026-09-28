@@ -119,7 +119,7 @@ pub const TrayIcon = struct {
         };
         // Submenu is destroyed automatically when the parent menu is destroyed.
 
-        const profiles = config_mod.GlobalSettings.enumerateProfiles(self.allocator) catch |err| blk: {
+        const profiles = config_mod.GlobalConfig.enumerateProfiles(self.allocator) catch |err| blk: {
             slog.err("Failed to enumerate profiles: {}", .{err});
             break :blk std.ArrayList([]const u8).empty;
         };
@@ -192,7 +192,7 @@ pub const TrayIcon = struct {
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_RESTORE_SAVED_POSITIONS, "Restore Saved Positions");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
-        const history_panel_visible = if (painter) |p| p.isNotifInfoPanelVisible() else config.display.showNotifInfoPanel;
+        const history_panel_visible = if (painter) |p| p.isHistoryPanelVisible() else config.display.showNotifInfoPanel;
         const history_panel_flags: u32 = if (history_panel_visible)
             win32.MF_STRING | win32.MF_CHECKED
         else
@@ -291,7 +291,7 @@ pub const TrayIcon = struct {
         if (command_id == win32.IDM_TOGGLE_NOTIF_HISTORY) {
             slog.info("Toggle history panel requested from system tray", .{});
             if (painter_mod.g_painter_ptr) |painter_ptr| {
-                painter_ptr.toggleNotifInfoPanel();
+                painter_ptr.toggleHistoryPanel();
                 saveCurrentProfile(config, allocator, "history panel");
             } else {
                 slog.err("Painter not available for toggle history panel", .{});

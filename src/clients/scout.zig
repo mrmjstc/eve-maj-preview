@@ -345,7 +345,7 @@ pub const Scout = struct {
     }
 
     /// First filter matching both class and executable; a null exe_path (a process already known to be EVE) checks the class alone.
-    fn findMatchingFilter(self: *const Scout, class_name: []const u8, exe_path: ?[]const u8) ?*const config_mod.WindowFilter {
+    fn findMatchingFilter(self: *const Scout, class_name: []const u8, exe_path: ?[]const u8) ?*const config_mod.WindowFilterConfig {
         for (self.config.windowFilters.items) |*filter| {
             if (!filter.matchesClass(class_name)) continue;
             if (exe_path) |path| {

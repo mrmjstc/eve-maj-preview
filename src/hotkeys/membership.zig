@@ -21,30 +21,44 @@ fn toggleStringMembership(allocator: std.mem.Allocator, list: *std.ArrayList([]c
     return true;
 }
 
-pub fn isCharacterExcludedInGroup(group: *const config_mod.HotkeyGroup, character_name: []const u8) bool {
-    return strings.indexOfString(group.excluded_characters.items, character_name) != null;
+fn freeNames(allocator: std.mem.Allocator, names: *std.ArrayList([]const u8)) void {
+    for (names.items) |name| allocator.free(name);
+    names.deinit(allocator);
 }
 
-/// Cycle exclusions: each hotkey group's own list, plus a manual fallback for characters in no group.
+/// Per-group lists plus a manual fallback for characters in no group; never saved, so a profile reload resets them.
 pub const Exclusions = struct {
+    /// One list per hotkey group, in config.hotkeyGroups order; the group count can't change without a reload.
+    per_group: []std.ArrayList([]const u8),
     /// Shift-click-excluded characters that belong to no hotkey group.
     manual: std.ArrayList([]const u8) = .empty,
     /// Deduplicated union of every group's exclusion list and `manual`. Elements borrow from those lists, so only the backing array is owned here. Rebuilt only when `signature` detects a change.
     cache: std.ArrayList([]const u8) = .empty,
     cache_signature: ?u64 = null,
 
+    pub fn init(allocator: std.mem.Allocator, group_count: usize) !Exclusions {
+        const per_group = try allocator.alloc(std.ArrayList([]const u8), group_count);
+        @memset(per_group, .empty);
+        return .{ .per_group = per_group };
+    }
+
     pub fn deinit(self: *Exclusions, allocator: std.mem.Allocator) void {
-        for (self.manual.items) |name| allocator.free(name);
-        self.manual.deinit(allocator);
+        for (self.per_group) |*names| freeNames(allocator, names);
+        allocator.free(self.per_group);
+        freeNames(allocator, &self.manual);
         self.cache.deinit(allocator);
+    }
+
+    pub fn isExcludedInGroup(self: *const Exclusions, group_index: usize, character_name: []const u8) bool {
+        return strings.indexOfString(self.per_group[group_index].items, character_name) != null;
     }
 
     pub fn contains(self: *const Exclusions, config: *const config_mod.Config, character_name: []const u8) bool {
         if (strings.indexOfString(self.manual.items, character_name) != null) return true;
 
-        for (config.hotkeyGroups.items) |*group| {
+        for (config.hotkeyGroups.items, 0..) |*group, i| {
             const in_group = strings.indexOfString(group.characters.items, character_name) != null;
-            if (in_group and isCharacterExcludedInGroup(group, character_name)) return true;
+            if (in_group and self.isExcludedInGroup(i, character_name)) return true;
         }
         return false;
     }
@@ -53,11 +67,11 @@ pub const Exclusions = struct {
     pub fn toggle(self: *Exclusions, allocator: std.mem.Allocator, config: *const config_mod.Config, character_name: []const u8) void {
         var found_in_group = false;
 
-        for (config.hotkeyGroups.items) |*group| {
+        for (config.hotkeyGroups.items, 0..) |*group, i| {
             if (strings.indexOfString(group.characters.items, character_name) == null) continue;
             found_in_group = true;
 
-            const added = toggleStringMembership(allocator, &group.excluded_characters, character_name) catch {
+            const added = toggleStringMembership(allocator, &self.per_group[i], character_name) catch {
                 slog.err("Failed to toggle exclusion for {s}", .{character_name});
                 return;
             };
@@ -84,17 +98,15 @@ pub const Exclusions = struct {
     }
 
     /// Every excluded character, deduplicated, in the order they were added; shared so cycleExcluded and the focus sync agree.
-    pub fn list(self: *Exclusions, allocator: std.mem.Allocator, config: *const config_mod.Config) *const std.ArrayList([]const u8) {
-        const sig = self.signature(config);
+    pub fn list(self: *Exclusions, allocator: std.mem.Allocator) *const std.ArrayList([]const u8) {
+        const sig = self.signature();
         if (self.cache_signature == null or self.cache_signature.? != sig) {
             self.cache.clearRetainingCapacity();
 
             var seen = std.StringHashMap(void).init(allocator);
             defer seen.deinit();
 
-            for (config.hotkeyGroups.items) |*group| {
-                self.appendUnseenNames(allocator, &seen, group.excluded_characters.items);
-            }
+            for (self.per_group) |names| self.appendUnseenNames(allocator, &seen, names.items);
             self.appendUnseenNames(allocator, &seen, self.manual.items);
 
             self.cache_signature = sig;
@@ -118,10 +130,10 @@ pub const Exclusions = struct {
     }
 
     /// Each name is length-prefixed so moving a name across a group boundary can't leave the concatenated byte stream unchanged.
-    fn signature(self: *const Exclusions, config: *const config_mod.Config) u64 {
+    fn signature(self: *const Exclusions) u64 {
         var h = std.hash.Wyhash.init(0);
-        for (config.hotkeyGroups.items) |*group| {
-            for (group.excluded_characters.items) |name| {
+        for (self.per_group) |names| {
+            for (names.items) |name| {
                 h.update(std.mem.asBytes(&@as(u32, @intCast(name.len))));
                 h.update(name);
             }
@@ -186,7 +198,7 @@ pub fn assignHoveredToGroup(m: *HotkeyManager, group_index: usize) void {
     }
 
     // Membership changed - old index may now point at a shifted member
-    group.currentIndex = null;
+    m.cycle.group_cursors[group_index] = null;
 
     if (!group.temporaryMembership) {
         if (m.config.saveCurrentProfile(m.allocator)) {

@@ -223,8 +223,11 @@ pub fn clampRect(rect: RECT, bounds: RECT) RECT {
     };
 }
 
+/// The logical DPI Windows scales everything else from.
+pub const USER_DEFAULT_SCREEN_DPI: u32 = 96;
+
 pub fn dpiToScale(dpi: u32) f32 {
-    return @as(f32, @floatFromInt(dpi)) / 96.0;
+    return @as(f32, @floatFromInt(dpi)) / @as(f32, @floatFromInt(USER_DEFAULT_SCREEN_DPI));
 }
 
 /// Scales a logical (96-DPI) pixel value to the given monitor scale factor, rounding to nearest.
@@ -893,12 +896,18 @@ pub fn nearestMonitor(pt: POINT) ?HMONITOR {
     return MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
 }
 
-/// Effective DPI of `monitor`, defaulting to 96 if the query fails.
+/// Effective DPI of `monitor`, defaulting to USER_DEFAULT_SCREEN_DPI if the query fails.
 pub fn monitorDpi(monitor: HMONITOR) u32 {
-    var dpi_x: UINT = 96;
-    var dpi_y: UINT = 96;
+    var dpi_x: UINT = USER_DEFAULT_SCREEN_DPI;
+    var dpi_y: UINT = USER_DEFAULT_SCREEN_DPI;
     _ = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y);
     return dpi_x;
+}
+
+/// Effective DPI of the monitor nearest `pt`, defaulting to USER_DEFAULT_SCREEN_DPI if there's none.
+pub fn dpiForPoint(pt: POINT) u32 {
+    const monitor = nearestMonitor(pt) orelse return USER_DEFAULT_SCREEN_DPI;
+    return monitorDpi(monitor);
 }
 
 /// Full bounds of `monitor` (taskbar included), or null if the lookup fails.

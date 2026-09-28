@@ -6,13 +6,13 @@ const hotkeys_mod = @import("../hotkeys/manager.zig");
 const Painter = painter_mod.Painter;
 
 /// Per-thumbnail travel state; Painter records jumps, check() reads it and flags alerts.
-pub const ThumbnailState = struct {
+pub const LeftBehindState = struct {
     /// Zero = hasn't jumped this session.
     last_jump_ms: win32.Ticks = .{},
     /// Guards the left-behind alert to one per episode; cleared on jump.
     alert_fired: bool = false,
 
-    pub fn recordJump(self: *ThumbnailState) void {
+    pub fn recordJump(self: *LeftBehindState) void {
         self.last_jump_ms = win32.Ticks.now();
         self.alert_fired = false;
     }

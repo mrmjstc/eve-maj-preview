@@ -127,6 +127,6 @@ pub fn defaultDpi() u32 {
     return win32.GetDpiForSystem();
 }
 
-pub fn resolveMonitorPlacement(cfg: *const config_mod.Config.DisplayConfig) ?MonitorPlacement {
+pub fn resolveMonitorPlacement(cfg: *const config_mod.DisplayConfig) ?MonitorPlacement {
     return if (cfg.monitorIndex) |monitor_idx| getMonitorPlacement(monitor_idx, cfg.useMonitorWorkArea) else null;
 }

@@ -592,29 +592,45 @@ function clampToValidationRange(path, value) {
     return Math.min(range.max, Math.max(range.min, value));
 }
 
+function toDisplayRange(range, transform) {
+    if (transform === 'ms') return { min: range.min / 1000, max: range.max / 1000 };
+    if (transform === 'opacity') return { min: opacityToPercent(range.min), max: opacityToPercent(range.max) };
+    return { min: range.min, max: range.max };
+}
+
 // Re-keys VALIDATION_RANGES by field id in display units, so getFieldValue() can clamp a raw DOM read without knowing about CONFIG_SCHEMA/transforms.
 function buildFieldRanges() {
     FIELD_RANGES = {};
     for (const f of CONFIG_SCHEMA) {
         const range = VALIDATION_RANGES[f.path];
-        if (!range) continue;
-
-        let min = range.min, max = range.max;
-        if (f.transform === 'ms') { min /= 1000; max /= 1000; }
-        else if (f.transform === 'opacity') { min = opacityToPercent(min); max = opacityToPercent(max); }
-
-        FIELD_RANGES[f.id] = { min, max };
+        if (range) FIELD_RANGES[f.id] = toDisplayRange(range, f.transform);
     }
 }
 
-// Sets native min/max on schema-mapped number/range inputs so the browser reflects real backend limits instead of hand-typed HTML values.
-function applyValidationRangesToInputs() {
-    for (const [id, range] of Object.entries(FIELD_RANGES)) {
-        const field = document.getElementById(id);
-        if (!field || (field.type !== 'number' && field.type !== 'range')) continue;
-        field.min = range.min;
-        field.max = range.max;
+// Inputs rebuilt per list row or notification type have no CONFIG_SCHEMA entry, so they name their VALIDATION_RANGES key in data-range instead.
+function rangeForField(field) {
+    if (FIELD_RANGES[field.id]) return FIELD_RANGES[field.id];
+    const range = field.dataset && field.dataset.range && VALIDATION_RANGES[field.dataset.range];
+    return range ? toDisplayRange(range, field.dataset.rangeTransform) : null;
+}
+
+// Sets native min/max so the browser reflects real backend limits; `root` narrows it to freshly rebuilt rows.
+function applyValidationRangesToInputs(root = document) {
+    if (root === document) {
+        for (const id of Object.keys(FIELD_RANGES)) {
+            const field = document.getElementById(id);
+            if (field) applyRangeToInput(field);
+        }
     }
+    root.querySelectorAll('[data-range]').forEach(applyRangeToInput);
+}
+
+function applyRangeToInput(field) {
+    if (field.type !== 'number' && field.type !== 'range') return;
+    const range = rangeForField(field);
+    if (!range) return;
+    field.min = range.min;
+    field.max = range.max;
 }
 
 async function loadValidationRanges() {
@@ -633,7 +649,7 @@ async function loadValidationRanges() {
 document.addEventListener('change', (e) => {
     const field = e.target;
     if (field.type !== 'number' && field.type !== 'range') return;
-    const range = FIELD_RANGES[field.id];
+    const range = rangeForField(field);
     if (!range || field.value === '') return;
     const value = parseFloat(field.value);
     if (isNaN(value)) return;
@@ -5702,16 +5718,16 @@ function populateCharacters() {
                 <div class="detail-field">
                     <label for="char_${index}_width">${t('dynamic.character.thumbnailSizeHeading')}</label>
                     <div class="field-row detail-size">
-                        <input type="number" id="char_${index}_width" value="${char.thumbnailSize?.width || ''}" placeholder="${t('dynamic.character.widthPlaceholder')}" min="50" max="3840">
+                        <input type="number" id="char_${index}_width" value="${char.thumbnailSize?.width || ''}" placeholder="${t('dynamic.character.widthPlaceholder')}" data-range="characters.thumbnailSize.width">
                         <span class="detail-size-x">&times;</span>
-                        <input type="number" id="char_${index}_height" value="${char.thumbnailSize?.height || ''}" placeholder="${t('dynamic.character.heightPlaceholder')}" min="50" max="2160">
+                        <input type="number" id="char_${index}_height" value="${char.thumbnailSize?.height || ''}" placeholder="${t('dynamic.character.heightPlaceholder')}" data-range="characters.thumbnailSize.height">
                     </div>
                     <p class="hint hint-extra">${t('dynamic.character.thumbnailSizeHint')}</p>
                 </div>
                 <div class="detail-field">
                     <label for="char_${index}_opacity">${t('dynamic.character.opacityLabel')}</label>
                     <div class="field-row">
-                        <input type="range" id="char_${index}_opacity" min="20" max="100" value="${char.opacity != null ? opacityToPercent(char.opacity) : opacityToPercent(currentConfig.thumbnail.thumbnailOpacity)}" data-value-target="char_${index}_opacityValue">
+                        <input type="range" id="char_${index}_opacity" data-range="characters.opacity" data-range-transform="opacity" value="${char.opacity != null ? opacityToPercent(char.opacity) : opacityToPercent(currentConfig.thumbnail.thumbnailOpacity)}" data-value-target="char_${index}_opacityValue">
                         <span id="char_${index}_opacityValue">${char.opacity != null ? opacityToPercent(char.opacity) : opacityToPercent(currentConfig.thumbnail.thumbnailOpacity)}</span>%
                     </div>
                     <p class="hint hint-extra">${t('dynamic.character.opacityHint')}</p>
@@ -5817,6 +5833,7 @@ function populateCharacters() {
     setupCharacterDragAndDrop();
     updateHotkeyConflictHighlights();
     applyCharacterFilter();
+    applyValidationRangesToInputs(container);
     // innerHTML above replaced the elements the last measuring pass sized.
     alignDetailPanelNameLabel('charactersList');
 }
@@ -7209,10 +7226,11 @@ function populateOreTable() {
         row.innerHTML = `
             ${isFirstInCategory ? `<td rowspan="${categoryRowCounts[category]}" class="category-cell"><span class="category-cell-label">${escapeHtml(category)}</span></td>` : ''}
             <td class="event-name-cell">${escapeHtml(entry.name || '')}</td>
-            <td><input type="number" class="ore-price-input" id="ore_${index}_price" value="${entry.price ?? 0}" min="0" step="0.01"></td>
+            <td><input type="number" class="ore-price-input" id="ore_${index}_price" value="${entry.price ?? 0}" data-range="oreTable.price" step="0.01"></td>
         `;
         tbody.appendChild(row);
     });
+    applyValidationRangesToInputs(tbody);
 }
 
 function saveOreTable() {
@@ -7368,13 +7386,13 @@ function populateNotificationTypes() {
                         </label>
                         <div class="field-row">
                             <label for="notif_${notifType.key}_duration" title="${t('tab.notifications.table.duration.title')}">${t('tab.notifications.table.duration.heading')}</label>
-                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_duration" min="0" max="60" step="0.1"
+                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_duration" data-range="notificationType.duration_ms" data-range-transform="ms" step="0.1"
                                    value="${config.duration_ms && config.duration_ms > 0 ? config.duration_ms / 1000 : 5}">
                         </div>
                         <p class="hint hint-extra">${t('tab.notifications.detail.duration.hint')}</p>
                         <div class="field-row">
                             <label for="notif_${notifType.key}_throttle" title="${t('tab.notifications.table.throttle.title')}">${t('tab.notifications.table.throttle.heading')}</label>
-                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_throttle" min="0" max="300" step="1"
+                            <input type="number" class="detail-number-input" id="notif_${notifType.key}_throttle" data-range="notificationType.throttle_ms" data-range-transform="ms" step="1"
                                    title="${t('tab.notifications.table.throttle.title')}"
                                    value="${config.throttle_ms !== undefined ? config.throttle_ms / 1000 : 10}">
                         </div>
@@ -7486,7 +7504,7 @@ function populateNotificationTypes() {
                     <label></label>
                     <div class="field-row">
                         <label for="notif_${notifType.key}_soundVolume">${t('field.soundVolume.label')}</label>
-                        <input type="range" id="notif_${notifType.key}_soundVolume" min="0" max="100"
+                        <input type="range" id="notif_${notifType.key}_soundVolume" data-range="notificationType.sound_volume"
                                value="${config.sound_volume ?? 100}" data-value-target="notif_${notifType.key}_soundVolumeValue">
                         <span id="notif_${notifType.key}_soundVolumeValue">${config.sound_volume ?? 100}</span>
                     </div>
@@ -7509,6 +7527,7 @@ function populateNotificationTypes() {
     NOTIFICATION_TYPES.forEach((notifType) => toggleNotificationTypeEnabled(notifType.key));
     toggleNotificationOptions();
     applyNotificationTypeFilter();
+    applyValidationRangesToInputs(container);
 }
 
 function selectNotificationType(index) {
@@ -8000,9 +8019,9 @@ function overlayZoneForPoint(px, py, W, H) {
 
 function overlayClamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
-// Matches ThumbnailConfig.OFFSET_MIN/MAX in config.zig (+-500), not the old +-50 slider default.
+// Unbounded only until the backend's ranges arrive; saving clamps through the same tables anyway.
 function overlayOffsetRange(fieldId) {
-    return FIELD_RANGES[fieldId] || { min: -500, max: 500 };
+    return FIELD_RANGES[fieldId] || { min: -Infinity, max: Infinity };
 }
 
 // Stage is drawn larger than the real thumbnail for grabbability, but offsetX/Y are stored in real pixels.

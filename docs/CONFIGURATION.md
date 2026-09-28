@@ -228,7 +228,7 @@ The display configuration has two layout modes, with full multi-monitor support.
 
 Rather than a fixed per-thumbnail size and an unbounded grid, `RegionFit` mode fits however many thumbnails are currently tracked into a fixed rectangle, sizing every cell to preserve the configured thumbnail's aspect ratio. The grid grows one column or row at a time as thumbnails spawn, always growing whichever gives the bigger cell, so it expands incrementally instead of being re-optimized from scratch on every count change.
 
-Cells are packed snugly against each other (using `spacing`, not stretched to fill the region) so any slack collects as one block at the region's far edge instead of gaps between thumbnails. It reflows automatically on login, and on logout if `regionFitReorderLoggedOut` is true; while active it fully replaces per-character manual dragging and the global/per-character thumbnail size (`thumbnail.width`/`height`, `CharacterThumbnailSize`) - those are ignored.
+Cells are packed snugly against each other (using `spacing`, not stretched to fill the region) so any slack collects as one block at the region's far edge instead of gaps between thumbnails. It reflows automatically on login, and on logout if `regionFitReorderLoggedOut` is true; while active it fully replaces per-character manual dragging and the global/per-character thumbnail size (`thumbnail.width`/`height`, `characters[].thumbnailSize`) - those are ignored.
 
 The region itself is set via the config dialog's "New Thumbnail Region" button, which asks the running main app to show a full-desktop drag-to-select overlay; the captured rectangle is written into `regionX`/`regionY`/`regionWidth`/`regionHeight` (all `null` until first captured). Once a region exists, "Edit Region" reopens the overlay with the region's edges and body draggable, and the x button clears it. The overlay finishes with Save/Cancel buttons (or Enter/Esc). If `hideThumbnailsDuringRegionSelect` (default `true`) is on, currently-visible thumbnails are hidden for the duration of that overlay so they don't cover it, then restored exactly as they were once it closes (a thumbnail already hidden beforehand, e.g. manually, is left alone).
 
@@ -1009,8 +1009,6 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **temporaryMembership**: When `true`, membership is runtime-only: assign-key edits are never written back to the profile and the group starts empty every launch. When `false`, assign-key edits change the profile's own character list (default: `false`)
 - **showBadge**: Draws the group's name on its members' thumbnails, styled by the [Group Badge](#group-badge) settings (default: `false`)
 - **includeNotLoggedIn**: When `true`, cycling this group appends still-queued not-logged-in clients (the same windows the `next_not_logged_in`/`previous_not_logged_in` hotkeys cycle) after the group's characters, in the order they logged out (default: `false`)
-
-Profiles written by an older build carry a separate `quickGroups` array; it is folded into `hotkeyGroups` on load (as groups with `temporaryMembership` and `showBadge` set) and written back empty.
 
 **Supported Keys:**
 - **Function Keys**: F1-F24

@@ -50,7 +50,7 @@ pub const ThumbnailWindow = struct {
     system_name: []const u8,
     // In-game timestamp of the event that set system_name (YYYYMMDD*1000000+HHMMSS); 0 = untimestamped source (e.g. live tailing), which always applies.
     system_name_event_ts: u64 = 0,
-    travel: travel_left_behind.ThumbnailState = .{},
+    travel: travel_left_behind.LeftBehindState = .{},
     notifications: notification_stack_mod.NotificationStack = .{},
     last_click_time: win32.Ticks = .{},
     is_excluded_from_cycle: bool = false,
@@ -80,7 +80,7 @@ pub const ThumbnailWindow = struct {
     visibility_state: state_mod.VisibilityState = .Visible,
     /// Set while a Test Notification has force-shown a hidden thumbnail; restored once its notifications clear.
     test_restore_visibility: ?state_mod.VisibilityState = null,
-    auto_minimize: auto_minimize_mod.ThumbnailState,
+    auto_minimize: auto_minimize_mod.AutoMinimizeState,
     /// Edge-detector so a minimize/restore with no accompanying focus change still marks this dirty for repaint.
     was_minimized: bool = false,
 
@@ -89,10 +89,10 @@ pub const ThumbnailWindow = struct {
     // Auto-generated per-character name color; null when "Unique Character Name Colors" is disabled, and callers fall back to their own default.
     cached_character_color: ?u32 = null,
     cached_display_name: []const u8 = "",
-    cached_border_colors: ?config_mod.CharacterBorderColors = null,
+    cached_border_colors: ?config_mod.CharacterBorderColorsConfig = null,
     cached_excluded_from_minimize: bool = false,
     cached_hide_thumbnail: bool = false,
-    cached_thumbnail_size: ?config_mod.CharacterThumbnailSize = null,
+    cached_thumbnail_size: ?config_mod.CharacterThumbnailSizeConfig = null,
     cached_opacity: u8 = 255,
     // Owned, comma-joined label of the badge-enabled groups this character is in ("1, 3"); "" = none.
     cached_group_badge_label: []const u8,
@@ -1255,12 +1255,12 @@ pub const Painter = struct {
     }
 
     /// Tray menu's checked state for "Show History Panel".
-    pub fn isNotifInfoPanelVisible(self: *const Painter) bool {
+    pub fn isHistoryPanelVisible(self: *const Painter) bool {
         return self.history_panel.isVisible(self.config, self.anyCharacterLoggedIn());
     }
 
     /// Tray menu's "Show History Panel" item.
-    pub fn toggleNotifInfoPanel(self: *Painter) void {
+    pub fn toggleHistoryPanel(self: *Painter) void {
         self.history_panel.toggle(self.allocator, self.config, self.instance, self.anyCharacterLoggedIn());
     }
 

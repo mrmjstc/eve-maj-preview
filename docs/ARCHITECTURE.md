@@ -22,7 +22,7 @@ Both binaries import `config.zig` as a shared model layer for profile JSON - nei
 1. Install crash handling (`crash.zig`): vectored exception handler, unhandled exception filter and minidump support; `main.zig` keeps only the root `panic` declaration pointing at `crash.handlePanic`, which writes to `eve-maj.log`.
 2. Check for `--protocol <url>` **before** the single-instance check, so protocol commands work even when another instance is already running; `protocol.forwardToRunningInstance` hands it over - see [protocol.zig](#protocolzig-and-cross-process-control).
 3. Acquire a named mutex (`Global\EVE-Maj-Preview-SingleInstance`) to enforce single instance.
-4. Load `GlobalSettings`, then the per-profile `Config` (default or `--profile`/`-p`).
+4. Load `GlobalConfig`, then the per-profile `Config` (default or `--profile`/`-p`).
 5. Auto-register the `evemajpreview://` protocol handler if configured (`protocol.ensureRegistered`).
 6. Construct subsystems in dependency order: `Scout` → `Painter` → `ChatlogMonitor` → the activity trackers (`activity/runtime.zig`'s `Trackers.setup`, which wires them into the monitor) → **then** start the chatlog worker thread, only once the trackers exist for it to feed. `reloadWithProfile` follows the same order, so a kept monitor's worker stays paused until the new trackers are wired in.
 7. Register the hidden timer window (`WndProc` = `timerWindowProc`), `TrayIcon`, and a detached background thread for `UpdateChecker`.
@@ -99,13 +99,25 @@ second process invocation with `--protocol "evemajpreview://switch/Name"` → `p
 
 ## `config.zig`
 
-Not just JSON schema - it's the shared model layer with both a wire format and runtime logic:
+Not just JSON schema - it's the shared model layer with both a wire format and runtime logic. `config.zig` holds `Config` itself (profile load/save, per-character lookups, auto colours) and re-exports everything else, so callers only ever import `config.zig`. The sections live in `src/config/`:
 
-- Most config sub-structs (`ThumbnailConfig`, `ChatlogConfig`, `CharacterConfig`, ...) pair a runtime struct with a `.Wire` struct and `toWire()`/`fromWire()` methods, since the runtime shape isn't always the JSON shape (e.g. hotkeys are raw `?u32` at runtime, a serializable `VkCode` wrapper on disk).
-- Two independent settings layers: `GlobalSettings` (`profiles/global.settings.json` - last-used profile, cross-profile hotkeys, log level) and per-profile `Config` (`profiles/<name>.json`).
-- Runtime helper methods beyond parsing: per-character overrides (`getCharacterSize`, `isExcludedFromMinimize`, ...), lazily-generated and cached system/character colors (not persisted back to JSON), `validate()` clamping, and the position-save family that read-modify-writes the profile JSON when a thumbnail is dragged.
-- Partial-parsing entry points (`parseJsonThumbnailConfig`, `applyCharacterOverridesFromJson`, ...) used by the live-preview path from `config.exe`.
+- `thumbnail.zig`, `display.zig`, `behavior.zig` (timer, snapping, interaction, auto-minimize, auto-move, exclusion, close-all), `activity.zig` (combat/mining/bounty/resources overlays, travel), `notifications.zig`, `chatlog.zig`, `characters.zig`, `system_colors.zig`, `hotkeys.zig` (single-key actions and cycling groups), `window_filters.zig` - one file per settings area.
+- `global.zig` - `GlobalConfig` and the cross-profile hotkey bindings and ore price table it owns.
+- Every type that holds saved settings is named `XxxConfig` (`ThumbnailConfig`, `SystemColorConfig`, `HotkeyGroupConfig`, `GlobalConfig`, ...); plain values (`Position`, `Argb`, `VkCode`, `OreEntry`) aren't.
+- `files.zig` - the process-wide `std.Io`/environment handles (`setIo`, `setEnvironMap`), profile paths, `atomicWriteFile`, `%VAR%` expansion.
+- `auto_colors.zig` - `AutoColorStore`, the generated system/character colours, kept in `colors.json` rather than the profile and loaded on first use.
 
+What the layer does:
+
+- Each settings section (`ThumbnailConfig`, `DisplayConfig`, `CharacterConfig`, ...) is declared once as its runtime struct; a section only declares `pub const Wire = wire.Wire(Self)`, and `config/wire.zig` generates that JSON shape plus saving, loading, freeing and live-preview patching from its fields. `wire.encode`/`decode`/`free` (and the `*List` variants) work on any config type, using a type's own `toWire`/`fromWire`/`deinit` where it declares one (e.g. `ChatlogConfig`'s env-var expansion). Naming conventions pick the on-disk encoding: a `u32` named `*Color` is saved as a hex colour string, one named `hotkey*`/`*Key` as a hex key code; `std.ArrayList` fields are saved as arrays, a string map as an object, and fields named in `runtime_fields` (allocators, GlobalConfig's mutex, Config's profile name and auto colours) aren't saved. A default a runtime field can't hold, like `Config.windowFilters`' EVE filter, goes in `wire_defaults`. `Config` and `GlobalConfig` are generated the same way; `Config.fromWire` adds only the log-folder fallback, the DPI migration and resetting the `app`/`formatVersion` stamp, and `fromWire(.{})` is the default profile.
+- Two independent settings layers: `GlobalConfig` (`profiles/global.settings.json` - last-used profile, cross-profile hotkeys, log level) and per-profile `Config` (`profiles/<name>.json`).
+- Runtime helper methods beyond parsing: per-character overrides (`getCharacterSize`, `isExcludedFromMinimize`, ...), system/character colours (overrides first, then `AutoColorStore`), `validate()` clamping, and the position-save family that read-modify-writes the profile JSON when a thumbnail is dragged.
+- Numeric bounds live in each section's `ranges` table (`.field = .{ min, max }`), and fields where a saved 0 means "use the default" are listed in `zero_means_default`. Every type with bounds has the same one-line `validate()`, `ranges_mod.clamp(Self, self)`, which applies both and then validates every nested setting that has a `validate()` of its own, so parents never call their children's by hand (only lists, like `Config.characters`, are looped explicitly). `config/ranges.zig` also serializes the bounds for the config dialog's input min/max (`buildValidationRangesJson`): profile sections under their config path, and list items and per-type settings under a kind key (`characters.opacity`, `notificationType.duration_ms`, `oreTable.price`, `global.dialogScale`), which the dialog's rebuilt rows name in a `data-range` attribute. `clampValue` clamps a single incoming value by the same table.
+- Defaults and bounds follow one style:
+  - A default is a literal on its field. Code that needs it reads `(Section{}).field` rather than repeating the number.
+  - A default gets a name only when two places must hold the same value by construction, e.g. `PROFILE_FORMAT_VERSION` (the `formatVersion` default and the value every save is stamped with). Values that merely happen to match, like the `"Segoe UI"` font defaults, stay separate literals.
+  - A bound belongs to a kind of value, not a setting: settings of the same kind share one named bound in `ranges.zig` (`FONT_SIZE`, `OPACITY`, `PERCENT`, `TEXT_OFFSET`, `SCREEN_X`/`SCREEN_Y`, `MAX_WINDOW_WIDTH`/`MAX_WINDOW_HEIGHT`, `WINDOW_SECONDS`), or one file-local `UPPER_SNAKE = .{ min, max }` tuple when the kind is confined to one file. A bound that fits only one setting, like each distinct timing limit, stays a literal in its table.
+- `config/preview.zig` applies the dialog's live-preview patches (`apply`) and restores the previewed sections from disk when it closes unsaved (`revert`), keeping values the running app changes itself, like dragged positions.
 `config_dialog.zig` imports `config.zig` the same way `main.zig` does - there's no dependency in the other direction.
 
 ## Threading model

@@ -54,7 +54,7 @@ pub fn returnToLastApp(last_non_eve_foreground: *?win32.HWND) void {
     focusWindow(target);
 }
 
-pub fn activateApp(gs: *const config_mod.GlobalSettings, app_index: usize) void {
+pub fn activateApp(gs: *const config_mod.GlobalConfig, app_index: usize) void {
     if (app_index >= gs.appHotkeys.items.len) {
         slog.err("Invalid app hotkey index {}", .{app_index});
         return;
@@ -70,7 +70,7 @@ pub fn activateApp(gs: *const config_mod.GlobalSettings, app_index: usize) void 
     focusWindow(target);
 }
 
-pub fn openUrl(allocator: std.mem.Allocator, gs: *const config_mod.GlobalSettings, url_index: usize) void {
+pub fn openUrl(allocator: std.mem.Allocator, gs: *const config_mod.GlobalConfig, url_index: usize) void {
     if (url_index >= gs.urlHotkeys.items.len) {
         slog.err("Invalid url hotkey index {}", .{url_index});
         return;
