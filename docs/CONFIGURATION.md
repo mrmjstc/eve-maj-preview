@@ -1017,7 +1017,11 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **Letters**: A-Z (case-insensitive)
 - **Numbers**: 0-9
 - **Numpad**: Numpad0-Numpad9, NumpadAdd, NumpadSubtract, NumpadMultiply, NumpadDivide, NumpadDecimal
-- **Special**: Space
+- **Special**: Space, Tab, Enter, Backspace, Pause, CapsLock, NumLock, ScrollLock, PrintScreen, Menu
+- **Punctuation**: `;` `=` `,` `-` `.` `/` `` ` `` `[` `\` `]` `'`
+- **Media**: VolumeMute, VolumeDown, VolumeUp, MediaNext, MediaPrevious, MediaStop, MediaPlayPause
+- **Mouse**: XButton1, XButton2, WheelUp, WheelDown
+- **Bare modifiers**: Ctrl, Alt, Shift or Win alone as the trigger key
 - **Modifiers**: Any of the above can be combined with `Ctrl`/`Alt`/`Shift`/`Win` - see [Modifier Combos](#hotkey-configuration)
 
 ### Per-Character Hotkeys (Direct Activation)
