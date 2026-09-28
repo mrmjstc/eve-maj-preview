@@ -250,12 +250,6 @@ pub fn drawRectOutline(pixels: [*]u32, buf_width: usize, buf_height: usize, x: i
 
 /// Pushes the bitmap to a layered window at its origin using per-pixel alpha, scaled by `opacity`.
 pub fn presentLayered(hwnd: win32.HWND, bmp: *const OverlayBitmap, opacity: u8) void {
-    const screen_dc = win32.GetDC(null) orelse {
-        slog.err("Failed to get screen DC to present layered overlay", .{});
-        return;
-    };
-    defer _ = win32.ReleaseDC(null, screen_dc);
-
     const window_size = win32.SIZE{ .cx = @intCast(bmp.width), .cy = @intCast(bmp.height) };
     const source_pos = win32.POINT{ .x = 0, .y = 0 };
     var blend = win32.BLENDFUNCTION{
@@ -264,7 +258,8 @@ pub fn presentLayered(hwnd: win32.HWND, bmp: *const OverlayBitmap, opacity: u8) 
         .SourceConstantAlpha = opacity,
         .AlphaFormat = win32.AC_SRC_ALPHA,
     };
-    _ = win32.UpdateLayeredWindow(hwnd, screen_dc, null, @constCast(&window_size), bmp.mem_dc, @constCast(&source_pos), 0, &blend, win32.ULW_ALPHA);
+    // A null hdcDst is valid with an hdcSrc: UpdateLayeredWindow uses the screen DC itself, sparing a GetDC/ReleaseDC pair every frame.
+    _ = win32.UpdateLayeredWindow(hwnd, null, null, @constCast(&window_size), bmp.mem_dc, @constCast(&source_pos), 0, &blend, win32.ULW_ALPHA);
 }
 
 /// Longest prefix of `text` (plus "...") that fits within `max_w` pixels measured on `dc`, written into `out`; returns the prefix as-is (no ellipsis) if it already fits.

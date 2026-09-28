@@ -66,7 +66,7 @@ pub fn refreshVisuals(p: *Painter) void {
         // Must run for every thumbnail, not just win32_enabled ones: list_view.zig reads these cache fields directly.
         thumbnail.refreshConfigCache(p.config, &p.auto_colors);
         p.refreshGroupBadge(thumbnail);
-        // RenderSettings only compares character_name, so it can miss a change to a field resolved above.
+        // Measured text sizes are cached by font, not text, so a changed display name would keep the old size.
         thumbnail.render_cache.invalidate();
 
         if (!thumbnail.win32_enabled) continue;
