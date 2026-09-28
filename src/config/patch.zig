@@ -38,6 +38,17 @@ pub fn ChildOf(comptime T: type) type {
     return @typeInfo(@typeInfo(Return).optional.child).pointer.child;
 }
 
+/// Whether `path` names a section (or keyed map child) whose fields can be set one by one, rather than a value set whole.
+pub fn isSection(comptime T: type, path: []const []const u8) bool {
+    if (comptime isKeyedMap(T)) return path.len == 0 or isSection(ChildOf(T), path[1..]);
+    if (comptime !wire.isNested(T)) return false;
+    if (path.len == 0) return true;
+    inline for (comptime wire.savedFields(T)) |f| {
+        if (std.mem.eql(u8, path[0], f.name)) return isSection(comptime (wire.OptionalNested(f.type) orelse f.type), path[1..]);
+    }
+    return false;
+}
+
 /// Gives every keyed list item still at id 0 a fresh one.
 pub fn assignIds(comptime T: type, value: *T) void {
     inline for (comptime wire.savedFields(T)) |f| {

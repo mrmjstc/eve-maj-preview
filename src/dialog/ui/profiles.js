@@ -65,7 +65,7 @@ async function restoreProfileBackup(filename, displayName) {
     if (!restoreResult) return;
     const { name: newName, color: accentColor } = restoreResult;
 
-    const sanitizedName = newName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
+    const sanitizedName = cleanProfileName(newName);
     if (sanitizedName === '') {
         showStatus(t('status.invalidProfileName'), 'error');
         return;
@@ -93,7 +93,10 @@ async function restoreProfileBackup(filename, displayName) {
     }
 }
 
-export const MAX_PROFILE_NAME_LENGTH = 16;
+// The characters and length the app accepts in a profile name (see validateName in config/profiles.zig).
+export function cleanProfileName(name) {
+    return name.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, app.schema.profileNameMaxLength);
+}
 
 export async function loadProfileList() {
     try {
@@ -215,7 +218,7 @@ export async function createNewProfile() {
     if (!result0) return;
     const { name: profileName, color: accentColor } = result0;
 
-    const sanitizedName = profileName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
+    const sanitizedName = cleanProfileName(profileName);
     if (sanitizedName === '') {
         showStatus(t('status.invalidProfileName'), 'error');
         return;
@@ -252,7 +255,7 @@ export async function copyCurrentProfile() {
     if (!copyResult) return;
     const { name: newName, color: accentColor } = copyResult;
 
-    const sanitizedName = newName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, MAX_PROFILE_NAME_LENGTH);
+    const sanitizedName = cleanProfileName(newName);
     if (sanitizedName === '') {
         showStatus(t('status.invalidProfileName'), 'error');
         return;
@@ -288,7 +291,7 @@ function showProfileNameModal(title, defaultValue = '', defaultColor = DEFAULT_A
         const cancelBtn = document.getElementById('profile-modal-cancel');
 
         titleEl.textContent = title;
-        input.value = defaultValue.slice(0, MAX_PROFILE_NAME_LENGTH);
+        input.value = defaultValue.slice(0, app.schema.profileNameMaxLength);
         colorInput.value = defaultColor;
         applyAccentColorTheme(htmlColorToZig(defaultColor));
 

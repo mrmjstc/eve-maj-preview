@@ -275,6 +275,11 @@ export async function loadAppVersion() {
     }
 }
 
+// Takes up edits the app made to the documents itself, such as an import.
+export function reloadSession() {
+    return enqueue(async () => adoptSnapshot(await rpc('getSession')));
+}
+
 // Starts over from what's saved, dropping unsaved edits.
 export function openSession() {
     clearTimeout(flushTimer);

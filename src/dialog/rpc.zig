@@ -13,6 +13,7 @@ const slog = log.scoped("dialog");
 const api_modules = .{
     @import("api/session.zig"),
     @import("api/profiles.zig"),
+    @import("api/import.zig"),
     @import("api/app.zig"),
     @import("api/background.zig"),
 };

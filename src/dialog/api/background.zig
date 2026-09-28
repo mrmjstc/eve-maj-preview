@@ -93,13 +93,6 @@ pub fn applyUltraPotatoMode(arena: std.mem.Allocator, args: struct { paths: []co
 
 const ApplyResult = struct { path: []const u8, ok: bool, changed: bool, @"error": ?[]const u8 };
 
-/// Imported positions saved while an app was DPI-unaware, converted to physical pixels.
-pub fn scaleLegacyPositions(arena: std.mem.Allocator, args: struct { positions: []const config_mod.Position }) ![]const config_mod.Position {
-    const out = try arena.alloc(config_mod.Position, args.positions.len);
-    for (args.positions, out) |pos, *scaled| scaled.* = pos.scaleFromLegacyDpiUnaware();
-    return out;
-}
-
 const WindowScan = struct {
     arena: std.mem.Allocator,
     windows: std.ArrayList(RunningWindow) = .empty,

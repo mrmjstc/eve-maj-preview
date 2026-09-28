@@ -91,8 +91,8 @@ pub fn globalDirty() bool {
     return !std.mem.eql(u8, edited, running);
 }
 
-/// Applies `ops` in order, then writes one result per op: a `set`'s value as clamped, an `insert`'s new item with its id, otherwise null.
-pub fn apply(jw: *std.json.Stringify, arena: std.mem.Allocator, doc: Doc, ops: []const patch.Op) !void {
+/// Applies `ops` in order, then writes one result per op to `jw` if given: a `set`'s value as clamped, an `insert`'s new item with its id, otherwise null.
+pub fn apply(jw: ?*std.json.Stringify, arena: std.mem.Allocator, doc: Doc, ops: []const patch.Op) !void {
     switch (doc) {
         .profile => {
             // Even after a failed op, since those before it were applied.
@@ -103,13 +103,14 @@ pub fn apply(jw: *std.json.Stringify, arena: std.mem.Allocator, doc: Doc, ops: [
     }
 }
 
-fn applyTo(comptime T: type, target: *T, jw: *std.json.Stringify, arena: std.mem.Allocator, ops: []const patch.Op) !void {
+fn applyTo(comptime T: type, target: *T, maybe_jw: ?*std.json.Stringify, arena: std.mem.Allocator, ops: []const patch.Op) !void {
     const ctx: patch.Context = .{ .arena = arena, .allocator = target.allocator };
     const inserted = try arena.alloc(?u32, ops.len);
     errdefer target.validate();
     for (ops, inserted) |op, *id| id.* = try patch.apply(T, target, op, ctx);
     target.validate();
 
+    const jw = maybe_jw orelse return;
     try jw.beginArray();
     for (ops, inserted) |op, id| {
         if (id) |item_id| {
