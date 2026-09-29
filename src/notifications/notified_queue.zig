@@ -1,9 +1,10 @@
+//! Characters with a recent game-event notification, oldest first, for the cycle-to-notified hotkey.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const log = @import("../log.zig");
+
 const slog = log.scoped("notified_queue");
 
-/// Characters with a recent game-event notification, oldest first; feeds the cycle-to-notified hotkey.
 pub const NotifiedQueue = struct {
     /// Owns a copy of the name since it must outlive ThumbnailWindow.character_name, which is freed on window close.
     const Entry = struct {
@@ -29,7 +30,7 @@ pub const NotifiedQueue = struct {
                     .character_name = existing.character_name,
                     .notified_at_ms = now,
                 }) catch |err| {
-                    slog.err("Failed to requeue notified character {s}: {}", .{ character_name, err });
+                    slog.err("Failed to requeue notified character '{s}': {}", .{ character_name, err });
                     allocator.free(existing.character_name);
                 };
                 return;
@@ -37,11 +38,11 @@ pub const NotifiedQueue = struct {
         }
 
         const name_dup = allocator.dupe(u8, character_name) catch |err| {
-            slog.err("Failed to track notified character {s}: {}", .{ character_name, err });
+            slog.err("Failed to track notified character '{s}': {}", .{ character_name, err });
             return;
         };
         self.entries.append(allocator, .{ .character_name = name_dup, .notified_at_ms = now }) catch |err| {
-            slog.err("Failed to queue notified character {s}: {}", .{ character_name, err });
+            slog.err("Failed to queue notified character '{s}': {}", .{ character_name, err });
             allocator.free(name_dup);
         };
     }

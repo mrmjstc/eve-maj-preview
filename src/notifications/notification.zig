@@ -1,5 +1,7 @@
+//! Notification types, their categories, and each type's default wording.
 const std = @import("std");
 const log = @import("../log.zig");
+
 const slog = log.scoped("notification");
 
 pub const NotificationType = enum {
@@ -50,16 +52,6 @@ pub const NotificationCategory = enum {
     General,
 };
 
-pub fn notificationCategory(t: NotificationType) NotificationCategory {
-    return switch (t) {
-        .FleetInvite, .FleetFollow, .FleetRegroup, .FleetDisband => .Fleet,
-        .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .CrystalBroke => .Mining,
-        .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .BombLauncherEmpty, .SelfDestruct, .WarpBubble => .Combat,
-        .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind => .Navigation,
-        .ConversationInvite, .GroupMembership, .CycleExclusion, .HotkeySuspend, .ProfileSwitch, .AutoMinimizeToggle, .SavedPositionMove, .Generic => .General,
-    };
-}
-
 pub const State = enum { on, off, added, removed, suspended, resumed, excluded, included, started, aborted };
 
 /// A notification before it's rendered to text; slices are borrowed from the caller.
@@ -70,33 +62,43 @@ pub const Notification = struct {
     target: ?[]const u8 = null,
 };
 
+pub fn notificationCategory(ntype: NotificationType) NotificationCategory {
+    return switch (ntype) {
+        .FleetInvite, .FleetFollow, .FleetRegroup, .FleetDisband => .Fleet,
+        .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .CrystalBroke => .Mining,
+        .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .BombLauncherEmpty, .SelfDestruct, .WarpBubble => .Combat,
+        .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind => .Navigation,
+        .ConversationInvite, .GroupMembership, .CycleExclusion, .HotkeySuspend, .ProfileSwitch, .AutoMinimizeToggle, .SavedPositionMove, .Generic => .General,
+    };
+}
+
 /// Feedback for something the user just did, as opposed to a game event.
-pub fn isUserAction(t: NotificationType) bool {
-    return switch (t) {
+pub fn isUserAction(ntype: NotificationType) bool {
+    return switch (ntype) {
         .GroupMembership, .CycleExclusion, .HotkeySuspend, .ProfileSwitch, .AutoMinimizeToggle, .SavedPositionMove => true,
         else => false,
     };
 }
 
 /// Representative field values for the config dialog's Test button.
-pub fn sample(t: NotificationType) Notification {
-    return switch (t) {
-        .SelfDestruct => .{ .ntype = t, .state = .started },
-        .CycleExclusion => .{ .ntype = t, .state = .excluded },
-        .HotkeySuspend => .{ .ntype = t, .state = .suspended },
-        .AutoMinimizeToggle => .{ .ntype = t, .state = .on },
-        .GroupMembership => .{ .ntype = t, .state = .added, .target = "Hotkey Group 1" },
-        .ProfileSwitch => .{ .ntype = t, .target = "Default" },
-        .SystemChange, .ConduitJump => .{ .ntype = t, .target = "Jita" },
-        .TravelLeftBehind => .{ .ntype = t, .source = "Perimeter", .target = "Jita" },
-        .Generic => .{ .ntype = t, .source = "Generic notification" },
-        else => .{ .ntype = t },
+pub fn sample(ntype: NotificationType) Notification {
+    return switch (ntype) {
+        .SelfDestruct => .{ .ntype = ntype, .state = .started },
+        .CycleExclusion => .{ .ntype = ntype, .state = .excluded },
+        .HotkeySuspend => .{ .ntype = ntype, .state = .suspended },
+        .AutoMinimizeToggle => .{ .ntype = ntype, .state = .on },
+        .GroupMembership => .{ .ntype = ntype, .state = .added, .target = "Hotkey Group 1" },
+        .ProfileSwitch => .{ .ntype = ntype, .target = "Default" },
+        .SystemChange, .ConduitJump => .{ .ntype = ntype, .target = "Jita" },
+        .TravelLeftBehind => .{ .ntype = ntype, .source = "Perimeter", .target = "Jita" },
+        .Generic => .{ .ntype = ntype, .source = "Generic notification" },
+        else => .{ .ntype = ntype },
     };
 }
 
 /// Built-in wording for each type; the returned slice may point into `buf`.
-pub fn defaultText(n: Notification, buf: []u8) []const u8 {
-    return switch (n.ntype) {
+pub fn defaultText(notification: Notification, buf: []u8) []const u8 {
+    return switch (notification.ntype) {
         .FleetInvite => "Fleet invite",
         .FleetFollow => "Following",
         .FleetRegroup => "Regrouping",
@@ -116,32 +118,32 @@ pub fn defaultText(n: Notification, buf: []u8) []const u8 {
         .CloakFailed => "Can't cloak",
         .CrystalBroke => "Crystal broke",
         .BombLauncherEmpty => "Bomb Launcher Empty",
-        .SelfDestruct => if (n.state == .aborted) "Self-Destruct Aborted" else "Self-Destruct",
+        .SelfDestruct => if (notification.state == .aborted) "Self-Destruct Aborted" else "Self-Destruct",
         .Docking => "Docking",
         .AutopilotReached => "Waypoint reached",
         .AutopilotApproaching => "Approaching",
         .JumpRange => "Can't Jump: Range",
         .AggressionCantJump => "Can't Jump: Aggression",
-        .ConduitJump => withField(buf, "Taking Conduit to {s}", n.target, "Conduit Jump"),
-        .SystemChange => withField(buf, "Jumped to {s}", n.target, "Jumped"),
-        .TravelLeftBehind => withField(buf, "Left behind in {s}", n.source, "Left behind"),
-        .GroupMembership => if (n.state == .removed)
-            withField(buf, "Removed from {s}", n.target, "Removed from group")
+        .ConduitJump => withField(buf, "Taking Conduit to {s}", notification.target, "Conduit Jump"),
+        .SystemChange => withField(buf, "Jumped to {s}", notification.target, "Jumped"),
+        .TravelLeftBehind => withField(buf, "Left behind in {s}", notification.source, "Left behind"),
+        .GroupMembership => if (notification.state == .removed)
+            withField(buf, "Removed from {s}", notification.target, "Removed from group")
         else
-            withField(buf, "Added to {s}", n.target, "Added to group"),
-        .CycleExclusion => if (n.state == .excluded) "Excluded" else "Included",
-        .HotkeySuspend => if (n.state == .suspended) "Hotkeys suspended" else "Hotkeys resumed",
-        .ProfileSwitch => withField(buf, "Profile: {s}", n.target, "Profile switched"),
-        .AutoMinimizeToggle => if (n.state == .on) "Auto-minimize on" else "Auto-minimize off",
+            withField(buf, "Added to {s}", notification.target, "Added to group"),
+        .CycleExclusion => if (notification.state == .excluded) "Excluded" else "Included",
+        .HotkeySuspend => if (notification.state == .suspended) "Hotkeys suspended" else "Hotkeys resumed",
+        .ProfileSwitch => withField(buf, "Profile: {s}", notification.target, "Profile switched"),
+        .AutoMinimizeToggle => if (notification.state == .on) "Auto-minimize on" else "Auto-minimize off",
         .SavedPositionMove => "Moved to saved position",
-        .Generic => n.source orelse "",
+        .Generic => notification.source orelse "",
     };
 }
 
 fn withField(buf: []u8, comptime fmt: []const u8, field: ?[]const u8, fallback: []const u8) []const u8 {
     const value = field orelse return fallback;
     return std.fmt.bufPrint(buf, fmt, .{value}) catch |err| {
-        slog.warn("Notification text for {s} didn't fit, using \"{s}\": {}", .{ value, fallback, err });
+        slog.warn("Notification text for '{s}' didn't fit, using \"{s}\": {}", .{ value, fallback, err });
         return fallback;
     };
 }

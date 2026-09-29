@@ -1,6 +1,8 @@
+//! Text-to-speech alerts through SAPI's SpVoice on a worker thread.
 const std = @import("std");
-const windows = std.os.windows;
 const log = @import("../log.zig");
+
+const windows = std.os.windows;
 const slog = log.scoped("tts");
 
 const IID_IDispatch = windows.GUID{
@@ -30,6 +32,8 @@ const DISPID_PROPERTYPUT: i32 = -3;
 
 const VT_I4: u16 = 3;
 const VT_BSTR: u16 = 8;
+
+const WORKER_POLL_MS: u64 = 50;
 
 extern "ole32" fn CoInitializeEx(pvReserved: ?*anyopaque, dwCoInit: u32) callconv(.c) c_long;
 extern "ole32" fn CoUninitialize() callconv(.c) void;
@@ -68,7 +72,7 @@ const DISPPARAMS = extern struct {
     cNamedArgs: u32,
 };
 
-// Driven via late-bound Invoke rather than a hand-rolled ISpVoice vtable, since IDispatch's layout is fixed while SAPI's real vtable order is easy to mis-transcribe.
+/// Driven via late-bound Invoke rather than a hand-rolled ISpVoice vtable, since IDispatch's layout is fixed while SAPI's real vtable order is easy to mis-transcribe.
 const IDispatch = extern struct {
     vtable: *const IDispatchVtbl,
 
@@ -120,7 +124,7 @@ const IDispatch = extern struct {
     }
 };
 
-// COM objects are apartment-affine, so every method here (not just speak) must run on the same STA thread that created dispatch.
+/// COM objects are apartment-affine, so every method here (not just speak) must run on the same STA thread that created dispatch.
 const TtsEngine = struct {
     dispatch: *IDispatch,
     speak_dispid: i32,
@@ -174,7 +178,7 @@ const TtsEngine = struct {
         };
     }
 
-    // Blocks until finished: SpVoice's Invoke only accepts the reduced-arity Text-only call, not one with an explicit Flags arg, so this must never run on the main thread.
+    /// Blocks until finished: SpVoice's Invoke only accepts the Text-only call, not one with Flags, so this must never run on the main thread.
     fn speak(self: *TtsEngine, text: []const u8) void {
         const text_w = std.unicode.utf8ToUtf16LeAllocZ(std.heap.page_allocator, text) catch |err| {
             slog.warn("Failed to convert TTS text to UTF-16: {}", .{err});
@@ -183,7 +187,7 @@ const TtsEngine = struct {
         defer std.heap.page_allocator.free(text_w);
 
         const bstr = SysAllocString(text_w) orelse {
-            slog.warn("SysAllocString failed for TTS text", .{});
+            slog.warn("Failed to allocate a BSTR for TTS text", .{});
             return;
         };
         defer SysFreeString(bstr);
@@ -201,7 +205,7 @@ const TtsEngine = struct {
 };
 
 const Command = union(enum) {
-    // Must be page_allocator-owned; the worker frees it after speaking (or shutdown() frees it if still queued).
+    /// Owned by page_allocator; the worker frees it after speaking, or shutdown does if it's still queued.
     speak: []const u8,
     set_volume: u8,
     set_rate: i8,
@@ -240,11 +244,45 @@ pub fn setIo(io: std.Io) void {
     g_io = io;
 }
 
-const WORKER_POLL_MS: u64 = 50;
+/// Safe before TTS has started; does nothing if the worker can't start.
+pub fn setVoiceSettings(volume: u8, rate: i8) void {
+    if (!ensureWorker()) return;
+    g_queue.push(.{ .set_volume = volume }) catch |err| {
+        slog.warn("Failed to queue TTS volume change: {}", .{err});
+    };
+    g_queue.push(.{ .set_rate = rate }) catch |err| {
+        slog.warn("Failed to queue TTS rate change: {}", .{err});
+    };
+}
+
+/// Returns at once; the worker speaks alerts in order, and does nothing if SAPI is unavailable.
+pub fn speakAlert(text: []const u8) void {
+    if (!ensureWorker()) return;
+    const copy = std.heap.page_allocator.dupe(u8, text) catch |err| {
+        slog.warn("Failed to queue TTS alert: {}", .{err});
+        return;
+    };
+    g_queue.push(.{ .speak = copy }) catch |err| {
+        slog.warn("Failed to queue TTS alert: {}", .{err});
+        std.heap.page_allocator.free(copy);
+    };
+}
+
+/// Call once during app shutdown.
+pub fn shutdown() void {
+    const thread = g_thread orelse return;
+    g_should_exit.store(true, .release);
+    thread.join();
+    g_thread = null;
+
+    while (g_queue.pop()) |cmd| {
+        if (cmd == .speak) std.heap.page_allocator.free(cmd.speak);
+    }
+}
 
 fn workerMain() void {
     var engine = TtsEngine.init() catch |err| {
-        slog.warn("TTS unavailable (SAPI init failed): {}", .{err});
+        slog.warn("Failed to start SAPI, so alerts won't be spoken: {}", .{err});
         g_worker_dead.store(true, .release);
         return;
     };
@@ -285,40 +323,4 @@ fn ensureWorker() bool {
         return false;
     };
     return true;
-}
-
-/// Queue a volume/rate change for the worker thread; safe even if TTS hasn't started yet, and silently no-ops if the worker fails to start.
-pub fn setVoiceSettings(volume: u8, rate: i8) void {
-    if (!ensureWorker()) return;
-    g_queue.push(.{ .set_volume = volume }) catch |err| {
-        slog.warn("Failed to queue TTS volume change: {}", .{err});
-    };
-    g_queue.push(.{ .set_rate = rate }) catch |err| {
-        slog.warn("Failed to queue TTS rate change: {}", .{err});
-    };
-}
-
-/// Queue a short alert phrase to be spoken; returns immediately and speaks in FIFO order on the lazily-started worker thread, no-op if SAPI is unavailable.
-pub fn speakAlert(text: []const u8) void {
-    if (!ensureWorker()) return;
-    const copy = std.heap.page_allocator.dupe(u8, text) catch |err| {
-        slog.warn("Failed to queue TTS alert: {}", .{err});
-        return;
-    };
-    g_queue.push(.{ .speak = copy }) catch |err| {
-        slog.warn("Failed to queue TTS alert: {}", .{err});
-        std.heap.page_allocator.free(copy);
-    };
-}
-
-/// Stop the worker thread, if one was ever started. Call once during app shutdown.
-pub fn shutdown() void {
-    const thread = g_thread orelse return;
-    g_should_exit.store(true, .release);
-    thread.join();
-    g_thread = null;
-
-    while (g_queue.pop()) |cmd| {
-        if (cmd == .speak) std.heap.page_allocator.free(cmd.speak);
-    }
 }

@@ -1,17 +1,18 @@
+//! The History Panel: a draggable list of recent notifications, with category filter buttons.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const config_mod = @import("../config.zig");
-const notification_mod = @import("notification.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const PanelWindow = @import("../platform/panel_window.zig").PanelWindow;
-const color_mod = @import("../util/color.zig");
-const log = @import("../log.zig");
-const slog = log.scoped("history_panel");
-
+const config_mod = @import("../config.zig");
+const color = @import("../util/color.zig");
+const notification = @import("notification.zig");
+const history = @import("history.zig");
 const painter_mod = @import("../painter.zig");
 const activation = @import("../clients/activation.zig");
-const notification_history_mod = @import("history.zig");
 const drag_panel = @import("../drag/panel.zig");
+const log = @import("../log.zig");
+
+const slog = log.scoped("history_panel");
 
 const HEADER_HEIGHT: i32 = 18;
 const FOOTER_HEIGHT: i32 = 18;
@@ -33,44 +34,16 @@ const RGB_BUTTON_ACTIVE_BG: u32 = 0x00404040;
 const ARGB_BUTTON_ACTIVE_TEXT: u32 = ARGB_HDR_TEXT;
 const ARGB_BUTTON_INACTIVE_TEXT: u32 = ARGB_EMPTY_TEXT;
 
-// Granularity of the timestamp text baked into the render signature, so it doesn't redraw every scan tick.
+/// Granularity of the timestamp text baked into the render signature, so it doesn't redraw every scan tick.
 const TIMESTAMP_BUCKET_MS: u64 = 15_000;
 
-// Order and labels for the footer's category filter buttons; index-paired with each other and with HistoryPanelWindow.category_button_rects.
-const CATEGORY_ORDER = [_]notification_mod.NotificationCategory{ .Fleet, .Mining, .Combat, .Navigation, .General };
+/// Order and labels for the footer's category filter buttons; index-paired with each other and with HistoryPanelWindow.category_button_rects.
+const CATEGORY_ORDER = [_]notification.NotificationCategory{ .Fleet, .Mining, .Combat, .Navigation, .General };
 const CATEGORY_LABELS = [_][]const u8{ "FLT", "MIN", "CBT", "NAV", "GEN" };
 
-const ButtonRect = struct { left: i32 = 0, right: i32 = 0 };
-
-fn categoryEnabled(cfg: *const config_mod.Config, cat: notification_mod.NotificationCategory) bool {
-    return switch (cat) {
-        .Fleet => cfg.display.notifInfoPanelShowFleet,
-        .Mining => cfg.display.notifInfoPanelShowMining,
-        .Combat => cfg.display.notifInfoPanelShowCombat,
-        .Navigation => cfg.display.notifInfoPanelShowNavigation,
-        .General => cfg.display.notifInfoPanelShowGeneral,
-    };
-}
-
-fn setCategoryEnabled(store: *config_mod.ProfileStore, cat: notification_mod.NotificationCategory, value: bool) void {
-    switch (cat) {
-        .Fleet => store.update(.{ .display = .{ .notifInfoPanelShowFleet = value } }),
-        .Mining => store.update(.{ .display = .{ .notifInfoPanelShowMining = value } }),
-        .Combat => store.update(.{ .display = .{ .notifInfoPanelShowCombat = value } }),
-        .Navigation => store.update(.{ .display = .{ .notifInfoPanelShowNavigation = value } }),
-        .General => store.update(.{ .display = .{ .notifInfoPanelShowGeneral = value } }),
-    }
-}
-
-/// With the filter buttons hidden (notifInfoPanelShowCategoryFilters off), notifications aren't silently dropped by a filter state the user can't see or change - everything shows.
-fn effectiveCategoryEnabled(cfg: *const config_mod.Config, cat: notification_mod.NotificationCategory) bool {
-    if (!cfg.display.notifInfoPanelShowCategoryFilters) return true;
-    return categoryEnabled(cfg, cat);
-}
-
-var g_class_registered: bool = false;
-
 const HISTORY_PANEL_WINDOW_CLASS = "EVE_HISTORY_PANEL_CLASS";
+
+const ButtonRect = struct { left: i32 = 0, right: i32 = 0 };
 
 /// Owns the History Panel window and when it's on-screen: display.showNotifInfoPanel creates it, hideNotifInfoPanelWhenNoCharacters auto-hides it, and the tray toggle can force it visible.
 pub const HistoryPanel = struct {
@@ -162,9 +135,9 @@ pub const HistoryPanelWindow = struct {
     panel: PanelWindow,
     store: *config_mod.ProfileStore,
     config: *const config_mod.Config,
-    history_rows: [notification_history_mod.CAPACITY]HistoryRow = undefined,
+    history_rows: [history.CAPACITY]HistoryRow = undefined,
     history_row_count: usize = 0,
-    // Index-paired with CATEGORY_ORDER; recomputed every render, consumed by WM_LBUTTONDOWN's footer hit-test.
+    /// Index-paired with CATEGORY_ORDER; recomputed every render for WM_LBUTTONDOWN's footer hit-test.
     category_button_rects: [CATEGORY_ORDER.len]ButtonRect = undefined,
 
     pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) !HistoryPanelWindow {
@@ -193,8 +166,8 @@ pub const HistoryPanelWindow = struct {
         self.store.update(.{ .display = .{ .notifInfoPanelX = pos.x, .notifInfoPanelY = pos.y } });
     }
 
-    /// Notification text color for a history row: the notification type's configured color, else the thumbnail overlay's default text color.
-    fn resolveNotifTextColor(self: *const HistoryPanelWindow, ntype: notification_mod.NotificationType) u32 {
+    /// The type's configured color, else the thumbnail overlay's default text color.
+    fn resolveNotifTextColor(self: *const HistoryPanelWindow, ntype: notification.NotificationType) u32 {
         const type_cfg = self.config.thumbnail.notifications.getTypeConfig(ntype);
         return (type_cfg.text_color orelse self.config.thumbnail.characterNameColor) & 0x00FF_FFFF;
     }
@@ -209,11 +182,11 @@ pub const HistoryPanelWindow = struct {
     }
 
     fn handleFooterClick(self: *HistoryPanelWindow, cx: i32) void {
-        for (CATEGORY_ORDER, 0..) |cat, i| {
+        for (CATEGORY_ORDER, 0..) |category, i| {
             const rect = self.category_button_rects[i];
             if (cx < rect.left or cx >= rect.right) continue;
 
-            setCategoryEnabled(self.store, cat, !categoryEnabled(self.config, cat));
+            setCategoryEnabled(self.store, category, !categoryEnabled(self.config, category));
             return;
         }
     }
@@ -231,8 +204,8 @@ pub const HistoryPanelWindow = struct {
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelShowCategoryFilters));
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelMergeEnabled));
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelMergeWindowSec));
-        for (CATEGORY_ORDER) |cat| {
-            const enabled = categoryEnabled(self.config, cat);
+        for (CATEGORY_ORDER) |category| {
+            const enabled = categoryEnabled(self.config, category);
             h.update(std.mem.asBytes(&enabled));
         }
         h.update(std.mem.asBytes(&painter.notification_history.revision));
@@ -240,18 +213,18 @@ pub const HistoryPanelWindow = struct {
         const show_timestamp = self.config.display.notifInfoPanelShowTimestamp;
         const now = win32.Ticks.now();
 
-        var entries: [notification_history_mod.CAPACITY]notification_history_mod.Entry = undefined;
+        var entries: [history.CAPACITY]history.Entry = undefined;
         const hist = painter.notification_history.snapshot(&entries);
-        for (hist) |*e| {
-            h.update(e.characterName());
-            h.update(e.text());
-            h.update(std.mem.asBytes(&e.unmerged));
-            const char_color = (e.character_color orelse ARGB_CHAR_NAME) & 0x00FF_FFFF;
-            const text_color = self.resolveNotifTextColor(e.notification_type);
+        for (hist) |*entry| {
+            h.update(entry.characterName());
+            h.update(entry.text());
+            h.update(std.mem.asBytes(&entry.unmerged));
+            const char_color = (entry.character_color orelse ARGB_CHAR_NAME) & 0x00FF_FFFF;
+            const text_color = self.resolveNotifTextColor(entry.notification_type);
             h.update(std.mem.asBytes(&char_color));
             h.update(std.mem.asBytes(&text_color));
             if (show_timestamp) {
-                const bucket = now.elapsedSince(e.timestamp_ms) / TIMESTAMP_BUCKET_MS;
+                const bucket = now.elapsedSince(entry.timestamp_ms) / TIMESTAMP_BUCKET_MS;
                 h.update(std.mem.asBytes(&bucket));
             }
         }
@@ -269,30 +242,30 @@ pub const HistoryPanelWindow = struct {
 
         const win_w: i32 = @max(1, display.notifInfoPanelWidth);
         const win_h: i32 = @max(1, display.notifInfoPanelHeight);
-        const ov = try self.panel.beginFrame(win_w, win_h);
-        const W: usize = ov.width;
-        const H: usize = ov.height;
+        const bitmap = try self.panel.beginFrame(win_w, win_h);
+        const width: usize = bitmap.width;
+        const height: usize = bitmap.height;
 
         const show_filters = self.config.display.notifInfoPanelShowCategoryFilters;
         const footer_top: i32 = if (show_filters) @max(HEADER_HEIGHT, win_h - FOOTER_HEIGHT) else win_h;
 
-        gdi_overlay.fillRect(ov.pixels, W, H, 0, 0, W, @intCast(HEADER_HEIGHT), self.withAlpha(RGB_HEADER));
-        gdi_overlay.fillRect(ov.pixels, W, H, 0, @intCast(HEADER_HEIGHT), W, H - @as(usize, @intCast(HEADER_HEIGHT)), self.withAlpha(RGB_BODY));
+        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, width, @intCast(HEADER_HEIGHT), self.withAlpha(RGB_HEADER));
+        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(HEADER_HEIGHT), width, height - @as(usize, @intCast(HEADER_HEIGHT)), self.withAlpha(RGB_BODY));
 
         if (show_filters) {
-            gdi_overlay.fillRect(ov.pixels, W, H, 0, @intCast(footer_top), W, @intCast(win_h - footer_top), self.withAlpha(RGB_HEADER));
+            gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(footer_top), width, @intCast(win_h - footer_top), self.withAlpha(RGB_HEADER));
 
             self.updateCategoryButtonRects(win_w);
-            for (CATEGORY_ORDER, 0..) |cat, i| {
-                if (!categoryEnabled(self.config, cat)) continue;
+            for (CATEGORY_ORDER, 0..) |category, i| {
+                if (!categoryEnabled(self.config, category)) continue;
                 const rect = self.category_button_rects[i];
-                gdi_overlay.fillRect(ov.pixels, W, H, @intCast(rect.left), @intCast(footer_top), @intCast(rect.right - rect.left), @intCast(win_h - footer_top), self.withAlpha(RGB_BUTTON_ACTIVE_BG));
+                gdi_overlay.fillRect(bitmap.pixels, width, height, @intCast(rect.left), @intCast(footer_top), @intCast(rect.right - rect.left), @intCast(win_h - footer_top), self.withAlpha(RGB_BUTTON_ACTIVE_BG));
             }
 
-            gdi_overlay.fillRect(ov.pixels, W, H, 0, @intCast(footer_top), W, 1, ARGB_SEPARATOR);
+            gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(footer_top), width, 1, ARGB_SEPARATOR);
             for (1..CATEGORY_ORDER.len) |i| {
                 const x: usize = @intCast(self.category_button_rects[i].left);
-                gdi_overlay.fillRect(ov.pixels, W, H, x, @intCast(footer_top), 1, @intCast(win_h - footer_top), ARGB_SEPARATOR);
+                gdi_overlay.fillRect(bitmap.pixels, width, height, x, @intCast(footer_top), 1, @intCast(win_h - footer_top), ARGB_SEPARATOR);
             }
         }
 
@@ -303,17 +276,17 @@ pub const HistoryPanelWindow = struct {
         const now = win32.Ticks.now();
 
         if (self.panel.font) |f| {
-            const old = win32.SelectObject(ov.mem_dc, f);
+            const old = win32.SelectObject(bitmap.mem_dc, f);
             defer {
-                if (old) |o| _ = win32.SelectObject(ov.mem_dc, o);
+                if (old) |o| _ = win32.SelectObject(bitmap.mem_dc, o);
             }
 
             const header_text = "Notification History";
-            const header_text_h = measureTextHeight(ov.mem_dc, header_text);
+            const header_text_h = measureTextHeight(bitmap.mem_dc, header_text);
             const header_text_y = @max(0, @divTrunc(HEADER_HEIGHT - header_text_h, 2));
-            drawText(ov.mem_dc, header_text, TEXT_LEFT, header_text_y, ARGB_HDR_TEXT);
+            drawText(bitmap.mem_dc, header_text, TEXT_LEFT, header_text_y, ARGB_HDR_TEXT);
 
-            var entries: [notification_history_mod.CAPACITY]notification_history_mod.Entry = undefined;
+            var entries: [history.CAPACITY]history.Entry = undefined;
             const hist = painter.notification_history.snapshot(&entries);
             const cap = @min(history_rows_fit, configured_max_rows);
 
@@ -322,7 +295,7 @@ pub const HistoryPanelWindow = struct {
             const merge_window_ms: u64 = @as(u64, @intCast(@max(0, self.config.display.notifInfoPanelMergeWindowSec))) * 1000;
             var shown: usize = 0;
             for (hist, 0..) |*entry, i| {
-                if (!effectiveCategoryEnabled(self.config, notification_mod.notificationCategory(entry.notification_type))) continue;
+                if (!effectiveCategoryEnabled(self.config, notification.notificationCategory(entry.notification_type))) continue;
 
                 if (merge_enabled and shown > 0 and !entry.unmerged) {
                     const row = &self.history_rows[shown - 1];
@@ -351,51 +324,79 @@ pub const HistoryPanelWindow = struct {
                 var ts_buf: [24]u8 = undefined;
                 const timestamp = if (show_timestamp) formatRelativeTime(&ts_buf, now, entry.timestamp_ms) else null;
                 if (row.count > 1) {
-                    drawMergedRow(ov.mem_dc, entry.text(), row.count, TEXT_LEFT, row_top + 1, char_color, text_color, max_w, timestamp);
+                    drawMergedRow(bitmap.mem_dc, entry.text(), row.count, TEXT_LEFT, row_top + 1, char_color, text_color, max_w, timestamp);
                 } else {
-                    drawHistoryRow(ov.mem_dc, entry.characterName(), entry.text(), TEXT_LEFT, row_top + 1, char_color, text_color, max_w, timestamp);
+                    drawHistoryRow(bitmap.mem_dc, entry.characterName(), entry.text(), TEXT_LEFT, row_top + 1, char_color, text_color, max_w, timestamp);
                 }
             }
 
             if (shown == 0) {
                 const empty_text = if (hist.len == 0) "No notifications yet" else "All notifications filtered";
-                drawText(ov.mem_dc, empty_text, TEXT_LEFT, HEADER_HEIGHT + 2, ARGB_EMPTY_TEXT);
+                drawText(bitmap.mem_dc, empty_text, TEXT_LEFT, HEADER_HEIGHT + 2, ARGB_EMPTY_TEXT);
             }
 
             if (show_filters) {
-                for (CATEGORY_ORDER, 0..) |cat, i| {
+                for (CATEGORY_ORDER, 0..) |category, i| {
                     const rect = self.category_button_rects[i];
                     const label = CATEGORY_LABELS[i];
-                    const active = categoryEnabled(self.config, cat);
+                    const active = categoryEnabled(self.config, category);
                     const label_color = if (active) ARGB_BUTTON_ACTIVE_TEXT else ARGB_BUTTON_INACTIVE_TEXT;
-                    const label_w = measureTextWidth(ov.mem_dc, label);
+                    const label_w = measureTextWidth(bitmap.mem_dc, label);
                     const cell_w: usize = @intCast(@max(0, rect.right - rect.left));
                     const label_x = rect.left + @as(i32, @intCast((cell_w -| label_w) / 2));
-                    const label_h = measureTextHeight(ov.mem_dc, label);
+                    const label_h = measureTextHeight(bitmap.mem_dc, label);
                     const label_y = footer_top + @max(0, @divTrunc(FOOTER_HEIGHT - label_h, 2));
-                    drawText(ov.mem_dc, label, label_x, label_y, label_color);
+                    drawText(bitmap.mem_dc, label, label_x, label_y, label_color);
                 }
             }
         }
 
-        gdi_overlay.fillRect(ov.pixels, W, H, 0, @intCast(HEADER_HEIGHT - 1), W, 1, ARGB_SEPARATOR);
+        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(HEADER_HEIGHT - 1), width, 1, ARGB_SEPARATOR);
 
         {
             const frame_col = self.withAlpha(RGB_FRAME);
-            gdi_overlay.fillRect(ov.pixels, W, H, 0, 0, W, 1, frame_col);
-            gdi_overlay.fillRect(ov.pixels, W, H, 0, H - 1, W, 1, frame_col);
-            gdi_overlay.fillRect(ov.pixels, W, H, 0, 0, 1, H, frame_col);
-            gdi_overlay.fillRect(ov.pixels, W, H, W - 1, 0, 1, H, frame_col);
+            gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, width, 1, frame_col);
+            gdi_overlay.fillRect(bitmap.pixels, width, height, 0, height - 1, width, 1, frame_col);
+            gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, 1, height, frame_col);
+            gdi_overlay.fillRect(bitmap.pixels, width, height, width - 1, 0, 1, height, frame_col);
         }
 
-        gdi_overlay.fixTextAlpha(ov.pixels, W, H);
+        gdi_overlay.fixTextAlpha(bitmap.pixels, width, height);
         self.panel.present(display.notifInfoPanelOpacity, signature);
     }
 
     fn withAlpha(self: *const HistoryPanelWindow, rgb: u32) u32 {
-        return color_mod.withAlpha(rgb, self.config.display.notifInfoPanelOpacity);
+        return color.withAlpha(rgb, self.config.display.notifInfoPanelOpacity);
     }
 };
+
+var g_class_registered: bool = false;
+
+fn categoryEnabled(cfg: *const config_mod.Config, category: notification.NotificationCategory) bool {
+    return switch (category) {
+        .Fleet => cfg.display.notifInfoPanelShowFleet,
+        .Mining => cfg.display.notifInfoPanelShowMining,
+        .Combat => cfg.display.notifInfoPanelShowCombat,
+        .Navigation => cfg.display.notifInfoPanelShowNavigation,
+        .General => cfg.display.notifInfoPanelShowGeneral,
+    };
+}
+
+fn setCategoryEnabled(store: *config_mod.ProfileStore, category: notification.NotificationCategory, value: bool) void {
+    switch (category) {
+        .Fleet => store.update(.{ .display = .{ .notifInfoPanelShowFleet = value } }),
+        .Mining => store.update(.{ .display = .{ .notifInfoPanelShowMining = value } }),
+        .Combat => store.update(.{ .display = .{ .notifInfoPanelShowCombat = value } }),
+        .Navigation => store.update(.{ .display = .{ .notifInfoPanelShowNavigation = value } }),
+        .General => store.update(.{ .display = .{ .notifInfoPanelShowGeneral = value } }),
+    }
+}
+
+/// With the filter buttons hidden (notifInfoPanelShowCategoryFilters off), notifications aren't silently dropped by a filter state the user can't see or change - everything shows.
+fn effectiveCategoryEnabled(cfg: *const config_mod.Config, category: notification.NotificationCategory) bool {
+    if (!cfg.display.notifInfoPanelShowCategoryFilters) return true;
+    return categoryEnabled(cfg, category);
+}
 
 /// Formats how long ago `entry_ts` was relative to `now` as e.g. "just now", "5m ago", "2h ago".
 fn formatRelativeTime(buf: *[24]u8, now: win32.Ticks, entry_ts: win32.Ticks) []const u8 {
@@ -485,33 +486,33 @@ fn historyPanelWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARA
         win32.WM_ENTERSIZEMOVE => {
             drag_panel.beginPanelDrag(hwnd);
             // No single character owns this panel, so every saved position shows as a ghost.
-            if (painter_mod.g_painter_ptr) |p| p.ghost_overlay.show(p, "");
+            if (painter_mod.g_painter_ptr) |painter| painter.ghost_overlay.show(painter, "");
             return 0;
         },
         win32.WM_EXITSIZEMOVE => {
-            const p = painter_mod.g_painter_ptr orelse return 0;
-            p.ghost_overlay.hide();
-            if (p.history_panel.window) |*niw| niw.saveWindowPosition();
+            const painter = painter_mod.g_painter_ptr orelse return 0;
+            painter.ghost_overlay.hide();
+            if (painter.history_panel.window) |*window| window.saveWindowPosition();
             return 0;
         },
         win32.WM_LBUTTONDOWN => {
             const cy = win32.lparamY(lParam);
             if (cy < HEADER_HEIGHT) return 0;
 
-            const p = painter_mod.g_painter_ptr orelse return 0;
-            const niw = if (p.history_panel.window) |*w| w else return 0;
-            const show_filters = niw.config.display.notifInfoPanelShowCategoryFilters;
-            const footer_top = if (show_filters) niw.panel.height - FOOTER_HEIGHT else niw.panel.height;
+            const painter = painter_mod.g_painter_ptr orelse return 0;
+            const window = if (painter.history_panel.window) |*w| w else return 0;
+            const show_filters = window.config.display.notifInfoPanelShowCategoryFilters;
+            const footer_top = if (show_filters) window.panel.height - FOOTER_HEIGHT else window.panel.height;
             if (show_filters and cy >= footer_top) {
-                niw.handleFooterClick(win32.lparamX(lParam));
+                window.handleFooterClick(win32.lparamX(lParam));
                 return 0;
             }
 
             const row: usize = @intCast(@divTrunc(cy - HEADER_HEIGHT, ROW_HEIGHT));
-            if (row >= niw.history_row_count) return 0;
-            const hist_row = niw.history_rows[row];
+            if (row >= window.history_row_count) return 0;
+            const hist_row = window.history_rows[row];
             if (hist_row.count > 1) {
-                p.notification_history.unmergeRange(hist_row.first, hist_row.last);
+                painter.notification_history.unmergeRange(hist_row.first, hist_row.last);
             } else {
                 activation.activate(hist_row.hwnd);
             }

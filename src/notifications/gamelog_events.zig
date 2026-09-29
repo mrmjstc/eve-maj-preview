@@ -1,3 +1,4 @@
+//! Which gamelog lines raise a notification, and of what type.
 const std = @import("std");
 const notification = @import("notification.zig");
 

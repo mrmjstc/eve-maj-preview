@@ -1,12 +1,13 @@
+//! The speech and sound a notification plays alongside its popup.
 const std = @import("std");
-const config_mod = @import("../config.zig");
+const config = @import("../config.zig");
 const tts = @import("tts.zig");
 const sound = @import("sound.zig");
 
-/// Speaks the same phrase the visual notification shows and plays its sound; both are self-contained, with no global master switch or shared volume.
-pub fn play(notif_config: *const config_mod.NotificationConfig, type_config: config_mod.NotificationTypeConfig, text: []const u8, spoken_name: ?[]const u8) void {
+/// Speaks the phrase the popup shows and plays its sound; each has its own switch and volume, with no global master.
+pub fn play(notification_config: *const config.NotificationConfig, type_config: config.NotificationTypeConfig, text: []const u8, spoken_name: ?[]const u8) void {
     if (type_config.tts_enabled) {
-        tts.setVoiceSettings(notif_config.tts_volume, notif_config.tts_rate);
+        tts.setVoiceSettings(notification_config.tts_volume, notification_config.tts_rate);
         if (spoken_name) |name| {
             var speak_buf: [256]u8 = undefined;
             const spoken = std.fmt.bufPrint(&speak_buf, "{s}, {s}", .{ name, text }) catch text;

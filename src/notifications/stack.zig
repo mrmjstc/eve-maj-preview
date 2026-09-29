@@ -1,7 +1,8 @@
+//! The notifications currently shown on a thumbnail.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const notification = @import("notification.zig");
-const config_mod = @import("../config.zig");
+const config = @import("../config.zig");
 
 /// Kept small since the overlay is drawn onto a small thumbnail bitmap.
 pub const CAPACITY: usize = 3;
@@ -23,7 +24,7 @@ pub const ActiveNotification = struct {
     flash_border: bool = false,
 
     /// `owned_text` must come from the allocator later passed to the stack, which frees it on removal.
-    pub fn fromConfig(owned_text: []const u8, ntype: notification.NotificationType, type_config: config_mod.NotificationTypeConfig, now: win32.Ticks, duration_ms: u32) ActiveNotification {
+    pub fn fromConfig(owned_text: []const u8, ntype: notification.NotificationType, type_config: config.NotificationTypeConfig, now: win32.Ticks, duration_ms: u32) ActiveNotification {
         return .{
             .text = owned_text,
             .notification_type = ntype,

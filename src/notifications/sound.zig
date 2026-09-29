@@ -1,6 +1,8 @@
+//! Sound alerts: WAV or MP3 decoded by Media Foundation and played through waveOut on a worker thread.
 const std = @import("std");
-const windows = std.os.windows;
 const log = @import("../log.zig");
+
+const windows = std.os.windows;
 const slog = log.scoped("sound");
 
 const HRESULT = c_long;
@@ -8,9 +10,6 @@ const WCHAR = u16;
 const BOOL = c_int;
 const HANDLE = *anyopaque;
 const DWORD = u32;
-
-// Vtables below are transcribed from mingw-w64's mfobjects.h/mfreadwrite.h - Microsoft's own Learn
-// docs list interface methods alphabetically, not in ABI order, and would silently break these calls.
 
 const MF_MT_MAJOR_TYPE = windows.GUID{
     .Data1 = 0x48eba18e,
@@ -60,11 +59,29 @@ const MFSTARTUP_LITE: u32 = 0x1;
 const MF_SOURCE_READER_FIRST_AUDIO_STREAM: u32 = 0xfffffffd;
 const MF_SOURCE_READERF_ENDOFSTREAM: u32 = 0x2;
 
+const WAVE_MAPPER: u32 = 0xFFFFFFFF;
+const CALLBACK_EVENT: u32 = 0x00050000;
+const INFINITE: u32 = 0xFFFFFFFF;
+const WORKER_POLL_MS: u64 = 50;
+
 extern "mfplat" fn MFStartup(version: u32, flags: u32) callconv(.c) HRESULT;
 extern "mfplat" fn MFShutdown() callconv(.c) HRESULT;
 extern "mfplat" fn MFCreateMediaType(pp_type: *?*IMFMediaType) callconv(.c) HRESULT;
 extern "mfreadwrite" fn MFCreateSourceReaderFromURL(url: [*:0]const WCHAR, attributes: ?*anyopaque, reader: *?*IMFSourceReader) callconv(.c) HRESULT;
 
+extern "winmm" fn waveOutOpen(phwo: *?HANDLE, device_id: u32, format: *const WAVEFORMATEX, callback: usize, instance: usize, flags: u32) callconv(.c) u32;
+extern "winmm" fn waveOutPrepareHeader(hwo: HANDLE, header: *WAVEHDR, size: u32) callconv(.c) u32;
+extern "winmm" fn waveOutUnprepareHeader(hwo: HANDLE, header: *WAVEHDR, size: u32) callconv(.c) u32;
+extern "winmm" fn waveOutWrite(hwo: HANDLE, header: *WAVEHDR, size: u32) callconv(.c) u32;
+extern "winmm" fn waveOutClose(hwo: HANDLE) callconv(.c) u32;
+extern "winmm" fn waveOutSetVolume(hwo: ?HANDLE, volume: u32) callconv(.c) u32;
+
+extern "kernel32" fn CreateEventA(attrs: ?*anyopaque, manual_reset: BOOL, initial_state: BOOL, name: ?[*:0]const u8) callconv(.c) ?HANDLE;
+extern "kernel32" fn ResetEvent(event: HANDLE) callconv(.c) BOOL;
+extern "kernel32" fn WaitForSingleObject(handle: HANDLE, timeout_ms: DWORD) callconv(.c) DWORD;
+extern "kernel32" fn CloseHandle(handle: HANDLE) callconv(.c) BOOL;
+
+// Vtables follow mingw-w64's mfobjects.h/mfreadwrite.h: Microsoft's docs list methods alphabetically, not in ABI order.
 const IMFMediaType = extern struct {
     vtable: *const Vtbl,
 
@@ -192,6 +209,27 @@ const IMFSourceReader = extern struct {
     }
 };
 
+const WAVEFORMATEX = extern struct {
+    wFormatTag: u16 = 1, // WAVE_FORMAT_PCM
+    nChannels: u16,
+    nSamplesPerSec: u32,
+    nAvgBytesPerSec: u32,
+    nBlockAlign: u16,
+    wBitsPerSample: u16,
+    cbSize: u16 = 0,
+};
+
+const WAVEHDR = extern struct {
+    lpData: [*]u8,
+    dwBufferLength: u32,
+    dwBytesRecorded: u32 = 0,
+    dwUser: usize = 0,
+    dwFlags: u32 = 0,
+    dwLoops: u32 = 0,
+    lpNext: ?*WAVEHDR = null,
+    reserved: usize = 0,
+};
+
 const DecodedPcm = struct {
     data: []u8,
     channels: u16,
@@ -202,6 +240,77 @@ const DecodedPcm = struct {
         allocator.free(self.data);
     }
 };
+
+/// Queued like tts.zig's commands, so overlapping alerts play in full instead of cutting each other off.
+const Command = struct {
+    /// Owned by page_allocator; the worker frees it after playing, or shutdown does if it's still queued.
+    path: []const u8,
+    volume_percent: u8,
+};
+
+const CommandQueue = struct {
+    mutex: std.Io.Mutex = .init,
+    items: std.ArrayList(Command) = .empty,
+
+    fn push(self: *CommandQueue, cmd: Command) !void {
+        try self.mutex.lock(g_io);
+        defer self.mutex.unlock(g_io);
+        try self.items.append(std.heap.page_allocator, cmd);
+    }
+
+    fn pop(self: *CommandQueue) ?Command {
+        self.mutex.lock(g_io) catch |err| {
+            slog.warn("Failed to lock command queue mutex: {}", .{err});
+            return null;
+        };
+        defer self.mutex.unlock(g_io);
+        if (self.items.items.len == 0) return null;
+        return self.items.orderedRemove(0);
+    }
+};
+
+var g_io: std.Io = undefined;
+var g_queue: CommandQueue = .{};
+var g_thread: ?std.Thread = null;
+var g_thread_failed: bool = false;
+var g_should_exit = std.atomic.Value(bool).init(false);
+var g_worker_dead = std.atomic.Value(bool).init(false);
+
+/// Must be called once before any sound function is used.
+pub fn setIo(io: std.Io) void {
+    g_io = io;
+}
+
+/// Returns at once; the worker plays alerts in order, each in full.
+pub fn playAlert(path: []const u8, volume_percent: u8) void {
+    if (!ensureWorker()) return;
+    const copy = std.heap.page_allocator.dupe(u8, path) catch |err| {
+        slog.warn("Failed to queue sound alert: {}", .{err});
+        return;
+    };
+    g_queue.push(.{ .path = copy, .volume_percent = volume_percent }) catch |err| {
+        slog.warn("Failed to queue sound alert: {}", .{err});
+        std.heap.page_allocator.free(copy);
+    };
+}
+
+/// Call once during app shutdown.
+pub fn shutdown() void {
+    const thread = g_thread orelse return;
+    g_should_exit.store(true, .release);
+    thread.join();
+    g_thread = null;
+
+    while (g_queue.pop()) |cmd| {
+        std.heap.page_allocator.free(cmd.path);
+    }
+}
+
+fn packVolume(volume_percent: u8) u32 {
+    const clamped = @min(volume_percent, 100);
+    const level: u32 = @as(u32, clamped) * 0xFFFF / 100;
+    return (level << 16) | level;
+}
 
 fn decodeToPcm(allocator: std.mem.Allocator, path_w: [*:0]const WCHAR) !DecodedPcm {
     var reader_opt: ?*IMFSourceReader = null;
@@ -275,50 +384,6 @@ fn decodeToPcm(allocator: std.mem.Allocator, path_w: [*:0]const WCHAR) !DecodedP
     };
 }
 
-const WAVEFORMATEX = extern struct {
-    wFormatTag: u16 = 1, // WAVE_FORMAT_PCM
-    nChannels: u16,
-    nSamplesPerSec: u32,
-    nAvgBytesPerSec: u32,
-    nBlockAlign: u16,
-    wBitsPerSample: u16,
-    cbSize: u16 = 0,
-};
-
-const WAVEHDR = extern struct {
-    lpData: [*]u8,
-    dwBufferLength: u32,
-    dwBytesRecorded: u32 = 0,
-    dwUser: usize = 0,
-    dwFlags: u32 = 0,
-    dwLoops: u32 = 0,
-    lpNext: ?*WAVEHDR = null,
-    reserved: usize = 0,
-};
-
-const WAVE_MAPPER: u32 = 0xFFFFFFFF;
-const CALLBACK_EVENT: u32 = 0x00050000;
-
-extern "winmm" fn waveOutOpen(phwo: *?HANDLE, device_id: u32, format: *const WAVEFORMATEX, callback: usize, instance: usize, flags: u32) callconv(.c) u32;
-extern "winmm" fn waveOutPrepareHeader(hwo: HANDLE, header: *WAVEHDR, size: u32) callconv(.c) u32;
-extern "winmm" fn waveOutUnprepareHeader(hwo: HANDLE, header: *WAVEHDR, size: u32) callconv(.c) u32;
-extern "winmm" fn waveOutWrite(hwo: HANDLE, header: *WAVEHDR, size: u32) callconv(.c) u32;
-extern "winmm" fn waveOutClose(hwo: HANDLE) callconv(.c) u32;
-extern "winmm" fn waveOutSetVolume(hwo: ?HANDLE, volume: u32) callconv(.c) u32;
-
-extern "kernel32" fn CreateEventA(attrs: ?*anyopaque, manual_reset: BOOL, initial_state: BOOL, name: ?[*:0]const u8) callconv(.c) ?HANDLE;
-extern "kernel32" fn ResetEvent(event: HANDLE) callconv(.c) BOOL;
-extern "kernel32" fn WaitForSingleObject(handle: HANDLE, timeout_ms: DWORD) callconv(.c) DWORD;
-extern "kernel32" fn CloseHandle(handle: HANDLE) callconv(.c) BOOL;
-
-const INFINITE: u32 = 0xFFFFFFFF;
-
-fn packVolume(volume_percent: u8) u32 {
-    const clamped = @min(volume_percent, 100);
-    const level: u32 = @as(u32, clamped) * 0xFFFF / 100;
-    return (level << 16) | level;
-}
-
 /// Decodes and plays `path` (WAV/MP3), blocking until done; the worker queue below is its only caller.
 fn playBlocking(allocator: std.mem.Allocator, path: []const u8, volume_percent: u8) !void {
     const path_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, path);
@@ -360,51 +425,9 @@ fn playBlocking(allocator: std.mem.Allocator, path: []const u8, volume_percent: 
     _ = WaitForSingleObject(event, INFINITE);
 }
 
-// Mirrors tts.zig's lazy worker/queue skeleton, so overlapping alerts play in full instead of cutting each other off.
-const Command = struct {
-    // page_allocator-owned; the worker frees it after playing (or shutdown() frees it if still queued).
-    path: []const u8,
-    volume_percent: u8,
-};
-
-const CommandQueue = struct {
-    mutex: std.Io.Mutex = .init,
-    items: std.ArrayList(Command) = .empty,
-
-    fn push(self: *CommandQueue, cmd: Command) !void {
-        try self.mutex.lock(g_io);
-        defer self.mutex.unlock(g_io);
-        try self.items.append(std.heap.page_allocator, cmd);
-    }
-
-    fn pop(self: *CommandQueue) ?Command {
-        self.mutex.lock(g_io) catch |err| {
-            slog.warn("Failed to lock command queue mutex: {}", .{err});
-            return null;
-        };
-        defer self.mutex.unlock(g_io);
-        if (self.items.items.len == 0) return null;
-        return self.items.orderedRemove(0);
-    }
-};
-
-var g_io: std.Io = undefined;
-var g_queue: CommandQueue = .{};
-var g_thread: ?std.Thread = null;
-var g_thread_failed: bool = false;
-var g_should_exit = std.atomic.Value(bool).init(false);
-var g_worker_dead = std.atomic.Value(bool).init(false);
-
-/// Must be called once before any sound function is used.
-pub fn setIo(io: std.Io) void {
-    g_io = io;
-}
-
-const WORKER_POLL_MS: u64 = 50;
-
 fn workerMain() void {
     if (MFStartup(MF_VERSION, MFSTARTUP_LITE) < 0) {
-        slog.warn("Sound worker unavailable (MFStartup failed)", .{});
+        slog.warn("Failed to start Media Foundation, so sound alerts won't play", .{});
         g_worker_dead.store(true, .release);
         return;
     }
@@ -441,29 +464,4 @@ fn ensureWorker() bool {
         return false;
     };
     return true;
-}
-
-/// Queue a sound alert; returns immediately and plays in full FIFO order on the lazily-started worker thread.
-pub fn playAlert(path: []const u8, volume_percent: u8) void {
-    if (!ensureWorker()) return;
-    const copy = std.heap.page_allocator.dupe(u8, path) catch |err| {
-        slog.warn("Failed to queue sound alert: {}", .{err});
-        return;
-    };
-    g_queue.push(.{ .path = copy, .volume_percent = volume_percent }) catch |err| {
-        slog.warn("Failed to queue sound alert: {}", .{err});
-        std.heap.page_allocator.free(copy);
-    };
-}
-
-/// Stop the worker thread, if one was ever started. Call once during app shutdown.
-pub fn shutdown() void {
-    const thread = g_thread orelse return;
-    g_should_exit.store(true, .release);
-    thread.join();
-    g_thread = null;
-
-    while (g_queue.pop()) |cmd| {
-        std.heap.page_allocator.free(cmd.path);
-    }
 }
