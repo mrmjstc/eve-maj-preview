@@ -1,9 +1,148 @@
+//! Color math: OKLab-distinct palette picks, fixed per-name auto colors, and ARGB helpers.
 const std = @import("std");
 const log = @import("../log.zig");
 
 const slog = log.scoped("color");
 
+const DISTINCT_HUE_STEPS = 36;
+const DISTINCT_LIGHTNESS = [_]f32{ 0.70, 0.80, 0.90 };
+const DISTINCT_CHROMA = [_]f32{ 0.10, 0.15, 0.20, 0.26 };
+const MAX_DISTINCT_CANDIDATES = DISTINCT_HUE_STEPS * DISTINCT_LIGHTNESS.len * DISTINCT_CHROMA.len;
+const MAX_DISTINCT_TAKEN = 128;
+
 const Oklab = struct { l: f32, a: f32, b: f32 };
+
+const Candidate = struct { rgb: u32, lab: Oklab };
+
+/// Names mapped to colors that stay fixed once assigned, least recently seen first; persistence is the owner's job (see `dirty`).
+pub const AutoColors = struct {
+    pub const MAX_ENTRIES = 64;
+    pub const MAX_AVOIDED = 32;
+
+    pub const Entry = struct {
+        name: []const u8,
+        color: u32,
+    };
+
+    entries: std.ArrayList(Entry) = .empty,
+    /// Set whenever an entry is added or evicted; the owner clears it after persisting.
+    dirty: bool = false,
+
+    pub fn deinit(self: *AutoColors, allocator: std.mem.Allocator) void {
+        for (self.entries.items) |entry| allocator.free(entry.name);
+        self.entries.deinit(allocator);
+    }
+
+    /// Adds an already-assigned color (e.g. from persisted state) without marking the store dirty.
+    pub fn put(self: *AutoColors, allocator: std.mem.Allocator, name: []const u8, color: u32) !void {
+        const owned_name = try allocator.dupe(u8, name);
+        errdefer allocator.free(owned_name);
+        try self.entries.append(allocator, .{ .name = owned_name, .color = color });
+    }
+
+    /// The name's existing color, or a new one: the palette color farthest from `avoid` (at most `MAX_AVOIDED` used) and every entry already assigned.
+    pub fn colorFor(self: *AutoColors, allocator: std.mem.Allocator, name: []const u8, avoid: []const u32) u32 {
+        for (self.entries.items, 0..) |entry, i| {
+            if (!std.ascii.eqlIgnoreCase(entry.name, name)) continue;
+            const seen = self.entries.orderedRemove(i);
+            self.entries.appendAssumeCapacity(seen);
+            return seen.color;
+        }
+
+        var taken: [MAX_AVOIDED + MAX_ENTRIES]u32 = undefined;
+        const avoided = avoid[0..@min(avoid.len, MAX_AVOIDED)];
+        @memcpy(taken[0..avoided.len], avoided);
+        var count = avoided.len;
+        for (self.entries.items) |entry| {
+            if (count == taken.len) break;
+            taken[count] = entry.color;
+            count += 1;
+        }
+
+        const picked = 0xFF000000 | pickDistinctColor(name, taken[0..count]);
+        self.record(allocator, name, picked);
+        return picked;
+    }
+
+    fn record(self: *AutoColors, allocator: std.mem.Allocator, name: []const u8, color: u32) void {
+        while (self.entries.items.len >= MAX_ENTRIES) {
+            const evicted = self.entries.orderedRemove(0);
+            allocator.free(evicted.name);
+        }
+        self.dirty = true;
+        self.put(allocator, name, color) catch |err| {
+            slog.err("Failed to record color for '{s}': {}", .{ name, err });
+        };
+    }
+};
+
+// Filled on first use; only touched from the main thread.
+var g_candidate_table: [MAX_DISTINCT_CANDIDATES]Candidate = undefined;
+var g_candidate_count: usize = 0;
+
+/// Picks the palette color farthest (in OKLab) from every color in `taken`; with nothing taken, `seed_string` picks the starting point and breaks ties, so the result is deterministic. Returns 0xRRGGBB.
+pub fn pickDistinctColor(seed_string: []const u8, taken: []const u32) u32 {
+    const candidates = distinctCandidates();
+    const count = candidates.len;
+
+    var taken_labs: [MAX_DISTINCT_TAKEN]Oklab = undefined;
+    const taken_count = @min(taken.len, MAX_DISTINCT_TAKEN);
+    for (taken[0..taken_count], 0..) |rgb, i| taken_labs[i] = rgbToOklab(rgb);
+
+    const start: usize = @intCast(std.hash.Wyhash.hash(0, seed_string) % count);
+    var best_rgb = candidates[start].rgb;
+    var best_distance: f32 = -1.0;
+    for (0..count) |offset| {
+        const candidate = candidates[(start + offset) % count];
+        var nearest = std.math.inf(f32);
+        for (taken_labs[0..taken_count]) |taken_lab| {
+            nearest = @min(nearest, oklabDistance(candidate.lab, taken_lab));
+        }
+        if (nearest > best_distance) {
+            best_distance = nearest;
+            best_rgb = candidate.rgb;
+        }
+    }
+    return best_rgb;
+}
+
+pub fn withAlpha(rgb: u32, alpha: u8) u32 {
+    return (@as(u32, alpha) << 24) | (rgb & 0x00FF_FFFF);
+}
+
+/// Mixes each channel `percent`% of the way toward white, keeping alpha.
+pub fn lighten(color: u32, percent: u32) u32 {
+    var out = color & 0xFF00_0000;
+    inline for (.{ 16, 8, 0 }) |shift| {
+        const channel = (color >> shift) & 0xFF;
+        out |= (channel + (255 - channel) * percent / 100) << shift;
+    }
+    return out;
+}
+
+/// Text color that stays readable on `background`: dark ink on light colors, light ink on dark ones.
+pub fn inkFor(background: u32) u32 {
+    const r = (background >> 16) & 0xFF;
+    const g = (background >> 8) & 0xFF;
+    const b = background & 0xFF;
+    return if (299 * r + 587 * g + 114 * b > 550 * 255) 0xFF1A1408 else 0xFFF5F0E6;
+}
+
+fn distinctCandidates() []const Candidate {
+    if (g_candidate_count == 0) {
+        for (0..DISTINCT_HUE_STEPS) |hue_step| {
+            const hue = @as(f32, @floatFromInt(hue_step)) * (360.0 / @as(f32, DISTINCT_HUE_STEPS));
+            for (DISTINCT_LIGHTNESS) |lightness| {
+                for (DISTINCT_CHROMA) |chroma| {
+                    const rgb = oklchToRgb(lightness, chroma, hue) orelse continue;
+                    g_candidate_table[g_candidate_count] = .{ .rgb = rgb, .lab = rgbToOklab(rgb) };
+                    g_candidate_count += 1;
+                }
+            }
+        }
+    }
+    return g_candidate_table[0..g_candidate_count];
+}
 
 fn srgbByteToLinear(byte: u32) f32 {
     const c = @as(f32, @floatFromInt(byte & 0xFF)) / 255.0;
@@ -61,142 +200,4 @@ fn oklabDistance(x: Oklab, y: Oklab) f32 {
     const da = x.a - y.a;
     const db = x.b - y.b;
     return @sqrt(dl * dl + da * da + db * db);
-}
-
-const distinct_hue_steps = 36;
-const distinct_lightness = [_]f32{ 0.70, 0.80, 0.90 };
-const distinct_chroma = [_]f32{ 0.10, 0.15, 0.20, 0.26 };
-const max_distinct_candidates = distinct_hue_steps * distinct_lightness.len * distinct_chroma.len;
-const max_distinct_taken = 128;
-
-const Candidate = struct { rgb: u32, lab: Oklab };
-
-// Filled on first use; only touched from the main thread.
-var candidate_table: [max_distinct_candidates]Candidate = undefined;
-var candidate_count: usize = 0;
-
-fn distinctCandidates() []const Candidate {
-    if (candidate_count == 0) {
-        for (0..distinct_hue_steps) |hue_step| {
-            const hue = @as(f32, @floatFromInt(hue_step)) * (360.0 / @as(f32, distinct_hue_steps));
-            for (distinct_lightness) |lightness| {
-                for (distinct_chroma) |chroma| {
-                    const rgb = oklchToRgb(lightness, chroma, hue) orelse continue;
-                    candidate_table[candidate_count] = .{ .rgb = rgb, .lab = rgbToOklab(rgb) };
-                    candidate_count += 1;
-                }
-            }
-        }
-    }
-    return candidate_table[0..candidate_count];
-}
-
-/// Picks the palette color farthest (in OKLab) from every color in `taken`; with nothing taken, `seed_string` picks the starting point and breaks ties, so the result is deterministic. Returns 0xRRGGBB.
-pub fn pickDistinctColor(seed_string: []const u8, taken: []const u32) u32 {
-    const candidates = distinctCandidates();
-    const count = candidates.len;
-
-    var taken_labs: [max_distinct_taken]Oklab = undefined;
-    const taken_count = @min(taken.len, max_distinct_taken);
-    for (taken[0..taken_count], 0..) |rgb, i| taken_labs[i] = rgbToOklab(rgb);
-
-    const start: usize = @intCast(std.hash.Wyhash.hash(0, seed_string) % count);
-    var best_rgb = candidates[start].rgb;
-    var best_distance: f32 = -1.0;
-    for (0..count) |offset| {
-        const candidate = candidates[(start + offset) % count];
-        var nearest = std.math.inf(f32);
-        for (taken_labs[0..taken_count]) |taken_lab| {
-            nearest = @min(nearest, oklabDistance(candidate.lab, taken_lab));
-        }
-        if (nearest > best_distance) {
-            best_distance = nearest;
-            best_rgb = candidate.rgb;
-        }
-    }
-    return best_rgb;
-}
-
-/// Names mapped to colors that stay fixed once assigned, least recently seen first; persistence is the owner's job (see `dirty`).
-pub const AutoColors = struct {
-    pub const max_entries = 64;
-    pub const max_avoided = 32;
-
-    pub const Entry = struct {
-        name: []const u8,
-        color: u32,
-    };
-
-    entries: std.ArrayList(Entry) = .empty,
-    /// Set whenever an entry is added or evicted; the owner clears it after persisting.
-    dirty: bool = false,
-
-    pub fn deinit(self: *AutoColors, allocator: std.mem.Allocator) void {
-        for (self.entries.items) |entry| allocator.free(entry.name);
-        self.entries.deinit(allocator);
-    }
-
-    /// Adds an already-assigned color (e.g. from persisted state) without marking the store dirty.
-    pub fn put(self: *AutoColors, allocator: std.mem.Allocator, name: []const u8, rgb: u32) !void {
-        const owned_name = try allocator.dupe(u8, name);
-        errdefer allocator.free(owned_name);
-        try self.entries.append(allocator, .{ .name = owned_name, .color = rgb });
-    }
-
-    /// The name's existing color, or a new one: the palette color farthest from `avoid` (at most `max_avoided` used) and every entry already assigned.
-    pub fn colorFor(self: *AutoColors, allocator: std.mem.Allocator, name: []const u8, avoid: []const u32) u32 {
-        for (self.entries.items, 0..) |entry, i| {
-            if (!std.ascii.eqlIgnoreCase(entry.name, name)) continue;
-            const seen = self.entries.orderedRemove(i);
-            self.entries.appendAssumeCapacity(seen);
-            return seen.color;
-        }
-
-        var taken: [max_avoided + max_entries]u32 = undefined;
-        const avoided = avoid[0..@min(avoid.len, max_avoided)];
-        @memcpy(taken[0..avoided.len], avoided);
-        var count = avoided.len;
-        for (self.entries.items) |entry| {
-            if (count == taken.len) break;
-            taken[count] = entry.color;
-            count += 1;
-        }
-
-        const picked = 0xFF000000 | pickDistinctColor(name, taken[0..count]);
-        self.record(allocator, name, picked);
-        return picked;
-    }
-
-    fn record(self: *AutoColors, allocator: std.mem.Allocator, name: []const u8, rgb: u32) void {
-        while (self.entries.items.len >= max_entries) {
-            const evicted = self.entries.orderedRemove(0);
-            allocator.free(evicted.name);
-        }
-        self.dirty = true;
-        self.put(allocator, name, rgb) catch |err| {
-            slog.err("Failed to record color for '{s}': {}", .{ name, err });
-        };
-    }
-};
-
-pub fn withAlpha(rgb: u32, alpha: u8) u32 {
-    return (@as(u32, alpha) << 24) | (rgb & 0x00FF_FFFF);
-}
-
-/// Mixes each channel `percent`% of the way toward white, keeping alpha.
-pub fn lighten(color: u32, percent: u32) u32 {
-    var out = color & 0xFF00_0000;
-    inline for (.{ 16, 8, 0 }) |shift| {
-        const channel = (color >> shift) & 0xFF;
-        out |= (channel + (255 - channel) * percent / 100) << shift;
-    }
-    return out;
-}
-
-/// Text color that stays readable on `background`: dark ink on light colors, light ink on dark ones.
-pub fn inkFor(background: u32) u32 {
-    const r = (background >> 16) & 0xFF;
-    const g = (background >> 8) & 0xFF;
-    const b = background & 0xFF;
-    return if (299 * r + 587 * g + 114 * b > 550 * 255) 0xFF1A1408 else 0xFFF5F0E6;
 }

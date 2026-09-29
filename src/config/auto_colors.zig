@@ -45,7 +45,7 @@ pub const AutoColorStore = struct {
 
         self.load();
 
-        var overrides: [color.AutoColors.max_avoided]u32 = undefined;
+        var overrides: [color.AutoColors.MAX_AVOIDED]u32 = undefined;
         const override_count = @min(cfg.systemColors.items.len, overrides.len);
         for (cfg.systemColors.items[0..override_count], 0..) |sc, i| overrides[i] = sc.color;
 
@@ -76,7 +76,7 @@ pub const AutoColorStore = struct {
     fn characterColor(self: *AutoColorStore, cfg: *const config_mod.Config, character_name: []const u8) u32 {
         self.load();
 
-        var overrides: [color.AutoColors.max_avoided]u32 = undefined;
+        var overrides: [color.AutoColors.MAX_AVOIDED]u32 = undefined;
         var override_count: usize = 0;
         collect: for (cfg.characters.items) |char| {
             const border_color = if (char.borderColors) |border| border.activeBorderColor else null;

@@ -1,16 +1,16 @@
+//! Number formatting for on-screen stats.
 const std = @import("std");
 
-/// Inserts comma thousands-separators into the leading run of ASCII digits in `text` (e.g. "12405.3 m3/min" -> "12,405.3 m3/min").
+/// Inserts comma thousands-separators into the leading run of ASCII digits in `text` (e.g. "12405.3 m3/min" -> "12,405.3 m3/min"); returns `text` unchanged if `buf` is too small.
 pub fn insertThousandsSeparators(buf: []u8, text: []const u8) []const u8 {
     var digit_end: usize = 0;
-    while (digit_end < text.len and text[digit_end] >= '0' and text[digit_end] <= '9') : (digit_end += 1) {}
+    while (digit_end < text.len and std.ascii.isDigit(text[digit_end])) : (digit_end += 1) {}
     if (digit_end <= 3) return text;
 
-    var out: usize = 0;
     const first_group = if (digit_end % 3 == 0) 3 else digit_end % 3;
     if (first_group > buf.len) return text;
     @memcpy(buf[0..first_group], text[0..first_group]);
-    out = first_group;
+    var out = first_group;
 
     var i = first_group;
     while (i < digit_end) : (i += 3) {

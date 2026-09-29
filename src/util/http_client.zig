@@ -1,5 +1,7 @@
+//! One-shot HTTP requests over std.http.Client.
 const std = @import("std");
 const log = @import("../log.zig");
+
 const slog = log.scoped("http_client");
 
 pub const FetchOptions = struct {
@@ -11,7 +13,8 @@ pub const FetchOptions = struct {
 /// Issues a GET (or, with a payload, POST) request and returns the response body (caller frees) if it got a 200, else null.
 pub fn fetch(allocator: std.mem.Allocator, client: *std.http.Client, url: []const u8, options: FetchOptions) ?[]u8 {
     var response_buf: std.Io.Writer.Allocating = .init(allocator);
-    errdefer response_buf.deinit();
+    // Still safe after toOwnedSlice, which leaves the buffer empty.
+    defer response_buf.deinit();
 
     const result = client.fetch(.{
         .location = .{ .url = url },
@@ -23,20 +26,17 @@ pub fn fetch(allocator: std.mem.Allocator, client: *std.http.Client, url: []cons
         .payload = options.payload,
         .response_writer = &response_buf.writer,
     }) catch |err| {
-        slog.warn("HTTP request to {s} failed: {}", .{ url, err });
-        response_buf.deinit();
+        slog.warn("Failed to fetch '{s}': {}", .{ url, err });
         return null;
     };
 
     if (result.status != .ok) {
-        slog.warn("HTTP request to {s} returned status {}: {s}", .{ url, result.status, response_buf.written() });
-        response_buf.deinit();
+        slog.warn("Failed to fetch '{s}': status {}: {s}", .{ url, result.status, response_buf.written() });
         return null;
     }
 
     return response_buf.toOwnedSlice() catch |err| {
-        slog.warn("Failed to finalize HTTP response body for {s}: {}", .{ url, err });
-        response_buf.deinit();
+        slog.warn("Failed to copy the response body from '{s}': {}", .{ url, err });
         return null;
     };
 }
