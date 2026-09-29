@@ -564,7 +564,7 @@ pub fn parseCombatLine(stripped_line: []const u8) ?struct { amount: u32, is_inco
     var found_digit = false;
     for (stripped, 0..) |c, i| {
         if (c >= '0' and c <= '9') {
-            amount = amount * 10 + (c - '0');
+            amount = appendDigit(u32, amount, c) orelse return null;
             digits_end = i + 1;
             found_digit = true;
         } else if (found_digit) {
@@ -619,11 +619,12 @@ pub fn parseBountyLine(line: []const u8) ?f32 {
     var stripped_buf: [512]u8 = undefined;
     const stripped = stripHtml(payload, &stripped_buf);
 
-    var amount: u32 = 0;
+    // u64, as a single payout can pass u32's 4.3 billion.
+    var amount: u64 = 0;
     var found_digit = false;
     for (stripped) |c| {
         if (c >= '0' and c <= '9') {
-            amount = amount * 10 + (c - '0');
+            amount = appendDigit(u64, amount, c) orelse return null;
             found_digit = true;
         } else if (c == ',' and found_digit) {
             continue;
@@ -666,7 +667,7 @@ pub fn parseMiningLine(line: []const u8) ?ParsedMiningEvent {
     var digit_end: usize = 0;
     for (cursor, 0..) |c, i| {
         if (c >= '0' and c <= '9') {
-            amount = amount * 10 + (c - '0');
+            amount = appendDigit(u32, amount, c) orelse return null;
             found_digit = true;
             digit_end = i + 1;
         } else if (found_digit) {
@@ -712,6 +713,12 @@ pub fn stripHtml(src: []const u8, out_buf: []u8) []const u8 {
         }
     }
     return out_buf[0..out];
+}
+
+/// Null when another digit would overflow, so an absurdly long number is skipped rather than wrapping.
+fn appendDigit(comptime T: type, amount: T, digit_char: u8) ?T {
+    const shifted = std.math.mul(T, amount, 10) catch return null;
+    return std.math.add(T, shifted, digit_char - '0') catch null;
 }
 
 /// Rate multiplier that decays 1.0 -> 0.0 as idle time crosses the window's second half, instead of holding flat then cutting to zero.
