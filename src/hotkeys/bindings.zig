@@ -16,28 +16,28 @@ pub const HOTKEY_ID_APP_HOTKEY_BASE: c_int = 5000;
 pub const HOTKEY_ID_URL_HOTKEY_BASE: c_int = 6000;
 
 pub const GLOBAL_BINDINGS = [_]GlobalBinding{
-    .{ .action = .MinimizeAll, .protocol = .minimize_all, .field = "hotkeyMinimizeAll", .description = "minimize all clients" },
-    .{ .action = .CloseAll, .protocol = .close_all, .field = "hotkeyCloseAll", .description = "close all clients" },
-    .{ .action = .ToggleVisibility, .protocol = .toggle_visibility, .field = "hotkeyToggleVisibility", .description = "toggle thumbnails visibility" },
-    .{ .action = .NextProfile, .protocol = .next_profile, .field = "hotkeyNextProfile", .in_global_settings = true, .description = "cycle to next profile" },
-    .{ .action = .PreviousProfile, .protocol = .previous_profile, .field = "hotkeyPreviousProfile", .in_global_settings = true, .description = "cycle to previous profile" },
-    .{ .action = .ToggleExclusion, .protocol = .toggle_exclusion, .field = "hotkeyToggleExclusion", .description = "toggle character exclusion from cycling" },
-    .{ .action = .NextExcluded, .protocol = .next_excluded, .field = "hotkeyNextExcluded", .description = "cycle to next excluded character" },
-    .{ .action = .PreviousExcluded, .protocol = .previous_excluded, .field = "hotkeyPreviousExcluded", .description = "cycle to previous excluded character" },
+    .{ .action = .minimize_all, .protocol = .minimize_all, .field = "hotkeyMinimizeAll", .description = "minimize all clients" },
+    .{ .action = .close_all, .protocol = .close_all, .field = "hotkeyCloseAll", .description = "close all clients" },
+    .{ .action = .toggle_visibility, .protocol = .toggle_visibility, .field = "hotkeyToggleVisibility", .description = "toggle thumbnails visibility" },
+    .{ .action = .next_profile, .protocol = .next_profile, .field = "hotkeyNextProfile", .in_global_settings = true, .description = "cycle to next profile" },
+    .{ .action = .previous_profile, .protocol = .previous_profile, .field = "hotkeyPreviousProfile", .in_global_settings = true, .description = "cycle to previous profile" },
+    .{ .action = .toggle_exclusion, .protocol = .toggle_exclusion, .field = "hotkeyToggleExclusion", .description = "toggle character exclusion from cycling" },
+    .{ .action = .next_excluded, .protocol = .next_excluded, .field = "hotkeyNextExcluded", .description = "cycle to next excluded character" },
+    .{ .action = .previous_excluded, .protocol = .previous_excluded, .field = "hotkeyPreviousExcluded", .description = "cycle to previous excluded character" },
     SUSPEND_BINDING,
-    .{ .action = .ToggleAutoMinimize, .protocol = .toggle_auto_minimize, .field = "hotkeyToggleAutoMinimize", .description = "toggle auto-minimize mode" },
-    .{ .action = .CycleNotified, .protocol = .cycle_notified, .field = "hotkeyCycleNotified", .description = "cycle to most recently notified character" },
-    .{ .action = .PreviousNotified, .protocol = .previous_notified, .field = "hotkeyPreviousNotified", .description = "cycle backward through notified characters" },
-    .{ .action = .NextAllClients, .protocol = .next_all_clients, .field = "hotkeyCycleAllClientsForward", .in_global_settings = true, .description = "cycle forward through all logged-in clients" },
-    .{ .action = .PreviousAllClients, .protocol = .previous_all_clients, .field = "hotkeyCycleAllClientsBackward", .in_global_settings = true, .description = "cycle backward through all logged-in clients" },
-    .{ .action = .NextNotLoggedIn, .protocol = .next_not_logged_in, .field = "hotkeyCycleNotLoggedInForward", .in_global_settings = true, .description = "cycle forward through not-logged-in clients" },
-    .{ .action = .PreviousNotLoggedIn, .protocol = .previous_not_logged_in, .field = "hotkeyCycleNotLoggedInBackward", .in_global_settings = true, .description = "cycle backward through not-logged-in clients" },
-    .{ .action = .MoveToSavedPositions, .protocol = .move_to_saved_positions, .field = "hotkeyMoveToSavedPositions", .description = "move all clients to saved positions" },
-    .{ .action = .ReturnToLastApp, .protocol = .return_to_last_app, .field = "hotkeyReturnToLastApp", .in_global_settings = true, .description = "return focus to the last non-EVE app" },
+    .{ .action = .toggle_auto_minimize, .protocol = .toggle_auto_minimize, .field = "hotkeyToggleAutoMinimize", .description = "toggle auto-minimize mode" },
+    .{ .action = .cycle_notified, .protocol = .cycle_notified, .field = "hotkeyCycleNotified", .description = "cycle to most recently notified character" },
+    .{ .action = .previous_notified, .protocol = .previous_notified, .field = "hotkeyPreviousNotified", .description = "cycle backward through notified characters" },
+    .{ .action = .next_all_clients, .protocol = .next_all_clients, .field = "hotkeyCycleAllClientsForward", .in_global_settings = true, .description = "cycle forward through all logged-in clients" },
+    .{ .action = .previous_all_clients, .protocol = .previous_all_clients, .field = "hotkeyCycleAllClientsBackward", .in_global_settings = true, .description = "cycle backward through all logged-in clients" },
+    .{ .action = .next_not_logged_in, .protocol = .next_not_logged_in, .field = "hotkeyCycleNotLoggedInForward", .in_global_settings = true, .description = "cycle forward through not-logged-in clients" },
+    .{ .action = .previous_not_logged_in, .protocol = .previous_not_logged_in, .field = "hotkeyCycleNotLoggedInBackward", .in_global_settings = true, .description = "cycle backward through not-logged-in clients" },
+    .{ .action = .move_to_saved_positions, .protocol = .move_to_saved_positions, .field = "hotkeyMoveToSavedPositions", .description = "move all clients to saved positions" },
+    .{ .action = .return_to_last_app, .protocol = .return_to_last_app, .field = "hotkeyReturnToLastApp", .in_global_settings = true, .description = "return focus to the last non-EVE app" },
 };
 
 /// Also re-registered on its own while hotkeys are suspended, so it can resume them.
-pub const SUSPEND_BINDING = GlobalBinding{ .action = .SuspendHotkeys, .protocol = .suspend_hotkeys, .field = "hotkeySuspend", .description = "suspend/resume all hotkeys" };
+pub const SUSPEND_BINDING = GlobalBinding{ .action = .suspend_hotkeys, .protocol = .suspend_hotkeys, .field = "hotkeySuspend", .description = "suspend/resume all hotkeys" };
 
 /// Characters sharing one per-character hotkey; HotkeyManager.unregisterAll frees the owned index list.
 pub const CharacterGroup = struct {
@@ -46,39 +46,39 @@ pub const CharacterGroup = struct {
 };
 
 pub const HotkeyAction = union(enum) {
-    CycleGroup: struct {
+    cycle_group: struct {
         group_index: usize,
         forward: bool,
     },
-    ActivateCharacter: CharacterGroup,
-    AssignGroup: struct {
+    activate_character: CharacterGroup,
+    assign_group: struct {
         group_index: usize,
     },
-    MinimizeAll: void,
-    CloseAll: void,
-    ToggleVisibility: void,
-    NextProfile: void,
-    PreviousProfile: void,
-    SwitchToProfile: struct {
+    minimize_all: void,
+    close_all: void,
+    toggle_visibility: void,
+    next_profile: void,
+    previous_profile: void,
+    switch_to_profile: struct {
         profile_index: usize,
     },
-    ToggleExclusion: void,
-    NextExcluded: void,
-    PreviousExcluded: void,
-    SuspendHotkeys: void,
-    ToggleAutoMinimize: void,
-    CycleNotified: void,
-    PreviousNotified: void,
-    NextAllClients: void,
-    PreviousAllClients: void,
-    NextNotLoggedIn: void,
-    PreviousNotLoggedIn: void,
-    MoveToSavedPositions: void,
-    ReturnToLastApp: void,
-    ActivateApp: struct {
+    toggle_exclusion: void,
+    next_excluded: void,
+    previous_excluded: void,
+    suspend_hotkeys: void,
+    toggle_auto_minimize: void,
+    cycle_notified: void,
+    previous_notified: void,
+    next_all_clients: void,
+    previous_all_clients: void,
+    next_not_logged_in: void,
+    previous_not_logged_in: void,
+    move_to_saved_positions: void,
+    return_to_last_app: void,
+    activate_app: struct {
         app_index: usize,
     },
-    OpenUrl: struct {
+    open_url: struct {
         url_index: usize,
     },
 };

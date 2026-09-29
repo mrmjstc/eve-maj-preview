@@ -190,7 +190,7 @@ pub const ListWindow = struct {
             h.update(std.mem.asBytes(&thumbnail.stats.has_bounty));
             if (thumbnail.system_name.len > 0) h.update(std.mem.asBytes(&thumbnail.cached_system_color));
             if (thumbnail.cached_character_color) |cc| h.update(std.mem.asBytes(&cc));
-            if (render_state == .Active) {
+            if (render_state == .active) {
                 const badge_color = self.resolveActiveBadgeColor(thumbnail);
                 h.update(std.mem.asBytes(&badge_color));
             }
@@ -279,7 +279,7 @@ pub const ListWindow = struct {
         for (thumbnails, 0..) |*thumbnail, i| {
             if (thumbnail.cached_hide_thumbnail) continue;
             try self.rows.append(self.panel.allocator, i);
-            if (thumbnail.visibility_state == .Visible) any_visible = true;
+            if (thumbnail.visibility_state == .visible) any_visible = true;
         }
         // Also hidden once the visibility toggle or auto-hide has hidden every client.
         if (!any_visible) {
@@ -335,8 +335,8 @@ pub const ListWindow = struct {
         const row_top: i32 = HEADER_HEIGHT + row * ROW_HEIGHT;
         const col_left: i32 = col * LIST_WIDTH;
         const render_state = thumb.effectiveRenderState(active_source_hwnd);
-        const is_active = render_state == .Active;
-        const is_alert = render_state == .Alert;
+        const is_active = render_state == .active;
+        const is_alert = render_state == .alert;
 
         const row_bg: u32 = if (is_alert) blk: {
             // Tinted with the newest notification's border colour, if it has one.
@@ -366,7 +366,7 @@ pub const ListWindow = struct {
                 self.resolveActiveBadgeColor(thumb)
             else if (is_alert)
                 BADGE_ALERT
-            else if (render_state == .Minimized)
+            else if (render_state == .minimized)
                 BADGE_MINIMIZED
             else
                 BADGE_INACTIVE;

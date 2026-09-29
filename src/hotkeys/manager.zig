@@ -167,17 +167,17 @@ pub const HotkeyManager = struct {
 
             if (group.forwardKey) |forward_vk| {
                 const desc = std.fmt.bufPrint(&desc_buf, "group {} [{s}...] forward", .{ group_index, char_name }) catch "group forward";
-                if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot), forward_vk, .{ .CycleGroup = .{ .group_index = group_index, .forward = true } }, desc)) failed_count += 1;
+                if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot), forward_vk, .{ .cycle_group = .{ .group_index = group_index, .forward = true } }, desc)) failed_count += 1;
             }
 
             if (group.backwardKey) |backward_vk| {
                 const desc = std.fmt.bufPrint(&desc_buf, "group {} [{s}...] backward", .{ group_index, char_name }) catch "group backward";
-                if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot + 1), backward_vk, .{ .CycleGroup = .{ .group_index = group_index, .forward = false } }, desc)) failed_count += 1;
+                if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot + 1), backward_vk, .{ .cycle_group = .{ .group_index = group_index, .forward = false } }, desc)) failed_count += 1;
             }
 
             if (group.assignKey) |assign_vk| {
                 const desc = std.fmt.bufPrint(&desc_buf, "group {} [{s}] assign", .{ group_index, group.name }) catch "group assign";
-                if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot + 2), assign_vk, .{ .AssignGroup = .{ .group_index = group_index } }, desc)) failed_count += 1;
+                if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot + 2), assign_vk, .{ .assign_group = .{ .group_index = group_index } }, desc)) failed_count += 1;
             }
         }
 
@@ -193,7 +193,7 @@ pub const HotkeyManager = struct {
                 failed_count += 1;
                 continue;
             };
-            if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_PER_CHARACTER_BASE, group_index), group.vk, .{ .ActivateCharacter = .{ .character_indices = owned_indices } }, desc)) {
+            if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_PER_CHARACTER_BASE, group_index), group.vk, .{ .activate_character = .{ .character_indices = owned_indices } }, desc)) {
                 self.allocator.free(owned_indices);
                 failed_count += 1;
             }
@@ -202,19 +202,19 @@ pub const HotkeyManager = struct {
         for (self.global_settings.profileSwitchHotkeys.items, 0..) |profile_hotkey, index| {
             const key = profile_hotkey.hotkey orelse continue;
             const desc = std.fmt.bufPrint(&desc_buf, "switch to profile [{s}]", .{profile_hotkey.targetProfile}) catch "switch to profile";
-            if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_PROFILE_SWITCH_BASE, index), key, .{ .SwitchToProfile = .{ .profile_index = index } }, desc)) failed_count += 1;
+            if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_PROFILE_SWITCH_BASE, index), key, .{ .switch_to_profile = .{ .profile_index = index } }, desc)) failed_count += 1;
         }
 
         for (self.global_settings.appHotkeys.items, 0..) |app_hotkey, index| {
             const key = app_hotkey.hotkey orelse continue;
             const desc = std.fmt.bufPrint(&desc_buf, "activate app [{s}]", .{app_hotkey.executableName}) catch "activate app";
-            if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_APP_HOTKEY_BASE, index), key, .{ .ActivateApp = .{ .app_index = index } }, desc)) failed_count += 1;
+            if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_APP_HOTKEY_BASE, index), key, .{ .activate_app = .{ .app_index = index } }, desc)) failed_count += 1;
         }
 
         for (self.global_settings.urlHotkeys.items, 0..) |url_hotkey, index| {
             const key = url_hotkey.hotkey orelse continue;
             const desc = std.fmt.bufPrint(&desc_buf, "open url [{s}]", .{url_hotkey.url}) catch "open url";
-            if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_URL_HOTKEY_BASE, index), key, .{ .OpenUrl = .{ .url_index = index } }, desc)) failed_count += 1;
+            if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_URL_HOTKEY_BASE, index), key, .{ .open_url = .{ .url_index = index } }, desc)) failed_count += 1;
         }
 
         inline for (bindings.GLOBAL_BINDINGS) |binding| {
@@ -242,8 +242,8 @@ pub const HotkeyManager = struct {
 
         var action_it = self.hotkey_map.valueIterator();
         while (action_it.next()) |action| {
-            if (action.* == .ActivateCharacter) {
-                self.allocator.free(action.ActivateCharacter.character_indices);
+            if (action.* == .activate_character) {
+                self.allocator.free(action.activate_character.character_indices);
             }
         }
 
@@ -266,7 +266,7 @@ pub const HotkeyManager = struct {
             return;
         }
 
-        if (action.* == .SuspendHotkeys) {
+        if (action.* == .suspend_hotkeys) {
             self.toggleSuspend();
             return;
         }
@@ -306,51 +306,51 @@ pub const HotkeyManager = struct {
     /// Takes a pointer so per-character hotkeys can advance their cursor in hotkey_map.
     fn runAction(self: *HotkeyManager, action: *HotkeyAction) void {
         switch (action.*) {
-            .CycleGroup => |cycle_group| {
+            .cycle_group => |cycle_group| {
                 if (cycle_group.group_index >= self.config.hotkeyGroups.items.len) {
                     slog.err("Invalid group index {}", .{cycle_group.group_index});
                     return;
                 }
                 cycling.cycleGroup(self, cycle_group.group_index, cycle_group.forward);
             },
-            .ActivateCharacter => |*character_group| cycling.activatePerCharacterGroup(self, character_group),
-            .AssignGroup => |assign| membership.assignHoveredToGroup(self, assign.group_index),
-            .MinimizeAll => {
+            .activate_character => |*character_group| cycling.activatePerCharacterGroup(self, character_group),
+            .assign_group => |assign| membership.assignHoveredToGroup(self, assign.group_index),
+            .minimize_all => {
                 slog.info("Minimize all hotkey pressed", .{});
                 client_actions.minimizeAllClients(self.scout.getWindows());
             },
-            .CloseAll => {
+            .close_all => {
                 slog.info("Close all hotkey pressed", .{});
                 client_actions.closeAllClients(self.scout.getWindows(), self.config);
             },
-            .ToggleVisibility => {
+            .toggle_visibility => {
                 slog.info("Toggle visibility hotkey pressed", .{});
                 self.painter.toggleAllThumbnailsVisibility();
             },
-            .NextProfile => profile_switch.cycle(self.allocator, self.config.profile_name, true),
-            .PreviousProfile => profile_switch.cycle(self.allocator, self.config.profile_name, false),
-            .SwitchToProfile => |switch_to| profile_switch.switchTo(self.global_settings, self.config.profile_name, switch_to.profile_index),
-            .ToggleExclusion => self.toggleForegroundExclusion(),
-            .NextExcluded => cycling.cycleExcluded(self, true),
-            .PreviousExcluded => cycling.cycleExcluded(self, false),
-            .SuspendHotkeys => self.toggleSuspend(),
-            .ToggleAutoMinimize => {
+            .next_profile => profile_switch.cycle(self.allocator, self.config.profile_name, true),
+            .previous_profile => profile_switch.cycle(self.allocator, self.config.profile_name, false),
+            .switch_to_profile => |switch_to| profile_switch.switchTo(self.global_settings, self.config.profile_name, switch_to.profile_index),
+            .toggle_exclusion => self.toggleForegroundExclusion(),
+            .next_excluded => cycling.cycleExcluded(self, true),
+            .previous_excluded => cycling.cycleExcluded(self, false),
+            .suspend_hotkeys => self.toggleSuspend(),
+            .toggle_auto_minimize => {
                 slog.info("Toggle auto-minimize hotkey pressed", .{});
                 auto_minimize.toggle(self.painter);
             },
-            .CycleNotified => cycling.cycleNotified(self, true),
-            .PreviousNotified => cycling.cycleNotified(self, false),
-            .NextAllClients => cycling.cycleAllClients(self, true),
-            .PreviousAllClients => cycling.cycleAllClients(self, false),
-            .NextNotLoggedIn => cycling.cycleNotLoggedIn(self, true),
-            .PreviousNotLoggedIn => cycling.cycleNotLoggedIn(self, false),
-            .MoveToSavedPositions => {
+            .cycle_notified => cycling.cycleNotified(self, true),
+            .previous_notified => cycling.cycleNotified(self, false),
+            .next_all_clients => cycling.cycleAllClients(self, true),
+            .previous_all_clients => cycling.cycleAllClients(self, false),
+            .next_not_logged_in => cycling.cycleNotLoggedIn(self, true),
+            .previous_not_logged_in => cycling.cycleNotLoggedIn(self, false),
+            .move_to_saved_positions => {
                 slog.info("Move to saved positions hotkey pressed", .{});
                 client_actions.moveAllClientsToSavedPositions(self.scout.getWindows(), self.config, self.painter);
             },
-            .ReturnToLastApp => launch.returnToLastApp(&self.last_non_eve_foreground),
-            .ActivateApp => |activate| launch.activateApp(self.global_settings, activate.app_index),
-            .OpenUrl => |open_url| launch.openUrl(self.allocator, self.global_settings, open_url.url_index),
+            .return_to_last_app => launch.returnToLastApp(&self.last_non_eve_foreground),
+            .activate_app => |activate| launch.activateApp(self.global_settings, activate.app_index),
+            .open_url => |open_url| launch.openUrl(self.allocator, self.global_settings, open_url.url_index),
         }
     }
 

@@ -367,7 +367,7 @@ pub fn syncToFocusedCharacter(manager: *HotkeyManager, character_name: []const u
     var actions = manager.hotkey_map.valueIterator();
     while (actions.next()) |action| {
         const group = switch (action.*) {
-            .ActivateCharacter => |*character_group| character_group,
+            .activate_character => |*character_group| character_group,
             else => continue,
         };
         for (group.character_indices, 0..) |char_index, idx| {

@@ -69,7 +69,7 @@ pub fn showTest(painter: *Painter, ntype: notification_mod.NotificationType, typ
         // The alert blocks re-hiding, so the thumbnail stays up until expire() restores it.
         if (!thumbnail.isVisible()) {
             if (thumbnail.test_restore_visibility == null) thumbnail.test_restore_visibility = thumbnail.visibility_state;
-            thumbnail.setVisibility(.Visible);
+            thumbnail.setVisibility(.visible);
             painter.renderThumbnailLogged(thumbnail, "test notification show");
         }
     }
@@ -138,7 +138,7 @@ fn restoreVisibilityAfterTest(painter: *Painter, thumbnail: *ThumbnailWindow) vo
 
     // Focus or the setting may have changed during the test, in which case auto-hiding no longer applies.
     const restored: state.VisibilityState = switch (prior) {
-        .HiddenAutomatic => painter.autoVisibility(painter.isEveWindowForeground()),
+        .hidden_automatic => painter.autoVisibility(painter.isEveWindowForeground()),
         else => prior,
     };
     thumbnail.setVisibility(restored);

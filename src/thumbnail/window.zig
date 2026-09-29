@@ -116,7 +116,7 @@ pub const ThumbnailWindow = struct {
 
     render_cache: overlay.RenderCache = .{},
 
-    visibility_state: state.VisibilityState = .Visible,
+    visibility_state: state.VisibilityState = .visible,
     /// Set while a Test Notification has force-shown a hidden thumbnail; restored once its notifications clear.
     test_restore_visibility: ?state.VisibilityState = null,
     auto_minimize: auto_minimize_mod.AutoMinimizeState,
@@ -155,17 +155,17 @@ pub const ThumbnailWindow = struct {
 
     /// The one place a thumbnail's state is decided; only a style-lookup key (getStateConfig), never stored.
     pub fn effectiveRenderState(self: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) ThumbnailState {
-        if (thumbnail_drag.isDragging(self)) return .Dragging;
-        if (!self.notifications.isEmpty()) return .Alert;
-        if (self.isFocused(active_source_hwnd)) return .Active;
-        if (win32.isWindowIconic(self.source_hwnd)) return .Minimized;
-        return .Inactive;
+        if (thumbnail_drag.isDragging(self)) return .dragging;
+        if (!self.notifications.isEmpty()) return .alert;
+        if (self.isFocused(active_source_hwnd)) return .active;
+        if (win32.isWindowIconic(self.source_hwnd)) return .minimized;
+        return .inactive;
     }
 
     /// Refuses to hide while alerting or dragging; an invalid transition is logged and ignored.
     pub fn setVisibility(self: *ThumbnailWindow, new_visibility: state.VisibilityState) void {
         const blocks_hiding = !self.notifications.isEmpty() or thumbnail_drag.isDragging(self);
-        if (new_visibility != .Visible and blocks_hiding) {
+        if (new_visibility != .visible and blocks_hiding) {
             slog.warn("Cannot hide '{s}' while it's alerting or being dragged", .{self.character_name});
             return;
         }

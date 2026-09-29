@@ -295,7 +295,7 @@ pub const Painter = struct {
     /// Whether the thumbnails count as shown, for the toggle and the tray's checkmark; the first one speaks for all, and none counts as shown.
     pub fn thumbnailsShown(self: *const Painter) bool {
         if (self.thumbnails.items.len == 0) return true;
-        return self.thumbnails.items[0].visibility_state == .Visible;
+        return self.thumbnails.items[0].visibility_state == .visible;
     }
 
     /// The toggle-visibility hotkey and tray item; manual hiding persists through focus changes.
@@ -305,7 +305,7 @@ pub const Painter = struct {
             return;
         }
 
-        const new_visibility: state.VisibilityState = if (self.thumbnailsShown()) .HiddenManual else .Visible;
+        const new_visibility: state.VisibilityState = if (self.thumbnailsShown()) .hidden_manual else .visible;
         slog.info("Toggling all thumbnails visibility: {}", .{new_visibility});
 
         for (self.thumbnails.items) |*thumbnail| {
@@ -343,12 +343,12 @@ pub const Painter = struct {
 
     /// The auto-hide rule: hidden while "hide when no EVE window has focus" is on and none has.
     pub fn autoVisibility(self: *const Painter, eve_has_focus: bool) state.VisibilityState {
-        return if (self.config.thumbnail.hideWhenNoEveFocus and !eve_has_focus) .HiddenAutomatic else .Visible;
+        return if (self.config.thumbnail.hideWhenNoEveFocus and !eve_has_focus) .hidden_automatic else .visible;
     }
 
     /// Moves a thumbnail between visible and auto-hidden by autoVisibility, leaving one hidden by hand alone; returns whether it changed.
     pub fn applyAutoVisibility(self: *const Painter, thumbnail: *ThumbnailWindow, eve_has_focus: bool) bool {
-        if (thumbnail.visibility_state == .HiddenManual) return false;
+        if (thumbnail.visibility_state == .hidden_manual) return false;
         const target = self.autoVisibility(eve_has_focus);
         if (thumbnail.visibility_state == target) return false;
         thumbnail.setVisibility(target);
@@ -359,7 +359,7 @@ pub const Painter = struct {
     pub fn hideVisibleThumbnails(self: *Painter, allocator: std.mem.Allocator, hidden: *std.ArrayList(win32.HWND)) void {
         for (self.thumbnails.items) |*thumbnail| {
             if (!thumbnail.isVisible()) continue;
-            thumbnail.setVisibility(.HiddenManual);
+            thumbnail.setVisibility(.hidden_manual);
             // Refused while alerting or dragging.
             if (thumbnail.isVisible()) continue;
             hidden.append(allocator, thumbnail.hwnd) catch |err| {
@@ -372,7 +372,7 @@ pub const Painter = struct {
     pub fn showThumbnails(self: *Painter, hwnds: []const win32.HWND) void {
         for (hwnds) |hwnd| {
             const thumbnail = self.getThumbnailByOverlayHwnd(hwnd) orelse continue;
-            thumbnail.setVisibility(.Visible);
+            thumbnail.setVisibility(.visible);
             self.renderThumbnailLogged(thumbnail, "show");
         }
     }

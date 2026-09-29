@@ -89,11 +89,11 @@ pub const ThumbnailConfig = struct {
 
     pub fn getStateConfig(self: *const ThumbnailConfig, state: state_mod.ThumbnailState) StateVisualConfig {
         return switch (state) {
-            .Active => self.active,
-            .Inactive => self.inactive,
-            .Alert => self.alert,
-            .Minimized => self.minimized,
-            .Dragging => self.dragging,
+            .active => self.active,
+            .inactive => self.inactive,
+            .alert => self.alert,
+            .minimized => self.minimized,
+            .dragging => self.dragging,
         };
     }
 

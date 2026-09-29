@@ -5,32 +5,32 @@ const log = @import("../log.zig");
 const slog = log.scoped("state");
 
 pub const VisibilityState = enum {
-    Visible,
+    visible,
     /// Auto-hidden via hideWhenNoEveFocus; can be auto-shown again.
-    HiddenAutomatic,
+    hidden_automatic,
     /// Persists until the user manually toggles it again.
-    HiddenManual,
+    hidden_manual,
 
     pub fn canTransitionTo(self: VisibilityState, next: VisibilityState) bool {
         return switch (self) {
-            .Visible => true,
-            .HiddenAutomatic => next == .Visible or next == .HiddenManual,
-            .HiddenManual => next == .Visible or next == .HiddenAutomatic,
+            .visible => true,
+            .hidden_automatic => next == .visible or next == .hidden_manual,
+            .hidden_manual => next == .visible or next == .hidden_automatic,
         };
     }
 
     pub fn isVisible(self: VisibilityState) bool {
-        return self == .Visible;
+        return self == .visible;
     }
 };
 
 /// Used purely as a style-lookup key (config.zig's getStateConfig) - never persisted per-thumbnail; see ThumbnailWindow.effectiveRenderState.
 pub const ThumbnailState = enum {
-    Inactive,
-    Active,
-    Alert,
-    Minimized,
-    Dragging,
+    inactive,
+    active,
+    alert,
+    minimized,
+    dragging,
 };
 
 /// Returns error.InvalidVisibilityTransition if the transition isn't allowed.

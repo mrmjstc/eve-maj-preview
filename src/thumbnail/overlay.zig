@@ -365,7 +365,7 @@ pub fn createRenderSettings(cfg: *const config_mod.Config, thumbnail: *const Thu
     const is_focused = thumbnail.isFocused(active_source_hwnd);
     // Read live rather than cached, so fonts and size track whichever monitor this window is on right now.
     const dpi_scale = win32.dpiToScale(win32.GetDpiForWindow(thumbnail.hwnd));
-    const active_hidden = state == .Active and tc.activeThumbnailHidden;
+    const active_hidden = state == .active and tc.activeThumbnailHidden;
     // A hidden thumbnail shows no border or text either.
     const hide_all = !is_visible or thumbnail.cached_hide_thumbnail or active_hidden;
     const show_text = !hide_all and tc.showText;
@@ -623,9 +623,9 @@ fn resolveTextBgColor(state_cfg: config_mod.StateVisualConfig, base_color: u32, 
 fn resolveBorder(cfg: *const config_mod.Config, thumbnail: *const ThumbnailWindow, state: state_mod.ThumbnailState, state_cfg: config_mod.StateVisualConfig, is_focused: bool, hide_all: bool) Border {
     const tc = &cfg.thumbnail;
     // Alert builds on Active, being an attention event.
-    const focused_look = state == .Active or state == .Alert;
+    const focused_look = state == .active or state == .alert;
     // Only the newest notification drives border effects; older entries only add text lines.
-    const newest = if (state == .Alert) thumbnail.notifications.newest() else null;
+    const newest = if (state == .alert) thumbnail.notifications.newest() else null;
 
     // A notification hiding or flashing the border is skipped for the focused character, so it can't fight that character's active border.
     const notification_hides = if (newest) |notification| !is_focused and (!notification.show_border or notification.isFlashOff(win32.Ticks.now())) else false;
@@ -640,9 +640,9 @@ fn resolveBorder(cfg: *const config_mod.Config, thumbnail: *const ThumbnailWindo
         }
     }
     if (thumbnail.cached_border_colors) |char_colors| {
-        const override = if (state == .Active or (state == .Alert and suppressed))
+        const override = if (state == .active or (state == .alert and suppressed))
             char_colors.activeBorderColor
-        else if (state == .Inactive or state == .Minimized)
+        else if (state == .inactive or state == .minimized)
             char_colors.inactiveBorderColor
         else
             null;
