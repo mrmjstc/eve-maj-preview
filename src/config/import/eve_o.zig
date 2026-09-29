@@ -1,26 +1,17 @@
-//! EVE-O Preview: one flat JSON settings object, with per-client maps keyed by window title ("EVE - Name"),
-//! .NET colour names or "#RRGGBB" colours, "W, H" sizes, and WinForms key names ("Control+F14", "D1").
+//! EVE-O Preview's settings, one flat JSON object written by a WinForms app.
 const std = @import("std");
 const values = @import("values.zig");
-const draft_mod = @import("draft.zig");
+const draft = @import("draft.zig");
 const eve_x = @import("eve_x.zig");
 const eve_apm = @import("eve_apm.zig");
 const vk = @import("../../platform/virtual_keys.zig");
 
 const Value = std.json.Value;
-const Draft = draft_mod.Draft;
-const Section = draft_mod.Section;
-
-/// It has no wrapper key to recognise it by, so a few fields it always writes are.
-pub fn isFile(root: Value) bool {
-    if (values.get(root, "CycleGroup1ForwardHotkeys")) |v| {
-        if (v == .array) return true;
-    }
-    return values.objectAt(root, "FlatLayout") != null or values.objectAt(root, "DisableThumbnail") != null;
-}
+const Draft = draft.Draft;
+const Section = draft.Section;
 
 /// .NET's named colours, the CSS3/X11 set.
-const named_colors = [_]struct { []const u8, u24 }{
+const NAMED_COLORS = [_]struct { []const u8, u24 }{
     .{ "aliceblue", 0xF0F8FF },            .{ "antiquewhite", 0xFAEBD7 },      .{ "aqua", 0x00FFFF },             .{ "aquamarine", 0x7FFFD4 },
     .{ "azure", 0xF0FFFF },                .{ "beige", 0xF5F5DC },             .{ "bisque", 0xFFE4C4 },           .{ "black", 0x000000 },
     .{ "blanchedalmond", 0xFFEBCD },       .{ "blue", 0x0000FF },              .{ "blueviolet", 0x8A2BE2 },       .{ "brown", 0xA52A2A },
@@ -60,6 +51,14 @@ const named_colors = [_]struct { []const u8, u24 }{
     .{ "white", 0xFFFFFF },                .{ "whitesmoke", 0xF5F5F5 },        .{ "yellow", 0xFFFF00 },           .{ "yellowgreen", 0x9ACD32 },
 };
 
+/// It has no wrapper key to recognise it by, so a few fields it always writes are.
+pub fn isFile(root: Value) bool {
+    if (values.get(root, "CycleGroup1ForwardHotkeys")) |v| {
+        if (v == .array) return true;
+    }
+    return values.objectAt(root, "FlatLayout") != null or values.objectAt(root, "DisableThumbnail") != null;
+}
+
 /// "#RRGGBB", "#AARRGGBB" (its alpha dropped, as borders and text here are opaque) or a .NET colour name.
 fn color(text: ?[]const u8) ?u32 {
     const s = std.mem.trim(u8, text orelse return null, " \t");
@@ -70,7 +69,7 @@ fn color(text: ?[]const u8) ?u32 {
         }
         return values.rgbColor(s);
     }
-    for (named_colors) |entry| {
+    for (NAMED_COLORS) |entry| {
         if (std.ascii.eqlIgnoreCase(s, entry[0])) return 0xFF000000 | @as(u32, entry[1]);
     }
     return null;

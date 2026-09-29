@@ -1,16 +1,40 @@
-//! EVE-APM Preview: a Qt QSettings INI file. Keys are percent-encoded, points are "@Point(x y)", fonts "Family,Size,...",
-//! and hotkeys "enabled,vk,ctrl,alt,shift" tuples, several joined by '|'.
+//! EVE-APM Preview's settings, a Qt QSettings INI file.
 const std = @import("std");
 const values = @import("values.zig");
-const draft_mod = @import("draft.zig");
+const draft = @import("draft.zig");
 const eve_x = @import("eve_x.zig");
 const vk = @import("../../platform/virtual_keys.zig");
 
-const Draft = draft_mod.Draft;
-const Section = draft_mod.Section;
+const Draft = draft.Draft;
+const Section = draft.Section;
+
+/// EVE-APM's OverlayPosition, and EVE-O's ZoomAnchor, list the anchors in TextPosition's order.
+const POSITIONS_IN_ORDER = [_][]const u8{ "TopLeft", "TopCenter", "TopRight", "LeftCenter", "Center", "RightCenter", "BottomLeft", "BottomCenter", "BottomRight" };
+
+/// Only the first four of EVE-APM's border styles look alike here; the rest are glow and animated effects.
+const BORDER_STYLES = [_][]const u8{ "Solid", "Dashed", "Dotted", "DashDot", "FadedEdges", "CornerAccents", "RoundedCorners", "Neon", "Shimmer", "ThickThin", "ElectricArc", "Rainbow", "BreathingGlow", "DoubleGlow", "Zigzag" };
+
+/// "mining_started" has no notification type here and is reported as unsupported.
+const EVENT_TYPES = [_]struct { []const u8, []const u8 }{
+    .{ "fleet_invite", "FleetInvite" },
+    .{ "follow_warp", "FleetFollow" },
+    .{ "regroup", "FleetRegroup" },
+    .{ "compression", "MiningCompression" },
+    .{ "decloak", "Decloak" },
+    .{ "mining_stopped", "MiningStopped" },
+    .{ "crystal_broke", "CrystalBroke" },
+    .{ "convo_request", "ConversationInvite" },
+};
 
 const Keys = std.StringArrayHashMapUnmanaged([]const u8);
 
+const Font = struct { family: ?[]const u8, size: ?f64 };
+
+const Tuple = struct { enabled: bool, vk_code: ?i64, ctrl: bool, alt: bool, shift: bool };
+
+const Group = struct { members: []const []const u8, forward: ?[]const u8, backward: ?[]const u8 };
+
+/// Keys are percent-encoded, points "@Point(x y)", fonts "Family,Size,...", and hotkeys "enabled,vk,ctrl,alt,shift" tuples joined by '|'.
 pub const Ini = struct {
     sections: std.StringArrayHashMapUnmanaged(Keys) = .empty,
 
@@ -110,8 +134,6 @@ fn qtPoint(raw: ?[]const u8) ?struct { x: i64, y: i64 } {
     return .{ .x = x, .y = y };
 }
 
-const Font = struct { family: ?[]const u8, size: ?f64 };
-
 /// "Family,Size,...": only the family and point size carry over.
 fn qtFont(raw: ?[]const u8) ?Font {
     const text = unquote(raw) orelse return null;
@@ -135,8 +157,6 @@ fn intValue(raw: ?[]const u8) ?f64 {
     const n = values.parseIntLoose(raw) orelse return null;
     return @floatFromInt(n);
 }
-
-const Tuple = struct { enabled: bool, vk_code: ?i64, ctrl: bool, alt: bool, shift: bool };
 
 fn parseTuple(raw: ?[]const u8) ?Tuple {
     const text = unquote(raw) orelse return null;
@@ -175,32 +195,14 @@ fn tupleHotkey(raw: ?[]const u8) ?u32 {
     return vk.combineKey(@intCast(code), modifiers);
 }
 
-/// EVE-APM's OverlayPosition, and EVE-O's ZoomAnchor, list the anchors in TextPosition's order.
-pub const positions_in_order = [_][]const u8{ "TopLeft", "TopCenter", "TopRight", "LeftCenter", "Center", "RightCenter", "BottomLeft", "BottomCenter", "BottomRight" };
-
 pub fn anchorName(n: ?f64) ?[]const u8 {
     const i = n orelse return null;
-    if (i < 0 or i >= positions_in_order.len) return null;
-    return positions_in_order[@intFromFloat(i)];
+    if (i < 0 or i >= POSITIONS_IN_ORDER.len) return null;
+    return POSITIONS_IN_ORDER[@intFromFloat(i)];
 }
 
-/// Only the first four of EVE-APM's border styles look alike here; the rest are glow and animated effects.
-const border_styles = [_][]const u8{ "Solid", "Dashed", "Dotted", "DashDot", "FadedEdges", "CornerAccents", "RoundedCorners", "Neon", "Shimmer", "ThickThin", "ElectricArc", "Rainbow", "BreathingGlow", "DoubleGlow", "Zigzag" };
-
-/// "mining_started" has no notification type here and is reported as unsupported.
-const event_types = [_]struct { []const u8, []const u8 }{
-    .{ "fleet_invite", "FleetInvite" },
-    .{ "follow_warp", "FleetFollow" },
-    .{ "regroup", "FleetRegroup" },
-    .{ "compression", "MiningCompression" },
-    .{ "decloak", "Decloak" },
-    .{ "mining_stopped", "MiningStopped" },
-    .{ "crystal_broke", "CrystalBroke" },
-    .{ "convo_request", "ConversationInvite" },
-};
-
 fn eventType(event: []const u8) ?[]const u8 {
-    for (event_types) |entry| {
+    for (EVENT_TYPES) |entry| {
         if (std.mem.eql(u8, entry[0], event)) return entry[1];
     }
     return null;
@@ -251,8 +253,6 @@ fn groupCount(d: *Draft, ini: *const Ini) !usize {
     return n;
 }
 
-const Group = struct { members: []const []const u8, forward: ?[]const u8, backward: ?[]const u8 };
-
 /// "member,member|forward tuple|backward tuple|...".
 fn parseGroup(arena: std.mem.Allocator, raw: []const u8) !Group {
     var parts = std.mem.splitScalar(u8, unquote(raw).?, '|');
@@ -279,7 +279,7 @@ pub fn build(d: *Draft, ini: *const Ini, chosen: []const []const u8) !void {
 
 fn borderStyle(d: *Draft, path: []const u8, raw: ?[]const u8, label: []const u8) !void {
     const n = values.parseIntLoose(raw orelse return) orelse return;
-    const name = if (n >= 0 and n < border_styles.len) border_styles[@intCast(n)] else try std.fmt.allocPrint(d.arena, "#{d}", .{n});
+    const name = if (n >= 0 and n < BORDER_STYLES.len) BORDER_STYLES[@intCast(n)] else try std.fmt.allocPrint(d.arena, "#{d}", .{n});
     if (n >= 0 and n < 4) return d.setString(path, name);
     try d.note("dynamic.import.apm.borderStyleUnsupportedNote", &.{ .{ .name = "label", .value = label, .translate = true }, .{ .name = "name", .value = name } });
 }

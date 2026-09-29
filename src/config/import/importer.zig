@@ -1,20 +1,24 @@
-//! Settings from other preview tools (EVE-X, EVE-MultiPreview, EVE-O, EVE-APM) and from other EVE-Maj profiles, turned into edits of a profile.
-//! A file is recognised, its sections listed for the user to choose from (`analyze`), then the chosen ones become edit ops (`build`).
+//! Imports settings from other preview tools and other EVE-Maj profiles: `analyze` lists a file's sections, `build` turns the chosen ones into edits.
 const std = @import("std");
 const values = @import("values.zig");
-const draft_mod = @import("draft.zig");
+const draft = @import("draft.zig");
 const eve_x = @import("eve_x.zig");
 const eve_apm = @import("eve_apm.zig");
 const eve_o = @import("eve_o.zig");
 const own = @import("own.zig");
 const patch = @import("../patch.zig");
 const profiles = @import("../profiles.zig");
-const config_mod = @import("../../config.zig");
+const config = @import("../../config.zig");
 
 const Value = std.json.Value;
-const Draft = draft_mod.Draft;
+const Draft = draft.Draft;
 
-pub const Text = draft_mod.Text;
+pub const Text = draft.Text;
+
+pub const Built = struct {
+    ops: []const patch.Op,
+    notes: []const Text,
+};
 
 const Source = union(enum) {
     maj: Value,
@@ -89,13 +93,8 @@ pub fn analyze(jw: *std.json.Stringify, arena: std.mem.Allocator, text: []const 
     try jw.endObject();
 }
 
-pub const Built = struct {
-    ops: []const patch.Op,
-    notes: []const Text,
-};
-
 /// Edits bringing the `chosen` sections of the file into `doc`. `cycle_group_name` names EVE-O Preview's unnamed groups ("Cycle Group {n}").
-pub fn build(arena: std.mem.Allocator, text: []const u8, source_profile: ?[]const u8, chosen: []const []const u8, cycle_group_name: []const u8, doc: *const config_mod.Config) !Built {
+pub fn build(arena: std.mem.Allocator, text: []const u8, source_profile: ?[]const u8, chosen: []const []const u8, cycle_group_name: []const u8, doc: *const config.Config) !Built {
     var d = Draft.init(arena);
     const source = try detect(arena, text) orelse return error.UnrecognizedSettingsFile;
     switch (source) {
@@ -106,5 +105,5 @@ pub fn build(arena: std.mem.Allocator, text: []const u8, source_profile: ?[]cons
     }
     // Imported positions come from a different setup, so ghost outlines of them would only clutter drags.
     if (chosen.len > 0) try d.setBool("snapping.showGhostPositionBorders", false);
-    return .{ .ops = try draft_mod.toOps(arena, &d, doc), .notes = d.notes.items };
+    return .{ .ops = try draft.toOps(arena, &d, doc), .notes = d.notes.items };
 }

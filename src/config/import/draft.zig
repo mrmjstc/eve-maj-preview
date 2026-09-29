@@ -1,12 +1,20 @@
 //! What an import brings in: a partial profile in its saved shape, and notes for the user; `toOps` turns it into edit ops (see config/patch.zig) against the profile being edited.
 const std = @import("std");
-const config_mod = @import("../../config.zig");
+const config = @import("../../config.zig");
 const patch = @import("../patch.zig");
 const values = @import("values.zig");
 
 const Value = std.json.Value;
 const ObjectMap = std.json.ObjectMap;
-const Config = config_mod.Config;
+const Config = config.Config;
+
+/// Lists merged item by item, matching on this field; characters and hotkey groups keep their ids, the others are replaced whole.
+const MERGED_LISTS = [_]struct { []const u8, []const u8 }{
+    .{ "characters", "name" },
+    .{ "hotkeyGroups", "name" },
+    .{ "systemColors", "systemName" },
+    .{ "windowFilters", "name" },
+};
 
 /// A translation key and its parameters, which the config dialog puts into words.
 pub const Text = struct {
@@ -38,14 +46,6 @@ pub const Section = struct {
 
 /// `translate` marks `value` as a translation key of its own, e.g. the label of the hotkey a note is about.
 pub const Param = struct { name: []const u8, value: []const u8, translate: bool = false };
-
-/// Lists merged item by item, matching on this field; characters and hotkey groups keep their ids, the others are replaced whole.
-const merged_lists = [_]struct { []const u8, []const u8 }{
-    .{ "characters", "name" },
-    .{ "hotkeyGroups", "name" },
-    .{ "systemColors", "systemName" },
-    .{ "windowFilters", "name" },
-};
 
 pub const Draft = struct {
     arena: std.mem.Allocator,
@@ -191,7 +191,7 @@ pub fn toOps(arena: std.mem.Allocator, draft: *const Draft, doc: *const Config) 
 }
 
 fn mergedListKey(name: []const u8) ?[]const u8 {
-    for (merged_lists) |entry| {
+    for (MERGED_LISTS) |entry| {
         if (std.mem.eql(u8, entry[0], name)) return entry[1];
     }
     return null;

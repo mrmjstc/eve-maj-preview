@@ -1,20 +1,19 @@
-//! This app's own profile files. They load through the normal profile loader, so an older format migrates and clamps the same way,
-//! and every saved section is offered, so one added later is importable without a change here.
+//! This app's own profile files, loaded through the normal profile loader so an older format migrates and clamps the same way.
 const std = @import("std");
 const values = @import("values.zig");
-const draft_mod = @import("draft.zig");
+const draft = @import("draft.zig");
 const eve_x = @import("eve_x.zig");
 const wire = @import("../wire.zig");
-const config_mod = @import("../../config.zig");
+const config = @import("../../config.zig");
 
 const Value = std.json.Value;
-const Config = config_mod.Config;
-const Draft = draft_mod.Draft;
-const Section = draft_mod.Section;
+const Config = config.Config;
+const Draft = draft.Draft;
+const Section = draft.Section;
 
 pub fn isFile(root: Value) bool {
     const app = values.stringAt(root, "app") orelse return false;
-    return std.mem.eql(u8, app, config_mod.PROFILE_FORMAT_IDENTIFIER);
+    return std.mem.eql(u8, app, config.PROFILE_FORMAT_IDENTIFIER);
 }
 
 /// Stamped on every save rather than chosen by the user.
@@ -26,6 +25,7 @@ fn isList(comptime T: type) bool {
     return wire.ListItem(T) != null;
 }
 
+/// Every saved section, so one added later is importable without a change here.
 pub fn sections(d: *Draft, root: Value) ![]const Section {
     var out: std.ArrayList(Section) = .empty;
     inline for (comptime wire.savedFields(Config)) |f| {
@@ -54,7 +54,7 @@ pub fn build(d: *Draft, text: []const u8, root: Value, chosen: []const []const u
 fn importSection(d: *Draft, cfg: *const Config, root: Value, comptime name: []const u8) !void {
     const raw = values.get(root, name) orelse return;
     if (raw == .null) return;
-    const loaded = try draft_mod.toValue(d.arena, Config, cfg, &.{.{ .string = name }});
+    const loaded = try draft.toValue(d.arena, Config, cfg, &.{.{ .string = name }});
     try d.root.put(d.arena, name, try present(d.arena, loaded, raw));
     try sectionNote(d, name, if (raw == .array) raw.array.items.len else 0);
 }

@@ -1,34 +1,15 @@
 //! EVE-X Preview and its fork EVE-MultiPreview: a JSON file of named profiles under "_Profiles".
-//! Older versions keep app-wide settings in "global_Settings" and a profile's in "Thumbnail Settings"/"Hotkeys"; version 3 moved
-//! them into the profile ("Thumbnails Visuals", "Thumbnails Behavior", "Hotkeys Settings", "Game Logs Monitoring"), so both are read.
 const std = @import("std");
 const values = @import("values.zig");
-const draft_mod = @import("draft.zig");
-const config_mod = @import("../../config.zig");
+const draft = @import("draft.zig");
+const config = @import("../../config.zig");
 
 const Value = std.json.Value;
-const Draft = draft_mod.Draft;
-const Section = draft_mod.Section;
+const Draft = draft.Draft;
+const Section = draft.Section;
 
-pub fn isFile(root: Value) bool {
-    return values.objectAt(root, "_Profiles") != null;
-}
-
-pub fn profileNames(arena: std.mem.Allocator, root: Value) ![]const []const u8 {
-    const profiles = values.objectAt(root, "_Profiles").?;
-    return arena.dupe([]const u8, profiles.object.keys());
-}
-
-/// The profile EVE-X last ran, or its first.
-pub fn defaultProfile(root: Value) ?[]const u8 {
-    const profiles = values.objectAt(root, "_Profiles").?;
-    if (values.stringAt(globals(root), "LastUsedProfile") orelse values.stringAt(root, "LastUsedProfile")) |last| {
-        if (profiles.object.contains(last)) return last;
-    }
-    const names = profiles.object.keys();
-    return if (names.len > 0) names[0] else null;
-}
-
+/// Older versions keep app-wide settings in "global_Settings" and a profile's in "Thumbnail Settings"/"Hotkeys"; version 3 moved them
+/// into the profile ("Thumbnails Visuals", "Thumbnails Behavior", "Hotkeys Settings", "Game Logs Monitoring"), so both are read.
 const Source = struct {
     profile: ?Value,
     global: ?Value,
@@ -83,6 +64,25 @@ const Source = struct {
         return values.objectAt(values.objectAt(self.profile, "Custom Colors"), "cColors");
     }
 };
+
+pub fn isFile(root: Value) bool {
+    return values.objectAt(root, "_Profiles") != null;
+}
+
+pub fn profileNames(arena: std.mem.Allocator, root: Value) ![]const []const u8 {
+    const profiles = values.objectAt(root, "_Profiles").?;
+    return arena.dupe([]const u8, profiles.object.keys());
+}
+
+/// The profile EVE-X last ran, or its first.
+pub fn defaultProfile(root: Value) ?[]const u8 {
+    const profiles = values.objectAt(root, "_Profiles").?;
+    if (values.stringAt(globals(root), "LastUsedProfile") orelse values.stringAt(root, "LastUsedProfile")) |last| {
+        if (profiles.object.contains(last)) return last;
+    }
+    const names = profiles.object.keys();
+    return if (names.len > 0) names[0] else null;
+}
 
 /// Version 3 has no "global_Settings" and keeps its few app-wide settings at the top level.
 fn globals(root: Value) ?Value {
@@ -146,7 +146,7 @@ pub fn sections(d: *Draft, root: Value, profile_name: []const u8) ![]const Secti
     });
 }
 
-pub fn colorsHint(d: *Draft, colors: usize, hotkeys: usize) !draft_mod.Text {
+pub fn colorsHint(d: *Draft, colors: usize, hotkeys: usize) !draft.Text {
     return d.text("dynamic.import.characterColorsHotkeysHint", &.{ .{ .name = "colors", .value = try d.format(colors) }, .{ .name = "hotkeys", .value = try d.format(hotkeys) } });
 }
 
@@ -234,7 +234,7 @@ fn characterPositions(d: *Draft, s: Source) !void {
 
 /// EVE-X ran DPI-unaware, so its positions are in a 96-DPI space Windows scaled for it.
 pub fn putPosition(d: *Draft, character: *std.json.ObjectMap, x: f64, y: f64) !void {
-    const legacy: config_mod.Position = .{ .x = std.math.lossyCast(i32, @round(x)), .y = std.math.lossyCast(i32, @round(y)) };
+    const legacy: config.Position = .{ .x = std.math.lossyCast(i32, @round(x)), .y = std.math.lossyCast(i32, @round(y)) };
     const pos = legacy.scaleFromLegacyDpiUnaware();
     try d.put(character, "position.x", .{ .integer = pos.x });
     try d.put(character, "position.y", .{ .integer = pos.y });
