@@ -92,6 +92,11 @@ pub const ListWindow = struct {
         self.panel.deinit();
     }
 
+    /// Matches the panel to its configured position; whether it exists at all is the view mode's, which rebuilds the Painter.
+    pub fn sync(self: *ListWindow) void {
+        self.panel.followPosition(self.config.display.startX, self.config.display.startY);
+    }
+
     fn saveWindowPosition(self: *ListWindow) void {
         if (!self.config.display.rememberListViewPosition) return;
         const pos = self.panel.topLeft();

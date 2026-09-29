@@ -119,6 +119,21 @@ pub const HistoryPanel = struct {
         self.force_visible = true;
     }
 
+    /// Matches the window to showNotifInfoPanel and its configured position, for a change made in the config dialog rather than by `toggle`.
+    pub fn sync(self: *HistoryPanel, allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) void {
+        const wanted = store.live.display.showNotifInfoPanel;
+        if (!wanted and self.window != null) {
+            self.deinit();
+            self.force_visible = false;
+        } else if (wanted and self.window == null) {
+            self.window = HistoryPanelWindow.init(allocator, store, instance) catch |err| {
+                slog.err("Failed to create History Panel window: {}", .{err});
+                return;
+            };
+        }
+        if (self.window) |*window| window.panel.followPosition(store.live.display.notifInfoPanelX, store.live.display.notifInfoPanelY);
+    }
+
     /// Per-tick: renders the panel from the painter's live history, or hides it.
     pub fn update(self: *HistoryPanel, painter: *const painter_mod.Painter, any_character_logged_in: bool) void {
         if (self.had_characters and !any_character_logged_in) self.force_visible = false;

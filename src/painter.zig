@@ -4,6 +4,7 @@ const win32 = @import("platform/win32.zig");
 const gdi_overlay = @import("platform/gdi_overlay.zig");
 const thumbnail_drag = @import("drag/thumbnail.zig");
 const config_mod = @import("config.zig");
+const types = @import("config/types.zig");
 const state_mod = @import("thumbnail/state.zig");
 const notification_history_mod = @import("notifications/history.zig");
 const notified_queue_mod = @import("notifications/notified_queue.zig");
@@ -94,6 +95,8 @@ pub const Painter = struct {
     auto_minimize: auto_minimize_mod.AutoMinimizer,
     /// Unique system/character colours; lives as long as this Painter, which a profile reload recreates along with Config.
     auto_colors: config_mod.AutoColorStore,
+    /// The mode the thumbnails were created for; a different one needs a new Painter (see main.onLiveProfileEdited).
+    view_mode: types.ViewMode,
 
     pub const notify = dispatch.notify;
     pub const notifyAll = dispatch.notifyAll;
@@ -120,6 +123,7 @@ pub const Painter = struct {
             .instance = instance,
             .config = cfg,
             .store = store,
+            .view_mode = cfg.display.viewMode,
         };
 
         try window_mod.registerClasses(instance);
@@ -670,6 +674,12 @@ pub const Painter = struct {
     /// Tray menu's checked state for "Show History Panel".
     pub fn isHistoryPanelVisible(self: *const Painter) bool {
         return self.history_panel.isVisible(self.config, self.anyCharacterLoggedIn());
+    }
+
+    /// Applies the panel settings only read when a panel is created, for a change made in the config dialog.
+    pub fn syncPanels(self: *Painter) void {
+        self.history_panel.sync(self.allocator, self.store, self.instance);
+        if (self.list_window) |*list| list.sync();
     }
 
     /// Tray menu's "Show History Panel" item.

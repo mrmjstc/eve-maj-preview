@@ -141,6 +141,20 @@ pub const Scout = struct {
         self.freeWindow(removed);
     }
 
+    /// Hands `window` to the next update's closed_windows, so the painter and chatlog let it go like any closed client; false if it couldn't be.
+    fn reportClosed(self: *Scout, window: EveWindow) bool {
+        const name = self.allocator.dupe(u8, window.character_name) catch |err| {
+            slog.err("Failed to allocate closed character name '{s}': {}", .{ window.character_name, err });
+            return false;
+        };
+        self.pending_closed.append(self.allocator, .{ .hwnd = window.hwnd, .character_name = name }) catch |err| {
+            slog.err("Failed to add '{s}' to pending closed list: {}", .{ name, err });
+            self.allocator.free(name);
+            return false;
+        };
+        return true;
+    }
+
     /// Bumps hwnd to the back of the not-logged-in FIFO used by the cycle-not-logged-in hotkey; re-logout bumps instead of duplicating.
     fn trackNotLoggedIn(self: *Scout, hwnd: win32.HWND) void {
         self.untrackNotLoggedIn(hwnd);
@@ -378,6 +392,7 @@ pub const Scout = struct {
             const window = self.windows.items[i];
             if (self.matchesCurrentFilters(window.hwnd, window.process_id)) continue;
 
+            _ = self.reportClosed(window);
             _ = self.eve_pids.remove(window.process_id);
             self.removeWindowAt(i);
         }
@@ -497,17 +512,7 @@ fn windowDestroyCallback(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, id_o
     // Uses hwnd_to_index before checking class name, since a partially-destroyed window can fail GetClassNameA.
     const index = scout_ptr.hwnd_to_index.get(hwnd) orelse return;
     const eve_window = scout_ptr.windows.items[index];
-
-    const closed_name = scout_ptr.allocator.dupe(u8, eve_window.character_name) catch |err| {
-        slog.err("Failed to allocate closed character name '{s}': {}", .{ eve_window.character_name, err });
-        return;
-    };
-
-    scout_ptr.pending_closed.append(scout_ptr.allocator, .{ .hwnd = hwnd, .character_name = closed_name }) catch |err| {
-        slog.err("Failed to add '{s}' to pending closed list: {}", .{ closed_name, err });
-        scout_ptr.allocator.free(closed_name);
-        return;
-    };
+    if (!scout_ptr.reportClosed(eve_window)) return;
 
     slog.debug("Window destroyed: '{s}' (hwnd {*})", .{ eve_window.character_name, hwnd });
     scout_ptr.removeWindowAt(index);

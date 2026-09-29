@@ -474,6 +474,26 @@ fn destroyPainter() void {
     g_allocator.destroy(old_painter);
 }
 
+/// Keeps each client's last-known system name for buildPainter to seed the new painter with; the caller frees it.
+fn teardownPainter() painter.SystemNameSnapshot {
+    var system_names = painter.SystemNameSnapshot.init(g_allocator);
+    if (painter.g_painter_ptr) |old_painter| system_names.capture(old_painter);
+    destroyPainter();
+    return system_names;
+}
+
+/// Also repoints the hotkey manager, the one other holder of the painter's pointer.
+fn buildPainter(windows: []const scout.EveWindow, system_names: *const painter.SystemNameSnapshot) !void {
+    const new_painter = try createPainter();
+    if (hotkeys.g_hotkey_manager_ptr) |manager| manager.painter = new_painter;
+    new_painter.populate(windows, .{
+        // Clients are already where the user put them; only startup and new arrivals auto-move.
+        .move_to_saved = false,
+        // Only seeded if monitoring stays on to refresh it, or a stale name would freeze on screen forever.
+        .system_names = if (g_store.saved.chatlog.enabled) system_names else null,
+    });
+}
+
 /// Publishes the manager through hotkeys.g_hotkey_manager_ptr, which is also how main.zig reaches it, then registers its hotkeys; a registration failure is logged, not fatal.
 fn createHotkeyManager(timer_hwnd: win32.HWND) !void {
     const manager = try g_allocator.create(hotkeys.HotkeyManager);
@@ -601,6 +621,8 @@ fn restartSubsystems(timer_hwnd: win32.HWND, replacement: ?config_mod.ProfileSto
     const next: *const config_mod.Config = if (pending) |*store| &store.saved else &g_store.saved;
 
     const keep_chatlog_monitor = if (g_chatlog_monitor) |monitor| monitor.runsWith(&next.chatlog) else false;
+    // A Save keeps the painter: the dialog already previewed what was saved, so rebuilding would only flash every window.
+    const rebuild_painter = pending != null or painter.g_painter_ptr == null;
 
     if (keep_chatlog_monitor) {
         // Pause (not destroy) so the worker thread can't race the tracker swap below.
@@ -618,12 +640,8 @@ fn restartSubsystems(timer_hwnd: win32.HWND, replacement: ?config_mod.ProfileSto
     destroyHotkeyManager();
     slog.debug("Cleaned up hotkey manager", .{});
 
-    var last_known_systems = painter.SystemNameSnapshot.init(g_allocator);
-    defer last_known_systems.deinit();
-    if (painter.g_painter_ptr) |painter_ptr| last_known_systems.capture(painter_ptr);
-
-    destroyPainter();
-    slog.debug("Cleaned up painter", .{});
+    var system_names = if (rebuild_painter) teardownPainter() else painter.SystemNameSnapshot.init(g_allocator);
+    defer system_names.deinit();
 
     if (pending) |store| {
         g_store.deinit();
@@ -637,20 +655,19 @@ fn restartSubsystems(timer_hwnd: win32.HWND, replacement: ?config_mod.ProfileSto
         slog.warn("Failed to update global settings: {}", .{err});
     };
 
-    const new_painter = createPainter() catch |err| {
-        slog.err("Failed to create painter: {}", .{err});
-        return err;
-    };
-    slog.debug("Reinitialized painter", .{});
-
+    // Windows the new filters drop are reported closed, and leave the painter and chatlog on the next tick.
     const eve_windows = rescanWindows();
-    new_painter.populate(eve_windows, .{
-        // Clients are already where the user put them; only startup and new arrivals auto-move.
-        .move_to_saved = false,
-        // Only seeded if monitoring stays on to refresh it, or a stale name would freeze on screen forever.
-        .system_names = if (g_store.saved.chatlog.enabled) &last_known_systems else null,
-    });
-    slog.debug("Recreated {} thumbnail(s)", .{eve_windows.len});
+    if (rebuild_painter) {
+        buildPainter(eve_windows, &system_names) catch |err| {
+            slog.err("Failed to create painter: {}", .{err});
+            return err;
+        };
+        slog.debug("Recreated {} thumbnail(s)", .{eve_windows.len});
+    } else {
+        const painter_ptr = painter.g_painter_ptr.?;
+        // Windows the new filters admit.
+        painter_ptr.populate(eve_windows, .{ .move_to_saved = false });
+    }
 
     if (keep_chatlog_monitor) {
         g_chatlog_monitor.?.applySettings(&g_store.saved.chatlog);
@@ -691,6 +708,21 @@ fn restartSubsystems(timer_hwnd: win32.HWND, replacement: ?config_mod.ProfileSto
 /// The config dialog changed the running profile's unsaved `live` copy; `layout` when thumbnails may need to move as well as repaint.
 pub fn onLiveProfileEdited(layout: bool) void {
     const painter_ptr = painter.g_painter_ptr orelse return;
+    // A view mode builds different windows, so it needs a new painter rather than a restyle.
+    if (painter_ptr.view_mode != g_store.live.display.viewMode) {
+        var system_names = teardownPainter();
+        defer system_names.deinit();
+        const windows: []const scout.EveWindow = if (scout.g_scout_ptr) |scout_ptr| scout_ptr.getWindows() else &.{};
+        buildPainter(windows, &system_names) catch |err| {
+            slog.err("Failed to rebuild thumbnails for view mode {s}: {}", .{ @tagName(g_store.live.display.viewMode), err });
+            // It pointed at the painter just destroyed; hotkeys return with the next reload or Save.
+            destroyHotkeyManager();
+            return;
+        };
+        slog.info("Rebuilt thumbnails for view mode {s}", .{@tagName(g_store.live.display.viewMode)});
+        return;
+    }
+    painter_ptr.syncPanels();
     painter_ptr.refreshAllThumbnailVisuals();
     if (layout) painter_ptr.repositionAllThumbnails();
 }

@@ -17,6 +17,8 @@ pub const PanelWindow = struct {
     width: i32 = -1,
     height: i32 = -1,
     last_signature: ?u64 = null,
+    /// Where the settings last put the panel, so a drag isn't undone by followPosition until the settings change.
+    placed: win32.POINT = .{ .x = 0, .y = 0 },
 
     pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, class_name: [*:0]const u8, title: [*:0]const u8, rect: win32.RECT) !PanelWindow {
         const hwnd = win32.CreateWindowExA(
@@ -33,7 +35,14 @@ pub const PanelWindow = struct {
             instance,
             null,
         ) orelse return error.CreateWindowFailed;
-        return .{ .hwnd = hwnd, .allocator = allocator };
+        return .{ .hwnd = hwnd, .allocator = allocator, .placed = .{ .x = rect.left, .y = rect.top } };
+    }
+
+    /// Moves the panel when its configured position changes.
+    pub fn followPosition(self: *PanelWindow, x: i32, y: i32) void {
+        if (self.placed.x == x and self.placed.y == y) return;
+        self.placed = .{ .x = x, .y = y };
+        _ = win32.SetWindowPos(self.hwnd, win32.HWND_TOPMOST, x, y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
     }
 
     pub fn deinit(self: *PanelWindow) void {
