@@ -1,14 +1,16 @@
+//! Mouse input on a thumbnail and its text overlay: clicks, drags and the hover cursor.
 const win32 = @import("../platform/win32.zig");
-const log = @import("../log.zig");
-const slog = log.scoped("input");
 const painter_mod = @import("../painter.zig");
-const hotkeys_mod = @import("../hotkeys/manager.zig");
+const hotkeys = @import("../hotkeys/manager.zig");
 const membership = @import("../hotkeys/membership.zig");
 const activation = @import("../clients/activation.zig");
 const thumbnail_drag = @import("../drag/thumbnail.zig");
-const ThumbnailWindow = painter_mod.ThumbnailWindow;
+const log = @import("../log.zig");
 
-// Click state for mouse-up triggered clicks (left-click only; right-click drags)
+const ThumbnailWindow = painter_mod.ThumbnailWindow;
+const slog = log.scoped("input");
+
+/// A left press waiting for its release when clicks trigger on mouse-up; right-click drags instead.
 const ClickState = struct {
     pending: bool = false,
     hwnd: ?win32.HWND = null,
@@ -40,7 +42,40 @@ pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
         return;
     }
 
-    if (hotkeys_mod.g_hotkey_manager_ptr) |manager| membership.toggleThumbnailExclusion(manager, source_hwnd);
+    if (hotkeys.g_hotkey_manager_ptr) |manager| membership.toggleThumbnailExclusion(manager, source_hwnd);
+}
+
+pub fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
+    switch (msg) {
+        win32.WM_ACTIVATE => {
+            if (win32.linkedWindow(hwnd)) |text_hwnd| {
+                _ = win32.SetWindowPos(text_hwnd, win32.HWND_TOPMOST, 0, 0, 0, 0, win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
+            }
+        },
+        win32.WM_DPICHANGED => {
+            // Position only; resizeThumbnailIfNeeded re-derives the size from our own scale formula.
+            const suggested = win32.lparamToPtr(win32.RECT, lParam);
+            const painter = painter_mod.g_painter_ptr orelse return 0;
+            const thumbnail = painter.getThumbnailByOverlayHwnd(hwnd) orelse return 0;
+            painter.resizeThumbnailIfNeeded(thumbnail, null);
+
+            var rect: win32.RECT = undefined;
+            _ = win32.GetClientRect(thumbnail.hwnd, &rect);
+            thumbnail.moveTo(suggested.left, suggested.top, .{ .width = rect.right, .height = rect.bottom });
+
+            painter.renderThumbnail(thumbnail) catch |err| {
+                slog.err("Failed to render thumbnail after DPI change for '{s}': {}", .{ thumbnail.character_name, err });
+            };
+            return 0;
+        },
+        else => if (handleSharedMessage(hwnd, msg, lParam, false)) |result| return result,
+    }
+    return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
+}
+
+pub fn textWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
+    if (handleSharedMessage(hwnd, msg, lParam, true)) |result| return result;
+    return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
 }
 
 fn dispatchClick(source_hwnd: win32.HWND, shift_pressed: bool) void {
@@ -116,39 +151,4 @@ fn handleSharedMessage(hwnd: win32.HWND, msg: win32.UINT, lParam: win32.LPARAM, 
         else => return null,
     }
     return 0;
-}
-
-/// Window procedure for thumbnail windows.
-pub fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
-    switch (msg) {
-        win32.WM_ACTIVATE => {
-            if (win32.linkedWindow(hwnd)) |text_hwnd| {
-                _ = win32.SetWindowPos(text_hwnd, win32.HWND_TOPMOST, 0, 0, 0, 0, win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
-            }
-        },
-        win32.WM_DPICHANGED => {
-            // Position only; resizeThumbnailIfNeeded re-derives the size from our own scale formula.
-            const suggested = win32.lparamToPtr(win32.RECT, lParam);
-            const painter = painter_mod.g_painter_ptr orelse return 0;
-            const thumbnail = painter.getThumbnailByOverlayHwnd(hwnd) orelse return 0;
-            painter.resizeThumbnailIfNeeded(thumbnail, null);
-
-            var rect: win32.RECT = undefined;
-            _ = win32.GetClientRect(thumbnail.hwnd, &rect);
-            thumbnail.moveTo(suggested.left, suggested.top, .{ .width = rect.right, .height = rect.bottom });
-
-            painter.renderThumbnail(thumbnail) catch |err| {
-                slog.err("Failed to render thumbnail after DPI change for {s}: {}", .{ thumbnail.character_name, err });
-            };
-            return 0;
-        },
-        else => if (handleSharedMessage(hwnd, msg, lParam, false)) |result| return result,
-    }
-    return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
-}
-
-/// Window procedure for text overlay windows: handles clicks and dragging
-pub fn textWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
-    if (handleSharedMessage(hwnd, msg, lParam, true)) |result| return result;
-    return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
 }

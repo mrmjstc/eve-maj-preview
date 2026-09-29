@@ -1,34 +1,39 @@
 //! A thumbnail's text overlay: what to draw (RenderSettings, compared to skip redundant redraws) and drawing it into the layered window over the DWM thumbnail.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const config_mod = @import("../config.zig");
-const color_mod = @import("../util/color.zig");
-const types = @import("../config/types.zig");
-const state_mod = @import("state.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
-const log = @import("../log.zig");
-const slog = log.scoped("overlay");
-const notification_stack_mod = @import("../notifications/stack.zig");
+const config_mod = @import("../config.zig");
+const types = @import("../config/types.zig");
+const color_mod = @import("../util/color.zig");
+const format = @import("../util/format.zig");
+const stack = @import("../notifications/stack.zig");
+const state_mod = @import("state.zig");
 const draw = @import("draw.zig");
 const font_cache_mod = @import("font_cache.zig");
-const format = @import("../util/format.zig");
+const window = @import("window.zig");
+const log = @import("../log.zig");
 
-const window_mod = @import("window.zig");
-const ThumbnailWindow = window_mod.ThumbnailWindow;
+const ThumbnailWindow = window.ThumbnailWindow;
 const TextPosition = types.TextPosition;
 const BorderStyle = types.BorderStyle;
 const TextDimensions = draw.TextDimensions;
 const TextOrigin = draw.TextOrigin;
 const FontCache = font_cache_mod.FontCache;
 const scalePixels = win32.scalePixels;
+const slog = log.scoped("overlay");
+
+const OVERLAY_ALPHA = 255;
+
+/// Character name, system, group badge, DPS in and out, mining (and its ISK line), bounty, and up to three resource lines.
+const MAX_LINES = 1 + 1 + 1 + 2 + 2 + 1 + 3;
+const MAX_STACK = 3;
+const TEXT_BUF = 32;
 
 /// One resolved (text, color) line of the stacked notification block; built by createRenderSettings, drawn by renderThumbnailOverlay.
 pub const NotificationLine = struct {
     text: []const u8 = "",
     color: u32 = 0xFFFFFF,
 };
-
-const OVERLAY_ALPHA = 255;
 
 /// Everything a thumbnail's overlay depends on, so an unchanged one needn't be redrawn.
 /// Combat, mining, bounty and resources config is read straight from the profile instead; every config edit clears the render cache anyway.
@@ -56,7 +61,7 @@ pub const RenderSettings = struct {
     system_name_font_size: i32 = 12,
     system_name_font_weight: types.FontWeight = .Regular,
     show_notifications: bool = false,
-    notification_lines: [notification_stack_mod.CAPACITY]NotificationLine = .{NotificationLine{}} ** notification_stack_mod.CAPACITY,
+    notification_lines: [stack.CAPACITY]NotificationLine = .{NotificationLine{}} ** stack.CAPACITY,
     notification_line_count: usize = 0,
     notifications_position: TextPosition = .Center,
     notifications_offset_x: i32 = 0,
@@ -120,49 +125,7 @@ pub const RenderSettings = struct {
     resources_color: u32 = 0xFFFFFFFF,
 };
 
-pub fn renderSettingsEqual(a: RenderSettings, b: RenderSettings) bool {
-    return a.show_thumbnail == b.show_thumbnail and visualEqual(a, b);
-}
-
-pub fn renderSettingsOnlyVisibilityChanged(a: RenderSettings, b: RenderSettings) bool {
-    return a.show_thumbnail != b.show_thumbnail and visualEqual(a, b);
-}
-
-/// Every field but show_thumbnail, walked at comptime so a field added to RenderSettings is always part of the check.
-fn visualEqual(a: RenderSettings, b: RenderSettings) bool {
-    inline for (@typeInfo(RenderSettings).@"struct".fields) |f| {
-        if (comptime std.mem.eql(u8, f.name, "show_thumbnail")) continue;
-        if (!valuesEqual(f.type, @field(a, f.name), @field(b, f.name))) return false;
-    }
-    return true;
-}
-
-fn valuesEqual(comptime T: type, a: T, b: T) bool {
-    if (T == []const u8) return stringsEqualFast(a, b);
-    switch (@typeInfo(T)) {
-        .@"struct" => |info| {
-            inline for (info.fields) |f| {
-                if (!valuesEqual(f.type, @field(a, f.name), @field(b, f.name))) return false;
-            }
-            return true;
-        },
-        .array => |info| {
-            for (a, b) |x, y| {
-                if (!valuesEqual(info.child, x, y)) return false;
-            }
-            return true;
-        },
-        else => return a == b,
-    }
-}
-
-/// Pointer+len fast path before falling back to a byte compare; config/notif-owned slices are pointer+len identical every tick when unchanged.
-fn stringsEqualFast(a: []const u8, b: []const u8) bool {
-    return (a.ptr == b.ptr and a.len == b.len) or std.mem.eql(u8, a, b);
-}
-
-/// A text run's measured size and the font it was measured with, so an unchanged run isn't re-measured every render; `font_name` borrows config's font-name buffer.
-/// Keyed by font only, so whoever changes the text clears `dims`.
+/// A text run's size and the font it was measured in, keyed by font only, so whoever changes the text clears `dims`; `font_name` borrows config's buffer.
 const MeasuredText = struct {
     dims: ?TextDimensions = null,
     font_name: []const u8 = "",
@@ -202,8 +165,7 @@ pub const RenderCache = struct {
     }
 };
 
-/// One paintable text run. render_pos is where its glyphs go; bg_pos/bg_dims bound its background and alpha fixup,
-/// which differ for a stacked block's lines: they share the block's width but each aligns to its edge.
+/// One text run: render_pos places its glyphs, bg_pos/bg_dims its background, which differ in a stacked block (shared width, per-line alignment).
 const DrawLine = struct {
     font: win32.HFONT,
     text: []const u8,
@@ -213,11 +175,6 @@ const DrawLine = struct {
     color: u32,
     bg_color: u32,
 };
-
-/// Character name, system, group badge, DPS in and out, mining (and its ISK line), bounty, and up to three resource lines.
-const MAX_LINES = 1 + 1 + 1 + 2 + 2 + 1 + 3;
-const MAX_STACK = 3;
-const TEXT_BUF = 32;
 
 /// The single-rect text runs one render lays out, before any of them is drawn.
 const Layout = struct {
@@ -299,7 +256,7 @@ const NotificationBlock = struct {
     font: win32.HFONT,
     origin: TextOrigin,
     dims: TextDimensions,
-    line_heights: [notification_stack_mod.CAPACITY]usize,
+    line_heights: [stack.CAPACITY]usize,
 };
 
 /// Fonts are fetched for the window's own DPI; the stat fonts' sizes are scaled here, since their config isn't in RenderSettings.
@@ -317,7 +274,19 @@ const Fonts = struct {
     }
 };
 
-pub fn renderThumbnailOverlay(fonts: *FontCache, thumbnail: *ThumbnailWindow, settings: RenderSettings, config: *const config_mod.Config) !void {
+const IskPeriod = struct { seconds: f32, suffix: []const u8 };
+
+const Border = struct { show: bool, width: u8, color: u32, style: BorderStyle };
+
+pub fn renderSettingsEqual(a: RenderSettings, b: RenderSettings) bool {
+    return a.show_thumbnail == b.show_thumbnail and visualEqual(a, b);
+}
+
+pub fn renderSettingsOnlyVisibilityChanged(a: RenderSettings, b: RenderSettings) bool {
+    return a.show_thumbnail != b.show_thumbnail and visualEqual(a, b);
+}
+
+pub fn renderThumbnailOverlay(font_cache: *FontCache, thumbnail: *ThumbnailWindow, settings: RenderSettings, config: *const config_mod.Config) !void {
     const cache = &thumbnail.render_cache;
     if (gdi_overlay.OverlayBitmap.needsResize(cache.bitmap, settings.overlay_width, settings.overlay_height)) {
         const screen_dc = win32.GetDC(null) orelse return error.GetDCFailed;
@@ -333,30 +302,30 @@ pub fn renderThumbnailOverlay(fonts: *FontCache, thumbnail: *ThumbnailWindow, se
     }
 
     const dpi: u32 = win32.GetDpiForWindow(thumbnail.hwnd);
-    const f: Fonts = .{ .cache = fonts, .dpi = dpi, .scale = win32.dpiToScale(dpi) };
+    const fonts: Fonts = .{ .cache = font_cache, .dpi = dpi, .scale = win32.dpiToScale(dpi) };
     var layout: Layout = .{ .dc = overlay.mem_dc, .width = overlay.width, .height = overlay.height };
     defer layout.restoreFont();
 
     // Added in painting order: a later background covers an earlier overlapping one.
-    try addCharacterName(&layout, f, cache, settings);
-    try addSystemName(&layout, f, cache, settings);
-    try addGroupBadge(&layout, f, cache, settings);
+    try addCharacterName(&layout, fonts, cache, settings);
+    try addSystemName(&layout, fonts, cache, settings);
+    try addGroupBadge(&layout, fonts, cache, settings);
     if (settings.show_text) {
         const stats = &thumbnail.stats;
-        try addCombat(&layout, f, config, stats, settings);
-        try addMining(&layout, f, config, stats, settings);
-        try addBounty(&layout, f, config, stats, settings);
-        try addResources(&layout, f, config, stats, settings);
+        try addCombat(&layout, fonts, config, stats, settings);
+        try addMining(&layout, fonts, config, stats, settings);
+        try addBounty(&layout, fonts, config, stats, settings);
+        try addResources(&layout, fonts, config, stats, settings);
     }
-    const notifications = try layoutNotifications(&layout, f, settings);
+    const notifications = try layoutNotifications(&layout, fonts, settings);
 
     const lines = layout.lines[0..layout.count];
     // Before the border, so it paints over them.
     for (lines) |line| {
         draw.fillTextBackground(overlay.pixels, overlay.width, overlay.height, line.bg_pos.x, line.bg_pos.y, line.bg_dims.width, line.bg_dims.height, line.bg_color);
     }
-    if (notifications) |n| {
-        draw.fillTextBackground(overlay.pixels, overlay.width, overlay.height, n.origin.x, n.origin.y, n.dims.width, n.dims.height, settings.notifications_bg_color);
+    if (notifications) |block| {
+        draw.fillTextBackground(overlay.pixels, overlay.width, overlay.height, block.origin.x, block.origin.y, block.dims.width, block.dims.height, settings.notifications_bg_color);
     }
 
     if (settings.show_border) {
@@ -367,11 +336,11 @@ pub fn renderThumbnailOverlay(fonts: *FontCache, thumbnail: *ThumbnailWindow, se
         layout.select(line.font);
         draw.renderText(overlay.mem_dc, line.text, line.render_pos.x, line.render_pos.y, line.color);
     }
-    if (notifications) |n| {
-        layout.select(n.font);
-        var y = n.origin.y;
-        for (settings.notification_lines[0..settings.notification_line_count], n.line_heights[0..settings.notification_line_count]) |line, line_height| {
-            draw.renderText(overlay.mem_dc, line.text, n.origin.x, y, line.color);
+    if (notifications) |block| {
+        layout.select(block.font);
+        var y = block.origin.y;
+        for (settings.notification_lines[0..settings.notification_line_count], block.line_heights[0..settings.notification_line_count]) |line, line_height| {
+            draw.renderText(overlay.mem_dc, line.text, block.origin.x, y, line.color);
             y += @as(i32, @intCast(line_height));
         }
     }
@@ -380,208 +349,11 @@ pub fn renderThumbnailOverlay(fonts: *FontCache, thumbnail: *ThumbnailWindow, se
     for (lines) |line| {
         gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, line.bg_pos.x, line.bg_pos.y, line.bg_dims.width, line.bg_dims.height);
     }
-    if (notifications) |n| {
-        gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, n.origin.x, n.origin.y, n.dims.width, n.dims.height);
+    if (notifications) |block| {
+        gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, block.origin.x, block.origin.y, block.dims.width, block.dims.height);
     }
 
     gdi_overlay.presentLayered(thumbnail.text_hwnd, overlay, settings.overlay_alpha);
-}
-
-fn addCharacterName(layout: *Layout, f: Fonts, cache: *RenderCache, s: RenderSettings) !void {
-    if (!s.show_character_name) return;
-    const font = try f.get(.main, s.character_name_font_name, s.character_name_font_size, s.character_name_font_weight);
-    const dims = cache.character_name.measure(layout, font, s.display_name, s.character_name_font_name, s.character_name_font_size, s.character_name_font_weight);
-    layout.addAt(font, s.display_name, dims, s.character_name_position, s.character_name_offset_x, s.character_name_offset_y, s.character_name_color, s.character_name_bg_color);
-}
-
-fn addSystemName(layout: *Layout, f: Fonts, cache: *RenderCache, s: RenderSettings) !void {
-    if (!s.show_system_name) return;
-    const font = try f.get(.system_name, s.system_name_font_name, s.system_name_font_size, s.system_name_font_weight);
-    const dims = cache.system_name.measure(layout, font, s.system_name, s.system_name_font_name, s.system_name_font_size, s.system_name_font_weight);
-    layout.addAt(font, s.system_name, dims, s.system_name_position, s.system_name_offset_x, s.system_name_offset_y, s.system_name_color, s.system_name_bg_color);
-}
-
-fn addGroupBadge(layout: *Layout, f: Fonts, cache: *RenderCache, s: RenderSettings) !void {
-    if (!s.show_group_badge) return;
-    const font = try f.get(.group_badge, s.group_badge_font_name, s.group_badge_font_size, s.group_badge_font_weight);
-    const dims = cache.group_badge.measure(layout, font, s.group_badge_text, s.group_badge_font_name, s.group_badge_font_size, s.group_badge_font_weight);
-    layout.addAt(font, s.group_badge_text, dims, s.group_badge_position, s.group_badge_offset_x, s.group_badge_offset_y, s.group_badge_color, s.group_badge_bg_color);
-}
-
-fn addCombat(layout: *Layout, f: Fonts, config: *const config_mod.Config, stats: *const window_mod.ActivityStats, s: RenderSettings) !void {
-    const cfg = &config.combat;
-    if (!cfg.enabled) return;
-    if (cfg.show_incoming and stats.showsIncoming()) {
-        const font = try f.getScaled(.combat, cfg.incoming_font_name, cfg.incoming_font_size, cfg.incoming_font_weight);
-        const text = rateText(layout, if (cfg.incoming_show_prefix) "IN: " else "", stats.incoming_dps);
-        layout.addAt(font, text, layout.measure(font, text), cfg.incoming_position, cfg.incoming_offset_x, cfg.incoming_offset_y, cfg.incoming_color, s.combat_incoming_bg_color);
-    }
-    if (cfg.show_outgoing and stats.showsOutgoing()) {
-        const font = try f.getScaled(.combat_outgoing, cfg.outgoing_font_name, cfg.outgoing_font_size, cfg.outgoing_font_weight);
-        const text = rateText(layout, if (cfg.outgoing_show_prefix) "OUT: " else "", stats.outgoing_dps);
-        layout.addAt(font, text, layout.measure(font, text), cfg.outgoing_position, cfg.outgoing_offset_x, cfg.outgoing_offset_y, cfg.outgoing_color, s.combat_outgoing_bg_color);
-    }
-}
-
-fn rateText(layout: *Layout, prefix: []const u8, rate: ?f32) []const u8 {
-    if (rate) |value| return layout.print("{s}{d:.0}", .{ prefix, value });
-    return layout.print("{s}??", .{prefix});
-}
-
-fn addMining(layout: *Layout, f: Fonts, config: *const config_mod.Config, stats: *const window_mod.ActivityStats, s: RenderSettings) !void {
-    const cfg = &config.mining;
-    if (!cfg.enabled or !stats.showsMining()) return;
-    const font = try f.getScaled(.mining, cfg.font_name, cfg.font_size, cfg.font_weight);
-    const prefix: []const u8 = if (cfg.show_prefix) "M: " else "";
-
-    var texts: [2][]const u8 = undefined;
-    var count: usize = 1;
-    texts[0] = if (stats.mining_rate) |rate| blk: {
-        // Per minute rather than per second, so low-yield ore doesn't round to "0".
-        const rate_per_min = rate * 60.0;
-        var raw_buf: [16]u8 = undefined;
-        const raw = if (rate_per_min < 10.0)
-            std.fmt.bufPrint(&raw_buf, "{d:.1}", .{rate_per_min}) catch "---"
-        else
-            std.fmt.bufPrint(&raw_buf, "{d:.0}", .{rate_per_min}) catch "---";
-        var comma_buf: [16]u8 = undefined;
-        break :blk layout.print("{s}{s} m3/min", .{ prefix, format.insertThousandsSeparators(&comma_buf, raw) });
-    } else layout.print("{s}?? m3/min", .{prefix});
-
-    if (cfg.show_isk_rate) {
-        texts[1] = iskRateText(layout, "", stats.mining_isk_rate, iskPeriod(cfg.isk_rate_unit));
-        count = 2;
-    }
-    layout.addStack(font, texts[0..count], cfg.position, cfg.offset_x, cfg.offset_y, cfg.color, s.mining_bg_color);
-}
-
-fn addBounty(layout: *Layout, f: Fonts, config: *const config_mod.Config, stats: *const window_mod.ActivityStats, s: RenderSettings) !void {
-    const cfg = &config.bounty;
-    if (!cfg.enabled or !stats.showsBounty()) return;
-    const font = try f.getScaled(.bounty, cfg.font_name, cfg.font_size, cfg.font_weight);
-    const text = iskRateText(layout, if (cfg.show_prefix) "ISK: " else "", stats.bounty_isk_rate, iskPeriod(cfg.isk_rate_unit));
-    layout.addAt(font, text, layout.measure(font, text), cfg.position, cfg.offset_x, cfg.offset_y, cfg.color, s.bounty_bg_color);
-}
-
-const IskPeriod = struct { seconds: f32, suffix: []const u8 };
-
-fn iskPeriod(unit: anytype) IskPeriod {
-    return if (unit == .hour) .{ .seconds = 3600.0, .suffix = "hr" } else .{ .seconds = 60.0, .suffix = "min" };
-}
-
-fn iskRateText(layout: *Layout, prefix: []const u8, isk_per_second: ?f32, period: IskPeriod) []const u8 {
-    const rate = isk_per_second orelse return layout.print("{s}?? ISK/{s}", .{ prefix, period.suffix });
-    var isk_buf: [16]u8 = undefined;
-    return layout.print("{s}{s} ISK/{s}", .{ prefix, format.formatIskAbbrev(&isk_buf, rate * period.seconds), period.suffix });
-}
-
-fn addResources(layout: *Layout, f: Fonts, config: *const config_mod.Config, stats: *const window_mod.ActivityStats, s: RenderSettings) !void {
-    const cfg = &config.resources;
-    if (!cfg.enabled or !stats.has_resources) return;
-    const font = try f.getScaled(.resources, cfg.font_name, cfg.font_size, cfg.font_weight);
-
-    var texts: [MAX_STACK][]const u8 = undefined;
-    var count: usize = 0;
-    if (cfg.show_cpu) {
-        texts[count] = layout.print("CPU: {d:.0}%", .{stats.cpu_percent});
-        count += 1;
-    }
-    if (cfg.show_ram) {
-        texts[count] = layout.print("RAM: {d:.0}MB", .{stats.ram_mb});
-        count += 1;
-    }
-    if (cfg.show_vram and stats.has_vram) {
-        texts[count] = layout.print("VRAM: {d:.0}MB", .{stats.vram_mb});
-        count += 1;
-    }
-    if (count > 0) layout.addStack(font, texts[0..count], cfg.position, cfg.offset_x, cfg.offset_y, cfg.color, s.resources_bg_color);
-}
-
-/// Not size-cached like the names: the stack changes far more often, so a cache would miss almost every render.
-fn layoutNotifications(layout: *Layout, f: Fonts, s: RenderSettings) !?NotificationBlock {
-    if (!s.show_notifications or s.notification_line_count == 0) return null;
-    const font = try f.get(.notification, s.notifications_font_name, s.notifications_font_size, s.notifications_font_weight);
-    var block: NotificationBlock = .{ .font = font, .origin = undefined, .dims = .{ .width = 0, .height = 0 }, .line_heights = undefined };
-    for (s.notification_lines[0..s.notification_line_count], 0..) |line, i| {
-        const dims = layout.measure(font, line.text);
-        block.line_heights[i] = dims.height;
-        block.dims.width = @max(block.dims.width, dims.width);
-        block.dims.height += dims.height;
-    }
-    block.origin = layout.position(s.notifications_position, block.dims, s.notifications_offset_x, s.notifications_offset_y);
-    return block;
-}
-
-/// Per-state override (if any) wins, then opacity is forced fully opaque when the window's own
-/// Opacity setting should apply instead, so it isn't compounded with this color's own alpha.
-fn resolveTextBgColor(state_cfg: config_mod.StateVisualConfig, base_color: u32, force_opaque: bool) u32 {
-    const resolved = state_cfg.textBgColor orelse base_color;
-    return if (force_opaque) color_mod.withAlpha(resolved, 255) else resolved;
-}
-
-const Border = struct { show: bool, width: u8, color: u32, style: BorderStyle };
-
-/// Colour precedence, lowest first: the Active/Inactive base, the state's own override, the newest notification's type while alerting, then the character's own colours.
-fn resolveBorder(cfg: *const config_mod.Config, thumbnail: *const ThumbnailWindow, state: state_mod.ThumbnailState, state_cfg: config_mod.StateVisualConfig, is_focused: bool, hide_all: bool) Border {
-    const tc = &cfg.thumbnail;
-    // Alert builds on Active, being an attention event.
-    const focused_look = state == .Active or state == .Alert;
-    // Only the newest notification drives border effects; older entries only add text lines.
-    const newest = if (state == .Alert) thumbnail.notifications.newest() else null;
-
-    // A notification hiding or flashing the border is skipped for the focused character, so it can't fight that character's active border.
-    const notification_hides = if (newest) |n| !is_focused and (!n.show_border or n.isFlashOff(win32.Ticks.now())) else false;
-    const show = !hide_all and !notification_hides and (state_cfg.showBorder orelse (if (focused_look) tc.showBorderWhenFocused else tc.showBorderWhenInactive));
-
-    // With suppress_when_focused, a focused character's alert borders as Active.
-    const suppressed = if (newest) |n| n.suppress_when_focused and is_focused else false;
-    var color = state_cfg.borderColor orelse (if (focused_look) tc.borderColor else tc.inactiveBorderColor);
-    if (newest) |n| {
-        if (!suppressed) {
-            if (n.border_color_override) |override| color = override;
-        }
-    }
-    if (thumbnail.cached_border_colors) |char_colors| {
-        const override = if (state == .Active or (state == .Alert and suppressed))
-            char_colors.activeBorderColor
-        else if (state == .Inactive or state == .Minimized)
-            char_colors.inactiveBorderColor
-        else
-            null;
-        if (override) |c| color = c;
-    }
-
-    return .{
-        .show = show,
-        .width = state_cfg.borderWidth orelse (if (focused_look) tc.borderWidth else tc.inactiveBorderWidth),
-        .color = color,
-        .style = state_cfg.borderStyle orelse (if (focused_look) tc.borderStyle else tc.inactiveBorderStyle),
-    };
-}
-
-/// Reads RegionFit's already-sized window back rather than repeating the grid math; otherwise the configured (or per-character) size at the window's DPI.
-fn overlaySize(cfg: *const config_mod.Config, thumbnail: *const ThumbnailWindow, dpi_scale: f32) window_mod.Size {
-    if (cfg.display.layoutMode == .RegionFit) {
-        var client_rect: win32.RECT = undefined;
-        if (win32.GetClientRect(thumbnail.hwnd, &client_rect) != 0 and client_rect.right > 0 and client_rect.bottom > 0) {
-            return .{ .width = client_rect.right, .height = client_rect.bottom };
-        }
-    }
-    const char_size = thumbnail.cached_thumbnail_size;
-    const width = if (char_size) |cs| cs.width orelse cfg.thumbnail.width else cfg.thumbnail.width;
-    const height = if (char_size) |cs| cs.height orelse cfg.thumbnail.height else cfg.thumbnail.height;
-    return .{ .width = scalePixels(width, dpi_scale), .height = scalePixels(height, dpi_scale) };
-}
-
-/// Newest first; each entry keeps its own suppress_when_focused and colour, so types in one stack filter and colour independently.
-fn notificationLines(out: *[notification_stack_mod.CAPACITY]NotificationLine, thumbnail: *const ThumbnailWindow, is_focused: bool, base_color: u32) usize {
-    var count: usize = 0;
-    for (thumbnail.notifications.items()) |notif| {
-        if (notif.suppress_when_focused and is_focused) continue;
-        out[count] = .{ .text = notif.text, .color = notif.text_color_override orelse base_color };
-        count += 1;
-    }
-    return count;
 }
 
 /// The single point where a thumbnail's state and the profile decide everything its overlay shows.
@@ -683,4 +455,229 @@ pub fn createRenderSettings(cfg: *const config_mod.Config, thumbnail: *const Thu
         settings.notification_line_count = notificationLines(&settings.notification_lines, thumbnail, is_focused, state_cfg.textColor orelse tc.characterNameColor);
     }
     return settings;
+}
+
+/// Every field but show_thumbnail, walked at comptime so a field added to RenderSettings is always part of the check.
+fn visualEqual(a: RenderSettings, b: RenderSettings) bool {
+    inline for (@typeInfo(RenderSettings).@"struct".fields) |f| {
+        if (comptime std.mem.eql(u8, f.name, "show_thumbnail")) continue;
+        if (!valuesEqual(f.type, @field(a, f.name), @field(b, f.name))) return false;
+    }
+    return true;
+}
+
+fn valuesEqual(comptime T: type, a: T, b: T) bool {
+    if (T == []const u8) return stringsEqualFast(a, b);
+    switch (@typeInfo(T)) {
+        .@"struct" => |info| {
+            inline for (info.fields) |f| {
+                if (!valuesEqual(f.type, @field(a, f.name), @field(b, f.name))) return false;
+            }
+            return true;
+        },
+        .array => |info| {
+            for (a, b) |x, y| {
+                if (!valuesEqual(info.child, x, y)) return false;
+            }
+            return true;
+        },
+        else => return a == b,
+    }
+}
+
+/// Pointer+len fast path before falling back to a byte compare; config/notif-owned slices are pointer+len identical every tick when unchanged.
+fn stringsEqualFast(a: []const u8, b: []const u8) bool {
+    return (a.ptr == b.ptr and a.len == b.len) or std.mem.eql(u8, a, b);
+}
+
+fn addCharacterName(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: RenderSettings) !void {
+    if (!settings.show_character_name) return;
+    const font = try fonts.get(.main, settings.character_name_font_name, settings.character_name_font_size, settings.character_name_font_weight);
+    const dims = cache.character_name.measure(layout, font, settings.display_name, settings.character_name_font_name, settings.character_name_font_size, settings.character_name_font_weight);
+    layout.addAt(font, settings.display_name, dims, settings.character_name_position, settings.character_name_offset_x, settings.character_name_offset_y, settings.character_name_color, settings.character_name_bg_color);
+}
+
+fn addSystemName(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: RenderSettings) !void {
+    if (!settings.show_system_name) return;
+    const font = try fonts.get(.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
+    const dims = cache.system_name.measure(layout, font, settings.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
+    layout.addAt(font, settings.system_name, dims, settings.system_name_position, settings.system_name_offset_x, settings.system_name_offset_y, settings.system_name_color, settings.system_name_bg_color);
+}
+
+fn addGroupBadge(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: RenderSettings) !void {
+    if (!settings.show_group_badge) return;
+    const font = try fonts.get(.group_badge, settings.group_badge_font_name, settings.group_badge_font_size, settings.group_badge_font_weight);
+    const dims = cache.group_badge.measure(layout, font, settings.group_badge_text, settings.group_badge_font_name, settings.group_badge_font_size, settings.group_badge_font_weight);
+    layout.addAt(font, settings.group_badge_text, dims, settings.group_badge_position, settings.group_badge_offset_x, settings.group_badge_offset_y, settings.group_badge_color, settings.group_badge_bg_color);
+}
+
+fn addCombat(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const window.ActivityStats, settings: RenderSettings) !void {
+    const cfg = &config.combat;
+    if (!cfg.enabled) return;
+    if (cfg.show_incoming and stats.showsIncoming()) {
+        const font = try fonts.getScaled(.combat, cfg.incoming_font_name, cfg.incoming_font_size, cfg.incoming_font_weight);
+        const text = rateText(layout, if (cfg.incoming_show_prefix) "IN: " else "", stats.incoming_dps);
+        layout.addAt(font, text, layout.measure(font, text), cfg.incoming_position, cfg.incoming_offset_x, cfg.incoming_offset_y, cfg.incoming_color, settings.combat_incoming_bg_color);
+    }
+    if (cfg.show_outgoing and stats.showsOutgoing()) {
+        const font = try fonts.getScaled(.combat_outgoing, cfg.outgoing_font_name, cfg.outgoing_font_size, cfg.outgoing_font_weight);
+        const text = rateText(layout, if (cfg.outgoing_show_prefix) "OUT: " else "", stats.outgoing_dps);
+        layout.addAt(font, text, layout.measure(font, text), cfg.outgoing_position, cfg.outgoing_offset_x, cfg.outgoing_offset_y, cfg.outgoing_color, settings.combat_outgoing_bg_color);
+    }
+}
+
+fn rateText(layout: *Layout, prefix: []const u8, rate: ?f32) []const u8 {
+    if (rate) |value| return layout.print("{s}{d:.0}", .{ prefix, value });
+    return layout.print("{s}??", .{prefix});
+}
+
+fn addMining(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const window.ActivityStats, settings: RenderSettings) !void {
+    const cfg = &config.mining;
+    if (!cfg.enabled or !stats.showsMining()) return;
+    const font = try fonts.getScaled(.mining, cfg.font_name, cfg.font_size, cfg.font_weight);
+    const prefix: []const u8 = if (cfg.show_prefix) "M: " else "";
+
+    var texts: [2][]const u8 = undefined;
+    var count: usize = 1;
+    texts[0] = if (stats.mining_rate) |rate| blk: {
+        // Per minute rather than per second, so low-yield ore doesn't round to "0".
+        const rate_per_min = rate * 60.0;
+        var raw_buf: [16]u8 = undefined;
+        const raw = if (rate_per_min < 10.0)
+            std.fmt.bufPrint(&raw_buf, "{d:.1}", .{rate_per_min}) catch "---"
+        else
+            std.fmt.bufPrint(&raw_buf, "{d:.0}", .{rate_per_min}) catch "---";
+        var comma_buf: [16]u8 = undefined;
+        break :blk layout.print("{s}{s} m3/min", .{ prefix, format.insertThousandsSeparators(&comma_buf, raw) });
+    } else layout.print("{s}?? m3/min", .{prefix});
+
+    if (cfg.show_isk_rate) {
+        texts[1] = iskRateText(layout, "", stats.mining_isk_rate, iskPeriod(cfg.isk_rate_unit));
+        count = 2;
+    }
+    layout.addStack(font, texts[0..count], cfg.position, cfg.offset_x, cfg.offset_y, cfg.color, settings.mining_bg_color);
+}
+
+fn addBounty(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const window.ActivityStats, settings: RenderSettings) !void {
+    const cfg = &config.bounty;
+    if (!cfg.enabled or !stats.showsBounty()) return;
+    const font = try fonts.getScaled(.bounty, cfg.font_name, cfg.font_size, cfg.font_weight);
+    const text = iskRateText(layout, if (cfg.show_prefix) "ISK: " else "", stats.bounty_isk_rate, iskPeriod(cfg.isk_rate_unit));
+    layout.addAt(font, text, layout.measure(font, text), cfg.position, cfg.offset_x, cfg.offset_y, cfg.color, settings.bounty_bg_color);
+}
+
+fn iskPeriod(unit: anytype) IskPeriod {
+    return if (unit == .hour) .{ .seconds = 3600.0, .suffix = "hr" } else .{ .seconds = 60.0, .suffix = "min" };
+}
+
+fn iskRateText(layout: *Layout, prefix: []const u8, isk_per_second: ?f32, period: IskPeriod) []const u8 {
+    const rate = isk_per_second orelse return layout.print("{s}?? ISK/{s}", .{ prefix, period.suffix });
+    var isk_buf: [16]u8 = undefined;
+    return layout.print("{s}{s} ISK/{s}", .{ prefix, format.formatIskAbbrev(&isk_buf, rate * period.seconds), period.suffix });
+}
+
+fn addResources(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const window.ActivityStats, settings: RenderSettings) !void {
+    const cfg = &config.resources;
+    if (!cfg.enabled or !stats.has_resources) return;
+    const font = try fonts.getScaled(.resources, cfg.font_name, cfg.font_size, cfg.font_weight);
+
+    var texts: [MAX_STACK][]const u8 = undefined;
+    var count: usize = 0;
+    if (cfg.show_cpu) {
+        texts[count] = layout.print("CPU: {d:.0}%", .{stats.cpu_percent});
+        count += 1;
+    }
+    if (cfg.show_ram) {
+        texts[count] = layout.print("RAM: {d:.0}MB", .{stats.ram_mb});
+        count += 1;
+    }
+    if (cfg.show_vram and stats.has_vram) {
+        texts[count] = layout.print("VRAM: {d:.0}MB", .{stats.vram_mb});
+        count += 1;
+    }
+    if (count > 0) layout.addStack(font, texts[0..count], cfg.position, cfg.offset_x, cfg.offset_y, cfg.color, settings.resources_bg_color);
+}
+
+/// Not size-cached like the names: the stack changes far more often, so a cache would miss almost every render.
+fn layoutNotifications(layout: *Layout, fonts: Fonts, settings: RenderSettings) !?NotificationBlock {
+    if (!settings.show_notifications or settings.notification_line_count == 0) return null;
+    const font = try fonts.get(.notification, settings.notifications_font_name, settings.notifications_font_size, settings.notifications_font_weight);
+    var block: NotificationBlock = .{ .font = font, .origin = undefined, .dims = .{ .width = 0, .height = 0 }, .line_heights = undefined };
+    for (settings.notification_lines[0..settings.notification_line_count], 0..) |line, i| {
+        const dims = layout.measure(font, line.text);
+        block.line_heights[i] = dims.height;
+        block.dims.width = @max(block.dims.width, dims.width);
+        block.dims.height += dims.height;
+    }
+    block.origin = layout.position(settings.notifications_position, block.dims, settings.notifications_offset_x, settings.notifications_offset_y);
+    return block;
+}
+
+/// The state's override wins; forced opaque when the window's Opacity applies instead, so the two alphas don't compound.
+fn resolveTextBgColor(state_cfg: config_mod.StateVisualConfig, base_color: u32, force_opaque: bool) u32 {
+    const resolved = state_cfg.textBgColor orelse base_color;
+    return if (force_opaque) color_mod.withAlpha(resolved, 255) else resolved;
+}
+
+/// Colour precedence, lowest first: the Active/Inactive base, the state's own override, the newest notification's type while alerting, then the character's own colours.
+fn resolveBorder(cfg: *const config_mod.Config, thumbnail: *const ThumbnailWindow, state: state_mod.ThumbnailState, state_cfg: config_mod.StateVisualConfig, is_focused: bool, hide_all: bool) Border {
+    const tc = &cfg.thumbnail;
+    // Alert builds on Active, being an attention event.
+    const focused_look = state == .Active or state == .Alert;
+    // Only the newest notification drives border effects; older entries only add text lines.
+    const newest = if (state == .Alert) thumbnail.notifications.newest() else null;
+
+    // A notification hiding or flashing the border is skipped for the focused character, so it can't fight that character's active border.
+    const notification_hides = if (newest) |notification| !is_focused and (!notification.show_border or notification.isFlashOff(win32.Ticks.now())) else false;
+    const show = !hide_all and !notification_hides and (state_cfg.showBorder orelse (if (focused_look) tc.showBorderWhenFocused else tc.showBorderWhenInactive));
+
+    // With suppress_when_focused, a focused character's alert borders as Active.
+    const suppressed = if (newest) |notification| notification.suppress_when_focused and is_focused else false;
+    var color = state_cfg.borderColor orelse (if (focused_look) tc.borderColor else tc.inactiveBorderColor);
+    if (newest) |notification| {
+        if (!suppressed) {
+            if (notification.border_color_override) |override| color = override;
+        }
+    }
+    if (thumbnail.cached_border_colors) |char_colors| {
+        const override = if (state == .Active or (state == .Alert and suppressed))
+            char_colors.activeBorderColor
+        else if (state == .Inactive or state == .Minimized)
+            char_colors.inactiveBorderColor
+        else
+            null;
+        if (override) |c| color = c;
+    }
+
+    return .{
+        .show = show,
+        .width = state_cfg.borderWidth orelse (if (focused_look) tc.borderWidth else tc.inactiveBorderWidth),
+        .color = color,
+        .style = state_cfg.borderStyle orelse (if (focused_look) tc.borderStyle else tc.inactiveBorderStyle),
+    };
+}
+
+/// Reads RegionFit's already-sized window back rather than repeating the grid math; otherwise the configured (or per-character) size at the window's DPI.
+fn overlaySize(cfg: *const config_mod.Config, thumbnail: *const ThumbnailWindow, dpi_scale: f32) window.Size {
+    if (cfg.display.layoutMode == .RegionFit) {
+        var client_rect: win32.RECT = undefined;
+        if (win32.toBool(win32.GetClientRect(thumbnail.hwnd, &client_rect)) and client_rect.right > 0 and client_rect.bottom > 0) {
+            return .{ .width = client_rect.right, .height = client_rect.bottom };
+        }
+    }
+    const char_size = thumbnail.cached_thumbnail_size;
+    const width = if (char_size) |cs| cs.width orelse cfg.thumbnail.width else cfg.thumbnail.width;
+    const height = if (char_size) |cs| cs.height orelse cfg.thumbnail.height else cfg.thumbnail.height;
+    return .{ .width = scalePixels(width, dpi_scale), .height = scalePixels(height, dpi_scale) };
+}
+
+/// Newest first; each entry keeps its own suppress_when_focused and colour, so types in one stack filter and colour independently.
+fn notificationLines(out: *[stack.CAPACITY]NotificationLine, thumbnail: *const ThumbnailWindow, is_focused: bool, base_color: u32) usize {
+    var count: usize = 0;
+    for (thumbnail.notifications.items()) |entry| {
+        if (entry.suppress_when_focused and is_focused) continue;
+        out[count] = .{ .text = entry.text, .color = entry.text_color_override orelse base_color };
+        count += 1;
+    }
+    return count;
 }

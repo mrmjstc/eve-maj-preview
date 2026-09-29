@@ -1,5 +1,7 @@
+//! A thumbnail's visibility, and the state that picks its look.
 const std = @import("std");
 const log = @import("../log.zig");
+
 const slog = log.scoped("state");
 
 pub const VisibilityState = enum {

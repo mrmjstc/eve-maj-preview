@@ -1,3 +1,4 @@
+//! Pixel drawing for thumbnail overlays: text placement, borders and the exclusion overlay.
 const win32 = @import("../platform/win32.zig");
 const types = @import("../config/types.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
@@ -21,6 +22,15 @@ pub const TextOrigin = struct {
 
 pub const HorizontalAlign = enum { left, center, right };
 
+pub const VerticalAlign = enum { top, middle, bottom };
+
+const BorderRegion = struct {
+    x_start: usize,
+    y_start: usize,
+    x_end: usize,
+    y_end: usize,
+};
+
 pub fn horizontalAlignOf(position: TextPosition) HorizontalAlign {
     return switch (position) {
         .TopLeft, .LeftCenter, .BottomLeft => .left,
@@ -37,8 +47,6 @@ pub fn alignedLineX(block_x: i32, block_width: usize, line_width: usize, alignme
         .right => block_x + @as(i32, @intCast(block_width -| line_width)),
     };
 }
-
-pub const VerticalAlign = enum { top, middle, bottom };
 
 pub fn verticalAlignOf(position: TextPosition) VerticalAlign {
     return switch (position) {
@@ -85,8 +93,7 @@ pub fn fillTextBackground(pixels: [*]u32, width: usize, height: usize, x: i32, y
     const end_y = @min(start_y + bar_height, height);
     const end_x = @min(start_x + text_width, width);
     if (end_x <= start_x or end_y <= start_y) return;
-    // Must be premultiplied, or fixTextAlphaRect's "alpha==0 but rgb!=0" heuristic mistakes a
-    // transparent non-black background for unfixed GDI text and forces it fully opaque.
+    // Premultiplied, or fixTextAlphaRect would take a transparent non-black background for unfixed GDI text and make it opaque.
     gdi_overlay.fillRect(pixels, width, height, start_x, start_y, end_x - start_x, end_y - start_y, premultiplyAlpha(color));
 }
 
@@ -98,22 +105,6 @@ pub fn premultiplyAlpha(color: u32) u32 {
     const g = ((color >> 8) & 0xFF) * fg_alpha / 255;
     const b = (color & 0xFF) * fg_alpha / 255;
     return (fg_alpha << 24) | (r << 16) | (g << 8) | b;
-}
-
-/// Draws one diagonal band; is_diag2 selects top-right→bottom-left over top-left→bottom-right. Shared by X (both bands) and DiagonalSlash (diag2 only).
-fn drawDiagonalBand(pixels: [*]u32, width: usize, height: usize, color: u32, is_diag2: bool) void {
-    const iw: i32 = @intCast(width);
-    const ih: i32 = @intCast(height);
-    // Line half-width in pixels, scaled proportionally with the aspect ratio.
-    const half: i32 = @max(1, @divTrunc(5 * iw, ih));
-    for (0..height) |y| {
-        const iy: i32 = @intCast(y);
-        const row = pixels[y * width .. y * width + width];
-        const cx = if (is_diag2) @divTrunc((ih - iy) * iw, ih) else @divTrunc(iy * iw, ih);
-        const lo: usize = @intCast(@max(0, cx - half));
-        const hi: usize = @intCast(@max(0, @min(iw, cx + half + 1)));
-        if (lo < hi) @memset(row[lo..hi], color);
-    }
 }
 
 /// Draws the exclusion overlay onto an already-cleared buffer.
@@ -177,43 +168,6 @@ pub fn drawExclusionOverlay(pixels: [*]u32, width: usize, height: usize, color: 
             drawDiagonalBand(pixels, width, height, blended, true);
         },
         .DiagonalSlash => drawDiagonalBand(pixels, width, height, blended, true),
-    }
-}
-
-const BorderRegion = struct {
-    x_start: usize,
-    y_start: usize,
-    x_end: usize,
-    y_end: usize,
-};
-
-/// The four border bands (top/bottom/left/right), each `border_width` thick and running the full length of its edge. Shared by every style that walks the border pixel-by-pixel instead of memset-ing solid runs.
-fn borderRegions(width: usize, height: usize, border_width: usize) [4]BorderRegion {
-    return .{
-        .{ .x_start = 0, .y_start = 0, .x_end = width, .y_end = border_width },
-        .{ .x_start = 0, .y_start = height - border_width, .x_end = width, .y_end = height },
-        .{ .x_start = 0, .y_start = 0, .x_end = border_width, .y_end = height },
-        .{ .x_start = width - border_width, .y_start = 0, .x_end = width, .y_end = height },
-    };
-}
-
-/// Marks pixels along the border's length using a repeating mark/gap pattern, where `pos` runs along the edge; shared by Dashed and Dotted, which differ only in the mark/gap lengths.
-fn drawLengthwisePattern(pixels: [*]u32, width: usize, height: usize, border_width: usize, color: u32, mark_length: usize, gap_length: usize) void {
-    const pattern_length = mark_length + gap_length;
-
-    for (borderRegions(width, height, border_width)) |region| {
-        const is_horizontal = (region.x_end - region.x_start) == width;
-
-        for (region.y_start..region.y_end) |y| {
-            const row_start = y * width;
-            for (region.x_start..region.x_end) |x| {
-                const pos = if (is_horizontal) x else y;
-
-                if ((pos % pattern_length) < mark_length) {
-                    pixels[row_start + x] = color;
-                }
-            }
-        }
     }
 }
 
@@ -321,7 +275,7 @@ pub fn drawBorder(pixels: [*]u32, width: usize, height: usize, border_width: usi
     }
 }
 
-/// Measures text dimensions without rendering; the correct font must already be selected into `dc` by the caller.
+/// With padding, in the font already selected into `dc`.
 pub fn measureText(dc: win32.HDC, text: []const u8) TextDimensions {
     const text_size = gdi_overlay.measureTextSize(TEXT_BUFFER_SIZE, dc, text);
     return .{
@@ -330,7 +284,53 @@ pub fn measureText(dc: win32.HDC, text: []const u8) TextDimensions {
     };
 }
 
-/// Renders text onto the device context at the specified position; the correct font must already be selected into `dc` by the caller.
+/// In the font already selected into `dc`, inside measureText's padding.
 pub fn renderText(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void {
     gdi_overlay.drawText(TEXT_BUFFER_SIZE, dc, x + TEXT_PADDING_X, y + TEXT_PADDING_Y, text, color);
+}
+
+/// Draws one diagonal band; is_diag2 selects top-right→bottom-left over top-left→bottom-right. Shared by X (both bands) and DiagonalSlash (diag2 only).
+fn drawDiagonalBand(pixels: [*]u32, width: usize, height: usize, color: u32, is_diag2: bool) void {
+    const iw: i32 = @intCast(width);
+    const ih: i32 = @intCast(height);
+    // Line half-width in pixels, scaled proportionally with the aspect ratio.
+    const half: i32 = @max(1, @divTrunc(5 * iw, ih));
+    for (0..height) |y| {
+        const iy: i32 = @intCast(y);
+        const row = pixels[y * width .. y * width + width];
+        const cx = if (is_diag2) @divTrunc((ih - iy) * iw, ih) else @divTrunc(iy * iw, ih);
+        const lo: usize = @intCast(@max(0, cx - half));
+        const hi: usize = @intCast(@max(0, @min(iw, cx + half + 1)));
+        if (lo < hi) @memset(row[lo..hi], color);
+    }
+}
+
+/// The four border bands (top/bottom/left/right), each `border_width` thick and running the full length of its edge. Shared by every style that walks the border pixel-by-pixel instead of memset-ing solid runs.
+fn borderRegions(width: usize, height: usize, border_width: usize) [4]BorderRegion {
+    return .{
+        .{ .x_start = 0, .y_start = 0, .x_end = width, .y_end = border_width },
+        .{ .x_start = 0, .y_start = height - border_width, .x_end = width, .y_end = height },
+        .{ .x_start = 0, .y_start = 0, .x_end = border_width, .y_end = height },
+        .{ .x_start = width - border_width, .y_start = 0, .x_end = width, .y_end = height },
+    };
+}
+
+/// Marks pixels along the border's length using a repeating mark/gap pattern, where `pos` runs along the edge; shared by Dashed and Dotted, which differ only in the mark/gap lengths.
+fn drawLengthwisePattern(pixels: [*]u32, width: usize, height: usize, border_width: usize, color: u32, mark_length: usize, gap_length: usize) void {
+    const pattern_length = mark_length + gap_length;
+
+    for (borderRegions(width, height, border_width)) |region| {
+        const is_horizontal = (region.x_end - region.x_start) == width;
+
+        for (region.y_start..region.y_end) |y| {
+            const row_start = y * width;
+            for (region.x_start..region.x_end) |x| {
+                const pos = if (is_horizontal) x else y;
+
+                if ((pos % pattern_length) < mark_length) {
+                    pixels[row_start + x] = color;
+                }
+            }
+        }
+    }
 }

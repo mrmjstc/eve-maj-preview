@@ -1,8 +1,10 @@
+//! GDI fonts cached per purpose and DPI.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const types = @import("../config/types.zig");
-const config_mod = @import("../config.zig");
+const config = @import("../config.zig");
 const log = @import("../log.zig");
+
 const slog = log.scoped("font_cache");
 
 /// Per-purpose font cache slot. Kept as u4 (not u3) so a future slot doesn't need a resize.
@@ -15,11 +17,6 @@ const Entry = struct {
     size: i32 = 0,
     weight: types.FontWeight = .Regular,
 };
-
-/// dpi realistically never exceeds ~480 (5x scale), well under the 16 bits reserved here.
-fn cacheKey(slot: FontSlot, dpi: u32) u32 {
-    return (@as(u32, @intFromEnum(slot)) << 16) | (dpi & 0xFFFF);
-}
 
 /// GDI fonts keyed by (FontSlot, DPI), so different-DPI monitors don't evict each other's fonts every render.
 pub const FontCache = struct {
@@ -40,7 +37,7 @@ pub const FontCache = struct {
     }
 
     /// The thumbnail character-name font at `dpi`, for overlays not tied to one thumbnail window (ghost outlines, hint box, region-select label).
-    pub fn characterNameFont(self: *FontCache, thumbnail_cfg: *const config_mod.ThumbnailConfig, dpi: u32) !win32.HFONT {
+    pub fn characterNameFont(self: *FontCache, thumbnail_cfg: *const config.ThumbnailConfig, dpi: u32) !win32.HFONT {
         return self.get(.main, dpi, thumbnail_cfg.characterNameFontName, win32.scalePixels(thumbnail_cfg.characterNameFontSize, win32.dpiToScale(dpi)), thumbnail_cfg.characterNameFontWeight);
     }
 
@@ -104,3 +101,8 @@ pub const FontCache = struct {
         return font.?;
     }
 };
+
+/// dpi realistically never exceeds ~480 (5x scale), well under the 16 bits reserved here.
+fn cacheKey(slot: FontSlot, dpi: u32) u32 {
+    return (@as(u32, @intFromEnum(slot)) << 16) | (dpi & 0xFFFF);
+}

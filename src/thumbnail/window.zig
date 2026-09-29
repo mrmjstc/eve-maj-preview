@@ -2,21 +2,21 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
-const input = @import("input.zig");
 const config_mod = @import("../config.zig");
-const state_mod = @import("state.zig");
+const input = @import("input.zig");
+const state = @import("state.zig");
+const overlay = @import("overlay.zig");
 const thumbnail_drag = @import("../drag/thumbnail.zig");
 const travel_left_behind = @import("../travel/left_behind.zig");
-const notification_stack_mod = @import("../notifications/stack.zig");
+const stack = @import("../notifications/stack.zig");
 const auto_minimize_mod = @import("../clients/auto_minimize.zig");
-const overlay_mod = @import("overlay.zig");
 const log = @import("../log.zig");
-const slog = log.scoped("painter");
+
+const ThumbnailState = state.ThumbnailState;
+const slog = log.scoped("thumbnail");
 
 const WINDOW_CLASS_NAME = "EVE_THUMBNAIL_CLASS";
 const TEXT_WINDOW_CLASS_NAME = "EVE_TEXT_OVERLAY_CLASS";
-
-const ThumbnailState = state_mod.ThumbnailState;
 
 /// What the activity trackers last pushed; `null` rates mean not enough span yet to trust one (see activity/tracker.zig).
 pub const ActivityStats = struct {
@@ -96,17 +96,17 @@ pub const ActivityStats = struct {
 
 pub const ThumbnailWindow = struct {
     hwnd: win32.HWND,
-    // Layered window used for both the text overlay and the border.
+    /// Layered window used for both the text overlay and the border.
     text_hwnd: win32.HWND,
     thumbnail_id: win32.HTHUMBNAIL,
     source_hwnd: win32.HWND,
     title: []const u8,
     character_name: []const u8,
     system_name: []const u8,
-    // In-game timestamp of the event that set system_name (YYYYMMDD*1000000+HHMMSS); 0 = untimestamped source (e.g. live tailing), which always applies.
+    /// In-game timestamp of the event that set system_name (YYYYMMDD*1000000+HHMMSS); 0 = untimestamped source (e.g. live tailing), which always applies.
     system_name_event_ts: u64 = 0,
     travel: travel_left_behind.LeftBehindState = .{},
-    notifications: notification_stack_mod.NotificationStack = .{},
+    notifications: stack.NotificationStack = .{},
     last_click_time: win32.Ticks = .{},
     is_excluded_from_cycle: bool = false,
     needs_render: bool = false,
@@ -114,18 +114,18 @@ pub const ThumbnailWindow = struct {
 
     stats: ActivityStats = .{},
 
-    render_cache: overlay_mod.RenderCache = .{},
+    render_cache: overlay.RenderCache = .{},
 
-    visibility_state: state_mod.VisibilityState = .Visible,
+    visibility_state: state.VisibilityState = .Visible,
     /// Set while a Test Notification has force-shown a hidden thumbnail; restored once its notifications clear.
-    test_restore_visibility: ?state_mod.VisibilityState = null,
+    test_restore_visibility: ?state.VisibilityState = null,
     auto_minimize: auto_minimize_mod.AutoMinimizeState,
     /// Edge-detector so a minimize/restore with no accompanying focus change still marks this dirty for repaint.
     was_minimized: bool = false,
 
     // Config-derived per-character values, set only by refreshConfigCache: resolved on character_name change or (re)creation rather than every tick (list_view.zig hashes these every ~50ms per thumbnail, createRenderSettings reads them per dirty thumbnail).
     cached_system_color: u32 = 0,
-    // Auto-generated per-character name color; null when "Unique Character Name Colors" is disabled, and callers fall back to their own default.
+    /// Auto-generated per-character name color; null when "Unique Character Name Colors" is disabled, and callers fall back to their own default.
     cached_character_color: ?u32 = null,
     cached_display_name: []const u8 = "",
     cached_border_colors: ?config_mod.CharacterBorderColorsConfig = null,
@@ -133,7 +133,7 @@ pub const ThumbnailWindow = struct {
     cached_hide_thumbnail: bool = false,
     cached_thumbnail_size: ?config_mod.CharacterThumbnailSizeConfig = null,
     cached_opacity: u8 = 255,
-    // Owned, comma-joined label of the badge-enabled groups this character is in ("1, 3"); "" = none.
+    /// Owned, comma-joined label of the badge-enabled groups this character is in ("1, 3"); "" = none.
     cached_group_badge_label: []const u8,
 
     /// Re-resolves every config-derived cached_* field (except the owned group badge label) for the current character_name/system_name.
@@ -153,8 +153,7 @@ pub const ThumbnailWindow = struct {
         return self.source_hwnd == active_source_hwnd;
     }
 
-    /// The single canonical "what should this render/style as" computation. The returned ThumbnailState
-    /// is used purely as a style-lookup key (config.zig's getStateConfig) - never stored back onto the thumbnail.
+    /// The one place a thumbnail's state is decided; only a style-lookup key (getStateConfig), never stored.
     pub fn effectiveRenderState(self: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) ThumbnailState {
         if (thumbnail_drag.isDragging(self)) return .Dragging;
         if (!self.notifications.isEmpty()) return .Alert;
@@ -163,15 +162,15 @@ pub const ThumbnailWindow = struct {
         return .Inactive;
     }
 
-    /// Sets visibility state, silently failing via tryTransitionVisibility if invalid.
-    pub fn setVisibility(self: *ThumbnailWindow, new_visibility: state_mod.VisibilityState) void {
+    /// Refuses to hide while alerting or dragging; an invalid transition is logged and ignored.
+    pub fn setVisibility(self: *ThumbnailWindow, new_visibility: state.VisibilityState) void {
         const blocks_hiding = !self.notifications.isEmpty() or thumbnail_drag.isDragging(self);
         if (new_visibility != .Visible and blocks_hiding) {
-            slog.warn("Cannot hide {s} while alerting/dragging", .{self.character_name});
+            slog.warn("Cannot hide '{s}' while it's alerting or being dragged", .{self.character_name});
             return;
         }
 
-        const transitioned_visibility = state_mod.tryTransitionVisibility(
+        const transitioned_visibility = state.tryTransitionVisibility(
             self.visibility_state,
             new_visibility,
             self.character_name,
