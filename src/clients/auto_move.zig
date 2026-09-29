@@ -1,11 +1,12 @@
+//! Moving clients to their saved window positions, then correcting them if EVE moves its window while it loads.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
-const log = @import("../log.zig");
-const slog = log.scoped("auto_move");
 const actions = @import("actions.zig");
+const log = @import("../log.zig");
 
-/// Re-checked after login because EVE can reposition its own window while still loading.
+const slog = log.scoped("auto_move");
+
 const PendingAutoMove = struct {
     hwnd: win32.HWND,
     target: config_mod.Position,
@@ -14,7 +15,6 @@ const PendingAutoMove = struct {
     last_seen: ?win32.POINT = null,
 };
 
-/// Moves clients to their saved window positions, then re-checks them for a while since EVE can reposition its own window while still loading.
 pub const AutoMoveVerifier = struct {
     allocator: std.mem.Allocator,
     pending: std.ArrayList(PendingAutoMove) = .empty,
@@ -55,7 +55,7 @@ pub const AutoMoveVerifier = struct {
         };
     }
 
-    /// Polls without touching the window until its position stops changing between two consecutive polls (i.e. EVE is done repositioning it), then corrects it exactly once. Re-applying on every poll while EVE is still mid-move would re-grab focus each time, making clients visibly jump.
+    /// Corrects a window once it stops moving between two polls; correcting mid-move would re-grab focus each time and make clients jump.
     pub fn verify(self: *AutoMoveVerifier, config: *const config_mod.Config) void {
         const now = win32.Ticks.now();
         var i: usize = 0;
@@ -73,7 +73,7 @@ pub const AutoMoveVerifier = struct {
 
             var rect: win32.RECT = undefined;
             if (!win32.toBool(win32.GetWindowRect(entry.hwnd, &rect))) {
-                slog.warn("Auto-move verification: GetWindowRect failed", .{});
+                slog.warn("Failed to read the position of window {*} to verify its auto-move", .{entry.hwnd});
                 _ = self.pending.swapRemove(i);
                 continue;
             }

@@ -1,8 +1,16 @@
+//! Finds EVE client windows and the character in each, via WinEvent hooks between periodic scans.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const log = @import("../log.zig");
 const config_mod = @import("../config.zig");
+const log = @import("../log.zig");
+
 const slog = log.scoped("scout");
+
+/// character_name before login or after logout while the client window stays open.
+const GENERIC_CHARACTER_NAME = "EVE";
+
+/// An EVE client's window class; windows of any other class come from user-added window filters.
+const EVE_WINDOW_CLASS = "trinityWindow";
 
 pub const EveWindow = struct {
     hwnd: win32.HWND,
@@ -23,28 +31,6 @@ pub const ClosedWindow = struct {
     character_name: []const u8,
 };
 
-/// character_name before login or after logout while the client window stays open.
-const GENERIC_CHARACTER_NAME = "EVE";
-/// An EVE client's window class; windows of any other class come from user-added window filters.
-const EVE_WINDOW_CLASS = "trinityWindow";
-
-pub fn isGenericCharacterName(name: []const u8) bool {
-    return std.mem.eql(u8, name, GENERIC_CHARACTER_NAME);
-}
-
-fn freeClosedWindows(allocator: std.mem.Allocator, list: *std.ArrayList(ClosedWindow)) void {
-    for (list.items) |cw| allocator.free(cw.character_name);
-    list.deinit(allocator);
-}
-
-fn freeNameChanges(allocator: std.mem.Allocator, list: *std.ArrayList(NameChange)) void {
-    for (list.items) |change| {
-        allocator.free(change.old_name);
-        allocator.free(change.new_name);
-    }
-    list.deinit(allocator);
-}
-
 pub const UpdateResult = struct {
     windows: []const EveWindow,
     closed_windows: std.ArrayList(ClosedWindow),
@@ -55,9 +41,6 @@ pub const UpdateResult = struct {
         freeNameChanges(allocator, &self.name_changes);
     }
 };
-
-/// Set by setGlobalInstance for the WinEvent callbacks and other modules; also main.zig's only handle.
-pub var g_scout_ptr: ?*Scout = null;
 
 pub const Scout = struct {
     allocator: std.mem.Allocator,
@@ -177,11 +160,7 @@ pub const Scout = struct {
     }
 
     pub fn scanForEveWindows(self: *Scout) !void {
-        // Enumerate all windows - callback will only add new ones not already tracked
-        const result = win32.EnumWindows(enumWindowsCallback, win32.ptrToLparam(self));
-        if (result == 0) {
-            return error.EnumWindowsFailed;
-        }
+        if (!win32.toBool(win32.EnumWindows(enumWindowsCallback, win32.ptrToLparam(self)))) return error.EnumWindowsFailed;
     }
 
     pub fn getWindows(self: *Scout) []const EveWindow {
@@ -227,7 +206,7 @@ pub const Scout = struct {
         const index = self.hwnd_to_index.get(hwnd) orelse return;
         const eve_window = &self.windows.items[index];
 
-        // Uses a stack buffer (not an allocation), since this runs per tracked window on every refresh just to detect the rare title-change case.
+        // A stack buffer, since this runs for every tracked window on each refresh to catch a rare change.
         var title_buf: [64]u8 = undefined;
         const current_title = win32.getWindowTitleBuf(eve_window.hwnd, &title_buf) catch |err| {
             slog.err("Failed to get window title for '{s}': {}", .{ eve_window.character_name, err });
@@ -281,15 +260,13 @@ pub const Scout = struct {
             .old_name = old_name,
             .new_name = change_name,
         }) catch |err| {
-            slog.err("Failed to track name change {s} -> {s}: {}", .{ old_name, new_name, err });
+            slog.err("Failed to track name change '{s}' -> '{s}': {}", .{ old_name, new_name, err });
             self.allocator.free(old_name);
             self.allocator.free(change_name);
         };
     }
 
-    /// Re-reads titles for all tracked windows as a fallback for EVENT_OBJECT_NAMECHANGE events
-    /// dropped before the HWND/PID was cached.
-    /// Runs only on force_scan ticks (~1s), since GetWindowTextA on another process's window is a synchronous cross-process call.
+    /// Catches title changes whose event came before the window was tracked; only on force_scan ticks, as each read is a cross-process call.
     fn refreshTrackedWindowTitles(self: *Scout) void {
         // Iterating by copy is safe: updateWindowTitle may rename entries but never adds or removes them.
         for (self.windows.items) |eve_window| {
@@ -297,7 +274,7 @@ pub const Scout = struct {
         }
     }
 
-    /// Main update cycle - performs all Scout operations for a single tick. Caller must deinit() the result.
+    /// Once per tick; caller deinits the result.
     pub fn update(self: *Scout, force_scan: bool) !UpdateResult {
         const closed = self.pending_closed;
         self.pending_closed = .empty;
@@ -313,7 +290,6 @@ pub const Scout = struct {
             self.pending_scan = false;
         }
 
-        // Catches missed name-change events; see refreshTrackedWindowTitles() doc comment.
         if (force_scan) self.refreshTrackedWindowTitles();
 
         return UpdateResult{
@@ -323,7 +299,7 @@ pub const Scout = struct {
         };
     }
 
-    /// EVE window titles are typically: "EVE - CharacterName"; falls back to the full title if there's no " - " separator or nothing follows it.
+    /// The whole title when splitCharacterName finds no name.
     fn extractCharacterName(title: []const u8) []const u8 {
         return splitCharacterName(title) orelse title;
     }
@@ -336,7 +312,7 @@ pub const Scout = struct {
         return name;
     }
 
-    /// Lookup HWND by character name (validates window before returning)
+    /// Null once the window has closed.
     pub fn getHwndByName(self: *const Scout, name: []const u8) ?win32.HWND {
         if (self.name_to_hwnd.get(name)) |hwnd| {
             if (win32.isWindow(hwnd)) return hwnd;
@@ -353,7 +329,7 @@ pub const Scout = struct {
         self.hwnd_to_index.clearRetainingCapacity();
         for (self.windows.items, 0..) |*window, idx| {
             self.hwnd_to_index.put(window.hwnd, idx) catch |err| {
-                slog.err("Failed to rebuild HWND index for {s}: {}", .{ window.character_name, err });
+                slog.err("Failed to rebuild HWND index for '{s}': {}", .{ window.character_name, err });
             };
         }
     }
@@ -370,8 +346,7 @@ pub const Scout = struct {
         return null;
     }
 
-    /// Re-checks a tracked window's class+exe against the current filter set from scratch,
-    /// unlike enumWindowsCallback's cached-PID fast path which only applies to new windows.
+    /// Checks class and executable from scratch, unlike enumWindowsCallback's cached-PID shortcut.
     fn matchesCurrentFilters(self: *const Scout, hwnd: win32.HWND, process_id: win32.DWORD) bool {
         var class_name: [64:0]u8 = undefined;
         const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return false;
@@ -382,9 +357,7 @@ pub const Scout = struct {
         return self.findMatchingFilter(class_slice, path_slice) != null;
     }
 
-    /// Drops tracked windows that no longer match any filter (e.g. the filter that once matched
-    /// them was edited or deleted); scanForEveWindows() alone won't catch this since it skips
-    /// already-tracked HWNDs. Call after a config reload, before recreating thumbnails.
+    /// Drops windows no filter matches any more, which scanning skips as already tracked; call after a reload, before recreating thumbnails.
     pub fn pruneNonMatchingWindows(self: *Scout) void {
         var i: usize = self.windows.items.len;
         while (i > 0) {
@@ -400,7 +373,26 @@ pub const Scout = struct {
     }
 };
 
-/// EnumWindows callback: returning TRUE continues enumeration, FALSE stops it.
+/// Set by setGlobalInstance for the WinEvent callbacks and other modules; also main.zig's only handle.
+pub var g_scout_ptr: ?*Scout = null;
+
+pub fn isGenericCharacterName(name: []const u8) bool {
+    return std.mem.eql(u8, name, GENERIC_CHARACTER_NAME);
+}
+
+fn freeClosedWindows(allocator: std.mem.Allocator, list: *std.ArrayList(ClosedWindow)) void {
+    for (list.items) |cw| allocator.free(cw.character_name);
+    list.deinit(allocator);
+}
+
+fn freeNameChanges(allocator: std.mem.Allocator, list: *std.ArrayList(NameChange)) void {
+    for (list.items) |change| {
+        allocator.free(change.old_name);
+        allocator.free(change.new_name);
+    }
+    list.deinit(allocator);
+}
+
 fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win32.BOOL {
     const scout: *Scout = win32.lparamToPtr(Scout, lParam);
 
@@ -427,7 +419,7 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
         matching_filter = scout.findMatchingFilter(class_slice, path_slice) orelse return win32.TRUE;
 
         scout.eve_pids.put(process_id, {}) catch |err| {
-            slog.err("Failed to cache PID: {}", .{err});
+            slog.err("Failed to cache PID {}: {}", .{ process_id, err });
         };
     }
 
@@ -461,14 +453,14 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
     };
 
     scout.hwnd_to_index.put(hwnd, scout.windows.items.len - 1) catch |err| {
-        slog.err("Failed to add HWND to index: {}", .{err});
+        slog.err("Failed to index '{s}': {}", .{ character_name, err });
         scout.freeWindow(scout.windows.pop().?);
         return win32.TRUE;
     };
 
     // character_name is owned by windows[] and borrowed as the map key.
     scout.name_to_hwnd.put(character_name, hwnd) catch |err| {
-        slog.err("Failed to map character name to hwnd: {}", .{err});
+        slog.err("Failed to map '{s}' to its window: {}", .{ character_name, err });
         _ = scout.hwnd_to_index.remove(hwnd);
         scout.freeWindow(scout.windows.pop().?);
         return win32.TRUE;
@@ -483,7 +475,7 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
 }
 
 fn nameChangeCallback(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, id_object: win32.LONG, _: win32.LONG, _: win32.DWORD, _: win32.DWORD) callconv(.c) void {
-    // Only process main window title changes (not child controls)
+    // The main window only, not child controls.
     if (id_object != 0) return;
 
     const scout_ptr = g_scout_ptr orelse return;
@@ -491,11 +483,10 @@ fn nameChangeCallback(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, id_obje
     var process_id: win32.DWORD = 0;
     _ = win32.GetWindowThreadProcessId(hwnd, &process_id);
     if (!scout_ptr.eve_pids.contains(process_id)) {
-        // Not a known EVE process, skip the expensive class name check below
         return;
     }
 
-    // Kept as safety check in case PID cache is stale or process reuses PID
+    // In case the PID cache is stale or the PID was reused.
     var class_name: [64:0]u8 = undefined;
     const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return;
     if (!std.mem.eql(u8, class_slice, EVE_WINDOW_CLASS)) return;
@@ -504,7 +495,7 @@ fn nameChangeCallback(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, id_obje
 }
 
 fn windowDestroyCallback(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, id_object: win32.LONG, _: win32.LONG, _: win32.DWORD, _: win32.DWORD) callconv(.c) void {
-    // Only process main window destruction (not child controls)
+    // The main window only, not child controls.
     if (id_object != 0) return;
 
     const scout_ptr = g_scout_ptr orelse return;
@@ -520,7 +511,7 @@ fn windowDestroyCallback(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, id_o
 }
 
 fn windowCreateCallback(_: win32.HANDLE, _: win32.DWORD, _: win32.HWND, id_object: win32.LONG, _: win32.LONG, _: win32.DWORD, _: win32.DWORD) callconv(.c) void {
-    // Only process main window creation (not child controls)
+    // The main window only, not child controls.
     if (id_object != 0) return;
 
     const scout_ptr = g_scout_ptr orelse return;

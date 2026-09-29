@@ -1,12 +1,16 @@
+//! Actions on every EVE client at once: minimize, close, and move to saved positions.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
-const scout_mod = @import("scout.zig");
+const scout = @import("scout.zig");
 const log = @import("../log.zig");
+
 const slog = log.scoped("client_actions");
 
-/// Minimize all EVE client windows (hotkey action), regardless of their current state
-pub fn minimizeAllClients(eve_windows: []const scout_mod.EveWindow) void {
+/// Kept clear of the virtual screen edges so a restored window's title bar stays grabbable.
+const SCREEN_EDGE_MARGIN: i32 = 30;
+
+pub fn minimizeAllClients(eve_windows: []const scout.EveWindow) void {
     slog.info("Minimizing all EVE clients (hotkey action)", .{});
 
     var minimized_count: usize = 0;
@@ -24,9 +28,6 @@ pub fn minimizeAllClients(eve_windows: []const scout_mod.EveWindow) void {
         slog.debug("No EVE clients to minimize", .{});
     }
 }
-
-/// Kept clear of the virtual screen edges so a restored window's title bar stays grabbable.
-const SCREEN_EDGE_MARGIN: i32 = 30;
 
 /// Clamps `pos` to the current virtual screen, in case the screen configuration changed since save.
 pub fn clampToVirtualScreen(pos: config_mod.Position) config_mod.Position {
@@ -60,10 +61,9 @@ pub fn moveClientToPosition(hwnd: win32.HWND, pos: config_mod.Position) void {
     _ = win32.SetWindowPos(hwnd, win32.HWND_NOTOPMOST, clamped.x, clamped.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
 }
 
-/// Move every EVE client window with a saved position to that position (hotkey action / auto-move-on-login).
-/// `painter` is anything with Painter.notify's signature, told about each client actually moved.
-pub fn moveAllClientsToSavedPositions(eve_windows: []const scout_mod.EveWindow, config: *const config_mod.Config, painter: anytype) void {
-    slog.info("Moving all EVE clients to saved positions (hotkey action)", .{});
+/// `painter` is anything with Painter.notify's signature, told about each client moved.
+pub fn moveAllClientsToSavedPositions(eve_windows: []const scout.EveWindow, config: *const config_mod.Config, painter: anytype) void {
+    slog.info("Moving all EVE clients to saved positions", .{});
 
     var moved_count: usize = 0;
     for (eve_windows) |eve_window| {
@@ -82,8 +82,7 @@ pub fn moveAllClientsToSavedPositions(eve_windows: []const scout_mod.EveWindow, 
     }
 }
 
-/// Close all EVE client windows (hotkey action), except those in the exclude list
-pub fn closeAllClients(eve_windows: []const scout_mod.EveWindow, config: *const config_mod.Config) void {
+pub fn closeAllClients(eve_windows: []const scout.EveWindow, config: *const config_mod.Config) void {
     slog.info("Closing all EVE clients (hotkey action)", .{});
 
     var closed_count: usize = 0;
@@ -98,7 +97,7 @@ pub fn closeAllClients(eve_windows: []const scout_mod.EveWindow, config: *const 
             continue;
         }
 
-        if (config.closeAll.excludeLoginScreenClients and scout_mod.isGenericCharacterName(eve_window.character_name)) {
+        if (config.closeAll.excludeLoginScreenClients and scout.isGenericCharacterName(eve_window.character_name)) {
             slog.debug("Skipping login-screen client (hwnd {*})", .{eve_window.hwnd});
             excluded_count += 1;
             continue;
