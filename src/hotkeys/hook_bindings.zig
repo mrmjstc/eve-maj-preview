@@ -1,10 +1,12 @@
+//! Bindings for one low-level input hook, installed only while something is bound, re-posting each match as WM_HOTKEY.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const vk = @import("../platform/virtual_keys.zig");
 const log = @import("../log.zig");
+
 const slog = log.scoped("hotkeys");
 
-/// Combined-vk -> hotkey-ID bindings for one low-level input hook, installed only while something needs it; matches are re-posted as WM_HOTKEY.
+/// Combined vk to hotkey ID.
 pub const HookBindings = struct {
     hook_type: c_int,
     proc: win32.HOOKPROC,
@@ -52,6 +54,7 @@ pub const HookBindings = struct {
         return map.count() == 0;
     }
 
+    /// Logs its own failure.
     pub fn install(self: *HookBindings) !void {
         self.hook = win32.SetWindowsHookExA(self.hook_type, self.proc, win32.GetModuleHandleA(null), 0);
         if (self.hook == null) {
@@ -70,8 +73,7 @@ pub const HookBindings = struct {
         self.on_uninstall();
     }
 
-    /// Posts WM_HOTKEY for a bound press and returns whether it matched. Falls back to the bare (no-modifier)
-    /// binding if the exact combo isn't bound, so an unrelated held modifier doesn't block it; a more specific binding still wins outright.
+    /// Whether it matched; an unbound combo falls back to the bare key's binding, so an unrelated held modifier doesn't block it.
     pub fn dispatch(self: *const HookBindings, base_vk: u32, mods: u32, lparam: win32.LPARAM) bool {
         const map = if (self.map) |*m| m else return false;
         const id = map.get(vk.combineKey(base_vk, mods)) orelse

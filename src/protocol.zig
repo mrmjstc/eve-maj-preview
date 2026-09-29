@@ -3,7 +3,7 @@ const win32 = @import("platform/win32.zig");
 const log = @import("log.zig");
 const slog = log.scoped("protocol");
 
-/// Global hotkey actions; hotkeys/bindings.zig's global_bindings maps each to its HotkeyAction.
+/// Global hotkey actions; hotkeys/bindings.zig's GLOBAL_BINDINGS maps each to its HotkeyAction.
 /// Backing type must match win32.WPARAM (usize): sent as the WM_PROTOCOL_HOTKEY wParam.
 pub const GlobalAction = enum(usize) {
     minimize_all,

@@ -1,6 +1,4 @@
-// Mouse buttons/wheel can't be bound via a keyboard API, so this module hooks WH_MOUSE_LL
-// (mirroring keyboard_hook.zig's WH_KEYBOARD_LL) and re-posts matches as WM_HOTKEY, keeping
-// hotkey dispatch agnostic to whether a press came from the mouse or the keyboard.
+//! Mouse button and wheel hotkeys through WH_MOUSE_LL; matches post WM_HOTKEY like keyboard_hook.zig's.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const vk = @import("../platform/virtual_keys.zig");
@@ -15,7 +13,7 @@ var g_hook: HookBindings = .{
 var g_swallow_xbutton1_up = false;
 var g_swallow_xbutton2_up = false;
 
-/// Register a mouse-button hotkey (combined vk from virtual_keys.zig, e.g. XButton1+Ctrl); installs the low-level hook on first registration.
+/// Installs the hook on first registration.
 pub fn register(allocator: std.mem.Allocator, target_hwnd: win32.HWND, combined_vk: u32, id: c_int) !void {
     try g_hook.register(allocator, target_hwnd, combined_vk, id);
 }
@@ -24,7 +22,7 @@ pub fn unregister(combined_vk: u32) void {
     g_hook.unregister(combined_vk);
 }
 
-/// Remove all mouse-button bindings and uninstall the hook; safe to call even if nothing was ever registered.
+/// Safe to call even if nothing was ever registered.
 pub fn unregisterAll() void {
     g_hook.unregisterAll();
 }

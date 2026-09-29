@@ -1,53 +1,28 @@
+//! Registering hotkeys and dispatching each press to its action.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const focus_grant = @import("../platform/focus_grant.zig");
-const scout = @import("../clients/scout.zig");
-const config_mod = @import("../config.zig");
-const protocol = @import("../protocol.zig");
 const vk = @import("../platform/virtual_keys.zig");
-const mouse_hook = @import("mouse_hook.zig");
-const keyboard_hook = @import("keyboard_hook.zig");
-const log = @import("../log.zig");
-const slog = log.scoped("hotkeys");
-const painter_mod = @import("../painter.zig");
+const scout = @import("../clients/scout.zig");
 const client_actions = @import("../clients/actions.zig");
 const auto_minimize = @import("../clients/auto_minimize.zig");
-const main_mod = @import("../main.zig");
+const config_mod = @import("../config.zig");
+const protocol = @import("../protocol.zig");
+const painter_mod = @import("../painter.zig");
+const main = @import("../main.zig");
+const mouse_hook = @import("mouse_hook.zig");
+const keyboard_hook = @import("keyboard_hook.zig");
 const bindings = @import("bindings.zig");
 const cycling = @import("cycling.zig");
 const membership = @import("membership.zig");
 const profile_switch = @import("profile_switch.zig");
 const launch = @import("launch.zig");
+const log = @import("../log.zig");
+
 const HotkeyAction = bindings.HotkeyAction;
+const slog = log.scoped("hotkeys");
 
-/// Set by main.zig for code that can't be handed the manager directly (window procs, Painter, travel).
-pub var g_hotkey_manager_ptr: ?*HotkeyManager = null;
-
-/// False before the manager exists.
-pub fn isExcludedFromCycle(character_name: []const u8) bool {
-    const manager = g_hotkey_manager_ptr orelse return false;
-    return manager.isCharacterExcluded(character_name);
-}
-
-/// Keeps cycle positions in step when `hwnd` becomes the focused client; no-op before the manager exists.
-pub fn syncFocusedCharacter(character_name: []const u8, hwnd: win32.HWND) void {
-    if (g_hotkey_manager_ptr) |manager| manager.updateFocusedCharacter(character_name, hwnd);
-}
-
-/// The window ReturnToLastApp goes back to.
-pub fn recordNonEveForeground(hwnd: win32.HWND) void {
-    if (g_hotkey_manager_ptr) |manager| manager.last_non_eve_foreground = hwnd;
-}
-
-fn countBound(items: anytype) usize {
-    var n: usize = 0;
-    for (items) |item| {
-        if (item.hotkey != null) n += 1;
-    }
-    return n;
-}
-
-/// Manages system-wide hotkey registration and dispatch; cycling, exclusions, profile switching and app/URL launching live in their own modules.
+/// Cycling, exclusions, profile switching and app/URL launching live in their own modules.
 pub const HotkeyManager = struct {
     allocator: std.mem.Allocator,
     config: *const config_mod.Config,
@@ -56,7 +31,7 @@ pub const HotkeyManager = struct {
     scout: *scout.Scout,
     painter: *painter_mod.Painter,
     hotkey_map: std.AutoHashMap(c_int, HotkeyAction),
-    /// Whether hotkeys are currently suspended (except suspend hotkey itself)
+    /// The suspend hotkey itself stays live.
     hotkeys_suspended: bool = false,
     /// Whether the config dialog is recording a new hotkey; kept separate from hotkeys_suspended so the two don't clobber each other.
     dialog_suspended: bool = false,
@@ -66,7 +41,7 @@ pub const HotkeyManager = struct {
     last_non_eve_foreground: ?win32.HWND = null,
 
     /// Reads the profile's saved copy, since hotkeys only change on Save.
-    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, gs: *const config_mod.GlobalConfig, s: *scout.Scout, p: *painter_mod.Painter) !HotkeyManager {
+    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, global_settings: *const config_mod.GlobalConfig, scout_ptr: *scout.Scout, painter: *painter_mod.Painter) !HotkeyManager {
         const cfg = &store.saved;
         const group_count = cfg.hotkeyGroups.items.len;
         var cycle = try cycling.CycleState.init(allocator, group_count);
@@ -75,9 +50,9 @@ pub const HotkeyManager = struct {
             .allocator = allocator,
             .config = cfg,
             .store = store,
-            .global_settings = gs,
-            .scout = s,
-            .painter = p,
+            .global_settings = global_settings,
+            .scout = scout_ptr,
+            .painter = painter,
             .hotkey_map = std.AutoHashMap(c_int, HotkeyAction).init(allocator),
             .cycle = cycle,
             .exclusions = try membership.Exclusions.init(allocator, group_count),
@@ -159,7 +134,7 @@ pub const HotkeyManager = struct {
         const app_hotkey_count = countBound(self.global_settings.appHotkeys.items);
         const url_hotkey_count = countBound(self.global_settings.urlHotkeys.items);
         var global_count: usize = 0;
-        inline for (bindings.global_bindings) |binding| {
+        inline for (bindings.GLOBAL_BINDINGS) |binding| {
             if (self.bindingKey(binding) != null) global_count += 1;
         }
 
@@ -213,8 +188,8 @@ pub const HotkeyManager = struct {
             else
                 std.fmt.bufPrint(&desc_buf, "activate character [{s}...] ({} sharing hotkey)", .{ first_name, group.indices.items.len }) catch "activate character group";
 
-            const owned_indices = self.allocator.dupe(usize, group.indices.items) catch {
-                slog.err("Failed to allocate memory for per-character hotkey group [{s}...]", .{first_name});
+            const owned_indices = self.allocator.dupe(usize, group.indices.items) catch |err| {
+                slog.err("Failed to copy per-character hotkey group [{s}...]: {}", .{ first_name, err });
                 failed_count += 1;
                 continue;
             };
@@ -224,25 +199,25 @@ pub const HotkeyManager = struct {
             }
         }
 
-        for (self.global_settings.profileSwitchHotkeys.items, 0..) |psh, index| {
-            const key = psh.hotkey orelse continue;
-            const desc = std.fmt.bufPrint(&desc_buf, "switch to profile [{s}]", .{psh.targetProfile}) catch "switch to profile";
+        for (self.global_settings.profileSwitchHotkeys.items, 0..) |profile_hotkey, index| {
+            const key = profile_hotkey.hotkey orelse continue;
+            const desc = std.fmt.bufPrint(&desc_buf, "switch to profile [{s}]", .{profile_hotkey.targetProfile}) catch "switch to profile";
             if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_PROFILE_SWITCH_BASE, index), key, .{ .SwitchToProfile = .{ .profile_index = index } }, desc)) failed_count += 1;
         }
 
-        for (self.global_settings.appHotkeys.items, 0..) |ah, index| {
-            const key = ah.hotkey orelse continue;
-            const desc = std.fmt.bufPrint(&desc_buf, "activate app [{s}]", .{ah.executableName}) catch "activate app";
+        for (self.global_settings.appHotkeys.items, 0..) |app_hotkey, index| {
+            const key = app_hotkey.hotkey orelse continue;
+            const desc = std.fmt.bufPrint(&desc_buf, "activate app [{s}]", .{app_hotkey.executableName}) catch "activate app";
             if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_APP_HOTKEY_BASE, index), key, .{ .ActivateApp = .{ .app_index = index } }, desc)) failed_count += 1;
         }
 
-        for (self.global_settings.urlHotkeys.items, 0..) |uh, index| {
-            const key = uh.hotkey orelse continue;
-            const desc = std.fmt.bufPrint(&desc_buf, "open url [{s}]", .{uh.url}) catch "open url";
+        for (self.global_settings.urlHotkeys.items, 0..) |url_hotkey, index| {
+            const key = url_hotkey.hotkey orelse continue;
+            const desc = std.fmt.bufPrint(&desc_buf, "open url [{s}]", .{url_hotkey.url}) catch "open url";
             if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_URL_HOTKEY_BASE, index), key, .{ .OpenUrl = .{ .url_index = index } }, desc)) failed_count += 1;
         }
 
-        inline for (bindings.global_bindings) |binding| {
+        inline for (bindings.GLOBAL_BINDINGS) |binding| {
             if (!self.registerGlobal(hwnd, binding)) failed_count += 1;
         }
 
@@ -262,13 +237,12 @@ pub const HotkeyManager = struct {
     }
 
     pub fn unregisterAll(self: *HotkeyManager) void {
-        // Always clear both hooks' bindings; cheap no-op if none were registered.
         mouse_hook.unregisterAll();
         keyboard_hook.unregisterAll();
 
         var action_it = self.hotkey_map.valueIterator();
         while (action_it.next()) |action| {
-            if (std.meta.activeTag(action.*) == .ActivateCharacter) {
+            if (action.* == .ActivateCharacter) {
                 self.allocator.free(action.ActivateCharacter.character_indices);
             }
         }
@@ -292,7 +266,6 @@ pub const HotkeyManager = struct {
             return;
         }
 
-        // Always handle suspend hotkey, regardless of suspension state
         if (action.* == .SuspendHotkeys) {
             self.toggleSuspend();
             return;
@@ -356,7 +329,7 @@ pub const HotkeyManager = struct {
             },
             .NextProfile => profile_switch.cycle(self.allocator, self.config.profile_name, true),
             .PreviousProfile => profile_switch.cycle(self.allocator, self.config.profile_name, false),
-            .SwitchToProfile => |sp| profile_switch.switchTo(self.global_settings, self.config.profile_name, sp.profile_index),
+            .SwitchToProfile => |switch_to| profile_switch.switchTo(self.global_settings, self.config.profile_name, switch_to.profile_index),
             .ToggleExclusion => self.toggleForegroundExclusion(),
             .NextExcluded => cycling.cycleExcluded(self, true),
             .PreviousExcluded => cycling.cycleExcluded(self, false),
@@ -403,12 +376,12 @@ pub const HotkeyManager = struct {
         const state = if (self.hotkeys_suspended) "suspended" else "resumed";
         slog.info("Hotkeys {s}", .{state});
 
-        if (main_mod.g_timer_hwnd) |hwnd| {
+        if (main.g_timer_hwnd) |hwnd| {
             if (self.hotkeys_suspended) {
                 // The low-level hooks intercept system-wide, so leaving bindings registered while "suspended" would still block other apps from seeing those keys.
                 self.unregisterAll();
                 // Pressing it again must still be able to resume everything else.
-                _ = self.registerGlobal(hwnd, bindings.suspend_binding);
+                _ = self.registerGlobal(hwnd, bindings.SUSPEND_BINDING);
             } else {
                 self.registerHotkeys(hwnd) catch |err| {
                     slog.err("Failed to re-register hotkeys after resuming: {}", .{err});
@@ -446,7 +419,6 @@ pub const HotkeyManager = struct {
         return self.exclusions.contains(self.config, character_name);
     }
 
-    /// Update every cycle cursor when a character is manually focused
     pub fn updateFocusedCharacter(self: *HotkeyManager, character_name: []const u8, hwnd: win32.HWND) void {
         cycling.syncToFocusedCharacter(self, character_name, hwnd);
     }
@@ -458,3 +430,30 @@ pub const HotkeyManager = struct {
         self.hotkey_map.deinit();
     }
 };
+
+/// Set by main.zig for code that can't be handed the manager directly (window procs, Painter, travel).
+pub var g_hotkey_manager_ptr: ?*HotkeyManager = null;
+
+/// False before the manager exists.
+pub fn isExcludedFromCycle(character_name: []const u8) bool {
+    const manager = g_hotkey_manager_ptr orelse return false;
+    return manager.isCharacterExcluded(character_name);
+}
+
+/// Keeps cycle positions in step when `hwnd` becomes the focused client; no-op before the manager exists.
+pub fn syncFocusedCharacter(character_name: []const u8, hwnd: win32.HWND) void {
+    if (g_hotkey_manager_ptr) |manager| manager.updateFocusedCharacter(character_name, hwnd);
+}
+
+/// The window ReturnToLastApp goes back to.
+pub fn recordNonEveForeground(hwnd: win32.HWND) void {
+    if (g_hotkey_manager_ptr) |manager| manager.last_non_eve_foreground = hwnd;
+}
+
+fn countBound(items: anytype) usize {
+    var n: usize = 0;
+    for (items) |item| {
+        if (item.hotkey != null) n += 1;
+    }
+    return n;
+}

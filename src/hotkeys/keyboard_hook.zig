@@ -1,13 +1,12 @@
-// WH_KEYBOARD_LL rather than RegisterHotKey, since RegisterHotKey can't represent a bare-modifier
-// trigger (e.g. plain "Shift"). Matches are re-posted as WM_HOTKEY, mirroring mouse_hook.zig, so
-// HotkeyManager.handleHotkeyPress doesn't need to know whether a press came from mouse or keyboard.
+//! Keyboard hotkeys through WH_KEYBOARD_LL, which unlike RegisterHotKey can bind a bare modifier; matches post WM_HOTKEY like mouse_hook.zig's.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const vk = @import("../platform/virtual_keys.zig");
 const dialog_events = @import("../dialog/events.zig");
-const log = @import("../log.zig");
-const slog = log.scoped("keyboard_hook");
 const HookBindings = @import("hook_bindings.zig").HookBindings;
+const log = @import("../log.zig");
+
+const slog = log.scoped("keyboard_hook");
 
 var g_hook: HookBindings = .{
     .hook_type = win32.WH_KEYBOARD_LL,
@@ -20,7 +19,7 @@ var g_swallow_release: ?std.AutoHashMap(u32, bool) = null;
 /// Set while the config dialog is recording a new binding; see armWinKeyCapture's doc comment.
 var g_capture_win_key = false;
 
-/// Register a keyboard hotkey (combined vk from virtual_keys.zig); installs the low-level hook on first registration.
+/// Installs the hook on first registration.
 pub fn register(allocator: std.mem.Allocator, target_hwnd: win32.HWND, combined_vk: u32, id: c_int) !void {
     try g_hook.register(allocator, target_hwnd, combined_vk, id);
 }
@@ -29,7 +28,7 @@ pub fn unregister(combined_vk: u32) void {
     g_hook.unregister(combined_vk);
 }
 
-/// Remove all keyboard bindings and uninstall the hook; safe to call even if nothing was ever registered.
+/// Safe to call even if nothing was ever registered.
 pub fn unregisterAll() void {
     g_hook.unregisterAll();
 }
@@ -67,7 +66,7 @@ pub fn markSwallowRelease(vk_code: u32) void {
     if (map.getPtr(vk_code)) |swallow| swallow.* = true;
 }
 
-/// Recording tears the hook down entirely, so this keeps it alive to swallow Win down/up and report it to the dialog as a winKeyCaptured event - otherwise Windows pops the Start Menu before the dialog sees anything.
+/// Keeps the hook alive while the dialog records a binding, to swallow Win and report it; otherwise the Start Menu opens first.
 pub fn armWinKeyCapture() void {
     g_capture_win_key = true;
     if (g_hook.hook == null) {

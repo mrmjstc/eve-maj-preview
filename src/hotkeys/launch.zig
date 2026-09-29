@@ -1,9 +1,11 @@
+//! Hotkeys that switch to another app or open a URL.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const focus_grant = @import("../platform/focus_grant.zig");
-const config_mod = @import("../config.zig");
+const config = @import("../config.zig");
 const paste_upload = @import("paste_upload.zig");
 const log = @import("../log.zig");
+
 const slog = log.scoped("hotkeys");
 
 const FindByExecutableContext = struct {
@@ -54,12 +56,12 @@ pub fn returnToLastApp(last_non_eve_foreground: *?win32.HWND) void {
     focusWindow(target);
 }
 
-pub fn activateApp(gs: *const config_mod.GlobalConfig, app_index: usize) void {
-    if (app_index >= gs.appHotkeys.items.len) {
+pub fn activateApp(global_settings: *const config.GlobalConfig, app_index: usize) void {
+    if (app_index >= global_settings.appHotkeys.items.len) {
         slog.err("Invalid app hotkey index {}", .{app_index});
         return;
     }
-    const app_hotkey = gs.appHotkeys.items[app_index];
+    const app_hotkey = global_settings.appHotkeys.items[app_index];
 
     const target = findWindowByExecutable(app_hotkey.executableName) orelse {
         slog.debug("Activate app hotkey pressed - no running window found for {s}", .{app_hotkey.executableName});
@@ -70,12 +72,12 @@ pub fn activateApp(gs: *const config_mod.GlobalConfig, app_index: usize) void {
     focusWindow(target);
 }
 
-pub fn openUrl(allocator: std.mem.Allocator, gs: *const config_mod.GlobalConfig, url_index: usize) void {
-    if (url_index >= gs.urlHotkeys.items.len) {
+pub fn openUrl(allocator: std.mem.Allocator, global_settings: *const config.GlobalConfig, url_index: usize) void {
+    if (url_index >= global_settings.urlHotkeys.items.len) {
         slog.err("Invalid url hotkey index {}", .{url_index});
         return;
     }
-    const url_hotkey = gs.urlHotkeys.items[url_index];
+    const url_hotkey = global_settings.urlHotkeys.items[url_index];
     if (url_hotkey.url.len == 0) return;
 
     if (url_hotkey.uploadClipboard) {
@@ -86,6 +88,6 @@ pub fn openUrl(allocator: std.mem.Allocator, gs: *const config_mod.GlobalConfig,
 
     slog.info("Open URL hotkey pressed: {s}", .{url_hotkey.url});
     if (!win32.shellOpenUrl(url_hotkey.url)) {
-        slog.err("Failed to open URL: {s}", .{url_hotkey.url});
+        slog.err("Failed to open URL '{s}'", .{url_hotkey.url});
     }
 }

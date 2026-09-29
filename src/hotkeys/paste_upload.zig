@@ -1,17 +1,41 @@
+//! A URL hotkey that uploads the clipboard's text to a paste site and opens the resulting page.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const log = @import("../log.zig");
+
 const slog = log.scoped("paste_upload");
 
 var g_io: std.Io = undefined;
+
+/// Guards against a double-press spawning two overlapping uploads (and two browser tabs); cleared once the background thread finishes.
+var g_upload_in_flight: std.atomic.Value(bool) = .init(false);
 
 /// Must be called once before uploadClipboardAndOpenAsync is used.
 pub fn setIo(io: std.Io) void {
     g_io = io;
 }
 
-/// Guards against a double-press spawning two overlapping uploads (and two browser tabs); cleared once the background thread finishes.
-var g_upload_in_flight: std.atomic.Value(bool) = .init(false);
+/// Runs the upload+open on a background thread so the HTTP round-trip doesn't block the main message loop (hotkey handling, thumbnail rendering); a no-op if one is already running.
+pub fn uploadClipboardAndOpenAsync(allocator: std.mem.Allocator, url: []const u8) void {
+    if (g_upload_in_flight.swap(true, .acq_rel)) {
+        slog.info("Clipboard upload already in progress; ignoring", .{});
+        return;
+    }
+
+    const url_copy = allocator.dupe(u8, url) catch |err| {
+        slog.err("Failed to copy URL for clipboard upload: {}", .{err});
+        g_upload_in_flight.store(false, .release);
+        return;
+    };
+
+    if (std.Thread.spawn(.{}, uploadClipboardAndOpenThread, .{ allocator, url_copy })) |thread| {
+        thread.detach();
+    } else |err| {
+        slog.warn("Failed to start clipboard upload thread: {}", .{err});
+        allocator.free(url_copy);
+        g_upload_in_flight.store(false, .release);
+    }
+}
 
 /// Percent-encodes `text` as an application/x-www-form-urlencoded value (space becomes '+', per that format's convention rather than plain URI escaping).
 fn formUrlEncode(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
@@ -62,7 +86,7 @@ fn postAndFollowRedirect(allocator: std.mem.Allocator, url: []const u8, body: []
     };
 
     if (response.head.status.class() != .success) {
-        slog.warn("Upload to {s} returned status {}", .{ url, response.head.status });
+        slog.warn("Upload to '{s}' returned status {}", .{ url, response.head.status });
     }
 
     return std.fmt.allocPrintSentinel(allocator, "{f}", .{req.uri}, 0);
@@ -70,7 +94,7 @@ fn postAndFollowRedirect(allocator: std.mem.Allocator, url: []const u8, body: []
 
 fn openFallback(url: []const u8) void {
     if (!win32.shellOpenUrl(url)) {
-        slog.err("Failed to open URL: {s}", .{url});
+        slog.err("Failed to open URL '{s}'", .{url});
     }
 }
 
@@ -83,22 +107,22 @@ fn uploadClipboardAndOpen(allocator: std.mem.Allocator, url: []const u8) void {
     };
     defer allocator.free(clipboard_text);
 
-    const encoded = formUrlEncode(allocator, clipboard_text) catch {
-        slog.err("Failed to encode clipboard content for upload", .{});
+    const encoded = formUrlEncode(allocator, clipboard_text) catch |err| {
+        slog.err("Failed to encode clipboard content for upload: {}", .{err});
         openFallback(url);
         return;
     };
     defer allocator.free(encoded);
 
-    const body = std.fmt.allocPrint(allocator, "Paste+anything={s}&submit=new", .{encoded}) catch {
-        slog.err("Failed to build upload body", .{});
+    const body = std.fmt.allocPrint(allocator, "Paste+anything={s}&submit=new", .{encoded}) catch |err| {
+        slog.err("Failed to build upload body: {}", .{err});
         openFallback(url);
         return;
     };
     defer allocator.free(body);
 
     const final_url = postAndFollowRedirect(allocator, url, body) catch |err| {
-        slog.err("Clipboard upload to {s} failed: {}", .{ url, err });
+        slog.err("Failed to upload the clipboard to '{s}': {}", .{ url, err });
         openFallback(url);
         return;
     };
@@ -106,10 +130,10 @@ fn uploadClipboardAndOpen(allocator: std.mem.Allocator, url: []const u8) void {
 
     slog.info("Uploaded clipboard, opening {s}", .{final_url});
     if (!win32.setClipboardText(final_url)) {
-        slog.warn("Failed to copy paste URL to clipboard: {s}", .{final_url});
+        slog.warn("Failed to copy paste URL '{s}' to the clipboard", .{final_url});
     }
     if (!win32.shellOpen(final_url.ptr, null)) {
-        slog.err("Failed to open uploaded paste URL: {s}", .{final_url});
+        slog.err("Failed to open uploaded paste URL '{s}'", .{final_url});
     }
 }
 
@@ -117,26 +141,4 @@ fn uploadClipboardAndOpenThread(allocator: std.mem.Allocator, url: []const u8) v
     defer allocator.free(url);
     defer g_upload_in_flight.store(false, .release);
     uploadClipboardAndOpen(allocator, url);
-}
-
-/// Runs the upload+open on a background thread so the HTTP round-trip doesn't block the main message loop (hotkey handling, thumbnail rendering); a no-op if one is already running.
-pub fn uploadClipboardAndOpenAsync(allocator: std.mem.Allocator, url: []const u8) void {
-    if (g_upload_in_flight.swap(true, .acq_rel)) {
-        slog.info("Clipboard upload already in progress; ignoring", .{});
-        return;
-    }
-
-    const url_copy = allocator.dupe(u8, url) catch {
-        slog.err("Failed to allocate URL for clipboard upload", .{});
-        g_upload_in_flight.store(false, .release);
-        return;
-    };
-
-    if (std.Thread.spawn(.{}, uploadClipboardAndOpenThread, .{ allocator, url_copy })) |thread| {
-        thread.detach();
-    } else |err| {
-        slog.warn("Failed to start clipboard upload thread: {}", .{err});
-        allocator.free(url_copy);
-        g_upload_in_flight.store(false, .release);
-    }
 }

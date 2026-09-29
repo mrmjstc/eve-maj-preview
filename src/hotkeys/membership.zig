@@ -1,29 +1,13 @@
+//! Cycle exclusions and hotkey-group membership toggles.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const strings = @import("../util/strings.zig");
 const input = @import("../thumbnail/input.zig");
-const log = @import("../log.zig");
-const slog = log.scoped("hotkeys");
 const HotkeyManager = @import("manager.zig").HotkeyManager;
+const log = @import("../log.zig");
 
-/// Toggles name's membership in list: removes+frees if present (returns false), else dupes+appends (returns true).
-fn toggleStringMembership(allocator: std.mem.Allocator, list: *std.ArrayList([]const u8), name: []const u8) !bool {
-    if (strings.indexOfString(list.items, name)) |index| {
-        const removed = list.orderedRemove(index);
-        allocator.free(removed);
-        return false;
-    }
-    const duped = try allocator.dupe(u8, name);
-    errdefer allocator.free(duped);
-    try list.append(allocator, duped);
-    return true;
-}
-
-fn freeNames(allocator: std.mem.Allocator, names: *std.ArrayList([]const u8)) void {
-    for (names.items) |name| allocator.free(name);
-    names.deinit(allocator);
-}
+const slog = log.scoped("hotkeys");
 
 /// Per-group lists plus a manual fallback for characters in no group; never saved, so a profile reload resets them.
 pub const Exclusions = struct {
@@ -70,8 +54,8 @@ pub const Exclusions = struct {
             if (strings.indexOfString(group.characters.items, character_name) == null) continue;
             found_in_group = true;
 
-            const added = toggleStringMembership(allocator, &self.per_group[i], character_name) catch {
-                slog.err("Failed to toggle exclusion for {s}", .{character_name});
+            const added = toggleStringMembership(allocator, &self.per_group[i], character_name) catch |err| {
+                slog.err("Failed to toggle exclusion for '{s}': {}", .{ character_name, err });
                 return;
             };
             if (added) {
@@ -85,8 +69,8 @@ pub const Exclusions = struct {
     }
 
     fn toggleManual(self: *Exclusions, allocator: std.mem.Allocator, character_name: []const u8) void {
-        const added = toggleStringMembership(allocator, &self.manual, character_name) catch {
-            slog.err("Failed to toggle manual exclusion for {s}", .{character_name});
+        const added = toggleStringMembership(allocator, &self.manual, character_name) catch |err| {
+            slog.err("Failed to toggle manual exclusion for '{s}': {}", .{ character_name, err });
             return;
         };
         if (added) {
@@ -115,13 +99,13 @@ pub const Exclusions = struct {
 
     fn appendUnseenNames(self: *Exclusions, allocator: std.mem.Allocator, seen: *std.StringHashMap(void), names: []const []const u8) void {
         for (names) |excluded_name| {
-            const result = seen.getOrPut(excluded_name) catch {
-                slog.err("Failed to allocate memory for seen map", .{});
+            const result = seen.getOrPut(excluded_name) catch |err| {
+                slog.err("Failed to dedupe excluded character '{s}': {}", .{ excluded_name, err });
                 continue;
             };
             if (!result.found_existing) {
-                self.cache.append(allocator, excluded_name) catch {
-                    slog.err("Failed to add excluded character to list", .{});
+                self.cache.append(allocator, excluded_name) catch |err| {
+                    slog.err("Failed to list excluded character '{s}': {}", .{ excluded_name, err });
                     continue;
                 };
             }
@@ -146,22 +130,22 @@ pub const Exclusions = struct {
 };
 
 /// Toggles a client in/out of cycling, with visual feedback via a semi-transparent overlay.
-pub fn toggleThumbnailExclusion(m: *HotkeyManager, source_hwnd: win32.HWND) void {
-    const thumbnail = m.painter.getThumbnailBySourceHwnd(source_hwnd) orelse return;
+pub fn toggleThumbnailExclusion(manager: *HotkeyManager, source_hwnd: win32.HWND) void {
+    const thumbnail = manager.painter.getThumbnailBySourceHwnd(source_hwnd) orelse return;
     const char_name = thumbnail.character_name;
 
-    m.exclusions.toggle(m.allocator, m.config, char_name);
+    manager.exclusions.toggle(manager.allocator, manager.config, char_name);
     // The excluded list's order changed, so its cycle position no longer means anything.
-    m.cycle.excluded_index = null;
-    m.painter.refreshExclusion(thumbnail);
+    manager.cycle.excluded_index = null;
+    manager.painter.refreshExclusion(thumbnail);
 
-    if (thumbnail.is_excluded_from_cycle and m.config.exclusion.autoMinimizeExcluded) {
+    if (thumbnail.is_excluded_from_cycle and manager.config.exclusion.autoMinimizeExcluded) {
         _ = win32.ShowWindowAsync(source_hwnd, win32.SW_FORCEMINIMIZE);
     }
 
-    m.painter.notify(source_hwnd, .{ .ntype = .CycleExclusion, .state = if (thumbnail.is_excluded_from_cycle) .excluded else .included });
+    manager.painter.notify(source_hwnd, .{ .ntype = .CycleExclusion, .state = if (thumbnail.is_excluded_from_cycle) .excluded else .included });
 
-    m.painter.renderThumbnail(thumbnail) catch |err| {
+    manager.painter.renderThumbnail(thumbnail) catch |err| {
         slog.err("Failed to render thumbnail after exclusion toggle: {}", .{err});
     };
 
@@ -172,8 +156,8 @@ pub fn toggleThumbnailExclusion(m: *HotkeyManager, source_hwnd: win32.HWND) void
 }
 
 /// Toggle the thumbnail currently under the cursor in/out of a group; no-op if nothing's hovered.
-pub fn assignHoveredToGroup(m: *HotkeyManager, group_index: usize) void {
-    if (group_index >= m.config.hotkeyGroups.items.len) {
+pub fn assignHoveredToGroup(manager: *HotkeyManager, group_index: usize) void {
+    if (group_index >= manager.config.hotkeyGroups.items.len) {
         slog.err("Invalid group index {}", .{group_index});
         return;
     }
@@ -183,11 +167,11 @@ pub fn assignHoveredToGroup(m: *HotkeyManager, group_index: usize) void {
         return;
     };
 
-    const group = &m.config.hotkeyGroups.items[group_index];
+    const group = &manager.config.hotkeyGroups.items[group_index];
     const char_name = thumbnail.character_name;
 
-    const added = m.store.toggleGroupMember(group_index, char_name) catch |err| {
-        slog.err("Failed to toggle {s} in group {} [{s}]: {}", .{ char_name, group_index, group.name, err });
+    const added = manager.store.toggleGroupMember(group_index, char_name) catch |err| {
+        slog.err("Failed to toggle '{s}' in group {} [{s}]: {}", .{ char_name, group_index, group.name, err });
         return;
     };
     if (added) {
@@ -197,13 +181,13 @@ pub fn assignHoveredToGroup(m: *HotkeyManager, group_index: usize) void {
     }
 
     // Membership changed - old index may now point at a shifted member
-    m.cycle.group_cursors[group_index] = null;
+    manager.cycle.group_cursors[group_index] = null;
 
-    // Badge must be refreshed before the reflow below, so its own render pass bakes in the new label instead of the reflow drawing it once with the stale one and renderThumbnail below redrawing it again.
-    m.painter.refreshGroupBadge(thumbnail);
+    // Before the reflow, so the reflow's render already has the new label.
+    manager.painter.refreshGroupBadge(thumbnail);
     // Group membership only feeds RegionFit's display order under HotkeyGroups ordering; reflowing under Characters ordering would be a no-op.
-    if (m.config.display.regionFitOrder == .HotkeyGroups) m.painter.reflowIfRegionFitActive();
-    m.painter.renderThumbnail(thumbnail) catch |err| {
+    if (manager.config.display.regionFitOrder == .HotkeyGroups) manager.painter.reflowIfRegionFitActive();
+    manager.painter.renderThumbnail(thumbnail) catch |err| {
         slog.err("Failed to render thumbnail after group assignment: {}", .{err});
     };
 
@@ -212,5 +196,23 @@ pub fn assignHoveredToGroup(m: *HotkeyManager, group_index: usize) void {
         group.name
     else
         std.fmt.bufPrint(&group_label_buf, "Hotkey Group {}", .{group_index + 1}) catch unreachable;
-    m.painter.notify(thumbnail.source_hwnd, .{ .ntype = .GroupMembership, .state = if (added) .added else .removed, .target = group_label });
+    manager.painter.notify(thumbnail.source_hwnd, .{ .ntype = .GroupMembership, .state = if (added) .added else .removed, .target = group_label });
+}
+
+/// Toggles name's membership in list: removes+frees if present (returns false), else dupes+appends (returns true).
+fn toggleStringMembership(allocator: std.mem.Allocator, list: *std.ArrayList([]const u8), name: []const u8) !bool {
+    if (strings.indexOfString(list.items, name)) |index| {
+        const removed = list.orderedRemove(index);
+        allocator.free(removed);
+        return false;
+    }
+    const duped = try allocator.dupe(u8, name);
+    errdefer allocator.free(duped);
+    try list.append(allocator, duped);
+    return true;
+}
+
+fn freeNames(allocator: std.mem.Allocator, names: *std.ArrayList([]const u8)) void {
+    for (names.items) |name| allocator.free(name);
+    names.deinit(allocator);
 }
