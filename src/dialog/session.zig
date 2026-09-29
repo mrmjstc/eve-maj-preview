@@ -44,7 +44,7 @@ pub fn end() void {
         slog.err("Failed to drop unsaved edits to the running profile: {}", .{err});
         return;
     };
-    main.onLiveProfileEdited(true);
+    main.onLiveProfileEdited(.all);
 }
 
 /// The profile being edited; edits to the running one preview live.
@@ -93,7 +93,7 @@ pub fn apply(jw: ?*std.json.Stringify, arena: std.mem.Allocator, doc: Doc, ops: 
     switch (doc) {
         .profile => {
             // Even after a failed op, since those before it were applied.
-            defer if (!editsDraft()) main.onLiveProfileEdited(touchesLayout(ops));
+            defer if (!editsDraft()) main.onLiveProfileEdited(layoutFor(ops));
             try applyTo(Config, profile(), jw, arena, ops);
         },
         .global => try applyTo(GlobalConfig, try global(), jw, arena, ops),
@@ -148,12 +148,16 @@ fn applyTo(comptime T: type, target: *T, maybe_jw: ?*std.json.Stringify, arena: 
     try jw.endArray();
 }
 
-/// Display settings place the thumbnails, so they also need repositioning.
-fn touchesLayout(ops: []const patch.Op) bool {
+/// Display settings place the thumbnails; the character and hotkey group lists only rank them in the Thumbnail Space.
+fn layoutFor(ops: []const patch.Op) main.LiveLayout {
+    var layout: main.LiveLayout = .none;
     for (ops) |op| {
-        if (op.path.len > 0 and op.path[0] == .string and std.mem.eql(u8, op.path[0].string, "display")) return true;
+        if (op.path.len == 0 or op.path[0] != .string) continue;
+        const root = op.path[0].string;
+        if (std.mem.eql(u8, root, "display")) return .all;
+        if (std.mem.eql(u8, root, "characters") or std.mem.eql(u8, root, "hotkeyGroups")) layout = .region_fit;
     }
-    return false;
+    return layout;
 }
 
 fn cloneGlobal(allocator: std.mem.Allocator, settings: *GlobalConfig) !GlobalConfig {

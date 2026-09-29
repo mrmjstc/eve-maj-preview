@@ -36,6 +36,9 @@ const SCAN_INTERVAL_TICKS: u32 = 20;
 const TRAVEL_CHECK_INTERVAL_MS: u64 = 2000;
 const PROFILE_NAME_BUF = 256;
 
+/// How far a live profile edit moves thumbnails: `region_fit` reflows only an active Thumbnail Space, `all` repositions every thumbnail.
+pub const LiveLayout = enum { none, region_fit, all };
+
 var g_allocator: std.mem.Allocator = undefined;
 var g_io: std.Io = undefined;
 var g_chatlog_monitor: ?*chatlog.ChatlogMonitor = null;
@@ -112,8 +115,8 @@ pub fn applySavedSettings(global_draft: ?*config.GlobalConfig) !void {
     try restartSubsystems(timer_hwnd, null, global_draft);
 }
 
-/// The config dialog changed the running profile's unsaved `live` copy; `layout` when thumbnails may need to move as well as repaint.
-pub fn onLiveProfileEdited(layout: bool) void {
+/// The config dialog changed the running profile's unsaved `live` copy; `layout` says whether thumbnails may need to move as well as repaint.
+pub fn onLiveProfileEdited(layout: LiveLayout) void {
     const painter_ptr = painter.g_painter_ptr orelse return;
     // A view mode builds different windows, so it needs a new painter rather than a restyle.
     if (painter_ptr.view_mode != g_store.live.display.viewMode) {
@@ -131,7 +134,11 @@ pub fn onLiveProfileEdited(layout: bool) void {
     }
     painter_ptr.syncPanels();
     painter_ptr.refreshAllThumbnailVisuals();
-    if (layout) painter_ptr.repositionAllThumbnails();
+    switch (layout) {
+        .none => {},
+        .region_fit => painter_ptr.reflowIfRegionFitActive(),
+        .all => painter_ptr.repositionAllThumbnails(),
+    }
 }
 
 /// Resumes hotkeys in case it closed mid-recording.
