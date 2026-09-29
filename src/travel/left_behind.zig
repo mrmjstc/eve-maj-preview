@@ -1,9 +1,11 @@
+//! The travel check that alerts characters left behind in another system when the group moves on.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const painter_mod = @import("../painter.zig");
-const hotkeys_mod = @import("../hotkeys/manager.zig");
+const hotkeys = @import("../hotkeys/manager.zig");
 
 const Painter = painter_mod.Painter;
+const ThumbnailWindow = painter_mod.ThumbnailWindow;
 
 /// Per-thumbnail travel state; Painter records jumps, check() reads it and flags alerts.
 pub const LeftBehindState = struct {
@@ -25,7 +27,7 @@ pub fn check(painter: *Painter, now: win32.Ticks) void {
 
     var eligible_count: usize = 0;
     for (painter.thumbnails.items) |*thumb| {
-        if (thumb.travel.last_jump_ms.isZero() or hotkeys_mod.isExcludedFromCycle(thumb.character_name)) continue;
+        if (!isTracked(thumb)) continue;
         eligible_count += 1;
     }
     if (eligible_count < 2) return;
@@ -35,12 +37,12 @@ pub fn check(painter: *Painter, now: win32.Ticks) void {
     var group_arrival_ms: win32.Ticks = .{};
 
     for (painter.thumbnails.items) |*candidate| {
-        if (candidate.travel.last_jump_ms.isZero() or hotkeys_mod.isExcludedFromCycle(candidate.character_name)) continue;
+        if (!isTracked(candidate)) continue;
 
         var count: usize = 0;
         var arrival_ms: win32.Ticks = .{};
         for (painter.thumbnails.items) |*other| {
-            if (other.travel.last_jump_ms.isZero() or hotkeys_mod.isExcludedFromCycle(other.character_name)) continue;
+            if (!isTracked(other)) continue;
             if (!std.mem.eql(u8, other.system_name, candidate.system_name)) continue;
             count += 1;
             if (other.travel.last_jump_ms.ms > arrival_ms.ms) arrival_ms = other.travel.last_jump_ms;
@@ -64,11 +66,16 @@ pub fn check(painter: *Painter, now: win32.Ticks) void {
     if (now.elapsedSince(group_arrival_ms) < window_ms) return;
 
     for (painter.thumbnails.items) |*thumb| {
-        if (thumb.travel.last_jump_ms.isZero() or hotkeys_mod.isExcludedFromCycle(thumb.character_name)) continue;
+        if (!isTracked(thumb)) continue;
         if (std.mem.eql(u8, thumb.system_name, group_system)) continue;
         if (thumb.travel.alert_fired) continue;
 
         thumb.travel.alert_fired = true;
         painter.notify(thumb.source_hwnd, .{ .ntype = .TravelLeftBehind, .source = thumb.system_name, .target = group_system });
     }
+}
+
+/// Only characters that have jumped this session and aren't excluded from cycling count toward, or get, the alert.
+fn isTracked(thumbnail: *const ThumbnailWindow) bool {
+    return !thumbnail.travel.last_jump_ms.isZero() and !hotkeys.isExcludedFromCycle(thumbnail.character_name);
 }
