@@ -28,7 +28,7 @@ To build and launch it with the configuration window open (the same as `eve-maj-
 zig build config
 ```
 
-To run the unit tests (listed in `src/tests.zig`), which cover log parsing and don't need EVE or the app running:
+To run the unit tests (listed in `src/tests.zig`), which cover log parsing, hotkeys, URL commands, activity rates and layout math and don't need EVE or the app running:
 
 ```powershell
 zig build test
