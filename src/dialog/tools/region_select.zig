@@ -1,9 +1,11 @@
+//! The full-screen overlay for dragging out, or adjusting, a screen region for the config dialog.
 const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
 const gdi_overlay = @import("../../platform/gdi_overlay.zig");
+const color = @import("../../util/color.zig");
 const dialog_events = @import("../events.zig");
-const color_mod = @import("../../util/color.zig");
 const log = @import("../../log.zig");
+
 const slog = log.scoped("region_select");
 
 const WINDOW_CLASS_NAME = "EVE_REGION_SELECT_CLASS";
@@ -33,7 +35,6 @@ const BUTTON_TEXT_PADDING: i32 = 12;
 const BUTTON_MARGIN: i32 = 8;
 const BUTTON_RADIUS: i32 = 3;
 const BUTTON_FONT_PX: i32 = 12;
-const ButtonFont = struct { name: [:0]const u8, weight: c_int };
 /// The dialog's --font-mono stack. GDI doesn't embolden Cascadia Code's variable-font weights, so its bold is the separate SemiBold face.
 const BUTTON_FONTS = [_]ButtonFont{
     .{ .name = "Cascadia Code SemiBold", .weight = win32.FW_SEMIBOLD },
@@ -48,76 +49,15 @@ const BUTTON_SURFACE_ALT: u32 = 0xFF202224;
 const BUTTON_BORDER: u32 = 0xFF6B6E75;
 const BUTTON_TEXT: u32 = 0xFFE8E6E1;
 
+const ButtonFont = struct { name: [:0]const u8, weight: c_int };
+
 pub const LabelStyle = struct {
     font: ?win32.HFONT,
     color: u32,
 };
 
-var g_window_class_registered = false;
-var g_border_color: u32 = DEFAULT_BORDER_COLOR;
-var g_dragging = false;
-var g_hwnd: ?win32.HWND = null;
-var g_bitmap: ?gdi_overlay.OverlayBitmap = null;
-var g_virtual_screen: win32.RECT = undefined;
-/// The one monitor a selection is confined to, so it can't spill into the gap between monitors of different sizes.
-var g_bounds: win32.RECT = undefined;
-var g_anchor: win32.POINT = undefined;
-var g_current: win32.POINT = undefined;
-var g_last_redraw: win32.Ticks = undefined;
-var g_cross_cursor: ?win32.HCURSOR = null;
-var g_on_finished: ?*const fn () void = null;
-var g_label_style: LabelStyle = .{ .font = null, .color = 0xFFFFFFFF };
-var g_labels = Labels{};
-
 const Handle = enum { none, move, left, right, top, bottom, top_left, top_right, bottom_left, bottom_right };
 const Button = enum { save, cancel };
-
-var g_button_hover: ?Button = null;
-var g_button_pressed: ?Button = null;
-var g_ui_scale: f32 = 1.0;
-var g_button_font_px: i32 = 0;
-var g_button_font: ?win32.HFONT = null;
-var g_hand_cursor: ?win32.HCURSOR = null;
-
-var g_edit_mode = false;
-var g_edit_rect: win32.RECT = undefined;
-var g_edit_handle: Handle = .none;
-var g_edit_grab: win32.POINT = undefined;
-var g_edit_grab_rect: win32.RECT = undefined;
-var g_arrow_cursor: ?win32.HCURSOR = null;
-var g_size_we_cursor: ?win32.HCURSOR = null;
-var g_size_ns_cursor: ?win32.HCURSOR = null;
-var g_size_nwse_cursor: ?win32.HCURSOR = null;
-var g_size_nesw_cursor: ?win32.HCURSOR = null;
-var g_size_all_cursor: ?win32.HCURSOR = null;
-
-fn registerWindowClass(instance: win32.HINSTANCE) !void {
-    if (g_window_class_registered) return;
-    g_cross_cursor = win32.LoadCursorA(null, win32.IDC_CROSS);
-    g_arrow_cursor = win32.LoadCursorA(null, win32.IDC_ARROW);
-    g_size_we_cursor = win32.LoadCursorA(null, win32.IDC_SIZEWE);
-    g_size_ns_cursor = win32.LoadCursorA(null, win32.IDC_SIZENS);
-    g_size_nwse_cursor = win32.LoadCursorA(null, win32.IDC_SIZENWSE);
-    g_size_nesw_cursor = win32.LoadCursorA(null, win32.IDC_SIZENESW);
-    g_size_all_cursor = win32.LoadCursorA(null, win32.IDC_SIZEALL);
-    g_hand_cursor = win32.LoadCursorA(null, win32.IDC_HAND);
-    try gdi_overlay.registerWindowClass(instance, wndProc, WINDOW_CLASS_NAME, null);
-    g_window_class_registered = true;
-}
-
-/// Zero-padded fixed-size copy of `text` (UTF-8), truncated at a character boundary so a NUL always fits.
-pub fn fixedText(comptime n: usize, text: []const u8) [n]u8 {
-    var out = std.mem.zeroes([n]u8);
-    var len = @min(text.len, n - 1);
-    while (len > 0 and len < text.len and (text[len] & 0xC0) == 0x80) len -= 1;
-    @memcpy(out[0..len], text[0..len]);
-    return out;
-}
-
-/// The text in a fixed-size, NUL-padded label buffer.
-pub fn labelText(buf: []const u8) []const u8 {
-    return std.mem.sliceTo(buf, 0);
-}
 
 /// The overlay's on-screen text, translated by the config dialog since only it has the language files; English defaults if it sends nothing.
 pub const Labels = struct {
@@ -138,9 +78,57 @@ pub const Request = struct {
 
 pub const Status = enum { success, cancelled, too_small };
 
-/// Starts (or resets, if already in progress) the drag-to-select overlay; the result goes to the config dialog as a regionSelected event.
-/// accent_color is 0xAARRGGBB, forced fully opaque. With `edit_region`, that region's edges are adjusted instead of dragging a new one.
-/// `on_finished` runs once the overlay closes, whether the selection was committed or cancelled, but not if this fails.
+var g_window_class_registered = false;
+var g_border_color: u32 = DEFAULT_BORDER_COLOR;
+var g_dragging = false;
+var g_hwnd: ?win32.HWND = null;
+var g_bitmap: ?gdi_overlay.OverlayBitmap = null;
+var g_virtual_screen: win32.RECT = undefined;
+/// The one monitor a selection is confined to, so it can't spill into the gap between monitors of different sizes.
+var g_bounds: win32.RECT = undefined;
+var g_anchor: win32.POINT = undefined;
+var g_current: win32.POINT = undefined;
+var g_last_redraw: win32.Ticks = undefined;
+var g_cross_cursor: ?win32.HCURSOR = null;
+var g_on_finished: ?*const fn () void = null;
+var g_label_style: LabelStyle = .{ .font = null, .color = 0xFFFFFFFF };
+var g_labels = Labels{};
+
+var g_button_hover: ?Button = null;
+var g_button_pressed: ?Button = null;
+var g_ui_scale: f32 = 1.0;
+var g_button_font_px: i32 = 0;
+var g_button_font: ?win32.HFONT = null;
+var g_hand_cursor: ?win32.HCURSOR = null;
+
+var g_edit_mode = false;
+var g_edit_rect: win32.RECT = undefined;
+var g_edit_handle: Handle = .none;
+var g_edit_grab: win32.POINT = undefined;
+var g_edit_grab_rect: win32.RECT = undefined;
+var g_arrow_cursor: ?win32.HCURSOR = null;
+var g_size_we_cursor: ?win32.HCURSOR = null;
+var g_size_ns_cursor: ?win32.HCURSOR = null;
+var g_size_nwse_cursor: ?win32.HCURSOR = null;
+var g_size_nesw_cursor: ?win32.HCURSOR = null;
+var g_size_all_cursor: ?win32.HCURSOR = null;
+
+/// Zero-padded fixed-size copy of `text` (UTF-8), truncated at a character boundary so a NUL always fits.
+pub fn fixedText(comptime n: usize, text: []const u8) [n]u8 {
+    var out = std.mem.zeroes([n]u8);
+    var len = @min(text.len, n - 1);
+    while (len > 0 and len < text.len and (text[len] & 0xC0) == 0x80) len -= 1;
+    @memcpy(out[0..len], text[0..len]);
+    return out;
+}
+
+/// The text in a fixed-size, NUL-padded label buffer.
+pub fn labelText(buf: []const u8) []const u8 {
+    return std.mem.sliceTo(buf, 0);
+}
+
+/// Starts (or restarts) the overlay; the result goes to the config dialog as a regionSelected event. `accent_color` is forced opaque, and
+/// `edit_region` adjusts that region instead of dragging a new one. `on_finished` runs once the overlay closes, but not if this fails.
 pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelStyle, edit_region: ?win32.RECT, labels: Labels, on_finished: *const fn () void) !void {
     try registerWindowClass(instance);
     g_on_finished = on_finished;
@@ -193,6 +181,20 @@ pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelSty
     grabForegroundFocus(hwnd);
 }
 
+fn registerWindowClass(instance: win32.HINSTANCE) !void {
+    if (g_window_class_registered) return;
+    g_cross_cursor = win32.LoadCursorA(null, win32.IDC_CROSS);
+    g_arrow_cursor = win32.LoadCursorA(null, win32.IDC_ARROW);
+    g_size_we_cursor = win32.LoadCursorA(null, win32.IDC_SIZEWE);
+    g_size_ns_cursor = win32.LoadCursorA(null, win32.IDC_SIZENS);
+    g_size_nwse_cursor = win32.LoadCursorA(null, win32.IDC_SIZENWSE);
+    g_size_nesw_cursor = win32.LoadCursorA(null, win32.IDC_SIZENESW);
+    g_size_all_cursor = win32.LoadCursorA(null, win32.IDC_SIZEALL);
+    g_hand_cursor = win32.LoadCursorA(null, win32.IDC_HAND);
+    try gdi_overlay.registerWindowClass(instance, wndProc, WINDOW_CLASS_NAME, null);
+    g_window_class_registered = true;
+}
+
 /// Plain SetForegroundWindow (platform/focus_grant.zig's forceSetForegroundWindow) only works when the calling process just received user input, which isn't true here since StartRegionSelect arrives over WM_COPYDATA - Windows' foreground-lock would otherwise silently eat it, leaving Escape going nowhere.
 fn grabForegroundFocus(hwnd: win32.HWND) void {
     const current_thread = win32.GetCurrentThreadId();
@@ -239,7 +241,7 @@ fn normalizedSelection() win32.RECT {
 }
 
 /// Cuts `rect` out of the dim layer and outlines it; `fill` is the interior color.
-fn drawRegion(bmp: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, fill: u32, border: u32) void {
+fn drawRegion(bitmap: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, fill: u32, border: u32) void {
     const w = win32.rectWidth(rect);
     const h = win32.rectHeight(rect);
     if (w <= 0 or h <= 0) return;
@@ -247,8 +249,8 @@ fn drawRegion(bmp: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, fill: u32
     const local_y = rect.top - g_virtual_screen.top;
     const uw: usize = @intCast(w);
     const uh: usize = @intCast(h);
-    gdi_overlay.fillRect(bmp.pixels, bmp.width, bmp.height, @intCast(local_x), @intCast(local_y), uw, uh, fill);
-    gdi_overlay.drawRectOutline(bmp.pixels, bmp.width, bmp.height, local_x, local_y, uw, uh, BORDER_THICKNESS, border);
+    gdi_overlay.fillRect(bitmap.pixels, bitmap.width, bitmap.height, @intCast(local_x), @intCast(local_y), uw, uh, fill);
+    gdi_overlay.drawRectOutline(bitmap.pixels, bitmap.width, bitmap.height, local_x, local_y, uw, uh, BORDER_THICKNESS, border);
 }
 
 fn monitorBoundsAt(pt: win32.POINT) win32.RECT {
@@ -271,18 +273,18 @@ fn enterEditMode(rect: win32.RECT) void {
     g_ui_scale = dpiScaleAt(win32.rectCenter(rect));
 }
 
-fn drawSizeLabel(bmp: *const gdi_overlay.OverlayBitmap, sel: win32.RECT) void {
+fn drawSizeLabel(bitmap: *const gdi_overlay.OverlayBitmap, selection: win32.RECT) void {
     const font = g_label_style.font orelse return;
 
     var text_buf: [32]u8 = undefined;
-    const text = std.fmt.bufPrint(&text_buf, "{d} x {d}", .{ win32.rectWidth(sel), win32.rectHeight(sel) }) catch return;
+    const text = std.fmt.bufPrint(&text_buf, "{d} x {d}", .{ win32.rectWidth(selection), win32.rectHeight(selection) }) catch return;
 
-    const old_font = win32.SelectObject(bmp.mem_dc, font);
+    const old_font = win32.SelectObject(bitmap.mem_dc, font);
     defer {
-        if (old_font) |of| _ = win32.SelectObject(bmp.mem_dc, of);
+        if (old_font) |of| _ = win32.SelectObject(bitmap.mem_dc, of);
     }
 
-    const text_size = gdi_overlay.measureTextSize(text_buf.len, bmp.mem_dc, text);
+    const text_size = gdi_overlay.measureTextSize(text_buf.len, bitmap.mem_dc, text);
     const label_w: i32 = text_size.cx + @as(i32, LABEL_PADDING_X * 2);
     const label_h: i32 = text_size.cy + @as(i32, LABEL_PADDING_Y * 2);
 
@@ -297,8 +299,8 @@ fn drawSizeLabel(bmp: *const gdi_overlay.OverlayBitmap, sel: win32.RECT) void {
 
     const local_x: usize = @intCast(x - g_virtual_screen.left);
     const local_y: usize = @intCast(y - g_virtual_screen.top);
-    gdi_overlay.fillRect(bmp.pixels, bmp.width, bmp.height, local_x, local_y, @intCast(label_w), @intCast(label_h), gdi_overlay.HINT_BG_COLOR);
-    gdi_overlay.drawText(text_buf.len, bmp.mem_dc, @intCast(local_x + LABEL_PADDING_X), @intCast(local_y + LABEL_PADDING_Y), text, g_label_style.color);
+    gdi_overlay.fillRect(bitmap.pixels, bitmap.width, bitmap.height, local_x, local_y, @intCast(label_w), @intCast(label_h), gdi_overlay.HINT_BG_COLOR);
+    gdi_overlay.drawText(text_buf.len, bitmap.mem_dc, @intCast(local_x + LABEL_PADDING_X), @intCast(local_y + LABEL_PADDING_Y), text, g_label_style.color);
 }
 
 fn hitTestEditRect(pt: win32.POINT) Handle {
@@ -363,26 +365,26 @@ fn applyEditDrag(pt: win32.POINT) void {
     g_edit_rect = r;
 }
 
-fn drawHandle(bmp: *const gdi_overlay.OverlayBitmap, center_x: i32, center_y: i32) void {
+fn drawHandle(bitmap: *const gdi_overlay.OverlayBitmap, center_x: i32, center_y: i32) void {
     const x = std.math.clamp(center_x - @divTrunc(HANDLE_SIZE, 2), g_bounds.left, g_bounds.right - HANDLE_SIZE);
     const y = std.math.clamp(center_y - @divTrunc(HANDLE_SIZE, 2), g_bounds.top, g_bounds.bottom - HANDLE_SIZE);
     const size: usize = @intCast(HANDLE_SIZE);
-    gdi_overlay.fillRect(bmp.pixels, bmp.width, bmp.height, @intCast(x - g_virtual_screen.left), @intCast(y - g_virtual_screen.top), size, size, HANDLE_COLOR);
+    gdi_overlay.fillRect(bitmap.pixels, bitmap.width, bitmap.height, @intCast(x - g_virtual_screen.left), @intCast(y - g_virtual_screen.top), size, size, HANDLE_COLOR);
 }
 
-fn drawEditHandles(bmp: *const gdi_overlay.OverlayBitmap, r: win32.RECT) void {
-    const center = win32.rectCenter(r);
-    const xs = [3]i32{ r.left, center.x, r.right };
-    const ys = [3]i32{ r.top, center.y, r.bottom };
-    const roomy_w = win32.rectWidth(r) >= HANDLE_SIZE * 4;
-    const roomy_h = win32.rectHeight(r) >= HANDLE_SIZE * 4;
+fn drawEditHandles(bitmap: *const gdi_overlay.OverlayBitmap, rect: win32.RECT) void {
+    const center = win32.rectCenter(rect);
+    const xs = [3]i32{ rect.left, center.x, rect.right };
+    const ys = [3]i32{ rect.top, center.y, rect.bottom };
+    const roomy_w = win32.rectWidth(rect) >= HANDLE_SIZE * 4;
+    const roomy_h = win32.rectHeight(rect) >= HANDLE_SIZE * 4;
 
     for (ys, 0..) |cy, row| {
         for (xs, 0..) |cx, col| {
             if (row == 1 and col == 1) continue;
             if (col == 1 and !roomy_w) continue;
             if (row == 1 and !roomy_h) continue;
-            drawHandle(bmp, cx, cy);
+            drawHandle(bitmap, cx, cy);
         }
     }
 }
@@ -447,7 +449,7 @@ fn ensureButtonFonts(dc: win32.HDC) void {
     g_button_font_px = height_px;
 }
 
-fn drawButton(bmp: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, label: []const u8, button: Button) void {
+fn drawButton(bitmap: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, label: []const u8, button: Button) void {
     const font = g_button_font orelse g_label_style.font orelse return;
     const hovered = g_button_hover == button or g_button_pressed == button;
     const accent = g_border_color;
@@ -461,9 +463,9 @@ fn drawButton(bmp: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, label: []
     };
     switch (button) {
         .save => if (hovered) {
-            face.fill = color_mod.lighten(accent, BUTTON_LIGHTEN_PERCENT);
+            face.fill = color.lighten(accent, BUTTON_LIGHTEN_PERCENT);
             face.border = face.fill;
-            face.text_color = color_mod.inkFor(accent);
+            face.text_color = color.inkFor(accent);
         } else {
             face.fill = BUTTON_BG;
             face.border = accent;
@@ -482,36 +484,36 @@ fn drawButton(bmp: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, label: []
         .right = rect.right - g_virtual_screen.left,
         .bottom = rect.bottom - g_virtual_screen.top,
     };
-    gdi_overlay.drawButtonFace(bmp, local, label, font, face);
+    gdi_overlay.drawButtonFace(bitmap, local, label, font, face);
 }
 
-fn drawButtons(bmp: *const gdi_overlay.OverlayBitmap) void {
+fn drawButtons(bitmap: *const gdi_overlay.OverlayBitmap) void {
     if (g_edit_handle != .none) return;
-    ensureButtonFonts(bmp.mem_dc);
+    ensureButtonFonts(bitmap.mem_dc);
     const rects = buttonRects();
-    drawButton(bmp, rects[@intFromEnum(Button.save)], labelText(&g_labels.save), .save);
-    drawButton(bmp, rects[@intFromEnum(Button.cancel)], labelText(&g_labels.cancel), .cancel);
+    drawButton(bitmap, rects[@intFromEnum(Button.save)], labelText(&g_labels.save), .save);
+    drawButton(bitmap, rects[@intFromEnum(Button.cancel)], labelText(&g_labels.cancel), .cancel);
 }
 
 fn redraw() void {
     const hwnd = g_hwnd orelse return;
     if (g_bitmap == null) return;
-    const bmp = &g_bitmap.?;
+    const bitmap = &g_bitmap.?;
 
-    gdi_overlay.fillRect(bmp.pixels, bmp.width, bmp.height, 0, 0, bmp.width, bmp.height, DIM_COLOR);
+    gdi_overlay.fillRect(bitmap.pixels, bitmap.width, bitmap.height, 0, 0, bitmap.width, bitmap.height, DIM_COLOR);
 
     if (g_edit_mode) {
-        drawRegion(bmp, g_edit_rect, HIT_TESTABLE_CLEAR_COLOR, g_border_color);
-        drawEditHandles(bmp, g_edit_rect);
-        drawButtons(bmp);
-        if (g_edit_handle != .none) drawSizeLabel(bmp, g_edit_rect);
+        drawRegion(bitmap, g_edit_rect, HIT_TESTABLE_CLEAR_COLOR, g_border_color);
+        drawEditHandles(bitmap, g_edit_rect);
+        drawButtons(bitmap);
+        if (g_edit_handle != .none) drawSizeLabel(bitmap, g_edit_rect);
     } else if (g_dragging) {
-        const sel = normalizedSelection();
-        drawRegion(bmp, sel, CLEAR_COLOR, g_border_color);
-        if (win32.rectWidth(sel) > 0 and win32.rectHeight(sel) > 0) drawSizeLabel(bmp, sel);
+        const selection = normalizedSelection();
+        drawRegion(bitmap, selection, CLEAR_COLOR, g_border_color);
+        if (win32.rectWidth(selection) > 0 and win32.rectHeight(selection) > 0) drawSizeLabel(bitmap, selection);
     }
 
-    gdi_overlay.presentLayered(hwnd, bmp, 255);
+    gdi_overlay.presentLayered(hwnd, bitmap, 255);
 }
 
 fn maybeRedrawThrottled() void {
@@ -525,7 +527,7 @@ fn finish(cancelled: bool) void {
     if (g_hwnd) |hwnd| _ = win32.ShowWindow(hwnd, win32.SW_HIDE);
     g_dragging = false;
 
-    if (g_bitmap) |bmp| bmp.destroy();
+    if (g_bitmap) |bitmap| bitmap.destroy();
     g_bitmap = null;
 
     if (g_on_finished) |cb| cb();

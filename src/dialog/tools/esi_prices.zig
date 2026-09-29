@@ -1,11 +1,107 @@
+//! Jita buy prices for ores from EVE's public ESI API, fetched in parallel.
 const std = @import("std");
 const http_client = @import("../../util/http_client.zig");
 const log = @import("../../log.zig");
+
 const slog = log.scoped("esi_prices");
 
 const ESI_BASE = "https://esi.evetech.net/latest";
 const ESI_JITA_REGION_ID = 10000002;
 const ESI_JITA_STATION_ID: i64 = 60003760;
+
+/// Caps how many HTTP requests run at once for a price fetch - bounded so this stays polite to ESI rather than opening dozens of connections at once.
+const MAX_CONCURRENT_PRICE_REQUESTS = 8;
+
+pub const Price = struct {
+    name: []const u8,
+    price: f64,
+};
+
+/// Serialized as a `{name: price}` object.
+pub const Prices = struct {
+    items: []const Price,
+
+    pub fn jsonStringify(self: Prices, jw: anytype) !void {
+        try jw.beginObject();
+        for (self.items) |p| {
+            try jw.objectField(p.name);
+            try jw.write(p.price);
+        }
+        try jw.endObject();
+    }
+};
+
+const PriceLookup = struct {
+    name: []const u8,
+    type_id: i64,
+};
+
+const PriceFetchContext = struct {
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    client: *std.http.Client,
+    lookups: []const PriceLookup,
+    next_index: std.atomic.Value(usize),
+    results_mutex: std.Io.Mutex = .init,
+    results: *std.ArrayList(Price),
+};
+
+/// Looks up each ore name's Jita buy price via its compressed variant (readily liquid there) using the public ESI API - no key required.
+/// Names with no market match are left out. `allocator` must be thread-safe, since the requests run in parallel; the result is allocated from `arena`.
+pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io: std.Io, names: []const []const u8) !Prices {
+    var client: std.http.Client = .{ .allocator = allocator, .io = io };
+    defer client.deinit();
+
+    var type_ids = try resolveOreTypeIds(allocator, &client, names);
+    defer {
+        var key_it = type_ids.keyIterator();
+        while (key_it.next()) |k| allocator.free(k.*);
+        type_ids.deinit();
+    }
+
+    var results: std.ArrayList(Price) = .empty;
+    defer results.deinit(allocator);
+
+    const lookups = try allocator.alloc(PriceLookup, type_ids.count());
+    defer allocator.free(lookups);
+    {
+        var idx: usize = 0;
+        var it = type_ids.iterator();
+        while (it.next()) |entry| : (idx += 1) {
+            lookups[idx] = .{ .name = entry.key_ptr.*, .type_id = entry.value_ptr.* };
+        }
+    }
+
+    if (lookups.len > 0) {
+        var ctx = PriceFetchContext{
+            .allocator = allocator,
+            .io = io,
+            .client = &client,
+            .lookups = lookups,
+            .next_index = std.atomic.Value(usize).init(0),
+            .results = &results,
+        };
+
+        // Spawn up to MAX_CONCURRENT_PRICE_REQUESTS - 1 background workers; the calling thread pulls from the same queue as the last one, so a failed spawn just means less parallelism, not less work done.
+        const worker_count = @min(MAX_CONCURRENT_PRICE_REQUESTS, lookups.len);
+        var threads = [_]?std.Thread{null} ** (MAX_CONCURRENT_PRICE_REQUESTS - 1);
+        const background_workers = worker_count - 1;
+        for (threads[0..background_workers]) |*slot| {
+            slot.* = std.Thread.spawn(.{}, priceFetchWorker, .{&ctx}) catch |err| blk: {
+                slog.warn("Failed to spawn price-fetch worker: {}", .{err});
+                break :blk null;
+            };
+        }
+        priceFetchWorker(&ctx);
+        for (threads[0..background_workers]) |maybe_t| {
+            if (maybe_t) |t| t.join();
+        }
+    }
+
+    const copied = try arena.alloc(Price, results.items.len);
+    for (results.items, copied) |r, *c| c.* = .{ .name = try arena.dupe(u8, r.name), .price = r.price };
+    return .{ .items = copied };
+}
 
 /// Resolves "Compressed <name>" -> ESI type_id for each ore name via the public (no-auth) ESI name resolver.
 /// Names with no market match are simply absent from the result. Caller frees both the keys and the map.
@@ -26,28 +122,28 @@ fn resolveOreTypeIds(allocator: std.mem.Allocator, client: *std.http.Client, nam
     const body = try std.json.Stringify.valueAlloc(allocator, prefixed, .{});
     defer allocator.free(body);
 
-    const stdout = http_client.fetch(allocator, client, ESI_BASE ++ "/universe/ids/?datasource=tranquility", .{
+    const response = http_client.fetch(allocator, client, ESI_BASE ++ "/universe/ids/?datasource=tranquility", .{
         .content_type = "application/json",
         .payload = body,
     }) catch return result;
-    defer allocator.free(stdout);
+    defer allocator.free(response);
 
-    const parsed = std.json.parseFromSlice(std.json.Value, allocator, stdout, .{}) catch |err| {
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, response, .{}) catch |err| {
         slog.warn("Failed to parse ESI universe/ids response: {}", .{err});
         return result;
     };
     defer parsed.deinit();
 
     if (parsed.value != .object) {
-        slog.warn("ESI universe/ids response was not a JSON object: {s}", .{stdout});
+        slog.warn("ESI universe/ids response was not a JSON object: {s}", .{response});
         return result;
     }
     const inventory_types = parsed.value.object.get("inventory_types") orelse {
-        slog.warn("ESI universe/ids response had no inventory_types field: {s}", .{stdout});
+        slog.warn("ESI universe/ids response had no inventory_types field: {s}", .{response});
         return result;
     };
     if (inventory_types != .array) {
-        slog.warn("ESI universe/ids inventory_types was not an array: {s}", .{stdout});
+        slog.warn("ESI universe/ids inventory_types was not an array: {s}", .{response});
         return result;
     }
 
@@ -78,10 +174,10 @@ fn fetchJitaBuyPrice(allocator: std.mem.Allocator, client: *std.http.Client, typ
     };
     defer allocator.free(url);
 
-    const stdout = http_client.fetch(allocator, client, url, .{}) catch return null;
-    defer allocator.free(stdout);
+    const response = http_client.fetch(allocator, client, url, .{}) catch return null;
+    defer allocator.free(response);
 
-    const parsed = std.json.parseFromSlice(std.json.Value, allocator, stdout, .{}) catch |err| {
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, response, .{}) catch |err| {
         slog.warn("Failed to parse ESI price response for type_id {}: {}", .{ type_id, err });
         return null;
     };
@@ -105,24 +201,6 @@ fn fetchJitaBuyPrice(allocator: std.mem.Allocator, client: *std.http.Client, typ
     return best;
 }
 
-/// Caps how many HTTP requests run at once for a price fetch - bounded so this stays polite to ESI rather than opening dozens of connections at once.
-const MAX_CONCURRENT_PRICE_REQUESTS = 8;
-
-const PriceLookup = struct {
-    name: []const u8,
-    type_id: i64,
-};
-
-const PriceFetchContext = struct {
-    allocator: std.mem.Allocator,
-    io: std.Io,
-    client: *std.http.Client,
-    lookups: []const PriceLookup,
-    next_index: std.atomic.Value(usize),
-    results_mutex: std.Io.Mutex = .init,
-    results: *std.ArrayList(Price),
-};
-
 /// Pulls lookups off ctx's shared index until exhausted; safe to run on several threads (including the caller's) at once.
 fn priceFetchWorker(ctx: *PriceFetchContext) void {
     while (true) {
@@ -133,88 +211,12 @@ fn priceFetchWorker(ctx: *PriceFetchContext) void {
         const price = fetchJitaBuyPrice(ctx.allocator, ctx.client, lookup.type_id) orelse continue;
 
         ctx.results_mutex.lock(ctx.io) catch |err| {
-            slog.warn("Failed to lock price results mutex for {s}: {}", .{ lookup.name, err });
+            slog.warn("Failed to lock price results mutex for '{s}': {}", .{ lookup.name, err });
             continue;
         };
         defer ctx.results_mutex.unlock(ctx.io);
         ctx.results.append(ctx.allocator, .{ .name = lookup.name, .price = price }) catch |err| {
-            slog.warn("Failed to store price for {s}: {}", .{ lookup.name, err });
+            slog.warn("Failed to store price for '{s}': {}", .{ lookup.name, err });
         };
     }
-}
-
-pub const Price = struct {
-    name: []const u8,
-    price: f64,
-};
-
-/// Serialized as a `{name: price}` object.
-pub const Prices = struct {
-    items: []const Price,
-
-    pub fn jsonStringify(self: Prices, jw: anytype) !void {
-        try jw.beginObject();
-        for (self.items) |p| {
-            try jw.objectField(p.name);
-            try jw.write(p.price);
-        }
-        try jw.endObject();
-    }
-};
-
-/// Looks up each ore name's Jita buy price via its compressed variant (readily liquid there) using the public ESI API - no key required.
-/// Names with no market match are left out. `gpa` must be thread-safe, since the requests run in parallel; the result is allocated from `out`.
-pub fn fetchOrePrices(gpa: std.mem.Allocator, out: std.mem.Allocator, io: std.Io, names: []const []const u8) !Prices {
-    var client: std.http.Client = .{ .allocator = gpa, .io = io };
-    defer client.deinit();
-
-    var type_ids = try resolveOreTypeIds(gpa, &client, names);
-    defer {
-        var key_it = type_ids.keyIterator();
-        while (key_it.next()) |k| gpa.free(k.*);
-        type_ids.deinit();
-    }
-
-    var results: std.ArrayList(Price) = .empty;
-    defer results.deinit(gpa);
-
-    const lookups = try gpa.alloc(PriceLookup, type_ids.count());
-    defer gpa.free(lookups);
-    {
-        var idx: usize = 0;
-        var it = type_ids.iterator();
-        while (it.next()) |entry| : (idx += 1) {
-            lookups[idx] = .{ .name = entry.key_ptr.*, .type_id = entry.value_ptr.* };
-        }
-    }
-
-    if (lookups.len > 0) {
-        var ctx = PriceFetchContext{
-            .allocator = gpa,
-            .io = io,
-            .client = &client,
-            .lookups = lookups,
-            .next_index = std.atomic.Value(usize).init(0),
-            .results = &results,
-        };
-
-        // Spawn up to MAX_CONCURRENT_PRICE_REQUESTS - 1 background workers; the calling thread pulls from the same queue as the last one, so a failed spawn just means less parallelism, not less work done.
-        const worker_count = @min(MAX_CONCURRENT_PRICE_REQUESTS, lookups.len);
-        var threads = [_]?std.Thread{null} ** (MAX_CONCURRENT_PRICE_REQUESTS - 1);
-        const background_workers = worker_count - 1;
-        for (threads[0..background_workers]) |*slot| {
-            slot.* = std.Thread.spawn(.{}, priceFetchWorker, .{&ctx}) catch |err| blk: {
-                slog.warn("Failed to spawn price-fetch worker: {}", .{err});
-                break :blk null;
-            };
-        }
-        priceFetchWorker(&ctx);
-        for (threads[0..background_workers]) |maybe_t| {
-            if (maybe_t) |t| t.join();
-        }
-    }
-
-    const copied = try out.alloc(Price, results.items.len);
-    for (results.items, copied) |r, *c| c.* = .{ .name = try out.dupe(u8, r.name), .price = r.price };
-    return .{ .items = copied };
 }

@@ -1,6 +1,7 @@
+//! Ultra Potato Mode: forces EVE's graphics settings files to their lowest quality, keeping a backup of each.
 const std = @import("std");
+const config = @import("../../config.zig");
 const log = @import("../../log.zig");
-const config_mod = @import("../../config.zig");
 
 const slog = log.scoped("ultra_potato");
 
@@ -22,9 +23,26 @@ pub const Profile = struct {
     label: []const u8,
 };
 
+pub const ApplyResult = struct {
+    path: []const u8,
+    success: bool,
+    changed: bool,
+    error_message: ?[:0]const u8,
+};
+
+const PatchOutcome = struct {
+    text: []u8,
+    changed: bool,
+};
+
+const PatchedLine = struct {
+    text: []const u8,
+    changed: bool,
+};
+
 /// Scans %LOCALAPPDATA%\CCP\EVE\*\settings*\ for core_public__.yaml files - EVE's shared graphics settings, one per client install / settings profile (multiboxers keep several, e.g. settings_Default, settings_<CharName>).
 pub fn scanProfiles(allocator: std.mem.Allocator, io: std.Io, environ_map: *const std.process.Environ.Map) ![]Profile {
-    var profiles = std.ArrayList(Profile).empty;
+    var profiles: std.ArrayList(Profile) = .empty;
     errdefer {
         for (profiles.items) |p| {
             allocator.free(p.path);
@@ -76,6 +94,7 @@ pub fn scanProfiles(allocator: std.mem.Allocator, io: std.Io, environ_map: *cons
             const yaml_path = try std.fs.path.join(allocator, &[_][]const u8{ install_path, settings_entry.name, "core_public__.yaml" });
             errdefer allocator.free(yaml_path);
 
+            // Not every settings folder has one.
             const probe = std.Io.Dir.cwd().openFile(io, yaml_path, .{}) catch {
                 allocator.free(yaml_path);
                 continue;
@@ -91,13 +110,6 @@ pub fn scanProfiles(allocator: std.mem.Allocator, io: std.Io, environ_map: *cons
 
     return try profiles.toOwnedSlice(allocator);
 }
-
-pub const ApplyResult = struct {
-    path: []const u8,
-    success: bool,
-    changed: bool,
-    error_message: ?[:0]const u8,
-};
 
 pub fn applyToFiles(allocator: std.mem.Allocator, io: std.Io, paths: []const []const u8) ![]ApplyResult {
     var results = try allocator.alloc(ApplyResult, paths.len);
@@ -131,7 +143,7 @@ fn applyToOneFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !A
         return .{ .path = path_copy, .success = true, .changed = false, .error_message = null };
     }
 
-    config_mod.atomicWriteFile(allocator, io, path, outcome.text) catch |err| {
+    config.atomicWriteFile(allocator, io, path, outcome.text) catch |err| {
         return .{ .path = path_copy, .success = false, .changed = false, .error_message = @errorName(err) };
     };
 
@@ -158,14 +170,9 @@ fn makeBackup(io: std.Io, path: []const u8, allocator: std.mem.Allocator) bool {
     return true;
 }
 
-const PatchOutcome = struct {
-    text: []u8,
-    changed: bool,
-};
-
 /// Line-oriented text patch rather than a full YAML parse/re-serialize, so untouched keys, comments, and formatting survive byte-for-byte.
 fn patchYamlText(allocator: std.mem.Allocator, original: []const u8) !PatchOutcome {
-    var out = std.ArrayList(u8).empty;
+    var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(allocator);
 
     var any_changed = false;
@@ -183,11 +190,6 @@ fn patchYamlText(allocator: std.mem.Allocator, original: []const u8) !PatchOutco
 
     return .{ .text = try out.toOwnedSlice(allocator), .changed = any_changed };
 }
-
-const PatchedLine = struct {
-    text: []const u8,
-    changed: bool,
-};
 
 /// Matches lines shaped like `  keyName: [connectionId, value]` for a key in TARGET_KEYS and rewrites `value` to -300 if it isn't already.
 fn patchLine(allocator: std.mem.Allocator, line: []const u8) !PatchedLine {
