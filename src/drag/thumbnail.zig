@@ -1,13 +1,13 @@
+//! Right-button drag of a thumbnail and its linked text overlay; holding Ctrl moves every thumbnail together.
 const win32 = @import("../platform/win32.zig");
-const log = @import("../log.zig");
-const slog = log.scoped("drag");
 const painter_mod = @import("../painter.zig");
-const ThumbnailWindow = painter_mod.ThumbnailWindow;
 const overlays = @import("overlays.zig");
 const snapping = @import("snapping.zig");
 const arrange = @import("../thumbnail/arrange.zig");
+const log = @import("../log.zig");
 
-// Right-button drag of a thumbnail and its linked text overlay; holding Ctrl moves every thumbnail together.
+const ThumbnailWindow = painter_mod.ThumbnailWindow;
+const slog = log.scoped("drag");
 
 const DragState = struct {
     is_dragging: bool = false,
@@ -36,7 +36,7 @@ pub fn start(hwnd: win32.HWND, lParam: win32.LPARAM) void {
 
     if (painter.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
         painter.renderThumbnail(thumbnail) catch |err| {
-            slog.err("Failed to render dragging thumbnail for {s}: {}", .{ thumbnail.character_name, err });
+            slog.err("Failed to render dragging thumbnail for '{s}': {}", .{ thumbnail.character_name, err });
         };
         if (painter.config.snapping.showGhostPositionBorders) {
             painter.ghost_overlay.show(painter, thumbnail.character_name);
@@ -55,11 +55,10 @@ pub fn end(hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
     const painter = painter_mod.g_painter_ptr orelse return;
     if (painter.getThumbnailByOverlayHwnd(hwnd)) |thumbnail| {
         painter.renderThumbnail(thumbnail) catch |err| {
-            slog.err("Failed to render thumbnail after drag for {s}: {}", .{ thumbnail.character_name, err });
+            slog.err("Failed to render thumbnail after drag for '{s}': {}", .{ thumbnail.character_name, err });
         };
     }
 
-    // Ctrl held during drag means all thumbnails moved together
     if (win32.isCtrlPressed()) {
         painter.saveAllThumbnailPositions();
     } else {
@@ -77,7 +76,7 @@ fn stop() void {
     }
 }
 
-/// Handles mouse move during drag; thumbnail and text-overlay windows are linked and moved together.
+/// The thumbnail and its text overlay move together.
 pub fn move(hwnd: win32.HWND, lParam: win32.LPARAM) void {
     if (!g_drag_state.is_dragging or g_drag_state.hwnd != hwnd) return;
 
@@ -120,7 +119,6 @@ pub fn move(hwnd: win32.HWND, lParam: win32.LPARAM) void {
             _ = win32.EndDeferWindowPos(hdwp);
         }
     } else {
-        // Apply snapping only when dragging single thumbnail
         const snapped = snapping.applySnapping(new_x, new_y, width, height, hwnd);
 
         const painter = painter_mod.g_painter_ptr orelse return;

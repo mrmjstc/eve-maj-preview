@@ -1,7 +1,6 @@
+//! Dragging for the list view and History Panel: their header strip is the drag handle, and Windows moves them while we snap.
 const win32 = @import("../platform/win32.zig");
 const snapping = @import("snapping.zig");
-
-// Dragging for the list view and History Panel: their header strip is the drag handle, and Windows moves them while we snap.
 
 const HTCAPTION: win32.LRESULT = 2;
 const HTCLIENT: win32.LRESULT = 1;

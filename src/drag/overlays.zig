@@ -1,15 +1,16 @@
+//! The ghost overlay outlining saved positions while something is dragged, and the drag hint.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const color_mod = @import("../util/color.zig");
+const color = @import("../util/color.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
-const log = @import("../log.zig");
-const slog = log.scoped("drag_overlays");
 const painter_mod = @import("../painter.zig");
 const draw = @import("../thumbnail/draw.zig");
 const monitors = @import("../layout/monitors.zig");
 const arrange = @import("../thumbnail/arrange.zig");
+const log = @import("../log.zig");
 
 const Painter = painter_mod.Painter;
+const slog = log.scoped("drag_overlays");
 
 const WINDOW_CLASS_NAME = "EVE_GHOST_OVERLAY_CLASS";
 
@@ -19,75 +20,12 @@ pub const GhostGroup = struct {
     names: []const u8,
 };
 
-fn ghostRectsEqual(a: win32.RECT, b: win32.RECT) bool {
-    return a.left == b.left and a.top == b.top and a.right == b.right and a.bottom == b.bottom;
-}
-
-/// Saved positions for every other character in the profile, grouped by exact rect match (identical x/y/w/h counts as "stacked"). Caller owns the returned slice and each group's `names`.
-pub fn collectGhostGroups(painter: *const Painter, exclude_character: []const u8) ![]GhostGroup {
-    const allocator = painter.allocator;
-    const RawEntry = struct { name: []const u8, rect: win32.RECT };
-
-    var raw = std.ArrayList(RawEntry).empty;
-    defer raw.deinit(allocator);
-
-    const region_fit_grid = if (arrange.regionFit(painter, painter.layout().regionFitGridCount())) |rf| rf.grid else null;
-
-    for (painter.config.characters.items) |char_config| {
-        if (std.mem.eql(u8, char_config.name, exclude_character)) continue;
-        const pos = char_config.position orelse continue;
-        const size = painter.layout().getThumbnailSize(char_config.name, painter.thumbnails.items.len, region_fit_grid);
-        try raw.append(allocator, .{
-            .name = char_config.name,
-            .rect = .{ .left = pos.x, .top = pos.y, .right = pos.x + size.width, .bottom = pos.y + size.height },
-        });
-    }
-
-    var groups = std.ArrayList(GhostGroup).empty;
-    errdefer {
-        for (groups.items) |g| allocator.free(g.names);
-        groups.deinit(allocator);
-    }
-
-    const used = try allocator.alloc(bool, raw.items.len);
-    defer allocator.free(used);
-    @memset(used, false);
-
-    for (raw.items, 0..) |entry, i| {
-        if (used[i]) continue;
-        used[i] = true;
-
-        var names = std.ArrayList(u8).empty;
-        defer names.deinit(allocator);
-        try names.appendSlice(allocator, entry.name);
-
-        for (raw.items[i + 1 ..], i + 1..) |other, j| {
-            if (used[j] or !ghostRectsEqual(entry.rect, other.rect)) continue;
-            used[j] = true;
-            try names.appendSlice(allocator, ", ");
-            try names.appendSlice(allocator, other.name);
-        }
-
-        try groups.append(allocator, .{ .rect = entry.rect, .names = try names.toOwnedSlice(allocator) });
-    }
-
-    return groups.toOwnedSlice(allocator);
-}
-
-var g_class_registered = false;
-
-fn registerWindowClass(instance: win32.HINSTANCE) !void {
-    if (g_class_registered) return;
-    try gdi_overlay.registerWindowClass(instance, win32.DefWindowProcA, WINDOW_CLASS_NAME, null);
-    g_class_registered = true;
-}
-
 /// A topmost, click-through overlay outlining every other saved position while a thumbnail or panel is dragged. Created lazily, hidden (not destroyed) between drags.
 pub const GhostOverlay = struct {
     allocator: std.mem.Allocator,
     hwnd: ?win32.HWND = null,
     bitmap: ?gdi_overlay.OverlayBitmap = null,
-    /// Computed once by show at drag-start; applyGhostSnapping reuses this for the rest of the drag instead of recomputing on every mouse move. Null while the overlay is hidden.
+    /// Set by show for the whole drag, so snapping needn't recompute it every mouse move; null while hidden.
     groups: ?[]GhostGroup = null,
 
     pub fn init(allocator: std.mem.Allocator) GhostOverlay {
@@ -100,7 +38,7 @@ pub const GhostOverlay = struct {
         if (self.hwnd) |hwnd| _ = win32.DestroyWindow(hwnd);
     }
 
-    /// Frees the groups populated by show (if any). Called on every exit path (hide, deinit) plus defensively at the start of show, so applyGhostSnapping never reads a stale slice.
+    /// Also run at the start of show, so snapping never reads a stale slice.
     fn clearGroups(self: *GhostOverlay) void {
         if (self.groups) |groups| {
             for (groups) |g| self.allocator.free(g.names);
@@ -109,7 +47,7 @@ pub const GhostOverlay = struct {
         }
     }
 
-    /// Shows (creating on first use) a topmost, click-through overlay outlining every other saved position in the profile; called once when a drag starts. Ghosts are static for the duration of the drag, so the computed groups are cached for snapping.zig's applyGhostSnapping to reuse (see groups).
+    /// Called once when a drag starts, since the ghosts don't change during it.
     pub fn show(self: *GhostOverlay, painter: *Painter, exclude_character: []const u8) void {
         self.clearGroups();
 
@@ -189,7 +127,7 @@ pub const GhostOverlay = struct {
         }
 
         // Same hue as the focused/active thumbnail border, at reduced alpha so it still reads as a ghost rather than a real thumbnail.
-        const outline_color: u32 = color_mod.withAlpha(painter.config.thumbnail.borderColor, 0xB0);
+        const outline_color: u32 = color.withAlpha(painter.config.thumbnail.borderColor, 0xB0);
         const text_color: u32 = 0xE0FFFFFF;
 
         for (groups) |group| {
@@ -218,6 +156,59 @@ pub const GhostOverlay = struct {
     }
 };
 
+var g_class_registered = false;
+
+/// Saved positions for every other character in the profile, grouped by exact rect match (identical x/y/w/h counts as "stacked"). Caller owns the returned slice and each group's `names`.
+pub fn collectGhostGroups(painter: *const Painter, exclude_character: []const u8) ![]GhostGroup {
+    const allocator = painter.allocator;
+    const RawEntry = struct { name: []const u8, rect: win32.RECT };
+
+    var raw: std.ArrayList(RawEntry) = .empty;
+    defer raw.deinit(allocator);
+
+    const region_fit_grid = if (arrange.regionFit(painter, painter.layout().regionFitGridCount())) |rf| rf.grid else null;
+
+    for (painter.config.characters.items) |char_config| {
+        if (std.mem.eql(u8, char_config.name, exclude_character)) continue;
+        const pos = char_config.position orelse continue;
+        const size = painter.layout().getThumbnailSize(char_config.name, painter.thumbnails.items.len, region_fit_grid);
+        try raw.append(allocator, .{
+            .name = char_config.name,
+            .rect = .{ .left = pos.x, .top = pos.y, .right = pos.x + size.width, .bottom = pos.y + size.height },
+        });
+    }
+
+    var groups: std.ArrayList(GhostGroup) = .empty;
+    errdefer {
+        for (groups.items) |g| allocator.free(g.names);
+        groups.deinit(allocator);
+    }
+
+    const used = try allocator.alloc(bool, raw.items.len);
+    defer allocator.free(used);
+    @memset(used, false);
+
+    for (raw.items, 0..) |entry, i| {
+        if (used[i]) continue;
+        used[i] = true;
+
+        var names: std.ArrayList(u8) = .empty;
+        defer names.deinit(allocator);
+        try names.appendSlice(allocator, entry.name);
+
+        for (raw.items[i + 1 ..], i + 1..) |other, j| {
+            if (used[j] or !std.meta.eql(entry.rect, other.rect)) continue;
+            used[j] = true;
+            try names.appendSlice(allocator, ", ");
+            try names.appendSlice(allocator, other.name);
+        }
+
+        try groups.append(allocator, .{ .rect = entry.rect, .names = try names.toOwnedSlice(allocator) });
+    }
+
+    return groups.toOwnedSlice(allocator);
+}
+
 /// Hint box centered on the monitor nearest `dragging_hwnd`; called once when a drag starts, static for its duration.
 pub fn showDragHint(painter: *Painter, dragging_hwnd: win32.HWND) void {
     const nearest = monitors.nearestMonitorBounds(dragging_hwnd);
@@ -226,4 +217,10 @@ pub fn showDragHint(painter: *Painter, dragging_hwnd: win32.HWND) void {
         return;
     };
     painter.hint_box.show(painter.instance, font, painter.config.thumbnail.characterNameColor | 0xFF000000, "Hold Ctrl to move all thumbnails together", "Turn off dragging from the tray icon or settings", nearest.bounds);
+}
+
+fn registerWindowClass(instance: win32.HINSTANCE) !void {
+    if (g_class_registered) return;
+    try gdi_overlay.registerWindowClass(instance, win32.DefWindowProcA, WINDOW_CLASS_NAME, null);
+    g_class_registered = true;
 }

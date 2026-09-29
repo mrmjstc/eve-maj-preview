@@ -1,12 +1,41 @@
+//! Snapping a dragged window to screen edges, other thumbnails and saved (ghost) positions.
 const win32 = @import("../platform/win32.zig");
 const painter_mod = @import("../painter.zig");
 const monitors = @import("../layout/monitors.zig");
 const overlays = @import("overlays.zig");
+const log = @import("../log.zig");
 
 const Painter = painter_mod.Painter;
 const GhostGroup = overlays.GhostGroup;
+const slog = log.scoped("drag");
 
 pub const SnapPosition = struct { x: i32, y: i32 };
+
+/// Screen edges, then thumbnail edges, then ghost positions, each snapping the previous result.
+pub fn applySnapping(x: i32, y: i32, width: i32, height: i32, dragging_hwnd: win32.HWND) SnapPosition {
+    const painter = painter_mod.g_painter_ptr orelse return .{ .x = x, .y = y };
+
+    if (!painter.config.snapping.enabled) {
+        return .{ .x = x, .y = y };
+    }
+
+    const threshold = painter.config.snapping.threshold;
+    var result = SnapPosition{ .x = x, .y = y };
+
+    if (painter.config.snapping.screenEdges) {
+        result = applyScreenEdgeSnapping(result.x, result.y, width, height, threshold, dragging_hwnd);
+    }
+
+    if (painter.config.snapping.thumbnailEdges) {
+        result = applyThumbnailEdgeSnapping(result.x, result.y, width, height, threshold, dragging_hwnd, painter);
+    }
+
+    if (painter.config.snapping.ghostPositions) {
+        result = applyGhostSnapping(result.x, result.y, width, height, threshold, dragging_hwnd, painter);
+    }
+
+    return result;
+}
 
 pub fn applyScreenEdgeSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i32, dragging_hwnd: win32.HWND) SnapPosition {
     var snapped_x = x;
@@ -137,11 +166,7 @@ fn applyGhostSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i32, d
     // Non-thumbnail draggers (e.g. the notification history panel) own no character, so nothing is excluded from the ghost set.
     const character_name = if (painter.getThumbnailByOverlayHwnd(dragging_hwnd)) |t| t.character_name else "";
 
-    // GhostOverlay.show (called at drag-start by drag/thumbnail.zig's start / notifications/history_panel.zig's WM_ENTERSIZEMOVE) already computed
-    // and cached this for the duration of the drag - reuse it instead of recomputing on every mouse move. Falls back
-    // to a one-off computation for callers that snap without showing the ghost overlay first (list_view.zig's panel
-    // drag never calls GhostOverlay.show/hide); the fallback is deliberately not written back into
-    // GhostOverlay.groups, since nothing would invalidate it afterward for that flow.
+    // Reuses what GhostOverlay.show cached at drag start. A drag that never shows it (the list view's) gets a one-off copy, not cached, since nothing would clear it.
     var owned_fallback: ?[]GhostGroup = null;
     defer if (owned_fallback) |fb| {
         for (fb) |g| painter.allocator.free(g.names);
@@ -149,7 +174,10 @@ fn applyGhostSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i32, d
     };
 
     const groups: []const GhostGroup = painter.ghost_overlay.groups orelse blk: {
-        const fresh = overlays.collectGhostGroups(painter, character_name) catch return .{ .x = x, .y = y };
+        const fresh = overlays.collectGhostGroups(painter, character_name) catch |err| {
+            slog.warn("Failed to collect ghost positions to snap to: {}", .{err});
+            return .{ .x = x, .y = y };
+        };
         owned_fallback = fresh;
         break :blk fresh;
     };
@@ -179,31 +207,4 @@ fn applyGhostSnapping(x: i32, y: i32, width: i32, height: i32, threshold: i32, d
     }
 
     return .{ .x = snapped_x, .y = snapped_y };
-}
-
-/// Applies screen-edge, thumbnail-edge, and saved-ghost-position snapping to a dragged window's position
-pub fn applySnapping(x: i32, y: i32, width: i32, height: i32, dragging_hwnd: win32.HWND) SnapPosition {
-    const painter = painter_mod.g_painter_ptr orelse return .{ .x = x, .y = y };
-
-    if (!painter.config.snapping.enabled) {
-        return .{ .x = x, .y = y };
-    }
-
-    const threshold = painter.config.snapping.threshold;
-    var result = SnapPosition{ .x = x, .y = y };
-
-    if (painter.config.snapping.screenEdges) {
-        result = applyScreenEdgeSnapping(result.x, result.y, width, height, threshold, dragging_hwnd);
-    }
-
-    // Chains off the screen-snapped result so both snaps compose.
-    if (painter.config.snapping.thumbnailEdges) {
-        result = applyThumbnailEdgeSnapping(result.x, result.y, width, height, threshold, dragging_hwnd, painter);
-    }
-
-    if (painter.config.snapping.ghostPositions) {
-        result = applyGhostSnapping(result.x, result.y, width, height, threshold, dragging_hwnd, painter);
-    }
-
-    return result;
 }
