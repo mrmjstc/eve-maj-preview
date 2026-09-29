@@ -15,7 +15,8 @@
         <div id="profile-header">
             <div id="profile-header-left">
                 <span id="app-brand"><span id="app-brand-mark">›</span>EVE-Maj Preview</span>
-                <span id="profile-header-sep"></span>
+            </div>
+            <div id="profile-header-right">
                 <select id="profile-select" onchange="switchProfile()">
                     <option value="default.json" data-i18n="common.defaultProfileLabel">default</option>
                 </select>
@@ -25,7 +26,6 @@
                 <button id="reset-profile-btn" class="button-icon button-icon-reset" onclick="resetCurrentProfile()" title="Reset Current Profile to Defaults" data-i18n-title="button.reset-profile-btn.title">↺</button>
                 <button class="button-icon button-icon-import" onclick="openImportModal()" title="Import settings from an old EVE-X Preview, EVE-O Preview, or EVE-APM Preview settings file, or from another EVE-Maj Preview profile" data-i18n-title="button.open-import-modal.title">⇩</button>
             </div>
-            <div id="profile-header-right"></div>
         </div>
 
         <div id="main-content">
