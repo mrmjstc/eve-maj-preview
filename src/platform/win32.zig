@@ -1,3 +1,4 @@
+//! Win32 declarations and thin helpers over them; helpers report failure through their return value and leave logging to callers.
 const std = @import("std");
 
 pub const BOOL = c_int;

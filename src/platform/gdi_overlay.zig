@@ -1,8 +1,17 @@
+//! GDI drawing into DIB-backed layered windows: the bitmap, text and shape helpers, and the shared hint box.
 const std = @import("std");
 const win32 = @import("win32.zig");
 const fonts = @import("fonts.zig");
 const log = @import("../log.zig");
+
 const slog = log.scoped("gdi_overlay");
+
+/// Translucent black backing shared by the small hint boxes and labels drawn over the desktop.
+pub const HINT_BG_COLOR: u32 = 0xC8000000;
+const HINT_BOX_CLASS_NAME = "EVE_HINT_BOX_CLASS";
+// Same per-line padding the thumbnail overlay gives its text runs.
+const HINT_LINE_PAD_X = 5;
+const HINT_LINE_PAD_Y = 2;
 
 /// Top-down 32bpp DIB section selected into its own memory DC, for GDI text/shape rendering
 /// into a pixel buffer that later becomes a layered window's alpha-blended source.
@@ -68,6 +77,106 @@ pub const OverlayBitmap = struct {
     }
 };
 
+pub const ButtonFace = struct {
+    fill: u32,
+    border: u32,
+    text_color: u32,
+    radius: usize,
+    border_px: usize,
+};
+
+/// A topmost, click-through two-line hint box centered in given bounds, shared by dragging and region select. Created lazily, hidden (not destroyed) between uses.
+pub const HintBox = struct {
+    hwnd: ?win32.HWND = null,
+    bitmap: ?OverlayBitmap = null,
+
+    pub fn deinit(self: *HintBox) void {
+        if (self.bitmap) |bitmap| bitmap.destroy();
+        if (self.hwnd) |hwnd| _ = win32.DestroyWindow(hwnd);
+    }
+
+    pub fn show(self: *HintBox, instance: win32.HINSTANCE, font: win32.HFONT, text_color: u32, line1: []const u8, line2: []const u8, bounds: win32.RECT) void {
+        const init_dc = win32.GetDC(null) orelse return;
+        defer _ = win32.ReleaseDC(null, init_dc);
+        const old_measure_font = win32.SelectObject(init_dc, font);
+        const dims1 = hintLineSize(init_dc, line1);
+        const dims2 = hintLineSize(init_dc, line2);
+        if (old_measure_font) |of| _ = win32.SelectObject(init_dc, of);
+
+        const line_gap = 4;
+        const box_padding = 10;
+        const content_width = @max(dims1.width, dims2.width);
+        const content_height = dims1.height + dims2.height + line_gap;
+        const width: i32 = @intCast(content_width + box_padding * 2);
+        const height: i32 = @intCast(content_height + box_padding * 2);
+
+        const x = bounds.left + @divTrunc((bounds.right - bounds.left) - width, 2);
+        const y = bounds.top + @divTrunc((bounds.bottom - bounds.top) - height, 2);
+
+        if (self.hwnd) |hwnd| {
+            _ = win32.SetWindowPos(hwnd, win32.HWND_TOPMOST, x, y, width, height, win32.SWP_NOACTIVATE);
+        } else {
+            registerHintBoxClass(instance) catch |err| {
+                slog.err("Failed to register the hint box window class: {}", .{err});
+                return;
+            };
+            self.hwnd = win32.CreateWindowExA(
+                win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_NOACTIVATE | win32.WS_EX_TRANSPARENT,
+                HINT_BOX_CLASS_NAME,
+                "",
+                win32.WS_POPUP,
+                x,
+                y,
+                width,
+                height,
+                null,
+                null,
+                instance,
+                null,
+            ) orelse {
+                slog.err("Failed to create hint box window", .{});
+                return;
+            };
+        }
+
+        const hwnd = self.hwnd.?;
+
+        if (OverlayBitmap.needsResize(self.bitmap, width, height)) {
+            OverlayBitmap.recreate(&self.bitmap, init_dc, width, height) catch |err| {
+                slog.err("Failed to allocate hint box bitmap: {}", .{err});
+                return;
+            };
+        }
+
+        const overlay = &self.bitmap.?;
+        fillRect(overlay.pixels, overlay.width, overlay.height, 0, 0, overlay.width, overlay.height, HINT_BG_COLOR);
+
+        const old_font = win32.SelectObject(overlay.mem_dc, font);
+        defer {
+            if (old_font) |of| _ = win32.SelectObject(overlay.mem_dc, of);
+        }
+
+        drawTextUtf8(256, overlay.mem_dc, box_padding + HINT_LINE_PAD_X, box_padding + HINT_LINE_PAD_Y, line1, text_color);
+        fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, box_padding, box_padding, dims1.width, dims1.height);
+
+        const line2_y: i32 = @intCast(box_padding + dims1.height + line_gap);
+        drawTextUtf8(256, overlay.mem_dc, box_padding + HINT_LINE_PAD_X, line2_y + HINT_LINE_PAD_Y, line2, text_color);
+        fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, box_padding, line2_y, dims2.width, dims2.height);
+
+        presentLayered(hwnd, overlay, 255);
+
+        _ = win32.ShowWindow(hwnd, win32.SW_SHOWNOACTIVATE);
+    }
+
+    pub fn hide(self: *HintBox) void {
+        if (self.hwnd) |hwnd| {
+            _ = win32.ShowWindow(hwnd, win32.SW_HIDE);
+        }
+    }
+};
+
+var g_hint_box_class_registered = false;
+
 /// Converts this app's 0xAARRGGBB color into a Win32 COLORREF (0x00BBGGRR) for GDI APIs; without this, SetTextColor swaps red and blue.
 pub fn toColorRef(color: u32) u32 {
     const r = (color >> 16) & 0xFF;
@@ -120,9 +229,6 @@ pub fn toBufZ(comptime buf_size: usize, text: []const u8) [buf_size:0]u8 {
     return buf;
 }
 
-/// Translucent black backing shared by the small hint boxes and labels drawn over the desktop.
-pub const HINT_BG_COLOR: u32 = 0xC8000000;
-
 /// Measures `text` (truncated to `buf_size - 1` bytes) using the currently selected font.
 pub fn measureTextSize(comptime buf_size: usize, dc: win32.HDC, text: []const u8) win32.SIZE {
     const buf = toBufZ(buf_size, text);
@@ -135,14 +241,6 @@ pub fn measureTextSize(comptime buf_size: usize, dc: win32.HDC, text: []const u8
 /// Measures the pixel width of `text` (truncated to `buf_size - 1` bytes) using the currently selected font.
 pub fn measureTextWidth(comptime buf_size: usize, dc: win32.HDC, text: []const u8) usize {
     return @intCast(@max(0, measureTextSize(buf_size, dc, text).cx));
-}
-
-/// UTF-8 to UTF-16 into `out`, truncating to `buf_size` bytes; returns the number of UTF-16 units written.
-fn toWide(comptime buf_size: usize, text: []const u8, out: *[buf_size]u16) usize {
-    const len = @min(text.len, buf_size);
-    if (len == 0) return 0;
-    const written = win32.MultiByteToWideChar(win32.CP_UTF8, 0, text.ptr, @intCast(len), out, @intCast(buf_size));
-    return @intCast(@max(0, written));
 }
 
 /// Like `measureTextSize`, for UTF-8 text such as translated labels.
@@ -201,14 +299,6 @@ pub fn createInstalledFont(dc: win32.HDC, name: [:0]const u8, height_px: i32, we
     _ = win32.DeleteObject(font);
     return null;
 }
-
-pub const ButtonFace = struct {
-    fill: u32,
-    border: u32,
-    text_color: u32,
-    radius: usize,
-    border_px: usize,
-};
 
 /// A filled, bordered, rounded button with `label` centered in `font`; `rect` is in bitmap coordinates.
 pub fn drawButtonFace(bmp: *const OverlayBitmap, rect: win32.RECT, label: []const u8, font: win32.HFONT, face: ButtonFace) void {
@@ -379,6 +469,8 @@ pub fn ensureFont(
         win32.DEFAULT_PITCH,
         name_z,
     );
+    // Cached anyway, so a failing font isn't retried and logged every frame.
+    if (font.* == null) slog.err("Failed to create {s} font '{s}'", .{ context, want_name });
 
     allocator.free(cached_name.*);
     cached_name.* = name_copy;
@@ -386,12 +478,13 @@ pub fn ensureFont(
     cached_weight.* = want_weight;
 }
 
-const HINT_BOX_CLASS_NAME = "EVE_HINT_BOX_CLASS";
-// Same per-line padding the thumbnail overlay gives its text runs.
-const HINT_LINE_PAD_X = 5;
-const HINT_LINE_PAD_Y = 2;
-
-var g_hint_box_class_registered = false;
+/// UTF-8 to UTF-16 into `out`, truncating to `buf_size` bytes; returns the number of UTF-16 units written.
+fn toWide(comptime buf_size: usize, text: []const u8, out: *[buf_size]u16) usize {
+    const len = @min(text.len, buf_size);
+    if (len == 0) return 0;
+    const written = win32.MultiByteToWideChar(win32.CP_UTF8, 0, text.ptr, @intCast(len), out, @intCast(buf_size));
+    return @intCast(@max(0, written));
+}
 
 fn registerHintBoxClass(instance: win32.HINSTANCE) !void {
     if (g_hint_box_class_registered) return;
@@ -406,93 +499,3 @@ fn hintLineSize(dc: win32.HDC, text: []const u8) struct { width: usize, height: 
         .height = @intCast(@max(0, size.cy) + HINT_LINE_PAD_Y * 2),
     };
 }
-
-/// A topmost, click-through two-line hint box centered in given bounds, shared by dragging and region select. Created lazily, hidden (not destroyed) between uses.
-pub const HintBox = struct {
-    hwnd: ?win32.HWND = null,
-    bitmap: ?OverlayBitmap = null,
-
-    pub fn deinit(self: *HintBox) void {
-        if (self.bitmap) |bitmap| bitmap.destroy();
-        if (self.hwnd) |hwnd| _ = win32.DestroyWindow(hwnd);
-    }
-
-    pub fn show(self: *HintBox, instance: win32.HINSTANCE, font: win32.HFONT, text_color: u32, line1: []const u8, line2: []const u8, bounds: win32.RECT) void {
-        const init_dc = win32.GetDC(null) orelse return;
-        defer _ = win32.ReleaseDC(null, init_dc);
-        const old_measure_font = win32.SelectObject(init_dc, font);
-        const dims1 = hintLineSize(init_dc, line1);
-        const dims2 = hintLineSize(init_dc, line2);
-        if (old_measure_font) |of| _ = win32.SelectObject(init_dc, of);
-
-        const line_gap = 4;
-        const box_padding = 10;
-        const content_width = @max(dims1.width, dims2.width);
-        const content_height = dims1.height + dims2.height + line_gap;
-        const width: i32 = @intCast(content_width + box_padding * 2);
-        const height: i32 = @intCast(content_height + box_padding * 2);
-
-        const x = bounds.left + @divTrunc((bounds.right - bounds.left) - width, 2);
-        const y = bounds.top + @divTrunc((bounds.bottom - bounds.top) - height, 2);
-
-        if (self.hwnd) |hwnd| {
-            _ = win32.SetWindowPos(hwnd, win32.HWND_TOPMOST, x, y, width, height, win32.SWP_NOACTIVATE);
-        } else {
-            registerHintBoxClass(instance) catch |err| {
-                slog.err("Failed to register the hint box window class: {}", .{err});
-                return;
-            };
-            self.hwnd = win32.CreateWindowExA(
-                win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_NOACTIVATE | win32.WS_EX_TRANSPARENT,
-                HINT_BOX_CLASS_NAME,
-                "",
-                win32.WS_POPUP,
-                x,
-                y,
-                width,
-                height,
-                null,
-                null,
-                instance,
-                null,
-            ) orelse {
-                slog.err("Failed to create hint box window", .{});
-                return;
-            };
-        }
-
-        const hwnd = self.hwnd.?;
-
-        if (OverlayBitmap.needsResize(self.bitmap, width, height)) {
-            OverlayBitmap.recreate(&self.bitmap, init_dc, width, height) catch |err| {
-                slog.err("Failed to allocate hint box bitmap: {}", .{err});
-                return;
-            };
-        }
-
-        const overlay = &self.bitmap.?;
-        fillRect(overlay.pixels, overlay.width, overlay.height, 0, 0, overlay.width, overlay.height, HINT_BG_COLOR);
-
-        const old_font = win32.SelectObject(overlay.mem_dc, font);
-        defer {
-            if (old_font) |of| _ = win32.SelectObject(overlay.mem_dc, of);
-        }
-
-        drawTextUtf8(256, overlay.mem_dc, box_padding + HINT_LINE_PAD_X, box_padding + HINT_LINE_PAD_Y, line1, text_color);
-        fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, box_padding, box_padding, dims1.width, dims1.height);
-
-        const line2_y: i32 = @intCast(box_padding + dims1.height + line_gap);
-        drawTextUtf8(256, overlay.mem_dc, box_padding + HINT_LINE_PAD_X, line2_y + HINT_LINE_PAD_Y, line2, text_color);
-        fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, box_padding, line2_y, dims2.width, dims2.height);
-
-        presentLayered(hwnd, overlay, 255);
-
-        _ = win32.ShowWindow(hwnd, win32.SW_SHOWNOACTIVATE);
-    }
-
-    pub fn hide(self: *HintBox) void {
-        if (self.hwnd) |hwnd| {
-            _ = win32.ShowWindow(hwnd, win32.SW_HIDE);
-        }
-    }
-};

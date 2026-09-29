@@ -22,9 +22,9 @@ pub fn write(jw: *std.json.Stringify) !void {
     try jw.objectField("notificationTypes");
     try writeNotificationTypes(jw);
     try jw.objectField("keys");
-    try jw.write(vk.key_names);
+    try jw.write(vk.KEY_NAMES);
     try jw.objectField("modifiers");
-    try jw.write(vk.modifier_names);
+    try jw.write(vk.MODIFIER_NAMES);
     try jw.objectField("profileNameMaxLength");
     try jw.write(profiles.MAX_NAME_LEN);
     try jw.endObject();

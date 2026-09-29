@@ -1,9 +1,8 @@
-// SetForegroundWindow silently refuses unless the caller just received real input, which a hotkey
-// dispatched via the low-level keyboard/mouse hooks doesn't carry. A permanently-registered, physically
-// unreachable RegisterHotKey "conduit" binding stays alive purely to borrow that exemption on demand.
+//! Brings a window to the foreground from a hook-dispatched hotkey, borrowing WM_HOTKEY's foreground rights through an unreachable "conduit" hotkey.
 const win32 = @import("win32.zig");
 const virtual_keys = @import("virtual_keys.zig");
 const log = @import("../log.zig");
+
 const slog = log.scoped("focus_grant");
 
 const FOCUS_GRANT_VK: win32.UINT = virtual_keys.VK_FOCUS_GRANT;
@@ -50,8 +49,7 @@ pub fn handleWmHotkey(id: c_int) bool {
     return true;
 }
 
-/// Direct SetForegroundWindow is a same-process fast path; the conduit hotkey is the reliable
-/// (async) path for the cross-process case, which plain SetForegroundWindow can't do alone.
+/// SetForegroundWindow refuses without fresh real input, which hook-dispatched hotkeys lack; the direct call covers our own windows, the async conduit hotkey everything else.
 pub fn forceSetForegroundWindow(target_hwnd: win32.HWND) void {
     _ = win32.SetForegroundWindow(target_hwnd);
     _ = win32.SetFocus(target_hwnd);

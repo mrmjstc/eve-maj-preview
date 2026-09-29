@@ -1,6 +1,8 @@
+//! Virtual-key codes, and the combined key+modifier value hotkeys are stored as, with its names and parsing.
 const std = @import("std");
 const win32 = @import("win32.zig");
 const log = @import("../log.zig");
+
 const slog = log.scoped("virtual_keys");
 
 pub const VK_F1: u32 = 0x70;
@@ -69,40 +71,10 @@ const MOD_SHIFT_AMOUNT: u5 = 8;
 const VK_MASK: u32 = 0xFF;
 const MOD_MASK: u32 = 0x0F;
 
-/// Extract the base virtual key code from a combined key+modifiers value
-pub fn extractVk(combined: u32) u32 {
-    return combined & VK_MASK;
-}
-
-/// Extract the modifier flags (MOD_ALT | MOD_CONTROL | MOD_SHIFT | MOD_WIN) from a combined value
-pub fn extractModifiers(combined: u32) u32 {
-    return (combined >> MOD_SHIFT_AMOUNT) & MOD_MASK;
-}
-
-/// Pack a base virtual key code and modifier flags into a single combined value
-pub fn combineKey(vk_code: u32, modifiers: u32) u32 {
-    return (vk_code & VK_MASK) | ((modifiers & MOD_MASK) << MOD_SHIFT_AMOUNT);
-}
-
-/// Whether vk_code is a mouse button or wheel direction, bound via mouse_hook.zig instead of keyboard_hook.zig.
-pub fn isMouseHookVk(vk_code: u32) bool {
-    return vk_code == VK_XBUTTON1 or vk_code == VK_XBUTTON2 or vk_code == VK_WHEELUP or vk_code == VK_WHEELDOWN;
-}
-
-/// Currently-held modifier keys, read via GetAsyncKeyState; shared by mouse_hook.zig and keyboard_hook.zig.
-pub fn currentModifiers() u32 {
-    var mods: u32 = 0;
-    if (win32.isCtrlPressed()) mods |= MOD_CONTROL;
-    if (win32.isAltPressed()) mods |= MOD_ALT;
-    if (win32.isShiftPressed()) mods |= MOD_SHIFT;
-    if (win32.isWinPressed()) mods |= MOD_WIN;
-    return mods;
-}
-
 pub const KeyName = struct { vk: u32, name: []const u8 };
 
 /// Every key a binding can use, in the spelling it's shown and typed in; the config dialog's recorder offers exactly these.
-pub const key_names: []const KeyName = blk: {
+pub const KEY_NAMES: []const KeyName = blk: {
     @setEvalBranchQuota(10_000);
     var list: []const KeyName = &.{};
     for (1..25) |n| list = list ++ &[_]KeyName{.{ .vk = VK_F1 + @as(u32, @intCast(n)) - 1, .name = std.fmt.comptimePrint("F{d}", .{n}) }};
@@ -167,24 +139,52 @@ pub const key_names: []const KeyName = blk: {
 };
 
 /// The prefix each modifier flag is written with, in the order they're written.
-pub const modifier_names = [_]struct { flag: u32, name: []const u8 }{
+pub const MODIFIER_NAMES = [_]struct { flag: u32, name: []const u8 }{
     .{ .flag = MOD_CONTROL, .name = "Ctrl" },
     .{ .flag = MOD_ALT, .name = "Alt" },
     .{ .flag = MOD_SHIFT, .name = "Shift" },
     .{ .flag = MOD_WIN, .name = "Win" },
 };
 
+pub fn extractVk(combined: u32) u32 {
+    return combined & VK_MASK;
+}
+
+pub fn extractModifiers(combined: u32) u32 {
+    return (combined >> MOD_SHIFT_AMOUNT) & MOD_MASK;
+}
+
+/// The base key in the low byte and MOD_* flags in bits 8-11; the form every hotkey is stored in.
+pub fn combineKey(vk_code: u32, modifiers: u32) u32 {
+    return (vk_code & VK_MASK) | ((modifiers & MOD_MASK) << MOD_SHIFT_AMOUNT);
+}
+
+/// Whether vk_code is a mouse button or wheel direction, bound via mouse_hook.zig instead of keyboard_hook.zig.
+pub fn isMouseHookVk(vk_code: u32) bool {
+    return vk_code == VK_XBUTTON1 or vk_code == VK_XBUTTON2 or vk_code == VK_WHEELUP or vk_code == VK_WHEELDOWN;
+}
+
+/// Currently-held modifier keys, read via GetAsyncKeyState; shared by mouse_hook.zig and keyboard_hook.zig.
+pub fn currentModifiers() u32 {
+    var mods: u32 = 0;
+    if (win32.isCtrlPressed()) mods |= MOD_CONTROL;
+    if (win32.isAltPressed()) mods |= MOD_ALT;
+    if (win32.isShiftPressed()) mods |= MOD_SHIFT;
+    if (win32.isWinPressed()) mods |= MOD_WIN;
+    return mods;
+}
+
 pub fn keyName(vk_code: u32) ?[]const u8 {
-    for (key_names) |key| {
+    for (KEY_NAMES) |key| {
         if (key.vk == vk_code) return key.name;
     }
     return null;
 }
 
-/// Write virtual key code (plus any modifiers) as a human-readable string, e.g. "Ctrl+F9"
+/// e.g. "Ctrl+F9"; a key without a name is written "VK<hex>".
 pub fn writeVirtualKey(writer: anytype, combined: u32) !void {
     const modifiers = extractModifiers(combined);
-    for (modifier_names) |modifier| {
+    for (MODIFIER_NAMES) |modifier| {
         if (modifiers & modifier.flag != 0) try writer.print("{s}+", .{modifier.name});
     }
     const vk_code = extractVk(combined);
@@ -195,8 +195,6 @@ pub fn writeVirtualKey(writer: anytype, combined: u32) !void {
     }
 }
 
-/// Parse a single modifier token ("Ctrl", "Control", "Alt", "Shift", "Win", "LWin", "RWin").
-/// Returns null if the token isn't a recognized modifier name.
 fn parseModifierToken(token: []const u8) ?u32 {
     if (std.ascii.eqlIgnoreCase(token, "ctrl") or std.ascii.eqlIgnoreCase(token, "control")) return MOD_CONTROL;
     if (std.ascii.eqlIgnoreCase(token, "alt")) return MOD_ALT;
@@ -205,10 +203,9 @@ fn parseModifierToken(token: []const u8) ?u32 {
     return null;
 }
 
-/// A name from key_names, or one of the aliases hand-edited profiles may use (a shifted OEM character, "Control", "LWin", "RWin").
+/// A name from KEY_NAMES, or one of the aliases hand-edited profiles may use (a shifted OEM character, "Control", "LWin", "RWin").
 fn parseBaseKey(key_str: []const u8) ?u32 {
-    if (key_str.len == 0) return null;
-    for (key_names) |key| {
+    for (KEY_NAMES) |key| {
         if (std.ascii.eqlIgnoreCase(key.name, key_str)) return key.vk;
     }
 
@@ -232,15 +229,11 @@ fn parseBaseKey(key_str: []const u8) ?u32 {
     if (std.ascii.eqlIgnoreCase(key_str, "control")) return VK_CONTROL;
     if (std.ascii.eqlIgnoreCase(key_str, "lwin") or std.ascii.eqlIgnoreCase(key_str, "rwin")) return VK_LWIN;
 
-    slog.warn("Unrecognized key format: '{s}'", .{key_str});
+    slog.warn("Unrecognized key '{s}'", .{key_str});
     return null;
 }
 
-/// Parse virtual key (+ optional modifiers) from a string.
-/// Accepts a plain key ("F9"), a modifier combo ("Ctrl+Alt+F9", "LWin+M"), or a raw
-/// hex-encoded combined value ("0x0278") as previously written to disk.
-/// Returns a combined value packing the base virtual key in the low byte and modifier
-/// flags in bits 8-11 - see combineKey/extractVk/extractModifiers.
+/// A combined value (see combineKey) from "F9", "Ctrl+Alt+F9", or the hex form older profiles saved ("0x0278").
 pub fn parseVirtualKey(key_str: []const u8) ?u32 {
     if (key_str.len == 0) return null;
 
@@ -266,16 +259,13 @@ pub fn parseVirtualKey(key_str: []const u8) ?u32 {
             const mod_name = std.mem.trim(u8, tok, " ");
             if (mod_name.len == 0) continue;
             const mod_bit = parseModifierToken(mod_name) orelse {
-                slog.warn("Unrecognized modifier: '{s}'", .{mod_name});
+                slog.warn("Unrecognized modifier '{s}'", .{mod_name});
                 return null;
             };
             modifiers |= mod_bit;
         }
 
-        const vk_code = parseBaseKey(key_part) orelse {
-            slog.warn("Unrecognized key: '{s}'", .{key_part});
-            return null;
-        };
+        const vk_code = parseBaseKey(key_part) orelse return null;
 
         // e.g. "Shift+Shift" would otherwise parse into a binding that can never fire (its own bit is always excluded from the match).
         const self_referential = switch (vk_code) {
