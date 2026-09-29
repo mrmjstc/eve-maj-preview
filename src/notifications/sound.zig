@@ -1,5 +1,6 @@
 //! Sound alerts: WAV or MP3 decoded by Media Foundation and played through waveOut on a worker thread.
 const std = @import("std");
+const worker = @import("worker.zig");
 const log = @import("../log.zig");
 
 const windows = std.os.windows;
@@ -62,7 +63,6 @@ const MF_SOURCE_READERF_ENDOFSTREAM: u32 = 0x2;
 const WAVE_MAPPER: u32 = 0xFFFFFFFF;
 const CALLBACK_EVENT: u32 = 0x00050000;
 const INFINITE: u32 = 0xFFFFFFFF;
-const WORKER_POLL_MS: u64 = 50;
 
 extern "mfplat" fn MFStartup(version: u32, flags: u32) callconv(.c) HRESULT;
 extern "mfplat" fn MFShutdown() callconv(.c) HRESULT;
@@ -241,69 +241,55 @@ const DecodedPcm = struct {
     }
 };
 
-/// Queued like tts.zig's commands, so overlapping alerts play in full instead of cutting each other off.
+/// Queued, so overlapping alerts play in full instead of cutting each other off.
 const Command = struct {
-    /// Owned by page_allocator; the worker frees it after playing, or shutdown does if it's still queued.
+    /// Owned by page_allocator.
     path: []const u8,
     volume_percent: u8,
+
+    pub fn deinit(self: Command) void {
+        std.heap.page_allocator.free(self.path);
+    }
 };
 
-const CommandQueue = struct {
-    mutex: std.Io.Mutex = .init,
-    items: std.ArrayList(Command) = .empty,
-
-    fn push(self: *CommandQueue, cmd: Command) !void {
-        try self.mutex.lock(g_io);
-        defer self.mutex.unlock(g_io);
-        try self.items.append(std.heap.page_allocator, cmd);
+/// Keeps Media Foundation started for as long as the worker runs.
+const Player = struct {
+    pub fn init() !Player {
+        if (MFStartup(MF_VERSION, MFSTARTUP_LITE) < 0) return error.MFStartupFailed;
+        return .{};
     }
 
-    fn pop(self: *CommandQueue) ?Command {
-        self.mutex.lock(g_io) catch |err| {
-            slog.warn("Failed to lock command queue mutex: {}", .{err});
-            return null;
+    pub fn run(_: *Player, command: Command) void {
+        playBlocking(std.heap.page_allocator, command.path, command.volume_percent) catch |err| {
+            slog.warn("Failed to play sound alert '{s}': {}", .{ command.path, err });
         };
-        defer self.mutex.unlock(g_io);
-        if (self.items.items.len == 0) return null;
-        return self.items.orderedRemove(0);
+    }
+
+    pub fn deinit(_: *Player) void {
+        _ = MFShutdown();
     }
 };
 
-var g_io: std.Io = undefined;
-var g_queue: CommandQueue = .{};
-var g_thread: ?std.Thread = null;
-var g_thread_failed: bool = false;
-var g_should_exit = std.atomic.Value(bool).init(false);
-var g_worker_dead = std.atomic.Value(bool).init(false);
+var g_worker: worker.Worker(Command, Player, "sound", "sound alerts") = .{};
 
 /// Must be called once before any sound function is used.
 pub fn setIo(io: std.Io) void {
-    g_io = io;
+    g_worker.io = io;
 }
 
-/// Returns at once; the worker plays alerts in order, each in full.
+/// Returns at once; alerts play in order, each in full.
 pub fn playAlert(path: []const u8, volume_percent: u8) void {
-    if (!ensureWorker()) return;
+    if (!g_worker.start()) return;
     const copy = std.heap.page_allocator.dupe(u8, path) catch |err| {
         slog.warn("Failed to queue sound alert: {}", .{err});
         return;
     };
-    g_queue.push(.{ .path = copy, .volume_percent = volume_percent }) catch |err| {
-        slog.warn("Failed to queue sound alert: {}", .{err});
-        std.heap.page_allocator.free(copy);
-    };
+    g_worker.push(.{ .path = copy, .volume_percent = volume_percent });
 }
 
 /// Call once during app shutdown.
 pub fn shutdown() void {
-    const thread = g_thread orelse return;
-    g_should_exit.store(true, .release);
-    thread.join();
-    g_thread = null;
-
-    while (g_queue.pop()) |cmd| {
-        std.heap.page_allocator.free(cmd.path);
-    }
+    g_worker.shutdown();
 }
 
 fn packVolume(volume_percent: u8) u32 {
@@ -384,13 +370,10 @@ fn decodeToPcm(allocator: std.mem.Allocator, path_w: [*:0]const WCHAR) !DecodedP
     };
 }
 
-/// Decodes and plays `path` (WAV/MP3), blocking until done; the worker queue below is its only caller.
+/// Decodes and plays `path` (WAV/MP3), blocking until done; Media Foundation must already be started (see Player).
 fn playBlocking(allocator: std.mem.Allocator, path: []const u8, volume_percent: u8) !void {
     const path_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, path);
     defer allocator.free(path_w);
-
-    if (MFStartup(MF_VERSION, MFSTARTUP_LITE) < 0) return error.MFStartupFailed;
-    defer _ = MFShutdown();
 
     const pcm = try decodeToPcm(allocator, path_w);
     defer pcm.deinit(allocator);
@@ -423,45 +406,4 @@ fn playBlocking(allocator: std.mem.Allocator, path: []const u8, volume_percent: 
 
     if (waveOutWrite(hwo, &header, @sizeOf(WAVEHDR)) != 0) return error.WaveOutWriteFailed;
     _ = WaitForSingleObject(event, INFINITE);
-}
-
-fn workerMain() void {
-    if (MFStartup(MF_VERSION, MFSTARTUP_LITE) < 0) {
-        slog.warn("Failed to start Media Foundation, so sound alerts won't play", .{});
-        g_worker_dead.store(true, .release);
-        return;
-    }
-    defer _ = MFShutdown();
-    slog.info("Sound worker initialized", .{});
-
-    while (!g_should_exit.load(.acquire)) {
-        const cmd = g_queue.pop() orelse {
-            std.Io.sleep(g_io, .fromMilliseconds(@intCast(WORKER_POLL_MS)), .awake) catch |err| {
-                slog.debug("Worker sleep failed: {}", .{err});
-            };
-            continue;
-        };
-        defer std.heap.page_allocator.free(cmd.path);
-        playBlocking(std.heap.page_allocator, cmd.path, cmd.volume_percent) catch |err| {
-            slog.warn("Failed to play sound alert '{s}': {}", .{ cmd.path, err });
-        };
-    }
-}
-
-fn ensureWorker() bool {
-    if (g_thread != null) {
-        if (!g_worker_dead.load(.acquire)) return true;
-        g_thread.?.join();
-        g_thread = null;
-        g_thread_failed = true;
-        return false;
-    }
-    if (g_thread_failed) return false;
-
-    g_thread = std.Thread.spawn(.{}, workerMain, .{}) catch |err| {
-        slog.warn("Failed to start sound worker thread: {}", .{err});
-        g_thread_failed = true;
-        return false;
-    };
-    return true;
 }
