@@ -30,7 +30,7 @@ pub fn winKeyCaptured(modifiers: u32) void {
 }
 
 /// The app changed the running profile itself (a drag, the tray, an assign key), as edit ops (see config/patch.zig).
-/// Wired up as config/store.zig's on_runtime_change.
+/// Wired up as config/store.zig's g_on_runtime_change.
 pub fn liveProfileChanged(ops_json: []const u8) void {
     if (!host.isOpen() or !host.editsLiveProfile()) return;
     emitJson("liveProfileChanged", ops_json);

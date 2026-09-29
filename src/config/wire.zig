@@ -2,22 +2,8 @@
 const std = @import("std");
 const vk = @import("../platform/virtual_keys.zig");
 const log = @import("../log.zig");
+
 const slog = log.scoped("config");
-
-/// Accepts "0xAARRGGBB", "#AARRGGBB" or bare hex.
-pub fn parseHexColor(str: []const u8) !u32 {
-    if (str.len < 3) return error.InvalidColorFormat;
-
-    const start: usize = if (std.mem.startsWith(u8, str, "0x") or std.mem.startsWith(u8, str, "0X"))
-        2
-    else if (std.mem.startsWith(u8, str, "#"))
-        1
-    else
-        0;
-    const hex_str = str[start..];
-
-    return std.fmt.parseInt(u32, hex_str, 16) catch error.InvalidColorFormat;
-}
 
 /// ARGB color, serialized as an 8-digit hex string, e.g. "0xFF606060".
 pub const Argb = struct {
@@ -56,6 +42,21 @@ pub const VkCode = struct {
 };
 
 /// A `u32`/`?u32` field whose name ends in "color"/"Color" is an ARGB colour, saved as a hex string.
+/// Accepts "0xAARRGGBB", "#AARRGGBB" or bare hex.
+pub fn parseHexColor(str: []const u8) !u32 {
+    if (str.len < 3) return error.InvalidColorFormat;
+
+    const start: usize = if (std.mem.startsWith(u8, str, "0x") or std.mem.startsWith(u8, str, "0X"))
+        2
+    else if (std.mem.startsWith(u8, str, "#"))
+        1
+    else
+        0;
+    const hex_str = str[start..];
+
+    return std.fmt.parseInt(u32, hex_str, 16) catch error.InvalidColorFormat;
+}
+
 pub fn isColorField(comptime name: []const u8) bool {
     // Compared by hand: std.mem.endsWith costs enough comptime branches to matter across every nested field.
     if (name.len < 5) return false;

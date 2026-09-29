@@ -3,8 +3,8 @@ const std = @import("std");
 const wire = @import("wire.zig");
 const patch = @import("patch.zig");
 const profiles = @import("profiles.zig");
-const config_mod = @import("../config.zig");
-const notification_mod = @import("../notifications/notification.zig");
+const config = @import("../config.zig");
+const notification = @import("../notifications/notification.zig");
 const vk = @import("../platform/virtual_keys.zig");
 
 /// `{"fields": {path: spec}, "notificationTypes": [...], "keys": [{vk, name}], "modifiers": [{flag, name}], "profileNameMaxLength": n}`.
@@ -16,8 +16,8 @@ pub fn write(jw: *std.json.Stringify) !void {
     try jw.beginObject();
     try jw.objectField("fields");
     try jw.beginObject();
-    try writeFields(jw, config_mod.Config, "");
-    try writeFields(jw, config_mod.GlobalConfig, "global.");
+    try writeFields(jw, config.Config, "");
+    try writeFields(jw, config.GlobalConfig, "global.");
     try jw.endObject();
     try jw.objectField("notificationTypes");
     try writeNotificationTypes(jw);
@@ -143,14 +143,14 @@ fn shortTypeName(comptime T: type) []const u8 {
 /// In category order, each with its own defaults, which differ by type (see NotificationTypeConfig.defaultFor).
 fn writeNotificationTypes(jw: *std.json.Stringify) !void {
     try jw.beginArray();
-    for (std.enums.values(notification_mod.NotificationCategory)) |category| {
-        for (std.enums.values(notification_mod.NotificationType)) |ntype| {
-            if (notification_mod.notificationCategory(ntype) != category) continue;
+    for (std.enums.values(notification.NotificationCategory)) |category| {
+        for (std.enums.values(notification.NotificationType)) |ntype| {
+            if (notification.notificationCategory(ntype) != category) continue;
             try jw.write(.{
                 .name = @tagName(ntype),
                 .category = @tagName(category),
-                .userAction = notification_mod.isUserAction(ntype),
-                .defaults = wire.encode(config_mod.NotificationTypeConfig, config_mod.NotificationTypeConfig.defaultFor(ntype)),
+                .userAction = notification.isUserAction(ntype),
+                .defaults = wire.encode(config.NotificationTypeConfig, config.NotificationTypeConfig.defaultFor(ntype)),
             });
         }
     }

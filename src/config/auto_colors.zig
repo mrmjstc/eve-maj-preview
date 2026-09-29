@@ -1,10 +1,10 @@
 //! The unique colours generated for systems and characters, kept in their own file.
 const std = @import("std");
-const log = @import("../log.zig");
 const color = @import("../util/color.zig");
 const wire = @import("wire.zig");
 const files = @import("files.zig");
-const config_mod = @import("../config.zig");
+const config = @import("../config.zig");
+const log = @import("../log.zig");
 
 const slog = log.scoped("config");
 
@@ -39,7 +39,7 @@ pub const AutoColorStore = struct {
     }
 
     /// A custom override first, then the unique generated colour if enabled, then the configured default.
-    pub fn systemNameColor(self: *AutoColorStore, cfg: *const config_mod.Config, system_name: []const u8) u32 {
+    pub fn systemNameColor(self: *AutoColorStore, cfg: *const config.Config, system_name: []const u8) u32 {
         if (cfg.findSystemColor(system_name)) |custom_color| return custom_color;
         if (!cfg.thumbnail.useUniqueSystemColors) return cfg.thumbnail.systemNameColor;
 
@@ -53,7 +53,7 @@ pub const AutoColorStore = struct {
     }
 
     /// The character's own override, then the unique colour if enabled; null means the caller's own default.
-    pub fn characterNameColor(self: *AutoColorStore, cfg: *const config_mod.Config, character_name: []const u8) ?u32 {
+    pub fn characterNameColor(self: *AutoColorStore, cfg: *const config.Config, character_name: []const u8) ?u32 {
         if (cfg.findCharacterConst(character_name)) |char| {
             if (char.nameColor) |custom_color| return custom_color;
         }
@@ -63,17 +63,17 @@ pub const AutoColorStore = struct {
     }
 
     /// The character's own active border colour, else the unique colour if enabled; the inactive one is left as set.
-    pub fn characterBorderColors(self: *AutoColorStore, cfg: *const config_mod.Config, character_name: []const u8) ?config_mod.CharacterBorderColorsConfig {
+    pub fn characterBorderColors(self: *AutoColorStore, cfg: *const config.Config, character_name: []const u8) ?config.CharacterBorderColorsConfig {
         const configured = if (cfg.findCharacterConst(character_name)) |char| char.borderColors else null;
         if (!cfg.thumbnail.useUniqueCharacterBorderColors) return configured;
 
-        var colors = configured orelse config_mod.CharacterBorderColorsConfig{};
+        var colors = configured orelse config.CharacterBorderColorsConfig{};
         if (colors.activeBorderColor == null) colors.activeBorderColor = self.characterColor(cfg, character_name);
         return colors;
     }
 
     /// One stored colour per character, shared by its name and border; steers clear of every character's own name and active border overrides.
-    fn characterColor(self: *AutoColorStore, cfg: *const config_mod.Config, character_name: []const u8) u32 {
+    fn characterColor(self: *AutoColorStore, cfg: *const config.Config, character_name: []const u8) u32 {
         self.load();
 
         var overrides: [color.AutoColors.MAX_AVOIDED]u32 = undefined;

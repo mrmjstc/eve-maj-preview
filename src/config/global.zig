@@ -1,50 +1,11 @@
 //! Settings shared by every profile (`profiles/global.settings.json`).
 const std = @import("std");
-const log = @import("../log.zig");
 const wire = @import("wire.zig");
 const files = @import("files.zig");
 const ranges_mod = @import("ranges.zig");
+const log = @import("../log.zig");
 
 const slog = log.scoped("config");
-
-/// Built-in reference data, never saved; OrePriceConfig holds the user's price overrides.
-pub const OreEntry = struct {
-    name: []const u8,
-    category: []const u8 = "Ore",
-    volumeM3: f64,
-    price: f64 = 0,
-};
-
-/// The only per-ore state GlobalConfig actually persists - name/category/volumeM3 come from DEFAULT_ORE_TABLE instead, since those never vary by user.
-pub const OrePriceConfig = struct {
-    name: []const u8 = "",
-    price: f64 = 0,
-
-    pub const ranges = .{
-        // Far above any real price, but finite so the dialog's JSON can carry it.
-        .price = .{ 0, 1e12 },
-    };
-
-    pub fn validate(self: *OrePriceConfig) void {
-        ranges_mod.clamp(OrePriceConfig, self);
-    }
-
-    pub const Wire = wire.Wire(OrePriceConfig);
-};
-
-/// True if `name` is `base` with a quality word before or after it, e.g. "Shining Loparite" or "Nocxite II-Grade".
-fn isGradeVariant(name: []const u8, base: []const u8) bool {
-    if (base.len == 0 or base.len >= name.len) return false;
-    var search_start: usize = 0;
-    while (std.mem.indexOfPos(u8, name, search_start, base)) |pos| {
-        const before_ok = pos == 0 or name[pos - 1] == ' ';
-        const after_pos = pos + base.len;
-        const after_ok = after_pos == name.len or name[after_pos] == ' ';
-        if (before_ok and after_ok) return true;
-        search_start = pos + 1;
-    }
-    return false;
-}
 
 /// Fallback prices are a Jita snapshot and will drift - re-fetch via "Fetch Prices" for current numbers.
 pub const DEFAULT_ORE_TABLE = [_]OreEntry{
@@ -134,6 +95,31 @@ pub const DEFAULT_ORE_TABLE = [_]OreEntry{
     .{ .name = "Gelidus", .category = "Ice", .volumeM3 = 1000.00, .price = 350100 },
     .{ .name = "Krystallos", .category = "Ice", .volumeM3 = 1000.00, .price = 592500 },
     .{ .name = "Glare Crust", .category = "Ice", .volumeM3 = 1000.00, .price = 220200 },
+};
+
+/// Built-in reference data, never saved; OrePriceConfig holds the user's price overrides.
+pub const OreEntry = struct {
+    name: []const u8,
+    category: []const u8 = "Ore",
+    volumeM3: f64,
+    price: f64 = 0,
+};
+
+/// The only per-ore state GlobalConfig actually persists - name/category/volumeM3 come from DEFAULT_ORE_TABLE instead, since those never vary by user.
+pub const OrePriceConfig = struct {
+    name: []const u8 = "",
+    price: f64 = 0,
+
+    pub const ranges = .{
+        // Far above any real price, but finite so the dialog's JSON can carry it.
+        .price = .{ 0, 1e12 },
+    };
+
+    pub fn validate(self: *OrePriceConfig) void {
+        ranges_mod.clamp(OrePriceConfig, self);
+    }
+
+    pub const Wire = wire.Wire(OrePriceConfig);
 };
 
 /// Binding of a hotkey to a specific target profile ("quick switch")
@@ -334,3 +320,17 @@ pub const GlobalConfig = struct {
         return settings;
     }
 };
+
+/// True if `name` is `base` with a quality word before or after it, e.g. "Shining Loparite" or "Nocxite II-Grade".
+fn isGradeVariant(name: []const u8, base: []const u8) bool {
+    if (base.len == 0 or base.len >= name.len) return false;
+    var search_start: usize = 0;
+    while (std.mem.indexOfPos(u8, name, search_start, base)) |pos| {
+        const before_ok = pos == 0 or name[pos - 1] == ' ';
+        const after_pos = pos + base.len;
+        const after_ok = after_pos == name.len or name[after_pos] == ' ';
+        if (before_ok and after_ok) return true;
+        search_start = pos + 1;
+    }
+    return false;
+}

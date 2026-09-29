@@ -1,3 +1,5 @@
+//! Enums used by settings; their tag names are saved in profiles, so renaming a tag breaks existing profiles.
+
 /// Kept with the other setting types, though defined where platform/ can use it.
 pub const FontWeight = @import("../platform/fonts.zig").FontWeight;
 

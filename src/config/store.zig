@@ -1,17 +1,19 @@
 //! The only writer of the running profile: `live` is what the app shows, including unsaved dialog edits, and `saved` is what's on disk.
 const std = @import("std");
-const log = @import("../log.zig");
-const config_mod = @import("../config.zig");
+const config = @import("../config.zig");
 const profiles = @import("profiles.zig");
 const wire = @import("wire.zig");
 const patch_mod = @import("patch.zig");
 const strings = @import("../util/strings.zig");
+const log = @import("../log.zig");
 
-const Config = config_mod.Config;
+const Config = config.Config;
 const slog = log.scoped("config");
 
 /// Told about each runtime change as edit ops (see config/patch.zig), so an open config dialog can follow it.
-pub var on_runtime_change: ?*const fn (ops_json: []const u8) void = null;
+pub var g_on_runtime_change: ?*const fn (ops_json: []const u8) void = null;
+
+const CharacterField = struct { id: u32, field: []const u8 };
 
 pub const ProfileStore = struct {
     live: Config,
@@ -40,7 +42,7 @@ pub const ProfileStore = struct {
         self.emit(paths, writeFieldSets);
     }
 
-    pub const CharacterPosition = struct { name: []const u8, pos: config_mod.Position };
+    pub const CharacterPosition = struct { name: []const u8, pos: config.Position };
 
     /// Saved once for the whole batch, so a group drag writes the profile once rather than per thumbnail.
     pub fn setCharacterPositions(self: *ProfileStore, entries: []const CharacterPosition) void {
@@ -65,7 +67,7 @@ pub const ProfileStore = struct {
     }
 
     /// Sets `character_name`'s saved game-window position, or with a null name every character's; clearing a missing character is a no-op.
-    pub fn setWindowPosition(self: *ProfileStore, character_name: ?[]const u8, pos: ?config_mod.Position) !void {
+    pub fn setWindowPosition(self: *ProfileStore, character_name: ?[]const u8, pos: ?config.Position) !void {
         const existed = if (character_name) |name| self.live.findCharacter(name) != null else true;
         try applyWindowPosition(&self.live, character_name, pos);
         try applyWindowPosition(&self.saved, character_name, pos);
@@ -151,9 +153,9 @@ pub const ProfileStore = struct {
         }
     }
 
-    /// `write` adds this change's ops to a JSON array, which goes to `on_runtime_change`.
+    /// `write` adds this change's ops to a JSON array, which goes to `g_on_runtime_change`.
     fn emit(self: *ProfileStore, context: anytype, comptime write: fn (*std.json.Stringify, *const Config, @TypeOf(context)) anyerror!void) void {
-        const callback = on_runtime_change orelse return;
+        const callback = g_on_runtime_change orelse return;
         var arena = std.heap.ArenaAllocator.init(self.live.allocator);
         defer arena.deinit();
         var out: std.Io.Writer.Allocating = .init(arena.allocator());
@@ -181,8 +183,6 @@ fn writeFieldSets(jw: *std.json.Stringify, cfg: *const Config, paths: []const []
     }
 }
 
-const CharacterField = struct { id: u32, field: []const u8 };
-
 fn writeCharacterField(jw: *std.json.Stringify, cfg: *const Config, change: CharacterField) anyerror!void {
     try writeSet(jw, cfg, &.{ .{ .string = "characters" }, .{ .integer = change.id }, .{ .string = change.field } });
 }
@@ -196,7 +196,7 @@ fn writeCharacterInsert(jw: *std.json.Stringify, cfg: *const Config, index: usiz
     try jw.objectField("index");
     try jw.write(index);
     try jw.objectField("value");
-    try patch_mod.write(jw, config_mod.CharacterConfig, &cfg.characters.items[index]);
+    try patch_mod.write(jw, config.CharacterConfig, &cfg.characters.items[index]);
     try jw.endObject();
 }
 
@@ -216,7 +216,7 @@ fn writeSet(jw: *std.json.Stringify, cfg: *const Config, path: []const std.json.
 }
 
 /// Shared with the dialog's edits to a profile the app isn't running, which only exist on disk.
-pub fn applyWindowPosition(cfg: *Config, character_name: ?[]const u8, pos: ?config_mod.Position) !void {
+pub fn applyWindowPosition(cfg: *Config, character_name: ?[]const u8, pos: ?config.Position) !void {
     if (character_name) |name| {
         if (pos == null and cfg.findCharacter(name) == null) return;
         const char = try cfg.getOrCreateCharacter(cfg.allocator, name);
@@ -227,7 +227,7 @@ pub fn applyWindowPosition(cfg: *Config, character_name: ?[]const u8, pos: ?conf
 }
 
 /// Idempotent, so both copies end up agreeing even if they didn't before.
-fn setMembership(cfg: *Config, group: *config_mod.HotkeyGroupConfig, character_name: []const u8, member: bool) !void {
+fn setMembership(cfg: *Config, group: *config.HotkeyGroupConfig, character_name: []const u8, member: bool) !void {
     const members = &group.characters;
     const index = strings.indexOfString(members.items, character_name);
     if (member and index == null) {

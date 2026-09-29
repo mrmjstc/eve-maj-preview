@@ -4,6 +4,11 @@ const log = @import("../log.zig");
 
 const slog = log.scoped("config");
 
+pub const PROFILES_DIR = "profiles";
+pub const DEFAULT_PROFILE = "default.json";
+pub const GLOBAL_SETTINGS_FILE = "profiles/global.settings.json";
+pub const MAX_CONFIG_FILE_SIZE: u64 = 300 * 1024;
+
 pub var g_io: std.Io = undefined;
 pub var g_environ_map: *const std.process.Environ.Map = undefined;
 
@@ -20,11 +25,6 @@ pub fn setEnvironMap(environ_map: *const std.process.Environ.Map) void {
 pub fn environMap() *const std.process.Environ.Map {
     return g_environ_map;
 }
-
-pub const PROFILES_DIR = "profiles";
-pub const DEFAULT_PROFILE = "default.json";
-pub const GLOBAL_SETTINGS_FILE = "profiles/global.settings.json";
-pub const MAX_CONFIG_FILE_SIZE: u64 = 300 * 1024;
 
 /// Writes via a temp file + rename so a failed write can't corrupt the destination file.
 pub fn atomicWriteFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8, content: []const u8) !void {

@@ -1,11 +1,11 @@
 //! Edits to a settings document by path, the one way the config dialog changes settings and hears about the app's own changes.
-//! A path is a JSON array of field names, with an item's `id` inside a keyed list: `["characters", 12, "opacity"]`.
-//! Any field can be `set`; lists whose items have an `id` also take `insert`, `remove` and `move`.
 const std = @import("std");
 const wire = @import("wire.zig");
 
 pub const Op = struct {
+    /// `set` for any field; lists whose items have an `id` also take `insert`, `remove` and `move`.
     op: []const u8,
+    /// Field names, with an item's `id` inside a keyed list: `["characters", 12, "opacity"]`.
     path: []const std.json.Value,
     /// Not optional: std.json would read a `null` value, which unsets a setting, as the field being absent.
     value: std.json.Value = .null,

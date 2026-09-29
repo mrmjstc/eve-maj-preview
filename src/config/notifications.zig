@@ -1,12 +1,9 @@
 //! Notification popups: shared appearance and each type's own settings.
 const std = @import("std");
-const log = @import("../log.zig");
 const types = @import("types.zig");
-const notification_mod = @import("../notifications/notification.zig");
+const notification = @import("../notifications/notification.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
-
-const slog = log.scoped("config");
 
 pub const NotificationTypeConfig = struct {
     enabled: bool = true,
@@ -23,14 +20,14 @@ pub const NotificationTypeConfig = struct {
     sound_path: ?[]const u8 = null,
     sound_volume: u8 = 100,
 
-    pub fn defaultFor(ntype: notification_mod.NotificationType) NotificationTypeConfig {
-        return if (notification_mod.isUserAction(ntype)) .{ .duration_ms = 3000, .throttle_ms = 0 } else .{};
+    pub fn defaultFor(ntype: notification.NotificationType) NotificationTypeConfig {
+        return if (notification.isUserAction(ntype)) .{ .duration_ms = 3000, .throttle_ms = 0 } else .{};
     }
 
     /// A const, not a fn: evaluated once instead of per comptime Wire field default, which exceeded the branch quota.
     pub const defaults_by_type = blk: {
-        var map = std.enums.EnumArray(notification_mod.NotificationType, NotificationTypeConfig).initFill(.{});
-        for (std.enums.values(notification_mod.NotificationType)) |ntype| map.set(ntype, defaultFor(ntype));
+        var map = std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig).initFill(.{});
+        for (std.enums.values(notification.NotificationType)) |ntype| map.set(ntype, defaultFor(ntype));
         break :blk map;
     };
 
@@ -49,15 +46,15 @@ pub const NotificationTypeConfig = struct {
 
 /// Each notification type's settings, defaulting to that type's own defaults (see NotificationTypeConfig.defaultFor).
 pub const NotificationTypeConfigs = struct {
-    const Map = std.enums.EnumArray(notification_mod.NotificationType, NotificationTypeConfig);
+    const Map = std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig);
 
     map: Map = NotificationTypeConfig.defaults_by_type,
 
-    pub fn get(self: NotificationTypeConfigs, ntype: notification_mod.NotificationType) NotificationTypeConfig {
+    pub fn get(self: NotificationTypeConfigs, ntype: notification.NotificationType) NotificationTypeConfig {
         return self.map.get(ntype);
     }
 
-    pub fn set(self: *NotificationTypeConfigs, ntype: notification_mod.NotificationType, value: NotificationTypeConfig) void {
+    pub fn set(self: *NotificationTypeConfigs, ntype: notification.NotificationType, value: NotificationTypeConfig) void {
         self.map.set(ntype, value);
     }
 
@@ -81,20 +78,20 @@ pub const NotificationTypeConfigs = struct {
     }
 
     pub const Wire = struct {
-        map: std.enums.EnumArray(notification_mod.NotificationType, NotificationTypeConfig.Wire) = default_wire_map,
+        map: std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig.Wire) = default_wire_map,
 
         const default_wire_map = blk: {
             @setEvalBranchQuota(10_000_000);
-            var map = std.enums.EnumArray(notification_mod.NotificationType, NotificationTypeConfig.Wire).initFill(.{});
-            for (std.enums.values(notification_mod.NotificationType)) |ntype| map.set(ntype, wire.encode(NotificationTypeConfig, NotificationTypeConfig.defaults_by_type.get(ntype)));
+            var map = std.enums.EnumArray(notification.NotificationType, NotificationTypeConfig.Wire).initFill(.{});
+            for (std.enums.values(notification.NotificationType)) |ntype| map.set(ntype, wire.encode(NotificationTypeConfig, NotificationTypeConfig.defaults_by_type.get(ntype)));
             break :blk map;
         };
 
         pub fn jsonStringify(self: Wire, jw: anytype) !void {
             try jw.beginObject();
-            inline for (std.meta.fields(notification_mod.NotificationType)) |f| {
+            inline for (std.meta.fields(notification.NotificationType)) |f| {
                 try jw.objectField(f.name);
-                try jw.write(self.map.get(@field(notification_mod.NotificationType, f.name)));
+                try jw.write(self.map.get(@field(notification.NotificationType, f.name)));
             }
             try jw.endObject();
         }
@@ -104,7 +101,7 @@ pub const NotificationTypeConfigs = struct {
             if (source != .object) return result;
             var it = source.object.iterator();
             while (it.next()) |entry| {
-                const ntype = std.meta.stringToEnum(notification_mod.NotificationType, entry.key_ptr.*) orelse continue;
+                const ntype = std.meta.stringToEnum(notification.NotificationType, entry.key_ptr.*) orelse continue;
                 const type_wire = try std.json.parseFromValue(NotificationTypeConfig.Wire, allocator, entry.value_ptr.*, opts);
                 defer type_wire.deinit();
                 var wire_value = type_wire.value;
@@ -118,8 +115,8 @@ pub const NotificationTypeConfigs = struct {
 
     pub fn toWire(self: NotificationTypeConfigs) Wire {
         var out: Wire = .{};
-        inline for (std.meta.fields(notification_mod.NotificationType)) |f| {
-            const ntype = @field(notification_mod.NotificationType, f.name);
+        inline for (std.meta.fields(notification.NotificationType)) |f| {
+            const ntype = @field(notification.NotificationType, f.name);
             out.map.set(ntype, wire.encode(NotificationTypeConfig, self.map.get(ntype)));
         }
         return out;
@@ -128,8 +125,8 @@ pub const NotificationTypeConfigs = struct {
     pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !NotificationTypeConfigs {
         var out: NotificationTypeConfigs = .{};
         errdefer out.deinit(allocator);
-        inline for (std.meta.fields(notification_mod.NotificationType)) |f| {
-            const ntype = @field(notification_mod.NotificationType, f.name);
+        inline for (std.meta.fields(notification.NotificationType)) |f| {
+            const ntype = @field(notification.NotificationType, f.name);
             out.map.set(ntype, try wire.decode(NotificationTypeConfig, w.map.get(ntype), allocator));
         }
         return out;
@@ -137,12 +134,12 @@ pub const NotificationTypeConfigs = struct {
 
     /// One type's settings by name, so an edit path can reach them (see config/patch.zig).
     pub fn childAt(self: *NotificationTypeConfigs, key: []const u8) ?*NotificationTypeConfig {
-        const ntype = std.meta.stringToEnum(notification_mod.NotificationType, key) orelse return null;
+        const ntype = std.meta.stringToEnum(notification.NotificationType, key) orelse return null;
         return self.map.getPtr(ntype);
     }
 
     pub fn childAtConst(self: *const NotificationTypeConfigs, key: []const u8) ?*const NotificationTypeConfig {
-        const ntype = std.meta.stringToEnum(notification_mod.NotificationType, key) orelse return null;
+        const ntype = std.meta.stringToEnum(notification.NotificationType, key) orelse return null;
         return self.map.getPtrConst(ntype);
     }
 };
@@ -182,7 +179,7 @@ pub const NotificationConfig = struct {
         ranges_mod.clamp(NotificationConfig, self);
     }
 
-    pub fn getTypeConfig(self: *const NotificationConfig, ntype: notification_mod.NotificationType) NotificationTypeConfig {
+    pub fn getTypeConfig(self: *const NotificationConfig, ntype: notification.NotificationType) NotificationTypeConfig {
         return self.type_configs.get(ntype);
     }
 

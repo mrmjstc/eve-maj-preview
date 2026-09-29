@@ -39,7 +39,7 @@ var g_editing_profile: ?[]u8 = null;
 
 pub fn init(allocator_: std.mem.Allocator) void {
     g_allocator = allocator_;
-    config_store.on_runtime_change = events.liveProfileChanged;
+    config_store.g_on_runtime_change = events.liveProfileChanged;
 }
 
 pub fn allocator() std.mem.Allocator {

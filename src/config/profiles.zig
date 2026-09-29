@@ -1,8 +1,8 @@
 //! Profile files on disk: where they live, loading with fallbacks, saving, and creating defaults.
 const std = @import("std");
-const log = @import("../log.zig");
 const files = @import("files.zig");
 const Config = @import("../config.zig").Config;
+const log = @import("../log.zig");
 
 const slog = log.scoped("config");
 
@@ -81,13 +81,13 @@ fn copyFrom(allocator: std.mem.Allocator, source_path: []const u8, target: []con
     try save(&cfg, allocator, target_path);
 }
 
-/// Moves the profile into PROFILES_DIR/backup, named `<unix time>_<name>` so the newest sorts first.
 /// Any profile but the default one, which the app falls back to.
 pub fn checkDeletable(name: []const u8) !void {
     try validateName(name);
     if (std.mem.eql(u8, name, files.DEFAULT_PROFILE)) return error.CannotDeleteDefaultProfile;
 }
 
+/// Moves the profile into PROFILES_DIR/backup, named `<unix time>_<name>` so the newest sorts first.
 pub fn deleteToBackup(allocator: std.mem.Allocator, name: []const u8) !void {
     try checkDeletable(name);
 
@@ -110,7 +110,7 @@ pub fn deleteToBackup(allocator: std.mem.Allocator, name: []const u8) !void {
 
 /// Backed-up profile file names, newest first; caller owns the list and its strings.
 pub fn listBackups(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
-    var names = std.ArrayList([]const u8).empty;
+    var names: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (names.items) |name| allocator.free(name);
         names.deinit(allocator);
@@ -173,7 +173,7 @@ fn loadFile(allocator: std.mem.Allocator, profile_path: []const u8, name: []cons
 
 /// The profile file names in PROFILES_DIR, e.g. "default.json"; caller owns the list and its strings.
 pub fn list(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
-    var names = std.ArrayList([]const u8).empty;
+    var names: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (names.items) |name| allocator.free(name);
         names.deinit(allocator);
