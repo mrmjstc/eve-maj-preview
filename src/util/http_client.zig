@@ -10,8 +10,8 @@ pub const FetchOptions = struct {
     extra_headers: []const std.http.Header = &.{},
 };
 
-/// Issues a GET (or, with a payload, POST) request and returns the response body (caller frees) if it got a 200, else null.
-pub fn fetch(allocator: std.mem.Allocator, client: *std.http.Client, url: []const u8, options: FetchOptions) ?[]u8 {
+/// Issues a GET (or, with a payload, POST) request and returns the body of a 200 response; caller frees. Logs every failure itself.
+pub fn fetch(allocator: std.mem.Allocator, client: *std.http.Client, url: []const u8, options: FetchOptions) ![]u8 {
     var response_buf: std.Io.Writer.Allocating = .init(allocator);
     // Still safe after toOwnedSlice, which leaves the buffer empty.
     defer response_buf.deinit();
@@ -27,16 +27,16 @@ pub fn fetch(allocator: std.mem.Allocator, client: *std.http.Client, url: []cons
         .response_writer = &response_buf.writer,
     }) catch |err| {
         slog.warn("Failed to fetch '{s}': {}", .{ url, err });
-        return null;
+        return err;
     };
 
     if (result.status != .ok) {
         slog.warn("Failed to fetch '{s}': status {}: {s}", .{ url, result.status, response_buf.written() });
-        return null;
+        return error.RequestFailed;
     }
 
     return response_buf.toOwnedSlice() catch |err| {
         slog.warn("Failed to copy the response body from '{s}': {}", .{ url, err });
-        return null;
+        return err;
     };
 }

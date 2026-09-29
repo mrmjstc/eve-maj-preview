@@ -29,7 +29,7 @@ fn resolveOreTypeIds(allocator: std.mem.Allocator, client: *std.http.Client, nam
     const stdout = http_client.fetch(allocator, client, ESI_BASE ++ "/universe/ids/?datasource=tranquility", .{
         .content_type = "application/json",
         .payload = body,
-    }) orelse return result;
+    }) catch return result;
     defer allocator.free(stdout);
 
     const parsed = std.json.parseFromSlice(std.json.Value, allocator, stdout, .{}) catch |err| {
@@ -78,10 +78,7 @@ fn fetchJitaBuyPrice(allocator: std.mem.Allocator, client: *std.http.Client, typ
     };
     defer allocator.free(url);
 
-    const stdout = http_client.fetch(allocator, client, url, .{}) orelse {
-        slog.warn("ESI price fetch failed for type_id {}", .{type_id});
-        return null;
-    };
+    const stdout = http_client.fetch(allocator, client, url, .{}) catch return null;
     defer allocator.free(stdout);
 
     const parsed = std.json.parseFromSlice(std.json.Value, allocator, stdout, .{}) catch |err| {

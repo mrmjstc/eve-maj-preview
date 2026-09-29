@@ -136,9 +136,9 @@ pub const UpdateChecker = struct {
         defer client.deinit();
 
         // per_page=100 covers skipping many releases at once; unauthenticated requests only ever see published (non-draft) releases anyway.
-        const body = http_client.fetch(self.allocator, &client, "https://api.github.com/repos/mrmjstc/eve-maj-preview/releases?per_page=100", .{
+        const body = try http_client.fetch(self.allocator, &client, "https://api.github.com/repos/mrmjstc/eve-maj-preview/releases?per_page=100", .{
             .extra_headers = &.{.{ .name = "Accept", .value = "application/vnd.github+json" }},
-        }) orelse return error.FetchFailed;
+        });
         defer self.allocator.free(body);
 
         slog.debug("GitHub API response: {s}", .{body});
