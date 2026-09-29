@@ -1,8 +1,8 @@
 //! Calls that touch no app state - pickers, network and file scans - so they run on webui's thread instead of stalling thumbnails on the main one.
 const std = @import("std");
-const win32 = @import("../../platform/win32.zig");
 const build_options = @import("build_options");
-const config_mod = @import("../../config.zig");
+const win32 = @import("../../platform/win32.zig");
+const config = @import("../../config.zig");
 const files = @import("../../config/files.zig");
 const update = @import("../../update.zig");
 const esi_prices = @import("../tools/esi_prices.zig");
@@ -13,6 +13,16 @@ const log = @import("../../log.zig");
 const slog = log.scoped("dialog");
 
 pub const runs_on_caller = true;
+
+const RunningWindow = struct { class: []const u8, exe: []const u8, title: []const u8 };
+
+const ApplyResult = struct { path: []const u8, ok: bool, changed: bool, @"error": ?[]const u8 };
+
+const WindowScan = struct {
+    arena: std.mem.Allocator,
+    windows: std.ArrayList(RunningWindow) = .empty,
+    failed: ?anyerror = null,
+};
 
 pub fn getAppVersion(_: std.mem.Allocator) ![]const u8 {
     return build_options.version;
@@ -58,8 +68,6 @@ pub fn getUpdateStatus(arena: std.mem.Allocator) !struct { available: bool, vers
     };
 }
 
-const RunningWindow = struct { class: []const u8, exe: []const u8, title: []const u8 };
-
 /// One entry per distinct (class, executable) among visible windows, for picking a Window Filter instead of typing names.
 pub fn getRunningWindows(arena: std.mem.Allocator) ![]const RunningWindow {
     var scan = WindowScan{ .arena = arena };
@@ -80,7 +88,7 @@ pub fn fetchOrePrices(arena: std.mem.Allocator, args: struct { names: []const []
 
 /// EVE's core_public__.yaml settings files, one per client install or settings profile.
 pub fn scanUltraPotatoProfiles(arena: std.mem.Allocator) ![]const ultra_potato.Profile {
-    return ultra_potato.scanProfiles(arena, files.g_io, config_mod.environMap());
+    return ultra_potato.scanProfiles(arena, files.g_io, config.environMap());
 }
 
 pub fn applyUltraPotatoMode(arena: std.mem.Allocator, args: struct { paths: []const []const u8 }) !struct { results: []const ApplyResult } {
@@ -91,17 +99,9 @@ pub fn applyUltraPotatoMode(arena: std.mem.Allocator, args: struct { paths: []co
     return .{ .results = out };
 }
 
-const ApplyResult = struct { path: []const u8, ok: bool, changed: bool, @"error": ?[]const u8 };
-
-const WindowScan = struct {
-    arena: std.mem.Allocator,
-    windows: std.ArrayList(RunningWindow) = .empty,
-    failed: ?anyerror = null,
-};
-
 fn collectWindow(window: win32.HWND, lParam: win32.LPARAM) callconv(.c) win32.BOOL {
     const scan: *WindowScan = win32.lparamToPtr(WindowScan, lParam);
-    if (win32.IsWindowVisible(window) == 0) return win32.TRUE;
+    if (!win32.toBool(win32.IsWindowVisible(window))) return win32.TRUE;
 
     var title_buf: [512:0]u8 = undefined;
     const title_len = win32.GetWindowTextA(window, &title_buf, title_buf.len);

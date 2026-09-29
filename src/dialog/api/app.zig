@@ -1,19 +1,22 @@
 //! Calls that act on the running app: window positions, open clients, region selection, hotkey recording, and the window itself.
 const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
-const config_mod = @import("../../config.zig");
-const main_mod = @import("../../main.zig");
+const config = @import("../../config.zig");
+const patch = @import("../../config/patch.zig");
+const main = @import("../../main.zig");
 const scout_mod = @import("../../clients/scout.zig");
 const painter_mod = @import("../../painter.zig");
-const hotkeys_mod = @import("../../hotkeys/manager.zig");
-const region_select = @import("../tools/region_select.zig");
+const hotkeys = @import("../../hotkeys/manager.zig");
 const monitors = @import("../../layout/monitors.zig");
+const region_select = @import("../tools/region_select.zig");
 const host = @import("../host.zig");
 const session = @import("../session.zig");
-const patch = @import("../../config/patch.zig");
 const log = @import("../../log.zig");
 
 const slog = log.scoped("dialog");
+
+/// The thumbnail windows a region selection hid, to show again once it ends.
+var g_region_select_hidden: std.ArrayList(win32.HWND) = .empty;
 
 pub fn closeDialog(_: std.mem.Allocator) !void {
     host.close();
@@ -25,8 +28,8 @@ pub fn setAlwaysOnTop(_: std.mem.Allocator, args: struct { enabled: bool }) !voi
 
 /// `percent` 0 is "auto"; saved straight away, since it resizes the window rather than waiting for Save.
 pub fn setDialogScale(_: std.mem.Allocator, args: struct { percent: u16 }) !struct { scale: f32 } {
-    const percent = config_mod.clampValue(config_mod.GlobalConfig, "dialogScale", args.percent);
-    const settings = &main_mod.g_global_settings;
+    const percent = config.clampValue(config.GlobalConfig, "dialogScale", args.percent);
+    const settings = &main.g_global_settings;
     settings.dialogScale = percent;
     settings.save() catch |err| slog.warn("Failed to save the dialog scale: {}", .{err});
     return .{ .scale = host.applyScale(percent) };
@@ -57,7 +60,7 @@ pub fn getOpenClients(arena: std.mem.Allocator) ![]const []const u8 {
 }
 
 /// Saves `name`'s live game-window position as where auto-move puts it.
-pub fn setCharacterWindowPosition(_: std.mem.Allocator, args: struct { name: []const u8 }) !config_mod.Position {
+pub fn setCharacterWindowPosition(_: std.mem.Allocator, args: struct { name: []const u8 }) !config.Position {
     const pos = try liveWindowPosition(args.name);
     try setWindowPositions(args.name, pos);
     return pos;
@@ -68,7 +71,7 @@ pub fn clearCharacterWindowPosition(_: std.mem.Allocator, args: struct { name: [
 }
 
 /// Every character gets `name`'s live game-window position.
-pub fn setAllCharacterWindowPositions(_: std.mem.Allocator, args: struct { name: []const u8 }) !config_mod.Position {
+pub fn setAllCharacterWindowPositions(_: std.mem.Allocator, args: struct { name: []const u8 }) !config.Position {
     const pos = try liveWindowPosition(args.name);
     try setWindowPositions(null, pos);
     return pos;
@@ -78,8 +81,7 @@ pub fn clearAllCharacterWindowPositions(_: std.mem.Allocator) !void {
     try setWindowPositions(null, null);
 }
 
-/// `region` is [x, y, width, height] to adjust, or null for a fresh drag; empty labels keep the overlay's English text.
-/// The result arrives as a regionSelected event.
+/// `region` is [x, y, width, height] to adjust, or null for a fresh drag; empty labels keep the overlay's English text. The result arrives as a regionSelected event.
 pub fn startRegionSelect(_: std.mem.Allocator, args: struct {
     hide: bool = false,
     region: ?[4]i32 = null,
@@ -93,8 +95,8 @@ pub fn startRegionSelect(_: std.mem.Allocator, args: struct {
 }) !void {
     const painter = painter_mod.g_painter_ptr orelse return error.AppNotReady;
     var request = region_select.Request{ .hide_thumbnails = args.hide };
-    if (args.region) |r| {
-        if (r[2] > 0 and r[3] > 0) request.edit_region = .{ .left = r[0], .top = r[1], .right = r[0] + r[2], .bottom = r[1] + r[3] };
+    if (args.region) |region| {
+        if (region[2] > 0 and region[3] > 0) request.edit_region = .{ .left = region[0], .top = region[1], .right = region[0] + region[2], .bottom = region[1] + region[3] };
     }
     setLabel(32, &request.labels.save, args.labels.save);
     setLabel(32, &request.labels.cancel, args.labels.cancel);
@@ -120,8 +122,17 @@ pub fn startRegionSelect(_: std.mem.Allocator, args: struct {
     }
 }
 
-/// The thumbnail windows a region selection hid, to show again once it ends.
-var g_region_select_hidden: std.ArrayList(win32.HWND) = .empty;
+/// Unregisters the app's hotkeys so the key being recorded doesn't fire; a bare Win press arrives as a winKeyCaptured event.
+pub fn suspendHotkeysForRecording(_: std.mem.Allocator) !void {
+    const manager = hotkeys.g_hotkey_manager_ptr orelse return;
+    manager.dialogSuspendHotkeys();
+}
+
+pub fn resumeHotkeysAfterRecording(_: std.mem.Allocator) !void {
+    const manager = hotkeys.g_hotkey_manager_ptr orelse return;
+    const timer = main.g_timer_hwnd orelse return;
+    manager.dialogResumeHotkeys(timer);
+}
 
 fn onRegionSelectFinished() void {
     defer {
@@ -133,42 +144,26 @@ fn onRegionSelectFinished() void {
     painter.hint_box.hide();
 }
 
-/// Unregisters the app's hotkeys so the key being recorded doesn't fire; a bare Win press arrives as a winKeyCaptured event.
-pub fn suspendHotkeysForRecording(_: std.mem.Allocator) !void {
-    const manager = hotkeys_mod.g_hotkey_manager_ptr orelse return;
-    manager.dialogSuspendHotkeys();
-}
-
-pub fn resumeHotkeysAfterRecording(_: std.mem.Allocator) !void {
-    resumeHotkeys();
-}
-
-fn resumeHotkeys() void {
-    const manager = hotkeys_mod.g_hotkey_manager_ptr orelse return;
-    const timer = main_mod.g_timer_hwnd orelse return;
-    manager.dialogResumeHotkeys(timer);
-}
-
 fn setLabel(comptime n: usize, field: *[n]u8, text: []const u8) void {
     if (text.len > 0) field.* = region_select.fixedText(n, text);
 }
 
-fn liveWindowPosition(character_name: []const u8) !config_mod.Position {
+fn liveWindowPosition(character_name: []const u8) !config.Position {
     const scout = scout_mod.g_scout_ptr orelse return error.CharacterIsNotOpen;
     const window = scout.getHwndByName(character_name) orelse return error.CharacterIsNotOpen;
     // A minimized window sits at the off-screen parking spot, not a real position.
     if (win32.isWindowIconic(window)) return error.CharacterWindowIsMinimized;
     var rect: win32.RECT = undefined;
-    if (win32.GetWindowRect(window, &rect) == 0) return error.WindowPositionUnavailable;
+    if (!win32.toBool(win32.GetWindowRect(window, &rect))) return error.WindowPositionUnavailable;
     return .{ .x = rect.left, .y = rect.top };
 }
 
 /// Saved at once for the running profile, like a drag; another profile's draft keeps it until Save.
-fn setWindowPositions(character_name: ?[]const u8, pos: ?config_mod.Position) !void {
-    if (!session.editsDraft()) return main_mod.g_store.setWindowPosition(character_name, pos);
+fn setWindowPositions(character_name: ?[]const u8, pos: ?config.Position) !void {
+    if (!session.editsDraft()) return main.g_store.setWindowPosition(character_name, pos);
     const draft = session.profile();
-    try config_mod.applyWindowPosition(draft, character_name, pos);
-    patch.assignIds(config_mod.Config, draft);
+    try config.applyWindowPosition(draft, character_name, pos);
+    patch.assignIds(config.Config, draft);
 }
 
 /// 0 if it can't be read.
@@ -180,6 +175,6 @@ fn processStartTime(window: win32.HWND) u64 {
     defer _ = win32.CloseHandle(process);
     var created: win32.FILETIME = .{ .dwLowDateTime = 0, .dwHighDateTime = 0 };
     var unused: win32.FILETIME = .{ .dwLowDateTime = 0, .dwHighDateTime = 0 };
-    if (win32.GetProcessTimes(process, &created, &unused, &unused, &unused) == win32.FALSE) return 0;
+    if (!win32.toBool(win32.GetProcessTimes(process, &created, &unused, &unused, &unused))) return 0;
     return created.toU64();
 }

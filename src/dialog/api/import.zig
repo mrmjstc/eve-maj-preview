@@ -4,8 +4,7 @@ const importer = @import("../../config/import/importer.zig");
 const session = @import("../session.zig");
 const rpc = @import("../rpc.zig");
 
-/// The file's format, the sections it has for the user to choose from, and a profile name to suggest for it.
-/// `sourceProfile` picks one of an EVE-X file's several profiles.
+/// The file's format, the sections it has for the user to choose from, and a profile name to suggest; `sourceProfile` picks one of an EVE-X file's profiles.
 pub fn analyzeImport(arena: std.mem.Allocator, args: struct { text: []const u8, fileName: []const u8, sourceProfile: ?[]const u8 = null }) !rpc.RawJson {
     var out: std.Io.Writer.Allocating = .init(arena);
     var jw: std.json.Stringify = .{ .writer = &out.writer };
