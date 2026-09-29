@@ -1,15 +1,14 @@
-//! What the configuration window edits: the running profile's `live` copy, or a draft when it edits another profile, and a draft of the global settings.
-//! Main thread only.
+//! What the configuration window edits: the running profile's `live` copy, or a draft when it edits another profile, and a draft of the global settings; main thread only.
 const std = @import("std");
-const config_mod = @import("../config.zig");
+const config = @import("../config.zig");
 const patch = @import("../config/patch.zig");
-const main_mod = @import("../main.zig");
+const main = @import("../main.zig");
 const host = @import("host.zig");
 const log = @import("../log.zig");
 
+const Config = config.Config;
+const GlobalConfig = config.GlobalConfig;
 const slog = log.scoped("dialog");
-const Config = config_mod.Config;
-const GlobalConfig = config_mod.GlobalConfig;
 
 pub const Doc = enum { profile, global };
 
@@ -23,38 +22,35 @@ pub fn begin() !void {
     end();
     const allocator = host.allocator();
     if (!host.editsLiveProfile()) {
-        var draft = try config_mod.loadProfile(allocator, host.editingProfile());
+        var draft = try config.loadProfile(allocator, host.editingProfile());
         errdefer draft.deinit();
         patch.assignIds(Config, &draft);
         g_profile_draft_json = try draft.toJsonString(allocator);
         g_profile_draft = draft;
     }
-    g_global_draft = try cloneGlobal(allocator, &main_mod.g_global_settings);
+    g_global_draft = try cloneGlobal(allocator, &main.g_global_settings);
 }
 
 /// Drops unsaved edits.
 pub fn end() void {
-    if (g_profile_draft) |*draft| draft.deinit();
-    g_profile_draft = null;
-    if (g_profile_draft_json) |json| host.allocator().free(json);
-    g_profile_draft_json = null;
+    dropProfileDraft();
     if (g_global_draft) |*draft| draft.deinit();
     g_global_draft = null;
 
-    const store = &main_mod.g_store;
+    const store = &main.g_store;
     if (!store.isDirty()) return;
     slog.info("Dropping unsaved edits to the running profile", .{});
     store.discard() catch |err| {
         slog.err("Failed to drop unsaved edits to the running profile: {}", .{err});
         return;
     };
-    main_mod.onLiveProfileEdited(true);
+    main.onLiveProfileEdited(true);
 }
 
 /// The profile being edited; edits to the running one preview live.
 pub fn profile() *Config {
     if (g_profile_draft) |*draft| return draft;
-    return &main_mod.g_store.live;
+    return &main.g_store.live;
 }
 
 pub fn editsDraft() bool {
@@ -67,7 +63,7 @@ pub fn global() !*GlobalConfig {
 }
 
 pub fn profileDirty() bool {
-    const draft = &(g_profile_draft orelse return main_mod.g_store.isDirty());
+    const draft = &(g_profile_draft orelse return main.g_store.isDirty());
     var arena = std.heap.ArenaAllocator.init(host.allocator());
     defer arena.deinit();
     const json = draft.toJsonString(arena.allocator()) catch |err| {
@@ -85,7 +81,7 @@ pub fn globalDirty() bool {
         slog.err("Failed to serialize the edited global settings to compare them: {}", .{err});
         return true;
     };
-    const running = editableJson(arena.allocator(), &main_mod.g_global_settings) catch |err| {
+    const running = editableJson(arena.allocator(), &main.g_global_settings) catch |err| {
         slog.err("Failed to serialize the global settings to compare them: {}", .{err});
         return true;
     };
@@ -97,11 +93,35 @@ pub fn apply(jw: ?*std.json.Stringify, arena: std.mem.Allocator, doc: Doc, ops: 
     switch (doc) {
         .profile => {
             // Even after a failed op, since those before it were applied.
-            defer if (!editsDraft()) main_mod.onLiveProfileEdited(touchesLayout(ops));
+            defer if (!editsDraft()) main.onLiveProfileEdited(touchesLayout(ops));
             try applyTo(Config, profile(), jw, arena, ops);
         },
         .global => try applyTo(GlobalConfig, try global(), jw, arena, ops),
     }
+}
+
+/// After the app adopted the global draft (see GlobalConfig.adopt), which then holds the replaced values: it starts over from the running settings.
+pub fn resetGlobalDraft() !void {
+    const draft = try global();
+    const fresh = try cloneGlobal(host.allocator(), &main.g_global_settings);
+    draft.deinit();
+    g_global_draft = fresh;
+}
+
+/// The profile draft was saved and is now the running profile, whose `live` copy the window edits from here on.
+pub fn dropProfileDraft() void {
+    if (g_profile_draft) |*draft| draft.deinit();
+    g_profile_draft = null;
+    if (g_profile_draft_json) |json| host.allocator().free(json);
+    g_profile_draft_json = null;
+}
+
+pub fn writeProfile(jw: *std.json.Stringify) !void {
+    try patch.write(jw, Config, profile());
+}
+
+pub fn writeGlobal(jw: *std.json.Stringify) !void {
+    try patch.write(jw, GlobalConfig, try global());
 }
 
 fn applyTo(comptime T: type, target: *T, maybe_jw: ?*std.json.Stringify, arena: std.mem.Allocator, ops: []const patch.Op) !void {
@@ -134,30 +154,6 @@ fn touchesLayout(ops: []const patch.Op) bool {
         if (op.path.len > 0 and op.path[0] == .string and std.mem.eql(u8, op.path[0].string, "display")) return true;
     }
     return false;
-}
-
-/// After the app adopted the global draft (see GlobalConfig.adopt), which then holds the replaced values: it starts over from the running settings.
-pub fn resetGlobalDraft() !void {
-    const draft = try global();
-    const fresh = try cloneGlobal(host.allocator(), &main_mod.g_global_settings);
-    draft.deinit();
-    g_global_draft = fresh;
-}
-
-/// The profile draft was saved and is now the running profile, whose `live` copy the window edits from here on.
-pub fn dropProfileDraft() void {
-    if (g_profile_draft) |*draft| draft.deinit();
-    g_profile_draft = null;
-    if (g_profile_draft_json) |json| host.allocator().free(json);
-    g_profile_draft_json = null;
-}
-
-pub fn writeProfile(jw: *std.json.Stringify) !void {
-    try patch.write(jw, Config, profile());
-}
-
-pub fn writeGlobal(jw: *std.json.Stringify) !void {
-    try patch.write(jw, GlobalConfig, try global());
 }
 
 fn cloneGlobal(allocator: std.mem.Allocator, settings: *GlobalConfig) !GlobalConfig {

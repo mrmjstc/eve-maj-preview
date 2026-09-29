@@ -1,5 +1,43 @@
-//! The configuration window's files: the page, built per window, and the static modules, styles, font, image and language catalogs it loads.
+//! The configuration window's files: the page, built per window, and the static MODULES, styles, font, image and language catalogs it loads.
 const std = @import("std");
+
+/// Every module under ui/; one missing here is a 404 that stops the page loading.
+const MODULES = [_][]const u8{
+    "main",          "core",           "state",          "i18n",
+    "colors",        "form",           "changes",        "binding",
+    "layout",        "session",        "region",         "profiles",
+    "import",        "hotkeys",        "update",         "snake",
+    "widgets",       "window_filters", "characters",     "system_colors",
+    "ultra_potato",  "hotkey_groups",  "global_settings", "global_hotkeys",
+    "ore_table",     "notifications",  "options",        "overlay_layout",
+    "search",        "color_picker",
+};
+
+/// Built at compile time, so serving a file is a lookup; webui never frees memory it didn't allocate itself.
+const STATIC_FILES = blk: {
+    @setEvalBranchQuota(100_000);
+    var list: []const StaticFile = &.{
+        staticFile("style.css", "text/css; charset=utf-8", @embedFile("ui/style.css")),
+        staticFile("catalogs.js", "text/javascript; charset=utf-8", catalogsModule()),
+        staticFile("CascadiaCode.woff2", "font/woff2", @embedFile("../assets/fonts/CascadiaCode.woff2")),
+        staticFile("layout_preview.jpg", "image/jpeg", @embedFile("../assets/layout_preview.jpg")),
+    };
+    for (MODULES) |module| {
+        list = list ++ &[_]StaticFile{staticFile(module ++ ".js", "text/javascript; charset=utf-8", @embedFile("ui/" ++ module ++ ".js"))};
+    }
+    break :blk list;
+};
+
+/// The app icon inlined as a data URL, encoded at compile time.
+const FAVICON_TAG = blk: {
+    const icon = @embedFile("../assets/icon.ico");
+    const encoder = std.base64.standard.Encoder;
+    @setEvalBranchQuota(1_000_000);
+    var encoded: [encoder.calcSize(icon.len)]u8 = undefined;
+    _ = encoder.encode(&encoded, icon);
+    const final = encoded;
+    break :blk "<link rel=\"icon\" type=\"image/x-icon\" href=\"data:image/x-icon;base64," ++ final ++ "\">";
+};
 
 /// Add a language by dropping src/lang/xx.json in and adding one variant here plus one arm each in `catalog()` and `displayName()`.
 pub const Lang = enum {
@@ -43,6 +81,8 @@ pub const Lang = enum {
     }
 };
 
+const StaticFile = struct { name: []const u8, response: []const u8 };
+
 /// Caller owns the returned page.
 pub fn buildPage(allocator: std.mem.Allocator, lang: Lang, ui_scale: f32) ![:0]u8 {
     var scale_buf: [16]u8 = undefined;
@@ -65,40 +105,11 @@ pub fn buildPage(allocator: std.mem.Allocator, lang: Lang, ui_scale: f32) ![:0]u
 /// webui's file handler: a complete HTTP response for one of the page's static files, or null to let webui handle the path.
 pub fn serveFile(path: []const u8) ?[]const u8 {
     const name = std.mem.trimStart(u8, path, "/");
-    for (static_files) |static| {
+    for (STATIC_FILES) |static| {
         if (std.mem.eql(u8, name, static.name)) return static.response;
     }
     return null;
 }
-
-/// Every module under ui/; one missing here is a 404 that stops the page loading.
-const modules = [_][]const u8{
-    "main",          "core",           "state",          "i18n",
-    "colors",        "form",           "changes",        "binding",
-    "layout",        "session",        "region",         "profiles",
-    "import",        "hotkeys",        "update",         "snake",
-    "widgets",       "window_filters", "characters",     "system_colors",
-    "ultra_potato",  "hotkey_groups",  "global_settings", "global_hotkeys",
-    "ore_table",     "notifications",  "options",        "overlay_layout",
-    "search",        "color_picker",
-};
-
-const StaticFile = struct { name: []const u8, response: []const u8 };
-
-/// Built at compile time, so serving a file is a lookup; webui never frees memory it didn't allocate itself.
-const static_files = blk: {
-    @setEvalBranchQuota(100_000);
-    var list: []const StaticFile = &.{
-        staticFile("style.css", "text/css; charset=utf-8", @embedFile("ui/style.css")),
-        staticFile("catalogs.js", "text/javascript; charset=utf-8", catalogsModule()),
-        staticFile("CascadiaCode.woff2", "font/woff2", @embedFile("../assets/fonts/CascadiaCode.woff2")),
-        staticFile("layout_preview.jpg", "image/jpeg", @embedFile("../assets/layout_preview.jpg")),
-    };
-    for (modules) |module| {
-        list = list ++ &[_]StaticFile{staticFile(module ++ ".js", "text/javascript; charset=utf-8", @embedFile("ui/" ++ module ++ ".js"))};
-    }
-    break :blk list;
-};
 
 fn staticFile(comptime name: []const u8, comptime content_type: []const u8, comptime body: []const u8) StaticFile {
     return .{
@@ -121,14 +132,3 @@ fn catalogsModule() []const u8 {
         return catalogs ++ "};\n" ++ names ++ "};\n";
     }
 }
-
-/// The app icon inlined as a data URL, encoded at compile time.
-const FAVICON_TAG = blk: {
-    const icon = @embedFile("../assets/icon.ico");
-    const encoder = std.base64.standard.Encoder;
-    @setEvalBranchQuota(1_000_000);
-    var encoded: [encoder.calcSize(icon.len)]u8 = undefined;
-    _ = encoder.encode(&encoded, icon);
-    const final = encoded;
-    break :blk "<link rel=\"icon\" type=\"image/x-icon\" href=\"data:image/x-icon;base64," ++ final ++ "\">";
-};

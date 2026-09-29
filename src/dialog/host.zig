@@ -1,15 +1,14 @@
-//! The configuration window, hosted in the main app so it edits the same in-memory config the app runs on.
-//! Window lifecycle runs on the main thread; webui shows it and calls into it from its own threads (see rpc.zig).
+//! The configuration window, hosted in the main app so it edits the config the app runs on; its lifecycle is main-thread only, while webui calls in from its own threads (see rpc.zig).
 const std = @import("std");
 const webui = @import("webui");
 const win32 = @import("../platform/win32.zig");
-const log = @import("../log.zig");
-const main_mod = @import("../main.zig");
+const main = @import("../main.zig");
 const config_store = @import("../config/store.zig");
 const rpc = @import("rpc.zig");
 const events = @import("events.zig");
 const session = @import("session.zig");
 const resources = @import("resources.zig");
+const log = @import("../log.zig");
 
 const slog = log.scoped("dialog");
 
@@ -21,7 +20,10 @@ const DESIGN_HEIGHT: f32 = 950.0;
 const DEFAULT_POSITION: win32.POINT = .{ .x = 20, .y = 20 };
 
 const State = enum { closed, opening, open };
+
 const ShowResult = enum(u8) { pending, shown, failed };
+
+const Size = struct { width: u32, height: u32 };
 
 var g_allocator: std.mem.Allocator = undefined;
 var g_state: State = .closed;
@@ -98,7 +100,7 @@ pub fn hwnd() ?win32.HWND {
 }
 
 pub fn editingProfile() []const u8 {
-    return g_editing_profile orelse main_mod.g_store.live.profile_name;
+    return g_editing_profile orelse main.g_store.live.profile_name;
 }
 
 pub fn setEditingProfile(name: []const u8) !void {
@@ -109,7 +111,7 @@ pub fn setEditingProfile(name: []const u8) !void {
 
 /// Whether the window edits the profile the app is running, so its edits can preview live.
 pub fn editsLiveProfile() bool {
-    return std.mem.eql(u8, editingProfile(), main_mod.g_store.live.profile_name);
+    return std.mem.eql(u8, editingProfile(), main.g_store.live.profile_name);
 }
 
 pub fn setAlwaysOnTop(enabled: bool) void {
@@ -125,7 +127,7 @@ pub fn applyScale(percent: u16) f32 {
         return uiScale();
     };
     var rect: win32.RECT = undefined;
-    if (win32.GetWindowRect(window, &rect) == 0) {
+    if (!win32.toBool(win32.GetWindowRect(window, &rect))) {
         slog.warn("Failed to read the configuration window's position, UI scale not applied", .{});
         return uiScale();
     }
@@ -140,20 +142,20 @@ pub fn onMoved(lParam: win32.LPARAM) void {
     const packed_pos: u64 = @bitCast(@as(i64, lParam));
     const x: i32 = @bitCast(@as(u32, @truncate(packed_pos)));
     const y: i32 = @bitCast(@as(u32, @truncate(packed_pos >> 32)));
-    main_mod.g_global_settings.saveDialogPosition(x, y) catch |err| {
+    main.g_global_settings.saveDialogPosition(x, y) catch |err| {
         slog.warn("Failed to save the configuration window's position: {}", .{err});
     };
 }
 
 fn openWindow() !void {
-    const settings = &main_mod.g_global_settings;
+    const settings = &main.g_global_settings;
     const position: win32.POINT = if (settings.dialogX != null and settings.dialogY != null)
         .{ .x = settings.dialogX.?, .y = settings.dialogY.? }
     else
         DEFAULT_POSITION;
     setUiScale(resolveScale(settings.dialogScale, position));
 
-    try setEditingProfile(main_mod.g_store.live.profile_name);
+    try setEditingProfile(main.g_store.live.profile_name);
 
     const win = webui.newWindow();
     g_window = win;
@@ -208,8 +210,8 @@ fn windowProc(window: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam:
         },
         win32.WM_EXITSIZEMOVE => {
             var rect: win32.RECT = undefined;
-            if (win32.GetWindowRect(window, &rect) != 0) {
-                if (main_mod.g_timer_hwnd) |timer| {
+            if (win32.toBool(win32.GetWindowRect(window, &rect))) {
+                if (main.g_timer_hwnd) |timer| {
                     const packed_pos = (@as(u64, @as(u32, @bitCast(rect.top))) << 32) | @as(u32, @bitCast(rect.left));
                     _ = win32.PostMessageA(timer, win32.WM_DIALOG_MOVED, 0, @bitCast(@as(i64, @bitCast(packed_pos))));
                 }
@@ -224,7 +226,7 @@ fn windowProc(window: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam:
 fn onClosed() void {
     slog.info("Configuration window closed", .{});
     session.end();
-    main_mod.onDialogClosed();
+    main.onDialogClosed();
     resetWindow();
 }
 
@@ -242,7 +244,7 @@ fn resetWindow() void {
 
 fn focus() void {
     const window = hwnd() orelse return;
-    if (win32.IsIconic(window) != 0) _ = win32.ShowWindow(window, win32.SW_RESTORE);
+    if (win32.toBool(win32.IsIconic(window))) _ = win32.ShowWindow(window, win32.SW_RESTORE);
     _ = win32.SetForegroundWindow(window);
 }
 
@@ -253,8 +255,6 @@ fn uiScale() f32 {
 fn setUiScale(scale: f32) void {
     g_ui_scale_bits.store(@bitCast(scale), .release);
 }
-
-const Size = struct { width: u32, height: u32 };
 
 fn targetSize(dpi: u32) Size {
     const scale = win32.dpiToScale(dpi) * uiScale();

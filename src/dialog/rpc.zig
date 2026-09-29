@@ -1,22 +1,23 @@
 //! The window's one binding, `rpc(method, argsJson)`: every `pub fn` in the api modules is a method, taking an arena and optionally an args struct parsed from `argsJson`.
-//! Replies are `{"ok":true,"data":...}` or `{"ok":false,"error":{"code","message"}}`, logged once here.
-//! webui calls this on its own threads; a module's calls run on the main thread unless it declares `runs_on_caller = true`.
 const std = @import("std");
 const webui = @import("webui");
 const win32 = @import("../platform/win32.zig");
-const log = @import("../log.zig");
-const main_mod = @import("../main.zig");
+const main = @import("../main.zig");
 const host = @import("host.zig");
+const log = @import("../log.zig");
 
 const slog = log.scoped("dialog");
 
-const api_modules = .{
+const API_MODULES = .{
     @import("api/session.zig"),
     @import("api/profiles.zig"),
     @import("api/import.zig"),
     @import("api/app.zig"),
     @import("api/background.zig"),
 };
+
+/// Long enough for a Save, which reloads the whole profile before replying.
+const MAIN_THREAD_TIMEOUT_MS = 60_000;
 
 /// Already-serialized JSON, embedded in a reply as-is.
 pub const RawJson = struct {
@@ -27,18 +28,20 @@ pub const RawJson = struct {
     }
 };
 
-/// Long enough for a Save, which reloads the whole profile before replying.
-const MAIN_THREAD_TIMEOUT_MS = 60_000;
-
-pub fn bind(win: webui) !void {
-    _ = try win.bind("rpc", onCall);
-}
-
 const Call = struct {
     method: []const u8,
     args: []const u8,
     response: ?[:0]u8 = null,
 };
+
+pub fn bind(win: webui) !void {
+    _ = try win.bind("rpc", onCall);
+}
+
+/// WM_DIALOG_RPC's handler.
+pub fn runOnMainThread(lParam: win32.LPARAM) void {
+    execute(win32.lparamToPtr(Call, lParam));
+}
 
 fn onCall(e: *webui.Event) void {
     var call = Call{ .method = e.getStringAt(0), .args = e.getStringAt(1) };
@@ -56,21 +59,17 @@ fn onCall(e: *webui.Event) void {
 }
 
 fn sendToMainThread(call: *Call) void {
-    const timer = main_mod.g_timer_hwnd orelse {
-        slog.err("rpc {s}: the main window isn't available", .{call.method});
+    const timer = main.g_timer_hwnd orelse {
+        slog.err("Failed to run rpc {s}: the main window isn't available", .{call.method});
         return;
     };
     var result: usize = 0;
     if (win32.SendMessageTimeoutA(timer, win32.WM_DIALOG_RPC, 0, @bitCast(@intFromPtr(call)), win32.SMTO_ABORTIFHUNG, MAIN_THREAD_TIMEOUT_MS, &result) == 0) {
-        slog.err("rpc {s}: the main thread didn't answer", .{call.method});
+        slog.err("Failed to run rpc {s}: the main thread didn't answer", .{call.method});
     }
 }
 
-/// WM_DIALOG_RPC's handler.
-pub fn runOnMainThread(lParam: win32.LPARAM) void {
-    execute(win32.lparamToPtr(Call, lParam));
-}
-
+/// Replies `{"ok":true,"data":...}` or `{"ok":false,"error":{"code","message"}}`, a failure logged once here.
 fn execute(call: *Call) void {
     var arena_state = std.heap.ArenaAllocator.init(host.allocator());
     defer arena_state.deinit();
@@ -78,13 +77,14 @@ fn execute(call: *Call) void {
 
     const json = dispatch(arena, call.method, call.args) catch |err| errorResponse(arena, call.method, err);
     call.response = host.allocator().dupeZ(u8, json) catch |err| {
-        slog.err("rpc {s}: failed to copy the response: {}", .{ call.method, err });
+        slog.err("Failed to copy the response to rpc {s}: {}", .{ call.method, err });
         return;
     };
 }
 
+/// webui calls in on its own threads; a method runs on the main thread unless its module declares `runs_on_caller = true`.
 fn runsOnCaller(method: []const u8) bool {
-    inline for (api_modules) |M| {
+    inline for (API_MODULES) |M| {
         if (comptime @hasDecl(M, "runs_on_caller")) {
             inline for (comptime methodNames(M)) |name| {
                 if (std.mem.eql(u8, name, method)) return true;
@@ -116,7 +116,7 @@ fn dispatch(arena: std.mem.Allocator, method: []const u8, args_json: []const u8)
     else
         std.json.parseFromSliceLeaky(std.json.Value, arena, args_json, .{}) catch return error.InvalidArguments;
 
-    inline for (api_modules) |M| {
+    inline for (API_MODULES) |M| {
         inline for (comptime methodNames(M)) |name| {
             if (std.mem.eql(u8, name, method)) return invoke(arena, @field(M, name), args);
         }
@@ -145,7 +145,7 @@ fn invoke(arena: std.mem.Allocator, comptime func: anytype, args: std.json.Value
 }
 
 fn errorResponse(arena: std.mem.Allocator, method: []const u8, err: anyerror) []const u8 {
-    slog.err("rpc {s} failed: {}", .{ method, err });
+    slog.err("Failed to run rpc {s}: {}", .{ method, err });
     const message = humanize(arena, @errorName(err)) catch @errorName(err);
     return std.json.Stringify.valueAlloc(arena, .{ .ok = false, .@"error" = .{ .code = @errorName(err), .message = message } }, .{}) catch
         "{\"ok\":false,\"error\":{\"code\":\"OutOfMemory\",\"message\":\"Out of memory\"}}";
