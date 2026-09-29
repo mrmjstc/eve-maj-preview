@@ -201,3 +201,67 @@ fn oklabDistance(x: Oklab, y: Oklab) f32 {
     const db = x.b - y.b;
     return @sqrt(dl * dl + da * da + db * db);
 }
+
+const testing = std.testing;
+
+test "withAlpha replaces only the alpha byte" {
+    try testing.expectEqual(@as(u32, 0x80345678), withAlpha(0x12345678, 0x80));
+}
+
+test "lighten mixes toward white and keeps alpha" {
+    try testing.expectEqual(@as(u32, 0xFF123456), lighten(0xFF123456, 0));
+    try testing.expectEqual(@as(u32, 0x80FFFFFF), lighten(0x80000000, 100));
+    try testing.expectEqual(@as(u32, 0xFF7F7F7F), lighten(0xFF000000, 50));
+}
+
+test "inkFor picks dark ink on light backgrounds and light ink on dark ones" {
+    try testing.expectEqual(@as(u32, 0xFF1A1408), inkFor(0xFFFFFFFF));
+    try testing.expectEqual(@as(u32, 0xFF1A1408), inkFor(0xFFFFFF00));
+    try testing.expectEqual(@as(u32, 0xFFF5F0E6), inkFor(0xFF000000));
+    try testing.expectEqual(@as(u32, 0xFFF5F0E6), inkFor(0xFF0000FF));
+}
+
+test "pickDistinctColor is deterministic and avoids taken colors" {
+    const first = pickDistinctColor("Some Pilot", &.{});
+    try testing.expectEqual(first, pickDistinctColor("Some Pilot", &.{}));
+    try testing.expectEqual(@as(u32, 0), first & 0xFF000000);
+    const second = pickDistinctColor("Some Pilot", &.{first});
+    try testing.expect(second != first);
+    try testing.expect(pickDistinctColor("Other Pilot", &.{ first, second }) != first);
+}
+
+test "AutoColors keeps a name's color and marks only new assignments dirty" {
+    var colors: AutoColors = .{};
+    defer colors.deinit(testing.allocator);
+
+    const assigned = colors.colorFor(testing.allocator, "Some Pilot", &.{});
+    try testing.expectEqual(@as(u32, 0xFF000000), assigned & 0xFF000000);
+    try testing.expect(colors.dirty);
+
+    colors.dirty = false;
+    try testing.expectEqual(assigned, colors.colorFor(testing.allocator, "SOME PILOT", &.{}));
+    try testing.expect(!colors.dirty);
+    try testing.expect(colors.colorFor(testing.allocator, "Other Pilot", &.{}) != assigned);
+}
+
+test "AutoColors.put restores a color without marking the store dirty" {
+    var colors: AutoColors = .{};
+    defer colors.deinit(testing.allocator);
+
+    try colors.put(testing.allocator, "Some Pilot", 0xFF123456);
+    try testing.expect(!colors.dirty);
+    try testing.expectEqual(@as(u32, 0xFF123456), colors.colorFor(testing.allocator, "some pilot", &.{}));
+}
+
+test "AutoColors evicts the least recently seen name past MAX_ENTRIES" {
+    var colors: AutoColors = .{};
+    defer colors.deinit(testing.allocator);
+
+    var name_buf: [16]u8 = undefined;
+    for (0..AutoColors.MAX_ENTRIES + 1) |i| {
+        const name = std.fmt.bufPrint(&name_buf, "Pilot {d}", .{i}) catch unreachable;
+        _ = colors.colorFor(testing.allocator, name, &.{});
+    }
+    try testing.expectEqual(@as(usize, AutoColors.MAX_ENTRIES), colors.entries.items.len);
+    try testing.expectEqualStrings("Pilot 1", colors.entries.items[0].name);
+}

@@ -87,3 +87,67 @@ fn shortTypeName(comptime R: type) []const u8 {
     return full[dot + 1 ..];
 }
 
+
+const testing = std.testing;
+
+const TestSettings = struct {
+    opacity: u8 = 200,
+    window_seconds: u32 = 60,
+    offset: ?i32 = null,
+
+    pub const ranges = .{
+        .opacity = OPACITY,
+        .window_seconds = WINDOW_SECONDS,
+        .offset = TEXT_OFFSET,
+    };
+    pub const zero_means_default = .{"window_seconds"};
+
+    pub fn validate(self: *TestSettings) void {
+        clamp(TestSettings, self);
+    }
+};
+
+const TestParent = struct {
+    settings: TestSettings = .{},
+    extra: ?TestSettings = null,
+};
+
+test "clamp pulls each field into its range" {
+    var low: TestSettings = .{ .opacity = 10, .window_seconds = 5_000, .offset = -900 };
+    clamp(TestSettings, &low);
+    try testing.expectEqual(@as(u8, 51), low.opacity);
+    try testing.expectEqual(@as(u32, 3600), low.window_seconds);
+    try testing.expectEqual(@as(?i32, -500), low.offset);
+
+    var fine: TestSettings = .{ .opacity = 128, .window_seconds = 30, .offset = 12 };
+    clamp(TestSettings, &fine);
+    try testing.expectEqual(@as(u8, 128), fine.opacity);
+    try testing.expectEqual(@as(u32, 30), fine.window_seconds);
+    try testing.expectEqual(@as(?i32, 12), fine.offset);
+}
+
+test "clamp swaps a zero-means-default 0 for the default, and clamps other zeros" {
+    var settings: TestSettings = .{ .opacity = 0, .window_seconds = 0 };
+    clamp(TestSettings, &settings);
+    try testing.expectEqual(@as(u32, 60), settings.window_seconds);
+    try testing.expectEqual(@as(u8, 51), settings.opacity);
+}
+
+test "clamp leaves an unset optional unset" {
+    var settings: TestSettings = .{};
+    clamp(TestSettings, &settings);
+    try testing.expectEqual(@as(?i32, null), settings.offset);
+}
+
+test "clamp validates nested settings, including a set optional" {
+    var parent: TestParent = .{ .settings = .{ .opacity = 1 }, .extra = .{ .opacity = 2 } };
+    clamp(TestParent, &parent);
+    try testing.expectEqual(@as(u8, 51), parent.settings.opacity);
+    try testing.expectEqual(@as(u8, 51), parent.extra.?.opacity);
+}
+
+test "clampValue brings a single value within its field's range" {
+    try testing.expectEqual(@as(u8, 51), clampValue(TestSettings, "opacity", 5));
+    try testing.expectEqual(@as(u32, 60), clampValue(TestSettings, "window_seconds", 0));
+    try testing.expectEqual(@as(u32, 3600), clampValue(TestSettings, "window_seconds", 9_000));
+}

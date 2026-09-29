@@ -124,3 +124,23 @@ comptime {
         if (matches != 1) @compileError("protocol.GlobalAction." ++ @tagName(tag) ++ " must map to exactly one global binding");
     }
 }
+
+const testing = std.testing;
+
+test "fromProtocol maps each URL action to the hotkey action of the same name" {
+    for (std.enums.values(protocol.GlobalAction)) |action| {
+        try testing.expectEqualStrings(@tagName(action), @tagName(std.meta.activeTag(fromProtocol(action))));
+    }
+}
+
+test "global hotkey IDs stay inside their band" {
+    for (GLOBAL_BINDINGS) |binding| {
+        const id = globalId(binding.action);
+        try testing.expect(id >= HOTKEY_ID_GLOBAL_ACTION_BASE and id < HOTKEY_ID_PER_CHARACTER_BASE);
+    }
+}
+
+test "bandId offsets from the band's base" {
+    try testing.expectEqual(@as(c_int, 3002), bandId(HOTKEY_ID_PROFILE_SWITCH_BASE, 2));
+    try testing.expectEqual(HOTKEY_ID_CYCLE_GROUP_BASE, bandId(HOTKEY_ID_CYCLE_GROUP_BASE, 0));
+}

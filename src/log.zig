@@ -1,5 +1,6 @@
 //! The app's log file, rotated at 20MB, with a scoped logger per module and an optional debug console.
 const std = @import("std");
+const builtin = @import("builtin");
 const win32 = @import("platform/win32.zig");
 
 pub const LOG_FILE_NAME = "eve-maj.log";
@@ -151,6 +152,8 @@ fn flush() void {
 }
 
 fn shouldLog(level: LogLevel) bool {
+    // Tests never call setIo, so a write would go through an undefined Io.
+    if (builtin.is_test) return false;
     return @intFromEnum(level) >= @intFromEnum(g_level);
 }
 

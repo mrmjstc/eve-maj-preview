@@ -242,3 +242,36 @@ fn ensureDir(allocator: std.mem.Allocator) !void {
         else => return err,
     };
 }
+
+const testing = std.testing;
+
+test "validateName accepts only a plain <name>.json" {
+    try validateName("Main.json");
+    try validateName("My Alts.json");
+    try testing.expectError(error.InvalidProfileName, validateName("Main"));
+    try testing.expectError(error.InvalidProfileName, validateName(".json"));
+    try testing.expectError(error.InvalidProfileName, validateName(".hidden.json"));
+    try testing.expectError(error.InvalidProfileName, validateName("../Main.json"));
+    try testing.expectError(error.InvalidProfileName, validateName("a:b.json"));
+    try testing.expectError(error.InvalidProfileName, validateName("what?.json"));
+}
+
+test "validateName refuses the global settings file" {
+    try testing.expectError(error.InvalidProfileName, validateName("global.settings.json"));
+}
+
+test "fileNameFor appends .json and rejects empty, long or unsafe names" {
+    const name = try fileNameFor(testing.allocator, "Main");
+    defer testing.allocator.free(name);
+    try testing.expectEqualStrings("Main.json", name);
+
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, ""));
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "a" ** (MAX_NAME_LEN + 1)));
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "a*b"));
+}
+
+test "checkDeletable refuses the default profile" {
+    try checkDeletable("Main.json");
+    try testing.expectError(error.CannotDeleteDefaultProfile, checkDeletable(files.DEFAULT_PROFILE));
+    try testing.expectError(error.InvalidProfileName, checkDeletable("Main"));
+}

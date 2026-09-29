@@ -285,3 +285,69 @@ pub fn parseVirtualKey(key_str: []const u8) ?u32 {
 
     return parseBaseKey(key_str);
 }
+
+const testing = std.testing;
+
+fn formatKey(buf: []u8, combined: u32) ![]const u8 {
+    var writer: std.Io.Writer = .fixed(buf);
+    try writeVirtualKey(&writer, combined);
+    return writer.buffered();
+}
+
+test "combineKey packs the key and modifiers so they extract back out" {
+    const combined = combineKey(VK_F1, MOD_CONTROL | MOD_SHIFT);
+    try testing.expectEqual(VK_F1, extractVk(combined));
+    try testing.expectEqual(MOD_CONTROL | MOD_SHIFT, extractModifiers(combined));
+    try testing.expectEqual(@as(u32, 0x0678), combineKey(0x78, MOD_CONTROL | MOD_SHIFT));
+}
+
+test "parseVirtualKey reads combos regardless of case and spacing" {
+    const f9 = VK_F1 + 8;
+    try testing.expectEqual(combineKey(f9, MOD_CONTROL | MOD_ALT), parseVirtualKey("Ctrl+Alt+F9").?);
+    try testing.expectEqual(combineKey(f9, MOD_CONTROL), parseVirtualKey("ctrl + f9").?);
+    try testing.expectEqual(combineKey(f9, MOD_CONTROL), parseVirtualKey("Control+F9").?);
+    try testing.expectEqual(combineKey('A', MOD_WIN), parseVirtualKey("LWin+A").?);
+    try testing.expectEqual(f9, parseVirtualKey("F9").?);
+    try testing.expectEqual(VK_SHIFT, parseVirtualKey("Shift").?);
+    try testing.expectEqual(combineKey(VK_SHIFT, MOD_CONTROL), parseVirtualKey("Ctrl+Shift").?);
+}
+
+test "parseVirtualKey reads the hex form older profiles saved" {
+    try testing.expectEqual(combineKey(VK_F1 + 8, MOD_CONTROL), parseVirtualKey("0x0278").?);
+    try testing.expect(parseVirtualKey("0x0200") == null);
+    try testing.expect(parseVirtualKey("0x00FF") == null);
+    try testing.expect(parseVirtualKey("0xZZ") == null);
+}
+
+test "parseVirtualKey accepts shifted OEM characters as their key" {
+    try testing.expectEqual(VK_OEM_1, parseVirtualKey(":").?);
+    try testing.expectEqual(VK_OEM_1, parseVirtualKey(";").?);
+    try testing.expectEqual(combineKey(VK_OEM_4, MOD_ALT), parseVirtualKey("Alt+{").?);
+}
+
+test "parseVirtualKey rejects unknown names and self-referential modifiers" {
+    try testing.expect(parseVirtualKey("") == null);
+    try testing.expect(parseVirtualKey("Hyper+F9") == null);
+    try testing.expect(parseVirtualKey("Ctrl+NotAKey") == null);
+    try testing.expect(parseVirtualKey("Shift+Shift") == null);
+    try testing.expect(parseVirtualKey("Ctrl+Control") == null);
+    try testing.expect(parseVirtualKey("Win+LWin") == null);
+}
+
+test "writeVirtualKey writes back what parseVirtualKey reads" {
+    var buf: [64]u8 = undefined;
+    for ([_][]const u8{ "Ctrl+Shift+F9", "Alt+Numpad5", "Ctrl+Alt+Shift+Win+PageDown", "XButton1", "Shift+;" }) |text| {
+        try testing.expectEqualStrings(text, try formatKey(&buf, parseVirtualKey(text).?));
+    }
+}
+
+test "writeVirtualKey writes a key without a name as hex" {
+    var buf: [64]u8 = undefined;
+    try testing.expectEqualStrings("Ctrl+VKE8", try formatKey(&buf, combineKey(VK_FOCUS_GRANT, MOD_CONTROL)));
+}
+
+test "isMouseHookVk covers the mouse buttons and wheel only" {
+    try testing.expect(isMouseHookVk(VK_XBUTTON1) and isMouseHookVk(VK_XBUTTON2));
+    try testing.expect(isMouseHookVk(VK_WHEELUP) and isMouseHookVk(VK_WHEELDOWN));
+    try testing.expect(!isMouseHookVk(VK_F1) and !isMouseHookVk('A'));
+}

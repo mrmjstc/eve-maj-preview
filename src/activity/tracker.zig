@@ -763,3 +763,191 @@ fn computeWindowRate(
     const window_secs = @as(f32, @floatFromInt(@min(window_ms, span_ms))) / 1000.0;
     return (total / window_secs) * idleDecayFactor(now_ms, last_hit_ms, window_ms);
 }
+
+const testing = std.testing;
+
+test "parseCombatLine reads incoming and outgoing damage and the weapon" {
+    const incoming = parseCombatLine("[ 2026.09.17 19:28:06 ] (combat) 484 from Gist Seraphim - Heavy Missile - Hits").?;
+    try testing.expectEqual(@as(u32, 484), incoming.amount);
+    try testing.expect(incoming.is_incoming);
+    try testing.expectEqualStrings("Heavy Missile", incoming.weapon);
+
+    const outgoing = parseCombatLine("[ 2026.09.17 19:28:07 ] (combat) 312 to Gist Seraphim - Hammerhead II - Smashes").?;
+    try testing.expectEqual(@as(u32, 312), outgoing.amount);
+    try testing.expect(!outgoing.is_incoming);
+    try testing.expectEqualStrings("Hammerhead II", outgoing.weapon);
+}
+
+test "parseCombatLine counts a miss against you as incoming with no damage" {
+    const miss = parseCombatLine("[ 2026.09.17 19:28:06 ] (combat) Gist Seraphim misses you completely - Heavy Missile").?;
+    try testing.expectEqual(@as(u32, 0), miss.amount);
+    try testing.expect(miss.is_incoming);
+}
+
+test "parseCombatLine ignores repairs, transfers and malformed lines" {
+    try testing.expect(parseCombatLine("[ 2026.09.17 19:28:06 ] (combat) 350 energy transfers to Some Pilot - Large Remote Capacitor Transmitter") == null);
+    try testing.expect(parseCombatLine("[ 2026.09.17 19:28:06 ] (combat) 200 remote armor repairs your ship - Some Pilot") == null);
+    try testing.expect(parseCombatLine("[ 2026.09.17 19:28:06 ] (combat) 100 hit points of something") == null);
+    try testing.expect(parseCombatLine("[ 2026.09.17 19:28:06 ] (combat) 0 from Gist Seraphim - Heavy Missile - Hits") == null);
+    try testing.expect(parseCombatLine("[ 2026.09.17 19:28:06 ] (notify) 484 from Gist Seraphim - Heavy Missile - Hits") == null);
+}
+
+test "parseCombatLine skips an amount too large for u32 instead of wrapping" {
+    try testing.expect(parseCombatLine("[ 2026.09.17 19:28:06 ] (combat) 99999999999 from Gist Seraphim - Heavy Missile - Hits") == null);
+}
+
+test "parseBountyLine reads comma-separated ISK, including payouts past u32" {
+    try testing.expectEqual(@as(f32, 120272), parseBountyLine("[ 2026.09.17 19:28:07 ] (bounty) <b>120,272 ISK</b> added to next bounty payout").?);
+    try testing.expectEqual(@as(f32, 5_000_000_000), parseBountyLine("[ 2026.09.17 19:28:07 ] (bounty) <b>5,000,000,000 ISK</b> added to next bounty payout").?);
+    try testing.expect(parseBountyLine("[ 2026.09.17 19:28:07 ] (bounty) <b>0 ISK</b> added to next bounty payout") == null);
+    try testing.expect(parseBountyLine("[ 2026.09.17 19:28:07 ] (bounty) Bounty payout pending") == null);
+}
+
+test "parseMiningLine reads normal and critical yields but not residue" {
+    const normal = parseMiningLine("[ 2026.08.09 23:45:29 ] (mining) <color=0x77ffffff>You mined <b>1</b> units of Dark Glitter").?;
+    try testing.expectEqual(@as(u32, 1), normal.amount);
+    try testing.expectEqualStrings("Dark Glitter", normal.name());
+
+    const critical = parseMiningLine("[ 2026.08.09 23:45:30 ] (mining) You mined an additional <b>52</b> units of Veldspar.").?;
+    try testing.expectEqual(@as(u32, 52), critical.amount);
+    try testing.expectEqualStrings("Veldspar", critical.name());
+
+    try testing.expect(parseMiningLine("[ 2026.08.09 23:45:31 ] (mining) 12 units of Veldspar depleted from asteroid as residue") == null);
+    try testing.expect(parseMiningLine("[ 2026.08.09 23:45:31 ] (mining) You mined <b>5</b> units of ") == null);
+}
+
+test "stripHtml drops tags and truncates to the buffer" {
+    var buf: [64]u8 = undefined;
+    try testing.expectEqualStrings("You mined 1 units", stripHtml("<color=0x77ffffff>You mined <b>1</b> units", &buf));
+    var small: [3]u8 = undefined;
+    try testing.expectEqualStrings("abc", stripHtml("<b>abcdef</b>", &small));
+}
+
+test "isWeaponExcluded matches case-insensitive substrings and skips blank entries" {
+    try testing.expect(isWeaponExcluded("Hammerhead II", "drone, hammerhead"));
+    try testing.expect(isWeaponExcluded("Heavy Missile", " , missile "));
+    try testing.expect(!isWeaponExcluded("Heavy Missile", ",,"));
+    try testing.expect(!isWeaponExcluded("", "missile"));
+    try testing.expect(!isWeaponExcluded("Heavy Missile", "Heavy Missile Launcher"));
+}
+
+test "idleDecayFactor holds through the first half of the window, then fades to zero" {
+    try testing.expectEqual(@as(f32, 1.0), idleDecayFactor(5_000, 0, 10_000));
+    try testing.expectEqual(@as(f32, 0.5), idleDecayFactor(7_500, 0, 10_000));
+    try testing.expectEqual(@as(f32, 0.0), idleDecayFactor(10_000, 0, 10_000));
+    try testing.expectEqual(@as(f32, 0.0), idleDecayFactor(60_000, 0, 10_000));
+}
+
+test "CombatWindow withholds a rate until hits span three seconds" {
+    var window: CombatWindow = .init(10);
+    window.addEntry(100, true, 1_000, true);
+    window.addEntry(100, true, 2_000, true);
+    const dps = window.computeDps(2_000);
+    try testing.expect(dps.incoming == null and dps.outgoing == null);
+}
+
+test "CombatWindow splits incoming and outgoing damage over the span of hits" {
+    var window: CombatWindow = .init(10);
+    window.addEntry(100, true, 1_000, true);
+    window.addEntry(50, false, 3_000, true);
+    window.addEntry(100, true, 5_000, true);
+    const dps = window.computeDps(5_000);
+    try testing.expectEqual(@as(f32, 50.0), dps.incoming.?);
+    try testing.expectEqual(@as(f32, 12.5), dps.outgoing.?);
+}
+
+test "CombatWindow reports zero once the last hit leaves the window" {
+    var window: CombatWindow = .init(10);
+    window.addEntry(100, true, 1_000, true);
+    window.addEntry(100, true, 5_000, true);
+    const dps = window.computeDps(15_000);
+    try testing.expectEqual(@as(f32, 0.0), dps.incoming.?);
+    try testing.expectEqual(@as(f32, 0.0), dps.outgoing.?);
+}
+
+test "CombatWindow keeps only the newest hits once the ring wraps" {
+    var window: CombatWindow = .init(10);
+    for (0..RING_CAPACITY + 88) |i| {
+        window.addEntry(1, true, 1_000 + @as(i64, @intCast(i)) * 10, true);
+    }
+    try testing.expectEqual(@as(usize, RING_CAPACITY), window.count);
+    const newest_ms = 1_000 + @as(i64, RING_CAPACITY + 87) * 10;
+    const oldest_ms = 1_000 + @as(i64, 88) * 10;
+    const span_secs = @as(f32, @floatFromInt(newest_ms - oldest_ms)) / 1000.0;
+    try testing.expectApproxEqAbs(@as(f32, RING_CAPACITY) / span_secs, window.computeDps(newest_ms).incoming.?, 0.01);
+}
+
+test "CombatWindow alerts once per burst of incoming damage" {
+    var window: CombatWindow = .init(10);
+    try testing.expect(!window.checkDamageAlert(500));
+
+    window.addEntry(100, true, 1_000, true);
+    try testing.expect(window.checkDamageAlert(1_500));
+    try testing.expect(!window.checkDamageAlert(1_600));
+
+    window.addEntry(100, true, 2_000, false);
+    try testing.expect(!window.checkDamageAlert(2_100));
+
+    window.addEntry(100, true, 3_000, true);
+    try testing.expect(window.checkDamageAlert(3_100));
+}
+
+test "CombatWindow.refresh reports a change only when a rate appears or moves" {
+    var window: CombatWindow = .init(10);
+    window.addEntry(100, true, 1_000, true);
+    try testing.expect(!window.refresh(1_000));
+    window.addEntry(100, true, 5_000, true);
+    try testing.expect(window.refresh(5_000));
+    try testing.expect(!window.refresh(5_000));
+}
+
+test "MiningWindow rates m3 and ISK over the span of yields" {
+    var window: MiningWindow = .init(60);
+    window.addEntry(30, 3_000, 1_000);
+    window.addEntry(30, 3_000, 4_000);
+    try testing.expectEqual(@as(f32, 20.0), window.computeRate(4_000).?);
+    try testing.expectEqual(@as(f32, 2_000.0), window.computeIskRate(4_000).?);
+    try testing.expectEqual(@as(usize, 2), window.countEvents(60_000, 4_000));
+    try testing.expectEqual(@as(usize, 1), window.countEvents(1_000, 4_000));
+}
+
+test "BountyWindow reports zero before the first payout" {
+    const window: BountyWindow = .init(60);
+    try testing.expectEqual(@as(f32, 0.0), window.computeIskRate(1_000).?);
+}
+
+test "MiningTracker idle alert fires once per idle stretch" {
+    var tracker: MiningTracker = .init(testing.allocator, testing.io, 60);
+    defer tracker.deinit();
+
+    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 1_000, 60_000, 2));
+
+    try tracker.addEntry("Some Pilot", 10, 0, 1_000);
+    try testing.expect(tracker.checkIdleAlert("Some Pilot", 1_000, 60_000, 2));
+    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 1_500, 60_000, 2));
+
+    for ([_]i64{ 2_000, 3_000, 4_000 }) |ts| try tracker.addEntry("Some Pilot", 10, 0, ts);
+    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 4_000, 60_000, 2));
+    try testing.expect(tracker.checkIdleAlert("Some Pilot", 200_000, 60_000, 2));
+}
+
+test "MiningTracker stopped alert fires once until mining resumes" {
+    var tracker: MiningTracker = .init(testing.allocator, testing.io, 60);
+    defer tracker.deinit();
+
+    try tracker.addEntry("Some Pilot", 10, 0, 4_000);
+    try testing.expect(!tracker.checkStoppedAlert("Some Pilot", 5_000, 30_000));
+    try testing.expect(tracker.checkStoppedAlert("Some Pilot", 40_000, 30_000));
+    try testing.expect(!tracker.checkStoppedAlert("Some Pilot", 41_000, 30_000));
+
+    try tracker.addEntry("Some Pilot", 10, 0, 42_000);
+    try testing.expect(tracker.checkStoppedAlert("Some Pilot", 80_000, 30_000));
+}
+
+test "CombatTracker reports zero for a character it hasn't seen" {
+    var tracker: CombatTracker = .init(testing.allocator, testing.io, 10);
+    defer tracker.deinit();
+    const dps = tracker.getDps("Nobody");
+    try testing.expectEqual(@as(f32, 0.0), dps.incoming.?);
+    try testing.expect(!tracker.checkDamageAlert("Nobody", 1_000));
+}

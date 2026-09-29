@@ -147,3 +147,37 @@ fn withField(buf: []u8, comptime fmt: []const u8, field: ?[]const u8, fallback: 
         return fallback;
     };
 }
+
+const testing = std.testing;
+
+test "defaultText inserts the target, or falls back without one" {
+    var buf: [64]u8 = undefined;
+    try testing.expectEqualStrings("Taking Conduit to Ahbazon", defaultText(.{ .ntype = .ConduitJump, .target = "Ahbazon" }, &buf));
+    try testing.expectEqualStrings("Conduit Jump", defaultText(.{ .ntype = .ConduitJump }, &buf));
+    try testing.expectEqualStrings("Jumped to Jita", defaultText(.{ .ntype = .SystemChange, .target = "Jita" }, &buf));
+    try testing.expectEqualStrings("Left behind in Perimeter", defaultText(.{ .ntype = .TravelLeftBehind, .source = "Perimeter", .target = "Jita" }, &buf));
+    try testing.expectEqualStrings("Profile switched", defaultText(.{ .ntype = .ProfileSwitch }, &buf));
+}
+
+test "defaultText falls back when the text doesn't fit the buffer" {
+    var buf: [8]u8 = undefined;
+    try testing.expectEqualStrings("Jumped", defaultText(.{ .ntype = .SystemChange, .target = "Jita" }, &buf));
+}
+
+test "defaultText words each state" {
+    var buf: [64]u8 = undefined;
+    try testing.expectEqualStrings("Self-Destruct", defaultText(.{ .ntype = .SelfDestruct, .state = .started }, &buf));
+    try testing.expectEqualStrings("Self-Destruct Aborted", defaultText(.{ .ntype = .SelfDestruct, .state = .aborted }, &buf));
+    try testing.expectEqualStrings("Added to Wing A", defaultText(.{ .ntype = .GroupMembership, .state = .added, .target = "Wing A" }, &buf));
+    try testing.expectEqualStrings("Removed from Wing A", defaultText(.{ .ntype = .GroupMembership, .state = .removed, .target = "Wing A" }, &buf));
+    try testing.expectEqualStrings("Hotkeys suspended", defaultText(.{ .ntype = .HotkeySuspend, .state = .suspended }, &buf));
+    try testing.expectEqualStrings("Hotkeys resumed", defaultText(.{ .ntype = .HotkeySuspend, .state = .resumed }, &buf));
+    try testing.expectEqualStrings("Auto-minimize off", defaultText(.{ .ntype = .AutoMinimizeToggle, .state = .off }, &buf));
+}
+
+test "every notification type's sample has wording" {
+    var buf: [64]u8 = undefined;
+    for (std.enums.values(NotificationType)) |ntype| {
+        try testing.expect(defaultText(sample(ntype), &buf).len > 0);
+    }
+}

@@ -37,3 +37,29 @@ pub fn formatIskAbbrev(buf: []u8, value: f32) []const u8 {
         return std.fmt.bufPrint(buf, "{d:.0}", .{value}) catch "?";
     }
 }
+
+const testing = std.testing;
+
+test "insertThousandsSeparators groups the leading digits only" {
+    var buf: [32]u8 = undefined;
+    try testing.expectEqualStrings("12,405.3 m3/min", insertThousandsSeparators(&buf, "12405.3 m3/min"));
+    try testing.expectEqualStrings("123,456", insertThousandsSeparators(&buf, "123456"));
+    try testing.expectEqualStrings("1,234,567 ISK", insertThousandsSeparators(&buf, "1234567 ISK"));
+    try testing.expectEqualStrings("123", insertThousandsSeparators(&buf, "123"));
+    try testing.expectEqualStrings("-1234", insertThousandsSeparators(&buf, "-1234"));
+}
+
+test "insertThousandsSeparators returns the text unchanged when the buffer is too small" {
+    var buf: [5]u8 = undefined;
+    try testing.expectEqualStrings("12345", insertThousandsSeparators(&buf, "12345"));
+}
+
+test "formatIskAbbrev switches suffix at a thousand and a million" {
+    var buf: [32]u8 = undefined;
+    try testing.expectEqualStrings("850", formatIskAbbrev(&buf, 850.0));
+    try testing.expectEqualStrings("1k", formatIskAbbrev(&buf, 1_000.0));
+    try testing.expectEqualStrings("200k", formatIskAbbrev(&buf, 200_000.0));
+    try testing.expectEqualStrings("1.0m", formatIskAbbrev(&buf, 1_000_000.0));
+    try testing.expectEqualStrings("2.5m", formatIskAbbrev(&buf, 2_460_000.0));
+    try testing.expectEqualStrings("-1.5m", formatIskAbbrev(&buf, -1_500_000.0));
+}

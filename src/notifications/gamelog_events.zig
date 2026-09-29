@@ -200,3 +200,87 @@ fn parseNoneEvent(message: []const u8) ?Notification {
 
     return genericEvent(trimmed);
 }
+
+const testing = std.testing;
+const NotificationType = notification.NotificationType;
+
+fn classifiedType(line: []const u8) ?NotificationType {
+    const n = classify(line) orelse return null;
+    return n.ntype;
+}
+
+test "classify maps each notify wording to its type" {
+    const cases = [_]struct { []const u8, NotificationType }{
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Following Some Pilot in warp", .FleetFollow },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Regrouping to Some Pilot", .FleetRegroup },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Your fleet is disbanding", .FleetDisband },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Starting clone jumping", .JumpCloning },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Successfully compressed Veldspar into 10 Compressed Veldspar", .MiningCompression },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Miner II deactivates as it finds the resource it was harvesting a pale shadow of its former glory.", .AsteroidDepleted },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Your Miner II has completed operations. Ship's cargo hold is full.", .CargoFull },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Your cloak deactivates due to proximity to a Stargate.", .Decloak },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Your cloaking systems are unable to activate due to your ship being within 2000 meters", .CloakFailed },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Modulated Strip Miner II deactivates due to the destruction of the Veldspar Mining Crystal", .CrystalBroke },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Bomb Launcher II has run out of charges", .BombLauncherEmpty },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) You cannot do that while docking", .Docking },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Autopilot disabled - Waypoint reached", .AutopilotReached },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Autopilot approaching target", .AutopilotApproaching },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Please get within 2500 meters of the stargate to jump.", .JumpRange },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) You are within a warp disruption zone. Get 20000.0 meters from Warp Disrupt Probe to warp.", .WarpBubble },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) The stargate denies you permission to jump for the moment due to your recent acts of aggression.", .AggressionCantJump },
+    };
+    for (cases) |case| {
+        try testing.expectEqual(case[1], classifiedType(case[0]).?);
+    }
+    try testing.expect(classify("[ 2026.09.06 16:13:00 ] (notify) Something the app doesn't know about") == null);
+}
+
+test "classify tells an observatory decloak from a proximity decloak" {
+    try testing.expectEqual(NotificationType.ObservatoryDecloak, classifiedType("[ 2026.09.06 16:13:00 ] (notify) Your cloak deactivates due to a pulse from a Mobile Observatory.").?);
+}
+
+test "classify only raises a scramble or disruption aimed at you" {
+    try testing.expectEqual(NotificationType.WarpScrambled, classifiedType("[ 2026.09.06 16:13:00 ] (combat) Warp scramble attempt from Some Rat to you!").?);
+    try testing.expectEqual(NotificationType.WarpDisrupted, classifiedType("[ 2026.09.06 16:13:00 ] (combat) Warp disruption attempt from Some Rat to you!").?);
+    try testing.expect(classify("[ 2026.09.06 16:13:00 ] (combat) Warp scramble attempt from you to Some Rat!") == null);
+    try testing.expect(classify("[ 2026.09.06 16:13:00 ] (combat) 484 from Some Rat - Heavy Missile - Hits") == null);
+}
+
+test "classify reads self-destruct start and abort, but not another player's" {
+    const started = classify("[ 2026.09.06 16:13:00 ] (notify) Your ship will self-destruct in 120 seconds.").?;
+    try testing.expectEqual(NotificationType.SelfDestruct, started.ntype);
+    try testing.expectEqual(notification.State.started, started.state.?);
+
+    const aborted = classify("[ 2026.09.06 16:13:00 ] (notify) You have aborted the self-destruct sequence.").?;
+    try testing.expectEqual(notification.State.aborted, aborted.state.?);
+
+    try testing.expect(classify("[ 2026.09.06 16:13:00 ] (notify) Some Pilot's ship will self-destruct in 120 seconds.") == null);
+}
+
+test "classify reads fleet and conversation invites" {
+    try testing.expectEqual(NotificationType.FleetInvite, classifiedType("[ 2026.09.06 16:13:00 ] (question) Some Pilot wants you to join their fleet, do you accept?").?);
+    try testing.expect(classify("[ 2026.09.06 16:13:00 ] (question) Are you sure you want to quit?") == null);
+    try testing.expectEqual(NotificationType.ConversationInvite, classifiedType("[ 2026.09.06 16:13:00 ] (None) Some Pilot is inviting you to a conversation").?);
+}
+
+test "classify skips hints and jumps, and keeps untagged lines as generic" {
+    try testing.expect(classify("[ 2026.09.06 23:07:39 ] (hint) Attempting to join a channel") == null);
+    try testing.expect(classify("[ 2026.09.05 01:16:08 ] (None) Jumping from C-J6MT to 8-WYQZ") == null);
+
+    const generic = classify("[ 2026.09.05 01:16:08 ] Session changed...").?;
+    try testing.expectEqual(NotificationType.Generic, generic.ntype);
+    try testing.expectEqualStrings("Session changed", generic.source.?);
+    try testing.expect(classify("[ 2026.09.05 01:16:08 ]  ...") == null);
+}
+
+test "classify reads the conduit destination" {
+    const conduit = classify("[ 2026.09.06 16:13:01 ] (notify) The Conduit Field activated by Some Pilot jumps you to Ahbazon.").?;
+    try testing.expectEqual(NotificationType.ConduitJump, conduit.ntype);
+    try testing.expectEqualStrings("Ahbazon", conduit.target.?);
+}
+
+test "conduitDestination stops at the activator's passenger count" {
+    try testing.expectEqualStrings("Ahbazon", conduitDestination("A Conduit Field activated by you jumps you to Ahbazon, bringing along 3 passengers.").?);
+    try testing.expect(conduitDestination("A Conduit Field activated by you jumps you to .") == null);
+    try testing.expect(conduitDestination("Something jumps you to Ahbazon.") == null);
+}

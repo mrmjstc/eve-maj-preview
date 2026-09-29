@@ -55,3 +55,32 @@ fn globCharMatches(pattern_char: u8, text_char: u8) bool {
         else => std.ascii.toLower(pattern_char) == std.ascii.toLower(text_char),
     };
 }
+
+const testing = std.testing;
+
+test "matches tries exact names or patterns, whichever wildcards selects" {
+    const entry: SystemColorConfig = .{ .systemName = "Jita, amarr ,J######, *-C?", .color = 0xFFFF0000 };
+    try testing.expect(entry.matches("Jita", false));
+    try testing.expect(entry.matches("AMARR", false));
+    try testing.expect(!entry.matches("Jita", true));
+    try testing.expect(entry.matches("J123456", true));
+    try testing.expect(!entry.matches("J123456", false));
+    try testing.expect(entry.matches("5-CQ", true));
+    try testing.expect(!entry.matches("Perimeter", false) and !entry.matches("Perimeter", true));
+}
+
+test "matches ignores empty tokens" {
+    const entry: SystemColorConfig = .{ .systemName = " , ,", .color = 0xFFFF0000 };
+    try testing.expect(!entry.matches("", false) and !entry.matches("Jita", true));
+}
+
+test "globMatch treats # as a digit, ? as any character and * as any run" {
+    try testing.expect(globMatch("J######", "j123456"));
+    try testing.expect(!globMatch("J######", "J12345"));
+    try testing.expect(!globMatch("J######", "J12345A"));
+    try testing.expect(globMatch("a*b*c", "aXXbYc"));
+    try testing.expect(globMatch("a*b", "ab"));
+    try testing.expect(globMatch("*", ""));
+    try testing.expect(!globMatch("a?c", "ac"));
+    try testing.expect(!globMatch("*-C?", "5-CQDA"));
+}

@@ -387,3 +387,127 @@ fn calculateRegionFitPosition(cfg: *const config_mod.DisplayConfig, region: win3
     const grid = calculateRegionFitGrid(region, total_count, cfg.spacing, cfg.spacing, aspect_ratio, max_cell);
     return regionFitPositionForGrid(region, grid, index, cfg.regionFitDirection, cfg.spacing);
 }
+
+const testing = std.testing;
+
+const WIDESCREEN: f32 = 16.0 / 9.0;
+
+fn testRegion(width: i32, height: i32) win32.RECT {
+    return .{ .left = 0, .top = 0, .right = width, .bottom = height };
+}
+
+test "calculateRegionFitGrid gives a single thumbnail the whole region" {
+    const grid = calculateRegionFitGrid(testRegion(1600, 900), 1, 0, 0, WIDESCREEN, null);
+    try testing.expectEqual(@as(u32, 1), grid.columns);
+    try testing.expectEqual(@as(u32, 1), grid.rows);
+    try testing.expectEqual(@as(i32, 1600), grid.cell_width);
+    try testing.expectEqual(@as(i32, 900), grid.cell_height);
+}
+
+test "calculateRegionFitGrid lays four widescreen thumbnails out 2x2" {
+    const grid = calculateRegionFitGrid(testRegion(1600, 900), 4, 0, 0, WIDESCREEN, null);
+    try testing.expectEqual(@as(u32, 2), grid.columns);
+    try testing.expectEqual(@as(u32, 2), grid.rows);
+    try testing.expectEqual(@as(i32, 800), grid.cell_width);
+    try testing.expectEqual(@as(i32, 450), grid.cell_height);
+}
+
+test "calculateRegionFitGrid fits every count without a spare row or column" {
+    const region = testRegion(1920, 1080);
+    const spacing = 8;
+    for (1..25) |count| {
+        const grid = calculateRegionFitGrid(region, count, spacing, spacing, WIDESCREEN, null);
+        const columns: i32 = @intCast(grid.columns);
+        const rows: i32 = @intCast(grid.rows);
+        try testing.expect(grid.columns * grid.rows >= count);
+        try testing.expect(grid.columns * grid.rows - @min(grid.columns, grid.rows) < count);
+        try testing.expect(columns * grid.cell_width + (columns - 1) * spacing <= 1920);
+        try testing.expect(rows * grid.cell_height + (rows - 1) * spacing <= 1080);
+    }
+}
+
+test "calculateRegionFitGrid breaks a capped tie toward the axis with more room" {
+    const cap: RegionFitCap = .{ .width = 400, .height = 225 };
+
+    const tall = calculateRegionFitGrid(testRegion(800, 1800), 2, 0, 0, WIDESCREEN, cap);
+    try testing.expectEqual(@as(u32, 1), tall.columns);
+    try testing.expectEqual(@as(u32, 2), tall.rows);
+    try testing.expectEqual(@as(i32, 400), tall.cell_width);
+
+    const wide = calculateRegionFitGrid(testRegion(1800, 800), 2, 0, 0, WIDESCREEN, cap);
+    try testing.expectEqual(@as(u32, 2), wide.columns);
+    try testing.expectEqual(@as(u32, 1), wide.rows);
+    try testing.expectEqual(@as(i32, 225), wide.cell_height);
+}
+
+test "fitAspect fits the box by its tighter side and never goes below 1px" {
+    const wide = fitAspect(100, 10, WIDESCREEN);
+    try testing.expectEqual(@as(i32, 18), wide.width);
+    try testing.expectEqual(@as(i32, 10), wide.height);
+
+    const tall = fitAspect(160, 900, WIDESCREEN);
+    try testing.expectEqual(@as(i32, 160), tall.width);
+    try testing.expectEqual(@as(i32, 90), tall.height);
+
+    const empty = fitAspect(0, 10, WIDESCREEN);
+    try testing.expectEqual(@as(i32, 1), empty.width);
+    try testing.expectEqual(@as(i32, 1), empty.height);
+    try testing.expectEqual(@as(i32, 1), fitAspect(-5, -5, WIDESCREEN).width);
+}
+
+test "regionFitColRow starts each direction in its own corner" {
+    inline for (comptime std.enums.values(types.RegionFitDirection)) |direction| {
+        // Expected (col, row) of index 0 and index 1 in a 3x2 grid.
+        const expected: [2][2]i32 = switch (direction) {
+            .RowFirst_LTR_TTB => .{ .{ 0, 0 }, .{ 1, 0 } },
+            .RowFirst_RTL_TTB => .{ .{ 2, 0 }, .{ 1, 0 } },
+            .RowFirst_LTR_BTT => .{ .{ 0, 1 }, .{ 1, 1 } },
+            .RowFirst_RTL_BTT => .{ .{ 2, 1 }, .{ 1, 1 } },
+            .ColumnFirst_TTB_LTR => .{ .{ 0, 0 }, .{ 0, 1 } },
+            .ColumnFirst_TTB_RTL => .{ .{ 2, 0 }, .{ 2, 1 } },
+            .ColumnFirst_BTT_LTR => .{ .{ 0, 1 }, .{ 0, 0 } },
+            .ColumnFirst_BTT_RTL => .{ .{ 2, 1 }, .{ 2, 0 } },
+        };
+        for (expected, 0..) |cell, index| {
+            const actual = regionFitColRow(direction, index, 3, 2);
+            try testing.expectEqual(cell[0], actual.col);
+            try testing.expectEqual(cell[1], actual.row);
+        }
+    }
+}
+
+test "regionFitColRow puts each index of a full grid in its own cell" {
+    for (std.enums.values(types.RegionFitDirection)) |direction| {
+        var seen = [_]bool{false} ** 6;
+        for (0..6) |index| {
+            const cell = regionFitColRow(direction, index, 3, 2);
+            try testing.expect(cell.col >= 0 and cell.col < 3 and cell.row >= 0 and cell.row < 2);
+            const slot: usize = @intCast(cell.row * 3 + cell.col);
+            try testing.expect(!seen[slot]);
+            seen[slot] = true;
+        }
+    }
+}
+
+test "regionFitPositionForGrid strides by cell size plus spacing from the region's corner" {
+    const region: win32.RECT = .{ .left = 100, .top = 50, .right = 1710, .bottom = 960 };
+    const grid: RegionFitGrid = .{ .columns = 2, .rows = 2, .box_width = 800, .box_height = 450, .cell_width = 800, .cell_height = 450 };
+    const bottom_right = regionFitPositionForGrid(region, grid, 3, .RowFirst_LTR_TTB, 10);
+    try testing.expectEqual(@as(i32, 910), bottom_right.x);
+    try testing.expectEqual(@as(i32, 510), bottom_right.y);
+    const mirrored = regionFitPositionForGrid(region, grid, 3, .RowFirst_RTL_TTB, 10);
+    try testing.expectEqual(@as(i32, 100), mirrored.x);
+    try testing.expectEqual(@as(i32, 510), mirrored.y);
+}
+
+test "regionRectFromConfig needs every region field" {
+    const partial: config_mod.DisplayConfig = .{ .regionX = 10, .regionY = 20, .regionWidth = 300 };
+    try testing.expect(regionRectFromConfig(&partial) == null);
+    try testing.expect(!isRegionFitActive(&partial));
+
+    const full: config_mod.DisplayConfig = .{ .layoutMode = .RegionFit, .regionX = 10, .regionY = 20, .regionWidth = 300, .regionHeight = 200 };
+    const rect = regionRectFromConfig(&full).?;
+    try testing.expectEqual(@as(i32, 310), rect.right);
+    try testing.expectEqual(@as(i32, 220), rect.bottom);
+    try testing.expect(isRegionFitActive(&full));
+}

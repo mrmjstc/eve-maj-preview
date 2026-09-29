@@ -332,3 +332,48 @@ fn sendCopyData(hwnd: win32.HWND, kind: usize, payload: []const u8) void {
     };
     _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
 }
+
+const testing = std.testing;
+
+test "parseUrl reads switch and profile commands and decodes their names" {
+    const switch_cmd = try parseUrl("evemajpreview://switch/Some%20Pilot", testing.allocator);
+    defer switch_cmd.deinit(testing.allocator);
+    try testing.expectEqualStrings("Some Pilot", switch_cmd.switch_character);
+
+    const profile_cmd = try parseUrl("evemajpreview://profile/My+Alts/", testing.allocator);
+    defer profile_cmd.deinit(testing.allocator);
+    try testing.expectEqualStrings("My Alts", profile_cmd.profile);
+}
+
+test "parseUrl reads every hotkey action by name" {
+    var buf: [128]u8 = undefined;
+    for (std.enums.values(GlobalAction)) |action| {
+        const url = try std.fmt.bufPrint(&buf, "evemajpreview://hotkey/{s}", .{@tagName(action)});
+        try testing.expectEqual(action, (try parseUrl(url, testing.allocator)).hotkey);
+    }
+}
+
+test "parseUrl rejects other schemes, unknown actions and missing parameters" {
+    try testing.expectError(error.InvalidProtocol, parseUrl("https://example.com/switch/Pilot", testing.allocator));
+    try testing.expectError(error.UnknownAction, parseUrl("evemajpreview://launch/Pilot", testing.allocator));
+    try testing.expectError(error.UnknownAction, parseUrl("evemajpreview://", testing.allocator));
+    try testing.expectError(error.MissingParameter, parseUrl("evemajpreview://switch", testing.allocator));
+    try testing.expectError(error.MissingParameter, parseUrl("evemajpreview://hotkey", testing.allocator));
+    try testing.expectError(error.UnknownGlobalAction, parseUrl("evemajpreview://hotkey/self_destruct", testing.allocator));
+}
+
+test "urlDecode decodes percent escapes and plus signs" {
+    const decoded = try urlDecode(testing.allocator, "Jita%204%20-%20Moon+4%2fX");
+    defer testing.allocator.free(decoded);
+    try testing.expectEqualStrings("Jita 4 - Moon 4/X", decoded);
+}
+
+test "urlDecode keeps a malformed or truncated escape as written" {
+    const malformed = try urlDecode(testing.allocator, "100%zz");
+    defer testing.allocator.free(malformed);
+    try testing.expectEqualStrings("100%zz", malformed);
+
+    const truncated = try urlDecode(testing.allocator, "abc%4");
+    defer testing.allocator.free(truncated);
+    try testing.expectEqualStrings("abc%4", truncated);
+}

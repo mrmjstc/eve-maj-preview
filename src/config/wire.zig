@@ -390,3 +390,26 @@ pub fn logJson(allocator: std.mem.Allocator, settings: anytype) void {
 fn freeOwnedString(allocator: std.mem.Allocator, s: []const u8, default: []const u8) void {
     if (s.len != 0 and s.ptr != default.ptr) allocator.free(s);
 }
+
+const testing = std.testing;
+
+test "parseHexColor reads 0x, # and bare hex" {
+    try testing.expectEqual(@as(u32, 0xFF112233), try parseHexColor("0xFF112233"));
+    try testing.expectEqual(@as(u32, 0xFF112233), try parseHexColor("0Xff112233"));
+    try testing.expectEqual(@as(u32, 0x112233), try parseHexColor("#112233"));
+    try testing.expectEqual(@as(u32, 0xABC), try parseHexColor("abc"));
+}
+
+test "parseHexColor rejects short and non-hex input" {
+    try testing.expectError(error.InvalidColorFormat, parseHexColor("ab"));
+    try testing.expectError(error.InvalidColorFormat, parseHexColor("0x"));
+    try testing.expectError(error.InvalidColorFormat, parseHexColor("0xZZZ"));
+    try testing.expectError(error.InvalidColorFormat, parseHexColor("0x1FFFFFFFF"));
+}
+
+test "isColorField and isKeyField recognise fields by name" {
+    try testing.expect(isColorField("borderColor") and isColorField("color"));
+    try testing.expect(!isColorField("colour") and !isColorField("colorMode"));
+    try testing.expect(isKeyField("hotkeyMinimizeAll") and isKeyField("cycleForwardKey"));
+    try testing.expect(!isKeyField("keyboardLayout") and !isKeyField("monkey"));
+}

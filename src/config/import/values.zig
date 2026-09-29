@@ -228,3 +228,94 @@ pub fn profileName(arena: std.mem.Allocator, text: []const u8, max_len: usize) !
     }
     return out.items;
 }
+
+const testing = std.testing;
+
+test "rgbColor reads #, 0x and bare hex as an opaque colour" {
+    try testing.expectEqual(@as(u32, 0xFF1A2B3C), rgbColor("#1A2B3C").?);
+    try testing.expectEqual(@as(u32, 0xFF1A2B3C), rgbColor("0x1a2b3c").?);
+    try testing.expectEqual(@as(u32, 0xFF1A2B3C), rgbColor(" 1A2B3C ").?);
+    try testing.expect(rgbColor("#1A2B3") == null);
+    try testing.expect(rgbColor("#1A2B3C4D") == null);
+    try testing.expect(rgbColor("#GGGGGG") == null);
+    try testing.expect(rgbColor(null) == null);
+}
+
+test "parseIntLoose reads a leading signed integer and ignores the rest" {
+    try testing.expectEqual(@as(i64, 42), parseIntLoose(" 42px").?);
+    try testing.expectEqual(@as(i64, -7), parseIntLoose("-7").?);
+    try testing.expectEqual(@as(i64, 3), parseIntLoose("+3").?);
+    try testing.expect(parseIntLoose("-") == null);
+    try testing.expect(parseIntLoose("px42") == null);
+    try testing.expect(parseIntLoose(null) == null);
+}
+
+test "numberValue keeps whole numbers as integers" {
+    try testing.expectEqual(@as(i64, 3), numberValue(3.0).integer);
+    try testing.expectEqual(@as(i64, -12), numberValue(-12.0).integer);
+    try testing.expectEqual(@as(f64, 2.5), numberValue(2.5).float);
+}
+
+test "withAlpha and opacityFromPercent round and clamp to a byte" {
+    try testing.expectEqual(@as(u32, 0x80123456), withAlpha(0xFF123456, 128.4));
+    try testing.expectEqual(@as(u32, 0xFF123456), withAlpha(0x00123456, 300));
+    try testing.expectEqual(@as(f64, 255), opacityFromPercent(100));
+    try testing.expectEqual(@as(f64, 102), opacityFromPercent(40));
+    try testing.expectEqual(@as(f64, 255), opacityFromPercent(150));
+    try testing.expectEqual(@as(f64, 0), opacityFromPercent(-5));
+}
+
+test "legacyBaseKey reads letters, digits, F-keys, numpad and short names" {
+    try testing.expectEqual(@as(u32, 'A'), legacyBaseKey("a").?);
+    try testing.expectEqual(@as(u32, '7'), legacyBaseKey(" 7 ").?);
+    try testing.expectEqual(vk.VK_F1, legacyBaseKey("F1").?);
+    try testing.expectEqual(vk.VK_F1 + 23, legacyBaseKey("f24").?);
+    try testing.expectEqual(vk.VK_NUMPAD0 + 7, legacyBaseKey("Numpad7").?);
+    try testing.expectEqual(vk.VK_NEXT, legacyBaseKey("pgdn").?);
+    try testing.expectEqual(vk.VK_DELETE, legacyBaseKey("Del").?);
+    try testing.expectEqual(vk.VK_DIVIDE, legacyBaseKey("NumpadDiv").?);
+}
+
+test "legacyBaseKey rejects out-of-range F-keys and unknown names" {
+    try testing.expect(legacyBaseKey("F0") == null);
+    try testing.expect(legacyBaseKey("F25") == null);
+    try testing.expect(legacyBaseKey("F01") == null);
+    try testing.expect(legacyBaseKey("Escape") == null);
+    try testing.expect(legacyBaseKey("") == null);
+}
+
+test "ahkHotkey reads modifier symbols, flag prefixes and & combos" {
+    try testing.expectEqual(vk.combineKey(vk.VK_F1, vk.MOD_CONTROL | vk.MOD_ALT), ahkHotkey("^!F1").?);
+    try testing.expectEqual(vk.combineKey('A', vk.MOD_WIN | vk.MOD_SHIFT), ahkHotkey("#+a").?);
+    try testing.expectEqual(vk.combineKey(vk.VK_F1 + 21, 0), ahkHotkey("*F22").?);
+    try testing.expectEqual(vk.combineKey(vk.VK_F1, vk.MOD_CONTROL), ahkHotkey("Ctrl & F1").?);
+    try testing.expectEqual(vk.combineKey(vk.VK_XBUTTON1, vk.MOD_SHIFT), ahkHotkey("+XButton1").?);
+    try testing.expectEqual(vk.combineKey(vk.VK_WHEELUP, 0), ahkHotkey("WheelUp").?);
+}
+
+test "ahkHotkey rejects keys the app can't bind" {
+    try testing.expect(ahkHotkey("LButton") == null);
+    try testing.expect(ahkHotkey("Hyper & F1") == null);
+    try testing.expect(ahkHotkey("^") == null);
+    try testing.expect(ahkHotkey(null) == null);
+}
+
+test "characterName drops the window-title prefix and rejects placeholders" {
+    try testing.expectEqualStrings("Some Pilot", characterName("EVE - Some Pilot").?);
+    try testing.expectEqualStrings("Some Pilot", characterName("  Some Pilot ").?);
+    try testing.expectEqualStrings("Cycle Group Alpha", characterName("Cycle Group Alpha").?);
+    try testing.expect(characterName("Example Name1") == null);
+    try testing.expect(characterName("Cycle Group 2") == null);
+    try testing.expect(characterName("EVE") == null);
+    try testing.expect(characterName("C:/Games/EVE/exefile.exe") == null);
+    try testing.expect(characterName("exefile.EXE") == null);
+}
+
+test "profileName keeps safe characters and caps the length" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    try testing.expectEqualStrings("My Profilejson", try profileName(arena, "  My Profile!.json ", 32));
+    try testing.expectEqualStrings("My_Pro", try profileName(arena, "My_Profile", 6));
+    try testing.expectEqualStrings("", try profileName(arena, "!!!", 16));
+}
