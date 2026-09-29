@@ -1,7 +1,12 @@
+//! The evemajpreview:// URL scheme and command-line commands, forwarded to the running instance over WM_COPYDATA.
 const std = @import("std");
 const win32 = @import("platform/win32.zig");
 const log = @import("log.zig");
+
 const slog = log.scoped("protocol");
+
+/// Window class of the main app's hidden timer window, the target of every WM_COPYDATA command; a second CLI invocation finds the running instance by it.
+pub const MAIN_WINDOW_CLASS = "EVE_TIMER_CLASS";
 
 /// Global hotkey actions; hotkeys/bindings.zig's GLOBAL_BINDINGS maps each to its HotkeyAction.
 /// Backing type must match win32.WPARAM (usize): sent as the WM_PROTOCOL_HOTKEY wParam.
@@ -27,27 +32,26 @@ pub const GlobalAction = enum(usize) {
 };
 
 pub const Command = union(enum) {
-    Switch: []const u8,
-    Profile: []const u8,
-    Hotkey: GlobalAction,
+    switch_character: []const u8,
+    profile: []const u8,
+    hotkey: GlobalAction,
     /// Sent by a second `--config` launch so the running instance opens its configuration window.
-    OpenConfig: void,
+    open_config: void,
 
     /// Frees what parseUrl allocated; commands built any other way borrow their payloads.
     pub fn deinit(self: Command, allocator: std.mem.Allocator) void {
         switch (self) {
-            .Switch, .Profile => |name| allocator.free(name),
-            else => {},
+            .switch_character, .profile => |name| allocator.free(name),
+            .hotkey, .open_config => {},
         }
     }
 };
 
-/// Format: evemajpreview://action/params
-/// Caller owns returned string memory (for Switch and Profile commands)
+/// `evemajpreview://action/params`; free the result with Command.deinit.
 pub fn parseUrl(url: []const u8, allocator: std.mem.Allocator) !Command {
     const protocol_prefix = "evemajpreview://";
     if (!std.mem.startsWith(u8, url, protocol_prefix)) {
-        slog.err("Invalid protocol URL: {s}", .{url});
+        slog.err("Invalid protocol URL '{s}'", .{url});
         return error.InvalidProtocol;
     }
 
@@ -55,7 +59,7 @@ pub fn parseUrl(url: []const u8, allocator: std.mem.Allocator) !Command {
     var iter = std.mem.splitScalar(u8, path, '/');
 
     const action = iter.next() orelse {
-        slog.err("Missing action in protocol URL: {s}", .{url});
+        slog.err("Missing action in protocol URL '{s}'", .{url});
         return error.MissingAction;
     };
 
@@ -65,59 +69,29 @@ pub fn parseUrl(url: []const u8, allocator: std.mem.Allocator) !Command {
             return error.MissingParameter;
         };
         const char_name = try urlDecode(allocator, char_name_encoded);
-        return Command{ .Switch = char_name };
+        return Command{ .switch_character = char_name };
     } else if (std.mem.eql(u8, action, "profile")) {
         const profile_name_encoded = iter.next() orelse {
             slog.err("Missing profile name in profile command", .{});
             return error.MissingParameter;
         };
         const profile_name = try urlDecode(allocator, profile_name_encoded);
-        return Command{ .Profile = profile_name };
+        return Command{ .profile = profile_name };
     } else if (std.mem.eql(u8, action, "hotkey")) {
         const hotkey_action = iter.next() orelse {
             slog.err("Missing hotkey action in hotkey command", .{});
             return error.MissingParameter;
         };
         const parsed_action = std.meta.stringToEnum(GlobalAction, hotkey_action) orelse {
-            slog.err("Unknown hotkey action: {s}", .{hotkey_action});
+            slog.err("Unknown hotkey action '{s}'", .{hotkey_action});
             return error.UnknownGlobalAction;
         };
-        return Command{ .Hotkey = parsed_action };
+        return Command{ .hotkey = parsed_action };
     } else {
-        slog.err("Unknown protocol action: {s}", .{action});
+        slog.err("Unknown protocol action '{s}'", .{action});
         return error.UnknownAction;
     }
 }
-
-fn urlDecode(allocator: std.mem.Allocator, encoded: []const u8) ![]const u8 {
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
-
-    var i: usize = 0;
-    while (i < encoded.len) {
-        if (encoded[i] == '%' and i + 2 < encoded.len) {
-            const hex = encoded[i + 1 .. i + 3];
-            const value = std.fmt.parseInt(u8, hex, 16) catch {
-                try result.append(allocator, encoded[i]);
-                i += 1;
-                continue;
-            };
-            try result.append(allocator, value);
-            i += 3;
-        } else if (encoded[i] == '+') {
-            try result.append(allocator, ' ');
-            i += 1;
-        } else {
-            try result.append(allocator, encoded[i]);
-            i += 1;
-        }
-    }
-
-    return result.toOwnedSlice(allocator);
-}
-
-/// Window class of the main app's hidden timer window, the target of every WM_COPYDATA command; a second CLI invocation finds the running instance by it.
-pub const MAIN_WINDOW_CLASS = "EVE_TIMER_CLASS";
 
 pub fn findExistingInstance() ?win32.HWND {
     return win32.FindWindowA(MAIN_WINDOW_CLASS, null);
@@ -142,33 +116,23 @@ pub fn forwardToRunningInstance(url: []const u8, allocator: std.mem.Allocator) !
 
 pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
     switch (cmd) {
-        .Switch => |char_name| {
+        .switch_character => |char_name| {
             sendCopyData(hwnd, win32.PROTOCOL_SWITCH_CHARACTER, char_name);
             slog.info("Sent switch to '{s}'", .{char_name});
         },
-        .Profile => |profile_name| {
+        .profile => |profile_name| {
             sendCopyData(hwnd, win32.PROTOCOL_SWITCH_PROFILE, profile_name);
             slog.info("Sent load profile '{s}'", .{profile_name});
         },
-        .Hotkey => |hotkey_action| {
+        .hotkey => |hotkey_action| {
             _ = win32.SendMessageA(hwnd, win32.WM_PROTOCOL_HOTKEY, @intFromEnum(hotkey_action), 0);
             slog.info("Sent hotkey action '{s}'", .{@tagName(hotkey_action)});
         },
-        .OpenConfig => {
+        .open_config => {
             sendCopyData(hwnd, win32.PROTOCOL_OPEN_CONFIG, "");
             slog.info("Sent open configuration", .{});
         },
     }
-}
-
-/// Synchronous, so `payload` only has to outlive the call; an empty payload is sent as a null lpData.
-fn sendCopyData(hwnd: win32.HWND, kind: usize, payload: []const u8) void {
-    const cds = win32.COPYDATASTRUCT{
-        .dwData = kind,
-        .cbData = @intCast(payload.len),
-        .lpData = if (payload.len > 0) payload.ptr else null,
-    };
-    _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
 }
 
 /// Receiving side of sendCopyData; null for a message sent without a payload.
@@ -330,4 +294,41 @@ pub fn register(allocator: std.mem.Allocator) !bool {
 
     slog.info("Protocol handler registered successfully: {s}", .{exe_path});
     return true;
+}
+
+fn urlDecode(allocator: std.mem.Allocator, encoded: []const u8) ![]const u8 {
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+
+    var i: usize = 0;
+    while (i < encoded.len) {
+        if (encoded[i] == '%' and i + 2 < encoded.len) {
+            const hex = encoded[i + 1 .. i + 3];
+            const value = std.fmt.parseInt(u8, hex, 16) catch {
+                try result.append(allocator, encoded[i]);
+                i += 1;
+                continue;
+            };
+            try result.append(allocator, value);
+            i += 3;
+        } else if (encoded[i] == '+') {
+            try result.append(allocator, ' ');
+            i += 1;
+        } else {
+            try result.append(allocator, encoded[i]);
+            i += 1;
+        }
+    }
+
+    return result.toOwnedSlice(allocator);
+}
+
+/// Synchronous, so `payload` only has to outlive the call; an empty payload is sent as a null lpData.
+fn sendCopyData(hwnd: win32.HWND, kind: usize, payload: []const u8) void {
+    const cds = win32.COPYDATASTRUCT{
+        .dwData = kind,
+        .cbData = @intCast(payload.len),
+        .lpData = if (payload.len > 0) payload.ptr else null,
+    };
+    _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
 }

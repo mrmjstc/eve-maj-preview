@@ -1,5 +1,13 @@
+//! The app's log file, rotated at 20MB, with a scoped logger per module and an optional debug console.
 const std = @import("std");
 const win32 = @import("platform/win32.zig");
+
+pub const LOG_FILE_NAME = "eve-maj.log";
+const LOG_FILE_NAME_OLD = "eve-maj.log.old";
+/// Rotated to .old at this size rather than trimmed, so a write never costs more than a size check plus (rarely) a rename.
+const MAX_LOG_FILE_BYTES: u64 = 20 * 1024 * 1024;
+
+const TRUNCATED_MARKER = "...[truncated]\n";
 
 pub const LogLevel = enum {
     debug,
@@ -17,29 +25,20 @@ pub const LogLevel = enum {
     }
 };
 
-var current_level: LogLevel = .err;
-// std.debug.print's stderr handle is resolved once and cached forever on first use (Io.Threaded's
-// global debug-io singleton), so calling it before AllocConsole() permanently poisons it with a
-// stale pre-console handle. Guard it until openDebugConsole() has actually created one.
-var console_ready = false;
-
-pub const LOG_FILE_NAME = "eve-maj.log";
-const LOG_FILE_NAME_OLD = "eve-maj.log.old";
-// Rotated to .old at this size rather than trimmed, so a write never costs more than a size check plus (rarely) a rename.
-const MAX_LOG_FILE_BYTES: u64 = 20 * 1024 * 1024;
+var g_level: LogLevel = .err;
+/// std.debug.print caches its stderr handle on first use, so printing before AllocConsole would keep a dead one; false until openDebugConsole.
+var g_console_ready = false;
 
 var g_io: std.Io = undefined;
-var log_file: ?std.Io.File = null;
-var log_mutex: std.Io.Mutex = .init;
+var g_log_file: ?std.Io.File = null;
+var g_log_mutex: std.Io.Mutex = .init;
 
-// Buffers debug/info lines so the frequent debug-level scan tick costs a memcpy, not a write() syscall.
-var log_buf: [16 * 1024]u8 = undefined;
-var log_buf_len: usize = 0;
-
-const TRUNCATED_MARKER = "...[truncated]\n";
+/// Buffers debug/info lines, so the frequent debug-level scan tick costs a memcpy rather than a write syscall.
+var g_log_buf: [16 * 1024]u8 = undefined;
+var g_log_buf_len: usize = 0;
 
 pub fn setLevel(level: LogLevel) void {
-    current_level = level;
+    g_level = level;
 }
 
 /// Must be called once before any logging happens.
@@ -47,13 +46,69 @@ pub fn setIo(io: std.Io) void {
     g_io = io;
 }
 
-/// Pops a console for debug logging, since the Windows GUI subsystem doesn't create one; std.debug.print's console mirror stays off until this runs (see console_ready).
+/// Pops a console for debug logging, since the Windows GUI subsystem doesn't create one; std.debug.print's console mirror stays off until this runs (see g_console_ready).
 pub fn openDebugConsole() void {
     _ = win32.AllocConsole();
-    console_ready = true;
+    g_console_ready = true;
     // Closing the console window kills the process before any `defer` can run, so buffered lines are flushed from its ctrl handler instead.
     _ = win32.SetConsoleCtrlHandler(consoleCtrlHandler, win32.TRUE);
     disableQuickEdit();
+}
+
+pub fn deinitFile() void {
+    g_log_mutex.lock(g_io) catch return;
+    defer g_log_mutex.unlock(g_io);
+    flushLocked();
+    if (g_log_file) |f| {
+        f.close(g_io);
+        g_log_file = null;
+    }
+}
+
+/// Retries tryLock briefly to avoid missing the crash line, but bails instead of deadlocking if this thread already holds the lock (e.g. panicked inside the logger).
+pub fn writeCrashLine(comptime fmt: []const u8, args: anytype) void {
+    const lock_retries = 20;
+    var attempt: u32 = 0;
+    while (!g_log_mutex.tryLock()) {
+        attempt += 1;
+        if (attempt >= lock_retries) return;
+        std.Io.sleep(g_io, .fromMilliseconds(1), .awake) catch {};
+    }
+    defer g_log_mutex.unlock(g_io);
+
+    flushLocked();
+    var ts_buf: [23]u8 = undefined;
+    var line_buf: [512]u8 = undefined;
+    appendLocked(formatLine(&line_buf, "[{s}][CRASH] " ++ fmt ++ "\n", .{formatTimestamp(&ts_buf)} ++ args));
+}
+
+pub fn scoped(comptime scope: []const u8) type {
+    return struct {
+        inline fn logImpl(comptime level: LogLevel, comptime fmt: []const u8, args: anytype) void {
+            if (shouldLog(level)) {
+                var ts_buf: [23]u8 = undefined;
+                const ts = formatTimestamp(&ts_buf);
+                writeToFile(level, ts, scope, fmt, args);
+                if (g_console_ready) std.debug.print("[{s}][{s}][{s}] " ++ fmt ++ "\n", .{ ts, level.asString(), scope } ++ args);
+            }
+        }
+
+        pub inline fn debug(comptime fmt: []const u8, args: anytype) void {
+            logImpl(.debug, fmt, args);
+        }
+
+        pub inline fn info(comptime fmt: []const u8, args: anytype) void {
+            logImpl(.info, fmt, args);
+        }
+
+        pub inline fn warn(comptime fmt: []const u8, args: anytype) void {
+            logImpl(.warn, fmt, args);
+        }
+
+        pub inline fn err(comptime fmt: []const u8, args: anytype) void {
+            logImpl(.err, fmt, args);
+        }
+    };
 }
 
 /// A click in a QuickEdit console starts a selection that blocks every console write until it ends, freezing whichever thread logs next.
@@ -82,32 +137,21 @@ fn consoleCtrlHandler(ctrl_type: win32.DWORD) callconv(.c) win32.BOOL {
     return win32.FALSE;
 }
 
-/// Lazily opens the log file so a session that never logs never touches disk.
-/// Must be called with log_mutex held.
+/// Opened lazily, so a session that never logs never touches disk; caller holds g_log_mutex.
 fn ensureFileOpen() bool {
-    if (log_file != null) return true;
-    log_file = std.Io.Dir.cwd().createFile(g_io, LOG_FILE_NAME, .{ .truncate = false }) catch return false;
+    if (g_log_file != null) return true;
+    g_log_file = std.Io.Dir.cwd().createFile(g_io, LOG_FILE_NAME, .{ .truncate = false }) catch return false;
     return true;
 }
 
 fn flush() void {
-    log_mutex.lock(g_io) catch return;
-    defer log_mutex.unlock(g_io);
+    g_log_mutex.lock(g_io) catch return;
+    defer g_log_mutex.unlock(g_io);
     flushLocked();
-}
-
-pub fn deinitFile() void {
-    log_mutex.lock(g_io) catch return;
-    defer log_mutex.unlock(g_io);
-    flushLocked();
-    if (log_file) |f| {
-        f.close(g_io);
-        log_file = null;
-    }
 }
 
 fn shouldLog(level: LogLevel) bool {
-    return @intFromEnum(level) >= @intFromEnum(current_level);
+    return @intFromEnum(level) >= @intFromEnum(g_level);
 }
 
 fn formatTimestamp(buf: *[23]u8) []const u8 {
@@ -128,11 +172,10 @@ fn formatLine(buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
     return writer.buffered();
 }
 
-/// Rotates to .old (discarding any previous .old) and starts fresh. Must be called with log_mutex held.
-/// If another program holds the log so it can't be renamed, keeps appending to it instead; the next flush tries again.
+/// Rotates to .old, replacing any previous one; if another program holds the log open, keeps appending and tries again next flush. Caller holds g_log_mutex.
 fn rotate() void {
-    if (log_file) |f| f.close(g_io);
-    log_file = null;
+    if (g_log_file) |f| f.close(g_io);
+    g_log_file = null;
 
     const cwd = std.Io.Dir.cwd();
     cwd.deleteFile(g_io, LOG_FILE_NAME_OLD) catch {};
@@ -140,86 +183,39 @@ fn rotate() void {
         cwd.rename(LOG_FILE_NAME, cwd, LOG_FILE_NAME_OLD, g_io) catch break :blk false;
         break :blk true;
     };
-    log_file = cwd.createFile(g_io, LOG_FILE_NAME, .{ .truncate = renamed }) catch null;
+    g_log_file = cwd.createFile(g_io, LOG_FILE_NAME, .{ .truncate = renamed }) catch null;
 }
 
-/// Appends `bytes` at the file's current end, rotating first if it's full. Must be called with log_mutex held.
-/// The end is read rather than tracked, since another instance (a second launch forwarding a command) may have appended since.
+/// Rotates first if the file is full; the end is read, not tracked, since a second instance may have appended. Caller holds g_log_mutex.
 fn appendLocked(bytes: []const u8) void {
     if (!ensureFileOpen()) return;
-    var end = log_file.?.length(g_io) catch return;
+    var end = g_log_file.?.length(g_io) catch return;
     if (end >= MAX_LOG_FILE_BYTES) {
         rotate();
-        const file = log_file orelse return;
+        const file = g_log_file orelse return;
         end = file.length(g_io) catch return;
     }
-    log_file.?.writePositionalAll(g_io, bytes, end) catch return;
+    g_log_file.?.writePositionalAll(g_io, bytes, end) catch return;
 }
 
-/// Writes any buffered lines to disk. Must be called with log_mutex held.
+/// Caller holds g_log_mutex.
 fn flushLocked() void {
-    if (log_buf_len == 0) return;
-    defer log_buf_len = 0;
-    appendLocked(log_buf[0..log_buf_len]);
+    if (g_log_buf_len == 0) return;
+    defer g_log_buf_len = 0;
+    appendLocked(g_log_buf[0..g_log_buf_len]);
 }
 
-/// Retries tryLock briefly to avoid missing the crash line, but bails instead of deadlocking if this thread already holds the lock (e.g. panicked inside the logger).
-pub fn writeCrashLine(comptime fmt: []const u8, args: anytype) void {
-    const lock_retries = 20;
-    var attempt: u32 = 0;
-    while (!log_mutex.tryLock()) {
-        attempt += 1;
-        if (attempt >= lock_retries) return;
-        std.Io.sleep(g_io, .fromMilliseconds(1), .awake) catch {};
-    }
-    defer log_mutex.unlock(g_io);
-
-    flushLocked();
-    var ts_buf: [23]u8 = undefined;
-    var line_buf: [512]u8 = undefined;
-    appendLocked(formatLine(&line_buf, "[{s}][CRASH] " ++ fmt ++ "\n", .{formatTimestamp(&ts_buf)} ++ args));
-}
-
-// Callers already passed shouldLog(); warnings/errors flush immediately so they survive a crash right after.
+/// Callers already passed shouldLog; warnings and errors flush at once, so they survive a crash right after.
 inline fn writeToFile(comptime level: LogLevel, ts: []const u8, comptime scope: []const u8, comptime fmt: []const u8, args: anytype) void {
-    log_mutex.lock(g_io) catch return;
-    defer log_mutex.unlock(g_io);
+    g_log_mutex.lock(g_io) catch return;
+    defer g_log_mutex.unlock(g_io);
 
     var line_buf: [2048]u8 = undefined;
     const line = formatLine(&line_buf, "[{s}][{s}][{s}] " ++ fmt ++ "\n", .{ ts, comptime level.asString(), scope } ++ args);
 
-    if (line.len > log_buf.len - log_buf_len) flushLocked();
-    @memcpy(log_buf[log_buf_len..][0..line.len], line);
-    log_buf_len += line.len;
+    if (line.len > g_log_buf.len - g_log_buf_len) flushLocked();
+    @memcpy(g_log_buf[g_log_buf_len..][0..line.len], line);
+    g_log_buf_len += line.len;
 
     if (comptime @intFromEnum(level) >= @intFromEnum(LogLevel.warn)) flushLocked();
-}
-
-pub fn scoped(comptime scope: []const u8) type {
-    return struct {
-        inline fn logImpl(comptime level: LogLevel, comptime fmt: []const u8, args: anytype) void {
-            if (shouldLog(level)) {
-                var ts_buf: [23]u8 = undefined;
-                const ts = formatTimestamp(&ts_buf);
-                writeToFile(level, ts, scope, fmt, args);
-                if (console_ready) std.debug.print("[{s}][{s}][{s}] " ++ fmt ++ "\n", .{ ts, level.asString(), scope } ++ args);
-            }
-        }
-
-        pub inline fn debug(comptime fmt: []const u8, args: anytype) void {
-            logImpl(.debug, fmt, args);
-        }
-
-        pub inline fn info(comptime fmt: []const u8, args: anytype) void {
-            logImpl(.info, fmt, args);
-        }
-
-        pub inline fn warn(comptime fmt: []const u8, args: anytype) void {
-            logImpl(.warn, fmt, args);
-        }
-
-        pub inline fn err(comptime fmt: []const u8, args: anytype) void {
-            logImpl(.err, fmt, args);
-        }
-    };
 }

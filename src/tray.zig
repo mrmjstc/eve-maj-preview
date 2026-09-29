@@ -2,15 +2,16 @@
 const std = @import("std");
 const win32 = @import("platform/win32.zig");
 const config_mod = @import("config.zig");
-const log = @import("log.zig");
 const update = @import("update.zig");
 const client_actions = @import("clients/actions.zig");
-const hotkeys_mod = @import("hotkeys/manager.zig");
+const hotkeys = @import("hotkeys/manager.zig");
 const painter_mod = @import("painter.zig");
 const auto_minimize = @import("clients/auto_minimize.zig");
 const dialog_host = @import("dialog/host.zig");
 const scout_mod = @import("clients/scout.zig");
-const main_mod = @import("main.zig");
+const main = @import("main.zig");
+const log = @import("log.zig");
+
 const slog = log.scoped("tray");
 
 /// IDI_ICON1 in app.rc: the icon built into the exe.
@@ -130,7 +131,7 @@ pub const TrayIcon = struct {
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLEAR_NOTIF_HISTORY, "Clear Notification History");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
-        if (hotkeys_mod.g_hotkey_manager_ptr) |manager| {
+        if (hotkeys.g_hotkey_manager_ptr) |manager| {
             appendChecked(menu, manager.areHotkeysSuspended(), win32.IDM_SUSPEND_HOTKEYS, "Suspend Hotkeys");
             _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
         }
@@ -177,7 +178,7 @@ pub const TrayIcon = struct {
             const index = command_id - win32.IDM_PROFILE_BASE;
             if (index >= self.profiles.items.len) return;
             slog.info("Profile selected from menu: {s}", .{self.profiles.items[index]});
-            main_mod.requestProfileSwitch(self.profiles.items[index]);
+            main.requestProfileSwitch(self.profiles.items[index]);
             return;
         }
 
@@ -198,7 +199,7 @@ pub const TrayIcon = struct {
             },
             win32.IDM_TOGGLE_AUTO_MINIMIZE => {
                 const painter = painter_mod.g_painter_ptr orelse {
-                    slog.err("Painter not available for toggle auto-minimize", .{});
+                    slog.err("Failed to toggle auto-minimize: the painter isn't ready", .{});
                     return;
                 };
                 auto_minimize.toggle(painter);
@@ -211,7 +212,7 @@ pub const TrayIcon = struct {
             win32.IDM_TOGGLE_VISIBILITY => {
                 slog.info("Toggle visibility requested from system tray", .{});
                 const painter = painter_mod.g_painter_ptr orelse {
-                    slog.err("Painter not available for toggle visibility", .{});
+                    slog.err("Failed to toggle visibility: the painter isn't ready", .{});
                     return;
                 };
                 painter.toggleAllThumbnailsVisibility();
@@ -219,7 +220,7 @@ pub const TrayIcon = struct {
             win32.IDM_TOGGLE_NOTIF_HISTORY => {
                 slog.info("Toggle history panel requested from system tray", .{});
                 const painter = painter_mod.g_painter_ptr orelse {
-                    slog.err("Painter not available for toggle history panel", .{});
+                    slog.err("Failed to toggle the History Panel: the painter isn't ready", .{});
                     return;
                 };
                 painter.toggleHistoryPanel();
@@ -227,18 +228,18 @@ pub const TrayIcon = struct {
             win32.IDM_CLEAR_NOTIF_HISTORY => {
                 slog.info("Clear notification history requested from system tray", .{});
                 const painter = painter_mod.g_painter_ptr orelse {
-                    slog.err("Painter not available for clear notification history", .{});
+                    slog.err("Failed to clear notification history: the painter isn't ready", .{});
                     return;
                 };
                 painter.notification_history.clear();
             },
             win32.IDM_SUSPEND_HOTKEYS => {
-                if (hotkeys_mod.g_hotkey_manager_ptr) |manager| manager.runGlobalAction(.suspend_hotkeys);
+                if (hotkeys.g_hotkey_manager_ptr) |manager| manager.runGlobalAction(.suspend_hotkeys);
             },
             win32.IDM_RESTORE_SAVED_POSITIONS => {
                 slog.info("Restore saved positions requested from system tray", .{});
-                const manager = hotkeys_mod.g_hotkey_manager_ptr orelse {
-                    slog.err("Hotkey manager not available for restore saved positions", .{});
+                const manager = hotkeys.g_hotkey_manager_ptr orelse {
+                    slog.err("Failed to restore saved positions: the hotkey manager isn't ready", .{});
                     return;
                 };
                 manager.runGlobalAction(.move_to_saved_positions);
@@ -246,7 +247,7 @@ pub const TrayIcon = struct {
             win32.IDM_CLOSE_ALL_CLIENTS => {
                 slog.info("Close all clients requested from system tray", .{});
                 const scout = scout_mod.g_scout_ptr orelse {
-                    slog.err("Scout not available for close all clients", .{});
+                    slog.err("Failed to close all clients: Scout isn't ready", .{});
                     return;
                 };
                 client_actions.closeAllClients(scout.getWindows(), config);

@@ -1,7 +1,7 @@
+//! Every setting in a profile (Config), and the one module the rest of the app imports settings types and profile helpers from.
 const std = @import("std");
-const log = @import("log.zig");
 const wire = @import("config/wire.zig");
-const ranges_mod = @import("config/ranges.zig");
+const ranges = @import("config/ranges.zig");
 const files = @import("config/files.zig");
 const global = @import("config/global.zig");
 const characters = @import("config/characters.zig");
@@ -18,6 +18,7 @@ const auto_colors = @import("config/auto_colors.zig");
 const profiles = @import("config/profiles.zig");
 const store = @import("config/store.zig");
 const strings = @import("util/strings.zig");
+const log = @import("log.zig");
 
 const slog = log.scoped("config");
 
@@ -49,7 +50,7 @@ pub const PROFILE_FORMAT_IDENTIFIER = "eve-maj-preview";
 /// v2: character positions saved while this app was DPI-unaware are migrated to physical pixels on load - see Config.fromWire.
 pub const PROFILE_FORMAT_VERSION: u32 = 2;
 
-pub const clampValue = ranges_mod.clampValue;
+pub const clampValue = ranges.clampValue;
 
 pub const Argb = wire.Argb;
 pub const parseHexColor = wire.parseHexColor;
@@ -262,7 +263,7 @@ pub const Config = struct {
     }
 
     pub fn validate(self: *Config) void {
-        ranges_mod.clamp(Config, self);
+        ranges.clamp(Config, self);
         for (self.characters.items) |*char| char.validate();
     }
 

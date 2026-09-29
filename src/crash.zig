@@ -1,12 +1,13 @@
+//! Crash reporting: fault and panic lines in eve-maj.log, and a minidump of the latest crash.
 const std = @import("std");
 const win32 = @import("platform/win32.zig");
 const log = @import("log.zig");
 
-// Overwritten on every crash - only the latest is kept, so a crash loop can't fill the disk.
+/// Overwritten on every crash - only the latest is kept, so a crash loop can't fill the disk.
 const MINIDUMP_FILE_NAME = std.unicode.utf8ToUtf16LeStringLiteral("eve-maj-crash.dmp");
 
-// dbghelp.dll (MiniDumpWriteDump) isn't thread-safe; this flag serializes writes and resets after each attempt so a later crash can still dump.
-var dump_write_in_progress = std.atomic.Value(bool).init(false);
+/// dbghelp.dll (MiniDumpWriteDump) isn't thread-safe; this flag serializes writes and resets after each attempt so a later crash can still dump.
+var g_dump_write_in_progress = std.atomic.Value(bool).init(false);
 
 /// Call first thing in main, before anything can fault.
 pub fn install() void {
@@ -14,16 +15,15 @@ pub fn install() void {
     _ = win32.SetUnhandledExceptionFilter(unhandledExceptionFilter);
 }
 
-/// For main.zig's root `panic`: gets the panic message into eve-maj.log, since Zig's default handler only writes to
-/// stderr, which is invisible in this Windows-subsystem build outside logLevel=debug.
+/// For main.zig's root `panic`: Zig's default handler only writes to stderr, which this GUI build doesn't show outside logLevel=debug.
 pub fn handlePanic(msg: []const u8, ret_addr: ?usize) noreturn {
     log.writeCrashLine("PANIC: {s}", .{msg});
     std.debug.defaultPanic(msg, ret_addr);
 }
 
 fn writeMinidump(info: *win32.EXCEPTION_POINTERS) void {
-    if (dump_write_in_progress.cmpxchgStrong(false, true, .acq_rel, .acquire) != null) return;
-    defer dump_write_in_progress.store(false, .release);
+    if (g_dump_write_in_progress.cmpxchgStrong(false, true, .acq_rel, .acquire) != null) return;
+    defer g_dump_write_in_progress.store(false, .release);
 
     const file = win32.CreateFileW(MINIDUMP_FILE_NAME, win32.GENERIC_WRITE, win32.FILE_SHARE_READ, null, win32.CREATE_ALWAYS, win32.FILE_ATTRIBUTE_NORMAL, null);
     if (file == win32.INVALID_HANDLE_VALUE) return;
@@ -34,13 +34,12 @@ fn writeMinidump(info: *win32.EXCEPTION_POINTERS) void {
         .ExceptionPointers = info,
         .ClientPointers = win32.FALSE,
     };
-    const ok = win32.MiniDumpWriteDump(win32.GetCurrentProcess(), win32.GetCurrentProcessId(), file, win32.MiniDumpNormal, &exc_info, null, null);
-    if (ok == win32.FALSE) {
+    if (!win32.toBool(win32.MiniDumpWriteDump(win32.GetCurrentProcess(), win32.GetCurrentProcessId(), file, win32.MiniDumpNormal, &exc_info, null, null))) {
         log.writeCrashLine("MiniDumpWriteDump failed, GetLastError=0x{x}", .{win32.GetLastError()});
     }
 }
 
-// Runs before Zig's segfault handler rewrites OS faults into an indistinguishable @breakpoint(); logs only the fault types Zig treats specially, passing everything else through silently.
+/// Runs before Zig's segfault handler rewrites OS faults into an indistinguishable @breakpoint(); logs only the fault types Zig treats specially, passing everything else through silently.
 fn firstChanceExceptionHandler(info: *win32.EXCEPTION_POINTERS) callconv(.c) win32.LONG {
     const rec = info.ExceptionRecord orelse return win32.EXCEPTION_CONTINUE_SEARCH;
     switch (rec.ExceptionCode) {
@@ -60,7 +59,7 @@ fn firstChanceExceptionHandler(info: *win32.EXCEPTION_POINTERS) callconv(.c) win
     return win32.EXCEPTION_CONTINUE_SEARCH;
 }
 
-// Last handler in the chain, after Zig's own panic/segfault handling already ran (if any); returns EXCEPTION_CONTINUE_SEARCH so Windows' normal handling still runs after.
+/// Last handler in the chain, after Zig's own panic/segfault handling already ran (if any); returns EXCEPTION_CONTINUE_SEARCH so Windows' normal handling still runs after.
 fn unhandledExceptionFilter(info: *win32.EXCEPTION_POINTERS) callconv(.c) win32.LONG {
     const base: usize = if (win32.GetModuleHandleA(null)) |h| @intFromPtr(h) else 0;
     if (info.ExceptionRecord) |rec| {

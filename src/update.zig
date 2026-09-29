@@ -1,16 +1,11 @@
+//! Checking GitHub for a newer release, and the result the tray menu and config dialog show.
 const std = @import("std");
+const build_options = @import("build_options");
 const win32 = @import("platform/win32.zig");
 const http_client = @import("util/http_client.zig");
 const log = @import("log.zig");
-const build_options = @import("build_options");
+
 const slog = log.scoped("update");
-
-var g_io: std.Io = undefined;
-
-/// Must be called once before any update-checking function is used.
-pub fn setIo(io: std.Io) void {
-    g_io = io;
-}
 
 /// Mutex-guarded holder for the latest known update result, written by the background check thread and read by the tray menu on the main thread.
 pub const UpdateStatus = struct {
@@ -104,9 +99,6 @@ pub const UpdateStatus = struct {
     }
 };
 
-/// Global update state (see UpdateStatus doc comment).
-pub var g_update_status: UpdateStatus = .{};
-
 pub const UpdateChecker = struct {
     allocator: std.mem.Allocator,
     current_version: []const u8,
@@ -168,7 +160,7 @@ pub const UpdateChecker = struct {
         const releases = parsed.value.array.items;
 
         const current_semver = parseTagVersion(self.current_version) orelse {
-            slog.warn("Failed to parse current version: {s}", .{self.current_version});
+            slog.warn("Failed to parse current version '{s}'", .{self.current_version});
             return null;
         };
 
@@ -191,7 +183,7 @@ pub const UpdateChecker = struct {
             if (tag_name != .string or html_url != .string) continue;
 
             const release_semver = parseTagVersion(tag_name.string) orelse {
-                slog.warn("Skipping release with unparsable tag: {s}", .{tag_name.string});
+                slog.warn("Skipping release with unparsable tag '{s}'", .{tag_name.string});
                 continue;
             };
 
@@ -232,7 +224,7 @@ pub const UpdateChecker = struct {
         var checker = UpdateChecker.init(allocator);
 
         const update_info = checker.checkForUpdates() catch |err| {
-            slog.warn("Update check failed: {}", .{err});
+            slog.warn("Failed to check for updates: {}", .{err});
             return;
         };
 
@@ -256,6 +248,16 @@ pub const UpdateInfo = struct {
     notes: ?[]const u8,
 };
 
+var g_io: std.Io = undefined;
+
+/// Global update state (see UpdateStatus doc comment).
+pub var g_update_status: UpdateStatus = .{};
+
+/// Must be called once before any update-checking function is used.
+pub fn setIo(io: std.Io) void {
+    g_io = io;
+}
+
 pub fn openReleasesPage() void {
     var url_buffer: [512]u8 = undefined;
     const url = g_update_status.copyUrlZ(&url_buffer) orelse "https://github.com/mrmjstc/eve-maj-preview/releases";
@@ -263,6 +265,6 @@ pub fn openReleasesPage() void {
     slog.info("Opening releases page: {s}", .{url});
 
     if (!win32.shellOpen(url.ptr, null)) {
-        slog.err("Failed to open URL in browser", .{});
+        slog.err("Failed to open '{s}' in the browser", .{url});
     }
 }

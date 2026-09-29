@@ -280,7 +280,7 @@ fn mainImpl(init: std.process.Init) !void {
     if (last_error == win32.ERROR_ALREADY_EXISTS) {
         if (open_config) {
             if (protocol.findExistingInstance()) |hwnd| {
-                protocol.sendCommandToInstance(hwnd, .{ .OpenConfig = {} });
+                protocol.sendCommandToInstance(hwnd, .{ .open_config = {} });
                 return;
             }
         }
