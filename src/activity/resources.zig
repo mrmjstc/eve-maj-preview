@@ -1,8 +1,14 @@
+//! CPU, RAM and VRAM use of each EVE client's process.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const scout = @import("../clients/scout.zig");
 const log = @import("../log.zig");
+
 const slog = log.scoped("resource_tracker");
+
+/// Instance names look like "pid_1234_luid_0x0_0xABCD_phys_0", one per process per physical adapter.
+const VRAM_COUNTER_PATH = "\\GPU Process Memory(*)\\Dedicated Usage";
+const PID_TOKEN = "pid_";
 
 pub const ProcessResourceStats = struct {
     cpu_percent: f32 = 0,
@@ -15,10 +21,6 @@ const CpuSample = struct {
     cpu_time_ms: u64,
     wall_time_ms: i64,
 };
-
-/// Instance names look like "pid_1234_luid_0x0_0xABCD_phys_0", one per process per physical adapter.
-const VRAM_COUNTER_PATH = "\\GPU Process Memory(*)\\Dedicated Usage";
-const PID_TOKEN = "pid_";
 
 /// Main-thread only - no locking, unlike tracker.zig's trackers which are fed cross-thread.
 pub const ResourceTracker = struct {
@@ -44,13 +46,15 @@ pub const ResourceTracker = struct {
 
     fn initVram(self: *ResourceTracker) void {
         var query: win32.PDH_HQUERY = null;
-        if (win32.PdhOpenQueryA(null, 0, &query) != 0) {
-            slog.warn("PdhOpenQueryA failed; VRAM overlay disabled", .{});
+        const open_status = win32.PdhOpenQueryA(null, 0, &query);
+        if (open_status != 0) {
+            slog.warn("Failed to open a PDH query, so VRAM use won't show: 0x{X}", .{@as(u32, @bitCast(open_status))});
             return;
         }
         var counter: win32.PDH_HCOUNTER = null;
-        if (win32.PdhAddEnglishCounterA(query, VRAM_COUNTER_PATH, 0, &counter) != 0) {
-            slog.warn("PdhAddEnglishCounterA failed for '{s}'; VRAM overlay disabled", .{VRAM_COUNTER_PATH});
+        const add_status = win32.PdhAddEnglishCounterA(query, VRAM_COUNTER_PATH, 0, &counter);
+        if (add_status != 0) {
+            slog.warn("Failed to add PDH counter '{s}', so VRAM use won't show: 0x{X}", .{ VRAM_COUNTER_PATH, @as(u32, @bitCast(add_status)) });
             _ = win32.PdhCloseQuery(query);
             return;
         }
@@ -78,13 +82,14 @@ pub const ResourceTracker = struct {
         }
         if (self.vram_available) {
             self.pollVram(windows) catch |err| {
-                slog.warn("VRAM poll failed: {}", .{err});
+                slog.warn("Failed to poll VRAM use: {}", .{err});
             };
         }
         self.pruneStale(windows);
     }
 
     fn sampleCpuAndRam(self: *ResourceTracker, pid: win32.DWORD, now_ms: i64) void {
+        // Not logged: an unreadable process just shows no stats, and this runs every sample.
         const handle = win32.OpenProcess(win32.PROCESS_QUERY_LIMITED_INFORMATION | win32.PROCESS_VM_READ, win32.FALSE, pid) orelse return;
         defer _ = win32.CloseHandle(handle);
 
@@ -109,7 +114,7 @@ pub const ResourceTracker = struct {
                 }
             }
             self.cpu_samples.put(pid, .{ .cpu_time_ms = cpu_time_ms, .wall_time_ms = now_ms }) catch |err| {
-                slog.warn("Failed to record cpu sample for pid {}: {}", .{ pid, err });
+                slog.warn("Failed to record CPU sample for pid {}: {}", .{ pid, err });
             };
         }
 
@@ -164,7 +169,10 @@ pub const ResourceTracker = struct {
             for (windows) |w| {
                 if (w.process_id == pid_ptr.*) continue :outer;
             }
-            stale.append(self.allocator, pid_ptr.*) catch continue;
+            stale.append(self.allocator, pid_ptr.*) catch |err| {
+                slog.warn("Failed to queue pid {} for pruning: {}", .{ pid_ptr.*, err });
+                continue;
+            };
         }
         for (stale.items) |pid| {
             _ = self.stats.remove(pid);
@@ -177,7 +185,7 @@ fn parsePidFromInstanceName(name: []const u8) ?win32.DWORD {
     const pid_pos = std.mem.indexOf(u8, name, PID_TOKEN) orelse return null;
     const digits_start = pid_pos + PID_TOKEN.len;
     var end = digits_start;
-    while (end < name.len and name[end] >= '0' and name[end] <= '9') : (end += 1) {}
+    while (end < name.len and std.ascii.isDigit(name[end])) : (end += 1) {}
     if (end == digits_start) return null;
     return std.fmt.parseInt(win32.DWORD, name[digits_start..end], 10) catch null;
 }

@@ -1,16 +1,17 @@
+//! The profile's live activity trackers, and the throttled push of their values into the painter.
 const std = @import("std");
-const log = @import("../log.zig");
-const slog = log.scoped("activity");
-const config_mod = @import("../config.zig");
+const config = @import("../config.zig");
 const painter_mod = @import("../painter.zig");
 const scout = @import("../clients/scout.zig");
 const chatlog = @import("../chatlog.zig");
 const tracker_mod = @import("tracker.zig");
 const resources_mod = @import("resources.zig");
-const Painter = painter_mod.Painter;
-const Config = config_mod.Config;
+const log = @import("../log.zig");
 
-/// The live activity trackers for the current profile, and the throttled push of their values into the painter.
+const Painter = painter_mod.Painter;
+const Config = config.Config;
+const slog = log.scoped("activity");
+
 pub const Trackers = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
@@ -107,7 +108,7 @@ pub const Trackers = struct {
     }
 };
 
-/// refreshAll is a pure recompute from ring-buffer contents with no side effects that need to happen more often than the values are actually read, so it's gated behind the same throttle as the push.
+/// Also throttles refreshAll, since nothing reads the rates more often than this pushes them.
 fn pushThrottled(
     comptime T: type,
     comptime perWindow: fn (*T, *Painter, *const Config, scout.EveWindow, i64) void,
