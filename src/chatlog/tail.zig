@@ -3,9 +3,10 @@ const std = @import("std");
 const lines_mod = @import("lines.zig");
 const utf16 = @import("utf16.zig");
 const log = @import("../log.zig");
+
 const slog = log.scoped("chatlog");
 
-const READ_CHUNK = 4096;
+const READ_CHUNK_SIZE = 4096;
 /// So a big backlog can't hold up the other files.
 const MAX_CHUNKS_PER_POLL = 64;
 const SCAN_CHUNK_SIZE = 8192;
@@ -37,7 +38,7 @@ pub const LogFile = struct {
     u16_buffer: std.ArrayList(u16) = .empty,
     utf8_buffer: std.ArrayList(u8) = .empty,
     system_name_buffer: std.ArrayList(u8) = .empty,
-    /// Parse state the monitor keeps per file.
+    // Parse state the monitor keeps per file.
     last_system_hash: u64 = 0,
     long_line_warnings: u32 = 0,
 
@@ -73,7 +74,7 @@ pub const LogFile = struct {
 
         const found = try self.findSystemBackward(allocator, io, file, stat.size);
         if (found == null and stat.size > MAX_BACKWARD_SCAN_BYTES) {
-            slog.warn("No system found for {s} within the last {} bytes of {s}; initial system name unavailable until next channel change or jump", .{ self.character_name, MAX_BACKWARD_SCAN_BYTES, self.path });
+            slog.warn("No system for '{s}' in the last {} bytes of '{s}', so none is shown until the next jump or Local change", .{ self.character_name, MAX_BACKWARD_SCAN_BYTES, self.path });
         }
         return found;
     }
@@ -103,10 +104,10 @@ pub const LogFile = struct {
                     self.lines.reset();
                 },
                 error.BadPathName => {
-                    slog.warn("Disabling log file for {s} due to BadPathName", .{self.character_name});
+                    slog.warn("Failed to open '{s}' for '{s}', disabling it: {}", .{ self.path, self.character_name, err });
                     self.disabled = true;
                 },
-                else => slog.warn("Failed to open {s}: {}", .{ self.path, err }),
+                else => slog.warn("Failed to open '{s}': {}", .{ self.path, err }),
             }
             return null;
         };
@@ -140,7 +141,7 @@ pub const LogFile = struct {
 
         var chunks: usize = 0;
         while (chunks < MAX_CHUNKS_PER_POLL) : (chunks += 1) {
-            var buffer: [READ_CHUNK]u8 = undefined;
+            var buffer: [READ_CHUNK_SIZE]u8 = undefined;
             const bytes_read = try file.readPositionalAll(io, &buffer, self.position);
             // A chatlog read can stop mid-character while EVE is writing; the rest is read next time.
             const usable = if (self.is_chatlog) utf16.completeLen(buffer[0..bytes_read]) else bytes_read;

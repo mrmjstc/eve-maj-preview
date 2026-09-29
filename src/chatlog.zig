@@ -1,38 +1,33 @@
 //! Follows each logged-in character's chatlog and gamelog on a worker thread, and hands what they say to the main thread.
 const std = @import("std");
 const win32 = @import("platform/win32.zig");
-const log = @import("log.zig");
 const notification_mod = @import("notifications/notification.zig");
 const gamelog_events = @import("notifications/gamelog_events.zig");
 const activity_mod = @import("activity/tracker.zig");
-const scout_mod = @import("clients/scout.zig");
-const painter_mod = @import("painter.zig");
-const config_mod = @import("config.zig");
+const scout = @import("clients/scout.zig");
+const painter = @import("painter.zig");
+const config = @import("config.zig");
 const CharacterIds = @import("chatlog/character_ids.zig").CharacterIds;
-const lines_mod = @import("chatlog/lines.zig");
+const lines = @import("chatlog/lines.zig");
 const tail = @import("chatlog/tail.zig");
 const discovery = @import("chatlog/discovery.zig");
 const queue = @import("chatlog/queue.zig");
-const slog = log.scoped("chatlog");
+const log = @import("log.zig");
 
 const LogFile = tail.LogFile;
+const slog = log.scoped("chatlog");
 
 /// Shorter lines can't hold a timestamp and a message.
 const MIN_LINE_LENGTH = 25;
 /// Per worker loop, so a rescan of many characters doesn't keep commands waiting.
 const RESCAN_BUDGET_NS = 100 * std.time.ns_per_ms;
 
-/// win32.Ticks unwrapped to i64, for activity trackers' plain integer arithmetic.
-fn trackerNowMs() i64 {
-    return @intCast(win32.Ticks.now().ms);
-}
-
 pub const ChatlogMonitor = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
     finder: discovery.LogFinder,
     /// Read for ore prices, which only change while the worker is stopped.
-    global_settings: ?*config_mod.GlobalConfig,
+    global_settings: ?*config.GlobalConfig,
     character_ids: ?*CharacterIds,
     // Set only while the worker is stopped (see activity/runtime.zig).
     combat_tracker: ?*activity_mod.CombatTracker = null,
@@ -62,7 +57,7 @@ pub const ChatlogMonitor = struct {
     rescan_names: std.ArrayList([]u8) = .empty,
     rescan_index: usize = 0,
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, cfg: *const config_mod.ChatlogConfig, global_settings: ?*config_mod.GlobalConfig, character_ids: ?*CharacterIds) !*ChatlogMonitor {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, cfg: *const config.ChatlogConfig, global_settings: ?*config.GlobalConfig, character_ids: ?*CharacterIds) !*ChatlogMonitor {
         const monitor = try allocator.create(ChatlogMonitor);
         errdefer allocator.destroy(monitor);
         monitor.* = .{
@@ -105,14 +100,14 @@ pub const ChatlogMonitor = struct {
     }
 
     /// Whether this monitor already watches what `cfg` asks for, so a reload can keep it and its scan state.
-    pub fn runsWith(self: *const ChatlogMonitor, cfg: *const config_mod.ChatlogConfig) bool {
+    pub fn runsWith(self: *const ChatlogMonitor, cfg: *const config.ChatlogConfig) bool {
         return cfg.enabled and
             std.mem.eql(u8, cfg.chatlogDir, self.finder.chatlog_dir) and
             std.mem.eql(u8, cfg.gamelogDir, self.finder.gamelog_dir);
     }
 
     /// The polling settings a profile reload can change without rebuilding the monitor; only while the worker is stopped.
-    pub fn applySettings(self: *ChatlogMonitor, cfg: *const config_mod.ChatlogConfig) void {
+    pub fn applySettings(self: *ChatlogMonitor, cfg: *const config.ChatlogConfig) void {
         self.idle_poll_threshold = cfg.idlePollThreshold;
         self.max_poll_multiplier = cfg.maxPollMultiplier;
         self.poll_interval_ms = cfg.pollIntervalMs;
@@ -144,7 +139,7 @@ pub const ChatlogMonitor = struct {
 
     /// Main thread only, like the rest of what the tick calls; asks the worker to follow the character's logs.
     pub fn addCharacter(self: *ChatlogMonitor, character_name: []const u8) !void {
-        if (scout_mod.isGenericCharacterName(character_name) or self.requested.contains(character_name)) return;
+        if (scout.isGenericCharacterName(character_name) or self.requested.contains(character_name)) return;
         const key = try self.allocator.dupe(u8, character_name);
         errdefer self.allocator.free(key);
         try self.commands.push(.{ .add_character = try self.allocator.dupe(u8, character_name) });
@@ -164,10 +159,10 @@ pub const ChatlogMonitor = struct {
     }
 
     /// Sends the tick's logouts, closed windows and logins to the worker, then delivers what it found.
-    pub fn update(self: *ChatlogMonitor, scout_result: *const scout_mod.UpdateResult) !void {
+    pub fn update(self: *ChatlogMonitor, scout_result: *const scout.UpdateResult) !void {
         for (scout_result.closed_windows.items) |closed| try self.removeCharacter(closed.character_name);
         for (scout_result.name_changes.items) |change| {
-            if (scout_mod.isGenericCharacterName(change.new_name) and !scout_mod.isGenericCharacterName(change.old_name)) {
+            if (scout.isGenericCharacterName(change.new_name) and !scout.isGenericCharacterName(change.old_name)) {
                 try self.removeCharacter(change.old_name);
             }
         }
@@ -185,17 +180,17 @@ pub const ChatlogMonitor = struct {
 
         for (updates.items) |*system_update| {
             defer system_update.deinit(self.allocator);
-            const scout_ptr = scout_mod.g_scout_ptr orelse continue;
+            const scout_ptr = scout.g_scout_ptr orelse continue;
             const hwnd = scout_ptr.getHwndByName(system_update.character_name) orelse {
-                slog.warn("No HWND for {s}, skipping system update", .{system_update.character_name});
+                slog.warn("No HWND for '{s}', skipping system update", .{system_update.character_name});
                 continue;
             };
-            const painter_ptr = painter_mod.g_painter_ptr orelse {
-                slog.warn("No painter available to apply system update: {s} -> {s}", .{ system_update.character_name, system_update.system_name });
+            const painter_ptr = painter.g_painter_ptr orelse {
+                slog.warn("No painter to apply system update for '{s}' to '{s}'", .{ system_update.character_name, system_update.system_name });
                 continue;
             };
             painter_ptr.updateSystemNameByHwnd(hwnd, system_update.system_name, system_update.event_ts, system_update.is_jump) catch |err| {
-                slog.err("Failed to update system name for {s}: {}", .{ system_update.character_name, err });
+                slog.err("Failed to update system name for '{s}': {}", .{ system_update.character_name, err });
                 scout_ptr.clearHwndForCharacter(system_update.character_name);
             };
         }
@@ -208,9 +203,9 @@ pub const ChatlogMonitor = struct {
 
         for (events.items) |*event| {
             defer event.deinit(self.allocator);
-            const scout_ptr = scout_mod.g_scout_ptr orelse continue;
+            const scout_ptr = scout.g_scout_ptr orelse continue;
             const hwnd = scout_ptr.getHwndByName(event.character_name) orelse continue;
-            const painter_ptr = painter_mod.g_painter_ptr orelse continue;
+            const painter_ptr = painter.g_painter_ptr orelse continue;
             painter_ptr.notify(hwnd, event.notification);
         }
     }
@@ -220,9 +215,9 @@ pub const ChatlogMonitor = struct {
         slog.info("Chatlog worker thread started (TID: {})", .{std.Thread.getCurrentId()});
         var loops: u64 = 0;
         while (!self.should_exit.load(.acquire)) : (loops += 1) {
-            self.processCommands() catch |err| slog.err("Worker thread command processing error: {}", .{err});
+            self.processCommands() catch |err| slog.err("Failed to process worker commands: {}", .{err});
             self.pollLogFiles();
-            self.rescanForNewLogs() catch |err| slog.err("Worker thread scan error: {}", .{err});
+            self.rescanForNewLogs() catch |err| slog.err("Failed to rescan for new logs: {}", .{err});
             win32.Sleep(self.poll_interval_ms);
         }
         slog.info("Chatlog worker thread exiting (processed {} loops)", .{loops});
@@ -253,11 +248,11 @@ pub const ChatlogMonitor = struct {
     fn want(self: *ChatlogMonitor, character_name: []const u8) void {
         if (self.wanted.contains(character_name)) return;
         const owned = self.allocator.dupe(u8, character_name) catch |err| {
-            slog.err("Worker: failed to remember {s} to watch for its logs: {}", .{ character_name, err });
+            slog.err("Failed to remember '{s}' to watch for its logs: {}", .{ character_name, err });
             return;
         };
         self.wanted.put(owned, {}) catch |err| {
-            slog.err("Worker: failed to remember {s} to watch for its logs: {}", .{ character_name, err });
+            slog.err("Failed to remember '{s}' to watch for its logs: {}", .{ character_name, err });
             self.allocator.free(owned);
         };
     }
@@ -266,7 +261,7 @@ pub const ChatlogMonitor = struct {
         const path = self.finder.find(character_name, is_chatlog) orelse return;
         defer self.allocator.free(path);
         self.addLogFile(path, character_name, is_chatlog) catch |err| {
-            slog.err("Worker: Failed to add {s} for {s}: {}", .{ if (is_chatlog) "chatlog" else "gamelog", character_name, err });
+            slog.err("Failed to follow {s} for '{s}': {}", .{ if (is_chatlog) "chatlog" else "gamelog", character_name, err });
         };
     }
 
@@ -293,7 +288,7 @@ pub const ChatlogMonitor = struct {
     fn resolveId(self: *ChatlogMonitor, character_name: []const u8) void {
         const ids = self.character_ids orelse return;
         const cached = ids.contains(character_name) catch |err| blk: {
-            slog.err("Worker: failed to check character ID cache for {s}: {}", .{ character_name, err });
+            slog.err("Failed to check character ID cache for '{s}': {}", .{ character_name, err });
             break :blk false;
         };
         if (cached) return;
@@ -339,7 +334,7 @@ pub const ChatlogMonitor = struct {
         }
 
         const found = new_file.start(self.allocator, self.io) catch |err| {
-            slog.warn("Failed to open {s} for initial read: {}", .{ path, err });
+            slog.warn("Failed to open '{s}' for initial read: {}", .{ path, err });
             return err;
         };
         if (found) |match| {
@@ -355,7 +350,7 @@ pub const ChatlogMonitor = struct {
         const backoff: tail.Backoff = .{ .idle_threshold = self.idle_poll_threshold, .max_multiplier = self.max_poll_multiplier };
         for (self.log_files.items) |*file| {
             file.poll(self.allocator, self.io, backoff, LineHandler{ .monitor = self, .file = file }) catch |err| {
-                slog.err("Error reading {s}: {}", .{ file.path, err });
+                slog.err("Failed to read '{s}': {}", .{ file.path, err });
             };
         }
     }
@@ -407,11 +402,11 @@ pub const ChatlogMonitor = struct {
 
     fn queueSystemUpdate(self: *ChatlogMonitor, character_name: []const u8, system_name: []const u8, event_ts: u64, is_jump: bool) void {
         const system_update = self.copySystemUpdate(character_name, system_name, event_ts, is_jump) catch |err| {
-            slog.err("Failed to copy the system update for {s}: {}", .{ character_name, err });
+            slog.err("Failed to copy system update for '{s}': {}", .{ character_name, err });
             return;
         };
         self.system_updates.push(system_update) catch |err| {
-            slog.err("Failed to queue the system update for {s}: {}", .{ character_name, err });
+            slog.err("Failed to queue system update for '{s}': {}", .{ character_name, err });
         };
     }
 
@@ -422,23 +417,23 @@ pub const ChatlogMonitor = struct {
     }
 
     /// Gated by the type's settings in Painter.notify, once the main thread delivers it.
-    fn queueNotification(self: *ChatlogMonitor, character_name: []const u8, n: notification_mod.Notification) void {
-        var event: queue.NotificationEvent = .{ .character_name = "", .notification = .{ .ntype = n.ntype, .state = n.state } };
-        self.copyNotificationEvent(&event, character_name, n) catch |err| {
+    fn queueNotification(self: *ChatlogMonitor, character_name: []const u8, notification: notification_mod.Notification) void {
+        var event: queue.NotificationEvent = .{ .character_name = "", .notification = .{ .ntype = notification.ntype, .state = notification.state } };
+        self.copyNotificationEvent(&event, character_name, notification) catch |err| {
             event.deinit(self.allocator);
-            slog.err("Failed to allocate {s} notification for {s}: {}", .{ @tagName(n.ntype), character_name, err });
+            slog.err("Failed to copy {s} notification for '{s}': {}", .{ @tagName(notification.ntype), character_name, err });
             return;
         };
         self.notifications.push(event) catch |err| {
-            slog.err("Failed to queue {s} notification for {s}: {}", .{ @tagName(n.ntype), character_name, err });
+            slog.err("Failed to queue {s} notification for '{s}': {}", .{ @tagName(notification.ntype), character_name, err });
         };
     }
 
     /// Fills `event` field by field so a partial failure leaves it safe to deinit.
-    fn copyNotificationEvent(self: *ChatlogMonitor, event: *queue.NotificationEvent, character_name: []const u8, n: notification_mod.Notification) !void {
+    fn copyNotificationEvent(self: *ChatlogMonitor, event: *queue.NotificationEvent, character_name: []const u8, notification: notification_mod.Notification) !void {
         event.character_name = try self.allocator.dupe(u8, character_name);
-        if (n.source) |s| event.notification.source = try self.allocator.dupe(u8, s);
-        if (n.target) |t| event.notification.target = try self.allocator.dupe(u8, t);
+        if (notification.source) |source| event.notification.source = try self.allocator.dupe(u8, source);
+        if (notification.target) |target| event.notification.target = try self.allocator.dupe(u8, target);
     }
 
     const LineHandler = struct {
@@ -459,23 +454,23 @@ pub const ChatlogMonitor = struct {
     fn warnLongLine(file: *LogFile, len: usize) void {
         file.long_line_warnings += 1;
         if (file.long_line_warnings <= 3 or file.long_line_warnings % 100 == 0) {
-            slog.warn("Dropping line ({} bytes, over the {}-byte cap) for {s} (warning #{})", .{ len, lines_mod.MAX_LINE_LENGTH, file.character_name, file.long_line_warnings });
+            slog.warn("Dropping line ({} bytes, over the {}-byte cap) for '{s}' (warning #{})", .{ len, lines.MAX_LINE_LENGTH, file.character_name, file.long_line_warnings });
         }
     }
 
     fn parseLine(self: *ChatlogMonitor, file: *LogFile, line: []const u8) void {
         if (line.len < MIN_LINE_LENGTH) return;
-        if (line.len > lines_mod.MAX_LINE_LENGTH) {
+        if (line.len > lines.MAX_LINE_LENGTH) {
             warnLongLine(file, line.len);
             return;
         }
 
         if (file.is_chatlog) {
-            if (lines_mod.parseChatLine(line)) |system| self.handleSystemChange(file, system, .chatlog);
+            if (lines.parseChatLine(line)) |system| self.handleSystemChange(file, system, .chatlog);
             return;
         }
 
-        const parsed = lines_mod.parseGameLine(line);
+        const parsed = lines.parseGameLine(line);
         if (parsed.system) |change| self.handleSystemChange(file, change.system, change.source);
         if (parsed.activity) |activity| switch (activity) {
             .event => self.handleGamelogEvent(file, line),
@@ -485,7 +480,7 @@ pub const ChatlogMonitor = struct {
     }
 
     /// Ignores a repeat of the last system; `system` is borrowed and copied into the queued events.
-    fn handleSystemChange(self: *ChatlogMonitor, file: *LogFile, system: []const u8, source: lines_mod.SystemSource) void {
+    fn handleSystemChange(self: *ChatlogMonitor, file: *LogFile, system: []const u8, source: lines.SystemSource) void {
         const system_hash = std.hash.Wyhash.hash(0, system);
         if (file.last_system_hash == system_hash) return;
         file.last_system_hash = system_hash;
@@ -508,13 +503,13 @@ pub const ChatlogMonitor = struct {
                 // Filtered weapons still count toward DPS but mustn't retrigger Taking Damage.
                 const counts_for_alert = !activity_mod.isWeaponExcluded(parsed.weapon, self.damage_alert_excluded_weapons);
                 tracker.addEntry(file.character_name, parsed.amount, parsed.is_incoming, trackerNowMs(), counts_for_alert) catch |err| {
-                    slog.warn("Failed to record combat entry for {s}: {}", .{ file.character_name, err });
+                    slog.warn("Failed to record combat entry for '{s}': {}", .{ file.character_name, err });
                 };
             }
         }
 
-        const n = gamelog_events.classify(stripped_text) orelse return;
-        self.queueNotification(file.character_name, n);
+        const notification = gamelog_events.classify(stripped_text) orelse return;
+        self.queueNotification(file.character_name, notification);
         slog.debug("Gamelog event: {s} -> {s}", .{ file.character_name, event_text });
     }
 
@@ -522,17 +517,17 @@ pub const ChatlogMonitor = struct {
     fn handleMiningEvent(self: *ChatlogMonitor, file: *LogFile, event_text: []const u8) void {
         const tracker = self.mining_tracker orelse return;
         const parsed = activity_mod.parseMiningLine(event_text) orelse return;
-        const gs = self.global_settings orelse return;
-        const volume_per_unit = gs.oreVolume(parsed.name()) orelse {
-            slog.warn("Unknown ore/ice/gas type in mining line, dropping yield: '{s}'", .{parsed.name()});
+        const global_settings = self.global_settings orelse return;
+        const volume_per_unit = global_settings.oreVolume(parsed.name()) orelse {
+            slog.warn("Unknown ore, ice or gas '{s}' in mining line, dropping yield", .{parsed.name()});
             return;
         };
-        const price_per_unit = gs.orePrice(parsed.name()) orelse 0;
+        const price_per_unit = global_settings.orePrice(parsed.name()) orelse 0;
         const amount_f: f32 = @floatFromInt(parsed.amount);
         const m3 = amount_f * @as(f32, @floatCast(volume_per_unit));
         const isk = amount_f * @as(f32, @floatCast(price_per_unit));
         tracker.addEntry(file.character_name, m3, isk, trackerNowMs()) catch |err| {
-            slog.warn("Failed to record mining entry for {s}: {}", .{ file.character_name, err });
+            slog.warn("Failed to record mining entry for '{s}': {}", .{ file.character_name, err });
         };
     }
 
@@ -540,7 +535,12 @@ pub const ChatlogMonitor = struct {
         const tracker = self.bounty_tracker orelse return;
         const isk = activity_mod.parseBountyLine(event_text) orelse return;
         tracker.addEntry(file.character_name, isk, trackerNowMs()) catch |err| {
-            slog.warn("Failed to record bounty entry for {s}: {}", .{ file.character_name, err });
+            slog.warn("Failed to record bounty entry for '{s}': {}", .{ file.character_name, err });
         };
     }
 };
+
+/// win32.Ticks unwrapped to i64, for activity trackers' plain integer arithmetic.
+fn trackerNowMs() i64 {
+    return @intCast(win32.Ticks.now().ms);
+}

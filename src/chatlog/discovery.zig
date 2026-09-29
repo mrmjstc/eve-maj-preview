@@ -1,10 +1,11 @@
 //! Finding a character's newest logs among possibly tens of thousands, and noticing new ones.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const lines_mod = @import("lines.zig");
+const lines = @import("lines.zig");
 const utf16 = @import("utf16.zig");
 const CharacterIds = @import("character_ids.zig").CharacterIds;
 const log = @import("../log.zig");
+
 const slog = log.scoped("chatlog");
 
 /// Files checked by header when a character's ID isn't cached; a live character's log is always among the newest.
@@ -84,7 +85,7 @@ pub const LogFinder = struct {
     fn cachedId(self: *LogFinder, character_name: []const u8) ?[]const u8 {
         const ids = self.character_ids orelse return null;
         return ids.get(self.allocator, character_name) catch |err| {
-            slog.warn("Failed to look up cached character ID for {s}: {}", .{ character_name, err });
+            slog.warn("Failed to look up cached character ID for '{s}': {}", .{ character_name, err });
             return null;
         };
     }
@@ -93,7 +94,7 @@ pub const LogFinder = struct {
     fn findById(self: *LogFinder, dir: []const u8, is_chatlog: bool, id: []const u8) ?[]u8 {
         var pattern_buf: [64]u8 = undefined;
         const pattern = std.fmt.bufPrint(&pattern_buf, "{s}*_{s}.txt", .{ if (is_chatlog) "Local_" else "", id }) catch |err| {
-            slog.warn("Character ID {s} too long for a log search: {}", .{ id, err });
+            slog.warn("Failed to build log search for character ID '{s}': {}", .{ id, err });
             return null;
         };
 
@@ -105,9 +106,9 @@ pub const LogFinder = struct {
         defer files.close();
         while (files.next()) |name| {
             if (!is_chatlog and std.mem.startsWith(u8, name, "Local_")) continue;
-            const file_id = lines_mod.characterIdFromFileName(name) orelse continue;
+            const file_id = lines.characterIdFromFileName(name) orelse continue;
             if (!std.mem.eql(u8, file_id, id)) continue;
-            const ts = lines_mod.logFileTimestamp(name, is_chatlog);
+            const ts = lines.logFileTimestamp(name, is_chatlog);
             if (ts <= best_ts) continue;
             best_ts = ts;
             @memcpy(best_buf[0..name.len], name);
@@ -130,7 +131,7 @@ pub const LogFinder = struct {
         defer files.close();
         while (files.next()) |name| {
             if (!is_chatlog and std.mem.startsWith(u8, name, "Local_")) continue;
-            const ts = lines_mod.logFileTimestamp(name, is_chatlog);
+            const ts = lines.logFileTimestamp(name, is_chatlog);
             if (ts == 0) continue;
             if (count == newest.len and ts <= newest[count - 1].ts) continue;
 
@@ -152,7 +153,7 @@ pub const LogFinder = struct {
         for (newest[0..count]) |candidate| {
             const path = self.joinPath(dir, candidate.name) orelse continue;
             if (self.isListener(path, is_chatlog, character_name)) {
-                if (lines_mod.characterIdFromFileName(candidate.name)) |id| self.cacheId(character_name, id);
+                if (lines.characterIdFromFileName(candidate.name)) |id| self.cacheId(character_name, id);
                 return path;
             }
             self.allocator.free(path);
@@ -163,21 +164,27 @@ pub const LogFinder = struct {
     fn cacheId(self: *LogFinder, character_name: []const u8, id: []const u8) void {
         const ids = self.character_ids orelse return;
         ids.put(character_name, id) catch |err| {
-            slog.warn("Failed to cache character ID for {s}: {}", .{ character_name, err });
+            slog.warn("Failed to cache character ID for '{s}': {}", .{ character_name, err });
         };
     }
 
     fn isListener(self: *LogFinder, path: []const u8, is_chatlog: bool, character_name: []const u8) bool {
-        const file = std.Io.Dir.cwd().openFile(self.io, path, .{}) catch return false;
+        const file = std.Io.Dir.cwd().openFile(self.io, path, .{}) catch |err| {
+            slog.warn("Failed to open '{s}' to read its listener: {}", .{ path, err });
+            return false;
+        };
         defer file.close(self.io);
 
         var header: [512]u8 = undefined;
-        const bytes_read = file.readPositionalAll(self.io, &header, 0) catch return false;
+        const bytes_read = file.readPositionalAll(self.io, &header, 0) catch |err| {
+            slog.warn("Failed to read the header of '{s}': {}", .{ path, err });
+            return false;
+        };
 
         var units: [header.len / 2]u16 = undefined;
         var decoded: [units.len * 3]u8 = undefined;
         const text = if (is_chatlog) (utf16.decodeInto(&units, &decoded, header[0..bytes_read]) orelse return false) else header[0..bytes_read];
-        const listener = lines_mod.listenerName(text) orelse return false;
+        const listener = lines.listenerName(text) orelse return false;
         return std.mem.eql(u8, listener, character_name);
     }
 
@@ -189,30 +196,6 @@ pub const LogFinder = struct {
     }
 };
 
-fn watchFolder(allocator: std.mem.Allocator, dir: []const u8) ?win32.HANDLE {
-    const dir_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, dir) catch |err| {
-        slog.warn("Failed to convert {s} to UTF-16 to watch it: {} - new logs there won't be noticed", .{ dir, err });
-        return null;
-    };
-    defer allocator.free(dir_w);
-    // Only files being created or renamed, not written to.
-    const handle = win32.FindFirstChangeNotificationW(dir_w.ptr, win32.FALSE, win32.FILE_NOTIFY_CHANGE_FILE_NAME);
-    if (handle == win32.INVALID_HANDLE_VALUE) {
-        slog.warn("Failed to watch {s} - new logs there won't be noticed", .{dir});
-        return null;
-    }
-    return handle;
-}
-
-fn rewatch(watcher: ?win32.HANDLE) void {
-    if (watcher) |handle| _ = win32.FindNextChangeNotification(handle);
-}
-
-fn signaled(watcher: ?win32.HANDLE) bool {
-    const handle = watcher orelse return false;
-    return win32.WaitForSingleObject(handle, 0) == win32.WAIT_OBJECT_0;
-}
-
 /// The files in a folder matching a wildcard pattern, filtered by Windows.
 const FileNames = struct {
     handle: win32.HANDLE,
@@ -222,12 +205,12 @@ const FileNames = struct {
 
     fn open(allocator: std.mem.Allocator, dir: []const u8, pattern: []const u8) ?FileNames {
         const search = std.fs.path.join(allocator, &.{ dir, pattern }) catch |err| {
-            slog.warn("Failed to build log search path for {s}: {}", .{ dir, err });
+            slog.warn("Failed to build log search path for '{s}': {}", .{ dir, err });
             return null;
         };
         defer allocator.free(search);
         const search_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, search) catch |err| {
-            slog.warn("Failed to convert log search path to UTF-16 for {s}: {}", .{ dir, err });
+            slog.warn("Failed to convert log search path for '{s}' to UTF-16: {}", .{ dir, err });
             return null;
         };
         defer allocator.free(search_w);
@@ -254,10 +237,34 @@ const FileNames = struct {
             const raw: []const u16 = self.find_data.cFileName[0..];
             const len = std.mem.indexOfScalar(u16, raw, 0) orelse raw.len;
             const written = std.unicode.utf16LeToUtf8(&self.name_buf, raw[0..len]) catch |err| {
-                slog.warn("Failed to decode log filename: {}", .{err});
+                slog.warn("Failed to decode log file name: {}", .{err});
                 continue;
             };
             return self.name_buf[0..written];
         }
     }
 };
+
+fn watchFolder(allocator: std.mem.Allocator, dir: []const u8) ?win32.HANDLE {
+    const dir_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, dir) catch |err| {
+        slog.warn("Failed to convert '{s}' to UTF-16 to watch it, so new logs there won't be noticed: {}", .{ dir, err });
+        return null;
+    };
+    defer allocator.free(dir_w);
+    // Only files being created or renamed, not written to.
+    const handle = win32.FindFirstChangeNotificationW(dir_w.ptr, win32.FALSE, win32.FILE_NOTIFY_CHANGE_FILE_NAME);
+    if (handle == win32.INVALID_HANDLE_VALUE) {
+        slog.warn("Failed to watch '{s}', so new logs there won't be noticed", .{dir});
+        return null;
+    }
+    return handle;
+}
+
+fn rewatch(watcher: ?win32.HANDLE) void {
+    if (watcher) |handle| _ = win32.FindNextChangeNotification(handle);
+}
+
+fn signaled(watcher: ?win32.HANDLE) bool {
+    const handle = watcher orelse return false;
+    return win32.WaitForSingleObject(handle, 0) == win32.WAIT_OBJECT_0;
+}

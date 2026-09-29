@@ -1,10 +1,10 @@
 //! Chat and game log monitoring settings.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const log = @import("../log.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 const files = @import("files.zig");
+const log = @import("../log.zig");
 
 const slog = log.scoped("config");
 
@@ -30,7 +30,7 @@ pub const ChatlogConfig = struct {
                 slog.warn("Chatlog monitoring enabled but chatlogDir is empty", .{});
             } else {
                 std.Io.Dir.cwd().access(files.g_io, self.chatlogDir, .{}) catch |err| {
-                    slog.warn("Chatlog directory '{s}' does not exist or is not accessible: {}", .{ self.chatlogDir, err });
+                    slog.warn("Failed to access chatlog directory '{s}': {}", .{ self.chatlogDir, err });
                 };
             }
 
@@ -38,7 +38,7 @@ pub const ChatlogConfig = struct {
                 slog.warn("Chatlog monitoring enabled but gamelogDir is empty", .{});
             } else {
                 std.Io.Dir.cwd().access(files.g_io, self.gamelogDir, .{}) catch |err| {
-                    slog.warn("Gamelog directory '{s}' does not exist or is not accessible: {}", .{ self.gamelogDir, err });
+                    slog.warn("Failed to access gamelog directory '{s}': {}", .{ self.gamelogDir, err });
                 };
             }
         }
@@ -77,8 +77,8 @@ const FOLDERID_Documents = win32.GUID{
 
 /// Asks the shell rather than assuming %USERPROFILE%/Documents, which OneDrive can redirect; EVE logs to wherever this resolves.
 fn documentsDir(allocator: std.mem.Allocator) ![]u8 {
-    const dir = win32.getKnownFolderPath(allocator, FOLDERID_Documents) catch blk: {
-        slog.warn("Failed to resolve Documents known folder, falling back to USERPROFILE/Documents", .{});
+    const dir = win32.getKnownFolderPath(allocator, FOLDERID_Documents) catch |err| blk: {
+        slog.warn("Failed to resolve the Documents folder, falling back to USERPROFILE/Documents: {}", .{err});
         const userprofile = files.g_environ_map.get("USERPROFILE") orelse {
             slog.warn("USERPROFILE environment variable not found", .{});
             return error.MissingEnvironmentVariable;

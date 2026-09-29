@@ -4,6 +4,9 @@ const gamelog_events = @import("../notifications/gamelog_events.zig");
 
 /// Longer lines are dropped; combat lines with colour tags run to 2-3KB.
 pub const MAX_LINE_LENGTH = 4000;
+const LOCAL_CHANGE = "Channel changed to Local";
+const JUMP = "Jumping from ";
+const UNDOCK = "Undocking from ";
 
 pub const SystemSource = enum { chatlog, jump, undock, conduit };
 
@@ -17,9 +20,58 @@ pub const GameLine = struct {
     activity: ?Activity = null,
 };
 
-const LOCAL_CHANGE = "Channel changed to Local";
-const JUMP = "Jumping from ";
-const UNDOCK = "Undocking from ";
+/// With its line's timestamp, so chatlog and gamelog finds can be compared for recency.
+pub const SystemMatch = struct {
+    /// Borrows from the scanned text.
+    system: []const u8,
+    /// See lineTimestamp; 0 if it couldn't be read.
+    event_ts: u64,
+};
+
+/// Joins lines split across reads, holding a trailing incomplete one until its newline arrives.
+pub const LineAssembler = struct {
+    partial: std.ArrayList(u8) = .empty,
+    /// Set once a held line outgrows max_len; the rest of it is dropped up to its newline.
+    skipping: bool = false,
+    max_len: usize = MAX_LINE_LENGTH,
+
+    pub fn deinit(self: *LineAssembler, allocator: std.mem.Allocator) void {
+        self.partial.deinit(allocator);
+    }
+
+    pub fn reset(self: *LineAssembler) void {
+        self.partial.clearRetainingCapacity();
+        self.skipping = false;
+    }
+
+    /// Calls `handler.onLine` per complete line, valid only during the call, and `handler.onLongLine` per line too long to keep.
+    pub fn feed(self: *LineAssembler, allocator: std.mem.Allocator, text: []const u8, handler: anytype) !void {
+        var rest = text;
+        while (std.mem.indexOfScalar(u8, rest, '\n')) |newline| {
+            const piece = rest[0..newline];
+            rest = rest[newline + 1 ..];
+            if (self.partial.items.len == 0 and !self.skipping) {
+                handler.onLine(piece);
+                continue;
+            }
+            try self.hold(allocator, piece, handler);
+            if (!self.skipping) handler.onLine(self.partial.items);
+            self.reset();
+        }
+        if (rest.len > 0) try self.hold(allocator, rest, handler);
+    }
+
+    fn hold(self: *LineAssembler, allocator: std.mem.Allocator, bytes: []const u8, handler: anytype) !void {
+        if (self.skipping) return;
+        if (self.partial.items.len + bytes.len > self.max_len) {
+            handler.onLongLine(self.partial.items.len + bytes.len);
+            self.partial.clearRetainingCapacity();
+            self.skipping = true;
+            return;
+        }
+        try self.partial.appendSlice(allocator, bytes);
+    }
+};
 
 /// "[ time ] EVE System > Channel changed to Local : Jita" gives "Jita".
 pub fn parseChatLine(line: []const u8) ?[]const u8 {
@@ -89,14 +141,6 @@ fn nonEmpty(text: []const u8) ?[]const u8 {
     return if (text.len == 0) null else text;
 }
 
-/// With its line's timestamp, so chatlog and gamelog finds can be compared for recency.
-pub const SystemMatch = struct {
-    /// Borrows from the scanned text.
-    system: []const u8,
-    /// See lineTimestamp; 0 if it couldn't be read.
-    event_ts: u64,
-};
-
 pub fn lastSystemInChat(text: []const u8) ?SystemMatch {
     const pos = std.mem.lastIndexOf(u8, text, LOCAL_CHANGE) orelse return null;
     const system = localSystem(text[pos..]) orelse return null;
@@ -163,51 +207,6 @@ pub fn listenerName(header: []const u8) ?[]const u8 {
     const pos = std.mem.indexOf(u8, header, needle) orelse return null;
     return nonEmpty(untilLineEnd(header[pos + needle.len ..]));
 }
-
-/// Joins lines split across reads, holding a trailing incomplete one until its newline arrives.
-pub const LineAssembler = struct {
-    partial: std.ArrayList(u8) = .empty,
-    /// Set once a held line outgrows max_len; the rest of it is dropped up to its newline.
-    skipping: bool = false,
-    max_len: usize = MAX_LINE_LENGTH,
-
-    pub fn deinit(self: *LineAssembler, allocator: std.mem.Allocator) void {
-        self.partial.deinit(allocator);
-    }
-
-    pub fn reset(self: *LineAssembler) void {
-        self.partial.clearRetainingCapacity();
-        self.skipping = false;
-    }
-
-    /// Calls `handler.onLine` per complete line, valid only during the call, and `handler.onLongLine` per line too long to keep.
-    pub fn feed(self: *LineAssembler, allocator: std.mem.Allocator, text: []const u8, handler: anytype) !void {
-        var rest = text;
-        while (std.mem.indexOfScalar(u8, rest, '\n')) |newline| {
-            const piece = rest[0..newline];
-            rest = rest[newline + 1 ..];
-            if (self.partial.items.len == 0 and !self.skipping) {
-                handler.onLine(piece);
-                continue;
-            }
-            try self.hold(allocator, piece, handler);
-            if (!self.skipping) handler.onLine(self.partial.items);
-            self.reset();
-        }
-        if (rest.len > 0) try self.hold(allocator, rest, handler);
-    }
-
-    fn hold(self: *LineAssembler, allocator: std.mem.Allocator, bytes: []const u8, handler: anytype) !void {
-        if (self.skipping) return;
-        if (self.partial.items.len + bytes.len > self.max_len) {
-            handler.onLongLine(self.partial.items.len + bytes.len);
-            self.partial.clearRetainingCapacity();
-            self.skipping = true;
-            return;
-        }
-        try self.partial.appendSlice(allocator, bytes);
-    }
-};
 
 const testing = std.testing;
 
