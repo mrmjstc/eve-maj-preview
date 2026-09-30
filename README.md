@@ -91,3 +91,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a map of how the source mod
 See [LICENSE](LICENSE) file for details.
 
 Bundled third-party components: [Cascadia Code](https://github.com/microsoft/cascadia-code) fonts under the SIL Open Font License 1.1 ([CascadiaCode-LICENSE.txt](CascadiaCode-LICENSE.txt)), WebUI, zig-webui and CivetWeb under the MIT License ([webui-LICENSE.txt](webui-LICENSE.txt)), and WebView2Loader ([WebView2Loader-LICENSE.txt](WebView2Loader-LICENSE.txt)).
+
+## Fenris Creations Copyright Notice
+
+EVE Online, the EVE logo, EVE and all associated logos and designs are the intellectual property of Fenris Creations. All artwork, screenshots, characters, vehicles, storylines, world facts or other recognizable features of the intellectual property relating to these trademarks are likewise the intellectual property of Fenris Creations. EVE Online and the EVE logo are the registered trademarks of Fenris Creations. All rights are reserved worldwide. All other trademarks are the property of their respective owners. Fenris Creations has granted permission to EVE-Maj Preview to use EVE Online and all associated logos and designs for promotional and information purposes on its website but does not endorse, and is not in any way affiliated with, EVE-Maj Preview. Fenris Creations is in no way responsible for the content on or functioning of this program, nor can it be liable for any damage arising from the use of this program.
