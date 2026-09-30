@@ -899,6 +899,10 @@ pub fn nearestMonitor(pt: POINT) ?HMONITOR {
     return MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
 }
 
+pub fn isOnMonitor(pt: POINT) bool {
+    return MonitorFromPoint(pt, MONITOR_DEFAULTTONULL) != null;
+}
+
 /// Effective DPI of `monitor`, defaulting to USER_DEFAULT_SCREEN_DPI if the query fails.
 pub fn monitorDpi(monitor: HMONITOR) u32 {
     var dpi_x: UINT = USER_DEFAULT_SCREEN_DPI;
@@ -939,6 +943,7 @@ pub extern "user32" fn GetMonitorInfoA(
     lpmi: *MONITORINFO,
 ) callconv(.c) BOOL;
 
+pub const MONITOR_DEFAULTTONULL: DWORD = 0x00000000;
 pub const MONITOR_DEFAULTTONEAREST: DWORD = 0x00000002;
 
 pub extern "user32" fn MonitorFromPoint(

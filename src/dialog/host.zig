@@ -3,6 +3,7 @@ const std = @import("std");
 const webui = @import("webui");
 const win32 = @import("../platform/win32.zig");
 const main = @import("../main.zig");
+const config = @import("../config.zig");
 const config_store = @import("../config/store.zig");
 const rpc = @import("rpc.zig");
 const events = @import("events.zig");
@@ -10,6 +11,7 @@ const session = @import("session.zig");
 const resources = @import("resources.zig");
 const log = @import("../log.zig");
 
+const GlobalConfig = config.GlobalConfig;
 const slog = log.scoped("dialog");
 
 /// The window's design size at 96 DPI; scaled by the monitor's DPI and the dialog scale before display.
@@ -153,10 +155,7 @@ pub fn onMoved(lParam: win32.LPARAM) void {
 
 fn openWindow() !void {
     const settings = &main.g_global_settings;
-    const position: win32.POINT = if (settings.dialogX != null and settings.dialogY != null)
-        .{ .x = settings.dialogX.?, .y = settings.dialogY.? }
-    else
-        DEFAULT_POSITION;
+    const position = savedPosition(settings);
     setUiScale(resolveScale(settings.dialogScale, position));
 
     try setEditingProfile(main.g_store.live.profile_name);
@@ -258,6 +257,16 @@ fn uiScale() f32 {
 
 fn setUiScale(scale: f32) void {
     g_ui_scale_bits.store(@bitCast(scale), .release);
+}
+
+/// Falls back to DEFAULT_POSITION when the saved spot is on no monitor, e.g. a hand-edited value or an unplugged screen.
+fn savedPosition(settings: *const GlobalConfig) win32.POINT {
+    const x = settings.dialogX orelse return DEFAULT_POSITION;
+    const y = settings.dialogY orelse return DEFAULT_POSITION;
+    const position: win32.POINT = .{ .x = x, .y = y };
+    if (win32.isOnMonitor(position)) return position;
+    slog.warn("Saved configuration window position ({d}, {d}) is off-screen, using the default", .{ x, y });
+    return DEFAULT_POSITION;
 }
 
 fn targetSize(dpi: u32) Size {
