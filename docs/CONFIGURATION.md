@@ -982,6 +982,7 @@ Some settings persist across all profiles and are configured in `profiles\global
       "forwardKey": "F22",
       "backwardKey": null,
       "includeNotLoggedIn": false,
+      "stopAtEnds": false,
       "characters": ["Main Character", "Alt 1", "Alt 2"]
     },
     {
@@ -1003,6 +1004,7 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **temporaryMembership**: When `true`, membership is runtime-only: assign-key edits are never written back to the profile and the group starts empty every launch. When `false`, assign-key edits change the profile's own character list (default: `false`)
 - **showBadge**: Draws the group's name on its members' thumbnails, styled by the [Group Badge](#group-badge) settings (default: `false`)
 - **includeNotLoggedIn**: When `true`, cycling this group appends still-queued not-logged-in clients (the same windows the `next_not_logged_in`/`previous_not_logged_in` hotkeys cycle) after the group's characters, in the order they logged out (default: `false`)
+- **stopAtEnds**: When `true`, cycling stops at the group's first/last member instead of looping round; pressing on at the end refocuses that member if focus has moved away (default: `false`)
 
 **Supported Keys:**
 - **Function Keys**: F1-F24

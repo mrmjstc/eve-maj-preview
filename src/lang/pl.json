@@ -112,6 +112,7 @@
   "dynamic.hotkeyGroup.forwardKeyLabel": "Klawisz dalej",
   "dynamic.hotkeyGroup.forwardPlaceholder": "np. F15",
   "dynamic.hotkeyGroup.includeNotLoggedInLabel": "Uwzględnij niezalogowanych klientów",
+  "dynamic.hotkeyGroup.stopAtEndsLabel": "Zatrzymaj na pierwszej/ostatniej postaci (bez zapętlania)",
   "dynamic.hotkeyGroup.nameLabel": "Nazwa grupy",
   "dynamic.hotkeyGroup.showBadgeLabel": "Pokaż odznakę grupy na miniaturach",
   "dynamic.hotkeyGroup.temporaryMembershipHint": "Członkowie są przypisywani podczas działania aplikacji: najedź na miniaturę i naciśnij klawisz przypisania, aby dodać ją lub usunąć.",

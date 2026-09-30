@@ -75,6 +75,10 @@ export function populateHotkeyGroups() {
                             <span class="label-body">${t('dynamic.hotkeyGroup.includeNotLoggedInLabel')}</span>
                         </label>
                         <label>
+                            <input type="checkbox" id="hkgroup_${index}_stopAtEnds" data-path="hotkeyGroups.${index}.stopAtEnds">
+                            <span class="label-body">${t('dynamic.hotkeyGroup.stopAtEndsLabel')}</span>
+                        </label>
+                        <label>
                             <input type="checkbox" id="hkgroup_${index}_temporaryMembership" data-path="hotkeyGroups.${index}.temporaryMembership" onchange="toggleHotkeyGroupMembershipEditor(${index})">
                             <span class="label-body">${t('dynamic.hotkeyGroup.temporaryMembershipLabel')}</span>
                         </label>
@@ -412,6 +416,7 @@ export function addHotkeyGroup() {
         temporaryMembership: false,
         showBadge: false,
         includeNotLoggedIn: false,
+        stopAtEnds: false,
         characters: []
     });
     markAsChanged();

@@ -35,6 +35,8 @@ pub const HotkeyGroupConfig = struct {
     showBadge: bool = false,
     /// Appends queued not-logged-in clients to the end of this group's cycle.
     includeNotLoggedIn: bool = false,
+    /// Cycling stops at the first/last member instead of wrapping, refocusing it if focus has moved away.
+    stopAtEnds: bool = false,
     /// Identifies this group to the config dialog while its name and position in the list change; 0 until assigned (see config/patch.zig).
     id: u32 = 0,
 

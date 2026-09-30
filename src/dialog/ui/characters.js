@@ -89,6 +89,7 @@ export function ensureBlankRosterEntries() {
             temporaryMembership: false,
             showBadge: false,
             includeNotLoggedIn: false,
+            stopAtEnds: false,
             characters: []
         }];
     }

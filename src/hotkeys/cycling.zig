@@ -80,17 +80,19 @@ const CharacterOrderCache = struct {
 };
 
 /// Visits every index in [0, num) once, starting one step past `cursor`; a missing or stale cursor starts at the first index in `forward` direction.
+/// Without `wrap`, stops at the last index in `forward` direction instead of going round.
 pub const CycleOrder = struct {
     idx: usize,
     num: usize,
     forward: bool,
     remaining: usize,
 
-    pub fn init(cursor: ?usize, num: usize, forward: bool) CycleOrder {
+    pub fn init(cursor: ?usize, num: usize, forward: bool, wrap: bool) CycleOrder {
         const valid_cursor = if (cursor) |c| (if (c < num) c else null) else null;
         // Wraps harmlessly when num == 0: remaining is 0, so next() never steps.
         const before_start = valid_cursor orelse (if (forward) num -% 1 else 0);
-        return .{ .idx = before_start, .num = num, .forward = forward, .remaining = num };
+        const remaining = if (wrap) num else if (valid_cursor) |c| (if (forward) num - 1 - c else c) else num;
+        return .{ .idx = before_start, .num = num, .forward = forward, .remaining = remaining };
     }
 
     pub fn next(self: *CycleOrder) ?usize {
@@ -112,7 +114,7 @@ pub fn directionName(forward: bool) []const u8 {
 /// Cycles to the next running character sharing this hotkey.
 pub fn activatePerCharacterGroup(manager: *HotkeyManager, group: *bindings.CharacterGroup) void {
     const num = group.character_indices.len;
-    var it = CycleOrder.init(group.current_index, num, true);
+    var it = CycleOrder.init(group.current_index, num, true, true);
     while (it.next()) |idx| {
         const char_index = group.character_indices[idx];
         if (char_index >= manager.config.characters.items.len) continue;
@@ -167,7 +169,7 @@ pub fn cycleGroup(manager: *HotkeyManager, group_index: usize, forward: bool) vo
     }
 
     const windows = manager.scout.getWindows();
-    var it = CycleOrder.init(found_index, total, forward);
+    var it = CycleOrder.init(found_index, total, forward, !group.stopAtEnds);
     while (it.next()) |idx| {
         if (idx < num_chars) {
             const char_name = group.characters.items[idx];
@@ -199,6 +201,20 @@ pub fn cycleGroup(manager: *HotkeyManager, group_index: usize, forward: bool) vo
         return;
     }
 
+    if (group.stopAtEnds) {
+        if (found_index) |current| {
+            if (groupEntryHwnd(manager, group_index, not_logged_in_hwnds.items, windows, current)) |hwnd| {
+                if (hwnd == win32.GetForegroundWindow()) {
+                    slog.debug("Already at the {s} end of hotkey group", .{directionName(forward)});
+                    return;
+                }
+                slog.info("Refocusing {s} end of hotkey group ({}/{})", .{ directionName(forward), current + 1, total });
+                activation.activate(hwnd);
+                return;
+            }
+        }
+    }
+
     slog.warn("No characters from hotkey group are currently running (or all are excluded)", .{});
 }
 
@@ -213,7 +229,7 @@ pub fn cycleExcluded(manager: *HotkeyManager, forward: bool) void {
         return;
     }
 
-    var it = CycleOrder.init(manager.cycle.excluded_index, num_excluded, forward);
+    var it = CycleOrder.init(manager.cycle.excluded_index, num_excluded, forward, true);
     while (it.next()) |idx| {
         const char_name = excluded_list.items[idx];
 
@@ -247,7 +263,7 @@ pub fn cycleNotified(manager: *HotkeyManager, forward: bool) void {
     }
 
     const found_index = if (manager.cycle.last_notified_name) |last_name| strings.indexOfString(names.items, last_name) else null;
-    var it = CycleOrder.init(found_index, num_notified, forward);
+    var it = CycleOrder.init(found_index, num_notified, forward, true);
     while (it.next()) |index| {
         const char_name = names.items[index];
 
@@ -290,7 +306,7 @@ pub fn cycleAllClients(manager: *HotkeyManager, forward: bool) void {
     }
 
     const respect_exclusions = manager.global_settings.cycleAllClientsRespectExclusions;
-    var it = CycleOrder.init(found_index, num, forward);
+    var it = CycleOrder.init(found_index, num, forward, true);
     while (it.next()) |index| {
         const w = windows[order[index]];
         if (scout.isGenericCharacterName(w.character_name)) continue;
@@ -329,7 +345,7 @@ pub fn cycleNotLoggedIn(manager: *HotkeyManager, forward: bool) void {
     }
 
     const windows = manager.scout.getWindows();
-    var it = CycleOrder.init(found_index, num, forward);
+    var it = CycleOrder.init(found_index, num, forward, true);
     while (it.next()) |index| {
         const hwnd = hwnds.items[index];
 
@@ -394,6 +410,19 @@ fn characterOrderSignature(characters: []const config.CharacterConfig) u64 {
 /// Takes an optional target since callers pass GetForegroundWindow() directly.
 fn indexOfHwnd(hwnds: []const win32.HWND, target: ?win32.HWND) ?usize {
     return std.mem.indexOfScalar(win32.HWND, hwnds, target orelse return null);
+}
+
+/// The window for a group cycle position, where not-logged-in positions follow the group's characters; null if it isn't a valid target.
+fn groupEntryHwnd(manager: *HotkeyManager, group_index: usize, not_logged_in_hwnds: []const win32.HWND, windows: []const scout.EveWindow, index: usize) ?win32.HWND {
+    const group = &manager.config.hotkeyGroups.items[group_index];
+    const num_chars = group.characters.items.len;
+    if (index < num_chars) {
+        const char_name = group.characters.items[index];
+        if (manager.exclusions.isExcludedInGroup(group_index, char_name)) return null;
+        return manager.scout.getHwndByName(char_name);
+    }
+    const hwnd = not_logged_in_hwnds[index - num_chars];
+    return if (isHwndStillNotLoggedIn(windows, hwnd)) hwnd else null;
 }
 
 /// Whether hwnd still shows the generic "EVE" login-screen title, used to skip stale not-logged-in queue entries.

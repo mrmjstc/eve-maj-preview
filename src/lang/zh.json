@@ -112,6 +112,7 @@
   "dynamic.hotkeyGroup.forwardKeyLabel": "前进键",
   "dynamic.hotkeyGroup.forwardPlaceholder": "例如 F15",
   "dynamic.hotkeyGroup.includeNotLoggedInLabel": "包含未登录客户端",
+  "dynamic.hotkeyGroup.stopAtEndsLabel": "停在第一个/最后一个角色（不循环）",
   "dynamic.hotkeyGroup.nameLabel": "分组名称",
   "dynamic.hotkeyGroup.showBadgeLabel": "在缩略图上显示分组徽章",
   "dynamic.hotkeyGroup.temporaryMembershipHint": "成员分配仅在程序运行期间有效:将鼠标悬停在缩略图上并按下分配键即可加入或移出。",

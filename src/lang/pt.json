@@ -112,6 +112,7 @@
   "dynamic.hotkeyGroup.forwardKeyLabel": "Tecla de Avanço",
   "dynamic.hotkeyGroup.forwardPlaceholder": "ex.: F15",
   "dynamic.hotkeyGroup.includeNotLoggedInLabel": "Incluir Clientes Não Logados",
+  "dynamic.hotkeyGroup.stopAtEndsLabel": "Parar no Primeiro/Último Personagem (Sem Repetir)",
   "dynamic.hotkeyGroup.nameLabel": "Nome do Grupo",
   "dynamic.hotkeyGroup.showBadgeLabel": "Mostrar Selo do Grupo nas Miniaturas",
   "dynamic.hotkeyGroup.temporaryMembershipHint": "Os membros são atribuídos enquanto o app está aberto: passe o mouse sobre uma miniatura e pressione a tecla de atribuição para incluir ou remover.",

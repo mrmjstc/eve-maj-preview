@@ -112,6 +112,7 @@
   "dynamic.hotkeyGroup.forwardKeyLabel": "Vorwärtstaste",
   "dynamic.hotkeyGroup.forwardPlaceholder": "z. B. F15",
   "dynamic.hotkeyGroup.includeNotLoggedInLabel": "Nicht eingeloggte Clients einbeziehen",
+  "dynamic.hotkeyGroup.stopAtEndsLabel": "Beim ersten/letzten Charakter anhalten (keine Schleife)",
   "dynamic.hotkeyGroup.nameLabel": "Gruppenname",
   "dynamic.hotkeyGroup.showBadgeLabel": "Gruppenabzeichen auf Vorschaubildern anzeigen",
   "dynamic.hotkeyGroup.temporaryMembershipHint": "Mitglieder werden zur Laufzeit zugewiesen: mit der Maus über eine Vorschau fahren und die Zuweisungstaste drücken, um sie hinzuzufügen oder zu entfernen.",

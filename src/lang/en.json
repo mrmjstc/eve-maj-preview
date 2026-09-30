@@ -112,6 +112,7 @@
   "dynamic.hotkeyGroup.forwardKeyLabel": "Forward Key",
   "dynamic.hotkeyGroup.forwardPlaceholder": "e.g., F15",
   "dynamic.hotkeyGroup.includeNotLoggedInLabel": "Include Not Logged In Clients",
+  "dynamic.hotkeyGroup.stopAtEndsLabel": "Stop at First/Last Character (Don't Loop)",
   "dynamic.hotkeyGroup.nameLabel": "Group Name",
   "dynamic.hotkeyGroup.showBadgeLabel": "Show Group Badge on Thumbnails",
   "dynamic.hotkeyGroup.temporaryMembershipHint": "Members are assigned while the app runs: hover a thumbnail and press the assign key to toggle it in or out.",

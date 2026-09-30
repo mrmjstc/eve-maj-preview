@@ -26,7 +26,7 @@ pub fn cycle(allocator: std.mem.Allocator, current_profile: []const u8, forward:
     }
 
     const current_index = strings.indexOfString(profiles.items, current_profile);
-    var order = cycling.CycleOrder.init(current_index, profiles.items.len, forward);
+    var order = cycling.CycleOrder.init(current_index, profiles.items.len, forward, true);
     const target_profile = profiles.items[order.next().?];
     slog.info("Cycling to {s} profile: {s} -> {s}", .{ if (forward) "next" else "previous", current_profile, target_profile });
     main.requestProfileSwitch(target_profile);

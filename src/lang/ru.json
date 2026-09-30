@@ -112,6 +112,7 @@
   "dynamic.hotkeyGroup.forwardKeyLabel": "Клавиша вперёд",
   "dynamic.hotkeyGroup.forwardPlaceholder": "например, F15",
   "dynamic.hotkeyGroup.includeNotLoggedInLabel": "Включать не вошедших в игру клиентов",
+  "dynamic.hotkeyGroup.stopAtEndsLabel": "Останавливаться на первом/последнем персонаже (без зацикливания)",
   "dynamic.hotkeyGroup.nameLabel": "Название группы",
   "dynamic.hotkeyGroup.showBadgeLabel": "Показывать значок группы на превью",
   "dynamic.hotkeyGroup.temporaryMembershipHint": "Участники назначаются во время работы приложения: наведите на превью и нажмите клавишу назначения, чтобы добавить или убрать его.",
