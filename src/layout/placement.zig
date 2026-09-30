@@ -283,6 +283,10 @@ pub fn isRegionFitActive(cfg: *const config_mod.DisplayConfig) bool {
     return cfg.layoutMode == .RegionFit and regionRectFromConfig(cfg) != null;
 }
 
+pub fn isAnyThumbnailSpaceActive(cfg: *const config_mod.DisplayConfig) bool {
+    return isRegionFitActive(cfg) or notLoggedInSpaceRectFromConfig(cfg) != null;
+}
+
 /// Whether a Thumbnail Space (RegionFit or the not-logged-in space) sets this thumbnail's position and size, overriding its saved position and configured size.
 pub fn isPlacedByThumbnailSpace(cfg: *const config_mod.DisplayConfig, character_name: []const u8) bool {
     return isRegionFitActive(cfg) or isCarvedOutOfRegionFit(cfg, character_name);

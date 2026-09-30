@@ -37,12 +37,17 @@ pub fn targetSize(painter: *const Painter, character_name: []const u8, count: us
 
 /// RegionFit and the not-logged-in space size every cell from the thumbnail count, so any arrival or departure reflows them all.
 pub fn hasCountDependentLayout(painter: *const Painter) bool {
-    return placement.isRegionFitActive(&painter.config.display) or placement.notLoggedInSpaceRectFromConfig(&painter.config.display) != null;
+    return placement.isAnyThumbnailSpaceActive(&painter.config.display);
 }
 
 /// After a rank or count change (bulk create loops, group membership); no-op outside RegionFit.
 pub fn reflowIfRegionFitActive(painter: *Painter) void {
     if (placement.isRegionFitActive(&painter.config.display)) repositionAll(painter);
+}
+
+/// After a thumbnail size change, which reshapes (and, when capped, resizes) both spaces' cells.
+pub fn reflowIfThumbnailSpaceActive(painter: *Painter) void {
+    if (placement.isAnyThumbnailSpaceActive(&painter.config.display)) repositionAll(painter);
 }
 
 /// Resizes a thumbnail to its configured size if it differs. Pass `grid` when calling for every thumbnail in a batch (see getThumbnailSize).

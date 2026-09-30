@@ -106,6 +106,7 @@ pub const Painter = struct {
     pub const repositionAllThumbnails = arrange.repositionAll;
     pub const resizeThumbnailIfNeeded = arrange.resizeIfNeeded;
     pub const reflowIfRegionFitActive = arrange.reflowIfRegionFitActive;
+    pub const reflowIfThumbnailSpaceActive = arrange.reflowIfThumbnailSpaceActive;
 
     pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore) !Painter {
         const instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;

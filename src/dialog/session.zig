@@ -148,16 +148,25 @@ fn applyTo(comptime T: type, target: *T, maybe_jw: ?*std.json.Stringify, arena: 
     try jw.endArray();
 }
 
-/// Display settings place the thumbnails; the character and hotkey group lists only rank them in the Thumbnail Space.
+/// Display settings place the thumbnails; the thumbnail size sets the Thumbnail Spaces' cell shape and cap; the character and hotkey group lists only rank them in the Thumbnail Space.
 fn layoutFor(ops: []const patch.Op) main.LiveLayout {
     var layout: main.LiveLayout = .none;
     for (ops) |op| {
         if (op.path.len == 0 or op.path[0] != .string) continue;
         const root = op.path[0].string;
         if (std.mem.eql(u8, root, "display")) return .all;
-        if (std.mem.eql(u8, root, "characters") or std.mem.eql(u8, root, "hotkeyGroups")) layout = .region_fit;
+        if (isThumbnailSize(op.path)) {
+            layout = .thumbnail_spaces;
+        } else if (layout == .none and (std.mem.eql(u8, root, "characters") or std.mem.eql(u8, root, "hotkeyGroups"))) {
+            layout = .region_fit;
+        }
     }
     return layout;
+}
+
+fn isThumbnailSize(path: []const std.json.Value) bool {
+    if (path.len < 2 or path[0] != .string or path[1] != .string or !std.mem.eql(u8, path[0].string, "thumbnail")) return false;
+    return std.mem.eql(u8, path[1].string, "width") or std.mem.eql(u8, path[1].string, "height");
 }
 
 fn cloneGlobal(allocator: std.mem.Allocator, settings: *GlobalConfig) !GlobalConfig {
