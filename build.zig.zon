@@ -3,9 +3,9 @@
     .version = "0.15.2",
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
+        // Vendored: deps/webui carries a patch (see its win32_wv2.cpp) that upstream lacks.
         .zig_webui = .{
-            .url = "https://github.com/webui-dev/zig-webui/archive/refs/heads/main.tar.gz",
-            .hash = "zig_webui-2.5.1-M4z7zeuhAQAYo2n19sMproslhFWxKvqI9yGZxIVdliC-",
+            .path = "deps/zig_webui",
         },
     },
     .paths = .{""},

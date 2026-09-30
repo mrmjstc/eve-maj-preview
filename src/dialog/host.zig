@@ -41,6 +41,10 @@ var g_editing_profile: ?[]u8 = null;
 
 pub fn init(allocator_: std.mem.Allocator) void {
     g_allocator = allocator_;
+    // Windows proxy auto-detection (WPAD) otherwise stalls every page load ~2.7s on some networks.
+    if (!win32.toBool(win32.SetEnvironmentVariableA("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--no-proxy-server"))) {
+        slog.warn("Failed to disable proxy detection for the configuration window, it may open slowly", .{});
+    }
     config_store.g_on_runtime_change = events.liveProfileChanged;
 }
 

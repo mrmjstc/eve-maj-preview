@@ -40,7 +40,7 @@ The build reads the app version from the `VERSION` file at the repo root and emb
 
 ## Dependencies
 
-[zig-webui](https://github.com/webui-dev/zig-webui) is fetched automatically by the Zig package manager per `build.zig.zon` and statically linked into `eve-maj-preview.exe` for the configuration window. webui, zig-webui and the CivetWeb server inside webui are MIT-licensed; their notices are in `webui-LICENSE.txt`, which ships in release packages and the installer.
+[zig-webui](https://github.com/webui-dev/zig-webui) and [webui](https://github.com/webui-dev/webui) are vendored in `deps/` (webui carries a local patch, marked `EVE-Maj patch`, so it appends to `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` instead of overwriting the `--no-proxy-server` that `dialog/host.zig` sets) and statically linked into `eve-maj-preview.exe` for the configuration window. webui, zig-webui and the CivetWeb server inside webui are MIT-licensed; their notices are in `webui-LICENSE.txt`, which ships in release packages and the installer.
 
 The window renders via WebView2, which needs `WebView2Loader.dll` next to the exe at runtime (the target machine's WebView2 Runtime itself is preinstalled on Windows 10/11); it's only loaded when the window first opens. `build.zig` installs `src/WebView2Loader.dll` into `zig-out\bin` alongside the exe. It's redistributed under the terms in `WebView2Loader-LICENSE.txt` (BSD-style, from the `Microsoft.Web.WebView2` NuGet package), which ships alongside it in release packages.
 
