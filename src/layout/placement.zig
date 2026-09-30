@@ -283,6 +283,11 @@ pub fn isRegionFitActive(cfg: *const config_mod.DisplayConfig) bool {
     return cfg.layoutMode == .RegionFit and regionRectFromConfig(cfg) != null;
 }
 
+/// Whether a Thumbnail Space (RegionFit or the not-logged-in space) sets this thumbnail's position and size, overriding its saved position and configured size.
+pub fn isPlacedByThumbnailSpace(cfg: *const config_mod.DisplayConfig, character_name: []const u8) bool {
+    return isRegionFitActive(cfg) or isCarvedOutOfRegionFit(cfg, character_name);
+}
+
 /// Grows one column or row at a time from a single full-region cell, whichever yields the bigger cell, so the grid grows incrementally instead of re-optimizing from scratch per count.
 pub fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, spacing_y: i32, aspect_ratio: f32, max_cell: ?RegionFitCap) RegionFitGrid {
     const n: u32 = @intCast(@max(count, 1));
@@ -510,4 +515,17 @@ test "regionRectFromConfig needs every region field" {
     try testing.expectEqual(@as(i32, 310), rect.right);
     try testing.expectEqual(@as(i32, 220), rect.bottom);
     try testing.expect(isRegionFitActive(&full));
+}
+
+test "isPlacedByThumbnailSpace covers everyone under RegionFit but only placeholders in the not-logged-in space" {
+    const region_fit: config_mod.DisplayConfig = .{ .layoutMode = .RegionFit, .regionX = 0, .regionY = 0, .regionWidth = 300, .regionHeight = 200 };
+    try testing.expect(isPlacedByThumbnailSpace(&region_fit, "Some Pilot"));
+    try testing.expect(isPlacedByThumbnailSpace(&region_fit, "EVE"));
+
+    const not_logged_in_only: config_mod.DisplayConfig = .{ .notLoggedInSpaceEnabled = true, .notLoggedInSpaceX = 0, .notLoggedInSpaceY = 0, .notLoggedInSpaceWidth = 300, .notLoggedInSpaceHeight = 200 };
+    try testing.expect(!isPlacedByThumbnailSpace(&not_logged_in_only, "Some Pilot"));
+    try testing.expect(isPlacedByThumbnailSpace(&not_logged_in_only, "EVE"));
+
+    const neither: config_mod.DisplayConfig = .{};
+    try testing.expect(!isPlacedByThumbnailSpace(&neither, "EVE"));
 }

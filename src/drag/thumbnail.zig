@@ -4,13 +4,17 @@ const painter_mod = @import("../painter.zig");
 const overlays = @import("overlays.zig");
 const snapping = @import("snapping.zig");
 const arrange = @import("../thumbnail/arrange.zig");
+const placement = @import("../layout/placement.zig");
 const log = @import("../log.zig");
 
+const Painter = painter_mod.Painter;
 const ThumbnailWindow = painter_mod.ThumbnailWindow;
 const slog = log.scoped("drag");
 
 const DragState = struct {
     is_dragging: bool = false,
+    /// The right button is down on a thumbnail a Thumbnail Space places, so only its hint shows.
+    is_blocked: bool = false,
     hwnd: ?win32.HWND = null,
     offset_x: i32 = 0,
     offset_y: i32 = 0,
@@ -26,6 +30,13 @@ pub fn isDragging(thumbnail: *const ThumbnailWindow) bool {
 pub fn start(hwnd: win32.HWND, lParam: win32.LPARAM) void {
     const painter = painter_mod.g_painter_ptr orelse return;
     if (!painter.config.interaction.enableDragging) return;
+
+    if (grabbedThumbnailIsPlaced(painter, hwnd)) {
+        g_drag_state = .{ .is_blocked = true, .hwnd = hwnd };
+        overlays.showThumbnailSpaceHint(painter, hwnd);
+        _ = win32.SetCapture(hwnd);
+        return;
+    }
 
     g_drag_state = .{
         .is_dragging = true,
@@ -49,7 +60,12 @@ pub fn start(hwnd: win32.HWND, lParam: win32.LPARAM) void {
 
 /// Saves `thumbnail_hwnd`'s position, whichever of its two windows (`hwnd`) was grabbed.
 pub fn end(hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
-    if (!g_drag_state.is_dragging or g_drag_state.hwnd != hwnd) return;
+    if (g_drag_state.hwnd != hwnd) return;
+    if (g_drag_state.is_blocked) {
+        stop();
+        return;
+    }
+    if (!g_drag_state.is_dragging) return;
     stop();
 
     const painter = painter_mod.g_painter_ptr orelse return;
@@ -64,6 +80,12 @@ pub fn end(hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
     } else {
         painter.saveThumbnailPosition(thumbnail_hwnd);
     }
+}
+
+/// A drop there would only last until the next reflow, and would save a position the layout ignores.
+fn grabbedThumbnailIsPlaced(painter: *Painter, hwnd: win32.HWND) bool {
+    const thumbnail = painter.getThumbnailByOverlayHwnd(hwnd) orelse return false;
+    return placement.isPlacedByThumbnailSpace(&painter.config.display, thumbnail.character_name);
 }
 
 /// Cleared before any re-render, so effectiveRenderState already sees the drag as over.

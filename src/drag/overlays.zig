@@ -211,12 +211,20 @@ pub fn collectGhostGroups(painter: *const Painter, exclude_character: []const u8
 
 /// Hint box centered on the monitor nearest `dragging_hwnd`; called once when a drag starts, static for its duration.
 pub fn showDragHint(painter: *Painter, dragging_hwnd: win32.HWND) void {
-    const nearest = monitors.nearestMonitorBounds(dragging_hwnd);
+    showHint(painter, dragging_hwnd, "Hold Ctrl to move all thumbnails together", "Turn off dragging from the tray icon or settings");
+}
+
+pub fn showThumbnailSpaceHint(painter: *Painter, hwnd: win32.HWND) void {
+    showHint(painter, hwnd, "Thumbnail Space places this thumbnail", "Turn off Thumbnail Space in settings to drag it");
+}
+
+fn showHint(painter: *Painter, hwnd: win32.HWND, line1: []const u8, line2: []const u8) void {
+    const nearest = monitors.nearestMonitorBounds(hwnd);
     const font = painter.font_cache.characterNameFont(&painter.config.thumbnail, monitors.dpiForMonitor(nearest.monitor)) catch |err| {
         slog.err("Failed to get font for drag hint: {}", .{err});
         return;
     };
-    painter.hint_box.show(painter.instance, font, painter.config.thumbnail.characterNameColor | 0xFF000000, "Hold Ctrl to move all thumbnails together", "Turn off dragging from the tray icon or settings", nearest.bounds);
+    painter.hint_box.show(painter.instance, font, painter.config.thumbnail.characterNameColor | 0xFF000000, line1, line2, nearest.bounds);
 }
 
 fn registerWindowClass(instance: win32.HINSTANCE) !void {

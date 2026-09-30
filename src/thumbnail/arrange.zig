@@ -31,7 +31,7 @@ pub fn regionFit(painter: *const Painter, count: usize) ?RegionFit {
 pub fn targetSize(painter: *const Painter, character_name: []const u8, count: usize, grid: ?placement.RegionFitGrid, scale: f32) Size {
     const cfg = &painter.config.display;
     const size = painter.layout().getThumbnailSize(character_name, count, grid);
-    if (placement.isRegionFitActive(cfg) or placement.isCarvedOutOfRegionFit(cfg, character_name)) return .{ .width = size.width, .height = size.height };
+    if (placement.isPlacedByThumbnailSpace(cfg, character_name)) return .{ .width = size.width, .height = size.height };
     return .{ .width = win32.scalePixels(size.width, scale), .height = win32.scalePixels(size.height, scale) };
 }
 
