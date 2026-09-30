@@ -96,12 +96,18 @@ export function onThumbSizeSlider() {
     const checkbox = document.getElementById('constrainAspectRatio');
     if (!checkbox || !checkbox.checked) return;
     const slider = document.getElementById('thumbSizeSlider');
-    const pct = parseFloat(slider.value) / 100;
-    document.getElementById('thumbSizeValue').textContent = slider.value;
-    const newW = Math.round((checkbox._baseWidth || 200) * pct);
-    const newH = Math.round((checkbox._baseHeight || 150) * pct);
-    document.getElementById('thumbWidth').value = newW;
-    document.getElementById('thumbHeight').value = newH;
+    const widthField = document.getElementById('thumbWidth');
+    const heightField = document.getElementById('thumbHeight');
+    const baseW = checkbox._baseWidth || 200;
+    const baseH = checkbox._baseHeight || 150;
+    // Stop the slider where either side hits its bound, or the backend clamps each side alone and breaks the ratio.
+    const minPct = Math.ceil(Math.max((parseFloat(widthField.min) || 0) / baseW, (parseFloat(heightField.min) || 0) / baseH) * 100);
+    const maxPct = Math.floor(Math.min((parseFloat(widthField.max) || Infinity) / baseW, (parseFloat(heightField.max) || Infinity) / baseH) * 100);
+    const pctValue = Math.min(maxPct, Math.max(minPct, parseFloat(slider.value)));
+    slider.value = pctValue;
+    document.getElementById('thumbSizeValue').textContent = pctValue;
+    widthField.value = Math.round(baseW * pctValue / 100);
+    heightField.value = Math.round(baseH * pctValue / 100);
 }
 
 export function onThumbWidthInput() {
