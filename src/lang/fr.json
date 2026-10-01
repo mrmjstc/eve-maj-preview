@@ -797,6 +797,7 @@
   "tab.notifications.table.throttle.heading": "Limite (s)",
   "tab.notifications.table.throttle.title": "Ignore les notifications répétées de ce type dans ce nombre de secondes après la dernière affichée",
   "tab.notifications.title": "notifications",
+  "tab.overlay-text.layout-chip.title": "Glissez pour déplacer. Cliquez ou appuyez sur Entrée pour modifier.",
   "tab.overlay-text.section.character-name.heading": "Nom du personnage",
   "tab.overlay-text.section.group-badge.heading": "Badge de groupe",
   "tab.overlay-text.section.system-color-overrides.heading": "Couleurs de système",

@@ -295,9 +295,8 @@ function placeOverlayChip(def) {
     const shown = getFieldValue(def.showId) && (def.alsoRequiresIds || []).every(id => getFieldValue(id));
     chip.classList.toggle('dim', !shown);
 
-    // Matches painter.zig's TEXT_PADDING_X/Y (5px/2px at real scale); left side is
-    // tighter since the drag-handle glyph already carries its own visual weight there.
-    chip.style.padding = `${2 * scale}px ${5 * scale}px ${2 * scale}px ${3 * scale}px`;
+    // Scaled from painter.zig's TEXT_PADDING_Y (2px); 3px rather than TEXT_PADDING_X's 5px since the handle and pencil glyphs add their own space.
+    chip.style.padding = `${2 * scale}px ${3 * scale}px`;
 
     // Preview chips always use the accent color and black text, ignoring each setting's own color/background config.
     chip.style.backgroundColor = 'var(--color-accent)';
@@ -448,9 +447,16 @@ function buildOverlayPopoverField(f, def) {
     return wrap;
 }
 
-function closeOverlayPopover() {
+// The chip whose popover is open, so closing it can hand keyboard focus back.
+let popoverChip = null;
+
+function closeOverlayPopover(restoreFocus = false) {
     const popover = document.getElementById('overlayPropertiesPopover');
-    if (popover) popover.style.display = 'none';
+    if (!popover) return;
+    const hadFocus = popover.contains(document.activeElement);
+    popover.style.display = 'none';
+    if (restoreFocus && hadFocus) popoverChip?.focus();
+    popoverChip = null;
 }
 
 function openOverlayPopover(def, chip) {
@@ -478,6 +484,8 @@ function openOverlayPopover(def, chip) {
             applyPopoverInverseDisable(f.disables, !!document.getElementById(f.id)?.checked);
         }
     });
+
+    popoverChip = chip;
 
     popover.style.display = 'block';
     const chipRect = chip.getBoundingClientRect();
@@ -585,6 +593,13 @@ function setupOverlayChipDrag(def) {
 
     chip.addEventListener('pointerup', endDrag);
     chip.addEventListener('pointercancel', endDrag);
+
+    chip.addEventListener('keydown', (e) => {
+        if ((e.key !== 'Enter' && e.key !== ' ') || !def.popoverFields) return;
+        e.preventDefault();
+        openOverlayPopover(def, chip);
+        document.getElementById('overlayPopoverBody')?.querySelector('input, select, textarea, button')?.focus();
+    });
 }
 
 export function initOverlayLayoutPreview() {
@@ -619,7 +634,7 @@ export function initOverlayLayoutPreview() {
         if (this.checked) syncOverlayStyleFromCharacterName();
     });
 
-    document.getElementById('overlayPopoverClose')?.addEventListener('click', closeOverlayPopover);
+    document.getElementById('overlayPopoverClose')?.addEventListener('click', () => closeOverlayPopover(true));
     document.addEventListener('pointerdown', (e) => {
         const popover = document.getElementById('overlayPropertiesPopover');
         if (!popover || popover.style.display === 'none') return;
@@ -630,6 +645,6 @@ export function initOverlayLayoutPreview() {
         closeOverlayPopover();
     });
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeOverlayPopover();
+        if (e.key === 'Escape') closeOverlayPopover(true);
     });
 }

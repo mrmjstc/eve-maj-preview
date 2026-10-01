@@ -797,6 +797,7 @@
   "tab.notifications.table.throttle.heading": "限制 (秒)",
   "tab.notifications.table.throttle.title": "在上次显示后的这段秒数内,忽略此类型的重复通知",
   "tab.notifications.title": "通知",
+  "tab.overlay-text.layout-chip.title": "拖动以移动。点击或按 Enter 编辑。",
   "tab.overlay-text.section.character-name.heading": "角色名称",
   "tab.overlay-text.section.group-badge.heading": "分组徽章",
   "tab.overlay-text.section.system-color-overrides.heading": "星系颜色",

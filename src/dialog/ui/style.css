@@ -1526,6 +1526,24 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     content: '⠿';
 }
 
+/* The handle's counterpart: signals that a click opens the properties popover. */
+.overlay-chip::after {
+    content: '✎';
+    flex: none;
+    line-height: 1;
+    font-size: 0.75rem;
+    opacity: 0.6;
+}
+
+.overlay-chip:hover {
+    box-shadow: var(--shadow-raised);
+    filter: brightness(1.1);
+}
+
+.overlay-chip:hover::after {
+    opacity: 1;
+}
+
 /* Amber, matching every other control's focus ring - was the one green
    outline in the dialog (green is otherwise reserved for the success state). */
 .overlay-chip:focus-visible {
