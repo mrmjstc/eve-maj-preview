@@ -154,7 +154,7 @@ pub fn legacyBaseKey(token: []const u8) ?u32 {
 }
 
 /// An AutoHotkey-style hotkey (EVE-X Preview): modifier symbols "^!+#", "Ctrl & F1" combos, or a key name.
-/// Null for anything the app can't bind, such as the left, right or middle mouse button.
+/// Null for anything the app can't bind, such as the left or right mouse button.
 pub fn ahkHotkey(raw: ?[]const u8) ?u32 {
     var s = std.mem.trim(u8, raw orelse return null, " \t");
     var modifiers: u32 = 0;
@@ -177,7 +177,9 @@ pub fn ahkHotkey(raw: ?[]const u8) ?u32 {
     }
 
     const t = std.mem.trim(u8, s, " \t");
-    const vk_code: u32 = if (std.ascii.eqlIgnoreCase(t, "xbutton1"))
+    const vk_code: u32 = if (std.ascii.eqlIgnoreCase(t, "mbutton"))
+        vk.VK_MBUTTON
+    else if (std.ascii.eqlIgnoreCase(t, "xbutton1"))
         vk.VK_XBUTTON1
     else if (std.ascii.eqlIgnoreCase(t, "xbutton2"))
         vk.VK_XBUTTON2
@@ -291,6 +293,7 @@ test "ahkHotkey reads modifier symbols, flag prefixes and & combos" {
     try testing.expectEqual(vk.combineKey(vk.VK_F1, vk.MOD_CONTROL), ahkHotkey("Ctrl & F1").?);
     try testing.expectEqual(vk.combineKey(vk.VK_XBUTTON1, vk.MOD_SHIFT), ahkHotkey("+XButton1").?);
     try testing.expectEqual(vk.combineKey(vk.VK_WHEELUP, 0), ahkHotkey("WheelUp").?);
+    try testing.expectEqual(vk.combineKey(vk.VK_MBUTTON, vk.MOD_CONTROL), ahkHotkey("^MButton").?);
 }
 
 test "ahkHotkey rejects keys the app can't bind" {

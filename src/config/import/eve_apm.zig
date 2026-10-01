@@ -182,12 +182,12 @@ fn isBound(raw: ?[]const u8) bool {
     return t.enabled and (t.vk_code orelse 0) > 0;
 }
 
-/// Null for an unbound tuple and for the left, right and middle mouse buttons, which thumbnails use themselves.
+/// Null for an unbound tuple and for the left and right mouse buttons, which thumbnails use themselves.
 fn tupleHotkey(raw: ?[]const u8) ?u32 {
     const t = parseTuple(raw) orelse return null;
     if (!t.enabled) return null;
     const code = t.vk_code orelse return null;
-    if (code <= 0 or code > 0xFF or code == 0x01 or code == 0x02 or code == 0x04) return null;
+    if (code <= 0 or code > 0xFF or code == 0x01 or code == 0x02) return null;
     var modifiers: u32 = 0;
     if (t.ctrl) modifiers |= vk.MOD_CONTROL;
     if (t.alt) modifiers |= vk.MOD_ALT;

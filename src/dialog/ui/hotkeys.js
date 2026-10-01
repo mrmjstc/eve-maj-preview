@@ -466,6 +466,7 @@ const VK_CONTROL = 0x11;
 const VK_MENU = 0x12;
 const VK_LWIN = 0x5B;
 const VK_RWIN = 0x5C;
+const VK_MBUTTON = 0x04;
 const VK_XBUTTON1 = 0x05;
 const VK_XBUTTON2 = 0x06;
 const VK_WHEELUP = 0x0A;
@@ -616,12 +617,12 @@ function captureMouseButton(e) {
     e.preventDefault();
     e.stopPropagation();
 
-    // Only XButton1/XButton2 are wired up as working hotkeys (see mouse_hook.zig) - LButton/RButton are already used locally for thumbnail drag/click, and MButton has no hook support.
-    const vk = { 3: VK_XBUTTON1, 4: VK_XBUTTON2 }[e.button];
+    // LButton/RButton are left out: thumbnails use them for drag/click.
+    const vk = { 1: VK_MBUTTON, 3: VK_XBUTTON1, 4: VK_XBUTTON2 }[e.button];
     if (vk) finalizeCapture(vk, modifierFlags(e));
 }
 
-// Also wired up as a working hotkey via the same low-level mouse hook as XButton1/XButton2 (see mouse_hook.zig).
+// Also wired up as a working hotkey via the same low-level mouse hook as the mouse buttons (see mouse_hook.zig).
 function captureWheel(e) {
     if (!recordingField || recordingComboCaptured) return;
 

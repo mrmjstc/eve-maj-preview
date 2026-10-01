@@ -40,6 +40,7 @@ pub const VK_OEM_4: u32 = 0xDB;
 pub const VK_OEM_5: u32 = 0xDC;
 pub const VK_OEM_6: u32 = 0xDD;
 pub const VK_OEM_7: u32 = 0xDE;
+pub const VK_MBUTTON: u32 = 0x04;
 pub const VK_XBUTTON1: u32 = 0x05;
 pub const VK_XBUTTON2: u32 = 0x06;
 pub const VK_WHEELUP: u32 = 0x0A;
@@ -119,6 +120,7 @@ pub const KEY_NAMES: []const KeyName = blk: {
         .{ .vk = VK_MEDIA_PREV_TRACK, .name = "MediaPrevious" },
         .{ .vk = VK_MEDIA_STOP, .name = "MediaStop" },
         .{ .vk = VK_MEDIA_PLAY_PAUSE, .name = "MediaPlayPause" },
+        .{ .vk = VK_MBUTTON, .name = "MButton" },
         .{ .vk = VK_XBUTTON1, .name = "XButton1" },
         .{ .vk = VK_XBUTTON2, .name = "XButton2" },
         .{ .vk = VK_WHEELUP, .name = "WheelUp" },
@@ -161,7 +163,7 @@ pub fn combineKey(vk_code: u32, modifiers: u32) u32 {
 
 /// Whether vk_code is a mouse button or wheel direction, bound via mouse_hook.zig instead of keyboard_hook.zig.
 pub fn isMouseHookVk(vk_code: u32) bool {
-    return vk_code == VK_XBUTTON1 or vk_code == VK_XBUTTON2 or vk_code == VK_WHEELUP or vk_code == VK_WHEELDOWN;
+    return vk_code == VK_MBUTTON or vk_code == VK_XBUTTON1 or vk_code == VK_XBUTTON2 or vk_code == VK_WHEELUP or vk_code == VK_WHEELDOWN;
 }
 
 /// Currently-held modifier keys, read via GetAsyncKeyState; shared by mouse_hook.zig and keyboard_hook.zig.
@@ -347,7 +349,7 @@ test "writeVirtualKey writes a key without a name as hex" {
 }
 
 test "isMouseHookVk covers the mouse buttons and wheel only" {
-    try testing.expect(isMouseHookVk(VK_XBUTTON1) and isMouseHookVk(VK_XBUTTON2));
+    try testing.expect(isMouseHookVk(VK_MBUTTON) and isMouseHookVk(VK_XBUTTON1) and isMouseHookVk(VK_XBUTTON2));
     try testing.expect(isMouseHookVk(VK_WHEELUP) and isMouseHookVk(VK_WHEELDOWN));
     try testing.expect(!isMouseHookVk(VK_F1) and !isMouseHookVk('A'));
 }

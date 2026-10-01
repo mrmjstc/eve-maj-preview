@@ -1019,7 +1019,7 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **Special**: Space, Tab, Enter, Backspace, Pause, CapsLock, NumLock, ScrollLock, PrintScreen, Menu
 - **Punctuation**: `;` `=` `,` `-` `.` `/` `` ` `` `[` `\` `]` `'`
 - **Media**: VolumeMute, VolumeDown, VolumeUp, MediaNext, MediaPrevious, MediaStop, MediaPlayPause
-- **Mouse**: XButton1, XButton2, WheelUp, WheelDown
+- **Mouse**: MButton, XButton1, XButton2, WheelUp, WheelDown
 - **Bare modifiers**: Ctrl, Alt, Shift or Win alone as the trigger key
 - **Modifiers**: Any of the above can be combined with `Ctrl`/`Alt`/`Shift`/`Win` - see [Modifier Combos](#hotkey-configuration)
 

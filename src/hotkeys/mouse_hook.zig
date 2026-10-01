@@ -10,6 +10,7 @@ var g_hook: HookBindings = .{
     .name = "mouse",
     .on_uninstall = clearSwallowState,
 };
+var g_swallow_mbutton_up = false;
 var g_swallow_xbutton1_up = false;
 var g_swallow_xbutton2_up = false;
 
@@ -37,6 +38,7 @@ pub fn deinit() void {
 }
 
 fn clearSwallowState() void {
+    g_swallow_mbutton_up = false;
     g_swallow_xbutton1_up = false;
     g_swallow_xbutton2_up = false;
 }
@@ -44,7 +46,17 @@ fn clearSwallowState() void {
 fn lowLevelMouseProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     // Per MSDN, a negative nCode must go straight to CallNextHookEx untouched, which the fallthrough below already does.
     if (nCode >= 0) {
-        if (wParam == win32.WM_XBUTTONDOWN) {
+        if (wParam == win32.WM_MBUTTONDOWN) {
+            if (g_hook.dispatch(vk.VK_MBUTTON, vk.currentModifiers(), 0)) {
+                g_swallow_mbutton_up = true;
+                return 1;
+            }
+        } else if (wParam == win32.WM_MBUTTONUP) {
+            if (g_swallow_mbutton_up) {
+                g_swallow_mbutton_up = false;
+                return 1;
+            }
+        } else if (wParam == win32.WM_XBUTTONDOWN) {
             const info = win32.lparamToPtr(win32.MSLLHOOKSTRUCT, lParam);
             const button = win32.getXButton(info.mouseData);
             const button_vk: ?u32 = switch (button) {
