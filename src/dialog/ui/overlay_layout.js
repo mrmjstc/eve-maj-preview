@@ -608,9 +608,6 @@ export function initOverlayLayoutPreview() {
         });
     });
 
-    document.getElementById('thumbWidth')?.addEventListener('input', refreshOverlayLayoutPreview);
-    document.getElementById('thumbHeight')?.addEventListener('input', refreshOverlayLayoutPreview);
-    document.getElementById('thumbSizeSlider')?.addEventListener('input', refreshOverlayLayoutPreview);
     window.addEventListener('resize', refreshOverlayLayoutPreview);
     window.addEventListener('resize', () => fitHotkeyGroupCharsList(selectedHotkeyGroupIndex));
     window.addEventListener('resize', updateHotkeyPlaceholders);

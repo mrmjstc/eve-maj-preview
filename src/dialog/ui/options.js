@@ -75,65 +75,6 @@ export function toggleClientListOptions() {
     if (listViewFontWeight) listViewFontWeight.disabled = !isClientList;
 }
 
-export function toggleAspectRatioSlider() {
-    const checkbox = document.getElementById('constrainAspectRatio');
-    const container = document.getElementById('aspectRatioSliderContainer');
-    if (!checkbox || !container) return;
-
-    container.classList.toggle('is-disabled', !checkbox.checked);
-
-    if (checkbox.checked) {
-        const w = parseFloat(document.getElementById('thumbWidth').value) || 200;
-        const h = parseFloat(document.getElementById('thumbHeight').value) || 150;
-        checkbox._baseWidth = w;
-        checkbox._baseHeight = h;
-        document.getElementById('thumbSizeSlider').value = 100;
-        document.getElementById('thumbSizeValue').textContent = '100';
-    }
-}
-
-export function onThumbSizeSlider() {
-    const checkbox = document.getElementById('constrainAspectRatio');
-    if (!checkbox || !checkbox.checked) return;
-    const slider = document.getElementById('thumbSizeSlider');
-    const widthField = document.getElementById('thumbWidth');
-    const heightField = document.getElementById('thumbHeight');
-    const baseW = checkbox._baseWidth || 200;
-    const baseH = checkbox._baseHeight || 150;
-    // Stop the slider where either side hits its bound, or the backend clamps each side alone and breaks the ratio.
-    const minPct = Math.ceil(Math.max((parseFloat(widthField.min) || 0) / baseW, (parseFloat(heightField.min) || 0) / baseH) * 100);
-    const maxPct = Math.floor(Math.min((parseFloat(widthField.max) || Infinity) / baseW, (parseFloat(heightField.max) || Infinity) / baseH) * 100);
-    const pctValue = Math.min(maxPct, Math.max(minPct, parseFloat(slider.value)));
-    slider.value = pctValue;
-    document.getElementById('thumbSizeValue').textContent = pctValue;
-    widthField.value = Math.round(baseW * pctValue / 100);
-    heightField.value = Math.round(baseH * pctValue / 100);
-}
-
-export function onThumbWidthInput() {
-    const checkbox = document.getElementById('constrainAspectRatio');
-    if (!checkbox || !checkbox.checked) return;
-    const w = parseFloat(document.getElementById('thumbWidth').value);
-    if (!w || !checkbox._baseWidth || !checkbox._baseHeight) return;
-    const newH = Math.round(w * (checkbox._baseHeight / checkbox._baseWidth));
-    document.getElementById('thumbHeight').value = newH;
-    const pct = Math.round((w / checkbox._baseWidth) * 100);
-    document.getElementById('thumbSizeSlider').value = pct;
-    document.getElementById('thumbSizeValue').textContent = pct;
-}
-
-export function onThumbHeightInput() {
-    const checkbox = document.getElementById('constrainAspectRatio');
-    if (!checkbox || !checkbox.checked) return;
-    const h = parseFloat(document.getElementById('thumbHeight').value);
-    if (!h || !checkbox._baseWidth || !checkbox._baseHeight) return;
-    const newW = Math.round(h * (checkbox._baseWidth / checkbox._baseHeight));
-    document.getElementById('thumbWidth').value = newW;
-    const pct = Math.round((h / checkbox._baseHeight) * 100);
-    document.getElementById('thumbSizeSlider').value = pct;
-    document.getElementById('thumbSizeValue').textContent = pct;
-}
-
 export function toggleWindowFilters() {
     applyOptionToggle('windowFiltersEnabled', 'windowFiltersOptions');
 }

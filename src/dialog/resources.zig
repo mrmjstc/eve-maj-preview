@@ -10,7 +10,7 @@ const MODULES = [_][]const u8{
     "widgets",       "window_filters", "characters",     "system_colors",
     "ultra_potato",  "hotkey_groups",  "global_settings", "global_hotkeys",
     "ore_table",     "notifications",  "options",        "overlay_layout",
-    "search",        "color_picker",
+    "search",        "color_picker",   "thumbnail_size",
 };
 
 /// Built at compile time, so serving a file is a lookup; webui never frees memory it didn't allocate itself.

@@ -12,7 +12,7 @@ import { applyTranslations, switchLanguage, t } from './i18n.js';
 import { closeImportModal, handleImportFileSelected, initImportAccentColorPreview, onImportDestChanged, onImportSourceProfileChanged, openImportModal, runImport } from './import.js';
 import { buildSectionNav, closeDialog, initDelegatedKeyboardActivation, initializeTabs, showStatus } from './layout.js';
 import { browseSoundFile, clearNotificationTypeSearch, clearSoundFile, onNotificationTypeSearchInput, selectNotificationType, testNotification, toggleNotifBorderColor, toggleNotificationTypeEnabled, toggleNotifShowBorder, toggleNotifSoundEnabled, toggleNotifTextColor } from './notifications.js';
-import { browseChatlogDir, browseGamelogDir, initCombatShowRequiresEnabled, onThumbHeightInput, onThumbSizeSlider, onThumbWidthInput, toggleAspectRatioSlider, toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotificationOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, toggleNotLoggedInSpaceOptions, toggleQuickGroupBadgeOptions, toggleRegionFitOptions, toggleResourcesOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterColors, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
+import { browseChatlogDir, browseGamelogDir, initCombatShowRequiresEnabled, toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotificationOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, toggleNotLoggedInSpaceOptions, toggleQuickGroupBadgeOptions, toggleRegionFitOptions, toggleResourcesOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterColors, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
 import { fetchOrePrices } from './ore_table.js';
 import { initOverlayLayoutPreview } from './overlay_layout.js';
 import { copyCurrentProfile, createNewProfile, deleteCurrentProfile, resetCurrentProfile, restoreSelectedProfileBackup, switchProfile } from './profiles.js';
@@ -20,6 +20,7 @@ import { clearRegion, NOT_LOGGED_IN_FIELD_IDS, REGION_FIELD_IDS, startRegionSele
 import { clearSearch, onSearchInput, searchState } from './search.js';
 import { loadAppVersion, openSession, saveConfiguration } from './session.js';
 import { addSystemColor, removeSystemColor } from './system_colors.js';
+import { detectThumbnailClientSize, onThumbAspectRatioChange, onThumbHeightChange, onThumbHeightInput, onThumbSizeSlider, onThumbWidthChange, onThumbWidthInput } from './thumbnail_size.js';
 import { applyUltraPotatoMode, scanUltraPotatoProfiles } from './ultra_potato.js';
 import { checkForUpdateNotification, openExternalLink } from './update.js';
 import { confirmRemove, initConfirmButtonWidthReservation, toggleAccordionEl } from './widgets.js';
@@ -104,6 +105,7 @@ Object.assign(window, {
     copyCurrentProfile,
     createNewProfile,
     deleteCurrentProfile,
+    detectThumbnailClientSize,
     fetchOrePrices,
     fillHotkeyGroupFromClients,
     handleImportFileSelected,
@@ -112,8 +114,11 @@ Object.assign(window, {
     onImportSourceProfileChanged,
     onNotificationTypeSearchInput,
     onSearchInput,
+    onThumbAspectRatioChange,
+    onThumbHeightChange,
     onThumbHeightInput,
     onThumbSizeSlider,
+    onThumbWidthChange,
     onThumbWidthInput,
     openExternalLink,
     openImportModal,
@@ -147,7 +152,6 @@ Object.assign(window, {
     toggleAccordionEl,
     toggleAdvancedMode,
     toggleAlwaysOnTop,
-    toggleAspectRatioSlider,
     toggleAutoMinimizeOptions,
     toggleBorderOptions,
     toggleBountyOptions,

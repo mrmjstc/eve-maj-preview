@@ -59,6 +59,24 @@ pub fn getOpenClients(arena: std.mem.Allocator) ![]const []const u8 {
     return names;
 }
 
+/// The first open, non-minimized client's game-area size, which thumbnails stretch to fit; null when there's none.
+pub fn getClientSize(_: std.mem.Allocator) !?struct { width: i32, height: i32 } {
+    const scout = scout_mod.g_scout_ptr orelse return null;
+    for (scout.getWindows()) |window| {
+        // A minimized window's client area reads as 0x0.
+        if (win32.isWindowIconic(window.hwnd)) continue;
+        var rect: win32.RECT = undefined;
+        if (!win32.toBool(win32.GetClientRect(window.hwnd, &rect))) {
+            slog.debug("Failed to read the client area of '{s}'", .{window.character_name});
+            continue;
+        }
+        const width = rect.right - rect.left;
+        const height = rect.bottom - rect.top;
+        if (width > 0 and height > 0) return .{ .width = width, .height = height };
+    }
+    return null;
+}
+
 /// Saves `name`'s live game-window position as where auto-move puts it.
 pub fn setCharacterWindowPosition(_: std.mem.Allocator, args: struct { name: []const u8 }) !config.Position {
     const pos = try liveWindowPosition(args.name);

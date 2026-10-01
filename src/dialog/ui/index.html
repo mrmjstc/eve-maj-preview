@@ -250,25 +250,32 @@
                              but the enforced clamp always comes from the Zig side. -->
                         <div class="binding-list">
                             <div class="binding">
-                                <label for="thumbWidth" data-i18n="dynamic.character.thumbnailSizeHeading">Thumbnail Size</label>
-                                <div class="field-row detail-size">
-                                    <input type="number" id="thumbWidth" data-path="thumbnail.width" oninput="onThumbWidthInput()">
-                                    <span class="detail-size-x">&times;</span>
-                                    <input type="number" id="thumbHeight" data-path="thumbnail.height" oninput="onThumbHeightInput()">
-                                </div>
+                                <label for="thumbAspectRatio" data-i18n="field.thumbAspectRatio.label">Aspect Ratio</label>
+                                <select id="thumbAspectRatio" onchange="onThumbAspectRatioChange()" onfocus="detectThumbnailClientSize()">
+                                    <option value="client" data-i18n="field.thumbAspectRatio.matchClient">Match EVE Client</option>
+                                    <option value="16:9">16:9 · 1920×1080, 2560×1440, 3840×2160</option>
+                                    <option value="16:10">16:10 · 1920×1200, 2560×1600</option>
+                                    <option value="43:18">21:9 · 3440×1440</option>
+                                    <option value="4:3">4:3 · 1600×1200, 1024×768</option>
+                                    <option value="custom" data-i18n="field.thumbAspectRatio.custom">Custom</option>
+                                </select>
                             </div>
                         </div>
 
-                        <label>
-                            <input type="checkbox" id="constrainAspectRatio" checked onchange="toggleAspectRatioSlider()">
-                            <span class="label-body" data-i18n="field.constrainAspectRatio.label">Constrain Aspect Ratio</span>
-                        </label>
-                        <div id="aspectRatioSliderContainer" class="is-disabled field-group binding-list">
+                        <div class="binding-list">
                             <div class="binding">
                                 <label for="thumbSizeSlider" data-i18n="field.thumbSizeSlider.label">Size</label>
                                 <div class="field-row">
-                                    <input type="range" id="thumbSizeSlider" min="10" max="400" value="100" oninput="onThumbSizeSlider()">
-                                    <span id="thumbSizeValue">100</span>%
+                                    <input type="range" id="thumbSizeSlider" min="50" max="1280" value="200" oninput="onThumbSizeSlider()">
+                                    <span id="thumbSizeValue"></span>
+                                </div>
+                            </div>
+                            <div class="binding">
+                                <label for="thumbWidth" data-i18n="dynamic.character.thumbnailSizeHeading">Thumbnail Size</label>
+                                <div class="field-row detail-size">
+                                    <input type="number" id="thumbWidth" data-path="thumbnail.width" oninput="onThumbWidthInput()" onchange="onThumbWidthChange()">
+                                    <span class="detail-size-x">&times;</span>
+                                    <input type="number" id="thumbHeight" data-path="thumbnail.height" oninput="onThumbHeightInput()" onchange="onThumbHeightChange()">
                                 </div>
                             </div>
                         </div>
