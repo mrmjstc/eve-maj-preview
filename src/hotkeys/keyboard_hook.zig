@@ -28,6 +28,10 @@ pub fn unregister(combined_vk: u32) void {
     g_hook.unregister(combined_vk);
 }
 
+pub fn setExactModifiers(exact: bool) void {
+    g_hook.exact_modifiers = exact;
+}
+
 /// Safe to call even if nothing was ever registered.
 pub fn unregisterAll() void {
     g_hook.unregisterAll();

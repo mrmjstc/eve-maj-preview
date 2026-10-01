@@ -274,6 +274,8 @@
   "field.advancedModeToggle.label": "Mode avancé",
   "field.allowHotkeyAutoRepeat.hint": "Maintenir un raccourci enfoncé répète son action au lieu de ne l'exécuter qu'une fois.",
   "field.allowHotkeyAutoRepeat.label": "Répéter le raccourci en le maintenant enfoncé",
+  "field.exactHotkeyModifiers.hint": "Un raccourci ne se déclenche que si exactement ses modificateurs sont maintenus : un raccourci sur 1 ne se déclenche pas avec Alt+1, qui parvient au jeu.",
+  "field.exactHotkeyModifiers.label": "Correspondance exacte des modificateurs",
   "field.alwaysOnTopToggle.label": "Toujours au premier plan",
   "field.dialogScaleSelect.label": "Échelle de l'interface",
   "field.dialogScaleSelect.auto": "Auto",

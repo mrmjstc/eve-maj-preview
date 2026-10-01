@@ -103,6 +103,8 @@ pub const HotkeyManager = struct {
     }
 
     pub fn registerHotkeys(self: *HotkeyManager, hwnd: win32.HWND) !void {
+        keyboard_hook.setExactModifiers(self.config.hotkeys.exactHotkeyModifiers);
+        mouse_hook.setExactModifiers(self.config.hotkeys.exactHotkeyModifiers);
         const PerCharacterHotkeyGroup = struct {
             vk: u32,
             indices: std.ArrayList(usize),

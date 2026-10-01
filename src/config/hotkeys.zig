@@ -6,6 +6,7 @@ pub const HotkeysConfig = struct {
     requireEveFocus: bool = false,
     resetGroupIndexOnNonGroupFocus: bool = false,
     allowHotkeyAutoRepeat: bool = false,
+    exactHotkeyModifiers: bool = false,
     hotkeyMinimizeAll: ?u32 = null,
     hotkeyCloseAll: ?u32 = null,
     hotkeyToggleVisibility: ?u32 = null,

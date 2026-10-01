@@ -274,6 +274,8 @@
   "field.advancedModeToggle.label": "Tryb zaawansowany",
   "field.allowHotkeyAutoRepeat.hint": "Przytrzymanie skrótu powtarza jego akcję zamiast uruchomić ją raz.",
   "field.allowHotkeyAutoRepeat.label": "Powtarzaj skrót przy przytrzymaniu",
+  "field.exactHotkeyModifiers.hint": "Skrót działa tylko, gdy wciśnięte są dokładnie jego modyfikatory: skrót na 1 nie zadziała przy Alt+1, a Alt+1 trafi do gry.",
+  "field.exactHotkeyModifiers.label": "Dokładne dopasowanie modyfikatorów",
   "field.alwaysOnTopToggle.label": "Zawsze na wierzchu",
   "field.dialogScaleSelect.label": "Skala interfejsu",
   "field.dialogScaleSelect.auto": "Automatycznie",

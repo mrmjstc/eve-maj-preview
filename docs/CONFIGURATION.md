@@ -883,6 +883,7 @@ Detects a tracked character falling behind while the rest of the group jumps tog
   "hotkeys": {
     "requireEveFocus": false,
     "allowHotkeyAutoRepeat": false,
+    "exactHotkeyModifiers": false,
     "hotkeyMinimizeAll": null,
     "hotkeyCloseAll": null,
     "hotkeyToggleVisibility": null,
@@ -903,6 +904,8 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 **resetGroupIndexOnNonGroupFocus**: Reset a hotkey group's cycle position when focus leaves that group
 
 **allowHotkeyAutoRepeat**: When `false` (default), holding a keyboard hotkey down fires its action once; when `true`, Windows' key-repeat re-fires it while held. Mouse-button hotkeys always fire once per click regardless (mouse buttons don't auto-repeat).
+
+**exactHotkeyModifiers**: When `false` (default), a combo with no binding of its own falls back to the bare key's binding, so a hotkey on `1` also fires (and swallows) `Alt+1`. When `true`, a hotkey fires only when exactly its modifiers are held, and unbound combos pass through to the game. Applies to keyboard and mouse hotkeys.
 
 Pressing **hotkeySuspend** fires a `HotkeySuspend` notification on every client (see [Notification System](#notification-system)).
 

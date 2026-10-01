@@ -16,6 +16,8 @@ pub const HookBindings = struct {
     map: ?std.AutoHashMap(u32, c_int) = null,
     hook: ?win32.HHOOK = null,
     target_hwnd: ?win32.HWND = null,
+    /// Disables dispatch's bare-key fallback, so an unbound combo passes through.
+    exact_modifiers: bool = false,
 
     /// Installs the hook on first registration.
     pub fn register(self: *HookBindings, allocator: std.mem.Allocator, target_hwnd: win32.HWND, combined_vk: u32, id: c_int) !void {
@@ -73,11 +75,11 @@ pub const HookBindings = struct {
         self.on_uninstall();
     }
 
-    /// Whether it matched; an unbound combo falls back to the bare key's binding, so an unrelated held modifier doesn't block it.
+    /// Whether it matched; unless exact_modifiers, an unbound combo falls back to the bare key's binding, so an unrelated held modifier doesn't block it.
     pub fn dispatch(self: *const HookBindings, base_vk: u32, mods: u32, lparam: win32.LPARAM) bool {
         const map = if (self.map) |*m| m else return false;
         const id = map.get(vk.combineKey(base_vk, mods)) orelse
-            (if (mods != 0) map.get(vk.combineKey(base_vk, 0)) else null) orelse
+            (if (mods != 0 and !self.exact_modifiers) map.get(vk.combineKey(base_vk, 0)) else null) orelse
             return false;
 
         if (self.target_hwnd) |hwnd| {

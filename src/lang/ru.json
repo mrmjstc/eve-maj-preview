@@ -274,6 +274,8 @@
   "field.advancedModeToggle.label": "Расширенный режим",
   "field.allowHotkeyAutoRepeat.hint": "Удержание хоткея повторяет действие вместо однократного срабатывания.",
   "field.allowHotkeyAutoRepeat.label": "Повтор хоткея при удержании",
+  "field.exactHotkeyModifiers.hint": "Хоткей срабатывает, только если зажаты ровно его модификаторы: хоткей на 1 не сработает на Alt+1, и Alt+1 дойдёт до игры.",
+  "field.exactHotkeyModifiers.label": "Точное совпадение модификаторов",
   "field.alwaysOnTopToggle.label": "Поверх всех окон",
   "field.dialogScaleSelect.label": "Масштаб интерфейса",
   "field.dialogScaleSelect.auto": "Авто",

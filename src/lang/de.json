@@ -274,6 +274,8 @@
   "field.advancedModeToggle.label": "Erweiterter Modus",
   "field.allowHotkeyAutoRepeat.hint": "Wird ein Hotkey gehalten, wiederholt sich die Aktion, statt nur einmal auszulösen.",
   "field.allowHotkeyAutoRepeat.label": "Hotkey beim Halten wiederholen",
+  "field.exactHotkeyModifiers.hint": "Ein Hotkey löst nur aus, wenn genau seine Modifikatoren gehalten werden: Ein Hotkey auf 1 löst bei Alt+1 nicht aus, und Alt+1 erreicht das Spiel.",
+  "field.exactHotkeyModifiers.label": "Modifikatoren exakt abgleichen",
   "field.alwaysOnTopToggle.label": "Immer im Vordergrund",
   "field.dialogScaleSelect.label": "UI-Skalierung",
   "field.dialogScaleSelect.auto": "Automatisch",

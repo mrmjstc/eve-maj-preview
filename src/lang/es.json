@@ -274,6 +274,8 @@
   "field.advancedModeToggle.label": "Modo Avanzado",
   "field.allowHotkeyAutoRepeat.hint": "Mantener pulsado un hotkey repite su acción en lugar de activarse una sola vez.",
   "field.allowHotkeyAutoRepeat.label": "Repetir Hotkey al Mantener Pulsado",
+  "field.exactHotkeyModifiers.hint": "Un hotkey solo se activa si se mantienen exactamente sus modificadores: un hotkey en 1 no se activa con Alt+1, y Alt+1 llega al juego.",
+  "field.exactHotkeyModifiers.label": "Coincidencia Exacta de Modificadores",
   "field.alwaysOnTopToggle.label": "Siempre Encima",
   "field.dialogScaleSelect.label": "Escala de la Interfaz",
   "field.dialogScaleSelect.auto": "Automática",

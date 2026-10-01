@@ -274,6 +274,8 @@
   "field.advancedModeToggle.label": "高级模式",
   "field.allowHotkeyAutoRepeat.hint": "按住热键会重复触发操作,而不是只触发一次。",
   "field.allowHotkeyAutoRepeat.label": "按住时重复触发热键",
+  "field.exactHotkeyModifiers.hint": "仅在按住的修饰键与热键完全一致时触发:绑定在 1 上的热键不会在 Alt+1 时触发,Alt+1 会传给游戏。",
+  "field.exactHotkeyModifiers.label": "精确匹配修饰键",
   "field.alwaysOnTopToggle.label": "始终置顶",
   "field.dialogScaleSelect.label": "界面缩放",
   "field.dialogScaleSelect.auto": "自动",

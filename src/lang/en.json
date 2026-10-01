@@ -274,6 +274,8 @@
   "field.advancedModeToggle.label": "Advanced Mode",
   "field.allowHotkeyAutoRepeat.hint": "Holding a hotkey down repeats its action instead of firing once.",
   "field.allowHotkeyAutoRepeat.label": "Repeat Hotkey While Held",
+  "field.exactHotkeyModifiers.hint": "Only fire a hotkey when exactly its modifiers are held, so a hotkey on 1 won't fire on Alt+1 and Alt+1 reaches the game.",
+  "field.exactHotkeyModifiers.label": "Match Modifiers Exactly",
   "field.alwaysOnTopToggle.label": "Always on Top",
   "field.dialogScaleSelect.label": "UI Scale",
   "field.dialogScaleSelect.auto": "Auto",

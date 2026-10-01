@@ -274,6 +274,8 @@
   "field.advancedModeToggle.label": "Modo Avançado",
   "field.allowHotkeyAutoRepeat.hint": "Manter uma hotkey pressionada repete a ação em vez de disparar apenas uma vez.",
   "field.allowHotkeyAutoRepeat.label": "Repetir Hotkey ao Segurar",
+  "field.exactHotkeyModifiers.hint": "Uma hotkey só dispara quando exatamente seus modificadores estão pressionados: uma hotkey em 1 não dispara com Alt+1, e Alt+1 chega ao jogo.",
+  "field.exactHotkeyModifiers.label": "Corresponder Modificadores Exatamente",
   "field.alwaysOnTopToggle.label": "Sempre no Topo",
   "field.dialogScaleSelect.label": "Escala da Interface",
   "field.dialogScaleSelect.auto": "Automática",
