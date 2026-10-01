@@ -6,7 +6,7 @@ const log = @import("../log.zig");
 const slog = log.scoped("chatlog");
 
 /// Written only by this module.
-const FILE_NAME = "character_ids.json";
+const FILE_NAME = files.CHARACTER_IDS_FILE;
 
 pub const CharacterIds = struct {
     allocator: std.mem.Allocator,

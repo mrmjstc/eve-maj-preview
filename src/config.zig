@@ -29,6 +29,7 @@ pub const PROFILES_DIR = files.PROFILES_DIR;
 pub const DEFAULT_PROFILE = files.DEFAULT_PROFILE;
 pub const GLOBAL_SETTINGS_FILE = files.GLOBAL_SETTINGS_FILE;
 pub const atomicWriteFile = files.atomicWriteFile;
+pub const migrateLegacyLayout = files.migrateLegacyLayout;
 pub const profilePath = profiles.path;
 pub const loadProfile = profiles.load;
 pub const listProfiles = profiles.list;

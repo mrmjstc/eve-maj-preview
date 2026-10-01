@@ -162,6 +162,7 @@ fn mainImpl(init: std.process.Init) !void {
     g_trackers = .{ .allocator = g_allocator, .io = g_io };
 
     setCwdToExeDir();
+    config.migrateLegacyLayout();
 
     // Handle protocol invocation before the mutex check, so commands work even when another instance is already running.
     const protocol_url = try protocol.checkCommandLine(init.minimal.args, g_allocator);

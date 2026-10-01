@@ -3,8 +3,10 @@ const std = @import("std");
 const builtin = @import("builtin");
 const win32 = @import("platform/win32.zig");
 
-pub const LOG_FILE_NAME = "eve-maj.log";
-const LOG_FILE_NAME_OLD = "eve-maj.log.old";
+pub const LOG_DIR = "logs";
+pub const LOG_FILE_NAME = LOG_DIR ++ "/eve-maj.log";
+pub const LOG_FILE_NAME_OLD = LOG_DIR ++ "/eve-maj.log.old";
+pub const MINIDUMP_FILE_NAME = LOG_DIR ++ "/eve-maj-crash.dmp";
 /// Rotated to .old at this size rather than trimmed, so a write never costs more than a size check plus (rarely) a rename.
 const MAX_LOG_FILE_BYTES: u64 = 20 * 1024 * 1024;
 
@@ -141,7 +143,12 @@ fn consoleCtrlHandler(ctrl_type: win32.DWORD) callconv(.c) win32.BOOL {
 /// Opened lazily, so a session that never logs never touches disk; caller holds g_log_mutex.
 fn ensureFileOpen() bool {
     if (g_log_file != null) return true;
-    g_log_file = std.Io.Dir.cwd().createFile(g_io, LOG_FILE_NAME, .{ .truncate = false }) catch return false;
+    const cwd = std.Io.Dir.cwd();
+    cwd.createDir(g_io, LOG_DIR, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return false,
+    };
+    g_log_file = cwd.createFile(g_io, LOG_FILE_NAME, .{ .truncate = false }) catch return false;
     return true;
 }
 

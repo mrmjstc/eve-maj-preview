@@ -822,7 +822,7 @@ function Start-UniqueColorTest {
     }
     Write-Host ''
     Write-Host 'Compare the thumbnails: every system (and, with Unique Character Name Colors on, every character) should have a clearly different color.' -ForegroundColor Cyan
-    Write-Host 'Then restart the app: each must keep its color (stored in colors.json next to profiles).' -ForegroundColor Cyan
+    Write-Host 'Then restart the app: each must keep its color (stored in data\colors.json).' -ForegroundColor Cyan
 }
 
 function Start-SystemColorTest {

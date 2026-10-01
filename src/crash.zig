@@ -4,7 +4,8 @@ const win32 = @import("platform/win32.zig");
 const log = @import("log.zig");
 
 /// Overwritten on every crash - only the latest is kept, so a crash loop can't fill the disk.
-const MINIDUMP_FILE_NAME = std.unicode.utf8ToUtf16LeStringLiteral("eve-maj-crash.dmp");
+/// Its folder exists by then: the crash line written just before creates it.
+const MINIDUMP_FILE_NAME = std.unicode.utf8ToUtf16LeStringLiteral(log.MINIDUMP_FILE_NAME);
 
 /// dbghelp.dll (MiniDumpWriteDump) isn't thread-safe; this flag serializes writes and resets after each attempt so a later crash can still dump.
 var g_dump_write_in_progress = std.atomic.Value(bool).init(false);

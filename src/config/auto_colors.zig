@@ -8,7 +8,7 @@ const log = @import("../log.zig");
 
 const slog = log.scoped("config");
 
-const AUTO_COLORS_FILE = "colors.json";
+const AUTO_COLORS_FILE = files.AUTO_COLORS_FILE;
 
 /// Runtime state owned by Painter, not a setting; saved to AUTO_COLORS_FILE rather than the profile so saving the profile mid live-preview can't leak unsaved edits.
 pub const AutoColorStore = struct {
