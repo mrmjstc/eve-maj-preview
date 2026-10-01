@@ -21,6 +21,8 @@ const DESIGN_HEIGHT: f32 = 950.0;
 /// x isn't 0, since webui treats that as "unset" and centers the window instead.
 const DEFAULT_POSITION: win32.POINT = .{ .x = 20, .y = 20 };
 
+const BROWSER_ARGS_VAR = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+
 const State = enum { closed, opening, open };
 
 const ShowResult = enum(u8) { pending, shown, failed };
@@ -43,10 +45,7 @@ var g_editing_profile: ?[]u8 = null;
 
 pub fn init(allocator_: std.mem.Allocator) void {
     g_allocator = allocator_;
-    // Windows proxy auto-detection (WPAD) otherwise stalls every page load ~2.7s on some networks.
-    if (!win32.toBool(win32.SetEnvironmentVariableA("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--no-proxy-server"))) {
-        slog.warn("Failed to disable proxy detection for the configuration window, it may open slowly", .{});
-    }
+    disableProxyDetection();
     config_store.g_on_runtime_change = events.liveProfileChanged;
 }
 
@@ -231,6 +230,25 @@ fn onClosed() void {
     session.end();
     main.onDialogClosed();
     resetWindow();
+}
+
+/// Appends to any arguments already in the environment, so a recording script can pass --remote-debugging-port.
+fn disableProxyDetection() void {
+    var existing_buf: [1024]u8 = undefined;
+    // Returns 0 when unset, or the required size when it doesn't fit.
+    const existing_len = win32.GetEnvironmentVariableA(BROWSER_ARGS_VAR, &existing_buf, existing_buf.len);
+    if (existing_len >= existing_buf.len) {
+        slog.warn("Failed to read '{s}', its arguments are too long and will be replaced", .{BROWSER_ARGS_VAR});
+    }
+    const existing = if (existing_len < existing_buf.len) existing_buf[0..existing_len] else "";
+
+    var args_buf: [existing_buf.len + 32]u8 = undefined;
+    const separator = if (existing.len > 0) " " else "";
+    const args = std.fmt.bufPrintZ(&args_buf, "{s}{s}--no-proxy-server", .{ existing, separator }) catch unreachable;
+    // Windows proxy auto-detection (WPAD) otherwise stalls every page load ~2.7s on some networks.
+    if (!win32.toBool(win32.SetEnvironmentVariableA(BROWSER_ARGS_VAR, args))) {
+        slog.warn("Failed to disable proxy detection for the configuration window, it may open slowly", .{});
+    }
 }
 
 fn resetWindow() void {
