@@ -815,7 +815,7 @@ Display each client's CPU%, RAM, and dedicated VRAM usage as a single combined t
     "show_vram": true,
     "color": "0xFFFFFFFF",
     "bg_color": "0xE6000000",
-    "font_size": 11,
+    "font_size": 12,
     "font_name": "Segoe UI",
     "font_weight": "Regular",
     "update_interval_ms": 10000,
