@@ -264,18 +264,17 @@
 
                         <div class="binding-list">
                             <div class="binding">
-                                <label for="thumbSizeSlider" data-i18n="field.thumbSizeSlider.label">Size</label>
-                                <div class="field-row">
-                                    <input type="range" id="thumbSizeSlider" min="50" max="1280" value="200" oninput="onThumbSizeSlider()">
-                                    <span id="thumbSizeValue"></span>
-                                </div>
-                            </div>
-                            <div class="binding">
                                 <label for="thumbWidth" data-i18n="dynamic.character.thumbnailSizeHeading">Thumbnail Size</label>
                                 <div class="field-row detail-size">
                                     <input type="number" id="thumbWidth" data-path="thumbnail.width" oninput="onThumbWidthInput()" onchange="onThumbWidthChange()">
                                     <span class="detail-size-x">&times;</span>
                                     <input type="number" id="thumbHeight" data-path="thumbnail.height" oninput="onThumbHeightInput()" onchange="onThumbHeightChange()">
+                                </div>
+                            </div>
+                            <div class="binding">
+                                <label for="thumbSizeSlider" data-i18n="field.thumbSizeSlider.label">Size</label>
+                                <div class="field-row">
+                                    <input type="range" id="thumbSizeSlider" min="50" max="1280" value="200" oninput="onThumbSizeSlider()">
                                 </div>
                             </div>
                         </div>

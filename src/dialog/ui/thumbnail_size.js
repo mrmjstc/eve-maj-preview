@@ -69,7 +69,6 @@ function writeSize(size) {
 
 function refreshSlider(size) {
     field('thumbSizeSlider').value = size.width;
-    field('thumbSizeValue').textContent = `${size.width} × ${size.height}`;
 }
 
 function refreshClientDisplay() {
