@@ -166,7 +166,9 @@ pub const ChatlogMonitor = struct {
                 try self.removeCharacter(change.old_name);
             }
         }
-        for (scout_result.windows) |window| try self.addCharacter(window.character_name);
+        for (scout_result.windows) |window| {
+            if (window.is_eve_client) try self.addCharacter(window.character_name);
+        }
 
         try self.deliverSystemUpdates();
         try self.deliverNotifications();

@@ -602,6 +602,7 @@ fn startChatlogWorker(monitor: *chatlog.ChatlogMonitor) void {
 
 fn addChatlogCharacters(monitor: *chatlog.ChatlogMonitor, windows: []const scout.EveWindow) void {
     for (windows) |eve_window| {
+        if (!eve_window.is_eve_client) continue;
         monitor.addCharacter(eve_window.character_name) catch |err| {
             slog.err("Failed to add '{s}' to the chatlog monitor: {}", .{ eve_window.character_name, err });
         };
