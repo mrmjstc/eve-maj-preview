@@ -47,7 +47,6 @@ pub const Scout = struct {
     allocator: std.mem.Allocator,
     config: *const config_mod.Config,
     windows: std.ArrayList(EveWindow),
-    name_to_hwnd: std.StringHashMap(win32.HWND),
     hwnd_to_index: std.AutoHashMap(win32.HWND, usize),
     /// Processes already known to be EVE, so each one's executable path is only checked once.
     eve_pids: std.AutoHashMap(win32.DWORD, void),
@@ -67,7 +66,6 @@ pub const Scout = struct {
             .allocator = allocator,
             .config = config,
             .windows = .empty,
-            .name_to_hwnd = std.StringHashMap(win32.HWND).init(allocator),
             .hwnd_to_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
             .eve_pids = std.AutoHashMap(win32.DWORD, void).init(allocator),
             .pending_closed = .empty,
@@ -105,7 +103,6 @@ pub const Scout = struct {
 
         for (self.windows.items) |window| self.freeWindow(window);
         self.windows.deinit(self.allocator);
-        self.name_to_hwnd.deinit();
         self.hwnd_to_index.deinit();
         self.eve_pids.deinit();
         self.not_logged_in_queue.deinit(self.allocator);
@@ -119,7 +116,6 @@ pub const Scout = struct {
     /// Stops tracking windows[index]; callers rebuild hwnd_to_index once they're done removing, since later indices shift.
     fn removeWindowAt(self: *Scout, index: usize) void {
         const removed = self.windows.orderedRemove(index);
-        _ = self.name_to_hwnd.remove(removed.character_name);
         _ = self.hwnd_to_index.remove(removed.hwnd);
         self.untrackNotLoggedIn(removed.hwnd);
         self.freeWindow(removed);
@@ -241,13 +237,9 @@ pub const Scout = struct {
             return;
         };
 
-        // The old name moves into the NameChange rather than being copied, so it must stop being a map key first.
+        // The old name moves into the NameChange rather than being copied.
         const old_name = eve_window.character_name;
-        _ = self.name_to_hwnd.remove(old_name);
         eve_window.character_name = window_name;
-        self.name_to_hwnd.put(window_name, eve_window.hwnd) catch |err| {
-            slog.err("Failed to map character name '{s}' to hwnd: {}", .{ new_name, err });
-        };
 
         if (isGenericCharacterName(window_name)) {
             self.trackNotLoggedIn(eve_window.hwnd);
@@ -314,10 +306,10 @@ pub const Scout = struct {
         return name;
     }
 
-    /// Null once the window has closed.
+    /// First live window with this name, which a filter's windows and logged-out clients share.
     pub fn getHwndByName(self: *const Scout, name: []const u8) ?win32.HWND {
-        if (self.name_to_hwnd.get(name)) |hwnd| {
-            if (win32.isWindow(hwnd)) return hwnd;
+        for (self.windows.items) |window| {
+            if (std.mem.eql(u8, window.character_name, name) and win32.isWindow(window.hwnd)) return window.hwnd;
         }
         return null;
     }
@@ -450,14 +442,6 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
 
     scout.hwnd_to_index.put(hwnd, scout.windows.items.len - 1) catch |err| {
         slog.err("Failed to index '{s}': {}", .{ character_name, err });
-        scout.freeWindow(scout.windows.pop().?);
-        return win32.TRUE;
-    };
-
-    // character_name is owned by windows[] and borrowed as the map key.
-    scout.name_to_hwnd.put(character_name, hwnd) catch |err| {
-        slog.err("Failed to map '{s}' to its window: {}", .{ character_name, err });
-        _ = scout.hwnd_to_index.remove(hwnd);
         scout.freeWindow(scout.windows.pop().?);
         return win32.TRUE;
     };
