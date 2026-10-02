@@ -66,7 +66,7 @@ Rendering is split four ways:
 
 **`activity/resources.zig`**'s `ResourceTracker` is unrelated to the chatlog pipeline above - it samples per-process CPU%/RAM/VRAM directly from the OS (`GetProcessTimes`, `GetProcessMemoryInfo`, and a PDH "GPU Process Memory" query for VRAM), keyed by `scout.EveWindow.process_id`. Main-thread only, no locking: `Trackers.tick` calls `sampleAll` on its own throttled interval (`config.resources.update_interval_ms`) and pushes the result into `Painter.updateResourceStatsForCharacter`, the same push-then-`renderDirtyThumbnails(null)` shape combat/mining/bounty use, just without their cross-thread queue.
 
-**`activity/runtime.zig`**'s `Trackers` owns the live tracker instances for the current profile: `setup` creates the ones the config enables and wires them into the chatlog monitor, `releaseForReload` frees them once the worker is stopped (the resource tracker survives while still enabled), and `tick` pushes each tracker's values into Painter at its configured interval. See [CONFIGURATION.md](CONFIGURATION.md#resource-usage-overlay).
+**`activity/runtime.zig`**'s `Trackers` owns the live tracker instances for the current profile: `setup` creates the ones the config enables and wires them into the chatlog monitor, `releaseForReload` frees them once the worker is stopped (the resource tracker survives while still enabled), and `tick` pushes each tracker's values into Painter at its configured interval. The resource tracker alone follows the live config in `tick`, so its toggle previews before Save; the chatlog-fed trackers change only on Save, since the worker must be stopped first. See [CONFIGURATION.md](CONFIGURATION.md#resource-usage-overlay).
 
 ## Input & control surfaces
 
