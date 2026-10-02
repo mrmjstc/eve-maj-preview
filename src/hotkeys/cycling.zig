@@ -168,7 +168,6 @@ pub fn cycleGroup(manager: *HotkeyManager, group_index: usize, forward: bool) vo
         }
     }
 
-    const windows = manager.scout.getWindows();
     var it = CycleOrder.init(found_index, total, forward, !group.stopAtEnds);
     while (it.next()) |idx| {
         if (idx < num_chars) {
@@ -189,11 +188,6 @@ pub fn cycleGroup(manager: *HotkeyManager, group_index: usize, forward: bool) vo
         }
 
         const hwnd = not_logged_in_hwnds.items[idx - num_chars];
-        if (!isHwndStillNotLoggedIn(windows, hwnd)) {
-            slog.debug("Queued not-logged-in window {*} is no longer at the login screen, skipping", .{hwnd});
-            continue;
-        }
-
         cursor.* = idx;
         slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(forward), idx + 1, total });
         activation.activate(hwnd);
@@ -203,7 +197,7 @@ pub fn cycleGroup(manager: *HotkeyManager, group_index: usize, forward: bool) vo
 
     if (group.stopAtEnds) {
         if (found_index) |current| {
-            if (groupEntryHwnd(manager, group_index, not_logged_in_hwnds.items, windows, current)) |hwnd| {
+            if (groupEntryHwnd(manager, group_index, not_logged_in_hwnds.items, current)) |hwnd| {
                 if (hwnd == win32.GetForegroundWindow()) {
                     slog.debug("Already at the {s} end of hotkey group", .{directionName(forward)});
                     return;
@@ -344,21 +338,12 @@ pub fn cycleNotLoggedIn(manager: *HotkeyManager, forward: bool) void {
         }
     }
 
-    const windows = manager.scout.getWindows();
     var it = CycleOrder.init(found_index, num, forward, true);
-    while (it.next()) |index| {
-        const hwnd = hwnds.items[index];
-
-        if (isHwndStillNotLoggedIn(windows, hwnd)) {
-            slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(forward), index + 1, num });
-            activation.activate(hwnd);
-            manager.cycle.last_not_logged_in_hwnd = hwnd;
-            return;
-        }
-        slog.debug("Queued not-logged-in window {*} is no longer at the login screen, skipping", .{hwnd});
-    }
-
-    slog.warn("No queued not-logged-in clients are still at the login screen", .{});
+    const index = it.next() orelse return;
+    const hwnd = hwnds.items[index];
+    slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(forward), index + 1, num });
+    activation.activate(hwnd);
+    manager.cycle.last_not_logged_in_hwnd = hwnd;
 }
 
 /// Moves every cycle cursor onto a manually focused character, so the next cycle press continues from it.
@@ -413,7 +398,7 @@ fn indexOfHwnd(hwnds: []const win32.HWND, target: ?win32.HWND) ?usize {
 }
 
 /// The window for a group cycle position, where not-logged-in positions follow the group's characters; null if it isn't a valid target.
-fn groupEntryHwnd(manager: *HotkeyManager, group_index: usize, not_logged_in_hwnds: []const win32.HWND, windows: []const scout.EveWindow, index: usize) ?win32.HWND {
+fn groupEntryHwnd(manager: *HotkeyManager, group_index: usize, not_logged_in_hwnds: []const win32.HWND, index: usize) ?win32.HWND {
     const group = &manager.config.hotkeyGroups.items[group_index];
     const num_chars = group.characters.items.len;
     if (index < num_chars) {
@@ -421,16 +406,7 @@ fn groupEntryHwnd(manager: *HotkeyManager, group_index: usize, not_logged_in_hwn
         if (manager.exclusions.isExcludedInGroup(group_index, char_name)) return null;
         return manager.scout.getHwndByName(char_name);
     }
-    const hwnd = not_logged_in_hwnds[index - num_chars];
-    return if (isHwndStillNotLoggedIn(windows, hwnd)) hwnd else null;
-}
-
-/// Whether hwnd still shows the generic "EVE" login-screen title, used to skip stale not-logged-in queue entries.
-fn isHwndStillNotLoggedIn(windows: []const scout.EveWindow, hwnd: win32.HWND) bool {
-    for (windows) |w| {
-        if (w.hwnd == hwnd and scout.isGenericCharacterName(w.character_name)) return true;
-    }
-    return false;
+    return not_logged_in_hwnds[index - num_chars];
 }
 
 /// Replaces `field.*` with an owned copy of name, freeing the previous value.

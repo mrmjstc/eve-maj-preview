@@ -18,6 +18,8 @@ pub const EveWindow = struct {
     character_name: []const u8,
     process_id: win32.DWORD,
     is_eve_client: bool,
+    /// When this window last went to the login screen, from Scout.next_logout_order; 0 while logged in.
+    logged_out_order: u64 = 0,
 };
 
 pub const NameChange = struct {
@@ -47,12 +49,10 @@ pub const Scout = struct {
     allocator: std.mem.Allocator,
     config: *const config_mod.Config,
     windows: std.ArrayList(EveWindow),
-    hwnd_to_index: std.AutoHashMap(win32.HWND, usize),
     /// Filled by the WinEvent hooks between ticks and handed over by update().
     pending_closed: std.ArrayList(ClosedWindow),
     pending_name_changes: std.ArrayList(NameChange),
-    /// FIFO queue of windows currently not logged in, oldest-logged-out first; fed by renameWindow/enumWindowsCallback, consumed by hotkeys/cycling.zig's cycleNotLoggedIn via getNotLoggedInHwnds.
-    not_logged_in_queue: std.ArrayList(win32.HWND),
+    next_logout_order: u64 = 1,
     /// Set by the create hook so the next update() rescans.
     pending_scan: bool,
     create_event_hook: ?win32.HANDLE,
@@ -64,10 +64,8 @@ pub const Scout = struct {
             .allocator = allocator,
             .config = config,
             .windows = .empty,
-            .hwnd_to_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
             .pending_closed = .empty,
             .pending_name_changes = .empty,
-            .not_logged_in_queue = .empty,
             .pending_scan = false,
             .name_change_hook = installHook(win32.EVENT_OBJECT_NAMECHANGE, nameChangeCallback, "Title change", "character name changes will not be detected until full window rescan"),
             .create_event_hook = installHook(win32.EVENT_OBJECT_CREATE, windowCreateCallback, "Window creation", "new windows will only be detected via periodic scanning"),
@@ -100,8 +98,6 @@ pub const Scout = struct {
 
         for (self.windows.items) |window| self.freeWindow(window);
         self.windows.deinit(self.allocator);
-        self.hwnd_to_index.deinit();
-        self.not_logged_in_queue.deinit(self.allocator);
     }
 
     fn freeWindow(self: *Scout, window: EveWindow) void {
@@ -109,12 +105,8 @@ pub const Scout = struct {
         self.allocator.free(window.character_name);
     }
 
-    /// Stops tracking windows[index]; callers rebuild hwnd_to_index once they're done removing, since later indices shift.
     fn removeWindowAt(self: *Scout, index: usize) void {
-        const removed = self.windows.orderedRemove(index);
-        _ = self.hwnd_to_index.remove(removed.hwnd);
-        self.untrackNotLoggedIn(removed.hwnd);
-        self.freeWindow(removed);
+        self.freeWindow(self.windows.orderedRemove(index));
     }
 
     /// Hands `window` to the next update's closed_windows, so the painter and chatlog let it go like any closed client; false if it couldn't be.
@@ -131,24 +123,28 @@ pub const Scout = struct {
         return true;
     }
 
-    /// Bumps hwnd to the back of the not-logged-in FIFO used by the cycle-not-logged-in hotkey; re-logout bumps instead of duplicating.
-    fn trackNotLoggedIn(self: *Scout, hwnd: win32.HWND) void {
-        self.untrackNotLoggedIn(hwnd);
-        self.not_logged_in_queue.append(self.allocator, hwnd) catch |err| {
-            slog.err("Failed to queue not-logged-in window: {}", .{err});
-        };
+    fn logoutOrder(self: *Scout, character_name: []const u8) u64 {
+        if (!isGenericCharacterName(character_name)) return 0;
+        defer self.next_logout_order += 1;
+        return self.next_logout_order;
     }
 
-    /// Removes hwnd from the not-logged-in FIFO, e.g. once its title changes away from "EVE", so a stale entry doesn't keep matching a since-logged-in character.
-    fn untrackNotLoggedIn(self: *Scout, hwnd: win32.HWND) void {
-        const index = std.mem.indexOfScalar(win32.HWND, self.not_logged_in_queue.items, hwnd) orelse return;
-        _ = self.not_logged_in_queue.orderedRemove(index);
-    }
+    /// Windows at the login screen, oldest logout first; caller frees with allocator.
+    pub fn getNotLoggedInHwnds(self: *const Scout, allocator: std.mem.Allocator) !std.ArrayList(win32.HWND) {
+        var logged_out: std.ArrayList(EveWindow) = .empty;
+        defer logged_out.deinit(allocator);
+        for (self.windows.items) |window| {
+            if (window.logged_out_order != 0) try logged_out.append(allocator, window);
+        }
+        std.sort.pdq(EveWindow, logged_out.items, {}, struct {
+            fn lessThan(_: void, a: EveWindow, b: EveWindow) bool {
+                return a.logged_out_order < b.logged_out_order;
+            }
+        }.lessThan);
 
-    /// Caller-owned snapshot of the not-logged-in FIFO, oldest first. Caller frees with allocator.
-    pub fn getNotLoggedInHwnds(self: *Scout, allocator: std.mem.Allocator) !std.ArrayList(win32.HWND) {
         var result: std.ArrayList(win32.HWND) = .empty;
-        try result.appendSlice(allocator, self.not_logged_in_queue.items);
+        errdefer result.deinit(allocator);
+        for (logged_out.items) |window| try result.append(allocator, window.hwnd);
         return result;
     }
 
@@ -162,7 +158,7 @@ pub const Scout = struct {
 
     /// Re-reads hwnd's title and records a NameChange if the character behind it changed.
     fn updateWindowTitle(self: *Scout, hwnd: win32.HWND) void {
-        const index = self.hwnd_to_index.get(hwnd) orelse return;
+        const index = self.indexOf(hwnd) orelse return;
         const eve_window = &self.windows.items[index];
 
         // A stack buffer, since this runs for every tracked window on each refresh to catch a rare change.
@@ -206,11 +202,7 @@ pub const Scout = struct {
         const old_name = eve_window.character_name;
         eve_window.character_name = window_name;
 
-        if (isGenericCharacterName(window_name)) {
-            self.trackNotLoggedIn(eve_window.hwnd);
-        } else {
-            self.untrackNotLoggedIn(eve_window.hwnd);
-        }
+        eve_window.logged_out_order = self.logoutOrder(window_name);
 
         slog.info("Character changed: {s} -> {s}", .{ old_name, new_name });
 
@@ -227,7 +219,6 @@ pub const Scout = struct {
 
     /// Catches windows closed without a destroy event, e.g. when that hook couldn't be installed.
     fn dropClosedWindows(self: *Scout) void {
-        var dropped_any = false;
         var i: usize = self.windows.items.len;
         while (i > 0) {
             i -= 1;
@@ -236,9 +227,7 @@ pub const Scout = struct {
             if (!self.reportClosed(window)) continue;
             slog.info("Window closed without a destroy event: '{s}' (hwnd {*})", .{ window.character_name, window.hwnd });
             self.removeWindowAt(i);
-            dropped_any = true;
         }
-        if (dropped_any) self.rebuildHwndIndex();
     }
 
     /// Catches title changes whose event came before the window was tracked; only on force_scan ticks, as each read is a cross-process call.
@@ -289,13 +278,11 @@ pub const Scout = struct {
         return null;
     }
 
-    fn rebuildHwndIndex(self: *Scout) void {
-        self.hwnd_to_index.clearRetainingCapacity();
-        for (self.windows.items, 0..) |*window, idx| {
-            self.hwnd_to_index.put(window.hwnd, idx) catch |err| {
-                slog.err("Failed to rebuild HWND index for '{s}': {}", .{ window.character_name, err });
-            };
+    fn indexOf(self: *const Scout, hwnd: win32.HWND) ?usize {
+        for (self.windows.items, 0..) |window, index| {
+            if (window.hwnd == hwnd) return index;
         }
+        return null;
     }
 
     /// First filter matching both class and executable; a null exe_path checks the class alone.
@@ -331,7 +318,6 @@ pub const Scout = struct {
             _ = self.reportClosed(window);
             self.removeWindowAt(i);
         }
-        self.rebuildHwndIndex();
     }
 };
 
@@ -363,9 +349,7 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
     }
 
     // Already tracked: skip the class-name lookup and filter-match loop below entirely.
-    if (scout.hwnd_to_index.contains(hwnd)) {
-        return win32.TRUE;
-    }
+    if (scout.indexOf(hwnd) != null) return win32.TRUE;
 
     // Class first, since it's much cheaper than opening the process for its executable path.
     var class_name: [64:0]u8 = undefined;
@@ -402,6 +386,7 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
         .character_name = character_name,
         .process_id = process_id,
         .is_eve_client = is_eve_client,
+        .logged_out_order = scout.logoutOrder(character_name),
     };
 
     scout.windows.append(scout.allocator, eve_window) catch |err| {
@@ -409,17 +394,6 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
         scout.freeWindow(eve_window);
         return win32.TRUE;
     };
-
-    scout.hwnd_to_index.put(hwnd, scout.windows.items.len - 1) catch |err| {
-        slog.err("Failed to index '{s}': {}", .{ character_name, err });
-        scout.freeWindow(scout.windows.pop().?);
-        return win32.TRUE;
-    };
-
-    // Window was already not-logged-in when first discovered (e.g. app launch), so no name-change transition fires for it; queue it here instead.
-    if (isGenericCharacterName(character_name)) {
-        scout.trackNotLoggedIn(hwnd);
-    }
 
     return win32.TRUE;
 }
@@ -439,13 +413,12 @@ fn windowDestroyCallback(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, id_o
     const scout_ptr = g_scout_ptr orelse return;
 
     // By hwnd alone, since a partially-destroyed window can fail GetClassNameA.
-    const index = scout_ptr.hwnd_to_index.get(hwnd) orelse return;
+    const index = scout_ptr.indexOf(hwnd) orelse return;
     const eve_window = scout_ptr.windows.items[index];
     if (!scout_ptr.reportClosed(eve_window)) return;
 
     slog.debug("Window destroyed: '{s}' (hwnd {*})", .{ eve_window.character_name, hwnd });
     scout_ptr.removeWindowAt(index);
-    scout_ptr.rebuildHwndIndex();
 }
 
 fn windowCreateCallback(_: win32.HANDLE, _: win32.DWORD, _: win32.HWND, id_object: win32.LONG, _: win32.LONG, _: win32.DWORD, _: win32.DWORD) callconv(.c) void {
