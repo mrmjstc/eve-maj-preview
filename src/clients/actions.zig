@@ -7,7 +7,7 @@ const log = @import("../log.zig");
 
 const slog = log.scoped("client_actions");
 
-/// Kept clear of the virtual screen edges so a restored window's title bar stays grabbable.
+/// Kept clear of the screen edges so a restored window's title bar stays grabbable.
 const SCREEN_EDGE_MARGIN: i32 = 30;
 
 pub fn minimizeAllClients(eve_windows: []const scout.EveWindow) void {
@@ -29,19 +29,31 @@ pub fn minimizeAllClients(eve_windows: []const scout.EveWindow) void {
     }
 }
 
-/// Clamps `pos` to the current virtual screen, in case the screen configuration changed since save.
-pub fn clampToVirtualScreen(pos: config_mod.Position) config_mod.Position {
-    const screen_left: i32 = win32.GetSystemMetrics(win32.SM_XVIRTUALSCREEN);
-    const screen_top: i32 = win32.GetSystemMetrics(win32.SM_YVIRTUALSCREEN);
-    const screen_width: i32 = win32.GetSystemMetrics(win32.SM_CXVIRTUALSCREEN);
-    const screen_height: i32 = win32.GetSystemMetrics(win32.SM_CYVIRTUALSCREEN);
+/// Clamps `pos` onto a current monitor, in case the screen configuration changed since save; a point in a gap between monitors goes to the nearest one.
+pub fn clampOntoScreen(pos: config_mod.Position) config_mod.Position {
+    const left = win32.GetSystemMetrics(win32.SM_XVIRTUALSCREEN);
+    const top = win32.GetSystemMetrics(win32.SM_YVIRTUALSCREEN);
+    const virtual_screen: win32.RECT = .{
+        .left = left,
+        .top = top,
+        .right = left + win32.GetSystemMetrics(win32.SM_CXVIRTUALSCREEN),
+        .bottom = top + win32.GetSystemMetrics(win32.SM_CYVIRTUALSCREEN),
+    };
+    const clamped = clampToRect(pos, virtual_screen);
 
-    const max_x = @max(screen_left, screen_left + screen_width - SCREEN_EDGE_MARGIN);
-    const max_y = @max(screen_top, screen_top + screen_height - SCREEN_EDGE_MARGIN);
+    const pt: win32.POINT = .{ .x = clamped.x, .y = clamped.y };
+    if (win32.isOnMonitor(pt)) return clamped;
+    const monitor = win32.nearestMonitor(pt) orelse return clamped;
+    const monitor_rect = win32.monitorRect(monitor) orelse return clamped;
+    return clampToRect(clamped, monitor_rect);
+}
 
+fn clampToRect(pos: config_mod.Position, rect: win32.RECT) config_mod.Position {
+    const max_x = @max(rect.left, rect.right - SCREEN_EDGE_MARGIN);
+    const max_y = @max(rect.top, rect.bottom - SCREEN_EDGE_MARGIN);
     return .{
-        .x = std.math.clamp(pos.x, screen_left, max_x),
-        .y = std.math.clamp(pos.y, screen_top, max_y),
+        .x = std.math.clamp(pos.x, rect.left, max_x),
+        .y = std.math.clamp(pos.y, rect.top, max_y),
     };
 }
 
@@ -57,7 +69,7 @@ pub fn moveClientToPosition(hwnd: win32.HWND, pos: config_mod.Position) void {
         }
     }
 
-    const clamped = clampToVirtualScreen(pos);
+    const clamped = clampOntoScreen(pos);
     _ = win32.SetWindowPos(hwnd, win32.HWND_NOTOPMOST, clamped.x, clamped.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE | win32.SWP_ASYNCWINDOWPOS);
 }
 

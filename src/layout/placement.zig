@@ -121,7 +121,7 @@ pub const Layout = struct {
         const step_x = thumb_width + scalePixels(cfg.newThumbnailSpacing, scale);
         const step_y = thumb_height + scalePixels(cfg.newThumbnailSpacing, scale);
 
-        // Monitor bounds if one's configured, otherwise the real current virtual screen (not a guessed multi-monitor range; see clients/actions.zig's clampToVirtualScreen).
+        // Monitor bounds if one's configured, otherwise the real current virtual screen (not a guessed multi-monitor range; see clients/actions.zig's clampOntoScreen).
         const bounds = monitor_bounds orelse win32.RECT{
             .left = win32.GetSystemMetrics(win32.SM_XVIRTUALSCREEN),
             .top = win32.GetSystemMetrics(win32.SM_YVIRTUALSCREEN),

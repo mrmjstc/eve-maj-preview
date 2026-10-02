@@ -40,7 +40,7 @@ pub const AutoMoveVerifier = struct {
         if (config.autoMovePosition.verifyCount == 0) return;
         const entry = PendingAutoMove{
             .hwnd = hwnd,
-            .target = actions.clampToVirtualScreen(pos),
+            .target = actions.clampOntoScreen(pos),
             .last_move = win32.Ticks.now(),
             .checks_left = config.autoMovePosition.verifyCount,
         };
