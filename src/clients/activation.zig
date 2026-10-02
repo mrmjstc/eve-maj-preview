@@ -2,7 +2,6 @@
 const win32 = @import("../platform/win32.zig");
 const focus_grant = @import("../platform/focus_grant.zig");
 const painter_mod = @import("../painter.zig");
-const hotkeys = @import("../hotkeys/manager.zig");
 const animation = @import("animation.zig");
 const log = @import("../log.zig");
 
@@ -33,8 +32,6 @@ pub fn activate(source_hwnd: win32.HWND) void {
         thumbnail.last_click_time = win32.Ticks.now();
         // After focus is reconciled above, since that decides which notifications a click dismisses.
         _ = painter.dismissClickSuppressedNotifications(thumbnail);
-        // Even if focus hasn't landed yet (a restored client can lag), so rapid cycling moves on from this one.
-        hotkeys.syncFocusedCharacter(thumbnail.character_name, source_hwnd);
     }
 
     // Rendering now avoids hotkey lag; past a few, the rest wait for the timer so a rare bulk update can't block.
