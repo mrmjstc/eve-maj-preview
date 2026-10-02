@@ -479,16 +479,17 @@ pub const ChatlogMonitor = struct {
         };
     }
 
-    /// Ignores a repeat of the last system; `system` is borrowed and copied into the queued events.
+    /// Ignores an undock or Local change that repeats the last system, but never a jump; `system` is borrowed and copied into the queued events.
     fn handleSystemChange(self: *ChatlogMonitor, file: *LogFile, system: []const u8, source: lines.SystemSource) void {
         const system_hash = std.hash.Wyhash.hash(0, system);
-        if (file.last_system_hash == system_hash) return;
+        const is_jump = source == .jump or source == .conduit;
+        if (!is_jump and file.last_system_hash == system_hash) return;
         file.last_system_hash = system_hash;
 
         // Only jumps notify: undock and Local detection report the same arrival and would fire it twice.
         if (source == .jump) self.queueNotification(file.character_name, .{ .ntype = .SystemChange, .target = system });
         // 0: live lines arrive in order, so need no staleness check. Undocks and Local changes aren't travel.
-        self.queueSystemUpdate(file.character_name, system, 0, source == .jump or source == .conduit);
+        self.queueSystemUpdate(file.character_name, system, 0, is_jump);
         slog.info("System change ({s}): {s} -> {s}", .{ @tagName(source), file.character_name, system });
     }
 
