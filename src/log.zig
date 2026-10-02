@@ -148,7 +148,8 @@ fn ensureFileOpen() bool {
         error.PathAlreadyExists => {},
         else => return false,
     };
-    g_log_file = cwd.createFile(g_io, LOG_FILE_NAME, .{ .truncate = false }) catch return false;
+    // On Windows, length() fails without read access.
+    g_log_file = cwd.createFile(g_io, LOG_FILE_NAME, .{ .read = true, .truncate = false }) catch return false;
     return true;
 }
 
@@ -193,7 +194,7 @@ fn rotate() void {
         cwd.rename(LOG_FILE_NAME, cwd, LOG_FILE_NAME_OLD, g_io) catch break :blk false;
         break :blk true;
     };
-    g_log_file = cwd.createFile(g_io, LOG_FILE_NAME, .{ .truncate = renamed }) catch null;
+    g_log_file = cwd.createFile(g_io, LOG_FILE_NAME, .{ .read = true, .truncate = renamed }) catch null;
 }
 
 /// Rotates first if the file is full; the end is read, not tracked, since a second instance may have appended. Caller holds g_log_mutex.
