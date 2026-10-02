@@ -925,7 +925,7 @@ Pressing **hotkeySuspend** fires a `HotkeySuspend` notification on every client 
 
 **Modifier Combos**: Any global hotkey field, hotkey group key, per-character hotkey, or profile-switch hotkey can be prefixed with one or more modifiers, combined with `+`: `Ctrl`/`Control`, `Alt`, `Shift`, `Win`/`LWin`/`RWin` (e.g. `"Ctrl+Alt+F9"`).
 
-**Multiple Keys**: Any of those fields (including app and URL hotkeys) also takes an array of up to 2 keys, any of which triggers the action (e.g. `"forwardKey": ["F22", "XButton2"]`). A single key is saved as a plain string; duplicates are dropped and keys past the second are ignored.
+**Multiple Keys**: Any of those fields (including app and URL hotkeys) also takes an array of up to 4 keys, each with its own modifiers, any of which triggers the action (e.g. `"forwardKey": ["F22", "XButton2", "Ctrl+1"]`). A single key is saved as a plain string; duplicates are dropped, and keys past the fourth are dropped with a warning in the log.
 
 ### Global Settings (profiles\global.settings.json)
 
