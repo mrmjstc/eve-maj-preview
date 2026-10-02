@@ -388,9 +388,11 @@ pub const ChatlogMonitor = struct {
                 slog.debug("Log file scan paused at character {}/{}, continuing next loop", .{ self.rescan_index, names.len });
                 return;
             }
+            const name = names[self.rescan_index];
+            if (!self.wanted.contains(name)) continue;
             // addLogFile skips a file already followed.
-            if (self.rescan_changes.chatlog) self.followNewestLog(names[self.rescan_index], true);
-            if (self.rescan_changes.gamelog) self.followNewestLog(names[self.rescan_index], false);
+            if (self.rescan_changes.chatlog) self.followNewestLog(name, true);
+            if (self.rescan_changes.gamelog) self.followNewestLog(name, false);
         }
 
         self.finder.rearm(self.rescan_changes);
