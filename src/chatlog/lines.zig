@@ -155,14 +155,30 @@ pub fn lastSystemInChat(text: []const u8) ?SystemMatch {
     return null;
 }
 
-/// Whichever of jump and undock is later.
+/// Whichever of jump and undock is later, skipping a line cut off before its timestamp.
 pub fn lastSystemInGame(text: []const u8) ?SystemMatch {
-    const jump = std.mem.lastIndexOf(u8, text, JUMP);
-    const undock = std.mem.lastIndexOf(u8, text, UNDOCK);
-    const use_jump = if (jump) |j| (if (undock) |u| j > u else true) else false;
-    const pos = (if (use_jump) jump else undock) orelse return null;
-    const system = (if (use_jump) jumpDestination(text[pos..]) else undockDestination(text[pos..])) orelse return null;
-    return .{ .system = system, .event_ts = lineTimestamp(text, pos) };
+    var end = text.len;
+    while (true) {
+        const jump = std.mem.lastIndexOf(u8, text[0..end], JUMP);
+        const undock = std.mem.lastIndexOf(u8, text[0..end], UNDOCK);
+        const use_jump = if (jump) |j| (if (undock) |u| j > u else true) else false;
+        const pos = (if (use_jump) jump else undock) orelse return null;
+        const line_start = if (std.mem.lastIndexOfScalar(u8, text[0..pos], '\n')) |newline| newline + 1 else 0;
+        if (isTimestampPrefix(text[line_start..pos])) {
+            const system = (if (use_jump) jumpDestination(text[pos..]) else undockDestination(text[pos..])) orelse return null;
+            return .{ .system = system, .event_ts = lineTimestamp(text, pos) };
+        }
+        end = line_start;
+    }
+}
+
+/// "[ time ] ", optionally followed by EVE's "(None) " tag.
+fn isTimestampPrefix(prefix: []const u8) bool {
+    const stamped = std.mem.trimStart(u8, prefix, "\u{FEFF}");
+    if (!std.mem.startsWith(u8, stamped, "[ ")) return false;
+    const close = std.mem.indexOf(u8, stamped, " ] ") orelse return false;
+    const rest = stamped[close + " ] ".len ..];
+    return rest.len == 0 or std.mem.eql(u8, rest, "(None) ");
 }
 
 /// YYYYMMDDHHMMSS, or 0; looks only 64 bytes back, so a chunk cut mid-line can't borrow an earlier line's bracket.
@@ -276,6 +292,10 @@ test "lastSystemInGame picks whichever of jump and undock came last" {
     try testing.expectEqualStrings("Floseswin", found.system);
     try testing.expectEqual(@as(u64, 20260920232636), found.event_ts);
     try testing.expectEqualStrings("8-WYQZ", lastSystemInGame(text[0..std.mem.indexOfScalar(u8, text, '\n').?]).?.system);
+}
+
+test "lastSystemInGame skips a jump whose line was cut before its timestamp" {
+    try testing.expect(lastSystemInGame("6.09.05 01:16:08 ] (None) Jumping from C-J6MT to 8-WYQZ\r\n[ 2026.09.05 01:16:20 ] (combat) 25 from Some Rat - Hits\r\n") == null);
 }
 
 test "lastSystemInChat picks the latest Local change" {
