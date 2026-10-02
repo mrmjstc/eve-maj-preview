@@ -490,7 +490,18 @@ function Select-NotificationTypeKind {
 
 # Runs in its own child process via Start-Job, so line-building is duplicated from Add-GamelogEvent rather than shared.
 $script:BurstScriptBlock = {
-    param($Path, $Kind, $DurationSeconds, $IntervalSeconds)
+    param($Path, $Kind, $DurationSeconds, $IntervalSeconds, $Replay)
+    if ($Replay) {
+        $start = Get-Date
+        foreach ($entry in $Replay) {
+            $parts = $entry.Split([char]'|', 2)
+            $wait = ($start.AddSeconds([int]$parts[0]) - (Get-Date)).TotalMilliseconds
+            if ($wait -gt 0) { Start-Sleep -Milliseconds $wait }
+            $ts = (Get-Date).ToString('yyyy.MM.dd HH:mm:ss')
+            [System.IO.File]::AppendAllText($Path, "[ $ts ] $($parts[1])`r`n", [System.Text.Encoding]::UTF8)
+        }
+        return
+    }
     $end = (Get-Date).AddSeconds($DurationSeconds)
     while ((Get-Date) -lt $end) {
         $ts = (Get-Date).ToString('yyyy.MM.dd HH:mm:ss')
@@ -538,11 +549,51 @@ $script:BurstIntervals = @{
     'combatMixed' = 2
 }
 
+# 3 minutes of real mining (two lasers on 12s cycles, two critical successes) from a captured gamelog,
+# as "seconds from start|line after the timestamp"; the mining burst replays it on its original timing.
+$script:MiningReplay = @'
+0|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>110<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+0|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>110<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+12|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+12|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>112<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+24|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>114<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+24|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>112<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+36|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>114<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+36|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>112<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+48|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>112<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+48|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+60|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+60|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+72|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+72|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>114<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+84|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>112<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+84|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>112<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+96|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+96|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+108|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+108|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>110<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+120|(mining) <color=#fff0ff45>Critical mining success!<color=0x77ffffff><font size=10> You mined an additional <color=#fff0ff45><font size=12>160<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+120|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+120|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>114<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+132|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>110<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+132|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+144|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+144|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+156|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>110<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+156|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+168|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+168|(mining) <color=#fff0ff45>Critical mining success!<color=0x77ffffff><font size=10> You mined an additional <color=#fff0ff45><font size=12>187<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+168|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>114<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+180|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>110<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+180|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+'@ -split "`r?`n"
+
 function Start-EventBurst {
     param([string]$Path, [string]$Kind, [int]$DurationSeconds = 60)
 
     $interval = $script:BurstIntervals[$Kind]
-    $job = Start-Job -ScriptBlock $script:BurstScriptBlock -ArgumentList $Path, $Kind, $DurationSeconds, $interval
+    $replay = if ($Kind -eq 'mining') { $script:MiningReplay } else { $null }
+    $job = Start-Job -ScriptBlock $script:BurstScriptBlock -ArgumentList $Path, $Kind, $DurationSeconds, $interval, $replay
     return $job
 }
 
@@ -735,7 +786,11 @@ function Start-CharacterBurst {
         Remove-Job -Job $existing -Force -ErrorAction SilentlyContinue
     }
     $c.Jobs[$Kind] = Start-EventBurst -Path $c.Gamelog -Kind $Kind -DurationSeconds $DurationSeconds
-    Write-Host "$CharName started a ${DurationSeconds}s '$Kind' burst (events every $($script:BurstIntervals[$Kind])s)." -ForegroundColor Green
+    if ($Kind -eq 'mining') {
+        Write-Host "$CharName started replaying 3 minutes of real mining ($($script:MiningReplay.Count) yields)." -ForegroundColor Green
+    } else {
+        Write-Host "$CharName started a ${DurationSeconds}s '$Kind' burst (events every $($script:BurstIntervals[$Kind])s)." -ForegroundColor Green
+    }
 }
 
 # Fires several distinct NotificationTypes on one character ~1.5s apart (one from each Event Alerts category:
@@ -879,7 +934,7 @@ $menu = @'
 
   [s] status                 [n] start new character   [o] log OUT (title -> "EVE")
   [i] log back IN            [k] kill (crash) client    [b] bounty burst (60s)
-  [m] mining burst (60s)     [c] combat burst (60s)     [j] jump to system
+  [m] real mining (3 min)     [c] combat burst (60s)     [j] jump to system
   [r] random 3-system route  [e] fire event type...     [x] notification storm (multi-alert test)
   [l] move via Local only (pod/filament: no gamelog jump line)
   [t] travel mode test (group jump, leave one behind)
