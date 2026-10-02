@@ -20,8 +20,10 @@ pub const AutoMinimizeState = struct {
 pub const AutoMinimizer = struct {
     /// Last EVE client hwnd that held focus on each monitor; lets check's exemptLastActiveOnFocusLoss option spare one client per monitor once EVE itself has no window focused.
     last_focused_by_monitor: std.AutoHashMap(win32.HMONITOR, win32.HWND),
-    /// Set by the hotkey or tray toggle; never saved, so it lasts until the next profile reload.
-    enabled_override: ?bool = null,
+    /// From the hotkey or tray, never saved; dropped once the setting it overrode changes.
+    enabled_override: ?Override = null,
+
+    const Override = struct { enabled: bool, overridden_setting: bool };
 
     pub fn init(allocator: std.mem.Allocator) AutoMinimizer {
         return .{ .last_focused_by_monitor = std.AutoHashMap(win32.HMONITOR, win32.HWND).init(allocator) };
@@ -40,7 +42,14 @@ pub const AutoMinimizer = struct {
     }
 
     pub fn isEnabled(self: *const AutoMinimizer, painter: *const Painter) bool {
-        return self.enabled_override orelse painter.config.autoMinimize.enabled;
+        const setting = painter.config.autoMinimize.enabled;
+        const override = self.enabled_override orelse return setting;
+        return if (override.overridden_setting == setting) override.enabled else setting;
+    }
+
+    fn dropStaleOverride(self: *AutoMinimizer, painter: *const Painter) void {
+        const override = self.enabled_override orelse return;
+        if (override.overridden_setting != painter.config.autoMinimize.enabled) self.enabled_override = null;
     }
 
     pub fn recordFocus(self: *AutoMinimizer, source_hwnd: win32.HWND) void {
@@ -63,7 +72,7 @@ pub const AutoMinimizer = struct {
     }
 
     /// Call once per tick, right after focus is reconciled.
-    pub fn check(self: *const AutoMinimizer, painter: *Painter) void {
+    pub fn check(self: *AutoMinimizer, painter: *Painter) void {
         const now = win32.Ticks.now();
         // Refreshed even while disabled, so re-enabling doesn't count the disabled stretch as inactivity.
         for (painter.thumbnails.items) |*thumbnail| {
@@ -73,6 +82,7 @@ pub const AutoMinimizer = struct {
             }
         }
 
+        self.dropStaleOverride(painter);
         if (!self.isEnabled(painter)) return;
         if (painter.thumbnails.items.len == 0) return;
 
@@ -118,7 +128,7 @@ pub const AutoMinimizer = struct {
 /// Temporary, not saved to the profile (hotkey and tray action).
 pub fn toggle(painter: *Painter) void {
     const enabled = !painter.auto_minimize.isEnabled(painter);
-    painter.auto_minimize.enabled_override = enabled;
+    painter.auto_minimize.enabled_override = .{ .enabled = enabled, .overridden_setting = painter.config.autoMinimize.enabled };
     slog.info("Auto-minimize toggled: {s}", .{if (enabled) "enabled" else "disabled"});
     painter.notifyAll(.{ .ntype = .AutoMinimizeToggle, .state = if (enabled) .on else .off });
 }
