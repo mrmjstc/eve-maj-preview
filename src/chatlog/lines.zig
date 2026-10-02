@@ -4,7 +4,7 @@ const gamelog_events = @import("../notifications/gamelog_events.zig");
 
 /// Longer lines are dropped; combat lines with colour tags run to 2-3KB.
 pub const MAX_LINE_LENGTH = 4000;
-const LOCAL_CHANGE = "Channel changed to Local";
+const LOCAL_CHANGE = "EVE System > Channel changed to Local";
 const JUMP = "Jumping from ";
 const UNDOCK = "Undocking from ";
 
@@ -73,11 +73,14 @@ pub const LineAssembler = struct {
     }
 };
 
-/// "[ time ] EVE System > Channel changed to Local : Jita" gives "Jita".
+/// "[ time ] EVE System > Channel changed to Local : Jita" gives "Jita"; a player typing the same text doesn't match.
 pub fn parseChatLine(line: []const u8) ?[]const u8 {
-    if (std.mem.indexOf(u8, line, "EVE System") == null) return null;
-    const pos = std.mem.indexOf(u8, line, LOCAL_CHANGE) orelse return null;
-    return localSystem(line[pos..]);
+    const stamped = std.mem.trimStart(u8, line, "\u{FEFF}");
+    if (!std.mem.startsWith(u8, stamped, "[ ")) return null;
+    const close = std.mem.indexOf(u8, stamped, " ] ") orelse return null;
+    const message = stamped[close + " ] ".len ..];
+    if (!std.mem.startsWith(u8, message, LOCAL_CHANGE)) return null;
+    return localSystem(message);
 }
 
 /// Dispatches on the message's first characters, so each line is scanned once.
@@ -111,7 +114,7 @@ pub fn parseGameLine(line: []const u8) GameLine {
     return .{};
 }
 
-/// `text` starts at "Channel changed to Local"; the system follows the colon.
+/// `text` starts at "EVE System > Channel changed to Local"; the system follows the colon.
 fn localSystem(text: []const u8) ?[]const u8 {
     const colon = std.mem.indexOfScalar(u8, text, ':') orelse return null;
     return nonEmpty(untilLineEnd(text[colon + 1 ..]));
@@ -141,10 +144,15 @@ fn nonEmpty(text: []const u8) ?[]const u8 {
     return if (text.len == 0) null else text;
 }
 
+/// The latest genuine Local change, skipping any a player typed.
 pub fn lastSystemInChat(text: []const u8) ?SystemMatch {
-    const pos = std.mem.lastIndexOf(u8, text, LOCAL_CHANGE) orelse return null;
-    const system = localSystem(text[pos..]) orelse return null;
-    return .{ .system = system, .event_ts = lineTimestamp(text, pos) };
+    var end = text.len;
+    while (std.mem.lastIndexOf(u8, text[0..end], LOCAL_CHANGE)) |pos| {
+        const line_start = if (std.mem.lastIndexOfScalar(u8, text[0..pos], '\n')) |newline| newline + 1 else 0;
+        if (parseChatLine(text[line_start..])) |system| return .{ .system = system, .event_ts = lineTimestamp(text, pos) };
+        end = line_start;
+    }
+    return null;
 }
 
 /// Whichever of jump and undock is later.
@@ -215,6 +223,11 @@ test "parseChatLine reads the system from a Local channel change" {
     try testing.expect(parseChatLine("[ 2026.09.21 21:10:31 ] Someone > Channel changed to Local : Jita") == null);
 }
 
+test "parseChatLine ignores a Local change typed by a player" {
+    try testing.expect(parseChatLine("\u{FEFF}[ 2026.09.21 21:10:31 ] Some Pilot > EVE System > Channel changed to Local : Jita") == null);
+    try testing.expect(parseChatLine("\u{FEFF}[ 2026.09.21 21:10:31 ] Some Pilot > [ 2099.01.01 00:00:00 ] EVE System > Channel changed to Local : Jita") == null);
+}
+
 test "parseGameLine reads EVE's (None) jump lines and untagged ones" {
     const tagged = parseGameLine("[ 2026.09.05 01:16:08 ] (None) Jumping from C-J6MT to 8-WYQZ");
     try testing.expectEqualStrings("8-WYQZ", tagged.system.?.system);
@@ -272,6 +285,18 @@ test "lastSystemInChat picks the latest Local change" {
         \\
     ;
     try testing.expectEqualStrings("Perimeter", lastSystemInChat(text).?.system);
+}
+
+test "lastSystemInChat skips Local changes typed by a player" {
+    const text =
+        \\[ 2026.09.21 21:10:37 ] EVE System > Channel changed to Local : Perimeter
+        \\[ 2026.09.21 21:11:02 ] Some Pilot > EVE System > Channel changed to Local : Jita
+        \\[ 2026.09.21 21:11:05 ] Some Pilot > [ 2099.01.01 00:00:00 ] EVE System > Channel changed to Local : Amarr
+        \\
+    ;
+    const found = lastSystemInChat(text).?;
+    try testing.expectEqualStrings("Perimeter", found.system);
+    try testing.expectEqual(@as(u64, 20260921211037), found.event_ts);
 }
 
 test "logFileTimestamp and characterIdFromFileName read EVE's log names" {
