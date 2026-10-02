@@ -25,7 +25,7 @@ pub const AutoColors = struct {
     };
 
     entries: std.ArrayList(Entry) = .empty,
-    /// Set whenever an entry is added or evicted; the owner clears it after persisting.
+    /// Set whenever an entry is added, evicted or reordered; the owner clears it after persisting.
     dirty: bool = false,
 
     pub fn deinit(self: *AutoColors, allocator: std.mem.Allocator) void {
@@ -44,6 +44,7 @@ pub const AutoColors = struct {
     pub fn colorFor(self: *AutoColors, allocator: std.mem.Allocator, name: []const u8, avoid: []const u32) u32 {
         for (self.entries.items, 0..) |entry, i| {
             if (!std.ascii.eqlIgnoreCase(entry.name, name)) continue;
+            if (i + 1 < self.entries.items.len) self.dirty = true;
             const seen = self.entries.orderedRemove(i);
             self.entries.appendAssumeCapacity(seen);
             return seen.color;
@@ -242,6 +243,17 @@ test "AutoColors keeps a name's color and marks only new assignments dirty" {
     try testing.expectEqual(assigned, colors.colorFor(testing.allocator, "SOME PILOT", &.{}));
     try testing.expect(!colors.dirty);
     try testing.expect(colors.colorFor(testing.allocator, "Other Pilot", &.{}) != assigned);
+}
+
+test "AutoColors marks the store dirty when a lookup changes the recency order" {
+    var colors: AutoColors = .{};
+    defer colors.deinit(testing.allocator);
+
+    try colors.put(testing.allocator, "Older Pilot", 0xFF123456);
+    try colors.put(testing.allocator, "Newer Pilot", 0xFF654321);
+    _ = colors.colorFor(testing.allocator, "Older Pilot", &.{});
+    try testing.expect(colors.dirty);
+    try testing.expectEqualStrings("Older Pilot", colors.entries.items[1].name);
 }
 
 test "AutoColors.put restores a color without marking the store dirty" {
