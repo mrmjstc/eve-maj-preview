@@ -58,13 +58,13 @@ export function populateHotkeyGroups() {
                 <div class="detail-field binding-paired">
                     <label for="hkgroup_${index}_backward">${t('dynamic.hotkeyGroup.cycleKeysLabel')}</label>
                     <div class="binding-control">
-                        <div class="field-row"><span class="binding-dir" aria-hidden="true">←</span>${renderHotkeyInputHtml(`hkgroup_${index}_backward`, '', t('dynamic.hotkeyGroup.backwardPlaceholder'), ` aria-label="${escapeHtml(t('dynamic.hotkeyGroup.backwardKeyLabel'))}" data-path="hotkeyGroups.${index}.backwardKey"`)}</div>
-                        <div class="field-row"><span class="binding-dir" aria-hidden="true">→</span>${renderHotkeyInputHtml(`hkgroup_${index}_forward`, '', t('dynamic.hotkeyGroup.forwardPlaceholder'), ` aria-label="${escapeHtml(t('dynamic.hotkeyGroup.forwardKeyLabel'))}" data-path="hotkeyGroups.${index}.forwardKey"`)}</div>
+                        <div class="field-row"><span class="binding-dir" aria-hidden="true">←</span>${renderHotkeyInputHtml(`hkgroup_${index}_backward`, t('dynamic.hotkeyGroup.backwardPlaceholder'), { path: `hotkeyGroups.${index}.backwardKey`, ariaLabel: t('dynamic.hotkeyGroup.backwardKeyLabel') })}</div>
+                        <div class="field-row"><span class="binding-dir" aria-hidden="true">→</span>${renderHotkeyInputHtml(`hkgroup_${index}_forward`, t('dynamic.hotkeyGroup.forwardPlaceholder'), { path: `hotkeyGroups.${index}.forwardKey`, ariaLabel: t('dynamic.hotkeyGroup.forwardKeyLabel') })}</div>
                     </div>
                 </div>
                 <div class="detail-field">
                     <label for="hkgroup_${index}_assign">${t('dynamic.hotkeyGroup.assignKeyLabel')}</label>
-                    <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_assign`, '', t('dynamic.hotkeyGroup.assignPlaceholder'), ` data-path="hotkeyGroups.${index}.assignKey"`)}</div>
+                    <div class="field-row">${renderHotkeyInputHtml(`hkgroup_${index}_assign`, t('dynamic.hotkeyGroup.assignPlaceholder'), { path: `hotkeyGroups.${index}.assignKey` })}</div>
                     <p class="hint hint-extra">${t('dynamic.hotkeyGroup.assignKeyHint')}</p>
                 </div>
                 <div class="detail-field detail-field-top">

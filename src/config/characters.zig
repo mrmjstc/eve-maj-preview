@@ -2,8 +2,11 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const wire = @import("wire.zig");
+const key_list = @import("key_list.zig");
 const ranges_mod = @import("ranges.zig");
 const ThumbnailConfig = @import("thumbnail.zig").ThumbnailConfig;
+
+const KeyList = key_list.KeyList;
 
 pub const Position = struct {
     x: i32,
@@ -45,7 +48,7 @@ pub const CharacterConfig = struct {
     nameColor: ?u32 = null,
     thumbnailSize: ?CharacterThumbnailSizeConfig = null,
     displayName: ?[]const u8 = null,
-    hotkey: ?u32 = null,
+    hotkey: KeyList = .empty,
     excludeFromMinimize: bool = false,
     excludeFromCloseAll: bool = false,
     excludeFromAutoMove: bool = false,

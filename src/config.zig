@@ -1,6 +1,7 @@
 //! Every setting in a profile (Config), and the one module the rest of the app imports settings types and profile helpers from.
 const std = @import("std");
 const wire = @import("config/wire.zig");
+const key_list = @import("config/key_list.zig");
 const ranges = @import("config/ranges.zig");
 const files = @import("config/files.zig");
 const global = @import("config/global.zig");
@@ -54,6 +55,7 @@ pub const PROFILE_FORMAT_VERSION: u32 = 2;
 pub const clampValue = ranges.clampValue;
 
 pub const Argb = wire.Argb;
+pub const KeyList = key_list.KeyList;
 pub const parseHexColor = wire.parseHexColor;
 
 pub const OrePriceConfig = global.OrePriceConfig;

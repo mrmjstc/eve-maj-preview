@@ -5,9 +5,11 @@ const draft = @import("draft.zig");
 const eve_x = @import("eve_x.zig");
 const eve_apm = @import("eve_apm.zig");
 const vk = @import("../../platform/virtual_keys.zig");
+const key_list = @import("../key_list.zig");
 
 const Value = std.json.Value;
 const Draft = draft.Draft;
+const KeyList = key_list.KeyList;
 const Section = draft.Section;
 
 /// .NET's named colours, the CSS3/X11 set.
@@ -127,12 +129,17 @@ fn boundKeys(arena: std.mem.Allocator, list: []const Value) ![]const []const u8 
     return out.items;
 }
 
-/// The first key that converts; EVE-O Preview can bind several.
-fn firstHotkey(keys: []const []const u8) ?u32 {
-    for (keys) |raw| {
-        if (hotkey(raw)) |combined| return combined;
+/// Every key that converts, noting each one that doesn't; EVE-O Preview can bind several.
+fn groupKeys(d: *Draft, bound: []const []const u8, group_name: []const u8, failed_note: []const u8) !KeyList {
+    var keys: KeyList = .empty;
+    for (bound) |raw| {
+        const combined = hotkey(raw) orelse {
+            try d.note(failed_note, &.{ .{ .name = "name", .value = group_name }, .{ .name = "key", .value = raw } });
+            continue;
+        };
+        _ = keys.append(combined);
     }
-    return null;
+    return keys;
 }
 
 /// In the order EVE-O Preview cycles them, its ClientsOrder index.
@@ -339,21 +346,17 @@ fn hotkeyGroups(d: *Draft, root: Value, cycle_group_name: []const u8) !void {
         if (members.len == 0) continue;
         const forward_bound = try boundKeys(d.arena, values.arrayAt(root, try std.fmt.allocPrint(d.arena, "CycleGroup{d}ForwardHotkeys", .{n})));
         const backward_bound = try boundKeys(d.arena, values.arrayAt(root, try std.fmt.allocPrint(d.arena, "CycleGroup{d}BackwardHotkeys", .{n})));
-        const forward = firstHotkey(forward_bound);
-        const backward = firstHotkey(backward_bound);
         const name = try std.mem.replaceOwned(u8, d.arena, cycle_group_name, "{n}", try d.format(n));
+        const forward = try groupKeys(d, forward_bound, name, "dynamic.import.hotkeyGroupForwardKeyFailedNote");
+        const backward = try groupKeys(d, backward_bound, name, "dynamic.import.hotkeyGroupBackwardKeyFailedNote");
 
         var list = std.json.Array.init(d.arena);
         for (members) |member| try list.append(.{ .string = member });
         const group = try d.item("hotkeyGroups", "name", name);
         try d.put(group, "characters", .{ .array = list });
-        try d.put(group, "forwardKey", if (forward) |k| try values.keyValue(d.arena, k) else .null);
-        try d.put(group, "backwardKey", if (backward) |k| try values.keyValue(d.arena, k) else .null);
+        try d.put(group, "forwardKey", try values.keysValue(d.arena, forward));
+        try d.put(group, "backwardKey", try values.keysValue(d.arena, backward));
         imported += 1;
-
-        if (forward_bound.len > 0 and forward == null) try d.note("dynamic.import.hotkeyGroupForwardKeyFailedNote", &.{ .{ .name = "name", .value = name }, .{ .name = "key", .value = forward_bound[0] } });
-        if (backward_bound.len > 0 and backward == null) try d.note("dynamic.import.hotkeyGroupBackwardKeyFailedNote", &.{ .{ .name = "name", .value = name }, .{ .name = "key", .value = backward_bound[0] } });
-        if (forward_bound.len > 1 or backward_bound.len > 1) try d.note("dynamic.import.eveo.hotkeyGroupMultipleBoundNote", &.{.{ .name = "name", .value = name }});
     }
     try d.notes.insert(d.arena, first_note, try d.countText("dynamic.import.hotkeyGroupsImportedNote", imported));
 }

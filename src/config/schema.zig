@@ -2,15 +2,16 @@
 const std = @import("std");
 const wire = @import("wire.zig");
 const patch = @import("patch.zig");
+const key_list = @import("key_list.zig");
 const profiles = @import("profiles.zig");
 const config = @import("../config.zig");
 const notification = @import("../notifications/notification.zig");
 const vk = @import("../platform/virtual_keys.zig");
 
-/// `{"fields": {path: spec}, "notificationTypes": [...], "keys": [{vk, name}], "modifiers": [{flag, name}], "profileNameMaxLength": n}`.
+/// `{"fields": {path: spec}, "notificationTypes": [...], "keys": [{vk, name}], "modifiers": [{flag, name}], "maxKeys": n, "profileNameMaxLength": n}`.
 /// A path is dotted field names, with `*` for a list item or map child and the global settings under `global.`.
 /// A spec is `{kind, nullable?, default?, min?, max?, zeroMeansDefault?, options?, enumType?}`, where kind is one of
-/// bool, int, float, string, enum, color, key (leaves), or section, list, map (holding the paths under them).
+/// bool, int, float, string, enum, color, keys (leaves), or section, list, map (holding the paths under them).
 pub fn write(jw: *std.json.Stringify) !void {
     @setEvalBranchQuota(1_000_000);
     try jw.beginObject();
@@ -25,6 +26,8 @@ pub fn write(jw: *std.json.Stringify) !void {
     try jw.write(vk.KEY_NAMES);
     try jw.objectField("modifiers");
     try jw.write(vk.MODIFIER_NAMES);
+    try jw.objectField("maxKeys");
+    try jw.write(key_list.MAX_KEYS);
     try jw.objectField("profileNameMaxLength");
     try jw.write(profiles.MAX_NAME_LEN);
     try jw.endObject();
@@ -52,6 +55,7 @@ fn writeField(jw: *std.json.Stringify, comptime R: type, comptime f: std.builtin
         if (comptime @typeInfo(Item) == .@"struct") try writeFields(jw, Item, path ++ ".*.");
         return;
     }
+    if (comptime F == key_list.KeyList) return writeLeaf(jw, R, f, path);
     if (comptime @typeInfo(F) == .@"struct") {
         if (comptime patch.isKeyedMap(F)) {
             try jw.objectField(path);
@@ -112,7 +116,7 @@ fn kindOf(comptime T: type, comptime name: []const u8) []const u8 {
     if (T == bool) return "bool";
     if (T == []const u8) return "string";
     if (T == u32 and wire.isColorField(name)) return "color";
-    if (T == u32 and wire.isKeyField(name)) return "key";
+    if (T == key_list.KeyList) return "keys";
     return switch (@typeInfo(T)) {
         .int => "int",
         .float => "float",

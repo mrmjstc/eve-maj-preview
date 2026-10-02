@@ -334,7 +334,7 @@ fn snapping(d: *Draft, s: Source) !void {
     const raw = suspendHotkey(s);
     if (nonEmpty(raw)) {
         if (values.ahkHotkey(raw)) |combined| {
-            try d.setKey("hotkeys.hotkeySuspend", combined);
+            try d.setKeys("hotkeys.hotkeySuspend", .one(combined));
         } else {
             try d.note("dynamic.import.evex.suspendHotkeyFailedNote", &.{.{ .name = "key", .value = raw.? }});
         }
@@ -354,7 +354,7 @@ fn actionHotkey(d: *Draft, raw: ?Value, path: []const u8, label: []const u8) !vo
     const v = raw orelse return;
     if (v != .string or !nonEmpty(v.string)) return;
     if (values.ahkHotkey(v.string)) |combined| {
-        try d.setKey(path, combined);
+        try d.setKeys(path, .one(combined));
     } else {
         try d.note("dynamic.import.apm.globalHotkeyUnsupportedNote", &.{.{ .name = "label", .value = label, .translate = true }});
     }

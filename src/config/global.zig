@@ -1,10 +1,12 @@
 //! Settings shared by every profile (`profiles/global.settings.json`).
 const std = @import("std");
 const wire = @import("wire.zig");
+const key_list = @import("key_list.zig");
 const files = @import("files.zig");
 const ranges_mod = @import("ranges.zig");
 const log = @import("../log.zig");
 
+const KeyList = key_list.KeyList;
 const slog = log.scoped("config");
 
 /// Fallback prices are a Jita snapshot and will drift - re-fetch via "Fetch Prices" for current numbers.
@@ -124,7 +126,7 @@ pub const OrePriceConfig = struct {
 
 /// Binding of a hotkey to a specific target profile ("quick switch")
 pub const ProfileSwitchHotkeyConfig = struct {
-    hotkey: ?u32 = null,
+    hotkey: KeyList = .empty,
     targetProfile: []const u8 = "",
 
     pub const Wire = wire.Wire(ProfileSwitchHotkeyConfig);
@@ -132,7 +134,7 @@ pub const ProfileSwitchHotkeyConfig = struct {
 
 /// Binding of a hotkey to an external application, matched by executable name at press time (mirrors AutoHotkey's ahk_exe).
 pub const AppHotkeyConfig = struct {
-    hotkey: ?u32 = null,
+    hotkey: KeyList = .empty,
     executableName: []const u8 = "",
 
     pub const Wire = wire.Wire(AppHotkeyConfig);
@@ -140,7 +142,7 @@ pub const AppHotkeyConfig = struct {
 
 /// Binding of a hotkey to a URL, opened via ShellExecute (or, with uploadClipboard, POSTed as a paste upload first - see paste_upload.zig).
 pub const UrlHotkeyConfig = struct {
-    hotkey: ?u32 = null,
+    hotkey: KeyList = .empty,
     url: []const u8 = "",
     uploadClipboard: bool = false,
 
@@ -151,14 +153,14 @@ pub const GlobalConfig = struct {
     allocator: std.mem.Allocator,
     lastUsedProfile: []const u8 = files.DEFAULT_PROFILE,
     logLevel: log.LogLevel = .err,
-    hotkeyNextProfile: ?u32 = null,
-    hotkeyPreviousProfile: ?u32 = null,
-    hotkeyCycleAllClientsForward: ?u32 = null,
-    hotkeyCycleAllClientsBackward: ?u32 = null,
+    hotkeyNextProfile: KeyList = .empty,
+    hotkeyPreviousProfile: KeyList = .empty,
+    hotkeyCycleAllClientsForward: KeyList = .empty,
+    hotkeyCycleAllClientsBackward: KeyList = .empty,
     cycleAllClientsRespectExclusions: bool = false,
-    hotkeyCycleNotLoggedInForward: ?u32 = null,
-    hotkeyCycleNotLoggedInBackward: ?u32 = null,
-    hotkeyReturnToLastApp: ?u32 = null,
+    hotkeyCycleNotLoggedInForward: KeyList = .empty,
+    hotkeyCycleNotLoggedInBackward: KeyList = .empty,
+    hotkeyReturnToLastApp: KeyList = .empty,
     profileSwitchHotkeys: std.ArrayList(ProfileSwitchHotkeyConfig) = .empty,
     appHotkeys: std.ArrayList(AppHotkeyConfig) = .empty,
     urlHotkeys: std.ArrayList(UrlHotkeyConfig) = .empty,

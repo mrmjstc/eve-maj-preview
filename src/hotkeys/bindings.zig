@@ -1,4 +1,4 @@
-//! Hotkey IDs, the actions they trigger, and the table of single-key global actions.
+//! Hotkey IDs, the actions they trigger, and the table of global actions.
 const std = @import("std");
 const protocol = @import("../protocol.zig");
 
@@ -85,11 +85,11 @@ pub const HotkeyAction = union(enum) {
 
 pub const ActionTag = std.meta.Tag(HotkeyAction);
 
-/// A single-key global action: which config field binds it, and the protocol URL action that also triggers it.
+/// A global action: which config field binds it, and the protocol URL action that also triggers it.
 pub const GlobalBinding = struct {
     action: ActionTag,
     protocol: protocol.GlobalAction,
-    /// Name of the ?u32 key field, on GlobalConfig when `in_global_settings`, else on the profile's Config.hotkeys.
+    /// Name of the KeyList field, on GlobalConfig when `in_global_settings`, else on the profile's Config.hotkeys.
     field: []const u8,
     in_global_settings: bool = false,
     description: []const u8,

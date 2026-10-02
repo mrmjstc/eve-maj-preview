@@ -3,8 +3,10 @@ const std = @import("std");
 const config = @import("../../config.zig");
 const patch = @import("../patch.zig");
 const values = @import("values.zig");
+const key_list = @import("../key_list.zig");
 
 const Value = std.json.Value;
+const KeyList = key_list.KeyList;
 const ObjectMap = std.json.ObjectMap;
 const Config = config.Config;
 
@@ -98,8 +100,8 @@ pub const Draft = struct {
         if (color) |c| try self.set(path, try values.colorValue(self.arena, c));
     }
 
-    pub fn setKey(self: *Draft, path: []const u8, combined: ?u32) !void {
-        if (combined) |k| try self.set(path, try values.keyValue(self.arena, k));
+    pub fn setKeys(self: *Draft, path: []const u8, keys: KeyList) !void {
+        if (!keys.isEmpty()) try self.set(path, try values.keysValue(self.arena, keys));
     }
 
     /// Older tools had one overlay font, which here each overlay text has its own of.

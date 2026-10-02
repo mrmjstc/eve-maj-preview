@@ -3,7 +3,7 @@ import { app } from './state.js';
 import { applyDocToForm, applySchemaToInputs, readFormToDoc } from './binding.js';
 import { markAsChanged } from './changes.js';
 import { escapeHtml, logError, rpc } from './core.js';
-import { renderHotkeyInputHtml, updateHotkeyConflictHighlights, vkHexToFriendly } from './hotkeys.js';
+import { renderHotkeyInputHtml, savedKeysToText, updateHotkeyConflictHighlights } from './hotkeys.js';
 import { t } from './i18n.js';
 import { showStatus } from './layout.js';
 import { flushEdits } from './session.js';
@@ -123,7 +123,7 @@ export function populateCharacters() {
     const rosterRows = chars.map((char, index) => {
         // Portraits hidden for now - see .character-portrait usage below.
         const portraitUrl = characterPortraitUrl(char.name);
-        const hotkeyDisplay = char.hotkey ? vkHexToFriendly(char.hotkey) : '';
+        const hotkeyDisplay = savedKeysToText(char.hotkey);
         return `
             <div class="roster-row ${index === selectedCharacterIndex ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${index === selectedCharacterIndex}" data-index="${index}" onclick="selectCharacter(${index})">
                 <span class="drag-index-chip character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(index + 1).padStart(2, '0')}</span>
@@ -149,7 +149,7 @@ export function populateCharacters() {
                 </div>
                 <div class="detail-field">
                     <label for="char_${index}_hotkey">${t('common.hotkeyLabel')}</label>
-                    <div class="field-row">${renderHotkeyInputHtml(`char_${index}_hotkey`, '', t('dynamic.character.hotkeyPlaceholder'), ` data-path="characters.${index}.hotkey"`)}</div>
+                    <div class="field-row">${renderHotkeyInputHtml(`char_${index}_hotkey`, t('dynamic.character.hotkeyPlaceholder'), { path: `characters.${index}.hotkey` })}</div>
                 </div>
                 <div class="detail-field">
                     <label for="char_${index}_width">${t('dynamic.character.thumbnailSizeHeading')}</label>

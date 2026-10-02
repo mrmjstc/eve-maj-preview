@@ -1,23 +1,26 @@
-//! The profile's hotkeys: single-key actions and the cycling groups.
+//! The profile's hotkeys: global actions and the cycling groups.
 const std = @import("std");
 const wire = @import("wire.zig");
+const key_list = @import("key_list.zig");
+
+const KeyList = key_list.KeyList;
 
 pub const HotkeysConfig = struct {
     requireEveFocus: bool = false,
     resetGroupIndexOnNonGroupFocus: bool = false,
     allowHotkeyAutoRepeat: bool = false,
     exactHotkeyModifiers: bool = false,
-    hotkeyMinimizeAll: ?u32 = null,
-    hotkeyCloseAll: ?u32 = null,
-    hotkeyToggleVisibility: ?u32 = null,
-    hotkeyToggleAutoMinimize: ?u32 = null,
-    hotkeyToggleExclusion: ?u32 = null,
-    hotkeyNextExcluded: ?u32 = null,
-    hotkeyPreviousExcluded: ?u32 = null,
-    hotkeySuspend: ?u32 = null,
-    hotkeyCycleNotified: ?u32 = null,
-    hotkeyPreviousNotified: ?u32 = null,
-    hotkeyMoveToSavedPositions: ?u32 = null,
+    hotkeyMinimizeAll: KeyList = .empty,
+    hotkeyCloseAll: KeyList = .empty,
+    hotkeyToggleVisibility: KeyList = .empty,
+    hotkeyToggleAutoMinimize: KeyList = .empty,
+    hotkeyToggleExclusion: KeyList = .empty,
+    hotkeyNextExcluded: KeyList = .empty,
+    hotkeyPreviousExcluded: KeyList = .empty,
+    hotkeySuspend: KeyList = .empty,
+    hotkeyCycleNotified: KeyList = .empty,
+    hotkeyPreviousNotified: KeyList = .empty,
+    hotkeyMoveToSavedPositions: KeyList = .empty,
 
     pub const Wire = wire.Wire(HotkeysConfig);
 };
@@ -26,10 +29,10 @@ pub const HotkeysConfig = struct {
 pub const HotkeyGroupConfig = struct {
     name: []const u8 = "",
     characters: std.ArrayList([]const u8) = .empty,
-    forwardKey: ?u32 = null,
-    backwardKey: ?u32 = null,
+    forwardKey: KeyList = .empty,
+    backwardKey: KeyList = .empty,
     /// Hover a thumbnail and press this to toggle that character in or out of the group.
-    assignKey: ?u32 = null,
+    assignKey: KeyList = .empty,
     /// When true, membership is runtime-only: assign-key edits are never written back to the profile.
     temporaryMembership: bool = false,
     /// Draws the group's name on its members' thumbnails.

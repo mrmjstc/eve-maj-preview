@@ -6,13 +6,13 @@
 //   data-inherit        a path whose value this one shows while unset, until the user moves it; setting it back to that value unsets it again
 //   data-null-checkbox  the id of a checkbox that must be ticked for this value to be set
 //   data-format         "csv" for a list of strings typed comma-separated, "items" for one on a container of [data-item] inputs,
-//                       "path" for a file shown by its name with the full path in data-full-path
+//                       "path" for a file shown by its name with the full path in data-full-path, "keys" for a hotkey field's combos (see hotkeys.js)
 // A nullable section whose inputs are all empty is saved unset. Rebuilt rows name their schema entry in data-range for bounds only.
 import { app } from './state.js';
 import { syncSwatchHexInput } from './color_picker.js';
 import { htmlColorToZig, zigColorAlpha, zigColorToHtml, zigColorWithAlpha } from './colors.js';
 import { rpc } from './core.js';
-import { hotkeyToSaved, vkHexToFriendly } from './hotkeys.js';
+import { keyListValues, keysToSaved, savedKeysToText } from './hotkeys.js';
 import { t } from './i18n.js';
 
 const schemaKeys = new Map();
@@ -148,8 +148,8 @@ function showValue(el) {
         el.dataset.fullPath = value || '';
         el.value = baseName(value);
         el.title = value || '';
-    } else if (spec.kind === 'key') {
-        el.value = vkHexToFriendly(value) || '';
+    } else if (format === 'keys') {
+        el.value = savedKeysToText(value);
     } else if (spec.kind === 'color' && el.dataset.part === 'alpha') {
         setInputValue(el, toDisplay(zigColorAlpha(value), '%'));
     } else if (spec.kind === 'color') {
@@ -173,11 +173,10 @@ function readValue(el) {
     }
     if (format === 'csv') return el.value.split(',').map(part => part.trim()).filter(Boolean);
     if (format === 'path') return el.dataset.fullPath || null;
+    if (format === 'keys') return keysToSaved(keyListValues(el));
     if (el.type === 'checkbox') return el.checked;
 
     switch (spec.kind) {
-        case 'key':
-            return hotkeyToSaved(el.value);
         case 'color': {
             if (spec.nullable && el.dataset.cleared === 'true') return null;
             const alphaInput = document.querySelector(`[data-path="${path}"][data-part="alpha"]`);

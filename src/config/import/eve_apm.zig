@@ -4,8 +4,10 @@ const values = @import("values.zig");
 const draft = @import("draft.zig");
 const eve_x = @import("eve_x.zig");
 const vk = @import("../../platform/virtual_keys.zig");
+const key_list = @import("../key_list.zig");
 
 const Draft = draft.Draft;
+const KeyList = key_list.KeyList;
 const Section = draft.Section;
 
 /// EVE-APM's OverlayPosition, and EVE-O's ZoomAnchor, list the anchors in TextPosition's order.
@@ -428,21 +430,22 @@ fn hotkeyGroups(d: *Draft, ini: *const Ini) !void {
     try d.notes.insert(d.arena, first_note, try d.countText("dynamic.import.hotkeyGroupsImportedNote", imported));
 }
 
-/// EVE-APM can bind several keys to one action; one is kept here.
+/// EVE-APM can bind several keys to one action.
 fn actionHotkey(d: *Draft, ini: *const Ini, section_name: []const u8, key: []const u8, path: []const u8, label: []const u8) !void {
     const raw = unquote(ini.get(section_name, key)) orelse return;
-    var bound: std.ArrayList([]const u8) = .empty;
+    var keys: KeyList = .empty;
+    var has_unsupported = false;
     var tuples = std.mem.splitScalar(u8, raw, '|');
     while (tuples.next()) |tuple| {
-        if (isBound(tuple)) try bound.append(d.arena, tuple);
+        if (!isBound(tuple)) continue;
+        if (tupleHotkey(tuple)) |combined| {
+            _ = keys.append(combined);
+        } else {
+            has_unsupported = true;
+        }
     }
-    if (bound.items.len == 0) return;
-    if (tupleHotkey(bound.items[0])) |combined| {
-        try d.setKey(path, combined);
-    } else {
-        try d.note("dynamic.import.apm.globalHotkeyUnsupportedNote", &.{.{ .name = "label", .value = label, .translate = true }});
-    }
-    if (bound.items.len > 1) try d.note("dynamic.import.apm.globalHotkeyMultipleBoundNote", &.{ .{ .name = "label", .value = label, .translate = true }, .{ .name = "n", .value = try d.format(bound.items.len) } });
+    try d.setKeys(path, keys);
+    if (has_unsupported) try d.note("dynamic.import.apm.globalHotkeyUnsupportedNote", &.{.{ .name = "label", .value = label, .translate = true }});
 }
 
 fn globalHotkeys(d: *Draft, ini: *const Ini) !void {

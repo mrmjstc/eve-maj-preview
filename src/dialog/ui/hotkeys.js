@@ -55,16 +55,58 @@ export function vkHexToFriendly(text) {
 }
 
 // The field's value in the spelling the app saves ("0x0278"), so it compares equal to what the app sends back.
-export function hotkeyToSaved(text) {
+function hotkeyToSaved(text) {
     const combined = parseHotkey(text);
     if (combined == null) return text ? text.trim() || null : null;
     return '0x' + combined.toString(16).toUpperCase().padStart(2, '0');
 }
 
-// The .keycap-render span draws the bound combo as key caps over the input, which keeps its own text transparent;
+// A binding's combos as the app sends them (null, one key string, or an array) as an array.
+export function toKeyArray(value) {
+    if (value == null || value === '') return [];
+    return Array.isArray(value) ? value : [value];
+}
+
+// The combos in the shape the app saves them (see KeyListWire in key_list.zig): null, one string, or an array.
+export function keysToSaved(texts) {
+    const saved = [...new Set(texts.map(hotkeyToSaved).filter(Boolean))];
+    return saved.length === 0 ? null : saved.length === 1 ? saved[0] : saved;
+}
+
+function isBoundText(value) {
+    return value.length > 0 && value !== t('common.hotkeyRecordingPrompt') && value !== t('common.hotkeyWaitingForInput');
+}
+
+function maxKeys() {
+    return app.schema?.maxKeys ?? 1;
+}
+
+// No combo contains a space, so ", " can't be confused with the "," key itself (e.g. "Ctrl+,, F1").
+const KEY_SEPARATOR = ', ';
+
+// A field's combos, e.g. "Ctrl+1, 1" -> ["Ctrl+1", "1"]; none while it's empty or recording.
+export function keyListValues(input) {
+    const text = (input?.value || '').trim();
+    if (!isBoundText(text)) return [];
+    return text.split(/,\s+/).map(combo => combo.trim()).filter(Boolean);
+}
+
+export function keysToText(values) {
+    return values.join(KEY_SEPARATOR);
+}
+
+// A binding's combos as the app sends them, in the text a field shows, e.g. "Ctrl+1, 1".
+export function savedKeysToText(value) {
+    return keysToText(toKeyArray(value).map(vkHexToFriendly));
+}
+
+// The .keycap-render span draws the bound combos as key caps over the input, which keeps its own text transparent;
 // refreshHotkeyKeycaps() fills it, and CSS uncovers the raw input again while it's recording or being typed into.
-export function renderHotkeyInputHtml(fieldId, value, placeholder, extraAttributes = '') {
-    return `<span class="keycap-field"><input type="text" id="${fieldId}" class="hotkey-input" value="${value}" placeholder="${t('common.hotkeyClickToBind')}" title="${placeholder}"${extraAttributes} onclick="if (!this.classList.contains('manual-editing')) recordHotkey('${fieldId}')" readonly><span class="keycap-render" aria-hidden="true"></span></span>
+// With a path, binding.js reads and writes the field's combos as one setting.
+export function renderHotkeyInputHtml(fieldId, placeholder, { path = '', ariaLabel = '', value = '' } = {}) {
+    const pathAttributes = path ? ` data-path="${path}" data-format="keys"` : '';
+    const aria = ariaLabel ? ` aria-label="${escapeHtml(ariaLabel)}"` : '';
+    return `<span class="keycap-field"><input type="text" id="${fieldId}" class="hotkey-input" value="${escapeHtml(value)}" placeholder="${t('common.hotkeyClickToBind')}" title="${escapeHtml(placeholder)}"${aria}${pathAttributes} onclick="if (!this.classList.contains('manual-editing')) recordHotkey('${fieldId}')" readonly><span class="keycap-render" aria-hidden="true"></span></span>
 <button type="button" class="button-icon button-icon-danger" onclick="clearHotkey('${fieldId}')" title="${t('common.hotkeyClear')}">×</button>
 <button type="button" class="hotkey-edit-btn" onclick="toggleManualHotkeyEdit('${fieldId}')" title="${t('common.hotkeyTypeDirectly')}">✎</button>`;
 }
@@ -86,14 +128,11 @@ function refreshHotkeyKeycaps() {
         const render = input.parentElement?.querySelector('.keycap-render');
         if (!render) return;
 
-        const value = input.value.trim();
-        const bound = value.length > 0 && value !== t('common.hotkeyRecordingPrompt') && value !== t('common.hotkeyWaitingForInput');
-
-        render.innerHTML = bound
-            ? splitHotkeyCombo(value)
+        render.innerHTML = keyListValues(input)
+            .map(combo => splitHotkeyCombo(combo)
                 .map(part => `<kbd class="keycap${HOTKEY_MODIFIERS.has(part.toUpperCase()) ? ' keycap-modifier' : ''}">${escapeHtml(part)}</kbd>`)
-                .join('<span class="keycap-plus">+</span>')
-            : '';
+                .join('<span class="keycap-plus">+</span>'))
+            .join('<span class="keycap-sep" aria-hidden="true">,</span>');
     });
 }
 
@@ -171,8 +210,8 @@ const HOTKEY_BINDINGS = [
 function renderHotkeyBindingField(field, row, directionKey, pathPrefix) {
     const glyph = directionKey ? `<span class="binding-dir" aria-hidden="true">${directionKey === 'common.previous' ? '←' : '→'}</span>` : '';
     // The pair shares one visible label, so each half names itself for screen readers and for the conflict messages.
-    const ariaLabel = directionKey ? ` aria-label="${escapeHtml(`${t(row.labelKey)} (${t(directionKey)})`)}"` : '';
-    return `<div class="field-row">${glyph}${renderHotkeyInputHtml(field.id, '', t(field.exampleKey), `${ariaLabel} data-path="${pathPrefix}${field.id}"`)}</div>`;
+    const ariaLabel = directionKey ? `${t(row.labelKey)} (${t(directionKey)})` : '';
+    return `<div class="field-row">${glyph}${renderHotkeyInputHtml(field.id, t(field.exampleKey), { path: `${pathPrefix}${field.id}`, ariaLabel })}</div>`;
 }
 
 function renderHotkeyBindingRow(row, pathPrefix) {
@@ -270,12 +309,9 @@ export function updateHotkeyPlaceholders() {
     });
 }
 
-function normalizeHotkeyValue(value) {
-    if (!value) return null;
-    const v = value.trim();
-    if (!v || v === t('common.hotkeyRecordingPrompt') || v === t('common.hotkeyWaitingForInput')) return null;
-    const combined = parseHotkey(v);
-    return combined == null ? v.toLowerCase() : String(combined);
+function normalizeHotkeyCombo(combo) {
+    const combined = parseHotkey(combo);
+    return combined == null ? combo.toLowerCase() : String(combined);
 }
 
 // Uses the field's <label for="..."> text if one exists, otherwise the name in its enclosing accordion/detail panel, disambiguating forward/backward.
@@ -319,13 +355,16 @@ function isCharacterHotkeyInput(input) {
     return /^char_\d+_hotkey$/.test(input.id);
 }
 
+// Each group is the inputs sharing one combo, with that combo as its `combo`.
 function findHotkeyConflicts() {
     const byKey = new Map();
     getAllHotkeyInputs().forEach(input => {
-        const norm = normalizeHotkeyValue(input.value);
-        if (!norm) return;
-        if (!byKey.has(norm)) byKey.set(norm, []);
-        byKey.get(norm).push(input);
+        for (const combo of keyListValues(input)) {
+            const norm = normalizeHotkeyCombo(combo);
+            if (!byKey.has(norm)) byKey.set(norm, Object.assign([], { combo }));
+            const inputs = byKey.get(norm);
+            if (!inputs.includes(input)) inputs.push(input);
+        }
     });
 
     // Characters sharing a hotkey cycle instead of conflicting - only flag groups reaching outside the character roster.
@@ -351,8 +390,7 @@ function refreshCharacterHotkeyBadges() {
         const badge = document.getElementById(`char_${index}_hotkeyBadge`);
         if (!input || !badge) return;
 
-        const value = input.value.trim();
-        const display = value && value !== t('common.hotkeyRecordingPrompt') && value !== t('common.hotkeyWaitingForInput') ? value : '';
+        const display = keysToText(keyListValues(input));
         badge.textContent = display ? `[${display}]` : '';
         badge.style.display = display ? '' : 'none';
     });
@@ -360,7 +398,7 @@ function refreshCharacterHotkeyBadges() {
 
 export function describeHotkeyConflicts(conflicts) {
     return conflicts
-        .map(inputs => `"${vkHexToFriendly(inputs[0].value.trim())}" is bound to: ${inputs.map(hotkeyFieldLabel).join(', ')}`)
+        .map(inputs => `"${inputs.combo}" is bound to: ${inputs.map(hotkeyFieldLabel).join(', ')}`)
         .join('\n');
 }
 
@@ -409,6 +447,7 @@ async function resumeMainAppHotkeysAfterRecording() {
     }
 }
 
+// Clears every combo on the field.
 export function clearHotkey(fieldId) {
     const input = document.getElementById(fieldId);
     if (!input) return;
@@ -426,6 +465,7 @@ export function clearHotkey(fieldId) {
     updateHotkeyConflictHighlights();
 }
 
+// A capture adds a combo to the field's others; once it holds the most a binding takes, a capture starts it over.
 export function recordHotkey(fieldId) {
     const input = document.getElementById(fieldId);
     if (!input) return;
@@ -447,6 +487,7 @@ export function recordHotkey(fieldId) {
     recordingField = fieldId;
     recordingComboCaptured = false;
     suspendMainAppHotkeysForRecording();
+    input.dataset.beforeRecording = input.value;
     input.classList.add('recording');
     input.value = t('common.hotkeyRecordingPrompt');
     input.dataset.originalPlaceholder = input.placeholder;
@@ -494,7 +535,10 @@ function captureKeyDown(e) {
 function finalizeCapture(vk, modifiers) {
     recordingComboCaptured = true;
     const input = document.getElementById(recordingField);
-    input.value = formatHotkey(vk | (modifiers << MOD_SHIFT_AMOUNT));
+    const combo = formatHotkey(vk | (modifiers << MOD_SHIFT_AMOUNT));
+    const before = keyListValues({ value: input.dataset.beforeRecording });
+    const kept = before.length >= maxKeys() ? [] : before;
+    input.value = keysToText(kept.includes(combo) ? kept : [...kept, combo]);
     markAsChanged();
 
     setTimeout(() => stopRecording(), 300);
@@ -529,10 +573,11 @@ function stopRecording() {
     const input = document.getElementById(recordingField);
     input.classList.remove('recording');
 
-    // Reset value and placeholder if no binding was set
+    // Nothing captured (Escape, or clicking the field again) keeps the combos it had.
     if (input.value === t('common.hotkeyRecordingPrompt')) {
-        input.value = '';
+        input.value = input.dataset.beforeRecording || '';
     }
+    delete input.dataset.beforeRecording;
 
     input.placeholder = input.dataset.originalPlaceholder || '';
     delete input.dataset.originalPlaceholder;
@@ -550,7 +595,7 @@ function stopRecording() {
     updateHotkeyConflictHighlights();
 }
 
-// Lets a hotkey be typed directly (e.g. "Ctrl+F9") instead of captured via Record, for keys the recorder can't pick up cleanly.
+// Lets a hotkey be typed directly (e.g. "Ctrl+F9", or "Ctrl+1, 1" for several) instead of captured via Record, for keys the recorder can't pick up cleanly.
 export function toggleManualHotkeyEdit(fieldId) {
     const input = document.getElementById(fieldId);
     if (!input) return;
@@ -595,10 +640,15 @@ function commitManualHotkeyEdit(fieldId) {
     const button = input.closest('.field-row')?.querySelector('.hotkey-edit-btn');
 
     // Only names the app knows are kept, shown in its own spelling; anything else goes back to what was there.
-    const typed = input.value.trim();
-    const combined = parseHotkey(typed);
-    if (typed && combined == null) logWarn('Not a key the app can bind: ' + typed);
-    input.value = !typed ? '' : combined == null ? input.dataset.beforeManualEdit || '' : formatHotkey(combined);
+    const typed = keyListValues(input);
+    const combined = typed.map(parseHotkey);
+    const unknown = typed.filter((_, i) => combined[i] == null);
+    if (unknown.length > 0) logWarn('Not a key the app can bind: ' + unknown.join(', '));
+    const tooMany = new Set(combined).size > maxKeys();
+    if (tooMany) logWarn(`A hotkey holds at most ${maxKeys()} keys`);
+    input.value = unknown.length > 0 || tooMany
+        ? input.dataset.beforeManualEdit || ''
+        : keysToText([...new Set(combined.map(formatHotkey))]);
     delete input.dataset.beforeManualEdit;
     input.readOnly = true;
     input.classList.remove('manual-editing');

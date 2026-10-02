@@ -1828,8 +1828,8 @@ label + .binding-list {
     pointer-events: none;
 }
 
-/* Only cover the input once there are caps to cover it with. */
-.keycap-field:has(.keycap-render:not(:empty)) .hotkey-input {
+/* Only cover the input once there are caps to cover it with, and never over the prompt while recording or the text being typed. */
+.keycap-field:has(.keycap-render:not(:empty)) .hotkey-input:not(.recording):not(.manual-editing) {
     color: transparent;
 }
 
@@ -1862,6 +1862,13 @@ label + .binding-list {
 .keycap-plus {
     color: var(--color-muted);
     font-size: 0.5625rem;
+}
+
+/* Between one combo and the next, so "Ctrl+1, 1" doesn't read as one chord; hugs the key before it, like text. */
+.keycap-sep {
+    color: var(--color-muted);
+    font-size: 0.75rem;
+    margin-left: -0.125rem;
 }
 
 .section-heading {

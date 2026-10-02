@@ -1,8 +1,10 @@
 //! Reading loosely typed values out of other tools' settings files, and the key and colour spellings they share.
 const std = @import("std");
 const vk = @import("../../platform/virtual_keys.zig");
+const key_list = @import("../key_list.zig");
 
 const Value = std.json.Value;
+const KeyList = key_list.KeyList;
 
 pub fn get(object: ?Value, key: []const u8) ?Value {
     const value = object orelse return null;
@@ -114,6 +116,16 @@ pub fn colorValue(arena: std.mem.Allocator, color: u32) !Value {
 
 pub fn keyValue(arena: std.mem.Allocator, combined: u32) !Value {
     return .{ .string = try std.fmt.allocPrint(arena, "0x{X:0>2}", .{combined}) };
+}
+
+/// In the shape a KeyList saves: null, one key string, or an array of them.
+pub fn keysValue(arena: std.mem.Allocator, keys: KeyList) !Value {
+    const items = keys.slice();
+    if (items.len == 0) return .null;
+    if (items.len == 1) return keyValue(arena, items[0]);
+    var array = std.json.Array.init(arena);
+    for (items) |combined| try array.append(try keyValue(arena, combined));
+    return .{ .array = array };
 }
 
 pub fn opacityFromPercent(percent: f64) f64 {

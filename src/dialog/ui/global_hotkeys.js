@@ -3,7 +3,7 @@ import { app } from './state.js';
 import { applyDocToForm, readFormToDoc } from './binding.js';
 import { markAsChanged } from './changes.js';
 import { escapeHtml } from './core.js';
-import { alignBindingLabelColumns, hotkeyToSaved, renderHotkeyInputHtml, updateHotkeyConflictHighlights, vkHexToFriendly } from './hotkeys.js';
+import { alignBindingLabelColumns, keyListValues, keysToSaved, renderHotkeyInputHtml, savedKeysToText, updateHotkeyConflictHighlights } from './hotkeys.js';
 import { t } from './i18n.js';
 import { scrollContentPanelToBottom } from './widgets.js';
 import { pickRunningWindowFor, resolvePickedWindow } from './window_filters.js';
@@ -32,7 +32,7 @@ export async function populateProfileSwitchHotkeys() {
             <div class="binding" data-profile="${escapeHtml(profile)}">
                 <label for="${fieldId}">${label}</label>
                 <div class="binding-control">
-                    <div class="field-row">${renderHotkeyInputHtml(fieldId, vkHexToFriendly(entry?.hotkey) || '', t('dynamic.profileSwitchHotkey.hotkeyPlaceholder'))}</div>
+                    <div class="field-row">${renderHotkeyInputHtml(fieldId, t('dynamic.profileSwitchHotkey.hotkeyPlaceholder'), { value: savedKeysToText(entry?.hotkey) })}</div>
                 </div>
             </div>
         `;
@@ -51,7 +51,7 @@ export function saveProfileSwitchHotkeys() {
     const shown = new Map();
     container.querySelectorAll('[data-profile]').forEach(row => {
         const profile = row.dataset.profile;
-        shown.set(profile, hotkeyToSaved(document.getElementById(`pshotkey_${profileHotkeyFieldId(profile)}_hotkey`)?.value));
+        shown.set(profile, keysToSaved(keyListValues(document.getElementById(`pshotkey_${profileHotkeyFieldId(profile)}_hotkey`))));
     });
     const entries = app.currentGlobalSettings.profileSwitchHotkeys || [];
     const result = entries
@@ -76,7 +76,7 @@ export function populateAppHotkeys() {
         row.innerHTML = `
             <div class="field-row list-container">
                 <input type="text" id="apphotkey_${index}_exe" data-path="global.appHotkeys.${index}.executableName" placeholder="${t('dynamic.appHotkey.exePlaceholder')}" aria-label="${escapeHtml(t('dynamic.appHotkey.targetLabel'))}">
-                ${renderHotkeyInputHtml(`apphotkey_${index}_hotkey`, '', t('dynamic.appHotkey.hotkeyPlaceholder'), ` aria-label="${escapeHtml(t('common.hotkeyLabel'))}" data-path="global.appHotkeys.${index}.hotkey"`)}
+                ${renderHotkeyInputHtml(`apphotkey_${index}_hotkey`, t('dynamic.appHotkey.hotkeyPlaceholder'), { path: `global.appHotkeys.${index}.hotkey`, ariaLabel: t('common.hotkeyLabel') })}
                 <button type="button" id="apphotkey_${index}_pickBtn" onclick="pickRunningWindowForAppHotkey(${index})" class="btn-nowrap">${t('button.pick-running-window.label')}</button>
                 <button type="button" class="button-remove" id="apphotkey_${index}_removeBtn" onclick="confirmRemove('apphotkey_${index}_removeBtn', () => removeAppHotkey(${index}))">${t('common.remove')}</button>
             </div>
@@ -154,7 +154,7 @@ export function populateUrlHotkeys() {
         row.innerHTML = `
             <div class="field-row list-container">
                 <input type="text" id="urlhotkey_${index}_url" data-path="global.urlHotkeys.${index}.url" placeholder="${t('dynamic.urlHotkey.urlPlaceholder')}" aria-label="${escapeHtml(t('dynamic.urlHotkey.targetLabel'))}" oninput="updateUrlHotkeyUploadClipboardVisibility(${index})">
-                ${renderHotkeyInputHtml(`urlhotkey_${index}_hotkey`, '', t('dynamic.urlHotkey.hotkeyPlaceholder'), ` aria-label="${escapeHtml(t('common.hotkeyLabel'))}" data-path="global.urlHotkeys.${index}.hotkey"`)}
+                ${renderHotkeyInputHtml(`urlhotkey_${index}_hotkey`, t('dynamic.urlHotkey.hotkeyPlaceholder'), { path: `global.urlHotkeys.${index}.hotkey`, ariaLabel: t('common.hotkeyLabel') })}
                 <button type="button" class="button-remove" id="urlhotkey_${index}_removeBtn" onclick="confirmRemove('urlhotkey_${index}_removeBtn', () => removeUrlHotkey(${index}))">${t('common.remove')}</button>
             </div>
             <label id="urlhotkey_${index}_uploadClipboardRow" class="list-container" style="display: ${isAdashboardUrl(entry.url) ? 'block' : 'none'};">

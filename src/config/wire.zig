@@ -1,8 +1,10 @@
 //! Generates each settings struct's saved JSON shape, loading, saving, freeing and preview patching from its fields.
 const std = @import("std");
-const vk = @import("../platform/virtual_keys.zig");
+const key_list = @import("key_list.zig");
 const log = @import("../log.zig");
 
+const KeyList = key_list.KeyList;
+const KeyListWire = key_list.KeyListWire;
 const slog = log.scoped("config");
 
 /// ARGB color, serialized as an 8-digit hex string, e.g. "0xFF606060".
@@ -20,24 +22,6 @@ pub const Argb = struct {
         if (source != .string) return error.UnexpectedToken;
         const value = parseHexColor(source.string) catch return error.UnexpectedToken;
         return .{ .value = value };
-    }
-};
-
-/// Saved as e.g. "0x1B"; loading also accepts combos like "Ctrl+F9" from hand-edited profiles.
-pub const VkCode = struct {
-    value: u32,
-
-    pub fn jsonStringify(self: VkCode, jw: anytype) !void {
-        var buf: [10]u8 = undefined;
-        const s = std.fmt.bufPrint(&buf, "0x{X:0>2}", .{self.value}) catch unreachable;
-        try jw.write(s);
-    }
-
-    pub fn jsonParseFromValue(_: std.mem.Allocator, source: std.json.Value, _: std.json.ParseOptions) !VkCode {
-        // Same constraint as Argb.jsonParseFromValue above: an unparseable key maps to UnexpectedToken.
-        if (source != .string) return error.UnexpectedToken;
-        const parsed = vk.parseVirtualKey(source.string) orelse return error.UnexpectedToken;
-        return .{ .value = parsed };
     }
 };
 
@@ -64,7 +48,7 @@ pub fn isColorField(comptime name: []const u8) bool {
     return (tail[0] == 'c' or tail[0] == 'C') and tail[1] == 'o' and tail[2] == 'l' and tail[3] == 'o' and tail[4] == 'r';
 }
 
-/// A `u32`/`?u32` field named "hotkey…" or "…Key" is a virtual-key code, saved as a hex string.
+/// A field named "hotkey…" or "…Key" is a KeyList, saved as a hex string or an array of them.
 pub fn isKeyField(comptime name: []const u8) bool {
     if (name.len >= 6 and name[0] == 'h' and name[1] == 'o' and name[2] == 't' and name[3] == 'k' and name[4] == 'e' and name[5] == 'y') return true;
     return name.len >= 3 and name[name.len - 3] == 'K' and name[name.len - 2] == 'e' and name[name.len - 1] == 'y';
@@ -138,7 +122,7 @@ pub fn free(comptime T: type, value: *T, allocator: std.mem.Allocator) void {
     deinit(T, value, allocator);
 }
 
-/// The saved type of field `name`: a section's `Wire`, or a hex string for colours and key codes (see isColorField/isKeyField).
+/// The saved type of field `name`: a section's `Wire`, a hex string for colours, or a KeyList's hex strings (see isColorField/isKeyField).
 pub fn FieldWire(comptime T: type, comptime name: []const u8) type {
     if (isNested(T)) return T.Wire;
     if (OptionalNested(T)) |N| return ?N.Wire;
@@ -148,10 +132,8 @@ pub fn FieldWire(comptime T: type, comptime name: []const u8) type {
         if (T == ?u32) return ?Argb;
         @compileError("colour field '" ++ name ++ "' must be u32 or ?u32, found " ++ @typeName(T));
     }
-    if (isKeyField(name)) {
-        if (T == u32) return VkCode;
-        if (T == ?u32) return ?VkCode;
-    }
+    if (T == KeyList) return ?KeyListWire;
+    if (isKeyField(name) and (T == u32 or T == ?u32)) @compileError("key field '" ++ name ++ "' must be a KeyList");
     return T;
 }
 
@@ -164,16 +146,18 @@ pub fn fieldToWire(comptime T: type, comptime name: []const u8, value: T) FieldW
         return value.items;
     }
     return switch (FieldWire(T, name)) {
-        Argb, VkCode => .{ .value = value },
-        ?Argb, ?VkCode => if (value) |v| .{ .value = v } else null,
+        Argb => .{ .value = value },
+        ?Argb => if (value) |v| .{ .value = v } else null,
+        ?KeyListWire => if (value.isEmpty()) null else .{ .value = value },
         else => value,
     };
 }
 
 fn plainFromWire(comptime T: type, value: anytype) T {
     return switch (@TypeOf(value)) {
-        Argb, VkCode => value.value,
-        ?Argb, ?VkCode => if (value) |v| v.value else null,
+        Argb => value.value,
+        ?Argb => if (value) |v| v.value else null,
+        ?KeyListWire => if (value) |v| v.value else .empty,
         else => value,
     };
 }
@@ -357,7 +341,7 @@ pub fn hasPointers(comptime T: type) bool {
     }
 }
 
-/// Parses `json_text` into `T` via std.json.Value, since Argb and VkCode only implement jsonParseFromValue.
+/// Parses `json_text` into `T` via std.json.Value, since Argb and KeyListWire only implement jsonParseFromValue.
 pub fn parse(comptime T: type, allocator: std.mem.Allocator, json_text: []const u8) !std.json.Parsed(T) {
     const tree = try std.json.parseFromSlice(std.json.Value, allocator, json_text, .{});
     defer tree.deinit();

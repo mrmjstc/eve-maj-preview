@@ -20,6 +20,7 @@ const launch = @import("launch.zig");
 const log = @import("../log.zig");
 
 const HotkeyAction = bindings.HotkeyAction;
+const KeyList = config_mod.KeyList;
 const slog = log.scoped("hotkeys");
 
 /// Cycling, exclusions, profile switching and app/URL launching live in their own modules.
@@ -69,37 +70,45 @@ pub const HotkeyManager = struct {
         return writer.buffered();
     }
 
-    fn registerAndTrackHotkey(self: *HotkeyManager, hwnd: win32.HWND, id: c_int, virtual_key: u32, action: HotkeyAction, description: []const u8) !void {
-        // Mouse buttons/wheel route through the mouse hook, everything else through the keyboard hook; both re-post a match as WM_HOTKEY.
-        const is_mouse = vk.isMouseHookVk(vk.extractVk(virtual_key));
-        if (is_mouse) try mouse_hook.register(self.allocator, hwnd, virtual_key, id) else try keyboard_hook.register(self.allocator, hwnd, virtual_key, id);
-        errdefer if (is_mouse) mouse_hook.unregister(virtual_key) else keyboard_hook.unregister(virtual_key);
+    // Mouse buttons/wheel route through the mouse hook, everything else through the keyboard hook; both re-post a match as WM_HOTKEY.
+    fn hookKey(self: *HotkeyManager, hwnd: win32.HWND, id: c_int, virtual_key: u32) !void {
+        if (vk.isMouseHookVk(vk.extractVk(virtual_key))) try mouse_hook.register(self.allocator, hwnd, virtual_key, id) else try keyboard_hook.register(self.allocator, hwnd, virtual_key, id);
+    }
 
-        try self.hotkey_map.put(id, action);
+    fn unhookKey(virtual_key: u32) void {
+        if (vk.isMouseHookVk(vk.extractVk(virtual_key))) mouse_hook.unregister(virtual_key) else keyboard_hook.unregister(virtual_key);
+    }
 
+    /// Every key posts the same ID, so `action` is tracked once if any key registers.
+    /// Returns how many keys failed; failures are logged here, so callers only count them.
+    fn registerKeys(self: *HotkeyManager, hwnd: win32.HWND, id: c_int, keys: KeyList, action: HotkeyAction, description: []const u8) usize {
         var key_name_buf: [32]u8 = undefined;
-        slog.debug("Registered hotkey: {s} -> {s}", .{ formatKeyName(virtual_key, &key_name_buf), description });
-    }
+        var registered: KeyList = .empty;
+        for (keys.slice()) |virtual_key| {
+            self.hookKey(hwnd, id, virtual_key) catch |err| {
+                slog.err("Failed to register hotkey {s} ({s}): {}", .{ formatKeyName(virtual_key, &key_name_buf), description, err });
+                continue;
+            };
+            _ = registered.append(virtual_key);
+            slog.debug("Registered hotkey: {s} -> {s}", .{ formatKeyName(virtual_key, &key_name_buf), description });
+        }
+        if (registered.isEmpty()) return keys.len;
 
-    /// Returns whether it registered; failures are logged here, so callers only count them.
-    fn registerLogged(self: *HotkeyManager, hwnd: win32.HWND, id: c_int, virtual_key: u32, action: HotkeyAction, description: []const u8) bool {
-        self.registerAndTrackHotkey(hwnd, id, virtual_key, action, description) catch |err| {
-            var key_name_buf: [32]u8 = undefined;
-            const key_name = formatKeyName(virtual_key, &key_name_buf);
-            slog.err("Failed to register hotkey {s} ({s}): {}", .{ key_name, description, err });
-            return false;
+        self.hotkey_map.put(id, action) catch |err| {
+            slog.err("Failed to track hotkey ({s}): {}", .{ description, err });
+            for (registered.slice()) |virtual_key| unhookKey(virtual_key);
+            return keys.len;
         };
-        return true;
+        return keys.len - registered.len;
     }
 
-    fn bindingKey(self: *const HotkeyManager, comptime binding: bindings.GlobalBinding) ?u32 {
+    fn bindingKeys(self: *const HotkeyManager, comptime binding: bindings.GlobalBinding) KeyList {
         return if (binding.in_global_settings) @field(self.global_settings, binding.field) else @field(self.config.hotkeys, binding.field);
     }
 
-    /// Returns false only if the binding has a key and registering it failed.
-    fn registerGlobal(self: *HotkeyManager, hwnd: win32.HWND, comptime binding: bindings.GlobalBinding) bool {
-        const vk_code = self.bindingKey(binding) orelse return true;
-        return self.registerLogged(hwnd, bindings.globalId(binding.action), vk_code, bindings.actionFor(binding.action), binding.description);
+    /// Returns how many of the binding's keys failed to register.
+    fn registerGlobal(self: *HotkeyManager, hwnd: win32.HWND, comptime binding: bindings.GlobalBinding) usize {
+        return self.registerKeys(hwnd, bindings.globalId(binding.action), self.bindingKeys(binding), bindings.actionFor(binding.action), binding.description);
     }
 
     pub fn registerHotkeys(self: *HotkeyManager, hwnd: win32.HWND) !void {
@@ -114,21 +123,23 @@ pub const HotkeyManager = struct {
             for (per_character_groups.items) |*group| group.indices.deinit(self.allocator);
             per_character_groups.deinit(self.allocator);
         }
-        for (self.config.characters.items, 0..) |char, char_index| {
-            const char_vk = char.hotkey orelse continue;
-            var existing: ?*PerCharacterHotkeyGroup = null;
-            for (per_character_groups.items) |*group| {
-                if (group.vk == char_vk) {
-                    existing = group;
-                    break;
+        // Grouped per combo, so characters sharing one cycle through each other while a character's other combos stay its own.
+        for (self.config.characters.items, 0..) |*char, char_index| {
+            for (char.hotkey.slice()) |char_vk| {
+                var existing: ?*PerCharacterHotkeyGroup = null;
+                for (per_character_groups.items) |*group| {
+                    if (group.vk == char_vk) {
+                        existing = group;
+                        break;
+                    }
                 }
-            }
-            if (existing) |group| {
-                try group.indices.append(self.allocator, char_index);
-            } else {
-                var new_group = PerCharacterHotkeyGroup{ .vk = char_vk, .indices = .empty };
-                try new_group.indices.append(self.allocator, char_index);
-                try per_character_groups.append(self.allocator, new_group);
+                if (existing) |group| {
+                    try group.indices.append(self.allocator, char_index);
+                } else {
+                    var new_group = PerCharacterHotkeyGroup{ .vk = char_vk, .indices = .empty };
+                    try new_group.indices.append(self.allocator, char_index);
+                    try per_character_groups.append(self.allocator, new_group);
+                }
             }
         }
         const per_character_count = per_character_groups.items.len;
@@ -137,7 +148,7 @@ pub const HotkeyManager = struct {
         const url_hotkey_count = countBound(self.global_settings.urlHotkeys.items);
         var global_count: usize = 0;
         inline for (bindings.GLOBAL_BINDINGS) |binding| {
-            if (self.bindingKey(binding) != null) global_count += 1;
+            if (!self.bindingKeys(binding).isEmpty()) global_count += 1;
         }
 
         if (self.config.hotkeyGroups.items.len == 0 and global_count == 0 and per_character_count == 0 and profile_switch_count == 0 and app_hotkey_count == 0 and url_hotkey_count == 0) {
@@ -167,19 +178,19 @@ pub const HotkeyManager = struct {
                 "(empty)";
             const first_slot = group_index * 3;
 
-            if (group.forwardKey) |forward_vk| {
+            if (!group.forwardKey.isEmpty()) {
                 const desc = std.fmt.bufPrint(&desc_buf, "group {} [{s}...] forward", .{ group_index, char_name }) catch "group forward";
-                if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot), forward_vk, .{ .cycle_group = .{ .group_index = group_index, .forward = true } }, desc)) failed_count += 1;
+                failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot), group.forwardKey, .{ .cycle_group = .{ .group_index = group_index, .forward = true } }, desc);
             }
 
-            if (group.backwardKey) |backward_vk| {
+            if (!group.backwardKey.isEmpty()) {
                 const desc = std.fmt.bufPrint(&desc_buf, "group {} [{s}...] backward", .{ group_index, char_name }) catch "group backward";
-                if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot + 1), backward_vk, .{ .cycle_group = .{ .group_index = group_index, .forward = false } }, desc)) failed_count += 1;
+                failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot + 1), group.backwardKey, .{ .cycle_group = .{ .group_index = group_index, .forward = false } }, desc);
             }
 
-            if (group.assignKey) |assign_vk| {
+            if (!group.assignKey.isEmpty()) {
                 const desc = std.fmt.bufPrint(&desc_buf, "group {} [{s}] assign", .{ group_index, group.name }) catch "group assign";
-                if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot + 2), assign_vk, .{ .assign_group = .{ .group_index = group_index } }, desc)) failed_count += 1;
+                failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot + 2), group.assignKey, .{ .assign_group = .{ .group_index = group_index } }, desc);
             }
         }
 
@@ -195,42 +206,44 @@ pub const HotkeyManager = struct {
                 failed_count += 1;
                 continue;
             };
-            if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_PER_CHARACTER_BASE, group_index), group.vk, .{ .activate_character = .{ .character_indices = owned_indices } }, desc)) {
+            // A single key, so any failure means the action wasn't tracked and the indices are still ours.
+            const failed = self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_PER_CHARACTER_BASE, group_index), .one(group.vk), .{ .activate_character = .{ .character_indices = owned_indices } }, desc);
+            if (failed > 0) {
                 self.allocator.free(owned_indices);
-                failed_count += 1;
+                failed_count += failed;
             }
         }
 
         for (self.global_settings.profileSwitchHotkeys.items, 0..) |profile_hotkey, index| {
-            const key = profile_hotkey.hotkey orelse continue;
+            if (profile_hotkey.hotkey.isEmpty()) continue;
             const desc = std.fmt.bufPrint(&desc_buf, "switch to profile [{s}]", .{profile_hotkey.targetProfile}) catch "switch to profile";
-            if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_PROFILE_SWITCH_BASE, index), key, .{ .switch_to_profile = .{ .profile_index = index } }, desc)) failed_count += 1;
+            failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_PROFILE_SWITCH_BASE, index), profile_hotkey.hotkey, .{ .switch_to_profile = .{ .profile_index = index } }, desc);
         }
 
         for (self.global_settings.appHotkeys.items, 0..) |app_hotkey, index| {
-            const key = app_hotkey.hotkey orelse continue;
+            if (app_hotkey.hotkey.isEmpty()) continue;
             const desc = std.fmt.bufPrint(&desc_buf, "activate app [{s}]", .{app_hotkey.executableName}) catch "activate app";
-            if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_APP_HOTKEY_BASE, index), key, .{ .activate_app = .{ .app_index = index } }, desc)) failed_count += 1;
+            failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_APP_HOTKEY_BASE, index), app_hotkey.hotkey, .{ .activate_app = .{ .app_index = index } }, desc);
         }
 
         for (self.global_settings.urlHotkeys.items, 0..) |url_hotkey, index| {
-            const key = url_hotkey.hotkey orelse continue;
+            if (url_hotkey.hotkey.isEmpty()) continue;
             const desc = std.fmt.bufPrint(&desc_buf, "open url [{s}]", .{url_hotkey.url}) catch "open url";
-            if (!self.registerLogged(hwnd, bindings.bandId(bindings.HOTKEY_ID_URL_HOTKEY_BASE, index), key, .{ .open_url = .{ .url_index = index } }, desc)) failed_count += 1;
+            failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_URL_HOTKEY_BASE, index), url_hotkey.hotkey, .{ .open_url = .{ .url_index = index } }, desc);
         }
 
         inline for (bindings.GLOBAL_BINDINGS) |binding| {
-            if (!self.registerGlobal(hwnd, binding)) failed_count += 1;
+            failed_count += self.registerGlobal(hwnd, binding);
         }
 
         const success_count: usize = self.hotkey_map.count();
         if (failed_count > 0) {
             if (success_count == 0) {
-                slog.err("Failed to register any hotkeys - all {} attempts failed", .{failed_count});
+                slog.err("Failed to register any hotkeys - all {} key(s) failed", .{failed_count});
                 slog.err("Hotkey functionality will be unavailable", .{});
                 return error.AllHotkeysFailedToRegister;
             }
-            slog.warn("Registered {} of {} hotkey(s) ({} failed)", .{ success_count, success_count + failed_count, failed_count });
+            slog.warn("Failed to register {} key(s); {} hotkey(s) still registered", .{ failed_count, success_count });
             slog.warn("Some hotkey groups may not respond to key presses", .{});
             return error.PartialHotkeyRegistrationFailure;
         }
@@ -455,7 +468,7 @@ pub fn recordNonEveForeground(hwnd: win32.HWND) void {
 fn countBound(items: anytype) usize {
     var n: usize = 0;
     for (items) |item| {
-        if (item.hotkey != null) n += 1;
+        if (!item.hotkey.isEmpty()) n += 1;
     }
     return n;
 }

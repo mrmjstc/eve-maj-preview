@@ -1,6 +1,7 @@
 //! Edits to a settings document by path, the one way the config dialog changes settings and hears about the app's own changes.
 const std = @import("std");
 const wire = @import("wire.zig");
+const key_list = @import("key_list.zig");
 
 pub const Op = struct {
     /// `set` for any field; lists whose items have an `id` also take `insert`, `remove` and `move`.
@@ -36,7 +37,7 @@ pub fn isKeyedMap(comptime T: type) bool {
 
 /// A struct edited field by field: a section with a generated `Wire`, or a plain one saved as its own fields (SnappingConfig, Position).
 fn isStruct(comptime T: type) bool {
-    return @typeInfo(T) == .@"struct" and wire.ListItem(T) == null and !isKeyedMap(T);
+    return @typeInfo(T) == .@"struct" and wire.ListItem(T) == null and !isKeyedMap(T) and T != key_list.KeyList;
 }
 
 /// The struct inside an optional one, such as a character's `?Position`.
