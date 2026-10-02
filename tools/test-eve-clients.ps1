@@ -881,6 +881,7 @@ $menu = @'
   [i] log back IN            [k] kill (crash) client    [b] bounty burst (60s)
   [m] mining burst (60s)     [c] combat burst (60s)     [j] jump to system
   [r] random 3-system route  [e] fire event type...     [x] notification storm (multi-alert test)
+  [l] move via Local only (pod/filament: no gamelog jump line)
   [t] travel mode test (group jump, leave one behind)
   [y] system color test (patterns, comma lists, precedence)
   [u] unique color test (every client in its own system)
@@ -950,6 +951,18 @@ try {
                     $c = $clients[$name]
                     Add-GamelogJump -Path $c.Gamelog -From $c.System -To $newSystem | Write-Host
                     Add-ChatlogJump -Path $c.Chatlog -System $newSystem | Out-Null
+                    $c.System = $newSystem
+                    Save-CharacterState -CharName $name -ChatlogPath $c.Chatlog -GamelogPath $c.Gamelog -System $c.System
+                }
+            }
+        }
+        'l' {
+            $name = Select-Character
+            if ($name) {
+                $newSystem = Read-Host 'Move to system'
+                if ($newSystem) {
+                    $c = $clients[$name]
+                    Add-ChatlogJump -Path $c.Chatlog -System $newSystem | Write-Host
                     $c.System = $newSystem
                     Save-CharacterState -CharName $name -ChatlogPath $c.Chatlog -GamelogPath $c.Gamelog -System $c.System
                 }
