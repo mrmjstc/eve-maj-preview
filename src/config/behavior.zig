@@ -6,7 +6,7 @@ pub const TimerConfig = struct {
     scanIntervalMs: u32 = 50,
 
     pub const ranges = .{
-        .scanIntervalMs = .{ 50, 10000 },
+        .scanIntervalMs = .{ 50, 1000 },
     };
 
     pub fn validate(self: *TimerConfig) void {

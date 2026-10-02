@@ -19,7 +19,7 @@ pub const ChatlogConfig = struct {
     pub const ranges = .{
         .pollIntervalMs = .{ 100, 5000 },
         .idlePollThreshold = .{ 1, 1000 },
-        .maxPollMultiplier = .{ 1, 32 },
+        .maxPollMultiplier = .{ 1, 8 },
     };
 
     pub fn validate(self: *ChatlogConfig) void {

@@ -4,7 +4,7 @@ const log = @import("../log.zig");
 
 const slog = log.scoped("activity_tracker");
 
-/// Ring-buffer capacity per character; 512 entries covers ~8 min at 1 hit/sec, within window_seconds ≤ 600.
+/// Ring-buffer capacity per character; a window holding more events is rated over the time the newest 512 span.
 const RING_CAPACITY = 512;
 
 /// Guards against simultaneous multi-module/multi-weapon log lines spiking a warm-up rate computed over a near-zero span.

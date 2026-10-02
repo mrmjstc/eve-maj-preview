@@ -5,7 +5,7 @@ const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 
 /// Refresh-rate bounds for Combat, Mining and Bounty; Resources sets its own.
-const UPDATE_INTERVAL_MS = .{ 100, 60000 };
+const UPDATE_INTERVAL_MS = .{ 1000, 10000 };
 
 pub const CombatConfig = struct {
     enabled: bool = false,
@@ -35,7 +35,7 @@ pub const CombatConfig = struct {
     damage_alert_excluded_weapons: []const u8 = "",
 
     pub const ranges = .{
-        .window_seconds = ranges_mod.WINDOW_SECONDS,
+        .window_seconds = .{ 5, 600 },
         .incoming_font_size = ranges_mod.FONT_SIZE,
         .outgoing_font_size = ranges_mod.FONT_SIZE,
         .update_interval_ms = UPDATE_INTERVAL_MS,
@@ -75,11 +75,11 @@ pub const MiningConfig = struct {
     show_prefix: bool = true,
 
     pub const ranges = .{
-        .window_seconds = ranges_mod.WINDOW_SECONDS,
+        .window_seconds = .{ 30, 3600 },
         .font_size = ranges_mod.FONT_SIZE,
         .update_interval_ms = UPDATE_INTERVAL_MS,
-        .idle_alert_window_seconds = ranges_mod.WINDOW_SECONDS,
-        .stopped_alert_window_seconds = ranges_mod.WINDOW_SECONDS,
+        .idle_alert_window_seconds = .{ 30, 600 },
+        .stopped_alert_window_seconds = .{ 30, 3600 },
         .offset_x = ranges_mod.TEXT_OFFSET,
         .offset_y = ranges_mod.TEXT_OFFSET,
         .idle_alert_threshold = .{ 0, 60 },
@@ -110,7 +110,7 @@ pub const BountyConfig = struct {
     show_prefix: bool = true,
 
     pub const ranges = .{
-        .window_seconds = ranges_mod.WINDOW_SECONDS,
+        .window_seconds = .{ 60, 3600 },
         .font_size = ranges_mod.FONT_SIZE,
         .update_interval_ms = UPDATE_INTERVAL_MS,
         .offset_x = ranges_mod.TEXT_OFFSET,
@@ -143,8 +143,8 @@ pub const ResourcesConfig = struct {
 
     pub const ranges = .{
         .font_size = ranges_mod.FONT_SIZE,
-        // A slower floor than the other overlays: each refresh samples every client's CPU, RAM and VRAM.
-        .update_interval_ms = .{ 500, 60000 },
+        // A higher ceiling than the other overlays: each refresh samples every client's CPU, RAM and VRAM.
+        .update_interval_ms = .{ 1000, 60000 },
         .offset_x = ranges_mod.TEXT_OFFSET,
         .offset_y = ranges_mod.TEXT_OFFSET,
     };

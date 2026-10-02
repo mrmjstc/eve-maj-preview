@@ -163,7 +163,7 @@ Each thumbnail has one of these states at any time: `active`, `inactive`, `alert
 }
 ```
 
-`scanIntervalMs` defaults to `50` and is clamped between `50` and `10000`.
+`scanIntervalMs` defaults to `50` and is clamped between `50` and `1000`.
 
 ## Window Filters
 
@@ -675,7 +675,7 @@ Variables are expanded when the configuration is loaded. If a variable doesn't e
 **Polling Optimization**: The chatlog monitor uses exponential backoff to reduce CPU usage for inactive log files:
 - Files with no changes accumulate idle poll counts
 - After reaching `idlePollThreshold` * current multiplier, the multiplier doubles (1x → 2x → 4x → 8x)
-- The multiplier is capped at `maxPollMultiplier` to prevent excessive delays
+- The multiplier is capped at `maxPollMultiplier` (1–8) to prevent excessive delays
 - Any file change resets the idle count and multiplier to 1x
 
 ## Combat DPS Overlay
@@ -716,19 +716,18 @@ Display real-time incoming/outgoing damage-per-second labels directly on each ch
 | Field | Default | Description |
 |---|---|---|
 | `enabled` | `false` | Enable the DPS overlay |
-| `windowSeconds` | `60` | Sliding window duration for DPS calculation (1–3600 s) |
+| `windowSeconds` | `60` | Sliding window duration for DPS calculation (5–600 s) |
 | `showIncoming` | `true` | Show incoming damage label |
 | `showOutgoing` | `true` | Show outgoing damage label |
 | `incomingColor` | red | ARGB color for incoming damage text |
 | `outgoingColor` | green | ARGB color for outgoing damage text |
 | `fontSize` | `11` | Font size for DPS labels (6–72) |
-| `updateIntervalMs` | `1000` | How often the display refreshes (100–60000 ms); alerts are checked every second regardless |
+| `updateIntervalMs` | `1000` | How often the display refreshes (1000–10000 ms); alerts are checked every second regardless |
 | `incomingPosition` | `TopCenter` | Position of the incoming-damage label on the thumbnail (see [Text Positions](#text-overlay-settings)) |
 | `outgoingPosition` | `BottomCenter` | Position of the outgoing-damage label on the thumbnail |
 | `incomingOffsetX`/`incomingOffsetY` | `0` | Fine-tune incoming label position (pixels) |
 | `outgoingOffsetX`/`outgoingOffsetY` | `0` | Fine-tune outgoing label position (pixels) |
 | `damageAlertEnabled` | `false` | Enable the taking-damage alert (see below) |
-| `damageAlertRepeatSeconds` | `10` | Minimum seconds between repeat alerts while still taking damage (1–3600 s) |
 | `iconEnabled` | `false` | Enable the persistent combat icon (see below) |
 | `iconColor` | red | ARGB color for the combat icon |
 | `iconPosition` | `TopRight` | Position of the icon on the thumbnail |
@@ -777,17 +776,17 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
 | Field | Default | Description |
 |---|---|---|
 | `enabled` | `false` | Enable the mining rate overlay |
-| `windowSeconds` | `60` | Sliding window duration for rate calculation (1–3600 s) |
+| `windowSeconds` | `60` | Sliding window duration for rate calculation (30–3600 s) |
 | `color` | light blue | ARGB color for the rate text |
 | `fontSize` | `11` | Font size for the rate label (6–72) |
-| `updateIntervalMs` | `1000` | How often the display refreshes (100–60000 ms); alerts are checked every second regardless |
+| `updateIntervalMs` | `1000` | How often the display refreshes (1000–10000 ms); alerts are checked every second regardless |
 | `position` | `BottomRight` | Position of the text on the thumbnail |
 | `offsetX` / `offsetY` | `0` | Fine-tune position (pixels) |
 | `idleAlertEnabled` | `false` | Enable the laser-idle alert notification |
-| `idleAlertWindowSeconds` | `30` | Window in which events are counted for the idle check |
+| `idleAlertWindowSeconds` | `30` | Window in which events are counted for the idle check (30–600 s) |
 | `idleAlertThreshold` | `1` | Fire alert when event count in window is ≤ this value |
 | `stoppedAlertEnabled` | `false` | Enable the mining-stopped alert notification |
-| `stoppedAlertWindowSeconds` | `60` | Seconds of silence before the stopped alert fires |
+| `stoppedAlertWindowSeconds` | `60` | Seconds of silence before the stopped alert fires (30–3600 s) |
 
 **Rate Formula**: Total units mined within the window divided by `windowSeconds`, converted to per-minute for display. Displays as `M: XXXX u/min`. During the first `windowSeconds` of mining, it's the units mined after the first cycle divided by the time from the first yield to the latest, so lasers cycling in step read their true rate from the second cycle on. Bounty ISK/hr works the same way.
 
@@ -832,7 +831,7 @@ Display each client's CPU%, RAM, and dedicated VRAM usage as a single combined t
 | `show_cpu` | `true` | Include the CPU% segment |
 | `show_ram` | `true` | Include the RAM segment (process working-set memory, in MB) |
 | `show_vram` | `true` | Include the VRAM segment (dedicated GPU memory, in MB) - see note below |
-| `update_interval_ms` | `10000` | How often CPU/RAM/VRAM are resampled (500-60000 ms); shared by all three since VRAM sampling is the most expensive of the three |
+| `update_interval_ms` | `10000` | How often CPU/RAM/VRAM are resampled (1000-60000 ms); shared by all three since VRAM sampling is the most expensive of the three |
 | `position` | `LeftCenter` | Position of the label on the thumbnail (see [Text Positions](#text-overlay-settings)) |
 | `offset_x`/`offset_y` | `0` | Fine-tune label position (pixels) |
 
