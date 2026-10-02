@@ -17,6 +17,7 @@ pub const EveWindow = struct {
     title: []const u8,
     character_name: []const u8,
     process_id: win32.DWORD,
+    is_eve_client: bool,
 };
 
 pub const NameChange = struct {
@@ -222,6 +223,7 @@ pub const Scout = struct {
         self.allocator.free(eve_window.title);
         eve_window.title = new_title;
 
+        if (!eve_window.is_eve_client) return;
         const new_char_name = extractCharacterName(current_title);
         if (!std.mem.eql(u8, eve_window.character_name, new_char_name)) {
             self.renameWindow(eve_window, new_char_name);
@@ -424,10 +426,8 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
     };
 
     // Non-EVE titles aren't a stable per-window identity, so fall back to the filter's own name.
-    const character_name_slice = if (std.mem.eql(u8, class_slice, EVE_WINDOW_CLASS))
-        Scout.extractCharacterName(title_copy)
-    else
-        matching_filter.name;
+    const is_eve_client = std.mem.eql(u8, class_slice, EVE_WINDOW_CLASS);
+    const character_name_slice = if (is_eve_client) Scout.extractCharacterName(title_copy) else matching_filter.name;
     const character_name = scout.allocator.dupe(u8, character_name_slice) catch |err| {
         slog.err("Failed to allocate character name '{s}' for hwnd {*}: {}", .{ character_name_slice, hwnd, err });
         scout.allocator.free(title_copy);
@@ -439,6 +439,7 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
         .title = title_copy,
         .character_name = character_name,
         .process_id = process_id,
+        .is_eve_client = is_eve_client,
     };
 
     scout.windows.append(scout.allocator, eve_window) catch |err| {
