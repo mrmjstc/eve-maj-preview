@@ -102,7 +102,6 @@ pub const ThumbnailWindow = struct {
     thumbnail_id: win32.HTHUMBNAIL,
     source_hwnd: win32.HWND,
     is_eve_client: bool,
-    title: []const u8,
     character_name: []const u8,
     system_name: []const u8,
     /// In-game timestamp of the event that set system_name (YYYYMMDD*1000000+HHMMSS); 0 = untimestamped source (e.g. live tailing), which always applies.

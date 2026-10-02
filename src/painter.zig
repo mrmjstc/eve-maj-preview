@@ -210,7 +210,6 @@ pub const Painter = struct {
 
     /// Frees what every ThumbnailWindow owns regardless of mode: its strings and notification stack.
     fn freeThumbnailData(self: *Painter, thumbnail: ThumbnailWindow) void {
-        self.allocator.free(thumbnail.title);
         self.allocator.free(thumbnail.character_name);
         self.allocator.free(thumbnail.system_name);
         self.allocator.free(thumbnail.cached_group_badge_label);
@@ -484,7 +483,7 @@ pub const Painter = struct {
     }
 
     /// Reacts to Scout's name-change events (logins, logouts, renames); returns whether the layout needs a reflow.
-    pub fn applyNameChanges(self: *Painter, name_changes: []const scout.NameChange, eve_windows: []const scout.EveWindow) bool {
+    pub fn applyNameChanges(self: *Painter, name_changes: []const scout.NameChange) bool {
         var any_login = false;
         var any_logout = false;
         for (name_changes) |change| {
@@ -496,14 +495,7 @@ pub const Painter = struct {
             if (was_generic and !now_generic) any_login = true;
             if (now_generic and !was_generic) any_logout = true;
 
-            var title: []const u8 = change.new_name;
-            for (eve_windows) |w| {
-                if (w.hwnd == change.hwnd) {
-                    title = w.title;
-                    break;
-                }
-            }
-            self.rename(thumbnail, change.new_name, title) catch |err| {
+            self.rename(thumbnail, change.new_name) catch |err| {
                 slog.err("Failed to rename the thumbnail for '{s}': {}", .{ change.new_name, err });
                 continue;
             };
@@ -526,15 +518,10 @@ pub const Painter = struct {
         return placement.isRegionFitActive(&self.config.display) and (any_login or (any_logout and self.config.display.regionFitReorderLoggedOut));
     }
 
-    /// Takes `name` and `title`, keeping the old ones if copying fails.
-    fn rename(self: *Painter, thumbnail: *ThumbnailWindow, name: []const u8, title: []const u8) !void {
-        const title_copy = try self.allocator.dupe(u8, title);
-        errdefer self.allocator.free(title_copy);
+    /// Keeps the old name if copying fails.
+    fn rename(self: *Painter, thumbnail: *ThumbnailWindow, name: []const u8) !void {
         const name_copy = try self.allocator.dupe(u8, name);
-
-        self.allocator.free(thumbnail.title);
         self.allocator.free(thumbnail.character_name);
-        thumbnail.title = title_copy;
         thumbnail.character_name = name_copy;
         thumbnail.render_cache.character_name.dims = null;
         thumbnail.refreshConfigCache(self.config, &self.auto_colors);
@@ -588,21 +575,6 @@ pub const Painter = struct {
         slog.debug("Cleared system name for logged out client", .{});
     }
 
-    /// Titles can change without the character name changing.
-    fn syncThumbnailTitles(self: *Painter, eve_windows: []const scout.EveWindow) void {
-        for (eve_windows) |eve_window| {
-            const thumbnail = self.getThumbnailBySourceHwnd(eve_window.hwnd) orelse continue;
-            if (std.mem.eql(u8, thumbnail.title, eve_window.title)) continue;
-
-            const new_title_dup = self.allocator.dupe(u8, eve_window.title) catch |err| {
-                slog.err("Failed to copy the title for '{s}': {}", .{ eve_window.character_name, err });
-                continue;
-            };
-            self.allocator.free(thumbnail.title);
-            thumbnail.title = new_title_dup;
-        }
-    }
-
     pub const PopulateOptions = struct {
         /// Moves each new client window to its saved position (auto-move).
         move_to_saved: bool,
@@ -641,9 +613,8 @@ pub const Painter = struct {
         var needs_region_reflow = self.cleanupClosedThumbnails(closed_windows);
         self.updateThumbnailStates();
         self.auto_minimize.check(self);
-        needs_region_reflow = self.applyNameChanges(name_changes, eve_windows) or needs_region_reflow;
+        needs_region_reflow = self.applyNameChanges(name_changes) or needs_region_reflow;
         self.auto_move.verify(self.config);
-        self.syncThumbnailTitles(eve_windows);
 
         // createThumbnail seeds title/character_name from eve_window, so new thumbnails need no re-sync.
         const created_new = self.addMissingThumbnails(eve_windows, .{ .move_to_saved = self.config.autoMovePosition.enabled });
@@ -688,17 +659,14 @@ pub const Painter = struct {
     }
 
     const ThumbnailStrings = struct {
-        title: []const u8,
         character_name: []const u8,
         system_name: []const u8,
         group_badge_label: []const u8,
     };
 
-    /// Dupes the four owned strings a ThumbnailWindow needs; on partial failure, whatever already succeeded is freed before the error propagates.
-    fn dupeThumbnailStrings(self: *Painter, title: []const u8, character_name: []const u8, system_name: []const u8) !ThumbnailStrings {
+    /// Dupes the three owned strings a ThumbnailWindow needs; on partial failure, whatever already succeeded is freed before the error propagates.
+    fn dupeThumbnailStrings(self: *Painter, character_name: []const u8, system_name: []const u8) !ThumbnailStrings {
         const allocator = self.allocator;
-        const title_copy = try allocator.dupe(u8, title);
-        errdefer allocator.free(title_copy);
         const char_name_copy = try allocator.dupe(u8, character_name);
         errdefer allocator.free(char_name_copy);
         const sys_name_copy = try allocator.dupe(u8, system_name);
@@ -707,7 +675,6 @@ pub const Painter = struct {
         errdefer allocator.free(group_badge_label_copy);
 
         return .{
-            .title = title_copy,
             .character_name = char_name_copy,
             .system_name = sys_name_copy,
             .group_badge_label = group_badge_label_copy,
@@ -716,14 +683,13 @@ pub const Painter = struct {
 
     /// The data record both creation paths share; the caller supplies the window handles (sentinels outside Thumbnails mode) and owns the result's strings.
     fn newThumbnailRecord(self: *Painter, eve_window: *const scout.EveWindow, initial_system_name: []const u8, handles: window.Handles, win32_enabled: bool) !ThumbnailWindow {
-        const strings = try self.dupeThumbnailStrings(eve_window.title, eve_window.character_name, initial_system_name);
+        const strings = try self.dupeThumbnailStrings(eve_window.character_name, initial_system_name);
         var thumbnail = ThumbnailWindow{
             .hwnd = handles.hwnd,
             .text_hwnd = handles.text_hwnd,
             .thumbnail_id = handles.thumbnail_id,
             .source_hwnd = eve_window.hwnd,
             .is_eve_client = eve_window.is_eve_client,
-            .title = strings.title,
             .character_name = strings.character_name,
             .system_name = strings.system_name,
             .cached_group_badge_label = strings.group_badge_label,
