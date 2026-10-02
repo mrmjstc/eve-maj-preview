@@ -796,7 +796,7 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
 - **Critical yield**: `Critical mining success! You mined an additional 124 units of Bistot II-Grade`
 - **Excluded**: residue/waste lines (`depleted from asteroid as residue`) are ignored
 
-**Laser Idle Alert** (`MiningIdle` notification type): Fires when the number of `(mining)` events within `idleAlertWindowSeconds` drops to `≤ idleAlertThreshold`. Useful for detecting when one of two lasers stops. The alert fires once per window-duration cooldown and resets when activity rises above threshold again.
+**Laser Idle Alert** (`MiningIdle` notification type): Fires when the number of `(mining)` events within `idleAlertWindowSeconds` drops to `≤ idleAlertThreshold`. Useful for detecting when one of two lasers stops. It isn't checked until mining has run for a whole `idleAlertWindowSeconds`, so starting to mine doesn't trigger it. The alert fires once per window-duration cooldown and resets when activity rises above threshold again.
 
 **Mining Stopped Alert** (`MiningStopped` notification type): Fires once when no `(mining)` events have occurred for `stoppedAlertWindowSeconds` seconds, after the character was previously mining. Re-arms automatically when mining resumes.
 

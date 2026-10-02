@@ -384,6 +384,7 @@ pub const MiningTracker = struct {
             window.last_alert_ms = 0;
             return false;
         }
+        if (now_ms - window.streak_start_ms < alert_window_ms) return false;
         if (window.last_alert_ms != 0) {
             return false;
         }
@@ -1009,12 +1010,21 @@ test "MiningTracker idle alert fires once per idle stretch" {
     try testing.expect(!tracker.checkIdleAlert("Some Pilot", 1_000, 60_000, 2));
 
     try tracker.addEntry("Some Pilot", 10, 0, 1_000);
-    try testing.expect(tracker.checkIdleAlert("Some Pilot", 1_000, 60_000, 2));
-    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 1_500, 60_000, 2));
+    try testing.expect(tracker.checkIdleAlert("Some Pilot", 61_000, 60_000, 2));
+    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 61_500, 60_000, 2));
 
-    for ([_]i64{ 2_000, 3_000, 4_000 }) |ts| try tracker.addEntry("Some Pilot", 10, 0, ts);
-    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 4_000, 60_000, 2));
+    for ([_]i64{ 62_000, 63_000, 64_000 }) |ts| try tracker.addEntry("Some Pilot", 10, 0, ts);
+    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 64_000, 60_000, 2));
     try testing.expect(tracker.checkIdleAlert("Some Pilot", 200_000, 60_000, 2));
+}
+
+test "MiningTracker idle alert waits until mining has run a whole detection window" {
+    var tracker: MiningTracker = .init(testing.allocator, testing.io, 60);
+    defer tracker.deinit();
+    try tracker.addEntry("Some Pilot", 110, 0, 1_000);
+    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 1_000, 30_000, 1));
+    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 30_000, 30_000, 1));
+    try testing.expect(tracker.checkIdleAlert("Some Pilot", 31_000, 30_000, 1));
 }
 
 test "MiningTracker stopped alert fires once until mining resumes" {
