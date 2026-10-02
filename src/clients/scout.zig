@@ -71,7 +71,7 @@ pub const Scout = struct {
             .pending_scan = false,
             .name_change_hook = installHook(win32.EVENT_OBJECT_NAMECHANGE, nameChangeCallback, "Title change", "character name changes will not be detected until full window rescan"),
             .create_event_hook = installHook(win32.EVENT_OBJECT_CREATE, windowCreateCallback, "Window creation", "new windows will only be detected via periodic scanning"),
-            .destroy_event_hook = installHook(win32.EVENT_OBJECT_DESTROY, windowDestroyCallback, "Window destroy", "closed windows will not be detected until periodic validation"),
+            .destroy_event_hook = installHook(win32.EVENT_OBJECT_DESTROY, windowDestroyCallback, "Window destroy", "closed windows will only be dropped on a profile reload"),
         };
     }
 
@@ -145,10 +145,10 @@ pub const Scout = struct {
         _ = self.not_logged_in_queue.orderedRemove(index);
     }
 
-    /// Caller-owned snapshot of the not-logged-in FIFO, oldest first. Caller frees with out_allocator.
-    pub fn getNotLoggedInHwnds(self: *Scout, out_allocator: std.mem.Allocator) !std.ArrayList(win32.HWND) {
+    /// Caller-owned snapshot of the not-logged-in FIFO, oldest first. Caller frees with allocator.
+    pub fn getNotLoggedInHwnds(self: *Scout, allocator: std.mem.Allocator) !std.ArrayList(win32.HWND) {
         var result: std.ArrayList(win32.HWND) = .empty;
-        try result.appendSlice(out_allocator, self.not_logged_in_queue.items);
+        try result.appendSlice(allocator, self.not_logged_in_queue.items);
         return result;
     }
 
@@ -251,17 +251,11 @@ pub const Scout = struct {
         };
     }
 
-    /// The whole title when splitCharacterName finds no name.
+    /// "EVE - CharacterName" gives "CharacterName"; the whole title when nothing follows a " - ".
     fn extractCharacterName(title: []const u8) []const u8 {
-        return splitCharacterName(title) orelse title;
-    }
-
-    /// Splits an EVE window title ("EVE - CharacterName") on " - "; null if there's no such separator or nothing follows it.
-    pub fn splitCharacterName(title: []const u8) ?[]const u8 {
-        const dash_pos = std.mem.indexOf(u8, title, " - ") orelse return null;
-        const name = title[dash_pos + 3 ..];
-        if (name.len == 0) return null;
-        return name;
+        const dash_pos = std.mem.indexOf(u8, title, " - ") orelse return title;
+        const name = title[dash_pos + " - ".len ..];
+        return if (name.len == 0) title else name;
     }
 
     /// First live window with this name, which a filter's windows and logged-out clients share.
@@ -419,7 +413,7 @@ fn windowDestroyCallback(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, id_o
 
     const scout_ptr = g_scout_ptr orelse return;
 
-    // Uses hwnd_to_index before checking class name, since a partially-destroyed window can fail GetClassNameA.
+    // By hwnd alone, since a partially-destroyed window can fail GetClassNameA.
     const index = scout_ptr.hwnd_to_index.get(hwnd) orelse return;
     const eve_window = scout_ptr.windows.items[index];
     if (!scout_ptr.reportClosed(eve_window)) return;
