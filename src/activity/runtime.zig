@@ -99,6 +99,7 @@ pub const Trackers = struct {
         if (self.mining) |t| pushThrottled(tracker_mod.MiningTracker, pushMining, t, cfg, windows, now_ms, &self.last_mining_update_ms, cfg.mining.update_interval_ms);
         if (self.bounty) |t| pushThrottled(tracker_mod.BountyTracker, pushBounty, t, cfg, windows, now_ms, &self.last_bounty_update_ms, cfg.bounty.update_interval_ms);
 
+        self.setupResources(cfg.resources.enabled);
         if (self.resources) |t| {
             if (now_ms - self.last_resource_update_ms >= @as(i64, @intCast(cfg.resources.update_interval_ms))) {
                 self.last_resource_update_ms = now_ms;
