@@ -746,7 +746,7 @@ Incoming and outgoing damage are rendered as two independently-positioned labels
 - **Outgoing**: line contains `" to "` after the amount - e.g. `166 to Gistatis Legatus - Berserker II - Grazes`
 - **Excluded**: remote repairs/cap transfers (keyword scan), misses (no leading damage number), and unrecognised formats
 
-**DPS Formula**: Total damage within the window divided by `windowSeconds`. The display refreshes every `updateIntervalMs`.
+**DPS Formula**: Total damage within the window divided by `windowSeconds`. During the first `windowSeconds` of a fight (after a full window without hits), it's the damage after the first second divided by the time since, shown as `??` for the first 3 seconds. The display refreshes every `updateIntervalMs`.
 
 ## Mining Rate Overlay
 
@@ -789,7 +789,7 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
 | `stoppedAlertEnabled` | `false` | Enable the mining-stopped alert notification |
 | `stoppedAlertWindowSeconds` | `60` | Seconds of silence before the stopped alert fires |
 
-**Rate Formula**: Total units mined within the window divided by `windowSeconds`, converted to per-minute for display. Displays as `M: XXXX u/min`.
+**Rate Formula**: Total units mined within the window divided by `windowSeconds`, converted to per-minute for display. Displays as `M: XXXX u/min`. During the first `windowSeconds` of mining, it's the units mined after the first cycle divided by the time from the first yield to the latest, so lasers cycling in step read their true rate from the second cycle on. Bounty ISK/hr works the same way.
 
 **Parsing**: EVE gamelog `(mining)` lines are parsed for yield quantity:
 - **Normal yield**: `You mined 42 units of Bistot II-Grade`

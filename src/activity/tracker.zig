@@ -7,8 +7,56 @@ const slog = log.scoped("activity_tracker");
 /// Ring-buffer capacity per character; 512 entries covers ~8 min at 1 hit/sec, within window_seconds ≤ 600.
 const RING_CAPACITY = 512;
 
-/// Guards against simultaneous multi-module/multi-weapon log lines spiking a rate computed over a near-zero span.
+/// Guards against simultaneous multi-module/multi-weapon log lines spiking a warm-up rate computed over a near-zero span.
 const MIN_RATE_SPAN_MS: i64 = 3 * std.time.ms_per_s;
+
+/// Lines landing this soon after a streak's first one (lasers cycling in step, one volley) count as its first moment.
+const FIRST_MOMENT_MS: i64 = 1 * std.time.ms_per_s;
+
+/// One direction's or field's events within a window, split at its streak's first moment.
+const WindowSum = struct {
+    total: f32 = 0,
+    after_first_moment: f32 = 0,
+    count: usize = 0,
+    count_after_first_moment: usize = 0,
+    newest_ms: i64 = 0,
+
+    const WarmUp = enum { to_now, to_newest };
+
+    fn add(self: *WindowSum, amount: f32, timestamp_ms: i64, streak_start_ms: i64) void {
+        self.total += amount;
+        self.count += 1;
+        self.newest_ms = @max(self.newest_ms, timestamp_ms);
+        if (timestamp_ms - streak_start_ms >= FIRST_MOMENT_MS) {
+            self.after_first_moment += amount;
+            self.count_after_first_moment += 1;
+        }
+    }
+
+    /// Total over the window once the streak is a window old; before that, what came after its first moment over the time since, to now or to the newest event. Null while that's too short to trust.
+    /// `ring_full_from_ms` is the oldest event kept when the ring filled up inside the window, so only the time it covers counts.
+    fn rate(self: WindowSum, streak_start_ms: i64, now_ms: i64, window_ms: i64, ring_full_from_ms: ?i64, warm_up: WarmUp) ?f32 {
+        if (self.count == 0) return 0.0;
+        if (ring_full_from_ms) |from_ms| {
+            const covered_ms = now_ms - from_ms;
+            if (covered_ms < MIN_RATE_SPAN_MS) return null;
+            return self.total / seconds(covered_ms);
+        }
+        if (now_ms - streak_start_ms >= window_ms) return self.total / seconds(window_ms);
+        if (self.count_after_first_moment == 0) return null;
+        const end_ms = switch (warm_up) {
+            .to_now => now_ms,
+            .to_newest => self.newest_ms,
+        };
+        const elapsed_ms = end_ms - streak_start_ms;
+        if (elapsed_ms < MIN_RATE_SPAN_MS) return null;
+        return self.after_first_moment / seconds(elapsed_ms);
+    }
+
+    fn seconds(ms: i64) f32 {
+        return @as(f32, @floatFromInt(ms)) / 1000.0;
+    }
+};
 
 pub const CombatEvent = struct {
     timestamp_ms: i64,
@@ -25,12 +73,10 @@ pub const CombatWindow = struct {
     count: usize = 0,
     window_ms: i64,
     last_hit_ms: i64 = 0,
+    streak_start_ms: i64 = 0,
     last_incoming_hit_ms: i64 = 0,
     /// 0 = never fired.
     last_damage_alert_ms: i64 = 0,
-    /// Per-direction activity clocks for idleDecayFactor; unlike last_incoming_hit_ms, not gated by counts_for_alert.
-    last_incoming_activity_ms: i64 = 0,
-    last_outgoing_activity_ms: i64 = 0,
 
     // Null means not enough span yet to trust a rate.
     last_incoming_dps: ?f32 = 0.0,
@@ -51,13 +97,9 @@ pub const CombatWindow = struct {
         };
         self.head = (self.head + 1) % RING_CAPACITY;
         if (self.count < RING_CAPACITY) self.count += 1;
+        self.streak_start_ms = streakStart(self.streak_start_ms, self.last_hit_ms, timestamp_ms, self.window_ms);
         if (timestamp_ms > self.last_hit_ms) self.last_hit_ms = timestamp_ms;
-        if (is_incoming) {
-            if (counts_for_alert and timestamp_ms > self.last_incoming_hit_ms) self.last_incoming_hit_ms = timestamp_ms;
-            if (timestamp_ms > self.last_incoming_activity_ms) self.last_incoming_activity_ms = timestamp_ms;
-        } else if (timestamp_ms > self.last_outgoing_activity_ms) {
-            self.last_outgoing_activity_ms = timestamp_ms;
-        }
+        if (is_incoming and counts_for_alert and timestamp_ms > self.last_incoming_hit_ms) self.last_incoming_hit_ms = timestamp_ms;
     }
 
     /// Fires when incoming damage has landed since the last alert; repeat-rate is the Notifications tab's throttle, not this. Stays silent once combat stops instead of repeating on a timer.
@@ -68,18 +110,15 @@ pub const CombatWindow = struct {
         return true;
     }
 
-    /// Null when the span is too short to trust a rate.
+    /// Per second; see WindowSum.rate. Hits arrive irregularly, so warm-up runs to now.
     pub fn computeDps(self: *const CombatWindow, now_ms: i64) struct { incoming: ?f32, outgoing: ?f32 } {
         if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) {
             return .{ .incoming = 0.0, .outgoing = 0.0 };
         }
         const cutoff = now_ms - self.window_ms;
-        var in_total: u64 = 0;
-        var out_total: u64 = 0;
-        var has_incoming = false;
-        var has_outgoing = false;
-        var newest_ms: i64 = 0;
-        var oldest_ms: i64 = 0;
+        var incoming: WindowSum = .{};
+        var outgoing: WindowSum = .{};
+        var oldest_ms: i64 = now_ms;
 
         var i: usize = 0;
         while (i < self.count) : (i += 1) {
@@ -87,28 +126,14 @@ pub const CombatWindow = struct {
             const entry = &self.entries[idx];
             // The ring is in time order, so every older entry has expired too.
             if (entry.timestamp_ms < cutoff) break;
-            if (i == 0) newest_ms = entry.timestamp_ms;
             oldest_ms = entry.timestamp_ms;
-            if (entry.is_incoming) {
-                in_total += entry.amount;
-                has_incoming = true;
-            } else {
-                out_total += entry.amount;
-                has_outgoing = true;
-            }
+            const sum = if (entry.is_incoming) &incoming else &outgoing;
+            sum.add(@floatFromInt(entry.amount), entry.timestamp_ms, self.streak_start_ms);
         }
-        const span_ms = newest_ms - oldest_ms;
-        if (span_ms < MIN_RATE_SPAN_MS) return .{
-            .incoming = if (has_incoming) null else 0.0,
-            .outgoing = if (has_outgoing) null else 0.0,
-        };
-
-        const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
-        const in_factor = idleDecayFactor(now_ms, self.last_incoming_activity_ms, self.window_ms);
-        const out_factor = idleDecayFactor(now_ms, self.last_outgoing_activity_ms, self.window_ms);
+        const ring_full_from_ms: ?i64 = if (i == RING_CAPACITY) oldest_ms else null;
         return .{
-            .incoming = (@as(f32, @floatFromInt(in_total)) / window_secs) * in_factor,
-            .outgoing = (@as(f32, @floatFromInt(out_total)) / window_secs) * out_factor,
+            .incoming = incoming.rate(self.streak_start_ms, now_ms, self.window_ms, ring_full_from_ms, .to_now),
+            .outgoing = outgoing.rate(self.streak_start_ms, now_ms, self.window_ms, ring_full_from_ms, .to_now),
         };
     }
 
@@ -202,6 +227,7 @@ pub const MiningWindow = struct {
     count: usize = 0,
     window_ms: i64,
     last_hit_ms: i64 = 0,
+    streak_start_ms: i64 = 0,
 
     // Null means not enough span yet to trust a rate.
     last_m3_per_sec: ?f32 = null,
@@ -225,6 +251,7 @@ pub const MiningWindow = struct {
         };
         self.head = (self.head + 1) % RING_CAPACITY;
         if (self.count < RING_CAPACITY) self.count += 1;
+        self.streak_start_ms = streakStart(self.streak_start_ms, self.last_hit_ms, timestamp_ms, self.window_ms);
         if (timestamp_ms > self.last_hit_ms) self.last_hit_ms = timestamp_ms;
         // Mining resumed, so the stopped alert can fire again.
         self.last_stopped_alert_ms = 0;
@@ -243,14 +270,14 @@ pub const MiningWindow = struct {
         return n;
     }
 
-    /// m3 per second; null when the span is too short to trust a rate.
+    /// m3 per second; see WindowSum.rate.
     pub fn computeRate(self: *const MiningWindow, now_ms: i64) ?f32 {
-        return computeWindowRate(MiningEvent, "m3", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, now_ms);
+        return computeWindowRate(MiningEvent, "m3", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, self.streak_start_ms, now_ms);
     }
 
-    /// ISK per second; null when the span is too short to trust a rate.
+    /// ISK per second; see WindowSum.rate.
     pub fn computeIskRate(self: *const MiningWindow, now_ms: i64) ?f32 {
-        return computeWindowRate(MiningEvent, "isk", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, now_ms);
+        return computeWindowRate(MiningEvent, "isk", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, self.streak_start_ms, now_ms);
     }
 
     /// Whether the m3 rate moved by 0.1 or more, or to or from null; the ISK rate comes from the same entries, so it's covered.
@@ -387,6 +414,7 @@ pub const BountyWindow = struct {
     count: usize = 0,
     window_ms: i64,
     last_hit_ms: i64 = 0,
+    streak_start_ms: i64 = 0,
 
     last_isk_per_sec: ?f32 = null,
 
@@ -403,12 +431,13 @@ pub const BountyWindow = struct {
         };
         self.head = (self.head + 1) % RING_CAPACITY;
         if (self.count < RING_CAPACITY) self.count += 1;
+        self.streak_start_ms = streakStart(self.streak_start_ms, self.last_hit_ms, timestamp_ms, self.window_ms);
         if (timestamp_ms > self.last_hit_ms) self.last_hit_ms = timestamp_ms;
     }
 
-    /// ISK per second; null when the span is too short to trust a rate.
+    /// ISK per second; see WindowSum.rate.
     pub fn computeIskRate(self: *const BountyWindow, now_ms: i64) ?f32 {
-        return computeWindowRate(BountyEvent, "isk", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, now_ms);
+        return computeWindowRate(BountyEvent, "isk", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, self.streak_start_ms, now_ms);
     }
 
     /// Whether the rate moved by 0.1 or more, or to or from null.
@@ -731,17 +760,13 @@ fn appendDigit(comptime T: type, amount: T, digit_char: u8) ?T {
     return std.math.add(T, shifted, digit_char - '0') catch null;
 }
 
-/// Rate multiplier that decays 1.0 -> 0.0 as idle time crosses the window's second half, instead of holding flat then cutting to zero.
-fn idleDecayFactor(now_ms: i64, last_activity_ms: i64, window_ms: i64) f32 {
-    const idle_ms = now_ms - last_activity_ms;
-    const grace_ms = @divTrunc(window_ms, 2);
-    if (idle_ms <= grace_ms) return 1.0;
-    const decay_span_ms = window_ms - grace_ms;
-    const over_ms = @min(idle_ms - grace_ms, decay_span_ms);
-    return 1.0 - @as(f32, @floatFromInt(over_ms)) / @as(f32, @floatFromInt(decay_span_ms));
+/// A new streak starts with the first event after a whole window of quiet.
+fn streakStart(current_start_ms: i64, last_hit_ms: i64, timestamp_ms: i64, window_ms: i64) i64 {
+    if (last_hit_ms == 0 or timestamp_ms - last_hit_ms >= window_ms) return timestamp_ms;
+    return current_start_ms;
 }
 
-/// Sums `@field(entry, field)` over the window ending at now_ms, decayed by idleDecayFactor. Null means not enough span yet to trust a rate.
+/// Mining yields and bounty payouts per second over the window ending at now_ms; yields come in cycles, so warm-up runs to the newest.
 fn computeWindowRate(
     comptime T: type,
     comptime field: []const u8,
@@ -750,28 +775,24 @@ fn computeWindowRate(
     count: usize,
     window_ms: i64,
     last_hit_ms: i64,
+    streak_start_ms: i64,
     now_ms: i64,
 ) ?f32 {
     if (last_hit_ms == 0 or now_ms - last_hit_ms >= window_ms) return 0.0;
     const cutoff = now_ms - window_ms;
-    var total: f32 = 0;
-    var newest_ms: i64 = 0;
-    var oldest_ms: i64 = 0;
+    var sum: WindowSum = .{};
+    var oldest_ms: i64 = now_ms;
 
     var i: usize = 0;
     while (i < count) : (i += 1) {
         const idx = (head + entries.len - 1 - i) % entries.len;
         const entry = &entries[idx];
         if (entry.timestamp_ms < cutoff) break;
-        if (i == 0) newest_ms = entry.timestamp_ms;
         oldest_ms = entry.timestamp_ms;
-        total += @field(entry, field);
+        sum.add(@field(entry, field), entry.timestamp_ms, streak_start_ms);
     }
-    const span_ms = newest_ms - oldest_ms;
-    if (span_ms < MIN_RATE_SPAN_MS) return null;
-
-    const window_secs = @as(f32, @floatFromInt(@min(window_ms, span_ms))) / 1000.0;
-    return (total / window_secs) * idleDecayFactor(now_ms, last_hit_ms, window_ms);
+    const ring_full_from_ms: ?i64 = if (i == entries.len) oldest_ms else null;
+    return sum.rate(streak_start_ms, now_ms, window_ms, ring_full_from_ms, .to_newest);
 }
 
 const testing = std.testing;
@@ -846,13 +867,6 @@ test "isWeaponExcluded matches case-insensitive substrings and skips blank entri
     try testing.expect(!isWeaponExcluded("Heavy Missile", "Heavy Missile Launcher"));
 }
 
-test "idleDecayFactor holds through the first half of the window, then fades to zero" {
-    try testing.expectEqual(@as(f32, 1.0), idleDecayFactor(5_000, 0, 10_000));
-    try testing.expectEqual(@as(f32, 0.5), idleDecayFactor(7_500, 0, 10_000));
-    try testing.expectEqual(@as(f32, 0.0), idleDecayFactor(10_000, 0, 10_000));
-    try testing.expectEqual(@as(f32, 0.0), idleDecayFactor(60_000, 0, 10_000));
-}
-
 test "CombatWindow withholds a rate until hits span three seconds, only for a direction with hits" {
     var window: CombatWindow = .init(10);
     window.addEntry(100, true, 1_000, true);
@@ -862,14 +876,21 @@ test "CombatWindow withholds a rate until hits span three seconds, only for a di
     try testing.expectEqual(@as(f32, 0.0), dps.outgoing.?);
 }
 
-test "CombatWindow splits incoming and outgoing damage over the span of hits" {
+test "CombatWindow warms up on the hits after the first moment, over the time since" {
     var window: CombatWindow = .init(10);
     window.addEntry(100, true, 1_000, true);
     window.addEntry(50, false, 3_000, true);
     window.addEntry(100, true, 5_000, true);
     const dps = window.computeDps(5_000);
-    try testing.expectEqual(@as(f32, 50.0), dps.incoming.?);
+    try testing.expectEqual(@as(f32, 25.0), dps.incoming.?);
     try testing.expectEqual(@as(f32, 12.5), dps.outgoing.?);
+}
+
+test "CombatWindow rates a streak a window old as its total over the window" {
+    var window: CombatWindow = .init(10);
+    var t: i64 = 1_000;
+    while (t <= 20_000) : (t += 1_000) window.addEntry(100, true, t, true);
+    try testing.expectEqual(@as(f32, 100.0), window.computeDps(20_500).incoming.?);
 }
 
 test "CombatWindow reports zero once the last hit leaves the window" {
@@ -887,6 +908,7 @@ test "CombatWindow keeps only the newest hits once the ring wraps" {
         window.addEntry(1, true, 1_000 + @as(i64, @intCast(i)) * 10, true);
     }
     try testing.expectEqual(@as(usize, RING_CAPACITY), window.count);
+    // The full ring sits inside the window, so the rate covers only the time its newest hits span.
     const newest_ms = 1_000 + @as(i64, RING_CAPACITY + 87) * 10;
     const oldest_ms = 1_000 + @as(i64, 88) * 10;
     const span_secs = @as(f32, @floatFromInt(newest_ms - oldest_ms)) / 1000.0;
@@ -918,14 +940,40 @@ test "CombatWindow.refresh reports a change only when a rate appears or moves" {
     try testing.expect(!window.refresh(5_000));
 }
 
-test "MiningWindow rates m3 and ISK over the span of yields" {
+test "MiningWindow warms up on the yields after the first, to the newest" {
     var window: MiningWindow = .init(60);
     window.addEntry(30, 3_000, 1_000);
     window.addEntry(30, 3_000, 4_000);
-    try testing.expectEqual(@as(f32, 20.0), window.computeRate(4_000).?);
-    try testing.expectEqual(@as(f32, 2_000.0), window.computeIskRate(4_000).?);
+    try testing.expectEqual(@as(f32, 10.0), window.computeRate(4_000).?);
+    try testing.expectEqual(@as(f32, 1_000.0), window.computeIskRate(4_000).?);
+    try testing.expectEqual(@as(f32, 10.0), window.computeRate(9_000).?);
     try testing.expectEqual(@as(usize, 2), window.countEvents(60_000, 4_000));
     try testing.expectEqual(@as(usize, 1), window.countEvents(1_000, 4_000));
+}
+
+test "MiningWindow counts two lasers yielding together as one cycle" {
+    var window: MiningWindow = .init(60);
+    var t: i64 = 1_000;
+    while (t <= 37_000) : (t += 12_000) {
+        window.addEntry(110, 0, t);
+        window.addEntry(110, 0, t);
+    }
+    try testing.expectApproxEqAbs(@as(f32, 220.0 / 12.0), window.computeRate(40_000).?, 0.001);
+}
+
+test "MiningWindow rates a streak a window old as its total over the window" {
+    var window: MiningWindow = .init(60);
+    var t: i64 = 1_000;
+    while (t <= 121_000) : (t += 12_000) window.addEntry(110, 0, t);
+    try testing.expectApproxEqAbs(@as(f32, 550.0 / 60.0), window.computeRate(121_500).?, 0.001);
+}
+
+test "MiningWindow starts a new streak after a whole window of quiet" {
+    var window: MiningWindow = .init(60);
+    window.addEntry(110, 0, 1_000);
+    window.addEntry(110, 0, 13_000);
+    window.addEntry(110, 0, 100_000);
+    try testing.expect(window.computeRate(100_000) == null);
 }
 
 test "BountyWindow reports zero before the first payout" {
