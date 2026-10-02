@@ -48,8 +48,6 @@ pub const Scout = struct {
     config: *const config_mod.Config,
     windows: std.ArrayList(EveWindow),
     hwnd_to_index: std.AutoHashMap(win32.HWND, usize),
-    /// Processes already known to be EVE, so each one's executable path is only checked once.
-    eve_pids: std.AutoHashMap(win32.DWORD, void),
     /// Filled by the WinEvent hooks between ticks and handed over by update().
     pending_closed: std.ArrayList(ClosedWindow),
     pending_name_changes: std.ArrayList(NameChange),
@@ -67,7 +65,6 @@ pub const Scout = struct {
             .config = config,
             .windows = .empty,
             .hwnd_to_index = std.AutoHashMap(win32.HWND, usize).init(allocator),
-            .eve_pids = std.AutoHashMap(win32.DWORD, void).init(allocator),
             .pending_closed = .empty,
             .pending_name_changes = .empty,
             .not_logged_in_queue = .empty,
@@ -104,7 +101,6 @@ pub const Scout = struct {
         for (self.windows.items) |window| self.freeWindow(window);
         self.windows.deinit(self.allocator);
         self.hwnd_to_index.deinit();
-        self.eve_pids.deinit();
         self.not_logged_in_queue.deinit(self.allocator);
     }
 
@@ -162,40 +158,6 @@ pub const Scout = struct {
 
     pub fn getWindows(self: *Scout) []const EveWindow {
         return self.windows.items;
-    }
-
-    /// Only called when windows are closed; drops PIDs for processes that no longer exist.
-    fn cleanupStalePids(self: *Scout) void {
-        var active_pids = std.AutoHashMap(win32.DWORD, void).init(self.allocator);
-        defer active_pids.deinit();
-
-        for (self.windows.items) |eve_window| {
-            if (eve_window.process_id != 0) {
-                active_pids.put(eve_window.process_id, {}) catch |err| {
-                    slog.err("Failed to add PID {} to active set for '{s}': {}", .{ eve_window.process_id, eve_window.character_name, err });
-                };
-            }
-        }
-
-        var it = self.eve_pids.keyIterator();
-        var pids_to_remove: std.ArrayList(win32.DWORD) = .empty;
-        defer pids_to_remove.deinit(self.allocator);
-
-        while (it.next()) |pid_ptr| {
-            if (!active_pids.contains(pid_ptr.*)) {
-                pids_to_remove.append(self.allocator, pid_ptr.*) catch |err| {
-                    slog.err("Failed to append PID {} to removal list (stale PID cleanup incomplete): {}", .{ pid_ptr.*, err });
-                };
-            }
-        }
-
-        for (pids_to_remove.items) |pid| {
-            _ = self.eve_pids.remove(pid);
-        }
-
-        if (pids_to_remove.items.len > 0) {
-            slog.debug("Cleaned up {} stale PIDs from cache", .{pids_to_remove.items.len});
-        }
     }
 
     /// Re-reads hwnd's title and records a NameChange if the character behind it changed.
@@ -275,10 +237,6 @@ pub const Scout = struct {
         const name_changes = self.pending_name_changes;
         self.pending_name_changes = .empty;
 
-        if (closed.items.len > 0) {
-            self.cleanupStalePids();
-        }
-
         if (self.pending_scan or force_scan) {
             try self.scanForEveWindows();
             self.pending_scan = false;
@@ -323,7 +281,7 @@ pub const Scout = struct {
         }
     }
 
-    /// First filter matching both class and executable; a null exe_path (a process already known to be EVE) checks the class alone.
+    /// First filter matching both class and executable; a null exe_path checks the class alone.
     fn findMatchingFilter(self: *const Scout, class_name: []const u8, exe_path: ?[]const u8) ?*const config_mod.WindowFilterConfig {
         for (self.config.windowFilters.items) |*filter| {
             if (!filter.matchesClass(class_name)) continue;
@@ -335,7 +293,7 @@ pub const Scout = struct {
         return null;
     }
 
-    /// Checks class and executable from scratch, unlike enumWindowsCallback's cached-PID shortcut.
+    /// Checks class and executable, as enumWindowsCallback does for a new window.
     fn matchesCurrentFilters(self: *const Scout, hwnd: win32.HWND, process_id: win32.DWORD) bool {
         var class_name: [64:0]u8 = undefined;
         const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return false;
@@ -355,7 +313,6 @@ pub const Scout = struct {
             if (self.matchesCurrentFilters(window.hwnd, window.process_id)) continue;
 
             _ = self.reportClosed(window);
-            _ = self.eve_pids.remove(window.process_id);
             self.removeWindowAt(i);
         }
         self.rebuildHwndIndex();
@@ -397,20 +354,14 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
     // Class first, since it's much cheaper than opening the process for its executable path.
     var class_name: [64:0]u8 = undefined;
     const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return win32.TRUE;
-    var matching_filter = scout.findMatchingFilter(class_slice, null) orelse return win32.TRUE;
+    if (scout.findMatchingFilter(class_slice, null) == null) return win32.TRUE;
 
     var process_id: win32.DWORD = 0;
     _ = win32.GetWindowThreadProcessId(hwnd, &process_id);
 
-    if (!scout.eve_pids.contains(process_id)) {
-        var exe_path: [260:0]u8 = undefined;
-        const path_slice = win32.queryProcessExePath(process_id, &exe_path) orelse return win32.TRUE;
-        matching_filter = scout.findMatchingFilter(class_slice, path_slice) orelse return win32.TRUE;
-
-        scout.eve_pids.put(process_id, {}) catch |err| {
-            slog.err("Failed to cache PID {}: {}", .{ process_id, err });
-        };
-    }
+    var exe_path: [260:0]u8 = undefined;
+    const path_slice = win32.queryProcessExePath(process_id, &exe_path) orelse return win32.TRUE;
+    const matching_filter = scout.findMatchingFilter(class_slice, path_slice) orelse return win32.TRUE;
 
     const title_copy = win32.getWindowTitle(hwnd, scout.allocator) catch |err| {
         slog.err("Failed to get window title for hwnd {*}: {}", .{ hwnd, err });
@@ -459,18 +410,6 @@ fn nameChangeCallback(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, id_obje
     if (id_object != 0) return;
 
     const scout_ptr = g_scout_ptr orelse return;
-
-    var process_id: win32.DWORD = 0;
-    _ = win32.GetWindowThreadProcessId(hwnd, &process_id);
-    if (!scout_ptr.eve_pids.contains(process_id)) {
-        return;
-    }
-
-    // In case the PID cache is stale or the PID was reused.
-    var class_name: [64:0]u8 = undefined;
-    const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return;
-    if (!std.mem.eql(u8, class_slice, EVE_WINDOW_CLASS)) return;
-
     scout_ptr.updateWindowTitle(hwnd);
 }
 
