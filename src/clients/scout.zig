@@ -293,7 +293,6 @@ pub const Scout = struct {
         return null;
     }
 
-    /// Checks class and executable, as enumWindowsCallback does for a new window.
     fn matchesCurrentFilters(self: *const Scout, hwnd: win32.HWND, process_id: win32.DWORD) bool {
         var class_name: [64:0]u8 = undefined;
         const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return false;

@@ -13,7 +13,6 @@ const MIN_RATE_SPAN_MS: i64 = 3 * std.time.ms_per_s;
 /// Lines landing this soon after a streak's first one (lasers cycling in step, one volley) count as its first moment.
 const FIRST_MOMENT_MS: i64 = 1 * std.time.ms_per_s;
 
-/// One direction's or field's events within a window, split at its streak's first moment.
 const WindowSum = struct {
     total: f32 = 0,
     after_first_moment: f32 = 0,
@@ -782,7 +781,6 @@ fn appendDigit(comptime T: type, amount: T, digit_char: u8) ?T {
     return std.math.add(T, shifted, digit_char - '0') catch null;
 }
 
-/// A new streak starts with the first event after a whole window of quiet.
 fn streakStart(current_start_ms: i64, last_hit_ms: i64, timestamp_ms: i64, window_ms: i64) i64 {
     if (last_hit_ms == 0 or timestamp_ms - last_hit_ms >= window_ms) return timestamp_ms;
     return current_start_ms;
@@ -930,7 +928,6 @@ test "CombatWindow keeps only the newest hits once the ring wraps" {
         window.addEntry(1, true, 1_000 + @as(i64, @intCast(i)) * 10, true);
     }
     try testing.expectEqual(@as(usize, RING_CAPACITY), window.count);
-    // The full ring sits inside the window, so the rate covers only the time its newest hits span.
     const newest_ms = 1_000 + @as(i64, RING_CAPACITY + 87) * 10;
     const oldest_ms = 1_000 + @as(i64, 88) * 10;
     const span_secs = @as(f32, @floatFromInt(newest_ms - oldest_ms)) / 1000.0;
