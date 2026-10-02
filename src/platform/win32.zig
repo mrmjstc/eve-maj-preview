@@ -530,6 +530,9 @@ pub extern "kernel32" fn FindFirstChangeNotificationW(
 pub extern "kernel32" fn FindNextChangeNotification(hChangeHandle: HANDLE) callconv(.c) BOOL;
 pub extern "kernel32" fn FindCloseChangeNotification(hChangeHandle: HANDLE) callconv(.c) BOOL;
 pub extern "kernel32" fn WaitForSingleObject(hHandle: HANDLE, dwMilliseconds: DWORD) callconv(.c) DWORD;
+pub extern "kernel32" fn CreateEventA(lpEventAttributes: ?*anyopaque, bManualReset: BOOL, bInitialState: BOOL, lpName: ?LPCSTR) callconv(.c) ?HANDLE;
+pub extern "kernel32" fn SetEvent(hEvent: HANDLE) callconv(.c) BOOL;
+pub extern "kernel32" fn ResetEvent(hEvent: HANDLE) callconv(.c) BOOL;
 
 // Directory enumeration, filtered by name pattern (e.g. "Local_*.txt") at the OS level
 pub const MAX_PATH = 260;

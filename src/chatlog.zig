@@ -40,6 +40,7 @@ pub const ChatlogMonitor = struct {
 
     worker_thread: ?std.Thread = null,
     should_exit: std.atomic.Value(bool) = .init(false),
+    stop_event: win32.HANDLE,
     commands: queue.Queue(queue.Command),
     system_updates: queue.Queue(queue.SystemUpdate),
     notifications: queue.Queue(queue.NotificationEvent),
@@ -60,9 +61,12 @@ pub const ChatlogMonitor = struct {
     pub fn init(allocator: std.mem.Allocator, io: std.Io, cfg: *const config.ChatlogConfig, global_settings: ?*config.GlobalConfig, character_ids: ?*CharacterIds) !*ChatlogMonitor {
         const monitor = try allocator.create(ChatlogMonitor);
         errdefer allocator.destroy(monitor);
+        const stop_event = win32.CreateEventA(null, win32.TRUE, win32.FALSE, null) orelse return error.CreateEventFailed;
+        errdefer _ = win32.CloseHandle(stop_event);
         monitor.* = .{
             .allocator = allocator,
             .io = io,
+            .stop_event = stop_event,
             .finder = try discovery.LogFinder.init(allocator, io, cfg.chatlogDir, cfg.gamelogDir, character_ids),
             .global_settings = global_settings,
             .character_ids = character_ids,
@@ -79,6 +83,7 @@ pub const ChatlogMonitor = struct {
 
     pub fn deinit(self: *ChatlogMonitor) void {
         self.stopWorkerThread();
+        _ = win32.CloseHandle(self.stop_event);
         self.commands.deinit();
         self.system_updates.deinit();
         self.notifications.deinit();
@@ -127,6 +132,7 @@ pub const ChatlogMonitor = struct {
     pub fn stopWorkerThread(self: *ChatlogMonitor) void {
         const thread = self.worker_thread orelse return;
         self.should_exit.store(true, .release);
+        _ = win32.SetEvent(self.stop_event);
         thread.join();
         self.worker_thread = null;
     }
@@ -134,6 +140,7 @@ pub const ChatlogMonitor = struct {
     pub fn startWorkerThread(self: *ChatlogMonitor) !void {
         if (self.worker_thread != null) return error.AlreadyRunning;
         self.should_exit.store(false, .release);
+        _ = win32.ResetEvent(self.stop_event);
         self.worker_thread = try std.Thread.spawn(.{}, workerMain, .{self});
     }
 
@@ -219,7 +226,7 @@ pub const ChatlogMonitor = struct {
             self.processCommands() catch |err| slog.err("Failed to process worker commands: {}", .{err});
             self.pollLogFiles();
             self.rescanForNewLogs() catch |err| slog.err("Failed to rescan for new logs: {}", .{err});
-            win32.Sleep(self.poll_interval_ms);
+            _ = win32.WaitForSingleObject(self.stop_event, self.poll_interval_ms);
         }
         slog.info("Chatlog worker thread exiting (processed {} loops)", .{loops});
     }
