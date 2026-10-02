@@ -95,7 +95,7 @@ pub const Trackers = struct {
         if (kind) |k| slog.debug("Cleaned up {s} tracker", .{k});
     }
 
-    /// Pushes each enabled tracker's values into the painter at its configured interval, and checks alerts every ALERT_CHECK_INTERVAL_MS.
+    /// Pushes each enabled tracker's values into the painter at its configured interval, checks alerts every ALERT_CHECK_INTERVAL_MS, then redraws what changed once.
     pub fn tick(self: *Trackers, cfg: *const Config, windows: []const scout.EveWindow, now_ms: i64) void {
         if (self.combat) |t| pushThrottled(tracker_mod.CombatTracker, pushDps, t, cfg, windows, now_ms, &self.last_dps_update_ms, cfg.combat.update_interval_ms);
         if (self.mining) |t| pushThrottled(tracker_mod.MiningTracker, pushMining, t, cfg, windows, now_ms, &self.last_mining_update_ms, cfg.mining.update_interval_ms);
@@ -113,6 +113,8 @@ pub const Trackers = struct {
                 pushResources(t, windows, now_ms);
             }
         }
+
+        if (painter_mod.g_painter_ptr) |painter| painter.renderDirtyThumbnails(null);
     }
 
     fn checkAlerts(self: *const Trackers, cfg: *const Config, windows: []const scout.EveWindow, now_ms: i64) void {
@@ -152,7 +154,6 @@ fn pushThrottled(
     for (windows) |eve_window| {
         perWindow(tracker, painter, cfg, eve_window, now_ms);
     }
-    painter.renderDirtyThumbnails(null);
 }
 
 fn pushDps(tracker: *tracker_mod.CombatTracker, painter: *Painter, _: *const Config, eve_window: scout.EveWindow, now_ms: i64) void {
@@ -177,5 +178,4 @@ fn pushResources(tracker: *resources_mod.ResourceTracker, windows: []const scout
         const stats = tracker.getStats(eve_window.process_id);
         painter.updateResourceStatsForCharacter(eve_window.hwnd, stats.cpu_percent, stats.ram_mb, stats.vram_mb, stats.has_vram);
     }
-    painter.renderDirtyThumbnails(null);
 }
