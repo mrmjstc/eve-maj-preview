@@ -268,15 +268,13 @@ public class TrinityWindow {
 [TrinityWindow]::Run(__CHARNAME__, __CTRLFILE__, __BGIMAGE__)
 '@
 
-# Deterministic (hashed, not random) so re-running the script resolves to the same filename.
+# Deterministic (hashed, not random) so a character keeps one ID across runs, as in EVE.
 function Get-StableCharId {
     param([string]$CharName)
     $hash = [System.Security.Cryptography.MD5]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($CharName))
     $num = [BitConverter]::ToUInt32($hash, 0)
     return 1000000000 + ($num % 1147483647)
 }
-
-$StableSessionStart = [datetime]'2024-01-01 00:00:00'
 
 function Get-CharacterStateFile {
     param([string]$CharName)
@@ -613,18 +611,13 @@ function Start-SimClient {
 
     $charId = Get-StableCharId -CharName $CharName
 
-    # Resume the character's most recent session if we have one, rather than reverting to the stable file.
+    # Like a real client launch: fresh session logs dated now, so they're among the newest EMP scans; only the last system carries over.
     $existingState = Get-CharacterState -CharName $CharName
-    if ($existingState) {
-        $chatlogPath = $existingState.Chatlog
-        $gamelogPath = $existingState.Gamelog
-        $startSystem = $existingState.System
-    } else {
-        $chatlogPath = New-ChatlogFile -CharName $CharName -CharId $charId -Dir $ChatlogDir -Started $StableSessionStart -System 'Jita'
-        $gamelogPath = New-GamelogFile -CharName $CharName -CharId $charId -Dir $GamelogDir -Started $StableSessionStart
-        $startSystem = 'Jita'
-        Save-CharacterState -CharName $CharName -ChatlogPath $chatlogPath -GamelogPath $gamelogPath -System $startSystem
-    }
+    $startSystem = if ($existingState) { $existingState.System } else { 'Jita' }
+    $now = Get-Date
+    $chatlogPath = New-ChatlogFile -CharName $CharName -CharId $charId -Dir $ChatlogDir -Started $now -System $startSystem
+    $gamelogPath = New-GamelogFile -CharName $CharName -CharId $charId -Dir $GamelogDir -Started $now
+    Save-CharacterState -CharName $CharName -ChatlogPath $chatlogPath -GamelogPath $gamelogPath -System $startSystem
 
     $script = $agentTemplate.Replace('__CHARNAME__', "'$($CharName.Replace("'", "''"))'").Replace('__CTRLFILE__', "'$($ctrlFile.Replace("'", "''"))'").Replace('__BGIMAGE__', "'$($bgImagePath.Replace("'", "''"))'")
     $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($script))
