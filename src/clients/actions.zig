@@ -58,7 +58,7 @@ pub fn moveClientToPosition(hwnd: win32.HWND, pos: config_mod.Position) void {
     }
 
     const clamped = clampToVirtualScreen(pos);
-    _ = win32.SetWindowPos(hwnd, win32.HWND_NOTOPMOST, clamped.x, clamped.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
+    _ = win32.SetWindowPos(hwnd, win32.HWND_NOTOPMOST, clamped.x, clamped.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE | win32.SWP_ASYNCWINDOWPOS);
 }
 
 /// `painter` is anything with Painter.notify's signature, told about each client moved.

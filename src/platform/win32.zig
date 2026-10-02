@@ -126,6 +126,7 @@ pub const SWP_NOSIZE = 0x0001;
 pub const SWP_NOMOVE = 0x0002;
 pub const SWP_NOZORDER = 0x0004;
 pub const SWP_NOACTIVATE = 0x0010;
+pub const SWP_ASYNCWINDOWPOS = 0x4000;
 
 pub const GWLP_USERDATA = -21;
 pub const GWLP_WNDPROC = -4;
