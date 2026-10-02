@@ -234,15 +234,18 @@ pub const Scout = struct {
     }
 
     /// Once per tick; caller deinits the result.
-    pub fn update(self: *Scout, force_scan: bool) !UpdateResult {
+    pub fn update(self: *Scout, force_scan: bool) UpdateResult {
         const closed = self.pending_closed;
         self.pending_closed = .empty;
         const name_changes = self.pending_name_changes;
         self.pending_name_changes = .empty;
 
         if (self.pending_scan or force_scan) {
-            try self.scanForEveWindows();
-            self.pending_scan = false;
+            if (self.scanForEveWindows()) |_| {
+                self.pending_scan = false;
+            } else |err| {
+                slog.warn("Failed to scan for windows, retrying next tick: {}", .{err});
+            }
         }
 
         if (force_scan) self.refreshTrackedWindowTitles();

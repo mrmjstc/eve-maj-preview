@@ -496,10 +496,7 @@ fn onTimerTick() void {
     }
 
     const scout_ptr = scout.g_scout_ptr orelse return;
-    var scout_result = scout_ptr.update(force_scan) catch |err| {
-        slog.err("Failed to update Scout: {}", .{err});
-        return;
-    };
+    var scout_result = scout_ptr.update(force_scan);
     defer scout_result.deinit(g_allocator);
 
     if (painter.g_painter_ptr) |painter_ptr| {
