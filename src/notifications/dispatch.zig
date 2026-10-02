@@ -38,13 +38,14 @@ pub fn notify(painter: *Painter, source_hwnd: win32.HWND, notification: notifica
     alert_effects.play(settings, settings.getTypeConfig(notification.ntype), text, spoken_name);
 }
 
-/// Shows `notification` on every thumbnail for a global user action; kept out of history, and sound/speech play once rather than per thumbnail.
+/// Shows `notification` on every EVE client's thumbnail for a global user action; kept out of history, and sound/speech play once rather than per thumbnail.
 pub fn notifyAll(painter: *Painter, notification: notification_mod.Notification) void {
     var text_buf: [TEXT_MAX]u8 = undefined;
     const text = notification_mod.defaultText(notification, &text_buf);
 
     var shown = false;
     for (painter.thumbnails.items) |*thumbnail| {
+        if (!thumbnail.is_eve_client) continue;
         const queued = queue(painter, thumbnail, text, notification.ntype, false) catch |err| {
             slog.err("Failed to show {s} notification for '{s}': {}", .{ @tagName(notification.ntype), thumbnail.character_name, err });
             continue;
@@ -55,7 +56,7 @@ pub fn notifyAll(painter: *Painter, notification: notification_mod.Notification)
     if (shown) alert_effects.play(settings, settings.getTypeConfig(notification.ntype), text, null);
 }
 
-/// Config dialog's "Test Notification": shows `ntype` with sample fields, bypasses every suppression, force-shows hidden thumbnails for its duration, and skips history/cycle tracking; alerts play once rather than per thumbnail.
+/// Config dialog's "Test Notification": shows `ntype` with sample fields on every EVE client, bypasses every suppression, force-shows hidden thumbnails for its duration, and skips history/cycle tracking; alerts play once rather than per thumbnail.
 pub fn showTest(painter: *Painter, ntype: notification_mod.NotificationType, type_config: config.NotificationTypeConfig) !void {
     var text_buf: [TEXT_MAX]u8 = undefined;
     const text = notification_mod.defaultText(notification_mod.sample(ntype), &text_buf);
@@ -64,6 +65,7 @@ pub fn showTest(painter: *Painter, ntype: notification_mod.NotificationType, typ
     const duration_ms = if (type_config.duration_ms == 0) TEST_PERMANENT_FALLBACK_MS else type_config.duration_ms;
 
     for (painter.thumbnails.items) |*thumbnail| {
+        if (!thumbnail.is_eve_client) continue;
         push(painter, thumbnail, .fromConfig(try painter.allocator.dupe(u8, text), ntype, type_config, now, duration_ms));
 
         // The alert blocks re-hiding, so the thumbnail stays up until expire() restores it.

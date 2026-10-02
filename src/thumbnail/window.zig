@@ -101,6 +101,7 @@ pub const ThumbnailWindow = struct {
     text_hwnd: win32.HWND,
     thumbnail_id: win32.HTHUMBNAIL,
     source_hwnd: win32.HWND,
+    is_eve_client: bool,
     title: []const u8,
     character_name: []const u8,
     system_name: []const u8,

@@ -94,6 +94,7 @@ pub const AutoMinimizer = struct {
         const focused_monitor = if (eve_has_focus) win32.MonitorFromWindow(painter.active_source_hwnd.?, win32.MONITOR_DEFAULTTONEAREST) else null;
 
         for (painter.thumbnails.items) |*thumbnail| {
+            if (!thumbnail.is_eve_client) continue;
             if (thumbnail_drag.isDragging(thumbnail)) continue;
             if (thumbnail.isFocused(painter.active_source_hwnd)) continue;
             if (win32.isWindowIconic(thumbnail.source_hwnd)) continue;

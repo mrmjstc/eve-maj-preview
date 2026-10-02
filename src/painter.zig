@@ -629,7 +629,7 @@ pub const Painter = struct {
             };
             created_new = true;
 
-            if (opts.move_to_saved) {
+            if (opts.move_to_saved and eve_window.is_eve_client) {
                 self.auto_move.moveToSavedPosition(self.config, eve_window.hwnd, eve_window.character_name);
             }
         }
@@ -722,6 +722,7 @@ pub const Painter = struct {
             .text_hwnd = handles.text_hwnd,
             .thumbnail_id = handles.thumbnail_id,
             .source_hwnd = eve_window.hwnd,
+            .is_eve_client = eve_window.is_eve_client,
             .title = strings.title,
             .character_name = strings.character_name,
             .system_name = strings.system_name,

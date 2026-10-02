@@ -16,7 +16,7 @@ pub fn minimizeAllClients(eve_windows: []const scout.EveWindow, config: *const c
 
     var minimized_count: usize = 0;
     for (eve_windows) |eve_window| {
-        if (!win32.isWindow(eve_window.hwnd)) continue;
+        if (!eve_window.is_eve_client or !win32.isWindow(eve_window.hwnd)) continue;
 
         animation.showClient(config, eve_window.hwnd, win32.SW_FORCEMINIMIZE);
         minimized_count += 1;
@@ -80,7 +80,7 @@ pub fn moveAllClientsToSavedPositions(eve_windows: []const scout.EveWindow, conf
 
     var moved_count: usize = 0;
     for (eve_windows) |eve_window| {
-        if (config.isExcludedFromAutoMove(eve_window.character_name)) continue;
+        if (!eve_window.is_eve_client or config.isExcludedFromAutoMove(eve_window.character_name)) continue;
         const pos = config.getCharacterWindowPosition(eve_window.character_name) orelse continue;
         moveClientToPosition(config, eve_window.hwnd, pos);
         painter.notify(eve_window.hwnd, .{ .ntype = .SavedPositionMove });
@@ -102,7 +102,7 @@ pub fn closeAllClients(eve_windows: []const scout.EveWindow, config: *const conf
     var excluded_count: usize = 0;
 
     for (eve_windows) |eve_window| {
-        if (!win32.isWindow(eve_window.hwnd)) continue;
+        if (!eve_window.is_eve_client or !win32.isWindow(eve_window.hwnd)) continue;
 
         if (config.isExcludedFromCloseAll(eve_window.character_name)) {
             slog.debug("Skipping excluded character: {s}", .{eve_window.character_name});

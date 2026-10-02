@@ -190,7 +190,7 @@ Configure which applications to create thumbnails for. By default, only EVE Onli
 
 **Filter Properties:**
 - **name**: The thumbnail label for the windows this filter matches, whatever their titles; EVE clients are named after their character instead
-- Windows that aren't EVE clients get thumbnails and hotkeys, but no log tracking (system, combat, mining, notifications)
+- Windows that aren't EVE clients get thumbnails and hotkeys, but no log tracking (system, combat, mining, notifications), and Minimize All, Close All, Auto-Minimize and Auto-Move leave them alone
 - **enabled**: Whether this filter is active (default: `true`)
 - **class_names**: Array of window class names to match (empty array = match any)
 - **executable_names**: Array of executable names to match (case-insensitive, empty array = match any)

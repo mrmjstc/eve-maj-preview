@@ -42,7 +42,7 @@ pub fn getOpenClients(arena: std.mem.Allocator) ![]const []const u8 {
 
     var clients: std.ArrayList(Client) = .empty;
     for (scout.getWindows()) |window| {
-        if (scout_mod.isGenericCharacterName(window.character_name)) continue;
+        if (!window.is_eve_client or scout_mod.isGenericCharacterName(window.character_name)) continue;
         try clients.append(arena, .{ .name = window.character_name, .started = processStartTime(window.hwnd) });
     }
     std.sort.pdq(Client, clients.items, {}, struct {
@@ -64,7 +64,7 @@ pub fn getClientSize(_: std.mem.Allocator) !?struct { width: i32, height: i32 } 
     const scout = scout_mod.g_scout_ptr orelse return null;
     for (scout.getWindows()) |window| {
         // A minimized window's client area reads as 0x0.
-        if (win32.isWindowIconic(window.hwnd)) continue;
+        if (!window.is_eve_client or win32.isWindowIconic(window.hwnd)) continue;
         var rect: win32.RECT = undefined;
         if (!win32.toBool(win32.GetClientRect(window.hwnd, &rect))) {
             slog.debug("Failed to read the client area of '{s}'", .{window.character_name});
