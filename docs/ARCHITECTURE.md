@@ -159,6 +159,7 @@ Scout.update()                    window discovery / lifecycle reconciliation
   -> ChatlogMonitor.update()      queue commands / drain result+notification queues
   -> CombatTracker/MiningTracker.refreshAll()
        -> throttled push into Painter (own update_interval_ms, independent of scan cadence)
+       -> alert checks (Taking Damage, Laser idle, Mining stopped) once a second
 ```
 
 The expensive full `EnumWindows` rescan is itself throttled to roughly every 20 ticks rather than running every tick.

@@ -722,7 +722,7 @@ Display real-time incoming/outgoing damage-per-second labels directly on each ch
 | `incomingColor` | red | ARGB color for incoming damage text |
 | `outgoingColor` | green | ARGB color for outgoing damage text |
 | `fontSize` | `11` | Font size for DPS labels (6–72) |
-| `updateIntervalMs` | `1000` | How often the display refreshes (100–60000 ms) |
+| `updateIntervalMs` | `1000` | How often the display refreshes (100–60000 ms); alerts are checked every second regardless |
 | `incomingPosition` | `TopCenter` | Position of the incoming-damage label on the thumbnail (see [Text Positions](#text-overlay-settings)) |
 | `outgoingPosition` | `BottomCenter` | Position of the outgoing-damage label on the thumbnail |
 | `incomingOffsetX`/`incomingOffsetY` | `0` | Fine-tune incoming label position (pixels) |
@@ -780,7 +780,7 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
 | `windowSeconds` | `60` | Sliding window duration for rate calculation (1–3600 s) |
 | `color` | light blue | ARGB color for the rate text |
 | `fontSize` | `11` | Font size for the rate label (6–72) |
-| `updateIntervalMs` | `1000` | How often the display refreshes (100–60000 ms) |
+| `updateIntervalMs` | `1000` | How often the display refreshes (100–60000 ms); alerts are checked every second regardless |
 | `position` | `BottomRight` | Position of the text on the thumbnail |
 | `offsetX` / `offsetY` | `0` | Fine-tune position (pixels) |
 | `idleAlertEnabled` | `false` | Enable the laser-idle alert notification |
