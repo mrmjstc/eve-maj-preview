@@ -424,6 +424,7 @@ pub extern "user32" fn AttachThreadInput(idAttach: DWORD, idAttachTo: DWORD, fAt
 pub extern "user32" fn GetCurrentThreadId() callconv(.c) DWORD;
 pub extern "user32" fn IsWindow(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn IsIconic(hWnd: HWND) callconv(.c) BOOL;
+pub extern "user32" fn IsZoomed(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn GetWindowTextA(hWnd: HWND, lpString: LPSTR, nMaxCount: c_int) callconv(.c) c_int;
 pub extern "user32" fn GetWindowTextLengthA(hWnd: HWND) callconv(.c) c_int;
 pub extern "user32" fn GetWindowThreadProcessId(hWnd: HWND, lpdwProcessId: ?*DWORD) callconv(.c) DWORD;
@@ -1424,6 +1425,10 @@ pub inline fn isWindowVisible(hwnd: HWND) bool {
 
 pub inline fn isWindowIconic(hwnd: HWND) bool {
     return toBool(IsIconic(hwnd));
+}
+
+pub inline fn isWindowZoomed(hwnd: HWND) bool {
+    return toBool(IsZoomed(hwnd));
 }
 
 pub inline fn isWindow(hwnd: HWND) bool {

@@ -71,6 +71,11 @@ pub const AutoMoveVerifier = struct {
             }
             entry.last_move = now;
 
+            if (win32.isWindowIconic(entry.hwnd) or win32.isWindowZoomed(entry.hwnd)) {
+                _ = self.pending.swapRemove(i);
+                continue;
+            }
+
             var rect: win32.RECT = undefined;
             if (!win32.toBool(win32.GetWindowRect(entry.hwnd, &rect))) {
                 slog.warn("Failed to read the position of window {*} to verify its auto-move", .{entry.hwnd});
