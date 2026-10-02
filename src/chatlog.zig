@@ -191,7 +191,6 @@ pub const ChatlogMonitor = struct {
             };
             painter_ptr.updateSystemNameByHwnd(hwnd, system_update.system_name, system_update.event_ts, system_update.is_jump) catch |err| {
                 slog.err("Failed to update system name for '{s}': {}", .{ system_update.character_name, err });
-                scout_ptr.clearHwndForCharacter(system_update.character_name);
             };
         }
     }

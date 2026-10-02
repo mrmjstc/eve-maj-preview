@@ -320,11 +320,6 @@ pub const Scout = struct {
         return null;
     }
 
-    /// Clears the cached HWND for a character, forcing re-lookup on next getHwndByName; call when a HWND is known stale.
-    pub fn clearHwndForCharacter(self: *Scout, name: []const u8) void {
-        _ = self.name_to_hwnd.remove(name);
-    }
-
     fn rebuildHwndIndex(self: *Scout) void {
         self.hwnd_to_index.clearRetainingCapacity();
         for (self.windows.items, 0..) |*window, idx| {
