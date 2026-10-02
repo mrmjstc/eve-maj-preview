@@ -31,6 +31,9 @@ pub const LogFinder = struct {
     character_ids: ?*CharacterIds,
     chatlog_watcher: ?win32.HANDLE,
     gamelog_watcher: ?win32.HANDLE,
+    /// A watch started late; rearm skips it once, so a log made during its catch-up rescan stays signalled.
+    chatlog_watch_is_new: bool = false,
+    gamelog_watch_is_new: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, io: std.Io, chatlog_dir: []const u8, gamelog_dir: []const u8, character_ids: ?*CharacterIds) !LogFinder {
         if (!std.unicode.utf8ValidateSlice(chatlog_dir) or !std.unicode.utf8ValidateSlice(gamelog_dir)) {
@@ -49,7 +52,8 @@ pub const LogFinder = struct {
             .chatlog_watcher = watchFolder(allocator, chatlog_dir),
             .gamelog_watcher = watchFolder(allocator, gamelog_dir),
         };
-        slog.debug("Log folder watchers (chatlog={}, gamelog={})", .{ finder.chatlog_watcher != null, finder.gamelog_watcher != null });
+        if (finder.chatlog_watcher == null) slog.warn("Failed to watch '{s}', retrying until it exists", .{chatlog_dir});
+        if (finder.gamelog_watcher == null) slog.warn("Failed to watch '{s}', retrying until it exists", .{gamelog_dir});
         return finder;
     }
 
@@ -60,15 +64,28 @@ pub const LogFinder = struct {
         self.allocator.free(self.gamelog_dir);
     }
 
-    /// Without waiting.
-    pub fn changes(self: *const LogFinder) Changes {
-        return .{ .chatlog = signaled(self.chatlog_watcher), .gamelog = signaled(self.gamelog_watcher) };
+    /// Without waiting; a folder whose watch only just started counts as changed, for logs made while it wasn't watched.
+    pub fn changes(self: *LogFinder) Changes {
+        return .{
+            .chatlog = self.folderChanged(&self.chatlog_watcher, &self.chatlog_watch_is_new, self.chatlog_dir),
+            .gamelog = self.folderChanged(&self.gamelog_watcher, &self.gamelog_watch_is_new, self.gamelog_dir),
+        };
+    }
+
+    fn folderChanged(self: *LogFinder, watcher: *?win32.HANDLE, is_new: *bool, dir: []const u8) bool {
+        const handle = watcher.* orelse {
+            watcher.* = watchFolder(self.allocator, dir) orelse return false;
+            is_new.* = true;
+            slog.info("Watching '{s}' for new logs", .{dir});
+            return true;
+        };
+        return win32.WaitForSingleObject(handle, 0) == win32.WAIT_OBJECT_0;
     }
 
     /// Resumes watching the folders in `done`, once their changes have been rescanned.
-    pub fn rearm(self: *const LogFinder, done: Changes) void {
-        if (done.chatlog) rewatch(self.chatlog_watcher);
-        if (done.gamelog) rewatch(self.gamelog_watcher);
+    pub fn rearm(self: *LogFinder, done: Changes) void {
+        if (done.chatlog) rewatch(self.chatlog_watcher, &self.chatlog_watch_is_new);
+        if (done.gamelog) rewatch(self.gamelog_watcher, &self.gamelog_watch_is_new);
     }
 
     /// Owned by the caller.
@@ -245,26 +262,21 @@ const FileNames = struct {
     }
 };
 
+/// Null if the folder can't be watched (yet); the caller logs, since it's retried every worker loop.
 fn watchFolder(allocator: std.mem.Allocator, dir: []const u8) ?win32.HANDLE {
-    const dir_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, dir) catch |err| {
-        slog.warn("Failed to convert '{s}' to UTF-16 to watch it, so new logs there won't be noticed: {}", .{ dir, err });
-        return null;
-    };
+    const dir_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, dir) catch return null;
     defer allocator.free(dir_w);
     // Only files being created or renamed, not written to.
     const handle = win32.FindFirstChangeNotificationW(dir_w.ptr, win32.FALSE, win32.FILE_NOTIFY_CHANGE_FILE_NAME);
-    if (handle == win32.INVALID_HANDLE_VALUE) {
-        slog.warn("Failed to watch '{s}', so new logs there won't be noticed", .{dir});
-        return null;
-    }
+    if (handle == win32.INVALID_HANDLE_VALUE) return null;
     return handle;
 }
 
-fn rewatch(watcher: ?win32.HANDLE) void {
+fn rewatch(watcher: ?win32.HANDLE, is_new: *bool) void {
+    if (is_new.*) {
+        is_new.* = false;
+        return;
+    }
     if (watcher) |handle| _ = win32.FindNextChangeNotification(handle);
 }
 
-fn signaled(watcher: ?win32.HANDLE) bool {
-    const handle = watcher orelse return false;
-    return win32.WaitForSingleObject(handle, 0) == win32.WAIT_OBJECT_0;
-}
