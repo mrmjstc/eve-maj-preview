@@ -1011,7 +1011,7 @@
                                 <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
                             </div>
                         </div>
-                        <p class="hint" data-i18n="tab.behavior.section.interaction.hint">Mouse behavior for repositioning and activating thumbnails, including when to activate the EVE client window on left-click.</p>
+                        <p class="hint" data-i18n="tab.behavior.section.interaction.hint">Mouse behavior for repositioning and activating thumbnails, including when to activate the EVE client window on left-click, and whether client windows animate when restored or minimized.</p>
 
                         <label>
                             <input type="checkbox" id="clickThrough" data-path="interaction.clickThrough" onchange="toggleClickThroughOptions()">
@@ -1036,6 +1036,14 @@
                                 </div>
                                 <p class="hint hint-extra" data-i18n="field.hoverCursor.hint">Mouse cursor shown while hovering a thumbnail.</p>
                             </div>
+                        </div>
+
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="animationStyle" data-i18n="field.animationStyle.label">Animation Style</label>
+                                <select id="animationStyle" data-path="interaction.animationStyle"></select>
+                            </div>
+                            <p class="hint hint-extra" data-i18n="field.animationStyle.hint">No Animation restores and minimizes clients instantly; Original Animation keeps Windows' native effect.</p>
                         </div>
                     </div>
 
@@ -1067,11 +1075,6 @@
                                     <input type="number" id="autoMinimizeDelay" data-path="autoMinimize.delayMs" data-unit="s" step="0.1">
                                 </div>
                                 <p class="hint hint-extra" data-i18n="field.autoMinimizeDelay.hint">How long a client can sit unfocused before it's minimized.</p>
-                                <div class="binding">
-                                    <label for="animationStyle" data-i18n="field.animationStyle.label">Animation Style</label>
-                                    <select id="animationStyle" data-path="interaction.animationStyle"></select>
-                                </div>
-                                <p class="hint hint-extra" data-i18n="field.animationStyle.hint">No Animation minimizes instantly; Original Animation keeps Windows' native minimize effect.</p>
                             </div>
                         </div>
                     </div>
