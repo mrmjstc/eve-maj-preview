@@ -29,9 +29,9 @@ pub fn insertThousandsSeparators(buf: []u8, text: []const u8) []const u8 {
 /// Abbreviates an ISK value with k/m suffixes (e.g. 2_450_000.0 -> "2.5m", 200_000.0 -> "200k", 850.0 -> "850").
 pub fn formatIskAbbrev(buf: []u8, value: f32) []const u8 {
     const abs_value = @abs(value);
-    if (abs_value >= 1_000_000.0) {
+    if (abs_value >= 999_500.0) {
         return std.fmt.bufPrint(buf, "{d:.1}m", .{value / 1_000_000.0}) catch "?";
-    } else if (abs_value >= 1_000.0) {
+    } else if (abs_value >= 999.5) {
         return std.fmt.bufPrint(buf, "{d:.0}k", .{value / 1_000.0}) catch "?";
     } else {
         return std.fmt.bufPrint(buf, "{d:.0}", .{value}) catch "?";
@@ -62,4 +62,13 @@ test "formatIskAbbrev switches suffix at a thousand and a million" {
     try testing.expectEqualStrings("1.0m", formatIskAbbrev(&buf, 1_000_000.0));
     try testing.expectEqualStrings("2.5m", formatIskAbbrev(&buf, 2_460_000.0));
     try testing.expectEqualStrings("-1.5m", formatIskAbbrev(&buf, -1_500_000.0));
+}
+
+test "formatIskAbbrev never shows 1000 before a suffix" {
+    var buf: [32]u8 = undefined;
+    try testing.expectEqualStrings("999", formatIskAbbrev(&buf, 999.4));
+    try testing.expectEqualStrings("1k", formatIskAbbrev(&buf, 999.6));
+    try testing.expectEqualStrings("999k", formatIskAbbrev(&buf, 999_400.0));
+    try testing.expectEqualStrings("1.0m", formatIskAbbrev(&buf, 999_720.0));
+    try testing.expectEqualStrings("-1.0m", formatIskAbbrev(&buf, -999_720.0));
 }
