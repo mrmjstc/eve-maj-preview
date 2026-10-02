@@ -143,16 +143,6 @@ pub const UpdateChecker = struct {
         );
         defer parsed.deinit();
 
-        // Check for GitHub API errors (e.g., private repo, rate limit, 404) - the list endpoint returns an error object instead of an array in that case.
-        if (parsed.value == .object) {
-            if (parsed.value.object.get("message")) |message| {
-                if (message == .string) {
-                    slog.debug("GitHub API returned error: {s} (this is normal for private repos)", .{message.string});
-                }
-            }
-            return null;
-        }
-
         if (parsed.value != .array) {
             slog.debug("GitHub API response is not a JSON array", .{});
             return null;
