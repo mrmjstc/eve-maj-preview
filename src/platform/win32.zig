@@ -141,7 +141,6 @@ pub const IDC_SIZEALL: LPCSTR = @ptrFromInt(32646);
 pub const IDC_HAND: LPCSTR = @ptrFromInt(32649);
 pub const IDC_HELP: LPCSTR = @ptrFromInt(32651);
 
-pub const PROCESS_VM_READ = 0x0010;
 pub const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
 pub const ERROR_ALREADY_EXISTS = 183;

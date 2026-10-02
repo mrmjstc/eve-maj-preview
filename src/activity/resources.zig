@@ -90,7 +90,7 @@ pub const ResourceTracker = struct {
 
     fn sampleCpuAndRam(self: *ResourceTracker, pid: win32.DWORD, now_ms: i64) void {
         // Not logged: an unreadable process just shows no stats, and this runs every sample.
-        const handle = win32.OpenProcess(win32.PROCESS_QUERY_LIMITED_INFORMATION | win32.PROCESS_VM_READ, win32.FALSE, pid) orelse return;
+        const handle = win32.OpenProcess(win32.PROCESS_QUERY_LIMITED_INFORMATION, win32.FALSE, pid) orelse return;
         defer _ = win32.CloseHandle(handle);
 
         const entry = self.stats.getOrPut(pid) catch |err| {
