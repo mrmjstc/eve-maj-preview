@@ -7,8 +7,6 @@ const log = @import("../log.zig");
 
 const slog = log.scoped("activation");
 
-var g_original_animation_setting: ?i32 = null;
-
 fn getMinimizeAnimation() ?i32 {
     var anim_info = win32.ANIMATIONINFO{ .cbSize = @sizeOf(win32.ANIMATIONINFO), .iMinAnimate = 0 };
     if (!win32.toBool(win32.SystemParametersInfoA(win32.SPI_GETANIMATION, @sizeOf(win32.ANIMATIONINFO), &anim_info, 0))) return null;
@@ -18,18 +16,6 @@ fn getMinimizeAnimation() ?i32 {
 fn setMinimizeAnimation(value: i32) void {
     var anim_info = win32.ANIMATIONINFO{ .cbSize = @sizeOf(win32.ANIMATIONINFO), .iMinAnimate = value };
     _ = win32.SystemParametersInfoA(win32.SPI_SETANIMATION, @sizeOf(win32.ANIMATIONINFO), &anim_info, 0);
-}
-
-fn turnOffAnimation() void {
-    const current = getMinimizeAnimation() orelse return;
-    if (g_original_animation_setting == null) g_original_animation_setting = current;
-    if (current != 0) setMinimizeAnimation(0);
-}
-
-fn restoreAnimation() void {
-    const original = g_original_animation_setting orelse return;
-    const current = getMinimizeAnimation() orelse return;
-    if (current != original) setMinimizeAnimation(original);
 }
 
 /// Restores the client first if it's minimized.
@@ -51,9 +37,10 @@ pub fn activate(source_hwnd: win32.HWND) void {
     if (was_minimized) {
         switch (painter.config.interaction.animationStyle) {
             .NoAnimation => {
-                turnOffAnimation();
+                const user_setting = getMinimizeAnimation() orelse 0;
+                if (user_setting != 0) setMinimizeAnimation(0);
                 _ = win32.ShowWindowAsync(source_hwnd, win32.SW_RESTORE);
-                restoreAnimation();
+                if (user_setting != 0) setMinimizeAnimation(user_setting);
             },
             .OriginalAnimation => {
                 _ = win32.ShowWindowAsync(source_hwnd, win32.SW_RESTORE);
