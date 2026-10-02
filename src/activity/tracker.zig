@@ -33,8 +33,8 @@ pub const CombatWindow = struct {
     last_outgoing_activity_ms: i64 = 0,
 
     // Null means not enough span yet to trust a rate.
-    last_incoming_dps: ?f32 = null,
-    last_outgoing_dps: ?f32 = null,
+    last_incoming_dps: ?f32 = 0.0,
+    last_outgoing_dps: ?f32 = 0.0,
 
     pub fn init(window_seconds: u32) CombatWindow {
         return .{
@@ -911,6 +911,7 @@ test "CombatWindow alerts once per burst of incoming damage" {
 test "CombatWindow.refresh reports a change only when a rate appears or moves" {
     var window: CombatWindow = .init(10);
     window.addEntry(100, true, 1_000, true);
+    try testing.expect(window.refresh(1_000));
     try testing.expect(!window.refresh(1_000));
     window.addEntry(100, true, 5_000, true);
     try testing.expect(window.refresh(5_000));
