@@ -71,7 +71,7 @@ pub const Scout = struct {
             .pending_scan = false,
             .name_change_hook = installHook(win32.EVENT_OBJECT_NAMECHANGE, nameChangeCallback, "Title change", "character name changes will not be detected until full window rescan"),
             .create_event_hook = installHook(win32.EVENT_OBJECT_CREATE, windowCreateCallback, "Window creation", "new windows will only be detected via periodic scanning"),
-            .destroy_event_hook = installHook(win32.EVENT_OBJECT_DESTROY, windowDestroyCallback, "Window destroy", "closed windows will only be dropped on a profile reload"),
+            .destroy_event_hook = installHook(win32.EVENT_OBJECT_DESTROY, windowDestroyCallback, "Window destroy", "closed windows will be noticed within a second instead"),
         };
     }
 
@@ -225,6 +225,22 @@ pub const Scout = struct {
         };
     }
 
+    /// Catches windows closed without a destroy event, e.g. when that hook couldn't be installed.
+    fn dropClosedWindows(self: *Scout) void {
+        var dropped_any = false;
+        var i: usize = self.windows.items.len;
+        while (i > 0) {
+            i -= 1;
+            const window = self.windows.items[i];
+            if (win32.isWindow(window.hwnd)) continue;
+            if (!self.reportClosed(window)) continue;
+            slog.info("Window closed without a destroy event: '{s}' (hwnd {*})", .{ window.character_name, window.hwnd });
+            self.removeWindowAt(i);
+            dropped_any = true;
+        }
+        if (dropped_any) self.rebuildHwndIndex();
+    }
+
     /// Catches title changes whose event came before the window was tracked; only on force_scan ticks, as each read is a cross-process call.
     fn refreshTrackedWindowTitles(self: *Scout) void {
         // Iterating by copy is safe: updateWindowTitle may rename entries but never adds or removes them.
@@ -235,6 +251,7 @@ pub const Scout = struct {
 
     /// Once per tick; caller deinits the result.
     pub fn update(self: *Scout, force_scan: bool) UpdateResult {
+        if (force_scan) self.dropClosedWindows();
         const closed = self.pending_closed;
         self.pending_closed = .empty;
         const name_changes = self.pending_name_changes;
