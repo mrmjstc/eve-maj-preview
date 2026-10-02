@@ -77,10 +77,6 @@ pub const CombatWindow = struct {
     /// 0 = never fired.
     last_damage_alert_ms: i64 = 0,
 
-    // Null means not enough span yet to trust a rate.
-    last_incoming_dps: ?f32 = 0.0,
-    last_outgoing_dps: ?f32 = 0.0,
-
     pub fn init(window_seconds: u32) CombatWindow {
         return .{
             .window_ms = @as(i64, window_seconds) * std.time.ms_per_s,
@@ -135,22 +131,6 @@ pub const CombatWindow = struct {
             .outgoing = outgoing.rate(self.streak_start_ms, now_ms, self.window_ms, ring_full_from_ms, .to_now),
         };
     }
-
-    /// Whether either rate moved by 0.1 or more, or to or from null.
-    pub fn refresh(self: *CombatWindow, now_ms: i64) bool {
-        const new = self.computeDps(now_ms);
-        const in_changed = if (self.last_incoming_dps) |old|
-            (if (new.incoming) |n| @abs(n - old) >= 0.1 else true)
-        else
-            new.incoming != null;
-        const out_changed = if (self.last_outgoing_dps) |old|
-            (if (new.outgoing) |n| @abs(n - old) >= 0.1 else true)
-        else
-            new.outgoing != null;
-        self.last_incoming_dps = new.incoming;
-        self.last_outgoing_dps = new.outgoing;
-        return in_changed or out_changed;
-    }
 };
 
 /// Locked: the main thread reads it while the chatlog worker adds hits and removes characters.
@@ -188,22 +168,18 @@ pub const CombatTracker = struct {
         self.base.setWindowSeconds(window_seconds);
     }
 
-    /// As of the last refresh; null when the span is too short to trust a rate.
-    pub fn getDps(self: *CombatTracker, character_name: []const u8) struct { incoming: ?f32, outgoing: ?f32 } {
+    /// Null when the span is too short to trust a rate.
+    pub fn getDps(self: *CombatTracker, character_name: []const u8, now_ms: i64) struct { incoming: ?f32, outgoing: ?f32 } {
         self.base.mutex.lock(self.base.io) catch |err| {
             slog.warn("Failed to lock combat tracker mutex for '{s}': {}", .{ character_name, err });
             return .{ .incoming = 0.0, .outgoing = 0.0 };
         };
         defer self.base.mutex.unlock(self.base.io);
-        if (self.base.windows.get(character_name)) |window| {
-            return .{ .incoming = window.last_incoming_dps, .outgoing = window.last_outgoing_dps };
+        if (self.base.windows.getPtr(character_name)) |window| {
+            const dps = window.computeDps(now_ms);
+            return .{ .incoming = dps.incoming, .outgoing = dps.outgoing };
         }
         return .{ .incoming = 0.0, .outgoing = 0.0 };
-    }
-
-    /// Whether any rate moved enough to redraw.
-    pub fn refreshAll(self: *CombatTracker, now_ms: i64) bool {
-        return self.base.refreshAll(now_ms);
     }
 
     /// See CombatWindow.checkDamageAlert. Returns false if character_name has no window yet.
@@ -232,10 +208,6 @@ pub const MiningWindow = struct {
     window_ms: i64,
     last_hit_ms: i64 = 0,
     streak_start_ms: i64 = 0,
-
-    // Null means not enough span yet to trust a rate.
-    last_m3_per_sec: ?f32 = null,
-    last_isk_per_sec: ?f32 = null,
     /// When the idle alert fired, or 0; cleared once mining picks up again.
     last_alert_ms: i64 = 0,
     /// When the stopped alert fired, or 0; cleared by the next yield.
@@ -283,18 +255,6 @@ pub const MiningWindow = struct {
     pub fn computeIskRate(self: *const MiningWindow, now_ms: i64) ?f32 {
         return computeWindowRate(MiningEvent, "isk", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, self.streak_start_ms, now_ms);
     }
-
-    /// Whether the m3 rate moved by 0.1 or more, or to or from null; the ISK rate comes from the same entries, so it's covered.
-    pub fn refresh(self: *MiningWindow, now_ms: i64) bool {
-        const new_rate = self.computeRate(now_ms);
-        const changed = if (self.last_m3_per_sec) |old|
-            (if (new_rate) |new| @abs(new - old) >= 0.1 else true)
-        else
-            new_rate != null;
-        self.last_m3_per_sec = new_rate;
-        self.last_isk_per_sec = self.computeIskRate(now_ms);
-        return changed;
-    }
 };
 
 /// Locked: the main thread reads it and checks alerts while the chatlog worker adds yields and removes characters.
@@ -331,35 +291,17 @@ pub const MiningTracker = struct {
         self.base.setWindowSeconds(window_seconds);
     }
 
-    /// m3 per second as of the last refresh; null when the span is too short to trust a rate.
-    pub fn getRate(self: *MiningTracker, character_name: []const u8) ?f32 {
+    /// m3 and ISK per second; null when the span is too short to trust a rate.
+    pub fn getRates(self: *MiningTracker, character_name: []const u8, now_ms: i64) struct { m3: ?f32, isk: ?f32 } {
         self.base.mutex.lock(self.base.io) catch |err| {
             slog.warn("Failed to lock mining tracker mutex for '{s}': {}", .{ character_name, err });
-            return 0.0;
+            return .{ .m3 = 0.0, .isk = 0.0 };
         };
         defer self.base.mutex.unlock(self.base.io);
-        if (self.base.windows.get(character_name)) |window| {
-            return window.last_m3_per_sec;
+        if (self.base.windows.getPtr(character_name)) |window| {
+            return .{ .m3 = window.computeRate(now_ms), .isk = window.computeIskRate(now_ms) };
         }
-        return 0.0;
-    }
-
-    /// ISK per second as of the last refresh; null when the span is too short to trust a rate.
-    pub fn getIskRate(self: *MiningTracker, character_name: []const u8) ?f32 {
-        self.base.mutex.lock(self.base.io) catch |err| {
-            slog.warn("Failed to lock mining tracker mutex for '{s}': {}", .{ character_name, err });
-            return 0.0;
-        };
-        defer self.base.mutex.unlock(self.base.io);
-        if (self.base.windows.get(character_name)) |window| {
-            return window.last_isk_per_sec;
-        }
-        return 0.0;
-    }
-
-    /// Whether any rate moved enough to redraw.
-    pub fn refreshAll(self: *MiningTracker, now_ms: i64) bool {
-        return self.base.refreshAll(now_ms);
+        return .{ .m3 = 0.0, .isk = 0.0 };
     }
 
     /// True once per idle stretch: at most `threshold` yields within `alert_window_ms`.
@@ -426,8 +368,6 @@ pub const BountyWindow = struct {
     last_hit_ms: i64 = 0,
     streak_start_ms: i64 = 0,
 
-    last_isk_per_sec: ?f32 = null,
-
     pub fn init(window_seconds: u32) BountyWindow {
         return .{
             .window_ms = @as(i64, window_seconds) * std.time.ms_per_s,
@@ -448,17 +388,6 @@ pub const BountyWindow = struct {
     /// ISK per second; see WindowSum.rate.
     pub fn computeIskRate(self: *const BountyWindow, now_ms: i64) ?f32 {
         return computeWindowRate(BountyEvent, "isk", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, self.streak_start_ms, now_ms);
-    }
-
-    /// Whether the rate moved by 0.1 or more, or to or from null.
-    pub fn refresh(self: *BountyWindow, now_ms: i64) bool {
-        const new_rate = self.computeIskRate(now_ms);
-        const changed = if (self.last_isk_per_sec) |old|
-            (if (new_rate) |new| @abs(new - old) >= 0.1 else true)
-        else
-            new_rate != null;
-        self.last_isk_per_sec = new_rate;
-        return changed;
     }
 };
 
@@ -495,22 +424,15 @@ pub const BountyTracker = struct {
         self.base.setWindowSeconds(window_seconds);
     }
 
-    /// ISK per second as of the last refresh; null when the span is too short to trust a rate.
-    pub fn getIskRate(self: *BountyTracker, character_name: []const u8) ?f32 {
+    /// Null when the span is too short to trust a rate.
+    pub fn getIskRate(self: *BountyTracker, character_name: []const u8, now_ms: i64) ?f32 {
         self.base.mutex.lock(self.base.io) catch |err| {
             slog.warn("Failed to lock bounty tracker mutex for '{s}': {}", .{ character_name, err });
             return 0.0;
         };
         defer self.base.mutex.unlock(self.base.io);
-        if (self.base.windows.get(character_name)) |window| {
-            return window.last_isk_per_sec;
-        }
+        if (self.base.windows.getPtr(character_name)) |window| return window.computeIskRate(now_ms);
         return 0.0;
-    }
-
-    /// Whether any rate moved enough to redraw.
-    pub fn refreshAll(self: *BountyTracker, now_ms: i64) bool {
-        return self.base.refreshAll(now_ms);
     }
 };
 
@@ -526,7 +448,7 @@ pub const ParsedMiningEvent = struct {
 };
 
 /// Shared allocator/mutex/hashmap plumbing for a per-character sliding-window tracker.
-/// WindowT must expose `fn init(window_seconds: u32) WindowT` and `fn refresh(*WindowT, now_ms: i64) bool`.
+/// WindowT must expose `fn init(window_seconds: u32) WindowT` and a `window_ms` field.
 fn TrackerBase(comptime WindowT: type) type {
     return struct {
         allocator: std.mem.Allocator,
@@ -570,20 +492,6 @@ fn TrackerBase(comptime WindowT: type) type {
             if (self.windows.fetchRemove(character_name)) |entry| {
                 self.allocator.free(entry.key);
             }
-        }
-
-        fn refreshAll(self: *Self, now_ms: i64) bool {
-            self.mutex.lock(self.io) catch |err| {
-                slog.warn("Failed to lock tracker mutex refreshing windows: {}", .{err});
-                return false;
-            };
-            defer self.mutex.unlock(self.io);
-            var any_changed = false;
-            var iter = self.windows.valueIterator();
-            while (iter.next()) |window| {
-                if (window.refresh(now_ms)) any_changed = true;
-            }
-            return any_changed;
         }
 
         /// Caller holds mutex.
@@ -949,16 +857,6 @@ test "CombatWindow alerts once per burst of incoming damage" {
     try testing.expect(window.checkDamageAlert());
 }
 
-test "CombatWindow.refresh reports a change only when a rate appears or moves" {
-    var window: CombatWindow = .init(10);
-    window.addEntry(100, true, 1_000, true);
-    try testing.expect(window.refresh(1_000));
-    try testing.expect(!window.refresh(1_000));
-    window.addEntry(100, true, 5_000, true);
-    try testing.expect(window.refresh(5_000));
-    try testing.expect(!window.refresh(5_000));
-}
-
 test "MiningWindow warms up on the yields after the first, to the newest" {
     var window: MiningWindow = .init(60);
     window.addEntry(30, 3_000, 1_000);
@@ -1040,7 +938,7 @@ test "MiningTracker stopped alert fires once until mining resumes" {
 test "CombatTracker reports zero for a character it hasn't seen" {
     var tracker: CombatTracker = .init(testing.allocator, testing.io, 10);
     defer tracker.deinit();
-    const dps = tracker.getDps("Nobody");
+    const dps = tracker.getDps("Nobody", 1_000);
     try testing.expectEqual(@as(f32, 0.0), dps.incoming.?);
     try testing.expect(!tracker.checkDamageAlert("Nobody"));
 }
@@ -1051,10 +949,8 @@ test "MiningTracker keeps its history and rates it over a new window length" {
     var t: i64 = 1_000;
     while (t <= 121_000) : (t += 12_000) try tracker.addEntry("Some Pilot", 110, 0, t);
 
-    _ = tracker.refreshAll(121_500);
-    try testing.expectApproxEqAbs(@as(f32, 550.0 / 60.0), tracker.getRate("Some Pilot").?, 0.001);
+    try testing.expectApproxEqAbs(@as(f32, 550.0 / 60.0), tracker.getRates("Some Pilot", 121_500).m3.?, 0.001);
 
     tracker.setWindowSeconds(120);
-    _ = tracker.refreshAll(121_500);
-    try testing.expectApproxEqAbs(@as(f32, 1_100.0 / 120.0), tracker.getRate("Some Pilot").?, 0.001);
+    try testing.expectApproxEqAbs(@as(f32, 1_100.0 / 120.0), tracker.getRates("Some Pilot", 121_500).m3.?, 0.001);
 }

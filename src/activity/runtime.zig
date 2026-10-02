@@ -135,7 +135,6 @@ pub const Trackers = struct {
     }
 };
 
-/// Also throttles refreshAll, since nothing reads the rates more often than this pushes them.
 fn pushThrottled(
     comptime T: type,
     comptime perWindow: fn (*T, *Painter, *const Config, scout.EveWindow, i64) void,
@@ -149,8 +148,6 @@ fn pushThrottled(
     if (now_ms - last_update_ms.* < @as(i64, @intCast(interval_ms))) return;
     last_update_ms.* = now_ms;
 
-    _ = tracker.refreshAll(now_ms);
-
     const painter = painter_mod.g_painter_ptr orelse return;
     for (windows) |eve_window| {
         perWindow(tracker, painter, cfg, eve_window, now_ms);
@@ -158,17 +155,18 @@ fn pushThrottled(
     painter.renderDirtyThumbnails(null);
 }
 
-fn pushDps(tracker: *tracker_mod.CombatTracker, painter: *Painter, _: *const Config, eve_window: scout.EveWindow, _: i64) void {
-    const dps = tracker.getDps(eve_window.character_name);
+fn pushDps(tracker: *tracker_mod.CombatTracker, painter: *Painter, _: *const Config, eve_window: scout.EveWindow, now_ms: i64) void {
+    const dps = tracker.getDps(eve_window.character_name, now_ms);
     painter.updateDpsForCharacter(eve_window.hwnd, dps.incoming, dps.outgoing);
 }
 
-fn pushMining(tracker: *tracker_mod.MiningTracker, painter: *Painter, _: *const Config, eve_window: scout.EveWindow, _: i64) void {
-    painter.updateMiningForCharacter(eve_window.hwnd, tracker.getRate(eve_window.character_name), tracker.getIskRate(eve_window.character_name));
+fn pushMining(tracker: *tracker_mod.MiningTracker, painter: *Painter, _: *const Config, eve_window: scout.EveWindow, now_ms: i64) void {
+    const rates = tracker.getRates(eve_window.character_name, now_ms);
+    painter.updateMiningForCharacter(eve_window.hwnd, rates.m3, rates.isk);
 }
 
-fn pushBounty(tracker: *tracker_mod.BountyTracker, painter: *Painter, _: *const Config, eve_window: scout.EveWindow, _: i64) void {
-    painter.updateBountyForCharacter(eve_window.hwnd, tracker.getIskRate(eve_window.character_name));
+fn pushBounty(tracker: *tracker_mod.BountyTracker, painter: *Painter, _: *const Config, eve_window: scout.EveWindow, now_ms: i64) void {
+    painter.updateBountyForCharacter(eve_window.hwnd, tracker.getIskRate(eve_window.character_name, now_ms));
 }
 
 fn pushResources(tracker: *resources_mod.ResourceTracker, windows: []const scout.EveWindow, now_ms: i64) void {
