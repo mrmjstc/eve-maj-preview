@@ -10,6 +10,7 @@ const thumbnail_drag = @import("../drag/thumbnail.zig");
 const travel_left_behind = @import("../travel/left_behind.zig");
 const stack = @import("../notifications/stack.zig");
 const auto_minimize_mod = @import("../clients/auto_minimize.zig");
+const scout = @import("../clients/scout.zig");
 const log = @import("../log.zig");
 
 const ThumbnailState = state.ThumbnailState;
@@ -139,9 +140,10 @@ pub const ThumbnailWindow = struct {
     /// Re-resolves every config-derived cached_* field (except the owned group badge label) for the current character_name/system_name.
     pub fn refreshConfigCache(self: *ThumbnailWindow, config: *const config_mod.Config, auto_colors: *config_mod.AutoColorStore) void {
         self.cached_system_color = if (self.system_name.len > 0) auto_colors.systemNameColor(config, self.system_name) else config.thumbnail.systemNameColor;
-        self.cached_character_color = auto_colors.characterNameColor(config, self.character_name);
+        const is_logged_in = !scout.isGenericCharacterName(self.character_name);
+        self.cached_character_color = if (is_logged_in) auto_colors.characterNameColor(config, self.character_name) else null;
         self.cached_display_name = config.getDisplayName(self.character_name);
-        self.cached_border_colors = auto_colors.characterBorderColors(config, self.character_name);
+        self.cached_border_colors = if (is_logged_in) auto_colors.characterBorderColors(config, self.character_name) else null;
         self.cached_excluded_from_minimize = config.isExcludedFromMinimize(self.character_name);
         self.cached_hide_thumbnail = config.isThumbnailHidden(self.character_name);
         self.cached_thumbnail_size = config.getCharacterSize(self.character_name);
