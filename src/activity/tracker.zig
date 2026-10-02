@@ -76,6 +76,8 @@ pub const CombatWindow = struct {
         const cutoff = now_ms - self.window_ms;
         var in_total: u64 = 0;
         var out_total: u64 = 0;
+        var has_incoming = false;
+        var has_outgoing = false;
         var newest_ms: i64 = 0;
         var oldest_ms: i64 = 0;
 
@@ -89,12 +91,17 @@ pub const CombatWindow = struct {
             oldest_ms = entry.timestamp_ms;
             if (entry.is_incoming) {
                 in_total += entry.amount;
+                has_incoming = true;
             } else {
                 out_total += entry.amount;
+                has_outgoing = true;
             }
         }
         const span_ms = newest_ms - oldest_ms;
-        if (span_ms < MIN_RATE_SPAN_MS) return .{ .incoming = null, .outgoing = null };
+        if (span_ms < MIN_RATE_SPAN_MS) return .{
+            .incoming = if (has_incoming) null else 0.0,
+            .outgoing = if (has_outgoing) null else 0.0,
+        };
 
         const window_secs = @as(f32, @floatFromInt(@min(self.window_ms, span_ms))) / 1000.0;
         const in_factor = idleDecayFactor(now_ms, self.last_incoming_activity_ms, self.window_ms);
@@ -846,12 +853,13 @@ test "idleDecayFactor holds through the first half of the window, then fades to 
     try testing.expectEqual(@as(f32, 0.0), idleDecayFactor(60_000, 0, 10_000));
 }
 
-test "CombatWindow withholds a rate until hits span three seconds" {
+test "CombatWindow withholds a rate until hits span three seconds, only for a direction with hits" {
     var window: CombatWindow = .init(10);
     window.addEntry(100, true, 1_000, true);
     window.addEntry(100, true, 2_000, true);
     const dps = window.computeDps(2_000);
-    try testing.expect(dps.incoming == null and dps.outgoing == null);
+    try testing.expect(dps.incoming == null);
+    try testing.expectEqual(@as(f32, 0.0), dps.outgoing.?);
 }
 
 test "CombatWindow splits incoming and outgoing damage over the span of hits" {
