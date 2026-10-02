@@ -8,7 +8,7 @@ const slog = log.scoped("chatlog");
 
 const READ_CHUNK_SIZE = 4096;
 /// So a big backlog can't hold up the other files.
-const MAX_CHUNKS_PER_POLL = 64;
+const MAX_CHUNKS_PER_POLL = 256;
 const SCAN_CHUNK_SIZE = 8192;
 /// How far back the starting system is looked for.
 const MAX_BACKWARD_SCAN_BYTES: u64 = 8 * 1024 * 1024;
@@ -149,10 +149,14 @@ pub const LogFile = struct {
         self.idle_checks = 0;
         self.poll_interval_multiplier = 1;
 
-        // Shrunk: rewritten from the start.
+        // EVE only appends, so a shrink means something else (e.g. a sync client) rewrote it; replaying would refire old events.
         if (size < self.last_size) {
-            self.position = 0;
+            self.position = if (self.is_chatlog) size & ~@as(u64, 1) else size;
+            self.last_size = size;
+            self.last_modified = modified;
             self.lines.reset();
+            slog.info("'{s}' shrank, following it from its new end", .{self.path});
+            return;
         }
 
         var chunks: usize = 0;
