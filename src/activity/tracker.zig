@@ -61,10 +61,10 @@ pub const CombatWindow = struct {
     }
 
     /// Fires when incoming damage has landed since the last alert; repeat-rate is the Notifications tab's throttle, not this. Stays silent once combat stops instead of repeating on a timer.
-    pub fn checkDamageAlert(self: *CombatWindow, now_ms: i64) bool {
+    pub fn checkDamageAlert(self: *CombatWindow) bool {
         if (self.last_incoming_hit_ms == 0) return false;
         if (self.last_incoming_hit_ms <= self.last_damage_alert_ms) return false;
-        self.last_damage_alert_ms = now_ms;
+        self.last_damage_alert_ms = self.last_incoming_hit_ms;
         return true;
     }
 
@@ -171,14 +171,14 @@ pub const CombatTracker = struct {
     }
 
     /// See CombatWindow.checkDamageAlert. Returns false if character_name has no window yet.
-    pub fn checkDamageAlert(self: *CombatTracker, character_name: []const u8, now_ms: i64) bool {
+    pub fn checkDamageAlert(self: *CombatTracker, character_name: []const u8) bool {
         self.base.mutex.lock(self.base.io) catch |err| {
             slog.warn("Failed to lock combat tracker mutex for '{s}': {}", .{ character_name, err });
             return false;
         };
         defer self.base.mutex.unlock(self.base.io);
         const window = self.base.windows.getPtr(character_name) orelse return false;
-        return window.checkDamageAlert(now_ms);
+        return window.checkDamageAlert();
     }
 };
 
@@ -887,17 +887,17 @@ test "CombatWindow keeps only the newest hits once the ring wraps" {
 
 test "CombatWindow alerts once per burst of incoming damage" {
     var window: CombatWindow = .init(10);
-    try testing.expect(!window.checkDamageAlert(500));
+    try testing.expect(!window.checkDamageAlert());
 
     window.addEntry(100, true, 1_000, true);
-    try testing.expect(window.checkDamageAlert(1_500));
-    try testing.expect(!window.checkDamageAlert(1_600));
+    try testing.expect(window.checkDamageAlert());
+    try testing.expect(!window.checkDamageAlert());
 
     window.addEntry(100, true, 2_000, false);
-    try testing.expect(!window.checkDamageAlert(2_100));
+    try testing.expect(!window.checkDamageAlert());
 
     window.addEntry(100, true, 3_000, true);
-    try testing.expect(window.checkDamageAlert(3_100));
+    try testing.expect(window.checkDamageAlert());
 }
 
 test "CombatWindow.refresh reports a change only when a rate appears or moves" {
@@ -957,5 +957,5 @@ test "CombatTracker reports zero for a character it hasn't seen" {
     defer tracker.deinit();
     const dps = tracker.getDps("Nobody");
     try testing.expectEqual(@as(f32, 0.0), dps.incoming.?);
-    try testing.expect(!tracker.checkDamageAlert("Nobody", 1_000));
+    try testing.expect(!tracker.checkDamageAlert("Nobody"));
 }

@@ -131,11 +131,11 @@ fn pushThrottled(
     painter.renderDirtyThumbnails(null);
 }
 
-fn pushDps(tracker: *tracker_mod.CombatTracker, painter: *Painter, _: *const Config, eve_window: scout.EveWindow, now_ms: i64) void {
+fn pushDps(tracker: *tracker_mod.CombatTracker, painter: *Painter, _: *const Config, eve_window: scout.EveWindow, _: i64) void {
     const dps = tracker.getDps(eve_window.character_name);
     painter.updateDpsForCharacter(eve_window.hwnd, dps.incoming, dps.outgoing);
 
-    if (tracker.checkDamageAlert(eve_window.character_name, now_ms)) {
+    if (tracker.checkDamageAlert(eve_window.character_name)) {
         painter.notify(eve_window.hwnd, .{ .ntype = .TakingDamage });
     }
 }
