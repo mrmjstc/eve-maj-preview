@@ -136,7 +136,7 @@ fn undockDestination(text: []const u8) ?[]const u8 {
 }
 
 fn untilLineEnd(text: []const u8) []const u8 {
-    const end = std.mem.indexOfAny(u8, text, "\r\n") orelse text.len;
+    const end = std.mem.indexOfAny(u8, text, "\r\n\x00") orelse text.len;
     return std.mem.trim(u8, text[0..end], " \t");
 }
 
@@ -285,6 +285,12 @@ test "lastSystemInChat picks the latest Local change" {
         \\
     ;
     try testing.expectEqualStrings("Perimeter", lastSystemInChat(text).?.system);
+}
+
+test "a system name stops at the zeros of a damaged log's end" {
+    const text = "[ 2026.09.21 21:10:37 ] EVE System > Channel changed to Local : Perimeter" ++ "\x00" ** 32;
+    try testing.expectEqualStrings("Perimeter", lastSystemInChat(text).?.system);
+    try testing.expectEqualStrings("Perimeter", parseChatLine(text).?);
 }
 
 test "lastSystemInChat skips Local changes typed by a player" {
