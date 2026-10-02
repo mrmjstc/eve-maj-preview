@@ -24,12 +24,12 @@ pub const Trackers = struct {
     last_bounty_update_ms: i64 = 0,
     last_resource_update_ms: i64 = 0,
 
-    /// Creates each tracker `cfg` enables and hands them to `monitor`, whose worker thread must be stopped.
+    /// Matches the trackers to `cfg`, keeping each one that stays enabled with its history, and hands them to `monitor`, whose worker thread must be stopped.
     /// Fail-soft: a tracker that can't be created is logged and left off rather than aborting startup or a reload.
     pub fn setup(self: *Trackers, cfg: *const Config, monitor: ?*chatlog.ChatlogMonitor) void {
-        self.combat = self.create(tracker_mod.CombatTracker, cfg.combat.enabled, cfg.combat.window_seconds, "Combat DPS");
-        self.mining = self.create(tracker_mod.MiningTracker, cfg.mining.enabled, cfg.mining.window_seconds, "Mining rate");
-        self.bounty = self.create(tracker_mod.BountyTracker, cfg.bounty.enabled, cfg.bounty.window_seconds, "Bounty rate");
+        self.reconcile(tracker_mod.CombatTracker, &self.combat, cfg.combat.enabled, cfg.combat.window_seconds, "Combat DPS");
+        self.reconcile(tracker_mod.MiningTracker, &self.mining, cfg.mining.enabled, cfg.mining.window_seconds, "Mining rate");
+        self.reconcile(tracker_mod.BountyTracker, &self.bounty, cfg.bounty.enabled, cfg.bounty.window_seconds, "Bounty rate");
         self.setupResources(cfg.resources.enabled);
 
         if (monitor) |m| {
@@ -40,14 +40,6 @@ pub const Trackers = struct {
         }
     }
 
-    /// Frees the per-profile trackers ahead of a reload; the chatlog worker must already be stopped, since it may be reading them.
-    /// The resource tracker survives, since setup() keeps it while still enabled.
-    pub fn releaseForReload(self: *Trackers) void {
-        self.destroy(tracker_mod.CombatTracker, &self.combat, "combat");
-        self.destroy(tracker_mod.MiningTracker, &self.mining, "mining");
-        self.destroy(tracker_mod.BountyTracker, &self.bounty, "bounty");
-    }
-
     /// Doesn't log, since it runs in shutdown defers that may race process exit.
     pub fn deinit(self: *Trackers) void {
         self.destroy(tracker_mod.CombatTracker, &self.combat, null);
@@ -56,18 +48,24 @@ pub const Trackers = struct {
         self.destroy(resources_mod.ResourceTracker, &self.resources, null);
     }
 
-    fn create(self: *Trackers, comptime T: type, enabled: bool, window_seconds: u32, label: []const u8) ?*T {
+    fn reconcile(self: *Trackers, comptime T: type, slot: *?*T, enabled: bool, window_seconds: u32, label: []const u8) void {
         if (!enabled) {
+            self.destroy(T, slot, label);
             slog.debug("{s} tracking disabled", .{label});
-            return null;
+            return;
+        }
+        if (slot.*) |tracker| {
+            tracker.setWindowSeconds(window_seconds);
+            slog.debug("{s} tracking kept ({d}s window)", .{ label, window_seconds });
+            return;
         }
         const tracker = self.allocator.create(T) catch |err| {
             slog.err("Failed to create {s} tracker: {}", .{ label, err });
-            return null;
+            return;
         };
         tracker.* = T.init(self.allocator, self.io, window_seconds);
+        slot.* = tracker;
         slog.debug("{s} tracking enabled ({d}s window)", .{ label, window_seconds });
-        return tracker;
     }
 
     fn setupResources(self: *Trackers, enabled: bool) void {

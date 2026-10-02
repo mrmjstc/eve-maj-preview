@@ -184,6 +184,11 @@ pub const CombatTracker = struct {
         self.base.removeCharacter(character_name);
     }
 
+    /// Worker thread stopped only; existing history is kept and rated over the new length.
+    pub fn setWindowSeconds(self: *CombatTracker, window_seconds: u32) void {
+        self.base.setWindowSeconds(window_seconds);
+    }
+
     /// As of the last refresh; null when the span is too short to trust a rate.
     pub fn getDps(self: *CombatTracker, character_name: []const u8) struct { incoming: ?f32, outgoing: ?f32 } {
         self.base.mutex.lock(self.base.io) catch |err| {
@@ -320,6 +325,11 @@ pub const MiningTracker = struct {
 
     pub fn removeCharacter(self: *MiningTracker, character_name: []const u8) void {
         self.base.removeCharacter(character_name);
+    }
+
+    /// Worker thread stopped only; existing history is kept and rated over the new length.
+    pub fn setWindowSeconds(self: *MiningTracker, window_seconds: u32) void {
+        self.base.setWindowSeconds(window_seconds);
     }
 
     /// m3 per second as of the last refresh; null when the span is too short to trust a rate.
@@ -480,6 +490,11 @@ pub const BountyTracker = struct {
         self.base.removeCharacter(character_name);
     }
 
+    /// Worker thread stopped only; existing history is kept and rated over the new length.
+    pub fn setWindowSeconds(self: *BountyTracker, window_seconds: u32) void {
+        self.base.setWindowSeconds(window_seconds);
+    }
+
     /// ISK per second as of the last refresh; null when the span is too short to trust a rate.
     pub fn getIskRate(self: *BountyTracker, character_name: []const u8) ?f32 {
         self.base.mutex.lock(self.base.io) catch |err| {
@@ -538,6 +553,12 @@ fn TrackerBase(comptime WindowT: type) type {
                 self.allocator.free(key.*);
             }
             self.windows.deinit();
+        }
+
+        fn setWindowSeconds(self: *Self, window_seconds: u32) void {
+            self.window_seconds = window_seconds;
+            var iter = self.windows.valueIterator();
+            while (iter.next()) |window| window.window_ms = @as(i64, window_seconds) * std.time.ms_per_s;
         }
 
         fn removeCharacter(self: *Self, character_name: []const u8) void {
@@ -1015,4 +1036,18 @@ test "CombatTracker reports zero for a character it hasn't seen" {
     const dps = tracker.getDps("Nobody");
     try testing.expectEqual(@as(f32, 0.0), dps.incoming.?);
     try testing.expect(!tracker.checkDamageAlert("Nobody"));
+}
+
+test "MiningTracker keeps its history and rates it over a new window length" {
+    var tracker: MiningTracker = .init(testing.allocator, testing.io, 60);
+    defer tracker.deinit();
+    var t: i64 = 1_000;
+    while (t <= 121_000) : (t += 12_000) try tracker.addEntry("Some Pilot", 110, 0, t);
+
+    _ = tracker.refreshAll(121_500);
+    try testing.expectApproxEqAbs(@as(f32, 550.0 / 60.0), tracker.getRate("Some Pilot").?, 0.001);
+
+    tracker.setWindowSeconds(120);
+    _ = tracker.refreshAll(121_500);
+    try testing.expectApproxEqAbs(@as(f32, 1_100.0 / 120.0), tracker.getRate("Some Pilot").?, 0.001);
 }

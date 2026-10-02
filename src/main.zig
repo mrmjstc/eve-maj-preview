@@ -668,8 +668,7 @@ fn restartSubsystems(timer_hwnd: win32.HWND, replacement: ?config.ProfileStore, 
         slog.debug("Cleaned up chatlog monitor", .{});
     }
 
-    // Both must run after the chatlog worker is stopped above, since it reads the trackers and the ore prices.
-    g_trackers.releaseForReload();
+    // After the chatlog worker is stopped above, since it reads the ore prices.
     if (global_draft) |draft| g_global_settings.adopt(draft);
 
     destroyHotkeyManager();
