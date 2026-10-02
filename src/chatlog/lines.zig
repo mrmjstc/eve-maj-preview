@@ -200,14 +200,16 @@ pub fn lineTimestamp(text: []const u8, pos: usize) u64 {
     return (year * 10000 + month * 100 + day) * 1000000 + (hour * 10000 + minute * 100 + second);
 }
 
-/// YYYYMMDDHHMMSS from "[Local_]YYYYMMDD_HHMMSS_<id>.txt", or 0.
+/// YYYYMMDDHHMMSS from "[Local_]YYYYMMDD_HHMMSS[_<id>].txt", or 0 for any other name, such as a sync client's conflict copy.
 pub fn logFileTimestamp(file_name: []const u8, is_chatlog: bool) u64 {
+    if (!std.mem.endsWith(u8, file_name, ".txt")) return 0;
     var stamp = withoutTxt(file_name);
     if (is_chatlog) {
         if (!std.mem.startsWith(u8, stamp, "Local_")) return 0;
         stamp = stamp["Local_".len..];
     }
     if (stamp.len < 15 or stamp[8] != '_') return 0;
+    if (stamp.len > 15 and (stamp[15] != '_' or characterIdFromFileName(stamp) == null)) return 0;
     const date = std.fmt.parseInt(u64, stamp[0..8], 10) catch return 0;
     const time = std.fmt.parseInt(u64, stamp[9..15], 10) catch return 0;
     return date * 1000000 + time;
@@ -331,6 +333,13 @@ test "logFileTimestamp and characterIdFromFileName read EVE's log names" {
     try testing.expectEqual(@as(u64, 0), logFileTimestamp("Corp_20260906_230739_1351059806.txt", true));
     try testing.expectEqualStrings("1351059806", characterIdFromFileName("Local_20260906_230739_1351059806.txt").?);
     try testing.expect(characterIdFromFileName("20260906_230739.txt") == null);
+}
+
+test "logFileTimestamp rejects names EVE didn't write" {
+    try testing.expectEqual(@as(u64, 0), logFileTimestamp("20261002_173212_912054032 (# Edit conflict 2026-10-02 74s5jzC #).txt", false));
+    try testing.expectEqual(@as(u64, 0), logFileTimestamp("20261002_173212_912054032 (1).txt", false));
+    try testing.expectEqual(@as(u64, 0), logFileTimestamp("Local_20261002_173212_912054032 - Copy.txt", true));
+    try testing.expectEqual(@as(u64, 0), logFileTimestamp("20261002_173212_912054032.txt.bak", false));
 }
 
 test "listenerName reads gamelog and chatlog headers" {
