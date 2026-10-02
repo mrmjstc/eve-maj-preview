@@ -167,9 +167,12 @@ pub const Scout = struct {
 
         // A stack buffer, since this runs for every tracked window on each refresh to catch a rare change.
         var title_buf: [64]u8 = undefined;
-        const current_title = win32.getWindowTitleBuf(eve_window.hwnd, &title_buf) catch |err| {
-            slog.err("Failed to get window title for '{s}': {}", .{ eve_window.character_name, err });
-            return;
+        const current_title = win32.getWindowTitleBuf(eve_window.hwnd, &title_buf) catch |err| switch (err) {
+            error.NoWindowTitle => return,
+            else => {
+                slog.err("Failed to get window title for '{s}': {}", .{ eve_window.character_name, err });
+                return;
+            },
         };
 
         if (std.mem.eql(u8, eve_window.title, current_title)) return;
@@ -357,9 +360,12 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
     const path_slice = win32.queryProcessExePath(process_id, &exe_path) orelse return win32.TRUE;
     const matching_filter = scout.findMatchingFilter(class_slice, path_slice) orelse return win32.TRUE;
 
-    const title_copy = win32.getWindowTitle(hwnd, scout.allocator) catch |err| {
-        slog.err("Failed to get window title for hwnd {*}: {}", .{ hwnd, err });
-        return win32.TRUE;
+    const title_copy = win32.getWindowTitle(hwnd, scout.allocator) catch |err| switch (err) {
+        error.NoWindowTitle => return win32.TRUE,
+        else => {
+            slog.err("Failed to get window title for hwnd {*}: {}", .{ hwnd, err });
+            return win32.TRUE;
+        },
     };
 
     // Non-EVE titles aren't a stable per-window identity, so fall back to the filter's own name.
