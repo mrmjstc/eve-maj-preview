@@ -3,6 +3,7 @@ const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const scout = @import("scout.zig");
+const animation = @import("animation.zig");
 const log = @import("../log.zig");
 
 const slog = log.scoped("client_actions");
@@ -10,14 +11,14 @@ const slog = log.scoped("client_actions");
 /// Kept clear of the screen edges so a restored window's title bar stays grabbable.
 const SCREEN_EDGE_MARGIN: i32 = 30;
 
-pub fn minimizeAllClients(eve_windows: []const scout.EveWindow) void {
+pub fn minimizeAllClients(eve_windows: []const scout.EveWindow, config: *const config_mod.Config) void {
     slog.info("Minimizing all EVE clients (hotkey action)", .{});
 
     var minimized_count: usize = 0;
     for (eve_windows) |eve_window| {
         if (!win32.isWindow(eve_window.hwnd)) continue;
 
-        _ = win32.ShowWindowAsync(eve_window.hwnd, win32.SW_FORCEMINIMIZE);
+        animation.showClient(config, eve_window.hwnd, win32.SW_FORCEMINIMIZE);
         minimized_count += 1;
         slog.debug("Minimized: {s}", .{eve_window.character_name});
     }
@@ -58,14 +59,14 @@ fn clampToRect(pos: config_mod.Position, rect: win32.RECT) config_mod.Position {
 }
 
 /// Moves a window's top-left corner to `pos`, restoring it first if minimized/maximized.
-pub fn moveClientToPosition(hwnd: win32.HWND, pos: config_mod.Position) void {
+pub fn moveClientToPosition(config: *const config_mod.Config, hwnd: win32.HWND, pos: config_mod.Position) void {
     if (!win32.isWindow(hwnd)) return;
 
     var placement: win32.WINDOWPLACEMENT = undefined;
     placement.length = @sizeOf(win32.WINDOWPLACEMENT);
     if (win32.toBool(win32.GetWindowPlacement(hwnd, &placement))) {
         if (placement.showCmd == win32.SW_SHOWMINIMIZED or placement.showCmd == win32.SW_SHOWMAXIMIZED) {
-            _ = win32.ShowWindowAsync(hwnd, win32.SW_RESTORE);
+            animation.showClient(config, hwnd, win32.SW_RESTORE);
         }
     }
 
@@ -81,7 +82,7 @@ pub fn moveAllClientsToSavedPositions(eve_windows: []const scout.EveWindow, conf
     for (eve_windows) |eve_window| {
         if (config.isExcludedFromAutoMove(eve_window.character_name)) continue;
         const pos = config.getCharacterWindowPosition(eve_window.character_name) orelse continue;
-        moveClientToPosition(eve_window.hwnd, pos);
+        moveClientToPosition(config, eve_window.hwnd, pos);
         painter.notify(eve_window.hwnd, .{ .ntype = .SavedPositionMove });
         moved_count += 1;
         slog.debug("Moved {s} to saved position ({}, {})", .{ eve_window.character_name, pos.x, pos.y });

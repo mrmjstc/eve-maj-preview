@@ -4,6 +4,7 @@ const win32 = @import("../platform/win32.zig");
 const focus_grant = @import("../platform/focus_grant.zig");
 const thumbnail_drag = @import("../drag/thumbnail.zig");
 const painter_mod = @import("../painter.zig");
+const animation = @import("animation.zig");
 const log = @import("../log.zig");
 
 const Painter = painter_mod.Painter;
@@ -97,7 +98,7 @@ pub const AutoMinimizer = struct {
             if (thumbnail.cached_excluded_from_minimize) continue;
             if (!win32.isWindow(thumbnail.source_hwnd)) continue;
 
-            _ = win32.ShowWindowAsync(thumbnail.source_hwnd, win32.SW_FORCEMINIMIZE);
+            animation.showClient(painter.config, thumbnail.source_hwnd, win32.SW_FORCEMINIMIZE);
             minimized_any = true;
             slog.info("Auto-minimized {s} (inactive {}ms)", .{ thumbnail.character_name, now.elapsedSince(thumbnail.auto_minimize.inactive_since) });
         }

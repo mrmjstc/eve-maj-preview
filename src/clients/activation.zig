@@ -3,20 +3,10 @@ const win32 = @import("../platform/win32.zig");
 const focus_grant = @import("../platform/focus_grant.zig");
 const painter_mod = @import("../painter.zig");
 const hotkeys = @import("../hotkeys/manager.zig");
+const animation = @import("animation.zig");
 const log = @import("../log.zig");
 
 const slog = log.scoped("activation");
-
-fn getMinimizeAnimation() ?i32 {
-    var anim_info = win32.ANIMATIONINFO{ .cbSize = @sizeOf(win32.ANIMATIONINFO), .iMinAnimate = 0 };
-    if (!win32.toBool(win32.SystemParametersInfoA(win32.SPI_GETANIMATION, @sizeOf(win32.ANIMATIONINFO), &anim_info, 0))) return null;
-    return anim_info.iMinAnimate;
-}
-
-fn setMinimizeAnimation(value: i32) void {
-    var anim_info = win32.ANIMATIONINFO{ .cbSize = @sizeOf(win32.ANIMATIONINFO), .iMinAnimate = value };
-    _ = win32.SystemParametersInfoA(win32.SPI_SETANIMATION, @sizeOf(win32.ANIMATIONINFO), &anim_info, 0);
-}
 
 /// Restores the client first if it's minimized.
 pub fn activate(source_hwnd: win32.HWND) void {
@@ -34,19 +24,7 @@ pub fn activate(source_hwnd: win32.HWND) void {
     focus_grant.forceSetForegroundWindow(source_hwnd);
 
     // SW_RESTORE returns a maximized window to maximized, so no need to track was_maximized separately.
-    if (was_minimized) {
-        switch (painter.config.interaction.animationStyle) {
-            .NoAnimation => {
-                const user_setting = getMinimizeAnimation() orelse 0;
-                if (user_setting != 0) setMinimizeAnimation(0);
-                _ = win32.ShowWindowAsync(source_hwnd, win32.SW_RESTORE);
-                if (user_setting != 0) setMinimizeAnimation(user_setting);
-            },
-            .OriginalAnimation => {
-                _ = win32.ShowWindowAsync(source_hwnd, win32.SW_RESTORE);
-            },
-        }
-    }
+    if (was_minimized) animation.showClient(painter.config, source_hwnd, win32.SW_RESTORE);
 
     // Handled now rather than when the foreground hook fires, which can be late, so the active border shows at once.
     _ = painter.onClientFocused(source_hwnd);

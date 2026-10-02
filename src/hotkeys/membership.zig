@@ -4,6 +4,7 @@ const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const strings = @import("../util/strings.zig");
 const input = @import("../thumbnail/input.zig");
+const animation = @import("../clients/animation.zig");
 const HotkeyManager = @import("manager.zig").HotkeyManager;
 const log = @import("../log.zig");
 
@@ -140,7 +141,7 @@ pub fn toggleThumbnailExclusion(manager: *HotkeyManager, source_hwnd: win32.HWND
     manager.painter.refreshExclusion(thumbnail);
 
     if (thumbnail.is_excluded_from_cycle and manager.config.exclusion.autoMinimizeExcluded) {
-        _ = win32.ShowWindowAsync(source_hwnd, win32.SW_FORCEMINIMIZE);
+        animation.showClient(manager.config, source_hwnd, win32.SW_FORCEMINIMIZE);
     }
 
     manager.painter.notify(source_hwnd, .{ .ntype = .CycleExclusion, .state = if (thumbnail.is_excluded_from_cycle) .excluded else .included });

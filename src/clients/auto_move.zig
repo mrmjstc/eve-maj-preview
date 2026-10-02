@@ -31,7 +31,7 @@ pub const AutoMoveVerifier = struct {
     pub fn moveToSavedPosition(self: *AutoMoveVerifier, config: *const config_mod.Config, hwnd: win32.HWND, character_name: []const u8) void {
         if (config.isExcludedFromAutoMove(character_name)) return;
         const pos = config.getCharacterWindowPosition(character_name) orelse return;
-        actions.moveClientToPosition(hwnd, pos);
+        actions.moveClientToPosition(config, hwnd, pos);
         self.queue(config, hwnd, pos);
         slog.info("Moved {s} client window to saved position: ({}, {})", .{ character_name, pos.x, pos.y });
     }
@@ -92,7 +92,7 @@ pub const AutoMoveVerifier = struct {
             const settled = entry.last_seen != null and entry.last_seen.?.x == rect.left and entry.last_seen.?.y == rect.top;
             if (settled or entry.checks_left == 0) {
                 slog.info("Client drifted to ({}, {}) after auto-move, re-applying ({}, {})", .{ rect.left, rect.top, entry.target.x, entry.target.y });
-                actions.moveClientToPosition(entry.hwnd, entry.target);
+                actions.moveClientToPosition(config, entry.hwnd, entry.target);
                 _ = self.pending.swapRemove(i);
                 continue;
             }

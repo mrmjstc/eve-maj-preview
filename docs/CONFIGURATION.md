@@ -384,8 +384,8 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
 
 **Configuration Options:**
 - `enableDragging`: Enable or disable thumbnail dragging (default: `true`)
-- `animationStyle`: Control Windows animations during window switching
-  - `"NoAnimation"` (default): Temporarily disable system animations for faster window switching
+- `animationStyle`: Control Windows animations when the app minimizes or restores a client
+  - `"NoAnimation"` (default): Temporarily disable system animations so it happens instantly
   - `"OriginalAnimation"`: Use Windows default minimize/restore animations
 - `clickTrigger`: When left-click activates the EVE client
   - `"MouseDown"` (default): Activate immediately on mouse button press
@@ -400,7 +400,7 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
 
 **Animation Style Details:**
 
-By default (`"NoAnimation"`), the application temporarily disables Windows system-wide minimize and restore animations when switching to a client, then immediately restores them. This provides near-instant window switching. Set to `"OriginalAnimation"` if you prefer to keep Windows default animations.
+By default (`"NoAnimation"`), the application temporarily disables Windows system-wide minimize and restore animations whenever it minimizes or restores a client (switching to it, Auto-Minimize, Minimize All, minimizing an excluded client, and restoring a client to move it to its saved position), then puts your Windows setting back. This makes those near-instant. Set to `"OriginalAnimation"` if you prefer to keep Windows default animations.
 
 **Mouse Interactions:**
 - **Left-click**: Activate and bring the EVE client to foreground

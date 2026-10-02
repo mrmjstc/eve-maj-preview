@@ -332,7 +332,7 @@ pub const HotkeyManager = struct {
             .assign_group => |assign| membership.assignHoveredToGroup(self, assign.group_index),
             .minimize_all => {
                 slog.info("Minimize all hotkey pressed", .{});
-                client_actions.minimizeAllClients(self.scout.getWindows());
+                client_actions.minimizeAllClients(self.scout.getWindows(), self.config);
             },
             .close_all => {
                 slog.info("Close all hotkey pressed", .{});
