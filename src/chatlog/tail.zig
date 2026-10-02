@@ -28,6 +28,8 @@ pub const LogFile = struct {
     /// Kept open between polls; Zig opens with full sharing, so EVE can still write and delete it.
     file: ?std.Io.File = null,
     position: u64 = 0,
+    /// Until set, a poll skips the backlog rather than reading it from 0.
+    started: bool = false,
     last_size: u64 = 0,
     last_modified: i64 = 0,
     disabled: bool = false,
@@ -71,6 +73,7 @@ pub const LogFile = struct {
         self.last_size = stat.size;
         self.last_modified = @intCast(stat.mtime.nanoseconds);
         self.position = stat.size;
+        self.started = true;
 
         const found = try self.findSystemBackward(allocator, io, file, stat.size);
         if (found == null and stat.size > MAX_BACKWARD_SCAN_BYTES) {
@@ -87,11 +90,24 @@ pub const LogFile = struct {
         self.cycle_counter = 0;
 
         const file = self.file orelse self.open(io) orelse return;
+        if (!self.started) return self.skipToEnd(io, file);
         self.readAppended(allocator, io, file, backoff, handler) catch |err| {
             // Reopened on the next poll, in case the handle itself went bad.
             self.closeFile(io);
             return err;
         };
+    }
+
+    fn skipToEnd(self: *LogFile, io: std.Io, file: std.Io.File) !void {
+        const stat = file.stat(io) catch |err| {
+            self.closeFile(io);
+            return err;
+        };
+        self.last_size = stat.size;
+        self.last_modified = @intCast(stat.mtime.nanoseconds);
+        self.position = stat.size;
+        self.started = true;
+        slog.info("Following '{s}' from its end, after its start failed", .{self.path});
     }
 
     fn open(self: *LogFile, io: std.Io) ?std.Io.File {
