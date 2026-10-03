@@ -164,10 +164,19 @@ pub const ListWindow = struct {
         h.update(std.mem.asBytes(&self.config.combat.show_outgoing));
         h.update(std.mem.asBytes(&self.config.combat.incoming_color));
         h.update(std.mem.asBytes(&self.config.combat.outgoing_color));
+        h.update(std.mem.asBytes(&self.config.combat.incoming_show_prefix));
+        h.update(std.mem.asBytes(&self.config.combat.outgoing_show_prefix));
         h.update(std.mem.asBytes(&self.config.mining.enabled));
         h.update(std.mem.asBytes(&self.config.mining.color));
+        h.update(std.mem.asBytes(&self.config.mining.show_prefix));
         h.update(std.mem.asBytes(&self.config.bounty.enabled));
         h.update(std.mem.asBytes(&self.config.bounty.color));
+        h.update(std.mem.asBytes(&self.config.bounty.show_prefix));
+        h.update(std.mem.asBytes(&self.config.bounty.isk_rate_unit));
+        // Rows are hashed before they're sorted, so the configured order has to be hashed itself.
+        if (display.listViewOrder == .ConfiguredCharacters) {
+            for (self.config.characters.items) |character| h.update(character.name);
+        }
 
         for (self.rows.items) |thumb_index| {
             const thumbnail = &thumbnails[thumb_index];
