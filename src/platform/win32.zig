@@ -160,6 +160,7 @@ pub const POINT = extern struct {
     x: LONG,
     y: LONG,
 };
+pub const WPF_RESTORETOMAXIMIZED = 0x0002;
 pub const WINDOWPLACEMENT = extern struct {
     length: UINT,
     flags: UINT,

@@ -60,7 +60,12 @@ pub fn moveClientToPosition(config: *const config_mod.Config, hwnd: win32.HWND, 
     var placement: win32.WINDOWPLACEMENT = undefined;
     placement.length = @sizeOf(win32.WINDOWPLACEMENT);
     if (win32.toBool(win32.GetWindowPlacement(hwnd, &placement))) {
-        if (placement.showCmd == win32.SW_SHOWMINIMIZED or placement.showCmd == win32.SW_SHOWMAXIMIZED) {
+        const is_minimized = placement.showCmd == win32.SW_SHOWMINIMIZED;
+        if (is_minimized or placement.showCmd == win32.SW_SHOWMAXIMIZED) {
+            animation.showClient(config, hwnd, win32.SW_RESTORE);
+        }
+        // Minimized from maximized, the first restore only brings it back maximized.
+        if (is_minimized and placement.flags & win32.WPF_RESTORETOMAXIMIZED != 0) {
             animation.showClient(config, hwnd, win32.SW_RESTORE);
         }
     }
