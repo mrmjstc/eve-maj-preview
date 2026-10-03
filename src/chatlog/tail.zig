@@ -86,7 +86,7 @@ pub const LogFile = struct {
     pub fn poll(self: *LogFile, allocator: std.mem.Allocator, io: std.Io, backoff: Backoff, handler: anytype) !void {
         if (self.disabled) return;
         self.cycle_counter += 1;
-        if (self.cycle_counter < self.poll_interval_multiplier) return;
+        if (self.cycle_counter < @min(self.poll_interval_multiplier, backoff.max_multiplier)) return;
         self.cycle_counter = 0;
 
         const file = self.file orelse self.open(io) orelse return;
@@ -140,7 +140,7 @@ pub const LogFile = struct {
             self.idle_checks += 1;
             if (self.idle_checks >= backoff.idle_threshold and self.poll_interval_multiplier < backoff.max_multiplier) {
                 const old_multiplier = self.poll_interval_multiplier;
-                self.poll_interval_multiplier *= 2;
+                self.poll_interval_multiplier = @min(self.poll_interval_multiplier * 2, backoff.max_multiplier);
                 self.idle_checks = 0;
                 slog.debug("Poll backoff {s} ({s}): {}x -> {}x", .{ self.character_name, if (self.is_chatlog) "chatlog" else "gamelog", old_multiplier, self.poll_interval_multiplier });
             }
