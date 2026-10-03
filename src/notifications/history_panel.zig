@@ -249,17 +249,17 @@ pub const HistoryPanelWindow = struct {
         const show_filters = self.config.display.notifInfoPanelShowCategoryFilters;
         const footer_top: i32 = if (show_filters) @max(HEADER_HEIGHT, win_h - FOOTER_HEIGHT) else win_h;
 
-        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, width, @intCast(HEADER_HEIGHT), self.withAlpha(RGB_HEADER));
-        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(HEADER_HEIGHT), width, height - @as(usize, @intCast(HEADER_HEIGHT)), self.withAlpha(RGB_BODY));
+        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, width, @intCast(HEADER_HEIGHT), color.withAlpha(RGB_HEADER, 0xFF));
+        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(HEADER_HEIGHT), width, height - @as(usize, @intCast(HEADER_HEIGHT)), color.withAlpha(RGB_BODY, 0xFF));
 
         if (show_filters) {
-            gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(footer_top), width, @intCast(win_h - footer_top), self.withAlpha(RGB_HEADER));
+            gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(footer_top), width, @intCast(win_h - footer_top), color.withAlpha(RGB_HEADER, 0xFF));
 
             self.updateCategoryButtonRects(win_w);
             for (CATEGORY_ORDER, 0..) |category, i| {
                 if (!categoryEnabled(self.config, category)) continue;
                 const rect = self.category_button_rects[i];
-                gdi_overlay.fillRect(bitmap.pixels, width, height, @intCast(rect.left), @intCast(footer_top), @intCast(rect.right - rect.left), @intCast(win_h - footer_top), self.withAlpha(RGB_BUTTON_ACTIVE_BG));
+                gdi_overlay.fillRect(bitmap.pixels, width, height, @intCast(rect.left), @intCast(footer_top), @intCast(rect.right - rect.left), @intCast(win_h - footer_top), color.withAlpha(RGB_BUTTON_ACTIVE_BG, 0xFF));
             }
 
             gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(footer_top), width, 1, ARGB_SEPARATOR);
@@ -354,7 +354,7 @@ pub const HistoryPanelWindow = struct {
         gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(HEADER_HEIGHT - 1), width, 1, ARGB_SEPARATOR);
 
         {
-            const frame_col = self.withAlpha(RGB_FRAME);
+            const frame_col = color.withAlpha(RGB_FRAME, 0xFF);
             gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, width, 1, frame_col);
             gdi_overlay.fillRect(bitmap.pixels, width, height, 0, height - 1, width, 1, frame_col);
             gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, 1, height, frame_col);
@@ -363,10 +363,6 @@ pub const HistoryPanelWindow = struct {
 
         gdi_overlay.fixTextAlpha(bitmap.pixels, width, height);
         self.panel.present(display.notifInfoPanelOpacity, signature);
-    }
-
-    fn withAlpha(self: *const HistoryPanelWindow, rgb: u32) u32 {
-        return color.withAlpha(rgb, self.config.display.notifInfoPanelOpacity);
     }
 };
 

@@ -96,10 +96,6 @@ pub const ListWindow = struct {
         return self.config.thumbnail.active.borderColor orelse self.config.thumbnail.borderColor;
     }
 
-    fn withListAlpha(self: *const ListWindow, rgb: u32) u32 {
-        return color_mod.withAlpha(rgb, self.config.display.listViewOpacity);
-    }
-
     /// Puts `rows` in the configured order and records each row's client.
     fn sortRows(self: *ListWindow, thumbnails: []const ThumbnailWindow) !void {
         const SortContext = struct {
@@ -299,7 +295,7 @@ pub const ListWindow = struct {
         const width: usize = bitmap.width;
         const height: usize = bitmap.height;
 
-        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, width, @intCast(HEADER_HEIGHT), self.withListAlpha(RGB_HEADER));
+        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, width, @intCast(HEADER_HEIGHT), color_mod.withAlpha(RGB_HEADER, 0xFF));
 
         const old_font = if (self.panel.font) |font| win32.SelectObject(bitmap.mem_dc, font) else null;
         defer if (old_font) |font| {
@@ -316,7 +312,7 @@ pub const ListWindow = struct {
         for (self.rows.items, 0..) |thumb_index, i| self.drawRow(bitmap, &thumbnails[thumb_index], i, grid, active_source_hwnd);
 
         drawColumnSeparators(bitmap, grid);
-        drawFrame(bitmap, grid, self.withListAlpha(RGB_FRAME));
+        drawFrame(bitmap, grid, color_mod.withAlpha(RGB_FRAME, 0xFF));
 
         gdi_overlay.fixTextAlpha(bitmap.pixels, width, height);
         applyScanlines(bitmap.pixels, width, height);
@@ -345,11 +341,11 @@ pub const ListWindow = struct {
                     const r: u32 = (((nc >> 16) & 0xFF) * 35 / 255 + 0x1A) & 0xFF;
                     const g: u32 = (((nc >> 8) & 0xFF) * 35 / 255 + 0x1A) & 0xFF;
                     const b: u32 = ((nc & 0xFF) * 35 / 255 + 0x20) & 0xFF;
-                    break :blk self.withListAlpha((r << 16) | (g << 8) | b);
+                    break :blk color_mod.withAlpha((r << 16) | (g << 8) | b, 0xFF);
                 }
             }
-            break :blk self.withListAlpha(RGB_ROW_ALERT);
-        } else self.withListAlpha(RGB_ROW_INACTIVE);
+            break :blk color_mod.withAlpha(RGB_ROW_ALERT, 0xFF);
+        } else color_mod.withAlpha(RGB_ROW_INACTIVE, 0xFF);
         gdi_overlay.fillRect(bitmap.pixels, width, height, @intCast(col_left), @intCast(row_top), @intCast(LIST_WIDTH), @intCast(ROW_HEIGHT), row_bg);
 
         // Only when the next row has an item in this column, so it doesn't draw over an empty cell.
