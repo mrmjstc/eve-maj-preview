@@ -22,26 +22,29 @@ pub fn notify(painter: *Painter, source_hwnd: win32.HWND, notification: notifica
         slog.debug("Window 0x{x} not found for notification update (thumbnail may not exist yet)", .{@intFromPtr(source_hwnd)});
         return;
     };
+    const settings = &painter.config.thumbnail.notifications;
+    const type_config = settings.getTypeConfig(notification.ntype);
     var text_buf: [TEXT_MAX]u8 = undefined;
-    const text = notification_mod.defaultText(notification, &text_buf);
+    const text = notification_mod.text(notification, type_config.customText(), thumbnail.character_name, &text_buf);
     const queued = queue(painter, thumbnail, text, notification.ntype, true) catch |err| {
         slog.err("Failed to show {s} notification for '{s}': {}", .{ @tagName(notification.ntype), thumbnail.character_name, err });
         return;
     };
     if (!queued) return;
 
-    const settings = &painter.config.thumbnail.notifications;
     const spoken_name: ?[]const u8 = if (settings.tts_speak_character_name and thumbnail.character_name.len > 0)
         (if (settings.tts_use_display_name) thumbnail.cached_display_name else thumbnail.character_name)
     else
         null;
-    alert_effects.play(settings, settings.getTypeConfig(notification.ntype), text, spoken_name);
+    alert_effects.play(settings, type_config, text, spoken_name);
 }
 
 /// Shows `notification` on every EVE client's thumbnail for a global user action; kept out of history, and sound/speech play once rather than per thumbnail.
 pub fn notifyAll(painter: *Painter, notification: notification_mod.Notification) void {
+    const settings = &painter.config.thumbnail.notifications;
+    const type_config = settings.getTypeConfig(notification.ntype);
     var text_buf: [TEXT_MAX]u8 = undefined;
-    const text = notification_mod.defaultText(notification, &text_buf);
+    const text = notification_mod.text(notification, type_config.customText(), null, &text_buf);
 
     var shown = false;
     for (painter.thumbnails.items) |*thumbnail| {
@@ -52,20 +55,27 @@ pub fn notifyAll(painter: *Painter, notification: notification_mod.Notification)
         };
         shown = shown or queued;
     }
-    const settings = &painter.config.thumbnail.notifications;
-    if (shown) alert_effects.play(settings, settings.getTypeConfig(notification.ntype), text, null);
+    if (shown) alert_effects.play(settings, type_config, text, null);
 }
 
 /// Config dialog's "Test Notification": shows `ntype` with sample fields on every EVE client, bypasses every suppression, force-shows hidden thumbnails for its duration, and skips history/cycle tracking; alerts play once rather than per thumbnail.
 pub fn showTest(painter: *Painter, ntype: notification_mod.NotificationType, type_config: config.NotificationTypeConfig) !void {
+    const example = notification_mod.sample(ntype);
     var text_buf: [TEXT_MAX]u8 = undefined;
-    const text = notification_mod.defaultText(notification_mod.sample(ntype), &text_buf);
+    var spoken_buf: [TEXT_MAX]u8 = undefined;
+    var spoken: ?[]const u8 = null;
     const now = win32.Ticks.now();
     // A permanent (0) duration would never clear a test.
     const duration_ms = if (type_config.duration_ms == 0) TEST_PERMANENT_FALLBACK_MS else type_config.duration_ms;
 
     for (painter.thumbnails.items) |*thumbnail| {
         if (!thumbnail.is_eve_client) continue;
+        const character_name: ?[]const u8 = if (thumbnail.character_name.len > 0) thumbnail.character_name else notification_mod.SAMPLE_CHARACTER;
+        const text = notification_mod.text(example, type_config.customText(), character_name, &text_buf);
+        if (spoken == null) {
+            @memcpy(spoken_buf[0..text.len], text);
+            spoken = spoken_buf[0..text.len];
+        }
         push(painter, thumbnail, .fromConfig(try painter.allocator.dupe(u8, text), ntype, type_config, now, duration_ms));
 
         // The alert blocks re-hiding, so the thumbnail stays up until expire() restores it.
@@ -76,7 +86,8 @@ pub fn showTest(painter: *Painter, ntype: notification_mod.NotificationType, typ
         }
     }
 
-    alert_effects.play(&painter.config.thumbnail.notifications, type_config, text, null);
+    const speech = spoken orelse notification_mod.text(example, type_config.customText(), notification_mod.SAMPLE_CHARACTER, &spoken_buf);
+    alert_effects.play(&painter.config.thumbnail.notifications, type_config, speech, null);
 }
 
 /// Removes click-dismissable notifications (clients/activation.zig's activate); returns whether anything was removed.

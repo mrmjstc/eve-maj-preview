@@ -144,19 +144,58 @@ fn shortTypeName(comptime T: type) []const u8 {
     return full[dot + 1 ..];
 }
 
-/// In category order, each with its own defaults, which differ by type (see NotificationTypeConfig.defaultFor).
+/// In category order, with `placeholders: [{name, sample}]` and a `texts` entry `{field, state, defaultText}` per custom text box.
 fn writeNotificationTypes(jw: *std.json.Stringify) !void {
     try jw.beginArray();
     for (std.enums.values(notification.NotificationCategory)) |category| {
         for (std.enums.values(notification.NotificationType)) |ntype| {
             if (notification.notificationCategory(ntype) != category) continue;
-            try jw.write(.{
-                .name = @tagName(ntype),
-                .category = @tagName(category),
-                .userAction = notification.isUserAction(ntype),
-                .defaults = wire.encode(config.NotificationTypeConfig, config.NotificationTypeConfig.defaultFor(ntype)),
-            });
+            try jw.beginObject();
+            try jw.objectField("name");
+            try jw.write(@tagName(ntype));
+            try jw.objectField("category");
+            try jw.write(@tagName(category));
+            try jw.objectField("userAction");
+            try jw.write(notification.isUserAction(ntype));
+            try jw.objectField("defaults");
+            try jw.write(wire.encode(config.NotificationTypeConfig, config.NotificationTypeConfig.defaultFor(ntype)));
+            try jw.objectField("placeholders");
+            try writePlaceholders(jw, ntype);
+            try jw.objectField("texts");
+            try writeTexts(jw, ntype);
+            try jw.endObject();
         }
+    }
+    try jw.endArray();
+}
+
+fn writePlaceholders(jw: *std.json.Stringify, ntype: notification.NotificationType) !void {
+    const example = notification.sample(ntype);
+    try jw.beginArray();
+    for (notification.placeholders(ntype)) |placeholder| {
+        const value: ?[]const u8 = switch (placeholder.field) {
+            .source => example.source,
+            .target => example.target,
+            .character => notification.SAMPLE_CHARACTER,
+        };
+        try jw.write(.{ .name = placeholder.name, .sample = value });
+    }
+    try jw.endArray();
+}
+
+fn writeTexts(jw: *std.json.Stringify, ntype: notification.NotificationType) !void {
+    var buf: [128]u8 = undefined;
+    const primary = notification.sample(ntype);
+    try jw.beginArray();
+    try jw.write(.{
+        .field = "custom_text",
+        .state = if (primary.state) |state| @tagName(state) else null,
+        .defaultText = notification.defaultText(primary, &buf),
+    });
+    if (notification.altState(ntype)) |alt_state| {
+        var alt = primary;
+        alt.state = alt_state;
+        try jw.write(.{ .field = "custom_text_alt", .state = @tagName(alt_state), .defaultText = notification.defaultText(alt, &buf) });
     }
     try jw.endArray();
 }

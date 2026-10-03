@@ -19,6 +19,14 @@ pub const NotificationTypeConfig = struct {
     sound_enabled: bool = false,
     sound_path: ?[]const u8 = null,
     sound_volume: u8 = 100,
+    /// Null uses the type's default wording.
+    custom_text: ?[]const u8 = null,
+    /// custom_text for the type's second state (see notification.altState).
+    custom_text_alt: ?[]const u8 = null,
+
+    pub fn customText(self: *const NotificationTypeConfig) notification.CustomText {
+        return .{ .primary = self.custom_text, .alt = self.custom_text_alt };
+    }
 
     pub fn defaultFor(ntype: notification.NotificationType) NotificationTypeConfig {
         return if (notification.isUserAction(ntype)) .{ .duration_ms = 3000, .throttle_ms = 0 } else .{};
@@ -105,8 +113,10 @@ pub const NotificationTypeConfigs = struct {
                 const type_wire = try std.json.parseFromValue(NotificationTypeConfig.Wire, allocator, entry.value_ptr.*, opts);
                 defer type_wire.deinit();
                 var wire_value = type_wire.value;
-                // type_wire owns an arena freed by the defer above; re-dupe with the outer allocator so sound_path outlives it.
+                // type_wire's arena is freed by the defer above, so its strings must be re-duped.
                 if (wire_value.sound_path) |sp| wire_value.sound_path = try allocator.dupe(u8, sp);
+                if (wire_value.custom_text) |ct| wire_value.custom_text = try allocator.dupe(u8, ct);
+                if (wire_value.custom_text_alt) |ct| wire_value.custom_text_alt = try allocator.dupe(u8, ct);
                 result.map.set(ntype, wire_value);
             }
             return result;

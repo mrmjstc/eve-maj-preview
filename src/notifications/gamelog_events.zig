@@ -41,6 +41,33 @@ pub fn conduitDestination(text: []const u8) ?[]const u8 {
     return if (system.len == 0) null else system;
 }
 
+fn textBefore(text: []const u8, suffix: []const u8) ?[]const u8 {
+    const end = std.mem.indexOf(u8, text, suffix) orelse return null;
+    return nonEmpty(text[0..end]);
+}
+
+fn textAfter(text: []const u8, prefix: []const u8) ?[]const u8 {
+    const start = std.mem.indexOf(u8, text, prefix) orelse return null;
+    return nonEmpty(text[start + prefix.len ..]);
+}
+
+fn textBetween(text: []const u8, prefix: []const u8, suffix: []const u8) ?[]const u8 {
+    const start = (std.mem.indexOf(u8, text, prefix) orelse return null) + prefix.len;
+    const end = std.mem.indexOfPos(u8, text, start, suffix) orelse return null;
+    return nonEmpty(text[start..end]);
+}
+
+fn withoutYour(name: ?[]const u8) ?[]const u8 {
+    const value = name orelse return null;
+    if (!std.mem.startsWith(u8, value, "Your ")) return value;
+    return nonEmpty(value["Your ".len..]);
+}
+
+fn nonEmpty(text: []const u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, text, " \t.");
+    return if (trimmed.len == 0) null else trimmed;
+}
+
 fn genericEvent(message: []const u8) ?Notification {
     const cleaned = std.mem.trim(u8, message, " \t\r\n.");
     if (cleaned.len == 0) return null;
@@ -52,7 +79,7 @@ fn parseQuestionEvent(message: []const u8) ?Notification {
 
     // "<a href...>NAME</a> wants you to join their fleet, do you accept?"
     if (std.mem.indexOf(u8, trimmed, "wants you to join their fleet")) |_| {
-        return .{ .ntype = .FleetInvite };
+        return .{ .ntype = .FleetInvite, .source = textBefore(trimmed, " wants you to join their fleet") };
     }
 
     return null;
@@ -63,12 +90,12 @@ fn parseNotifyEvent(message: []const u8) ?Notification {
 
     // "Following [leader] in warp"
     if (std.mem.startsWith(u8, trimmed, "Following ") and std.mem.indexOf(u8, trimmed, " in warp") != null) {
-        return .{ .ntype = .FleetFollow };
+        return .{ .ntype = .FleetFollow, .source = textBetween(trimmed, "Following ", " in warp") };
     }
 
     // "Regrouping to [leader]"
     if (std.mem.indexOf(u8, trimmed, "Regrouping to ") != null) {
-        return .{ .ntype = .FleetRegroup };
+        return .{ .ntype = .FleetRegroup, .source = textAfter(trimmed, "Regrouping to ") };
     }
 
     if (std.mem.indexOf(u8, trimmed, "Your fleet is disbanding") != null) {
@@ -81,17 +108,17 @@ fn parseNotifyEvent(message: []const u8) ?Notification {
 
     // "Successfully compressed [ore] into [count] [compressed]"
     if (std.mem.indexOf(u8, trimmed, "Successfully compressed") != null) {
-        return .{ .ntype = .MiningCompression };
+        return .{ .ntype = .MiningCompression, .source = textBetween(trimmed, "compressed ", " into "), .target = textAfter(trimmed, " into ") };
     }
 
     // "[miner] deactivates as it finds the resource it was harvesting a pale shadow of its former glory."
     if (std.mem.indexOf(u8, trimmed, "a pale shadow of its former glory") != null) {
-        return .{ .ntype = .AsteroidDepleted };
+        return .{ .ntype = .AsteroidDepleted, .source = withoutYour(textBefore(trimmed, " deactivates as it finds")) };
     }
 
     // "Your [module] has completed operations. Ship's cargo hold is full."
     if (std.mem.indexOf(u8, trimmed, "cargo hold is full") != null) {
-        return .{ .ntype = .CargoFull };
+        return .{ .ntype = .CargoFull, .source = withoutYour(textBefore(trimmed, " has completed operations")) };
     }
 
     // Checked before the proximity decloak below, whose wording this also contains.
@@ -103,7 +130,7 @@ fn parseNotifyEvent(message: []const u8) ?Notification {
 
     // "Your cloak deactivates due to proximity to [source]"
     if (std.mem.indexOf(u8, trimmed, "cloak deactivates") != null) {
-        return .{ .ntype = .Decloak };
+        return .{ .ntype = .Decloak, .source = textAfter(trimmed, "proximity to ") };
     }
 
     // "Your cloaking systems are unable to activate due to your ship being within..."
@@ -113,12 +140,12 @@ fn parseNotifyEvent(message: []const u8) ?Notification {
 
     // "[module] deactivates due to the destruction of the [crystal]"
     if (std.mem.indexOf(u8, trimmed, "deactivates due to the destruction") != null) {
-        return .{ .ntype = .CrystalBroke };
+        return .{ .ntype = .CrystalBroke, .source = withoutYour(textBefore(trimmed, " deactivates due to the destruction")), .target = textAfter(trimmed, "destruction of the ") };
     }
 
     // "Bomb Launcher II has run out of charges"
     if (std.mem.indexOf(u8, trimmed, "Bomb Launcher") != null and std.mem.indexOf(u8, trimmed, "has run out of charges") != null) {
-        return .{ .ntype = .BombLauncherEmpty };
+        return .{ .ntype = .BombLauncherEmpty, .source = textBefore(trimmed, " has run out of charges") };
     }
 
     // Checks for "Your" to avoid triggering on other players' self-destructs.
@@ -148,7 +175,7 @@ fn parseNotifyEvent(message: []const u8) ?Notification {
 
     // "You are within a warp disruption zone. Get 20000.0 meters from Warp Disrupt Probe to warp."
     if (std.mem.indexOf(u8, trimmed, "within a warp disruption zone") != null) {
-        return .{ .ntype = .WarpBubble };
+        return .{ .ntype = .WarpBubble, .source = textBetween(trimmed, "meters from ", " to warp") };
     }
 
     // "The stargate denies you permission to jump for the moment due to your recent acts of aggression."
@@ -172,14 +199,14 @@ fn parseCombatEvent(message: []const u8) ?Notification {
     if (std.mem.indexOf(u8, trimmed, "Warp scramble attempt") != null and
         std.mem.endsWith(u8, trimmed, "to you!"))
     {
-        return .{ .ntype = .WarpScrambled };
+        return .{ .ntype = .WarpScrambled, .source = textBetween(trimmed, "attempt from ", " to you!") };
     }
 
     // Same "to you!" requirement as the scramble check above.
     if (std.mem.indexOf(u8, trimmed, "Warp disruption attempt") != null and
         std.mem.endsWith(u8, trimmed, "to you!"))
     {
-        return .{ .ntype = .WarpDisrupted };
+        return .{ .ntype = .WarpDisrupted, .source = textBetween(trimmed, "attempt from ", " to you!") };
     }
 
     return null;
@@ -195,7 +222,7 @@ fn parseNoneEvent(message: []const u8) ?Notification {
 
     // "<a href...>NAME</a> is inviting you to a conversation"
     if (std.mem.indexOf(u8, trimmed, "is inviting you to a conversation") != null) {
-        return .{ .ntype = .ConversationInvite };
+        return .{ .ntype = .ConversationInvite, .source = textBefore(trimmed, " is inviting you to a conversation") };
     }
 
     return genericEvent(trimmed);
@@ -271,6 +298,50 @@ test "classify skips hints and jumps, and keeps untagged lines as generic" {
     try testing.expectEqual(NotificationType.Generic, generic.ntype);
     try testing.expectEqualStrings("Session changed", generic.source.?);
     try testing.expect(classify("[ 2026.09.05 01:16:08 ]  ...") == null);
+}
+
+test "classify reads who a fleet or conversation invite is from" {
+    try testing.expectEqualStrings("Some Pilot", classify("[ 2026.09.06 16:13:00 ] (question) Some Pilot wants you to join their fleet, do you accept?").?.source.?);
+    try testing.expectEqualStrings("Some Pilot", classify("[ 2026.09.06 16:13:00 ] (None) Some Pilot is inviting you to a conversation").?.source.?);
+}
+
+test "classify reads the fleet leader being followed or regrouped to" {
+    try testing.expectEqualStrings("Fleet Commander", classify("[ 2026.09.06 16:13:00 ] (notify) Following Fleet Commander in warp").?.source.?);
+    try testing.expectEqualStrings("Fleet Commander", classify("[ 2026.09.06 16:13:00 ] (notify) Regrouping to Fleet Commander").?.source.?);
+}
+
+test "classify reads the ore and result of a compression" {
+    const compressed = classify("[ 2026.09.06 16:13:00 ] (notify) Successfully compressed Veldspar into 10 Compressed Veldspar").?;
+    try testing.expectEqualStrings("Veldspar", compressed.source.?);
+    try testing.expectEqualStrings("10 Compressed Veldspar", compressed.target.?);
+}
+
+test "classify reads the module, dropping a leading Your" {
+    try testing.expectEqualStrings("Miner II", classify("[ 2026.09.06 16:13:00 ] (notify) Your Miner II deactivates as it finds the resource it was harvesting a pale shadow of its former glory.").?.source.?);
+    try testing.expectEqualStrings("Miner II", classify("[ 2026.09.06 16:13:00 ] (notify) Miner II deactivates as it finds the resource it was harvesting a pale shadow of its former glory.").?.source.?);
+    try testing.expectEqualStrings("Miner II", classify("[ 2026.09.06 16:13:00 ] (notify) Your Miner II has completed operations. Ship's cargo hold is full.").?.source.?);
+    try testing.expectEqualStrings("Bomb Launcher II", classify("[ 2026.09.06 16:13:00 ] (notify) Bomb Launcher II has run out of charges").?.source.?);
+}
+
+test "classify reads the module and crystal when a crystal breaks" {
+    const broke = classify("[ 2026.09.06 16:13:00 ] (notify) Modulated Strip Miner II deactivates due to the destruction of the Veldspar Mining Crystal II.").?;
+    try testing.expectEqualStrings("Modulated Strip Miner II", broke.source.?);
+    try testing.expectEqualStrings("Veldspar Mining Crystal II", broke.target.?);
+}
+
+test "classify reads who scrambled or disrupted you" {
+    try testing.expectEqualStrings("Some Rat", classify("[ 2026.09.06 16:13:00 ] (combat) Warp scramble attempt from Some Rat to you!").?.source.?);
+    try testing.expectEqualStrings("Some Rat", classify("[ 2026.09.06 16:13:00 ] (combat) Warp disruption attempt from Some Rat to you!").?.source.?);
+}
+
+test "classify reads what decloaked you or holds you in a bubble" {
+    try testing.expectEqualStrings("Guristas Pith Ship", classify("[ 2026.09.06 16:13:00 ] (notify) Your cloak deactivates due to proximity to Guristas Pith Ship.").?.source.?);
+    try testing.expectEqualStrings("Warp Disrupt Probe", classify("[ 2026.09.06 16:13:00 ] (notify) You are within a warp disruption zone. Get 20000.0 meters from Warp Disrupt Probe to warp.").?.source.?);
+}
+
+test "classify leaves a field unset when the line has no name in it" {
+    try testing.expect(classify("[ 2026.09.06 16:13:00 ] (notify) Following  in warp").?.source == null);
+    try testing.expect(classify("[ 2026.09.06 16:13:00 ] (notify) Your fleet is disbanding").?.source == null);
 }
 
 test "classify reads the conduit destination" {

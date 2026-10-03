@@ -13,6 +13,7 @@ test {
     _ = @import("layout/placement.zig");
     _ = @import("notifications/gamelog_events.zig");
     _ = @import("notifications/notification.zig");
+    _ = @import("notifications/template.zig");
     _ = @import("platform/virtual_keys.zig");
     _ = @import("protocol.zig");
     _ = @import("util/color.zig");

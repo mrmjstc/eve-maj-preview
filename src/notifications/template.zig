@@ -1,0 +1,114 @@
+//! Fills a notification's custom text with the event's values; no I/O.
+const std = @import("std");
+
+pub const Field = enum { source, target, character };
+
+pub const Placeholder = struct {
+    name: []const u8,
+    field: Field,
+};
+
+/// Borrowed; null where the event didn't carry that value.
+pub const Values = struct {
+    source: ?[]const u8 = null,
+    target: ?[]const u8 = null,
+    character: ?[]const u8 = null,
+
+    fn get(self: Values, field: Field) ?[]const u8 {
+        return switch (field) {
+            .source => self.source,
+            .target => self.target,
+            .character => self.character,
+        };
+    }
+};
+
+const Output = struct {
+    buf: []u8,
+    len: usize = 0,
+    is_full: bool = false,
+
+    fn write(self: *Output, bytes: []const u8) void {
+        if (self.is_full) return;
+        var count = bytes.len;
+        if (count > self.buf.len - self.len) {
+            count = self.buf.len - self.len;
+            while (count > 0 and isContinuationByte(bytes[count])) count -= 1;
+            self.is_full = true;
+        }
+        @memcpy(self.buf[self.len..][0..count], bytes[0..count]);
+        self.len += count;
+    }
+
+    fn slice(self: *const Output) []const u8 {
+        return self.buf[0..self.len];
+    }
+};
+
+/// Null if a known `{name}` has no value; unknown names stay as typed, and the result points into `buf`.
+pub fn render(template: []const u8, placeholders: []const Placeholder, values: Values, buf: []u8) ?[]const u8 {
+    var out: Output = .{ .buf = buf };
+    var i: usize = 0;
+    while (i < template.len) {
+        const brace = std.mem.indexOfScalarPos(u8, template, i, '{') orelse template.len;
+        out.write(template[i..brace]);
+        if (brace == template.len) break;
+
+        if (std.mem.indexOfScalarPos(u8, template, brace + 1, '}')) |close| {
+            if (find(placeholders, template[brace + 1 .. close])) |placeholder| {
+                const value = values.get(placeholder.field) orelse return null;
+                if (value.len == 0) return null;
+                out.write(value);
+                i = close + 1;
+                continue;
+            }
+        }
+        out.write("{");
+        i = brace + 1;
+    }
+    return out.slice();
+}
+
+fn find(placeholders: []const Placeholder, name: []const u8) ?Placeholder {
+    for (placeholders) |placeholder| {
+        if (std.ascii.eqlIgnoreCase(placeholder.name, name)) return placeholder;
+    }
+    return null;
+}
+
+fn isContinuationByte(byte: u8) bool {
+    return byte & 0xC0 == 0x80;
+}
+
+const testing = std.testing;
+
+const TEST_PLACEHOLDERS = [_]Placeholder{
+    .{ .name = "pilot", .field = .source },
+    .{ .name = "system", .field = .target },
+    .{ .name = "character", .field = .character },
+};
+
+test "render fills each placeholder, ignoring case" {
+    var buf: [64]u8 = undefined;
+    const values: Values = .{ .source = "Some Pilot", .target = "Jita", .character = "Main" };
+    try testing.expectEqualStrings("Main: Some Pilot in Jita", render("{character}: {PILOT} in {System}", &TEST_PLACEHOLDERS, values, &buf).?);
+}
+
+test "render keeps unknown names and stray braces as typed" {
+    var buf: [64]u8 = undefined;
+    try testing.expectEqualStrings("{ship} {x Some Pilot }", render("{ship} {x {pilot} }", &TEST_PLACEHOLDERS, .{ .source = "Some Pilot" }, &buf).?);
+    try testing.expectEqualStrings("Ends with {", render("Ends with {", &TEST_PLACEHOLDERS, .{}, &buf).?);
+}
+
+test "render gives up when a used placeholder has no value" {
+    var buf: [64]u8 = undefined;
+    try testing.expect(render("Invite from {pilot}", &TEST_PLACEHOLDERS, .{}, &buf) == null);
+    try testing.expect(render("{character} invited", &TEST_PLACEHOLDERS, .{ .character = "" }, &buf) == null);
+    try testing.expectEqualStrings("Invite", render("Invite", &TEST_PLACEHOLDERS, .{}, &buf).?);
+}
+
+test "render truncates on a UTF-8 boundary" {
+    var buf: [4]u8 = undefined;
+    try testing.expectEqualStrings("abc", render("abc\u{00e9}", &TEST_PLACEHOLDERS, .{}, &buf).?);
+    try testing.expectEqualStrings("Hi J", render("Hi {system}!", &TEST_PLACEHOLDERS, .{ .target = "Jita" }, &buf).?);
+}

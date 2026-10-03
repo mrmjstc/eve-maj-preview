@@ -2,7 +2,7 @@
 import { app } from './state.js';
 import { applyDocToForm, applySchemaToInputs, baseName, defaultFor, readFormToDoc } from './binding.js';
 import { zigColorToHtml } from './colors.js';
-import { logError, logWarn, rpc } from './core.js';
+import { escapeHtml, logError, logWarn, rpc } from './core.js';
 import { t } from './i18n.js';
 import { showStatus } from './layout.js';
 import { toggleNotificationOptions } from './options.js';
@@ -25,6 +25,11 @@ function notifDefaultBorderColorHtml() {
 // Which event type's detail panel is showing in the master-detail Event Alerts view.
 let selectedNotificationTypeIndex = 0;
 
+// Where a placeholder chip inserts, per type; falls back to the type's first box.
+const lastFocusedTextBox = new Map();
+
+const CUSTOM_TEXT_MAX_LENGTH = 100;
+
 const notificationTypeSearchFilter = makeRosterSearchFilter('notificationTypesList');
 export function onNotificationTypeSearchInput(query) { notificationTypeSearchFilter.onInput(query); }
 export function clearNotificationTypeSearch() { notificationTypeSearchFilter.clear('notificationTypeSearchFilter'); }
@@ -40,11 +45,13 @@ export function populateNotificationTypes() {
     if (selectedNotificationTypeIndex < 0) selectedNotificationTypeIndex = 0;
 
     const rosterRows = types.map((notifType, index) => {
+        // The short name keeps the roster narrow; the header and tooltip use the full one.
         const eventLabel = t('notification.' + notifType.key + '.label');
+        const shortLabel = t('notification.' + notifType.key + '.shortLabel');
 
         return `
             <div class="roster-row ${index === selectedNotificationTypeIndex ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${index === selectedNotificationTypeIndex}" data-index="${index}" onclick="selectNotificationType(${index})">
-                <span class="roster-name" title="${eventLabel}">${eventLabel}</span>
+                <span class="roster-name" title="${eventLabel}">${shortLabel}</span>
             </div>
         `;
     }).join('');
@@ -76,6 +83,7 @@ export function populateNotificationTypes() {
                         <p class="hint hint-extra">${t('tab.notifications.detail.throttle.hint')}</p>
                     </div>
                 </div>
+                ${customTextField(notifType)}
                 <div class="detail-field detail-field-top">
                     <label>${t('dynamic.character.behaviorHeading')}</label>
                     <div class="detail-checks">
@@ -184,6 +192,7 @@ export function populateNotificationTypes() {
 
     applySchemaToInputs(container);
     applyDocToForm(path => path.startsWith('thumbnail.notifications.type_configs.'), container);
+    container.querySelectorAll('.notif-custom-text').forEach(updateNotifTextPreview);
     types.forEach((notifType) => {
         toggleNotifTextColor(notifType.key);
         toggleNotifBorderColor(notifType.key);
@@ -191,6 +200,90 @@ export function populateNotificationTypes() {
     });
     toggleNotificationOptions();
     applyNotificationTypeFilter();
+}
+
+// The first box gets its own grid row so the rail label centers on it, not the whole stack.
+function customTextField(notifType) {
+    const texts = notifType.texts || [];
+    const boxes = texts.map(text => {
+        const id = `notif_${notifType.key}_${text.field}`;
+        const stateLabel = texts.length > 1 ? `<label for="${id}">${t('notification.state.' + text.state + '.label')}</label>` : '';
+        return {
+            row: `
+                <div class="field-row">
+                    ${stateLabel}
+                    <input type="text" id="${id}" class="notif-custom-text" maxlength="${CUSTOM_TEXT_MAX_LENGTH}" data-type-key="${notifType.key}"
+                           data-path="thumbnail.notifications.type_configs.${notifType.key}.${text.field}"
+                           placeholder="${escapeHtml(text.defaultText)}"
+                           oninput="updateNotifTextPreview(this)" onfocus="rememberNotifTextBox(this)">
+                    <button type="button" class="button-icon button-icon-danger notif-custom-text-clear" data-type-key="${notifType.key}"
+                            onclick="clearNotifCustomText('${id}')" title="${t('tab.notifications.detail.text.clear')}">&times;</button>
+                </div>`,
+            preview: `<p class="hint notif-text-preview" id="${id}_preview"></p>`,
+        };
+    });
+    const [first, ...rest] = boxes;
+    const chips = (notifType.placeholders || []).map(placeholder => `
+        <button type="button" class="placeholder-chip" title="${escapeHtml(t('notification.placeholder.' + placeholder.name + '.title'))}"
+                onclick="insertNotifPlaceholder('${notifType.key}', '${placeholder.name}')">{${placeholder.name}}</button>`).join('');
+    return `
+        <div class="detail-field">
+            <label>${t('tab.notifications.detail.text.heading')}</label>
+            ${first?.row ?? ''}
+        </div>
+        <div class="detail-field">
+            <label></label>
+            <div class="detail-checks">
+                ${rest.map(box => box.row).join('')}
+                ${chips ? `<div class="placeholder-chips" id="notif_${notifType.key}_placeholders">${chips}</div>` : ''}
+                ${boxes.map(box => box.preview).join('')}
+                <p class="hint hint-extra">${t('tab.notifications.detail.text.hint')}</p>
+            </div>
+        </div>`;
+}
+
+export function clearNotifCustomText(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input || input.value === '') return;
+    input.value = '';
+    // Programmatic edits don't fire input.
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+export function rememberNotifTextBox(input) {
+    lastFocusedTextBox.set(input.dataset.typeKey, input);
+}
+
+export function insertNotifPlaceholder(typeKey, name) {
+    const input = lastFocusedTextBox.get(typeKey)?.isConnected ? lastFocusedTextBox.get(typeKey)
+        : document.querySelector(`.notif-custom-text[data-type-key="${typeKey}"]`);
+    if (!input || input.disabled) return;
+
+    const token = `{${name}}`;
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    if (input.value.length - (end - start) + token.length > CUSTOM_TEXT_MAX_LENGTH) return;
+    input.setRangeText(token, start, end, 'end');
+    input.focus();
+    // Programmatic edits don't fire input.
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+// Mirrors notifications/template.zig's render, using each placeholder's sample value.
+export function updateNotifTextPreview(input) {
+    const preview = document.getElementById(`${input.id}_preview`);
+    if (!preview) return;
+    const text = input.value.trim();
+    if (text === '') {
+        preview.textContent = t('tab.notifications.detail.text.preview') + ' ' + input.placeholder;
+        return;
+    }
+    const placeholders = notificationTypes().find(type => type.key === input.dataset.typeKey)?.placeholders || [];
+    const rendered = text.replace(/\{([^{}]*)\}/g, (match, name) => {
+        const placeholder = placeholders.find(p => p.name.toLowerCase() === name.toLowerCase());
+        return placeholder?.sample ?? match;
+    });
+    preview.textContent = t('tab.notifications.detail.text.preview') + ' ' + rendered;
 }
 
 export function selectNotificationType(index) {
@@ -217,8 +310,11 @@ export function toggleNotificationTypeEnabled(typeKey) {
     const soundClearBtn = document.getElementById(`notif_${typeKey}_soundClearBtn`);
     const soundVolumeInput = document.getElementById(`notif_${typeKey}_soundVolume`);
     const testBtn = document.getElementById(`notif_${typeKey}_testBtn`);
+    const customTextInputs = document.querySelectorAll(`.notif-custom-text[data-type-key="${typeKey}"], .notif-custom-text-clear[data-type-key="${typeKey}"], #notif_${typeKey}_placeholders button`);
 
     const isEnabled = enabledCheckbox && enabledCheckbox.checked;
+
+    customTextInputs.forEach(el => { el.disabled = !isEnabled; });
 
     if (testBtn) testBtn.disabled = !isEnabled;
     if (durationInput) durationInput.disabled = !isEnabled;
