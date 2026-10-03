@@ -29,6 +29,8 @@ let selectedNotificationTypeIndex = 0;
 const lastFocusedTextBox = new Map();
 
 const CUSTOM_TEXT_MAX_LENGTH = 100;
+// Matches thumbnail/overlay.zig's MAX_LINES_PER_NOTIFICATION.
+const MAX_LINES_PER_NOTIFICATION = 3;
 
 const notificationTypeSearchFilter = makeRosterSearchFilter('notificationTypesList');
 export function onNotificationTypeSearchInput(query) { notificationTypeSearchFilter.onInput(query); }
@@ -225,7 +227,9 @@ function customTextField(notifType) {
     const [first, ...rest] = boxes;
     const chips = (notifType.placeholders || []).map(placeholder => `
         <button type="button" class="placeholder-chip" title="${escapeHtml(t('notification.placeholder.' + placeholder.name + '.title'))}"
-                onclick="insertNotifPlaceholder('${notifType.key}', '${placeholder.name}')">{${placeholder.name}}</button>`).join('');
+                onclick="insertNotifPlaceholder('${notifType.key}', '{${placeholder.name}}')">{${placeholder.name}}</button>`).join('') + `
+        <button type="button" class="placeholder-chip" title="${escapeHtml(t('tab.notifications.detail.text.newlineTitle'))}"
+                onclick="insertNotifPlaceholder('${notifType.key}', '\\\\n')">\\n</button>`;
     return `
         <div class="detail-field">
             <label>${t('tab.notifications.detail.text.heading')}</label>
@@ -235,7 +239,7 @@ function customTextField(notifType) {
             <label></label>
             <div class="detail-checks">
                 ${rest.map(box => box.row).join('')}
-                ${chips ? `<div class="placeholder-chips" id="notif_${notifType.key}_placeholders">${chips}</div>` : ''}
+                <div class="placeholder-chips" id="notif_${notifType.key}_placeholders">${chips}</div>
                 ${boxes.map(box => box.preview).join('')}
                 <p class="hint hint-extra">${t('tab.notifications.detail.text.hint')}</p>
             </div>
@@ -254,12 +258,11 @@ export function rememberNotifTextBox(input) {
     lastFocusedTextBox.set(input.dataset.typeKey, input);
 }
 
-export function insertNotifPlaceholder(typeKey, name) {
+export function insertNotifPlaceholder(typeKey, token) {
     const input = lastFocusedTextBox.get(typeKey)?.isConnected ? lastFocusedTextBox.get(typeKey)
         : document.querySelector(`.notif-custom-text[data-type-key="${typeKey}"]`);
     if (!input || input.disabled) return;
 
-    const token = `{${name}}`;
     const start = input.selectionStart ?? input.value.length;
     const end = input.selectionEnd ?? start;
     if (input.value.length - (end - start) + token.length > CUSTOM_TEXT_MAX_LENGTH) return;
@@ -279,10 +282,10 @@ export function updateNotifTextPreview(input) {
         return;
     }
     const placeholders = notificationTypes().find(type => type.key === input.dataset.typeKey)?.placeholders || [];
-    const rendered = text.replace(/\{([^{}]*)\}/g, (match, name) => {
+    const rendered = text.replace(/\\n/g, '\n').replace(/\{([^{}]*)\}/g, (match, name) => {
         const placeholder = placeholders.find(p => p.name.toLowerCase() === name.toLowerCase());
         return placeholder?.sample ?? match;
-    });
+    }).split('\n').slice(0, MAX_LINES_PER_NOTIFICATION).join('\n');
     preview.textContent = t('tab.notifications.detail.text.preview') + ' ' + rendered;
 }
 

@@ -23,6 +23,9 @@ const scalePixels = win32.scalePixels;
 const slog = log.scoped("overlay");
 
 const OVERLAY_ALPHA = 255;
+/// Custom text can split a notification over lines (see notifications/template.zig).
+const MAX_LINES_PER_NOTIFICATION = 3;
+const MAX_NOTIFICATION_LINES = stack.CAPACITY * MAX_LINES_PER_NOTIFICATION;
 
 /// Character name, system, group badge, DPS in and out, mining (and its ISK line), bounty, and up to three resource lines.
 const MAX_LINES = 1 + 1 + 1 + 2 + 2 + 1 + 3;
@@ -61,7 +64,7 @@ pub const RenderSettings = struct {
     system_name_font_size: i32 = 12,
     system_name_font_weight: types.FontWeight = .Regular,
     show_notifications: bool = false,
-    notification_lines: [stack.CAPACITY]NotificationLine = .{NotificationLine{}} ** stack.CAPACITY,
+    notification_lines: [MAX_NOTIFICATION_LINES]NotificationLine = .{NotificationLine{}} ** MAX_NOTIFICATION_LINES,
     notification_line_count: usize = 0,
     notifications_position: TextPosition = .Center,
     notifications_offset_x: i32 = 0,
@@ -257,7 +260,7 @@ const NotificationBlock = struct {
     font: win32.HFONT,
     origin: TextOrigin,
     dims: TextDimensions,
-    line_heights: [stack.CAPACITY]usize,
+    line_heights: [MAX_NOTIFICATION_LINES]usize,
 };
 
 /// Fonts are fetched for the window's own DPI; the stat fonts' sizes are scaled here, since their config isn't in RenderSettings.
@@ -673,12 +676,18 @@ fn overlaySize(cfg: *const config_mod.Config, thumbnail: *const ThumbnailWindow,
 }
 
 /// Newest first; each entry keeps its own suppress_when_focused and colour, so types in one stack filter and colour independently.
-fn notificationLines(out: *[stack.CAPACITY]NotificationLine, thumbnail: *const ThumbnailWindow, is_focused: bool, base_color: u32) usize {
+fn notificationLines(out: *[MAX_NOTIFICATION_LINES]NotificationLine, thumbnail: *const ThumbnailWindow, is_focused: bool, base_color: u32) usize {
     var count: usize = 0;
     for (thumbnail.notifications.items()) |entry| {
         if (entry.suppress_when_focused and is_focused) continue;
-        out[count] = .{ .text = entry.text, .color = entry.text_color_override orelse base_color };
-        count += 1;
+        const color = entry.text_color_override orelse base_color;
+        var lines = std.mem.splitScalar(u8, entry.text, '\n');
+        var line_index: usize = 0;
+        while (lines.next()) |line| : (line_index += 1) {
+            if (line_index == MAX_LINES_PER_NOTIFICATION) break;
+            out[count] = .{ .text = line, .color = color };
+            count += 1;
+        }
     }
     return count;
 }

@@ -627,7 +627,7 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `flash_border`: Blink the border on/off 4 times (150ms per phase) when the notification starts, then settle into a steady-on border for the rest of the duration; has no effect when `show_border` is `false` (default: `false`)
 - `border_color`: Optional ARGB color override for the thumbnail border while this notification is active (default: `null`, falls back to the Alert state's border color)
 - `text_color`: Optional ARGB color override for the notification text while this notification is active (default: `null`, falls back to the thumbnail's normal text color)
-- `custom_text`: Wording shown (and spoken) instead of the built-in text, with `{name}` placeholders filled from the event - see Custom Text Placeholders below. Names are case-insensitive, unknown names are kept as typed, and if a placeholder used has no value for that event the built-in text is shown instead (default: `null`, the built-in text)
+- `custom_text`: Wording shown (and spoken) instead of the built-in text, with `{name}` placeholders filled from the event - see Custom Text Placeholders below. Names are case-insensitive, unknown names are kept as typed, and if a placeholder used has no value for that event the built-in text is shown instead. Type `\n` for a line break, up to 3 lines per notification; the History Panel shows them on one line (default: `null`, the built-in text)
 - `custom_text_alt`: `custom_text` for a two-state type's second state: Self-Destruct aborted, hotkeys resumed, auto-minimize off, removed from group, included in cycle (default: `null`)
 
 **Custom Text Placeholders:**

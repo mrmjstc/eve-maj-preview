@@ -1,4 +1,5 @@
 //! The recent notifications the History Panel lists.
+const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const notification = @import("notification.zig");
 const config = @import("../config.zig");
@@ -44,6 +45,8 @@ pub const NotificationHistory = struct {
 
         const text_n = @min(notification_text.len, entry.text_buf.len);
         @memcpy(entry.text_buf[0..text_n], notification_text[0..text_n]);
+        // Rows are one line each, so custom text's line breaks read as spaces.
+        std.mem.replaceScalar(u8, entry.text_buf[0..text_n], '\n', ' ');
         entry.text_len = @intCast(text_n);
 
         self.entries[self.head] = entry;

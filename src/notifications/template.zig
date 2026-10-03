@@ -45,15 +45,23 @@ const Output = struct {
     }
 };
 
-/// Null if a known `{name}` has no value; unknown names stay as typed, and the result points into `buf`.
+/// Null if a known `{name}` has no value; unknown names and other backslashes stay as typed, a typed `\n` becomes a line break, and the result points into `buf`.
 pub fn render(template: []const u8, placeholders: []const Placeholder, values: Values, buf: []u8) ?[]const u8 {
     var out: Output = .{ .buf = buf };
     var i: usize = 0;
     while (i < template.len) {
-        const brace = std.mem.indexOfScalarPos(u8, template, i, '{') orelse template.len;
-        out.write(template[i..brace]);
-        if (brace == template.len) break;
+        const special = std.mem.indexOfAnyPos(u8, template, i, "{\\") orelse template.len;
+        out.write(template[i..special]);
+        if (special == template.len) break;
 
+        if (template[special] == '\\') {
+            const is_newline = special + 1 < template.len and template[special + 1] == 'n';
+            out.write(if (is_newline) "\n" else "\\");
+            i = special + if (is_newline) @as(usize, 2) else 1;
+            continue;
+        }
+
+        const brace = special;
         if (std.mem.indexOfScalarPos(u8, template, brace + 1, '}')) |close| {
             if (find(placeholders, template[brace + 1 .. close])) |placeholder| {
                 const value = values.get(placeholder.field) orelse return null;
@@ -105,6 +113,12 @@ test "render gives up when a used placeholder has no value" {
     try testing.expect(render("Invite from {pilot}", &TEST_PLACEHOLDERS, .{}, &buf) == null);
     try testing.expect(render("{character} invited", &TEST_PLACEHOLDERS, .{ .character = "" }, &buf) == null);
     try testing.expectEqualStrings("Invite", render("Invite", &TEST_PLACEHOLDERS, .{}, &buf).?);
+}
+
+test "render turns a typed \\n into a line break and keeps other backslashes" {
+    var buf: [64]u8 = undefined;
+    try testing.expectEqualStrings("Main\nin Jita", render("{character}\\nin {system}", &TEST_PLACEHOLDERS, .{ .character = "Main", .target = "Jita" }, &buf).?);
+    try testing.expectEqualStrings("a\\b\\", render("a\\b\\", &TEST_PLACEHOLDERS, .{}, &buf).?);
 }
 
 test "render truncates on a UTF-8 boundary" {
