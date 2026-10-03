@@ -10,7 +10,7 @@ Configuration files use **JSON format**. The application generates a default pro
 }
 ```
 
-Log levels (from most to least verbose):
+`logLevel` lives in `profiles\global.settings.json` (default: `err`). Log levels (from most to least verbose):
 - **debug**: Detailed troubleshooting info (positions, indices, state changes)
 - **info**: Important user-facing events (config loaded, thumbnails created)
 - **warn**: Warning conditions that don't prevent operation
@@ -41,15 +41,12 @@ Log levels (from most to least verbose):
     "borderColor": "0xFFD9A441",
     "borderStyle": "Solid",
     "showBorderWhenInactive": false,
-    "inactiveBorderWidth": 1,
+    "inactiveBorderWidth": 2,
     "inactiveBorderColor": "0xFF606060",
-    "inactiveBorderStyle": "Solid",
-    "textBgColorInheritBorderColor": false
+    "inactiveBorderStyle": "Solid"
   }
 }
 ```
-
-Set `textBgColorInheritBorderColor` to `true` to reuse the current border color for the text background while preserving the alpha from `textBgColor`.
 
 **Border Styles**: `Solid`, `Dashed`, `Dotted`, `Double`, `DiagonalHatch`, `DashDot`, `CornerBrackets`
 
@@ -60,16 +57,23 @@ Set `textBgColorInheritBorderColor` to `true` to reuse the current border color 
     "showText": true,
     "showCharacterName": true,
     "showSystemName": false,
-    "textColor": "0x00FFFFFF",
-    "textBgColor": "0x80000000",
-    "textFontName": "Segoe UI",
-    "textFontSize": 14,
-    "textFontWeight": "Regular",
-    "useUniqueSystemColors": false,
-    "systemNameColor": "0x00FFFFFF"
+    "characterNameColor": "0x00FFFFFF",
+    "characterNameBgColor": "0xE6000000",
+    "characterNameFontName": "Segoe UI",
+    "characterNameFontSize": 12,
+    "characterNameFontWeight": "Regular",
+    "useUniqueCharacterNameColors": false,
+    "systemNameColor": "0x00FFFFFF",
+    "systemNameBgColor": "0xE6000000",
+    "systemNameFontName": "Segoe UI",
+    "systemNameFontSize": 12,
+    "systemNameFontWeight": "Regular",
+    "useUniqueSystemColors": false
   }
 }
 ```
+
+The character name and system name each have their own color, background and font. Per-state `textColor` / `textBgColor` overrides live under `thumbnail.active`, `thumbnail.inactive` and the other state blocks.
 
 **Font Weights**: `Regular`, `Bold`, `Italic`, `BoldItalic`
 
@@ -109,9 +113,13 @@ Set `textBgColorInheritBorderColor` to `true` to reuse the current border color 
   "thumbnail": {
     "showQuickGroupBadge": true,
     "quickGroupBadgeColor": "0xFF44FF44",
+    "quickGroupBadgeBgColor": "0xE6000000",
     "quickGroupBadgePosition": "RightCenter",
     "quickGroupBadgeOffsetX": 0,
-    "quickGroupBadgeOffsetY": 0
+    "quickGroupBadgeOffsetY": 0,
+    "quickGroupBadgeFontName": "Segoe UI",
+    "quickGroupBadgeFontSize": 12,
+    "quickGroupBadgeFontWeight": "Regular"
   }
 }
 ```
@@ -124,7 +132,7 @@ Drawn on a thumbnail whenever its character is a member of a [Hotkey Group](#hot
 {
   "thumbnail": {
     "exclusionOverlayStyle": "X",
-    "exclusionOverlayColor": "0x33FF0000"
+    "exclusionOverlayColor": "0x33A62222"
   }
 }
 ```
@@ -347,7 +355,7 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
 - `viewMode`: `Thumbnails` (default), `ClientList`, or `Nothing` (no visual output; tracking only)
 - `listViewOrder`: Row ordering - `Tracked` (default, internal tracking order), `Alphabetical` (by character name), or `ConfiguredCharacters` (order of `characters` array)
 - `rememberListViewPosition`: Save/restore the panel's position (default: `true`)
-- `listViewOpacity`: Panel opacity, 0–255 (default: `255`)
+- `listViewOpacity`: Panel opacity, 51–255 (default: `255`)
 - `listViewColumns`: Number of columns, 1–15 (default: `1`)
 - `listViewFontName`, `listViewFontSize`, `listViewFontWeight`: Font used for row text (font weight uses the same values as [Text Overlay Settings](#text-overlay-settings))
 
@@ -414,6 +422,20 @@ By default (`"NoAnimation"`), the application temporarily disables Windows syste
   - Can also be toggled via `hotkeyToggleExclusion` for the focused EVE window
   - Use `hotkeyNextExcluded`/`hotkeyPreviousExcluded` to cycle through excluded characters for review
 
+**Exclusion Options:**
+
+```json
+{
+  "exclusion": {
+    "enableShiftClickExclude": true,
+    "autoMinimizeExcluded": false
+  }
+}
+```
+
+- `enableShiftClickExclude`: Whether Shift + Left-click toggles exclusion (default: `true`); when `false`, Shift + Left-click activates the client like a plain click
+- `autoMinimizeExcluded`: Minimize a client's EVE window as soon as it's excluded, by Shift + Left-click or `hotkeyToggleExclusion` (default: `false`)
+
 ## Protocol Handler
 
 EVE-Maj Preview registers a `evemajpreview://` custom URL protocol for external control - character switching, profile loading, and hotkey actions. Useful for Stream Deck buttons, AutoHotkey scripts, browser bookmarks, or any tool that can open a URL.
@@ -450,6 +472,7 @@ evemajpreview://<action>/<param>
 | `next_all_clients` / `previous_all_clients` | Cycle forward/backward through all logged-in clients |
 | `next_not_logged_in` / `previous_not_logged_in` | Cycle forward/backward through not-logged-in clients |
 | `move_to_saved_positions` | Move all clients back to their saved positions |
+| `return_to_last_app` | Return focus to the last non-EVE application you used |
 
 These correspond directly to the actions in [Hotkey Configuration](#hotkey-configuration) - see that section for details on what each one does.
 
@@ -510,7 +533,7 @@ Move EVE client windows to their saved window positions automatically:
 }
 ```
 
-`enabled` moves a client when a character logs in. `moveOnStartup` moves clients that are already running when the application starts; it works independently of `enabled`.
+Each character's target is its `windowPosition` (see [Per-Character Configuration](#per-character-configuration)). `enabled` moves a client when a character logs in. `moveOnStartup` moves clients that are already running when the application starts; it works independently of `enabled`.
 
 After each move, the client's position is re-checked every `verifyIntervalMs` (clamped `250`-`10000`), up to `verifyCount` times (clamped `0`-`30`; `0` disables re-checking), and re-applied if EVE shifted its own window while loading.
 
@@ -551,7 +574,7 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
       "type_configs": {
         "FleetInvite": {
           "enabled": true,
-          "duration_ms": 5000,
+          "duration_ms": 10000,
           "suppress_when_focused": false,
           "suppress_when_clicked": false,
           "throttle_ms": 10000,
@@ -592,15 +615,15 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 
 **Per-Type Configuration** (each type has its own independent settings - there is no global default applied across types other than each field's own default shown below):
 - `enabled`: Whether this notification type fires at all (default: `true`)
-- `duration_ms`: How long the notification stays on screen (default: `5000`)
+- `duration_ms`: How long the notification stays on screen (default: `10000`, or `3000` for notifications of your own actions such as hotkey toggles)
 - `suppress_when_focused`: Suppress this type when the EVE client has focus (default: `false`)
 - `suppress_when_clicked`: Suppress this type for `suppress_click_duration_ms` after the user clicks the thumbnail (default: `false`)
-- `throttle_ms`: Ignore repeat notifications of this type until this many ms have passed since the last one actually shown (per thumbnail); suppressed attempts don't reset the window - `0` disables throttling (default: `10000`, clamped to 0–300000)
+- `throttle_ms`: Ignore repeat notifications of this type until this many ms have passed since the last one actually shown (per thumbnail); suppressed attempts don't reset the window - `0` disables throttling (default: `10000`, or `0` for notifications of your own actions; clamped to 0–300000)
 - `tts_enabled`: Speak this type's alert aloud - self-contained, there is no global TTS master switch (default: `false`)
 - `sound_enabled`: Play `sound_path` as a custom sound alert - self-contained too, there is no global sound master switch either (default: `false`)
 - `sound_path`: Absolute path to a `.wav` or `.mp3` file to play when this type fires; only these two formats are supported (decoded via Windows Media Foundation - no OGG or other formats). May be set while `sound_enabled` is `false` without losing the picked file (default: `null`)
 - `sound_volume`: Playback volume for this type's sound alert, 0–100 (default: `100`); each type has its own, there is no shared/global volume
-- `show_border`: Whether to draw a border at all while this notification is active; `false` suppresses the border entirely regardless of the Alert state's border settings or any `border_color` override (default: `true`)
+- `show_border`: Whether to draw a border at all while this notification is active; `false` suppresses the border entirely regardless of the Alert state's border settings or any `border_color` override (default: `false`)
 - `flash_border`: Blink the border on/off 4 times (150ms per phase) when the notification starts, then settle into a steady-on border for the rest of the duration; has no effect when `show_border` is `false` (default: `false`)
 - `border_color`: Optional ARGB color override for the thumbnail border while this notification is active (default: `null`, falls back to the Alert state's border color)
 - `text_color`: Optional ARGB color override for the notification text while this notification is active (default: `null`, falls back to the thumbnail's normal text color)
@@ -643,9 +666,51 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `SavedPositionMove`: Client window moved by the "move to saved positions" hotkey; shown only on the clients that moved
 - `Generic`: Other game events
 
-**History Panel Merging** (`display` section):
+### History Panel
+
+A draggable list of recent notifications across all characters, with filter buttons for each category. Toggle it from the tray's "Show History Panel".
+
+```json
+{
+  "display": {
+    "showNotifInfoPanel": false,
+    "notifInfoPanelX": 10,
+    "notifInfoPanelY": 250,
+    "notifInfoPanelWidth": 300,
+    "notifInfoPanelHeight": 400,
+    "rememberNotifInfoPanelPosition": true,
+    "hideNotifInfoPanelWhenNoCharacters": true,
+    "notifInfoPanelOpacity": 255,
+    "notifInfoPanelFontName": "Segoe UI",
+    "notifInfoPanelFontSize": 13,
+    "notifInfoPanelFontWeight": "Regular",
+    "notifInfoPanelMaxRows": 15,
+    "notifInfoPanelShowTimestamp": false,
+    "notifInfoPanelMergeEnabled": false,
+    "notifInfoPanelMergeWindowSec": 10,
+    "notifInfoPanelShowCategoryFilters": true,
+    "notifInfoPanelShowFleet": true,
+    "notifInfoPanelShowMining": true,
+    "notifInfoPanelShowCombat": true,
+    "notifInfoPanelShowNavigation": true,
+    "notifInfoPanelShowGeneral": true
+  }
+}
+```
+
+- `showNotifInfoPanel`: Show the panel (default: `false`); the tray toggle sets this too
+- `notifInfoPanelX` / `notifInfoPanelY`: Panel position on screen (default: `10`, `250`)
+- `notifInfoPanelWidth` / `notifInfoPanelHeight`: Panel size, at least 100 × 60 (default: `300` × `400`)
+- `rememberNotifInfoPanelPosition`: Save the position when you drag the panel (default: `true`)
+- `hideNotifInfoPanelWhenNoCharacters`: Hide the panel while no character is logged in (default: `true`); turning it on from the tray shows it anyway until the next time everyone logs out
+- `notifInfoPanelOpacity`: Panel opacity, 51–255 (default: `255`)
+- `notifInfoPanelFontName`, `notifInfoPanelFontSize`, `notifInfoPanelFontWeight`: Font for the rows (default: `Segoe UI`, `13`, `Regular`; size 6–72)
+- `notifInfoPanelMaxRows`: How many notifications the panel lists, 1–30 (default: `15`)
+- `notifInfoPanelShowTimestamp`: Show each notification's time (default: `false`)
 - `notifInfoPanelMergeEnabled`: Merge back-to-back identical notifications from different characters into one row with a `+N` count; clicking a merged row expands it (default: `false`)
 - `notifInfoPanelMergeWindowSec`: Max gap in seconds between consecutive notifications for them to merge, 1–300 (default: `10`)
+- `notifInfoPanelShowCategoryFilters`: Show the category filter buttons (default: `true`)
+- `notifInfoPanelShowFleet`, `notifInfoPanelShowMining`, `notifInfoPanelShowCombat`, `notifInfoPanelShowNavigation`, `notifInfoPanelShowGeneral`: Whether each category is listed (default: `true`); clicking a filter button toggles its category and saves it here
 
 ## Chatlog Monitoring
 
@@ -658,8 +723,8 @@ Monitor EVE Online chat and game logs for system changes and events:
     "chatlogDir": "C:/Users/YourName/Documents/EVE/logs/Chatlogs",
     "gamelogDir": "C:/Users/YourName/Documents/EVE/logs/Gamelogs",
     "pollIntervalMs": 500,
-    "idlePollThreshold": 20,
-    "maxPollMultiplier": 8
+    "idlePollThreshold": 600,
+    "maxPollMultiplier": 2
   }
 }
 ```
@@ -687,27 +752,29 @@ Display real-time incoming/outgoing damage-per-second labels directly on each ch
 {
   "combat": {
     "enabled": false,
-    "windowSeconds": 60,
-    "showIncoming": true,
-    "showOutgoing": true,
-    "incomingColor": 4294934596,
-    "outgoingColor": 4279017540,
-    "fontSize": 11,
-    "updateIntervalMs": 1000,
-    "incomingPosition": "TopCenter",
-    "outgoingPosition": "BottomCenter",
-    "incomingOffsetX": 0,
-    "incomingOffsetY": 0,
-    "outgoingOffsetX": 0,
-    "outgoingOffsetY": 0,
-    "damageAlertEnabled": false,
-    "damageAlertRepeatSeconds": 10,
-    "iconEnabled": false,
-    "iconColor": "0xFFFF4444",
-    "iconPosition": "TopRight",
-    "iconOffsetX": 0,
-    "iconOffsetY": 0,
-    "iconFontSize": 20
+    "window_seconds": 60,
+    "show_incoming": true,
+    "show_outgoing": true,
+    "incoming_color": "0xFFFF4444",
+    "outgoing_color": "0xFF44FF44",
+    "incoming_bg_color": "0xE6000000",
+    "outgoing_bg_color": "0xE6000000",
+    "incoming_font_size": 12,
+    "incoming_font_name": "Segoe UI",
+    "incoming_font_weight": "Regular",
+    "outgoing_font_size": 12,
+    "outgoing_font_name": "Segoe UI",
+    "outgoing_font_weight": "Regular",
+    "update_interval_ms": 1000,
+    "incoming_position": "TopCenter",
+    "outgoing_position": "BottomCenter",
+    "incoming_offset_x": 0,
+    "incoming_offset_y": 0,
+    "outgoing_offset_x": 0,
+    "outgoing_offset_y": 0,
+    "incoming_show_prefix": true,
+    "outgoing_show_prefix": true,
+    "damage_alert_excluded_weapons": ""
   }
 }
 ```
@@ -717,36 +784,31 @@ Display real-time incoming/outgoing damage-per-second labels directly on each ch
 | Field | Default | Description |
 |---|---|---|
 | `enabled` | `false` | Enable the DPS overlay |
-| `windowSeconds` | `60` | Sliding window duration for DPS calculation (5–600 s) |
-| `showIncoming` | `true` | Show incoming damage label |
-| `showOutgoing` | `true` | Show outgoing damage label |
-| `incomingColor` | red | ARGB color for incoming damage text |
-| `outgoingColor` | green | ARGB color for outgoing damage text |
-| `fontSize` | `11` | Font size for DPS labels (6–72) |
-| `updateIntervalMs` | `1000` | How often the display refreshes (1000–10000 ms); alerts are checked every second regardless |
-| `incomingPosition` | `TopCenter` | Position of the incoming-damage label on the thumbnail (see [Text Positions](#text-overlay-settings)) |
-| `outgoingPosition` | `BottomCenter` | Position of the outgoing-damage label on the thumbnail |
-| `incomingOffsetX`/`incomingOffsetY` | `0` | Fine-tune incoming label position (pixels) |
-| `outgoingOffsetX`/`outgoingOffsetY` | `0` | Fine-tune outgoing label position (pixels) |
-| `damageAlertEnabled` | `false` | Enable the taking-damage alert (see below) |
-| `iconEnabled` | `false` | Enable the persistent combat icon (see below) |
-| `iconColor` | red | ARGB color for the combat icon |
-| `iconPosition` | `TopRight` | Position of the icon on the thumbnail |
-| `iconOffsetX`/`iconOffsetY` | `0` | Fine-tune icon position (pixels) |
-| `iconFontSize` | `20` | Icon size (6–72) |
+| `window_seconds` | `60` | Sliding window duration for DPS calculation (5–600 s) |
+| `show_incoming` / `show_outgoing` | `true` | Show the incoming / outgoing damage label |
+| `incoming_color` / `outgoing_color` | red / green | ARGB color for each label's text |
+| `incoming_bg_color` / `outgoing_bg_color` | `0xE6000000` | ARGB background behind each label |
+| `incoming_font_size` / `outgoing_font_size` | `12` | Font size for each label (6–72) |
+| `incoming_font_name` / `outgoing_font_name` | `Segoe UI` | Font for each label |
+| `incoming_font_weight` / `outgoing_font_weight` | `Regular` | Font weight for each label (see [Text Overlay Settings](#text-overlay-settings)) |
+| `update_interval_ms` | `1000` | How often the display refreshes (1000–10000 ms); alerts are checked every second regardless |
+| `incoming_position` | `TopCenter` | Position of the incoming-damage label on the thumbnail (see [Text Positioning](#text-positioning)) |
+| `outgoing_position` | `BottomCenter` | Position of the outgoing-damage label on the thumbnail |
+| `incoming_offset_x` / `incoming_offset_y` | `0` | Fine-tune incoming label position (-500–500 px) |
+| `outgoing_offset_x` / `outgoing_offset_y` | `0` | Fine-tune outgoing label position (-500–500 px) |
+| `incoming_show_prefix` / `outgoing_show_prefix` | `true` | Show each label's prefix before the number |
+| `damage_alert_excluded_weapons` | `""` | Comma-separated, case-insensitive weapon-name parts whose hits count toward DPS but don't trigger the Taking Damage alert |
 
 Incoming and outgoing damage are rendered as two independently-positioned labels rather than a single combined box.
 
-**Taking-Damage Alert**: When `damageAlertEnabled` is `true`, a `TakingDamage` notification (see [Notification Types](#notification-system)) fires the first time incoming damage is recorded, then re-fires at most once per `damageAlertRepeatSeconds` while more incoming hits keep landing - it stays silent once combat actually stops instead of repeating on a bare timer. Border color, duration, suppression, and TTS for the alert are configured generically like any other notification type, under `TakingDamage` in `type_configs`.
-
-**Combat Icon**: When `iconEnabled` is `true`, a persistent icon is drawn on the thumbnail for as long as incoming DPS is above zero - an ambient "under fire" indicator, independent of the one-shot taking-damage alert above.
+**Taking-Damage Alert** (`TakingDamage` notification type): Fires when incoming damage lands, at most once per the type's `throttle_ms`, and stays silent once combat actually stops instead of repeating on a timer. It's switched on and off with the type's Enabled box in the Notifications tab (`type_configs.TakingDamage.enabled`), where its border color, duration, suppression and TTS are also set.
 
 **Direction Classification**: EVE gamelog `(combat)` lines are classified by the keyword immediately following the damage number:
 - **Incoming**: line contains `" from "` after the amount - e.g. `63 from Gistatis Legatus - Hits` or `26 from Gistatis Legatus - Nova Light Missile - Hits`
 - **Outgoing**: line contains `" to "` after the amount - e.g. `166 to Gistatis Legatus - Berserker II - Grazes`
 - **Excluded**: remote repairs/cap transfers (keyword scan), misses (no leading damage number), and unrecognised formats
 
-**DPS Formula**: Total damage within the window divided by `windowSeconds`. During the first `windowSeconds` of a fight (after a full window without hits), it's the damage after the first second divided by the time since, shown as `??` for the first 3 seconds. If every hit so far landed in the fight's first second, it's that damage divided by `windowSeconds`. The display refreshes every `updateIntervalMs`.
+**DPS Formula**: Total damage within the window divided by `window_seconds`. During the first `window_seconds` of a fight (after a full window without hits), it's the damage after the first second divided by the time since, shown as `??` for the first 3 seconds. If every hit so far landed in the fight's first second, it's that damage divided by `window_seconds`. The display refreshes every `update_interval_ms`.
 
 ## Mining Rate Overlay
 
@@ -756,18 +818,22 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
 {
   "mining": {
     "enabled": false,
-    "windowSeconds": 60,
-    "color": 4282690303,
-    "fontSize": 11,
-    "updateIntervalMs": 1000,
+    "window_seconds": 60,
+    "color": "0xFF44AAFF",
+    "bg_color": "0xE6000000",
+    "font_size": 12,
+    "font_name": "Segoe UI",
+    "font_weight": "Regular",
+    "update_interval_ms": 1000,
     "position": "BottomRight",
-    "offsetX": 0,
-    "offsetY": 0,
-    "idleAlertEnabled": false,
-    "idleAlertWindowSeconds": 30,
-    "idleAlertThreshold": 1,
-    "stoppedAlertEnabled": false,
-    "stoppedAlertWindowSeconds": 60
+    "offset_x": 0,
+    "offset_y": 0,
+    "idle_alert_window_seconds": 30,
+    "idle_alert_threshold": 1,
+    "stopped_alert_window_seconds": 60,
+    "show_isk_rate": true,
+    "isk_rate_unit": "hour",
+    "show_prefix": true
   }
 }
 ```
@@ -777,30 +843,77 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
 | Field | Default | Description |
 |---|---|---|
 | `enabled` | `false` | Enable the mining rate overlay |
-| `windowSeconds` | `60` | Sliding window duration for rate calculation (30–3600 s) |
+| `window_seconds` | `60` | Sliding window duration for rate calculation (30–3600 s) |
 | `color` | light blue | ARGB color for the rate text |
-| `fontSize` | `11` | Font size for the rate label (6–72) |
-| `updateIntervalMs` | `1000` | How often the display refreshes (1000–10000 ms); alerts are checked every second regardless |
+| `bg_color` | `0xE6000000` | ARGB background behind the label |
+| `font_size` | `12` | Font size for the rate label (6–72) |
+| `font_name` / `font_weight` | `Segoe UI` / `Regular` | Font for the rate label (see [Text Overlay Settings](#text-overlay-settings)) |
+| `update_interval_ms` | `1000` | How often the display refreshes (1000–10000 ms); alerts are checked every second regardless |
 | `position` | `BottomRight` | Position of the text on the thumbnail |
-| `offsetX` / `offsetY` | `0` | Fine-tune position (pixels) |
-| `idleAlertEnabled` | `false` | Enable the laser-idle alert notification |
-| `idleAlertWindowSeconds` | `30` | Window in which events are counted for the idle check (30–600 s) |
-| `idleAlertThreshold` | `1` | Fire alert when event count in window is ≤ this value |
-| `stoppedAlertEnabled` | `false` | Enable the mining-stopped alert notification |
-| `stoppedAlertWindowSeconds` | `60` | Seconds of silence before the stopped alert fires (30–3600 s) |
+| `offset_x` / `offset_y` | `0` | Fine-tune position (-500–500 px) |
+| `idle_alert_window_seconds` | `30` | Window in which events are counted for the idle check (30–600 s) |
+| `idle_alert_threshold` | `1` | Fire alert when event count in window is ≤ this value (0–60) |
+| `stopped_alert_window_seconds` | `60` | Seconds of silence before the stopped alert fires (30–3600 s) |
+| `show_isk_rate` | `true` | Show the ISK rate of what's mined alongside the m³ rate |
+| `isk_rate_unit` | `hour` | Show the ISK rate per `hour` or per `minute` |
+| `show_prefix` | `true` | Show the label's prefix before the numbers |
 
-**Rate Formula**: Total units mined within the window divided by `windowSeconds`, converted to per-minute for display. Displays as `M: XXXX u/min`. During the first `windowSeconds` of mining, it's the units mined after the first cycle divided by the time from the first yield to the latest, so lasers cycling in step read their true rate from the second cycle on. Bounty ISK/hr works the same way.
+The Laser Idle and Mining Stopped alerts are switched on and off with their types' Enabled boxes in the Notifications tab (`type_configs.MiningIdle.enabled` and `type_configs.MiningStopped.enabled`).
+
+**Rate Formula**: Total units mined within the window divided by `window_seconds`, converted to per-minute for display. Displays as `M: XXXX u/min`. During the first `window_seconds` of mining, it's the units mined after the first cycle divided by the time from the first yield to the latest, so lasers cycling in step read their true rate from the second cycle on. Bounty ISK/hr works the same way.
 
 **Parsing**: EVE gamelog `(mining)` lines are parsed for yield quantity:
 - **Normal yield**: `You mined 42 units of Bistot II-Grade`
 - **Critical yield**: `Critical mining success! You mined an additional 124 units of Bistot II-Grade`
 - **Excluded**: residue/waste lines (`depleted from asteroid as residue`) are ignored
 
-**Laser Idle Alert** (`MiningIdle` notification type): Fires when the number of `(mining)` events within `idleAlertWindowSeconds` drops to `≤ idleAlertThreshold`. Useful for detecting when one of two lasers stops. It isn't checked until mining has run for a whole `idleAlertWindowSeconds`, so starting to mine doesn't trigger it. The alert fires once per window-duration cooldown and resets when activity rises above threshold again.
+**Laser Idle Alert** (`MiningIdle` notification type): Fires when the number of `(mining)` events within `idle_alert_window_seconds` drops to `≤ idle_alert_threshold`. Useful for detecting when one of two lasers stops. It isn't checked until mining has run for a whole `idle_alert_window_seconds`, so starting to mine doesn't trigger it. The alert fires once per window-duration cooldown and resets when activity rises above threshold again.
 
-**Mining Stopped Alert** (`MiningStopped` notification type): Fires once when no `(mining)` events have occurred for `stoppedAlertWindowSeconds` seconds, after the character was previously mining. Re-arms automatically when mining resumes.
+**Mining Stopped Alert** (`MiningStopped` notification type): Fires once when no `(mining)` events have occurred for `stopped_alert_window_seconds` seconds, after the character was previously mining. Re-arms automatically when mining resumes.
 
 **Cargo Full** (`CargoFull` notification type): Fires when the gamelog contains `"Ship's cargo hold is full"` - e.g. `Your Modulated Strip Miner II has completed operations. Ship's cargo hold is full.` This is a `(notify)` event and requires no extra configuration beyond enabling the notification type.
+
+## Bounty ISK Overlay
+
+Display each character's bounty ISK rate on its thumbnail, from the `(bounty)` lines EVE writes to the gamelog as bounties are added to the next payout (e.g. `120,272 ISK added to next bounty payout`).
+
+```json
+{
+  "bounty": {
+    "enabled": false,
+    "window_seconds": 1200,
+    "color": "0xFFFFD700",
+    "bg_color": "0xE6000000",
+    "font_size": 12,
+    "font_name": "Segoe UI",
+    "font_weight": "Regular",
+    "update_interval_ms": 1000,
+    "position": "TopRight",
+    "offset_x": 0,
+    "offset_y": 0,
+    "isk_rate_unit": "hour",
+    "show_prefix": true
+  }
+}
+```
+
+> **Note**: Requires `chatlog.enabled: true` and a valid `gamelogDir` to receive bounty events.
+
+| Field | Default | Description |
+|---|---|---|
+| `enabled` | `false` | Enable the bounty overlay |
+| `window_seconds` | `1200` | Sliding window duration for the rate (60–3600 s) |
+| `color` | gold | ARGB color for the rate text |
+| `bg_color` | `0xE6000000` | ARGB background behind the label |
+| `font_size` | `12` | Font size for the label (6–72) |
+| `font_name` / `font_weight` | `Segoe UI` / `Regular` | Font for the label (see [Text Overlay Settings](#text-overlay-settings)) |
+| `update_interval_ms` | `1000` | How often the display refreshes (1000–10000 ms) |
+| `position` | `TopRight` | Position of the text on the thumbnail |
+| `offset_x` / `offset_y` | `0` | Fine-tune position (-500–500 px) |
+| `isk_rate_unit` | `hour` | Show the rate per `hour` or per `minute` |
+| `show_prefix` | `true` | Show the label's prefix before the number |
+
+**Rate Formula**: The same as the mining rate: ISK added within the window divided by `window_seconds`, and during the first `window_seconds` of earning, the ISK after the first payout divided by the time from the first payout to the latest.
 
 ## Resource Usage Overlay
 
@@ -950,9 +1063,18 @@ Some settings persist across all profiles and are configured in `profiles\global
   "hotkeyCycleAllClientsForward": "F22",
   "hotkeyCycleAllClientsBackward": "F23",
   "cycleAllClientsRespectExclusions": false,
+  "hotkeyCycleNotLoggedInForward": "F18",
+  "hotkeyCycleNotLoggedInBackward": "F19",
   "hotkeyReturnToLastApp": "LWin+Z",
   "disableUpdateChecks": false,
-  "autoRegisterProtocol": true
+  "autoRegisterProtocol": true,
+  "runOnStartup": false,
+  "alwaysOnTop": true,
+  "language": "en",
+  "logLevel": "err",
+  "oreTable": [
+    { "name": "Veldspar", "price": 11.53 }
+  ]
 }
 ```
 
@@ -966,9 +1088,15 @@ Some settings persist across all profiles and are configured in `profiles\global
   - **uploadClipboard**: If `true`, instead of just opening `url`, the current clipboard text is POSTed to it first as `application/x-www-form-urlencoded` (field `Paste anything`, matching aDashboard's paste-intake form and ShareX's custom uploader for it), the resulting page's URL replaces the clipboard content, and that page is opened instead. Falls back to opening the plain `url` if the clipboard has no text or the upload fails. Runs on a background thread so the app doesn't freeze during the request; a second press while one is still in flight is ignored rather than starting an overlapping upload. The config dialog's checkbox for this only appears when `url`'s host is `adashboard.info`, since the POST body shape is specific to that site's form.
 - **hotkeyCycleAllClientsForward** / **hotkeyCycleAllClientsBackward**: Cycle through every currently logged-in EVE client, ordered by the profile's Characters list (any client not yet added there follows after, in detection order), regardless of which profile is loaded or how hotkey groups are defined. Editable from the config dialog's Hotkeys tab ("Clients" section).
 - **cycleAllClientsRespectExclusions**: If `true`, characters excluded via Shift+Click (or `hotkeyToggleExclusion`) are skipped when cycling all clients, whether or not they belong to a hotkey group (default: `false`, cycles through every client)
+- **hotkeyCycleNotLoggedInForward** / **hotkeyCycleNotLoggedInBackward**: Cycle through the clients sitting at the login screen (title just "EVE"), oldest logout first. Stays active regardless of which profile is loaded.
 - **hotkeyReturnToLastApp**: Refocus whichever non-EVE window last held focus (e.g. jump back to your browser or Discord after switching into EVE). Stays active regardless of which profile is loaded; editable from the config dialog's Hotkeys tab ("Outside EVE" section).
 - **disableUpdateChecks**: Set to `true` to disable automatic update checks on startup (default: `false`)
 - **autoRegisterProtocol**: See [Registration](#registration) under Protocol Handler (default: `true`)
+- **runOnStartup**: Start EVE-Maj Preview when you sign in to Windows, through the current user's `Run` registry key (default: `false`)
+- **alwaysOnTop**: Keep the configuration window above other windows (default: `true`)
+- **language**: Configuration window language: `en`, `de`, `es`, `fr`, `pl`, `pt`, `ru` or `zh` (default: `en`)
+- **logLevel**: See [Logging](#logging) (default: `err`)
+- **oreTable**: Your ISK-per-unit price overrides for the mining ISK rate, one `{ "name", "price" }` entry per ore; ores you haven't overridden use the built-in price. A name matches its grade variants too (e.g. `Veldspar` covers `Veldspar II-Grade`). Editable from the config dialog's ore price table (0–1,000,000,000,000).
 
 **Profile Cycling Features:**
 - Cycle forward/backward through profiles with wraparound
@@ -1062,6 +1190,7 @@ Customize individual characters with position, size, border colors, display name
     {
       "name": "Main Character",
       "position": { "x": 100, "y": 200 },
+      "windowPosition": { "x": -7, "y": 0 },
       "borderColors": {
         "activeBorderColor": "0xFFFF00FF",
         "inactiveBorderColor": "0xFF808080"
@@ -1091,6 +1220,8 @@ Customize individual characters with position, size, border colors, display name
 }
 ```
 
+- **position**: Where this character's thumbnail sits (screen pixels).
+- **windowPosition**: Where this character's EVE client window goes when moved to its saved position (see [Auto-Move Position](#auto-move-position)). Set it with Save Position on the Characters tab while the client is running. It's the window's top-left corner, including the few pixels of invisible resize border Windows adds, so a client snapped to a screen's left edge saves at about `x: -7`. A position whose title bar would be off every screen (e.g. after a monitor was removed) is pulled onto the nearest monitor.
 - **hotkey**: Optional. Virtual key code string (same format as [hotkey groups](#hotkey-groups-character-cycling)) that directly activates this character's window. `null`/omitted to disable. See [Per-Character Hotkeys](#per-character-hotkeys-direct-activation).
 - **opacity**: Optional per-character override for `thumbnailOpacity` (default: `null`, inherits the global value; clamped to the same 51–255 minimum).
 - **excludeFromMinimize**: Skip this character when auto-minimize fires (default: `false`). See [Auto-Minimize](#auto-minimize).
