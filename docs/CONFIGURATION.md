@@ -675,8 +675,8 @@ Variables are expanded when the configuration is loaded. If a variable doesn't e
 
 **Polling Optimization**: The chatlog monitor uses exponential backoff to reduce CPU usage for inactive log files:
 - Files with no changes accumulate idle poll counts
-- After reaching `idlePollThreshold` * current multiplier, the multiplier doubles (1x → 2x → 4x → 8x)
-- The multiplier is capped at `maxPollMultiplier` (1–8) to prevent excessive delays
+- After reaching `idlePollThreshold` * current multiplier, the multiplier doubles (1x → 2x → 4x → 8x), stopping at `maxPollMultiplier`
+- `maxPollMultiplier` (1–8) caps it to prevent excessive delays, e.g. a cap of 3 steps 1x → 2x → 3x
 - Any file change resets the idle count and multiplier to 1x
 
 ## Combat DPS Overlay
