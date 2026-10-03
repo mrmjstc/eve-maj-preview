@@ -84,8 +84,8 @@ pub const LogFinder = struct {
 
     /// Resumes watching the folders in `done`, once their changes have been rescanned.
     pub fn rearm(self: *LogFinder, done: Changes) void {
-        if (done.chatlog) rewatch(self.chatlog_watcher, &self.chatlog_watch_is_new);
-        if (done.gamelog) rewatch(self.gamelog_watcher, &self.gamelog_watch_is_new);
+        if (done.chatlog) rewatch(&self.chatlog_watcher, &self.chatlog_watch_is_new, self.chatlog_dir);
+        if (done.gamelog) rewatch(&self.gamelog_watcher, &self.gamelog_watch_is_new, self.gamelog_dir);
     }
 
     /// Owned by the caller.
@@ -272,11 +272,16 @@ fn watchFolder(allocator: std.mem.Allocator, dir: []const u8) ?win32.HANDLE {
     return handle;
 }
 
-fn rewatch(watcher: ?win32.HANDLE, is_new: *bool) void {
+/// Drops a watch that can't be rearmed, e.g. its folder was deleted, so folderChanged starts a new one once the folder exists again.
+fn rewatch(watcher: *?win32.HANDLE, is_new: *bool, dir: []const u8) void {
     if (is_new.*) {
         is_new.* = false;
         return;
     }
-    if (watcher) |handle| _ = win32.FindNextChangeNotification(handle);
+    const handle = watcher.* orelse return;
+    if (win32.toBool(win32.FindNextChangeNotification(handle))) return;
+    _ = win32.FindCloseChangeNotification(handle);
+    watcher.* = null;
+    slog.warn("Failed to keep watching '{s}', retrying until it exists", .{dir});
 }
 
