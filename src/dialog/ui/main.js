@@ -24,7 +24,7 @@ import { detectThumbnailClientSize, onThumbAspectRatioChange, onThumbHeightChang
 import { applyUltraPotatoMode, scanUltraPotatoProfiles } from './ultra_potato.js';
 import { checkForUpdateNotification, openExternalLink } from './update.js';
 import { confirmRemove, initConfirmButtonWidthReservation, toggleAccordionEl } from './widgets.js';
-import { addWindowFilter, applyPickedWindowForFilter, pickRunningWindowForFilter, removeWindowFilter, selectWindowFilter, updateWindowFilterHeaderName } from './window_filters.js';
+import { addWindowFilter, applyPickedWindowForFilter, carryWindowFilterRename, pickRunningWindowForFilter, rememberWindowFilterName, removeWindowFilter, selectWindowFilter, updateWindowFilterHeaderName } from './window_filters.js';
 
 document.addEventListener('DOMContentLoaded', async function() {
     applyTranslations();
@@ -89,6 +89,7 @@ Object.assign(window, {
     browseChatlogDir,
     browseGamelogDir,
     browseSoundFile,
+    carryWindowFilterRename,
     changeDialogScale,
     clearCharacterSearch,
     clearHotkey,
@@ -127,6 +128,7 @@ Object.assign(window, {
     populateCharactersFromClients,
     recordHotkey,
     refreshWindowPositionSourceOptions,
+    rememberWindowFilterName,
     removeAppHotkey,
     removeHotkeyGroup,
     removeHotkeyGroupCharacter,

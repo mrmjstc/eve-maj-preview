@@ -297,26 +297,28 @@ pub const Scout = struct {
         return null;
     }
 
-    fn matchesCurrentFilters(self: *const Scout, hwnd: win32.HWND, process_id: win32.DWORD) bool {
+    fn currentFilter(self: *const Scout, hwnd: win32.HWND, process_id: win32.DWORD) ?*const config_mod.WindowFilterConfig {
         var class_name: [64:0]u8 = undefined;
-        const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return false;
+        const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return null;
 
         var exe_path: [260:0]u8 = undefined;
-        const path_slice = win32.queryProcessExePath(process_id, &exe_path) orelse return false;
+        const path_slice = win32.queryProcessExePath(process_id, &exe_path) orelse return null;
 
-        return self.findMatchingFilter(class_slice, path_slice) != null;
+        return self.findMatchingFilter(class_slice, path_slice);
     }
 
-    /// Drops windows no filter matches any more, which scanning skips as already tracked; call after a reload, before recreating thumbnails.
+    /// Drops windows no filter matches any more, which scanning skips as already tracked, and renames non-EVE windows after a renamed filter; call after a reload, before recreating thumbnails.
     pub fn pruneNonMatchingWindows(self: *Scout) void {
         var i: usize = self.windows.items.len;
         while (i > 0) {
             i -= 1;
-            const window = self.windows.items[i];
-            if (self.matchesCurrentFilters(window.hwnd, window.process_id)) continue;
-
-            _ = self.reportClosed(window);
-            self.removeWindowAt(i);
+            const window = &self.windows.items[i];
+            const filter = self.currentFilter(window.hwnd, window.process_id) orelse {
+                _ = self.reportClosed(window.*);
+                self.removeWindowAt(i);
+                continue;
+            };
+            if (!window.is_eve_client and !std.mem.eql(u8, window.character_name, filter.name)) self.renameWindow(window, filter.name);
         }
     }
 };

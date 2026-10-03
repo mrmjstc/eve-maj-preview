@@ -2,14 +2,17 @@
 import { app } from './state.js';
 import { applyDocToForm, defaultFor, readFormToDoc } from './binding.js';
 import { markAsChanged } from './changes.js';
-import { removeCharacterByName } from './characters.js';
+import { populateCharacters, removeCharacterByName, saveCharacters } from './characters.js';
 import { escapeHtml, logError, rpc } from './core.js';
+import { populateHotkeyGroups, saveHotkeyGroups } from './hotkey_groups.js';
 import { t } from './i18n.js';
 import { showStatus } from './layout.js';
 import { alignDetailPanelNameLabel, selectMasterDetailRow, syncAccordionHeaderName } from './widgets.js';
 
 // Which filter's detail panel is showing in the master-detail window filters view.
 let selectedWindowFilterIndex = 0;
+// The filter name as its field took focus, for carryWindowFilterRename.
+let nameBeforeEdit = '';
 
 export function populateWindowFilters() {
     const container = document.getElementById('windowFiltersList');
@@ -55,7 +58,7 @@ export function populateWindowFilters() {
             <div class="detail-panel ${index === selectedWindowFilterIndex ? 'active' : ''}" data-index="${index}">
                 <div class="detail-panel-header">
                     <label class="detail-panel-name-label" for="filter_${index}_name">${t('dynamic.windowFilter.nameLabel')}</label>
-                    <input type="text" class="detail-panel-name-input" id="filter_${index}_name" data-path="windowFilters.${index}.name" placeholder="${t('dynamic.windowFilter.namePlaceholder')}" oninput="updateWindowFilterHeaderName(${index})">
+                    <input type="text" class="detail-panel-name-input" id="filter_${index}_name" data-path="windowFilters.${index}.name" placeholder="${t('dynamic.windowFilter.namePlaceholder')}" oninput="updateWindowFilterHeaderName(${index})" onfocus="rememberWindowFilterName(${index})" onchange="carryWindowFilterRename(${index})">
                     <button type="button" id="filter_${index}_removeBtn" onclick="confirmRemove('filter_${index}_removeBtn', () => removeWindowFilter(${index}))">${t('common.remove')}</button>
                 </div>
                 <label>
@@ -96,6 +99,40 @@ export function populateWindowFilters() {
 
 export function updateWindowFilterHeaderName(index) {
     syncAccordionHeaderName(`filter_${index}_name`, `filter_${index}_header_name`, t('dynamic.windowFilter.defaultNewName'), index);
+}
+
+function filterNameInputValue(index) {
+    return (document.getElementById(`filter_${index}_name`)?.value || '').trim();
+}
+
+export function rememberWindowFilterName(index) {
+    nameBeforeEdit = filterNameInputValue(index);
+}
+
+// A filter's windows are named after it, so its character entry and hotkey group places follow a rename.
+export function carryWindowFilterRename(index) {
+    const oldName = nameBeforeEdit;
+    nameBeforeEdit = '';
+    const newName = filterNameInputValue(index);
+    if (!oldName || !newName || oldName === newName) return;
+
+    saveCharacters();
+    saveHotkeyGroups();
+    const characters = app.currentConfig.characters || [];
+    const findCharacter = name => characters.find(c => (c.name || '').trim().toLowerCase() === name.toLowerCase());
+    const entry = findCharacter(oldName);
+    const clash = findCharacter(newName);
+    if (entry && (!clash || clash === entry)) entry.name = newName;
+
+    for (const group of app.currentConfig.hotkeyGroups || []) {
+        if (!group.characters?.includes(oldName)) continue;
+        group.characters = [...new Set(group.characters.map(name => name === oldName ? newName : name))];
+    }
+
+    if (app.pendingCharacterNames.delete(oldName.toLowerCase())) app.pendingCharacterNames.set(newName.toLowerCase(), newName);
+    markAsChanged();
+    populateCharacters();
+    populateHotkeyGroups();
 }
 
 export function selectWindowFilter(index) {
