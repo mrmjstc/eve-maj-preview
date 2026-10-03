@@ -622,7 +622,7 @@ pub const Painter = struct {
         needs_region_reflow = self.applyNameChanges(name_changes) or needs_region_reflow;
         self.auto_move.verify(self.config);
 
-        // createThumbnail seeds title/character_name from eve_window, so new thumbnails need no re-sync.
+        // createThumbnail seeds character_name from eve_window, so new thumbnails need no re-sync.
         const created_new = self.addMissingThumbnails(eve_windows, .{ .move_to_saved = self.config.autoMovePosition.enabled });
         needs_region_reflow = (created_new and arrange.hasCountDependentLayout(self)) or needs_region_reflow;
 

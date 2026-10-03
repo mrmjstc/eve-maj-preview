@@ -994,13 +994,6 @@ pub extern "kernel32" fn GetStdHandle(nStdHandle: DWORD) callconv(.c) ?HANDLE;
 pub extern "kernel32" fn GetConsoleMode(hConsoleHandle: HANDLE, lpMode: *DWORD) callconv(.c) BOOL;
 pub extern "kernel32" fn SetConsoleMode(hConsoleHandle: HANDLE, dwMode: DWORD) callconv(.c) BOOL;
 
-pub fn getWindowTitle(hwnd: HWND, allocator: std.mem.Allocator) ![]const u8 {
-    var title_buffer: [64:0]u8 = undefined;
-    const title_len = GetWindowTextA(hwnd, &title_buffer, title_buffer.len);
-    if (title_len == 0) return error.NoWindowTitle;
-    return allocator.dupe(u8, title_buffer[0..@intCast(title_len)]);
-}
-
 pub fn getWindowTitleBuf(hwnd: HWND, buffer: []u8) ![]const u8 {
     if (buffer.len == 0) return error.BufferTooSmall;
     const buf_ptr: [*:0]u8 = @ptrCast(buffer.ptr);

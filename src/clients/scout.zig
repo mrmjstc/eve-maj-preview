@@ -14,7 +14,6 @@ const EVE_WINDOW_CLASS = "trinityWindow";
 
 pub const EveWindow = struct {
     hwnd: win32.HWND,
-    title: []const u8,
     character_name: []const u8,
     process_id: win32.DWORD,
     is_eve_client: bool,
@@ -101,7 +100,6 @@ pub const Scout = struct {
     }
 
     fn freeWindow(self: *Scout, window: EveWindow) void {
-        self.allocator.free(window.title);
         self.allocator.free(window.character_name);
     }
 
@@ -160,8 +158,9 @@ pub const Scout = struct {
     fn updateWindowTitle(self: *Scout, hwnd: win32.HWND) void {
         const index = self.indexOf(hwnd) orelse return;
         const eve_window = &self.windows.items[index];
+        // A filter's windows are named after the filter, not their title.
+        if (!eve_window.is_eve_client) return;
 
-        // A stack buffer, since this runs for every tracked window on each refresh to catch a rare change.
         var title_buf: [64]u8 = undefined;
         const current_title = win32.getWindowTitleBuf(eve_window.hwnd, &title_buf) catch |err| switch (err) {
             error.NoWindowTitle => return,
@@ -171,16 +170,6 @@ pub const Scout = struct {
             },
         };
 
-        if (std.mem.eql(u8, eve_window.title, current_title)) return;
-
-        const new_title = self.allocator.dupe(u8, current_title) catch |err| {
-            slog.err("Failed to allocate title for '{s}': {}", .{ eve_window.character_name, err });
-            return;
-        };
-        self.allocator.free(eve_window.title);
-        eve_window.title = new_title;
-
-        if (!eve_window.is_eve_client) return;
         const new_char_name = extractCharacterName(current_title);
         if (!std.mem.eql(u8, eve_window.character_name, new_char_name)) {
             self.renameWindow(eve_window, new_char_name);
@@ -365,7 +354,8 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
     const path_slice = win32.queryProcessExePath(process_id, &exe_path) orelse return win32.TRUE;
     const matching_filter = scout.findMatchingFilter(class_slice, path_slice) orelse return win32.TRUE;
 
-    const title_copy = win32.getWindowTitle(hwnd, scout.allocator) catch |err| switch (err) {
+    var title_buf: [64]u8 = undefined;
+    const title = win32.getWindowTitleBuf(hwnd, &title_buf) catch |err| switch (err) {
         error.NoWindowTitle => return win32.TRUE,
         else => {
             slog.err("Failed to get window title for hwnd {*}: {}", .{ hwnd, err });
@@ -375,16 +365,14 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
 
     // Non-EVE titles aren't a stable per-window identity, so fall back to the filter's own name.
     const is_eve_client = std.mem.eql(u8, class_slice, EVE_WINDOW_CLASS);
-    const character_name_slice = if (is_eve_client) Scout.extractCharacterName(title_copy) else matching_filter.name;
+    const character_name_slice = if (is_eve_client) Scout.extractCharacterName(title) else matching_filter.name;
     const character_name = scout.allocator.dupe(u8, character_name_slice) catch |err| {
         slog.err("Failed to allocate character name '{s}' for hwnd {*}: {}", .{ character_name_slice, hwnd, err });
-        scout.allocator.free(title_copy);
         return win32.TRUE;
     };
 
     const eve_window = EveWindow{
         .hwnd = hwnd,
-        .title = title_copy,
         .character_name = character_name,
         .process_id = process_id,
         .is_eve_client = is_eve_client,
