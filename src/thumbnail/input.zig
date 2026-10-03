@@ -139,7 +139,7 @@ fn handleSharedMessage(hwnd: win32.HWND, msg: win32.UINT, lParam: win32.LPARAM, 
             const thumbnail_hwnd = if (is_text_overlay) win32.linkedWindow(hwnd) else hwnd;
             if (thumbnail_hwnd) |thumb_hwnd| thumbnail_drag.end(hwnd, thumb_hwnd);
         },
-        win32.WM_MOUSEMOVE => thumbnail_drag.move(hwnd, lParam),
+        win32.WM_MOUSEMOVE => thumbnail_drag.move(hwnd),
         win32.WM_SETCURSOR => {
             if (!applyHoverCursor()) return null;
             return 1;

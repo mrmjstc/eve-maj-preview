@@ -99,7 +99,7 @@ fn stop() void {
 }
 
 /// The thumbnail and its text overlay move together.
-pub fn move(hwnd: win32.HWND, lParam: win32.LPARAM) void {
+pub fn move(hwnd: win32.HWND) void {
     if (!g_drag_state.is_dragging or g_drag_state.hwnd != hwnd) return;
 
     if (!win32.isWindow(hwnd)) {
@@ -111,8 +111,11 @@ pub fn move(hwnd: win32.HWND, lParam: win32.LPARAM) void {
     var rect: win32.RECT = undefined;
     _ = win32.GetWindowRect(hwnd, &rect);
 
-    const new_x = rect.left + win32.lparamX(lParam) - g_drag_state.offset_x;
-    const new_y = rect.top + win32.lparamY(lParam) - g_drag_state.offset_y;
+    // The real cursor, not the message's coordinates, which lag behind a window that's moving under them.
+    var cursor: win32.POINT = undefined;
+    if (!win32.toBool(win32.GetCursorPos(&cursor))) return;
+    const new_x = cursor.x - g_drag_state.offset_x;
+    const new_y = cursor.y - g_drag_state.offset_y;
 
     const width = win32.rectWidth(rect);
     const height = win32.rectHeight(rect);
