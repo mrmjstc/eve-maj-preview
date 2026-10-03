@@ -2,7 +2,7 @@
 REM Script to run eve-maj-preview.exe with console output visible
 REM Keeps console open after crash or exit
 
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 echo Starting EVE-Maj Preview...
 echo.

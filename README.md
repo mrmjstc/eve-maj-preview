@@ -90,7 +90,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a map of how the source mod
 
 See [LICENSE](LICENSE) file for details.
 
-Bundled third-party components: [Cascadia Code](https://github.com/microsoft/cascadia-code) fonts under the SIL Open Font License 1.1 ([CascadiaCode-LICENSE.txt](CascadiaCode-LICENSE.txt)), WebUI, zig-webui and CivetWeb under the MIT License ([webui-LICENSE.txt](webui-LICENSE.txt)), and WebView2Loader ([WebView2Loader-LICENSE.txt](WebView2Loader-LICENSE.txt)).
+Bundled third-party components: [Cascadia Code](https://github.com/microsoft/cascadia-code) fonts under the SIL Open Font License 1.1 ([CascadiaCode-LICENSE.txt](licenses/CascadiaCode-LICENSE.txt)), WebUI, zig-webui and CivetWeb under the MIT License ([webui-LICENSE.txt](licenses/webui-LICENSE.txt)), and WebView2Loader ([WebView2Loader-LICENSE.txt](licenses/WebView2Loader-LICENSE.txt)).
 
 ## Fenris Creations Copyright Notice
 

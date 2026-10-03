@@ -52,11 +52,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#BinDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BinDir}\WebView2Loader.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\WebView2Loader-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\CascadiaCode-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\webui-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
@@ -71,6 +68,11 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--config"; WorkingDir: "{app}"; 
 [InstallDelete]
 ; Older versions shipped the configuration window as a separate exe.
 Type: files; Name: "{app}\config.exe"
+; Older versions installed licenses next to the exe.
+Type: files; Name: "{app}\LICENSE"
+Type: files; Name: "{app}\WebView2Loader-LICENSE.txt"
+Type: files; Name: "{app}\CascadiaCode-LICENSE.txt"
+Type: files; Name: "{app}\webui-LICENSE.txt"
 
 ; Profiles, settings and logs are created next to the exe at runtime (see
 ; docs/BUILDING.md) and deliberately left in place on uninstall so a
