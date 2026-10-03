@@ -52,7 +52,9 @@ pub const AutoMinimizer = struct {
         if (override.overridden_setting != painter.config.autoMinimize.enabled) self.enabled_override = null;
     }
 
-    pub fn recordFocus(self: *AutoMinimizer, source_hwnd: win32.HWND) void {
+    /// Ignores windows that aren't EVE clients, so focusing a window filter's app counts as EVE losing focus.
+    pub fn recordFocus(self: *AutoMinimizer, painter: *const Painter, source_hwnd: win32.HWND) void {
+        if (!painter.hasEveClient(source_hwnd)) return;
         const monitor = win32.MonitorFromWindow(source_hwnd, win32.MONITOR_DEFAULTTONEAREST) orelse return;
 
         // A window that moved monitors must not stay recorded under its old one.
@@ -90,7 +92,7 @@ pub const AutoMinimizer = struct {
         var minimized_any = false;
 
         // active_source_hwnd is the literal foreground window, so it's non-null even on a non-EVE app.
-        const eve_has_focus = if (painter.active_source_hwnd) |hwnd| painter.hasThumbnail(hwnd) else false;
+        const eve_has_focus = if (painter.active_source_hwnd) |hwnd| painter.hasEveClient(hwnd) else false;
         const focused_monitor = if (eve_has_focus) win32.MonitorFromWindow(painter.active_source_hwnd.?, win32.MONITOR_DEFAULTTONEAREST) else null;
 
         for (painter.thumbnails.items) |*thumbnail| {

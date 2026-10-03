@@ -225,6 +225,12 @@ pub const Painter = struct {
         return self.indexOfSource(source_hwnd) != null;
     }
 
+    /// Whether `source_hwnd` is a tracked EVE client, not a window filter's window.
+    pub fn hasEveClient(self: *const Painter, source_hwnd: win32.HWND) bool {
+        const index = self.indexOfSource(source_hwnd) orelse return false;
+        return self.thumbnails.items[index].is_eve_client;
+    }
+
     /// Returns whether a reflow is needed to refill the region.
     pub fn cleanupClosedThumbnails(self: *Painter, closed_windows: []const scout.ClosedWindow) bool {
         // By source_hwnd, not name: multiple windows can share a name (e.g. "EVE").
@@ -383,7 +389,7 @@ pub const Painter = struct {
         self.active_source_hwnd = should_be_active_hwnd;
         const active_changed = old_active != should_be_active_hwnd;
         const any_eve_has_focus = if (should_be_active_hwnd) |hwnd| self.hasThumbnail(hwnd) else false;
-        if (any_eve_has_focus) self.auto_minimize.recordFocus(should_be_active_hwnd.?);
+        if (should_be_active_hwnd) |hwnd| self.auto_minimize.recordFocus(self, hwnd);
 
         for (self.thumbnails.items) |*thumbnail| {
             // Losing focus hides only after the debounce timer, so only regaining it applies here.
