@@ -499,11 +499,6 @@ pub fn setWinEventHookForProcess(event: DWORD, proc: WINEVENTPROC, process_id: D
     return SetWinEventHook(event, event, null, proc, process_id, 0, WINEVENT_OUTOFCONTEXT);
 }
 
-/// Out-of-context hook for a single event from every process but our own.
-pub fn setWinEventHookSkipOwnProcess(event: DWORD, proc: WINEVENTPROC) ?HANDLE {
-    return SetWinEventHook(event, event, null, proc, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
-}
-
 pub extern "user32" fn SetWindowLongPtrA(hWnd: HWND, nIndex: c_int, dwNewLong: isize) callconv(.c) isize;
 pub extern "user32" fn GetWindowLongPtrA(hWnd: HWND, nIndex: c_int) callconv(.c) isize;
 pub extern "user32" fn CallWindowProcA(lpPrevWndFunc: isize, hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.c) LRESULT;
@@ -840,11 +835,9 @@ pub const WINEVENTPROC = *const fn (
 ) callconv(.c) void;
 
 pub const EVENT_SYSTEM_FOREGROUND = 0x0003;
-pub const EVENT_OBJECT_CREATE = 0x8000;
 pub const EVENT_OBJECT_DESTROY = 0x8001;
 pub const EVENT_OBJECT_NAMECHANGE = 0x800C;
 pub const WINEVENT_OUTOFCONTEXT = 0x0000;
-pub const WINEVENT_SKIPOWNPROCESS = 0x0002;
 
 pub const BI_RGB = 0;
 pub const DIB_RGB_COLORS = 0;

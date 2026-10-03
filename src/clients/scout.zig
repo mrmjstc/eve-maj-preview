@@ -52,9 +52,6 @@ pub const Scout = struct {
     pending_closed: std.ArrayList(ClosedWindow),
     pending_name_changes: std.ArrayList(NameChange),
     next_logout_order: u64 = 1,
-    /// Set by the create hook so the next update() rescans.
-    pending_scan: bool,
-    create_event_hook: ?win32.HANDLE,
     /// Title-change and destroy hooks per tracked process, so other apps' events never wake us.
     process_hooks: std.AutoHashMap(win32.DWORD, ProcessHooks),
     /// Set when a window stops being tracked; update() then unhooks processes left with none, outside any hook callback.
@@ -77,20 +74,8 @@ pub const Scout = struct {
             .windows = .empty,
             .pending_closed = .empty,
             .pending_name_changes = .empty,
-            .pending_scan = false,
-            .create_event_hook = installCreateHook(),
             .process_hooks = .init(allocator),
         };
-    }
-
-    fn installCreateHook() ?win32.HANDLE {
-        // Our own windows are never tracked, so their events needn't wake us.
-        const hook = win32.setWinEventHookSkipOwnProcess(win32.EVENT_OBJECT_CREATE, windowCreateCallback) orelse {
-            slog.warn("Failed to set up window creation event hook - new windows will only be detected via periodic scanning", .{});
-            return null;
-        };
-        slog.debug("Window creation event hook set up successfully", .{});
-        return hook;
     }
 
     /// Hooks title changes and destroys for `process_id` once its first window is tracked.
@@ -139,7 +124,6 @@ pub const Scout = struct {
     pub fn deinit(self: *Scout) void {
         g_scout_ptr = null;
 
-        if (self.create_event_hook) |hook| _ = win32.UnhookWinEvent(hook);
         var hooks = self.process_hooks.valueIterator();
         while (hooks.next()) |process_hooks| process_hooks.unhook();
         self.process_hooks.deinit();
@@ -288,15 +272,13 @@ pub const Scout = struct {
         const name_changes = self.pending_name_changes;
         self.pending_name_changes = .empty;
 
-        if (self.pending_scan or force_scan) {
-            if (self.scanForEveWindows()) |_| {
-                self.pending_scan = false;
-            } else |err| {
+        // The only place new windows are found; a creation hook would wake us for every window on the desktop.
+        if (force_scan) {
+            self.scanForEveWindows() catch |err| {
                 slog.warn("Failed to scan for windows, retrying on the next scan: {}", .{err});
-            }
+            };
+            self.refreshTrackedWindowTitles();
         }
-
-        if (force_scan) self.refreshTrackedWindowTitles();
         self.unwatchUnusedProcesses();
 
         return UpdateResult{
@@ -464,17 +446,4 @@ fn windowDestroyCallback(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, id_o
 
     slog.debug("Window destroyed: '{s}' (hwnd {*})", .{ eve_window.character_name, hwnd });
     scout_ptr.removeWindowAt(index);
-}
-
-fn windowCreateCallback(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, id_object: win32.LONG, _: win32.LONG, _: win32.DWORD, _: win32.DWORD) callconv(.c) void {
-    // The main window only, not child controls.
-    if (id_object != 0) return;
-
-    const scout_ptr = g_scout_ptr orelse return;
-
-    // Only a window some filter's class could match is worth a full rescan; the forced scan catches anything else.
-    var class_name: [64:0]u8 = undefined;
-    const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return;
-    if (scout_ptr.findMatchingFilter(class_slice, null) == null) return;
-    scout_ptr.pending_scan = true;
 }
