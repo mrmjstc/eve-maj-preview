@@ -520,11 +520,9 @@ pub fn parseCombatLine(stripped_line: []const u8) ?struct { amount: u32, is_inco
         return null;
     }
 
-    if (std.mem.indexOf(u8, stripped, "misses you")) |miss_pos| {
-        if (!std.mem.startsWith(u8, stripped, "You ")) {
-            const weapon_dash = std.mem.indexOfPos(u8, stripped, miss_pos, " - ") orelse return .{ .amount = 0, .is_incoming = true, .weapon = "" };
-            return .{ .amount = 0, .is_incoming = true, .weapon = std.mem.trim(u8, stripped[weapon_dash + 3 ..], " \t") };
-        }
+    if (std.mem.indexOf(u8, stripped, " misses you completely")) |miss_pos| {
+        const weapon_dash = std.mem.indexOfPos(u8, stripped, miss_pos, " - ") orelse return .{ .amount = 0, .is_incoming = true, .weapon = "" };
+        return .{ .amount = 0, .is_incoming = true, .weapon = std.mem.trim(u8, stripped[weapon_dash + 3 ..], " \t") };
     }
 
     var amount: u32 = 0;
@@ -746,6 +744,10 @@ test "parseCombatLine counts a miss against you as incoming with no damage" {
     const npc_miss = parseCombatLine("[ 2026.09.17 19:28:06 ] (combat) CONCORD Police Captain - CONCORD Police Captain misses you completely").?;
     try testing.expect(npc_miss.is_incoming);
     try testing.expectEqualStrings("", npc_miss.weapon);
+}
+
+test "parseCombatLine drops an outgoing miss on a target whose name starts with you" {
+    try testing.expect(parseCombatLine("[ 2026.09.17 19:28:06 ] (combat) Your group of 650mm Artillery Cannon II misses youngling completely - 650mm Artillery Cannon II") == null);
 }
 
 test "parseCombatLine ignores repairs, transfers and malformed lines" {
