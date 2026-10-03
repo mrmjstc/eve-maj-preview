@@ -250,7 +250,7 @@ pub const Scout = struct {
             if (self.scanForEveWindows()) |_| {
                 self.pending_scan = false;
             } else |err| {
-                slog.warn("Failed to scan for windows, retrying next tick: {}", .{err});
+                slog.warn("Failed to scan for windows, retrying on the next scan: {}", .{err});
             }
         }
 
