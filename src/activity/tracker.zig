@@ -33,6 +33,7 @@ const WindowSum = struct {
     }
 
     /// Total over the window once the streak is a window old; before that, what came after its first moment over the time since, to now or to the newest event. Null while that's too short to trust.
+    /// With nothing after the first moment, warming up to now rates the total over the window, as it will read once the streak is that old; to the newest, it waits.
     /// `ring_full_from_ms` is the oldest event kept when the ring filled up inside the window, so only the time it covers counts.
     fn rate(self: WindowSum, streak_start_ms: i64, now_ms: i64, window_ms: i64, ring_full_from_ms: ?i64, warm_up: WarmUp) ?f32 {
         if (self.count == 0) return 0.0;
@@ -42,7 +43,10 @@ const WindowSum = struct {
             return self.total / seconds(covered_ms);
         }
         if (now_ms - streak_start_ms >= window_ms) return self.total / seconds(window_ms);
-        if (self.count_after_first_moment == 0) return null;
+        if (self.count_after_first_moment == 0) {
+            if (warm_up == .to_newest or now_ms - streak_start_ms < MIN_RATE_SPAN_MS) return null;
+            return self.total / seconds(window_ms);
+        }
         const end_ms = switch (warm_up) {
             .to_now => now_ms,
             .to_newest => self.newest_ms,
@@ -814,6 +818,19 @@ test "CombatWindow warms up on the hits after the first moment, over the time si
     const dps = window.computeDps(5_000);
     try testing.expectEqual(@as(f32, 25.0), dps.incoming.?);
     try testing.expectEqual(@as(f32, 12.5), dps.outgoing.?);
+}
+
+test "CombatWindow shows a lone first-second volley over the window after 3 seconds" {
+    var window: CombatWindow = .init(10);
+    window.addEntry(100, true, 1_000, true);
+    try testing.expect(window.computeDps(2_000).incoming == null);
+    try testing.expectEqual(@as(f32, 10.0), window.computeDps(4_500).incoming.?);
+}
+
+test "MiningWindow waits for a second cycle after a lone first one" {
+    var window: MiningWindow = .init(60);
+    window.addEntry(30, 3_000, 1_000);
+    try testing.expect(window.computeRate(10_000) == null);
 }
 
 test "CombatWindow rates a streak a window old as its total over the window" {

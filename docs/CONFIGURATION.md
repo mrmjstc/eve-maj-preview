@@ -746,7 +746,7 @@ Incoming and outgoing damage are rendered as two independently-positioned labels
 - **Outgoing**: line contains `" to "` after the amount - e.g. `166 to Gistatis Legatus - Berserker II - Grazes`
 - **Excluded**: remote repairs/cap transfers (keyword scan), misses (no leading damage number), and unrecognised formats
 
-**DPS Formula**: Total damage within the window divided by `windowSeconds`. During the first `windowSeconds` of a fight (after a full window without hits), it's the damage after the first second divided by the time since, shown as `??` for the first 3 seconds. The display refreshes every `updateIntervalMs`.
+**DPS Formula**: Total damage within the window divided by `windowSeconds`. During the first `windowSeconds` of a fight (after a full window without hits), it's the damage after the first second divided by the time since, shown as `??` for the first 3 seconds. If every hit so far landed in the fight's first second, it's that damage divided by `windowSeconds`. The display refreshes every `updateIntervalMs`.
 
 ## Mining Rate Overlay
 
