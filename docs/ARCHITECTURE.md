@@ -48,7 +48,7 @@ Each tracked character is a `ThumbnailWindow` (`thumbnail/window.zig`): `hwnd`/`
 
 ## Window discovery → rendering pipeline
 
-**`clients/scout.zig`**'s `Scout` owns discovery. `scanForEveWindows()` drives `EnumWindows`, matching each window against `config.windowFilters` by class name first (cheap pre-filter), then by executable path, which is checked once per process and cached by PID; `findMatchingFilter` is the one matcher used for both new windows and re-checking tracked ones after a config reload. `trinityWindow`-class windows get a character name parsed from the title; other filters use their configured `name`. Three `SetWinEventHook`s (`EVENT_OBJECT_NAMECHANGE`/`CREATE`/`DESTROY`) catch window lifecycle events between polls; `Scout.update()` reconciles these with the periodic full rescan.
+**`clients/scout.zig`**'s `Scout` owns discovery. `scanForEveWindows()` drives `EnumWindows`, matching each window against `config.windowFilters` by class name first (cheap pre-filter), then by executable path, which is checked once per process and cached by PID; `findMatchingFilter` is the one matcher used for both new windows and re-checking tracked ones after a config reload. `trinityWindow`-class windows get a character name parsed from the title; other filters use their configured `name`. `SetWinEventHook`s catch window lifecycle events between polls: `EVENT_OBJECT_CREATE` system-wide (only a window a filter's class could match flags a rescan), and `EVENT_OBJECT_NAMECHANGE`/`DESTROY` per tracked process, hooked when its first window is tracked and unhooked once none is left, so other apps' events never wake the main thread; `Scout.update()` reconciles these with the periodic full rescan.
 
 Rendering is split four ways:
 

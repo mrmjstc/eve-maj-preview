@@ -55,8 +55,20 @@ pub const Scout = struct {
     /// Set by the create hook so the next update() rescans.
     pending_scan: bool,
     create_event_hook: ?win32.HANDLE,
-    name_change_hook: ?win32.HANDLE,
-    destroy_event_hook: ?win32.HANDLE,
+    /// Title-change and destroy hooks per tracked process, so other apps' events never wake us.
+    process_hooks: std.AutoHashMap(win32.DWORD, ProcessHooks),
+    /// Set when a window stops being tracked; update() then unhooks processes left with none, outside any hook callback.
+    process_hooks_stale: bool = false,
+
+    const ProcessHooks = struct {
+        name_change: ?win32.HANDLE,
+        destroy: ?win32.HANDLE,
+
+        fn unhook(self: ProcessHooks) void {
+            if (self.name_change) |hook| _ = win32.UnhookWinEvent(hook);
+            if (self.destroy) |hook| _ = win32.UnhookWinEvent(hook);
+        }
+    };
 
     pub fn init(allocator: std.mem.Allocator, config: *const config_mod.Config) Scout {
         return .{
@@ -66,20 +78,58 @@ pub const Scout = struct {
             .pending_closed = .empty,
             .pending_name_changes = .empty,
             .pending_scan = false,
-            .name_change_hook = installHook(win32.EVENT_OBJECT_NAMECHANGE, nameChangeCallback, "Title change", "character name changes will not be detected until full window rescan"),
-            .create_event_hook = installHook(win32.EVENT_OBJECT_CREATE, windowCreateCallback, "Window creation", "new windows will only be detected via periodic scanning"),
-            .destroy_event_hook = installHook(win32.EVENT_OBJECT_DESTROY, windowDestroyCallback, "Window destroy", "closed windows will be noticed within a second instead"),
+            .create_event_hook = installCreateHook(),
+            .process_hooks = .init(allocator),
         };
     }
 
-    fn installHook(event: win32.DWORD, proc: win32.WINEVENTPROC, name: []const u8, fallback: []const u8) ?win32.HANDLE {
+    fn installCreateHook() ?win32.HANDLE {
         // Our own windows are never tracked, so their events needn't wake us.
-        const hook = win32.setWinEventHookSkipOwnProcess(event, proc) orelse {
-            slog.warn("Failed to set up {s} event hook - {s}", .{ name, fallback });
+        const hook = win32.setWinEventHookSkipOwnProcess(win32.EVENT_OBJECT_CREATE, windowCreateCallback) orelse {
+            slog.warn("Failed to set up window creation event hook - new windows will only be detected via periodic scanning", .{});
             return null;
         };
-        slog.debug("{s} event hook set up successfully", .{name});
+        slog.debug("Window creation event hook set up successfully", .{});
         return hook;
+    }
+
+    /// Hooks title changes and destroys for `process_id` once its first window is tracked.
+    fn watchProcess(self: *Scout, process_id: win32.DWORD) void {
+        if (self.process_hooks.contains(process_id)) return;
+
+        const hooks: ProcessHooks = .{
+            .name_change = win32.setWinEventHookForProcess(win32.EVENT_OBJECT_NAMECHANGE, nameChangeCallback, process_id),
+            .destroy = win32.setWinEventHookForProcess(win32.EVENT_OBJECT_DESTROY, windowDestroyCallback, process_id),
+        };
+        if (hooks.name_change == null) slog.warn("Failed to hook title changes for pid {} - character name changes will be noticed within a second instead", .{process_id});
+        if (hooks.destroy == null) slog.warn("Failed to hook window destroys for pid {} - closed windows will be noticed within a second instead", .{process_id});
+
+        self.process_hooks.put(process_id, hooks) catch |err| {
+            slog.err("Failed to record event hooks for pid {}: {}", .{ process_id, err });
+            hooks.unhook();
+        };
+    }
+
+    /// Unhooks every process no tracked window belongs to any more.
+    fn unwatchUnusedProcesses(self: *Scout) void {
+        if (!self.process_hooks_stale) return;
+        self.process_hooks_stale = false;
+
+        var it = self.process_hooks.iterator();
+        while (it.next()) |entry| {
+            if (self.tracksProcess(entry.key_ptr.*)) continue;
+            entry.value_ptr.unhook();
+            self.process_hooks.removeByPtr(entry.key_ptr);
+            // Removal invalidates the iterator.
+            it = self.process_hooks.iterator();
+        }
+    }
+
+    fn tracksProcess(self: *const Scout, process_id: win32.DWORD) bool {
+        for (self.windows.items) |window| {
+            if (window.process_id == process_id) return true;
+        }
+        return false;
     }
 
     pub fn setGlobalInstance(self: *Scout) void {
@@ -89,9 +139,10 @@ pub const Scout = struct {
     pub fn deinit(self: *Scout) void {
         g_scout_ptr = null;
 
-        for ([_]?win32.HANDLE{ self.create_event_hook, self.name_change_hook, self.destroy_event_hook }) |maybe_hook| {
-            if (maybe_hook) |hook| _ = win32.UnhookWinEvent(hook);
-        }
+        if (self.create_event_hook) |hook| _ = win32.UnhookWinEvent(hook);
+        var hooks = self.process_hooks.valueIterator();
+        while (hooks.next()) |process_hooks| process_hooks.unhook();
+        self.process_hooks.deinit();
 
         freeClosedWindows(self.allocator, &self.pending_closed);
         freeNameChanges(self.allocator, &self.pending_name_changes);
@@ -106,6 +157,7 @@ pub const Scout = struct {
 
     fn removeWindowAt(self: *Scout, index: usize) void {
         self.freeWindow(self.windows.orderedRemove(index));
+        self.process_hooks_stale = true;
     }
 
     /// Hands `window` to the next update's closed_windows, so the painter and chatlog let it go like any closed client; false if it couldn't be.
@@ -245,6 +297,7 @@ pub const Scout = struct {
         }
 
         if (force_scan) self.refreshTrackedWindowTitles();
+        self.unwatchUnusedProcesses();
 
         return UpdateResult{
             .windows = self.getWindows(),
@@ -385,6 +438,7 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
         scout.freeWindow(eve_window);
         return win32.TRUE;
     };
+    scout.watchProcess(process_id);
 
     return win32.TRUE;
 }
