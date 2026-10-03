@@ -31,8 +31,8 @@ const log = @import("log.zig");
 const slog = log.scoped("main");
 
 const TIMER_ID: usize = 1;
-/// About a second at the 50ms tick, since each scan is a full EnumWindows.
-const SCAN_INTERVAL_TICKS: u32 = 20;
+/// Timed rather than counted in ticks, so a slower scan interval doesn't stretch it; each scan is a full EnumWindows.
+const FORCED_SCAN_INTERVAL_MS: u64 = 1000;
 const TRAVEL_CHECK_INTERVAL_MS: u64 = 2000;
 const PROFILE_NAME_BUF = 256;
 
@@ -58,7 +58,7 @@ pub var g_timer_hwnd: ?win32.HWND = null;
 var g_pending_profile_buf: [PROFILE_NAME_BUF]u8 = undefined;
 var g_pending_profile: ?[]const u8 = null;
 
-var g_scan_tick_counter: u32 = 0;
+var g_last_forced_scan: win32.Ticks = .{};
 var g_last_travel_check_ms: win32.Ticks = .{};
 
 /// Routes panics into eve-maj.log; Zig only looks for `panic` in the root source file.
@@ -489,11 +489,9 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
 /// Runs one WM_TIMER tick: scan for EVE windows, then push the results through
 /// the painter, chatlog monitor, and activity trackers.
 fn onTimerTick() void {
-    g_scan_tick_counter += 1;
-    const force_scan = (g_scan_tick_counter >= SCAN_INTERVAL_TICKS);
-    if (force_scan) {
-        g_scan_tick_counter = 0;
-    }
+    const tick_start = win32.Ticks.now();
+    const force_scan = tick_start.elapsedSince(g_last_forced_scan) >= FORCED_SCAN_INTERVAL_MS;
+    if (force_scan) g_last_forced_scan = tick_start;
 
     const scout_ptr = scout.g_scout_ptr orelse return;
     var scout_result = scout_ptr.update(force_scan);

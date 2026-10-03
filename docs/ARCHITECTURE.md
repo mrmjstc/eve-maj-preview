@@ -162,7 +162,7 @@ Scout.update()                    window discovery / lifecycle reconciliation
        -> alert checks (Taking Damage, Laser idle, Mining stopped) once a second
 ```
 
-The expensive full `EnumWindows` rescan is itself throttled to roughly every 20 ticks rather than running every tick.
+The expensive full `EnumWindows` rescan is itself throttled to once a second rather than running every tick, whatever the scan interval.
 
 ## Other subsystems
 
