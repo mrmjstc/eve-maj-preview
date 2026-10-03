@@ -130,7 +130,8 @@ pub const Painter = struct {
 
         painter.focus_event_hook = win32.setWinEventHook(win32.EVENT_SYSTEM_FOREGROUND, winEventProc);
         if (painter.focus_event_hook == null) slog.err("Failed to set up focus event hook", .{});
-        painter.destroy_event_hook = win32.setWinEventHook(win32.EVENT_OBJECT_DESTROY, windowDestroyProc);
+        // Own process only: windowDestroyProc acts on our overlay windows alone.
+        painter.destroy_event_hook = win32.setWinEventHookForProcess(win32.EVENT_OBJECT_DESTROY, windowDestroyProc, win32.GetCurrentProcessId());
         if (painter.destroy_event_hook == null) slog.err("Failed to set up destroy event hook", .{});
 
         if (cfg.display.viewMode == .ClientList) {

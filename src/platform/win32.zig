@@ -491,7 +491,12 @@ pub extern "user32" fn UnhookWinEvent(hWinEventHook: HANDLE) callconv(.c) BOOL;
 
 /// Out-of-context hook for a single event across all processes and threads.
 pub fn setWinEventHook(event: DWORD, proc: WINEVENTPROC) ?HANDLE {
-    return SetWinEventHook(event, event, null, proc, 0, 0, WINEVENT_OUTOFCONTEXT);
+    return setWinEventHookForProcess(event, proc, 0);
+}
+
+/// Out-of-context hook for a single event from one process only; 0 means every process.
+pub fn setWinEventHookForProcess(event: DWORD, proc: WINEVENTPROC, process_id: DWORD) ?HANDLE {
+    return SetWinEventHook(event, event, null, proc, process_id, 0, WINEVENT_OUTOFCONTEXT);
 }
 
 pub extern "user32" fn SetWindowLongPtrA(hWnd: HWND, nIndex: c_int, dwNewLong: isize) callconv(.c) isize;
