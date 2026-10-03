@@ -14,7 +14,7 @@
     <div id="window-container">
         <div id="profile-header">
             <div id="profile-header-left">
-                <span id="app-brand"><span id="app-brand-mark">›</span>EVE-Maj Preview</span>
+                <span id="app-brand"><img id="app-brand-mark" src="icon.svg" alt="">EVE-Maj Preview</span>
             </div>
             <div id="profile-header-right">
                 <select id="profile-select" onchange="switchProfile()">
@@ -74,15 +74,9 @@
             <div id="content-panel">
                 <div class="panel-content active" data-panel="about">
                     <div class="section">
-                        <pre id="ascii-logo">
- _______     _______      __  __        _   ____                 _               
-| ____\ \   / / ____|    |  \/  | __ _ (_) |  _ \ _ __ _____   _(_) _____      __
-|  _|  \ \ / /|  _| _____| |\/| |/ _` || | | |_) | '__/ _ \ \ / / |/ _ \ \ /\ / /
-| |___  \ V / | |__|_____| |  | | (_| || | |  __/| | |  __/\ V /| |  __/\ V  V / 
-|_____|  \_/  |_____|    |_|  |_|\__,_|/ | |_|   |_|  \___| \_/ |_|\___| \_/\_/  
-                                      |__/                                        </pre>
-                        <div class="section-heading">
-                            <h3 data-i18n="tab.about.section.app-name.heading">EVE-Maj Preview</h3>
+                        <div id="about-brand">
+                            <img id="about-logo" src="icon.svg" alt="">
+                            <h2 data-i18n="tab.about.section.app-name.heading">EVE-Maj Preview</h2>
                         </div>
                         <p class="hint" data-i18n="misc.app-description">A modern, lightweight window preview tool for EVE Online, built with Zig.</p>
 

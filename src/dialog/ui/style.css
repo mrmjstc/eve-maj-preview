@@ -349,22 +349,28 @@ h4.modal-subheading {
     margin-top: var(--space-2);
 }
 
-/* ASCII art and pre-formatted text. Generic monospace, not --font-mono:
-   Cascadia Code's programming ligatures can reflow ASCII art glyph runs. */
-pre {
-    font-family: monospace;
-    line-height: 1.1;
-    margin: 0 0 1rem 0;
-    overflow-x: auto;
-    text-align: center;
-    font-size: 0.6875rem;
+#about-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
 }
 
-#ascii-logo {
+#about-brand h2 {
+    margin: 0;
+    color: var(--color-text);
+    font-size: 1.5rem;
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.0125rem;
+}
+
+#about-logo {
+    width: 4rem;
+    height: 4rem;
     cursor: pointer;
     user-select: none;
-    font-size: 0.625rem;
-    margin-bottom: 0.75rem;
+    -webkit-user-drag: none;
 }
 
 /* Contributor names read as a block rather than one long column. */
@@ -1051,8 +1057,8 @@ button:active {
 
 #app-brand {
     display: flex;
-    align-items: baseline;
-    gap: 0.375rem;
+    align-items: center;
+    gap: 0.5rem;
     color: var(--color-text);
     font-weight: var(--fw-semibold);
     font-size: var(--fs-heading);
@@ -1061,8 +1067,8 @@ button:active {
 }
 
 #app-brand-mark {
-    color: var(--color-accent);
-    font-weight: var(--fw-bold);
+    width: 1.25em;
+    height: 1.25em;
 }
 
 #profile-header-right {

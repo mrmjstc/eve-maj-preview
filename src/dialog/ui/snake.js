@@ -1,23 +1,23 @@
-// The ASCII logo's hidden snake game.
+// The About logo's hidden snake game.
 import { scrollBehavior } from './layout.js';
 
-let asciiClickCount = 0;
+let logoClickCount = 0;
 let snakeGameActive = false;
 let snakeGameLoop = null;
 
 document.addEventListener('DOMContentLoaded', function() {
-    const asciiLogo = document.getElementById('ascii-logo');
-    if (asciiLogo) {
-        asciiLogo.addEventListener('click', handleAsciiClick);
+    const logo = document.getElementById('about-logo');
+    if (logo) {
+        logo.addEventListener('click', handleLogoClick);
     }
 });
 
-function handleAsciiClick() {
-    asciiClickCount++;
+function handleLogoClick() {
+    logoClickCount++;
 
-    if (asciiClickCount === 5) {
+    if (logoClickCount === 5) {
         showSnakeGame();
-        asciiClickCount = 0;
+        logoClickCount = 0;
     }
 }
 
