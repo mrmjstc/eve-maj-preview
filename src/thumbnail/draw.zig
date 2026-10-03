@@ -1,7 +1,8 @@
 //! Pixel drawing for thumbnail overlays: text placement, borders and the exclusion overlay.
 const win32 = @import("../platform/win32.zig");
-const types = @import("../config/types.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
+const types = @import("../config/types.zig");
+const color_mod = @import("../util/color.zig");
 
 const TextPosition = types.TextPosition;
 const BorderStyle = types.BorderStyle;
@@ -94,24 +95,14 @@ pub fn fillTextBackground(pixels: [*]u32, width: usize, height: usize, x: i32, y
     const end_x = @min(start_x + text_width, width);
     if (end_x <= start_x or end_y <= start_y) return;
     // Premultiplied, or fixTextAlphaRect would take a transparent non-black background for unfixed GDI text and make it opaque.
-    gdi_overlay.fillRect(pixels, width, height, start_x, start_y, end_x - start_x, end_y - start_y, premultiplyAlpha(color));
-}
-
-/// Pre-multiplies color by alpha, valid only when blending onto an already-transparent buffer.
-pub fn premultiplyAlpha(color: u32) u32 {
-    const fg_alpha = (color >> 24) & 0xFF;
-    if (fg_alpha == 255) return color;
-    const r = ((color >> 16) & 0xFF) * fg_alpha / 255;
-    const g = ((color >> 8) & 0xFF) * fg_alpha / 255;
-    const b = (color & 0xFF) * fg_alpha / 255;
-    return (fg_alpha << 24) | (r << 16) | (g << 8) | b;
+    gdi_overlay.fillRect(pixels, width, height, start_x, start_y, end_x - start_x, end_y - start_y, color_mod.premultiplyAlpha(color));
 }
 
 /// Draws the exclusion overlay onto an already-cleared buffer.
 pub fn drawExclusionOverlay(pixels: [*]u32, width: usize, height: usize, color: u32, style: types.ExclusionOverlayStyle) void {
     const fg_alpha = (color >> 24) & 0xFF;
     if (fg_alpha == 0) return;
-    const blended = premultiplyAlpha(color);
+    const blended = color_mod.premultiplyAlpha(color);
 
     switch (style) {
         .None => {},

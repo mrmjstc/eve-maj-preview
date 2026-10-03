@@ -111,6 +111,16 @@ pub fn withAlpha(rgb: u32, alpha: u8) u32 {
     return (@as(u32, alpha) << 24) | (rgb & 0x00FF_FFFF);
 }
 
+/// For layered windows, which are presented premultiplied; valid only when drawing onto an already-transparent buffer.
+pub fn premultiplyAlpha(color: u32) u32 {
+    const fg_alpha = (color >> 24) & 0xFF;
+    if (fg_alpha == 255) return color;
+    const r = ((color >> 16) & 0xFF) * fg_alpha / 255;
+    const g = ((color >> 8) & 0xFF) * fg_alpha / 255;
+    const b = (color & 0xFF) * fg_alpha / 255;
+    return (fg_alpha << 24) | (r << 16) | (g << 8) | b;
+}
+
 /// Mixes each channel `percent`% of the way toward white, keeping alpha.
 pub fn lighten(color: u32, percent: u32) u32 {
     var out = color & 0xFF00_0000;
