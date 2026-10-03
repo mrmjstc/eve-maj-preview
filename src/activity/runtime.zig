@@ -28,9 +28,14 @@ pub const Trackers = struct {
     last_resource_update_ms: i64 = 0,
     last_alert_check_ms: i64 = 0,
 
-    /// Matches the trackers to `cfg`, keeping each one that stays enabled with its history, and hands them to `monitor`, whose worker thread must be stopped.
+    /// Matches the trackers to `cfg`, keeping each one that stays enabled with its history while a monitor feeds it, and hands them to `monitor`, whose worker thread must be stopped.
     /// Fail-soft: a tracker that can't be created is logged and left off rather than aborting startup or a reload.
     pub fn setup(self: *Trackers, cfg: *const Config, monitor: ?*chatlog.ChatlogMonitor) void {
+        if (monitor == null) {
+            self.destroy(tracker_mod.CombatTracker, &self.combat, "Combat DPS");
+            self.destroy(tracker_mod.MiningTracker, &self.mining, "Mining rate");
+            self.destroy(tracker_mod.BountyTracker, &self.bounty, "Bounty rate");
+        }
         self.reconcile(tracker_mod.CombatTracker, &self.combat, cfg.combat.enabled, cfg.combat.window_seconds, "Combat DPS");
         self.reconcile(tracker_mod.MiningTracker, &self.mining, cfg.mining.enabled, cfg.mining.window_seconds, "Mining rate");
         self.reconcile(tracker_mod.BountyTracker, &self.bounty, cfg.bounty.enabled, cfg.bounty.window_seconds, "Bounty rate");
