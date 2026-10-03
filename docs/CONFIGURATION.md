@@ -949,7 +949,7 @@ Display each client's CPU%, RAM, and dedicated VRAM usage as a single combined t
 | `position` | `LeftCenter` | Position of the label on the thumbnail (see [Text Positions](#text-overlay-settings)) |
 | `offset_x`/`offset_y` | `0` | Fine-tune label position (pixels) |
 
-**CPU%**: Process CPU time (kernel + user) sampled via `GetProcessTimes`, normalized by elapsed wall time and logical processor count - the same basis Task Manager uses, clamped to 0-100%. The first sample after a character logs in or a profile reload has nothing to diff against, so it reads 0% until the second sample.
+**CPU%**: Process CPU time (kernel + user) sampled via `GetProcessTimes`, normalized by elapsed wall time and logical processor count - the same basis Task Manager uses, clamped to 0-100%. The first sample after a character logs in or the overlay is turned on has nothing to diff against, so it reads 0% until the second sample.
 
 **RAM**: The process's current working-set size via `GetProcessMemoryInfo`.
 
