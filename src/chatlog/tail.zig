@@ -195,8 +195,8 @@ pub const LogFile = struct {
         var buffer: [SCAN_CHUNK_SIZE]u8 = undefined;
         // Even for chatlogs, so each chunk starts on a UTF-16 character; an odd size means EVE is mid-write.
         var scan_pos: u64 = if (self.is_chatlog) file_size & ~@as(u64, 1) else file_size;
-        // Overlapping chunks catch a line split across a chunk boundary.
-        const overlap: u64 = if (self.is_chatlog) 128 else 256;
+        // Longer than any line the scans look for, so a line split across a chunk boundary is whole in the earlier chunk.
+        const overlap: u64 = 512;
         const scan_floor: u64 = file_size -| MAX_BACKWARD_SCAN_BYTES;
 
         while (scan_pos > scan_floor) {
@@ -219,7 +219,7 @@ pub const LogFile = struct {
                 return .{ .system = self.system_name_buffer.items, .event_ts = match.event_ts };
             }
 
-            scan_pos = if (start_pos > overlap) start_pos + overlap else 0;
+            scan_pos = if (start_pos > 0) start_pos + overlap else 0;
         }
         return null;
     }
