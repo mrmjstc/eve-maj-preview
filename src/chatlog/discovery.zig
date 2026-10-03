@@ -148,6 +148,8 @@ pub const LogFinder = struct {
         defer files.close();
         while (files.next()) |name| {
             if (!is_chatlog and std.mem.startsWith(u8, name, "Local_")) continue;
+            // A client launch writes an ID-less gamelog with no listener, so it can never match.
+            if (!is_chatlog and lines.characterIdFromFileName(name) == null) continue;
             const ts = lines.logFileTimestamp(name, is_chatlog);
             if (ts == 0) continue;
             if (count == newest.len and ts <= newest[count - 1].ts) continue;
