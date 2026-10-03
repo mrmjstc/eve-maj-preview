@@ -102,7 +102,9 @@ pub const ThumbnailWindow = struct {
     thumbnail_id: win32.HTHUMBNAIL,
     source_hwnd: win32.HWND,
     is_eve_client: bool,
+    /// Owned; Painter frees it when it removes or renames the thumbnail.
     character_name: []const u8,
+    /// Owned; Painter frees the old one on each system change.
     system_name: []const u8,
     /// In-game timestamp of the event that set system_name (YYYYMMDD*1000000+HHMMSS); 0 = untimestamped source (e.g. live tailing), which always applies.
     system_name_event_ts: u64 = 0,

@@ -231,7 +231,7 @@ fn parseBaseKey(key_str: []const u8) ?u32 {
     if (std.ascii.eqlIgnoreCase(key_str, "control")) return VK_CONTROL;
     if (std.ascii.eqlIgnoreCase(key_str, "lwin") or std.ascii.eqlIgnoreCase(key_str, "rwin")) return VK_LWIN;
 
-    slog.warn("Unrecognized key '{s}'", .{key_str});
+    slog.warn("Failed to parse key '{s}'", .{key_str});
     return null;
 }
 
@@ -261,7 +261,7 @@ pub fn parseVirtualKey(key_str: []const u8) ?u32 {
             const mod_name = std.mem.trim(u8, tok, " ");
             if (mod_name.len == 0) continue;
             const mod_bit = parseModifierToken(mod_name) orelse {
-                slog.warn("Unrecognized modifier '{s}'", .{mod_name});
+                slog.warn("Failed to parse modifier '{s}'", .{mod_name});
                 return null;
             };
             modifiers |= mod_bit;
@@ -278,7 +278,7 @@ pub fn parseVirtualKey(key_str: []const u8) ?u32 {
             else => false,
         };
         if (self_referential) {
-            slog.warn("Modifier '{s}' can't also be held as its own modifier: '{s}'", .{ key_part, key_str });
+            slog.warn("Failed to parse hotkey '{s}': '{s}' is already its modifier", .{ key_str, key_part });
             return null;
         }
 

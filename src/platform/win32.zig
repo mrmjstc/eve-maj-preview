@@ -345,8 +345,7 @@ pub const TopLevelExceptionFilter = *const fn (*EXCEPTION_POINTERS) callconv(.c)
 pub extern "kernel32" fn SetUnhandledExceptionFilter(lpTopLevelExceptionFilter: ?TopLevelExceptionFilter) callconv(.c) ?TopLevelExceptionFilter;
 
 pub const ULONG = u32;
-// AddVectoredExceptionHandler sees first-chance exceptions before Zig's own segfault handler
-// swallows and rethrows them as a breakpoint, so it's the only way to log the real fault address.
+// Sees first-chance exceptions before Zig's handler rethrows them as a breakpoint, so only it can log the real fault address.
 pub extern "kernel32" fn AddVectoredExceptionHandler(First: ULONG, Handler: ?TopLevelExceptionFilter) callconv(.c) ?*anyopaque;
 
 pub const EXCEPTION_DATATYPE_MISALIGNMENT: DWORD = 0x80000002;
@@ -463,8 +462,7 @@ pub extern "user32" fn SetWindowPos(
     uFlags: UINT,
 ) callconv(.c) BOOL;
 
-// EndDeferWindowPos applies the whole batch atomically, so DWM never composites a frame
-// with only some windows in the batch reordered.
+// EndDeferWindowPos applies the batch atomically, so DWM never composites a half-reordered frame.
 pub const HDWP = *anyopaque;
 pub extern "user32" fn BeginDeferWindowPos(nNumWindows: c_int) callconv(.c) ?HDWP;
 pub extern "user32" fn DeferWindowPos(
@@ -1002,7 +1000,7 @@ pub fn getWindowTitleBuf(hwnd: HWND, buffer: []u8) ![]const u8 {
     if (buffer.len == 0) return error.BufferTooSmall;
     const buf_ptr: [*:0]u8 = @ptrCast(buffer.ptr);
     const title_len = GetWindowTextA(hwnd, buf_ptr, @intCast(buffer.len));
-    if (title_len == 0) return error.NoWindowTitle;
+    if (title_len == 0) return error.MissingWindowTitle;
     return buffer[0..@intCast(title_len)];
 }
 
@@ -1080,7 +1078,7 @@ pub fn selfExePath(buf: []u8) ![]const u8 {
 /// Directory containing the current process's own executable. Replaces std.fs.selfExeDirPath, removed in Zig 0.16.
 pub fn selfExeDirPath(buf: []u8) ![]const u8 {
     const full_path = try selfExePath(buf);
-    return std.fs.path.dirname(full_path) orelse return error.NoDirname;
+    return std.fs.path.dirname(full_path) orelse return error.MissingDirname;
 }
 
 /// Opens `target` (a file path or URL) with its default handler via ShellExecuteA. Returns false on failure.
@@ -1391,7 +1389,7 @@ extern "shell32" fn SHGetKnownFolderPath(
 pub fn getKnownFolderPath(allocator: std.mem.Allocator, folder_id: GUID) ![]u8 {
     var path_ptr: ?[*:0]u16 = null;
     const hr = SHGetKnownFolderPath(&folder_id, 0, null, &path_ptr);
-    if (hr < 0 or path_ptr == null) return error.KnownFolderUnavailable;
+    if (hr < 0 or path_ptr == null) return error.KnownFolderFailed;
     defer CoTaskMemFree(path_ptr);
 
     return std.unicode.utf16LeToUtf8Alloc(allocator, std.mem.span(path_ptr.?));

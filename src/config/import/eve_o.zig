@@ -1,10 +1,10 @@
 //! EVE-O Preview's settings, one flat JSON object written by a WinForms app.
 const std = @import("std");
+const vk = @import("../../platform/virtual_keys.zig");
 const values = @import("values.zig");
 const draft = @import("draft.zig");
 const eve_x = @import("eve_x.zig");
 const eve_apm = @import("eve_apm.zig");
-const vk = @import("../../platform/virtual_keys.zig");
 const key_list = @import("../key_list.zig");
 
 const Value = std.json.Value;

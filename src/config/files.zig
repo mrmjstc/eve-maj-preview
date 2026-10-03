@@ -128,7 +128,7 @@ pub fn expandEnvironmentVariables(allocator: std.mem.Allocator, path: []const u8
             }
 
             const var_value = g_environ_map.get(var_name) orelse {
-                slog.warn("Environment variable '{s}' not found", .{var_name});
+                slog.warn("Failed to read environment variable '{s}'", .{var_name});
                 try result.appendSlice(allocator, path[i .. end + 1]);
                 i = end + 1;
                 continue;

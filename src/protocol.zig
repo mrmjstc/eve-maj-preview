@@ -51,7 +51,7 @@ pub const Command = union(enum) {
 pub fn parseUrl(url: []const u8, allocator: std.mem.Allocator) !Command {
     const protocol_prefix = "evemajpreview://";
     if (!std.mem.startsWith(u8, url, protocol_prefix)) {
-        slog.err("Invalid protocol URL '{s}'", .{url});
+        slog.err("Failed to parse protocol URL '{s}': it doesn't start with '{s}'", .{ url, protocol_prefix });
         return error.InvalidProtocol;
     }
 
@@ -59,37 +59,37 @@ pub fn parseUrl(url: []const u8, allocator: std.mem.Allocator) !Command {
     var iter = std.mem.splitScalar(u8, path, '/');
 
     const action = iter.next() orelse {
-        slog.err("Missing action in protocol URL '{s}'", .{url});
+        slog.err("Failed to parse protocol URL '{s}': no action", .{url});
         return error.MissingAction;
     };
 
     if (std.mem.eql(u8, action, "switch")) {
         const char_name_encoded = iter.next() orelse {
-            slog.err("Missing character name in switch command", .{});
+            slog.err("Failed to parse switch command: no character name", .{});
             return error.MissingParameter;
         };
         const char_name = try urlDecode(allocator, char_name_encoded);
         return Command{ .switch_character = char_name };
     } else if (std.mem.eql(u8, action, "profile")) {
         const profile_name_encoded = iter.next() orelse {
-            slog.err("Missing profile name in profile command", .{});
+            slog.err("Failed to parse profile command: no profile name", .{});
             return error.MissingParameter;
         };
         const profile_name = try urlDecode(allocator, profile_name_encoded);
         return Command{ .profile = profile_name };
     } else if (std.mem.eql(u8, action, "hotkey")) {
         const hotkey_action = iter.next() orelse {
-            slog.err("Missing hotkey action in hotkey command", .{});
+            slog.err("Failed to parse hotkey command: no action", .{});
             return error.MissingParameter;
         };
         const parsed_action = std.meta.stringToEnum(GlobalAction, hotkey_action) orelse {
-            slog.err("Unknown hotkey action '{s}'", .{hotkey_action});
-            return error.UnknownGlobalAction;
+            slog.err("Failed to parse hotkey command: unknown action '{s}'", .{hotkey_action});
+            return error.InvalidGlobalAction;
         };
         return Command{ .hotkey = parsed_action };
     } else {
-        slog.err("Unknown protocol action '{s}'", .{action});
-        return error.UnknownAction;
+        slog.err("Failed to parse protocol URL: unknown action '{s}'", .{action});
+        return error.InvalidAction;
     }
 }
 
@@ -101,7 +101,7 @@ pub fn findExistingInstance() ?win32.HWND {
 pub fn forwardToRunningInstance(url: []const u8, allocator: std.mem.Allocator) !void {
     const existing_hwnd = findExistingInstance() orelse {
         slog.warn("No existing instance found, protocol command ignored", .{});
-        return error.NoExistingInstance;
+        return error.MissingInstance;
     };
 
     const cmd = parseUrl(url, allocator) catch |err| {
@@ -168,7 +168,7 @@ pub fn ensureRegistered(allocator: std.mem.Allocator) void {
         return;
     }
 
-    slog.info("Protocol handler not registered, attempting auto-registration...", .{});
+    slog.info("Protocol handler not registered, attempting auto-registration", .{});
     const success = register(allocator) catch |err| blk: {
         slog.warn("Failed to auto-register protocol handler: {}", .{err});
         slog.warn("You may need to run as administrator or manually register using register-protocol.reg", .{});
@@ -177,7 +177,7 @@ pub fn ensureRegistered(allocator: std.mem.Allocator) void {
     if (success) {
         slog.info("Protocol handler successfully registered", .{});
     } else {
-        slog.warn("Protocol handler registration returned false", .{});
+        slog.warn("Failed to register protocol handler", .{});
     }
 }
 
@@ -355,11 +355,11 @@ test "parseUrl reads every hotkey action by name" {
 
 test "parseUrl rejects other schemes, unknown actions and missing parameters" {
     try testing.expectError(error.InvalidProtocol, parseUrl("https://example.com/switch/Pilot", testing.allocator));
-    try testing.expectError(error.UnknownAction, parseUrl("evemajpreview://launch/Pilot", testing.allocator));
-    try testing.expectError(error.UnknownAction, parseUrl("evemajpreview://", testing.allocator));
+    try testing.expectError(error.InvalidAction, parseUrl("evemajpreview://launch/Pilot", testing.allocator));
+    try testing.expectError(error.InvalidAction, parseUrl("evemajpreview://", testing.allocator));
     try testing.expectError(error.MissingParameter, parseUrl("evemajpreview://switch", testing.allocator));
     try testing.expectError(error.MissingParameter, parseUrl("evemajpreview://hotkey", testing.allocator));
-    try testing.expectError(error.UnknownGlobalAction, parseUrl("evemajpreview://hotkey/self_destruct", testing.allocator));
+    try testing.expectError(error.InvalidGlobalAction, parseUrl("evemajpreview://hotkey/self_destruct", testing.allocator));
 }
 
 test "urlDecode decodes percent escapes and plus signs" {

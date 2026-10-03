@@ -80,7 +80,7 @@ fn documentsDir(allocator: std.mem.Allocator) ![]u8 {
     const dir = win32.getKnownFolderPath(allocator, FOLDERID_Documents) catch |err| blk: {
         slog.warn("Failed to resolve the Documents folder, falling back to USERPROFILE/Documents: {}", .{err});
         const userprofile = files.g_environ_map.get("USERPROFILE") orelse {
-            slog.warn("USERPROFILE environment variable not found", .{});
+            slog.warn("Failed to read USERPROFILE", .{});
             return error.MissingEnvironmentVariable;
         };
         break :blk try std.fmt.allocPrint(allocator, "{s}/Documents", .{userprofile});

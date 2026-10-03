@@ -14,6 +14,7 @@ const EVE_WINDOW_CLASS = "trinityWindow";
 
 pub const EveWindow = struct {
     hwnd: win32.HWND,
+    /// Owned by Scout; a copy of an EveWindow borrows it until Scout drops the window.
     character_name: []const u8,
     process_id: win32.DWORD,
     is_eve_client: bool,
@@ -21,13 +22,14 @@ pub const EveWindow = struct {
     logged_out_order: u64 = 0,
 };
 
+/// Names are owned; freed by UpdateResult.deinit.
 pub const NameChange = struct {
     hwnd: win32.HWND,
     old_name: []const u8,
     new_name: []const u8,
 };
 
-/// character_name isn't unique (multiple windows can all report "EVE"), so hwnd travels with it.
+/// character_name isn't unique (multiple windows can all report "EVE"), so hwnd travels with it; owned, freed by UpdateResult.deinit.
 pub const ClosedWindow = struct {
     hwnd: win32.HWND,
     character_name: []const u8,
@@ -200,7 +202,7 @@ pub const Scout = struct {
 
         var title_buf: [64]u8 = undefined;
         const current_title = win32.getWindowTitleBuf(eve_window.hwnd, &title_buf) catch |err| switch (err) {
-            error.NoWindowTitle => return,
+            error.MissingWindowTitle => return,
             else => {
                 slog.err("Failed to get window title for '{s}': {}", .{ eve_window.character_name, err });
                 return;
@@ -392,7 +394,7 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
 
     var title_buf: [64]u8 = undefined;
     const title = win32.getWindowTitleBuf(hwnd, &title_buf) catch |err| switch (err) {
-        error.NoWindowTitle => return win32.TRUE,
+        error.MissingWindowTitle => return win32.TRUE,
         else => {
             slog.err("Failed to get window title for hwnd {*}: {}", .{ hwnd, err });
             return win32.TRUE;

@@ -1,8 +1,8 @@
 //! The ghost overlay outlining saved positions while something is dragged, and the drag hint.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const color = @import("../util/color.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
+const color = @import("../util/color.zig");
 const painter_mod = @import("../painter.zig");
 const draw = @import("../thumbnail/draw.zig");
 const monitors = @import("../layout/monitors.zig");
@@ -14,7 +14,7 @@ const slog = log.scoped("drag_overlays");
 
 const WINDOW_CLASS_NAME = "EVE_GHOST_OVERLAY_CLASS";
 
-/// One saved-position outline for the drag-time ghost overlay; `names` is the comma-joined list of every character sharing that exact rect.
+/// One saved-position outline for the drag-time ghost overlay; `names` is the comma-joined list of every character sharing that exact rect, owned by whoever holds the group slice.
 pub const GhostGroup = struct {
     rect: win32.RECT,
     names: []const u8,

@@ -152,7 +152,7 @@ fn restoreVisibilityAfterTest(painter: *Painter, thumbnail: *ThumbnailWindow) vo
     // Focus or the setting may have changed during the test, in which case auto-hiding no longer applies.
     const restored: state.VisibilityState = switch (prior) {
         .hidden_automatic => painter.autoVisibility(painter.isEveWindowForeground()),
-        else => prior,
+        .visible, .hidden_manual => prior,
     };
     thumbnail.setVisibility(restored);
     painter.renderThumbnailLogged(thumbnail, "test notification restore");

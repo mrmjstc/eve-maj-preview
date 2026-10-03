@@ -12,6 +12,7 @@ const FLASH_CYCLES: u64 = 4;
 const FLASH_TOTAL_MS: u64 = FLASH_PHASE_MS * FLASH_CYCLES * 2;
 
 pub const ActiveNotification = struct {
+    /// Owned by the NotificationStack holding it.
     text: []const u8,
     notification_type: notification.NotificationType,
     start_time: win32.Ticks,

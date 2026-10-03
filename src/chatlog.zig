@@ -28,6 +28,7 @@ pub const ChatlogMonitor = struct {
     finder: discovery.LogFinder,
     /// Read for ore prices, which only change while the worker is stopped.
     global_settings: ?*config.GlobalConfig,
+    /// Borrowed; outlives the monitor.
     character_ids: ?*CharacterIds,
     // Set only while the worker is stopped (see activity/runtime.zig).
     combat_tracker: ?*activity_mod.CombatTracker = null,

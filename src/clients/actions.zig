@@ -6,7 +6,7 @@ const scout = @import("scout.zig");
 const animation = @import("animation.zig");
 const log = @import("../log.zig");
 
-const slog = log.scoped("client_actions");
+const slog = log.scoped("actions");
 
 /// Kept clear of the screen edges so a restored window's title bar stays grabbable.
 const SCREEN_EDGE_MARGIN: i32 = 30;

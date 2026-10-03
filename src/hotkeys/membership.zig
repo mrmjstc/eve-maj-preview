@@ -159,7 +159,7 @@ pub fn toggleThumbnailExclusion(manager: *HotkeyManager, source_hwnd: win32.HWND
 /// Toggle the thumbnail currently under the cursor in/out of a group; no-op if nothing's hovered.
 pub fn assignHoveredToGroup(manager: *HotkeyManager, group_index: usize) void {
     if (group_index >= manager.config.hotkeyGroups.items.len) {
-        slog.err("Invalid group index {}", .{group_index});
+        slog.err("Failed to assign to group: index {} is out of range", .{group_index});
         return;
     }
 

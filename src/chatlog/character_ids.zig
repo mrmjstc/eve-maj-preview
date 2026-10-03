@@ -29,7 +29,7 @@ pub const CharacterIds = struct {
         };
         defer parsed.deinit();
         if (parsed.value != .object) {
-            slog.warn("'{s}' isn't a JSON object, ignoring it", .{FILE_NAME});
+            slog.warn("Failed to read '{s}': not a JSON object", .{FILE_NAME});
             return ids;
         }
         var it = parsed.value.object.iterator();

@@ -4,7 +4,7 @@ const win32 = @import("../platform/win32.zig");
 const scout = @import("../clients/scout.zig");
 const log = @import("../log.zig");
 
-const slog = log.scoped("resource_tracker");
+const slog = log.scoped("activity_resources");
 
 /// Instance names look like "pid_1234_luid_0x0_0xABCD_phys_0", one per process per physical adapter.
 const VRAM_COUNTER_PATH = "\\GPU Process Memory(*)\\Dedicated Usage";

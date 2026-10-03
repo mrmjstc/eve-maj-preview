@@ -95,7 +95,10 @@ pub const UpdateStatus = struct {
         };
         defer self.mutex.unlock(g_io);
         const notes = self.notes orelse return null;
-        return allocator.dupe(u8, notes) catch null;
+        return allocator.dupe(u8, notes) catch |err| {
+            slog.warn("Failed to copy the release notes: {}", .{err});
+            return null;
+        };
     }
 };
 
@@ -232,6 +235,7 @@ pub const UpdateChecker = struct {
     }
 };
 
+/// Strings come from the checker's allocator; the caller frees each one.
 pub const UpdateInfo = struct {
     version: []const u8,
     url: []const u8,

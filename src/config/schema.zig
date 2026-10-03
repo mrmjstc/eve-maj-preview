@@ -1,12 +1,12 @@
 //! Describes every saved setting to the config dialog, so its form takes kinds, defaults, bounds and options from the settings structs instead of repeating them.
 const std = @import("std");
+const vk = @import("../platform/virtual_keys.zig");
 const wire = @import("wire.zig");
 const patch = @import("patch.zig");
 const key_list = @import("key_list.zig");
 const profiles = @import("profiles.zig");
 const config = @import("../config.zig");
 const notification = @import("../notifications/notification.zig");
-const vk = @import("../platform/virtual_keys.zig");
 
 /// `{"fields": {path: spec}, "notificationTypes": [...], "keys": [{vk, name}], "modifiers": [{flag, name}], "maxKeys": n, "profileNameMaxLength": n}`.
 /// A path is dotted field names, with `*` for a list item or map child and the global settings under `global.`.

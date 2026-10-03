@@ -156,7 +156,7 @@ pub const HotkeyManager = struct {
             return;
         }
 
-        slog.debug("Registering hotkeys: {} group(s), {} global action(s), {} per-character hotkey(s), {} profile-switch hotkey(s), {} app hotkey(s), {} url hotkey(s)...", .{
+        slog.debug("Registering hotkeys: {} group(s), {} global action(s), {} per-character hotkey(s), {} profile-switch hotkey(s), {} app hotkey(s), {} url hotkey(s)", .{
             self.config.hotkeyGroups.items.len,
             global_count,
             per_character_count,
@@ -241,7 +241,7 @@ pub const HotkeyManager = struct {
             if (success_count == 0) {
                 slog.err("Failed to register any hotkeys - all {} key(s) failed", .{failed_count});
                 slog.err("Hotkey functionality will be unavailable", .{});
-                return error.AllHotkeysFailedToRegister;
+                return error.RegisterHotkeysFailed;
             }
             slog.warn("Failed to register {} key(s); {} hotkey(s) still registered", .{ failed_count, success_count });
             slog.warn("Some hotkey groups may not respond to key presses", .{});
@@ -262,7 +262,7 @@ pub const HotkeyManager = struct {
             }
         }
 
-        slog.debug("Unregistering {} hotkey(s)...", .{self.hotkey_map.count()});
+        slog.debug("Unregistering {} hotkey(s)", .{self.hotkey_map.count()});
         self.hotkey_map.clearRetainingCapacity();
     }
 
@@ -323,7 +323,7 @@ pub const HotkeyManager = struct {
         switch (action.*) {
             .cycle_group => |cycle_group| {
                 if (cycle_group.group_index >= self.config.hotkeyGroups.items.len) {
-                    slog.err("Invalid group index {}", .{cycle_group.group_index});
+                    slog.err("Failed to cycle group: index {} is out of range", .{cycle_group.group_index});
                     return;
                 }
                 cycling.cycleGroup(self, cycle_group.group_index, cycle_group.forward);

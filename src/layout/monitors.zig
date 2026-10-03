@@ -65,7 +65,7 @@ fn getMonitorPlacement(monitor_index: u32, use_work_area: bool) ?MonitorPlacemen
     _ = win32.EnumDisplayMonitors(null, null, monitorEnumProc, win32.ptrToLparam(&enum_data));
 
     if (enum_data.found_monitor == null) {
-        slog.warn("Monitor index {} not found (total monitors available: {})", .{ monitor_index, enum_data.current_index });
+        slog.warn("Failed to find monitor {} ({} available)", .{ monitor_index, enum_data.current_index });
         return null;
     }
 

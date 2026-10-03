@@ -40,7 +40,7 @@ pub fn transitionVisibility(
     context_name: []const u8,
 ) !VisibilityState {
     if (!current.canTransitionTo(next)) {
-        slog.warn("Invalid visibility transition for '{s}': {} -> {}", .{
+        slog.warn("Failed to change visibility for '{s}': {} -> {} isn't allowed", .{
             context_name,
             current,
             next,

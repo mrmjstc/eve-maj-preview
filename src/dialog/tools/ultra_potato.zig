@@ -18,11 +18,13 @@ pub const TARGET_KEYS = [_][]const u8{
     "volumetricQuality",
 };
 
+/// Strings come from scanProfiles' allocator, which the caller frees.
 pub const Profile = struct {
     path: []const u8,
     label: []const u8,
 };
 
+/// path comes from applyToFiles' allocator, which the caller frees; error_message is static.
 pub const ApplyResult = struct {
     path: []const u8,
     success: bool,
@@ -52,7 +54,7 @@ pub fn scanProfiles(allocator: std.mem.Allocator, io: std.Io, environ_map: *cons
     }
 
     const local_app_data = environ_map.get("LOCALAPPDATA") orelse {
-        slog.warn("LOCALAPPDATA environment variable not found", .{});
+        slog.warn("Failed to read LOCALAPPDATA", .{});
         return try profiles.toOwnedSlice(allocator);
     };
 
@@ -151,7 +153,10 @@ fn applyToOneFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !A
 }
 
 fn backupExists(io: std.Io, path: []const u8, allocator: std.mem.Allocator) bool {
-    const backup_path = std.fmt.allocPrint(allocator, "{s}.bak", .{path}) catch return false;
+    const backup_path = std.fmt.allocPrint(allocator, "{s}.bak", .{path}) catch |err| {
+        slog.err("Failed to build the backup path for '{s}': {}", .{ path, err });
+        return false;
+    };
     defer allocator.free(backup_path);
 
     const file = std.Io.Dir.cwd().openFile(io, backup_path, .{}) catch return false;
@@ -160,7 +165,10 @@ fn backupExists(io: std.Io, path: []const u8, allocator: std.mem.Allocator) bool
 }
 
 fn makeBackup(io: std.Io, path: []const u8, allocator: std.mem.Allocator) bool {
-    const backup_path = std.fmt.allocPrint(allocator, "{s}.bak", .{path}) catch return false;
+    const backup_path = std.fmt.allocPrint(allocator, "{s}.bak", .{path}) catch |err| {
+        slog.err("Failed to build the backup path for '{s}': {}", .{ path, err });
+        return false;
+    };
     defer allocator.free(backup_path);
 
     std.Io.Dir.cwd().copyFile(path, std.Io.Dir.cwd(), backup_path, io, .{}) catch |err| {

@@ -58,7 +58,7 @@ pub fn returnToLastApp(last_non_eve_foreground: *?win32.HWND) void {
 
 pub fn activateApp(global_settings: *const config.GlobalConfig, app_index: usize) void {
     if (app_index >= global_settings.appHotkeys.items.len) {
-        slog.err("Invalid app hotkey index {}", .{app_index});
+        slog.err("Failed to activate app: hotkey index {} is out of range", .{app_index});
         return;
     }
     const app_hotkey = global_settings.appHotkeys.items[app_index];
@@ -74,7 +74,7 @@ pub fn activateApp(global_settings: *const config.GlobalConfig, app_index: usize
 
 pub fn openUrl(allocator: std.mem.Allocator, global_settings: *const config.GlobalConfig, url_index: usize) void {
     if (url_index >= global_settings.urlHotkeys.items.len) {
-        slog.err("Invalid url hotkey index {}", .{url_index});
+        slog.err("Failed to open URL: hotkey index {} is out of range", .{url_index});
         return;
     }
     const url_hotkey = global_settings.urlHotkeys.items[url_index];

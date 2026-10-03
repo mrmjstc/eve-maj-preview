@@ -141,7 +141,7 @@ const TtsEngine = struct {
         var clsid: windows.GUID = undefined;
         const progid = std.unicode.utf8ToUtf16LeStringLiteral("SAPI.SpVoice");
         if (CLSIDFromProgID(progid, &clsid) < 0) {
-            return error.SapiNotAvailable;
+            return error.ResolveSapiFailed;
         }
 
         var dispatch_ptr: ?*anyopaque = null;

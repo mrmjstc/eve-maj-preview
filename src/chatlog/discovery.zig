@@ -28,6 +28,7 @@ pub const LogFinder = struct {
     io: std.Io,
     chatlog_dir: []const u8,
     gamelog_dir: []const u8,
+    /// Borrowed; outlives the finder.
     character_ids: ?*CharacterIds,
     chatlog_watcher: ?win32.HANDLE,
     gamelog_watcher: ?win32.HANDLE,
@@ -37,7 +38,7 @@ pub const LogFinder = struct {
 
     pub fn init(allocator: std.mem.Allocator, io: std.Io, chatlog_dir: []const u8, gamelog_dir: []const u8, character_ids: ?*CharacterIds) !LogFinder {
         if (!std.unicode.utf8ValidateSlice(chatlog_dir) or !std.unicode.utf8ValidateSlice(gamelog_dir)) {
-            slog.err("Log directory path contains invalid UTF-8", .{});
+            slog.err("Failed to watch log folders: a path contains invalid UTF-8", .{});
             return error.InvalidUtf8;
         }
         const owned_chatlog_dir = try allocator.dupe(u8, chatlog_dir);

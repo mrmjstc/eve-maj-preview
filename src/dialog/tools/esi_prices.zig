@@ -12,6 +12,7 @@ const ESI_JITA_STATION_ID: i64 = 60003760;
 /// Caps how many HTTP requests run at once for a price fetch - bounded so this stays polite to ESI rather than opening dozens of connections at once.
 const MAX_CONCURRENT_PRICE_REQUESTS = 8;
 
+/// name is copied into the caller's arena before it's returned.
 pub const Price = struct {
     name: []const u8,
     price: f64,
@@ -31,6 +32,7 @@ pub const Prices = struct {
     }
 };
 
+/// name borrows from the type ID map.
 const PriceLookup = struct {
     name: []const u8,
     type_id: i64,
@@ -135,15 +137,15 @@ fn resolveOreTypeIds(allocator: std.mem.Allocator, client: *std.http.Client, nam
     defer parsed.deinit();
 
     if (parsed.value != .object) {
-        slog.warn("ESI universe/ids response was not a JSON object: {s}", .{response});
+        slog.warn("Failed to read ESI type IDs: response isn't a JSON object: {s}", .{response});
         return result;
     }
     const inventory_types = parsed.value.object.get("inventory_types") orelse {
-        slog.warn("ESI universe/ids response had no inventory_types field: {s}", .{response});
+        slog.warn("Failed to read ESI type IDs: no inventory_types field: {s}", .{response});
         return result;
     };
     if (inventory_types != .array) {
-        slog.warn("ESI universe/ids inventory_types was not an array: {s}", .{response});
+        slog.warn("Failed to read ESI type IDs: inventory_types isn't an array: {s}", .{response});
         return result;
     }
 

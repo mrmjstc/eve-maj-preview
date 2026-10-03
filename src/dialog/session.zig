@@ -74,7 +74,7 @@ pub fn profileDirty() bool {
 }
 
 pub fn globalDirty() bool {
-    const draft = global() catch return false;
+    const draft = &(g_global_draft orelse return false);
     var arena = std.heap.ArenaAllocator.init(host.allocator());
     defer arena.deinit();
     const edited = editableJson(arena.allocator(), draft) catch |err| {

@@ -86,7 +86,7 @@ fn postAndFollowRedirect(allocator: std.mem.Allocator, url: []const u8, body: []
     };
 
     if (response.head.status.class() != .success) {
-        slog.warn("Upload to '{s}' returned status {}", .{ url, response.head.status });
+        slog.warn("Failed to upload to '{s}': status {}", .{ url, response.head.status });
     }
 
     return std.fmt.allocPrintSentinel(allocator, "{f}", .{req.uri}, 0);
@@ -101,7 +101,7 @@ fn openFallback(url: []const u8) void {
 /// Uploads clipboard text to url via aDashboard's paste-intake form shape and opens the resulting page, falling back to opening the plain url if there's no clipboard text or the upload fails.
 fn uploadClipboardAndOpen(allocator: std.mem.Allocator, url: []const u8) void {
     const clipboard_text = win32.getClipboardText(allocator) orelse {
-        slog.warn("Clipboard has no text; opening {s} without uploading", .{url});
+        slog.warn("Clipboard has no text; opening '{s}' without uploading", .{url});
         openFallback(url);
         return;
     };

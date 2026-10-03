@@ -277,7 +277,7 @@ fn drawSizeLabel(bitmap: *const gdi_overlay.OverlayBitmap, selection: win32.RECT
     const font = g_label_style.font orelse return;
 
     var text_buf: [32]u8 = undefined;
-    const text = std.fmt.bufPrint(&text_buf, "{d} x {d}", .{ win32.rectWidth(selection), win32.rectHeight(selection) }) catch return;
+    const text = std.fmt.bufPrint(&text_buf, "{d} x {d}", .{ win32.rectWidth(selection), win32.rectHeight(selection) }) catch unreachable;
 
     const old_font = win32.SelectObject(bitmap.mem_dc, font);
     defer {

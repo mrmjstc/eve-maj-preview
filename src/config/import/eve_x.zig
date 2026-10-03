@@ -70,13 +70,13 @@ pub fn isFile(root: Value) bool {
 }
 
 pub fn profileNames(arena: std.mem.Allocator, root: Value) ![]const []const u8 {
-    const profiles = values.objectAt(root, "_Profiles").?;
+    const profiles = values.objectAt(root, "_Profiles") orelse return &.{};
     return arena.dupe([]const u8, profiles.object.keys());
 }
 
 /// The profile EVE-X last ran, or its first.
 pub fn defaultProfile(root: Value) ?[]const u8 {
-    const profiles = values.objectAt(root, "_Profiles").?;
+    const profiles = values.objectAt(root, "_Profiles") orelse return null;
     if (values.stringAt(globals(root), "LastUsedProfile") orelse values.stringAt(root, "LastUsedProfile")) |last| {
         if (profiles.object.contains(last)) return last;
     }

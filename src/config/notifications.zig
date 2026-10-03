@@ -58,7 +58,7 @@ pub const NotificationTypeConfigs = struct {
 
     map: Map = NotificationTypeConfig.defaults_by_type,
 
-    pub fn get(self: NotificationTypeConfigs, ntype: notification.NotificationType) NotificationTypeConfig {
+    pub fn get(self: *const NotificationTypeConfigs, ntype: notification.NotificationType) NotificationTypeConfig {
         return self.map.get(ntype);
     }
 
@@ -78,7 +78,7 @@ pub const NotificationTypeConfigs = struct {
         for (&self.map.values) |*type_config| wire.free(NotificationTypeConfig, type_config, allocator);
     }
 
-    pub fn clone(self: NotificationTypeConfigs, allocator: std.mem.Allocator) !NotificationTypeConfigs {
+    pub fn clone(self: *const NotificationTypeConfigs, allocator: std.mem.Allocator) !NotificationTypeConfigs {
         var out: NotificationTypeConfigs = .{};
         errdefer out.deinit(allocator);
         for (&out.map.values, self.map.values) |*dst, src| dst.* = try wire.clone(NotificationTypeConfig, src, allocator);
@@ -123,7 +123,7 @@ pub const NotificationTypeConfigs = struct {
         }
     };
 
-    pub fn toWire(self: NotificationTypeConfigs) Wire {
+    pub fn toWire(self: *const NotificationTypeConfigs) Wire {
         var out: Wire = .{};
         inline for (std.meta.fields(notification.NotificationType)) |f| {
             const ntype = @field(notification.NotificationType, f.name);

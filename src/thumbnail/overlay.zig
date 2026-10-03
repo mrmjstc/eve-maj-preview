@@ -168,6 +168,7 @@ pub const RenderCache = struct {
 /// One text run: render_pos places its glyphs, bg_pos/bg_dims its background, which differ in a stacked block (shared width, per-line alignment).
 const DrawLine = struct {
     font: win32.HFONT,
+    /// Borrowed for one render pass.
     text: []const u8,
     render_pos: TextOrigin,
     bg_pos: TextOrigin,

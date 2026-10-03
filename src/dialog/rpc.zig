@@ -19,7 +19,7 @@ const API_MODULES = .{
 /// Long enough for a Save, which reloads the whole profile before replying.
 const MAIN_THREAD_TIMEOUT_MS = 60_000;
 
-/// Already-serialized JSON, embedded in a reply as-is.
+/// Already-serialized JSON, embedded in a reply as-is; borrowed.
 pub const RawJson = struct {
     text: []const u8,
 
@@ -28,6 +28,7 @@ pub const RawJson = struct {
     }
 };
 
+/// method and args borrow from the webui event; response is owned and freed by onCall.
 const Call = struct {
     method: []const u8,
     args: []const u8,
@@ -144,6 +145,7 @@ fn invoke(arena: std.mem.Allocator, comptime func: anytype, args: std.json.Value
     return out.written();
 }
 
+/// Errors that reach the window are named as their message (see humanize), so they don't follow the usual XxxFailed shape.
 fn errorResponse(arena: std.mem.Allocator, method: []const u8, err: anyerror) []const u8 {
     slog.err("Failed to run rpc {s}: {}", .{ method, err });
     const message = humanize(arena, @errorName(err)) catch @errorName(err);

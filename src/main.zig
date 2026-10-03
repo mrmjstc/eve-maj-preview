@@ -114,7 +114,7 @@ pub fn switchToSavedProfile(profile_name: []const u8, global_draft: ?*config.Glo
 /// After the config dialog saves the running profile or global settings: the parts that only read them at setup (hotkeys, chatlog, timer, window filters) start over.
 /// `global_draft`, if given, becomes the running global settings (see GlobalConfig.adopt), leaving it holding the replaced values.
 pub fn applySavedSettings(global_draft: ?*config.GlobalConfig) !void {
-    const timer_hwnd = g_timer_hwnd orelse return error.NoTimerWindow;
+    const timer_hwnd = g_timer_hwnd orelse return error.MissingTimerWindow;
     try restartSubsystems(timer_hwnd, null, global_draft);
 }
 
@@ -229,7 +229,7 @@ fn mainImpl(init: std.process.Init) !void {
                 profile_name = args2[j + 1];
                 j += 1;
             } else {
-                slog.err("--profile requires a profile name", .{});
+                slog.err("Failed to parse arguments: --profile needs a profile name", .{});
                 return error.InvalidArguments;
             }
         } else if (std.mem.eql(u8, args2[j], "--config")) {
@@ -240,7 +240,7 @@ fn mainImpl(init: std.process.Init) !void {
                 j += 1;
             }
         } else {
-            slog.err("Unknown argument '{s}'", .{args2[j]});
+            slog.err("Failed to parse arguments: unknown argument '{s}'", .{args2[j]});
             return error.InvalidArguments;
         }
     }
@@ -453,7 +453,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
                         if (scout_ptr.getHwndByName(char_name)) |target_hwnd| {
                             activation.activate(target_hwnd);
                         } else {
-                            slog.warn("Character '{s}' not found", .{char_name});
+                            slog.warn("Failed to switch to character '{s}': not running", .{char_name});
                         }
                     }
                 },
@@ -476,7 +476,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         },
         win32.WM_PROTOCOL_HOTKEY => {
             const action = std.enums.fromInt(protocol.GlobalAction, wParam) orelse {
-                slog.warn("Unknown protocol hotkey action: {}", .{wParam});
+                slog.warn("Failed to run protocol hotkey: unknown action {}", .{wParam});
                 return 0;
             };
             slog.info("Protocol handler: {s}", .{@tagName(action)});
@@ -585,9 +585,17 @@ fn buildPainter(windows: []const scout.EveWindow, system_names: *const painter.S
 
 /// Publishes the manager through hotkeys.g_hotkey_manager_ptr, which is also how main.zig reaches it, then registers its hotkeys; a registration failure is logged, not fatal.
 fn createHotkeyManager(timer_hwnd: win32.HWND) !void {
+    const scout_ptr = scout.g_scout_ptr orelse {
+        slog.err("Failed to create the hotkey manager: Scout isn't ready", .{});
+        return error.MissingScout;
+    };
+    const painter_ptr = painter.g_painter_ptr orelse {
+        slog.err("Failed to create the hotkey manager: Painter isn't ready", .{});
+        return error.MissingPainter;
+    };
     const manager = try g_allocator.create(hotkeys.HotkeyManager);
     errdefer g_allocator.destroy(manager);
-    manager.* = try hotkeys.HotkeyManager.init(g_allocator, &g_store, &g_global_settings, scout.g_scout_ptr.?, painter.g_painter_ptr.?);
+    manager.* = try hotkeys.HotkeyManager.init(g_allocator, &g_store, &g_global_settings, scout_ptr, painter_ptr);
     hotkeys.g_hotkey_manager_ptr = manager;
 
     manager.registerHotkeys(timer_hwnd) catch |err| {
@@ -642,7 +650,7 @@ fn rescanWindows() []const scout.EveWindow {
 fn reloadWithProfile(new_profile_name: []const u8, global_draft: ?*config.GlobalConfig) !void {
     slog.info("=== Starting profile reload: {s} ===", .{new_profile_name});
 
-    const timer_hwnd = g_timer_hwnd orelse return error.NoTimerWindow;
+    const timer_hwnd = g_timer_hwnd orelse return error.MissingTimerWindow;
 
     const loaded = config.loadProfile(g_allocator, new_profile_name) catch |err| blk: {
         slog.err("Failed to load profile '{s}', reverting to the default: {}", .{ new_profile_name, err });

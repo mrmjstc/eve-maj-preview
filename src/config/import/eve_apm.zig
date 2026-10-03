@@ -1,9 +1,9 @@
 //! EVE-APM Preview's settings, a Qt QSettings INI file.
 const std = @import("std");
+const vk = @import("../../platform/virtual_keys.zig");
 const values = @import("values.zig");
 const draft = @import("draft.zig");
 const eve_x = @import("eve_x.zig");
-const vk = @import("../../platform/virtual_keys.zig");
 const key_list = @import("../key_list.zig");
 
 const Draft = draft.Draft;

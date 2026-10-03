@@ -20,6 +20,7 @@ const WindowSum = struct {
     count_after_first_moment: usize = 0,
     newest_ms: i64 = 0,
 
+    /// With nothing after the first moment, `to_now` rates the window's total as it will read once the streak is that old, and `to_newest` waits.
     const WarmUp = enum { to_now, to_newest };
 
     fn add(self: *WindowSum, amount: f32, timestamp_ms: i64, streak_start_ms: i64) void {
@@ -32,9 +33,8 @@ const WindowSum = struct {
         }
     }
 
-    /// Total over the window once the streak is a window old; before that, what came after its first moment over the time since, to now or to the newest event. Null while that's too short to trust.
-    /// With nothing after the first moment, warming up to now rates the total over the window, as it will read once the streak is that old; to the newest, it waits.
-    /// `ring_full_from_ms` is the oldest event kept when the ring filled up inside the window, so only the time it covers counts.
+    /// Total over the window, or for a younger streak what came after its first moment, rated to now or the newest event; null while too short to trust.
+    /// `ring_full_from_ms`, the oldest event a full ring kept, limits the window to the time it covers.
     fn rate(self: WindowSum, streak_start_ms: i64, now_ms: i64, window_ms: i64, ring_full_from_ms: ?i64, warm_up: WarmUp) ?f32 {
         if (self.count == 0) return 0.0;
         if (ring_full_from_ms) |from_ms| {
