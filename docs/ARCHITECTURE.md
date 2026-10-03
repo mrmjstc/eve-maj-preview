@@ -21,7 +21,7 @@ There is one in-memory model and one writer: `main.zig` owns the running profile
 5. Auto-register the `evemajpreview://` protocol handler if configured (`protocol.ensureRegistered`).
 6. Construct subsystems in dependency order: `Scout` → `Painter` → `ChatlogMonitor` → the activity trackers (`activity/runtime.zig`'s `Trackers.setup`, which wires them into the monitor) → **then** start the chatlog worker thread, only once the trackers exist for it to feed. `reloadWithProfile` follows the same order, so a kept monitor's worker stays paused until the new trackers are wired in.
 7. Register the hidden timer window (`WndProc` = `timerWindowProc`), `TrayIcon`, and a detached background thread for `UpdateChecker`.
-8. Initial window scan and thumbnail creation, `HotkeyManager` setup, `SetTimer` at `config.timer.scanIntervalMs`.
+8. Initial window scan and thumbnail creation, `HotkeyManager` setup, `SetTimer` at `config.timer.scanIntervalMs`, or once a second with no window tracked.
 9. Enter the classic `GetMessageA`/`TranslateMessage`/`DispatchMessageA` loop.
 
 `timerWindowProc` is the app's central message dispatcher: tray clicks, `WM_TIMER` (→ `onTimerTick`, see below), `WM_HOTKEY`, profile switches, incoming `WM_COPYDATA` from a second CLI invocation, and the configuration window's calls (`WM_DIALOG_RPC`) and moves (`WM_DIALOG_MOVED`).
@@ -150,7 +150,7 @@ Inter-module communication is predominantly **direct calls on shared global poin
 
 ## The tick
 
-`main.zig`'s `onTimerTick()`, fired by `WM_TIMER` at `config.timer.scanIntervalMs`, is the one driver every subsystem update cascades from, in fixed order:
+`main.zig`'s `onTimerTick()`, fired by `WM_TIMER` at `config.timer.scanIntervalMs` (once a second while no window is tracked and the configuration window is closed, via `tickIntervalFor`), is the one driver every subsystem update cascades from, in fixed order:
 
 ```
 Scout.update()                    window discovery / lifecycle reconciliation

@@ -33,6 +33,8 @@ const slog = log.scoped("main");
 const TIMER_ID: usize = 1;
 /// Timed rather than counted in ticks, so a slower scan interval doesn't stretch it; each scan is a full EnumWindows.
 const FORCED_SCAN_INTERVAL_MS: u64 = 1000;
+/// With no window tracked and the configuration window closed there's nothing to draw, so the tick only keeps up with the scan.
+const IDLE_TICK_INTERVAL_MS: win32.UINT = FORCED_SCAN_INTERVAL_MS;
 const TRAVEL_CHECK_INTERVAL_MS: u64 = 2000;
 const PROFILE_NAME_BUF = 256;
 
@@ -59,6 +61,7 @@ var g_pending_profile_buf: [PROFILE_NAME_BUF]u8 = undefined;
 var g_pending_profile: ?[]const u8 = null;
 
 var g_last_forced_scan: win32.Ticks = .{};
+var g_tick_interval_ms: win32.UINT = 0;
 var g_last_travel_check_ms: win32.Ticks = .{};
 
 /// Routes panics into eve-maj.log; Zig only looks for `panic` in the root source file.
@@ -349,9 +352,7 @@ fn mainImpl(init: std.process.Init) !void {
         focus_grant.uninstall();
     }
 
-    const TIMER_INTERVAL: win32.UINT = g_store.live.timer.scanIntervalMs;
-    const timer_id = win32.SetTimer(timer_hwnd, TIMER_ID, TIMER_INTERVAL, null);
-    if (timer_id == 0) {
+    if (!setTickInterval(timer_hwnd, tickIntervalFor(eve_windows.len))) {
         slog.err("Failed to create timer", .{});
         return error.SetTimerFailed;
     }
@@ -490,7 +491,8 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
 /// the painter, chatlog monitor, and activity trackers.
 fn onTimerTick() void {
     const tick_start = win32.Ticks.now();
-    const force_scan = tick_start.elapsedSince(g_last_forced_scan) >= FORCED_SCAN_INTERVAL_MS;
+    // At a one-second tick, timer jitter could otherwise land just short and skip a scan.
+    const force_scan = g_tick_interval_ms >= FORCED_SCAN_INTERVAL_MS or tick_start.elapsedSince(g_last_forced_scan) >= FORCED_SCAN_INTERVAL_MS;
     if (force_scan) g_last_forced_scan = tick_start;
 
     const scout_ptr = scout.g_scout_ptr orelse return;
@@ -523,6 +525,26 @@ fn onTimerTick() void {
     }
 
     dialog_host.tick();
+
+    const wanted_interval = tickIntervalFor(scout_result.windows.len);
+    if (wanted_interval != g_tick_interval_ms) {
+        if (g_timer_hwnd) |timer_hwnd| {
+            if (setTickInterval(timer_hwnd, wanted_interval)) slog.debug("Tick interval now {} ms", .{wanted_interval});
+        }
+    }
+}
+
+/// The configured scan interval, or IDLE_TICK_INTERVAL_MS while there's nothing to draw.
+fn tickIntervalFor(window_count: usize) win32.UINT {
+    if (window_count == 0 and !dialog_host.isOpen()) return IDLE_TICK_INTERVAL_MS;
+    return g_store.saved.timer.scanIntervalMs;
+}
+
+/// SetTimer replaces the running tick timer in place; false if it couldn't be set.
+fn setTickInterval(timer_hwnd: win32.HWND, interval_ms: win32.UINT) bool {
+    if (win32.SetTimer(timer_hwnd, TIMER_ID, interval_ms, null) == 0) return false;
+    g_tick_interval_ms = interval_ms;
+    return true;
 }
 
 /// Publishes the painter through painter.g_painter_ptr, which is also how main.zig reaches it.
@@ -733,7 +755,7 @@ fn restartSubsystems(timer_hwnd: win32.HWND, replacement: ?config.ProfileStore, 
     };
     slog.debug("Reinitialized hotkey manager", .{});
 
-    const new_interval = g_store.saved.timer.scanIntervalMs;
-    _ = win32.SetTimer(timer_hwnd, TIMER_ID, new_interval, null);
+    const new_interval = tickIntervalFor(eve_windows.len);
+    _ = setTickInterval(timer_hwnd, new_interval);
     slog.debug("Updated timer interval to {} ms", .{new_interval});
 }

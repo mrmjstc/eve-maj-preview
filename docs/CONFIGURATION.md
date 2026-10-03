@@ -171,7 +171,7 @@ Each thumbnail has one of these states at any time: `active`, `inactive`, `alert
 }
 ```
 
-`scanIntervalMs` defaults to `50` and is clamped between `50` and `1000`.
+`scanIntervalMs` defaults to `50` and is clamped between `50` and `1000`. While no client is open and the configuration window is closed, the app ticks once a second instead, since there is nothing to draw.
 
 ## Window Filters
 
@@ -204,7 +204,7 @@ Configure which applications to create thumbnails for. By default, only EVE Onli
 - **executable_names**: Array of executable names to match (case-insensitive, empty array = match any)
 
 **How It Works:**
-1. The application scans all visible windows every `scanIntervalMs`
+1. The application scans all visible windows once a second
 2. Each window's class name is checked against all enabled filters
 3. If a class name matches, the executable path is verified against the filter's executable names
 4. Both checks must pass for a window to be tracked
