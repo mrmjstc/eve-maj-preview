@@ -30,13 +30,13 @@ const STATIC_FILES = blk: {
 
 /// The app icon inlined as a data URL, encoded at compile time.
 const FAVICON_TAG = blk: {
-    const icon = @embedFile("../assets/icon.ico");
+    const icon = @embedFile("../assets/icon.svg");
     const encoder = std.base64.standard.Encoder;
     @setEvalBranchQuota(1_000_000);
     var encoded: [encoder.calcSize(icon.len)]u8 = undefined;
     _ = encoder.encode(&encoded, icon);
     const final = encoded;
-    break :blk "<link rel=\"icon\" type=\"image/x-icon\" href=\"data:image/x-icon;base64," ++ final ++ "\">";
+    break :blk "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml;base64," ++ final ++ "\">";
 };
 
 /// Add a language by dropping src/lang/xx.json in and adding one variant here plus one arm each in `catalog()` and `displayName()`.

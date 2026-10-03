@@ -8,7 +8,7 @@ Requires [Zig 0.16.0](https://ziglang.org/download/). The project targets `x86_6
 zig build
 ```
 
-This produces `eve-maj-preview.exe` in `zig-out\bin\`, which also hosts the configuration window. `WebView2Loader.dll` is copied in alongside it, and the exe embeds its icon (`src/assets/icon.ico`, via `app.rc`), which the tray and the configuration window's favicon use too.
+This produces `eve-maj-preview.exe` in `zig-out\bin\`, which also hosts the configuration window. `WebView2Loader.dll` is copied in alongside it, and the exe embeds its icon (`src/assets/icon.ico`, via `app.rc`), which the tray uses too. The configuration window's favicon is `src/assets/icon.svg`.
 
 ## Run
 
