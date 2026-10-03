@@ -73,7 +73,8 @@ pub const Scout = struct {
     }
 
     fn installHook(event: win32.DWORD, proc: win32.WINEVENTPROC, name: []const u8, fallback: []const u8) ?win32.HANDLE {
-        const hook = win32.setWinEventHook(event, proc) orelse {
+        // Our own windows are never tracked, so their events needn't wake us.
+        const hook = win32.setWinEventHookSkipOwnProcess(event, proc) orelse {
             slog.warn("Failed to set up {s} event hook - {s}", .{ name, fallback });
             return null;
         };
@@ -411,12 +412,15 @@ fn windowDestroyCallback(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, id_o
     scout_ptr.removeWindowAt(index);
 }
 
-fn windowCreateCallback(_: win32.HANDLE, _: win32.DWORD, _: win32.HWND, id_object: win32.LONG, _: win32.LONG, _: win32.DWORD, _: win32.DWORD) callconv(.c) void {
+fn windowCreateCallback(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, id_object: win32.LONG, _: win32.LONG, _: win32.DWORD, _: win32.DWORD) callconv(.c) void {
     // The main window only, not child controls.
     if (id_object != 0) return;
 
     const scout_ptr = g_scout_ptr orelse return;
 
-    // EVENT_OBJECT_CREATE fires for ALL windows, so this just flags a scan rather than validating expensively here.
+    // Only a window some filter's class could match is worth a full rescan; the forced scan catches anything else.
+    var class_name: [64:0]u8 = undefined;
+    const class_slice = win32.getClassNameBuf(hwnd, &class_name) orelse return;
+    if (scout_ptr.findMatchingFilter(class_slice, null) == null) return;
     scout_ptr.pending_scan = true;
 }
