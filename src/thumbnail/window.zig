@@ -121,7 +121,7 @@ pub const ThumbnailWindow = struct {
     /// Set while a Test Notification has force-shown a hidden thumbnail; restored once its notifications clear.
     test_restore_visibility: ?state.VisibilityState = null,
     auto_minimize: auto_minimize_mod.AutoMinimizeState,
-    /// Edge-detector so a minimize/restore with no accompanying focus change still marks this dirty for repaint.
+    /// Edge-detector so a minimize/restore with no accompanying focus change still marks this dirty for repaint; refreshed each tick by Painter.updateThumbnailStates, except while dragged.
     was_minimized: bool = false,
 
     // Config-derived per-character values, set only by refreshConfigCache: resolved on character_name change or (re)creation rather than every tick (list_view.zig hashes these every ~50ms per thumbnail, createRenderSettings reads them per dirty thumbnail).

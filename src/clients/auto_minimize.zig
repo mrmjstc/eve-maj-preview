@@ -73,13 +73,13 @@ pub const AutoMinimizer = struct {
         };
     }
 
-    /// Call once per tick, right after focus is reconciled.
+    /// Call once per tick, right after Painter.updateThumbnailStates, whose was_minimized it reads.
     pub fn check(self: *AutoMinimizer, painter: *Painter) void {
         const now = win32.Ticks.now();
         // Refreshed even while disabled, so re-enabling doesn't count the disabled stretch as inactivity.
         for (painter.thumbnails.items) |*thumbnail| {
             if (thumbnail_drag.isDragging(thumbnail)) continue;
-            if (thumbnail.isFocused(painter.active_source_hwnd) or win32.isWindowIconic(thumbnail.source_hwnd)) {
+            if (thumbnail.isFocused(painter.active_source_hwnd) or thumbnail.was_minimized) {
                 thumbnail.auto_minimize.inactive_since = now;
             }
         }
@@ -99,7 +99,7 @@ pub const AutoMinimizer = struct {
             if (!thumbnail.is_eve_client) continue;
             if (thumbnail_drag.isDragging(thumbnail)) continue;
             if (thumbnail.isFocused(painter.active_source_hwnd)) continue;
-            if (win32.isWindowIconic(thumbnail.source_hwnd)) continue;
+            if (thumbnail.was_minimized) continue;
             // Checked after the iconic skip: a minimized window is parked off-screen and reports the wrong monitor.
             const on_other_monitor = if (focused_monitor) |monitor|
                 win32.MonitorFromWindow(thumbnail.source_hwnd, win32.MONITOR_DEFAULTTONEAREST) != monitor
