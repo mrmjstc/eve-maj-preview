@@ -30,23 +30,18 @@ pub fn minimizeAllClients(eve_windows: []const scout.EveWindow, config: *const c
     }
 }
 
-/// Clamps `pos` onto a current monitor, in case the screen configuration changed since save; a point in a gap between monitors goes to the nearest one.
+/// Clamps `pos` onto its title bar's monitor when that title bar would be off every screen (e.g. the screen configuration changed since save), or when the corner sits on a monitor of another scale.
 pub fn clampOntoScreen(pos: config_mod.Position) config_mod.Position {
-    const left = win32.GetSystemMetrics(win32.SM_XVIRTUALSCREEN);
-    const top = win32.GetSystemMetrics(win32.SM_YVIRTUALSCREEN);
-    const virtual_screen: win32.RECT = .{
-        .left = left,
-        .top = top,
-        .right = left + win32.GetSystemMetrics(win32.SM_CXVIRTUALSCREEN),
-        .bottom = top + win32.GetSystemMetrics(win32.SM_CYVIRTUALSCREEN),
-    };
-    const clamped = clampToRect(pos, virtual_screen);
+    // Probe inside the title bar: saved corners include the invisible resize border, so a client snapped to a screen edge sits a few pixels off it.
+    const probe: win32.POINT = .{ .x = pos.x +| SCREEN_EDGE_MARGIN, .y = pos.y +| SCREEN_EDGE_MARGIN };
+    const monitor = win32.nearestMonitor(probe) orelse return pos;
+    const monitor_rect = win32.monitorRect(monitor) orelse return pos;
+    if (!win32.isOnMonitor(probe)) return clampToRect(pos, monitor_rect);
 
-    const pt: win32.POINT = .{ .x = clamped.x, .y = clamped.y };
-    if (win32.isOnMonitor(pt)) return clamped;
-    const monitor = win32.nearestMonitor(pt) orelse return clamped;
-    const monitor_rect = win32.monitorRect(monitor) orelse return clamped;
-    return clampToRect(clamped, monitor_rect);
+    // Windows rescales a DPI-unaware window's position when its corner lands on a monitor of another scale.
+    const corner_monitor = win32.nearestMonitor(.{ .x = pos.x, .y = pos.y }) orelse return pos;
+    if (corner_monitor == monitor or win32.monitorDpi(corner_monitor) == win32.monitorDpi(monitor)) return pos;
+    return clampToRect(pos, monitor_rect);
 }
 
 fn clampToRect(pos: config_mod.Position, rect: win32.RECT) config_mod.Position {
