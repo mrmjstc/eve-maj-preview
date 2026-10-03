@@ -351,23 +351,13 @@ h4.modal-subheading {
 
 #about-brand {
     display: flex;
-    align-items: center;
     justify-content: center;
-    gap: 1rem;
-    margin-bottom: 0.75rem;
+    margin: 0 0 0.75rem;
 }
 
-#about-brand h2 {
-    margin: 0;
-    color: var(--color-text);
-    font-size: 1.5rem;
-    font-weight: var(--fw-semibold);
-    letter-spacing: 0.0125rem;
-}
-
-#about-logo {
-    width: 4rem;
-    height: 4rem;
+#about-wordmark {
+    height: 6rem;
+    max-width: 100%;
     cursor: pointer;
     user-select: none;
     -webkit-user-drag: none;

@@ -22,6 +22,7 @@ const STATIC_FILES = blk: {
         staticFile("CascadiaCode.woff2", "font/woff2", @embedFile("../assets/fonts/CascadiaCode.woff2")),
         staticFile("layout_preview.jpg", "image/jpeg", @embedFile("../assets/layout_preview.jpg")),
         staticFile("icon.svg", "image/svg+xml", @embedFile("../assets/icon.svg")),
+        staticFile("wordmark.svg", "image/svg+xml", @embedFile("../assets/wordmark.svg")),
     };
     for (MODULES) |module| {
         list = list ++ &[_]StaticFile{staticFile(module ++ ".js", "text/javascript; charset=utf-8", @embedFile("ui/" ++ module ++ ".js"))};

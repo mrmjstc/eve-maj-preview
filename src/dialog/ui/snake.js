@@ -1,23 +1,23 @@
-// The About logo's hidden snake game.
+// The About wordmark's hidden snake game.
 import { scrollBehavior } from './layout.js';
 
-let logoClickCount = 0;
+let wordmarkClickCount = 0;
 let snakeGameActive = false;
 let snakeGameLoop = null;
 
 document.addEventListener('DOMContentLoaded', function() {
-    const logo = document.getElementById('about-logo');
-    if (logo) {
-        logo.addEventListener('click', handleLogoClick);
+    const wordmark = document.getElementById('about-wordmark');
+    if (wordmark) {
+        wordmark.addEventListener('click', handleWordmarkClick);
     }
 });
 
-function handleLogoClick() {
-    logoClickCount++;
+function handleWordmarkClick() {
+    wordmarkClickCount++;
 
-    if (logoClickCount === 5) {
+    if (wordmarkClickCount === 5) {
         showSnakeGame();
-        logoClickCount = 0;
+        wordmarkClickCount = 0;
     }
 }
 
