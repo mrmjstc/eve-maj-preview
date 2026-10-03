@@ -61,43 +61,106 @@ const WindowSum = struct {
     }
 };
 
+/// A fixed ring of recent events, so recording one never allocates, with the streak and recency every rate is measured from.
+/// `Event` needs a `timestamp_ms: i64` field.
+fn Ring(comptime Event: type) type {
+    return struct {
+        entries: [RING_CAPACITY]Event = undefined,
+        /// Next write slot, wraps mod RING_CAPACITY.
+        head: usize = 0,
+        /// Valid entry count, saturates at RING_CAPACITY.
+        count: usize = 0,
+        window_ms: i64,
+        last_hit_ms: i64 = 0,
+        streak_start_ms: i64 = 0,
+
+        const Self = @This();
+
+        fn init(window_seconds: u32) Self {
+            return .{ .window_ms = @as(i64, window_seconds) * std.time.ms_per_s };
+        }
+
+        /// Overwrites the oldest event once full; a whole window of quiet before it starts a new streak.
+        fn push(self: *Self, event: Event) void {
+            self.entries[self.head] = event;
+            self.head = (self.head + 1) % RING_CAPACITY;
+            if (self.count < RING_CAPACITY) self.count += 1;
+            if (self.isQuiet(self.window_ms, event.timestamp_ms)) self.streak_start_ms = event.timestamp_ms;
+            if (event.timestamp_ms > self.last_hit_ms) self.last_hit_ms = event.timestamp_ms;
+        }
+
+        /// Nothing has landed in the `window_ms` before now_ms.
+        fn isQuiet(self: *const Self, window_ms: i64, now_ms: i64) bool {
+            return self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= window_ms;
+        }
+
+        /// The events in the `window_ms` before now_ms, newest first.
+        fn recent(self: *const Self, window_ms: i64, now_ms: i64) Recent {
+            return .{ .ring = self, .cutoff_ms = now_ms - window_ms, .oldest_ms = now_ms };
+        }
+
+        const Recent = struct {
+            ring: *const Self,
+            cutoff_ms: i64,
+            index: usize = 0,
+            oldest_ms: i64,
+
+            fn next(it: *Recent) ?*const Event {
+                if (it.index == it.ring.count) return null;
+                const entry = &it.ring.entries[(it.ring.head + RING_CAPACITY - 1 - it.index) % RING_CAPACITY];
+                // The ring is in time order, so every older entry has expired too.
+                if (entry.timestamp_ms < it.cutoff_ms) return null;
+                it.index += 1;
+                it.oldest_ms = entry.timestamp_ms;
+                return entry;
+            }
+
+            /// Once iterated: the oldest event kept, if the ring filled up inside the window; see WindowSum.rate.
+            fn ringFullFrom(it: *const Recent) ?i64 {
+                return if (it.index == RING_CAPACITY) it.oldest_ms else null;
+            }
+        };
+
+        /// `field` per second over the window ending at now_ms; see WindowSum.rate.
+        fn rate(self: *const Self, comptime field: []const u8, now_ms: i64, warm_up: WindowSum.WarmUp) ?f32 {
+            if (self.isQuiet(self.window_ms, now_ms)) return 0.0;
+            var sum: WindowSum = .{};
+            var it = self.recent(self.window_ms, now_ms);
+            while (it.next()) |entry| sum.add(@field(entry, field), entry.timestamp_ms, self.streak_start_ms);
+            return sum.rate(self.streak_start_ms, now_ms, self.window_ms, it.ringFullFrom(), warm_up);
+        }
+
+        fn countRecent(self: *const Self, window_ms: i64, now_ms: i64) usize {
+            if (self.isQuiet(window_ms, now_ms)) return 0;
+            var it = self.recent(window_ms, now_ms);
+            var n: usize = 0;
+            while (it.next()) |_| n += 1;
+            return n;
+        }
+    };
+}
+
 pub const CombatEvent = struct {
     timestamp_ms: i64,
     amount: u32,
     is_incoming: bool,
 };
 
-/// A fixed ring of recent hits, so recording one never allocates.
+pub const Dps = struct { incoming: ?f32, outgoing: ?f32 };
+
 pub const CombatWindow = struct {
-    entries: [RING_CAPACITY]CombatEvent = undefined,
-    /// Next write slot, wraps mod RING_CAPACITY.
-    head: usize = 0,
-    /// Valid entry count, saturates at RING_CAPACITY.
-    count: usize = 0,
-    window_ms: i64,
-    last_hit_ms: i64 = 0,
-    streak_start_ms: i64 = 0,
+    ring: Ring(CombatEvent),
     last_incoming_hit_ms: i64 = 0,
     /// 0 = never fired.
     last_damage_alert_ms: i64 = 0,
 
     pub fn init(window_seconds: u32) CombatWindow {
-        return .{
-            .window_ms = @as(i64, window_seconds) * std.time.ms_per_s,
-        };
+        return .{ .ring = .init(window_seconds) };
     }
 
-    /// Overwrites the oldest hit once full. `counts_for_alert` only gates `last_incoming_hit_ms` (checkDamageAlert's trigger) — the hit is always ring-buffered so DPS stays accurate for filtered hits.
+    /// `counts_for_alert` only gates `last_incoming_hit_ms` (checkDamageAlert's trigger) — the hit is always kept so DPS stays accurate for filtered hits.
     pub fn addEntry(self: *CombatWindow, amount: u32, is_incoming: bool, timestamp_ms: i64, counts_for_alert: bool) void {
-        self.entries[self.head] = .{
-            .timestamp_ms = timestamp_ms,
-            .amount = amount,
-            .is_incoming = is_incoming,
-        };
-        self.head = (self.head + 1) % RING_CAPACITY;
-        if (self.count < RING_CAPACITY) self.count += 1;
-        self.streak_start_ms = streakStart(self.streak_start_ms, self.last_hit_ms, timestamp_ms, self.window_ms);
-        if (timestamp_ms > self.last_hit_ms) self.last_hit_ms = timestamp_ms;
+        self.ring.push(.{ .timestamp_ms = timestamp_ms, .amount = amount, .is_incoming = is_incoming });
         if (is_incoming and counts_for_alert and timestamp_ms > self.last_incoming_hit_ms) self.last_incoming_hit_ms = timestamp_ms;
     }
 
@@ -109,92 +172,21 @@ pub const CombatWindow = struct {
         return true;
     }
 
-    /// Per second; see WindowSum.rate. Hits arrive irregularly, so warm-up runs to now.
-    pub fn computeDps(self: *const CombatWindow, now_ms: i64) struct { incoming: ?f32, outgoing: ?f32 } {
-        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= self.window_ms) {
-            return .{ .incoming = 0.0, .outgoing = 0.0 };
-        }
-        const cutoff = now_ms - self.window_ms;
+    /// Per second; null when the span is too short to trust a rate; see WindowSum.rate. Hits arrive irregularly, so warm-up runs to now.
+    pub fn computeDps(self: *const CombatWindow, now_ms: i64) Dps {
+        const ring = &self.ring;
+        if (ring.isQuiet(ring.window_ms, now_ms)) return .{ .incoming = 0.0, .outgoing = 0.0 };
         var incoming: WindowSum = .{};
         var outgoing: WindowSum = .{};
-        var oldest_ms: i64 = now_ms;
-
-        var i: usize = 0;
-        while (i < self.count) : (i += 1) {
-            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
-            const entry = &self.entries[idx];
-            // The ring is in time order, so every older entry has expired too.
-            if (entry.timestamp_ms < cutoff) break;
-            oldest_ms = entry.timestamp_ms;
+        var it = ring.recent(ring.window_ms, now_ms);
+        while (it.next()) |entry| {
             const sum = if (entry.is_incoming) &incoming else &outgoing;
-            sum.add(@floatFromInt(entry.amount), entry.timestamp_ms, self.streak_start_ms);
+            sum.add(@floatFromInt(entry.amount), entry.timestamp_ms, ring.streak_start_ms);
         }
-        const ring_full_from_ms: ?i64 = if (i == RING_CAPACITY) oldest_ms else null;
         return .{
-            .incoming = incoming.rate(self.streak_start_ms, now_ms, self.window_ms, ring_full_from_ms, .to_now),
-            .outgoing = outgoing.rate(self.streak_start_ms, now_ms, self.window_ms, ring_full_from_ms, .to_now),
+            .incoming = incoming.rate(ring.streak_start_ms, now_ms, ring.window_ms, it.ringFullFrom(), .to_now),
+            .outgoing = outgoing.rate(ring.streak_start_ms, now_ms, ring.window_ms, it.ringFullFrom(), .to_now),
         };
-    }
-};
-
-/// Locked: the main thread reads it while the chatlog worker adds hits and removes characters.
-pub const CombatTracker = struct {
-    base: TrackerBase(CombatWindow),
-
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, window_seconds: u32) CombatTracker {
-        return .{ .base = TrackerBase(CombatWindow).init(allocator, io, window_seconds) };
-    }
-
-    pub fn deinit(self: *CombatTracker) void {
-        self.base.deinit();
-    }
-
-    pub fn addEntry(
-        self: *CombatTracker,
-        character_name: []const u8,
-        amount: u32,
-        is_incoming: bool,
-        timestamp_ms: i64,
-        counts_for_alert: bool,
-    ) !void {
-        try self.base.mutex.lock(self.base.io);
-        defer self.base.mutex.unlock(self.base.io);
-        const window = try self.base.getOrCreate(character_name);
-        window.addEntry(amount, is_incoming, timestamp_ms, counts_for_alert);
-    }
-
-    pub fn removeCharacter(self: *CombatTracker, character_name: []const u8) void {
-        self.base.removeCharacter(character_name);
-    }
-
-    /// Worker thread stopped only; existing history is kept and rated over the new length.
-    pub fn setWindowSeconds(self: *CombatTracker, window_seconds: u32) void {
-        self.base.setWindowSeconds(window_seconds);
-    }
-
-    /// Null when the span is too short to trust a rate.
-    pub fn getDps(self: *CombatTracker, character_name: []const u8, now_ms: i64) struct { incoming: ?f32, outgoing: ?f32 } {
-        self.base.mutex.lock(self.base.io) catch |err| {
-            slog.warn("Failed to lock combat tracker mutex for '{s}': {}", .{ character_name, err });
-            return .{ .incoming = 0.0, .outgoing = 0.0 };
-        };
-        defer self.base.mutex.unlock(self.base.io);
-        if (self.base.windows.getPtr(character_name)) |window| {
-            const dps = window.computeDps(now_ms);
-            return .{ .incoming = dps.incoming, .outgoing = dps.outgoing };
-        }
-        return .{ .incoming = 0.0, .outgoing = 0.0 };
-    }
-
-    /// See CombatWindow.checkDamageAlert. Returns false if character_name has no window yet.
-    pub fn checkDamageAlert(self: *CombatTracker, character_name: []const u8) bool {
-        self.base.mutex.lock(self.base.io) catch |err| {
-            slog.warn("Failed to lock combat tracker mutex for '{s}': {}", .{ character_name, err });
-            return false;
-        };
-        defer self.base.mutex.unlock(self.base.io);
-        const window = self.base.windows.getPtr(character_name) orelse return false;
-        return window.checkDamageAlert();
     }
 };
 
@@ -204,156 +196,63 @@ pub const MiningEvent = struct {
     isk: f32,
 };
 
-/// A fixed ring of recent yields, so recording one never allocates.
+pub const MiningRates = struct { m3: ?f32, isk: ?f32 };
+
 pub const MiningWindow = struct {
-    entries: [RING_CAPACITY]MiningEvent = undefined,
-    head: usize = 0,
-    count: usize = 0,
-    window_ms: i64,
-    last_hit_ms: i64 = 0,
-    streak_start_ms: i64 = 0,
+    ring: Ring(MiningEvent),
     /// When the idle alert fired, or 0; cleared once mining picks up again.
     last_alert_ms: i64 = 0,
     /// When the stopped alert fired, or 0; cleared by the next yield.
     last_stopped_alert_ms: i64 = 0,
 
     pub fn init(window_seconds: u32) MiningWindow {
-        return .{
-            .window_ms = @as(i64, window_seconds) * std.time.ms_per_s,
-        };
+        return .{ .ring = .init(window_seconds) };
     }
 
     pub fn addEntry(self: *MiningWindow, m3: f32, isk: f32, timestamp_ms: i64) void {
-        self.entries[self.head] = .{
-            .timestamp_ms = timestamp_ms,
-            .m3 = m3,
-            .isk = isk,
-        };
-        self.head = (self.head + 1) % RING_CAPACITY;
-        if (self.count < RING_CAPACITY) self.count += 1;
-        self.streak_start_ms = streakStart(self.streak_start_ms, self.last_hit_ms, timestamp_ms, self.window_ms);
-        if (timestamp_ms > self.last_hit_ms) self.last_hit_ms = timestamp_ms;
+        self.ring.push(.{ .timestamp_ms = timestamp_ms, .m3 = m3, .isk = isk });
         // Mining resumed, so the stopped alert can fire again.
         self.last_stopped_alert_ms = 0;
     }
 
     pub fn countEvents(self: *const MiningWindow, window_ms: i64, now_ms: i64) usize {
-        if (self.last_hit_ms == 0 or now_ms - self.last_hit_ms >= window_ms) return 0;
-        const cutoff = now_ms - window_ms;
-        var n: usize = 0;
-        var i: usize = 0;
-        while (i < self.count) : (i += 1) {
-            const idx = (self.head + RING_CAPACITY - 1 - i) % RING_CAPACITY;
-            if (self.entries[idx].timestamp_ms < cutoff) break;
-            n += 1;
-        }
-        return n;
+        return self.ring.countRecent(window_ms, now_ms);
     }
 
-    /// m3 per second; see WindowSum.rate.
+    /// m3 per second; see WindowSum.rate. Yields come in cycles, so warm-up runs to the newest.
     pub fn computeRate(self: *const MiningWindow, now_ms: i64) ?f32 {
-        return computeWindowRate(MiningEvent, "m3", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, self.streak_start_ms, now_ms);
+        return self.ring.rate("m3", now_ms, .to_newest);
     }
 
-    /// ISK per second; see WindowSum.rate.
+    /// ISK per second; see computeRate.
     pub fn computeIskRate(self: *const MiningWindow, now_ms: i64) ?f32 {
-        return computeWindowRate(MiningEvent, "isk", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, self.streak_start_ms, now_ms);
-    }
-};
-
-/// Locked: the main thread reads it and checks alerts while the chatlog worker adds yields and removes characters.
-pub const MiningTracker = struct {
-    base: TrackerBase(MiningWindow),
-
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, window_seconds: u32) MiningTracker {
-        return .{ .base = TrackerBase(MiningWindow).init(allocator, io, window_seconds) };
+        return self.ring.rate("isk", now_ms, .to_newest);
     }
 
-    pub fn deinit(self: *MiningTracker) void {
-        self.base.deinit();
-    }
-
-    pub fn addEntry(
-        self: *MiningTracker,
-        character_name: []const u8,
-        m3: f32,
-        isk: f32,
-        timestamp_ms: i64,
-    ) !void {
-        try self.base.mutex.lock(self.base.io);
-        defer self.base.mutex.unlock(self.base.io);
-        const window = try self.base.getOrCreate(character_name);
-        window.addEntry(m3, isk, timestamp_ms);
-    }
-
-    pub fn removeCharacter(self: *MiningTracker, character_name: []const u8) void {
-        self.base.removeCharacter(character_name);
-    }
-
-    /// Worker thread stopped only; existing history is kept and rated over the new length.
-    pub fn setWindowSeconds(self: *MiningTracker, window_seconds: u32) void {
-        self.base.setWindowSeconds(window_seconds);
-    }
-
-    /// m3 and ISK per second; null when the span is too short to trust a rate.
-    pub fn getRates(self: *MiningTracker, character_name: []const u8, now_ms: i64) struct { m3: ?f32, isk: ?f32 } {
-        self.base.mutex.lock(self.base.io) catch |err| {
-            slog.warn("Failed to lock mining tracker mutex for '{s}': {}", .{ character_name, err });
-            return .{ .m3 = 0.0, .isk = 0.0 };
-        };
-        defer self.base.mutex.unlock(self.base.io);
-        if (self.base.windows.getPtr(character_name)) |window| {
-            return .{ .m3 = window.computeRate(now_ms), .isk = window.computeIskRate(now_ms) };
-        }
-        return .{ .m3 = 0.0, .isk = 0.0 };
+    pub fn computeRates(self: *const MiningWindow, now_ms: i64) MiningRates {
+        return .{ .m3 = self.computeRate(now_ms), .isk = self.computeIskRate(now_ms) };
     }
 
     /// True once per idle stretch: at most `threshold` yields within `alert_window_ms`.
-    pub fn checkIdleAlert(
-        self: *MiningTracker,
-        character_name: []const u8,
-        now_ms: i64,
-        alert_window_ms: i64,
-        threshold: u32,
-    ) bool {
-        self.base.mutex.lock(self.base.io) catch |err| {
-            slog.warn("Failed to lock mining tracker mutex for '{s}': {}", .{ character_name, err });
-            return false;
-        };
-        defer self.base.mutex.unlock(self.base.io);
-        const window = self.base.windows.getPtr(character_name) orelse return false;
+    pub fn checkIdleAlert(self: *MiningWindow, now_ms: i64, alert_window_ms: i64, threshold: u32) bool {
         // Never mined yet, so not idle: avoids alerting at startup.
-        if (window.last_hit_ms == 0) return false;
-        const count = window.countEvents(alert_window_ms, now_ms);
-        if (count > threshold) {
-            window.last_alert_ms = 0;
+        if (self.ring.last_hit_ms == 0) return false;
+        if (self.countEvents(alert_window_ms, now_ms) > threshold) {
+            self.last_alert_ms = 0;
             return false;
         }
-        if (now_ms - window.streak_start_ms < alert_window_ms) return false;
-        if (window.last_alert_ms != 0) {
-            return false;
-        }
-        window.last_alert_ms = now_ms;
+        if (now_ms - self.ring.streak_start_ms < alert_window_ms) return false;
+        if (self.last_alert_ms != 0) return false;
+        self.last_alert_ms = now_ms;
         return true;
     }
 
     /// True once when nothing has been mined for `stopped_window_ms`; the next yield re-arms it.
-    pub fn checkStoppedAlert(
-        self: *MiningTracker,
-        character_name: []const u8,
-        now_ms: i64,
-        stopped_window_ms: i64,
-    ) bool {
-        self.base.mutex.lock(self.base.io) catch |err| {
-            slog.warn("Failed to lock mining tracker mutex for '{s}': {}", .{ character_name, err });
-            return false;
-        };
-        defer self.base.mutex.unlock(self.base.io);
-        const window = self.base.windows.getPtr(character_name) orelse return false;
-        if (window.last_hit_ms == 0) return false;
-        if (now_ms - window.last_hit_ms < stopped_window_ms) return false;
-        if (window.last_stopped_alert_ms != 0) return false;
-        window.last_stopped_alert_ms = now_ms;
+    pub fn checkStoppedAlert(self: *MiningWindow, now_ms: i64, stopped_window_ms: i64) bool {
+        if (self.ring.last_hit_ms == 0) return false;
+        if (now_ms - self.ring.last_hit_ms < stopped_window_ms) return false;
+        if (self.last_stopped_alert_ms != 0) return false;
+        self.last_stopped_alert_ms = now_ms;
         return true;
     }
 };
@@ -363,82 +262,27 @@ pub const BountyEvent = struct {
     isk: f32,
 };
 
-/// A fixed ring of recent payouts, so recording one never allocates; MiningWindow's ISK half, as payouts already arrive in ISK.
+/// MiningWindow's ISK half, as payouts already arrive in ISK.
 pub const BountyWindow = struct {
-    entries: [RING_CAPACITY]BountyEvent = undefined,
-    head: usize = 0,
-    count: usize = 0,
-    window_ms: i64,
-    last_hit_ms: i64 = 0,
-    streak_start_ms: i64 = 0,
+    ring: Ring(BountyEvent),
 
     pub fn init(window_seconds: u32) BountyWindow {
-        return .{
-            .window_ms = @as(i64, window_seconds) * std.time.ms_per_s,
-        };
+        return .{ .ring = .init(window_seconds) };
     }
 
     pub fn addEntry(self: *BountyWindow, isk: f32, timestamp_ms: i64) void {
-        self.entries[self.head] = .{
-            .timestamp_ms = timestamp_ms,
-            .isk = isk,
-        };
-        self.head = (self.head + 1) % RING_CAPACITY;
-        if (self.count < RING_CAPACITY) self.count += 1;
-        self.streak_start_ms = streakStart(self.streak_start_ms, self.last_hit_ms, timestamp_ms, self.window_ms);
-        if (timestamp_ms > self.last_hit_ms) self.last_hit_ms = timestamp_ms;
+        self.ring.push(.{ .timestamp_ms = timestamp_ms, .isk = isk });
     }
 
-    /// ISK per second; see WindowSum.rate.
+    /// ISK per second; see MiningWindow.computeRate.
     pub fn computeIskRate(self: *const BountyWindow, now_ms: i64) ?f32 {
-        return computeWindowRate(BountyEvent, "isk", &self.entries, self.head, self.count, self.window_ms, self.last_hit_ms, self.streak_start_ms, now_ms);
+        return self.ring.rate("isk", now_ms, .to_newest);
     }
 };
 
-/// Locked: the main thread reads it while the chatlog worker adds payouts and removes characters.
-pub const BountyTracker = struct {
-    base: TrackerBase(BountyWindow),
-
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, window_seconds: u32) BountyTracker {
-        return .{ .base = TrackerBase(BountyWindow).init(allocator, io, window_seconds) };
-    }
-
-    pub fn deinit(self: *BountyTracker) void {
-        self.base.deinit();
-    }
-
-    pub fn addEntry(
-        self: *BountyTracker,
-        character_name: []const u8,
-        isk: f32,
-        timestamp_ms: i64,
-    ) !void {
-        try self.base.mutex.lock(self.base.io);
-        defer self.base.mutex.unlock(self.base.io);
-        const window = try self.base.getOrCreate(character_name);
-        window.addEntry(isk, timestamp_ms);
-    }
-
-    pub fn removeCharacter(self: *BountyTracker, character_name: []const u8) void {
-        self.base.removeCharacter(character_name);
-    }
-
-    /// Worker thread stopped only; existing history is kept and rated over the new length.
-    pub fn setWindowSeconds(self: *BountyTracker, window_seconds: u32) void {
-        self.base.setWindowSeconds(window_seconds);
-    }
-
-    /// Null when the span is too short to trust a rate.
-    pub fn getIskRate(self: *BountyTracker, character_name: []const u8, now_ms: i64) ?f32 {
-        self.base.mutex.lock(self.base.io) catch |err| {
-            slog.warn("Failed to lock bounty tracker mutex for '{s}': {}", .{ character_name, err });
-            return 0.0;
-        };
-        defer self.base.mutex.unlock(self.base.io);
-        if (self.base.windows.getPtr(character_name)) |window| return window.computeIskRate(now_ms);
-        return 0.0;
-    }
-};
+pub const CombatTracker = Tracker(CombatWindow);
+pub const MiningTracker = Tracker(MiningWindow);
+pub const BountyTracker = Tracker(BountyWindow);
 
 /// Raw unit count plus the mined ore/ice/gas name, copied by value since parseMiningLine's buffer is stack-local.
 pub const ParsedMiningEvent = struct {
@@ -451,59 +295,81 @@ pub const ParsedMiningEvent = struct {
     }
 };
 
-/// Shared allocator/mutex/hashmap plumbing for a per-character sliding-window tracker.
-/// WindowT must expose `fn init(window_seconds: u32) WindowT` and a `window_ms` field.
-fn TrackerBase(comptime WindowT: type) type {
+/// One Window per character, locked: the main thread reads it and checks alerts while the chatlog worker adds events and removes characters.
+/// `Window` needs `fn init(window_seconds: u32) Window`, an `addEntry` method and a `ring` field.
+pub fn Tracker(comptime Window: type) type {
     return struct {
         allocator: std.mem.Allocator,
         io: std.Io,
         mutex: std.Io.Mutex = .init,
-        windows: std.StringHashMap(WindowT),
+        windows: std.StringHashMap(Window),
         window_seconds: u32,
 
         const Self = @This();
 
-        fn init(allocator: std.mem.Allocator, io: std.Io, window_seconds: u32) Self {
+        pub fn init(allocator: std.mem.Allocator, io: std.Io, window_seconds: u32) Self {
             return .{
                 .allocator = allocator,
                 .io = io,
-                .windows = std.StringHashMap(WindowT).init(allocator),
+                .windows = std.StringHashMap(Window).init(allocator),
                 .window_seconds = window_seconds,
             };
         }
 
         /// Must only be called after the worker thread has stopped (no lock needed).
-        fn deinit(self: *Self) void {
+        pub fn deinit(self: *Self) void {
             var iter = self.windows.keyIterator();
-            while (iter.next()) |key| {
-                self.allocator.free(key.*);
-            }
+            while (iter.next()) |key| self.allocator.free(key.*);
             self.windows.deinit();
         }
 
-        fn setWindowSeconds(self: *Self, window_seconds: u32) void {
+        /// Worker thread stopped only; existing history is kept and rated over the new length.
+        pub fn setWindowSeconds(self: *Self, window_seconds: u32) void {
             self.window_seconds = window_seconds;
             var iter = self.windows.valueIterator();
-            while (iter.next()) |window| window.window_ms = @as(i64, window_seconds) * std.time.ms_per_s;
+            while (iter.next()) |window| window.ring.window_ms = @as(i64, window_seconds) * std.time.ms_per_s;
         }
 
-        fn removeCharacter(self: *Self, character_name: []const u8) void {
+        pub fn removeCharacter(self: *Self, character_name: []const u8) void {
             self.mutex.lock(self.io) catch |err| {
                 slog.warn("Failed to lock tracker mutex removing '{s}': {}", .{ character_name, err });
                 return;
             };
             defer self.mutex.unlock(self.io);
-            if (self.windows.fetchRemove(character_name)) |entry| {
-                self.allocator.free(entry.key);
-            }
+            if (self.windows.fetchRemove(character_name)) |entry| self.allocator.free(entry.key);
+        }
+
+        /// `args` are Window.addEntry's, after the window itself; the character's window is created on its first event.
+        pub fn addEntry(self: *Self, character_name: []const u8, args: anytype) !void {
+            try self.mutex.lock(self.io);
+            defer self.mutex.unlock(self.io);
+            const window = try self.getOrCreate(character_name);
+            @call(.auto, Window.addEntry, .{window} ++ args);
+        }
+
+        /// Runs `method` (a Window method) with `args` on the character's window under the lock; `fallback` when it has no window yet or the lock fails.
+        pub fn query(
+            self: *Self,
+            character_name: []const u8,
+            comptime method: anytype,
+            args: anytype,
+            fallback: @typeInfo(@TypeOf(method)).@"fn".return_type.?,
+        ) @typeInfo(@TypeOf(method)).@"fn".return_type.? {
+            self.mutex.lock(self.io) catch |err| {
+                slog.warn("Failed to lock tracker mutex for '{s}': {}", .{ character_name, err });
+                return fallback;
+            };
+            defer self.mutex.unlock(self.io);
+            const window = self.windows.getPtr(character_name) orelse return fallback;
+            return @call(.auto, method, .{window} ++ args);
         }
 
         /// Caller holds mutex.
-        fn getOrCreate(self: *Self, character_name: []const u8) !*WindowT {
+        fn getOrCreate(self: *Self, character_name: []const u8) !*Window {
             if (self.windows.getPtr(character_name)) |window| return window;
             const key = try self.allocator.dupe(u8, character_name);
             errdefer self.allocator.free(key);
-            try self.windows.put(key, WindowT.init(self.window_seconds));
+            try self.windows.put(key, Window.init(self.window_seconds));
             return self.windows.getPtr(character_name).?;
         }
     };
@@ -691,40 +557,6 @@ fn appendDigit(comptime T: type, amount: T, digit_char: u8) ?T {
     return std.math.add(T, shifted, digit_char - '0') catch null;
 }
 
-fn streakStart(current_start_ms: i64, last_hit_ms: i64, timestamp_ms: i64, window_ms: i64) i64 {
-    if (last_hit_ms == 0 or timestamp_ms - last_hit_ms >= window_ms) return timestamp_ms;
-    return current_start_ms;
-}
-
-/// Mining yields and bounty payouts per second over the window ending at now_ms; yields come in cycles, so warm-up runs to the newest.
-fn computeWindowRate(
-    comptime T: type,
-    comptime field: []const u8,
-    entries: []const T,
-    head: usize,
-    count: usize,
-    window_ms: i64,
-    last_hit_ms: i64,
-    streak_start_ms: i64,
-    now_ms: i64,
-) ?f32 {
-    if (last_hit_ms == 0 or now_ms - last_hit_ms >= window_ms) return 0.0;
-    const cutoff = now_ms - window_ms;
-    var sum: WindowSum = .{};
-    var oldest_ms: i64 = now_ms;
-
-    var i: usize = 0;
-    while (i < count) : (i += 1) {
-        const idx = (head + entries.len - 1 - i) % entries.len;
-        const entry = &entries[idx];
-        if (entry.timestamp_ms < cutoff) break;
-        oldest_ms = entry.timestamp_ms;
-        sum.add(@field(entry, field), entry.timestamp_ms, streak_start_ms);
-    }
-    const ring_full_from_ms: ?i64 = if (i == entries.len) oldest_ms else null;
-    return sum.rate(streak_start_ms, now_ms, window_ms, ring_full_from_ms, .to_newest);
-}
-
 const testing = std.testing;
 
 test "parseCombatLine reads incoming and outgoing damage and the weapon" {
@@ -854,7 +686,7 @@ test "CombatWindow keeps only the newest hits once the ring wraps" {
     for (0..RING_CAPACITY + 88) |i| {
         window.addEntry(1, true, 1_000 + @as(i64, @intCast(i)) * 10, true);
     }
-    try testing.expectEqual(@as(usize, RING_CAPACITY), window.count);
+    try testing.expectEqual(@as(usize, RING_CAPACITY), window.ring.count);
     const newest_ms = 1_000 + @as(i64, RING_CAPACITY + 87) * 10;
     const oldest_ms = 1_000 + @as(i64, 88) * 10;
     const span_secs = @as(f32, @floatFromInt(newest_ms - oldest_ms)) / 1000.0;
@@ -921,55 +753,55 @@ test "MiningTracker idle alert fires once per idle stretch" {
     var tracker: MiningTracker = .init(testing.allocator, testing.io, 60);
     defer tracker.deinit();
 
-    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 1_000, 60_000, 2));
+    try testing.expect(!tracker.query("Some Pilot", MiningWindow.checkIdleAlert, .{ 1_000, 60_000, 2 }, false));
 
-    try tracker.addEntry("Some Pilot", 10, 0, 1_000);
-    try testing.expect(tracker.checkIdleAlert("Some Pilot", 61_000, 60_000, 2));
-    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 61_500, 60_000, 2));
+    try tracker.addEntry("Some Pilot", .{ 10, 0, 1_000 });
+    try testing.expect(tracker.query("Some Pilot", MiningWindow.checkIdleAlert, .{ 61_000, 60_000, 2 }, false));
+    try testing.expect(!tracker.query("Some Pilot", MiningWindow.checkIdleAlert, .{ 61_500, 60_000, 2 }, false));
 
-    for ([_]i64{ 62_000, 63_000, 64_000 }) |ts| try tracker.addEntry("Some Pilot", 10, 0, ts);
-    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 64_000, 60_000, 2));
-    try testing.expect(tracker.checkIdleAlert("Some Pilot", 200_000, 60_000, 2));
+    for ([_]i64{ 62_000, 63_000, 64_000 }) |ts| try tracker.addEntry("Some Pilot", .{ 10, 0, ts });
+    try testing.expect(!tracker.query("Some Pilot", MiningWindow.checkIdleAlert, .{ 64_000, 60_000, 2 }, false));
+    try testing.expect(tracker.query("Some Pilot", MiningWindow.checkIdleAlert, .{ 200_000, 60_000, 2 }, false));
 }
 
 test "MiningTracker idle alert waits until mining has run a whole detection window" {
     var tracker: MiningTracker = .init(testing.allocator, testing.io, 60);
     defer tracker.deinit();
-    try tracker.addEntry("Some Pilot", 110, 0, 1_000);
-    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 1_000, 30_000, 1));
-    try testing.expect(!tracker.checkIdleAlert("Some Pilot", 30_000, 30_000, 1));
-    try testing.expect(tracker.checkIdleAlert("Some Pilot", 31_000, 30_000, 1));
+    try tracker.addEntry("Some Pilot", .{ 110, 0, 1_000 });
+    try testing.expect(!tracker.query("Some Pilot", MiningWindow.checkIdleAlert, .{ 1_000, 30_000, 1 }, false));
+    try testing.expect(!tracker.query("Some Pilot", MiningWindow.checkIdleAlert, .{ 30_000, 30_000, 1 }, false));
+    try testing.expect(tracker.query("Some Pilot", MiningWindow.checkIdleAlert, .{ 31_000, 30_000, 1 }, false));
 }
 
 test "MiningTracker stopped alert fires once until mining resumes" {
     var tracker: MiningTracker = .init(testing.allocator, testing.io, 60);
     defer tracker.deinit();
 
-    try tracker.addEntry("Some Pilot", 10, 0, 4_000);
-    try testing.expect(!tracker.checkStoppedAlert("Some Pilot", 5_000, 30_000));
-    try testing.expect(tracker.checkStoppedAlert("Some Pilot", 40_000, 30_000));
-    try testing.expect(!tracker.checkStoppedAlert("Some Pilot", 41_000, 30_000));
+    try tracker.addEntry("Some Pilot", .{ 10, 0, 4_000 });
+    try testing.expect(!tracker.query("Some Pilot", MiningWindow.checkStoppedAlert, .{ 5_000, 30_000 }, false));
+    try testing.expect(tracker.query("Some Pilot", MiningWindow.checkStoppedAlert, .{ 40_000, 30_000 }, false));
+    try testing.expect(!tracker.query("Some Pilot", MiningWindow.checkStoppedAlert, .{ 41_000, 30_000 }, false));
 
-    try tracker.addEntry("Some Pilot", 10, 0, 42_000);
-    try testing.expect(tracker.checkStoppedAlert("Some Pilot", 80_000, 30_000));
+    try tracker.addEntry("Some Pilot", .{ 10, 0, 42_000 });
+    try testing.expect(tracker.query("Some Pilot", MiningWindow.checkStoppedAlert, .{ 80_000, 30_000 }, false));
 }
 
 test "CombatTracker reports zero for a character it hasn't seen" {
     var tracker: CombatTracker = .init(testing.allocator, testing.io, 10);
     defer tracker.deinit();
-    const dps = tracker.getDps("Nobody", 1_000);
+    const dps = tracker.query("Nobody", CombatWindow.computeDps, .{1_000}, .{ .incoming = 0.0, .outgoing = 0.0 });
     try testing.expectEqual(@as(f32, 0.0), dps.incoming.?);
-    try testing.expect(!tracker.checkDamageAlert("Nobody"));
+    try testing.expect(!tracker.query("Nobody", CombatWindow.checkDamageAlert, .{}, false));
 }
 
 test "MiningTracker keeps its history and rates it over a new window length" {
     var tracker: MiningTracker = .init(testing.allocator, testing.io, 60);
     defer tracker.deinit();
     var t: i64 = 1_000;
-    while (t <= 121_000) : (t += 12_000) try tracker.addEntry("Some Pilot", 110, 0, t);
+    while (t <= 121_000) : (t += 12_000) try tracker.addEntry("Some Pilot", .{ 110, 0, t });
 
-    try testing.expectApproxEqAbs(@as(f32, 550.0 / 60.0), tracker.getRates("Some Pilot", 121_500).m3.?, 0.001);
+    try testing.expectApproxEqAbs(@as(f32, 550.0 / 60.0), tracker.query("Some Pilot", MiningWindow.computeRates, .{121_500}, .{ .m3 = 0.0, .isk = 0.0 }).m3.?, 0.001);
 
     tracker.setWindowSeconds(120);
-    try testing.expectApproxEqAbs(@as(f32, 1_100.0 / 120.0), tracker.getRates("Some Pilot", 121_500).m3.?, 0.001);
+    try testing.expectApproxEqAbs(@as(f32, 1_100.0 / 120.0), tracker.query("Some Pilot", MiningWindow.computeRates, .{121_500}, .{ .m3 = 0.0, .isk = 0.0 }).m3.?, 0.001);
 }

@@ -513,7 +513,7 @@ pub const ChatlogMonitor = struct {
             if (activity_mod.parseCombatLine(stripped_text)) |parsed| {
                 // Filtered weapons still count toward DPS but mustn't retrigger Taking Damage.
                 const counts_for_alert = !activity_mod.isWeaponExcluded(parsed.weapon, self.damage_alert_excluded_weapons);
-                tracker.addEntry(file.character_name, parsed.amount, parsed.is_incoming, trackerNowMs(), counts_for_alert) catch |err| {
+                tracker.addEntry(file.character_name, .{ parsed.amount, parsed.is_incoming, trackerNowMs(), counts_for_alert }) catch |err| {
                     slog.warn("Failed to record combat entry for '{s}': {}", .{ file.character_name, err });
                 };
             }
@@ -537,7 +537,7 @@ pub const ChatlogMonitor = struct {
         const amount_f: f32 = @floatFromInt(parsed.amount);
         const m3 = amount_f * @as(f32, @floatCast(volume_per_unit));
         const isk = amount_f * @as(f32, @floatCast(price_per_unit));
-        tracker.addEntry(file.character_name, m3, isk, trackerNowMs()) catch |err| {
+        tracker.addEntry(file.character_name, .{ m3, isk, trackerNowMs() }) catch |err| {
             slog.warn("Failed to record mining entry for '{s}': {}", .{ file.character_name, err });
         };
     }
@@ -545,7 +545,7 @@ pub const ChatlogMonitor = struct {
     fn handleBountyEvent(self: *ChatlogMonitor, file: *LogFile, event_text: []const u8) void {
         const tracker = self.bounty_tracker orelse return;
         const isk = activity_mod.parseBountyLine(event_text) orelse return;
-        tracker.addEntry(file.character_name, isk, trackerNowMs()) catch |err| {
+        tracker.addEntry(file.character_name, .{ isk, trackerNowMs() }) catch |err| {
             slog.warn("Failed to record bounty entry for '{s}': {}", .{ file.character_name, err });
         };
     }

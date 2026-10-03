@@ -128,13 +128,13 @@ pub const Trackers = struct {
         const stopped_window_ms: i64 = @as(i64, cfg.mining.stopped_alert_window_seconds) * std.time.ms_per_s;
         for (windows) |eve_window| {
             if (self.combat) |combat| {
-                if (combat.checkDamageAlert(eve_window.character_name)) painter.notify(eve_window.hwnd, .{ .ntype = .TakingDamage });
+                if (combat.query(eve_window.character_name, tracker_mod.CombatWindow.checkDamageAlert, .{}, false)) painter.notify(eve_window.hwnd, .{ .ntype = .TakingDamage });
             }
             if (self.mining) |mining| {
-                if (mining.checkIdleAlert(eve_window.character_name, now_ms, idle_window_ms, cfg.mining.idle_alert_threshold)) {
+                if (mining.query(eve_window.character_name, tracker_mod.MiningWindow.checkIdleAlert, .{ now_ms, idle_window_ms, cfg.mining.idle_alert_threshold }, false)) {
                     painter.notify(eve_window.hwnd, .{ .ntype = .MiningIdle });
                 }
-                if (mining.checkStoppedAlert(eve_window.character_name, now_ms, stopped_window_ms)) {
+                if (mining.query(eve_window.character_name, tracker_mod.MiningWindow.checkStoppedAlert, .{ now_ms, stopped_window_ms }, false)) {
                     painter.notify(eve_window.hwnd, .{ .ntype = .MiningStopped });
                 }
             }
@@ -162,17 +162,17 @@ fn pushThrottled(
 }
 
 fn pushDps(tracker: *tracker_mod.CombatTracker, painter: *Painter, _: *const Config, eve_window: scout.EveWindow, now_ms: i64) void {
-    const dps = tracker.getDps(eve_window.character_name, now_ms);
+    const dps = tracker.query(eve_window.character_name, tracker_mod.CombatWindow.computeDps, .{now_ms}, .{ .incoming = 0.0, .outgoing = 0.0 });
     painter.updateDpsForCharacter(eve_window.hwnd, dps.incoming, dps.outgoing);
 }
 
 fn pushMining(tracker: *tracker_mod.MiningTracker, painter: *Painter, _: *const Config, eve_window: scout.EveWindow, now_ms: i64) void {
-    const rates = tracker.getRates(eve_window.character_name, now_ms);
+    const rates = tracker.query(eve_window.character_name, tracker_mod.MiningWindow.computeRates, .{now_ms}, .{ .m3 = 0.0, .isk = 0.0 });
     painter.updateMiningForCharacter(eve_window.hwnd, rates.m3, rates.isk);
 }
 
 fn pushBounty(tracker: *tracker_mod.BountyTracker, painter: *Painter, _: *const Config, eve_window: scout.EveWindow, now_ms: i64) void {
-    painter.updateBountyForCharacter(eve_window.hwnd, tracker.getIskRate(eve_window.character_name, now_ms));
+    painter.updateBountyForCharacter(eve_window.hwnd, tracker.query(eve_window.character_name, tracker_mod.BountyWindow.computeIskRate, .{now_ms}, 0.0));
 }
 
 fn pushResources(tracker: *resources_mod.ResourceTracker, windows: []const scout.EveWindow, now_ms: i64) void {
