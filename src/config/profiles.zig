@@ -24,9 +24,12 @@ pub fn validateName(name: []const u8) !void {
     if (std.mem.eql(u8, name, std.fs.path.basename(files.GLOBAL_SETTINGS_FILE))) return error.InvalidProfileName;
 }
 
-/// "<name>.json" for a display name typed by the user; caller owns the result.
+/// "<name>.json" for a display name typed by the user, which may only hold letters, digits, spaces, '-' and '_'; caller owns the result.
 pub fn fileNameFor(allocator: std.mem.Allocator, display_name: []const u8) ![]u8 {
     if (display_name.len == 0 or display_name.len > MAX_NAME_LEN) return error.InvalidProfileName;
+    for (display_name) |c| {
+        if (!std.ascii.isAlphanumeric(c) and c != ' ' and c != '-' and c != '_') return error.InvalidProfileName;
+    }
     const name = try std.fmt.allocPrint(allocator, "{s}.json", .{display_name});
     errdefer allocator.free(name);
     try validateName(name);
@@ -294,6 +297,17 @@ test "fileNameFor appends .json and rejects empty, long or unsafe names" {
     try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, ""));
     try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "a" ** (MAX_NAME_LEN + 1)));
     try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "a*b"));
+}
+
+test "fileNameFor allows only letters, digits, spaces, '-' and '_'" {
+    const name = try fileNameFor(testing.allocator, "My Alts-2_b");
+    defer testing.allocator.free(name);
+    try testing.expectEqualStrings("My Alts-2_b.json", name);
+
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "PvP (main)"));
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "Für"));
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "a\tb"));
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "Main."));
 }
 
 test "listedSpelling finds a profile whose file name differs only in case" {

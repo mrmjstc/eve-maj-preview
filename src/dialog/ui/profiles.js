@@ -87,9 +87,9 @@ async function restoreProfileBackup(filename, displayName) {
     }
 }
 
-// The characters and length the app accepts in a profile name (see validateName in config/profiles.zig).
+// The characters and length the app accepts in a profile name (see fileNameFor in config/profiles.zig).
 export function cleanProfileName(name) {
-    return name.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').slice(0, app.schema.profileNameMaxLength);
+    return name.replace(/[^a-zA-Z0-9_\- ]/g, '').slice(0, app.schema.profileNameMaxLength).trim();
 }
 
 // From the profiles the session listed, with the one the window edits selected.
