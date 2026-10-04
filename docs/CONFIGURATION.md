@@ -128,6 +128,26 @@ The character name and system name each have their own color, background and fon
 
 Drawn on a thumbnail whenever its character is a member of a [Hotkey Group](#hotkey-groups-character-cycling) with `showBadge` set. `quickGroupBadgePosition` uses the same values as [Text Positions](#text-overlay-settings).
 
+### Session Timer
+
+```json
+{
+  "thumbnail": {
+    "showSessionTimer": false,
+    "sessionTimerColor": "0xFFFFFF",
+    "sessionTimerBgColor": "0xE6000000",
+    "sessionTimerPosition": "RightCenter",
+    "sessionTimerOffsetX": 0,
+    "sessionTimerOffsetY": -24,
+    "sessionTimerFontName": "Segoe UI",
+    "sessionTimerFontSize": 12,
+    "sessionTimerFontWeight": "Regular"
+  }
+}
+```
+
+How long each logged-in character has been logged in, as `42m` or `3h 07m`; resets on logout. A character already logged in when the app starts counts from its gamelog's session start if chatlog monitoring is on, otherwise from when the app first saw it. `sessionTimerPosition` uses the same values as [Text Positions](#text-overlay-settings).
+
 ### Exclusion Overlay
 
 ```json
