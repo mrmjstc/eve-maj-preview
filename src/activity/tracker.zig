@@ -529,26 +529,46 @@ pub fn parseMiningLine(line: []const u8) ?ParsedMiningEvent {
     return result;
 }
 
-/// Truncated to `out_buf`'s length.
+/// Drops tags and decodes entities in one pass, so a decoded "<ALLY>" isn't then taken for a tag; truncated to `out_buf`'s length.
 pub fn stripHtml(src: []const u8, out_buf: []u8) []const u8 {
     var out: usize = 0;
     var in_tag = false;
-    for (src) |c| {
-        if (out >= out_buf.len) break;
+    var i: usize = 0;
+    while (i < src.len and out < out_buf.len) : (i += 1) {
+        const c = src[i];
         switch (c) {
-            '<' => {
-                in_tag = true;
-            },
-            '>' => {
-                in_tag = false;
-            },
+            '<' => in_tag = true,
+            '>' => in_tag = false,
             else => if (!in_tag) {
                 out_buf[out] = c;
+                if (c == '&') {
+                    if (decodeEntity(src[i..])) |entity| {
+                        out_buf[out] = entity.char;
+                        i += entity.len - 1;
+                    }
+                }
                 out += 1;
             },
         }
     }
     return out_buf[0..out];
+}
+
+const Entity = struct { name: []const u8, char: u8 };
+const ENTITIES = [_]Entity{
+    .{ .name = "&lt;", .char = '<' },
+    .{ .name = "&gt;", .char = '>' },
+    .{ .name = "&amp;", .char = '&' },
+    .{ .name = "&quot;", .char = '"' },
+    .{ .name = "&#39;", .char = '\'' },
+    .{ .name = "&apos;", .char = '\'' },
+};
+
+fn decodeEntity(text: []const u8) ?struct { char: u8, len: usize } {
+    for (ENTITIES) |entity| {
+        if (std.mem.startsWith(u8, text, entity.name)) return .{ .char = entity.char, .len = entity.name.len };
+    }
+    return null;
 }
 
 /// Null when another digit would overflow, so an absurdly long number is skipped rather than wrapping.
@@ -616,6 +636,12 @@ test "parseMiningLine reads normal and critical yields but not residue" {
 
     try testing.expect(parseMiningLine("[ 2026.08.09 23:45:31 ] (mining) 12 units of Veldspar depleted from asteroid as residue") == null);
     try testing.expect(parseMiningLine("[ 2026.08.09 23:45:31 ] (mining) You mined <b>5</b> units of ") == null);
+}
+
+test "stripHtml decodes an alliance ticker's entities without taking it for a tag" {
+    var buf: [128]u8 = undefined;
+    try testing.expectEqualStrings("Skiff <IR-W>[B0RT] Killer Madullier ", stripHtml("<b>Skiff &lt;IR-W&gt;[B0RT] Killer Madullier </b>", &buf));
+    try testing.expectEqualStrings("A & B \"q\" 'x' &unknown; &", stripHtml("A &amp; B &quot;q&quot; &#39;x&#39; &unknown; &", &buf));
 }
 
 test "stripHtml drops tags and truncates to the buffer" {
