@@ -498,8 +498,7 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
 /// the painter, chatlog monitor, and activity trackers.
 fn onTimerTick() void {
     const tick_start = win32.Ticks.now();
-    // At a one-second tick, timer jitter could otherwise land just short and skip a scan.
-    const force_scan = g_tick_interval_ms >= FORCED_SCAN_INTERVAL_MS or tick_start.elapsedSince(g_last_forced_scan) >= FORCED_SCAN_INTERVAL_MS;
+    const force_scan = schedule.nextTickWouldBeLate(@intCast(tick_start.elapsedSince(g_last_forced_scan)), FORCED_SCAN_INTERVAL_MS, g_tick_interval_ms);
     if (force_scan) g_last_forced_scan = tick_start;
 
     const scout_ptr = scout.g_scout_ptr orelse return;
