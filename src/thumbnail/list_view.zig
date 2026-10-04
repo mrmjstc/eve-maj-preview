@@ -176,15 +176,15 @@ pub const ListWindow = struct {
         h.update(std.mem.asBytes(&self.config.bounty.isk_rate_unit));
         // Rows are hashed before they're sorted, so the configured order has to be hashed itself.
         if (display.listViewOrder == .ConfiguredCharacters) {
-            for (self.config.characters.items) |character| h.update(character.name);
+            for (self.config.characters.items) |character| hashString(&h, character.name);
         }
 
         for (self.rows.items) |thumb_index| {
             const thumbnail = &thumbnails[thumb_index];
             const render_state = thumbnail.effectiveRenderState(active_source_hwnd);
-            h.update(thumbnail.character_name);
-            h.update(thumbnail.cached_display_name);
-            h.update(thumbnail.system_name);
+            hashString(&h, thumbnail.character_name);
+            hashString(&h, thumbnail.cached_display_name);
+            hashString(&h, thumbnail.system_name);
             h.update(std.mem.asBytes(&render_state));
             h.update(std.mem.asBytes(&thumbnail.is_excluded_from_cycle));
             h.update(std.mem.asBytes(&thumbnail.stats.incoming_dps));
@@ -201,7 +201,7 @@ pub const ListWindow = struct {
                 h.update(std.mem.asBytes(&badge_color));
             }
             for (thumbnail.notifications.items()) |notif| {
-                h.update(notif.text);
+                hashString(&h, notif.text);
                 h.update(std.mem.asBytes(&notif.border_color_override));
                 h.update(std.mem.asBytes(&notif.text_color_override));
             }
@@ -621,4 +621,10 @@ fn drawTextTruncated(dc: win32.HDC, text: []const u8, x: i32, y: i32, rgb: u32, 
     var out: [TEXT_BUF:0]u8 = undefined;
     const truncated = gdi_overlay.truncateTextToFit(TEXT_BUF, dc, &out, text, max_w);
     drawText(dc, truncated, x, y, rgb);
+}
+
+/// Length-prefixed, so swapping "Bob" and "BobBob" can't leave the hashed byte stream unchanged.
+fn hashString(h: *std.hash.Wyhash, text: []const u8) void {
+    h.update(std.mem.asBytes(&text.len));
+    h.update(text);
 }
