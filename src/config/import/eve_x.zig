@@ -162,21 +162,14 @@ fn suspendHotkey(s: Source) ?[]const u8 {
 
 pub fn build(d: *Draft, root: Value, profile_name: []const u8, chosen: []const []const u8) !void {
     const s = Source.init(root, profile_name);
-    if (isChosen(chosen, "thumbnailAppearance")) try appearance(d, s);
-    if (isChosen(chosen, "characterPositions")) try characterPositions(d, s);
-    if (isChosen(chosen, "characterColorsHotkeys")) try colorsAndHotkeys(d, s);
-    if (isChosen(chosen, "hotkeyGroups")) try hotkeyGroups(d, s);
-    if (isChosen(chosen, "autoMinimize")) try autoMinimize(d, s);
-    if (isChosen(chosen, "snapping")) try snapping(d, s);
-    if (isChosen(chosen, "globalHotkeys")) try globalHotkeys(d, s);
-    if (isChosen(chosen, "chatlog")) try chatlog(d, s);
-}
-
-pub fn isChosen(chosen: []const []const u8, id: []const u8) bool {
-    for (chosen) |c| {
-        if (std.mem.eql(u8, c, id)) return true;
-    }
-    return false;
+    if (draft.isChosen(chosen, "thumbnailAppearance")) try appearance(d, s);
+    if (draft.isChosen(chosen, "characterPositions")) try characterPositions(d, s);
+    if (draft.isChosen(chosen, "characterColorsHotkeys")) try colorsAndHotkeys(d, s);
+    if (draft.isChosen(chosen, "hotkeyGroups")) try hotkeyGroups(d, s);
+    if (draft.isChosen(chosen, "autoMinimize")) try autoMinimize(d, s);
+    if (draft.isChosen(chosen, "snapping")) try snapping(d, s);
+    if (draft.isChosen(chosen, "globalHotkeys")) try globalHotkeys(d, s);
+    if (draft.isChosen(chosen, "chatlog")) try chatlog(d, s);
 }
 
 fn appearance(d: *Draft, s: Source) !void {

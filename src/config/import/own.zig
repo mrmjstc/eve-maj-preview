@@ -2,7 +2,6 @@
 const std = @import("std");
 const values = @import("values.zig");
 const draft = @import("draft.zig");
-const eve_x = @import("eve_x.zig");
 const wire = @import("../wire.zig");
 const config = @import("../../config.zig");
 
@@ -47,7 +46,7 @@ pub fn build(d: *Draft, text: []const u8, root: Value, chosen: []const []const u
     const cfg = try Config.buildConfigFromJson(d.arena, text, "import");
     inline for (comptime wire.savedFields(Config)) |f| {
         if (comptime isStamp(f.name)) continue;
-        if (eve_x.isChosen(chosen, f.name)) try importSection(d, &cfg, root, f.name);
+        if (draft.isChosen(chosen, f.name)) try importSection(d, &cfg, root, f.name);
     }
 }
 

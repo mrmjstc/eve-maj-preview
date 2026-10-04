@@ -268,15 +268,15 @@ fn parseGroup(arena: std.mem.Allocator, raw: []const u8) !Group {
 }
 
 pub fn build(d: *Draft, ini: *const Ini, chosen: []const []const u8) !void {
-    if (eve_x.isChosen(chosen, "thumbnailAppearance")) try appearance(d, ini);
-    if (eve_x.isChosen(chosen, "characterPositions")) try characterPositions(d, ini);
-    if (eve_x.isChosen(chosen, "characterColors")) try colorsAndHotkeys(d, ini);
-    if (eve_x.isChosen(chosen, "hotkeyGroups")) try hotkeyGroups(d, ini);
-    if (eve_x.isChosen(chosen, "globalHotkeys")) try globalHotkeys(d, ini);
-    if (eve_x.isChosen(chosen, "autoMinimize")) try autoMinimize(d, ini);
-    if (eve_x.isChosen(chosen, "snapping")) try snapping(d, ini);
-    if (eve_x.isChosen(chosen, "chatlog")) try chatlog(d, ini);
-    if (eve_x.isChosen(chosen, "notifications")) try notifications(d, ini);
+    if (draft.isChosen(chosen, "thumbnailAppearance")) try appearance(d, ini);
+    if (draft.isChosen(chosen, "characterPositions")) try characterPositions(d, ini);
+    if (draft.isChosen(chosen, "characterColors")) try colorsAndHotkeys(d, ini);
+    if (draft.isChosen(chosen, "hotkeyGroups")) try hotkeyGroups(d, ini);
+    if (draft.isChosen(chosen, "globalHotkeys")) try globalHotkeys(d, ini);
+    if (draft.isChosen(chosen, "autoMinimize")) try autoMinimize(d, ini);
+    if (draft.isChosen(chosen, "snapping")) try snapping(d, ini);
+    if (draft.isChosen(chosen, "chatlog")) try chatlog(d, ini);
+    if (draft.isChosen(chosen, "notifications")) try notifications(d, ini);
 }
 
 fn borderStyle(d: *Draft, path: []const u8, raw: ?[]const u8, label: []const u8) !void {

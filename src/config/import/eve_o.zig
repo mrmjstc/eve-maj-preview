@@ -202,15 +202,15 @@ pub fn sections(d: *Draft, root: Value) ![]const Section {
 
 /// `cycle_group_name` is the translated "Cycle Group {n}", since EVE-O Preview's groups have no names.
 pub fn build(d: *Draft, root: Value, chosen: []const []const u8, cycle_group_name: []const u8) !void {
-    if (eve_x.isChosen(chosen, "thumbnailAppearance")) try appearance(d, root);
-    if (eve_x.isChosen(chosen, "characterPositions")) try characterPositions(d, root);
-    if (eve_x.isChosen(chosen, "characterColors")) try colorsAndHotkeys(d, root);
-    if (eve_x.isChosen(chosen, "hotkeyGroups")) try hotkeyGroups(d, root, cycle_group_name);
-    if (eve_x.isChosen(chosen, "autoMinimize")) {
+    if (draft.isChosen(chosen, "thumbnailAppearance")) try appearance(d, root);
+    if (draft.isChosen(chosen, "characterPositions")) try characterPositions(d, root);
+    if (draft.isChosen(chosen, "characterColors")) try colorsAndHotkeys(d, root);
+    if (draft.isChosen(chosen, "hotkeyGroups")) try hotkeyGroups(d, root, cycle_group_name);
+    if (draft.isChosen(chosen, "autoMinimize")) {
         if (values.get(root, "MinimizeInactiveClients")) |v| try d.setBool("autoMinimize.enabled", values.truthy(v));
         try d.note("dynamic.import.autoMinimizeImportedNote", &.{});
     }
-    if (eve_x.isChosen(chosen, "snapping")) {
+    if (draft.isChosen(chosen, "snapping")) {
         if (values.get(root, "EnableThumbnailSnap")) |v| try d.setBool("snapping.enabled", values.truthy(v));
         try d.note("dynamic.import.snappingImportedNote", &.{});
     }

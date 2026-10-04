@@ -162,6 +162,13 @@ fn setIn(arena: std.mem.Allocator, root: *ObjectMap, path: []const u8, value: Va
 }
 
 /// `value` in its saved shape (plus each keyed list item's id), for merging.
+pub fn isChosen(chosen: []const []const u8, id: []const u8) bool {
+    for (chosen) |c| {
+        if (std.mem.eql(u8, c, id)) return true;
+    }
+    return false;
+}
+
 pub fn toValue(arena: std.mem.Allocator, comptime T: type, value: *const T, path: []const Value) !Value {
     var out: std.Io.Writer.Allocating = .init(arena);
     var jw: std.json.Stringify = .{ .writer = &out.writer };
