@@ -465,6 +465,7 @@ evemajpreview://<action>/<param>
 |---|---|
 | `minimize_all` | Minimize all EVE client windows |
 | `close_all` | Close all EVE client windows |
+| `close_active` | Close the focused EVE client window |
 | `toggle_visibility` | Toggle visibility of all thumbnails |
 | `toggle_auto_minimize` | Toggle auto-minimize mode on/off |
 | `next_profile` / `previous_profile` | Cycle to next/previous profile |
@@ -1028,6 +1029,7 @@ Detects a tracked character falling behind while the rest of the group jumps tog
     "exactHotkeyModifiers": false,
     "hotkeyMinimizeAll": null,
     "hotkeyCloseAll": null,
+    "hotkeyCloseActive": null,
     "hotkeyToggleVisibility": null,
     "hotkeyToggleAutoMinimize": null,
     "hotkeyToggleExclusion": null,
@@ -1055,6 +1057,7 @@ Pressing **hotkeySuspend** fires a `HotkeySuspend` notification on every client 
 **Global Hotkeys**: Set to a key name (e.g., `"F9"`, `"F10"`), a modifier combo (e.g., `"Ctrl+F9"`, `"Alt+Shift+F1"`, `"LWin+M"`), a hex virtual key code (`"0x70"`), or `null` to disable. Names are accepted when editing by hand, but the app saves every hotkey back as its hex code (`"Ctrl+F9"` becomes `"0x278"`). A key the app can't read is skipped with a warning in the log, and the rest of the binding and profile load as normal.
 - **hotkeyMinimizeAll**: Minimize all EVE client windows
 - **hotkeyCloseAll**: Close all EVE client windows (respects per-character `excludeFromCloseAll`)
+- **hotkeyCloseActive**: Close the focused EVE client window, even if its character is excluded from Close All
 - **hotkeyToggleVisibility**: Toggle visibility of all thumbnails
 - **hotkeyToggleAutoMinimize**: Toggle auto-minimize mode on/off
 - **hotkeyToggleExclusion**: Toggle exclusion from cycling for the currently focused EVE window

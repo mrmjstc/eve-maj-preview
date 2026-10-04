@@ -35,6 +35,7 @@ pub const GLOBAL_BINDINGS = [_]GlobalBinding{
     .{ .action = .move_to_saved_positions, .protocol = .move_to_saved_positions, .field = "hotkeyMoveToSavedPositions", .description = "move all clients to saved positions" },
     .{ .action = .return_to_last_app, .protocol = .return_to_last_app, .field = "hotkeyReturnToLastApp", .in_global_settings = true, .description = "return focus to the last non-EVE app" },
     .{ .action = .exit_app, .protocol = .exit_app, .field = "hotkeyExitApp", .description = "exit the application" },
+    .{ .action = .close_active, .protocol = .close_active, .field = "hotkeyCloseActive", .description = "close the focused client" },
 };
 
 /// Also re-registered on its own while hotkeys are suspended, so it can resume them.
@@ -77,6 +78,7 @@ pub const HotkeyAction = union(enum) {
     move_to_saved_positions: void,
     return_to_last_app: void,
     exit_app: void,
+    close_active: void,
     activate_app: struct {
         app_index: usize,
     },

@@ -12,6 +12,7 @@ pub const HotkeysConfig = struct {
     exactHotkeyModifiers: bool = false,
     hotkeyMinimizeAll: KeyList = .empty,
     hotkeyCloseAll: KeyList = .empty,
+    hotkeyCloseActive: KeyList = .empty,
     hotkeyToggleVisibility: KeyList = .empty,
     hotkeyToggleAutoMinimize: KeyList = .empty,
     hotkeyToggleExclusion: KeyList = .empty,

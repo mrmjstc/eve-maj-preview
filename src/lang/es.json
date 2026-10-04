@@ -353,6 +353,8 @@
   "field.hideWhenNoEveFocus.hint": "Oculta todas las miniaturas mientras ninguna ventana de cliente de EVE tenga el foco.",
   "field.hideWhenNoEveFocus.label": "Ocultar Sin Foco en EVE",
   "field.honorSavedPositions.label": "Respetar Posiciones Guardadas",
+  "field.hotkeyCloseActive.label": "Cerrar Cliente Activo",
+  "field.hotkeyCloseActive.placeholder": "p. ej., LWin+W",
   "field.hotkeyCloseAll.label": "Cerrar Todos los Clientes",
   "field.hotkeyCloseAll.placeholder": "p. ej., LWin+Q",
   "field.hotkeyCycleNotLoggedInBackward.placeholder": "p. ej., LWin+Up",

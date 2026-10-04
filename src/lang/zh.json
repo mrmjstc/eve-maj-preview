@@ -353,6 +353,8 @@
   "field.hideWhenNoEveFocus.hint": "当没有 EVE 客户端窗口获得焦点时隐藏所有缩略图。",
   "field.hideWhenNoEveFocus.label": "无 EVE 焦点时隐藏",
   "field.honorSavedPositions.label": "遵循已保存位置",
+  "field.hotkeyCloseActive.label": "关闭当前客户端",
+  "field.hotkeyCloseActive.placeholder": "例如 LWin+W",
   "field.hotkeyCloseAll.label": "关闭所有客户端",
   "field.hotkeyCloseAll.placeholder": "例如 LWin+Q",
   "field.hotkeyCycleNotLoggedInBackward.placeholder": "例如 LWin+Up",

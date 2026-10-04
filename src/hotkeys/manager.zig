@@ -379,6 +379,7 @@ pub const HotkeyManager = struct {
                 slog.info("Exit hotkey pressed", .{});
                 win32.PostQuitMessage(0);
             },
+            .close_active => self.closeForegroundClient(),
             .activate_app => |activate| launch.activateApp(self.global_settings, activate.app_index),
             .open_url => |open_url| launch.openUrl(self.allocator, self.global_settings, open_url.url_index),
         }
@@ -399,6 +400,20 @@ pub const HotkeyManager = struct {
         };
         slog.info("Toggle exclusion hotkey pressed for: {s}", .{eve_window.character_name});
         membership.toggleThumbnailExclusion(self, eve_window.hwnd);
+    }
+
+    fn closeForegroundClient(self: *HotkeyManager) void {
+        const eve_window = self.foregroundEveWindow() orelse {
+            slog.debug("Focused window is not an EVE client, close ignored", .{});
+            return;
+        };
+        // Window-filter matches belong to other apps, which this hotkey must never close.
+        if (!eve_window.is_eve_client) {
+            slog.debug("Focused window is a filtered non-EVE window, close ignored", .{});
+            return;
+        }
+        slog.info("Close active hotkey pressed for: {s}", .{eve_window.character_name});
+        _ = win32.PostMessageA(eve_window.hwnd, win32.WM_CLOSE, 0, 0);
     }
 
     fn toggleSuspend(self: *HotkeyManager) void {

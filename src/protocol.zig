@@ -30,6 +30,7 @@ pub const GlobalAction = enum(usize) {
     move_to_saved_positions,
     return_to_last_app,
     exit_app,
+    close_active,
 };
 
 pub const Command = union(enum) {

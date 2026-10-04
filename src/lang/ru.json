@@ -353,6 +353,8 @@
   "field.hideWhenNoEveFocus.hint": "Скрывает все превью, пока ни одно окно клиента EVE не в фокусе.",
   "field.hideWhenNoEveFocus.label": "Скрывать без фокуса EVE",
   "field.honorSavedPositions.label": "Учитывать сохранённые позиции",
+  "field.hotkeyCloseActive.label": "Закрыть активный клиент",
+  "field.hotkeyCloseActive.placeholder": "например, LWin+W",
   "field.hotkeyCloseAll.label": "Закрыть всех клиентов",
   "field.hotkeyCloseAll.placeholder": "например, LWin+Q",
   "field.hotkeyCycleNotLoggedInBackward.placeholder": "например, LWin+Up",

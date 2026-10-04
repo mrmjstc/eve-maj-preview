@@ -146,6 +146,7 @@ const HOTKEY_BINDINGS = [
         pathPrefix: 'hotkeys.',
         rows: [
             { id: 'hotkeyCloseAll', labelKey: 'field.hotkeyCloseAll.label', exampleKey: 'field.hotkeyCloseAll.placeholder' },
+            { id: 'hotkeyCloseActive', labelKey: 'field.hotkeyCloseActive.label', exampleKey: 'field.hotkeyCloseActive.placeholder' },
             { id: 'hotkeyMinimizeAll', labelKey: 'field.hotkeyMinimizeAll.label', exampleKey: 'field.hotkeyMinimizeAll.placeholder' },
             { id: 'hotkeyToggleVisibility', labelKey: 'field.hotkeyToggleVisibility.label', exampleKey: 'field.hotkeyToggleVisibility.placeholder' },
             { id: 'hotkeyToggleAutoMinimize', labelKey: 'field.hotkeyToggleAutoMinimize.label', exampleKey: 'field.hotkeyToggleAutoMinimize.placeholder', hintKey: 'field.hotkeyToggleAutoMinimize.hint' },
