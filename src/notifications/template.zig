@@ -77,6 +77,17 @@ pub fn render(template: []const u8, placeholders: []const Placeholder, values: V
     return out.slice();
 }
 
+/// For displays with one row per notification: line breaks become spaces, truncated on a UTF-8 boundary; the result points into `buf`.
+pub fn oneLine(text: []const u8, buf: []u8) []const u8 {
+    var n = @min(text.len, buf.len);
+    if (n < text.len) {
+        while (n > 0 and isContinuationByte(text[n])) n -= 1;
+    }
+    @memcpy(buf[0..n], text[0..n]);
+    std.mem.replaceScalar(u8, buf[0..n], '\n', ' ');
+    return buf[0..n];
+}
+
 fn find(placeholders: []const Placeholder, name: []const u8) ?Placeholder {
     for (placeholders) |placeholder| {
         if (std.ascii.eqlIgnoreCase(placeholder.name, name)) return placeholder;
@@ -119,6 +130,16 @@ test "render turns a typed \\n into a line break and keeps other backslashes" {
     var buf: [64]u8 = undefined;
     try testing.expectEqualStrings("Main\nin Jita", render("{character}\\nin {system}", &TEST_PLACEHOLDERS, .{ .character = "Main", .target = "Jita" }, &buf).?);
     try testing.expectEqualStrings("a\\b\\", render("a\\b\\", &TEST_PLACEHOLDERS, .{}, &buf).?);
+}
+
+test "oneLine turns line breaks into spaces" {
+    var buf: [64]u8 = undefined;
+    try testing.expectEqualStrings("Some Rat scrambling you", oneLine("Some Rat\nscrambling you", &buf));
+}
+
+test "oneLine truncates on a UTF-8 boundary" {
+    var buf: [4]u8 = undefined;
+    try testing.expectEqualStrings("abc", oneLine("abc\u{00e9}", &buf));
 }
 
 test "render truncates on a UTF-8 boundary" {

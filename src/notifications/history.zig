@@ -2,6 +2,7 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const notification = @import("notification.zig");
+const template = @import("template.zig");
 const config = @import("../config.zig");
 
 pub const CAPACITY = config.DisplayConfig.NOTIF_PANEL_MAX_ROWS[1];
@@ -43,11 +44,7 @@ pub const NotificationHistory = struct {
         @memcpy(entry.character_name_buf[0..name_n], character_name[0..name_n]);
         entry.character_name_len = @intCast(name_n);
 
-        const text_n = @min(notification_text.len, entry.text_buf.len);
-        @memcpy(entry.text_buf[0..text_n], notification_text[0..text_n]);
-        // Rows are one line each, so custom text's line breaks read as spaces.
-        std.mem.replaceScalar(u8, entry.text_buf[0..text_n], '\n', ' ');
-        entry.text_len = @intCast(text_n);
+        entry.text_len = @intCast(template.oneLine(notification_text, &entry.text_buf).len);
 
         self.entries[self.head] = entry;
         self.head = (self.head + 1) % CAPACITY;

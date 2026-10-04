@@ -11,6 +11,7 @@ const ThumbnailWindow = @import("window.zig").ThumbnailWindow;
 const input = @import("input.zig");
 const activation = @import("../clients/activation.zig");
 const drag_panel = @import("../drag/panel.zig");
+const template = @import("../notifications/template.zig");
 const log = @import("../log.zig");
 
 const slog = log.scoped("list_view");
@@ -397,8 +398,9 @@ pub const ListWindow = struct {
         // One slot only: the newest notification wins, then stats, then the system.
         var right_text: []const u8 = "";
         var right_col: u32 = ARGB_SYS_TEXT & 0xFFFFFF;
+        var notif_buf: [TEXT_BUF]u8 = undefined;
         if (thumb.notifications.newest()) |notif| {
-            right_text = notif.text;
+            right_text = template.oneLine(notif.text, &notif_buf);
             right_col = (notif.text_color_override orelse ARGB_NOTIF_TEXT) & 0xFFFFFF;
         } else if (stat_text.len > 0) {
             right_text = stat_text;
