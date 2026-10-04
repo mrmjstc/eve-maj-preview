@@ -51,33 +51,39 @@ pub const KeyListWire = struct {
         try jw.endArray();
     }
 
+    /// A key that can't be read is skipped with a warning rather than failing, which would load the whole profile as defaults.
     pub fn jsonParseFromValue(_: std.mem.Allocator, source: std.json.Value, _: std.json.ParseOptions) !KeyListWire {
-        // jsonParseFromValue may only return std.json.ParseFromValueError errors, so an unparseable key maps to UnexpectedToken.
         var list: KeyList = .empty;
         switch (source) {
-            .string => |text| if (text.len > 0) {
-                _ = list.append(try parseKey(text));
-            },
+            .string => |text| appendParsed(&list, text),
             .array => |array| for (array.items) |item| {
-                if (item != .string) return error.UnexpectedToken;
-                if (!list.append(try parseKey(item.string))) {
-                    slog.warn("Failed to keep hotkey '{s}': a binding holds at most {} keys", .{ item.string, MAX_KEYS });
+                if (item != .string) {
+                    slog.warn("Failed to read a hotkey: expected a key name or code, skipping it", .{});
+                    continue;
                 }
+                appendParsed(&list, item.string);
             },
-            else => return error.UnexpectedToken,
+            else => slog.warn("Failed to read a hotkey: expected a key name, a code or a list of them, leaving it unbound", .{}),
         }
         return .{ .value = list };
     }
 };
 
+fn appendParsed(list: *KeyList, text: []const u8) void {
+    if (text.len == 0) return;
+    const combined = vk.parseVirtualKey(text) orelse {
+        slog.warn("Failed to read hotkey '{s}': not a key this app can bind, skipping it", .{text});
+        return;
+    };
+    if (!list.append(combined)) {
+        slog.warn("Failed to keep hotkey '{s}': a binding holds at most {} keys", .{ text, MAX_KEYS });
+    }
+}
+
 fn writeKey(jw: anytype, combined: u32) !void {
     var buf: [10]u8 = undefined;
     const s = std.fmt.bufPrint(&buf, "0x{X:0>2}", .{combined}) catch unreachable;
     try jw.write(s);
-}
-
-fn parseKey(text: []const u8) error{UnexpectedToken}!u32 {
-    return vk.parseVirtualKey(text) orelse error.UnexpectedToken;
 }
 
 const testing = std.testing;
@@ -112,10 +118,10 @@ test "duplicate keys collapse and keys past MAX_KEYS are dropped" {
     try testing.expectEqualSlices(u32, &.{ vk.VK_F1, vk.VK_F1 + 1, vk.VK_F1 + 2, vk.VK_F1 + 3 }, list.slice());
 }
 
-test "an unknown key or a non-string entry fails to load" {
-    try testing.expectError(error.UnexpectedToken, parseJson("\"NotAKey\""));
-    try testing.expectError(error.UnexpectedToken, parseJson("[\"F1\", 5]"));
-    try testing.expectError(error.UnexpectedToken, parseJson("12"));
+test "an unknown key or a non-string entry is skipped, keeping the rest" {
+    try testing.expect((try parseJson("\"NotAKey\"")).isEmpty());
+    try testing.expectEqualSlices(u32, &.{ vk.VK_F1, vk.VK_F1 + 1 }, (try parseJson("[\"F1\", 5, \"NotAKey\", \"F2\"]")).slice());
+    try testing.expect((try parseJson("12")).isEmpty());
 }
 
 test "one key saves as a plain string so older profiles stay readable" {

@@ -1048,7 +1048,7 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 
 Pressing **hotkeySuspend** fires a `HotkeySuspend` notification on every client (see [Notification System](#notification-system)).
 
-**Global Hotkeys**: Set to a key name (e.g., `"F9"`, `"F10"`), a modifier combo (e.g., `"Ctrl+F9"`, `"Alt+Shift+F1"`, `"LWin+M"`), a hex virtual key code (`"0x70"`), or `null` to disable. Names are accepted when editing by hand, but the app saves every hotkey back as its hex code (`"Ctrl+F9"` becomes `"0x278"`). An unrecognised key name makes the whole profile fail to load, and it opens with default settings instead, so check the log after hand-editing.
+**Global Hotkeys**: Set to a key name (e.g., `"F9"`, `"F10"`), a modifier combo (e.g., `"Ctrl+F9"`, `"Alt+Shift+F1"`, `"LWin+M"`), a hex virtual key code (`"0x70"`), or `null` to disable. Names are accepted when editing by hand, but the app saves every hotkey back as its hex code (`"Ctrl+F9"` becomes `"0x278"`). A key the app can't read is skipped with a warning in the log, and the rest of the binding and profile load as normal.
 - **hotkeyMinimizeAll**: Minimize all EVE client windows
 - **hotkeyCloseAll**: Close all EVE client windows (respects per-character `excludeFromCloseAll`)
 - **hotkeyToggleVisibility**: Toggle visibility of all thumbnails
