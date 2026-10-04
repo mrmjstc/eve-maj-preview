@@ -27,8 +27,8 @@ const OVERLAY_ALPHA = 255;
 const MAX_LINES_PER_NOTIFICATION = 3;
 const MAX_NOTIFICATION_LINES = stack.CAPACITY * MAX_LINES_PER_NOTIFICATION;
 
-/// Character name, system, group badge, DPS in and out, mining (and its ISK line), bounty, and up to three resource lines.
-const MAX_LINES = 1 + 1 + 1 + 2 + 2 + 1 + 3;
+/// Character name, system, group badge, session timer, DPS in and out, mining (and its ISK line), bounty, and up to three resource lines.
+const MAX_LINES = 1 + 1 + 1 + 1 + 2 + 2 + 1 + 3;
 const MAX_STACK = 3;
 const TEXT_BUF = 32;
 
@@ -93,6 +93,19 @@ pub const RenderSettings = struct {
     group_badge_font_size: i32 = 12,
     group_badge_font_weight: types.FontWeight = .Regular,
     group_badge_bg_color: u32 = 0x80000000,
+
+    show_session_timer: bool = false,
+    /// 0 while not shown.
+    session_minutes: u64 = 0,
+    session_timer_color: u32 = 0xFFFFFF,
+    session_timer_position: TextPosition = .RightCenter,
+    session_timer_offset_x: i32 = 0,
+    session_timer_offset_y: i32 = -24,
+    session_timer_font_name: []const u8 = "Segoe UI",
+    session_timer_font_size: i32 = 12,
+    session_timer_font_weight: types.FontWeight = .Regular,
+    session_timer_bg_color: u32 = 0x80000000,
+
     combat_incoming_bg_color: u32 = 0x80000000,
     combat_outgoing_bg_color: u32 = 0x80000000,
     mining_bg_color: u32 = 0x80000000,
@@ -209,9 +222,12 @@ const Layout = struct {
 
     /// Short stat text only, so it can't outgrow its buffer in practice; "---" if it somehow does.
     fn print(self: *Layout, comptime fmt: []const u8, args: anytype) []const u8 {
-        const buf = &self.text_bufs[self.texts_used];
-        self.texts_used += 1;
-        return std.fmt.bufPrint(buf, fmt, args) catch "---";
+        return std.fmt.bufPrint(self.nextTextBuf(), fmt, args) catch "---";
+    }
+
+    fn nextTextBuf(self: *Layout) *[TEXT_BUF]u8 {
+        defer self.texts_used += 1;
+        return &self.text_bufs[self.texts_used];
     }
 
     fn position(self: *const Layout, pos: TextPosition, dims: TextDimensions, offset_x: i32, offset_y: i32) TextOrigin {
@@ -314,6 +330,7 @@ pub fn renderThumbnailOverlay(font_cache: *FontCache, thumbnail: *ThumbnailWindo
     try addCharacterName(&layout, fonts, cache, settings);
     try addSystemName(&layout, fonts, cache, settings);
     try addGroupBadge(&layout, fonts, cache, settings);
+    try addSessionTimer(&layout, fonts, settings);
     if (settings.show_text) {
         const stats = &thumbnail.stats;
         try addCombat(&layout, fonts, config, stats, settings);
@@ -377,6 +394,7 @@ pub fn createRenderSettings(cfg: *const config_mod.Config, thumbnail: *const Thu
     const border = resolveBorder(cfg, thumbnail, state, state_cfg, is_focused, hide_all);
     const size = overlaySize(cfg, thumbnail, dpi_scale);
     const stats = &thumbnail.stats;
+    const session_minutes = if (show_text and tc.showSessionTimer) thumbnail.sessionMinutes(win32.Ticks.now()) else null;
 
     var settings: RenderSettings = .{
         .show_text = show_text,
@@ -431,6 +449,16 @@ pub fn createRenderSettings(cfg: *const config_mod.Config, thumbnail: *const Thu
         .group_badge_font_name = tc.quickGroupBadgeFontName,
         .group_badge_font_size = scalePixels(tc.quickGroupBadgeFontSize, dpi_scale),
         .group_badge_font_weight = tc.quickGroupBadgeFontWeight,
+        .show_session_timer = session_minutes != null,
+        .session_minutes = session_minutes orelse 0,
+        .session_timer_color = tc.sessionTimerColor,
+        .session_timer_position = tc.sessionTimerPosition,
+        .session_timer_offset_x = tc.sessionTimerOffsetX,
+        .session_timer_offset_y = tc.sessionTimerOffsetY,
+        .session_timer_font_name = tc.sessionTimerFontName,
+        .session_timer_font_size = scalePixels(tc.sessionTimerFontSize, dpi_scale),
+        .session_timer_font_weight = tc.sessionTimerFontWeight,
+        .session_timer_bg_color = resolveTextBgColor(state_cfg, tc.sessionTimerBgColor, opaque_bgs),
         // Visibility and the character's own hideThumbnail win over the state's showThumbnail.
         .show_thumbnail = if (!is_visible or thumbnail.cached_hide_thumbnail) false else state_cfg.showThumbnail orelse !active_hidden,
         .overlay_alpha = if (opaque_bgs) thumbnail.cached_opacity else OVERLAY_ALPHA,
@@ -513,6 +541,13 @@ fn addGroupBadge(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: R
     const font = try fonts.get(.group_badge, settings.group_badge_font_name, settings.group_badge_font_size, settings.group_badge_font_weight);
     const dims = cache.group_badge.measure(layout, font, settings.group_badge_text, settings.group_badge_font_name, settings.group_badge_font_size, settings.group_badge_font_weight);
     layout.addAt(font, settings.group_badge_text, dims, settings.group_badge_position, settings.group_badge_offset_x, settings.group_badge_offset_y, settings.group_badge_color, settings.group_badge_bg_color);
+}
+
+fn addSessionTimer(layout: *Layout, fonts: Fonts, settings: RenderSettings) !void {
+    if (!settings.show_session_timer) return;
+    const font = try fonts.get(.session_timer, settings.session_timer_font_name, settings.session_timer_font_size, settings.session_timer_font_weight);
+    const text = format.formatSessionDuration(layout.nextTextBuf(), settings.session_minutes);
+    layout.addAt(font, text, layout.measure(font, text), settings.session_timer_position, settings.session_timer_offset_x, settings.session_timer_offset_y, settings.session_timer_color, settings.session_timer_bg_color);
 }
 
 fn addCombat(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stats: *const window.ActivityStats, settings: RenderSettings) !void {

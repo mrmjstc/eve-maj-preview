@@ -121,6 +121,10 @@ export function toggleQuickGroupBadgeOptions() {
     applyOptionToggle('showQuickGroupBadge', 'quickGroupBadgeOptions');
 }
 
+export function toggleSessionTimerOptions() {
+    applyOptionToggle('showSessionTimer', 'sessionTimerOptions');
+}
+
 // Opposite polarity of applyOptionToggle(): the target options are disabled when the checkbox IS checked.
 function toggleInverseOption(checkboxId, optionsId) {
     const checkbox = document.getElementById(checkboxId);

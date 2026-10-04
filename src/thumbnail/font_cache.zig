@@ -9,7 +9,7 @@ const slog = log.scoped("font_cache");
 
 /// Per-purpose font cache slot. Kept as u4 (not u3) so a future slot doesn't need a resize.
 /// `combat` is incoming DPS's slot; outgoing DPS has its own.
-pub const FontSlot = enum(u4) { main, combat, mining, bounty, system_name, group_badge, notification, combat_outgoing, resources };
+pub const FontSlot = enum(u4) { main, combat, mining, bounty, system_name, group_badge, notification, combat_outgoing, resources, session_timer };
 
 const Entry = struct {
     font: ?win32.HFONT = null,

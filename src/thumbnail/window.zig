@@ -112,6 +112,8 @@ pub const ThumbnailWindow = struct {
     notifications: stack.NotificationStack = .{},
     last_click_time: win32.Ticks = .{},
     is_excluded_from_cycle: bool = false,
+    /// Zero while no character is logged in.
+    session_start: win32.Ticks = .{},
     needs_render: bool = false,
     win32_enabled: bool = true,
 
@@ -150,6 +152,11 @@ pub const ThumbnailWindow = struct {
         self.cached_hide_thumbnail = config.isThumbnailHidden(self.character_name);
         self.cached_thumbnail_size = config.getCharacterSize(self.character_name);
         self.cached_opacity = config.getCharacterOpacity(self.character_name);
+    }
+
+    pub fn sessionMinutes(self: *const ThumbnailWindow, now: win32.Ticks) ?u64 {
+        if (self.session_start.isZero()) return null;
+        return now.elapsedSince(self.session_start) / std.time.ms_per_min;
     }
 
     /// Whether this thumbnail's source_hwnd is the live "who's focused" pointer.

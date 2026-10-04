@@ -731,6 +731,11 @@ pub const FILETIME = extern struct {
     pub fn toU64(self: FILETIME) u64 {
         return (@as(u64, self.dwHighDateTime) << 32) | @as(u64, self.dwLowDateTime);
     }
+
+    pub fn toUnixSeconds(self: FILETIME) i64 {
+        const seconds: i64 = @intCast(self.toU64() / 10_000_000);
+        return seconds + std.time.epoch.windows;
+    }
 };
 pub extern "kernel32" fn GetProcessTimes(hProcess: HANDLE, lpCreationTime: *FILETIME, lpExitTime: *FILETIME, lpKernelTime: *FILETIME, lpUserTime: *FILETIME) callconv(.c) BOOL;
 
@@ -1020,6 +1025,15 @@ pub fn queryProcessExePath(process_id: DWORD, exe_path_buf: *[260:0]u8) ?[]const
     const path_len = GetModuleFileNameExA(handle, null, exe_path_buf, exe_path_buf.len);
     if (path_len == 0) return null;
     return exe_path_buf[0..@intCast(path_len)];
+}
+
+pub fn processStartTime(process_id: DWORD) ?FILETIME {
+    const handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id) orelse return null;
+    defer _ = CloseHandle(handle);
+    var created: FILETIME = .{ .dwLowDateTime = 0, .dwHighDateTime = 0 };
+    var unused: FILETIME = .{ .dwLowDateTime = 0, .dwHighDateTime = 0 };
+    if (!toBool(GetProcessTimes(handle, &created, &unused, &unused, &unused))) return null;
+    return created;
 }
 
 /// File name of the executable owning hwnd, or null if its process can't be queried; the returned slice borrows exe_path_buf.

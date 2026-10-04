@@ -20,6 +20,10 @@ pub const EveWindow = struct {
     is_eve_client: bool,
     /// When this window last went to the login screen, from Scout.next_logout_order; 0 while logged in.
     logged_out_order: u64 = 0,
+    /// Zero at the login screen and for filter windows.
+    logged_in_at: win32.Ticks = .{},
+    /// False while logged_in_at is only when the character was first seen.
+    is_login_time_exact: bool = false,
 };
 
 /// Names are owned; freed by UpdateResult.deinit.
@@ -27,6 +31,7 @@ pub const NameChange = struct {
     hwnd: win32.HWND,
     old_name: []const u8,
     new_name: []const u8,
+    logged_in_at: win32.Ticks,
 };
 
 /// character_name isn't unique (multiple windows can all report "EVE"), so hwnd travels with it; owned, freed by UpdateResult.deinit.
@@ -231,6 +236,8 @@ pub const Scout = struct {
         eve_window.character_name = window_name;
 
         eve_window.logged_out_order = self.logoutOrder(window_name);
+        eve_window.logged_in_at = loginTime(eve_window.is_eve_client, window_name);
+        eve_window.is_login_time_exact = true;
 
         slog.info("Character changed: {s} -> {s}", .{ old_name, new_name });
 
@@ -238,6 +245,7 @@ pub const Scout = struct {
             .hwnd = eve_window.hwnd,
             .old_name = old_name,
             .new_name = change_name,
+            .logged_in_at = eve_window.logged_in_at,
         }) catch |err| {
             slog.err("Failed to track name change '{s}' -> '{s}': {}", .{ old_name, new_name, err });
             self.allocator.free(old_name);
@@ -295,6 +303,32 @@ pub const Scout = struct {
         const dash_pos = std.mem.indexOf(u8, title, " - ") orelse return title;
         const name = title[dash_pos + " - ".len ..];
         return if (name.len == 0) title else name;
+    }
+
+    /// `started_at` is UTC Unix seconds; null if it's outside the client's lifetime.
+    pub fn backdateLogin(self: *Scout, hwnd: win32.HWND, started_at: i64, now: i64) ?win32.Ticks {
+        const index = self.indexOf(hwnd) orelse return null;
+        const eve_window = &self.windows.items[index];
+        if (eve_window.logged_in_at.isZero() or eve_window.is_login_time_exact) return null;
+
+        const process_started = win32.processStartTime(eve_window.process_id) orelse {
+            slog.warn("Failed to read when the client for '{s}' started, keeping its first-seen login time", .{eve_window.character_name});
+            return null;
+        };
+        // Log names are whole seconds.
+        if (started_at < process_started.toUnixSeconds() - 1 or started_at > now) {
+            slog.debug("Ignoring gamelog session start for {s}: outside its client's lifetime", .{eve_window.character_name});
+            return null;
+        }
+
+        const session_ms: u64 = @intCast((now - started_at) * std.time.ms_per_s);
+        const backdated: win32.Ticks = .{ .ms = win32.Ticks.now().ms -| session_ms };
+        if (backdated.isZero() or backdated.ms >= eve_window.logged_in_at.ms) return null;
+
+        eve_window.logged_in_at = backdated;
+        eve_window.is_login_time_exact = true;
+        slog.info("Backdated login for {s} by {}s to its gamelog's session start", .{ eve_window.character_name, session_ms / std.time.ms_per_s });
+        return backdated;
     }
 
     /// First live window with this name, which a filter's windows and logged-out clients share.
@@ -357,6 +391,10 @@ pub fn isGenericCharacterName(name: []const u8) bool {
     return std.mem.eql(u8, name, GENERIC_CHARACTER_NAME);
 }
 
+fn loginTime(is_eve_client: bool, character_name: []const u8) win32.Ticks {
+    return if (is_eve_client and !isGenericCharacterName(character_name)) win32.Ticks.now() else .{};
+}
+
 fn freeClosedWindows(allocator: std.mem.Allocator, list: *std.ArrayList(ClosedWindow)) void {
     for (list.items) |cw| allocator.free(cw.character_name);
     list.deinit(allocator);
@@ -415,6 +453,7 @@ fn enumWindowsCallback(hwnd: win32.HWND, lParam: win32.LPARAM) callconv(.c) win3
         .process_id = process_id,
         .is_eve_client = is_eve_client,
         .logged_out_order = scout.logoutOrder(character_name),
+        .logged_in_at = loginTime(is_eve_client, character_name),
     };
 
     scout.windows.append(scout.allocator, eve_window) catch |err| {

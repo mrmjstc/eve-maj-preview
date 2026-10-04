@@ -43,7 +43,7 @@ pub fn getOpenClients(arena: std.mem.Allocator) ![]const []const u8 {
     var clients: std.ArrayList(Client) = .empty;
     for (scout.getWindows()) |window| {
         if (!window.is_eve_client or scout_mod.isGenericCharacterName(window.character_name)) continue;
-        try clients.append(arena, .{ .name = window.character_name, .started = processStartTime(window.hwnd) });
+        try clients.append(arena, .{ .name = window.character_name, .started = if (win32.processStartTime(window.process_id)) |started| started.toU64() else 0 });
     }
     std.sort.pdq(Client, clients.items, {}, struct {
         /// An unknown start time (0) sorts last.
@@ -184,15 +184,3 @@ fn setWindowPositions(character_name: ?[]const u8, pos: ?config.Position) !void 
     patch.assignIds(config.Config, draft);
 }
 
-/// 0 if it can't be read.
-fn processStartTime(window: win32.HWND) u64 {
-    var process_id: win32.DWORD = 0;
-    _ = win32.GetWindowThreadProcessId(window, &process_id);
-    if (process_id == 0) return 0;
-    const process = win32.OpenProcess(win32.PROCESS_QUERY_LIMITED_INFORMATION, win32.FALSE, process_id) orelse return 0;
-    defer _ = win32.CloseHandle(process);
-    var created: win32.FILETIME = .{ .dwLowDateTime = 0, .dwHighDateTime = 0 };
-    var unused: win32.FILETIME = .{ .dwLowDateTime = 0, .dwHighDateTime = 0 };
-    if (!win32.toBool(win32.GetProcessTimes(process, &created, &unused, &unused, &unused))) return 0;
-    return created.toU64();
-}

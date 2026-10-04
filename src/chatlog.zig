@@ -45,6 +45,7 @@ pub const ChatlogMonitor = struct {
     commands: queue.Queue(queue.Command),
     system_updates: queue.Queue(queue.SystemUpdate),
     notifications: queue.Queue(queue.NotificationEvent),
+    session_starts: queue.Queue(queue.SessionStart),
 
     /// Main thread only: characters added and not yet removed, so each is sent to the worker once.
     requested: std.StringHashMap(void),
@@ -74,6 +75,7 @@ pub const ChatlogMonitor = struct {
             .commands = .init(allocator, io),
             .system_updates = .init(allocator, io),
             .notifications = .init(allocator, io),
+            .session_starts = .init(allocator, io),
             .requested = .init(allocator),
             .monitored_paths = .init(allocator),
             .wanted = .init(allocator),
@@ -88,6 +90,7 @@ pub const ChatlogMonitor = struct {
         self.commands.deinit();
         self.system_updates.deinit();
         self.notifications.deinit();
+        self.session_starts.deinit();
         freeKeys(self.allocator, &self.requested);
         freeKeys(self.allocator, &self.wanted);
         freeKeys(self.allocator, &self.monitored_paths);
@@ -180,6 +183,7 @@ pub const ChatlogMonitor = struct {
 
         try self.deliverSystemUpdates();
         try self.deliverNotifications();
+        try self.deliverSessionStarts();
     }
 
     /// Only the main thread may touch Scout and Painter.
@@ -216,6 +220,22 @@ pub const ChatlogMonitor = struct {
             const hwnd = scout_ptr.getHwndByName(event.character_name) orelse continue;
             const painter_ptr = painter.g_painter_ptr orelse continue;
             painter_ptr.notify(hwnd, event.notification);
+        }
+    }
+
+    fn deliverSessionStarts(self: *ChatlogMonitor) !void {
+        var starts: std.ArrayList(queue.SessionStart) = .empty;
+        defer starts.deinit(self.allocator);
+        try self.session_starts.drain(&starts);
+
+        const now = std.Io.Timestamp.now(self.io, .real).toSeconds();
+        for (starts.items) |*start| {
+            defer start.deinit(self.allocator);
+            const scout_ptr = scout.g_scout_ptr orelse continue;
+            const hwnd = scout_ptr.getHwndByName(start.character_name) orelse continue;
+            const logged_in_at = scout_ptr.backdateLogin(hwnd, start.started_at, now) orelse continue;
+            const painter_ptr = painter.g_painter_ptr orelse continue;
+            painter_ptr.setSessionStart(hwnd, logged_in_at);
         }
     }
 
@@ -351,6 +371,7 @@ pub const ChatlogMonitor = struct {
             // Not a jump: it's where the character already was.
             self.queueSystemUpdate(character_name, match.system, match.event_ts, false);
         }
+        if (!is_chatlog) self.queueSessionStart(character_name, std.fs.path.basename(path));
 
         slog.info("Monitoring {s} for {s}: {s}", .{ if (is_chatlog) "chatlog" else "gamelog", character_name, path });
     }
@@ -425,6 +446,18 @@ pub const ChatlogMonitor = struct {
         const owned_name = try self.allocator.dupe(u8, character_name);
         errdefer self.allocator.free(owned_name);
         return .{ .character_name = owned_name, .system_name = try self.allocator.dupe(u8, system_name), .event_ts = event_ts, .is_jump = is_jump };
+    }
+
+    /// EVE starts a new gamelog at each login, named for when it did.
+    fn queueSessionStart(self: *ChatlogMonitor, character_name: []const u8, file_name: []const u8) void {
+        const started_at = lines.logTimestampToUnixSeconds(lines.logFileTimestamp(file_name, false)) orelse return;
+        const owned_name = self.allocator.dupe(u8, character_name) catch |err| {
+            slog.err("Failed to copy session start for '{s}': {}", .{ character_name, err });
+            return;
+        };
+        self.session_starts.push(.{ .character_name = owned_name, .started_at = started_at }) catch |err| {
+            slog.err("Failed to queue session start for '{s}': {}", .{ character_name, err });
+        };
     }
 
     /// Gated by the type's settings in Painter.notify, once the main thread delivers it.

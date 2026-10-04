@@ -289,8 +289,13 @@ pub const Painter = struct {
 
         self.reconcileThumbnailStates(win32.GetForegroundWindow());
 
+        const now = win32.Ticks.now();
         for (self.thumbnails.items) |*thumbnail| {
             if (thumbnail_drag.isDragging(thumbnail)) continue;
+
+            if (thumbnail.render_cache.settings) |cached| {
+                if (cached.show_session_timer and cached.session_minutes != (thumbnail.sessionMinutes(now) orelse 0)) thumbnail.needs_render = true;
+            }
 
             const is_minimized = win32.isWindowIconic(thumbnail.source_hwnd);
             if (is_minimized != thumbnail.was_minimized) {
@@ -484,6 +489,13 @@ pub const Painter = struct {
         if (thumbnail.stats.setBounty(isk_rate)) thumbnail.needs_render = true;
     }
 
+    /// After Scout backdated the client's login from its gamelog.
+    pub fn setSessionStart(self: *Painter, source_hwnd: win32.HWND, started: win32.Ticks) void {
+        const thumbnail = self.getThumbnailBySourceHwnd(source_hwnd) orelse return;
+        thumbnail.session_start = started;
+        thumbnail.needs_render = true;
+    }
+
     /// `has_vram` is false when VRAM sampling isn't available.
     pub fn updateResourceStatsForCharacter(self: *Painter, source_hwnd: win32.HWND, cpu_percent: f32, ram_mb: f32, vram_mb: f32, has_vram: bool) void {
         const thumbnail = self.getThumbnailBySourceHwnd(source_hwnd) orelse return;
@@ -507,6 +519,7 @@ pub const Painter = struct {
                 slog.err("Failed to rename the thumbnail for '{s}': {}", .{ change.new_name, err });
                 continue;
             };
+            thumbnail.session_start = change.logged_in_at;
 
             if (was_generic and !now_generic) self.onLogin(thumbnail);
             if (now_generic and !was_generic and self.config.exclusion.logoutClearsExclusion) hotkeys.clearLoggedOutExclusion(change.old_name);
@@ -700,6 +713,7 @@ pub const Painter = struct {
             .thumbnail_id = handles.thumbnail_id,
             .source_hwnd = eve_window.hwnd,
             .is_eve_client = eve_window.is_eve_client,
+            .session_start = eve_window.logged_in_at,
             .character_name = strings.character_name,
             .system_name = strings.system_name,
             .cached_group_badge_label = strings.group_badge_label,

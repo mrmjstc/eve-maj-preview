@@ -12,7 +12,7 @@ import { applyTranslations, switchLanguage, t } from './i18n.js';
 import { closeImportModal, handleImportFileSelected, initImportAccentColorPreview, onImportDestChanged, onImportSourceProfileChanged, openImportModal, runImport } from './import.js';
 import { buildSectionNav, closeDialog, initDelegatedKeyboardActivation, initializeTabs, showStatus } from './layout.js';
 import { browseSoundFile, clearNotifCustomText, clearNotificationTypeSearch, clearSoundFile, insertNotifPlaceholder, onNotificationTypeSearchInput, rememberNotifTextBox, selectNotificationType, testNotification, toggleNotifBorderColor, toggleNotificationTypeEnabled, toggleNotifShowBorder, toggleNotifSoundEnabled, toggleNotifTextColor, updateNotifTextPreview } from './notifications.js';
-import { browseChatlogDir, browseGamelogDir, initCombatShowRequiresEnabled, toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotificationOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, toggleNotLoggedInSpaceOptions, toggleQuickGroupBadgeOptions, toggleRegionFitOptions, toggleResourcesOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterColors, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
+import { browseChatlogDir, browseGamelogDir, initCombatShowRequiresEnabled, toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotificationOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, toggleNotLoggedInSpaceOptions, toggleQuickGroupBadgeOptions, toggleRegionFitOptions, toggleResourcesOptions, toggleSessionTimerOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterColors, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
 import { fetchOrePrices } from './ore_table.js';
 import { initOverlayLayoutPreview } from './overlay_layout.js';
 import { copyCurrentProfile, createNewProfile, deleteCurrentProfile, resetCurrentProfile, restoreSelectedProfileBackup, switchProfile } from './profiles.js';
@@ -183,6 +183,7 @@ Object.assign(window, {
     toggleRegionFitOptions,
     toggleResourcesOptions,
     toggleSectionHint,
+    toggleSessionTimerOptions,
     toggleShiftClickExcludeOptions,
     toggleSnappingOptions,
     toggleSystemNameOptions,

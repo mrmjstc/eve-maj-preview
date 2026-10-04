@@ -215,6 +215,28 @@ pub fn logFileTimestamp(file_name: []const u8, is_chatlog: bool) u64 {
     return date * 1000000 + time;
 }
 
+/// UTC Unix seconds for a logFileTimestamp; null for 0 or an impossible date.
+pub fn logTimestampToUnixSeconds(ts: u64) ?i64 {
+    const date: i64 = @intCast(ts / 1000000);
+    const time: i64 = @intCast(ts % 1000000);
+    const year = @divTrunc(date, 10000);
+    const month = @mod(@divTrunc(date, 100), 100);
+    const day = @mod(date, 100);
+    const hour = @divTrunc(time, 10000);
+    const minute = @mod(@divTrunc(time, 100), 100);
+    const second = @mod(time, 100);
+    if (month < 1 or month > 12 or day < 1 or day > 31 or hour > 23 or minute > 59 or second > 59) return null;
+
+    // Howard Hinnant's days_from_civil.
+    const march_year = if (month <= 2) year - 1 else year;
+    const era = @divFloor(march_year, 400);
+    const year_of_era = march_year - era * 400;
+    const day_of_year = @divTrunc(153 * @mod(month + 9, 12) + 2, 5) + day - 1;
+    const day_of_era = year_of_era * 365 + @divTrunc(year_of_era, 4) - @divTrunc(year_of_era, 100) + day_of_year;
+    const days = era * 146097 + day_of_era - 719468;
+    return days * std.time.s_per_day + hour * std.time.s_per_hour + minute * std.time.s_per_min + second;
+}
+
 pub fn characterIdFromFileName(file_name: []const u8) ?[]const u8 {
     const name = withoutTxt(file_name);
     const underscore = std.mem.lastIndexOfScalar(u8, name, '_') orelse return null;
@@ -340,6 +362,19 @@ test "logFileTimestamp rejects names EVE didn't write" {
     try testing.expectEqual(@as(u64, 0), logFileTimestamp("20261002_173212_912054032 (1).txt", false));
     try testing.expectEqual(@as(u64, 0), logFileTimestamp("Local_20261002_173212_912054032 - Copy.txt", true));
     try testing.expectEqual(@as(u64, 0), logFileTimestamp("20261002_173212_912054032.txt.bak", false));
+}
+
+test "logTimestampToUnixSeconds reads EVE's UTC log timestamps" {
+    try testing.expectEqual(@as(?i64, 0), logTimestampToUnixSeconds(19700101000000));
+    try testing.expectEqual(@as(?i64, 1788736059), logTimestampToUnixSeconds(20260906230739));
+    try testing.expectEqual(@as(?i64, 951825600), logTimestampToUnixSeconds(20000229120000));
+    try testing.expectEqual(@as(?i64, 1735689599), logTimestampToUnixSeconds(20241231235959));
+}
+
+test "logTimestampToUnixSeconds rejects 0 and impossible times" {
+    try testing.expectEqual(@as(?i64, null), logTimestampToUnixSeconds(0));
+    try testing.expectEqual(@as(?i64, null), logTimestampToUnixSeconds(20261301000000));
+    try testing.expectEqual(@as(?i64, null), logTimestampToUnixSeconds(20260906240000));
 }
 
 test "listenerName reads gamelog and chatlog headers" {

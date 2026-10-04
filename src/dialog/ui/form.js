@@ -9,7 +9,7 @@ import { applyAccentColorTheme, htmlColorToZig, zigColorToHtml } from './colors.
 import { populateHotkeyGroups } from './hotkey_groups.js';
 import { updateHotkeyConflictHighlights } from './hotkeys.js';
 import { populateNotificationTypes } from './notifications.js';
-import { toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotificationOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, toggleNotLoggedInSpaceOptions, toggleQuickGroupBadgeOptions, toggleRegionFitOptions, toggleResourcesOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
+import { toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotificationOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, toggleNotLoggedInSpaceOptions, toggleQuickGroupBadgeOptions, toggleRegionFitOptions, toggleResourcesOptions, toggleSessionTimerOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
 import { refreshOverlayLayoutPreview, syncOverlayStyleFromCharacterName } from './overlay_layout.js';
 import { refreshRegionButtons } from './region.js';
 import { populateSystemColors } from './system_colors.js';
@@ -133,6 +133,7 @@ function refreshDependentOptions() {
     toggleCharacterNameOptions();
     toggleSystemNameOptions();
     toggleQuickGroupBadgeOptions();
+    toggleSessionTimerOptions();
     toggleUniqueSystemColors();
     toggleUniqueCharacterNameColors();
     toggleClickThroughOptions();

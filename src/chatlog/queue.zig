@@ -31,6 +31,17 @@ pub const SystemUpdate = struct {
     }
 };
 
+/// Worker to main thread: when a character's session began, by its gamelog's name.
+pub const SessionStart = struct {
+    character_name: []const u8,
+    /// UTC Unix seconds.
+    started_at: i64,
+
+    pub fn deinit(self: *SessionStart, allocator: std.mem.Allocator) void {
+        allocator.free(self.character_name);
+    }
+};
+
 /// Worker to main thread, where the text is rendered from per-type config.
 pub const NotificationEvent = struct {
     character_name: []const u8,

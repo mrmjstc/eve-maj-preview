@@ -38,6 +38,12 @@ pub fn formatIskAbbrev(buf: []u8, value: f32) []const u8 {
     }
 }
 
+/// Whole minutes as "42m", or "3h 07m" from an hour on.
+pub fn formatSessionDuration(buf: []u8, minutes: u64) []const u8 {
+    if (minutes < 60) return std.fmt.bufPrint(buf, "{d}m", .{minutes}) catch "?";
+    return std.fmt.bufPrint(buf, "{d}h {d:0>2}m", .{ minutes / 60, minutes % 60 }) catch "?";
+}
+
 const testing = std.testing;
 
 test "insertThousandsSeparators groups the leading digits only" {
@@ -71,4 +77,13 @@ test "formatIskAbbrev never shows 1000 before a suffix" {
     try testing.expectEqualStrings("999k", formatIskAbbrev(&buf, 999_400.0));
     try testing.expectEqualStrings("1.0m", formatIskAbbrev(&buf, 999_720.0));
     try testing.expectEqualStrings("-1.0m", formatIskAbbrev(&buf, -999_720.0));
+}
+
+test "formatSessionDuration switches to hours at sixty minutes and pads the minutes" {
+    var buf: [32]u8 = undefined;
+    try testing.expectEqualStrings("0m", formatSessionDuration(&buf, 0));
+    try testing.expectEqualStrings("59m", formatSessionDuration(&buf, 59));
+    try testing.expectEqualStrings("1h 00m", formatSessionDuration(&buf, 60));
+    try testing.expectEqualStrings("3h 07m", formatSessionDuration(&buf, 187));
+    try testing.expectEqualStrings("25h 59m", formatSessionDuration(&buf, 1559));
 }
