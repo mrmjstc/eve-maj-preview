@@ -29,8 +29,10 @@ pub const LogLevel = enum {
 };
 
 var g_level: LogLevel = .err;
-/// std.debug.print caches its stderr handle on first use, so printing before AllocConsole would keep a dead one; false until openDebugConsole.
+/// std.debug.print caches its stderr handle on first use, so printing before AllocConsole would keep a dead one; true only while the console is shown.
 var g_console_ready = false;
+/// The console is hidden rather than freed, since a reallocated one would get a handle the cached one doesn't match.
+var g_console_allocated = false;
 
 var g_io: std.Io = undefined;
 var g_log_file: ?std.Io.File = null;
@@ -50,12 +52,26 @@ pub fn setIo(io: std.Io) void {
 }
 
 /// Pops a console for debug logging, since the Windows GUI subsystem doesn't create one; std.debug.print's console mirror stays off until this runs (see g_console_ready).
+/// Does nothing once the console is open; shows it again after closeDebugConsole.
 pub fn openDebugConsole() void {
-    _ = win32.AllocConsole();
+    if (g_console_ready) return;
+    if (g_console_allocated) {
+        if (win32.GetConsoleWindow()) |hwnd| _ = win32.ShowWindow(hwnd, win32.SW_SHOW);
+    } else {
+        _ = win32.AllocConsole();
+        g_console_allocated = true;
+        // Closing the console window kills the process before any `defer` can run, so buffered lines are flushed from its ctrl handler instead.
+        _ = win32.SetConsoleCtrlHandler(consoleCtrlHandler, win32.TRUE);
+        disableQuickEdit();
+    }
     g_console_ready = true;
-    // Closing the console window kills the process before any `defer` can run, so buffered lines are flushed from its ctrl handler instead.
-    _ = win32.SetConsoleCtrlHandler(consoleCtrlHandler, win32.TRUE);
-    disableQuickEdit();
+}
+
+/// Hides the console and stops mirroring to it; openDebugConsole shows it again.
+pub fn closeDebugConsole() void {
+    if (!g_console_ready) return;
+    g_console_ready = false;
+    if (win32.GetConsoleWindow()) |hwnd| _ = win32.ShowWindow(hwnd, win32.SW_HIDE);
 }
 
 pub fn deinitFile() void {

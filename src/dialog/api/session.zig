@@ -64,6 +64,7 @@ pub fn saveSession(arena: std.mem.Allocator) !rpc.RawJson {
         const settings = &main.g_global_settings;
         try settings.save();
         log.setLevel(settings.logLevel);
+        if (settings.logLevel == .debug) log.openDebugConsole() else log.closeDebugConsole();
         applyRunOnStartup(settings.runOnStartup);
         if (settings.autoRegisterProtocol) protocol.ensureRegistered(host.allocator());
     }
