@@ -10,6 +10,7 @@ const config_mod = @import("../config.zig");
 const protocol = @import("../protocol.zig");
 const painter_mod = @import("../painter.zig");
 const main = @import("../main.zig");
+const dialog_session = @import("../dialog/session.zig");
 const mouse_hook = @import("mouse_hook.zig");
 const keyboard_hook = @import("keyboard_hook.zig");
 const bindings = @import("bindings.zig");
@@ -27,6 +28,7 @@ const slog = log.scoped("hotkeys");
 /// Cycling, exclusions, profile switching and app/URL launching live in their own modules.
 pub const HotkeyManager = struct {
     allocator: std.mem.Allocator,
+    /// The saved copy, for the bindings and the groups and characters their ids index into; other settings read live().
     config: *const config_mod.Config,
     store: *config_mod.ProfileStore,
     global_settings: *const config_mod.GlobalConfig,
@@ -43,7 +45,7 @@ pub const HotkeyManager = struct {
     /// Most recent foreground window belonging to neither an EVE client nor this process; ReturnToLastApp's target, recorded by Painter's foreground hook.
     last_non_eve_foreground: ?win32.HWND = null,
 
-    /// Reads the profile's saved copy, since hotkeys only change on Save.
+    /// Registers from the profile's saved copy, since bindings only change on Save.
     pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, global_settings: *const config_mod.GlobalConfig, scout_ptr: *scout.Scout, painter: *painter_mod.Painter, exclusions: *exclusions_mod.Exclusions) !HotkeyManager {
         const cfg = &store.saved;
         return HotkeyManager{
@@ -57,6 +59,16 @@ pub const HotkeyManager = struct {
             .cycle = try cycling.CycleState.init(allocator, cfg.hotkeyGroups.items.len),
             .exclusions = exclusions,
         };
+    }
+
+    /// The running copy, including the dialog's unsaved edits.
+    pub fn live(self: *const HotkeyManager) *const config_mod.Config {
+        return &self.store.live;
+    }
+
+    /// Like live(), for the global settings; `global_settings` stays the saved copy the bindings came from.
+    pub fn liveGlobal(_: *const HotkeyManager) *const config_mod.GlobalConfig {
+        return dialog_session.liveGlobal();
     }
 
     fn formatKeyName(virtual_key: u32, buffer: []u8) []const u8 {
@@ -275,7 +287,7 @@ pub const HotkeyManager = struct {
         // Auto-repeat while a key is held isn't filtered by the keyboard hook, so this must run before every early return or held keys would re-fire.
         const vk_code = win32.hotkeyVkFromLparam(lparam);
         const is_repeat = !keyboard_hook.trackPress(self.allocator, vk_code);
-        if (is_repeat and !self.config.hotkeys.allowHotkeyAutoRepeat) {
+        if (is_repeat and !self.live().hotkeys.allowHotkeyAutoRepeat) {
             slog.debug("Hotkey {} ignored - key-repeat re-fire while held", .{hotkey_id});
             return;
         }
@@ -295,7 +307,7 @@ pub const HotkeyManager = struct {
             return;
         }
 
-        if (self.config.hotkeys.requireEveFocus and self.foregroundEveWindow() == null) {
+        if (self.live().hotkeys.requireEveFocus and self.foregroundEveWindow() == null) {
             slog.debug("Hotkey {} ignored - EVE window not in focus", .{hotkey_id});
             return;
         }
@@ -331,11 +343,11 @@ pub const HotkeyManager = struct {
             .assign_group => |assign| membership.assignHoveredToGroup(self, assign.group_index),
             .minimize_all => {
                 slog.info("Minimize all hotkey pressed", .{});
-                client_actions.minimizeAllClients(self.scout.getWindows(), self.config);
+                client_actions.minimizeAllClients(self.scout.getWindows(), self.live());
             },
             .close_all => {
                 slog.info("Close all hotkey pressed", .{});
-                client_actions.closeAllClients(self.scout.getWindows(), self.config);
+                client_actions.closeAllClients(self.scout.getWindows(), self.live());
             },
             .toggle_visibility => {
                 slog.info("Toggle visibility hotkey pressed", .{});
@@ -360,7 +372,7 @@ pub const HotkeyManager = struct {
             .previous_not_logged_in => cycling.cycleNotLoggedIn(self, false),
             .move_to_saved_positions => {
                 slog.info("Move to saved positions hotkey pressed", .{});
-                client_actions.moveAllClientsToSavedPositions(self.scout.getWindows(), self.config, self.painter);
+                client_actions.moveAllClientsToSavedPositions(self.scout.getWindows(), self.live(), self.painter);
             },
             .return_to_last_app => launch.returnToLastApp(&self.last_non_eve_foreground),
             .activate_app => |activate| launch.activateApp(self.global_settings, activate.app_index),

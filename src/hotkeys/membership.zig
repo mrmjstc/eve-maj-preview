@@ -21,8 +21,8 @@ pub fn toggleThumbnailExclusion(manager: *HotkeyManager, source_hwnd: win32.HWND
     manager.cycle.excluded_index = null;
     manager.painter.refreshExclusion(thumbnail);
 
-    if (thumbnail.is_excluded_from_cycle and manager.config.exclusion.autoMinimizeExcluded) {
-        animation.showClient(manager.config, source_hwnd, win32.SW_FORCEMINIMIZE);
+    if (thumbnail.is_excluded_from_cycle and manager.live().exclusion.autoMinimizeExcluded) {
+        animation.showClient(manager.live(), source_hwnd, win32.SW_FORCEMINIMIZE);
     }
 
     manager.painter.notify(source_hwnd, .{ .ntype = .CycleExclusion, .state = if (thumbnail.is_excluded_from_cycle) .excluded else .included });
@@ -68,7 +68,7 @@ pub fn assignHoveredToGroup(manager: *HotkeyManager, group_index: usize) void {
     // Before the reflow, so the reflow's render already has the new label.
     manager.painter.refreshGroupBadge(thumbnail);
     // Group membership only feeds RegionFit's display order under HotkeyGroups ordering; reflowing under Characters ordering would be a no-op.
-    if (manager.config.display.regionFitOrder == .HotkeyGroups) manager.painter.reflowIfRegionFitActive();
+    if (manager.live().display.regionFitOrder == .HotkeyGroups) manager.painter.reflowIfRegionFitActive();
     manager.painter.renderThumbnail(thumbnail) catch |err| {
         slog.err("Failed to render thumbnail after group assignment: {}", .{err});
     };

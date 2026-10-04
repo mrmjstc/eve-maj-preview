@@ -36,6 +36,7 @@ pub fn end() void {
     dropProfileDraft();
     if (g_global_draft) |*draft| draft.deinit();
     g_global_draft = null;
+    log.setLevel(main.g_global_settings.logLevel);
 
     const store = &main.g_store;
     if (!store.isDirty()) return;
@@ -60,6 +61,12 @@ pub fn editsDraft() bool {
 pub fn global() !*GlobalConfig {
     if (g_global_draft) |*draft| return draft;
     return error.NoSession;
+}
+
+/// The global settings as the window has them, saved or not; the running ones when it isn't open.
+pub fn liveGlobal() *const GlobalConfig {
+    if (g_global_draft) |*draft| return draft;
+    return &main.g_global_settings;
 }
 
 pub fn profileDirty() bool {
@@ -96,7 +103,11 @@ pub fn apply(jw: ?*std.json.Stringify, arena: std.mem.Allocator, doc: Doc, ops: 
             defer if (!editsDraft()) main.onLiveProfileEdited(layoutFor(ops));
             try applyTo(Config, profile(), jw, arena, ops);
         },
-        .global => try applyTo(GlobalConfig, try global(), jw, arena, ops),
+        .global => {
+            const draft = try global();
+            defer log.setLevel(draft.logLevel);
+            try applyTo(GlobalConfig, draft, jw, arena, ops);
+        },
     }
 }
 

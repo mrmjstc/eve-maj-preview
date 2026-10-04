@@ -242,7 +242,7 @@ pub fn cycleExcluded(manager: *HotkeyManager, forward: bool) void {
 /// Cycles to the most-recently-notified character (FIFO).
 pub fn cycleNotified(manager: *HotkeyManager, forward: bool) void {
     slog.info("Cycle notified character hotkey pressed ({s})", .{directionName(forward)});
-    const retention_ms: u64 = @as(u64, manager.config.thumbnail.notifications.notified_cycle_retention_seconds) * 1000;
+    const retention_ms: u64 = @as(u64, manager.live().thumbnail.notifications.notified_cycle_retention_seconds) * 1000;
 
     var names = manager.painter.notified_queue.namesWithin(manager.allocator, retention_ms) catch |err| {
         slog.err("Failed to build notified-character list: {}", .{err});
@@ -283,7 +283,7 @@ pub fn cycleAllClients(manager: *HotkeyManager, forward: bool) void {
         return;
     }
 
-    const order = manager.cycle.character_order.orderedIndices(manager.allocator, manager.config.characters.items, windows) catch |err| {
+    const order = manager.cycle.character_order.orderedIndices(manager.allocator, manager.live().characters.items, windows) catch |err| {
         slog.err("Failed to build character-ordered client list: {}", .{err});
         return;
     };
@@ -299,7 +299,7 @@ pub fn cycleAllClients(manager: *HotkeyManager, forward: bool) void {
         }
     }
 
-    const respect_exclusions = manager.global_settings.cycleAllClientsRespectExclusions;
+    const respect_exclusions = manager.liveGlobal().cycleAllClientsRespectExclusions;
     var it = CycleOrder.init(found_index, num, forward, true);
     while (it.next()) |index| {
         const w = windows[order[index]];
@@ -377,7 +377,7 @@ pub fn syncToFocusedCharacter(manager: *HotkeyManager, character_name: []const u
         }
     }
 
-    syncGroupCycleIndex(manager.config.hotkeyGroups.items, manager.cycle.group_cursors, character_name, manager.config.hotkeys.resetGroupIndexOnNonGroupFocus);
+    syncGroupCycleIndex(manager.config.hotkeyGroups.items, manager.cycle.group_cursors, character_name, manager.live().hotkeys.resetGroupIndexOnNonGroupFocus);
 }
 
 fn characterOrderSignature(characters: []const config.CharacterConfig) u64 {
