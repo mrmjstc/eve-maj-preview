@@ -159,7 +159,7 @@ Each thumbnail has one of these states at any time: `active`, `inactive`, `alert
 | `active` | Follows `activeThumbnailHidden` |
 | `inactive`, `alert`, `minimized`, `dragging` | `true` |
 
-> **Note:** These per-state overrides are not currently exposed as editable profile JSON keys - they exist as fixed built-in defaults used at render time. `alert` state visuals (border color/width) are driven separately via the per-notification-type `border_color` override - see [Notification System](#notification-system).
+> **Note:** These per-state overrides are saved in the profile as `thumbnail.active`, `thumbnail.inactive`, `thumbnail.alert`, `thumbnail.minimized` and `thumbnail.dragging`, and can be edited there by hand, but the config dialog doesn't show them. An active notification's border color comes from its type's `border_color` override when set - see [Notification System](#notification-system).
 
 ## Timer and Scanning
 
@@ -200,8 +200,9 @@ Configure which applications to create thumbnails for. By default, only EVE Onli
 - **name**: The thumbnail label for the windows this filter matches, whatever their titles; EVE clients are named after their character instead
 - Windows that aren't EVE clients get thumbnails and hotkeys, but no log tracking (system, combat, mining, notifications), and Minimize All, Close All, Auto-Minimize and Auto-Move leave them alone
 - **enabled**: Whether this filter is active (default: `true`)
-- **class_names**: Array of window class names to match (empty array = match any)
-- **executable_names**: Array of executable names to match (case-insensitive, empty array = match any)
+- **class_names**: Array of window class names to match, exactly and case-sensitively (empty array = match any)
+- **executable_names**: Array of executable names, matched case-insensitively against the end of the window's executable path (empty array = match any)
+- A filter with both arrays empty matches nothing
 
 **How It Works:**
 1. The application scans all visible windows at least once a second
@@ -221,7 +222,7 @@ The display configuration has two layout modes, with full multi-monitor support.
   "display": {
     "startX": 10,
     "startY": 10,
-    "spacing": 10,
+    "spacing": 0,
     "layoutMode": "Custom",
     "honorSavedPositions": true
   }
@@ -453,7 +454,7 @@ evemajpreview://<action>/<param>
 ```
 
 - **`switch/<character-name>`**: Switch to and foreground the named character's client. The name must be URL-encoded (spaces as `%20` or `+`).
-- **`profile/<filename>`**: Load the named profile (filename relative to `profiles\`, e.g. `pvp.json`).
+- **`profile/<filename>`**: Load the named profile (a plain file name inside `profiles\`, e.g. `pvp.json`; letter case doesn't matter). A name that isn't a plain `<name>.json`, or a profile that doesn't exist, loads the default profile instead.
 - **`hotkey/<action>`**: Trigger one of the hotkey actions below, exactly as if its configured global hotkey had been pressed.
 
 **Hotkey Actions:**
@@ -757,6 +758,8 @@ Monitor EVE Online chat and game logs for system changes and events:
 
 Variables are expanded when the configuration is loaded. If a variable doesn't exist, the literal text is preserved in the path.
 
+Either folder left empty (the default) uses EVE's own: `EVE\logs\Chatlogs` or `EVE\logs\Gamelogs` under your Windows Documents folder, wherever it has been moved to (e.g. OneDrive).
+
 **Threading**: Chatlog monitoring always runs on its own worker thread, so reading logs never holds up the thumbnails. (The old `useThreading` setting is ignored if a profile still has it.)
 
 **Polling Optimization**: The chatlog monitor uses exponential backoff to reduce CPU usage for inactive log files:
@@ -824,10 +827,11 @@ Incoming and outgoing damage are rendered as two independently-positioned labels
 
 **Taking-Damage Alert** (`TakingDamage` notification type): Fires when incoming damage lands, at most once per the type's `throttle_ms`, and stays silent once combat actually stops instead of repeating on a timer. It's switched on and off with the type's Enabled box in the Notifications tab (`type_configs.TakingDamage.enabled`), where its border color, duration, suppression and TTS are also set.
 
-**Direction Classification**: EVE gamelog `(combat)` lines are classified by the keyword immediately following the damage number:
-- **Incoming**: line contains `" from "` after the amount - e.g. `63 from Gistatis Legatus - Hits` or `26 from Gistatis Legatus - Nova Light Missile - Hits`
-- **Outgoing**: line contains `" to "` after the amount - e.g. `166 to Gistatis Legatus - Berserker II - Grazes`
-- **Excluded**: remote repairs/cap transfers (keyword scan), misses (no leading damage number), and unrecognised formats
+**Direction Classification**: EVE gamelog `(combat)` lines start with the damage number, and the text after it decides the direction, `" from "` checked before `" to "`:
+- **Incoming**: `" from "` anywhere after the amount - e.g. `63 from Gistatis Legatus - Hits` or `26 from Gistatis Legatus - Nova Light Missile - Hits`
+- **Outgoing**: otherwise `" to "` anywhere after the amount - e.g. `166 to Gistatis Legatus - Berserker II - Grazes`
+- **Incoming misses**: `misses you completely` counts as a zero-damage incoming hit, so it still raises Taking Damage
+- **Excluded**: remote repairs, boosts and cap transfers (`repairs your`, `shields your`, `boosts your`, `transfers`), outgoing misses (no leading damage number), and unrecognised formats
 
 **DPS Formula**: Total damage within the window divided by `window_seconds`. During the first `window_seconds` of a fight (after a full window without hits), it's the damage after the first second divided by the time since, shown as `??` for the first 3 seconds. If every hit so far landed in the fight's first second, it's that damage divided by `window_seconds`. The display refreshes every `update_interval_ms`.
 
@@ -881,14 +885,14 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
 
 The Laser Idle and Mining Stopped alerts are switched on and off with their types' Enabled boxes in the Notifications tab (`type_configs.MiningIdle.enabled` and `type_configs.MiningStopped.enabled`).
 
-**Rate Formula**: Total units mined within the window divided by `window_seconds`, converted to per-minute for display. Displays as `M: XXXX u/min`. During the first `window_seconds` of mining, it's the units mined after the first cycle divided by the time from the first yield to the latest, so lasers cycling in step read their true rate from the second cycle on. Bounty ISK/hr works the same way.
+**Rate Formula**: Total m³ mined within the window (units × the ore's volume) divided by `window_seconds`, converted to per-minute for display. Displays as `M: XXXX m3/min`, with the ISK rate of the same yield beneath it when `show_isk_rate` is on. During the first `window_seconds` of mining, it's the units mined after the first cycle divided by the time from the first yield to the latest, so lasers cycling in step read their true rate from the second cycle on. Bounty ISK/hr works the same way.
 
 **Parsing**: EVE gamelog `(mining)` lines are parsed for yield quantity:
 - **Normal yield**: `You mined 42 units of Bistot II-Grade`
 - **Critical yield**: `Critical mining success! You mined an additional 124 units of Bistot II-Grade`
 - **Excluded**: residue/waste lines (`depleted from asteroid as residue`) are ignored
 
-**Laser Idle Alert** (`MiningIdle` notification type): Fires when the number of `(mining)` events within `idle_alert_window_seconds` drops to `≤ idle_alert_threshold`. Useful for detecting when one of two lasers stops. It isn't checked until mining has run for a whole `idle_alert_window_seconds`, so starting to mine doesn't trigger it. The alert fires once per window-duration cooldown and resets when activity rises above threshold again.
+**Laser Idle Alert** (`MiningIdle` notification type): Fires when the number of `(mining)` events within `idle_alert_window_seconds` drops to `≤ idle_alert_threshold`. Useful for detecting when one of two lasers stops. It isn't checked until mining has run for a whole `idle_alert_window_seconds`, so starting to mine doesn't trigger it. The alert fires once per idle stretch and re-arms only when activity rises above the threshold again.
 
 **Mining Stopped Alert** (`MiningStopped` notification type): Fires once when no `(mining)` events have occurred for `stopped_alert_window_seconds` seconds, after the character was previously mining. Re-arms automatically when mining resumes.
 
@@ -1016,6 +1020,7 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 {
   "hotkeys": {
     "requireEveFocus": false,
+    "resetGroupIndexOnNonGroupFocus": false,
     "allowHotkeyAutoRepeat": false,
     "exactHotkeyModifiers": false,
     "hotkeyMinimizeAll": null,
@@ -1043,7 +1048,7 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 
 Pressing **hotkeySuspend** fires a `HotkeySuspend` notification on every client (see [Notification System](#notification-system)).
 
-**Global Hotkeys**: Set to a virtual key code string (e.g., `"F9"`, `"F10"`, `"0x70"`), a modifier combo (e.g., `"Ctrl+F9"`, `"Alt+Shift+F1"`, `"LWin+M"`), or `null` to disable
+**Global Hotkeys**: Set to a key name (e.g., `"F9"`, `"F10"`), a modifier combo (e.g., `"Ctrl+F9"`, `"Alt+Shift+F1"`, `"LWin+M"`), a hex virtual key code (`"0x70"`), or `null` to disable. Names are accepted when editing by hand, but the app saves every hotkey back as its hex code (`"Ctrl+F9"` becomes `"0x278"`). An unrecognised key name makes the whole profile fail to load, and it opens with default settings instead, so check the log after hand-editing.
 - **hotkeyMinimizeAll**: Minimize all EVE client windows
 - **hotkeyCloseAll**: Close all EVE client windows (respects per-character `excludeFromCloseAll`)
 - **hotkeyToggleVisibility**: Toggle visibility of all thumbnails
@@ -1052,7 +1057,7 @@ Pressing **hotkeySuspend** fires a `HotkeySuspend` notification on every client 
 - **hotkeyNextExcluded**: Cycle to the next excluded character (in the order they were excluded)
 - **hotkeyPreviousExcluded**: Cycle to the previous excluded character
 - **hotkeySuspend**: Suspend/resume all other hotkeys at once
-- **hotkeyCycleNotified**: Cycle forward to the character that most recently triggered a notification (see [Notified-Character Cycling](#notified-character-cycling))
+- **hotkeyCycleNotified**: Cycle forward through recently notified characters, oldest first (see [Notified-Character Cycling](#notified-character-cycling))
 - **hotkeyPreviousNotified**: Cycle backward through recently notified characters
 - **hotkeyMoveToSavedPositions**: Move all EVE client windows to their saved positions (respects per-character `excludeFromAutoMove`)
 **Virtual Key Codes**: See [virtual_keys.zig](../src/platform/virtual_keys.zig) for full list
@@ -1092,6 +1097,7 @@ Some settings persist across all profiles and are configured in `profiles\global
   "runOnStartup": false,
   "alwaysOnTop": true,
   "language": "en",
+  "advancedMode": false,
   "logLevel": "err",
   "oreTable": [
     { "name": "Veldspar", "price": 11.53 }
@@ -1117,6 +1123,9 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **alwaysOnTop**: Keep the configuration window above other windows (default: `true`)
 - **language**: Configuration window language: `en`, `de`, `es`, `fr`, `pl`, `pt`, `ru` or `zh` (default: `en`)
 - **logLevel**: See [Logging](#logging) (default: `err`)
+- **advancedMode**: See [Config Dialog Advanced Mode](#config-dialog-advanced-mode) (default: `false`)
+- **dialogX** / **dialogY**: Where the configuration window last was, saved when you move it (default: `null`, near the top-left of the screen; also used when the saved spot is on no monitor)
+- **dialogScale**: The configuration window's UI scale in percent, 50–300; `0` picks one from the screen resolution (default: `0`)
 - **oreTable**: Your ISK-per-unit price overrides for the mining ISK rate, one `{ "name", "price" }` entry per ore; ores you haven't overridden use the built-in price. A name matches its grade variants too (e.g. `Veldspar` covers `Veldspar II-Grade`). Editable from the config dialog's ore price table (0–1,000,000,000,000).
 
 **Profile Cycling Features:**
@@ -1195,7 +1204,7 @@ Assigning the same hotkey to more than one character turns it into an implicit c
 
 ### Notified-Character Cycling
 
-Bound via `hotkeyCycleNotified` and `hotkeyPreviousNotified` (see [Hotkey Configuration](#hotkey-configuration)), these hotkeys jump to whichever character most recently triggered a notification, without needing to click through thumbnails to find who needs attention.
+Bound via `hotkeyCycleNotified` and `hotkeyPreviousNotified` (see [Hotkey Configuration](#hotkey-configuration)), these hotkeys step through the characters that recently triggered a notification, without needing to click through thumbnails to find who needs attention.
 
 - Characters are tracked in a FIFO queue: each notification adds (or re-adds) the character at the back of the queue.
 - A character stays eligible for `notified_cycle_retention_seconds` (see [Notification System](#notification-system)) after its last notification, then ages out; a new notification resets the window.
@@ -1243,6 +1252,10 @@ Customize individual characters with position, size, border colors, display name
 
 - **position**: Where this character's thumbnail sits (screen pixels).
 - **windowPosition**: Where this character's EVE client window goes when moved to its saved position (see [Auto-Move Position](#auto-move-position)). Set it with Save Position on the Characters tab while the client is running. It's the window's top-left corner, including the few pixels of invisible resize border Windows adds, so a client snapped to a screen's left edge saves at about `x: -7`. A position whose title bar would be off every screen (e.g. after a monitor was removed) is pulled onto the nearest monitor.
+- **borderColors**: Optional `activeBorderColor` / `inactiveBorderColor` overrides for this character's thumbnail border; either can be left out to use the thumbnail's own.
+- **thumbnailSize**: Optional `width` / `height` override for this character's thumbnail (ignored in `RegionFit` mode).
+- **nameColor**: Optional color for this character's name text, taking precedence over `useUniqueCharacterNameColors`.
+- **displayName**: Optional name shown instead of the character name on the thumbnail and in the Client List (and spoken, with `tts_use_display_name`).
 - **hotkey**: Optional. Virtual key code string (same format as [hotkey groups](#hotkey-groups-character-cycling)) that directly activates this character's window. `null`/omitted to disable. See [Per-Character Hotkeys](#per-character-hotkeys-direct-activation).
 - **opacity**: Optional per-character override for `thumbnailOpacity` (default: `null`, inherits the global value; clamped to the same 51–255 minimum).
 - **excludeFromMinimize**: Skip this character when auto-minimize fires (default: `false`). See [Auto-Minimize](#auto-minimize).
@@ -1275,7 +1288,7 @@ With `useUniqueSystemColors` on, systems without an override get an automaticall
 
 Chatlog monitoring also keeps each character's EVE character ID, read from its log file names, in `data/character_ids.json`, so later lookups skip reading log headers; it's managed automatically, and deleting it only means the IDs are found again from the logs.
 
-> **Note**: The key is `systemName`, not `name` - an entry using the wrong key will fail to load and abort loading the entire profile.
+> **Note**: The key is `systemName`, not `name`. Unknown keys are ignored, so an entry using `name` loads with no system names and never matches.
 
 ## Config Dialog Accent Color
 
@@ -1299,26 +1312,19 @@ Whether the config dialog's Advanced Mode (extra, rarely-changed settings sectio
 
 ## Color Format
 
-Colors use hexadecimal string format in JSON:
-- **RGB format**: `"0xRRGGBB"` (no transparency, fully opaque)
-- **ARGB format**: `"0xAARRGGBB"` (includes alpha/transparency)
+Colors are hexadecimal strings in `"0xAARRGGBB"` form: alpha, then red, green and blue. `0x`/`0X` prefixes, a `#` prefix, and bare hex digits with no prefix (e.g. `"FF606060"`) are all accepted. A six-digit `"0xRRGGBB"` is read with an alpha of `00`.
 
-`0x`/`0X` prefixes, a `#` prefix, and bare hex digits with no prefix (e.g. `"FF606060"`) are all accepted.
+Where alpha applies:
+- **Text colors** (character and system names, notification text, overlay labels, badges) ignore alpha and are always drawn opaque, so `"0xFFFFFF"` and `"0xFFFFFFFF"` are the same white.
+- **Everything else** (borders, text backgrounds, the exclusion overlay) uses it: `0xFF` is fully opaque, `0x80` about half transparent, and `0x00` fully transparent, so a six-digit color there is invisible.
 
 Examples:
 ```json
-"0x00FFFFFF"   // White (opaque)
-"0x00FF0000"   // Red (opaque)
-"0x0000FF00"   // Green (opaque)
-"0x000000FF"   // Blue (opaque)
-"0x80000000"   // Black with 50% transparency
+"0xFFFFFFFF"   // White (opaque)
+"0xFFFF0000"   // Red (opaque)
 "0xFF606060"   // Gray (opaque)
-"0xFF00FFFF"   // Cyan (opaque)
+"0x80000000"   // Black, about 50% transparent
+"0x00FFFFFF"   // White text; invisible as a border or background
 ```
-
-Alpha channel values:
-- `0xFF` = 255 = Fully opaque
-- `0x80` = 128 = 50% transparent
-- `0x00` = 0 = Fully transparent
 
 
