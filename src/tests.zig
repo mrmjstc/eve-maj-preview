@@ -10,6 +10,7 @@ test {
     _ = @import("config/system_colors.zig");
     _ = @import("config/wire.zig");
     _ = @import("hotkeys/bindings.zig");
+    _ = @import("hotkeys/exclusions.zig");
     _ = @import("layout/placement.zig");
     _ = @import("notifications/gamelog_events.zig");
     _ = @import("notifications/notification.zig");

@@ -11,6 +11,7 @@ const scout = @import("clients/scout.zig");
 const activation = @import("clients/activation.zig");
 const painter = @import("painter.zig");
 const hotkeys = @import("hotkeys/manager.zig");
+const exclusions = @import("hotkeys/exclusions.zig");
 const mouse_hook = @import("hotkeys/mouse_hook.zig");
 const keyboard_hook = @import("hotkeys/keyboard_hook.zig");
 const paste_upload = @import("hotkeys/paste_upload.zig");
@@ -267,6 +268,11 @@ fn mainImpl(init: std.process.Init) !void {
         scout_ptr.deinit();
         g_allocator.destroy(scout_ptr);
     }
+
+    // Before the painter, whose thumbnails read it as they're created.
+    var exclusion_list = exclusions.Exclusions.init(g_allocator);
+    exclusion_list.setGlobalInstance();
+    defer exclusion_list.deinit();
 
     const painter_ptr = try createPainter();
     defer destroyPainter();
@@ -593,9 +599,13 @@ fn createHotkeyManager(timer_hwnd: win32.HWND) !void {
         slog.err("Failed to create the hotkey manager: Painter isn't ready", .{});
         return error.MissingPainter;
     };
+    const exclusion_list = exclusions.g_exclusions_ptr orelse {
+        slog.err("Failed to create the hotkey manager: the exclusion list isn't ready", .{});
+        return error.MissingExclusions;
+    };
     const manager = try g_allocator.create(hotkeys.HotkeyManager);
     errdefer g_allocator.destroy(manager);
-    manager.* = try hotkeys.HotkeyManager.init(g_allocator, &g_store, &g_global_settings, scout_ptr, painter_ptr);
+    manager.* = try hotkeys.HotkeyManager.init(g_allocator, &g_store, &g_global_settings, scout_ptr, painter_ptr, exclusion_list);
     hotkeys.g_hotkey_manager_ptr = manager;
 
     manager.registerHotkeys(timer_hwnd) catch |err| {

@@ -15,6 +15,7 @@ const keyboard_hook = @import("keyboard_hook.zig");
 const bindings = @import("bindings.zig");
 const cycling = @import("cycling.zig");
 const membership = @import("membership.zig");
+const exclusions_mod = @import("exclusions.zig");
 const profile_switch = @import("profile_switch.zig");
 const launch = @import("launch.zig");
 const log = @import("../log.zig");
@@ -37,16 +38,14 @@ pub const HotkeyManager = struct {
     /// Whether the config dialog is recording a new hotkey; kept separate from hotkeys_suspended so the two don't clobber each other.
     dialog_suspended: bool = false,
     cycle: cycling.CycleState,
-    exclusions: membership.Exclusions,
+    /// Outlives the manager, so a Save that recreates it keeps them.
+    exclusions: *exclusions_mod.Exclusions,
     /// Most recent foreground window belonging to neither an EVE client nor this process; ReturnToLastApp's target, recorded by Painter's foreground hook.
     last_non_eve_foreground: ?win32.HWND = null,
 
     /// Reads the profile's saved copy, since hotkeys only change on Save.
-    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, global_settings: *const config_mod.GlobalConfig, scout_ptr: *scout.Scout, painter: *painter_mod.Painter) !HotkeyManager {
+    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, global_settings: *const config_mod.GlobalConfig, scout_ptr: *scout.Scout, painter: *painter_mod.Painter, exclusions: *exclusions_mod.Exclusions) !HotkeyManager {
         const cfg = &store.saved;
-        const group_count = cfg.hotkeyGroups.items.len;
-        var cycle = try cycling.CycleState.init(allocator, group_count);
-        errdefer cycle.deinit(allocator);
         return HotkeyManager{
             .allocator = allocator,
             .config = cfg,
@@ -55,8 +54,8 @@ pub const HotkeyManager = struct {
             .scout = scout_ptr,
             .painter = painter,
             .hotkey_map = std.AutoHashMap(c_int, HotkeyAction).init(allocator),
-            .cycle = cycle,
-            .exclusions = try membership.Exclusions.init(allocator, group_count),
+            .cycle = try cycling.CycleState.init(allocator, cfg.hotkeyGroups.items.len),
+            .exclusions = exclusions,
         };
     }
 
@@ -430,10 +429,6 @@ pub const HotkeyManager = struct {
         };
     }
 
-    pub fn isCharacterExcluded(self: *HotkeyManager, character_name: []const u8) bool {
-        return self.exclusions.contains(self.config, character_name);
-    }
-
     pub fn updateFocusedCharacter(self: *HotkeyManager, character_name: []const u8, hwnd: win32.HWND) void {
         cycling.syncToFocusedCharacter(self, character_name, hwnd);
     }
@@ -441,19 +436,12 @@ pub const HotkeyManager = struct {
     pub fn deinit(self: *HotkeyManager) void {
         self.unregisterAll();
         self.cycle.deinit(self.allocator);
-        self.exclusions.deinit(self.allocator);
         self.hotkey_map.deinit();
     }
 };
 
-/// Set by main.zig for code that can't be handed the manager directly (window procs, Painter, travel).
+/// Set by main.zig for code that can't be handed the manager directly (window procs, Painter).
 pub var g_hotkey_manager_ptr: ?*HotkeyManager = null;
-
-/// False before the manager exists.
-pub fn isExcludedFromCycle(character_name: []const u8) bool {
-    const manager = g_hotkey_manager_ptr orelse return false;
-    return manager.isCharacterExcluded(character_name);
-}
 
 /// Keeps cycle positions in step when `hwnd` becomes the focused client; no-op before the manager exists.
 pub fn syncFocusedCharacter(character_name: []const u8, hwnd: win32.HWND) void {

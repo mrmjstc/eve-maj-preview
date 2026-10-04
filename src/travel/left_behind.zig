@@ -2,7 +2,7 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const painter_mod = @import("../painter.zig");
-const hotkeys = @import("../hotkeys/manager.zig");
+const exclusions = @import("../hotkeys/exclusions.zig");
 
 const Painter = painter_mod.Painter;
 const ThumbnailWindow = painter_mod.ThumbnailWindow;
@@ -77,5 +77,5 @@ pub fn check(painter: *Painter, now: win32.Ticks) void {
 
 /// Only characters that have jumped this session and aren't excluded from cycling count toward, or get, the alert.
 fn isTracked(thumbnail: *const ThumbnailWindow) bool {
-    return !thumbnail.travel.last_jump_ms.isZero() and !hotkeys.isExcludedFromCycle(thumbnail.character_name);
+    return !thumbnail.travel.last_jump_ms.isZero() and !exclusions.isExcluded(thumbnail.character_name);
 }

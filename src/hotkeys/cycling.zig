@@ -173,7 +173,7 @@ pub fn cycleGroup(manager: *HotkeyManager, group_index: usize, forward: bool) vo
         if (idx < num_chars) {
             const char_name = group.characters.items[idx];
 
-            if (manager.exclusions.isExcludedInGroup(group_index, char_name)) {
+            if (manager.exclusions.contains(char_name)) {
                 slog.debug("Skipping excluded character: {s}", .{char_name});
                 continue;
             }
@@ -215,9 +215,9 @@ pub fn cycleGroup(manager: *HotkeyManager, group_index: usize, forward: bool) vo
 /// In the order the characters were excluded.
 pub fn cycleExcluded(manager: *HotkeyManager, forward: bool) void {
     slog.info("{s} excluded character hotkey pressed", .{if (forward) "Next" else "Previous"});
-    const excluded_list = manager.exclusions.list(manager.allocator);
+    const excluded_names = manager.exclusions.names.items;
 
-    const num_excluded = excluded_list.items.len;
+    const num_excluded = excluded_names.len;
     if (num_excluded == 0) {
         slog.info("No excluded characters to cycle through", .{});
         return;
@@ -225,7 +225,7 @@ pub fn cycleExcluded(manager: *HotkeyManager, forward: bool) void {
 
     var it = CycleOrder.init(manager.cycle.excluded_index, num_excluded, forward, true);
     while (it.next()) |idx| {
-        const char_name = excluded_list.items[idx];
+        const char_name = excluded_names[idx];
 
         if (manager.scout.getHwndByName(char_name)) |hwnd| {
             manager.cycle.excluded_index = idx;
@@ -304,7 +304,7 @@ pub fn cycleAllClients(manager: *HotkeyManager, forward: bool) void {
     while (it.next()) |index| {
         const w = windows[order[index]];
         if (scout.isGenericCharacterName(w.character_name)) continue;
-        if (respect_exclusions and manager.isCharacterExcluded(w.character_name)) continue;
+        if (respect_exclusions and manager.exclusions.contains(w.character_name)) continue;
 
         slog.info("Cycling {s} to client: {s} ({}/{})", .{ directionName(forward), w.character_name, index + 1, num });
         activation.activate(w.hwnd);
@@ -401,7 +401,7 @@ fn groupEntryHwnd(manager: *HotkeyManager, group_index: usize, not_logged_in_hwn
     const num_chars = group.characters.items.len;
     if (index < num_chars) {
         const char_name = group.characters.items[index];
-        if (manager.exclusions.isExcludedInGroup(group_index, char_name)) return null;
+        if (manager.exclusions.contains(char_name)) return null;
         return manager.scout.getHwndByName(char_name);
     }
     return not_logged_in_hwnds[index - num_chars];
@@ -433,10 +433,10 @@ fn syncGroupCycleIndex(groups: []const config.HotkeyGroupConfig, cursors: []?usi
 }
 
 fn syncExcludedCycleIndex(manager: *HotkeyManager, character_name: []const u8) void {
-    const excluded_list = manager.exclusions.list(manager.allocator);
-    const index = strings.indexOfString(excluded_list.items, character_name) orelse return;
+    const excluded_names = manager.exclusions.names.items;
+    const index = strings.indexOfString(excluded_names, character_name) orelse return;
     if (manager.cycle.excluded_index == null or manager.cycle.excluded_index.? != index) {
-        slog.debug("Updated excluded cycle index: {s} now at position {}/{}", .{ character_name, index + 1, excluded_list.items.len });
+        slog.debug("Updated excluded cycle index: {s} now at position {}/{}", .{ character_name, index + 1, excluded_names.len });
         manager.cycle.excluded_index = index;
     }
 }

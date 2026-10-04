@@ -9,6 +9,7 @@ const scout = @import("clients/scout.zig");
 const auto_minimize_mod = @import("clients/auto_minimize.zig");
 const auto_move_mod = @import("clients/auto_move.zig");
 const hotkeys = @import("hotkeys/manager.zig");
+const exclusions = @import("hotkeys/exclusions.zig");
 const thumbnail_drag = @import("drag/thumbnail.zig");
 const drag_overlays = @import("drag/overlays.zig");
 const placement = @import("layout/placement.zig");
@@ -556,10 +557,10 @@ pub const Painter = struct {
         self.refreshExclusion(thumbnail);
     }
 
-    /// Mirrors the hotkey manager's cycle exclusion onto the thumbnail, which draws it; the only writer of is_excluded_from_cycle.
+    /// Mirrors the character's cycle exclusion onto the thumbnail, which draws it; the only writer of is_excluded_from_cycle.
     pub fn refreshExclusion(self: *Painter, thumbnail: *ThumbnailWindow) void {
         _ = self;
-        const is_excluded = hotkeys.isExcludedFromCycle(thumbnail.character_name);
+        const is_excluded = exclusions.isExcluded(thumbnail.character_name);
         if (is_excluded == thumbnail.is_excluded_from_cycle) return;
         thumbnail.is_excluded_from_cycle = is_excluded;
         thumbnail.needs_render = true;
