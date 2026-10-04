@@ -141,12 +141,22 @@ pub fn listBackups(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
 }
 
 /// An invalid or missing profile falls back to DEFAULT_PROFILE, and a malformed one to its defaults.
+/// A name differing from its file only in case takes the file's spelling.
 pub fn load(allocator: std.mem.Allocator, name: []const u8) !Config {
     validateName(name) catch {
         slog.warn("Refused profile name '{s}', falling back to default profile", .{name});
         return load(allocator, files.DEFAULT_PROFILE);
     };
     try ensureDir(allocator);
+
+    var names = try list(allocator);
+    defer {
+        for (names.items) |listed| allocator.free(listed);
+        names.deinit(allocator);
+    }
+    if (listedSpelling(names.items, name)) |listed| {
+        if (!std.mem.eql(u8, listed, name)) return load(allocator, listed);
+    }
 
     const profile_path = try path(allocator, name);
     defer allocator.free(profile_path);
@@ -173,6 +183,14 @@ fn loadFile(allocator: std.mem.Allocator, profile_path: []const u8, name: []cons
         slog.err("Failed to parse config file '{s}' ({}), falling back to defaults", .{ profile_path, err });
         return Config.getDefaultsWithProfile(allocator, name);
     };
+}
+
+/// Borrows from `names`.
+fn listedSpelling(names: []const []const u8, name: []const u8) ?[]const u8 {
+    for (names) |listed| {
+        if (std.ascii.eqlIgnoreCase(listed, name)) return listed;
+    }
+    return null;
 }
 
 /// The profile file names in PROFILES_DIR, e.g. "default.json"; caller owns the list and its strings.
@@ -276,6 +294,13 @@ test "fileNameFor appends .json and rejects empty, long or unsafe names" {
     try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, ""));
     try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "a" ** (MAX_NAME_LEN + 1)));
     try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "a*b"));
+}
+
+test "listedSpelling finds a profile whose file name differs only in case" {
+    const names = [_][]const u8{ "default.json", "Main.json" };
+    try testing.expectEqualStrings("Main.json", listedSpelling(&names, "main.json").?);
+    try testing.expectEqualStrings("Main.json", listedSpelling(&names, "Main.json").?);
+    try testing.expectEqual(null, listedSpelling(&names, "Other.json"));
 }
 
 test "checkDeletable refuses the default profile" {
