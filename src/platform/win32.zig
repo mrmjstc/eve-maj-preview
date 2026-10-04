@@ -379,11 +379,17 @@ pub const FILE_SHARE_READ: DWORD = 0x00000001;
 pub const CREATE_ALWAYS: DWORD = 2;
 pub const FILE_ATTRIBUTE_NORMAL: DWORD = 0x80;
 
+/// dbghelp.h packs its structs to 4 bytes; natural alignment put ExceptionPointers at offset 8, so dbghelp read a junk pointer.
 pub const MINIDUMP_EXCEPTION_INFORMATION = extern struct {
     ThreadId: DWORD,
-    ExceptionPointers: ?*EXCEPTION_POINTERS,
+    ExceptionPointers: ?*EXCEPTION_POINTERS align(4),
     ClientPointers: BOOL,
 };
+
+comptime {
+    std.debug.assert(@offsetOf(MINIDUMP_EXCEPTION_INFORMATION, "ExceptionPointers") == 4);
+    std.debug.assert(@sizeOf(MINIDUMP_EXCEPTION_INFORMATION) == 16);
+}
 // MiniDumpNormal: stack traces for all threads, no full memory contents.
 pub const MiniDumpNormal: DWORD = 0x00000000;
 pub extern "dbghelp" fn MiniDumpWriteDump(
