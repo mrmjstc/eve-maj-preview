@@ -289,6 +289,8 @@
   "field.autoMinimizeEnabled.label": "Enable Auto-Minimize",
   "field.autoMinimizeExcludedCharacters.hint": "Minimizes immediately on exclusion, not on the Auto-Minimize delay above.",
   "field.autoMinimizeExcludedCharacters.label": "Auto-Minimize Excluded Characters",
+  "field.logoutClearsExclusion.hint": "Includes a character again once its client returns to the login screen.",
+  "field.logoutClearsExclusion.label": "Logging Out Clears Exclusion",
   "field.autoMinimizeExemptLastActive.hint": "Exempts whichever client you focused most recently, even past the delay.",
   "field.autoMinimizeExemptLastActive.label": "Keep Last-Active Client Visible",
   "field.autoMoveOnStartup.hint": "Moves clients already logged in when the app launches.",

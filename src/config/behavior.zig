@@ -73,6 +73,7 @@ pub const AutoMovePositionConfig = struct {
 pub const ExclusionConfig = struct {
     enableShiftClickExclude: bool = true,
     autoMinimizeExcluded: bool = false,
+    logoutClearsExclusion: bool = true,
 };
 
 pub const CloseAllConfig = struct {

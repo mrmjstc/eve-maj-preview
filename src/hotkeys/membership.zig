@@ -1,8 +1,9 @@
-//! Cycle exclusions and hotkey-group membership toggles.
+//! Changes to cycle exclusions and hotkey-group membership.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const input = @import("../thumbnail/input.zig");
 const animation = @import("../clients/animation.zig");
+const scout = @import("../clients/scout.zig");
 const HotkeyManager = @import("manager.zig").HotkeyManager;
 const log = @import("../log.zig");
 
@@ -12,6 +13,12 @@ const slog = log.scoped("hotkeys");
 pub fn toggleThumbnailExclusion(manager: *HotkeyManager, source_hwnd: win32.HWND) void {
     const thumbnail = manager.painter.getThumbnailBySourceHwnd(source_hwnd) orelse return;
     const char_name = thumbnail.character_name;
+
+    // Exclusions are by name, and every login-screen window shares "EVE", so one toggle would hit them all.
+    if (scout.isGenericCharacterName(char_name)) {
+        slog.debug("Ignoring exclusion toggle for a login-screen client", .{});
+        return;
+    }
 
     _ = manager.exclusions.toggle(char_name) catch |err| {
         slog.err("Failed to toggle exclusion for '{s}': {}", .{ char_name, err });
@@ -35,6 +42,12 @@ pub fn toggleThumbnailExclusion(manager: *HotkeyManager, source_hwnd: win32.HWND
         char_name,
         if (thumbnail.is_excluded_from_cycle) "Excluded" else "Included",
     });
+}
+
+pub fn clearLoggedOutExclusion(manager: *HotkeyManager, character_name: []const u8) void {
+    if (!manager.exclusions.remove(character_name)) return;
+    manager.cycle.excluded_index = null;
+    slog.info("Cleared cycle exclusion for {s} on logout", .{character_name});
 }
 
 /// Toggle the thumbnail currently under the cursor in/out of a group; no-op if nothing's hovered.

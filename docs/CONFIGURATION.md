@@ -431,13 +431,15 @@ By default (`"NoAnimation"`), the application temporarily disables Windows syste
 {
   "exclusion": {
     "enableShiftClickExclude": true,
-    "autoMinimizeExcluded": false
+    "autoMinimizeExcluded": false,
+    "logoutClearsExclusion": true
   }
 }
 ```
 
 - `enableShiftClickExclude`: Whether Shift + Left-click toggles exclusion (default: `true`); when `false`, Shift + Left-click activates the client like a plain click
 - `autoMinimizeExcluded`: Minimize a client's EVE window as soon as it's excluded, by Shift + Left-click or `hotkeyToggleExclusion` (default: `false`)
+- `logoutClearsExclusion`: Include a character in cycling again when its client logs out to the login screen; when `false`, the exclusion lasts until the app exits (default: `true`)
 
 ## Protocol Handler
 

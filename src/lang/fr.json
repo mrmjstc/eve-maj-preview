@@ -289,6 +289,8 @@
   "field.autoMinimizeEnabled.label": "Activer la réduction automatique",
   "field.autoMinimizeExcludedCharacters.hint": "Réduit immédiatement lors de l'exclusion, sans attendre le délai de réduction automatique ci-dessus.",
   "field.autoMinimizeExcludedCharacters.label": "Réduire automatiquement les personnages exclus",
+  "field.logoutClearsExclusion.hint": "Réinclut un personnage dès que son client revient à l'écran de connexion.",
+  "field.logoutClearsExclusion.label": "La déconnexion annule l'exclusion",
   "field.autoMinimizeExemptLastActive.hint": "Exempte le client que vous avez mis en focus le plus récemment, même au-delà du délai.",
   "field.autoMinimizeExemptLastActive.label": "Garder le dernier client actif visible",
   "field.autoMoveOnStartup.hint": "Déplace les clients déjà connectés au lancement de l'application.",

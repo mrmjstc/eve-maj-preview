@@ -289,6 +289,8 @@
   "field.autoMinimizeEnabled.label": "Włącz automatyczną minimalizację",
   "field.autoMinimizeExcludedCharacters.hint": "Minimalizuje natychmiast po wykluczeniu, nie po opóźnieniu automatycznej minimalizacji powyżej.",
   "field.autoMinimizeExcludedCharacters.label": "Automatycznie minimalizuj wykluczone postacie",
+  "field.logoutClearsExclusion.hint": "Ponownie uwzględnia postać, gdy jej klient wróci do ekranu logowania.",
+  "field.logoutClearsExclusion.label": "Wylogowanie usuwa wykluczenie",
   "field.autoMinimizeExemptLastActive.hint": "Wyklucza klienta, który był ostatnio aktywny, nawet po upływie opóźnienia.",
   "field.autoMinimizeExemptLastActive.label": "Zachowaj widoczność ostatnio aktywnego klienta",
   "field.autoMoveOnStartup.hint": "Przenosi klientów już zalogowanych w chwili uruchomienia aplikacji.",

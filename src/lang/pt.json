@@ -289,6 +289,8 @@
   "field.autoMinimizeEnabled.label": "Ativar Minimização Automática",
   "field.autoMinimizeExcludedCharacters.hint": "Minimiza imediatamente ao ser excluído, sem esperar o atraso de Minimização Automática acima.",
   "field.autoMinimizeExcludedCharacters.label": "Minimizar Automaticamente Personagens Excluídos",
+  "field.logoutClearsExclusion.hint": "Inclui o personagem novamente quando o cliente volta à tela de login.",
+  "field.logoutClearsExclusion.label": "Sair Remove a Exclusão",
   "field.autoMinimizeExemptLastActive.hint": "Isenta o cliente focado mais recentemente, mesmo após o atraso.",
   "field.autoMinimizeExemptLastActive.label": "Manter Visível o Último Cliente Ativo",
   "field.autoMoveOnStartup.hint": "Move clientes já logados quando o aplicativo é iniciado.",

@@ -289,6 +289,8 @@
   "field.autoMinimizeEnabled.label": "启用自动最小化",
   "field.autoMinimizeExcludedCharacters.hint": "被排除后会立即最小化,而不是等待上方的自动最小化延迟。",
   "field.autoMinimizeExcludedCharacters.label": "自动最小化已排除角色",
+  "field.logoutClearsExclusion.hint": "角色的客户端回到登录界面后,重新纳入该角色。",
+  "field.logoutClearsExclusion.label": "登出时取消排除",
   "field.autoMinimizeExemptLastActive.hint": "无论延迟是否已过,始终豁免你最近聚焦过的客户端。",
   "field.autoMinimizeExemptLastActive.label": "保持最近激活的客户端可见",
   "field.autoMoveOnStartup.hint": "移动应用启动时已登录的客户端。",

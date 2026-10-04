@@ -479,6 +479,11 @@ pub fn syncFocusedCharacter(character_name: []const u8, hwnd: win32.HWND) void {
     if (g_hotkey_manager_ptr) |manager| manager.updateFocusedCharacter(character_name, hwnd);
 }
 
+/// No-op before the manager exists.
+pub fn clearLoggedOutExclusion(character_name: []const u8) void {
+    if (g_hotkey_manager_ptr) |manager| membership.clearLoggedOutExclusion(manager, character_name);
+}
+
 /// The window ReturnToLastApp goes back to.
 pub fn recordNonEveForeground(hwnd: win32.HWND) void {
     if (g_hotkey_manager_ptr) |manager| manager.last_non_eve_foreground = hwnd;

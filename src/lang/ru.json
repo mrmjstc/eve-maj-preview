@@ -289,6 +289,8 @@
   "field.autoMinimizeEnabled.label": "Включить автосворачивание",
   "field.autoMinimizeExcludedCharacters.hint": "Сворачивается сразу при исключении, без учёта задержки автосворачивания выше.",
   "field.autoMinimizeExcludedCharacters.label": "Автосворачивание исключённых персонажей",
+  "field.logoutClearsExclusion.hint": "Снова включает персонажа, когда его клиент возвращается на экран входа.",
+  "field.logoutClearsExclusion.label": "Выход из игры снимает исключение",
   "field.autoMinimizeExemptLastActive.hint": "Не сворачивает клиента, который был в фокусе последним, даже по истечении задержки.",
   "field.autoMinimizeExemptLastActive.label": "Не сворачивать последний активный клиент",
   "field.autoMoveOnStartup.hint": "Перемещает клиенты, уже вошедшие в игру при запуске приложения.",

@@ -509,6 +509,7 @@ pub const Painter = struct {
             };
 
             if (was_generic and !now_generic) self.onLogin(thumbnail);
+            if (now_generic and !was_generic and self.config.exclusion.logoutClearsExclusion) hotkeys.clearLoggedOutExclusion(change.old_name);
             if (now_generic) self.onLogout(thumbnail);
 
             // Cycle cursors are keyed by name and a rename fires no focus event, so the focused window must re-sync under its new one.
@@ -570,6 +571,7 @@ pub const Painter = struct {
     /// Moving it into the not-logged-in space happens in applyNameChanges' reflow, which also resizes the others already there.
     fn onLogout(self: *Painter, thumbnail: *ThumbnailWindow) void {
         dispatch.clearAll(self, thumbnail);
+        self.refreshExclusion(thumbnail);
 
         // Owned like any system name, since freeThumbnailData frees it.
         const empty_system = self.allocator.dupe(u8, "") catch |err| {

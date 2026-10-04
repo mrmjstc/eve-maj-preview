@@ -26,12 +26,16 @@ pub const Exclusions = struct {
         return strings.indexOfString(self.names.items, character_name) != null;
     }
 
+    /// Returns whether the character was excluded.
+    pub fn remove(self: *Exclusions, character_name: []const u8) bool {
+        const index = strings.indexOfString(self.names.items, character_name) orelse return false;
+        self.allocator.free(self.names.orderedRemove(index));
+        return true;
+    }
+
     /// Returns whether the character is now excluded.
     pub fn toggle(self: *Exclusions, character_name: []const u8) !bool {
-        if (strings.indexOfString(self.names.items, character_name)) |index| {
-            self.allocator.free(self.names.orderedRemove(index));
-            return false;
-        }
+        if (self.remove(character_name)) return false;
         const owned = try self.allocator.dupe(u8, character_name);
         errdefer self.allocator.free(owned);
         try self.names.append(self.allocator, owned);
@@ -72,4 +76,14 @@ test "names keep the order characters were excluded in" {
     try testing.expectEqual(2, exclusions.names.items.len);
     try testing.expectEqualStrings("Pilot B", exclusions.names.items[0]);
     try testing.expectEqualStrings("Pilot C", exclusions.names.items[1]);
+}
+
+test "remove only reports a character that was excluded" {
+    var exclusions = Exclusions.init(testing.allocator);
+    defer exclusions.deinit();
+
+    _ = try exclusions.toggle("Pilot A");
+    try testing.expect(exclusions.remove("Pilot A"));
+    try testing.expect(!exclusions.contains("Pilot A"));
+    try testing.expect(!exclusions.remove("Pilot A"));
 }
