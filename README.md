@@ -36,10 +36,14 @@ It's **never** going to let you input broadcast, display cropped portions of you
 
 ## Installation
 
-1. Download the latest release
-2. Extract to your desired location
-3. Run `eve-maj-preview.exe`
-4. Double-click the tray icon (or run `eve-maj-preview.exe --config`) to open the configuration window
+Download the latest release, either:
+
+- **Installer** (`eve-maj-preview-vX.Y.Z-setup.exe`): installs per-user under `%LocalAppData%\Programs` (no admin) with Start Menu shortcuts for the app and its configuration window
+- **Portable** (`eve-maj-preview-vX.Y.Z-portable.zip`): extract anywhere and run `eve-maj-preview.exe`, keeping `WebView2Loader.dll` next to it
+
+Everything, including the configuration window, runs from the single `eve-maj-preview.exe`. Double-click the tray icon (or run `eve-maj-preview.exe --config`) to open the configuration window.
+
+To build from source, see [docs/BUILDING.md](docs/BUILDING.md).
 
 ## Usage
 
@@ -52,14 +56,18 @@ The application will:
 2. Generate a default profile (`profiles\default.json`)
 3. Create thumbnail windows for each client found
 
+Logs and crash dumps go in `logs\`, and app data in `data\`, next to the exe.
+
 ### Command-Line Flags
 
 ```powershell
 .\eve-maj-preview.exe --profile pvp.json
 .\eve-maj-preview.exe -p pvp.json
+.\eve-maj-preview.exe --config
 ```
 
 - `--profile <name>` / `-p <name>`: Load a specific profile by filename (relative to the `profiles` directory - do not include the `profiles\` prefix)
+- `--config`: Open the configuration window on the running profile, starting the app first if it isn't already running
 - `--protocol <url>`: Internal flag used when Windows invokes the registered `evemajpreview://` protocol handler; not intended for manual use
 
 ### Configuration Editor
