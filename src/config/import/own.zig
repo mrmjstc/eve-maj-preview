@@ -65,8 +65,22 @@ fn importSection(d: *Draft, cfg: *const Config, root: Value, comptime name: []co
     const raw = values.get(root, name) orelse return;
     if (raw == .null) return;
     const loaded = try draft.toValue(d.arena, Config, cfg, &.{.{ .string = name }});
-    try d.root.put(d.arena, name, try present(d.arena, loaded, raw));
-    try sectionNote(d, name, if (raw == .array) raw.array.items.len else 0);
+    var section = try present(d.arena, loaded, raw);
+    if (comptime std.mem.eql(u8, name, "characters")) dropPlaceholderCharacters(&section);
+    try d.root.put(d.arena, name, section);
+    try sectionNote(d, name, if (section == .array) section.array.items.len else 0);
+}
+
+/// Older imports from other tools let their sample entries ("Example Name1") through, so a profile copy shouldn't carry them on.
+fn dropPlaceholderCharacters(list: *Value) void {
+    if (list.* != .array) return;
+    var kept_count: usize = 0;
+    for (list.array.items) |item| {
+        if (values.characterName(values.stringAt(item, "name") orelse "") == null) continue;
+        list.array.items[kept_count] = item;
+        kept_count += 1;
+    }
+    list.array.shrinkRetainingCapacity(kept_count);
 }
 
 fn sectionNote(d: *Draft, comptime name: []const u8, n: usize) !void {
