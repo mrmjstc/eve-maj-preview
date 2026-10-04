@@ -375,6 +375,10 @@ pub const HotkeyManager = struct {
                 client_actions.moveAllClientsToSavedPositions(self.scout.getWindows(), self.live(), self.painter);
             },
             .return_to_last_app => launch.returnToLastApp(&self.last_non_eve_foreground),
+            .exit_app => {
+                slog.info("Exit hotkey pressed", .{});
+                win32.PostQuitMessage(0);
+            },
             .activate_app => |activate| launch.activateApp(self.global_settings, activate.app_index),
             .open_url => |open_url| launch.openUrl(self.allocator, self.global_settings, open_url.url_index),
         }

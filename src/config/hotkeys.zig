@@ -18,6 +18,7 @@ pub const HotkeysConfig = struct {
     hotkeyNextExcluded: KeyList = .empty,
     hotkeyPreviousExcluded: KeyList = .empty,
     hotkeySuspend: KeyList = .empty,
+    hotkeyExitApp: KeyList = .empty,
     hotkeyCycleNotified: KeyList = .empty,
     hotkeyPreviousNotified: KeyList = .empty,
     hotkeyMoveToSavedPositions: KeyList = .empty,

@@ -476,6 +476,7 @@ evemajpreview://<action>/<param>
 | `next_not_logged_in` / `previous_not_logged_in` | Cycle forward/backward through not-logged-in clients |
 | `move_to_saved_positions` | Move all clients back to their saved positions |
 | `return_to_last_app` | Return focus to the last non-EVE application you used |
+| `exit_app` | Exit EVE-Maj Preview |
 
 These correspond directly to the actions in [Hotkey Configuration](#hotkey-configuration) - see that section for details on what each one does.
 
@@ -1033,6 +1034,7 @@ Detects a tracked character falling behind while the rest of the group jumps tog
     "hotkeyNextExcluded": null,
     "hotkeyPreviousExcluded": null,
     "hotkeySuspend": null,
+    "hotkeyExitApp": null,
     "hotkeyCycleNotified": null,
     "hotkeyPreviousNotified": null,
     "hotkeyMoveToSavedPositions": null
@@ -1059,6 +1061,7 @@ Pressing **hotkeySuspend** fires a `HotkeySuspend` notification on every client 
 - **hotkeyNextExcluded**: Cycle to the next excluded character (in the order they were excluded)
 - **hotkeyPreviousExcluded**: Cycle to the previous excluded character
 - **hotkeySuspend**: Suspend/resume all other hotkeys at once
+- **hotkeyExitApp**: Exit EVE-Maj Preview, same as the tray menu's Exit. EVE clients stay open.
 - **hotkeyCycleNotified**: Cycle forward through recently notified characters, oldest first (see [Notified-Character Cycling](#notified-character-cycling))
 - **hotkeyPreviousNotified**: Cycle backward through recently notified characters
 - **hotkeyMoveToSavedPositions**: Move all EVE client windows to their saved positions (respects per-character `excludeFromAutoMove`)
