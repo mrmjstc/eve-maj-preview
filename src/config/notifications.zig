@@ -104,6 +104,9 @@ pub const NotificationTypeConfigs = struct {
             try jw.endObject();
         }
 
+        /// Lets wire.parse check each type's settings on their own, so one bad value doesn't reset every type.
+        pub const MapValue = NotificationTypeConfig.Wire;
+
         pub fn jsonParseFromValue(allocator: std.mem.Allocator, source: std.json.Value, opts: std.json.ParseOptions) !Wire {
             var result: Wire = .{};
             if (source != .object) return result;

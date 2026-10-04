@@ -3098,6 +3098,29 @@ button.confirm-delete:hover {
     content: none;
 }
 
+/* Amber, the palette's warning colour, so settings left unchanged stand apart from what was imported. */
+.import-skipped {
+    margin: 0 0 var(--space-2) 0;
+    padding: var(--space-2);
+    border-left: 0.1875rem solid var(--color-accent);
+    border-radius: var(--radius);
+    background: rgba(var(--color-accent-rgb), 0.1);
+}
+
+.import-skipped > p {
+    margin: 0 0 0.25rem 0;
+    color: var(--color-accent);
+}
+
+.import-skipped > ul {
+    margin: 0;
+    padding-left: 1.125rem;
+}
+
+.import-skipped code {
+    font-family: var(--font-mono);
+}
+
 /* Two columns and its own scroll region (this list is often a dozen-plus entries) so a long
    list scrolls in place instead of pushing the whole modal past viewport height. */
 #importSectionsList {

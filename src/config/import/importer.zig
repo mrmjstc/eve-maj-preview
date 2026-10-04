@@ -18,6 +18,8 @@ pub const Text = draft.Text;
 pub const Built = struct {
     ops: []const patch.Op,
     notes: []const Text,
+    /// See Draft.skipped.
+    skipped: []const []const u8,
 };
 
 const Source = union(enum) {
@@ -105,5 +107,5 @@ pub fn build(arena: std.mem.Allocator, text: []const u8, source_profile: ?[]cons
     }
     // Imported positions come from a different setup, so ghost outlines of them would only clutter drags.
     if (chosen.len > 0) try d.setBool("snapping.showGhostPositionBorders", false);
-    return .{ .ops = try draft.toOps(arena, &d, doc), .notes = d.notes.items };
+    return .{ .ops = try draft.toOps(arena, &d, doc), .notes = d.notes.items, .skipped = d.skipped.items };
 }

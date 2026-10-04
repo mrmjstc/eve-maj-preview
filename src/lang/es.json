@@ -229,6 +229,7 @@
   "dynamic.import.maj.windowFiltersImportedNote": "Se importaron {n} filtro(s) de ventana.",
   "dynamic.import.nothingToImportHint": "Nada que importar en esta sección",
   "dynamic.import.reviewAndSaveHint": "Revisa las pestañas afectadas y luego haz clic en Guardar para conservar estos cambios.",
+  "dynamic.import.skippedHeading": "No se pudieron leer {n} ajuste(s); se han dejado sin cambios:",
   "dynamic.import.snappingImportedNote": "Configuración de ajuste (snapping) importada.",
   "dynamic.import.thumbnailAppearanceImportedNote": "Configuración de apariencia de miniaturas importada.",
   "dynamic.overlay.backgroundColorLabel": "Color de Fondo",

@@ -3,6 +3,7 @@ const std = @import("std");
 const values = @import("values.zig");
 const draft = @import("draft.zig");
 const wire = @import("../wire.zig");
+const readable = @import("../readable.zig");
 const config = @import("../../config.zig");
 
 const Value = std.json.Value;
@@ -43,10 +44,20 @@ pub fn sections(d: *Draft, root: Value) ![]const Section {
 }
 
 pub fn build(d: *Draft, text: []const u8, root: Value, chosen: []const []const u8) !void {
+    // So an unreadable setting keeps the profile's current value instead of taking the default.
+    var readable_root = root;
+    var skipped: std.ArrayList([]const u8) = .empty;
+    _ = readable.dropUnreadable(Config.Wire, d.arena, &readable_root, &skipped);
+
     const cfg = try Config.buildConfigFromJson(d.arena, text, "import");
     inline for (comptime wire.savedFields(Config)) |f| {
         if (comptime isStamp(f.name)) continue;
-        if (draft.isChosen(chosen, f.name)) try importSection(d, &cfg, root, f.name);
+        if (draft.isChosen(chosen, f.name)) try importSection(d, &cfg, readable_root, f.name);
+    }
+    for (skipped.items) |path| {
+        const section_end = std.mem.indexOfScalar(u8, path, '.') orelse path.len;
+        if (!draft.isChosen(chosen, path[0..section_end])) continue;
+        try d.skipped.append(d.arena, path);
     }
 }
 

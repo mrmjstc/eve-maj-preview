@@ -1,6 +1,7 @@
 //! Generates each settings struct's saved JSON shape, loading, saving, freeing and preview patching from its fields.
 const std = @import("std");
 const key_list = @import("key_list.zig");
+const readable = @import("readable.zig");
 const log = @import("../log.zig");
 
 const KeyList = key_list.KeyList;
@@ -342,10 +343,15 @@ pub fn hasPointers(comptime T: type) bool {
 }
 
 /// Parses `json_text` into `T` via std.json.Value, since Argb and KeyListWire only implement jsonParseFromValue.
+/// A value that doesn't fit its setting is dropped with a warning, so that setting keeps its default instead of the whole file failing.
 pub fn parse(comptime T: type, allocator: std.mem.Allocator, json_text: []const u8) !std.json.Parsed(T) {
-    const tree = try std.json.parseFromSlice(std.json.Value, allocator, json_text, .{});
+    var tree = try std.json.parseFromSlice(std.json.Value, allocator, json_text, .{ .duplicate_field_behavior = .use_last });
     defer tree.deinit();
-    return std.json.parseFromValue(T, allocator, tree.value, .{ .ignore_unknown_fields = true });
+
+    var scratch = std.heap.ArenaAllocator.init(allocator);
+    defer scratch.deinit();
+    if (!readable.dropUnreadable(T, scratch.allocator(), &tree.value, null)) return error.UnexpectedToken;
+    return std.json.parseFromValue(T, allocator, tree.value, readable.PARSE_OPTIONS);
 }
 
 /// The indented JSON of `settings.toWire(arena)`, as saved to disk; caller owns the result.
@@ -389,6 +395,43 @@ test "parseHexColor rejects short and non-hex input" {
     try testing.expectError(error.InvalidColorFormat, parseHexColor("0x"));
     try testing.expectError(error.InvalidColorFormat, parseHexColor("0xZZZ"));
     try testing.expectError(error.InvalidColorFormat, parseHexColor("0x1FFFFFFFF"));
+}
+
+const TestWire = struct {
+    size: i32 = 5,
+    mode: enum { a, b } = .a,
+    color: Argb = .{ .value = 1 },
+    names: []const []const u8 = &.{},
+    inner: struct { x: i32 = 1, y: i32 = 2 } = .{},
+};
+
+test "parse keeps each readable setting and defaults the ones that aren't" {
+    const json =
+        \\{"size": 7, "mode": "c", "color": "zz", "names": ["a", 5, "b"], "inner": {"x": "no", "y": 3}}
+    ;
+    const parsed = try parse(TestWire, testing.allocator, json);
+    defer parsed.deinit();
+    try testing.expectEqual(@as(i32, 7), parsed.value.size);
+    try testing.expect(parsed.value.mode == .a);
+    try testing.expectEqual(@as(u32, 1), parsed.value.color.value);
+    try testing.expectEqual(@as(usize, 2), parsed.value.names.len);
+    try testing.expectEqualStrings("b", parsed.value.names[1]);
+    try testing.expectEqual(@as(i32, 1), parsed.value.inner.x);
+    try testing.expectEqual(@as(i32, 3), parsed.value.inner.y);
+}
+
+test "parse takes the last of a repeated setting" {
+    const parsed = try parse(TestWire, testing.allocator, "{\"size\": 7, \"size\": 9}");
+    defer parsed.deinit();
+    try testing.expectEqual(@as(i32, 9), parsed.value.size);
+}
+
+test "parse fails only when the file itself isn't an object of settings" {
+    try testing.expectError(error.UnexpectedToken, parse(TestWire, testing.allocator, "[1, 2]"));
+    if (parse(TestWire, testing.allocator, "{\"size\": 7,")) |parsed| {
+        parsed.deinit();
+        return error.TestUnexpectedResult;
+    } else |_| {}
 }
 
 test "isColorField and isKeyField recognise fields by name" {

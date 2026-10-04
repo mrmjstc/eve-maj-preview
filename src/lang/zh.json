@@ -229,6 +229,7 @@
   "dynamic.import.maj.windowFiltersImportedNote": "已导入 {n} 个窗口过滤器。",
   "dynamic.import.nothingToImportHint": "此部分没有可导入的内容",
   "dynamic.import.reviewAndSaveHint": "查看受影响的标签页,然后点击保存以保留这些更改。",
+  "dynamic.import.skippedHeading": "{n} 项设置无法读取，已保持不变：",
   "dynamic.import.snappingImportedNote": "吸附设置已导入。",
   "dynamic.import.thumbnailAppearanceImportedNote": "缩略图外观设置已导入。",
   "dynamic.overlay.backgroundColorLabel": "背景颜色",

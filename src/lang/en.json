@@ -229,6 +229,7 @@
   "dynamic.import.maj.windowFiltersImportedNote": "Imported {n} window filter(s).",
   "dynamic.import.nothingToImportHint": "Nothing to import for this section",
   "dynamic.import.reviewAndSaveHint": "Review the affected tabs, then click Save to keep these changes.",
+  "dynamic.import.skippedHeading": "{n} setting(s) couldn't be read and were left unchanged:",
   "dynamic.import.snappingImportedNote": "Snapping settings imported.",
   "dynamic.import.thumbnailAppearanceImportedNote": "Thumbnail appearance settings imported.",
   "dynamic.overlay.backgroundColorLabel": "Background Color",

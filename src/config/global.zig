@@ -9,6 +9,9 @@ const log = @import("../log.zig");
 const KeyList = key_list.KeyList;
 const slog = log.scoped("config");
 
+/// Not ".json", which would list it as a profile.
+const UNREADABLE_BACKUP_FILE = files.GLOBAL_SETTINGS_FILE ++ ".bak";
+
 /// Fallback prices are a Jita snapshot and will drift - re-fetch via "Fetch Prices" for current numbers.
 pub const DEFAULT_ORE_TABLE = [_]OreEntry{
     .{ .name = "Veldspar", .category = "Ore", .volumeM3 = 0.10, .price = 11.53 },
@@ -237,9 +240,10 @@ pub const GlobalConfig = struct {
         defer allocator.free(content);
 
         const settings = loadFromJson(allocator, content) catch |err| {
-            slog.warn("Failed to parse global settings file ({}), using defaults and deleting corrupted file", .{err});
-            std.Io.Dir.cwd().deleteFile(files.g_io, files.GLOBAL_SETTINGS_FILE) catch |del_err| {
-                slog.warn("Failed to delete corrupted global settings file: {}", .{del_err});
+            slog.warn("Failed to parse global settings file ({}), using defaults and keeping it as '{s}'", .{ err, UNREADABLE_BACKUP_FILE });
+            const cwd = std.Io.Dir.cwd();
+            cwd.rename(files.GLOBAL_SETTINGS_FILE, cwd, UNREADABLE_BACKUP_FILE, files.g_io) catch |rename_err| {
+                slog.err("Failed to keep unreadable global settings as '{s}': {}", .{ UNREADABLE_BACKUP_FILE, rename_err });
             };
             return GlobalConfig.fromWire(.{}, allocator);
         };

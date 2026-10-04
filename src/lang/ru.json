@@ -229,6 +229,7 @@
   "dynamic.import.maj.windowFiltersImportedNote": "Импортировано {n} фильтров окон.",
   "dynamic.import.nothingToImportHint": "Нечего импортировать в этом разделе",
   "dynamic.import.reviewAndSaveHint": "Проверьте затронутые вкладки, затем нажмите «Сохранить», чтобы применить изменения.",
+  "dynamic.import.skippedHeading": "Не удалось прочитать настройки ({n}); они оставлены без изменений:",
   "dynamic.import.snappingImportedNote": "Настройки прилипания импортированы.",
   "dynamic.import.thumbnailAppearanceImportedNote": "Настройки внешнего вида превью импортированы.",
   "dynamic.overlay.backgroundColorLabel": "Цвет фона",

@@ -229,6 +229,7 @@
   "dynamic.import.maj.windowFiltersImportedNote": "Zaimportowano {n} filtrów okien.",
   "dynamic.import.nothingToImportHint": "Nic do zaimportowania w tej sekcji",
   "dynamic.import.reviewAndSaveHint": "Sprawdź dotknięte zakładki, a następnie kliknij Zapisz, aby zachować te zmiany.",
+  "dynamic.import.skippedHeading": "Nie udało się odczytać ustawień ({n}); pozostawiono je bez zmian:",
   "dynamic.import.snappingImportedNote": "Zaimportowano ustawienia przyciągania.",
   "dynamic.import.thumbnailAppearanceImportedNote": "Zaimportowano ustawienia wyglądu miniatur.",
   "dynamic.overlay.backgroundColorLabel": "Kolor tła",

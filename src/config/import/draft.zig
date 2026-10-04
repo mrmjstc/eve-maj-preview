@@ -53,6 +53,8 @@ pub const Draft = struct {
     arena: std.mem.Allocator,
     root: ObjectMap = .empty,
     notes: std.ArrayList(Text) = .empty,
+    /// Dotted paths of the file's settings that couldn't be read; shown apart from `notes`.
+    skipped: std.ArrayList([]const u8) = .empty,
 
     pub fn init(arena: std.mem.Allocator) Draft {
         return .{ .arena = arena };

@@ -157,7 +157,7 @@ pub const Config = struct {
         return wire.toJsonAlloc(allocator, self);
     }
 
-    /// Unlike loadProfile it propagates parse errors, so the dialog can reject a malformed save.
+    /// Unlike loadProfile, fails on a file that isn't JSON instead of falling back to defaults.
     pub fn buildConfigFromJson(allocator: std.mem.Allocator, json_text: []const u8, profile_name: []const u8) !Config {
         const parsed = try wire.parse(Config.Wire, allocator, json_text);
         defer parsed.deinit();

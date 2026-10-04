@@ -51,6 +51,11 @@ pub const KeyListWire = struct {
         try jw.endArray();
     }
 
+    /// Lets config/readable.zig drop and report each unreadable key before this parser sees it.
+    pub fn isReadableItem(item: std.json.Value) bool {
+        return item == .string and (item.string.len == 0 or vk.parseVirtualKey(item.string) != null);
+    }
+
     /// A key that can't be read is skipped with a warning rather than failing, which would load the whole profile as defaults.
     pub fn jsonParseFromValue(_: std.mem.Allocator, source: std.json.Value, _: std.json.ParseOptions) !KeyListWire {
         var list: KeyList = .empty;

@@ -229,6 +229,7 @@
   "dynamic.import.maj.windowFiltersImportedNote": "{n} Fensterfilter importiert.",
   "dynamic.import.nothingToImportHint": "Für diesen Abschnitt gibt es nichts zu importieren",
   "dynamic.import.reviewAndSaveHint": "Betroffene Tabs prüfen und dann auf Speichern klicken, um diese Änderungen zu übernehmen.",
+  "dynamic.import.skippedHeading": "{n} Einstellung(en) konnten nicht gelesen werden und bleiben unverändert:",
   "dynamic.import.snappingImportedNote": "Einrasten-Einstellungen importiert.",
   "dynamic.import.thumbnailAppearanceImportedNote": "Vorschau-Darstellungseinstellungen importiert.",
   "dynamic.overlay.backgroundColorLabel": "Hintergrundfarbe",

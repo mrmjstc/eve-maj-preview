@@ -96,19 +96,38 @@ pub fn deleteToBackup(allocator: std.mem.Allocator, name: []const u8) !void {
 
     const profile_path = try path(allocator, name);
     defer allocator.free(profile_path);
-    const backup_dir = try path(allocator, BACKUP_DIR);
-    defer allocator.free(backup_dir);
+    const backup_path = try newBackupPath(allocator, name);
+    defer allocator.free(backup_path);
 
     const cwd = std.Io.Dir.cwd();
-    cwd.createDir(files.g_io, backup_dir, .default_dir) catch |err| switch (err) {
+    try cwd.rename(profile_path, cwd, backup_path, files.g_io);
+    slog.info("Moved profile '{s}' to {s}", .{ name, backup_path });
+}
+
+/// `<unix time>_<name>` in PROFILES_DIR/backup, creating the folder; caller owns the result.
+fn newBackupPath(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
+    const backup_dir = try path(allocator, BACKUP_DIR);
+    defer allocator.free(backup_dir);
+    std.Io.Dir.cwd().createDir(files.g_io, backup_dir, .default_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => return err,
     };
+    return std.fmt.allocPrint(allocator, "{s}{c}{d}_{s}", .{ backup_dir, std.fs.path.sep, std.Io.Clock.real.now(files.g_io).toSeconds(), name });
+}
 
-    const backup_path = try std.fmt.allocPrint(allocator, "{s}{c}{d}_{s}", .{ backup_dir, std.fs.path.sep, std.Io.Clock.real.now(files.g_io).toSeconds(), name });
+/// Keeps a copy of a profile that couldn't be read, since running on defaults saves over it.
+fn backUpUnreadable(allocator: std.mem.Allocator, profile_path: []const u8, name: []const u8) void {
+    const backup_path = newBackupPath(allocator, name) catch |err| {
+        slog.err("Failed to back up unreadable profile '{s}': {}", .{ name, err });
+        return;
+    };
     defer allocator.free(backup_path);
-    try cwd.rename(profile_path, cwd, backup_path, files.g_io);
-    slog.info("Moved profile '{s}' to {s}", .{ name, backup_path });
+    const cwd = std.Io.Dir.cwd();
+    cwd.copyFile(profile_path, cwd, backup_path, files.g_io, .{}) catch |err| {
+        slog.err("Failed to back up unreadable profile '{s}' to '{s}': {}", .{ name, backup_path, err });
+        return;
+    };
+    slog.warn("Backed up unreadable profile '{s}' to '{s}'", .{ name, backup_path });
 }
 
 /// Backed-up profile file names, newest first; caller owns the list and its strings.
@@ -184,6 +203,7 @@ fn loadFile(allocator: std.mem.Allocator, profile_path: []const u8, name: []cons
 
     return Config.buildConfigFromJson(allocator, content, name) catch |err| {
         slog.err("Failed to parse config file '{s}' ({}), falling back to defaults", .{ profile_path, err });
+        backUpUnreadable(allocator, profile_path, name);
         return Config.getDefaultsWithProfile(allocator, name);
     };
 }

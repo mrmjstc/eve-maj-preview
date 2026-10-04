@@ -7,6 +7,7 @@ test {
     _ = @import("config/key_list.zig");
     _ = @import("config/profiles.zig");
     _ = @import("config/ranges.zig");
+    _ = @import("config/readable.zig");
     _ = @import("config/system_colors.zig");
     _ = @import("config/wire.zig");
     _ = @import("hotkeys/bindings.zig");

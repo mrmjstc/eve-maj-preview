@@ -229,6 +229,7 @@
   "dynamic.import.maj.windowFiltersImportedNote": "{n} filtro(s) de janela importado(s).",
   "dynamic.import.nothingToImportHint": "Nada a importar nesta seção",
   "dynamic.import.reviewAndSaveHint": "Revise as abas afetadas e clique em Salvar para manter essas alterações.",
+  "dynamic.import.skippedHeading": "Não foi possível ler {n} configuração(ões); ficaram inalteradas:",
   "dynamic.import.snappingImportedNote": "Configurações de encaixe importadas.",
   "dynamic.import.thumbnailAppearanceImportedNote": "Configurações de aparência da miniatura importadas.",
   "dynamic.overlay.backgroundColorLabel": "Cor de Fundo",

@@ -231,20 +231,17 @@ fn parseBaseKey(key_str: []const u8) ?u32 {
     if (std.ascii.eqlIgnoreCase(key_str, "control")) return VK_CONTROL;
     if (std.ascii.eqlIgnoreCase(key_str, "lwin") or std.ascii.eqlIgnoreCase(key_str, "rwin")) return VK_LWIN;
 
-    slog.warn("Failed to parse key '{s}'", .{key_str});
     return null;
 }
 
 /// A combined value (see combineKey) from "F9", "Ctrl+Alt+F9", or the hex form older profiles saved ("0x0278").
+/// Null for anything that isn't a bindable key; the caller logs it, with the setting it came from.
 pub fn parseVirtualKey(key_str: []const u8) ?u32 {
     if (key_str.len == 0) return null;
 
     if (key_str.len >= 3 and key_str[0] == '0' and (key_str[1] == 'x' or key_str[1] == 'X')) {
         const hex_str = key_str[2..];
-        const combined = std.fmt.parseInt(u32, hex_str, 16) catch |err| {
-            slog.warn("Failed to parse hex key value '{s}': {}", .{ hex_str, err });
-            return null;
-        };
+        const combined = std.fmt.parseInt(u32, hex_str, 16) catch return null;
         const vk_code = combined & VK_MASK;
         if (vk_code >= 0x01 and vk_code <= 0xFE) {
             return combined;
@@ -260,10 +257,7 @@ pub fn parseVirtualKey(key_str: []const u8) ?u32 {
         while (it.next()) |tok| {
             const mod_name = std.mem.trim(u8, tok, " ");
             if (mod_name.len == 0) continue;
-            const mod_bit = parseModifierToken(mod_name) orelse {
-                slog.warn("Failed to parse modifier '{s}'", .{mod_name});
-                return null;
-            };
+            const mod_bit = parseModifierToken(mod_name) orelse return null;
             modifiers |= mod_bit;
         }
 

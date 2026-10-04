@@ -1,6 +1,8 @@
 # Configuration Reference
 
-Configuration files use **JSON format**. The application generates a default profile at `profiles\default.json` on first run. 
+Configuration files use **JSON format**. The application generates a default profile at `profiles\default.json` on first run.
+
+When editing by hand, a value the app can't read (an unknown option name, a malformed color, text where a number belongs) is skipped with a warning in the log, and that one setting uses its default; the rest of the file loads as written. A file that isn't valid JSON at all loads with default settings, after a copy is kept: a profile in `profiles\backup\` (restorable from the config dialog's Import), the global settings as `profiles\global.settings.json.bak`.
 
 ## Logging
 

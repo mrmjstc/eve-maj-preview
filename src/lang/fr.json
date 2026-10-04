@@ -229,6 +229,7 @@
   "dynamic.import.maj.windowFiltersImportedNote": "{n} filtre(s) de fenêtre importé(s).",
   "dynamic.import.nothingToImportHint": "Rien à importer pour cette section",
   "dynamic.import.reviewAndSaveHint": "Passez en revue les onglets concernés, puis cliquez sur Enregistrer pour conserver ces changements.",
+  "dynamic.import.skippedHeading": "{n} réglage(s) n'ont pas pu être lus et restent inchangés :",
   "dynamic.import.snappingImportedNote": "Réglages d'alignement importés.",
   "dynamic.import.thumbnailAppearanceImportedNote": "Réglages d'apparence des miniatures importés.",
   "dynamic.overlay.backgroundColorLabel": "Couleur de fond",

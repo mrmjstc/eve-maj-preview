@@ -201,7 +201,7 @@ export async function runImport() {
 
         // The app merges into its own copy, so the form's latest edits go first.
         await flushEdits();
-        const { notes } = await rpc('applyImport', {
+        const { notes, skipped } = await rpc('applyImport', {
             text: importText,
             sourceProfile: importAnalysis.sourceProfile ?? null,
             sections: chosenSections(),
@@ -214,7 +214,14 @@ export async function runImport() {
             ? t('dynamic.import.liveNowHint')
             : t('dynamic.import.reviewAndSaveHint');
         const summaryEl = document.getElementById('importSummary');
+        // Apart from the notes, so settings left unchanged don't read like ones that came in.
+        const skippedBlock = skipped.length === 0 ? '' :
+            '<div class="import-skipped">' +
+            `<p>${escapeHtml(translate({ key: 'dynamic.import.skippedHeading', params: { n: String(skipped.length) } }))}</p>` +
+            `<ul>${skipped.map(path => `<li><code>${escapeHtml(path)}</code></li>`).join('')}</ul>` +
+            '</div>';
         summaryEl.innerHTML = `<p class="hint" style="margin: 0 0 0.5rem 0;">${escapeHtml(t('dynamic.import.completeHeading'))}</p>` +
+            skippedBlock +
             '<ul style="margin: 0; padding-left: 1.125rem;">' +
             notes.map(n => `<li>${escapeHtml(translate(n))}</li>`).join('') +
             '</ul>' +

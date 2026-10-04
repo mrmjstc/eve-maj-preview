@@ -12,14 +12,14 @@ pub fn analyzeImport(arena: std.mem.Allocator, args: struct { text: []const u8, 
     return .{ .text = out.written() };
 }
 
-/// Applies the chosen sections as unsaved edits and returns notes on what was and wasn't brought in.
+/// Applies the chosen sections as unsaved edits; returns notes on what came in, and the settings that couldn't be read.
 pub fn applyImport(arena: std.mem.Allocator, args: struct {
     text: []const u8,
     sourceProfile: ?[]const u8 = null,
     sections: []const []const u8,
     cycleGroupName: []const u8,
-}) !struct { notes: []const importer.Text } {
+}) !struct { notes: []const importer.Text, skipped: []const []const u8 } {
     const built = try importer.build(arena, args.text, args.sourceProfile, args.sections, args.cycleGroupName, session.profile());
     try session.apply(null, arena, .profile, built.ops);
-    return .{ .notes = built.notes };
+    return .{ .notes = built.notes, .skipped = built.skipped };
 }
