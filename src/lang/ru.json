@@ -323,6 +323,8 @@
   "field.clickThrough.label": "Сквозные клики по миниатюрам",
   "field.clickTrigger.hint": "«Отпускание кнопки» избавляет от случайных перетаскиваний при быстром клике.",
   "field.clickTrigger.label": "Триггер клика",
+  "field.closeAllExcludeCycleExcludedClients.hint": "Тот же список исключений, что и «Исключение персонажей» на вкладке «Поведение».",
+  "field.closeAllExcludeCycleExcludedClients.label": "Не закрывать исключённые клиенты",
   "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
   "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Сопоставление по названию, без учёта регистра, через запятую. Подавляет только алерт «Получение урона» - исключённые попадания всё равно учитываются в DPS выше.",

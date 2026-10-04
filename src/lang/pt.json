@@ -323,6 +323,8 @@
   "field.clickThrough.label": "Clique Através das Miniaturas",
   "field.clickTrigger.hint": "Soltar o Botão evita arrastos acidentais em um clique rápido.",
   "field.clickTrigger.label": "Gatilho de Clique",
+  "field.closeAllExcludeCycleExcludedClients.hint": "Mesma lista de exclusão da Exclusão de Personagem na aba Comportamento.",
+  "field.closeAllExcludeCycleExcludedClients.label": "Não Fechar Clientes Excluídos",
   "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
   "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Correspondência de nomes separados por vírgula, sem distinção entre maiúsculas/minúsculas. Suprime apenas o alerta de Recebendo Dano - acertos excluídos ainda contam para o DPS mostrado acima.",

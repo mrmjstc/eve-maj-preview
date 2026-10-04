@@ -323,6 +323,8 @@
   "field.clickThrough.label": "Click Through Thumbnails",
   "field.clickTrigger.hint": "Mouse Up avoids accidental drags from a quick click.",
   "field.clickTrigger.label": "Click Trigger",
+  "field.closeAllExcludeCycleExcludedClients.hint": "Same exclusion list as Character Exclusion on the Behavior tab.",
+  "field.closeAllExcludeCycleExcludedClients.label": "Don't Close Excluded Clients",
   "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
   "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Case-insensitive, comma-separated name matches. Only suppresses the Taking Damage alert - excluded hits still count toward the DPS shown above.",

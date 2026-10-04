@@ -549,10 +549,13 @@ Exclusions are configured per character - set `excludeFromAutoMove` on the chara
 ```json
 {
   "closeAll": {
+    "excludeCycleExcludedClients": false,
     "excludeLoginScreenClients": false
   }
 }
 ```
+
+`excludeCycleExcludedClients` (default: `false`) skips characters excluded from cycling (Shift+Click or `hotkeyToggleExclusion`).
 
 `excludeLoginScreenClients` (default: `false`) skips any client still sitting at the character-selection screen.
 

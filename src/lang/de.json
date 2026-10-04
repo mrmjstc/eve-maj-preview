@@ -323,6 +323,8 @@
   "field.clickThrough.label": "Klicks durch Miniaturansichten durchlassen",
   "field.clickTrigger.hint": "\"Mouse Up\" vermeidet versehentliches Ziehen bei einem schnellen Klick.",
   "field.clickTrigger.label": "Klick-Auslöser",
+  "field.closeAllExcludeCycleExcludedClients.hint": "Dieselbe Ausschlussliste wie \"Charakterausschluss\" im Tab \"Verhalten\".",
+  "field.closeAllExcludeCycleExcludedClients.label": "Ausgeschlossene Clients nicht schließen",
   "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
   "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Groß-/Kleinschreibung wird ignoriert, Namen kommagetrennt. Unterdrückt nur den \"Taking Damage\"-Alarm – ausgeschlossene Treffer zählen weiterhin zum oben angezeigten DPS.",

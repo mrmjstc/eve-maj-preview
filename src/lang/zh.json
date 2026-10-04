@@ -323,6 +323,8 @@
   "field.clickThrough.label": "缩略图点击穿透",
   "field.clickTrigger.hint": "鼠标释放可避免快速点击时误触发拖动。",
   "field.clickTrigger.label": "点击触发方式",
+  "field.closeAllExcludeCycleExcludedClients.hint": "与行为标签页中角色排除使用相同的排除列表。",
+  "field.closeAllExcludeCycleExcludedClients.label": "不关闭已排除的客户端",
   "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
   "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "不区分大小写,以逗号分隔的名称匹配。仅抑制“受到伤害”警报 - 被排除的命中仍会计入上方显示的 DPS。",

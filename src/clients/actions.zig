@@ -4,6 +4,7 @@ const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const scout = @import("scout.zig");
 const animation = @import("animation.zig");
+const exclusions = @import("../hotkeys/exclusions.zig");
 const log = @import("../log.zig");
 
 const slog = log.scoped("actions");
@@ -106,6 +107,12 @@ pub fn closeAllClients(eve_windows: []const scout.EveWindow, config: *const conf
 
         if (config.isExcludedFromCloseAll(eve_window.character_name)) {
             slog.debug("Skipping excluded character: {s}", .{eve_window.character_name});
+            excluded_count += 1;
+            continue;
+        }
+
+        if (config.closeAll.excludeCycleExcludedClients and exclusions.isExcluded(eve_window.character_name)) {
+            slog.debug("Skipping cycle-excluded character: {s}", .{eve_window.character_name});
             excluded_count += 1;
             continue;
         }

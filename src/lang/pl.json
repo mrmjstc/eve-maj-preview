@@ -323,6 +323,8 @@
   "field.clickThrough.label": "Przezroczystość miniatur na kliknięcia",
   "field.clickTrigger.hint": "Puszczenie przycisku myszy zapobiega przypadkowym przeciągnięciom przy szybkim kliknięciu.",
   "field.clickTrigger.label": "Wyzwalacz kliknięcia",
+  "field.closeAllExcludeCycleExcludedClients.hint": "Ta sama lista wykluczeń co Wykluczenie postaci w zakładce Zachowanie.",
+  "field.closeAllExcludeCycleExcludedClients.label": "Nie zamykaj wykluczonych klientów",
   "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
   "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Dopasowanie nazw bez rozróżniania wielkości liter, oddzielone przecinkami. Tłumi tylko alert Otrzymywanie obrażeń - wykluczone trafienia nadal liczą się do DPS pokazywanego powyżej.",

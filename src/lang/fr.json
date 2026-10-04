@@ -323,6 +323,8 @@
   "field.clickThrough.label": "Clics traversants sur les miniatures",
   "field.clickTrigger.hint": "Relâchement du clic évite les glissements accidentels lors d'un clic rapide.",
   "field.clickTrigger.label": "Déclencheur de clic",
+  "field.closeAllExcludeCycleExcludedClients.hint": "Même liste d'exclusion que l'exclusion de personnages de l'onglet Comportement.",
+  "field.closeAllExcludeCycleExcludedClients.label": "Ne pas fermer les clients exclus",
   "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
   "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Correspondance de noms insensible à la casse, séparés par des virgules. Supprime uniquement l'alerte « Subit des dégâts » - les coups exclus comptent toujours dans le DPS affiché ci-dessus.",

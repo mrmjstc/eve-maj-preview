@@ -76,5 +76,6 @@ pub const ExclusionConfig = struct {
 };
 
 pub const CloseAllConfig = struct {
+    excludeCycleExcludedClients: bool = false,
     excludeLoginScreenClients: bool = false,
 };

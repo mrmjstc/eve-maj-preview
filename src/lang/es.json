@@ -323,6 +323,8 @@
   "field.clickThrough.label": "Clics a Través de Miniaturas",
   "field.clickTrigger.hint": "Soltar el Ratón evita arrastres accidentales por un clic rápido.",
   "field.clickTrigger.label": "Disparador de Clic",
+  "field.closeAllExcludeCycleExcludedClients.hint": "Misma lista de exclusión que Exclusión de Personajes en la pestaña Comportamiento.",
+  "field.closeAllExcludeCycleExcludedClients.label": "No Cerrar Clientes Excluidos",
   "field.closeAllExcludeLoginScreenClients.hint": "Skips any client still sitting at the character-selection screen.",
   "field.closeAllExcludeLoginScreenClients.label": "Don't Close Clients On Login Screen",
   "field.combatDamageAlertExcludedWeapons.hint": "Coincidencias de nombre separadas por comas, sin distinguir mayúsculas/minúsculas. Solo suprime la alerta de Recibiendo Daño - los impactos excluidos igual cuentan para el DPS mostrado arriba.",
