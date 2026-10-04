@@ -57,10 +57,14 @@ fn textBetween(text: []const u8, prefix: []const u8, suffix: []const u8) ?[]cons
     return nonEmpty(text[start..end]);
 }
 
-fn withoutYour(name: ?[]const u8) ?[]const u8 {
+fn withoutPrefix(name: ?[]const u8, prefix: []const u8) ?[]const u8 {
     const value = name orelse return null;
-    if (!std.mem.startsWith(u8, value, "Your ")) return value;
-    return nonEmpty(value["Your ".len..]);
+    if (!std.mem.startsWith(u8, value, prefix)) return value;
+    return nonEmpty(value[prefix.len..]);
+}
+
+fn withoutYour(name: ?[]const u8) ?[]const u8 {
+    return withoutPrefix(name, "Your ");
 }
 
 fn nonEmpty(text: []const u8) ?[]const u8 {
@@ -128,9 +132,9 @@ fn parseNotifyEvent(message: []const u8) ?Notification {
         return .{ .ntype = .ObservatoryDecloak };
     }
 
-    // "Your cloak deactivates due to proximity to [source]"
+    // "Your cloak deactivates due to proximity to a nearby [source]"
     if (std.mem.indexOf(u8, trimmed, "cloak deactivates") != null) {
-        return .{ .ntype = .Decloak, .source = textAfter(trimmed, "proximity to ") };
+        return .{ .ntype = .Decloak, .source = withoutPrefix(textAfter(trimmed, "proximity to "), "a nearby ") };
     }
 
     // "Your cloaking systems are unable to activate due to your ship being within..."
@@ -245,7 +249,7 @@ test "classify maps each notify wording to its type" {
         .{ "[ 2026.09.06 16:13:00 ] (notify) Successfully compressed Veldspar into 10 Compressed Veldspar", .MiningCompression },
         .{ "[ 2026.09.06 16:13:00 ] (notify) Miner II deactivates as it finds the resource it was harvesting a pale shadow of its former glory.", .AsteroidDepleted },
         .{ "[ 2026.09.06 16:13:00 ] (notify) Your Miner II has completed operations. Ship's cargo hold is full.", .CargoFull },
-        .{ "[ 2026.09.06 16:13:00 ] (notify) Your cloak deactivates due to proximity to a Stargate.", .Decloak },
+        .{ "[ 2026.09.06 16:13:00 ] (notify) Your cloak deactivates due to proximity to a nearby Stargate (Caldari System).", .Decloak },
         .{ "[ 2026.09.06 16:13:00 ] (notify) Your cloaking systems are unable to activate due to your ship being within 2000 meters", .CloakFailed },
         .{ "[ 2026.09.06 16:13:00 ] (notify) Modulated Strip Miner II deactivates due to the destruction of the Veldspar Mining Crystal", .CrystalBroke },
         .{ "[ 2026.09.06 16:13:00 ] (notify) Bomb Launcher II has run out of charges", .BombLauncherEmpty },
@@ -335,6 +339,7 @@ test "classify reads who scrambled or disrupted you" {
 }
 
 test "classify reads what decloaked you or holds you in a bubble" {
+    try testing.expectEqualStrings("Purifier", classify("[ 2026.09.06 16:13:00 ] (notify) Your cloak deactivates due to proximity to a nearby Purifier.").?.source.?);
     try testing.expectEqualStrings("Guristas Pith Ship", classify("[ 2026.09.06 16:13:00 ] (notify) Your cloak deactivates due to proximity to Guristas Pith Ship.").?.source.?);
     try testing.expectEqualStrings("Warp Disrupt Probe", classify("[ 2026.09.06 16:13:00 ] (notify) You are within a warp disruption zone. Get 20000.0 meters from Warp Disrupt Probe to warp.").?.source.?);
 }

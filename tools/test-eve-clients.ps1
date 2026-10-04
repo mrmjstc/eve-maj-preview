@@ -418,7 +418,7 @@ function Add-GamelogEvent {
             "[ $ts ] (combat) Warp disruption attempt from Hostile Pilot to you!"
         }
         'Decloak' {
-            "[ $ts ] (notify) Your cloak deactivates due to proximity to Guristas Pith Ship."
+            "[ $ts ] (notify) Your cloak deactivates due to proximity to a nearby Purifier."
         }
         'ObservatoryDecloak' {
             "[ $ts ] (notify) Your cloak deactivates due to a pulse from a Mobile Observatory in the area."
