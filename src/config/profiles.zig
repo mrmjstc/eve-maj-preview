@@ -140,8 +140,12 @@ pub fn listBackups(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
     return names;
 }
 
-/// A missing profile falls back to DEFAULT_PROFILE, and a malformed one to its defaults.
+/// An invalid or missing profile falls back to DEFAULT_PROFILE, and a malformed one to its defaults.
 pub fn load(allocator: std.mem.Allocator, name: []const u8) !Config {
+    validateName(name) catch {
+        slog.warn("Refused profile name '{s}', falling back to default profile", .{name});
+        return load(allocator, files.DEFAULT_PROFILE);
+    };
     try ensureDir(allocator);
 
     const profile_path = try path(allocator, name);
@@ -254,6 +258,10 @@ test "validateName accepts only a plain <name>.json" {
     try testing.expectError(error.InvalidProfileName, validateName("../Main.json"));
     try testing.expectError(error.InvalidProfileName, validateName("a:b.json"));
     try testing.expectError(error.InvalidProfileName, validateName("what?.json"));
+}
+
+test "validateName accepts the default profile, so load's fallback can't recurse" {
+    try validateName(files.DEFAULT_PROFILE);
 }
 
 test "validateName refuses the global settings file" {
