@@ -6,6 +6,7 @@ const scout = @import("../clients/scout.zig");
 const chatlog = @import("../chatlog.zig");
 const tracker_mod = @import("tracker.zig");
 const resources_mod = @import("resources.zig");
+const schedule = @import("../util/schedule.zig");
 const log = @import("../log.zig");
 
 const Painter = painter_mod.Painter;
@@ -101,19 +102,20 @@ pub const Trackers = struct {
     }
 
     /// Pushes each enabled tracker's values into the painter at its configured interval, checks alerts every ALERT_CHECK_INTERVAL_MS, then redraws what changed once.
-    pub fn tick(self: *Trackers, cfg: *const Config, windows: []const scout.EveWindow, now_ms: i64) void {
-        if (self.combat) |t| pushThrottled(tracker_mod.CombatTracker, pushDps, t, cfg, windows, now_ms, &self.last_dps_update_ms, cfg.combat.update_interval_ms);
-        if (self.mining) |t| pushThrottled(tracker_mod.MiningTracker, pushMining, t, cfg, windows, now_ms, &self.last_mining_update_ms, cfg.mining.update_interval_ms);
-        if (self.bounty) |t| pushThrottled(tracker_mod.BountyTracker, pushBounty, t, cfg, windows, now_ms, &self.last_bounty_update_ms, cfg.bounty.update_interval_ms);
+    /// `now_ms` is the tick's start, which keeps to the timer's schedule however long the tick's work took.
+    pub fn tick(self: *Trackers, cfg: *const Config, windows: []const scout.EveWindow, now_ms: i64, tick_interval_ms: i64) void {
+        if (self.combat) |t| pushThrottled(tracker_mod.CombatTracker, pushDps, t, cfg, windows, now_ms, tick_interval_ms, &self.last_dps_update_ms, cfg.combat.update_interval_ms);
+        if (self.mining) |t| pushThrottled(tracker_mod.MiningTracker, pushMining, t, cfg, windows, now_ms, tick_interval_ms, &self.last_mining_update_ms, cfg.mining.update_interval_ms);
+        if (self.bounty) |t| pushThrottled(tracker_mod.BountyTracker, pushBounty, t, cfg, windows, now_ms, tick_interval_ms, &self.last_bounty_update_ms, cfg.bounty.update_interval_ms);
 
-        if (now_ms - self.last_alert_check_ms >= ALERT_CHECK_INTERVAL_MS) {
+        if (schedule.isDue(now_ms - self.last_alert_check_ms, ALERT_CHECK_INTERVAL_MS, tick_interval_ms)) {
             self.last_alert_check_ms = now_ms;
             self.checkAlerts(cfg, windows, now_ms);
         }
 
         self.setupResources(cfg.resources.enabled);
         if (self.resources) |t| {
-            if (now_ms - self.last_resource_update_ms >= @as(i64, @intCast(cfg.resources.update_interval_ms))) {
+            if (schedule.isDue(now_ms - self.last_resource_update_ms, @intCast(cfg.resources.update_interval_ms), tick_interval_ms)) {
                 self.last_resource_update_ms = now_ms;
                 pushResources(t, windows, now_ms);
             }
@@ -149,10 +151,11 @@ fn pushThrottled(
     cfg: *const Config,
     windows: []const scout.EveWindow,
     now_ms: i64,
+    tick_interval_ms: i64,
     last_update_ms: *i64,
     interval_ms: anytype,
 ) void {
-    if (now_ms - last_update_ms.* < @as(i64, @intCast(interval_ms))) return;
+    if (!schedule.isDue(now_ms - last_update_ms.*, @intCast(interval_ms), tick_interval_ms)) return;
     last_update_ms.* = now_ms;
 
     const painter = painter_mod.g_painter_ptr orelse return;

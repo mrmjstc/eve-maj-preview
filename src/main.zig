@@ -27,6 +27,7 @@ const update = @import("update.zig");
 const dialog_host = @import("dialog/host.zig");
 const dialog_rpc = @import("dialog/rpc.zig");
 const dialog_events = @import("dialog/events.zig");
+const schedule = @import("util/schedule.zig");
 const log = @import("log.zig");
 
 const slog = log.scoped("main");
@@ -519,14 +520,13 @@ fn onTimerTick() void {
         };
     }
 
-    const now = win32.Ticks.now();
     // Unwrapped to i64 since activity/tracker.zig's windows still do plain i64 arithmetic.
-    g_trackers.tick(&g_store.live, scout_result.windows, @intCast(now.ms));
+    g_trackers.tick(&g_store.live, scout_result.windows, @intCast(tick_start.ms), g_tick_interval_ms);
 
     if (painter.g_painter_ptr) |painter_ptr| {
-        if (now.elapsedSince(g_last_travel_check_ms) >= TRAVEL_CHECK_INTERVAL_MS) {
-            g_last_travel_check_ms = now;
-            travel_left_behind.check(painter_ptr, now);
+        if (schedule.isDue(@intCast(tick_start.elapsedSince(g_last_travel_check_ms)), TRAVEL_CHECK_INTERVAL_MS, g_tick_interval_ms)) {
+            g_last_travel_check_ms = tick_start;
+            travel_left_behind.check(painter_ptr, tick_start);
         }
     }
 

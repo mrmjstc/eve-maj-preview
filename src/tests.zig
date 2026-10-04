@@ -19,5 +19,6 @@ test {
     _ = @import("protocol.zig");
     _ = @import("util/color.zig");
     _ = @import("util/format.zig");
+    _ = @import("util/schedule.zig");
     _ = @import("util/strings.zig");
 }
