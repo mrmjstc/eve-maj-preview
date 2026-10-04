@@ -163,7 +163,7 @@ Scout.update()                    window discovery / lifecycle reconciliation
        -> alert checks (Taking Damage, Laser idle, Mining stopped) once a second
 ```
 
-The expensive full `EnumWindows` rescan is itself throttled to once a second rather than running every tick, whatever the scan interval.
+The expensive full `EnumWindows` rescan is itself throttled to at least once a second rather than running every tick, whatever the scan interval: it runs on the last tick that keeps the gap within a second (`schedule.nextTickWouldBeLate`).
 
 The throttled pushes, alert checks and travel check measure from the tick's start, not the time after its work, and run on the tick nearest their interval (`util/schedule.zig`'s `isDue`), so timer jitter can't skip a whole tick at long scan intervals.
 
