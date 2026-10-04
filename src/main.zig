@@ -511,6 +511,7 @@ fn onTimerTick() void {
         };
 
         painter_ptr.updateNotifications();
+        painter_ptr.checkHoverZoom();
     }
 
     if (g_chatlog_monitor) |monitor| {

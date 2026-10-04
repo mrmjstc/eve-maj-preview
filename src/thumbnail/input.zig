@@ -1,10 +1,11 @@
-//! Mouse input on a thumbnail and its text overlay: clicks, drags and the hover cursor.
+//! Mouse input on a thumbnail and its text overlay: clicks, drags, the hover cursor and hover zoom.
 const win32 = @import("../platform/win32.zig");
 const painter_mod = @import("../painter.zig");
 const hotkeys = @import("../hotkeys/manager.zig");
 const membership = @import("../hotkeys/membership.zig");
 const activation = @import("../clients/activation.zig");
 const thumbnail_drag = @import("../drag/thumbnail.zig");
+const hover_zoom = @import("hover_zoom.zig");
 const log = @import("../log.zig");
 
 const ThumbnailWindow = painter_mod.ThumbnailWindow;
@@ -47,11 +48,7 @@ pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
 
 pub fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
-        win32.WM_ACTIVATE => {
-            if (win32.linkedWindow(hwnd)) |text_hwnd| {
-                _ = win32.SetWindowPos(text_hwnd, win32.HWND_TOPMOST, 0, 0, 0, 0, win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE);
-            }
-        },
+        win32.WM_ACTIVATE => raiseTextOverlay(hwnd),
         win32.WM_DPICHANGED => {
             // Position only; resizeThumbnailIfNeeded re-derives the size from our own scale formula.
             const suggested = win32.lparamToPtr(win32.RECT, lParam);
@@ -76,6 +73,15 @@ pub fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPara
 pub fn textWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     if (handleSharedMessage(hwnd, msg, lParam, true)) |result| return result;
     return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
+}
+
+/// Batched with the hover zoom's raise, so the text is never composited above the zoom in between.
+fn raiseTextOverlay(hwnd: win32.HWND) void {
+    const text_hwnd = win32.linkedWindow(hwnd) orelse return;
+    var hdwp = win32.BeginDeferWindowPos(3) orelse return;
+    hdwp = win32.deferRaiseTopmost(hdwp, text_hwnd) orelse return;
+    if (painter_mod.g_painter_ptr) |painter| hdwp = painter.hover_zoom.deferRaise(hdwp) orelse return;
+    _ = win32.EndDeferWindowPos(hdwp);
 }
 
 fn dispatchClick(source_hwnd: win32.HWND, shift_pressed: bool) void {
@@ -112,6 +118,14 @@ fn handleLButtonUp(hwnd: win32.HWND) void {
     if (click.source_hwnd) |source_hwnd| dispatchClick(source_hwnd, click.shift_pressed);
 }
 
+fn handleMouseMove(hwnd: win32.HWND) void {
+    thumbnail_drag.move(hwnd);
+
+    const painter = painter_mod.g_painter_ptr orelse return;
+    const thumbnail = painter.getThumbnailByOverlayHwnd(hwnd) orelse return;
+    hover_zoom.onHover(painter, hwnd, thumbnail);
+}
+
 /// Returns whether it set the cursor.
 fn applyHoverCursor() bool {
     const painter = painter_mod.g_painter_ptr orelse return false;
@@ -139,7 +153,8 @@ fn handleSharedMessage(hwnd: win32.HWND, msg: win32.UINT, lParam: win32.LPARAM, 
             const thumbnail_hwnd = if (is_text_overlay) win32.linkedWindow(hwnd) else hwnd;
             if (thumbnail_hwnd) |thumb_hwnd| thumbnail_drag.end(hwnd, thumb_hwnd);
         },
-        win32.WM_MOUSEMOVE => thumbnail_drag.move(hwnd),
+        win32.WM_MOUSEMOVE => handleMouseMove(hwnd),
+        win32.WM_MOUSELEAVE => if (painter_mod.g_painter_ptr) |painter| painter.checkHoverZoom(),
         win32.WM_SETCURSOR => {
             if (!applyHoverCursor()) return null;
             return 1;

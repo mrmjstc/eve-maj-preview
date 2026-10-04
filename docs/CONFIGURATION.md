@@ -126,7 +126,7 @@ The character name and system name each have their own color, background and fon
 }
 ```
 
-Drawn on a thumbnail whenever its character is a member of a [Hotkey Group](#hotkey-groups-character-cycling) with `showBadge` set. `quickGroupBadgePosition` uses the same values as [Text Positions](#text-overlay-settings).
+Drawn on a thumbnail whenever its character is a member of a [Hotkey Group](#hotkey-groups-character-cycling) with `showBadge` set. `quickGroupBadgePosition` uses the same values as [Text Positions](#text-positioning).
 
 ### Session Timer
 
@@ -146,7 +146,7 @@ Drawn on a thumbnail whenever its character is a member of a [Hotkey Group](#hot
 }
 ```
 
-How long each logged-in character has been logged in, as `42m` or `3h 07m`; resets on logout. A character already logged in when the app starts counts from its gamelog's session start if chatlog monitoring is on, otherwise from when the app first saw it. `sessionTimerPosition` uses the same values as [Text Positions](#text-overlay-settings).
+How long each logged-in character has been logged in, as `42m` or `3h 07m`; resets on logout. A character already logged in when the app starts counts from its gamelog's session start if chatlog monitoring is on, otherwise from when the app first saw it. `sessionTimerPosition` uses the same values as [Text Positions](#text-positioning).
 
 ### Exclusion Overlay
 
@@ -409,13 +409,16 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
     "animationStyle": "NoAnimation",
     "clickTrigger": "MouseDown",
     "clickThrough": false,
-    "hoverCursor": "Default"
+    "hoverCursor": "Default",
+    "hoverZoomEnabled": false,
+    "hoverZoomPercent": 200,
+    "hoverZoomAnchor": "Center"
   }
 }
 ```
 
 **Configuration Options:**
-- `enableDragging`: Enable or disable thumbnail dragging (default: `true`)
+- `enableDragging`: Enable or disable thumbnail dragging (default: `true`); has no effect while `RegionFit` is active, since it places every thumbnail
 - `animationStyle`: Control Windows animations when the app minimizes or restores a client
   - `"NoAnimation"` (default): Temporarily disable system animations so it happens instantly
   - `"OriginalAnimation"`: Use Windows default minimize/restore animations
@@ -429,6 +432,9 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
   - `"Crosshair"`: Precision-select crosshair
   - `"Move"`: Four-way move arrows
   - `"Help"`: Arrow with a question mark
+- `hoverZoomEnabled`: While the cursor rests on a thumbnail, show an enlarged live copy of that client on top of it (default: `false`). The zoom carries the thumbnail's border and overlay texts, kept at their configured size and placed relative to the zoom's edges, and updates live. It lets clicks through to the thumbnail underneath, and closes when the cursor leaves the thumbnail or a drag starts. Not shown while `clickThrough` is on.
+- `hoverZoomPercent`: Zoom size as a percentage of the thumbnail, `110`-`1000` (default: `200`); shrunk, keeping its aspect, if it wouldn't fit on the thumbnail's monitor
+- `hoverZoomAnchor`: The point of the thumbnail that stays put as the zoom grows, one of the [Text Positions](#text-positioning) (default: `"Center"`; `"TopLeft"` grows right and down). The zoom is then shifted to stay on the thumbnail's monitor.
 
 **Animation Style Details:**
 
@@ -436,7 +442,7 @@ By default (`"NoAnimation"`), the application temporarily disables Windows syste
 
 **Mouse Interactions:**
 - **Left-click**: Activate and bring the EVE client to foreground
-- **Right-click + Drag**: Move thumbnail position (hold Ctrl to move all thumbnails)
+- **Right-click + Drag**: Move thumbnail position (hold Ctrl to move all thumbnails); does nothing on a thumbnail a Thumbnail Space places
 - **Shift + Left-click**: Toggle character exclusion from hotkey cycling
   - Excluded characters show a visual overlay (default: semi-transparent red "X"; see [Exclusion Overlay](#exclusion-overlay) for other styles)
   - "Excluded" or "Included" notification appears (the `CycleExclusion` notification type, 3s by default)
@@ -1000,7 +1006,7 @@ Display each client's CPU%, RAM, and dedicated VRAM usage as a single combined t
 | `show_ram` | `true` | Include the RAM segment (process working-set memory, in MB) |
 | `show_vram` | `true` | Include the VRAM segment (dedicated GPU memory, in MB) - see note below |
 | `update_interval_ms` | `10000` | How often CPU/RAM/VRAM are resampled (1000-60000 ms); shared by all three since VRAM sampling is the most expensive of the three |
-| `position` | `LeftCenter` | Position of the label on the thumbnail (see [Text Positions](#text-overlay-settings)) |
+| `position` | `LeftCenter` | Position of the label on the thumbnail (see [Text Positions](#text-positioning)) |
 | `offset_x`/`offset_y` | `0` | Fine-tune label position (pixels) |
 
 **CPU%**: Process CPU time (kernel + user) sampled via `GetProcessTimes`, normalized by elapsed wall time and logical processor count - the same basis Task Manager uses, clamped to 0-100%. The first sample after a character logs in or the overlay is turned on has nothing to diff against, so it reads 0% until the second sample.

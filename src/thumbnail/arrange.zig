@@ -87,14 +87,14 @@ pub fn refreshVisuals(painter: *Painter) void {
     }
 }
 
-/// A batched DeferWindowPos sized for both windows of every win32_enabled thumbnail; null if there's nothing to move or it fails.
+/// Sized for every win32_enabled thumbnail's two windows plus the hover zoom's; null if there's nothing to move or it fails.
 pub fn beginDefer(painter: *const Painter) ?win32.HDWP {
     var window_count: c_int = 0;
     for (painter.thumbnails.items) |thumbnail| {
         if (thumbnail.win32_enabled) window_count += 2;
     }
     if (window_count == 0) return null;
-    return win32.BeginDeferWindowPos(window_count);
+    return win32.BeginDeferWindowPos(window_count + 2);
 }
 
 /// Moves every thumbnail to where the display settings put it. Never writes startX/startY, which can be live-dragged in the running app.
@@ -143,6 +143,7 @@ pub fn repositionAll(painter: *Painter) void {
             hdwp = thumbnail.deferPlace(hdwp, pos.x, pos.y, null) orelse return;
         }
     }
+    hdwp = painter.hover_zoom.deferRaise(hdwp) orelse return;
     _ = win32.EndDeferWindowPos(hdwp);
 
     if (region_fit != null or not_logged_in != null) {
@@ -161,8 +162,9 @@ pub fn reassertTopmost(painter: *Painter) void {
     var hdwp = beginDefer(painter) orelse return;
     for (painter.thumbnails.items) |thumbnail| {
         if (!thumbnail.win32_enabled) continue;
-        hdwp = win32.DeferWindowPos(hdwp, thumbnail.hwnd, win32.HWND_TOPMOST, 0, 0, 0, 0, win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE) orelse return;
-        hdwp = win32.DeferWindowPos(hdwp, thumbnail.text_hwnd, win32.HWND_TOPMOST, 0, 0, 0, 0, win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE) orelse return;
+        hdwp = win32.deferRaiseTopmost(hdwp, thumbnail.hwnd) orelse return;
+        hdwp = win32.deferRaiseTopmost(hdwp, thumbnail.text_hwnd) orelse return;
     }
+    hdwp = painter.hover_zoom.deferRaise(hdwp) orelse return;
     _ = win32.EndDeferWindowPos(hdwp);
 }

@@ -248,6 +248,11 @@ fn appearance(d: *Draft, root: Value) !void {
     if (values.get(root, "HideThumbnailsOnLostFocus")) |v| try d.setBool("thumbnail.hideWhenNoEveFocus", values.truthy(v));
     if (values.get(root, "HideActiveClientThumbnail")) |v| try d.setBool("thumbnail.activeThumbnailHidden", values.truthy(v));
 
+    if (values.get(root, "ThumbnailZoomEnabled")) |v| try d.setBool("interaction.hoverZoomEnabled", values.truthy(v));
+    // EVE-O stores a multiple, not a percentage.
+    if (values.jsonNumber(values.get(root, "ThumbnailZoomFactor"))) |factor| try d.setNumber("interaction.hoverZoomPercent", factor * 100);
+    try d.setString("interaction.hoverZoomAnchor", eve_apm.anchorName(values.jsonNumber(values.get(root, "ThumbnailZoomAnchor"))));
+
     if (pair(values.get(root, "ThumbnailSize"))) |size| {
         try d.setNumber("thumbnail.width", size[0]);
         try d.setNumber("thumbnail.height", size[1]);

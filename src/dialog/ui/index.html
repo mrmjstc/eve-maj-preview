@@ -1079,10 +1079,11 @@
                         <p class="hint hint-extra" data-i18n="field.clickThrough.hint">Thumbnails ignore all mouse input and let clicks/drags pass through to whatever is behind them; disables click-to-focus, exclusion toggling, and dragging.</p>
 
                         <div id="clickThroughOptions">
-                            <label>
+                            <label id="enableDraggingOption">
                                 <input type="checkbox" id="enableDragging" data-path="interaction.enableDragging">
                                 <span class="label-body" data-i18n="field.enableDragging.label">Enable Dragging</span>
                             </label>
+                            <p class="hint hint-extra" data-i18n="field.enableDragging.hint">Has no effect while Thumbnail Space is enabled, since it places every thumbnail.</p>
                             <div class="binding-list">
                                 <div class="binding">
                                     <label for="clickTrigger" data-i18n="field.clickTrigger.label">Click Trigger</label>
@@ -1103,6 +1104,27 @@
                                 <select id="animationStyle" data-path="interaction.animationStyle"></select>
                             </div>
                             <p class="hint hint-extra" data-i18n="field.animationStyle.hint">No Animation restores and minimizes clients instantly; Original Animation keeps Windows' native effect.</p>
+                        </div>
+
+                        <div id="hoverZoomClickThroughOptions">
+                            <label>
+                                <input type="checkbox" id="hoverZoomEnabled" data-path="interaction.hoverZoomEnabled" onchange="toggleHoverZoomOptions()">
+                                <span class="label-body" data-i18n="field.hoverZoomEnabled.label">Zoom on Hover</span>
+                            </label>
+                            <p class="hint hint-extra" data-i18n="field.hoverZoomEnabled.hint">Shows an enlarged copy of a thumbnail, with its overlay text, while the cursor rests on it.</p>
+
+                            <div id="hoverZoomOptions" class="binding-list">
+                                <div class="binding">
+                                    <label for="hoverZoomPercent" data-i18n="field.hoverZoomPercent.label">Zoom Size (%)</label>
+                                    <input type="number" id="hoverZoomPercent" data-path="interaction.hoverZoomPercent" step="10">
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.hoverZoomPercent.hint">Size of the zoom relative to the thumbnail, shrunk if needed to fit its monitor.</p>
+                                <div class="binding">
+                                    <label for="hoverZoomAnchor" data-i18n="field.hoverZoomAnchor.label">Zoom Anchor</label>
+                                    <select id="hoverZoomAnchor" data-path="interaction.hoverZoomAnchor"></select>
+                                </div>
+                                <p class="hint hint-extra" data-i18n="field.hoverZoomAnchor.hint">The point of the thumbnail that stays in place as the zoom grows.</p>
+                            </div>
                         </div>
                     </div>
 

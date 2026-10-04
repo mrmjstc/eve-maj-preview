@@ -307,7 +307,11 @@ pub fn renderSettingsOnlyVisibilityChanged(a: RenderSettings, b: RenderSettings)
 }
 
 pub fn renderThumbnailOverlay(font_cache: *FontCache, thumbnail: *ThumbnailWindow, settings: RenderSettings, config: *const config_mod.Config) !void {
-    const cache = &thumbnail.render_cache;
+    try renderOverlay(font_cache, &thumbnail.render_cache, thumbnail.text_hwnd, thumbnail, settings, config);
+}
+
+/// `cache` must belong to `target_hwnd`, since it holds that window's bitmap.
+pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: win32.HWND, thumbnail: *const ThumbnailWindow, settings: RenderSettings, config: *const config_mod.Config) !void {
     if (gdi_overlay.OverlayBitmap.needsResize(cache.bitmap, settings.overlay_width, settings.overlay_height)) {
         const screen_dc = win32.GetDC(null) orelse return error.GetDCFailed;
         defer _ = win32.ReleaseDC(null, screen_dc);
@@ -374,7 +378,7 @@ pub fn renderThumbnailOverlay(font_cache: *FontCache, thumbnail: *ThumbnailWindo
         gdi_overlay.fixTextAlphaRect(overlay.pixels, overlay.width, overlay.height, block.origin.x, block.origin.y, block.dims.width, block.dims.height);
     }
 
-    gdi_overlay.presentLayered(thumbnail.text_hwnd, overlay, settings.overlay_alpha);
+    gdi_overlay.presentLayered(target_hwnd, overlay, settings.overlay_alpha);
 }
 
 /// The single point where a thumbnail's state and the profile decide everything its overlay shows.

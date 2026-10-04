@@ -20,6 +20,7 @@ const arrange = @import("thumbnail/arrange.zig");
 const overlay = @import("thumbnail/overlay.zig");
 const font_cache_mod = @import("thumbnail/font_cache.zig");
 const list_view = @import("thumbnail/list_view.zig");
+const hover_zoom_mod = @import("thumbnail/hover_zoom.zig");
 const dispatch = @import("notifications/dispatch.zig");
 const notification_history_mod = @import("notifications/history.zig");
 const notified_queue_mod = @import("notifications/notified_queue.zig");
@@ -90,6 +91,7 @@ pub const Painter = struct {
     ghost_overlay: drag_overlays.GhostOverlay,
     /// Shared by dragging and region select.
     hint_box: gdi_overlay.HintBox = .{},
+    hover_zoom: hover_zoom_mod.HoverZoom = .{},
     /// Sole "who's focused" source of truth; write only via reconcileThumbnailStates.
     active_source_hwnd: ?win32.HWND = null,
     auto_minimize: auto_minimize_mod.AutoMinimizer,
@@ -108,6 +110,7 @@ pub const Painter = struct {
     pub const resizeThumbnailIfNeeded = arrange.resizeIfNeeded;
     pub const reflowIfRegionFitActive = arrange.reflowIfRegionFitActive;
     pub const reflowIfThumbnailSpaceActive = arrange.reflowIfThumbnailSpaceActive;
+    pub const checkHoverZoom = hover_zoom_mod.check;
 
     pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore) !Painter {
         const instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
@@ -164,6 +167,7 @@ pub const Painter = struct {
 
         self.ghost_overlay.deinit();
         self.hint_box.deinit();
+        self.hover_zoom.deinit();
 
         for (self.thumbnails.items) |thumbnail| self.destroyThumbnail(thumbnail);
         self.thumbnails.deinit(self.allocator);
@@ -193,7 +197,10 @@ pub const Painter = struct {
         }
 
         thumbnail.show(settings.show_thumbnail);
-        if (settings.show_thumbnail) try overlay.renderThumbnailOverlay(&self.font_cache, thumbnail, settings, self.config);
+        if (settings.show_thumbnail) {
+            try overlay.renderThumbnailOverlay(&self.font_cache, thumbnail, settings, self.config);
+            self.hover_zoom.renderOverlay(&self.font_cache, thumbnail, settings, self.config);
+        }
 
         thumbnail.render_cache.settings = settings;
     }

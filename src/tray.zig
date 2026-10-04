@@ -9,6 +9,7 @@ const painter_mod = @import("painter.zig");
 const auto_minimize = @import("clients/auto_minimize.zig");
 const dialog_host = @import("dialog/host.zig");
 const scout_mod = @import("clients/scout.zig");
+const placement = @import("layout/placement.zig");
 const main = @import("main.zig");
 const log = @import("log.zig");
 
@@ -116,7 +117,8 @@ pub const TrayIcon = struct {
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
         const painter = painter_mod.g_painter_ptr;
-        appendChecked(menu, config.interaction.enableDragging, win32.IDM_TOGGLE_DRAGGING, "Enable Dragging");
+        // Thumbnail Space places every thumbnail, so dragging can't do anything while it's active.
+        appendCheckedItem(menu, config.interaction.enableDragging, !placement.isRegionFitActive(&config.display), win32.IDM_TOGGLE_DRAGGING, "Enable Dragging");
         appendChecked(menu, if (painter) |p| p.auto_minimize.isEnabled(p) else config.autoMinimize.enabled, win32.IDM_TOGGLE_AUTO_MINIMIZE, "Enable Auto-Minimize");
         appendChecked(menu, config.travel.enabled, win32.IDM_TOGGLE_TRAVEL_MODE, "Enable Travel Mode");
         if (config.display.viewMode == .Nothing) {
@@ -262,6 +264,13 @@ pub const TrayIcon = struct {
 };
 
 fn appendChecked(menu: win32.HMENU, checked: bool, id: usize, label: [*:0]const u8) void {
-    const flags: u32 = if (checked) win32.MF_STRING | win32.MF_CHECKED else win32.MF_STRING;
+    appendCheckedItem(menu, checked, true, id, label);
+}
+
+/// A disabled item is greyed out but keeps its tick.
+fn appendCheckedItem(menu: win32.HMENU, checked: bool, enabled: bool, id: usize, label: [*:0]const u8) void {
+    var flags: u32 = win32.MF_STRING;
+    if (checked) flags |= win32.MF_CHECKED;
+    if (!enabled) flags |= win32.MF_GRAYED;
     _ = win32.AppendMenuA(menu, flags, id, label);
 }

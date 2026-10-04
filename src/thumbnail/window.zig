@@ -16,8 +16,9 @@ const log = @import("../log.zig");
 const ThumbnailState = state.ThumbnailState;
 const slog = log.scoped("thumbnail");
 
-const WINDOW_CLASS_NAME = "EVE_THUMBNAIL_CLASS";
-const TEXT_WINDOW_CLASS_NAME = "EVE_TEXT_OVERLAY_CLASS";
+/// Shared with the hover zoom's windows.
+pub const WINDOW_CLASS_NAME = "EVE_THUMBNAIL_CLASS";
+pub const TEXT_WINDOW_CLASS_NAME = "EVE_TEXT_OVERLAY_CLASS";
 
 /// What the activity trackers last pushed; `null` rates mean not enough span yet to trust one (see activity/tracker.zig).
 pub const ActivityStats = struct {
@@ -338,7 +339,7 @@ pub fn destroyHandles(handles: Handles) void {
 }
 
 /// rcSource stays zeroed, meaning the whole source window.
-fn thumbnailProps(size: Size, flags: u32) win32.DWM_THUMBNAIL_PROPERTIES {
+pub fn thumbnailProps(size: Size, flags: u32) win32.DWM_THUMBNAIL_PROPERTIES {
     return .{
         .dwFlags = flags,
         .rcDestination = win32.RECT{ .left = 0, .top = 0, .right = size.width, .bottom = size.height },

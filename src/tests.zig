@@ -13,6 +13,7 @@ test {
     _ = @import("hotkeys/bindings.zig");
     _ = @import("hotkeys/exclusions.zig");
     _ = @import("layout/placement.zig");
+    _ = @import("layout/zoom.zig");
     _ = @import("notifications/gamelog_events.zig");
     _ = @import("notifications/notification.zig");
     _ = @import("notifications/template.zig");

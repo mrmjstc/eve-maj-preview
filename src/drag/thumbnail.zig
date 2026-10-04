@@ -13,8 +13,6 @@ const slog = log.scoped("drag");
 
 const DragState = struct {
     is_dragging: bool = false,
-    /// The right button is down on a thumbnail a Thumbnail Space places, so only its hint shows.
-    is_blocked: bool = false,
     hwnd: ?win32.HWND = null,
     offset_x: i32 = 0,
     offset_y: i32 = 0,
@@ -29,15 +27,9 @@ pub fn isDragging(thumbnail: *const ThumbnailWindow) bool {
 
 pub fn start(hwnd: win32.HWND, lParam: win32.LPARAM) void {
     const painter = painter_mod.g_painter_ptr orelse return;
-    if (!painter.config.interaction.enableDragging) return;
+    if (!painter.config.interaction.enableDragging or grabbedThumbnailIsPlaced(painter, hwnd)) return;
 
-    if (grabbedThumbnailIsPlaced(painter, hwnd)) {
-        g_drag_state = .{ .is_blocked = true, .hwnd = hwnd };
-        overlays.showThumbnailSpaceHint(painter, hwnd);
-        _ = win32.SetCapture(hwnd);
-        return;
-    }
-
+    painter.hover_zoom.hide();
     g_drag_state = .{
         .is_dragging = true,
         .hwnd = hwnd,
@@ -60,12 +52,7 @@ pub fn start(hwnd: win32.HWND, lParam: win32.LPARAM) void {
 
 /// Saves `thumbnail_hwnd`'s position, whichever of its two windows (`hwnd`) was grabbed.
 pub fn end(hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
-    if (g_drag_state.hwnd != hwnd) return;
-    if (g_drag_state.is_blocked) {
-        stop();
-        return;
-    }
-    if (!g_drag_state.is_dragging) return;
+    if (g_drag_state.hwnd != hwnd or !g_drag_state.is_dragging) return;
     stop();
 
     const painter = painter_mod.g_painter_ptr orelse return;

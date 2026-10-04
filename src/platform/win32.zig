@@ -68,6 +68,7 @@ pub const WM_MOUSEWHEEL = 0x020A;
 pub const WM_XBUTTONDOWN = 0x020B;
 pub const WM_XBUTTONUP = 0x020C;
 pub const WM_CAPTURECHANGED = 0x0215;
+pub const WM_MOUSELEAVE = 0x02A3;
 pub const WM_SETCURSOR = 0x0020;
 pub const WM_ENTERSIZEMOVE = 0x0231;
 pub const WM_EXITSIZEMOVE = 0x0232;
@@ -126,6 +127,7 @@ pub const SWP_NOSIZE = 0x0001;
 pub const SWP_NOMOVE = 0x0002;
 pub const SWP_NOZORDER = 0x0004;
 pub const SWP_NOACTIVATE = 0x0010;
+pub const SWP_SHOWWINDOW = 0x0040;
 pub const SWP_ASYNCWINDOWPOS = 0x4000;
 
 pub const GWLP_USERDATA = -21;
@@ -159,6 +161,14 @@ pub const ERROR_FILE_NOT_FOUND: LONG = 2;
 pub const POINT = extern struct {
     x: LONG,
     y: LONG,
+};
+
+pub const TME_LEAVE = 0x00000002;
+pub const TRACKMOUSEEVENT = extern struct {
+    cbSize: DWORD,
+    dwFlags: DWORD,
+    hwndTrack: HWND,
+    dwHoverTime: DWORD,
 };
 pub const WPF_RESTORETOMAXIMIZED = 0x0002;
 pub const WINDOWPLACEMENT = extern struct {
@@ -506,6 +516,7 @@ pub extern "user32" fn SetTimer(hWnd: ?HWND, nIDEvent: usize, uElapse: UINT, lpT
 pub extern "user32" fn KillTimer(hWnd: ?HWND, uIDEvent: usize) callconv(.c) BOOL;
 pub extern "user32" fn SetCapture(hWnd: HWND) callconv(.c) ?HWND;
 pub extern "user32" fn ReleaseCapture() callconv(.c) BOOL;
+pub extern "user32" fn TrackMouseEvent(lpEventTrack: *TRACKMOUSEEVENT) callconv(.c) BOOL;
 pub extern "user32" fn GetParent(hWnd: HWND) callconv(.c) ?HWND;
 pub extern "user32" fn GetSystemMetrics(nIndex: c_int) callconv(.c) c_int;
 pub extern "user32" fn GetAsyncKeyState(vKey: c_int) callconv(.c) c_short;
@@ -1434,6 +1445,17 @@ pub inline fn toBool(value: BOOL) bool {
 
 pub inline fn isWindowVisible(hwnd: HWND) bool {
     return toBool(IsWindowVisible(hwnd));
+}
+
+/// Null if the batch failed.
+pub fn deferRaiseTopmost(hdwp: HDWP, hwnd: HWND) ?HDWP {
+    return DeferWindowPos(hdwp, hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+}
+
+/// Asks for one WM_MOUSELEAVE when the cursor next leaves `hwnd`; false if it couldn't be armed.
+pub fn trackMouseLeave(hwnd: HWND) bool {
+    var event = TRACKMOUSEEVENT{ .cbSize = @sizeOf(TRACKMOUSEEVENT), .dwFlags = TME_LEAVE, .hwndTrack = hwnd, .dwHoverTime = 0 };
+    return toBool(TrackMouseEvent(&event));
 }
 
 pub inline fn isWindowIconic(hwnd: HWND) bool {

@@ -37,6 +37,17 @@ pub const InteractionConfig = struct {
     clickTrigger: types.ClickTrigger = .MouseDown,
     clickThrough: bool = false,
     hoverCursor: types.HoverCursor = .Default,
+    hoverZoomEnabled: bool = false,
+    hoverZoomPercent: u16 = 200,
+    hoverZoomAnchor: types.TextPosition = .Center,
+
+    pub const ranges = .{
+        .hoverZoomPercent = .{ 110, 1000 },
+    };
+
+    pub fn validate(self: *InteractionConfig) void {
+        ranges_mod.clamp(InteractionConfig, self);
+    }
 };
 
 pub const AutoMinimizeConfig = struct {

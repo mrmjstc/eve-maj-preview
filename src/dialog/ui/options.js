@@ -43,6 +43,8 @@ export function toggleRegionFitOptions() {
     } else if (layoutModeField.value === 'RegionFit') {
         layoutModeField.value = 'Custom';
     }
+    // Thumbnail Space places every thumbnail, so dragging can't do anything while it's on.
+    document.getElementById('enableDraggingOption')?.classList.toggle('is-disabled', enabled);
 }
 
 export function toggleShiftClickExcludeOptions() {
@@ -125,6 +127,10 @@ export function toggleSessionTimerOptions() {
     applyOptionToggle('showSessionTimer', 'sessionTimerOptions');
 }
 
+export function toggleHoverZoomOptions() {
+    applyOptionToggle('hoverZoomEnabled', 'hoverZoomOptions');
+}
+
 // Opposite polarity of applyOptionToggle(): the target options are disabled when the checkbox IS checked.
 function toggleInverseOption(checkboxId, optionsId) {
     const checkbox = document.getElementById(checkboxId);
@@ -140,6 +146,7 @@ export function toggleUniqueSystemColors() {
 
 export function toggleClickThroughOptions() {
     toggleInverseOption('clickThrough', 'clickThroughOptions');
+    toggleInverseOption('clickThrough', 'hoverZoomClickThroughOptions');
 }
 
 export function toggleUniqueCharacterNameColors() {
