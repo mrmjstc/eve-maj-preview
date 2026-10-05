@@ -446,7 +446,7 @@ pub fn isWeaponExcluded(weapon: []const u8, excluded_csv: []const u8) bool {
     return false;
 }
 
-/// The ISK added to the next payout; unlike combat and mining amounts, it has comma separators ("246,153 ISK").
+/// The ISK added to the next payout; unlike combat and mining amounts, it has thousands separators ("246,153 ISK", or "246 153 ISK" on some Windows locales).
 pub fn parseBountyLine(line: []const u8) ?f32 {
     const bounty_prefix = "(bounty)";
     const bounty_pos = std.mem.find(u8, line, bounty_prefix) orelse return null;
@@ -458,20 +458,34 @@ pub fn parseBountyLine(line: []const u8) ?f32 {
     // u64, as a single payout can pass u32's 4.3 billion.
     var amount: u64 = 0;
     var found_digit = false;
-    for (stripped) |c| {
+    var i: usize = 0;
+    while (i < stripped.len) {
+        const c = stripped[i];
         if (c >= '0' and c <= '9') {
             amount = appendDigit(u64, amount, c) orelse return null;
             found_digit = true;
-        } else if (c == ',' and found_digit) {
-            continue;
+            i += 1;
         } else if (found_digit) {
-            break;
-        } else if (c != ' ' and c != '\t') {
+            const separator_len = thousandsSeparatorLen(stripped[i..]);
+            if (separator_len == 0) break;
+            i += separator_len;
+        } else if (c == ' ' or c == '\t') {
+            i += 1;
+        } else {
             return null;
         }
     }
     if (!found_digit or amount == 0) return null;
     return @floatFromInt(amount);
+}
+
+const THOUSANDS_SEPARATORS = [_][]const u8{ ",", " ", "\u{00A0}", "\u{202F}" };
+
+fn thousandsSeparatorLen(text: []const u8) usize {
+    for (THOUSANDS_SEPARATORS) |separator| {
+        if (std.mem.startsWith(u8, text, separator)) return separator.len;
+    }
+    return 0;
 }
 
 /// Null for residue lines, which the player doesn't gain.
@@ -623,6 +637,13 @@ test "parseBountyLine reads comma-separated ISK, including payouts past u32" {
     try testing.expectEqual(@as(f32, 5_000_000_000), parseBountyLine("[ 2026.09.17 19:28:07 ] (bounty) <b>5,000,000,000 ISK</b> added to next bounty payout").?);
     try testing.expect(parseBountyLine("[ 2026.09.17 19:28:07 ] (bounty) <b>0 ISK</b> added to next bounty payout") == null);
     try testing.expect(parseBountyLine("[ 2026.09.17 19:28:07 ] (bounty) Bounty payout pending") == null);
+}
+
+test "parseBountyLine reads space, no-break and narrow no-break space separators" {
+    try testing.expectEqual(@as(f32, 258_300), parseBountyLine("[ 2026.10.05 16:00:00 ] (bounty) <b>258 300 ISK</b> added to next bounty payout").?);
+    try testing.expectEqual(@as(f32, 3_000_000), parseBountyLine("[ 2026.10.05 16:00:00 ] (bounty) <b>3\u{00A0}000\u{00A0}000 ISK</b> added to next bounty payout").?);
+    try testing.expectEqual(@as(f32, 1_200_000), parseBountyLine("[ 2026.10.05 16:00:00 ] (bounty) <b>1\u{202F}200\u{202F}000 ISK</b> added to next bounty payout").?);
+    try testing.expectEqual(@as(f32, 1_000), parseBountyLine("[ 2026.10.05 16:00:00 ] (bounty) <b> 1,000 ISK</b> added to next bounty payout").?);
 }
 
 test "parseMiningLine reads normal and critical yields but not residue" {
