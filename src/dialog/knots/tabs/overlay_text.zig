@@ -1,7 +1,4 @@
-//! The text style rows every overlay repeats: position, offsets, colours and font; main thread only.
-const ui = @import("ui");
-const bind = @import("../bind.zig");
-
+//! The names of the style settings every overlay text repeats: position, offsets, colours and font.
 /// The names an overlay's style fields go by in its settings struct.
 pub const Fields = struct {
     position: []const u8,
@@ -42,14 +39,3 @@ pub const Fields = struct {
         };
     }
 };
-
-pub fn show(context: *ui.Frame, ref: anytype, comptime fields: Fields) !void {
-    try bind.choice(context, ref, fields.position, "Position");
-    try bind.slider(context, ref, fields.offset_x, "X Offset (px)", .{});
-    try bind.slider(context, ref, fields.offset_y, "Y Offset (px)", .{});
-    if (comptime fields.color) |color| try bind.color(context, ref, color, "Text Color");
-    try bind.number(context, ref, fields.font_size, "Font Size (px)", .{});
-    try bind.fontName(context, ref, fields.font_name, "Font Name");
-    try bind.choice(context, ref, fields.font_weight, "Font Weight");
-    try bind.colorAndOpacity(context, ref, fields.bg_color, "Text Background Color", "Background Opacity");
-}

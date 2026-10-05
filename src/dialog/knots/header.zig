@@ -9,6 +9,8 @@ const status = @import("status.zig");
 const style = @import("style.zig");
 const widgets = @import("widgets.zig");
 const images = @import("images.zig");
+const import_dialog = @import("import_dialog.zig");
+const glyphs = @import("glyphs.zig");
 const log = @import("../../log.zig");
 
 const Rect = ui.component.Rect;
@@ -20,19 +22,18 @@ const TextInput = ui.component.TextInput;
 const ColorPicker = ui.component.ColorPicker;
 const SelectInput = ui.component.SelectInput;
 const Color = ui.Color;
-const DrawCmd = Canvas.DrawCmd;
 const slog = log.scoped("dialog_knots");
 
-const ICON_SIZE = 16;
 const COPY_SUFFIX = " - Copy";
-const DEFAULT_ACCENT = blk: {
+/// A new profile's accent colour, Config's own default.
+pub const DEFAULT_ACCENT = blk: {
     const index = std.meta.fieldIndex(config.Config, "accentColor").?;
     break :blk @typeInfo(config.Config).@"struct".field_attrs[index].defaultValue(u32).?;
 };
 
 const Icon = enum { add, copy, delete, reset, import };
 
-const NamePrompt = enum { create, copy };
+const NamePrompt = enum { create, copy, restore };
 
 const Confirm = enum { delete, reset };
 
@@ -45,6 +46,9 @@ var g_name_open: bool = false;
 /// The name being typed. Owned; freed in deinit.
 var g_name_text: std.ArrayList(u8) = .empty;
 var g_name_color: Color = undefined;
+/// The backup a restore prompt is for, and its name to show. Owned; freed when another prompt opens or in deinit.
+var g_restore_backup: ?[]u8 = null;
+var g_restore_label: ?[]u8 = null;
 var g_confirm: ?Confirm = null;
 var g_confirm_open: bool = false;
 
@@ -57,6 +61,7 @@ pub fn deinit() void {
     clearSwitchTarget();
     g_name_text.deinit(g_allocator);
     g_name_text = .empty;
+    clearRestore();
     g_name_prompt = null;
     g_name_open = false;
     g_confirm = null;
@@ -78,7 +83,7 @@ pub fn show(context: *ui.Frame) !void {
     const brand = Rect{ .key = .src(@src()), .style = &.{ .direction = .row, .@"align" = .center, .gap = 8 } };
     _ = try brand.open(context);
     if (images.g_app_mark.image(.src(@src()), &style.app_mark)) |mark| try context.e(mark);
-    try context.e(Text{ .key = .src(@src()), .content = "EVE-Maj Preview", .style = &style.app_name });
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "EVE-Maj Preview", .style = &style.app_name });
     try brand.close(context);
 
     try context.e(Rect{ .key = .src(@src()), .style = &.{ .width = .grow() } });
@@ -93,7 +98,7 @@ pub fn show(context: *ui.Frame) !void {
     const is_default = std.mem.eql(u8, editing, config.DEFAULT_PROFILE);
     if (try iconButton(context, .delete, is_default)) openConfirm(.delete);
     if (try iconButton(context, .reset, false)) openConfirm(.reset);
-    if (try iconButton(context, .import, false)) status.show(.info, "Importing isn't in this window yet; use the WebView2 configuration window", .{});
+    if (try iconButton(context, .import, false)) import_dialog.open();
 
     try bar.close(context);
 
@@ -149,8 +154,9 @@ fn switchPrompt(context: *ui.Frame) !void {
     }
     const dialog = Dialog{ .is_open = &g_switch_open, .key = .src(@src()), .style = &style.modal };
     _ = try dialog.open(context);
-    try context.e(Text{ .key = .src(@src()), .content = "Switch Profile?", .style = &style.heading });
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Switch Profile?", .style = &style.heading });
     try context.e(Text{
+        .selectable = false,
         .key = .src(@src()),
         .content = try std.fmt.allocPrint(context.arena(), "Make '{s}' the running profile, or just edit it?", .{profiles.displayName(target)}),
         .style = &style.modal_text,
@@ -182,7 +188,7 @@ fn openNamePrompt(prompt: NamePrompt, initial: []const u8) void {
         return;
     };
     g_name_color = widgets.colorFromArgb(switch (prompt) {
-        .create => DEFAULT_ACCENT,
+        .create, .restore => DEFAULT_ACCENT,
         .copy => session.profile().ptr.accentColor,
     });
     g_name_prompt = prompt;
@@ -198,10 +204,12 @@ fn namePrompt(context: *ui.Frame) !void {
     const dialog = Dialog{ .is_open = &g_name_open, .key = .src(@src()), .style = &style.modal };
     _ = try dialog.open(context);
     try context.e(Text{
+        .selectable = false,
         .key = .src(@src()),
         .content = switch (prompt) {
             .create => "Create New Profile",
             .copy => try std.fmt.allocPrint(context.arena(), "Copy '{s}'", .{profiles.displayName(session.profile().ptr.profile_name)}),
+            .restore => try std.fmt.allocPrint(context.arena(), "Restore Backup: {s}", .{g_restore_label orelse ""}),
         },
         .style = &style.heading,
     });
@@ -226,11 +234,35 @@ fn submitName(prompt: NamePrompt) void {
         return;
     };
     defer g_allocator.free(file_name);
-    profiles.request(switch (prompt) {
-        .create => .create,
-        .copy => .copy,
-    }, file_name, widgets.argbFromColor(g_name_color));
+    const accent = widgets.argbFromColor(g_name_color);
+    switch (prompt) {
+        .create => profiles.request(.create, file_name, accent),
+        .copy => profiles.request(.copy, file_name, accent),
+        .restore => if (g_restore_backup) |backup| profiles.requestRestore(file_name, backup, accent),
+    }
     g_name_open = false;
+}
+
+/// From the Import dialog: names the profile `backup` (a backup file name) is restored as, starting from `display_name`.
+pub fn openRestorePrompt(backup: []const u8, display_name: []const u8) void {
+    clearRestore();
+    g_restore_backup = g_allocator.dupe(u8, backup) catch |err| {
+        slog.err("Failed to open the restore prompt: {}", .{err});
+        return;
+    };
+    g_restore_label = g_allocator.dupe(u8, display_name) catch |err| {
+        slog.err("Failed to open the restore prompt: {}", .{err});
+        clearRestore();
+        return;
+    };
+    openNamePrompt(.restore, display_name);
+}
+
+fn clearRestore() void {
+    if (g_restore_backup) |backup| g_allocator.free(backup);
+    g_restore_backup = null;
+    if (g_restore_label) |label| g_allocator.free(label);
+    g_restore_label = null;
 }
 
 fn openConfirm(confirm: Confirm) void {
@@ -247,11 +279,12 @@ fn confirmPrompt(context: *ui.Frame) !void {
     const name = session.profile().ptr.profile_name;
     const dialog = Dialog{ .is_open = &g_confirm_open, .key = .src(@src()), .style = &style.modal };
     _ = try dialog.open(context);
-    try context.e(Text{ .key = .src(@src()), .content = switch (confirm) {
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = switch (confirm) {
         .delete => "Delete Profile?",
         .reset => "Reset Profile?",
     }, .style = &style.heading });
     try context.e(Text{
+        .selectable = false,
         .key = .src(@src()),
         .content = switch (confirm) {
             .delete => try std.fmt.allocPrint(context.arena(), "'{s}' is moved to a backup, which Import can restore.", .{profiles.displayName(name)}),
@@ -290,73 +323,39 @@ fn clearSwitchTarget() void {
 /// Returns whether it was clicked.
 fn iconButton(context: *ui.Frame, icon: Icon, disabled: bool) !bool {
     const button = Button{
-        .key = ui.Key.str("knots.header.icon").indexed(@intFromEnum(icon)),
+        .key = ui.Key.str("knots.header.icon").indexed(@backingInt(icon)),
         .disabled = disabled,
-        .style = if (disabled) &style.icon_button_disabled else &style.icon_button,
+        .style = if (disabled) &style.icon_button_disabled else switch (icon) {
+            .add => &style.icon_button_add,
+            .copy => &style.icon_button,
+            .delete => &style.icon_button_danger,
+            .reset => &style.icon_button_reset,
+            .import => &style.icon_button_import,
+        },
     };
     const response = try button.openResponse(context);
     const tint: Color = if (disabled)
         style.BORDER_STRONG
-    else if (response.hovered)
-        (if (icon == .delete) style.DESTRUCTIVE else style.TEXT)
-    else
-        style.MUTED;
+    else if (response.hovered) switch (icon) {
+        .add => style.SUCCESS,
+        .copy => style.TEXT,
+        .delete => style.DESTRUCTIVE,
+        .reset => style.PURPLE,
+        .import => style.SKY,
+    } else style.MUTED;
+    const glyph_key = ui.Key.str("knots.header.icon.glyph").indexed(@backingInt(icon));
+    const glyph: glyphs.Glyph = switch (icon) {
+        .add => .add,
+        .copy => .copy,
+        .delete => .delete,
+        .reset => .reset,
+        .import => .import,
+    };
     try context.e(Canvas{
-        .key = ui.Key.str("knots.header.icon.glyph").indexed(@intFromEnum(icon)),
-        .commands = try iconCommands(context.arena(), icon, tint.value),
-        .style = &.{ .width = .fixed(ICON_SIZE), .height = .fixed(ICON_SIZE) },
+        .key = glyph_key,
+        .commands = try glyphs.commands(context.arena(), glyph, glyphs.ICON_SIZE, try glyphs.snapOffset(context, glyph_key), tint.value),
+        .style = &.{ .width = .fixed(glyphs.ICON_SIZE), .height = .fixed(glyphs.ICON_SIZE) },
     });
     try button.close(context);
     return response.clicked and !disabled;
-}
-
-/// Cascadia Code has none of the page's ⧉ ↺ ⇩ glyphs, and knots can't fall back to another font, so the icons are drawn.
-fn iconCommands(arena: std.mem.Allocator, icon: Icon, color: [4]f32) ![]const DrawCmd {
-    const thickness = 1.6;
-    return switch (icon) {
-        .add => try arena.dupe(DrawCmd, &.{
-            .{ .line = .{ .from = .{ 8, 3 }, .to = .{ 8, 13 }, .color = color, .thickness = thickness } },
-            .{ .line = .{ .from = .{ 3, 8 }, .to = .{ 13, 8 }, .color = color, .thickness = thickness } },
-        }),
-        .copy => try arena.dupe(DrawCmd, &.{
-            .{ .stroke_rect = .{ .x = 6, .y = 2, .w = 8, .h = 8, .color = color, .thickness = 1.4 } },
-            .{ .fill_rect = .{ .x = 2, .y = 6, .w = 8, .h = 8, .color = style.SURFACE.value } },
-            .{ .stroke_rect = .{ .x = 2, .y = 6, .w = 8, .h = 8, .color = color, .thickness = 1.4 } },
-        }),
-        .delete => try arena.dupe(DrawCmd, &.{
-            .{ .line = .{ .from = .{ 4, 4 }, .to = .{ 12, 12 }, .color = color, .thickness = thickness } },
-            .{ .line = .{ .from = .{ 12, 4 }, .to = .{ 4, 12 }, .color = color, .thickness = thickness } },
-        }),
-        .reset => try resetArrow(arena, color),
-        .import => try arena.dupe(DrawCmd, &.{
-            .{ .line = .{ .from = .{ 8, 2 }, .to = .{ 8, 9 }, .color = color, .thickness = thickness } },
-            .{ .fill_triangle = .{ .points = .{ .{ 4.5, 8 }, .{ 11.5, 8 }, .{ 8, 12 } }, .color = color } },
-            .{ .line = .{ .from = .{ 3, 14 }, .to = .{ 13, 14 }, .color = color, .thickness = thickness } },
-        }),
-    };
-}
-
-/// An open circle with an arrowhead at its start, like ↺.
-fn resetArrow(arena: std.mem.Allocator, color: [4]f32) ![]const DrawCmd {
-    const segments = 14;
-    const center = [2]f32{ 8, 8.5 };
-    const radius = 5.0;
-    // From the top, round anticlockwise to just short of the top again, leaving a gap for the arrowhead.
-    const start_angle = -std.math.pi / 2.0 + 0.7;
-    const sweep = 2.0 * std.math.pi - 1.1;
-    var commands: std.ArrayList(DrawCmd) = .empty;
-    var previous = pointOn(center, radius, start_angle);
-    for (1..segments + 1) |step| {
-        const angle = start_angle + sweep * @as(f32, @floatFromInt(step)) / segments;
-        const point = pointOn(center, radius, angle);
-        try commands.append(arena, .{ .line = .{ .from = previous, .to = point, .color = color, .thickness = 1.5 } });
-        previous = point;
-    }
-    const tip = pointOn(center, radius, start_angle);
-    try commands.append(arena, .{ .fill_triangle = .{ .points = .{ .{ tip[0] - 4, tip[1] - 2.5 }, .{ tip[0] + 0.5, tip[1] - 3.5 }, .{ tip[0] - 1, tip[1] + 1.5 } }, .color = color } });
-    return commands.items;
-}
-
-fn pointOn(center: [2]f32, radius: f32, angle: f32) [2]f32 {
-    return .{ center[0] + radius * @cos(angle), center[1] + radius * @sin(angle) };
 }

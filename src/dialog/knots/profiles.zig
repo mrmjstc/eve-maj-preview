@@ -4,6 +4,7 @@ const config = @import("../../config.zig");
 const main = @import("../../main.zig");
 const session = @import("session.zig");
 const status = @import("status.zig");
+const import_dialog = @import("import_dialog.zig");
 const log = @import("../../log.zig");
 
 const slog = log.scoped("dialog_knots");
@@ -19,6 +20,10 @@ pub const Action = enum {
     /// Moved to a backup, not deleted.
     delete,
     reset,
+    /// A backup restored under the profile's name; the pending backup says which.
+    restore,
+    /// A new profile, edited as a draft, with the Import dialog's chosen sections applied to it.
+    import_new,
 };
 
 /// Called with an action to run between frames, i.e. a posted command.
@@ -30,6 +35,8 @@ var g_action: ?Action = null;
 /// The profile file name the pending action is about. Owned; freed by runPending.
 var g_name: ?[]u8 = null;
 var g_accent: ?u32 = null;
+/// The backup file a pending restore reads. Owned; freed by runPending.
+var g_backup: ?[]u8 = null;
 /// A profile just created or copied, which the header offers to switch to. Owned; freed by takeCreated or deinit.
 var g_created: ?[]u8 = null;
 /// Profile file names, sorted. Owned; refreshed after every action.
@@ -46,6 +53,8 @@ pub fn deinit() void {
     freeProfiles();
     if (g_name) |name| g_allocator.free(name);
     g_name = null;
+    if (g_backup) |backup| g_allocator.free(backup);
+    g_backup = null;
     g_action = null;
     if (g_created) |name| g_allocator.free(name);
     g_created = null;
@@ -67,6 +76,17 @@ pub fn request(action: Action, name: []const u8, accent: ?u32) void {
     g_action = action;
     g_accent = accent;
     g_schedule();
+}
+
+/// Restores `backup` (a backup file name) as the profile `name`.
+pub fn requestRestore(name: []const u8, backup: []const u8, accent: ?u32) void {
+    const owned = g_allocator.dupe(u8, backup) catch |err| {
+        slog.err("Failed to queue restoring backup '{s}': {}", .{ backup, err });
+        return;
+    };
+    if (g_backup) |old| g_allocator.free(old);
+    g_backup = owned;
+    request(.restore, name, accent);
 }
 
 /// Between frames, from the posted command.
@@ -125,6 +145,22 @@ fn run(action: Action, name: []const u8, accent: ?u32) !void {
             try config.deleteProfileToBackup(g_allocator, name);
             status.show(.success, "Deleted profile '{s}' (kept as a backup)", .{displayName(name)});
         },
+        .restore => {
+            const backup = g_backup orelse return error.MissingBackup;
+            defer {
+                g_allocator.free(backup);
+                g_backup = null;
+            }
+            try config.restoreProfileBackup(g_allocator, backup, name, accent);
+            try offerSwitch(name);
+            status.show(.success, "Profile restored successfully", .{});
+        },
+        .import_new => {
+            try config.createProfile(g_allocator, name, accent);
+            try session.editProfile(name);
+            import_dialog.applyImport();
+            status.show(.info, "Imported into new profile '{s}'; review it, then Save", .{displayName(name)});
+        },
         .reset => {
             try config.writeDefaultProfile(g_allocator, name, null);
             if (std.mem.eql(u8, name, main.g_store.live.profile_name)) {
@@ -152,6 +188,8 @@ fn verb(action: Action) []const u8 {
         .copy => "copy to",
         .delete => "delete",
         .reset => "reset",
+        .restore => "restore",
+        .import_new => "import into",
     };
 }
 

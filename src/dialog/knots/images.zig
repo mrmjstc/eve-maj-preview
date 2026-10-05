@@ -20,15 +20,17 @@ pub const PackedImage = struct {
         const pixels = self.unpack() orelse return null;
         return .{
             .key = key,
-            .source = .{ .pixels = .{
-                .data = pixels,
-                .width = self.width,
-                .height = self.height,
-                // Plain rgba8 is read as linear, which washes out a browser-rendered image.
-                .format = .rgba8_srgb,
-                .upload_policy = .versioned,
-                .version = 1,
-            } },
+            .source = .{
+                .pixels = .{
+                    .data = pixels,
+                    .width = self.width,
+                    .height = self.height,
+                    // Plain rgba8 is read as linear, which washes out a browser-rendered image.
+                    .format = .rgba8_srgb,
+                    .upload_policy = .versioned,
+                    .version = 1,
+                },
+            },
             .style = image_style,
         };
     }
@@ -60,6 +62,8 @@ pub const PackedImage = struct {
 var g_allocator: std.mem.Allocator = undefined;
 
 pub var g_wordmark: PackedImage = .{ .name = "wordmark", .packed_rgba = @embedFile("../../assets/wordmark_539x192.rgba.zlib"), .width = 539, .height = 192 };
+/// The Text Overlays stage's backdrop, the page's layout_preview.jpg.
+pub var g_layout_preview: PackedImage = .{ .name = "layout preview", .packed_rgba = @embedFile("../../assets/layout_preview_540x304.rgba.zlib"), .width = 540, .height = 304 };
 pub var g_app_mark: PackedImage = .{ .name = "app mark", .packed_rgba = @embedFile("../../assets/icon_36x36.rgba.zlib"), .width = 36, .height = 36 };
 
 pub fn init(allocator: std.mem.Allocator) void {
@@ -70,4 +74,5 @@ pub fn init(allocator: std.mem.Allocator) void {
 pub fn deinit() void {
     g_wordmark.deinit();
     g_app_mark.deinit();
+    g_layout_preview.deinit();
 }

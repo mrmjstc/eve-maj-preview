@@ -38,7 +38,7 @@ fn brand(context: *ui.Frame) !void {
         try context.e(wordmark);
         try centre.close(context);
     }
-    try widgets.hintText(context, .str("knots.about.description"), "A modern, lightweight window preview tool for EVE Online, built with Zig.");
+    try widgets.paragraph(context, .str("knots.about.description"), "A modern, lightweight window preview tool for EVE Online, built with Zig.");
     try fact(context, "Version:", build_options.version, null);
     try fact(context, "Repository:", "github.com/mrmjstc/eve-maj-preview", REPOSITORY_URL);
     try fact(context, "Discord:", "mjstc", DISCORD_URL);
@@ -49,9 +49,9 @@ fn brand(context: *ui.Frame) !void {
 fn fact(context: *ui.Frame, comptime label: []const u8, value: []const u8, url: ?[]const u8) !void {
     const row = Rect{ .key = .str("knots.about.fact:" ++ label), .style = &.{ .direction = .row, .@"align" = .center, .gap = 6 } };
     _ = try row.open(context);
-    try context.e(Text{ .key = .str("knots.about.fact.label:" ++ label), .content = label, .style = &style.fact_label });
+    try context.e(Text{ .selectable = false, .key = .str("knots.about.fact.label:" ++ label), .content = label, .style = &style.fact_label });
     const target = url orelse {
-        try context.e(Text{ .key = .str("knots.about.fact.value:" ++ label), .content = value, .style = &style.hint_plain });
+        try context.e(Text{ .selectable = false, .key = .str("knots.about.fact.value:" ++ label), .content = value, .style = &style.hint_plain });
         try row.close(context);
         return;
     };
@@ -63,20 +63,20 @@ fn fact(context: *ui.Frame, comptime label: []const u8, value: []const u8, url: 
 
 fn credits(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Credits", "", .none, &style.section);
-    try widgets.hintText(context, .str("knots.about.made_by"), "Made by Mr Majestic for the APM special interest group in Goonswarm.");
-    try widgets.hintText(context, .str("knots.about.inspired_by"), "Heavily inspired by the original EVE-O Preview and related tools.");
+    try widgets.paragraph(context, .str("knots.about.made_by"), "Made by Mr Majestic for the APM special interest group in Goonswarm.");
+    try widgets.paragraph(context, .str("knots.about.inspired_by"), "Heavily inspired by the original EVE-O Preview and related tools.");
     try section.close(context);
 }
 
 fn thanks(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Thanks", "", .none, &style.section);
-    try widgets.hintText(context, .str("knots.about.thanks"), "Everyone in the APM special interest group for their feedback");
+    try widgets.paragraph(context, .str("knots.about.thanks"), "Everyone in the APM special interest group for their feedback");
     var start: usize = 0;
     while (start < THANKS.len) : (start += THANKS_COLUMNS) {
         const row = Rect{ .key = ui.Key.str("knots.about.thanks.row").indexed(start), .style = &.{ .width = .grow(), .direction = .row, .gap = 16 } };
         _ = try row.open(context);
         for (THANKS[start..@min(start + THANKS_COLUMNS, THANKS.len)], start..) |name, index| {
-            try context.e(Text{ .key = ui.Key.str("knots.about.thanks.name").indexed(index), .content = name, .style = &style.thanks_name });
+            try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.about.thanks.name").indexed(index), .content = name, .style = &style.thanks_name });
         }
         try row.close(context);
     }
@@ -85,8 +85,8 @@ fn thanks(context: *ui.Frame) !void {
 
 fn license(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "License", "", .none, &style.section);
-    try widgets.hintText(context, .str("knots.about.license"), "This project is open source and released under the GNU General Public License v3.0 (GPLv3). A copy of the license is included with the application.");
-    try widgets.hintText(context, .str("knots.about.third_party"), "This application bundles third-party components: the Cascadia Code fonts (SIL Open Font License 1.1), knots (MIT License), webview (MIT License) and WebView2 SDK (BSD-style license). Their license texts are included with the application.");
+    try widgets.paragraph(context, .str("knots.about.license"), "This project is open source and released under the GNU General Public License v3.0 (GPLv3). A copy of the license is included with the application.");
+    try widgets.paragraph(context, .str("knots.about.third_party"), "This application bundles third-party components: the Cascadia Code fonts (SIL Open Font License 1.1), knots (MIT License), webview (MIT License) and WebView2 SDK (BSD-style license). Their license texts are included with the application.");
     try section.close(context);
 }
 

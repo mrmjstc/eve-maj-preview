@@ -1,4 +1,4 @@
-//! The configuration window's Chat Logs tab; main thread only.
+//! The configuration window's Log Monitoring tab: where the chat and game logs are, and how often they're polled; main thread only.
 const ui = @import("ui");
 const config = @import("../../../config.zig");
 const session = @import("../session.zig");
@@ -20,8 +20,10 @@ pub fn show(context: *ui.Frame) !void {
 fn monitoring(context: *ui.Frame, chatlog: ChatlogRef) !void {
     const section = try widgets.openSection(context, "Log Monitoring", "Watches EVE's chatlog and gamelog files to drive the DPS overlay, mining overlay, and system-location display. In EVE, enable Esc > Chat Channel Settings > Log chat to file so logs get written to disk.", .profile, &style.section);
     try bind.toggle(context, chatlog, "enabled", "Enable Log Monitoring");
-    try directory(context, chatlog, "chatlogDir", "Chatlog Directory", "C:/Users/.../Chatlogs", .chatlog_dir, "Select Chatlog Directory");
-    try directory(context, chatlog, "gamelogDir", "Gamelog Directory", "C:/Users/.../Gamelogs", .gamelog_dir, "Select Gamelog Directory");
+    const options = try widgets.openGroup(context, .src(@src()), chatlog.get("enabled"));
+    try directory(context, chatlog, "chatlogDir", "Chatlog Directory", "C:\\Users\\...\\Chatlogs", .chatlog_dir, "Select Chatlog Directory");
+    try directory(context, chatlog, "gamelogDir", "Gamelog Directory", "C:\\Users\\...\\Gamelogs", .gamelog_dir, "Select Gamelog Directory");
+    try options.close(context);
     try section.close(context);
 }
 

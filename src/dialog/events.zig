@@ -4,12 +4,15 @@ const win32 = @import("../platform/win32.zig");
 const vk = @import("../platform/virtual_keys.zig");
 const region_select = @import("tools/region_select.zig");
 const host = @import("host.zig");
+const knots_region = @import("knots/region.zig");
+const knots_hotkey = @import("knots/hotkey.zig");
 const log = @import("../log.zig");
 
 const slog = log.scoped("dialog");
 
 /// A region-select drag finished, was cancelled, or was too small to use.
 pub fn regionSelected(status: region_select.Status, rect: win32.RECT) void {
+    if (knots_region.onSelected(status, rect)) return;
     emit("regionSelected", .{
         .cancelled = status != .success,
         .tooSmall = status == .too_small,
@@ -22,6 +25,7 @@ pub fn regionSelected(status: region_select.Status, rect: win32.RECT) void {
 
 /// A bare Win key was pressed while the dialog was recording a hotkey, with these modifiers held.
 pub fn winKeyCaptured(modifiers: u32) void {
+    if (knots_hotkey.onWinKey(modifiers)) return;
     emit("winKeyCaptured", .{
         .ctrl = modifiers & vk.MOD_CONTROL != 0,
         .alt = modifiers & vk.MOD_ALT != 0,

@@ -14,7 +14,7 @@ const slog = log.scoped("dialog");
 
 pub const runs_on_caller = true;
 
-const RunningWindow = struct { class: []const u8, exe: []const u8, title: []const u8 };
+pub const RunningWindow = struct { class: []const u8, exe: []const u8, title: []const u8 };
 
 const ApplyResult = struct { path: []const u8, ok: bool, changed: bool, @"error": ?[]const u8 };
 

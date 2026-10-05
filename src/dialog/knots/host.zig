@@ -15,6 +15,20 @@ const profiles = @import("profiles.zig");
 const pickers = @import("pickers.zig");
 const status = @import("status.zig");
 const style = @import("style.zig");
+const widgets = @import("widgets.zig");
+const region = @import("region.zig");
+const hotkey = @import("hotkey.zig");
+const general = @import("tabs/general.zig");
+const characters = @import("tabs/characters.zig");
+const hotkeys_tab = @import("tabs/hotkeys.zig");
+const hotkey_groups = @import("tabs/hotkey_groups.zig");
+const notifications = @import("tabs/notifications.zig");
+const lang = @import("lang.zig");
+const search = @import("search.zig");
+const import_dialog = @import("import_dialog.zig");
+const overlays = @import("tabs/overlays.zig");
+const prices = @import("prices.zig");
+const behavior = @import("tabs/behavior.zig");
 const log = @import("../../log.zig");
 
 const GlobalConfig = config.GlobalConfig;
@@ -40,6 +54,8 @@ pub const Command = enum(usize) {
     profile_action,
     /// A folder picker's result, as a *pickers.Picked in lParam.
     picked,
+    /// An ore price fetch's result, as a *prices.Fetched in lParam.
+    prices_fetched,
 };
 
 const State = enum { closed, open };
@@ -55,6 +71,9 @@ var g_quit_after_close: bool = false;
 /// Closes without asking about unsaved changes.
 var g_force_close: bool = false;
 var g_present_mode_chosen: bool = false;
+/// Where placeWindowHook puts the window knots creates, while App.init runs.
+var g_spawn_position: ?win32.POINT = null;
+var g_spawn_hook: ?win32.HHOOK = null;
 
 pub fn init(allocator: std.mem.Allocator, io: std.Io) void {
     g_allocator = allocator;
@@ -82,6 +101,14 @@ pub fn open() void {
     postCommand(.open);
 }
 
+/// The footer's Close: asks about unsaved changes like the title bar's close button.
+pub fn requestClose() void {
+    const window = g_hwnd orelse return;
+    if (!win32.toBool(win32.PostMessageA(window, win32.WM_CLOSE, 0, 0))) {
+        slog.warn("Failed to close the knots configuration window: error {d}", .{win32.GetLastError()});
+    }
+}
+
 /// Returns whether the exit waits for the window to close, which then posts the quit itself.
 pub fn closeForExit() bool {
     if (g_state != .open) return false;
@@ -95,7 +122,7 @@ pub fn postCommand(command: Command) void {
         slog.err("Failed to run a knots configuration window command: the timer window is missing", .{});
         return;
     };
-    if (!win32.toBool(win32.PostMessageA(timer, win32.WM_KNOTS_COMMAND, @intFromEnum(command), 0))) {
+    if (!win32.toBool(win32.PostMessageA(timer, win32.WM_KNOTS_COMMAND, @backingInt(command), 0))) {
         slog.err("Failed to run a knots configuration window command: error {d}", .{win32.GetLastError()});
     }
 }
@@ -114,6 +141,7 @@ pub fn onCommand(wParam: win32.WPARAM, lParam: win32.LPARAM) void {
         .discard_and_close => if (discard()) closeWithoutAsking(),
         .profile_action => profiles.runPending(),
         .picked => applyPicked(lParam),
+        .prices_fetched => applyPrices(lParam),
     }
     requestFrame();
 }
@@ -138,6 +166,30 @@ fn run() void {
     bind.init(g_allocator);
     pickers.init(g_allocator);
     defer bind.reset();
+    defer widgets.reset();
+    hotkey.init(g_allocator, requestFrame);
+    defer hotkey.reset();
+    region.init(g_allocator);
+    defer region.cancel();
+    prices.init(g_allocator);
+    lang.init(g_allocator);
+    defer lang.deinit();
+    search.init(g_allocator);
+    defer search.reset();
+    import_dialog.init(g_allocator);
+    defer import_dialog.reset();
+    notifications.init(g_allocator);
+    defer notifications.reset();
+    general.init(g_allocator);
+    defer general.reset();
+    characters.init(g_allocator);
+    defer characters.reset();
+    hotkeys_tab.init(g_allocator);
+    defer hotkeys_tab.reset();
+    hotkey_groups.init(g_allocator);
+    defer hotkey_groups.reset();
+    behavior.init(g_allocator);
+    defer behavior.reset();
     images.init(g_allocator);
     defer images.deinit();
     header.init(g_allocator);
@@ -146,6 +198,8 @@ fn run() void {
     defer profiles.deinit();
     status.clear();
 
+    // knots creates its window at the default spot and shows it straight away, so it's placed as it's created rather than moved after.
+    const is_placed = installPlacement(position);
     var app = knots.App.init(g_io, g_allocator, .{
         .window = .{
             .width = DESIGN_WIDTH,
@@ -160,11 +214,13 @@ fn run() void {
             },
         },
     }) catch |err| {
+        removePlacement();
         slog.err("Failed to create the knots configuration window: {}", .{err});
         _ = win32.MessageBoxA(null, "The configuration window couldn't start. It needs a graphics driver with Vulkan 1.3 support; updating the graphics driver usually fixes this.", "EVE-Maj Preview", win32.MB_OK | win32.MB_ICONERROR);
         return;
     };
     defer app.deinit();
+    removePlacement();
 
     const window: win32.HWND = @ptrCast(app.main_viewport.window.getWindowHandle().windows.hwnd);
     g_hwnd = window;
@@ -173,7 +229,7 @@ fn run() void {
     defer onClosed();
     g_knots_proc = win32.SetWindowLongPtrW(window, win32.GWLP_WNDPROC, @bitCast(@intFromPtr(&windowProc)));
     setIcon(window);
-    _ = win32.SetWindowPos(window, win32.HWND_NOTOPMOST, position.x, position.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
+    if (!is_placed) _ = win32.SetWindowPos(window, win32.HWND_NOTOPMOST, position.x, position.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
     if (settings.alwaysOnTop) setAlwaysOnTop(true);
     _ = win32.SetForegroundWindow(window);
 
@@ -181,6 +237,38 @@ fn run() void {
     app.start(frame) catch |err| {
         slog.err("Failed to run the knots configuration window: {}", .{err});
     };
+}
+
+/// Hooks this thread's window creation so the next top-level window starts at `position`; returns false if it couldn't, leaving the caller to move it.
+fn installPlacement(position: win32.POINT) bool {
+    g_spawn_position = position;
+    g_spawn_hook = win32.SetWindowsHookExA(win32.WH_CBT, placeWindowHook, null, win32.GetCurrentThreadId()) orelse {
+        slog.warn("Failed to place the configuration window as it opens, it will move there once shown: error {d}", .{win32.GetLastError()});
+        g_spawn_position = null;
+        return false;
+    };
+    return true;
+}
+
+fn removePlacement() void {
+    if (g_spawn_hook) |hook| _ = win32.UnhookWindowsHookEx(hook);
+    g_spawn_hook = null;
+    g_spawn_position = null;
+}
+
+/// Places the first top-level window created while installed, which is knots' own, then stands aside.
+fn placeWindowHook(code: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
+    if (code == win32.HCBT_CREATEWND) {
+        if (g_spawn_position) |position| {
+            const create: *win32.CBT_CREATEWND = win32.lparamToPtr(win32.CBT_CREATEWND, lParam);
+            if (create.lpcs.hwndParent == null) {
+                create.lpcs.x = position.x;
+                create.lpcs.y = position.y;
+                g_spawn_position = null;
+            }
+        }
+    }
+    return win32.CallNextHookEx(g_spawn_hook, code, wParam, lParam);
 }
 
 fn frame(view: *knots.View, context: *ui.Frame) !void {
@@ -204,6 +292,8 @@ fn choosePresentMode(view: *knots.View) void {
 
 /// Subclasses knots' window, to ask before closing with unsaved changes and to remember where the window was left.
 fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
+    // A hotkey field recording takes the keys and buttons it binds before knots sees them.
+    if (hotkey.onWindowMessage(msg, wParam, lParam)) return 0;
     switch (msg) {
         win32.WM_CLOSE => if (!g_force_close and session.isDirty()) {
             form.confirmClose();
@@ -233,7 +323,64 @@ pub fn browseFolder(target: pickers.Target, title: []const u8) void {
         slog.err("Failed to open the folder picker: the timer window is missing", .{});
         return;
     };
-    pickers.browseFolder(target, title, g_hwnd, timer, @intFromEnum(Command.picked));
+    pickers.browse(target, 0, title, g_hwnd, timer, @backingInt(Command.picked));
+}
+
+/// A settings file for the Import dialog, read once the picker closes.
+pub fn browseImportFile() void {
+    const timer = main.g_timer_hwnd orelse {
+        slog.err("Failed to open the import file picker: the timer window is missing", .{});
+        return;
+    };
+    pickers.browse(.import_file, 0, "Select Settings File", g_hwnd, timer, @backingInt(Command.picked));
+}
+
+/// The header's name prompt names the restored profile; `backup` is copied.
+pub fn restoreBackup(backup: []const u8, display_name: []const u8) void {
+    header.openRestorePrompt(backup, display_name);
+}
+
+/// `name` as typed; the profile is created between frames, then the import applied to it.
+pub fn importIntoNewProfile(name: []const u8, accent: u32) void {
+    const file_name = config.profileFileName(g_allocator, name) catch {
+        status.show(.failure, "'{s}' isn't a valid profile name: use letters, digits, spaces, '-' and '_', up to 16 characters", .{name});
+        return;
+    };
+    defer g_allocator.free(file_name);
+    profiles.request(.import_new, file_name, accent);
+}
+
+/// A notification type's custom sound, set once the picker closes.
+pub fn browseSoundFile(type_index: usize) void {
+    const timer = main.g_timer_hwnd orelse {
+        slog.err("Failed to open the sound file picker: the timer window is missing", .{});
+        return;
+    };
+    pickers.browse(.sound_file, type_index, "Select Sound File", g_hwnd, timer, @backingInt(Command.picked));
+}
+
+/// Starts fetching Jita ore prices; returns false if a fetch is already running or couldn't start.
+pub fn fetchPrices() bool {
+    const timer = main.g_timer_hwnd orelse {
+        slog.err("Failed to fetch ore prices: the timer window is missing", .{});
+        return false;
+    };
+    return prices.fetch(timer, @backingInt(Command.prices_fetched));
+}
+
+/// Like the page's, fetched prices fill in the table, kept until Save.
+fn applyPrices(lParam: win32.LPARAM) void {
+    if (lParam == 0) return;
+    const fetched: *prices.Fetched = @ptrFromInt(@as(usize, @bitCast(lParam)));
+    defer fetched.deinit();
+    // The window may have closed while the fetch ran.
+    if (g_state != .open) return;
+    if (fetched.failed) {
+        status.show(.failure, "Failed to fetch prices from ESI.", .{});
+        return;
+    }
+    for (fetched.prices) |price| overlays.setOrePrice(price.name, price.price);
+    status.show(if (fetched.prices.len > 0) .success else .failure, "Updated {d} of {d} price(s)", .{ fetched.prices.len, prices.NAMES.len });
 }
 
 fn applyPicked(lParam: win32.LPARAM) void {
@@ -246,6 +393,13 @@ fn applyPicked(lParam: win32.LPARAM) void {
     switch (picked.target) {
         .chatlog_dir => chatlog.set("chatlogDir", picked.path),
         .gamelog_dir => chatlog.set("gamelogDir", picked.path),
+        .import_file => import_dialog.loadFile(picked.path),
+        // Picking a file turns the sound on, as the page does.
+        .sound_file => {
+            const type_config = notifications.typeRef(picked.index);
+            type_config.set("sound_path", picked.path);
+            type_config.set("sound_enabled", true);
+        },
     }
 }
 
@@ -284,6 +438,11 @@ fn onClosed() void {
 }
 
 /// knots draws on WM_PAINT, so invalidating the window asks it for a frame.
+/// Draws a frame soon, for a change made outside one, e.g. a region selection finishing.
+pub fn redraw() void {
+    requestFrame();
+}
+
 fn requestFrame() void {
     const window = g_hwnd orelse return;
     _ = win32.InvalidateRect(window, null, win32.FALSE);

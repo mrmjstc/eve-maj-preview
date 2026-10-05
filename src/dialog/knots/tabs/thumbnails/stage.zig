@@ -1,4 +1,4 @@
-//! The Appearance page's stage: a thumbnail drawn from the edited settings and enlarged, whose text chips are dragged into place and clicked to edit in a popover; main thread only.
+//! The Text Overlays section's stage: a thumbnail drawn from the edited settings and enlarged, whose text chips are dragged into place and clicked to edit in a popover; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const types = @import("../../../../config/types.zig");
@@ -6,6 +6,7 @@ const session = @import("../../session.zig");
 const style = @import("../../style.zig");
 const widgets = @import("../../widgets.zig");
 const chips = @import("chips.zig");
+const images = @import("../../images.zig");
 
 const Rect = ui.component.Rect;
 const Button = ui.component.Button;
@@ -14,7 +15,7 @@ const Dialog = ui.component.Dialog;
 const Box = @FieldType(ui.State.Measured, "box");
 
 /// The stage fits this box; small thumbnails are enlarged so their chips are easy to grab.
-const MAX_WIDTH: f32 = 560;
+const MAX_WIDTH: f32 = 540;
 const MAX_HEIGHT: f32 = 300;
 /// Within this many stage pixels a dragged chip locks flush to its anchor, as the old page's did.
 const SNAP_DISTANCE: f32 = 5;
@@ -31,8 +32,6 @@ const POPOVER_GAP: f32 = 8;
 /// Until the popover has been laid out once.
 const POPOVER_HEIGHT_GUESS: f32 = 480;
 
-pub const Focus = enum { focused, inactive };
-
 const Drag = struct {
     index: usize,
     /// Where in the chip it was grabbed.
@@ -43,11 +42,13 @@ const Drag = struct {
     position: [2]f32,
 };
 
+const Drop = struct { anchor: types.TextPosition, offset: [2]i32 };
+
 var g_drag: ?Drag = null;
 var g_selected_index: usize = 0;
 var g_popover_open: bool = false;
 
-pub fn show(context: *ui.Frame, focus: Focus) !void {
+pub fn show(context: *ui.Frame) !void {
     const thumbnail = &session.profile().ptr.thumbnail;
     const width: f32 = @floatFromInt(@max(thumbnail.width, 1));
     const height: f32 = @floatFromInt(@max(thumbnail.height, 1));
@@ -56,14 +57,8 @@ pub fn show(context: *ui.Frame, focus: Focus) !void {
     const arena = context.arena();
     const ui_state = context.ui();
 
-    const border = borderOf(thumbnail, focus);
-    const frame_style = try arena.create(ui.Style);
-    // The border is the frame showing round the stage, so chip offsets stay relative to the stage itself.
-    frame_style.* = .{
-        .padding = .all(if (border) |b| @max(1, @round(@as(f32, @floatFromInt(b.width)) * scale)) else 0),
-        .background = if (border) |b| .{ .color = widgets.colorFromArgb(b.color) } else .transparent,
-    };
-    const frame = Rect{ .key = .src(@src()), .style = frame_style };
+    // Centred like the page's stage, which has a margin of auto either side.
+    const frame = Rect{ .key = .src(@src()), .style = &style.stage_frame };
     _ = try frame.open(context);
 
     const stage_key: ui.Key = .str("knots.stage");
@@ -79,6 +74,7 @@ pub fn show(context: *ui.Frame, focus: Focus) !void {
     };
     const stage = Rect{ .key = stage_key, .style = stage_style };
     _ = try stage.open(context);
+    try stageBackground(context, stage_size, opacity);
 
     const text_opacity = if (thumbnail.applyOpacityToOverlayTexts) opacity else 1.0;
     inline for (chips.CHIPS, 0..) |chip, index| {
@@ -228,8 +224,6 @@ fn dragTarget(mouse: [2]f64, grab: [2]f32, stage_box: Box, chip_size: [2]f32, st
     };
 }
 
-const Drop = struct { anchor: types.TextPosition, offset: [2]i32 };
-
 /// The anchor is the third of the thumbnail the chip's centre lands in; the offsets are what's left over, in real pixels.
 fn dropResult(position: [2]f32, chip_size: [2]f32, stage_size: [2]f32, scale: f32, range: [2]f32) Drop {
     const zone = zoneFor(position, chip_size, stage_size);
@@ -248,30 +242,31 @@ fn zoneFor(position: [2]f32, chip_size: [2]f32, stage_size: [2]f32) types.TextPo
     const col: u8 = if (centre[0] < stage_size[0] / 3) 0 else if (centre[0] < stage_size[0] * 2 / 3) 1 else 2;
     const row: u8 = if (centre[1] < stage_size[1] / 3) 0 else if (centre[1] < stage_size[1] * 2 / 3) 1 else 2;
     // TextPosition's tags run in reading order, three to a row.
-    return @enumFromInt(row * 3 + col);
+    return @fromBackingInt(@intCast(row * 3 + col));
 }
 
 /// The chip's top-left when it sits flush in `position`'s corner or edge.
 fn anchorPosition(position: types.TextPosition, chip_size: [2]f32, stage_size: [2]f32) [2]f32 {
-    const index = @intFromEnum(position);
+    const index = @backingInt(position);
     const free = [2]f32{ @max(0, stage_size[0] - chip_size[0]), @max(0, stage_size[1] - chip_size[1]) };
     const fractions = [3]f32{ 0, 0.5, 1 };
     return .{ free[0] * fractions[index % 3], free[1] * fractions[index / 3] };
 }
 
-const Border = struct { width: u8, color: u32 };
-
-fn borderOf(thumbnail: anytype, focus: Focus) ?Border {
-    return switch (focus) {
-        .focused => if (thumbnail.showBorderWhenFocused) .{
-            .width = thumbnail.borderWidth,
-            .color = if (thumbnail.useUniqueCharacterBorderColors) chips.UNIQUE_SAMPLE else thumbnail.borderColor,
-        } else null,
-        .inactive => if (thumbnail.showBorderWhenInactive) .{
-            .width = thumbnail.inactiveBorderWidth,
-            .color = if (thumbnail.useUniqueCharacterBorderColors) chips.UNIQUE_SAMPLE else thumbnail.inactiveBorderColor,
-        } else null,
+/// The page's background-size: cover, centred and cropped by the stage.
+fn stageBackground(context: *ui.Frame, stage_size: [2]f32, opacity: f32) !void {
+    const image_style = try context.arena().create(ui.Style);
+    const image_size = [2]f32{ @floatFromInt(images.g_layout_preview.width), @floatFromInt(images.g_layout_preview.height) };
+    const cover = @max(stage_size[0] / image_size[0], stage_size[1] / image_size[1]);
+    const size = [2]f32{ image_size[0] * cover, image_size[1] * cover };
+    image_style.* = .{
+        .position = .absolute,
+        .offset = .{ (stage_size[0] - size[0]) / 2, (stage_size[1] - size[1]) / 2 },
+        .width = .fixed(size[0]),
+        .height = .fixed(size[1]),
+        .opacity = opacity,
     };
+    if (images.g_layout_preview.image(.str("knots.stage.backdrop"), image_style)) |image| try context.e(image);
 }
 
 fn measuredBox(ui_state: *ui.UI, key: ui.Key) Box {
@@ -287,7 +282,7 @@ fn withAlpha(value: u32, alpha: f32) ui.Color {
 
 comptime {
     // zoneFor and anchorPosition rely on TextPosition's reading order.
-    std.debug.assert(@intFromEnum(types.TextPosition.TopLeft) == 0);
-    std.debug.assert(@intFromEnum(types.TextPosition.Center) == 4);
-    std.debug.assert(@intFromEnum(types.TextPosition.BottomRight) == 8);
+    std.debug.assert(@backingInt(types.TextPosition.TopLeft) == 0);
+    std.debug.assert(@backingInt(types.TextPosition.Center) == 4);
+    std.debug.assert(@backingInt(types.TextPosition.BottomRight) == 8);
 }

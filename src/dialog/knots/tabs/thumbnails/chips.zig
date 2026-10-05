@@ -1,11 +1,10 @@
-//! The texts a thumbnail can show, as chips on the Appearance page's stage: which settings each one reads, and its settings pane; main thread only.
+//! The texts a thumbnail can show, as chips on the Text Overlays stage: which settings each one reads, and its popover, field for field as the page's; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../../config.zig");
 const types = @import("../../../../config/types.zig");
 const session = @import("../../session.zig");
 const bind = @import("../../bind.zig");
-const status = @import("../../status.zig");
 const style = @import("../../style.zig");
 const widgets = @import("../../widgets.zig");
 const overlay_text = @import("../overlay_text.zig");
@@ -18,6 +17,20 @@ const Fields = overlay_text.Fields;
 /// The settings struct a chip's fields live in.
 pub const Section = enum { thumbnail, notifications, combat, mining, bounty, resources };
 
+/// One row of a chip's popover, in the page's order.
+pub const PopoverField = union(enum) {
+    /// A setting of the chip's section; `disables_color` greys out the text colour while it's on.
+    toggle: struct { field: []const u8, label: []const u8, disables_color: bool = false },
+    /// The chip's text colour, under this label.
+    color: []const u8,
+    font_name,
+    /// The font size, under this label.
+    font_size: []const u8,
+    font_weight,
+    background,
+    background_opacity,
+};
+
 pub const Chip = struct {
     label: []const u8,
     /// What the stage draws for it.
@@ -25,29 +38,175 @@ pub const Chip = struct {
     section: Section,
     fields: Fields,
     show_field: []const u8,
-    show_label: []const u8,
     /// The thumbnail's Show Text Overlays has to be on too.
     needs_show_text: bool,
-    /// Its section's master switch, set on another tab, e.g. Combat's `enabled`.
+    /// Its section's master switch, e.g. Combat's `enabled`, which has to be on too.
     enabled_field: ?[]const u8 = null,
-    /// Where `enabled_field` is turned on.
-    enabled_tab: []const u8 = "",
     unique_field: ?[]const u8 = null,
-    unique_label: []const u8 = "",
+    /// Driven by the chat and game logs, so its popover says when Log Monitoring is off.
+    needs_chatlog: bool = false,
+    popover: []const PopoverField,
 };
 
+const STYLE_ROWS = [_]PopoverField{ .font_name, .{ .font_size = "Font Size (px)" }, .font_weight, .background, .background_opacity };
+const ACTIVITY_STYLE_ROWS = [_]PopoverField{ .font_name, .{ .font_size = "Font Size" }, .font_weight, .background, .background_opacity };
+
 pub const CHIPS = [_]Chip{
-    .{ .label = "Character Name", .sample = "Character Name", .section = .thumbnail, .fields = .camelCase("characterName"), .show_field = "showCharacterName", .show_label = "Show Character Name", .needs_show_text = true, .unique_field = "useUniqueCharacterNameColors", .unique_label = "Unique Color per Character" },
-    .{ .label = "System Name", .sample = "Jita", .section = .thumbnail, .fields = .camelCase("systemName"), .show_field = "showSystemName", .show_label = "Show System Name", .needs_show_text = true, .unique_field = "useUniqueSystemColors", .unique_label = "Unique Color per System" },
-    .{ .label = "Group Badge", .sample = "Miners", .section = .thumbnail, .fields = .camelCase("quickGroupBadge"), .show_field = "showQuickGroupBadge", .show_label = "Show Group Badge", .needs_show_text = true },
-    .{ .label = "Session Timer", .sample = "1:42:07", .section = .thumbnail, .fields = .camelCase("sessionTimer"), .show_field = "showSessionTimer", .show_label = "Show Session Timer", .needs_show_text = true },
-    .{ .label = "Notification", .sample = "Fleet Invite", .section = .notifications, .fields = .snakeCase("", false), .show_field = "enabled", .show_label = "Show Notifications", .needs_show_text = true },
-    .{ .label = "Incoming DPS", .sample = "IN: 412", .section = .combat, .fields = .snakeCase("incoming_", true), .show_field = "show_incoming", .show_label = "Show Incoming Damage", .needs_show_text = false, .enabled_field = "enabled", .enabled_tab = "Combat" },
-    .{ .label = "Outgoing DPS", .sample = "OUT: 980", .section = .combat, .fields = .snakeCase("outgoing_", true), .show_field = "show_outgoing", .show_label = "Show Outgoing Damage", .needs_show_text = false, .enabled_field = "enabled", .enabled_tab = "Combat" },
-    .{ .label = "Mining Rate", .sample = "M: 21.4 m3/s", .section = .mining, .fields = .snakeCase("", true), .show_field = "enabled", .show_label = "Show the Mining Overlay", .needs_show_text = false },
-    .{ .label = "Bounty Rate", .sample = "ISK: 38.2M/h", .section = .bounty, .fields = .snakeCase("", true), .show_field = "enabled", .show_label = "Show the Bounty Overlay", .needs_show_text = false },
-    .{ .label = "Resource Usage", .sample = "CPU 12% 1.8G", .section = .resources, .fields = .snakeCase("", true), .show_field = "enabled", .show_label = "Show the Resource Overlay", .needs_show_text = false },
+    .{
+        .label = "Character Name",
+        .sample = "Character Name",
+        .section = .thumbnail,
+        .fields = .camelCase("characterName"),
+        .show_field = "showCharacterName",
+        .needs_show_text = true,
+        .unique_field = "useUniqueCharacterNameColors",
+        .popover = &([_]PopoverField{
+            .{ .toggle = .{ .field = "showCharacterName", .label = "Show Character Name" } },
+            .{ .toggle = .{ .field = "useUniqueCharacterNameColors", .label = "Unique Character Name Colors", .disables_color = true } },
+            .{ .color = "Character Name Color" },
+        } ++ STYLE_ROWS),
+    },
+    .{
+        .label = "System Name",
+        .sample = "Jita",
+        .section = .thumbnail,
+        .fields = .camelCase("systemName"),
+        .show_field = "showSystemName",
+        .needs_show_text = true,
+        .unique_field = "useUniqueSystemColors",
+        .needs_chatlog = true,
+        .popover = &([_]PopoverField{
+            .{ .toggle = .{ .field = "showSystemName", .label = "Show System Name" } },
+            .{ .toggle = .{ .field = "useUniqueSystemColors", .label = "Unique System Colors", .disables_color = true } },
+            .{ .color = "System Name Color" },
+        } ++ STYLE_ROWS),
+    },
+    .{
+        .label = "Group Badge",
+        .sample = "Miners",
+        .section = .thumbnail,
+        .fields = .camelCase("quickGroupBadge"),
+        .show_field = "showQuickGroupBadge",
+        .needs_show_text = true,
+        .popover = &([_]PopoverField{
+            .{ .toggle = .{ .field = "showQuickGroupBadge", .label = "Show Group Badge" } },
+            .{ .color = "Badge Color" },
+        } ++ STYLE_ROWS),
+    },
+    .{
+        .label = "Session Timer",
+        .sample = "1:42:07",
+        .section = .thumbnail,
+        .fields = .camelCase("sessionTimer"),
+        .show_field = "showSessionTimer",
+        .needs_show_text = true,
+        .popover = &([_]PopoverField{
+            .{ .toggle = .{ .field = "showSessionTimer", .label = "Show Session Timer" } },
+            .{ .color = "Text Color" },
+        } ++ STYLE_ROWS),
+    },
+    .{
+        .label = "Notification",
+        .sample = "Fleet Invite",
+        .section = .notifications,
+        .fields = .snakeCase("", false),
+        .show_field = "enabled",
+        .needs_show_text = true,
+        .needs_chatlog = true,
+        .popover = &([_]PopoverField{
+            .{ .toggle = .{ .field = "enabled", .label = "Show Notifications" } },
+        } ++ STYLE_ROWS),
+    },
+    .{
+        .label = "Incoming DPS",
+        .sample = "IN: 412",
+        .section = .combat,
+        .fields = .snakeCase("incoming_", true),
+        .show_field = "show_incoming",
+        .needs_show_text = true,
+        .enabled_field = "enabled",
+        .needs_chatlog = true,
+        .popover = &([_]PopoverField{
+            .{ .toggle = .{ .field = "enabled", .label = "Enable Combat Overlays" } },
+            .{ .toggle = .{ .field = "show_incoming", .label = "Show Incoming Damage" } },
+            .{ .toggle = .{ .field = "incoming_show_prefix", .label = "Show IN: Prefix" } },
+            .{ .color = "Text Color" },
+        } ++ ACTIVITY_STYLE_ROWS),
+    },
+    .{
+        .label = "Outgoing DPS",
+        .sample = "OUT: 980",
+        .section = .combat,
+        .fields = .snakeCase("outgoing_", true),
+        .show_field = "show_outgoing",
+        .needs_show_text = true,
+        .enabled_field = "enabled",
+        .needs_chatlog = true,
+        .popover = &([_]PopoverField{
+            .{ .toggle = .{ .field = "enabled", .label = "Enable Combat Overlays" } },
+            .{ .toggle = .{ .field = "show_outgoing", .label = "Show Outgoing Damage" } },
+            .{ .toggle = .{ .field = "outgoing_show_prefix", .label = "Show OUT: Prefix" } },
+            .{ .color = "Text Color" },
+        } ++ ACTIVITY_STYLE_ROWS),
+    },
+    .{
+        .label = "Mining Rate",
+        .sample = "M: 21.4 m3/s",
+        .section = .mining,
+        .fields = .snakeCase("", true),
+        .show_field = "enabled",
+        .needs_show_text = true,
+        .needs_chatlog = true,
+        .popover = &([_]PopoverField{
+            .{ .toggle = .{ .field = "enabled", .label = "Show Mining Rate" } },
+            .{ .toggle = .{ .field = "show_prefix", .label = "Show M: Prefix" } },
+            .{ .color = "Text Color" },
+        } ++ ACTIVITY_STYLE_ROWS),
+    },
+    .{
+        .label = "Bounty Rate",
+        .sample = "ISK: 38.2M/h",
+        .section = .bounty,
+        .fields = .snakeCase("", true),
+        .show_field = "enabled",
+        .needs_show_text = true,
+        .needs_chatlog = true,
+        .popover = &([_]PopoverField{
+            .{ .toggle = .{ .field = "enabled", .label = "Show Bounty Rate" } },
+            .{ .toggle = .{ .field = "show_prefix", .label = "Show ISK: Prefix" } },
+            .{ .color = "Text Color" },
+        } ++ ACTIVITY_STYLE_ROWS),
+    },
+    .{
+        .label = "Resource Usage",
+        .sample = "CPU 12% 1.8G",
+        .section = .resources,
+        .fields = .snakeCase("", true),
+        .show_field = "enabled",
+        .needs_show_text = true,
+        .popover = &([_]PopoverField{
+            .{ .toggle = .{ .field = "enabled", .label = "Show Resource Usage" } },
+            .{ .toggle = .{ .field = "show_cpu", .label = "Show CPU %" } },
+            .{ .toggle = .{ .field = "show_ram", .label = "Show RAM" } },
+            .{ .toggle = .{ .field = "show_vram", .label = "Show VRAM" } },
+            .{ .color = "Text Color" },
+        } ++ ACTIVITY_STYLE_ROWS),
+    },
 };
+
+/// What the stage needs to draw a chip, read from the edited settings.
+pub const Look = struct {
+    position: types.TextPosition,
+    offset_x: i32,
+    offset_y: i32,
+    font_size: i32,
+    color: u32,
+    bg_color: u32,
+    is_shown: bool,
+};
+
+/// The Text Overlays section's Sync Fonts and Backgrounds; not saved, like the page's.
+pub var g_sync_styling: bool = false;
 
 pub fn SectionType(comptime section: Section) type {
     return switch (section) {
@@ -71,17 +230,6 @@ pub fn refFor(comptime section: Section) session.Ref(SectionType(section)) {
         .resources => profile.child("resources"),
     };
 }
-
-/// What the stage needs to draw a chip, read from the edited settings.
-pub const Look = struct {
-    position: types.TextPosition,
-    offset_x: i32,
-    offset_y: i32,
-    font_size: i32,
-    color: u32,
-    bg_color: u32,
-    is_shown: bool,
-};
 
 pub fn look(comptime chip: Chip) Look {
     const ref = refFor(chip.section);
@@ -117,72 +265,56 @@ pub fn offsetRange(comptime chip: Chip) [2]f32 {
     return bind.rangeOf(SectionType(chip.section), chip.fields.offset_x) orelse .{ -1000, 1000 };
 }
 
-/// A chip's popover: whether it's shown, where, its font and its colours. Returns whether its close button was pressed.
+/// A chip's popover: its title and close button, the Log Monitoring notice where it applies, then its fields; returns whether close was pressed.
 pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usize) !bool {
     const ref = refFor(chip.section);
     const fields = chip.fields;
     const title = Rect{ .key = .str("knots.chip.title:" ++ chip.label), .style = &style.popover_title };
     _ = try title.open(context);
-    try context.e(Text{ .key = .str("knots.chip.heading:" ++ chip.label), .content = chip.label, .style = &style.heading });
+    try context.e(Text{ .selectable = false, .key = .str("knots.chip.heading:" ++ chip.label), .content = chip.label, .style = &style.heading });
     const close_clicked = (try context.interact(Button{ .key = .str("knots.chip.close:" ++ chip.label), .label = "\u{00D7}", .style = &style.popover_close })).clicked;
     try title.close(context);
 
-    try bind.toggle(context, ref, chip.show_field, chip.show_label);
-    if (chip.needs_show_text and !session.profile().ptr.thumbnail.showText) {
-        try widgets.hintText(context, .str("knots.chip.needs_text:" ++ chip.label), "Hidden while Show Text Overlays is off.");
-    }
-    if (chip.enabled_field) |field| {
-        if (!ref.get(field)) try widgets.hintText(context, .str("knots.chip.needs_enabled:" ++ chip.label), "Hidden until the overlay is enabled on the " ++ chip.enabled_tab ++ " tab.");
+    if (chip.needs_chatlog and !session.profile().ptr.chatlog.enabled) {
+        try widgets.notice(context, .str("knots.chip.chatlog:" ++ chip.label), "Requires Log Monitoring to be enabled.");
     }
 
-    try widgets.subheading(context, .str("knots.chip.place:" ++ chip.label), "Placement");
-    const position_before = ref.get(fields.position);
-    try bind.choice(context, ref, fields.position, "Position");
-    // Picking a spot means that spot, not the spot plus a nudge made from the old one.
-    if (ref.get(fields.position) != position_before) {
-        ref.set(fields.offset_x, 0);
-        ref.set(fields.offset_y, 0);
-    }
-    const offset_x = ref.get(fields.offset_x);
-    const offset_y = ref.get(fields.offset_y);
-    if (offset_x != 0 or offset_y != 0) {
-        const nudge = try widgets.openBinding(context, .str("knots.chip.nudge:" ++ chip.label), "Nudged By");
-        try context.e(Text{
-            .key = .str("knots.chip.nudge.value:" ++ chip.label),
-            .content = try std.fmt.allocPrint(context.arena(), "{d}, {d} px", .{ offset_x, offset_y }),
-            .style = &style.muted_text,
-        });
-        if ((try context.interact(Button{ .key = .str("knots.chip.nudge.reset:" ++ chip.label), .label = "Reset Nudge", .style = &style.plain_button })).clicked) {
-            ref.set(fields.offset_x, 0);
-            ref.set(fields.offset_y, 0);
+    const font_before = ref.get(fields.font_name);
+    const size_before = ref.get(fields.font_size);
+    const weight_before = ref.get(fields.font_weight);
+    const background_before = ref.get(fields.bg_color);
+
+    const previous_label = widgets.useLabelStyle(&style.popover_label);
+    defer _ = widgets.useLabelStyle(previous_label);
+    var color_disabled = false;
+    inline for (chip.popover) |row| {
+        switch (row) {
+            .toggle => |toggle| {
+                try bind.toggle(context, ref, toggle.field, toggle.label);
+                if (toggle.disables_color and ref.get(toggle.field)) color_disabled = true;
+            },
+            .color => |label| {
+                const color = try widgets.openGroup(context, .str("knots.chip.color:" ++ chip.label), !color_disabled);
+                try bind.rgb(context, ref, fields.color.?, label);
+                try color.close(context);
+            },
+            .font_name => try bind.fontName(context, ref, fields.font_name, "Font Name"),
+            .font_size => |label| try bind.number(context, ref, fields.font_size, label, .{}),
+            .font_weight => try bind.choice(context, ref, fields.font_weight, "Font Weight"),
+            .background => try bind.rgb(context, ref, fields.bg_color, "Background Color"),
+            .background_opacity => try bind.alpha(context, ref, fields.bg_color, "Background Opacity"),
         }
-        try nudge.close(context);
-    } else {
-        try widgets.hintText(context, .str("knots.chip.drag_hint:" ++ chip.label), "Drag the text on the preview to nudge it from this spot.");
     }
 
-    try widgets.subheading(context, .str("knots.chip.font:" ++ chip.label), "Font");
-    try bind.fontName(context, ref, fields.font_name, "Font Name");
-    try bind.number(context, ref, fields.font_size, "Font Size (px)", .{});
-    try bind.choice(context, ref, fields.font_weight, "Font Weight");
-
-    try widgets.subheading(context, .str("knots.chip.colors:" ++ chip.label), "Colors");
-    if (chip.unique_field) |field| try bind.toggle(context, ref, field, chip.unique_label);
-    const unique = if (chip.unique_field) |field| ref.get(field) else false;
-    if (fields.color) |field| {
-        if (!unique) try bind.color(context, ref, field, "Text Color");
-    }
-    try bind.colorAndOpacity(context, ref, fields.bg_color, "Background Color", "Background Opacity");
-
-    if ((try context.interact(Button{
-        .key = .str("knots.chip.apply_all:" ++ chip.label),
-        .label = "Use This Font and Background for All Texts",
-        .style = &style.plain_button,
-    })).clicked) {
-        copyStyleToOthers(index);
-        status.show(.success, "Copied the {s} font and background to the other texts", .{chip.label});
-    }
+    const is_restyled = !std.mem.eql(u8, font_before, ref.get(fields.font_name)) or size_before != ref.get(fields.font_size) or
+        weight_before != ref.get(fields.font_weight) or background_before != ref.get(fields.bg_color);
+    if (g_sync_styling and is_restyled) copyStyleToOthers(index);
     return close_clicked;
+}
+
+/// Turning sync on unifies every text to the Character Name's styling, as the page does.
+pub fn syncFromCharacterName() void {
+    copyStyleToOthers(0);
 }
 
 fn copyStyleToOthers(comptime source_index: usize) void {

@@ -550,6 +550,32 @@ pub const WH_KEYBOARD_LL: c_int = 13;
 pub const WH_MOUSE_LL: c_int = 14;
 pub const HOOKPROC = *const fn (c_int, WPARAM, LPARAM) callconv(.c) LRESULT;
 
+/// A thread's window creation, see CBT_CREATEWND; used to place a window a library creates before it's shown.
+pub const WH_CBT: c_int = 5;
+pub const HCBT_CREATEWND: c_int = 3;
+
+/// The window-name and class pointers are UTF-16 or ANSI depending on the creating call, so they're left opaque.
+pub const CREATESTRUCT = extern struct {
+    lpCreateParams: ?*anyopaque,
+    hInstance: ?HINSTANCE,
+    hMenu: ?HMENU,
+    hwndParent: ?HWND,
+    cy: c_int,
+    cx: c_int,
+    y: c_int,
+    x: c_int,
+    style: LONG,
+    lpszName: ?*const anyopaque,
+    lpszClass: ?*const anyopaque,
+    dwExStyle: DWORD,
+};
+
+/// lParam of a WH_CBT hook's HCBT_CREATEWND; the window is created from `lpcs` once the hook returns.
+pub const CBT_CREATEWND = extern struct {
+    lpcs: *CREATESTRUCT,
+    hwndInsertAfter: ?HWND,
+};
+
 pub extern "user32" fn SetWindowsHookExA(idHook: c_int, lpfn: HOOKPROC, hmod: ?HINSTANCE, dwThreadId: DWORD) callconv(.c) ?HHOOK;
 pub extern "user32" fn UnhookWindowsHookEx(hhk: HHOOK) callconv(.c) BOOL;
 pub extern "user32" fn CallNextHookEx(hhk: ?HHOOK, nCode: c_int, wParam: WPARAM, lParam: LPARAM) callconv(.c) LRESULT;

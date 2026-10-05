@@ -6,9 +6,16 @@ const host = @import("host.zig");
 const session = @import("session.zig");
 const style = @import("style.zig");
 const widgets = @import("widgets.zig");
+const glyphs = @import("glyphs.zig");
+const import_dialog = @import("import_dialog.zig");
+const search = @import("search.zig");
+const hotkey = @import("hotkey.zig");
 const header = @import("header.zig");
 const status = @import("status.zig");
 const about = @import("tabs/about.zig");
+const general = @import("tabs/general.zig");
+const hotkeys = @import("tabs/hotkeys.zig");
+const hotkey_groups = @import("tabs/hotkey_groups.zig");
 const thumbnails = @import("tabs/thumbnails.zig");
 const characters = @import("tabs/characters.zig");
 const behavior = @import("tabs/behavior.zig");
@@ -20,6 +27,10 @@ const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
 const Dialog = ui.component.Dialog;
+const Canvas = ui.component.Canvas;
+
+const CONTENT_KEY: ui.Key = .str("knots.content");
+const SEARCH_KEY: ui.Key = .str("knots.search");
 
 const Tab = enum {
     about,
@@ -45,12 +56,38 @@ const Tab = enum {
             .behavior => "Behavior",
             .hotkeys => "Hotkeys",
             .hotkey_groups => "Hotkey Groups",
-            .chatlog => "Chat Logs",
+            .chatlog => "Log Monitoring",
             .notifications => "Notifications",
-            .combat => "Combat",
-            .mining => "Mining",
-            .bounty => "Bounty",
-            .resources => "Resources",
+            .combat => "Combat Overlay",
+            .mining => "Mining Overlay",
+            .bounty => "Bounty Overlay",
+            .resources => "Resource Overlay",
+        };
+    }
+
+    fn glyph(tab: Tab) glyphs.Glyph {
+        return switch (tab) {
+            .about => .star,
+            .general => .gear,
+            .thumbnails => .thumbnail,
+            .characters => .list,
+            .behavior => .spokes,
+            .hotkeys => .keyboard,
+            .hotkey_groups => .split_square,
+            .chatlog => .magnifier,
+            .notifications => .envelope,
+            .combat => .swords,
+            .mining => .diamond,
+            .bounty => .dollar,
+            .resources => .striped_square,
+        };
+    }
+
+    /// Lists its sections under it in the sidebar while open; the page leaves out tabs with too few to be worth it.
+    fn listsSections(tab: Tab) bool {
+        return switch (tab) {
+            .general, .thumbnails, .behavior, .hotkeys, .notifications, .mining => true,
+            .about, .characters, .hotkey_groups, .chatlog, .combat, .bounty, .resources => false,
         };
     }
 
@@ -72,6 +109,8 @@ const Tab = enum {
 };
 
 var g_tab: Tab = .about;
+/// The tab whose sections widgets recorded last frame, so a just-opened tab doesn't list the previous one's.
+var g_tab_drawn: Tab = .about;
 var g_confirm_close: bool = false;
 
 /// The window's close button was pressed with unsaved changes.
@@ -81,10 +120,13 @@ pub fn confirmClose() void {
 
 pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     session.beginFrame();
+    widgets.beginFrame();
+    search.beginFrame();
+    try hotkey.beginFrame(context.arena());
     applyAccent(context);
     const advanced = session.global().get("advancedMode");
     // Turning Advanced Mode off hides the open tab if it's an advanced one.
-    if (!advanced and g_tab.isAdvanced()) g_tab = .about;
+    if (!advanced and g_tab.isAdvanced()) selectTab(context, .about);
     const size = context.input().logical_extent;
     // Style pointers must outlive the frame's layout, which the arena does.
     const root_style = try context.arena().create(ui.Style);
@@ -101,9 +143,35 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     const body = Rect{ .key = .src(@src()), .style = &.{ .width = .grow(), .height = .grow(), .direction = .row } };
     _ = try body.open(context);
     try sidebar(context, advanced);
-    const content = Rect{ .key = .src(@src()), .style = if (g_tab.fills()) &style.content_fill else &style.content_scroll };
+    widgets.applyJump(context, CONTENT_KEY);
+    const ui_state = context.ui();
+    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, CONTENT_KEY.hash());
+    const content = Rect{ .key = CONTENT_KEY, .style = if (g_tab.fills()) &style.content_fill else &style.content_scroll };
     _ = try content.open(context);
-    switch (g_tab) {
+    if (search.needsIndex()) {
+        try indexTabs(context, advanced);
+    } else {
+        if (search.isActive() and !search.tabHasMatches(@backingInt(g_tab))) {
+            if (search.firstMatchingTab()) |first| selectTab(context, @fromBackingInt(@intCast(first)));
+        }
+        try showTab(context, g_tab);
+    }
+    try content.close(context);
+    try body.close(context);
+
+    g_tab_drawn = g_tab;
+
+    try footer(context);
+    try import_dialog.show(context);
+    try unsavedPrompt(context);
+    // An edit made after what shows it was drawn, e.g. + Add Character under its list, appears on the next frame.
+    if (session.takeEdited()) context.requestRedraw();
+
+    try root.close(context);
+}
+
+fn showTab(context: *ui.Frame, tab: Tab) !void {
+    switch (tab) {
         .about => try about.show(context),
         .thumbnails => try thumbnails.show(context),
         .characters => try characters.show(context),
@@ -114,15 +182,24 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
         .mining => try overlays.showMining(context),
         .bounty => try overlays.showBounty(context),
         .resources => try overlays.showResources(context),
-        .general, .hotkeys, .hotkey_groups => try notPorted(context),
+        .general => try general.show(context),
+        .hotkeys => try hotkeys.show(context),
+        .hotkey_groups => try hotkey_groups.show(context),
     }
-    try content.close(context);
-    try body.close(context);
+}
 
-    try footer(context);
-    try unsavedPrompt(context);
-
-    try root.close(context);
+/// Draws every tab the sidebar offers out of sight, once, so the search can see sections on tabs that aren't open.
+fn indexTabs(context: *ui.Frame, advanced: bool) !void {
+    const hidden = Rect{ .key = .src(@src()), .style = &style.section_hidden };
+    _ = try hidden.open(context);
+    for (std.enums.values(Tab)) |tab| {
+        if (!advanced and tab.isAdvanced()) continue;
+        search.beginCapture(@backingInt(tab));
+        try showTab(context, tab);
+    }
+    search.endIndex();
+    try hidden.close(context);
+    context.requestRedraw();
 }
 
 fn sidebar(context: *ui.Frame, advanced: bool) !void {
@@ -130,65 +207,127 @@ fn sidebar(context: *ui.Frame, advanced: bool) !void {
     _ = try bar.open(context);
     for (std.enums.values(Tab)) |tab| {
         if (!advanced and tab.isAdvanced()) continue;
-        const is_active = g_tab == tab;
-        const item = Button{
-            .key = ui.Key.str("knots.tab").indexed(@intFromEnum(tab)),
-            .label = tab.label(),
-            .style = if (is_active) &style.tab_item_active else &style.tab_item,
-        };
-        if ((try context.interact(item)).clicked and !is_active) {
-            g_tab = tab;
-            context.requestRedraw();
-        }
+        if (!search.tabHasMatches(@backingInt(tab))) continue;
+        try tabItem(context, tab);
+        if (tab == g_tab and tab.listsSections()) try sectionList(context);
     }
     try bar.close(context);
 }
 
-fn notPorted(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Not ported yet", "", .none, &style.section);
-    try widgets.hintText(context, .str("knots.not_ported"), "This tab is still in the WebView2 configuration window.");
-    try section.close(context);
+fn tabItem(context: *ui.Frame, tab: Tab) !void {
+    const is_active = g_tab == tab;
+    const index = @backingInt(tab);
+    const item = Button{
+        .key = ui.Key.str("knots.tab").indexed(index),
+        .style = if (is_active) &style.tab_item_active else &style.tab_item,
+    };
+    const response = try item.openResponse(context);
+    const tint: ui.Color = if (is_active) context.ui().theme.primary else if (response.hovered) style.TEXT else style.MUTED;
+    const glyph_key = ui.Key.str("knots.tab.glyph").indexed(index);
+    try context.e(Canvas{
+        .key = glyph_key,
+        .commands = try glyphs.commands(context.arena(), tab.glyph(), glyphs.TAB_SIZE, try glyphs.snapOffset(context, glyph_key), tint.value),
+        .style = &style.tab_glyph,
+    });
+    try context.e(Text{
+        .selectable = false,
+        .key = ui.Key.str("knots.tab.label").indexed(index),
+        .content = tab.label(),
+        .style = if (is_active or response.hovered) &style.tab_label_lit else &style.tab_label,
+    });
+    try item.close(context);
+    if (response.clicked and !is_active) selectTab(context, tab);
+}
+
+/// Last frame's sections, which are this tab's once it has drawn once.
+fn sectionList(context: *ui.Frame) !void {
+    if (g_tab_drawn != g_tab) return;
+    for (widgets.drawnSections()) |entry| {
+        const is_active = widgets.isActiveSection(entry.id);
+        if ((try context.interact(Button{
+            .key = ui.Key.str("knots.subheader").indexed(@truncate(entry.id)),
+            .label = entry.title,
+            .style = if (is_active) &style.subheader_item_active else &style.subheader_item,
+        })).clicked) {
+            widgets.jumpTo(entry.id);
+            context.requestRedraw();
+        }
+    }
+}
+
+/// Like the page's switchTab: the new tab starts at its top, with nothing outlined.
+fn selectTab(context: *ui.Frame, tab: Tab) void {
+    g_tab = tab;
+    widgets.clearActiveSection();
+    const ui_state = context.ui();
+    if (ui_state.state.get(.scroll, CONTENT_KEY.hash())) |scroll| scroll.offset = .{ 0, 0 };
+    context.requestRedraw();
 }
 
 fn footer(context: *ui.Frame) !void {
     const bar = Rect{ .key = .src(@src()), .style = &style.footer };
     _ = try bar.open(context);
-    const is_dirty = session.isDirty();
-    try context.e(Text{ .key = .src(@src()), .content = status.text(), .style = switch (status.kind()) {
+    try searchBox(context);
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = status.text(), .style = switch (status.kind()) {
         .info => &style.status_info,
         .success => &style.status_success,
         .failure => &style.status_failure,
     } });
     try context.e(Rect{ .key = .src(@src()), .style = &.{ .width = .grow() } });
-    if (is_dirty) try context.e(Text{ .key = .src(@src()), .content = "Unsaved changes", .style = &style.unsaved_chip });
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "Discard", .disabled = !is_dirty, .style = if (is_dirty) &style.plain_button else &style.disabled_button })).clicked) {
-        host.postCommand(.discard);
-    }
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "Save", .disabled = !is_dirty, .style = if (is_dirty) &style.primary_button else &style.disabled_button })).clicked) {
+    if (session.isDirty()) try context.e(.{
+        Rect{ .key = .src(@src()), .style = &style.unsaved_chip },
+        .{
+            Text{ .selectable = false, .key = .src(@src()), .content = "●", .style = &style.unsaved_dot },
+            Text{ .selectable = false, .key = .src(@src()), .content = "Unsaved changes", .style = &style.unsaved_text },
+        },
+    });
+    if ((try context.interact(Button{ .key = .src(@src()), .label = "Save", .style = &style.primary_button })).clicked) {
         host.postCommand(.save);
     }
+    if ((try context.interact(Button{ .key = .src(@src()), .label = "Close", .style = &style.outline_button })).clicked) {
+        host.requestClose();
+    }
     try bar.close(context);
+}
+
+/// The page's #search-container: the box, its clear button, and how many sections match.
+fn searchBox(context: *ui.Frame) !void {
+    const box = Rect{ .key = .src(@src()), .style = &style.search_container };
+    _ = try box.open(context);
+    try context.e(ui.component.TextInput{ .key = SEARCH_KEY, .buf = &search.g_query, .style = &style.search_input, .placeholder = "Search settings..." });
+    if (search.g_query.items.len > 0) {
+        if ((try context.interact(Button{ .key = .src(@src()), .label = "\u{00D7}", .style = &style.search_clear })).clicked) {
+            search.clear();
+            context.requestRedraw();
+        }
+    }
+    try box.close(context);
+    if (search.isActive() and !search.needsIndex()) {
+        const count = search.matchCount();
+        const text = if (count == 0) "No matches" else try std.fmt.allocPrint(context.arena(), "{d} {s}", .{ count, if (count == 1) "section" else "sections" });
+        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = text, .style = if (count == 0) &style.search_count_none else &style.search_count_some });
+    }
 }
 
 fn unsavedPrompt(context: *ui.Frame) !void {
     if (!g_confirm_close) return;
     const dialog = Dialog{ .is_open = &g_confirm_close, .key = .src(@src()), .style = &style.modal };
     _ = try dialog.open(context);
-    try context.e(Text{ .key = .src(@src()), .content = "Unsaved Changes", .style = &style.heading });
-    try context.e(Text{ .key = .src(@src()), .content = "Save your changes before closing?", .style = &style.modal_text });
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Unsaved Changes", .style = &style.heading });
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "You have unsaved changes. Save them before closing, or close without saving?", .style = &style.modal_text });
     const actions = Rect{ .key = .src(@src()), .style = &style.modal_actions };
     _ = try actions.open(context);
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "Cancel", .style = &style.plain_button })).clicked) {
-        g_confirm_close = false;
-        context.requestRedraw();
-    }
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "Discard", .style = &style.plain_button })).clicked) {
-        g_confirm_close = false;
-        host.postCommand(.discard_and_close);
-    }
     if ((try context.interact(Button{ .key = .src(@src()), .label = "Save", .style = &style.primary_button })).clicked) {
         g_confirm_close = false;
         host.postCommand(.save_and_close);
+    }
+    if ((try context.interact(Button{ .key = .src(@src()), .label = "Discard", .style = &style.danger_button })).clicked) {
+        g_confirm_close = false;
+        host.postCommand(.discard_and_close);
+    }
+    if ((try context.interact(Button{ .key = .src(@src()), .label = "Cancel", .style = &style.outline_button })).clicked) {
+        g_confirm_close = false;
+        context.requestRedraw();
     }
     try actions.close(context);
     try dialog.close(context);

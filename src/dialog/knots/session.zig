@@ -3,6 +3,7 @@ const std = @import("std");
 const config = @import("../../config.zig");
 const protocol = @import("../../protocol.zig");
 const main = @import("../../main.zig");
+const patch = @import("../../config/patch.zig");
 const run_on_startup = @import("../run_on_startup.zig");
 const log = @import("../../log.zig");
 
@@ -11,6 +12,8 @@ const GlobalConfig = config.GlobalConfig;
 const slog = log.scoped("dialog_knots");
 
 pub const Doc = enum { profile, global };
+
+const Retired = struct { allocator: std.mem.Allocator, bytes: []const u8 };
 
 var g_allocator: std.mem.Allocator = undefined;
 var g_global_draft: ?GlobalConfig = null;
@@ -23,8 +26,8 @@ var g_retired: std.ArrayList(Retired) = .empty;
 var g_dirty_stale: bool = true;
 var g_profile_dirty: bool = false;
 var g_global_dirty: bool = false;
-
-const Retired = struct { allocator: std.mem.Allocator, bytes: []const u8 };
+/// Set by any edit, since one made after the widgets showing it were drawn needs another frame to appear.
+var g_edited_this_frame: bool = false;
 
 /// A struct inside one of the documents, edited field by field.
 pub fn Ref(comptime T: type) type {
@@ -74,6 +77,113 @@ pub fn Ref(comptime T: type) type {
         /// Item `index` of the list field `field`, e.g. `profile().item("characters", 2)`.
         pub fn item(self: Self, comptime field: []const u8, index: usize) Ref(ListItem(@FieldType(T, field))) {
             return .{ .doc = self.doc, .ptr = &@field(self.ptr, field).items[index], .layout = comptime layoutFor(T, field, .none), .index = index };
+        }
+
+        /// Adds `value` to the end of the list field `field`; its strings must be literals, as set copies any it's given later.
+        pub fn append(self: Self, comptime field: []const u8, value: ListItem(@FieldType(T, field))) void {
+            const list = &@field(self.ptr, field);
+            list.append(documentAllocator(self.doc), value) catch |err| {
+                slog.err("Failed to add to '{s}': {}", .{ field, err });
+                return;
+            };
+            edited(self.doc, comptime layoutFor(T, field, .none), self.layout);
+        }
+
+        /// Removes item `index` of the list field `field`, freeing its strings once this frame has drawn.
+        pub fn remove(self: Self, comptime field: []const u8, index: usize) void {
+            const Item = ListItem(@FieldType(T, field));
+            const list = &@field(self.ptr, field);
+            if (index >= list.items.len) return;
+            const removed = list.orderedRemove(index);
+            const allocator = documentAllocator(self.doc);
+            if (Item == []const u8) {
+                retireString(allocator, removed, "");
+            } else {
+                const info = @typeInfo(Item).@"struct";
+                inline for (info.field_names, info.field_types) |name, F| {
+                    if (F == []const u8) retireString(allocator, @field(removed, name), fieldDefault(Item, name));
+                    if (F == ?[]const u8) {
+                        if (@field(removed, name)) |text| retireString(allocator, text, fieldDefault(Item, name));
+                    }
+                    // A string list's strings may still be drawn this frame, but nothing reads the list itself again.
+                    if (F == std.ArrayList([]const u8)) {
+                        var strings = @field(removed, name);
+                        for (strings.items) |text| retireString(allocator, text, "");
+                        strings.deinit(allocator);
+                    }
+                }
+            }
+            edited(self.doc, comptime layoutFor(T, field, .none), self.layout);
+        }
+
+        /// Moves item `from` of the list field `field` to sit before what was item `before` (the length for the end).
+        pub fn move(self: Self, comptime field: []const u8, from: usize, before: usize) void {
+            const list = &@field(self.ptr, field);
+            if (from >= list.items.len or before > list.items.len or before == from or before == from + 1) return;
+            const item_value = list.orderedRemove(from);
+            const at = if (before > from) before - 1 else before;
+            list.insertAssumeCapacity(at, item_value);
+            edited(self.doc, comptime layoutFor(T, field, .none), self.layout);
+        }
+
+        /// Adds a copy of `value` to the end of the string list `field`.
+        pub fn appendString(self: Self, comptime field: []const u8, value: []const u8) void {
+            const allocator = documentAllocator(self.doc);
+            const owned = allocator.dupe(u8, value) catch |err| {
+                slog.err("Failed to add to '{s}': {}", .{ field, err });
+                return;
+            };
+            @field(self.ptr, field).append(allocator, owned) catch |err| {
+                slog.err("Failed to add to '{s}': {}", .{ field, err });
+                allocator.free(owned);
+                return;
+            };
+            edited(self.doc, comptime layoutFor(T, field, .none), self.layout);
+        }
+
+        /// Replaces entry `index` of the string list `field` with a copy of `value`.
+        pub fn setStringAt(self: Self, comptime field: []const u8, index: usize, value: []const u8) void {
+            const list = &@field(self.ptr, field);
+            if (index >= list.items.len or std.mem.eql(u8, list.items[index], value)) return;
+            const allocator = documentAllocator(self.doc);
+            const owned = allocator.dupe(u8, value) catch |err| {
+                slog.err("Failed to store an entry of '{s}': {}", .{ field, err });
+                return;
+            };
+            retireString(allocator, list.items[index], "");
+            list.items[index] = owned;
+            edited(self.doc, comptime layoutFor(T, field, .none), self.layout);
+        }
+
+        /// Replaces the whole string list `field` with copies of `values`.
+        pub fn setStrings(self: Self, comptime field: []const u8, values: []const []const u8) void {
+            const list = &@field(self.ptr, field);
+            if (list.items.len == values.len) {
+                for (list.items, values) |old, new| {
+                    if (!std.mem.eql(u8, old, new)) break;
+                } else return;
+            }
+            const allocator = documentAllocator(self.doc);
+            var replacement: std.ArrayList([]const u8) = .empty;
+            for (values) |value| {
+                const owned = allocator.dupe(u8, value) catch |err| {
+                    slog.err("Failed to store '{s}': {}", .{ field, err });
+                    for (replacement.items) |copy| allocator.free(copy);
+                    replacement.deinit(allocator);
+                    return;
+                };
+                replacement.append(allocator, owned) catch |err| {
+                    slog.err("Failed to store '{s}': {}", .{ field, err });
+                    allocator.free(owned);
+                    for (replacement.items) |copy| allocator.free(copy);
+                    replacement.deinit(allocator);
+                    return;
+                };
+            }
+            for (list.items) |old| retireString(allocator, old, "");
+            list.deinit(allocator);
+            list.* = replacement;
+            edited(self.doc, comptime layoutFor(T, field, .none), self.layout);
         }
     };
 }
@@ -181,8 +291,29 @@ pub fn discard() !void {
     g_dirty_stale = true;
 }
 
+/// Edit ops (see config/patch.zig) on the profile being edited, e.g. an import's; `arena` holds what they allocate along the way.
+pub fn applyOps(arena: std.mem.Allocator, ops: []const patch.Op) !void {
+    const target = profile().ptr;
+    const ctx: patch.Context = .{ .arena = arena, .allocator = target.allocator };
+    // Even after a failed op, since those before it were applied.
+    defer edited(.profile, .all, .none);
+    for (ops) |op| _ = try patch.apply(config.Config, target, op, ctx);
+}
+
+/// After a draft was changed without Ref.set, e.g. by config.applyWindowPosition.
+pub fn editedOutside() void {
+    edited(.profile, .none, .none);
+}
+
+/// Whether anything was edited since the last call, so the frame should be drawn again.
+pub fn takeEdited() bool {
+    defer g_edited_this_frame = false;
+    return g_edited_this_frame;
+}
+
 fn edited(doc: Doc, field_layout: main.LiveLayout, ref_layout: main.LiveLayout) void {
     g_dirty_stale = true;
+    g_edited_this_frame = true;
     switch (doc) {
         .profile => if (g_profile_draft) |*draft| {
             draft.validate();
@@ -308,5 +439,5 @@ fn layoutFor(comptime T: type, comptime field: []const u8, comptime inherited: m
 
 /// LiveLayout's tags run from narrowest to widest.
 fn wider(a: main.LiveLayout, b: main.LiveLayout) main.LiveLayout {
-    return @enumFromInt(@max(@intFromEnum(a), @intFromEnum(b)));
+    return @fromBackingInt(@intCast(@max(@backingInt(a), @backingInt(b))));
 }
