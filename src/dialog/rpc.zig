@@ -1,7 +1,7 @@
-//! The window's one binding, `rpc(method, argsJson)`: every `pub fn` in the api modules is a method, taking an arena and optionally an args struct parsed from `argsJson`.
+//! The window's one binding, `eveRpc(method, argsJson)`: every `pub fn` in the api modules is a method, taking an arena and optionally an args struct parsed from `argsJson`.
 const std = @import("std");
-const webui = @import("webui");
 const win32 = @import("../platform/win32.zig");
+const webview = @import("../platform/webview.zig");
 const main = @import("../main.zig");
 const host = @import("host.zig");
 const log = @import("../log.zig");
@@ -16,8 +16,9 @@ const API_MODULES = .{
     @import("api/background.zig"),
 };
 
-/// Long enough for a Save, which reloads the whole profile before replying.
-const MAIN_THREAD_TIMEOUT_MS = 60_000;
+const BINDING_NAME = "eveRpc";
+
+const NO_RESPONSE = "{\"ok\":false,\"error\":{\"code\":\"NoResponse\",\"message\":\"No response\"}}";
 
 /// Already-serialized JSON, embedded in a reply as-is; borrowed.
 pub const RawJson = struct {
@@ -28,45 +29,96 @@ pub const RawJson = struct {
     }
 };
 
-/// method and args borrow from the webui event; response is owned and freed by onCall.
+/// Created on the window's thread and handed to whichever thread runs it, which replies and destroys it.
 const Call = struct {
-    method: []const u8,
-    args: []const u8,
+    /// The window it came from, so a reply to a closed window is dropped (see host.reply).
+    generation: u32,
+    id: [:0]u8,
+    method: []u8,
+    args: []u8,
     response: ?[:0]u8 = null,
+
+    fn create(generation: u32, id: []const u8, method: []const u8, args: []const u8) !*Call {
+        const allocator = host.allocator();
+        const call = try allocator.create(Call);
+        errdefer allocator.destroy(call);
+        const owned_id = try allocator.dupeZ(u8, id);
+        errdefer allocator.free(owned_id);
+        const owned_method = try allocator.dupe(u8, method);
+        errdefer allocator.free(owned_method);
+        call.* = .{ .generation = generation, .id = owned_id, .method = owned_method, .args = try allocator.dupe(u8, args) };
+        return call;
+    }
+
+    fn destroy(self: *Call) void {
+        const allocator = host.allocator();
+        allocator.free(self.id);
+        allocator.free(self.method);
+        allocator.free(self.args);
+        if (self.response) |response| allocator.free(response);
+        allocator.destroy(self);
+    }
+
+    fn finish(self: *Call) void {
+        host.reply(self.generation, self.id, self.response orelse NO_RESPONSE);
+        self.destroy();
+    }
 };
 
-pub fn bind(win: webui) !void {
-    _ = try win.bind("rpc", onCall);
+/// Window thread only.
+pub fn bind(w: webview.Webview) !void {
+    if (webview.webview_bind(w, BINDING_NAME, onCall, null) < 0) return error.BindFailed;
 }
 
 /// WM_DIALOG_RPC's handler.
 pub fn runOnMainThread(lParam: win32.LPARAM) void {
-    execute(win32.lparamToPtr(Call, lParam));
+    const call = win32.lparamToPtr(Call, lParam);
+    execute(call);
+    call.finish();
 }
 
-fn onCall(e: *webui.Event) void {
-    var call = Call{ .method = e.getStringAt(0), .args = e.getStringAt(1) };
-    if (runsOnCaller(call.method)) {
-        execute(&call);
-    } else {
-        sendToMainThread(&call);
-    }
-    const response = call.response orelse {
-        e.returnString("{\"ok\":false,\"error\":{\"code\":\"NoResponse\",\"message\":\"No response\"}}");
+/// On the window's thread; req is the JSON array `[method, argsJson]`.
+fn onCall(id: [*:0]const u8, req: [*:0]const u8, _: ?*anyopaque) callconv(.c) void {
+    const generation = host.generation();
+    const call = parseCall(generation, std.mem.span(id), std.mem.span(req)) catch |err| {
+        slog.err("Failed to read an rpc call: {}", .{err});
+        host.reply(generation, id, NO_RESPONSE);
         return;
     };
-    defer host.allocator().free(response);
-    e.returnString(response);
+    if (runsOnCaller(call.method)) {
+        const thread = std.Thread.spawn(.{}, runOnWorker, .{call}) catch |err| {
+            slog.warn("Failed to start a thread for rpc {s}, running it on the window's: {}", .{ call.method, err });
+            runOnWorker(call);
+            return;
+        };
+        thread.detach();
+    } else {
+        postToMainThread(call);
+    }
 }
 
-fn sendToMainThread(call: *Call) void {
+fn parseCall(generation: u32, id: []const u8, req: []const u8) !*Call {
+    var arena_state = std.heap.ArenaAllocator.init(host.allocator());
+    defer arena_state.deinit();
+    const params = try std.json.parseFromSliceLeaky([]const []const u8, arena_state.allocator(), req, .{});
+    if (params.len != 2) return error.InvalidArguments;
+    return Call.create(generation, id, params[0], params[1]);
+}
+
+fn runOnWorker(call: *Call) void {
+    execute(call);
+    call.finish();
+}
+
+fn postToMainThread(call: *Call) void {
     const timer = main.g_timer_hwnd orelse {
         slog.err("Failed to run rpc {s}: the main window isn't available", .{call.method});
+        call.finish();
         return;
     };
-    var result: usize = 0;
-    if (win32.SendMessageTimeoutA(timer, win32.WM_DIALOG_RPC, 0, @bitCast(@intFromPtr(call)), win32.SMTO_ABORTIFHUNG, MAIN_THREAD_TIMEOUT_MS, &result) == 0) {
-        slog.err("Failed to run rpc {s}: the main thread didn't answer", .{call.method});
+    if (!win32.toBool(win32.PostMessageA(timer, win32.WM_DIALOG_RPC, 0, @bitCast(@intFromPtr(call))))) {
+        slog.err("Failed to run rpc {s}: couldn't post it to the main thread", .{call.method});
+        call.finish();
     }
 }
 
@@ -83,7 +135,7 @@ fn execute(call: *Call) void {
     };
 }
 
-/// webui calls in on its own threads; a method runs on the main thread unless its module declares `runs_on_caller = true`.
+/// A method runs on the main thread unless its module declares `runs_on_caller = true`, which runs it on a thread of its own.
 fn runsOnCaller(method: []const u8) bool {
     inline for (API_MODULES) |M| {
         if (comptime @hasDecl(M, "runs_on_caller")) {

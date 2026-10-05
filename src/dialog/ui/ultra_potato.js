@@ -7,7 +7,7 @@ import { showStatus } from './layout.js';
 export async function scanUltraPotatoProfiles() {
     const select = document.getElementById('ultraPotatoProfileSelect');
     const applyBtn = document.getElementById('applyUltraPotatoBtn');
-    if (!select || typeof webui === 'undefined') return;
+    if (!select || typeof eveRpc === 'undefined') return;
 
     select.innerHTML = `<option value="">${escapeHtml(t('tab.behavior.section.ultra-potato.scanning'))}</option>`;
     select.disabled = true;
@@ -37,7 +37,7 @@ export async function scanUltraPotatoProfiles() {
 // Patches the selected profile(s)' core_public__.yaml on disk via the Zig backend, reporting through the same status bar saveConfiguration() uses.
 export async function applyUltraPotatoMode() {
     const select = document.getElementById('ultraPotatoProfileSelect');
-    if (!select || typeof webui === 'undefined') return;
+    if (!select || typeof eveRpc === 'undefined') return;
 
     const selected = select.value;
     if (!selected) return;

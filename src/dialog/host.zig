@@ -1,7 +1,7 @@
-//! The configuration window, hosted in the main app so it edits the config the app runs on; its lifecycle is main-thread only, while webui calls in from its own threads (see rpc.zig).
+//! The configuration window, hosted in the main app so it edits the config the app runs on; its lifecycle is main-thread only, while the window and its WebView2 control live on a thread of their own.
 const std = @import("std");
-const webui = @import("webui");
 const win32 = @import("../platform/win32.zig");
+const webview = @import("../platform/webview.zig");
 const main = @import("../main.zig");
 const config = @import("../config.zig");
 const config_store = @import("../config/store.zig");
@@ -18,34 +18,49 @@ const slog = log.scoped("dialog");
 const DESIGN_WIDTH: f32 = 800.0;
 const DESIGN_HEIGHT: f32 = 950.0;
 
-/// x isn't 0, since webui treats that as "unset" and centers the window instead.
 const DEFAULT_POSITION: win32.POINT = .{ .x = 20, .y = 20 };
 
 const BROWSER_ARGS_VAR = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
 
-const State = enum { closed, opening, open };
+const WINDOW_CLASS = "EveMajConfigWindow";
+const WINDOW_TITLE = "EVE-Maj Preview Configuration";
+const APP_ICON_ID = 101;
+const COINIT_APARTMENTTHREADED: u32 = 0x2;
+const WA_INACTIVE = 0;
 
-const ShowResult = enum(u8) { pending, shown, failed };
+/// eve_webview_serve answers every request here, so the page never touches the network; `.invalid` can't resolve.
+const ORIGIN = "https://eve-maj.invalid/";
+const PAGE_NAME = "index.html";
+
+const State = enum { closed, open };
 
 const Size = struct { width: u32, height: u32 };
 
 var g_allocator: std.mem.Allocator = undefined;
+var g_io: std.Io = undefined;
 var g_state: State = .closed;
-var g_window: ?webui = null;
-/// webui serves the page from this buffer rather than copying it, so it lives until the window is destroyed.
+/// Set by the window's thread as it exits, after which nothing of the window's is in use.
+var g_thread_done: std.atomic.Value(bool) = .init(false);
+/// Served by the window's thread until it exits; freed in resetWindow.
 var g_page: ?[:0]u8 = null;
-var g_show_result: std.atomic.Value(ShowResult) = .init(.pending);
 /// Read by rpc.zig's worker-thread handlers (file pickers' owner) and the window's own thread.
 var g_hwnd: std.atomic.Value(usize) = .init(0);
 /// The dialog scale as f32 bits; the DPI handler reads it on the window's thread.
 var g_ui_scale_bits: std.atomic.Value(u32) = .init(@bitCast(@as(f32, 1.0)));
-var g_orig_wndproc: isize = 0;
 /// Which profile the window edits; the live profile unless the user picked another.
 var g_editing_profile: ?[]u8 = null;
 
-pub fn init(allocator_: std.mem.Allocator) void {
+/// Guards g_webview and g_generation. The window's thread clears g_webview before destroying it, so no other thread uses a destroyed one.
+var g_webview_mutex: std.Io.Mutex = .init;
+var g_webview: ?webview.Webview = null;
+/// Bumped per window, so a reply meant for a closed one is dropped.
+var g_generation: u32 = 0;
+
+pub fn init(allocator_: std.mem.Allocator, io: std.Io) void {
     g_allocator = allocator_;
+    g_io = io;
     disableProxyDetection();
+    registerWindowClass();
     config_store.g_on_runtime_change = events.liveProfileChanged;
 }
 
@@ -61,7 +76,6 @@ pub fn isOpen() bool {
 pub fn open() void {
     switch (g_state) {
         .closed => {},
-        .opening => return,
         .open => {
             focus();
             return;
@@ -73,30 +87,50 @@ pub fn open() void {
     };
 }
 
-/// Call every tick: finishes an open that the show thread completed, and notices the window closing.
+/// Call every tick: notices the window's thread finishing.
 pub fn tick() void {
-    switch (g_state) {
-        .closed => {},
-        .opening => switch (g_show_result.load(.acquire)) {
-            .pending => {},
-            .shown => g_state = .open,
-            .failed => resetWindow(),
-        },
-        .open => if (!g_window.?.isShown()) onClosed(),
-    }
+    if (g_state == .open and g_thread_done.load(.acquire)) onClosed();
 }
 
-/// Doesn't wait for webui to clean up: its threads may be blocked sending to the main thread, which is exiting.
+/// Doesn't wait for the window's thread, since the process is exiting.
 pub fn shutdown() void {
-    if (g_window) |win| win.close();
+    close();
 }
 
 pub fn close() void {
-    if (g_window) |win| win.close();
+    const window = hwnd() orelse return;
+    _ = win32.PostMessageA(window, win32.WM_CLOSE, 0, 0);
 }
 
-pub fn runScript(script: [:0]const u8) void {
-    if (g_window) |win| win.run(script);
+/// Thread-safe; dropped while the window isn't ready.
+pub fn runScript(script: []const u8) void {
+    g_webview_mutex.lockUncancelable(g_io);
+    defer g_webview_mutex.unlock(g_io);
+    const w = g_webview orelse return;
+    const owned = g_allocator.dupeZ(u8, script) catch |err| {
+        slog.err("Failed to copy a script for the configuration window: {}", .{err});
+        return;
+    };
+    if (webview.webview_dispatch(w, evalOnWindowThread, @ptrCast(owned.ptr)) < 0) {
+        slog.err("Failed to send a script to the configuration window", .{});
+        g_allocator.free(owned);
+    }
+}
+
+/// Thread-safe; replies to the JS call `id` unless its window has since closed.
+pub fn reply(call_generation: u32, id: [*:0]const u8, json: [*:0]const u8) void {
+    g_webview_mutex.lockUncancelable(g_io);
+    defer g_webview_mutex.unlock(g_io);
+    if (call_generation != g_generation) return;
+    const w = g_webview orelse return;
+    if (webview.webview_return(w, id, 0, json) < 0) slog.err("Failed to reply to an rpc call", .{});
+}
+
+/// Thread-safe; the window an rpc call arriving now belongs to.
+pub fn generation() u32 {
+    g_webview_mutex.lockUncancelable(g_io);
+    defer g_webview_mutex.unlock(g_io);
+    return g_generation;
 }
 
 pub fn hwnd() ?win32.HWND {
@@ -158,52 +192,89 @@ fn openWindow() !void {
     setUiScale(resolveScale(settings.dialogScale, position));
 
     try setEditingProfile(main.g_store.live.profile_name);
-
-    const win = webui.newWindow();
-    g_window = win;
-    const size = targetSize(win32.dpiForPoint(position));
-    win.setSize(size.width, size.height);
-    win.setKiosk(false);
-    win.setResizable(true);
-    // Before showing, since webui reads the position at creation, so the first paint lands here instead of jumping.
-    if (position.x >= 0 and position.y >= 0) win.setPosition(@intCast(position.x), @intCast(position.y));
-    try rpc.bind(win);
-    win.setFileHandler(resources.serveFile);
-
     g_page = try resources.buildPage(g_allocator, resources.Lang.fromCode(settings.language), uiScale());
-    g_show_result.store(.pending, .release);
-    // showWv waits for WebView2 to connect, which would stall every thumbnail on the main thread.
-    const thread = try std.Thread.spawn(.{}, showWindow, .{ win, g_page.?, settings.alwaysOnTop });
+
+    g_webview_mutex.lockUncancelable(g_io);
+    g_generation +%= 1;
+    g_webview_mutex.unlock(g_io);
+
+    g_thread_done.store(false, .release);
+    const size = targetSize(win32.dpiForPoint(position));
+    const thread = try std.Thread.spawn(.{}, windowThread, .{ position, size, settings.alwaysOnTop });
     thread.detach();
-    g_state = .opening;
+    g_state = .open;
 }
 
-fn showWindow(win: webui, page: [:0]const u8, always_on_top: bool) void {
-    win.showWv(page) catch |err| {
-        slog.err("Failed to show the configuration window: {}", .{err});
-        g_show_result.store(.failed, .release);
+/// Owns the window and its control from creation to destruction, so nothing else can use either after it's gone.
+fn windowThread(position: win32.POINT, size: Size, always_on_top: bool) void {
+    defer g_thread_done.store(true, .release);
+
+    if (win32.CoInitializeEx(null, COINIT_APARTMENTTHREADED) < 0) {
+        slog.err("Failed to initialize COM for the configuration window", .{});
+        return;
+    }
+    defer win32.CoUninitialize();
+
+    const instance = win32.GetModuleHandleA(null) orelse {
+        slog.err("Failed to get the module handle for the configuration window", .{});
         return;
     };
+    const window = win32.CreateWindowExA(0, WINDOW_CLASS, WINDOW_TITLE, win32.WS_OVERLAPPEDWINDOW, position.x, position.y, @intCast(size.width), @intCast(size.height), null, null, instance, null) orelse {
+        slog.err("Failed to create the configuration window: error {d}", .{win32.GetLastError()});
+        return;
+    };
+    g_hwnd.store(@intFromPtr(window), .release);
+    defer g_hwnd.store(0, .release);
+    defer if (win32.toBool(win32.IsWindow(window))) {
+        _ = win32.DestroyWindow(window);
+    };
 
-    if (win.win32GetHwnd()) |window| {
-        const raw: win32.HWND = @ptrCast(window);
-        g_hwnd.store(@intFromPtr(raw), .release);
-        g_orig_wndproc = win32.SetWindowLongPtrA(raw, win32.GWLP_WNDPROC, @as(isize, @bitCast(@intFromPtr(&windowProc))));
-        // Re-derived against the window's actual monitor, in case the startup guess was a different one.
-        const target = targetSize(win32.GetDpiForWindow(raw));
-        win.setSize(target.width, target.height);
-        if (always_on_top) setAlwaysOnTop(true);
-    } else |err| {
-        slog.warn("Failed to get the configuration window's HWND: {}", .{err});
+    // Pumps this thread's messages until WebView2 is ready.
+    const w = webview.webview_create(0, window) orelse {
+        slog.err("Failed to create the configuration window's WebView2 control; is the WebView2 Runtime installed?", .{});
+        return;
+    };
+    defer _ = webview.webview_destroy(w);
+
+    g_webview_mutex.lockUncancelable(g_io);
+    g_webview = w;
+    g_webview_mutex.unlock(g_io);
+    defer {
+        g_webview_mutex.lockUncancelable(g_io);
+        g_webview = null;
+        g_webview_mutex.unlock(g_io);
     }
 
-    win.run("document.documentElement.classList.remove('pre-init');");
-    g_show_result.store(.shown, .release);
+    rpc.bind(w) catch |err| {
+        slog.err("Failed to connect the configuration window to the app: {}", .{err});
+        return;
+    };
+    const hr = webview.eve_webview_serve(w, ORIGIN, serve);
+    if (hr < 0) {
+        slog.err("Failed to serve the configuration window's page: HRESULT 0x{x}", .{@as(u32, @bitCast(hr))});
+        return;
+    }
+    layoutWidget(window);
+    if (webview.webview_navigate(w, ORIGIN ++ PAGE_NAME) < 0) {
+        slog.err("Failed to load the configuration window's page", .{});
+        return;
+    }
+
+    if (always_on_top) setAlwaysOnTop(true);
+    _ = win32.ShowWindow(window, win32.SW_SHOW);
+    _ = win32.SetForegroundWindow(window);
+    webview.eve_webview_focus(w);
+    slog.info("Configuration window opened", .{});
+
+    _ = webview.webview_run(w);
 }
 
-/// Subclasses webui's window, which never surfaces WM_DPICHANGED or the end of a move otherwise.
 fn windowProc(window: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     switch (msg) {
+        win32.WM_SIZE => layoutWidget(window),
+        win32.WM_ACTIVATE => if (wParam & 0xFFFF != WA_INACTIVE) {
+            if (g_webview) |w| webview.eve_webview_focus(w);
+        },
         win32.WM_DPICHANGED => {
             const target = targetSize(win32.GetDpiForWindow(window));
             const suggested = win32.lparamToPtr(win32.RECT, lParam);
@@ -219,10 +290,48 @@ fn windowProc(window: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam:
                 }
             }
         },
+        win32.WM_CLOSE => {
+            _ = win32.DestroyWindow(window);
+            return 0;
+        },
+        win32.WM_DESTROY => {
+            win32.PostQuitMessage(0);
+            return 0;
+        },
         else => {},
     }
-    if (g_orig_wndproc != 0) return win32.CallWindowProcA(g_orig_wndproc, window, msg, wParam, lParam);
     return win32.DefWindowProcA(window, msg, wParam, lParam);
+}
+
+/// The control's host window fills the client area; webview/webview only does that for windows it creates itself.
+fn layoutWidget(window: win32.HWND) void {
+    const w = g_webview orelse return;
+    const widget = webview.widget(w) orelse return;
+    var rect: win32.RECT = undefined;
+    if (!win32.toBool(win32.GetClientRect(window, &rect))) return;
+    _ = win32.SetWindowPos(widget, win32.HWND_NOTOPMOST, 0, 0, win32.rectWidth(rect), win32.rectHeight(rect), win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
+}
+
+/// On the window's thread, for every request under ORIGIN.
+fn serve(path: [*:0]const u8, body: *[*]const u8, body_len: *usize, content_type: *[*:0]const u8) callconv(.c) c_int {
+    const name = std.mem.span(path);
+    const file: resources.File = if (name.len == 0 or std.mem.eql(u8, name, PAGE_NAME))
+        .{ .content_type = "text/html; charset=utf-8", .body = g_page orelse return 0 }
+    else
+        resources.staticFile(name) orelse {
+            slog.warn("Configuration window requested an unknown file '{s}'", .{name});
+            return 0;
+        };
+    body.* = file.body.ptr;
+    body_len.* = file.body.len;
+    content_type.* = file.content_type.ptr;
+    return 1;
+}
+
+fn evalOnWindowThread(w: webview.Webview, arg: ?*anyopaque) callconv(.c) void {
+    const script: [*:0]u8 = @ptrCast(arg orelse return);
+    defer g_allocator.free(std.mem.span(script));
+    _ = webview.webview_eval(w, script);
 }
 
 fn onClosed() void {
@@ -230,6 +339,30 @@ fn onClosed() void {
     session.end();
     main.onDialogClosed();
     resetWindow();
+}
+
+fn registerWindowClass() void {
+    const instance = win32.GetModuleHandleA(null) orelse {
+        slog.err("Failed to get the module handle to register the configuration window", .{});
+        return;
+    };
+    const wc = win32.WNDCLASSEXA{
+        .cbSize = @sizeOf(win32.WNDCLASSEXA),
+        .style = 0,
+        .lpfnWndProc = windowProc,
+        .cbClsExtra = 0,
+        .cbWndExtra = 0,
+        .hInstance = instance,
+        .hIcon = win32.LoadIconA(instance, @ptrFromInt(APP_ICON_ID)),
+        .hCursor = win32.LoadCursorA(null, win32.IDC_ARROW),
+        .hbrBackground = null,
+        .lpszMenuName = null,
+        .lpszClassName = WINDOW_CLASS,
+        .hIconSm = null,
+    };
+    if (win32.RegisterClassExA(&wc) == 0) {
+        slog.err("Failed to register the configuration window's class: error {d}", .{win32.GetLastError()});
+    }
 }
 
 /// Appends to any arguments already in the environment, so a recording script can pass --remote-debugging-port.
@@ -251,13 +384,10 @@ fn disableProxyDetection() void {
     }
 }
 
+/// Main thread, once the window's thread has finished.
 fn resetWindow() void {
-    if (g_window) |win| win.destroy();
-    g_window = null;
     if (g_page) |page| g_allocator.free(page);
     g_page = null;
-    g_hwnd.store(0, .release);
-    g_orig_wndproc = 0;
     if (g_editing_profile) |name| g_allocator.free(name);
     g_editing_profile = null;
     g_state = .closed;

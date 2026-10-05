@@ -180,7 +180,7 @@ export async function pickRunningWindowFor(idPrefix, index) {
 
     try {
         let windows = [];
-        if (typeof webui !== 'undefined') {
+        if (typeof eveRpc !== 'undefined') {
             windows = await rpc('getRunningWindows');
         }
 

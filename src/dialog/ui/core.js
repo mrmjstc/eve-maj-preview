@@ -13,8 +13,9 @@ function formatLogArgs(args) {
 }
 
 // The backend's one entry point (dialog/rpc.zig): resolves with the call's data, or rejects with an Error whose `code` is the Zig error name.
+// eveRpc is the webview binding, defined before any page script runs.
 export async function rpc(method, args = {}) {
-    const reply = JSON.parse(await webui.call('rpc', method, JSON.stringify(args)));
+    const reply = await eveRpc(method, JSON.stringify(args));
     if (reply.ok) return reply.data;
     const error = new Error(reply.error.message);
     error.code = reply.error.code;
@@ -37,7 +38,7 @@ window.onAppEvent = (name, payload) => {
 };
 
 function sendClientLog(level, message) {
-    if (typeof webui !== 'undefined') {
+    if (typeof eveRpc !== 'undefined') {
         rpc('logClientMessage', { level, message }).catch(() => {});
     }
 }
@@ -62,26 +63,16 @@ window.addEventListener('unhandledrejection', (event) => {
     logError('Unhandled promise rejection:', reason);
 });
 
-export async function waitForWebUI() {
-    let attempts = 0;
-    const maxAttempts = 50;
-
-    while (attempts < maxAttempts) {
-        if (typeof webui !== 'undefined' && webui.call) {
-            try {
-                await rpc('getAppVersion');
-                app.webuiReady = true;
-                return true;
-            } catch (error) {
-                // Not ready yet; retry below.
-            }
-        }
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
+export async function waitForBackend() {
+    if (typeof eveRpc === 'undefined') return false;
+    try {
+        await rpc('getAppVersion');
+        app.backendReady = true;
+        return true;
+    } catch (error) {
+        logError('The app failed to answer:', error);
+        return false;
     }
-    
-    logError('WebUI failed to initialize after', maxAttempts * 100, 'ms');
-    return false;
 }
 
 export function escapeHtml(str) {

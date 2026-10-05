@@ -94,7 +94,7 @@ export function refreshThumbnailSize() {
 
 // Run on profile load and on focus of the ratio list, since clients open and close while the dialog is up.
 export async function detectThumbnailClientSize() {
-    if (typeof webui === 'undefined') return;
+    if (typeof eveRpc === 'undefined') return;
     try {
         clientSize = await rpc('getClientSize');
     } catch (error) {

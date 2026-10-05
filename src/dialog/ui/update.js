@@ -9,7 +9,7 @@ export async function checkForUpdateNotification(isRetry) {
     if (app.currentGlobalSettings && app.currentGlobalSettings.disableUpdateChecks) return;
 
     try {
-        if (typeof webui === 'undefined') return;
+        if (typeof eveRpc === 'undefined') return;
         const status = await rpc('getUpdateStatus');
         if (status.available) {
             showUpdateAvailableModal(status.version, status.url, status.notes);
@@ -51,7 +51,7 @@ function showUpdateAvailableModal(version, url, notes) {
 // Opens in the OS default browser via the backend instead of letting the WebView2 host spawn a popup for a plain target="_blank" link.
 export function openExternalLink(event) {
     event.preventDefault();
-    if (typeof webui !== 'undefined') {
+    if (typeof eveRpc !== 'undefined') {
         rpc('openUrlInBrowser', { url: event.currentTarget.href })
             .catch(error => logError('Failed to open release URL:', error));
     }

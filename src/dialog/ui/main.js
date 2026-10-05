@@ -2,7 +2,7 @@
 import { loadSchema } from './binding.js';
 import { setupChangeDetection } from './changes.js';
 import { addCharacter, clearCharacterSearch, confirmClearAllCharacterWindowPositions, confirmClearCharacterWindowPosition, confirmRemoveCharacter, onCharacterSearchInput, populateCharactersFromClients, refreshWindowPositionSourceOptions, selectCharacter, setAllCharacterWindowPositions, setCharacterWindowPosition, updateCharacterHeaderName } from './characters.js';
-import { logError, waitForWebUI } from './core.js';
+import { logError, waitForBackend } from './core.js';
 import { populateLanguageSelect, populateSharedSelectOptions } from './form.js';
 import { addAppHotkey, addUrlHotkey, applyPickedWindowForAppHotkey, pickRunningWindowForAppHotkey, removeAppHotkey, removeUrlHotkey, updateUrlHotkeyUploadClipboardVisibility } from './global_hotkeys.js';
 import { changeDialogScale, toggleAdvancedMode, toggleAlwaysOnTop, toggleSectionHint } from './global_settings.js';
@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     initConfirmButtonWidthReservation();
     buildSectionNav();
 
-    const ready = await waitForWebUI();
+    const ready = await waitForBackend();
     if (ready) {
         // Fire independent calls immediately instead of serializing a round trip each.
         // The form binds by the schema, so the session waits for it.
@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         await sessionOpened;
         checkForUpdateNotification();
     } else {
-        showStatus(t('status.webuiInitFailed'), 'error');
+        showStatus(t('status.backendInitFailed'), 'error');
     }
 });
 

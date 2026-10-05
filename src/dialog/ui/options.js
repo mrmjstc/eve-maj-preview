@@ -249,7 +249,7 @@ export function toggleTravelOptions() {
 
 async function browseLogDir(method, inputId, label) {
     try {
-        if (typeof webui !== 'undefined') {
+        if (typeof eveRpc !== 'undefined') {
             const result = await rpc(method);
             if (result) {
                 const input = document.getElementById(inputId);
@@ -258,7 +258,7 @@ async function browseLogDir(method, inputId, label) {
                 }
             }
         } else {
-            logWarn(`WebUI not available for browsing ${label} directory`);
+            logWarn(`App connection not available for browsing ${label} directory`);
         }
     } catch (error) {
         logError(`Failed to browse ${label} directory:`, error);

@@ -432,7 +432,7 @@ listenForAppEvent('winKeyCaptured', (result) => {
 
 // Fire-and-forget, since recordHotkey()/stopRecording() must stay synchronous.
 async function suspendMainAppHotkeysForRecording() {
-    if (typeof webui === 'undefined') return;
+    if (typeof eveRpc === 'undefined') return;
     try {
         await rpc('suspendHotkeysForRecording');
     } catch (error) {
@@ -441,7 +441,7 @@ async function suspendMainAppHotkeysForRecording() {
 }
 
 async function resumeMainAppHotkeysAfterRecording() {
-    if (typeof webui === 'undefined') return;
+    if (typeof eveRpc === 'undefined') return;
     try {
         await rpc('resumeHotkeysAfterRecording');
     } catch (error) {

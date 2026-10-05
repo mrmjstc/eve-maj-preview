@@ -63,7 +63,7 @@ export function clearRegion(fieldIds) {
 
 // fieldIds let the same overlay feed either RegionFit or notLoggedInSpace; edit adjusts the existing region's borders instead of dragging a new one.
 export async function startRegionSelectFlow(fieldIds, edit = false) {
-    if (typeof webui === 'undefined') return;
+    if (typeof eveRpc === 'undefined') return;
 
     const regionToEdit = edit ? currentRegionValues(fieldIds) : null;
     if (edit && !regionToEdit) return;

@@ -9,5 +9,5 @@
 *.ttf binary
 *.woff2 binary
 
-# Vendored webui (see docs/BUILDING.md), kept out of GitHub language stats.
+# Vendored webview (see docs/BUILDING.md), kept out of GitHub language stats.
 deps/** linguist-vendored

@@ -2,12 +2,7 @@
     .name = .EVE_Maj_Preview,
     .version = "0.15.2",
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{
-        // Vendored: deps/webui carries a patch (see its win32_wv2.cpp) that upstream lacks.
-        .zig_webui = .{
-            .path = "deps/zig_webui",
-        },
-    },
+    .dependencies = .{},
     .paths = .{""},
     .fingerprint = 0x92cdb9db8adfb629,
 }

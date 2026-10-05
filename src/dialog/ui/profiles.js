@@ -23,7 +23,7 @@ export async function loadImportBackupsList() {
     const select = document.getElementById('importBackupSelect');
     if (!section || !select) return;
 
-    if (typeof webui === 'undefined') {
+    if (typeof eveRpc === 'undefined') {
         section.style.display = 'none';
         return;
     }
@@ -73,7 +73,7 @@ async function restoreProfileBackup(filename, displayName) {
     showStatus(t('status.restoringProfile'), 'info');
 
     try {
-        if (typeof webui !== 'undefined') {
+        if (typeof eveRpc !== 'undefined') {
             await rpc('restoreProfileBackup', { backup: filename, target: sanitizedName, accentColor: htmlColorToZig(accentColor) });
             showStatus(t('status.profileRestoredSuccess'), 'success');
             closeImportModal();
@@ -117,7 +117,7 @@ export async function switchProfile(deferLivePush = false, forceLive = false, ta
         }
         if (choice === 'live' && !deferLivePush) {
             try {
-                if (typeof webui !== 'undefined') {
+                if (typeof eveRpc !== 'undefined') {
                     // The window follows the app onto it, and the profileSwitched event reopens the session.
                     await rpc('switchProfileLive', { name: selectedProfile });
                     app.dialogEditingProfile = selectedProfile;
@@ -135,7 +135,7 @@ export async function switchProfile(deferLivePush = false, forceLive = false, ta
     showStatus(t('status.switchingToProfilePrefix') + selectedProfile.replace(/\.json$/, '') + '...', 'info');
 
     try {
-        if (typeof webui !== 'undefined') {
+        if (typeof eveRpc !== 'undefined') {
             await rpc('switchProfile', { name: selectedProfile });
             app.dialogEditingProfile = selectedProfile;
             showStatus(t('status.profileSwitchedSuccess'), 'success');
@@ -200,7 +200,7 @@ export async function createNewProfile() {
     showStatus(t('status.creatingProfile'), 'info');
 
     try {
-        if (typeof webui !== 'undefined') {
+        if (typeof eveRpc !== 'undefined') {
             await rpc('createProfile', { name: sanitizedName, accentColor: htmlColorToZig(accentColor) });
             showStatus(t('status.profileCreatedSuccess'), 'success');
             await switchProfile(false, false, sanitizedName + '.json');
@@ -232,7 +232,7 @@ export async function copyCurrentProfile() {
     showStatus(t('status.copyingProfile'), 'info');
 
     try {
-        if (typeof webui !== 'undefined') {
+        if (typeof eveRpc !== 'undefined') {
             await rpc('copyProfile', { source: currentProfile, target: sanitizedName, accentColor: htmlColorToZig(accentColor) });
             showStatus(t('status.profileCopiedSuccess'), 'success');
             await switchProfile(false, false, sanitizedName + '.json');
@@ -317,7 +317,7 @@ export function deleteCurrentProfile() {
         showStatus(t('status.deletingProfile'), 'info');
         
         try {
-            if (typeof webui !== 'undefined') {
+            if (typeof eveRpc !== 'undefined') {
                 // The app moved the window onto the profile it now runs; when that meant a switch, its profileSwitched event reopens the session.
                 const { reloaded } = await rpc('deleteProfile', { name: currentProfile });
                 if (!reloaded) await openSession();
@@ -342,7 +342,7 @@ export function resetCurrentProfile() {
         showStatus(t('status.resettingProfile').replace('{name}', currentDisplayName), 'info');
 
         try {
-            if (typeof webui !== 'undefined') {
+            if (typeof eveRpc !== 'undefined') {
                 // Resetting the running profile reloads the app, whose profileSwitched event reopens the session.
                 const { reloaded } = await rpc('resetProfile', { name: currentProfile });
                 if (!reloaded) await openSession();

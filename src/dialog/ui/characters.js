@@ -322,7 +322,7 @@ async function clearCharacterWindowPosition(index) {
 // Populates the "Copy Position From" dropdown with currently-open clients.
 export async function refreshWindowPositionSourceOptions() {
     const select = document.getElementById('windowPositionSourceSelect');
-    if (!select || typeof webui === 'undefined') return;
+    if (!select || typeof eveRpc === 'undefined') return;
 
     const previousValue = select.value;
     try {
@@ -455,7 +455,7 @@ export async function populateCharactersFromClients() {
 
     try {
         let names = [];
-        if (typeof webui !== 'undefined') {
+        if (typeof eveRpc !== 'undefined') {
             names = await rpc('getOpenClients');
         }
 

@@ -3,29 +3,29 @@ const std = @import("std");
 
 /// Every module under ui/; one missing here is a 404 that stops the page loading.
 const MODULES = [_][]const u8{
-    "main",          "core",           "state",          "i18n",
-    "colors",        "form",           "changes",        "binding",
-    "layout",        "session",        "region",         "profiles",
-    "import",        "hotkeys",        "update",         "snake",
-    "widgets",       "window_filters", "characters",     "system_colors",
-    "ultra_potato",  "hotkey_groups",  "global_settings", "global_hotkeys",
-    "ore_table",     "notifications",  "options",        "overlay_layout",
-    "search",        "color_picker",   "thumbnail_size",
+    "main",         "core",           "state",           "i18n",
+    "colors",       "form",           "changes",         "binding",
+    "layout",       "session",        "region",          "profiles",
+    "import",       "hotkeys",        "update",          "snake",
+    "widgets",      "window_filters", "characters",      "system_colors",
+    "ultra_potato", "hotkey_groups",  "global_settings", "global_hotkeys",
+    "ore_table",    "notifications",  "options",         "overlay_layout",
+    "search",       "color_picker",   "thumbnail_size",
 };
 
-/// Built at compile time, so serving a file is a lookup; webui never frees memory it didn't allocate itself.
+/// Built at compile time, so serving a file is a lookup.
 const STATIC_FILES = blk: {
     @setEvalBranchQuota(100_000);
     var list: []const StaticFile = &.{
-        staticFile("style.css", "text/css; charset=utf-8", @embedFile("ui/style.css")),
-        staticFile("catalogs.js", "text/javascript; charset=utf-8", catalogsModule()),
-        staticFile("CascadiaCode.woff2", "font/woff2", @embedFile("../assets/fonts/CascadiaCode.woff2")),
-        staticFile("layout_preview.jpg", "image/jpeg", @embedFile("../assets/layout_preview.jpg")),
-        staticFile("icon.svg", "image/svg+xml", @embedFile("../assets/icon.svg")),
-        staticFile("wordmark.svg", "image/svg+xml", @embedFile("../assets/wordmark.svg")),
+        embedded("style.css", "text/css; charset=utf-8", @embedFile("ui/style.css")),
+        embedded("catalogs.js", "text/javascript; charset=utf-8", catalogsModule()),
+        embedded("CascadiaCode.woff2", "font/woff2", @embedFile("../assets/fonts/CascadiaCode.woff2")),
+        embedded("layout_preview.jpg", "image/jpeg", @embedFile("../assets/layout_preview.jpg")),
+        embedded("icon.svg", "image/svg+xml", @embedFile("../assets/icon.svg")),
+        embedded("wordmark.svg", "image/svg+xml", @embedFile("../assets/wordmark.svg")),
     };
     for (MODULES) |module| {
-        list = list ++ &[_]StaticFile{staticFile(module ++ ".js", "text/javascript; charset=utf-8", @embedFile("ui/" ++ module ++ ".js"))};
+        list = list ++ &[_]StaticFile{embedded(module ++ ".js", "text/javascript; charset=utf-8", @embedFile("ui/" ++ module ++ ".js"))};
     }
     break :blk list;
 };
@@ -83,7 +83,9 @@ pub const Lang = enum {
     }
 };
 
-const StaticFile = struct { name: []const u8, response: []const u8 };
+pub const File = struct { content_type: [:0]const u8, body: []const u8 };
+
+const StaticFile = struct { name: []const u8, file: File };
 
 /// Caller owns the returned page.
 pub fn buildPage(allocator: std.mem.Allocator, lang: Lang, ui_scale: f32) ![:0]u8 {
@@ -104,20 +106,15 @@ pub fn buildPage(allocator: std.mem.Allocator, lang: Lang, ui_scale: f32) ![:0]u
     return allocator.dupeZ(u8, page);
 }
 
-/// webui's file handler: a complete HTTP response for one of the page's static files, or null to let webui handle the path.
-pub fn serveFile(path: []const u8) ?[]const u8 {
-    const name = std.mem.trimStart(u8, path, "/");
+pub fn staticFile(name: []const u8) ?File {
     for (STATIC_FILES) |static| {
-        if (std.mem.eql(u8, name, static.name)) return static.response;
+        if (std.mem.eql(u8, name, static.name)) return static.file;
     }
     return null;
 }
 
-fn staticFile(comptime name: []const u8, comptime content_type: []const u8, comptime body: []const u8) StaticFile {
-    return .{
-        .name = name,
-        .response = "HTTP/1.1 200 OK\r\nContent-Type: " ++ content_type ++ "\r\nContent-Length: " ++ std.fmt.comptimePrint("{d}", .{body.len}) ++ "\r\nCache-Control: no-store\r\n\r\n" ++ body,
-    };
+fn embedded(comptime name: []const u8, comptime content_type: [:0]const u8, comptime body: []const u8) StaticFile {
+    return .{ .name = name, .file = .{ .content_type = content_type, .body = body } };
 }
 
 /// Every catalog, so switching language needs no reload, plus each language's own name for the language list.

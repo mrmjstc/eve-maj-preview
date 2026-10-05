@@ -380,8 +380,8 @@ function syncNotifSwatchClearedState(checkboxId, inputId) {
 
 export async function browseSoundFile(typeKey) {
     try {
-        if (typeof webui === 'undefined') {
-            logWarn('WebUI not available for browsing sound file');
+        if (typeof eveRpc === 'undefined') {
+            logWarn('App connection not available for browsing sound file');
             return;
         }
         const result = await rpc('browseSoundFile');
@@ -416,8 +416,8 @@ export function saveNotificationTypes() {
 }
 
 export async function testNotification(typeKey) {
-    if (typeof webui === 'undefined' || !app.webuiReady) {
-        logWarn('WebUI not available for testing notification');
+    if (typeof eveRpc === 'undefined' || !app.backendReady) {
+        logWarn('App connection not available for testing notification');
         return;
     }
     try {

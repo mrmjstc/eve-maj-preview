@@ -1,4 +1,4 @@
-//! Calls that touch no app state - pickers, network and file scans - so they run on webui's thread instead of stalling thumbnails on the main one.
+//! Calls that touch no app state - pickers, network and file scans - so they run on a thread of their own instead of stalling thumbnails on the main one.
 const std = @import("std");
 const build_options = @import("build_options");
 const win32 = @import("../../platform/win32.zig");

@@ -39,7 +39,7 @@ It's **never** going to let you input broadcast, display cropped portions of you
 Download the latest release, either:
 
 - **Installer** (`eve-maj-preview-vX.Y.Z-setup.exe`): installs per-user under `%LocalAppData%\Programs` (no admin) with Start Menu shortcuts for the app and its configuration window
-- **Portable** (`eve-maj-preview-vX.Y.Z-portable.zip`): extract anywhere and run `eve-maj-preview.exe`, keeping `WebView2Loader.dll` next to it
+- **Portable** (`eve-maj-preview-vX.Y.Z-portable.zip`): extract anywhere and run `eve-maj-preview.exe`
 
 Everything, including the configuration window, runs from the single `eve-maj-preview.exe`. Double-click the tray icon (or run `eve-maj-preview.exe --config`) to open the configuration window.
 
@@ -98,7 +98,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a map of how the source mod
 
 See [LICENSE](LICENSE) file for details.
 
-Bundled third-party components: [Cascadia Code](https://github.com/microsoft/cascadia-code) fonts under the SIL Open Font License 1.1 ([CascadiaCode-LICENSE.txt](licenses/CascadiaCode-LICENSE.txt)), WebUI, zig-webui and CivetWeb under the MIT License ([webui-LICENSE.txt](licenses/webui-LICENSE.txt)), and WebView2Loader ([WebView2Loader-LICENSE.txt](licenses/WebView2Loader-LICENSE.txt)).
+Bundled third-party components: [Cascadia Code](https://github.com/microsoft/cascadia-code) fonts under the SIL Open Font License 1.1 ([CascadiaCode-LICENSE.txt](licenses/CascadiaCode-LICENSE.txt)), [webview](https://github.com/webview/webview) under the MIT License ([webview-LICENSE.txt](licenses/webview-LICENSE.txt)), and the WebView2 SDK headers ([WebView2-LICENSE.txt](licenses/WebView2-LICENSE.txt)).
 
 ## Fenris Creations Copyright Notice
 

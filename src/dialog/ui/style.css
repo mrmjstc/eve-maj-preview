@@ -119,10 +119,6 @@ html {
     font-size: calc(16px * var(--ui-scale, 1));
 }
 
-html.pre-init {
-    visibility: hidden;
-}
-
 /* Allow text selection in input fields */
 input, textarea, select {
     -webkit-user-select: text;

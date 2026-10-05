@@ -11,7 +11,7 @@ export const app = {
     dirty: { profile: false, global: false },
     // Character names staged by pickRunningWindowForFilter(), keyed lowercased; added to currentConfig.characters only at Save time.
     pendingCharacterNames: new Map(),
-    webuiReady: false,
+    backendReady: false,
     // Every setting's kind, default, bounds and options, from the app (see binding.js).
     schema: null,
     // The profile the window edits, every profile there is, and each character's EVE ID for portraits, as of the last session snapshot.

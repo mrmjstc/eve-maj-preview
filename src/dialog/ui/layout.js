@@ -178,7 +178,7 @@ export async function closeDialog() {
 }
 
 function doCloseDialog() {
-    if (typeof webui !== 'undefined') {
+    if (typeof eveRpc !== 'undefined') {
         rpc('closeDialog').catch((error) => logError('Failed to close the dialog:', error));
     }
 }

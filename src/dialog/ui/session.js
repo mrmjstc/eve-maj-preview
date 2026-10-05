@@ -211,7 +211,7 @@ async function sendEdits(name) {
 }
 
 async function flushNow() {
-    if (!confirmed.profile || typeof webui === 'undefined') return;
+    if (!confirmed.profile || typeof eveRpc === 'undefined') return;
     readFormIntoDocs();
     await sendEdits('profile');
     await sendEdits('global');
@@ -294,8 +294,8 @@ export function openSession() {
     clearTimeout(flushTimer);
     flushTimer = null;
     return enqueue(async () => {
-        if (typeof webui === 'undefined') {
-            logWarn('WebUI not available');
+        if (typeof eveRpc === 'undefined') {
+            logWarn('App connection not available');
             return;
         }
         showStatus(t('status.loadingConfig'), 'info');

@@ -163,7 +163,7 @@ fn mainImpl(init: std.process.Init) !void {
     config.setIo(g_io);
     config.setEnvironMap(init.environ_map);
     g_allocator = init.gpa;
-    dialog_host.init(g_allocator);
+    dialog_host.init(g_allocator, g_io);
     g_trackers = .{ .allocator = g_allocator, .io = g_io };
 
     setCwdToExeDir();

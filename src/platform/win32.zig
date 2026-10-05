@@ -46,6 +46,7 @@ pub const WS_EX_LAYERED = 0x00080000;
 pub const WS_EX_NOACTIVATE = 0x08000000;
 
 pub const WM_DESTROY = 0x0002;
+pub const WM_SIZE = 0x0005;
 pub const WM_MOVING = 0x0216;
 pub const WM_ACTIVATE = 0x0006;
 pub const WM_CLOSE = 0x0010;
@@ -1198,8 +1199,8 @@ const IID_IFileOpenDialog = GUID{
 const FOS_PICKFOLDERS: u32 = 0x00000020;
 const SIGDN_FILESYSPATH: u32 = 0x80058000;
 
-extern "ole32" fn CoInitializeEx(pvReserved: ?*anyopaque, dwCoInit: u32) callconv(.c) c_long;
-extern "ole32" fn CoUninitialize() callconv(.c) void;
+pub extern "ole32" fn CoInitializeEx(pvReserved: ?*anyopaque, dwCoInit: u32) callconv(.c) c_long;
+pub extern "ole32" fn CoUninitialize() callconv(.c) void;
 extern "ole32" fn CoCreateInstance(
     rclsid: *const GUID,
     pUnkOuter: ?*anyopaque,

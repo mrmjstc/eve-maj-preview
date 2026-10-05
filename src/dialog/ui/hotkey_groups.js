@@ -363,7 +363,7 @@ export const suggestOpenClients = (() => {
     }
 
     return async function open(input) {
-        if (typeof webui === 'undefined') return;
+        if (typeof eveRpc === 'undefined') return;
 
         try {
             const clientNames = await rpc('getOpenClients');
@@ -431,7 +431,7 @@ export async function fillHotkeyGroupFromClients(index) {
 
     try {
         let names = [];
-        if (typeof webui !== 'undefined') {
+        if (typeof eveRpc !== 'undefined') {
             names = await rpc('getOpenClients');
         }
 

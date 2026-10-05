@@ -51,7 +51,6 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#BinDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#BinDir}\WebView2Loader.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -73,6 +72,10 @@ Type: files; Name: "{app}\LICENSE"
 Type: files; Name: "{app}\WebView2Loader-LICENSE.txt"
 Type: files; Name: "{app}\CascadiaCode-LICENSE.txt"
 Type: files; Name: "{app}\webui-LICENSE.txt"
+; Older versions used webui, which needed WebView2Loader.dll.
+Type: files; Name: "{app}\WebView2Loader.dll"
+Type: files; Name: "{app}\licenses\WebView2Loader-LICENSE.txt"
+Type: files; Name: "{app}\licenses\webui-LICENSE.txt"
 
 ; Profiles, settings and logs are created next to the exe at runtime (see
 ; docs/BUILDING.md) and deliberately left in place on uninstall so a

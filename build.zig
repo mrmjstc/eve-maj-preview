@@ -61,17 +61,17 @@ pub fn build(b: *std.Build) void {
         .file = b.path("app.rc"),
     });
 
-    // The configuration window is a WebView2 page hosted in this process.
-    const zig_webui = b.dependency("zig_webui", .{
-        .target = target,
-        .optimize = optimize,
-        .enable_tls = false,
-        .is_static = true,
+    // The configuration window is a WebView2 page hosted in this process, via webview/webview (deps/webview) and src/platform/webview_shim.cpp.
+    exe.root_module.addIncludePath(b.path("deps/webview/include"));
+    exe.root_module.addIncludePath(b.path("deps/webview/compat"));
+    exe.root_module.addCSourceFiles(.{
+        .files = &.{ "deps/webview/src/webview.cc", "src/platform/webview_shim.cpp" },
+        .flags = &.{ "-std=c++17", "-DWEBVIEW_STATIC" },
     });
-    exe.root_module.addImport("webui", zig_webui.module("webui"));
-
-    const webview2_loader = b.addInstallBinFile(b.path("src/WebView2Loader.dll"), "WebView2Loader.dll");
-    exe.step.dependOn(&webview2_loader.step);
+    exe.root_module.link_libcpp = true;
+    exe.root_module.linkSystemLibrary("shlwapi", .{});
+    exe.root_module.linkSystemLibrary("version", .{});
+    exe.root_module.linkSystemLibrary("advapi32", .{});
 
     b.installArtifact(exe);
 
