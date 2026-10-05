@@ -376,7 +376,7 @@ pub const HotkeyManager = struct {
             .return_to_last_app => launch.returnToLastApp(&self.last_non_eve_foreground),
             .exit_app => {
                 slog.info("Exit hotkey pressed", .{});
-                win32.PostQuitMessage(0);
+                main.requestExit();
             },
             .close_active => self.closeForegroundClient(),
             .activate_app => |activate| launch.activateApp(self.global_settings, activate.app_index),

@@ -9,6 +9,7 @@ const rpc = @import("rpc.zig");
 const events = @import("events.zig");
 const session = @import("session.zig");
 const resources = @import("resources.zig");
+const knots_host = @import("knots/host.zig");
 const log = @import("../log.zig");
 
 const GlobalConfig = config.GlobalConfig;
@@ -80,6 +81,11 @@ pub fn open() void {
             focus();
             return;
         },
+    }
+    // Both windows would edit the same live profile.
+    if (knots_host.isOpen()) {
+        slog.warn("Failed to open the configuration window: the knots one is open", .{});
+        return;
     }
     openWindow() catch |err| {
         slog.err("Failed to open the configuration window: {}", .{err});

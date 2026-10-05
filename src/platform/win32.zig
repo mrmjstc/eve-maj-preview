@@ -73,6 +73,9 @@ pub const WM_MOUSELEAVE = 0x02A3;
 pub const WM_SETCURSOR = 0x0020;
 pub const WM_ENTERSIZEMOVE = 0x0231;
 pub const WM_EXITSIZEMOVE = 0x0232;
+pub const WM_SETICON = 0x0080;
+pub const ICON_SMALL = 0;
+pub const ICON_BIG = 1;
 pub const WM_HOTKEY = 0x0312;
 pub const WM_DPICHANGED = 0x02E0;
 pub const WM_DWMSENDICONICTHUMBNAIL = 0x0323;
@@ -86,6 +89,7 @@ pub const WM_PROTOCOL_HOTKEY = WM_APP + 7;
 pub const WM_HOTKEYS_STATE_CHANGED = WM_APP + 12;
 pub const WM_DIALOG_RPC = WM_APP + 14;
 pub const WM_DIALOG_MOVED = WM_APP + 15;
+pub const WM_KNOTS_COMMAND = WM_APP + 16;
 pub const WM_COMMAND = 0x0111;
 
 pub const PROTOCOL_SWITCH_CHARACTER: usize = 1;
@@ -332,6 +336,9 @@ pub extern "user32" fn SetForegroundWindow(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn GetForegroundWindow() callconv(.c) ?HWND;
 pub extern "user32" fn FindWindowA(lpClassName: ?[*:0]const u8, lpWindowName: ?[*:0]const u8) callconv(.c) ?HWND;
 pub extern "user32" fn SendMessageA(hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.c) LRESULT;
+pub const MB_OK = 0x00000000;
+pub const MB_ICONERROR = 0x00000010;
+pub extern "user32" fn MessageBoxA(hWnd: ?HWND, lpText: [*:0]const u8, lpCaption: [*:0]const u8, uType: UINT) callconv(.c) c_int;
 
 pub extern "kernel32" fn CreateMutexW(lpMutexAttributes: ?*anyopaque, bInitialOwner: BOOL, lpName: [*:0]const u16) callconv(.c) ?HANDLE;
 pub extern "kernel32" fn ReleaseMutex(hMutex: HANDLE) callconv(.c) BOOL;
@@ -517,6 +524,9 @@ pub fn setWinEventHookForProcess(event: DWORD, proc: WINEVENTPROC, process_id: D
 pub extern "user32" fn SetWindowLongPtrA(hWnd: HWND, nIndex: c_int, dwNewLong: isize) callconv(.c) isize;
 pub extern "user32" fn GetWindowLongPtrA(hWnd: HWND, nIndex: c_int) callconv(.c) isize;
 pub extern "user32" fn CallWindowProcA(lpPrevWndFunc: isize, hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.c) LRESULT;
+/// For subclassing a Unicode window, which the A versions would hand converted messages.
+pub extern "user32" fn SetWindowLongPtrW(hWnd: HWND, nIndex: c_int, dwNewLong: isize) callconv(.c) isize;
+pub extern "user32" fn CallWindowProcW(lpPrevWndFunc: isize, hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.c) LRESULT;
 pub extern "user32" fn SetPropA(hWnd: HWND, lpString: LPCSTR, hData: HANDLE) callconv(.c) BOOL;
 pub extern "user32" fn GetPropA(hWnd: HWND, lpString: LPCSTR) callconv(.c) ?HANDLE;
 pub extern "user32" fn SetTimer(hWnd: ?HWND, nIDEvent: usize, uElapse: UINT, lpTimerFunc: ?*const anyopaque) callconv(.c) usize;
@@ -657,6 +667,7 @@ pub const IDM_TOGGLE_NOTIF_HISTORY = 1009;
 pub const IDM_CLEAR_NOTIF_HISTORY = 1010;
 pub const IDM_TOGGLE_TRAVEL_MODE = 1011;
 pub const IDM_RESTORE_SAVED_POSITIONS = 1012;
+pub const IDM_OPEN_KNOTS_CONFIG = 1013;
 pub const IDM_PROFILE_BASE = 2000;
 
 pub const IDI_APPLICATION: LPCSTR = @ptrFromInt(32512);

@@ -1,0 +1,170 @@
+//! The header's profile actions, run between frames since each replaces the documents or reloads the app, and the profile list they keep current; main thread only.
+const std = @import("std");
+const config = @import("../../config.zig");
+const main = @import("../../main.zig");
+const session = @import("session.zig");
+const status = @import("status.zig");
+const log = @import("../../log.zig");
+
+const slog = log.scoped("dialog_knots");
+
+pub const Action = enum {
+    /// The app switches to the profile, and the window edits it.
+    make_live,
+    /// The window edits the profile as a draft; the app keeps running its own.
+    edit,
+    create,
+    /// A copy of the profile being edited.
+    copy,
+    /// Moved to a backup, not deleted.
+    delete,
+    reset,
+};
+
+/// Called with an action to run between frames, i.e. a posted command.
+pub const Schedule = *const fn () void;
+
+var g_allocator: std.mem.Allocator = undefined;
+var g_schedule: Schedule = undefined;
+var g_action: ?Action = null;
+/// The profile file name the pending action is about. Owned; freed by runPending.
+var g_name: ?[]u8 = null;
+var g_accent: ?u32 = null;
+/// A profile just created or copied, which the header offers to switch to. Owned; freed by takeCreated or deinit.
+var g_created: ?[]u8 = null;
+/// Profile file names, sorted. Owned; refreshed after every action.
+var g_profiles: std.ArrayList([]const u8) = .empty;
+
+pub fn init(allocator: std.mem.Allocator, schedule: Schedule) void {
+    g_allocator = allocator;
+    g_schedule = schedule;
+    refresh();
+}
+
+/// Once the window has closed.
+pub fn deinit() void {
+    freeProfiles();
+    if (g_name) |name| g_allocator.free(name);
+    g_name = null;
+    g_action = null;
+    if (g_created) |name| g_allocator.free(name);
+    g_created = null;
+}
+
+/// Borrows from this module until the next action runs.
+pub fn list() []const []const u8 {
+    return g_profiles.items;
+}
+
+/// Queues `action` on `name` (a profile file name); a request made while another is pending replaces it.
+pub fn request(action: Action, name: []const u8, accent: ?u32) void {
+    const owned = g_allocator.dupe(u8, name) catch |err| {
+        slog.err("Failed to queue a profile action for '{s}': {}", .{ name, err });
+        return;
+    };
+    if (g_name) |old| g_allocator.free(old);
+    g_name = owned;
+    g_action = action;
+    g_accent = accent;
+    g_schedule();
+}
+
+/// Between frames, from the posted command.
+pub fn runPending() void {
+    const action = g_action orelse return;
+    const name = g_name orelse return;
+    g_action = null;
+    g_name = null;
+    defer g_allocator.free(name);
+    run(action, name, g_accent) catch |err| {
+        slog.err("Failed to {s} profile '{s}': {}", .{ verb(action), name, err });
+        status.show(.failure, "Failed to {s} profile '{s}': {t}", .{ verb(action), displayName(name), err });
+    };
+    refresh();
+}
+
+/// The profile just created or copied, if any; the caller owns it.
+pub fn takeCreated() ?[]u8 {
+    const name = g_created orelse return null;
+    g_created = null;
+    return name;
+}
+
+/// "Main" for "Main.json".
+pub fn displayName(file_name: []const u8) []const u8 {
+    return if (std.mem.endsWith(u8, file_name, ".json")) file_name[0 .. file_name.len - ".json".len] else file_name;
+}
+
+fn run(action: Action, name: []const u8, accent: ?u32) !void {
+    switch (action) {
+        .make_live => {
+            try session.editProfile(main.g_store.live.profile_name);
+            main.switchProfile(name);
+            status.show(.success, "Switched to profile '{s}'", .{displayName(name)});
+        },
+        .edit => {
+            try session.editProfile(name);
+            status.show(.info, "Editing profile '{s}'; the app keeps running '{s}'", .{ displayName(name), displayName(main.g_store.live.profile_name) });
+        },
+        .create => {
+            try config.createProfile(g_allocator, name, accent);
+            try offerSwitch(name);
+            status.show(.success, "Created profile '{s}'", .{displayName(name)});
+        },
+        .copy => {
+            try config.copyProfile(g_allocator, session.profile().ptr.profile_name, name, accent);
+            try offerSwitch(name);
+            status.show(.success, "Copied to profile '{s}'", .{displayName(name)});
+        },
+        .delete => {
+            // Checked before any switch, which a refused delete mustn't cause.
+            try config.checkProfileDeletable(name);
+            const running = std.mem.eql(u8, name, main.g_store.live.profile_name);
+            if (running or std.mem.eql(u8, name, session.profile().ptr.profile_name)) try session.editProfile(main.g_store.live.profile_name);
+            if (running) main.switchProfile(config.DEFAULT_PROFILE);
+            try config.deleteProfileToBackup(g_allocator, name);
+            status.show(.success, "Deleted profile '{s}' (kept as a backup)", .{displayName(name)});
+        },
+        .reset => {
+            try config.writeDefaultProfile(g_allocator, name, null);
+            if (std.mem.eql(u8, name, main.g_store.live.profile_name)) {
+                try session.editProfile(name);
+                main.switchProfile(name);
+            } else if (std.mem.eql(u8, name, session.profile().ptr.profile_name)) {
+                try session.editProfile(name);
+            }
+            status.show(.success, "Reset profile '{s}' to defaults", .{displayName(name)});
+        },
+    }
+}
+
+fn offerSwitch(name: []const u8) !void {
+    const owned = try g_allocator.dupe(u8, name);
+    if (g_created) |old| g_allocator.free(old);
+    g_created = owned;
+}
+
+fn verb(action: Action) []const u8 {
+    return switch (action) {
+        .make_live => "switch to",
+        .edit => "edit",
+        .create => "create",
+        .copy => "copy to",
+        .delete => "delete",
+        .reset => "reset",
+    };
+}
+
+fn refresh() void {
+    freeProfiles();
+    g_profiles = config.listProfiles(g_allocator) catch |err| blk: {
+        slog.err("Failed to list profiles: {}", .{err});
+        break :blk .empty;
+    };
+}
+
+fn freeProfiles() void {
+    for (g_profiles.items) |name| g_allocator.free(name);
+    g_profiles.deinit(g_allocator);
+    g_profiles = .empty;
+}

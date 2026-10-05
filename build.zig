@@ -74,6 +74,11 @@ pub fn build(b: *std.Build) void {
     exe.root_module.linkSystemLibrary("version", .{});
     exe.root_module.linkSystemLibrary("advapi32", .{});
 
+    // Trial configuration window drawn with knots (src/dialog/knots/), alongside the WebView2 one.
+    const knots = b.dependency("knots", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("knots", knots.module("knots"));
+    exe.root_module.addImport("ui", knots.module("ui"));
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);

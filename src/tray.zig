@@ -8,6 +8,7 @@ const hotkeys = @import("hotkeys/manager.zig");
 const painter_mod = @import("painter.zig");
 const auto_minimize = @import("clients/auto_minimize.zig");
 const dialog_host = @import("dialog/host.zig");
+const knots_host = @import("dialog/knots/host.zig");
 const scout_mod = @import("clients/scout.zig");
 const placement = @import("layout/placement.zig");
 const main = @import("main.zig");
@@ -114,6 +115,7 @@ pub const TrayIcon = struct {
 
         _ = win32.AppendMenuA(menu, win32.MF_POPUP, @intFromPtr(profile_menu), "Load Profile");
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_OPEN_CONFIG, "Open Configuration...");
+        _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_OPEN_KNOTS_CONFIG, "Open Configuration (knots)...");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
         const painter = painter_mod.g_painter_ptr;
@@ -188,11 +190,15 @@ pub const TrayIcon = struct {
         switch (command_id) {
             win32.IDM_EXIT => {
                 slog.info("Exit requested from system tray", .{});
-                win32.PostQuitMessage(0);
+                main.requestExit();
             },
             win32.IDM_OPEN_CONFIG => {
                 slog.info("Opening configuration dialog from system tray", .{});
                 dialog_host.open();
+            },
+            win32.IDM_OPEN_KNOTS_CONFIG => {
+                slog.info("Opening knots configuration window from system tray", .{});
+                knots_host.open();
             },
             win32.IDM_TOGGLE_DRAGGING => {
                 const enabled = !config.interaction.enableDragging;

@@ -2,7 +2,12 @@
     .name = .EVE_Maj_Preview,
     .version = "0.15.2",
     .minimum_zig_version = "0.17.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .knots = .{
+            .url = "git+https://github.com/knots-ui/knots.git#9cd60181892ef12d9cb3e0d87f5461e928140a92",
+            .hash = "knots-0.3.0-g0L13Y3hMwCpRF1YNjgUfB7jGE3OKFaxXGi6hQ7yLdmq",
+        },
+    },
     .paths = .{""},
     .fingerprint = 0x92cdb9db8adfb629,
 }
