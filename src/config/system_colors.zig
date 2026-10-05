@@ -15,7 +15,7 @@ pub const SystemColorConfig = struct {
         while (tokens.next()) |raw| {
             const token = std.mem.trim(u8, raw, " \t");
             if (token.len == 0) continue;
-            const is_pattern = std.mem.indexOfAny(u8, token, "*?#") != null;
+            const is_pattern = std.mem.findAny(u8, token, "*?#") != null;
             if (is_pattern != wildcards) continue;
             const hit = if (is_pattern) globMatch(token, system_name) else std.ascii.eqlIgnoreCase(token, system_name);
             if (hit) return true;

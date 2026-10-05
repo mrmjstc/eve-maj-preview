@@ -193,7 +193,7 @@ pub const UpdateChecker = struct {
                 null;
 
             if (release_notes) |n| {
-                const entry = try std.fmt.allocPrint(self.allocator, "{s}\n\n{s}", .{ tag_name.string, n });
+                const entry = try self.allocator.print("{s}\n\n{s}", .{ tag_name.string, n });
                 defer self.allocator.free(entry);
                 if (notes_buf.items.len > 0) try notes_buf.appendSlice(self.allocator, "\n\n");
                 try notes_buf.appendSlice(self.allocator, entry);

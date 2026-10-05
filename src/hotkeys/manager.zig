@@ -75,7 +75,7 @@ pub const HotkeyManager = struct {
         var writer: std.Io.Writer = .fixed(buffer);
         vk.writeVirtualKey(&writer, virtual_key) catch |err| {
             slog.warn("Failed to format virtual key 0x{X}: {}", .{ virtual_key, err });
-            const fallback = std.fmt.bufPrint(buffer, "VK{X}", .{virtual_key}) catch "VK?";
+            const fallback = std.mem.print(buffer, "VK{X}", .{virtual_key}) catch "VK?";
             return fallback;
         };
         return writer.buffered();
@@ -179,9 +179,6 @@ pub const HotkeyManager = struct {
         var failed_count: usize = 0;
         var desc_buf: [160]u8 = undefined;
 
-        // PartialHotkeyRegistrationFailure is a deliberate summary return, not a failure to clean up after; the hotkeys that did register should stay live.
-        errdefer |err| if (err != error.PartialHotkeyRegistrationFailure) self.unregisterAll();
-
         for (self.config.hotkeyGroups.items, 0..) |*group, group_index| {
             const char_name = if (group.characters.items.len > 0)
                 group.characters.items[0]
@@ -190,17 +187,17 @@ pub const HotkeyManager = struct {
             const first_slot = group_index * 3;
 
             if (!group.forwardKey.isEmpty()) {
-                const desc = std.fmt.bufPrint(&desc_buf, "group {} [{s}...] forward", .{ group_index, char_name }) catch "group forward";
+                const desc = std.mem.print(&desc_buf, "group {} [{s}...] forward", .{ group_index, char_name }) catch "group forward";
                 failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot), group.forwardKey, .{ .cycle_group = .{ .group_index = group_index, .forward = true } }, desc);
             }
 
             if (!group.backwardKey.isEmpty()) {
-                const desc = std.fmt.bufPrint(&desc_buf, "group {} [{s}...] backward", .{ group_index, char_name }) catch "group backward";
+                const desc = std.mem.print(&desc_buf, "group {} [{s}...] backward", .{ group_index, char_name }) catch "group backward";
                 failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot + 1), group.backwardKey, .{ .cycle_group = .{ .group_index = group_index, .forward = false } }, desc);
             }
 
             if (!group.assignKey.isEmpty()) {
-                const desc = std.fmt.bufPrint(&desc_buf, "group {} [{s}] assign", .{ group_index, group.name }) catch "group assign";
+                const desc = std.mem.print(&desc_buf, "group {} [{s}] assign", .{ group_index, group.name }) catch "group assign";
                 failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot + 2), group.assignKey, .{ .assign_group = .{ .group_index = group_index } }, desc);
             }
         }
@@ -208,9 +205,9 @@ pub const HotkeyManager = struct {
         for (per_character_groups.items, 0..) |*group, group_index| {
             const first_name = self.config.characters.items[group.indices.items[0]].name;
             const desc = if (group.indices.items.len == 1)
-                std.fmt.bufPrint(&desc_buf, "activate character [{s}]", .{first_name}) catch "activate character"
+                std.mem.print(&desc_buf, "activate character [{s}]", .{first_name}) catch "activate character"
             else
-                std.fmt.bufPrint(&desc_buf, "activate character [{s}...] ({} sharing hotkey)", .{ first_name, group.indices.items.len }) catch "activate character group";
+                std.mem.print(&desc_buf, "activate character [{s}...] ({} sharing hotkey)", .{ first_name, group.indices.items.len }) catch "activate character group";
 
             const owned_indices = self.allocator.dupe(usize, group.indices.items) catch |err| {
                 slog.err("Failed to copy per-character hotkey group [{s}...]: {}", .{ first_name, err });
@@ -227,19 +224,19 @@ pub const HotkeyManager = struct {
 
         for (self.global_settings.profileSwitchHotkeys.items, 0..) |profile_hotkey, index| {
             if (profile_hotkey.hotkey.isEmpty()) continue;
-            const desc = std.fmt.bufPrint(&desc_buf, "switch to profile [{s}]", .{profile_hotkey.targetProfile}) catch "switch to profile";
+            const desc = std.mem.print(&desc_buf, "switch to profile [{s}]", .{profile_hotkey.targetProfile}) catch "switch to profile";
             failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_PROFILE_SWITCH_BASE, index), profile_hotkey.hotkey, .{ .switch_to_profile = .{ .profile_index = index } }, desc);
         }
 
         for (self.global_settings.appHotkeys.items, 0..) |app_hotkey, index| {
             if (app_hotkey.hotkey.isEmpty()) continue;
-            const desc = std.fmt.bufPrint(&desc_buf, "activate app [{s}]", .{app_hotkey.executableName}) catch "activate app";
+            const desc = std.mem.print(&desc_buf, "activate app [{s}]", .{app_hotkey.executableName}) catch "activate app";
             failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_APP_HOTKEY_BASE, index), app_hotkey.hotkey, .{ .activate_app = .{ .app_index = index } }, desc);
         }
 
         for (self.global_settings.urlHotkeys.items, 0..) |url_hotkey, index| {
             if (url_hotkey.hotkey.isEmpty()) continue;
-            const desc = std.fmt.bufPrint(&desc_buf, "open url [{s}]", .{url_hotkey.url}) catch "open url";
+            const desc = std.mem.print(&desc_buf, "open url [{s}]", .{url_hotkey.url}) catch "open url";
             failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_URL_HOTKEY_BASE, index), url_hotkey.hotkey, .{ .open_url = .{ .url_index = index } }, desc);
         }
 
@@ -252,8 +249,10 @@ pub const HotkeyManager = struct {
             if (success_count == 0) {
                 slog.err("Failed to register any hotkeys - all {} key(s) failed", .{failed_count});
                 slog.err("Hotkey functionality will be unavailable", .{});
+                self.unregisterAll();
                 return error.RegisterHotkeysFailed;
             }
+            // The hotkeys that did register stay live.
             slog.warn("Failed to register {} key(s); {} hotkey(s) still registered", .{ failed_count, success_count });
             slog.warn("Some hotkey groups may not respond to key presses", .{});
             return error.PartialHotkeyRegistrationFailure;

@@ -399,9 +399,9 @@ fn formatRelativeTime(buf: *[24]u8, now: win32.Ticks, entry_ts: win32.Ticks) []c
     const elapsed_s = now.elapsedSince(entry_ts) / 1000;
     if (elapsed_s < 60) return "just now";
     if (elapsed_s < 3600) {
-        return std.fmt.bufPrint(buf, "{d}m ago", .{elapsed_s / 60}) catch "?m ago";
+        return std.mem.print(buf, "{d}m ago", .{elapsed_s / 60}) catch "?m ago";
     }
-    return std.fmt.bufPrint(buf, "{d}h ago", .{elapsed_s / 3600}) catch "?h ago";
+    return std.mem.print(buf, "{d}h ago", .{elapsed_s / 3600}) catch "?h ago";
 }
 
 fn drawTimestampSuffix(dc: win32.HDC, x: i32, y: i32, max_w: usize, timestamp: ?[]const u8) usize {
@@ -416,7 +416,7 @@ fn drawMergedRow(dc: win32.HDC, msg: []const u8, count: usize, x: i32, y: i32, c
     const remaining = drawTimestampSuffix(dc, x, y, max_w, timestamp);
 
     var count_buf: [16]u8 = undefined;
-    const count_text = std.fmt.bufPrint(&count_buf, "+{d}", .{count}) catch unreachable;
+    const count_text = std.mem.print(&count_buf, "+{d}", .{count}) catch unreachable;
     const sep = ": ";
     const count_w = measureTextWidth(dc, count_text);
     const prefix_w = count_w + measureTextWidth(dc, sep);

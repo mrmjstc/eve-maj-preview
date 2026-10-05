@@ -50,7 +50,7 @@ pub fn render(template: []const u8, placeholders: []const Placeholder, values: V
     var out: Output = .{ .buf = buf };
     var i: usize = 0;
     while (i < template.len) {
-        const special = std.mem.indexOfAnyPos(u8, template, i, "{\\") orelse template.len;
+        const special = std.mem.findAnyPos(u8, template, i, "{\\") orelse template.len;
         out.write(template[i..special]);
         if (special == template.len) break;
 
@@ -62,7 +62,7 @@ pub fn render(template: []const u8, placeholders: []const Placeholder, values: V
         }
 
         const brace = special;
-        if (std.mem.indexOfScalarPos(u8, template, brace + 1, '}')) |close| {
+        if (std.mem.findScalarPos(u8, template, brace + 1, '}')) |close| {
             if (find(placeholders, template[brace + 1 .. close])) |placeholder| {
                 const value = values.get(placeholder.field) orelse return null;
                 if (value.len == 0) return null;

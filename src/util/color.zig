@@ -281,7 +281,7 @@ test "AutoColors evicts the least recently seen name past MAX_ENTRIES" {
 
     var name_buf: [16]u8 = undefined;
     for (0..AutoColors.MAX_ENTRIES + 1) |i| {
-        const name = std.fmt.bufPrint(&name_buf, "Pilot {d}", .{i}) catch unreachable;
+        const name = std.mem.print(&name_buf, "Pilot {d}", .{i}) catch unreachable;
         _ = colors.colorFor(testing.allocator, name, &.{});
     }
     try testing.expectEqual(@as(usize, AutoColors.MAX_ENTRIES), colors.entries.items.len);

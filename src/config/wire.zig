@@ -14,7 +14,7 @@ pub const Argb = struct {
 
     pub fn jsonStringify(self: Argb, jw: anytype) !void {
         var buf: [10]u8 = undefined;
-        const s = std.fmt.bufPrint(&buf, "0x{X:0>8}", .{self.value}) catch unreachable;
+        const s = std.mem.print(&buf, "0x{X:0>8}", .{self.value}) catch unreachable;
         try jw.write(s);
     }
 
@@ -89,11 +89,23 @@ pub fn hasWireDefault(comptime R: type, comptime name: []const u8) bool {
     return @hasField(@TypeOf(R.wire_defaults), name);
 }
 
-pub fn savedFields(comptime R: type) []const std.builtin.Type.StructField {
+/// One field of a settings struct, regathered from @typeInfo's parallel name/type/attribute arrays.
+pub const SavedField = struct {
+    name: [:0]const u8,
+    type: type,
+    attrs: std.lang.Type.Struct.FieldAttributes,
+
+    pub inline fn defaultValue(comptime f: SavedField) ?f.type {
+        return f.attrs.defaultValue(f.type);
+    }
+};
+
+pub fn savedFields(comptime R: type) []const SavedField {
     comptime {
-        var out: []const std.builtin.Type.StructField = &.{};
-        for (@typeInfo(R).@"struct".fields) |f| {
-            if (isSaved(R, f.name)) out = out ++ &[_]std.builtin.Type.StructField{f};
+        const info = @typeInfo(R).@"struct";
+        var out: []const SavedField = &.{};
+        for (info.field_names, info.field_types, info.field_attrs) |name, F, attrs| {
+            if (isSaved(R, name)) out = out ++ &[_]SavedField{.{ .name = name, .type = F, .attrs = attrs }};
         }
         return out;
     }
@@ -207,7 +219,7 @@ pub fn Wire(comptime R: type) type {
         @setEvalBranchQuota(10_000_000);
         var names: [fields.len][]const u8 = undefined;
         var types: [fields.len]type = undefined;
-        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        var attrs: [fields.len]std.lang.Type.Struct.FieldAttributes = undefined;
         for (fields, 0..) |f, i| {
             const W = FieldWire(f.type, f.name);
             const wire_default: W = if (hasWireDefault(R, f.name)) @field(R.wire_defaults, f.name) else if (ListItem(f.type) != null) &.{} else field_default: {
@@ -301,11 +313,12 @@ pub fn clone(comptime T: type, value: T, allocator: std.mem.Allocator) !T {
 /// `out` must still hold its defaults; on failure it holds only what was copied, so `deinit` frees it.
 /// Runtime fields are copied too when they hold no pointers (a list item's id); the caller sets the rest.
 pub fn cloneInto(comptime R: type, value: *const R, allocator: std.mem.Allocator, out: *R) !void {
-    inline for (@typeInfo(R).@"struct".fields) |f| {
-        if (comptime isSaved(R, f.name)) {
-            @field(out, f.name) = try cloneField(f.type, @field(value, f.name), allocator);
-        } else if (comptime !hasPointers(f.type)) {
-            @field(out, f.name) = @field(value, f.name);
+    const info = @typeInfo(R).@"struct";
+    inline for (info.field_names, info.field_types) |name, F| {
+        if (comptime isSaved(R, name)) {
+            @field(out, name) = try cloneField(F, @field(value, name), allocator);
+        } else if (comptime !hasPointers(F)) {
+            @field(out, name) = @field(value, name);
         }
     }
 }
@@ -333,8 +346,8 @@ pub fn hasPointers(comptime T: type) bool {
         .optional => |o| return hasPointers(o.child),
         .array => |a| return hasPointers(a.child),
         inline .@"struct", .@"union" => |info| {
-            inline for (info.fields) |f| {
-                if (hasPointers(f.type)) return true;
+            inline for (info.field_types) |F| {
+                if (hasPointers(F)) return true;
             }
             return false;
         },

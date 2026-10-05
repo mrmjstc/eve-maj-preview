@@ -178,13 +178,13 @@ fn flush() void {
 fn shouldLog(level: LogLevel) bool {
     // Tests never call setIo, so a write would go through an undefined Io.
     if (builtin.is_test) return false;
-    return @intFromEnum(level) >= @intFromEnum(g_level);
+    return @backingInt(level) >= @backingInt(g_level);
 }
 
 fn formatTimestamp(buf: *[23]u8) []const u8 {
     var st: win32.SYSTEMTIME = undefined;
     win32.GetLocalTime(&st);
-    return std.fmt.bufPrint(buf, "{d:0>4}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}:{d:0>2}.{d:0>3}", .{
+    return std.mem.print(buf, "{d:0>4}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}:{d:0>2}.{d:0>3}", .{
         st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
     }) catch "????-??-?? ??:??:??.???";
 }
@@ -244,5 +244,5 @@ inline fn writeToFile(comptime level: LogLevel, ts: []const u8, comptime scope: 
     @memcpy(g_log_buf[g_log_buf_len..][0..line.len], line);
     g_log_buf_len += line.len;
 
-    if (comptime @intFromEnum(level) >= @intFromEnum(LogLevel.warn)) flushLocked();
+    if (comptime @backingInt(level) >= @backingInt(LogLevel.warn)) flushLocked();
 }

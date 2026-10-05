@@ -64,7 +64,7 @@ pub const RenderSettings = struct {
     system_name_font_size: i32 = 12,
     system_name_font_weight: types.FontWeight = .Regular,
     show_notifications: bool = false,
-    notification_lines: [MAX_NOTIFICATION_LINES]NotificationLine = .{NotificationLine{}} ** MAX_NOTIFICATION_LINES,
+    notification_lines: [MAX_NOTIFICATION_LINES]NotificationLine = @splat(.{}),
     notification_line_count: usize = 0,
     notifications_position: TextPosition = .Center,
     notifications_offset_x: i32 = 0,
@@ -222,7 +222,7 @@ const Layout = struct {
 
     /// Short stat text only, so it can't outgrow its buffer in practice; "---" if it somehow does.
     fn print(self: *Layout, comptime fmt: []const u8, args: anytype) []const u8 {
-        return std.fmt.bufPrint(self.nextTextBuf(), fmt, args) catch "---";
+        return std.mem.print(self.nextTextBuf(), fmt, args) catch "---";
     }
 
     fn nextTextBuf(self: *Layout) *[TEXT_BUF]u8 {
@@ -495,9 +495,10 @@ pub fn createRenderSettings(cfg: *const config_mod.Config, thumbnail: *const Thu
 
 /// Every field but show_thumbnail, walked at comptime so a field added to RenderSettings is always part of the check.
 fn visualEqual(a: RenderSettings, b: RenderSettings) bool {
-    inline for (@typeInfo(RenderSettings).@"struct".fields) |f| {
-        if (comptime std.mem.eql(u8, f.name, "show_thumbnail")) continue;
-        if (!valuesEqual(f.type, @field(a, f.name), @field(b, f.name))) return false;
+    const info = @typeInfo(RenderSettings).@"struct";
+    inline for (info.field_names, info.field_types) |name, F| {
+        if (comptime std.mem.eql(u8, name, "show_thumbnail")) continue;
+        if (!valuesEqual(F, @field(a, name), @field(b, name))) return false;
     }
     return true;
 }
@@ -506,8 +507,8 @@ fn valuesEqual(comptime T: type, a: T, b: T) bool {
     if (T == []const u8) return stringsEqualFast(a, b);
     switch (@typeInfo(T)) {
         .@"struct" => |info| {
-            inline for (info.fields) |f| {
-                if (!valuesEqual(f.type, @field(a, f.name), @field(b, f.name))) return false;
+            inline for (info.field_names, info.field_types) |name, F| {
+                if (!valuesEqual(F, @field(a, name), @field(b, name))) return false;
             }
             return true;
         },
@@ -587,9 +588,9 @@ fn addMining(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, st
         const rate_per_min = rate * 60.0;
         var raw_buf: [16]u8 = undefined;
         const raw = if (rate_per_min < 10.0)
-            std.fmt.bufPrint(&raw_buf, "{d:.1}", .{rate_per_min}) catch "---"
+            std.mem.print(&raw_buf, "{d:.1}", .{rate_per_min}) catch "---"
         else
-            std.fmt.bufPrint(&raw_buf, "{d:.0}", .{rate_per_min}) catch "---";
+            std.mem.print(&raw_buf, "{d:.0}", .{rate_per_min}) catch "---";
         var comma_buf: [16]u8 = undefined;
         break :blk layout.print("{s}{s} m3/min", .{ prefix, format.insertThousandsSeparators(&comma_buf, raw) });
     } else layout.print("{s}?? m3/min", .{prefix});

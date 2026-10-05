@@ -386,14 +386,14 @@ fn hasArgument(process_args: std.process.Args, flag: []const u8) !bool {
 
 /// Run-key startup entries launch with an arbitrary working directory, not the exe's folder.
 fn setCwdToExeDir() void {
-    var exe_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var exe_dir_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const exe_dir = win32.selfExeDirPath(&exe_dir_buf) catch |err| {
         slog.warn("Failed to resolve exe directory: {}", .{err});
         return;
     };
 
-    var dir_z_buf: [std.fs.max_path_bytes + 1]u8 = undefined;
-    const exe_dir_z = std.fmt.bufPrintZ(&dir_z_buf, "{s}", .{exe_dir}) catch |err| {
+    var dir_z_buf: [std.Io.Dir.max_path_bytes + 1]u8 = undefined;
+    const exe_dir_z = std.mem.printSentinel(&dir_z_buf, "{s}", .{exe_dir}, 0) catch |err| {
         slog.warn("Failed to null-terminate exe directory path: {}", .{err});
         return;
     };

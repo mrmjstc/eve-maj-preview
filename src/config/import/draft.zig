@@ -78,7 +78,7 @@ pub const Draft = struct {
     }
 
     pub fn format(self: *Draft, n: anytype) ![]const u8 {
-        return std.fmt.allocPrint(self.arena, "{d}", .{n});
+        return self.arena.print("{d}", .{n});
     }
 
     /// Sets a field by its dotted path, e.g. "thumbnail.borderWidth".
@@ -319,7 +319,7 @@ fn findByKey(items: []const Value, key_field: []const u8, key: []const u8, skip_
         const name = keyOf(item, key_field) orelse continue;
         if (!std.ascii.eqlIgnoreCase(name, key)) continue;
         const id = item.object.get("id").?.integer;
-        if (std.mem.indexOfScalar(i64, skip_ids, id) != null) continue;
+        if (std.mem.findScalar(i64, skip_ids, id) != null) continue;
         return item;
     }
     return null;

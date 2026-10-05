@@ -28,7 +28,7 @@ const EVENT_TYPES = [_]struct { []const u8, []const u8 }{
     .{ "convo_request", "ConversationInvite" },
 };
 
-const Keys = std.StringArrayHashMapUnmanaged([]const u8);
+const Keys = std.array_hash_map.String([]const u8);
 
 const Font = struct { family: ?[]const u8, size: ?f64 };
 
@@ -38,7 +38,7 @@ const Group = struct { members: []const []const u8, forward: ?[]const u8, backwa
 
 /// Keys are percent-encoded, points "@Point(x y)", fonts "Family,Size,...", and hotkeys "enabled,vk,ctrl,alt,shift" tuples joined by '|'.
 pub const Ini = struct {
-    sections: std.StringArrayHashMapUnmanaged(Keys) = .empty,
+    sections: std.array_hash_map.String(Keys) = .empty,
 
     pub fn parse(arena: std.mem.Allocator, text: []const u8) !Ini {
         var ini: Ini = .{};
@@ -56,7 +56,7 @@ pub const Ini = struct {
                 continue;
             }
             const keys = ini.sections.getPtr(current orelse continue).?;
-            const eq = std.mem.indexOfScalar(u8, line, '=') orelse continue;
+            const eq = std.mem.findScalar(u8, line, '=') orelse continue;
             try keys.put(arena, std.mem.trim(u8, line[0..eq], " \t"), std.mem.trim(u8, line[eq + 1 ..], " \t"));
         }
         return ini;
@@ -128,8 +128,8 @@ fn isInvalid(raw: ?[]const u8) bool {
 
 fn qtPoint(raw: ?[]const u8) ?struct { x: i64, y: i64 } {
     const text = raw orelse return null;
-    const start = std.mem.indexOf(u8, text, "@Point(") orelse return null;
-    const end = std.mem.indexOfScalarPos(u8, text, start, ')') orelse return null;
+    const start = std.mem.find(u8, text, "@Point(") orelse return null;
+    const end = std.mem.findScalarPos(u8, text, start, ')') orelse return null;
     var parts = std.mem.tokenizeAny(u8, text[start + "@Point(".len .. end], " \t");
     const x = std.fmt.parseInt(i64, parts.next() orelse return null, 10) catch return null;
     const y = std.fmt.parseInt(i64, parts.next() orelse return null, 10) catch return null;
@@ -212,8 +212,8 @@ fn eventType(event: []const u8) ?[]const u8 {
 
 /// "<process>.exe::<title>" entries come from EVE-APM's overlay for non-EVE windows and aren't characters.
 fn isNonEveWindow(name: []const u8) bool {
-    const sep = std.mem.indexOf(u8, name, "::") orelse return false;
-    const dot = std.mem.lastIndexOfScalar(u8, name[0..sep], '.') orelse return false;
+    const sep = std.mem.find(u8, name, "::") orelse return false;
+    const dot = std.mem.findScalarLast(u8, name[0..sep], '.') orelse return false;
     return dot + 1 < sep;
 }
 
@@ -281,7 +281,7 @@ pub fn build(d: *Draft, ini: *const Ini, chosen: []const []const u8) !void {
 
 fn borderStyle(d: *Draft, path: []const u8, raw: ?[]const u8, label: []const u8) !void {
     const n = values.parseIntLoose(raw orelse return) orelse return;
-    const name = if (n >= 0 and n < BORDER_STYLES.len) BORDER_STYLES[@intCast(n)] else try std.fmt.allocPrint(d.arena, "#{d}", .{n});
+    const name = if (n >= 0 and n < BORDER_STYLES.len) BORDER_STYLES[@intCast(n)] else try d.arena.print("#{d}", .{n});
     if (n >= 0 and n < 4) return d.setString(path, name);
     try d.note("dynamic.import.apm.borderStyleUnsupportedNote", &.{ .{ .name = "label", .value = label, .translate = true }, .{ .name = "name", .value = name } });
 }
@@ -512,12 +512,12 @@ fn notifications(d: *Draft, ini: *const Ini) !void {
             try d.note("dynamic.import.apm.eventTypeUnsupportedNote", &.{.{ .name = "evt", .value = event }});
             continue;
         };
-        const base = try std.fmt.allocPrint(d.arena, "thumbnail.notifications.type_configs.{s}.", .{target});
+        const base = try d.arena.print("thumbnail.notifications.type_configs.{s}.", .{target});
         try d.setBool(try concat(d, base, "enabled"), true);
-        const duration_key = try std.fmt.allocPrint(d.arena, "eventDurations\\{s}", .{event});
+        const duration_key = try d.arena.print("eventDurations\\{s}", .{event});
         try d.setNumber(try concat(d, base, "duration_ms"), intValue(ini.get("combatMessages", duration_key)) orelse default_duration);
         try d.setColor(try concat(d, base, "border_color"), color);
-        const suppress_key = try std.fmt.allocPrint(d.arena, "suppressFocused\\{s}", .{event});
+        const suppress_key = try d.arena.print("suppressFocused\\{s}", .{event});
         try d.setBool(try concat(d, base, "suppress_when_focused"), qtBool(ini.get("combatMessages", suppress_key)) orelse suppress_all);
         mapped += 1;
     }

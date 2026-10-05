@@ -127,7 +127,7 @@ pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
             slog.info("Sent load profile '{s}'", .{profile_name});
         },
         .hotkey => |hotkey_action| {
-            _ = win32.SendMessageA(hwnd, win32.WM_PROTOCOL_HOTKEY, @intFromEnum(hotkey_action), 0);
+            _ = win32.SendMessageA(hwnd, win32.WM_PROTOCOL_HOTKEY, @backingInt(hotkey_action), 0);
             slog.info("Sent hotkey action '{s}'", .{@tagName(hotkey_action)});
         },
         .open_config => {
@@ -202,7 +202,7 @@ pub fn isRegistered() bool {
 }
 
 pub fn register(allocator: std.mem.Allocator) !bool {
-    var exe_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var exe_path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const exe_path = try win32.selfExePath(&exe_path_buf);
 
     var hKey: win32.HKEY = undefined;
@@ -277,7 +277,7 @@ pub fn register(allocator: std.mem.Allocator) !bool {
     defer _ = win32.RegCloseKey(hCommandKey);
 
     // \x00 is embedded in the format string itself, so command.len already covers the terminator (unlike description/url_protocol above, which need +1).
-    const command = try std.fmt.allocPrint(allocator, "\"{s}\" --protocol \"%1\"\x00", .{exe_path});
+    const command = try allocator.print("\"{s}\" --protocol \"%1\"\x00", .{exe_path});
     defer allocator.free(command);
 
     result = win32.RegSetValueExA(
@@ -350,7 +350,7 @@ test "parseUrl reads switch and profile commands and decodes their names" {
 test "parseUrl reads every hotkey action by name" {
     var buf: [128]u8 = undefined;
     for (std.enums.values(GlobalAction)) |action| {
-        const url = try std.fmt.bufPrint(&buf, "evemajpreview://hotkey/{s}", .{@tagName(action)});
+        const url = try std.mem.print(&buf, "evemajpreview://hotkey/{s}", .{@tagName(action)});
         try testing.expectEqual(action, (try parseUrl(url, testing.allocator)).hotkey);
     }
 }

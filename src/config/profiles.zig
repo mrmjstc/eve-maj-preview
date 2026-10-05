@@ -12,7 +12,7 @@ const BACKUP_DIR = "backup";
 
 /// Caller owns the returned slice.
 pub fn path(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
-    return std.fs.path.join(allocator, &[_][]const u8{ files.PROFILES_DIR, name });
+    return std.Io.Dir.path.join(allocator, &[_][]const u8{ files.PROFILES_DIR, name });
 }
 
 /// Only a plain `<name>.json` file name, so a name from the dialog can't reach outside PROFILES_DIR.
@@ -20,8 +20,8 @@ pub fn validateName(name: []const u8) !void {
     if (!std.mem.endsWith(u8, name, ".json")) return error.InvalidProfileName;
     const stem = name[0 .. name.len - ".json".len];
     if (stem.len == 0 or stem[0] == '.') return error.InvalidProfileName;
-    if (std.mem.indexOfAny(u8, stem, "/\\:*?\"<>|") != null) return error.InvalidProfileName;
-    if (std.mem.eql(u8, name, std.fs.path.basename(files.GLOBAL_SETTINGS_FILE))) return error.InvalidProfileName;
+    if (std.mem.findAny(u8, stem, "/\\:*?\"<>|") != null) return error.InvalidProfileName;
+    if (std.mem.eql(u8, name, std.Io.Dir.path.basename(files.GLOBAL_SETTINGS_FILE))) return error.InvalidProfileName;
 }
 
 /// "<name>.json" for a display name typed by the user, which may only hold letters, digits, spaces, '-' and '_'; caller owns the result.
@@ -30,7 +30,7 @@ pub fn fileNameFor(allocator: std.mem.Allocator, display_name: []const u8) ![]u8
     for (display_name) |c| {
         if (!std.ascii.isAlphanumeric(c) and c != ' ' and c != '-' and c != '_') return error.InvalidProfileName;
     }
-    const name = try std.fmt.allocPrint(allocator, "{s}.json", .{display_name});
+    const name = try allocator.print("{s}.json", .{display_name});
     errdefer allocator.free(name);
     try validateName(name);
     return name;
@@ -61,7 +61,7 @@ pub fn copy(allocator: std.mem.Allocator, source: []const u8, target: []const u8
 /// Restores a file from PROFILES_DIR/backup (see deleteToBackup) as the new profile `target`.
 pub fn restoreBackup(allocator: std.mem.Allocator, backup: []const u8, target: []const u8, accent_color: ?u32) !void {
     try validateName(backup);
-    const source_path = try std.fs.path.join(allocator, &.{ files.PROFILES_DIR, BACKUP_DIR, backup });
+    const source_path = try std.Io.Dir.path.join(allocator, &.{ files.PROFILES_DIR, BACKUP_DIR, backup });
     defer allocator.free(source_path);
     try copyFrom(allocator, source_path, target, accent_color);
 }
@@ -112,7 +112,7 @@ fn newBackupPath(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
         error.PathAlreadyExists => {},
         else => return err,
     };
-    return std.fmt.allocPrint(allocator, "{s}{c}{d}_{s}", .{ backup_dir, std.fs.path.sep, std.Io.Clock.real.now(files.g_io).toSeconds(), name });
+    return allocator.print("{s}{c}{d}_{s}", .{ backup_dir, std.Io.Dir.path.sep, std.Io.Clock.real.now(files.g_io).toSeconds(), name });
 }
 
 /// Keeps a copy of a profile that couldn't be read, since running on defaults saves over it.
@@ -233,7 +233,7 @@ pub fn list(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
     };
     defer dir.close(files.g_io);
 
-    const global_settings_name = std.fs.path.basename(files.GLOBAL_SETTINGS_FILE);
+    const global_settings_name = std.Io.Dir.path.basename(files.GLOBAL_SETTINGS_FILE);
     var iter = dir.iterate();
     while (try iter.next(files.g_io)) |entry| {
         if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".json")) continue;
@@ -315,7 +315,7 @@ test "fileNameFor appends .json and rejects empty, long or unsafe names" {
     try testing.expectEqualStrings("Main.json", name);
 
     try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, ""));
-    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "a" ** (MAX_NAME_LEN + 1)));
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, &@as([MAX_NAME_LEN + 1]u8, @splat('a'))));
     try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "a*b"));
 }
 

@@ -241,14 +241,14 @@ fn setMembership(cfg: *Config, group: *config.HotkeyGroupConfig, character_name:
 
 /// Leaves must hold no pointers, since both copies would then share one allocation.
 fn assign(comptime T: type, target: *T, patch: anytype) void {
-    inline for (@typeInfo(@TypeOf(patch)).@"struct".fields) |f| {
-        const Field = @FieldType(T, f.name);
-        const value = @field(patch, f.name);
+    inline for (@typeInfo(@TypeOf(patch)).@"struct".field_names) |name| {
+        const Field = @FieldType(T, name);
+        const value = @field(patch, name);
         if (@TypeOf(value) != Field and @typeInfo(Field) == .@"struct") {
-            assign(Field, &@field(target, f.name), value);
+            assign(Field, &@field(target, name), value);
         } else {
-            if (comptime wire.hasPointers(Field)) @compileError(f.name ++ " holds pointers, so it can't be set through ProfileStore.update");
-            @field(target, f.name) = value;
+            if (comptime wire.hasPointers(Field)) @compileError(name ++ " holds pointers, so it can't be set through ProfileStore.update");
+            @field(target, name) = value;
         }
     }
 }

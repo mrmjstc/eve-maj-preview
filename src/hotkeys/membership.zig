@@ -90,6 +90,6 @@ pub fn assignHoveredToGroup(manager: *HotkeyManager, group_index: usize) void {
     const group_label = if (group.name.len > 0)
         group.name
     else
-        std.fmt.bufPrint(&group_label_buf, "Hotkey Group {}", .{group_index + 1}) catch unreachable;
+        std.mem.print(&group_label_buf, "Hotkey Group {}", .{group_index + 1}) catch unreachable;
     manager.painter.notify(thumbnail.source_hwnd, .{ .ntype = .GroupMembership, .state = if (added) .added else .removed, .target = group_label });
 }

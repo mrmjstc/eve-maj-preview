@@ -58,7 +58,7 @@ pub fn scanProfiles(allocator: std.mem.Allocator, io: std.Io, environ_map: *cons
         return try profiles.toOwnedSlice(allocator);
     };
 
-    const eve_root = try std.fs.path.join(allocator, &[_][]const u8{ local_app_data, "CCP", "EVE" });
+    const eve_root = try std.Io.Dir.path.join(allocator, &[_][]const u8{ local_app_data, "CCP", "EVE" });
     defer allocator.free(eve_root);
 
     var eve_dir = std.Io.Dir.cwd().openDir(io, eve_root, .{ .iterate = true }) catch |err| {
@@ -75,7 +75,7 @@ pub fn scanProfiles(allocator: std.mem.Allocator, io: std.Io, environ_map: *cons
         } orelse break;
         if (install_entry.kind != .directory) continue;
 
-        const install_path = try std.fs.path.join(allocator, &[_][]const u8{ eve_root, install_entry.name });
+        const install_path = try std.Io.Dir.path.join(allocator, &[_][]const u8{ eve_root, install_entry.name });
         defer allocator.free(install_path);
 
         var install_dir = std.Io.Dir.cwd().openDir(io, install_path, .{ .iterate = true }) catch |err| {
@@ -93,7 +93,7 @@ pub fn scanProfiles(allocator: std.mem.Allocator, io: std.Io, environ_map: *cons
             if (settings_entry.kind != .directory) continue;
             if (!std.mem.startsWith(u8, settings_entry.name, "settings")) continue;
 
-            const yaml_path = try std.fs.path.join(allocator, &[_][]const u8{ install_path, settings_entry.name, "core_public__.yaml" });
+            const yaml_path = try std.Io.Dir.path.join(allocator, &[_][]const u8{ install_path, settings_entry.name, "core_public__.yaml" });
             errdefer allocator.free(yaml_path);
 
             // Not every settings folder has one.
@@ -103,7 +103,7 @@ pub fn scanProfiles(allocator: std.mem.Allocator, io: std.Io, environ_map: *cons
             };
             probe.close(io);
 
-            const label = try std.fmt.allocPrint(allocator, "{s} / {s}", .{ install_entry.name, settings_entry.name });
+            const label = try allocator.print("{s} / {s}", .{ install_entry.name, settings_entry.name });
             errdefer allocator.free(label);
 
             try profiles.append(allocator, .{ .path = yaml_path, .label = label });
@@ -153,7 +153,7 @@ fn applyToOneFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !A
 }
 
 fn backupExists(io: std.Io, path: []const u8, allocator: std.mem.Allocator) bool {
-    const backup_path = std.fmt.allocPrint(allocator, "{s}.bak", .{path}) catch |err| {
+    const backup_path = allocator.print("{s}.bak", .{path}) catch |err| {
         slog.err("Failed to build the backup path for '{s}': {}", .{ path, err });
         return false;
     };
@@ -165,7 +165,7 @@ fn backupExists(io: std.Io, path: []const u8, allocator: std.mem.Allocator) bool
 }
 
 fn makeBackup(io: std.Io, path: []const u8, allocator: std.mem.Allocator) bool {
-    const backup_path = std.fmt.allocPrint(allocator, "{s}.bak", .{path}) catch |err| {
+    const backup_path = allocator.print("{s}.bak", .{path}) catch |err| {
         slog.err("Failed to build the backup path for '{s}': {}", .{ path, err });
         return false;
     };
@@ -218,15 +218,15 @@ fn patchLine(allocator: std.mem.Allocator, line: []const u8) !PatchedLine {
         if (!std.mem.startsWith(u8, after_key, ": [")) continue;
 
         const after_bracket = after_key[": [".len..];
-        const close_idx = std.mem.indexOfScalar(u8, after_bracket, ']') orelse continue;
+        const close_idx = std.mem.findScalar(u8, after_bracket, ']') orelse continue;
         const content = after_bracket[0..close_idx];
-        const comma_idx = std.mem.indexOfScalar(u8, content, ',') orelse continue;
+        const comma_idx = std.mem.findScalar(u8, content, ',') orelse continue;
         const id_str = std.mem.trim(u8, content[0..comma_idx], " ");
         const val_str = std.mem.trim(u8, content[comma_idx + 1 ..], " ");
 
         if (std.mem.eql(u8, val_str, "-300")) break;
 
-        const new_line = try std.fmt.allocPrint(allocator, "{s}{s}: [{s}, -300]{s}", .{ body[0..indent_len], key, id_str, cr });
+        const new_line = try allocator.print("{s}{s}: [{s}, -300]{s}", .{ body[0..indent_len], key, id_str, cr });
         return .{ .text = new_line, .changed = true };
     }
 

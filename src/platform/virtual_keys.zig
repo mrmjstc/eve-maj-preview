@@ -250,7 +250,7 @@ pub fn parseVirtualKey(key_str: []const u8) ?u32 {
     }
 
     // Combo format: everything before the last '+' is modifiers, the final token is the key.
-    if (std.mem.lastIndexOfScalar(u8, key_str, '+')) |last_plus| {
+    if (std.mem.findScalarLast(u8, key_str, '+')) |last_plus| {
         const key_part = std.mem.trim(u8, key_str[last_plus + 1 ..], " ");
         var modifiers: u32 = 0;
         var it = std.mem.splitScalar(u8, key_str[0..last_plus], '+');

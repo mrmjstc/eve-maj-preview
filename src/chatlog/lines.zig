@@ -47,7 +47,7 @@ pub const LineAssembler = struct {
     /// Calls `handler.onLine` per complete line, valid only during the call, and `handler.onLongLine` per line too long to keep.
     pub fn feed(self: *LineAssembler, allocator: std.mem.Allocator, text: []const u8, handler: anytype) !void {
         var rest = text;
-        while (std.mem.indexOfScalar(u8, rest, '\n')) |newline| {
+        while (std.mem.findScalar(u8, rest, '\n')) |newline| {
             const piece = rest[0..newline];
             rest = rest[newline + 1 ..];
             if (self.partial.items.len == 0 and !self.skipping) {
@@ -77,7 +77,7 @@ pub const LineAssembler = struct {
 pub fn parseChatLine(line: []const u8) ?[]const u8 {
     const stamped = std.mem.trimStart(u8, line, "\u{FEFF}");
     if (!std.mem.startsWith(u8, stamped, "[ ")) return null;
-    const close = std.mem.indexOf(u8, stamped, " ] ") orelse return null;
+    const close = std.mem.find(u8, stamped, " ] ") orelse return null;
     const message = stamped[close + " ] ".len ..];
     if (!std.mem.startsWith(u8, message, LOCAL_CHANGE)) return null;
     return localSystem(message);
@@ -85,7 +85,7 @@ pub fn parseChatLine(line: []const u8) ?[]const u8 {
 
 /// Dispatches on the message's first characters, so each line is scanned once.
 pub fn parseGameLine(line: []const u8) GameLine {
-    const close = std.mem.indexOf(u8, line, "] ") orelse return .{};
+    const close = std.mem.find(u8, line, "] ") orelse return .{};
     const message = line[close + 2 ..];
     if (message.len < 2) return .{};
 
@@ -102,7 +102,7 @@ pub fn parseGameLine(line: []const u8) GameLine {
     }
 
     if (message[0] != '(') return .{};
-    const tag = message[0 .. (std.mem.indexOfScalar(u8, message, ')') orelse return .{}) + 1];
+    const tag = message[0 .. (std.mem.findScalar(u8, message, ')') orelse return .{}) + 1];
     if (std.mem.eql(u8, tag, "(notify)")) {
         // A conduit jump moves the character as well as showing a notification.
         const conduit: ?SystemChange = if (gamelog_events.conduitDestination(line)) |system| .{ .system = system, .source = .conduit } else null;
@@ -116,27 +116,27 @@ pub fn parseGameLine(line: []const u8) GameLine {
 
 /// `text` starts at "EVE System > Channel changed to Local"; the system follows the colon.
 fn localSystem(text: []const u8) ?[]const u8 {
-    const colon = std.mem.indexOfScalar(u8, text, ':') orelse return null;
+    const colon = std.mem.findScalar(u8, text, ':') orelse return null;
     return nonEmpty(untilLineEnd(text[colon + 1 ..]));
 }
 
 /// `text` starts at "Jumping from A to B".
 fn jumpDestination(text: []const u8) ?[]const u8 {
-    const to = std.mem.indexOf(u8, text, " to ") orelse return null;
+    const to = std.mem.find(u8, text, " to ") orelse return null;
     return nonEmpty(untilLineEnd(text[to + " to ".len ..]));
 }
 
 /// The last " to ", since a station's name can contain one.
 fn undockDestination(text: []const u8) ?[]const u8 {
     const line = untilLineEnd(text);
-    const to = std.mem.lastIndexOf(u8, line, " to ") orelse return null;
+    const to = std.mem.findLast(u8, line, " to ") orelse return null;
     var system = std.mem.trimEnd(u8, line[to + " to ".len ..], ". ");
     if (std.mem.endsWith(u8, system, " solar system")) system = system[0 .. system.len - " solar system".len];
     return nonEmpty(std.mem.trim(u8, system, " \t"));
 }
 
 fn untilLineEnd(text: []const u8) []const u8 {
-    const end = std.mem.indexOfAny(u8, text, "\r\n\x00") orelse text.len;
+    const end = std.mem.findAny(u8, text, "\r\n\x00") orelse text.len;
     return std.mem.trim(u8, text[0..end], " \t");
 }
 
@@ -147,8 +147,8 @@ fn nonEmpty(text: []const u8) ?[]const u8 {
 /// The latest genuine Local change, skipping any a player typed.
 pub fn lastSystemInChat(text: []const u8) ?SystemMatch {
     var end = text.len;
-    while (std.mem.lastIndexOf(u8, text[0..end], LOCAL_CHANGE)) |pos| {
-        const line_start = if (std.mem.lastIndexOfScalar(u8, text[0..pos], '\n')) |newline| newline + 1 else 0;
+    while (std.mem.findLast(u8, text[0..end], LOCAL_CHANGE)) |pos| {
+        const line_start = if (std.mem.findScalarLast(u8, text[0..pos], '\n')) |newline| newline + 1 else 0;
         if (parseChatLine(text[line_start..])) |system| return .{ .system = system, .event_ts = lineTimestamp(text, pos) };
         end = line_start;
     }
@@ -159,11 +159,11 @@ pub fn lastSystemInChat(text: []const u8) ?SystemMatch {
 pub fn lastSystemInGame(text: []const u8) ?SystemMatch {
     var end = text.len;
     while (true) {
-        const jump = std.mem.lastIndexOf(u8, text[0..end], JUMP);
-        const undock = std.mem.lastIndexOf(u8, text[0..end], UNDOCK);
+        const jump = std.mem.findLast(u8, text[0..end], JUMP);
+        const undock = std.mem.findLast(u8, text[0..end], UNDOCK);
         const use_jump = if (jump) |j| (if (undock) |u| j > u else true) else false;
         const pos = (if (use_jump) jump else undock) orelse return null;
-        const line_start = if (std.mem.lastIndexOfScalar(u8, text[0..pos], '\n')) |newline| newline + 1 else 0;
+        const line_start = if (std.mem.findScalarLast(u8, text[0..pos], '\n')) |newline| newline + 1 else 0;
         if (isTimestampPrefix(text[line_start..pos])) {
             const system = (if (use_jump) jumpDestination(text[pos..]) else undockDestination(text[pos..])) orelse return null;
             return .{ .system = system, .event_ts = lineTimestamp(text, pos) };
@@ -176,7 +176,7 @@ pub fn lastSystemInGame(text: []const u8) ?SystemMatch {
 fn isTimestampPrefix(prefix: []const u8) bool {
     const stamped = std.mem.trimStart(u8, prefix, "\u{FEFF}");
     if (!std.mem.startsWith(u8, stamped, "[ ")) return false;
-    const close = std.mem.indexOf(u8, stamped, " ] ") orelse return false;
+    const close = std.mem.find(u8, stamped, " ] ") orelse return false;
     const rest = stamped[close + " ] ".len ..];
     return rest.len == 0 or std.mem.eql(u8, rest, "(None) ");
 }
@@ -184,8 +184,8 @@ fn isTimestampPrefix(prefix: []const u8) bool {
 /// YYYYMMDDHHMMSS, or 0; looks only 64 bytes back, so a chunk cut mid-line can't borrow an earlier line's bracket.
 pub fn lineTimestamp(text: []const u8, pos: usize) u64 {
     const window_start = pos -| 64;
-    const open = window_start + (std.mem.lastIndexOfScalar(u8, text[window_start..pos], '[') orelse return 0);
-    const close = std.mem.indexOfScalarPos(u8, text, open, ']') orelse return 0;
+    const open = window_start + (std.mem.findScalarLast(u8, text[window_start..pos], '[') orelse return 0);
+    const close = std.mem.findScalarPos(u8, text, open, ']') orelse return 0;
     const inner = std.mem.trim(u8, text[open + 1 .. close], " \t");
 
     if (inner.len < 19) return 0;
@@ -239,7 +239,7 @@ pub fn logTimestampToUnixSeconds(ts: u64) ?i64 {
 
 pub fn characterIdFromFileName(file_name: []const u8) ?[]const u8 {
     const name = withoutTxt(file_name);
-    const underscore = std.mem.lastIndexOfScalar(u8, name, '_') orelse return null;
+    const underscore = std.mem.findScalarLast(u8, name, '_') orelse return null;
     const id = name[underscore + 1 ..];
     if (id.len < 8 or id.len > 13) return null;
     for (id) |c| if (!std.ascii.isDigit(c)) return null;
@@ -252,7 +252,7 @@ fn withoutTxt(file_name: []const u8) []const u8 {
 
 pub fn listenerName(header: []const u8) ?[]const u8 {
     const needle = "Listener:";
-    const pos = std.mem.indexOf(u8, header, needle) orelse return null;
+    const pos = std.mem.find(u8, header, needle) orelse return null;
     return nonEmpty(untilLineEnd(header[pos + needle.len ..]));
 }
 
@@ -302,7 +302,7 @@ test "parseGameLine treats a conduit notify as a move and an event" {
 
 test "lineTimestamp reads the bracketed time before a position" {
     const line = "[ 2026.09.21 21:10:31 ] EVE System > Channel changed to Local : Jita";
-    try testing.expectEqual(@as(u64, 20260921211031), lineTimestamp(line, std.mem.indexOf(u8, line, "EVE").?));
+    try testing.expectEqual(@as(u64, 20260921211031), lineTimestamp(line, std.mem.find(u8, line, "EVE").?));
     try testing.expectEqual(@as(u64, 0), lineTimestamp("no bracket here", 10));
 }
 
@@ -315,7 +315,7 @@ test "lastSystemInGame picks whichever of jump and undock came last" {
     const found = lastSystemInGame(text).?;
     try testing.expectEqualStrings("Floseswin", found.system);
     try testing.expectEqual(@as(u64, 20260920232636), found.event_ts);
-    try testing.expectEqualStrings("8-WYQZ", lastSystemInGame(text[0..std.mem.indexOfScalar(u8, text, '\n').?]).?.system);
+    try testing.expectEqualStrings("8-WYQZ", lastSystemInGame(text[0..std.mem.findScalar(u8, text, '\n').?]).?.system);
 }
 
 test "lastSystemInGame skips a jump whose line was cut before its timestamp" {
@@ -332,7 +332,7 @@ test "lastSystemInChat picks the latest Local change" {
 }
 
 test "a system name stops at the zeros of a damaged log's end" {
-    const text = "[ 2026.09.21 21:10:37 ] EVE System > Channel changed to Local : Perimeter" ++ "\x00" ** 32;
+    const text = "[ 2026.09.21 21:10:37 ] EVE System > Channel changed to Local : Perimeter" ++ &@as([32]u8, @splat(0));
     try testing.expectEqualStrings("Perimeter", lastSystemInChat(text).?.system);
     try testing.expectEqualStrings("Perimeter", parseChatLine(text).?);
 }
@@ -425,7 +425,7 @@ test "LineAssembler keeps a long line split across reads whole" {
     var assembler: LineAssembler = .{};
     defer assembler.deinit(testing.allocator);
 
-    const long = "x" ** 3000;
+    const long: [3000]u8 = @splat('x');
     try assembler.feed(testing.allocator, long[0..1500], collector);
     try assembler.feed(testing.allocator, long[1500..] ++ "\n", collector);
     try testing.expectEqual(@as(usize, 1), lines.items.len);

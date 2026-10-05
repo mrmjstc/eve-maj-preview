@@ -42,7 +42,7 @@ const Call = struct {
         const allocator = host.allocator();
         const call = try allocator.create(Call);
         errdefer allocator.destroy(call);
-        const owned_id = try allocator.dupeZ(u8, id);
+        const owned_id = try allocator.dupeSentinel(u8, id, 0);
         errdefer allocator.free(owned_id);
         const owned_method = try allocator.dupe(u8, method);
         errdefer allocator.free(owned_method);
@@ -129,7 +129,7 @@ fn execute(call: *Call) void {
     const arena = arena_state.allocator();
 
     const json = dispatch(arena, call.method, call.args) catch |err| errorResponse(arena, call.method, err);
-    call.response = host.allocator().dupeZ(u8, json) catch |err| {
+    call.response = host.allocator().dupeSentinel(u8, json, 0) catch |err| {
         slog.err("Failed to copy the response to rpc {s}: {}", .{ call.method, err });
         return;
     };
@@ -150,14 +150,14 @@ fn runsOnCaller(method: []const u8) bool {
 fn methodNames(comptime M: type) []const []const u8 {
     comptime {
         var names: []const []const u8 = &.{};
-        for (@typeInfo(M).@"struct".decls) |d| {
-            const info = @typeInfo(@TypeOf(@field(M, d.name)));
+        for (@typeInfo(M).@"struct".decl_names) |decl_name| {
+            const info = @typeInfo(@TypeOf(@field(M, decl_name)));
             if (info != .@"fn") continue;
-            const params = info.@"fn".params;
-            if (params.len == 0 or params.len > 2 or params[0].type != std.mem.Allocator) {
-                @compileError(@typeName(M) ++ "." ++ d.name ++ " must take an arena and optionally an args struct to be an rpc method");
+            const param_types = info.@"fn".param_types;
+            if (param_types.len == 0 or param_types.len > 2 or param_types[0] != std.mem.Allocator) {
+                @compileError(@typeName(M) ++ "." ++ decl_name ++ " must take an arena and optionally an args struct to be an rpc method");
             }
-            names = names ++ &[_][]const u8{d.name};
+            names = names ++ &[_][]const u8{decl_name};
         }
         return names;
     }
@@ -178,9 +178,9 @@ fn dispatch(arena: std.mem.Allocator, method: []const u8, args_json: []const u8)
 }
 
 fn invoke(arena: std.mem.Allocator, comptime func: anytype, args: std.json.Value) ![]const u8 {
-    const params = @typeInfo(@TypeOf(func)).@"fn".params;
-    const result = if (params.len == 1) try func(arena) else blk: {
-        const Args = params[1].type.?;
+    const param_types = @typeInfo(@TypeOf(func)).@"fn".param_types;
+    const result = if (param_types.len == 1) try func(arena) else blk: {
+        const Args = param_types[1].?;
         const source: std.json.Value = if (args == .null) .{ .object = .empty } else args;
         const parsed = std.json.parseFromValueLeaky(Args, arena, source, .{ .ignore_unknown_fields = true }) catch return error.InvalidArguments;
         break :blk try func(arena, parsed);

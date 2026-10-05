@@ -54,7 +54,7 @@ fn emit(comptime name: []const u8, payload: anytype) void {
 
 fn emitJson(comptime name: []const u8, json: []const u8) void {
     const allocator = host.allocator();
-    const script = std.fmt.allocPrintSentinel(allocator, "window.onAppEvent && window.onAppEvent(\"" ++ name ++ "\", {s});", .{json}, 0) catch |err| {
+    const script = allocator.printSentinel("window.onAppEvent && window.onAppEvent(\"" ++ name ++ "\", {s});", .{json}, 0) catch |err| {
         slog.err("Failed to build {s} event script: {}", .{ name, err });
         return;
     };

@@ -259,7 +259,7 @@ pub fn registerClasses(instance: win32.HINSTANCE) !void {
 
 /// Creates the thumbnail window showing `source_hwnd` through DWM and its (still hidden) text overlay, linked to each other and the source.
 pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hwnd: win32.HWND, character_name: []const u8, pos: config_mod.Position, size: Size, opacity: u8, click_through: bool) !Handles {
-    const name_z = try allocator.dupeZ(u8, character_name);
+    const name_z = try allocator.dupeSentinel(u8, character_name, 0);
     defer allocator.free(name_z);
 
     // Needed on both windows since text_hwnd, being topmost, is the one that actually receives mouse messages.

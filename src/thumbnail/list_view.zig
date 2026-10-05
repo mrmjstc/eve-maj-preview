@@ -314,7 +314,7 @@ pub const ListWindow = struct {
 
         if (self.panel.font != null) {
             var hdr_buf: [48]u8 = undefined;
-            const hdr = std.fmt.bufPrint(&hdr_buf, "EVE-Maj Preview // {d}", .{count}) catch unreachable;
+            const hdr = std.mem.print(&hdr_buf, "EVE-Maj Preview // {d}", .{count}) catch unreachable;
             drawText(bitmap.mem_dc, hdr, 8, 5, ARGB_HDR_TEXT & 0xFFFFFF);
         }
         gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(HEADER_HEIGHT - 1), width, 1, ARGB_SEPARATOR);

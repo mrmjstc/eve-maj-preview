@@ -183,4 +183,3 @@ fn setWindowPositions(character_name: ?[]const u8, pos: ?config.Position) !void 
     try config.applyWindowPosition(draft, character_name, pos);
     patch.assignIds(config.Config, draft);
 }
-

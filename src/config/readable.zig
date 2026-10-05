@@ -81,15 +81,15 @@ const Check = struct {
                         _ = value.array.orderedRemove(i);
                     }
                 }
-            } else if (!@hasDecl(W, "jsonParseFromValue") and comptime everyFieldHasDefault(info.fields)) {
+            } else if (!@hasDecl(W, "jsonParseFromValue") and comptime everyFieldHasDefault(info.field_attrs)) {
                 if (value.* != .object) return false;
-                inline for (info.fields) |f| {
-                    if (value.object.getPtr(f.name)) |field_value| {
-                        const restore = self.push("{s}", .{f.name});
+                inline for (info.field_names, info.field_types) |name, F| {
+                    if (value.object.getPtr(name)) |field_value| {
+                        const restore = self.push("{s}", .{name});
                         defer self.path_len = restore;
-                        if (!self.fits(f.type, field_value)) {
+                        if (!self.fits(F, field_value)) {
                             self.drop("using its default");
-                            _ = value.object.orderedRemove(f.name);
+                            _ = value.object.orderedRemove(name);
                         }
                     }
                 }
@@ -107,9 +107,9 @@ pub fn dropUnreadable(comptime T: type, arena: std.mem.Allocator, value: *std.js
     return check.fits(T, value);
 }
 
-fn everyFieldHasDefault(fields: []const std.builtin.Type.StructField) bool {
-    for (fields) |f| {
-        if (f.default_value_ptr == null) return false;
+fn everyFieldHasDefault(field_attrs: []const std.lang.Type.Struct.FieldAttributes) bool {
+    for (field_attrs) |attrs| {
+        if (attrs.default_value_ptr == null) return false;
     }
     return true;
 }

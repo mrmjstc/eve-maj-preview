@@ -111,11 +111,11 @@ pub fn withAlpha(color: u32, alpha: f64) u32 {
 }
 
 pub fn colorValue(arena: std.mem.Allocator, color: u32) !Value {
-    return .{ .string = try std.fmt.allocPrint(arena, "0x{X:0>8}", .{color}) };
+    return .{ .string = try arena.print("0x{X:0>8}", .{color}) };
 }
 
 pub fn keyValue(arena: std.mem.Allocator, combined: u32) !Value {
-    return .{ .string = try std.fmt.allocPrint(arena, "0x{X:0>2}", .{combined}) };
+    return .{ .string = try arena.print("0x{X:0>2}", .{combined}) };
 }
 
 /// In the shape a KeyList saves: null, one key string, or an array of them.
@@ -150,14 +150,14 @@ pub fn legacyBaseKey(token: []const u8) ?u32 {
     }
     if (lower.len == 7 and std.mem.startsWith(u8, lower, "numpad") and std.ascii.isDigit(lower[6])) return vk.VK_NUMPAD0 + (lower[6] - '0');
     const named = [_]struct { []const u8, u32 }{
-        .{ "space", vk.VK_SPACE },         .{ "pageup", vk.VK_PRIOR },         .{ "pgup", vk.VK_PRIOR },
-        .{ "pagedown", vk.VK_NEXT },       .{ "pgdn", vk.VK_NEXT },            .{ "end", vk.VK_END },
-        .{ "home", vk.VK_HOME },           .{ "left", vk.VK_LEFT },            .{ "up", vk.VK_UP },
-        .{ "right", vk.VK_RIGHT },         .{ "down", vk.VK_DOWN },            .{ "insert", vk.VK_INSERT },
-        .{ "ins", vk.VK_INSERT },          .{ "delete", vk.VK_DELETE },        .{ "del", vk.VK_DELETE },
-        .{ "numpadmult", vk.VK_MULTIPLY }, .{ "numpadmultiply", vk.VK_MULTIPLY }, .{ "numpadadd", vk.VK_ADD },
-        .{ "numpadsub", vk.VK_SUBTRACT },  .{ "numpadsubtract", vk.VK_SUBTRACT }, .{ "numpaddot", vk.VK_DECIMAL },
-        .{ "numpaddecimal", vk.VK_DECIMAL }, .{ "numpaddiv", vk.VK_DIVIDE }, .{ "numpaddivide", vk.VK_DIVIDE },
+        .{ "space", vk.VK_SPACE },           .{ "pageup", vk.VK_PRIOR },            .{ "pgup", vk.VK_PRIOR },
+        .{ "pagedown", vk.VK_NEXT },         .{ "pgdn", vk.VK_NEXT },               .{ "end", vk.VK_END },
+        .{ "home", vk.VK_HOME },             .{ "left", vk.VK_LEFT },               .{ "up", vk.VK_UP },
+        .{ "right", vk.VK_RIGHT },           .{ "down", vk.VK_DOWN },               .{ "insert", vk.VK_INSERT },
+        .{ "ins", vk.VK_INSERT },            .{ "delete", vk.VK_DELETE },           .{ "del", vk.VK_DELETE },
+        .{ "numpadmult", vk.VK_MULTIPLY },   .{ "numpadmultiply", vk.VK_MULTIPLY }, .{ "numpadadd", vk.VK_ADD },
+        .{ "numpadsub", vk.VK_SUBTRACT },    .{ "numpadsubtract", vk.VK_SUBTRACT }, .{ "numpaddot", vk.VK_DECIMAL },
+        .{ "numpaddecimal", vk.VK_DECIMAL }, .{ "numpaddiv", vk.VK_DIVIDE },        .{ "numpaddivide", vk.VK_DIVIDE },
     };
     for (named) |entry| {
         if (std.mem.eql(u8, lower, entry[0])) return entry[1];
@@ -182,7 +182,7 @@ pub fn ahkHotkey(raw: ?[]const u8) ?u32 {
         }
     }
 
-    if (std.mem.indexOf(u8, s, " & ")) |amp| {
+    if (std.mem.find(u8, s, " & ")) |amp| {
         const left = std.mem.trim(u8, s[0..amp], " \t");
         modifiers |= modifierWord(left) orelse return null;
         s = s[amp + 3 ..];
@@ -222,8 +222,8 @@ pub fn characterName(raw: []const u8) ?[]const u8 {
     var name = std.mem.trim(u8, raw, " \t");
     if (std.mem.startsWith(u8, name, "EVE - ")) name = std.mem.trim(u8, name["EVE - ".len..], " \t");
     if (name.len == 0 or std.ascii.eqlIgnoreCase(name, "eve")) return null;
-    if (std.ascii.indexOfIgnoreCase(name, "example") != null) return null;
-    if (std.mem.indexOfAny(u8, name, "\\/") != null or std.ascii.endsWithIgnoreCase(name, ".exe")) return null;
+    if (std.ascii.findIgnoreCase(name, "example") != null) return null;
+    if (std.mem.findAny(u8, name, "\\/") != null or std.ascii.endsWithIgnoreCase(name, ".exe")) return null;
     if (name.len > "cycle group ".len and std.ascii.startsWithIgnoreCase(name, "cycle group ")) {
         for (name["cycle group ".len..]) |c| {
             if (!std.ascii.isDigit(c)) return name;

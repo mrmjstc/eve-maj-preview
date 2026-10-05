@@ -378,20 +378,20 @@ pub fn Tracker(comptime Window: type) type {
 /// `stripped_line` has its HTML stripped already, and `weapon` borrows from it. An incoming miss is a zero-amount hit, so it still counts for the Taking Damage alert; outgoing misses are dropped.
 pub fn parseCombatLine(stripped_line: []const u8) ?struct { amount: u32, is_incoming: bool, weapon: []const u8 } {
     const combat_prefix = "(combat)";
-    const combat_pos = std.mem.indexOf(u8, stripped_line, combat_prefix) orelse return null;
+    const combat_pos = std.mem.find(u8, stripped_line, combat_prefix) orelse return null;
     const stripped = std.mem.trimStart(u8, stripped_line[combat_pos + combat_prefix.len ..], " \t");
 
     // Remote repairs and capacitor transfers aren't damage.
-    if (std.mem.indexOf(u8, stripped, "boosts your") != null or
-        std.mem.indexOf(u8, stripped, "shields your") != null or
-        std.mem.indexOf(u8, stripped, "repairs your") != null or
-        std.mem.indexOf(u8, stripped, "transfers") != null)
+    if (std.mem.find(u8, stripped, "boosts your") != null or
+        std.mem.find(u8, stripped, "shields your") != null or
+        std.mem.find(u8, stripped, "repairs your") != null or
+        std.mem.find(u8, stripped, "transfers") != null)
     {
         return null;
     }
 
-    if (std.mem.indexOf(u8, stripped, " misses you completely")) |miss_pos| {
-        const weapon_dash = std.mem.indexOfPos(u8, stripped, miss_pos, " - ") orelse return .{ .amount = 0, .is_incoming = true, .weapon = "" };
+    if (std.mem.find(u8, stripped, " misses you completely")) |miss_pos| {
+        const weapon_dash = std.mem.findPos(u8, stripped, miss_pos, " - ") orelse return .{ .amount = 0, .is_incoming = true, .weapon = "" };
         return .{ .amount = 0, .is_incoming = true, .weapon = std.mem.trim(u8, stripped[weapon_dash + 3 ..], " \t") };
     }
 
@@ -412,18 +412,18 @@ pub fn parseCombatLine(stripped_line: []const u8) ?struct { amount: u32, is_inco
     if (!found_digit or amount == 0) return null;
 
     const rest = stripped[digits_end..];
-    const is_incoming = if (std.mem.indexOf(u8, rest, " from ") != null)
+    const is_incoming = if (std.mem.find(u8, rest, " from ") != null)
         true
-    else if (std.mem.indexOf(u8, rest, " to ") != null)
+    else if (std.mem.find(u8, rest, " to ") != null)
         false
     else
         return null;
 
     // The weapon is the segment before the hit quality, found from the end since target names can contain " - " too.
     var weapon: []const u8 = "";
-    if (std.mem.lastIndexOf(u8, rest, " - ")) |quality_dash| {
+    if (std.mem.findLast(u8, rest, " - ")) |quality_dash| {
         const before_quality = rest[0..quality_dash];
-        if (std.mem.lastIndexOf(u8, before_quality, " - ")) |weapon_dash| {
+        if (std.mem.findLast(u8, before_quality, " - ")) |weapon_dash| {
             weapon = std.mem.trim(u8, before_quality[weapon_dash + 3 ..], " \t");
         }
     }
@@ -449,7 +449,7 @@ pub fn isWeaponExcluded(weapon: []const u8, excluded_csv: []const u8) bool {
 /// The ISK added to the next payout; unlike combat and mining amounts, it has comma separators ("246,153 ISK").
 pub fn parseBountyLine(line: []const u8) ?f32 {
     const bounty_prefix = "(bounty)";
-    const bounty_pos = std.mem.indexOf(u8, line, bounty_prefix) orelse return null;
+    const bounty_pos = std.mem.find(u8, line, bounty_prefix) orelse return null;
     const payload = std.mem.trimStart(u8, line[bounty_pos + bounty_prefix.len ..], " \t");
 
     var stripped_buf: [512]u8 = undefined;
@@ -477,19 +477,19 @@ pub fn parseBountyLine(line: []const u8) ?f32 {
 /// Null for residue lines, which the player doesn't gain.
 pub fn parseMiningLine(line: []const u8) ?ParsedMiningEvent {
     const mining_prefix = "(mining)";
-    const mining_pos = std.mem.indexOf(u8, line, mining_prefix) orelse return null;
+    const mining_pos = std.mem.find(u8, line, mining_prefix) orelse return null;
     const payload = std.mem.trimStart(u8, line[mining_pos + mining_prefix.len ..], " \t");
 
     var stripped_buf: [512]u8 = undefined;
     const stripped = stripHtml(payload, &stripped_buf);
 
-    if (std.mem.indexOf(u8, stripped, "depleted from asteroid as residue") != null) {
+    if (std.mem.find(u8, stripped, "depleted from asteroid as residue") != null) {
         return null;
     }
 
     // "You mined" starts both normal and critical yields.
     const mined_kw = "You mined";
-    const mined_pos = std.mem.indexOf(u8, stripped, mined_kw) orelse return null;
+    const mined_pos = std.mem.find(u8, stripped, mined_kw) orelse return null;
     var cursor = std.mem.trimStart(u8, stripped[mined_pos + mined_kw.len ..], " \t");
 
     // A critical yield says "an additional".
@@ -516,9 +516,9 @@ pub fn parseMiningLine(line: []const u8) ?ParsedMiningEvent {
 
     const units_of_kw = "units of ";
     const rest = cursor[digit_end..];
-    const units_pos = std.mem.indexOf(u8, rest, units_of_kw) orelse return null;
+    const units_pos = std.mem.find(u8, rest, units_of_kw) orelse return null;
     const name_start = rest[units_pos + units_of_kw.len ..];
-    const name_end = std.mem.indexOfScalar(u8, name_start, '.') orelse name_start.len;
+    const name_end = std.mem.findScalar(u8, name_start, '.') orelse name_start.len;
     const ore_name = std.mem.trim(u8, name_start[0..name_end], " \t");
     if (ore_name.len == 0) return null;
 

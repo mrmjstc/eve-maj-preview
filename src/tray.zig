@@ -166,7 +166,7 @@ pub const TrayIcon = struct {
         }
         const shown = self.profiles.items[0..@min(self.profiles.items.len, MAX_PROFILE_ITEMS)];
         for (shown, 0..) |profile, i| {
-            const profile_z = self.allocator.dupeZ(u8, profile) catch |err| {
+            const profile_z = self.allocator.dupeSentinel(u8, profile, 0) catch |err| {
                 slog.warn("Failed to copy profile name '{s}' for tray menu: {}", .{ profile, err });
                 continue;
             };

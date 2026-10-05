@@ -55,7 +55,7 @@ pub fn build(d: *Draft, text: []const u8, root: Value, chosen: []const []const u
         if (draft.isChosen(chosen, f.name)) try importSection(d, &cfg, readable_root, f.name);
     }
     for (skipped.items) |path| {
-        const section_end = std.mem.indexOfScalar(u8, path, '.') orelse path.len;
+        const section_end = std.mem.findScalar(u8, path, '.') orelse path.len;
         if (!draft.isChosen(chosen, path[0..section_end])) continue;
         try d.skipped.append(d.arena, path);
     }

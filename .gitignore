@@ -24,6 +24,7 @@ build-release.ps1
 build-release-dev.ps1
 .claude/
 .vscode/launch.json
+.vscode/settings.json
 nul
 update-winget.ps1
 manifests/

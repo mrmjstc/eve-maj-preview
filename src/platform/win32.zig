@@ -1060,7 +1060,7 @@ pub fn windowExeName(hwnd: HWND, exe_path_buf: *[260:0]u8) ?[]const u8 {
     _ = GetWindowThreadProcessId(hwnd, &process_id);
     if (process_id == 0) return null;
     const path = queryProcessExePath(process_id, exe_path_buf) orelse return null;
-    return std.fs.path.basename(path);
+    return std.Io.Dir.path.basename(path);
 }
 
 /// Toggles WS_EX_TRANSPARENT on an already-created window, so clickThrough can change live without recreating it.
@@ -1110,7 +1110,7 @@ pub fn selfExePath(buf: []u8) ![]const u8 {
 /// Directory containing the current process's own executable. Replaces std.fs.selfExeDirPath, removed in Zig 0.16.
 pub fn selfExeDirPath(buf: []u8) ![]const u8 {
     const full_path = try selfExePath(buf);
-    return std.fs.path.dirname(full_path) orelse return error.MissingDirname;
+    return std.Io.Dir.path.dirname(full_path) orelse return error.MissingDirname;
 }
 
 /// Opens `target` (a file path or URL) with its default handler via ShellExecuteA. Returns false on failure.
@@ -1122,7 +1122,7 @@ pub fn shellOpen(target: [*:0]const u8, workdir: ?[*:0]const u8) bool {
 /// shellOpen for an unterminated URL; false if it's too long to terminate or the shell refuses it.
 pub fn shellOpenUrl(url: []const u8) bool {
     var buf: [1024]u8 = undefined;
-    const url_z = std.fmt.bufPrintZ(&buf, "{s}", .{url}) catch return false;
+    const url_z = std.mem.printSentinel(&buf, "{s}", .{url}, 0) catch return false;
     return shellOpen(url_z.ptr, null);
 }
 
@@ -1348,7 +1348,7 @@ pub fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8, owner: 
     const path_w = result_item.getDisplayName(SIGDN_FILESYSPATH) orelse return null;
     defer CoTaskMemFree(path_w);
 
-    const path_len = std.mem.indexOfSentinel(u16, 0, path_w);
+    const path_len = std.mem.findSentinel(u16, 0, path_w);
     const path_slice = path_w[0..path_len :0];
     const path = try std.unicode.utf16LeToUtf8Alloc(allocator, path_slice);
 
@@ -1405,7 +1405,7 @@ pub fn showFilePicker(allocator: std.mem.Allocator, title: []const u8, filter_na
     const path_w = result_item.getDisplayName(SIGDN_FILESYSPATH) orelse return null;
     defer CoTaskMemFree(path_w);
 
-    const path_len = std.mem.indexOfSentinel(u16, 0, path_w);
+    const path_len = std.mem.findSentinel(u16, 0, path_w);
     const path_slice = path_w[0..path_len :0];
     return try std.unicode.utf16LeToUtf8Alloc(allocator, path_slice);
 }

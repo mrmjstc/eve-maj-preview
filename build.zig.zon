@@ -1,7 +1,7 @@
 .{
     .name = .EVE_Maj_Preview,
     .version = "0.15.2",
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{},
     .paths = .{""},
     .fingerprint = 0x92cdb9db8adfb629,

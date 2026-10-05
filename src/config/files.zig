@@ -75,7 +75,7 @@ pub fn atomicWriteFile(allocator: std.mem.Allocator, io: std.Io, path: []const u
         io.random(&rand_bytes);
         break :blk std.mem.readInt(u64, &rand_bytes, .little);
     };
-    const temp_path = try std.fmt.allocPrint(allocator, "{s}.{x}.tmp", .{ path, unique });
+    const temp_path = try allocator.print("{s}.{x}.tmp", .{ path, unique });
     defer allocator.free(temp_path);
 
     const temp_file = std.Io.Dir.cwd().createFile(io, temp_path, .{}) catch |err| {
@@ -103,7 +103,7 @@ pub fn atomicWriteFile(allocator: std.mem.Allocator, io: std.Io, path: []const u
 
 /// Expand %VAR% patterns in a path string. Caller owns the returned slice.
 pub fn expandEnvironmentVariables(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    if (std.mem.indexOfScalar(u8, path, '%') == null) {
+    if (std.mem.findScalar(u8, path, '%') == null) {
         return allocator.dupe(u8, path);
     }
 
@@ -114,7 +114,7 @@ pub fn expandEnvironmentVariables(allocator: std.mem.Allocator, path: []const u8
     while (i < path.len) {
         if (path[i] == '%') {
             const start = i + 1;
-            const end = std.mem.indexOfScalarPos(u8, path, start, '%') orelse {
+            const end = std.mem.findScalarPos(u8, path, start, '%') orelse {
                 try result.append(allocator, '%');
                 i += 1;
                 continue;

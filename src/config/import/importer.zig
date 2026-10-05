@@ -70,7 +70,7 @@ pub fn analyze(jw: *std.json.Stringify, arena: std.mem.Allocator, text: []const 
     try jw.objectField("format");
     try jw.write(@tagName(source));
 
-    const stem = std.fs.path.stem(file_name);
+    const stem = std.Io.Dir.path.stem(file_name);
     var name_source = stem;
     const sections = switch (source) {
         .maj => |root| try own.sections(&d, root),

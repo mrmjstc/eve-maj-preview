@@ -90,7 +90,7 @@ const StaticFile = struct { name: []const u8, file: File };
 /// Caller owns the returned page.
 pub fn buildPage(allocator: std.mem.Allocator, lang: Lang, ui_scale: f32) ![:0]u8 {
     var scale_buf: [16]u8 = undefined;
-    const scale = std.fmt.bufPrint(&scale_buf, "{d:.2}", .{ui_scale}) catch unreachable;
+    const scale = std.mem.print(&scale_buf, "{d:.2}", .{ui_scale}) catch unreachable;
     const replacements = [_][2][]const u8{
         .{ "LANG_PLACEHOLDER", @tagName(lang) },
         .{ "UI_SCALE_PLACEHOLDER", scale },
@@ -103,7 +103,7 @@ pub fn buildPage(allocator: std.mem.Allocator, lang: Lang, ui_scale: f32) ![:0]u
         allocator.free(page);
         page = replaced;
     }
-    return allocator.dupeZ(u8, page);
+    return allocator.dupeSentinel(u8, page, 0);
 }
 
 pub fn staticFile(name: []const u8) ?File {
@@ -122,11 +122,11 @@ fn catalogsModule() []const u8 {
     comptime {
         var catalogs: []const u8 = "export const catalogs = {";
         var names: []const u8 = "export const languageNames = {";
-        for (std.meta.fields(Lang), 0..) |field, i| {
-            const lang: Lang = @enumFromInt(field.value);
+        for (@typeInfo(Lang).@"enum".field_names, 0..) |name, i| {
+            const lang = @field(Lang, name);
             const separator = if (i == 0) "" else ",";
-            catalogs = catalogs ++ separator ++ "\"" ++ field.name ++ "\":" ++ lang.catalog();
-            names = names ++ separator ++ "\"" ++ field.name ++ "\":\"" ++ lang.displayName() ++ "\"";
+            catalogs = catalogs ++ separator ++ "\"" ++ name ++ "\":" ++ lang.catalog();
+            names = names ++ separator ++ "\"" ++ name ++ "\":\"" ++ lang.displayName() ++ "\"";
         }
         return catalogs ++ "};\n" ++ names ++ "};\n";
     }

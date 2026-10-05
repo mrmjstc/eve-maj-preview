@@ -107,7 +107,7 @@ pub fn runScript(script: []const u8) void {
     g_webview_mutex.lockUncancelable(g_io);
     defer g_webview_mutex.unlock(g_io);
     const w = g_webview orelse return;
-    const owned = g_allocator.dupeZ(u8, script) catch |err| {
+    const owned = g_allocator.dupeSentinel(u8, script, 0) catch |err| {
         slog.err("Failed to copy a script for the configuration window: {}", .{err});
         return;
     };
@@ -377,7 +377,7 @@ fn disableProxyDetection() void {
 
     var args_buf: [existing_buf.len + 32]u8 = undefined;
     const separator = if (existing.len > 0) " " else "";
-    const args = std.fmt.bufPrintZ(&args_buf, "{s}{s}--no-proxy-server", .{ existing, separator }) catch unreachable;
+    const args = std.mem.printSentinel(&args_buf, "{s}{s}--no-proxy-server", .{ existing, separator }, 0) catch unreachable;
     // Windows proxy auto-detection (WPAD) otherwise stalls every page load ~2.7s on some networks.
     if (!win32.toBool(win32.SetEnvironmentVariableA(BROWSER_ARGS_VAR, args))) {
         slog.warn("Failed to disable proxy detection for the configuration window, it may open slowly", .{});

@@ -392,7 +392,7 @@ fn characterOrderSignature(characters: []const config.CharacterConfig) u64 {
 
 /// Takes an optional target since callers pass GetForegroundWindow() directly.
 fn indexOfHwnd(hwnds: []const win32.HWND, target: ?win32.HWND) ?usize {
-    return std.mem.indexOfScalar(win32.HWND, hwnds, target orelse return null);
+    return std.mem.findScalar(win32.HWND, hwnds, target orelse return null);
 }
 
 /// The window for a group cycle position, where not-logged-in positions follow the group's characters; null if it isn't a valid target.

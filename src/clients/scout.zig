@@ -300,7 +300,7 @@ pub const Scout = struct {
 
     /// "EVE - CharacterName" gives "CharacterName"; the whole title when nothing follows a " - ".
     fn extractCharacterName(title: []const u8) []const u8 {
-        const dash_pos = std.mem.indexOf(u8, title, " - ") orelse return title;
+        const dash_pos = std.mem.find(u8, title, " - ") orelse return title;
         const name = title[dash_pos + " - ".len ..];
         return if (name.len == 0) title else name;
     }

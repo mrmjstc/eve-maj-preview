@@ -97,9 +97,9 @@ pub const NotificationTypeConfigs = struct {
 
         pub fn jsonStringify(self: Wire, jw: anytype) !void {
             try jw.beginObject();
-            inline for (std.meta.fields(notification.NotificationType)) |f| {
-                try jw.objectField(f.name);
-                try jw.write(self.map.get(@field(notification.NotificationType, f.name)));
+            inline for (@typeInfo(notification.NotificationType).@"enum".field_names) |name| {
+                try jw.objectField(name);
+                try jw.write(self.map.get(@field(notification.NotificationType, name)));
             }
             try jw.endObject();
         }
@@ -128,8 +128,8 @@ pub const NotificationTypeConfigs = struct {
 
     pub fn toWire(self: *const NotificationTypeConfigs) Wire {
         var out: Wire = .{};
-        inline for (std.meta.fields(notification.NotificationType)) |f| {
-            const ntype = @field(notification.NotificationType, f.name);
+        inline for (@typeInfo(notification.NotificationType).@"enum".field_names) |name| {
+            const ntype = @field(notification.NotificationType, name);
             out.map.set(ntype, wire.encode(NotificationTypeConfig, self.map.get(ntype)));
         }
         return out;
@@ -138,8 +138,8 @@ pub const NotificationTypeConfigs = struct {
     pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !NotificationTypeConfigs {
         var out: NotificationTypeConfigs = .{};
         errdefer out.deinit(allocator);
-        inline for (std.meta.fields(notification.NotificationType)) |f| {
-            const ntype = @field(notification.NotificationType, f.name);
+        inline for (@typeInfo(notification.NotificationType).@"enum".field_names) |name| {
+            const ntype = @field(notification.NotificationType, name);
             out.map.set(ntype, try wire.decode(NotificationTypeConfig, w.map.get(ntype), allocator));
         }
         return out;

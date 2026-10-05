@@ -371,7 +371,7 @@ pub const ChatlogMonitor = struct {
             // Not a jump: it's where the character already was.
             self.queueSystemUpdate(character_name, match.system, match.event_ts, false);
         }
-        if (!is_chatlog) self.queueSessionStart(character_name, std.fs.path.basename(path));
+        if (!is_chatlog) self.queueSessionStart(character_name, std.Io.Dir.path.basename(path));
 
         slog.info("Monitoring {s} for {s}: {s}", .{ if (is_chatlog) "chatlog" else "gamelog", character_name, path });
     }

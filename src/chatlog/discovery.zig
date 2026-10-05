@@ -111,7 +111,7 @@ pub const LogFinder = struct {
     /// Lets Windows filter the folder down to this ID's files, then keeps the newest.
     fn findById(self: *LogFinder, dir: []const u8, is_chatlog: bool, id: []const u8) ?[]u8 {
         var pattern_buf: [64]u8 = undefined;
-        const pattern = std.fmt.bufPrint(&pattern_buf, "{s}*_{s}.txt", .{ if (is_chatlog) "Local_" else "", id }) catch |err| {
+        const pattern = std.mem.print(&pattern_buf, "{s}*_{s}.txt", .{ if (is_chatlog) "Local_" else "", id }) catch |err| {
             slog.warn("Failed to build log search for character ID '{s}': {}", .{ id, err });
             return null;
         };
@@ -209,7 +209,7 @@ pub const LogFinder = struct {
     }
 
     fn joinPath(self: *LogFinder, dir: []const u8, name: []const u8) ?[]u8 {
-        return std.fs.path.join(self.allocator, &.{ dir, name }) catch |err| {
+        return std.Io.Dir.path.join(self.allocator, &.{ dir, name }) catch |err| {
             slog.warn("Failed to build path for log file '{s}': {}", .{ name, err });
             return null;
         };
@@ -224,7 +224,7 @@ const FileNames = struct {
     name_buf: [NAME_BUF]u8 = undefined,
 
     fn open(allocator: std.mem.Allocator, dir: []const u8, pattern: []const u8) ?FileNames {
-        const search = std.fs.path.join(allocator, &.{ dir, pattern }) catch |err| {
+        const search = std.Io.Dir.path.join(allocator, &.{ dir, pattern }) catch |err| {
             slog.warn("Failed to build log search path for '{s}': {}", .{ dir, err });
             return null;
         };
@@ -255,7 +255,7 @@ const FileNames = struct {
             self.pending = false;
             if (self.find_data.dwFileAttributes & win32.FILE_ATTRIBUTE_DIRECTORY != 0) continue;
             const raw: []const u16 = self.find_data.cFileName[0..];
-            const len = std.mem.indexOfScalar(u16, raw, 0) orelse raw.len;
+            const len = std.mem.findScalar(u16, raw, 0) orelse raw.len;
             const written = std.unicode.utf16LeToUtf8(&self.name_buf, raw[0..len]) catch |err| {
                 slog.warn("Failed to decode log file name: {}", .{err});
                 continue;
@@ -287,4 +287,3 @@ fn rewatch(watcher: *?win32.HANDLE, is_new: *bool, dir: []const u8) void {
     watcher.* = null;
     slog.warn("Failed to keep watching '{s}', retrying until it exists", .{dir});
 }
-

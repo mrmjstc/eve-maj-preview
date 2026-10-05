@@ -56,8 +56,8 @@ pub const ChatlogConfig = struct {
         if (cfg.chatlogDir.len == 0 or cfg.gamelogDir.len == 0) {
             const documents_dir = try documentsDir(allocator);
             defer allocator.free(documents_dir);
-            if (cfg.chatlogDir.len == 0) replaceDir(allocator, &cfg.chatlogDir, try std.fmt.allocPrint(allocator, "{s}/EVE/logs/Chatlogs", .{documents_dir}));
-            if (cfg.gamelogDir.len == 0) replaceDir(allocator, &cfg.gamelogDir, try std.fmt.allocPrint(allocator, "{s}/EVE/logs/Gamelogs", .{documents_dir}));
+            if (cfg.chatlogDir.len == 0) replaceDir(allocator, &cfg.chatlogDir, try allocator.print("{s}/EVE/logs/Chatlogs", .{documents_dir}));
+            if (cfg.gamelogDir.len == 0) replaceDir(allocator, &cfg.gamelogDir, try allocator.print("{s}/EVE/logs/Gamelogs", .{documents_dir}));
         }
         return cfg;
     }
@@ -83,7 +83,7 @@ fn documentsDir(allocator: std.mem.Allocator) ![]u8 {
             slog.warn("Failed to read USERPROFILE", .{});
             return error.MissingEnvironmentVariable;
         };
-        break :blk try std.fmt.allocPrint(allocator, "{s}/Documents", .{userprofile});
+        break :blk try allocator.print("{s}/Documents", .{userprofile});
     };
     std.mem.replaceScalar(u8, dir, '\\', '/');
     return dir;

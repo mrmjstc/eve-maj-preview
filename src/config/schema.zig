@@ -38,7 +38,7 @@ fn writeFields(jw: *std.json.Stringify, comptime R: type, comptime prefix: []con
     inline for (comptime wire.savedFields(R)) |f| try writeField(jw, R, f, prefix ++ f.name);
 }
 
-fn writeField(jw: *std.json.Stringify, comptime R: type, comptime f: std.builtin.Type.StructField, comptime path: []const u8) !void {
+fn writeField(jw: *std.json.Stringify, comptime R: type, comptime f: wire.SavedField, comptime path: []const u8) !void {
     const F = f.type;
     if (comptime wire.ListItem(F)) |Item| {
         try jw.objectField(path);
@@ -72,7 +72,7 @@ fn writeField(jw: *std.json.Stringify, comptime R: type, comptime f: std.builtin
     try writeLeaf(jw, R, f, path);
 }
 
-fn writeLeaf(jw: *std.json.Stringify, comptime R: type, comptime f: std.builtin.Type.StructField, comptime path: []const u8) !void {
+fn writeLeaf(jw: *std.json.Stringify, comptime R: type, comptime f: wire.SavedField, comptime path: []const u8) !void {
     const nullable = @typeInfo(f.type) == .optional;
     const Plain = if (nullable) @typeInfo(f.type).optional.child else f.type;
 
@@ -100,7 +100,7 @@ fn writeLeaf(jw: *std.json.Stringify, comptime R: type, comptime f: std.builtin.
     }
     if (comptime @typeInfo(Plain) == .@"enum") {
         try jw.objectField("options");
-        try jw.write(std.meta.fieldNames(Plain));
+        try jw.write(@typeInfo(Plain).@"enum".field_names);
         try jw.objectField("enumType");
         try jw.write(comptime shortTypeName(Plain));
     }
@@ -140,7 +140,7 @@ fn isZeroMeansDefault(comptime R: type, comptime name: []const u8) bool {
 
 fn shortTypeName(comptime T: type) []const u8 {
     const full = @typeName(T);
-    const dot = std.mem.lastIndexOfScalar(u8, full, '.') orelse return full;
+    const dot = std.mem.findScalarLast(u8, full, '.') orelse return full;
     return full[dot + 1 ..];
 }
 

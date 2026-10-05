@@ -30,7 +30,7 @@ pub const KeyList = struct {
 
     /// Returns false only when the list is full; a key already in it counts as added.
     pub fn append(self: *KeyList, combined: u32) bool {
-        if (std.mem.indexOfScalar(u32, self.slice(), combined) != null) return true;
+        if (std.mem.findScalar(u32, self.slice(), combined) != null) return true;
         if (self.len == MAX_KEYS) return false;
         self.keys[self.len] = combined;
         self.len += 1;
@@ -87,7 +87,7 @@ fn appendParsed(list: *KeyList, text: []const u8) void {
 
 fn writeKey(jw: anytype, combined: u32) !void {
     var buf: [10]u8 = undefined;
-    const s = std.fmt.bufPrint(&buf, "0x{X:0>2}", .{combined}) catch unreachable;
+    const s = std.mem.print(&buf, "0x{X:0>2}", .{combined}) catch unreachable;
     try jw.write(s);
 }
 

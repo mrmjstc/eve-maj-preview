@@ -30,18 +30,18 @@ pub fn insertThousandsSeparators(buf: []u8, text: []const u8) []const u8 {
 pub fn formatIskAbbrev(buf: []u8, value: f32) []const u8 {
     const abs_value = @abs(value);
     if (abs_value >= 999_500.0) {
-        return std.fmt.bufPrint(buf, "{d:.1}m", .{value / 1_000_000.0}) catch "?";
+        return std.mem.print(buf, "{d:.1}m", .{value / 1_000_000.0}) catch "?";
     } else if (abs_value >= 999.5) {
-        return std.fmt.bufPrint(buf, "{d:.0}k", .{value / 1_000.0}) catch "?";
+        return std.mem.print(buf, "{d:.0}k", .{value / 1_000.0}) catch "?";
     } else {
-        return std.fmt.bufPrint(buf, "{d:.0}", .{value}) catch "?";
+        return std.mem.print(buf, "{d:.0}", .{value}) catch "?";
     }
 }
 
 /// Whole minutes as "42m", or "3h 07m" from an hour on.
 pub fn formatSessionDuration(buf: []u8, minutes: u64) []const u8 {
-    if (minutes < 60) return std.fmt.bufPrint(buf, "{d}m", .{minutes}) catch "?";
-    return std.fmt.bufPrint(buf, "{d}h {d:0>2}m", .{ minutes / 60, minutes % 60 }) catch "?";
+    if (minutes < 60) return std.mem.print(buf, "{d}m", .{minutes}) catch "?";
+    return std.mem.print(buf, "{d}h {d:0>2}m", .{ minutes / 60, minutes % 60 }) catch "?";
 }
 
 const testing = std.testing;

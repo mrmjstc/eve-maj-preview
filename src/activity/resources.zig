@@ -182,7 +182,7 @@ pub const ResourceTracker = struct {
 };
 
 fn parsePidFromInstanceName(name: []const u8) ?win32.DWORD {
-    const pid_pos = std.mem.indexOf(u8, name, PID_TOKEN) orelse return null;
+    const pid_pos = std.mem.find(u8, name, PID_TOKEN) orelse return null;
     const digits_start = pid_pos + PID_TOKEN.len;
     var end = digits_start;
     while (end < name.len and std.ascii.isDigit(name[end])) : (end += 1) {}

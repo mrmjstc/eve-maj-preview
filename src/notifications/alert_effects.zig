@@ -10,7 +10,7 @@ pub fn play(notification_config: *const config.NotificationConfig, type_config: 
         tts.setVoiceSettings(notification_config.tts_volume, notification_config.tts_rate);
         if (spoken_name) |name| {
             var speak_buf: [256]u8 = undefined;
-            const spoken = std.fmt.bufPrint(&speak_buf, "{s}, {s}", .{ name, text }) catch text;
+            const spoken = std.mem.print(&speak_buf, "{s}, {s}", .{ name, text }) catch text;
             tts.speakAlert(spoken);
         } else {
             tts.speakAlert(text);

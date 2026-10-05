@@ -9,8 +9,9 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
+    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .fast });
 
+    b.dependOnFileContents(b.path("VERSION"));
     const version = blk: {
         const version_file = std.Io.Dir.cwd().readFileAlloc(
             b.graph.io,
@@ -33,7 +34,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // Windows subsystem hides the console window; main.zig calls AllocConsole() itself when logLevel == .debug, so debug builds still get a console.
-    exe.subsystem = .Windows;
+    exe.subsystem = .windows;
 
     // Default Windows stack size is often too small.
     exe.stack_size = 16 * 1024 * 1024;
@@ -78,9 +79,7 @@ pub fn build(b: *std.Build) void {
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
 
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
@@ -97,7 +96,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/tests.zig"),
             .target = target,
-            .optimize = .Debug,
+            .optimize = .debug,
         }),
     });
     const test_step = b.step("test", "Run the unit tests");

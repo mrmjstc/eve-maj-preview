@@ -223,7 +223,7 @@ pub fn defaultText(notification: Notification, buf: []u8) []const u8 {
 
 fn withField(buf: []u8, comptime fmt: []const u8, field: ?[]const u8, fallback: []const u8) []const u8 {
     const value = field orelse return fallback;
-    return std.fmt.bufPrint(buf, fmt, .{value}) catch |err| {
+    return std.mem.print(buf, fmt, .{value}) catch |err| {
         slog.warn("Failed to fit notification text for '{s}', using \"{s}\": {}", .{ value, fallback, err });
         return fallback;
     };

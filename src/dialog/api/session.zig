@@ -80,8 +80,8 @@ pub fn getSchema(arena: std.mem.Allocator) !rpc.RawJson {
 }
 
 /// Fires `type` on every thumbnail with the settings the window has for it, saved or not.
-pub fn testNotification(_: std.mem.Allocator, args: struct { @"type": []const u8 }) !void {
-    const ntype = std.meta.stringToEnum(notification.NotificationType, args.@"type") orelse return error.InvalidNotificationType;
+pub fn testNotification(_: std.mem.Allocator, args: struct { type: []const u8 }) !void {
+    const ntype = std.meta.stringToEnum(notification.NotificationType, args.type) orelse return error.InvalidNotificationType;
     const painter = painter_mod.g_painter_ptr orelse return;
     try painter.showTestNotification(ntype, session.profile().thumbnail.notifications.getTypeConfig(ntype));
 }
@@ -129,13 +129,13 @@ fn applyRunOnStartup(enabled: bool) void {
         return;
     }
 
-    var exe_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var exe_path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const exe_dir = win32.selfExeDirPath(&exe_path_buf) catch |err| {
         slog.err("Failed to find the executable directory for startup registration: {}", .{err});
         return;
     };
-    var command_buf: [std.fs.max_path_bytes + 32]u8 = undefined;
-    const command = std.fmt.bufPrintZ(&command_buf, "\"{s}\\eve-maj-preview.exe\"", .{exe_dir}) catch |err| {
+    var command_buf: [std.Io.Dir.max_path_bytes + 32]u8 = undefined;
+    const command = std.mem.printSentinel(&command_buf, "\"{s}\\eve-maj-preview.exe\"", .{exe_dir}, 0) catch |err| {
         slog.err("Failed to build the startup command: {}", .{err});
         return;
     };

@@ -86,7 +86,7 @@ pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io
 
         // Spawn up to MAX_CONCURRENT_PRICE_REQUESTS - 1 background workers; the calling thread pulls from the same queue as the last one, so a failed spawn just means less parallelism, not less work done.
         const worker_count = @min(MAX_CONCURRENT_PRICE_REQUESTS, lookups.len);
-        var threads = [_]?std.Thread{null} ** (MAX_CONCURRENT_PRICE_REQUESTS - 1);
+        var threads: [MAX_CONCURRENT_PRICE_REQUESTS - 1]?std.Thread = @splat(null);
         const background_workers = worker_count - 1;
         for (threads[0..background_workers]) |*slot| {
             slot.* = std.Thread.spawn(.{}, priceFetchWorker, .{&ctx}) catch |err| blk: {
@@ -118,7 +118,7 @@ fn resolveOreTypeIds(allocator: std.mem.Allocator, client: *std.http.Client, nam
         allocator.free(prefixed);
     }
     for (names, 0..) |name, i| {
-        prefixed[i] = try std.fmt.allocPrint(allocator, "Compressed {s}", .{name});
+        prefixed[i] = try allocator.print("Compressed {s}", .{name});
     }
 
     const body = try std.json.Stringify.valueAlloc(allocator, prefixed, .{});
@@ -170,7 +170,7 @@ fn resolveOreTypeIds(allocator: std.mem.Allocator, client: *std.http.Client, nam
 /// Highest current Jita 4-4 buy order price for type_id (what a seller would instantly receive), or null if unavailable/illiquid.
 /// Only reads page 1 of the region's buy orders - fine for these commodity ore types, whose buy-order counts stay well under the 1000-order page size in practice.
 fn fetchJitaBuyPrice(allocator: std.mem.Allocator, client: *std.http.Client, type_id: i64) ?f64 {
-    const url = std.fmt.allocPrint(allocator, ESI_BASE ++ "/markets/{d}/orders/?datasource=tranquility&order_type=buy&type_id={d}", .{ ESI_JITA_REGION_ID, type_id }) catch |err| {
+    const url = allocator.print(ESI_BASE ++ "/markets/{d}/orders/?datasource=tranquility&order_type=buy&type_id={d}", .{ ESI_JITA_REGION_ID, type_id }) catch |err| {
         slog.warn("Failed to build ESI price URL for type_id {}: {}", .{ type_id, err });
         return null;
     };

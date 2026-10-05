@@ -62,7 +62,7 @@ pub const FontCache = struct {
             slog.debug("Font cache invalidated for slot {} @ {} DPI (settings changed)", .{ slot, dpi });
         }
 
-        const font_name_z = try self.allocator.dupeZ(u8, font_name);
+        const font_name_z = try self.allocator.dupeSentinel(u8, font_name, 0);
         defer self.allocator.free(font_name_z);
 
         // Owns a copy rather than borrowing font_name, which may be freed/replaced out from under a cached entry.
@@ -104,5 +104,5 @@ pub const FontCache = struct {
 
 /// dpi realistically never exceeds ~480 (5x scale), well under the 16 bits reserved here.
 fn cacheKey(slot: FontSlot, dpi: u32) u32 {
-    return (@as(u32, @intFromEnum(slot)) << 16) | (dpi & 0xFFFF);
+    return (@as(u32, @backingInt(slot)) << 16) | (dpi & 0xFFFF);
 }

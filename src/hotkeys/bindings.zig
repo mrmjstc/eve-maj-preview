@@ -105,7 +105,7 @@ pub fn bandId(base: c_int, index: usize) c_int {
 
 /// Global actions carry no payload, so the tag alone identifies both the action and its hotkey ID.
 pub fn globalId(action: ActionTag) c_int {
-    return bandId(HOTKEY_ID_GLOBAL_ACTION_BASE, @intFromEnum(action));
+    return bandId(HOTKEY_ID_GLOBAL_ACTION_BASE, @backingInt(action));
 }
 
 pub fn actionFor(comptime action: ActionTag) HotkeyAction {

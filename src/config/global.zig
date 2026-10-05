@@ -331,7 +331,7 @@ pub const GlobalConfig = struct {
 fn isGradeVariant(name: []const u8, base: []const u8) bool {
     if (base.len == 0 or base.len >= name.len) return false;
     var search_start: usize = 0;
-    while (std.mem.indexOfPos(u8, name, search_start, base)) |pos| {
+    while (std.mem.findPos(u8, name, search_start, base)) |pos| {
         const before_ok = pos == 0 or name[pos - 1] == ' ';
         const after_pos = pos + base.len;
         const after_ok = after_pos == name.len or name[after_pos] == ' ';

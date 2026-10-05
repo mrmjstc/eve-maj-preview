@@ -277,7 +277,7 @@ fn drawSizeLabel(bitmap: *const gdi_overlay.OverlayBitmap, selection: win32.RECT
     const font = g_label_style.font orelse return;
 
     var text_buf: [32]u8 = undefined;
-    const text = std.fmt.bufPrint(&text_buf, "{d} x {d}", .{ win32.rectWidth(selection), win32.rectHeight(selection) }) catch unreachable;
+    const text = std.mem.print(&text_buf, "{d} x {d}", .{ win32.rectWidth(selection), win32.rectHeight(selection) }) catch unreachable;
 
     const old_font = win32.SelectObject(bitmap.mem_dc, font);
     defer {
@@ -431,7 +431,7 @@ fn buttonAt(pt: win32.POINT) ?Button {
     if (!g_edit_mode or g_edit_handle != .none) return null;
     const rects = buttonRects();
     inline for (.{ Button.save, Button.cancel }) |button| {
-        if (win32.rectContains(rects[@intFromEnum(button)], pt)) return button;
+        if (win32.rectContains(rects[@backingInt(button)], pt)) return button;
     }
     return null;
 }
@@ -491,8 +491,8 @@ fn drawButtons(bitmap: *const gdi_overlay.OverlayBitmap) void {
     if (g_edit_handle != .none) return;
     ensureButtonFonts(bitmap.mem_dc);
     const rects = buttonRects();
-    drawButton(bitmap, rects[@intFromEnum(Button.save)], labelText(&g_labels.save), .save);
-    drawButton(bitmap, rects[@intFromEnum(Button.cancel)], labelText(&g_labels.cancel), .cancel);
+    drawButton(bitmap, rects[@backingInt(Button.save)], labelText(&g_labels.save), .save);
+    drawButton(bitmap, rects[@backingInt(Button.cancel)], labelText(&g_labels.cancel), .cancel);
 }
 
 fn redraw() void {

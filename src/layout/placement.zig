@@ -487,7 +487,7 @@ test "regionFitColRow starts each direction in its own corner" {
 
 test "regionFitColRow puts each index of a full grid in its own cell" {
     for (std.enums.values(types.RegionFitDirection)) |direction| {
-        var seen = [_]bool{false} ** 6;
+        var seen: [6]bool = @splat(false);
         for (0..6) |index| {
             const cell = regionFitColRow(direction, index, 3, 2);
             try testing.expect(cell.col >= 0 and cell.col < 3 and cell.row >= 0 and cell.row < 2);

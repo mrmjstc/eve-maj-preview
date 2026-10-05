@@ -442,7 +442,7 @@ pub fn ensureFont(
     if (font.*) |old| _ = win32.DeleteObject(old);
     font.* = null;
 
-    const name_z = allocator.dupeZ(u8, want_name) catch |err| {
+    const name_z = allocator.dupeSentinel(u8, want_name, 0) catch |err| {
         slog.err("Failed to allocate {s} font name: {}", .{ context, err });
         return err;
     };

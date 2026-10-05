@@ -48,7 +48,7 @@ fn formUrlEncode(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
             ' ' => try out.append(allocator, '+'),
             else => {
                 var hex_buf: [3]u8 = undefined;
-                _ = std.fmt.bufPrint(&hex_buf, "%{X:0>2}", .{c}) catch unreachable;
+                _ = std.mem.print(&hex_buf, "%{X:0>2}", .{c}) catch unreachable;
                 try out.appendSlice(allocator, &hex_buf);
             },
         }
@@ -89,7 +89,7 @@ fn postAndFollowRedirect(allocator: std.mem.Allocator, url: []const u8, body: []
         slog.warn("Failed to upload to '{s}': status {}", .{ url, response.head.status });
     }
 
-    return std.fmt.allocPrintSentinel(allocator, "{f}", .{req.uri}, 0);
+    return allocator.printSentinel("{f}", .{req.uri}, 0);
 }
 
 fn openFallback(url: []const u8) void {
@@ -114,7 +114,7 @@ fn uploadClipboardAndOpen(allocator: std.mem.Allocator, url: []const u8) void {
     };
     defer allocator.free(encoded);
 
-    const body = std.fmt.allocPrint(allocator, "Paste+anything={s}&submit=new", .{encoded}) catch |err| {
+    const body = allocator.print("Paste+anything={s}&submit=new", .{encoded}) catch |err| {
         slog.err("Failed to build upload body: {}", .{err});
         openFallback(url);
         return;

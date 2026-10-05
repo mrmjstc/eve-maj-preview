@@ -21,21 +21,22 @@ pub const MAX_WINDOW_HEIGHT = 2160;
 /// Also validates every nested setting that has a validate() of its own.
 pub fn clamp(comptime R: type, value: *R) void {
     if (@hasDecl(R, "ranges")) {
-        inline for (@typeInfo(@TypeOf(R.ranges)).@"struct".fields) |f| {
-            const field = &@field(value, f.name);
+        inline for (@typeInfo(@TypeOf(R.ranges)).@"struct".field_names) |name| {
+            const field = &@field(value, name);
             if (@typeInfo(@TypeOf(field.*)) == .optional) {
-                if (field.*) |*set| clampField(R, f.name, set);
+                if (field.*) |*set| clampField(R, name, set);
             } else {
-                clampField(R, f.name, field);
+                clampField(R, name, field);
             }
         }
     }
-    inline for (@typeInfo(R).@"struct".fields) |f| {
-        if (comptime hasValidate(f.type)) {
-            @field(value, f.name).validate();
-        } else if (comptime @typeInfo(f.type) == .optional) {
-            if (comptime hasValidate(@typeInfo(f.type).optional.child)) {
-                if (@field(value, f.name)) |*nested| nested.validate();
+    const info = @typeInfo(R).@"struct";
+    inline for (info.field_names, info.field_types) |name, F| {
+        if (comptime hasValidate(F)) {
+            @field(value, name).validate();
+        } else if (comptime @typeInfo(F) == .optional) {
+            if (comptime hasValidate(@typeInfo(F).optional.child)) {
+                if (@field(value, name)) |*nested| nested.validate();
             }
         }
     }
@@ -77,16 +78,16 @@ fn isZeroMeansDefault(comptime R: type, comptime name: []const u8) bool {
 }
 
 fn defaultOf(comptime R: type, comptime name: []const u8) @FieldType(R, name) {
-    return std.meta.fieldInfo(R, @field(std.meta.FieldEnum(R), name)).defaultValue() orelse
+    const index = std.meta.fieldIndex(R, name).?;
+    return @typeInfo(R).@"struct".field_attrs[index].defaultValue(@FieldType(R, name)) orelse
         @compileError(@typeName(R) ++ "." ++ name ++ " is in zero_means_default but has no default");
 }
 
 fn shortTypeName(comptime R: type) []const u8 {
     const full = @typeName(R);
-    const dot = std.mem.lastIndexOfScalar(u8, full, '.') orelse return full;
+    const dot = std.mem.findScalarLast(u8, full, '.') orelse return full;
     return full[dot + 1 ..];
 }
-
 
 const testing = std.testing;
 
