@@ -1449,6 +1449,37 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     gap: var(--space-5);
 }
 
+/* Borders: a header row plus Focused/Inactive rows, each Width | Style | Color. */
+.border-grid {
+    display: grid;
+    grid-template-columns: max-content repeat(3, minmax(0, 1fr));
+    align-items: center;
+    gap: 0.5rem var(--space-5);
+    margin-top: 0.5rem;
+}
+
+.border-grid > label {
+    margin: 0;
+}
+
+/* Subgrid so the header and both rows share one set of column tracks. */
+.border-grid-fields {
+    grid-column: 2 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    align-items: center;
+}
+
+.border-grid-fields input,
+.border-grid-fields select {
+    margin-bottom: 0;
+}
+
+.border-grid-header {
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
 /* Raw position/font/color fields the drag-to-position Layout Preview replaces.
    Permanently hidden, not toggled - overlay_layout.js still reads/writes them,
    it just never shows them (see the comment on that class there). Was 8

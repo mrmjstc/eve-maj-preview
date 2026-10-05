@@ -795,51 +795,35 @@
                                 <span class="label-body" data-i18n="field.assignUniqueCharacterColors.label">Unique Character Border Colors</span>
                             </label>
                             <p class="hint hint-extra" data-i18n="field.assignUniqueCharacterColors.hint">Auto-generates a color per character name, overriding the Focused/Inactive Color settings below.</p>
-                            <div>
-                                <div>
-                                    <h4 data-i18n="tab.thumbnails.section.focused-border.heading">Focused Border</h4>
+                            <div class="border-grid">
+                                <span></span>
+                                <div class="border-grid-fields border-grid-header">
+                                    <span data-i18n="common.widthPxLabel">Width (px)</span>
+                                    <span data-i18n="common.styleLabel">Style</span>
+                                    <span data-i18n="field.borderColor.label">Color</span>
+                                </div>
 
-                                    <label>
-                                        <input type="checkbox" id="showBorderWhenFocused" onchange="toggleFocusedBorderOptions()">
-                                        <span class="label-body" data-i18n="field.showBorderWhenFocused.label">Show Focused Border</span>
-                                    </label>
-
-                                    <div id="focusedBorderOptions" class="binding-list">
-                                        <div class="binding">
-                                            <label for="borderWidth" data-i18n="common.widthPxLabel">Width (px)</label>
-                                            <input type="number" id="borderWidth" data-path="thumbnail.borderWidth">
-                                        </div>
-                                        <div class="binding">
-                                            <label for="borderStyle" data-i18n="common.styleLabel">Style</label>
-                                            <select id="borderStyle" data-path="thumbnail.borderStyle"></select>
-                                        </div>
-                                        <div id="focusedBorderColorOptions" class="binding">
-                                            <label for="borderColor" data-i18n="field.borderColor.label">Color</label>
-                                            <input type="color" id="borderColor" data-path="thumbnail.borderColor">
-                                        </div>
+                                <label>
+                                    <input type="checkbox" id="showBorderWhenFocused" onchange="toggleFocusedBorderOptions()">
+                                    <span class="label-body" data-i18n="tab.thumbnails.section.focused-border.heading">Focused Border</span>
+                                </label>
+                                <div id="focusedBorderOptions" class="border-grid-fields">
+                                    <input type="number" id="borderWidth" data-path="thumbnail.borderWidth">
+                                    <select id="borderStyle" data-path="thumbnail.borderStyle"></select>
+                                    <div id="focusedBorderColorOptions">
+                                        <input type="color" id="borderColor" data-path="thumbnail.borderColor">
                                     </div>
                                 </div>
-                                <div>
-                                    <h4 data-i18n="tab.thumbnails.section.inactive-border.heading">Inactive Border</h4>
 
-                                    <label>
-                                        <input type="checkbox" id="showBorderWhenInactive" onchange="toggleInactiveBorderOptions()">
-                                        <span class="label-body" data-i18n="field.showBorderWhenInactive.label">Show Inactive Border</span>
-                                    </label>
-
-                                    <div id="inactiveBorderOptions" class="binding-list">
-                                        <div class="binding">
-                                            <label for="inactiveBorderWidth" data-i18n="common.widthPxLabel">Width (px)</label>
-                                            <input type="number" id="inactiveBorderWidth" data-path="thumbnail.inactiveBorderWidth">
-                                        </div>
-                                        <div class="binding">
-                                            <label for="inactiveBorderStyle" data-i18n="common.styleLabel">Style</label>
-                                            <select id="inactiveBorderStyle" data-path="thumbnail.inactiveBorderStyle"></select>
-                                        </div>
-                                        <div id="inactiveBorderColorOptions" class="binding">
-                                            <label for="inactiveBorderColor" data-i18n="field.inactiveBorderColor.label">Color</label>
-                                            <input type="color" id="inactiveBorderColor" data-path="thumbnail.inactiveBorderColor">
-                                        </div>
+                                <label>
+                                    <input type="checkbox" id="showBorderWhenInactive" onchange="toggleInactiveBorderOptions()">
+                                    <span class="label-body" data-i18n="tab.thumbnails.section.inactive-border.heading">Inactive Border</span>
+                                </label>
+                                <div id="inactiveBorderOptions" class="border-grid-fields">
+                                    <input type="number" id="inactiveBorderWidth" data-path="thumbnail.inactiveBorderWidth">
+                                    <select id="inactiveBorderStyle" data-path="thumbnail.inactiveBorderStyle"></select>
+                                    <div id="inactiveBorderColorOptions">
+                                        <input type="color" id="inactiveBorderColor" data-path="thumbnail.inactiveBorderColor">
                                     </div>
                                 </div>
                             </div>
