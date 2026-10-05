@@ -1442,11 +1442,28 @@ body:not(.advanced-mode) .panel-content.advanced-tab-panel {
     min-width: 0;
 }
 
-/* Grid for three-column layouts */
+/* Font Name | Size | Weight on one row, each label stacked over its control. */
 .text-settings {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--space-5);
+    margin-bottom: 0.5rem;
+}
+
+.text-settings label {
+    margin: 0 0 0.25rem;
+    padding-left: 0;
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+.text-settings label::before {
+    content: none;
+}
+
+.text-settings input,
+.text-settings select {
+    margin-bottom: 0;
 }
 
 /* Borders: a header row plus Focused/Inactive rows, each Width | Style | Color. */
