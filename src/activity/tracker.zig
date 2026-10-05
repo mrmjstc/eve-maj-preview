@@ -458,18 +458,59 @@ pub fn parseBountyLine(line: []const u8) ?f32 {
     // u64, as a single payout can pass u32's 4.3 billion.
     var amount: u64 = 0;
     var found_digit = false;
-    for (stripped) |c| {
+
+    var i: usize = 0;
+    while (i < stripped.len) {
+        const c = stripped[i];
+
         if (c >= '0' and c <= '9') {
             amount = appendDigit(u64, amount, c) orelse return null;
             found_digit = true;
-        } else if (c == ',' and found_digit) {
+            i += 1;
             continue;
-        } else if (found_digit) {
-            break;
-        } else if (c != ' ' and c != '\t') {
-            return null;
         }
+
+        if (found_digit) {
+            // Thousands separators:
+            //   ','       -> 1,200,000
+            //   ' '       -> 1 200 000
+            //   U+00A0    -> 1 200 000 (EVE's current format)
+            //   U+202F    -> 1 200 000
+            if (c == ',') {
+                i += 1;
+                continue;
+            }
+
+            if (c == ' ') {
+                i += 1;
+                continue;
+            }
+
+            // UTF-8 non-breaking space: U+00A0 = C2 A0
+            if (c == 0xC2 and i + 1 < stripped.len and stripped[i + 1] == 0xA0) {
+                i += 2;
+                continue;
+            }
+
+            // UTF-8 narrow no-break space: U+202F = E2 80 AF
+            if (c == 0xE2 and
+                i + 2 < stripped.len and
+                stripped[i + 1] == 0x80 and
+                stripped[i + 2] == 0xAF)
+            {
+                i += 3;
+                continue;
+            }
+
+            // Any other character means the numeric value is finished.
+            break;
+        }
+
+        // Before the first digit, only whitespace is allowed.
+        if (c != '\t') return null;
+        i += 1;
     }
+
     if (!found_digit or amount == 0) return null;
     return @floatFromInt(amount);
 }
