@@ -20,6 +20,4 @@ export const app = {
     characterIds: {},
     // The ids of the spaces unassigned characters, login-screen clients and each hotkey group go to, as the app decided (see dialog/api/session.zig).
     spacePlacement: { unassignedSpaceId: null, loginScreenSpaceId: null, groupSpaceIds: {} },
-    // Every monitor's bounding rectangle in physical pixels, for the spaces' map.
-    desktop: null,
 };

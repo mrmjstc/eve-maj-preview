@@ -253,7 +253,6 @@ async function adoptSnapshot(snapshot) {
     app.profiles = snapshot.profiles;
     app.characterIds = snapshot.characterIds;
     app.spacePlacement = snapshot.placement;
-    app.desktop = snapshot.desktop;
     app.dialogEditingProfile = snapshot.profileName;
     renderProfileSelect();
     confirmed.profile = clone(snapshot.profile);

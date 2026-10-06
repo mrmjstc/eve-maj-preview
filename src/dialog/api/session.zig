@@ -91,7 +91,7 @@ pub fn testNotification(_: std.mem.Allocator, args: struct { type: []const u8 })
     try painter.showTestNotification(ntype, session.profile().thumbnail.notifications.getTypeConfig(ntype));
 }
 
-/// `oreCatalog` is the built-in ore list whose prices oreTable overrides, `profiles` feeds the dropdown and profile-switch hotkeys, `characterIds` the portraits, and `desktop` the spaces' map.
+/// `oreCatalog` is the built-in ore list whose prices oreTable overrides, `profiles` feeds the dropdown and profile-switch hotkeys, and `characterIds` the portraits.
 fn snapshot(arena: std.mem.Allocator) !rpc.RawJson {
     var out: std.Io.Writer.Allocating = .init(arena);
     var jw: std.json.Stringify = .{ .writer = &out.writer };
@@ -114,9 +114,6 @@ fn snapshot(arena: std.mem.Allocator) !rpc.RawJson {
     try writeDirty(&jw);
     try jw.objectField("placement");
     try writePlacement(&jw);
-    try jw.objectField("desktop");
-    const desktop = win32.virtualScreenRect();
-    try jw.write(.{ .x = desktop.left, .y = desktop.top, .width = win32.rectWidth(desktop), .height = win32.rectHeight(desktop) });
     try jw.endObject();
     return .{ .text = out.written() };
 }

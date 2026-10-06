@@ -1,4 +1,4 @@
-// Thumbnail spaces: the list beside the selected space's details, its hotkey group chips and a map of every space's region.
+// Thumbnail spaces: the list beside the selected space's details and its hotkey group chips.
 import { app } from './state.js';
 import { applyDocToForm, applySchemaToInputs, defaultFor, readFormToDoc } from './binding.js';
 import { markAsChanged } from './changes.js';
@@ -123,7 +123,7 @@ function detailPanelHtml(list, space, index, isSelected) {
             <div class="detail-form">
                 ${holdsFieldHtml(list, space, index, dim)}
                 ${takesFieldHtml(list, space, index, dim)}
-                ${regionFieldHtml(list, space, index, dim)}
+                ${regionFieldHtml(space, index, dim)}
                 <div class="detail-field${dim}">
                     <label for="space_${index}_direction">${t('field.regionFitDirection.label')}</label>
                     <select id="space_${index}_direction" data-path="${path}.direction"></select>
@@ -235,61 +235,19 @@ function takeCheckHtml(index, path, field, isOn, winner, takenKey) {
     `;
 }
 
-function regionFieldHtml(list, space, index, dim) {
-    const rect = spaceRect(space);
-    const text = rect
-        ? t('dynamic.space.regionText').replace('{w}', rect[2]).replace('{h}', rect[3]).replace('{x}', rect[0]).replace('{y}', rect[1])
-        : t('dynamic.space.regionNone');
-    const disabled = rect ? '' : 'disabled';
+function regionFieldHtml(space, index, dim) {
+    // Edit and clear need a region to act on.
+    const disabled = spaceRect(space) ? '' : 'disabled';
     return `
-        <div class="detail-field detail-field-top${dim}">
+        <div class="detail-field${dim}">
             <label>${t('dynamic.space.regionLabel')}</label>
-            <div class="space-region">
-                <span class="space-region-text${rect ? '' : ' warn'}">${escapeHtml(text)}</span>
-                <div class="space-region-buttons">
-                    <button type="button" onclick="startSpaceRegionSelect(${index})">${t('dynamic.space.newRegion')}</button>
-                    <button type="button" onclick="startSpaceRegionSelect(${index}, true)" ${disabled}>${t('dynamic.space.editRegion')}</button>
-                    <button type="button" id="space_${index}_clearRegion" class="button-icon button-icon-danger" onclick="confirmRemove('space_${index}_clearRegion', () => clearSpaceRegion(${index}), '✓')" title="${t('field.clearRegion.title')}" ${disabled}>&times;</button>
-                </div>
-                ${mapHtml(list, index)}
+            <div class="space-region-buttons">
+                <button type="button" onclick="startSpaceRegionSelect(${index})">${t('dynamic.space.newRegion')}</button>
+                <button type="button" onclick="startSpaceRegionSelect(${index}, true)" ${disabled}>${t('dynamic.space.editRegion')}</button>
+                <button type="button" id="space_${index}_clearRegion" class="button-icon button-icon-danger" onclick="confirmRemove('space_${index}_clearRegion', () => clearSpaceRegion(${index}), '✓')" title="${t('field.clearRegion.title')}" ${disabled}>&times;</button>
             </div>
         </div>
     `;
-}
-
-// The whole desktop as the app reported it, grown to fit any region drawn off it.
-function mapBounds(list) {
-    const desktop = app.desktop || { x: 0, y: 0, width: 1, height: 1 };
-    let [left, top, right, bottom] = [desktop.x, desktop.y, desktop.x + desktop.width, desktop.y + desktop.height];
-    for (const space of list) {
-        const rect = spaceRect(space);
-        if (!rect) continue;
-        left = Math.min(left, rect[0]);
-        top = Math.min(top, rect[1]);
-        right = Math.max(right, rect[0] + rect[2]);
-        bottom = Math.max(bottom, rect[1] + rect[3]);
-    }
-    return { left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) };
-}
-
-function mapHtml(list, selected) {
-    const bounds = mapBounds(list);
-    const boxes = list.map((space, index) => {
-        const rect = spaceRect(space);
-        if (!rect) return '';
-        const style = [
-            `left: ${(rect[0] - bounds.left) / bounds.width * 100}%`,
-            `top: ${(rect[1] - bounds.top) / bounds.height * 100}%`,
-            `width: ${rect[2] / bounds.width * 100}%`,
-            `height: ${rect[3] / bounds.height * 100}%`,
-            `--dot: ${dotColor(index)}`,
-        ].join('; ');
-        const classes = ['space-map-box', index === selected ? 'selected' : '', space.enabled ? '' : 'off'].filter(Boolean).join(' ');
-        return `<span class="${classes}" style="${style}" title="${escapeHtml(spaceName(space))}"></span>`;
-    });
-    // The selected space is drawn last, over the others.
-    const ordered = boxes.filter((_, index) => index !== selected).concat(boxes[selected] || '');
-    return `<div class="space-map" style="aspect-ratio: ${bounds.width} / ${bounds.height}" aria-hidden="true">${ordered.join('')}</div>`;
 }
 
 export function selectThumbnailSpace(index) {

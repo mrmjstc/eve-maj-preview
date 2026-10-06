@@ -4,6 +4,7 @@ import { markAsChanged } from './changes.js';
 import { listenForAppEvent, logWarn, rpc } from './core.js';
 import { t } from './i18n.js';
 import { showStatus } from './layout.js';
+import { flushEdits } from './session.js';
 import { populateThumbnailSpaces, saveThumbnailSpaces, spaceRect } from './thumbnail_spaces.js';
 
 // The app draws the drag overlay; the result comes back as a regionSelected event, for the space that started it.
@@ -50,9 +51,12 @@ export async function startSpaceRegionSelect(index, edit = false) {
     const regionToEdit = edit ? spaceRect(space) : null;
     if (edit && !regionToEdit) return;
     try {
+        // The app shows the other spaces' regions from its own copy, and a new space only has an id once the app has it.
+        await flushEdits();
         await rpc('startRegionSelect', {
             hide: !!document.getElementById('hideThumbnailsDuringRegionSelect')?.checked,
             region: regionToEdit,
+            spaceId: space.id ?? null,
             // The overlay is drawn by the app, which has no language files, so it gets its text from here.
             labels: {
                 save: t('button.save-configuration.label'),

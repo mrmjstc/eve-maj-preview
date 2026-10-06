@@ -2604,7 +2604,6 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .space-state.warn,
-.space-region-text.warn,
 .hint.hint-warning {
     color: var(--color-accent);
 }
@@ -2655,13 +2654,6 @@ input[type="range"]::-moz-range-thumb {
     cursor: default;
 }
 
-.space-region {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-}
-
 .space-region-buttons {
     display: flex;
     gap: var(--space-2);
@@ -2669,38 +2661,6 @@ input[type="range"]::-moz-range-thumb {
 
 .space-region-buttons > button {
     white-space: nowrap;
-}
-
-.space-region-text {
-    font-family: var(--font-mono);
-    color: var(--color-text-secondary);
-}
-
-/* The desktop in miniature; each box is a space's region, in its dot colour. */
-.space-map {
-    position: relative;
-    width: 14rem;
-    max-height: 9rem;
-    background: var(--color-bg);
-    border: 0.0625rem solid var(--color-border);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-}
-
-.space-map-box {
-    position: absolute;
-    box-sizing: border-box;
-    border: 0.0625rem solid var(--dot);
-    background: color-mix(in srgb, var(--dot) 15%, transparent);
-}
-
-.space-map-box.selected {
-    border-width: 0.125rem;
-    background: color-mix(in srgb, var(--dot) 35%, transparent);
-}
-
-.space-map-box.off {
-    opacity: 0.35;
 }
 
 .roster-row {

@@ -19,6 +19,12 @@ const CLEAR_COLOR: u32 = 0x00000000;
 const DEFAULT_BORDER_COLOR: u32 = 0xFF3399FF;
 /// Alpha 0 would make the interior click-through, so a click inside a cut-out region would hit the window below.
 const HIT_TESTABLE_CLEAR_COLOR: u32 = 0x01000000;
+/// Other regions show through the dim a little, outlined in dashes, so a new one can be drawn beside them.
+const OTHER_REGION_FILL: u32 = 0x38000000;
+const OTHER_REGION_BORDER: u32 = 0xC0FFFFFF;
+const OTHER_REGION_DASH: usize = 6;
+/// Regions past this aren't shown.
+pub const MAX_OTHER_REGIONS = 32;
 const HANDLE_HIT_PX: u32 = 6;
 const HANDLE_SIZE: i32 = 8;
 const HANDLE_COLOR: u32 = 0xFFFFFFFF;
@@ -57,6 +63,7 @@ pub const LabelStyle = struct {
 };
 
 const Handle = enum { none, move, left, right, top, bottom, top_left, top_right, bottom_left, bottom_right };
+const Outline = enum { solid, dashed };
 const Button = enum { save, cancel };
 
 /// The overlay's on-screen text, translated by the config dialog since only it has the language files; English defaults if it sends nothing.
@@ -93,6 +100,8 @@ var g_cross_cursor: ?win32.HCURSOR = null;
 var g_on_finished: ?*const fn () void = null;
 var g_label_style: LabelStyle = .{ .font = null, .color = 0xFFFFFFFF };
 var g_labels = Labels{};
+var g_other_regions: [MAX_OTHER_REGIONS]win32.RECT = undefined;
+var g_other_region_count: usize = 0;
 
 var g_button_hover: ?Button = null;
 var g_button_pressed: ?Button = null;
@@ -128,13 +137,15 @@ pub fn labelText(buf: []const u8) []const u8 {
 }
 
 /// Starts (or restarts) the overlay; the result goes to the config dialog as a regionSelected event. `accent_color` is forced opaque, and
-/// `edit_region` adjusts that region instead of dragging a new one. `on_finished` runs once the overlay closes, but not if this fails.
-pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelStyle, edit_region: ?win32.RECT, labels: Labels, on_finished: *const fn () void) !void {
+/// `edit_region` adjusts that region instead of dragging a new one; `other_regions` are copied and drawn dashed. `on_finished` runs once the overlay closes, but not if this fails.
+pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelStyle, edit_region: ?win32.RECT, other_regions: []const win32.RECT, labels: Labels, on_finished: *const fn () void) !void {
     try registerWindowClass(instance);
     g_on_finished = on_finished;
     g_border_color = accent_color | 0xFF000000;
     g_label_style = label_style;
     g_labels = labels;
+    g_other_region_count = @min(other_regions.len, MAX_OTHER_REGIONS);
+    @memcpy(g_other_regions[0..g_other_region_count], other_regions[0..g_other_region_count]);
 
     g_virtual_screen = win32.virtualScreenRect();
     const left = g_virtual_screen.left;
@@ -241,16 +252,21 @@ fn normalizedSelection() win32.RECT {
 }
 
 /// Cuts `rect` out of the dim layer and outlines it; `fill` is the interior color.
-fn drawRegion(bitmap: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, fill: u32, border: u32) void {
-    const w = win32.rectWidth(rect);
-    const h = win32.rectHeight(rect);
+/// Clipped to the overlay, since fillRect skips a rect that runs past the buffer.
+fn drawRegion(bitmap: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, fill: u32, border: u32, outline: Outline) void {
+    const visible = win32.clampRect(rect, g_virtual_screen);
+    const w = win32.rectWidth(visible);
+    const h = win32.rectHeight(visible);
     if (w <= 0 or h <= 0) return;
-    const local_x = rect.left - g_virtual_screen.left;
-    const local_y = rect.top - g_virtual_screen.top;
+    const local_x = visible.left - g_virtual_screen.left;
+    const local_y = visible.top - g_virtual_screen.top;
     const uw: usize = @intCast(w);
     const uh: usize = @intCast(h);
     gdi_overlay.fillRect(bitmap.pixels, bitmap.width, bitmap.height, @intCast(local_x), @intCast(local_y), uw, uh, fill);
-    gdi_overlay.drawRectOutline(bitmap.pixels, bitmap.width, bitmap.height, local_x, local_y, uw, uh, BORDER_THICKNESS, border);
+    switch (outline) {
+        .solid => gdi_overlay.drawRectOutline(bitmap.pixels, bitmap.width, bitmap.height, local_x, local_y, uw, uh, BORDER_THICKNESS, border),
+        .dashed => gdi_overlay.drawDashedRectOutline(bitmap.pixels, bitmap.width, bitmap.height, local_x, local_y, uw, uh, BORDER_THICKNESS, OTHER_REGION_DASH, border),
+    }
 }
 
 fn monitorBoundsAt(pt: win32.POINT) win32.RECT {
@@ -501,15 +517,16 @@ fn redraw() void {
     const bitmap = &g_bitmap.?;
 
     gdi_overlay.fillRect(bitmap.pixels, bitmap.width, bitmap.height, 0, 0, bitmap.width, bitmap.height, DIM_COLOR);
+    for (g_other_regions[0..g_other_region_count]) |other| drawRegion(bitmap, other, OTHER_REGION_FILL, OTHER_REGION_BORDER, .dashed);
 
     if (g_edit_mode) {
-        drawRegion(bitmap, g_edit_rect, HIT_TESTABLE_CLEAR_COLOR, g_border_color);
+        drawRegion(bitmap, g_edit_rect, HIT_TESTABLE_CLEAR_COLOR, g_border_color, .solid);
         drawEditHandles(bitmap, g_edit_rect);
         drawButtons(bitmap);
         if (g_edit_handle != .none) drawSizeLabel(bitmap, g_edit_rect);
     } else if (g_dragging) {
         const selection = normalizedSelection();
-        drawRegion(bitmap, selection, CLEAR_COLOR, g_border_color);
+        drawRegion(bitmap, selection, CLEAR_COLOR, g_border_color, .solid);
         if (win32.rectWidth(selection) > 0 and win32.rectHeight(selection) > 0) drawSizeLabel(bitmap, selection);
     }
 

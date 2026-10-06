@@ -8,6 +8,7 @@ const scout_mod = @import("../../clients/scout.zig");
 const painter_mod = @import("../../painter.zig");
 const hotkeys = @import("../../hotkeys/manager.zig");
 const monitors = @import("../../layout/monitors.zig");
+const spaces = @import("../../layout/spaces.zig");
 const region_select = @import("../tools/region_select.zig");
 const host = @import("../host.zig");
 const session = @import("../session.zig");
@@ -99,10 +100,11 @@ pub fn clearAllCharacterWindowPositions(_: std.mem.Allocator) !void {
     try setWindowPositions(null, null);
 }
 
-/// `region` is [x, y, width, height] to adjust, or null for a fresh drag; empty labels keep the overlay's English text. The result arrives as a regionSelected event.
-pub fn startRegionSelect(_: std.mem.Allocator, args: struct {
+/// `region` is [x, y, width, height] to adjust, or null for a fresh drag; spaces other than `spaceId` show dashed, and empty labels keep the overlay's English text. The result arrives as a regionSelected event.
+pub fn startRegionSelect(arena: std.mem.Allocator, args: struct {
     hide: bool = false,
     region: ?[4]i32 = null,
+    spaceId: ?u32 = null,
     labels: struct {
         save: []const u8 = "",
         cancel: []const u8 = "",
@@ -121,6 +123,12 @@ pub fn startRegionSelect(_: std.mem.Allocator, args: struct {
     setLabel(192, &request.labels.hint_new, args.labels.hintNew);
     setLabel(192, &request.labels.hint_edit, args.labels.hintEdit);
     setLabel(192, &request.labels.hint_confirm, args.labels.hintConfirm);
+    comptime std.debug.assert(region_select.MAX_OTHER_REGIONS >= spaces.MAX_SPACES);
+    var others: std.ArrayList(win32.RECT) = .empty;
+    for (session.profile().thumbnailSpaces.items) |*space| {
+        if (args.spaceId) |id| if (space.id == id) continue;
+        try others.append(arena, spaces.rect(space) orelse continue);
+    }
 
     if (request.hide_thumbnails) painter.hideVisibleThumbnails(host.allocator(), &g_region_select_hidden);
     const cursor = monitors.cursorMonitorBounds();
@@ -129,7 +137,7 @@ pub fn startRegionSelect(_: std.mem.Allocator, args: struct {
         slog.err("Failed to get font for region-select label: {}", .{err});
         break :blk null;
     };
-    region_select.start(painter.instance, painter.config.accentColor, .{ .font = label_font, .color = text_color }, request.edit_region, request.labels, onRegionSelectFinished) catch |err| {
+    region_select.start(painter.instance, painter.config.accentColor, .{ .font = label_font, .color = text_color }, request.edit_region, others.items, request.labels, onRegionSelectFinished) catch |err| {
         onRegionSelectFinished();
         return err;
     };

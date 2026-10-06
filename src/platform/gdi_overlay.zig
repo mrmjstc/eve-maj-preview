@@ -15,6 +15,9 @@ const HINT_LINE_PAD_Y = 2;
 
 /// Top-down 32bpp DIB section selected into its own memory DC, for GDI text/shape rendering
 /// into a pixel buffer that later becomes a layered window's alpha-blended source.
+/// A rect's part inside a pixel buffer, and how thick its outline can be.
+const ClippedRect = struct { left: usize, top: usize, right: usize, bottom: usize, thickness: usize };
+
 pub const OverlayBitmap = struct {
     mem_dc: win32.HDC,
     bitmap: win32.HBITMAP,
@@ -325,17 +328,31 @@ pub fn drawButtonFace(bmp: *const OverlayBitmap, rect: win32.RECT, label: []cons
 
 /// Draws a `thickness`-px outline of a rect placed anywhere inside a `buf_width`x`buf_height` pixel buffer, clamped to the buffer bounds.
 pub fn drawRectOutline(pixels: [*]u32, buf_width: usize, buf_height: usize, x: i32, y: i32, w: usize, h: usize, thickness: usize, color: u32) void {
-    const left: usize = @intCast(std.math.clamp(x, 0, @as(i32, @intCast(buf_width))));
-    const top: usize = @intCast(std.math.clamp(y, 0, @as(i32, @intCast(buf_height))));
-    const right = @min(buf_width, left + w);
-    const bottom = @min(buf_height, top + h);
-    if (right <= left or bottom <= top) return;
+    const clipped = clipToBuffer(buf_width, buf_height, x, y, w, h, thickness) orelse return;
+    const t = clipped.thickness;
+    fillRect(pixels, buf_width, buf_height, clipped.left, clipped.top, clipped.right - clipped.left, t, color);
+    fillRect(pixels, buf_width, buf_height, clipped.left, clipped.bottom - t, clipped.right - clipped.left, t, color);
+    fillRect(pixels, buf_width, buf_height, clipped.left, clipped.top, t, clipped.bottom - clipped.top, color);
+    fillRect(pixels, buf_width, buf_height, clipped.right - t, clipped.top, t, clipped.bottom - clipped.top, color);
+}
 
-    const t = @min(thickness, @min(right - left, bottom - top));
-    fillRect(pixels, buf_width, buf_height, left, top, right - left, t, color);
-    fillRect(pixels, buf_width, buf_height, left, bottom - t, right - left, t, color);
-    fillRect(pixels, buf_width, buf_height, left, top, t, bottom - top, color);
-    fillRect(pixels, buf_width, buf_height, right - t, top, t, bottom - top, color);
+/// Like drawRectOutline, in `dash`-px dashes with gaps as long, each side starting from its top or left corner.
+pub fn drawDashedRectOutline(pixels: [*]u32, buf_width: usize, buf_height: usize, x: i32, y: i32, w: usize, h: usize, thickness: usize, dash: usize, color: u32) void {
+    if (dash == 0) return;
+    const clipped = clipToBuffer(buf_width, buf_height, x, y, w, h, thickness) orelse return;
+    const t = clipped.thickness;
+    var px = clipped.left;
+    while (px < clipped.right) : (px += 2 * dash) {
+        const run = @min(dash, clipped.right - px);
+        fillRect(pixels, buf_width, buf_height, px, clipped.top, run, t, color);
+        fillRect(pixels, buf_width, buf_height, px, clipped.bottom - t, run, t, color);
+    }
+    var py = clipped.top;
+    while (py < clipped.bottom) : (py += 2 * dash) {
+        const run = @min(dash, clipped.bottom - py);
+        fillRect(pixels, buf_width, buf_height, clipped.left, py, t, run, color);
+        fillRect(pixels, buf_width, buf_height, clipped.right - t, py, t, run, color);
+    }
 }
 
 /// Pushes the bitmap to a layered window at its origin using per-pixel alpha, scaled by `opacity`.
@@ -479,6 +496,16 @@ pub fn ensureFont(
 }
 
 /// UTF-8 to UTF-16 into `out`, truncating to `buf_size` bytes; returns the number of UTF-16 units written.
+/// Null when nothing of the rect is inside the buffer.
+fn clipToBuffer(buf_width: usize, buf_height: usize, x: i32, y: i32, w: usize, h: usize, thickness: usize) ?ClippedRect {
+    const left: usize = @intCast(std.math.clamp(x, 0, @as(i32, @intCast(buf_width))));
+    const top: usize = @intCast(std.math.clamp(y, 0, @as(i32, @intCast(buf_height))));
+    const right = @min(buf_width, left + w);
+    const bottom = @min(buf_height, top + h);
+    if (right <= left or bottom <= top) return null;
+    return .{ .left = left, .top = top, .right = right, .bottom = bottom, .thickness = @min(thickness, @min(right - left, bottom - top)) };
+}
+
 fn toWide(comptime buf_size: usize, text: []const u8, out: *[buf_size]u16) usize {
     const len = @min(text.len, buf_size);
     if (len == 0) return 0;

@@ -142,8 +142,6 @@
   "dynamic.space.takenUnassigned": "Unassigned characters go to '{space}' instead.",
   "dynamic.space.takenLoginScreen": "Logged-out clients go to '{space}' instead.",
   "dynamic.space.regionLabel": "Region",
-  "dynamic.space.regionNone": "No region yet",
-  "dynamic.space.regionText": "{w} × {h} at {x}, {y}",
   "dynamic.space.newRegion": "▭ New",
   "dynamic.space.editRegion": "✎ Edit",
   "dynamic.space.spacingLabel": "Spacing (px)",
