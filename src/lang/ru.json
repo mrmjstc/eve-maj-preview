@@ -455,7 +455,6 @@
   "field.regionFitLimitToThumbnailSize.label": "Ограничить размер превью до заданных размеров",
   "field.regionFitOrder.hint": "«Порядок персонажей» следует списку персонажей; «Порядок групп хоткеев» - группам хоткеев.",
   "field.regionFitOrder.label": "Порядок по",
-  "field.regionFitReorderLoggedOut.hint": "Если выключено, место вышедшего персонажа остаётся на месте до следующей перестройки, а не освобождается сразу.",
   "field.rememberListViewPosition.label": "Запоминать позицию списка клиентов",
   "field.rememberNotifInfoPanelPosition.label": "Запоминать позицию панели истории",
   "field.requireEveFocus.hint": "Хоткеи игнорируются, если окно EVE не в фокусе.",

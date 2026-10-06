@@ -45,8 +45,6 @@ pub const DisplayConfig = struct {
 
     /// Manual ignores thumbnailSpaces, so every thumbnail is placed by hand.
     placementMode: types.PlacementMode = .Manual,
-    /// Puts logged-out characters after the logged-in ones within each thumbnail space.
-    regionFitReorderLoggedOut: bool = true,
     hideThumbnailsDuringRegionSelect: bool = true,
 
     monitorIndex: ?u32 = null,

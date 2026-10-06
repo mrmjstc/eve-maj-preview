@@ -455,7 +455,6 @@
   "field.regionFitLimitToThumbnailSize.label": "Limiter la taille des miniatures aux dimensions configurées",
   "field.regionFitOrder.hint": "Ordre des personnages suit la liste des personnages ; Ordre des groupes de raccourcis suit plutôt les groupes de raccourcis.",
   "field.regionFitOrder.label": "Ordonner par",
-  "field.regionFitReorderLoggedOut.hint": "Quand désactivé, la place d'un personnage déconnecté reste inchangée jusqu'à la prochaine réorganisation au lieu de combler l'espace immédiatement.",
   "field.rememberListViewPosition.label": "Mémoriser la position de la liste des clients",
   "field.rememberNotifInfoPanelPosition.label": "Mémoriser la position du panneau d'historique",
   "field.requireEveFocus.hint": "Les raccourcis sont ignorés sauf si une fenêtre EVE a actuellement le focus.",

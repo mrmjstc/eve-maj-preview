@@ -455,7 +455,6 @@
   "field.regionFitLimitToThumbnailSize.label": "Ogranicz rozmiar miniatury do skonfigurowanych wymiarów",
   "field.regionFitOrder.hint": "Kolejność postaci podąża za listą Postacie; Kolejność grup skrótów podąża za grupami skrótów.",
   "field.regionFitOrder.label": "Sortuj według",
-  "field.regionFitReorderLoggedOut.hint": "Gdy wyłączone, miejsce wylogowanej postaci pozostaje puste do następnego przeukładania zamiast natychmiast się zamykać.",
   "field.rememberListViewPosition.label": "Zapamiętaj pozycję listy klientów",
   "field.rememberNotifInfoPanelPosition.label": "Zapamiętaj pozycję panelu historii",
   "field.requireEveFocus.hint": "Skróty są ignorowane, jeśli żadne okno EVE nie ma fokusu.",

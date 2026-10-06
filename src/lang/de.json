@@ -455,7 +455,6 @@
   "field.regionFitLimitToThumbnailSize.label": "Vorschaugröße auf konfigurierte Abmessungen begrenzen",
   "field.regionFitOrder.hint": "\"Charakterreihenfolge\" folgt der Charakterliste; \"Hotkey-Gruppenreihenfolge\" folgt stattdessen den Hotkey-Gruppen.",
   "field.regionFitOrder.label": "Sortieren nach",
-  "field.regionFitReorderLoggedOut.hint": "Wenn deaktiviert, bleibt der Platz eines ausgeloggten Charakters bis zur nächsten Neuanordnung erhalten, statt die Lücke sofort zu schließen.",
   "field.rememberListViewPosition.label": "Position der Client-Liste merken",
   "field.rememberNotifInfoPanelPosition.label": "Position des Verlaufs-Panels merken",
   "field.requireEveFocus.hint": "Hotkeys werden ignoriert, solange kein EVE-Fenster fokussiert ist.",

@@ -285,7 +285,7 @@ Per-space fields:
 - `spacing`: Gap between cells (default `0`)
 - `limitToThumbnailSize`: Caps cells at the configured thumbnail size (DPI-scaled for the region's monitor), leaving unused room in the region rather than growing past it
 
-`display.regionFitReorderLoggedOut` (default `true`): whether a character logging out reflows its space straight away, or keeps its slot until the next reflow. Shown in the dialog as Close Gaps Immediately on Logout. A logout always reflows when login-screen placeholders go to a space, since the placeholder moves there.
+A character logging out rearranges the spaces straight away: its login-screen placeholder goes to the Login Screen space or the first space with `takesLoginScreen` on, else it's placed by hand.
 
 ```json
 {
@@ -342,7 +342,7 @@ All pixel-based values here (thumbnail size, `startX`/`startY`, spacing, font si
 - `startX`, `startY`: Starting position (absolute or monitor-relative); also the spawn point for hand-placed characters with no saved position
 - `newThumbnailSpacing`: Horizontal gap between hand-placed thumbnails with no saved position yet - they're lined up left-to-right from `startX`/`startY` instead of stacking on top of each other
 - `placementMode`: `Manual` (default) or `ThumbnailSpaces` - see [Thumbnail Spaces](#thumbnail-spaces)
-- `regionFitReorderLoggedOut`, `hideThumbnailsDuringRegionSelect`: Logout reflow and select-overlay hiding for every space - see [Thumbnail Spaces](#thumbnail-spaces)
+- `hideThumbnailsDuringRegionSelect`: Hides thumbnails while a space's region is drawn - see [Thumbnail Spaces](#thumbnail-spaces)
 - `monitorIndex`: Target monitor (0-based, null = absolute)
 - `useMonitorWorkArea`: Respect taskbar
 - `honorSavedPositions`: Use saved character positions

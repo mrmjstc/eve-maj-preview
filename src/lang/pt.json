@@ -455,7 +455,6 @@
   "field.regionFitLimitToThumbnailSize.label": "Limitar Tamanho da Miniatura às Dimensões Configuradas",
   "field.regionFitOrder.hint": "Ordem de Personagens segue a lista de Personagens; Ordem de Grupo de Hotkeys segue os grupos de hotkeys.",
   "field.regionFitOrder.label": "Ordenar Por",
-  "field.regionFitReorderLoggedOut.hint": "Quando desativado, o lugar de um personagem deslogado permanece até a próxima reorganização, em vez de fechar a lacuna imediatamente.",
   "field.rememberListViewPosition.label": "Lembrar Posição da Lista de Clientes",
   "field.rememberNotifInfoPanelPosition.label": "Lembrar Posição do Painel de Histórico",
   "field.requireEveFocus.hint": "Hotkeys são ignoradas a menos que uma janela do EVE esteja em foco no momento.",

@@ -455,7 +455,6 @@
   "field.regionFitLimitToThumbnailSize.label": "将缩略图大小限制为已配置尺寸",
   "field.regionFitOrder.hint": "角色顺序遵循角色列表;热键分组顺序则遵循热键分组。",
   "field.regionFitOrder.label": "排序依据",
-  "field.regionFitReorderLoggedOut.hint": "关闭时,已登出角色的位置会保留至下一次重新排布,而不是立即填补空缺。",
   "field.rememberListViewPosition.label": "记住客户端列表位置",
   "field.rememberNotifInfoPanelPosition.label": "记住历史面板位置",
   "field.requireEveFocus.hint": "除非当前有 EVE 窗口获得焦点,否则忽略热键。",

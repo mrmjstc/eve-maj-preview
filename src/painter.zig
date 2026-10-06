@@ -518,7 +518,7 @@ pub const Painter = struct {
 
             const was_generic = scout.isGenericCharacterName(change.old_name);
             const now_generic = scout.isGenericCharacterName(change.new_name);
-            // An unconfigured "EVE" placeholder always sorts last, so either direction can change a thumbnail's RegionFit rank.
+            // Either direction can move a thumbnail to another space, or change its rank in one.
             if (was_generic and !now_generic) any_login = true;
             if (now_generic and !was_generic) any_logout = true;
 
@@ -542,8 +542,7 @@ pub const Painter = struct {
         }
 
         if (!spaces.anyActive(self.config)) return false;
-        // A space taking login-screen clients moves the client away, so that move can't wait for regionFitReorderLoggedOut.
-        return any_login or (any_logout and (self.config.display.regionFitReorderLoggedOut or spaces.loginScreenHasSpace(self.config)));
+        return any_login or any_logout;
     }
 
     /// Keeps the old name if copying fails.

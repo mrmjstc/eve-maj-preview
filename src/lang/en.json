@@ -490,8 +490,6 @@
   "field.regionFitLimitToThumbnailSize.label": "Cap Thumbnail Size to Configured Dimensions",
   "field.regionFitOrder.hint": "Character Order follows the Characters list; Hotkey Group Order follows the hotkey groups instead.",
   "field.regionFitOrder.label": "Order By",
-  "field.regionFitReorderLoggedOut.hint": "When off, a logged-out character's spot stays put until the next reflow instead of closing the gap immediately.",
-  "field.regionFitReorderLoggedOut.label": "Close Gaps Immediately on Logout",
   "field.rememberListViewPosition.label": "Remember Client List Position",
   "field.rememberNotifInfoPanelPosition.label": "Remember History Panel Position",
   "field.requireEveFocus.hint": "Hotkeys are ignored unless an EVE window is currently focused.",
