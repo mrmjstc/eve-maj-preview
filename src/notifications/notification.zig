@@ -63,7 +63,7 @@ pub const NotificationType = enum {
     Generic,
 };
 
-/// For the History Panel's category filter buttons, and the order the config dialog lists types in (see config/schema.zig).
+/// For the History Panel's category filter buttons, and the order the config dialog lists types in.
 pub const NotificationCategory = enum {
     Fleet,
     Mining,

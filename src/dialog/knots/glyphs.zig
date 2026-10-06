@@ -1,10 +1,10 @@
-//! The window's drawn icons, as pixel bitmaps: Cascadia Code lacks most of the page's glyphs, and knots draws lines and triangles without antialiasing.
+//! The window's drawn icons, as pixel bitmaps: Cascadia Code lacks most of these symbols, and knots draws lines and triangles without antialiasing.
 const std = @import("std");
 const ui = @import("ui");
 
 const DrawCmd = ui.component.Canvas.DrawCmd;
 
-/// A sidebar glyph's box; the page sets its glyphs at 11px in a 14px-wide cell.
+/// A sidebar glyph's box: an 11px glyph in a 14px-wide cell.
 pub const TAB_SIZE = 14;
 /// A header icon's box.
 pub const ICON_SIZE = 16;

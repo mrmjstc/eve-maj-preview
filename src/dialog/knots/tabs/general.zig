@@ -21,7 +21,7 @@ const NEW_FILTER_NAME = "New Filter";
 
 var g_allocator: std.mem.Allocator = undefined;
 var g_selected_index: usize = 0;
-/// Enable Window Filters isn't saved; like the page's, it starts on whenever the profile has filters.
+/// Enable Window Filters isn't saved; it starts on whenever the profile has filters.
 var g_filters_enabled: ?bool = null;
 /// The open "Pick Running Window" dropdown, under one filter.
 var g_picker: ?window_picker.Picker = null;
@@ -159,7 +159,7 @@ fn filterDetail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     if (removed) removeFilter(profile, index);
 }
 
-/// The page's picker-select: picking a window fills in its class and executable, and names the filter after the executable.
+/// Picking a window fills in its class and executable, and names the filter after the executable.
 fn picker(context: *ui.Frame, profile: ProfileRef, filter: FilterRef) !void {
     const chosen = try window_picker.select(context, &g_picker, .str("knots.filter.picker"), filter.index) orelse return;
     filter.setStrings("class_names", &.{chosen.class});
@@ -170,7 +170,7 @@ fn picker(context: *ui.Frame, profile: ProfileRef, filter: FilterRef) !void {
     window_picker.close(&g_picker);
 }
 
-/// A filter's windows show up as a character named after it, so the page adds one when a window is picked.
+/// A filter's windows show up as a character named after it, so one is added when a window is picked.
 fn addCharacterIfMissing(profile: ProfileRef, name: []const u8) void {
     if (characterIndex(profile, name) != null) return;
     profile.append("characters", .{});

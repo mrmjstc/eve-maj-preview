@@ -1,4 +1,4 @@
-//! The WebView2 page's English strings, for names the knots window shows from data rather than its own code, e.g. each notification type's label; main thread only.
+//! The English strings in lang/en.json, for names the window shows from data rather than its own code, e.g. each notification type's label; main thread only.
 const std = @import("std");
 const log = @import("../../log.zig");
 

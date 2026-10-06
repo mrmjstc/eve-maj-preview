@@ -1,4 +1,4 @@
-//! The knots configuration window's look, mirroring the WebView2 page's style.css.
+//! The configuration window's look: colours, sizes and every component's style.
 const ui = @import("ui");
 
 const Color = ui.Color;
@@ -84,7 +84,7 @@ pub const section: Style = .{
 /// A section that fills its tab, like the Characters list's.
 pub const fill_section: Style = section.with(.{ .height = .grow() });
 
-/// Fits Resource Overlay, the longest label; knots can't size a rail to stretched children, as the page's hugs its content.
+/// Fits Resource Overlay, the longest label; knots can't size a rail to stretched children.
 pub const sidebar: Style = .{
     .width = .fixed(172),
     .height = .grow(),
@@ -237,7 +237,7 @@ pub const subheading: Style = .{
 /// No italics: Cascadia Code ships them as a separate face we don't embed.
 pub const hint: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED }, .wrap = true, .width = .grow() };
 
-/// The accent tints it, like the page's warning banner.
+/// A warning, tinted by the accent.
 pub const notice: Style = .{
     .width = .grow(),
     .wrap = true,
@@ -292,7 +292,7 @@ pub const number_input: Style = .{
     .focus = &.{ .border_color = .accent },
 };
 
-/// No fill: the page's range track is one colour either side of the thumb.
+/// No fill: the track is one colour either side of the thumb.
 pub const slider_track: Style = .{ .height = .fixed(6), .background = .{ .color = BORDER }, .radius = .md };
 pub const slider_fill: Style = .{ .background = .{ .color = BORDER } };
 pub const slider_thumb: Style = .{ .width = .fixed(16), .background = .accent };
@@ -346,10 +346,10 @@ pub const footer: Style = .{
     .border_color = .{ .color = BORDER },
 };
 
-/// wordmark.svg at the page's 6rem height.
+/// wordmark.svg at 96px high.
 pub const wordmark: Style = .{ .width = .fixed(269), .height = .fixed(96) };
 
-/// The page's `<strong>` inside a hint.
+/// A bold lead-in inside a hint, e.g. "Version:".
 pub const fact_label: Style = .{ .font = FONT_SEMIBOLD, .font_size = .xs, .foreground = .{ .color = MUTED } };
 pub const hint_plain: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED } };
 
@@ -364,7 +364,7 @@ pub const link: Style = .{
     .active = &.{ .state_layer = 0 },
 };
 
-/// One of three equal columns, like the page's credits grid.
+/// One of three equal columns, as the credits list them.
 pub const thanks_name: Style = .{ .width = .grow(), .font_size = .xs, .foreground = .{ .color = MUTED } };
 
 /// #profile-header.
@@ -426,7 +426,7 @@ pub const icon_button_danger: Style = icon_button.with(.{ .hover = &.{ .backgrou
 pub const icon_button_reset: Style = icon_button.with(.{ .hover = &.{ .background = .{ .color = SURFACE }, .border_color = .{ .color = PURPLE }, .state_layer = 0 } });
 pub const icon_button_import: Style = icon_button.with(.{ .hover = &.{ .background = .{ .color = SURFACE }, .border_color = .{ .color = SKY }, .state_layer = 0 } });
 
-/// The page's plain `button`: surface fill, accent border on hover.
+/// A plain button: surface fill, accent border on hover.
 pub const plain_button: Style = .{
     .height = .fixed(CONTROL_HEIGHT),
     .padding = .xy(12, 0),
@@ -552,7 +552,7 @@ pub const popover: Style = .{
 pub const popover_title: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .justify = .space_between };
 pub const popover_close: Style = plain_button.with(.{ .width = .fixed(CONTROL_HEIGHT), .padding = .all(0), .justify = .center });
 
-/// openGroup's column, which dims like the page's .is-disabled.
+/// openGroup's column, which dims while disabled.
 pub const group: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
 pub const group_disabled: Style = group.with(.{ .opacity = 0.5 });
 /// Laid over a disabled group to take its clicks; sized from the group's last layout.
@@ -595,12 +595,12 @@ pub const stage_frame: Style = .{
 };
 pub const stage_row: Style = .{ .width = .grow(), .justify = .center };
 
-/// Fields sharing one row with their labels above them, like the page's Font Name, Size and Weight.
+/// Fields sharing one row with their labels above them, e.g. Font Name, Size and Weight.
 pub const stacked_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .end, .gap = 8 };
 pub const stacked_field: Style = .{ .direction = .column, .gap = 4 };
 pub const stacked_label: Style = .{ .foreground = .{ .color = TEXT_SECONDARY } };
 
-/// .button-icon with a text glyph, like the page's × clear-region button.
+/// An icon button with a text glyph, e.g. × to clear a region.
 pub const icon_button_danger_text: Style = icon_button.with(.{
     .foreground = .{ .color = MUTED },
     .font_size = .{ .px = 15 },
@@ -622,7 +622,7 @@ pub const select_fill: Style = select.with(.{ .width = .grow() });
 pub const hint_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 4 };
 pub const hint_inline: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED }, .wrap = true };
 
-/// Side-by-side columns inside a section, like the page's .row of .column.
+/// Side-by-side columns inside a section.
 pub const columns: Style = .{ .width = .grow(), .direction = .row, .@"align" = .start, .gap = 16 };
 pub const column: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
 
@@ -670,7 +670,7 @@ pub const inline_label_fixed: Style = inline_label.with(.{ .width = .fixed(90) }
 /// .placeholder-chips: small buttons that insert a {placeholder}.
 pub const chip_row: Style = .{ .width = .grow(), .direction = .row, .gap = 4, .wrap = true };
 pub const placeholder_chip: Style = plain_button.with(.{ .height = .fixed(22), .padding = .xy(6, 0), .font_size = .xs });
-/// A read-only path, shown as a box like the page's readonly input.
+/// A read-only path, shown as a box like an input.
 pub const path_box: Style = .{
     .width = .grow(),
     .height = .fixed(CONTROL_HEIGHT),

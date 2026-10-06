@@ -1,4 +1,4 @@
-//! Numeric bounds, declared once per settings type in `ranges`, enforced by `clamp` and sent to the dialog by config/schema.zig.
+//! Numeric bounds, declared once per settings type in `ranges`, enforced by `clamp` and read by the config dialog's sliders.
 const std = @import("std");
 const log = @import("../log.zig");
 

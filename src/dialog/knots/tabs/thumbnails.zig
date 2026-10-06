@@ -1,4 +1,4 @@
-//! The configuration window's Thumbnails tab, laid out as the WebView2 page's: size, text overlays, the Thumbnail Spaces, borders, visibility, snapping, display mode and system colours; main thread only.
+//! The configuration window's Thumbnails tab: size, text overlays, the Thumbnail Spaces, borders, visibility, snapping, display mode and system colours; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const win32 = @import("../../../platform/win32.zig");
@@ -37,7 +37,7 @@ const RATIOS = [_]Ratio{
 const MATCH_CLIENT_INDEX = 0;
 const CUSTOM_INDEX = RATIOS.len - 1;
 
-/// Which border rows Enable Borders turns back on; the page keeps them as unsaved checkbox states.
+/// Which border rows Enable Borders turns back on; not saved.
 var g_remembered_borders: struct { focused: bool = true, inactive: bool = true } = .{};
 
 pub fn show(context: *ui.Frame) !void {

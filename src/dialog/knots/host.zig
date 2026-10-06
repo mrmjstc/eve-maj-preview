@@ -5,7 +5,6 @@ const ui = @import("ui");
 const win32 = @import("../../platform/win32.zig");
 const main = @import("../../main.zig");
 const config = @import("../../config.zig");
-const webview_host = @import("../host.zig");
 const session = @import("session.zig");
 const bind = @import("bind.zig");
 const form = @import("form.zig");
@@ -92,11 +91,6 @@ pub fn open() void {
             focus();
             return;
         },
-    }
-    // Both windows would edit the same live profile.
-    if (webview_host.isOpen()) {
-        slog.warn("Failed to open the knots configuration window: the WebView2 one is open", .{});
-        return;
     }
     postCommand(.open);
 }
@@ -368,7 +362,7 @@ pub fn fetchPrices() bool {
     return prices.fetch(timer, @backingInt(Command.prices_fetched));
 }
 
-/// Like the page's, fetched prices fill in the table, kept until Save.
+/// Fetched prices fill in the table, kept until Save.
 fn applyPrices(lParam: win32.LPARAM) void {
     if (lParam == 0) return;
     const fetched: *prices.Fetched = @ptrFromInt(@as(usize, @bitCast(lParam)));
@@ -394,7 +388,7 @@ fn applyPicked(lParam: win32.LPARAM) void {
         .chatlog_dir => chatlog.set("chatlogDir", picked.path),
         .gamelog_dir => chatlog.set("gamelogDir", picked.path),
         .import_file => import_dialog.loadFile(picked.path),
-        // Picking a file turns the sound on, as the page does.
+        // Picking a file means the sound is wanted.
         .sound_file => {
             const type_config = notifications.typeRef(picked.index);
             type_config.set("sound_path", picked.path);

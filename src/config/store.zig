@@ -10,11 +10,6 @@ const log = @import("../log.zig");
 const Config = config.Config;
 const slog = log.scoped("config");
 
-/// Told about each runtime change as edit ops (see config/patch.zig), so an open config dialog can follow it.
-pub var g_on_runtime_change: ?*const fn (ops_json: []const u8) void = null;
-
-const CharacterField = struct { id: u32, field: []const u8 };
-
 pub const ProfileStore = struct {
     live: Config,
     saved: Config,
@@ -38,8 +33,6 @@ pub const ProfileStore = struct {
         assign(Config, &self.live, patch);
         assign(Config, &self.saved, patch);
         self.persist();
-        const paths: []const []const []const u8 = comptime patch_mod.leafPaths(Config, @TypeOf(patch));
-        self.emit(paths, writeFieldSets);
     }
 
     pub const CharacterPosition = struct { name: []const u8, pos: config.Position };
@@ -47,7 +40,6 @@ pub const ProfileStore = struct {
     /// Saved once for the whole batch, so a group drag writes the profile once rather than per thumbnail.
     pub fn setCharacterPositions(self: *ProfileStore, entries: []const CharacterPosition) void {
         for (entries) |entry| {
-            const existed = self.live.findCharacter(entry.name) != null;
             setPosition(&self.live, entry) catch |err| {
                 slog.err("Failed to add '{s}' to profile '{s}' for its position: {}", .{ entry.name, self.live.profile_name, err });
                 continue;
@@ -56,8 +48,9 @@ pub const ProfileStore = struct {
                 slog.err("Failed to add '{s}' to profile '{s}' for its position: {}", .{ entry.name, self.saved.profile_name, err });
                 continue;
             };
-            self.emitCharacter(entry.name, existed, "position");
         }
+        // A character this created needs an id, which the config dialog tracks it by.
+        patch_mod.assignIds(Config, &self.live);
         self.persist();
     }
 
@@ -68,15 +61,11 @@ pub const ProfileStore = struct {
 
     /// Sets `character_name`'s saved game-window position, or with a null name every character's; clearing a missing character is a no-op.
     pub fn setWindowPosition(self: *ProfileStore, character_name: ?[]const u8, pos: ?config.Position) !void {
-        const existed = if (character_name) |name| self.live.findCharacter(name) != null else true;
         try applyWindowPosition(&self.live, character_name, pos);
         try applyWindowPosition(&self.saved, character_name, pos);
+        // A character this created needs an id, which the config dialog tracks it by.
+        patch_mod.assignIds(Config, &self.live);
         self.persist();
-        if (character_name) |name| {
-            if (self.live.findCharacter(name) != null) self.emitCharacter(name, existed, "windowPosition");
-        } else {
-            for (self.live.characters.items) |char| self.emitCharacter(char.name, true, "windowPosition");
-        }
     }
 
     /// `group_index` is into `saved`, which the hotkey manager reads; returns whether `character_name` is now in the group.
@@ -87,14 +76,11 @@ pub const ProfileStore = struct {
         const member = strings.indexOfString(group.characters.items, character_name) == null;
         try setMembership(&self.saved, group, character_name, member);
         // Unsaved dialog edits may have moved or removed the group in `live`.
-        var in_live = false;
         for (self.live.hotkeyGroups.items) |*live_group| {
             if (live_group.id != group.id) continue;
             try setMembership(&self.live, live_group, character_name, member);
-            in_live = true;
         }
         if (!group.temporaryMembership) self.persist();
-        if (in_live) self.emit(group.id, writeGroupMembers);
         return member;
     }
 
@@ -141,79 +127,7 @@ pub const ProfileStore = struct {
         defer allocator.free(path);
         try profiles.save(&self.saved, allocator, path);
     }
-
-    fn emitCharacter(self: *ProfileStore, character_name: []const u8, existed: bool, comptime field: []const u8) void {
-        // A character this change created has no id yet.
-        patch_mod.assignIds(Config, &self.live);
-        const index = self.live.characterIndex(character_name) orelse return;
-        if (existed) {
-            self.emit(CharacterField{ .id = self.live.characters.items[index].id, .field = field }, writeCharacterField);
-        } else {
-            self.emit(index, writeCharacterInsert);
-        }
-    }
-
-    /// `write` adds this change's ops to a JSON array, which goes to `g_on_runtime_change`.
-    fn emit(self: *ProfileStore, context: anytype, comptime write: fn (*std.json.Stringify, *const Config, @TypeOf(context)) anyerror!void) void {
-        const callback = g_on_runtime_change orelse return;
-        var arena = std.heap.ArenaAllocator.init(self.live.allocator);
-        defer arena.deinit();
-        var out: std.Io.Writer.Allocating = .init(arena.allocator());
-        var jw: std.json.Stringify = .{ .writer = &out.writer };
-        writeArray(&jw, &self.live, context, write) catch |err| {
-            slog.err("Failed to describe a runtime change for the config dialog: {}", .{err});
-            return;
-        };
-        callback(out.written());
-    }
 };
-
-fn writeArray(jw: *std.json.Stringify, cfg: *const Config, context: anytype, comptime write: fn (*std.json.Stringify, *const Config, @TypeOf(context)) anyerror!void) !void {
-    try jw.beginArray();
-    try write(jw, cfg, context);
-    try jw.endArray();
-}
-
-fn writeFieldSets(jw: *std.json.Stringify, cfg: *const Config, paths: []const []const []const u8) anyerror!void {
-    for (paths) |names| {
-        var buf: [8]std.json.Value = undefined;
-        if (names.len > buf.len) return error.PathTooDeep;
-        for (names, 0..) |name, i| buf[i] = .{ .string = name };
-        try writeSet(jw, cfg, buf[0..names.len]);
-    }
-}
-
-fn writeCharacterField(jw: *std.json.Stringify, cfg: *const Config, change: CharacterField) anyerror!void {
-    try writeSet(jw, cfg, &.{ .{ .string = "characters" }, .{ .integer = change.id }, .{ .string = change.field } });
-}
-
-fn writeCharacterInsert(jw: *std.json.Stringify, cfg: *const Config, index: usize) anyerror!void {
-    try jw.beginObject();
-    try jw.objectField("op");
-    try jw.write("insert");
-    try jw.objectField("path");
-    try jw.write(&[_]std.json.Value{.{ .string = "characters" }});
-    try jw.objectField("index");
-    try jw.write(index);
-    try jw.objectField("value");
-    try patch_mod.write(jw, config.CharacterConfig, &cfg.characters.items[index]);
-    try jw.endObject();
-}
-
-fn writeGroupMembers(jw: *std.json.Stringify, cfg: *const Config, group_id: u32) anyerror!void {
-    try writeSet(jw, cfg, &.{ .{ .string = "hotkeyGroups" }, .{ .integer = group_id }, .{ .string = "characters" } });
-}
-
-fn writeSet(jw: *std.json.Stringify, cfg: *const Config, path: []const std.json.Value) !void {
-    try jw.beginObject();
-    try jw.objectField("op");
-    try jw.write("set");
-    try jw.objectField("path");
-    try jw.write(path);
-    try jw.objectField("value");
-    try patch_mod.writeAt(jw, Config, cfg, path);
-    try jw.endObject();
-}
 
 /// Shared with the dialog's edits to a profile the app isn't running, which only exist on disk.
 pub fn applyWindowPosition(cfg: *Config, character_name: ?[]const u8, pos: ?config.Position) !void {

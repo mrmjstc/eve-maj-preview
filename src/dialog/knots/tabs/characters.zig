@@ -22,7 +22,7 @@ const CharacterRef = session.Ref(config.CharacterConfig);
 const slog = log.scoped("dialog_knots");
 
 const ROW_KEY: ui.Key = .str("knots.roster.row");
-/// The page's data-default-color for the two border overrides; the name colour falls back to white.
+/// What the border overrides start at when ticked; the name colour starts at white.
 const DEFAULT_ACTIVE_BORDER = 0xFFFFFF00;
 const DEFAULT_INACTIVE_BORDER = 0xFF606060;
 const DEFAULT_NAME_COLOR = 0xFFFFFFFF;

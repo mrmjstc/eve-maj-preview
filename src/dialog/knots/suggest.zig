@@ -1,4 +1,4 @@
-//! Suggesting logged-in clients' names under a name box, like the page's suggestOpenClients; main thread only.
+//! Suggesting logged-in clients' names under a name box; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const positions = @import("positions.zig");

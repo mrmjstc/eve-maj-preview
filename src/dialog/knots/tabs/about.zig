@@ -86,7 +86,7 @@ fn thanks(context: *ui.Frame) !void {
 fn license(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "License", "", .none, &style.section);
     try widgets.paragraph(context, .str("knots.about.license"), "This project is open source and released under the GNU General Public License v3.0 (GPLv3). A copy of the license is included with the application.");
-    try widgets.paragraph(context, .str("knots.about.third_party"), "This application bundles third-party components: the Cascadia Code fonts (SIL Open Font License 1.1), knots (MIT License), webview (MIT License) and WebView2 SDK (BSD-style license). Their license texts are included with the application.");
+    try widgets.paragraph(context, .str("knots.about.third_party"), "This application bundles third-party components: the Cascadia Code fonts (SIL Open Font License 1.1) and knots (MIT License). Their license texts are included with the application.");
     try section.close(context);
 }
 

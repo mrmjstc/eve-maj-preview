@@ -13,7 +13,7 @@ const widgets = @import("../widgets.zig");
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 
-/// The page lists ores before ice, moon ores and gas.
+/// Ores first, then ice, moon ores and gas.
 const ORE_CATEGORIES = [_][]const u8{ "Ore", "Ice", "Moons", "Gas" };
 
 pub fn showCombat(context: *ui.Frame) !void {
@@ -68,7 +68,7 @@ pub fn showMining(context: *ui.Frame) !void {
     try prices_section.close(context);
 }
 
-/// Grouped by category in the page's order; names are fixed, since mined-ore log lines are matched against them.
+/// Grouped by category; names are fixed, since mined-ore log lines are matched against them.
 fn oreTable(context: *ui.Frame) !void {
     const table = Rect{ .key = .src(@src()), .style = &style.table };
     _ = try table.open(context);
@@ -107,7 +107,7 @@ fn orePrice(entry: @TypeOf(config.DEFAULT_ORE_TABLE[0])) f64 {
     return entry.price;
 }
 
-/// Global settings only hold prices that differ from the catalogue's, as the page saves them.
+/// Global settings only hold prices that differ from the catalogue's.
 pub fn setOrePrice(name: []const u8, price: f64) void {
     const global = session.global();
     for (global.ptr.oreTable.items, 0..) |override, index| {

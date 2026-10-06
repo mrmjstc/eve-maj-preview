@@ -83,7 +83,7 @@ const Tab = enum {
         };
     }
 
-    /// Lists its sections under it in the sidebar while open; the page leaves out tabs with too few to be worth it.
+    /// Lists its sections under it in the sidebar while open; tabs with too few to be worth it don't.
     fn listsSections(tab: Tab) bool {
         return switch (tab) {
             .general, .thumbnails, .behavior, .hotkeys, .notifications, .mining => true,
@@ -255,7 +255,7 @@ fn sectionList(context: *ui.Frame) !void {
     }
 }
 
-/// Like the page's switchTab: the new tab starts at its top, with nothing outlined.
+/// The new tab starts at its top, with nothing outlined.
 fn selectTab(context: *ui.Frame, tab: Tab) void {
     g_tab = tab;
     widgets.clearActiveSection();
@@ -290,7 +290,7 @@ fn footer(context: *ui.Frame) !void {
     try bar.close(context);
 }
 
-/// The page's #search-container: the box, its clear button, and how many sections match.
+/// The settings search: the box, its clear button, and how many sections match.
 fn searchBox(context: *ui.Frame) !void {
     const box = Rect{ .key = .src(@src()), .style = &style.search_container };
     _ = try box.open(context);
@@ -333,7 +333,7 @@ fn unsavedPrompt(context: *ui.Frame) !void {
     try dialog.close(context);
 }
 
-/// The edited profile's accentColor tints the window, like the page's applyAccentColorTheme.
+/// The edited profile's accentColor tints the window.
 fn applyAccent(context: *ui.Frame) void {
     const argb = header.previewAccent() orelse session.profile().ptr.accentColor;
     const r: u8 = @truncate(argb >> 16);

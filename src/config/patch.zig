@@ -252,24 +252,3 @@ fn fieldKey(segment: std.json.Value) ![]const u8 {
         else => error.InvalidPath,
     };
 }
-
-/// The field paths `patch` sets, for patches shaped like ProfileStore.update's (nested anonymous structs down to leaf values of `T`'s fields).
-pub fn leafPaths(comptime T: type, comptime P: type) []const []const []const u8 {
-    comptime {
-        var out: []const []const []const u8 = &.{};
-        const info = @typeInfo(P).@"struct";
-        for (info.field_names, info.field_types) |name, F| {
-            const Field = @FieldType(T, name);
-            const head: []const []const u8 = &.{name};
-            if (F != Field and @typeInfo(Field) == .@"struct") {
-                for (leafPaths(Field, F)) |sub| {
-                    const full: []const []const u8 = head ++ sub;
-                    out = out ++ &[_][]const []const u8{full};
-                }
-            } else {
-                out = out ++ &[_][]const []const u8{head};
-            }
-        }
-        return out;
-    }
-}

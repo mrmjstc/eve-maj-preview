@@ -155,7 +155,7 @@ fn fileStep(context: *ui.Frame) !void {
     try backup_row.close(context);
 }
 
-/// "Main" from "1717171717_Main.json", the page's parseBackupFilename.
+/// "Main" from "1717171717_Main.json", a backup's timestamp and name.
 fn backupDisplayName(file_name: []const u8) []const u8 {
     const stem = profiles.displayName(file_name);
     const underscore = std.mem.findScalar(u8, stem, '_') orelse return stem;
@@ -218,7 +218,7 @@ fn optionsStep(context: *ui.Frame, analysis: *Analysis) !void {
 
     try widgets.subheading(context, .src(@src()), "Sections to import");
     for (analysis.sections, 0..) |*section, index| {
-        // The page shows the hint as a tooltip; knots has none, so it sits beside the title.
+        // knots has no tooltips, so the hint sits beside the title.
         const item = try widgets.openGroup(context, ui.Key.str("knots.import.section").indexed(index), section.available);
         const row = Rect{ .key = ui.Key.str("knots.import.section.row").indexed(index), .style = &style.inline_row };
         _ = try row.open(context);
@@ -296,7 +296,7 @@ fn applyChosen() !void {
     g_summary = .{ .notes = notes, .skipped = built.skipped };
 }
 
-/// Reads the file with the app's importer, whose JSON reply is what the page renders from.
+/// Reads the file with the app's importer, which replies in JSON.
 fn analyze(source_profile: ?[]const u8) void {
     analyzeFile(source_profile) catch |err| {
         slog.err("Failed to read settings file '{s}': {}", .{ g_file_name, err });

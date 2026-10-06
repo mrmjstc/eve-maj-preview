@@ -86,6 +86,8 @@ pub fn Ref(comptime T: type) type {
                 slog.err("Failed to add to '{s}': {}", .{ field, err });
                 return;
             };
+            // Characters and hotkey groups are tracked by id, e.g. to keep a selection across a reorder.
+            if (self.doc == .profile) patch.assignIds(config.Config, profile().ptr);
             edited(self.doc, comptime layoutFor(T, field, .none), self.layout);
         }
 
@@ -232,6 +234,12 @@ pub fn editProfile(name: []const u8) !void {
     errdefer draft.deinit();
     g_profile_draft_json = try draft.toJsonString(g_allocator);
     g_profile_draft = draft;
+}
+
+/// The global settings as the window has them, saved or not; the running ones while it's closed.
+pub fn liveGlobal() *const GlobalConfig {
+    if (g_global_draft) |*draft| return draft;
+    return &main.g_global_settings;
 }
 
 pub fn global() Ref(GlobalConfig) {

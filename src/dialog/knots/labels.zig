@@ -1,7 +1,7 @@
 //! Display labels the configuration window derives from setting names; no I/O.
 const std = @import("std");
 
-/// Where a tag spelled as words isn't clear enough, keyed by "<enum name>.<tag>" like the old page's enum.* strings.
+/// Where a tag spelled as words isn't clear enough, keyed by "<enum name>.<tag>".
 const OVERRIDES = std.StaticStringMap([]const u8).initComptime(.{
     .{ "RegionFitOrder.Characters", "Character Order" },
     .{ "RegionFitOrder.HotkeyGroups", "Hotkey Group Order" },

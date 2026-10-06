@@ -22,13 +22,13 @@ const NotificationType = notification.NotificationType;
 const TypeRef = session.Ref(config.NotificationTypeConfig);
 const slog = log.scoped("dialog_knots");
 
-/// The page's maxlength on a custom text box.
+/// The most a custom text box takes.
 const CUSTOM_TEXT_MAX_LENGTH = 100;
 /// Matches thumbnail/overlay.zig's MAX_LINES_PER_NOTIFICATION.
 const MAX_PREVIEW_LINES = 3;
 const NEWLINE_TOKEN = "\\n";
 
-/// Every type in the page's order: by category, then as declared.
+/// Every type, by category, then as declared.
 const TYPES_IN_ORDER = blk: {
     var ordered: [std.enums.values(NotificationType).len]NotificationType = undefined;
     var count: usize = 0;
@@ -48,7 +48,7 @@ var g_allocator: std.mem.Allocator = undefined;
 var g_selected: NotificationType = TYPES_IN_ORDER[0];
 /// The Event Alerts search box's text. Owned; freed in reset.
 var g_search: std.ArrayList(u8) = .empty;
-/// Where a placeholder chip inserts, per type; the page falls back to the first box.
+/// Where a placeholder chip inserts, per type; the first box until another is focused.
 var g_last_text_field: std.EnumArray(NotificationType, TextField) = .initFill(.custom_text);
 
 pub fn init(allocator: std.mem.Allocator) void {
@@ -83,7 +83,7 @@ fn system(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Notification System", "Configure position, duration, and suppression behavior for event notifications.", .profile, &style.section);
     const ref = session.profile().child("thumbnail").child("notifications");
     try bind.toggle(context, ref, "enabled", "Enable Notifications");
-    // Its placement and font are edited from its chip on the Thumbnails tab's Text Overlays preview, as on the page.
+    // Its placement and font are edited from its chip on the Thumbnails tab's Text Overlays preview.
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.number(context, ref, "suppress_click_duration_ms", "Click Suppress Duration (s)", .{ .ms_as_seconds = true });
     try widgets.hintText(context, .src(@src()), "Suppresses further notifications on a thumbnail for this long after you click it.");
@@ -241,7 +241,7 @@ fn typeDetail(context: *ui.Frame, ntype: NotificationType) !void {
     try stack.close(context);
 }
 
-/// The page's detail-form row: a label on the left rail, with the caller's controls stacked beside it.
+/// A detail-form row: a label on the left rail, with the caller's controls stacked beside it.
 fn rail(context: *ui.Frame, key: ui.Key, label: []const u8) !Rect {
     const row = Rect{ .key = key, .style = &style.rail_row };
     _ = try row.open(context);
@@ -322,7 +322,7 @@ fn textBox(context: *ui.Frame, ref: TypeRef, ntype: NotificationType, comptime f
     try row.close(context);
 }
 
-/// Inserts at the caret of the box last focused, as long as it still fits the page's 100 characters.
+/// Inserts at the caret of the box last focused, as long as it still fits.
 fn insertToken(context: *ui.Frame, ref: TypeRef, ntype: NotificationType, token: []const u8) void {
     switch (g_last_text_field.get(ntype)) {
         inline else => |field| {
@@ -362,7 +362,7 @@ fn preview(context: *ui.Frame, ntype: NotificationType, comptime field: TextFiel
     try widgets.paragraph(context, ui.Key.str("knots.events.preview:" ++ @tagName(field)).indexed(@backingInt(ntype)), try std.fmt.allocPrint(context.arena(), "Preview: {s}", .{kept.items}));
 }
 
-/// Unticked leaves it unset, inheriting `fallback`; picking a colour ticks it, as the page's swatch does.
+/// Unticked leaves it unset, inheriting `fallback`; picking a colour ticks it.
 fn optionalColor(context: *ui.Frame, ref: TypeRef, comptime field: []const u8, label: []const u8, fallback: u32) !void {
     const row = Rect{ .key = ui.Key.str("knots.events.color:" ++ field).indexed(ref.index), .style = &style.inline_row };
     _ = try row.open(context);

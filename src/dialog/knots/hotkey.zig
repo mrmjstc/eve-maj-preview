@@ -5,6 +5,7 @@ const win32 = @import("../../platform/win32.zig");
 const vk = @import("../../platform/virtual_keys.zig");
 const key_list = @import("../../config/key_list.zig");
 const hotkeys = @import("../../hotkeys/manager.zig");
+const keyboard_hook = @import("../../hotkeys/keyboard_hook.zig");
 const main = @import("../../main.zig");
 const session = @import("session.zig");
 const style = @import("style.zig");
@@ -58,12 +59,14 @@ var g_on_capture: ?*const fn () void = null;
 pub fn init(allocator: std.mem.Allocator, on_capture: *const fn () void) void {
     g_allocator = allocator;
     g_on_capture = on_capture;
+    keyboard_hook.g_on_win_key = onWinKey;
 }
 
 /// Once the window has closed.
 pub fn reset() void {
     stopRecording();
     endManual();
+    keyboard_hook.g_on_win_key = null;
 }
 
 pub fn isRecording() bool {
@@ -113,11 +116,10 @@ pub fn onWindowMessage(msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPAR
     }
 }
 
-/// A bare Win press, which Windows hands to the Start Menu before the window sees it, so the keyboard hook reports it; returns whether a field was recording.
-pub fn onWinKey(modifiers: u32) bool {
-    const recording = &(g_recording orelse return false);
+/// A bare Win press, which Windows hands to the Start Menu before the window sees it, so the keyboard hook reports it.
+fn onWinKey(modifiers: u32) void {
+    const recording = &(g_recording orelse return);
     if (recording.captured == null) capture(vk.VK_LWIN, modifiers);
-    return true;
 }
 
 /// The field: its combos as key caps (click to record a new one), a clear button, and in Advanced Mode a button to type them in.
@@ -176,7 +178,7 @@ pub fn field(context: *ui.Frame, ref: anytype, comptime field_name: []const u8) 
     try row.close(context);
 }
 
-/// Finds this frame's conflicting combos; characters sharing one only cycle through it, so the page ignores those.
+/// Finds this frame's conflicting combos; characters sharing one only cycle through it, so those don't count.
 pub fn beginFrame(arena: std.mem.Allocator) !void {
     var holders: std.AutoArrayHashMapUnmanaged(u32, Holders) = .empty;
     try collect(arena, &holders, session.profile().ptr, false);

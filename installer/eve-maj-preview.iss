@@ -76,6 +76,9 @@ Type: files; Name: "{app}\webui-LICENSE.txt"
 Type: files; Name: "{app}\WebView2Loader.dll"
 Type: files; Name: "{app}\licenses\WebView2Loader-LICENSE.txt"
 Type: files; Name: "{app}\licenses\webui-LICENSE.txt"
+; Older versions drew the configuration window with webview and WebView2.
+Type: files; Name: "{app}\licenses\webview-LICENSE.txt"
+Type: files; Name: "{app}\licenses\WebView2-LICENSE.txt"
 
 ; Profiles, settings and logs are created next to the exe at runtime (see
 ; docs/BUILDING.md) and deliberately left in place on uninstall so a

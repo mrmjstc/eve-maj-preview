@@ -17,7 +17,7 @@ const Box = @FieldType(ui.State.Measured, "box");
 /// The stage fits this box; small thumbnails are enlarged so their chips are easy to grab.
 const MAX_WIDTH: f32 = 540;
 const MAX_HEIGHT: f32 = 300;
-/// Within this many stage pixels a dragged chip locks flush to its anchor, as the old page's did.
+/// Within this many stage pixels a dragged chip locks flush to its anchor.
 const SNAP_DISTANCE: f32 = 5;
 /// Movement under this is a click, not a drag.
 const DRAG_THRESHOLD: f64 = 4;
@@ -57,7 +57,7 @@ pub fn show(context: *ui.Frame) !void {
     const arena = context.arena();
     const ui_state = context.ui();
 
-    // Centred like the page's stage, which has a margin of auto either side.
+    // Centred in the section.
     const frame = Rect{ .key = .src(@src()), .style = &style.stage_frame };
     _ = try frame.open(context);
 
@@ -200,7 +200,7 @@ fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize
     _ = try context.interact(Button{ .key = key, .label = chip.sample, .style = chip_style });
 }
 
-/// Where the settings put a chip, as old page's placeOverlayChip did: its anchor's box corner plus the scaled offsets, kept on the stage.
+/// Where the settings put a chip: its anchor's box corner plus the scaled offsets, kept on the stage.
 fn settledPosition(look: chips.Look, chip_size: [2]f32, stage_size: [2]f32, scale: f32) [2]f32 {
     const anchor = anchorPosition(look.position, chip_size, stage_size);
     return .{
@@ -253,7 +253,7 @@ fn anchorPosition(position: types.TextPosition, chip_size: [2]f32, stage_size: [
     return .{ free[0] * fractions[index % 3], free[1] * fractions[index / 3] };
 }
 
-/// The page's background-size: cover, centred and cropped by the stage.
+/// Covers the stage, centred and cropped by it.
 fn stageBackground(context: *ui.Frame, stage_size: [2]f32, opacity: f32) !void {
     const image_style = try context.arena().create(ui.Style);
     const image_size = [2]f32{ @floatFromInt(images.g_layout_preview.width), @floatFromInt(images.g_layout_preview.height) };

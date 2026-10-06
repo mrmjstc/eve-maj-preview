@@ -1,4 +1,4 @@
-//! The texts a thumbnail can show, as chips on the Text Overlays stage: which settings each one reads, and its popover, field for field as the page's; main thread only.
+//! The texts a thumbnail can show, as chips on the Text Overlays stage: which settings each one reads, and its popover; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../../config.zig");
@@ -17,7 +17,7 @@ const Fields = overlay_text.Fields;
 /// The settings struct a chip's fields live in.
 pub const Section = enum { thumbnail, notifications, combat, mining, bounty, resources };
 
-/// One row of a chip's popover, in the page's order.
+/// One row of a chip's popover.
 pub const PopoverField = union(enum) {
     /// A setting of the chip's section; `disables_color` greys out the text colour while it's on.
     toggle: struct { field: []const u8, label: []const u8, disables_color: bool = false },
@@ -205,7 +205,7 @@ pub const Look = struct {
     is_shown: bool,
 };
 
-/// The Text Overlays section's Sync Fonts and Backgrounds; not saved, like the page's.
+/// The Text Overlays section's Sync Fonts and Backgrounds; not saved.
 pub var g_sync_styling: bool = false;
 
 pub fn SectionType(comptime section: Section) type {
@@ -312,7 +312,7 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
     return close_clicked;
 }
 
-/// Turning sync on unifies every text to the Character Name's styling, as the page does.
+/// Turning sync on unifies every text to the Character Name's styling.
 pub fn syncFromCharacterName() void {
     copyStyleToOthers(0);
 }

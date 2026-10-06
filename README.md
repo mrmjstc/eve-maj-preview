@@ -98,7 +98,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a map of how the source mod
 
 See [LICENSE](LICENSE) file for details.
 
-Bundled third-party components: [Cascadia Code](https://github.com/microsoft/cascadia-code) fonts under the SIL Open Font License 1.1 ([CascadiaCode-LICENSE.txt](licenses/CascadiaCode-LICENSE.txt)), [webview](https://github.com/webview/webview) under the MIT License ([webview-LICENSE.txt](licenses/webview-LICENSE.txt)), and the WebView2 SDK headers ([WebView2-LICENSE.txt](licenses/WebView2-LICENSE.txt)).
+Bundled third-party components: [Cascadia Code](https://github.com/microsoft/cascadia-code) fonts under the SIL Open Font License 1.1 ([CascadiaCode-LICENSE.txt](licenses/CascadiaCode-LICENSE.txt)), and [knots](https://github.com/knots-ui/knots) under the MIT License ([knots-LICENSE.txt](licenses/knots-LICENSE.txt)).
 
 ## Fenris Creations Copyright Notice
 

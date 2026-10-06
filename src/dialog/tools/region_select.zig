@@ -3,7 +3,6 @@ const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
 const gdi_overlay = @import("../../platform/gdi_overlay.zig");
 const color = @import("../../util/color.zig");
-const dialog_events = @import("../events.zig");
 const log = @import("../../log.zig");
 
 const slog = log.scoped("region_select");
@@ -91,6 +90,7 @@ var g_current: win32.POINT = undefined;
 var g_last_redraw: win32.Ticks = undefined;
 var g_cross_cursor: ?win32.HCURSOR = null;
 var g_on_finished: ?*const fn () void = null;
+var g_on_result: ?*const fn (Status, win32.RECT) void = null;
 var g_label_style: LabelStyle = .{ .font = null, .color = 0xFFFFFFFF };
 var g_labels = Labels{};
 
@@ -128,10 +128,12 @@ pub fn labelText(buf: []const u8) []const u8 {
 }
 
 /// Starts (or restarts) the overlay; the result goes to the config dialog as a regionSelected event. `accent_color` is forced opaque, and
-/// `edit_region` adjusts that region instead of dragging a new one. `on_finished` runs once the overlay closes, but not if this fails.
-pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelStyle, edit_region: ?win32.RECT, labels: Labels, on_finished: *const fn () void) !void {
+/// `edit_region` adjusts that region instead of dragging a new one. `on_finished` runs once the overlay closes, then `on_result` with the
+/// selection; neither runs if this fails.
+pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelStyle, edit_region: ?win32.RECT, labels: Labels, on_finished: *const fn () void, on_result: *const fn (Status, win32.RECT) void) !void {
     try registerWindowClass(instance);
     g_on_finished = on_finished;
+    g_on_result = on_result;
     g_border_color = accent_color | 0xFF000000;
     g_label_style = label_style;
     g_labels = labels;
@@ -534,16 +536,20 @@ fn finish(cancelled: bool) void {
 
     const empty_rect = win32.RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
     if (cancelled) {
-        dialog_events.regionSelected(.cancelled, empty_rect);
+        report(.cancelled, empty_rect);
         return;
     }
 
     const rect = if (g_edit_mode) g_edit_rect else normalizedSelection();
     if (!isBigEnough(rect)) {
-        dialog_events.regionSelected(.too_small, empty_rect);
+        report(.too_small, empty_rect);
         return;
     }
-    dialog_events.regionSelected(.success, rect);
+    report(.success, rect);
+}
+
+fn report(status: Status, rect: win32.RECT) void {
+    if (g_on_result) |on_result| on_result(status, rect);
 }
 
 fn wndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {

@@ -1,2 +1,0 @@
-webview/webview cbbdee4: core/include (minus the macOS backend), core/src/webview.cc and LICENSE, otherwise unmodified, plus compatibility/mingw/include/EventToken.h as compat/EventToken.h.
-compat/WebView2.h is from the Microsoft.Web.WebView2 SDK.

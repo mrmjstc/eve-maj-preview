@@ -68,7 +68,7 @@ pub fn reset() void {
 }
 
 pub fn show(context: *ui.Frame) !void {
-    // One label column for the whole tab, as the page aligns every binding list to its widest label.
+    // One label column for the whole tab, as wide as its widest label.
     const previous_label = widgets.useLabelStyle(&style.binding_label);
     defer _ = widgets.useLabelStyle(previous_label);
     const profile_hotkeys = session.profile().child("hotkeys");

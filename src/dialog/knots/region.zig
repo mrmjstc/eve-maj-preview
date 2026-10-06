@@ -15,7 +15,7 @@ const slog = log.scoped("dialog_knots");
 pub const Space = enum { thumbnail, not_logged_in };
 
 var g_allocator: std.mem.Allocator = undefined;
-/// The space a running selection fills; null when none is running, or it belongs to the WebView2 window.
+/// The space a running selection fills; null when none is running.
 var g_target: ?Space = null;
 /// The thumbnail windows a selection hid, to show again once it ends.
 var g_hidden: std.ArrayList(win32.HWND) = .empty;
@@ -44,7 +44,7 @@ pub fn start(space: Space, edit: bool) void {
         slog.err("Failed to get font for region-select label: {}", .{err});
         break :blk null;
     };
-    region_select.start(painter.instance, painter.config.accentColor, .{ .font = label_font, .color = text_color }, edit_region, labels, onFinished) catch |err| {
+    region_select.start(painter.instance, painter.config.accentColor, .{ .font = label_font, .color = text_color }, edit_region, labels, onFinished, onSelected) catch |err| {
         onFinished();
         slog.err("Failed to start region selection: {}", .{err});
         status.show(.failure, "Failed to start region selection: {}", .{err});
@@ -62,22 +62,21 @@ pub fn cancel() void {
     g_target = null;
 }
 
-/// From dialog/events.zig once the overlay closes; returns whether this window had started it.
-pub fn onSelected(result: region_select.Status, selected: win32.RECT) bool {
-    const space = g_target orelse return false;
+/// From the overlay once it closes.
+fn onSelected(result: region_select.Status, selected: win32.RECT) void {
+    const space = g_target orelse return;
     g_target = null;
     defer host.redraw();
     switch (result) {
-        .cancelled => return true,
+        .cancelled => return,
         .too_small => {
             status.show(.info, "Selection too small - drag a larger area.", .{});
-            return true;
+            return;
         },
         .success => {},
     }
     setRect(space, selected.left, selected.top, win32.rectWidth(selected), win32.rectHeight(selected));
     status.show(.success, "Thumbnail region set", .{});
-    return true;
 }
 
 /// The space's rectangle, or null while it's unset, which greys out Edit and Clear.

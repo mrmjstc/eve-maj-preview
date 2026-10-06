@@ -24,9 +24,6 @@ const travel_left_behind = @import("travel/left_behind.zig");
 const tray = @import("tray.zig");
 const protocol = @import("protocol.zig");
 const update = @import("update.zig");
-const dialog_host = @import("dialog/host.zig");
-const dialog_rpc = @import("dialog/rpc.zig");
-const dialog_events = @import("dialog/events.zig");
 const knots_host = @import("dialog/knots/host.zig");
 const schedule = @import("util/schedule.zig");
 const log = @import("log.zig");
@@ -148,17 +145,10 @@ pub fn onLiveProfileEdited(layout: LiveLayout) void {
     }
 }
 
-/// Resumes hotkeys in case it closed mid-recording.
 /// Quits the message loop, after the knots configuration window has closed if it's open.
 pub fn requestExit() void {
     if (knots_host.closeForExit()) return;
     win32.PostQuitMessage(0);
-}
-
-pub fn onDialogClosed() void {
-    if (hotkeys.g_hotkey_manager_ptr) |manager| {
-        if (g_timer_hwnd) |timer| manager.dialogResumeHotkeys(timer);
-    }
 }
 
 fn mainImpl(init: std.process.Init) !void {
@@ -170,7 +160,6 @@ fn mainImpl(init: std.process.Init) !void {
     config.setIo(g_io);
     config.setEnvironMap(init.environ_map);
     g_allocator = init.gpa;
-    dialog_host.init(g_allocator, g_io);
     knots_host.init(g_allocator, g_io);
     g_trackers = .{ .allocator = g_allocator, .io = g_io };
 
@@ -188,7 +177,6 @@ fn mainImpl(init: std.process.Init) !void {
 
     // Read before the mutex, since GetLastError must be checked right after creating it.
     const open_config = try hasArgument(init.minimal.args, "--config");
-    const open_knots_config = try hasArgument(init.minimal.args, "--knots-config");
 
     const mutex_name = std.unicode.utf8ToUtf16LeStringLiteral("Global\\EVE-Maj-Preview-SingleInstance");
     const instance_mutex = win32.CreateMutexW(null, win32.TRUE, mutex_name);
@@ -243,7 +231,7 @@ fn mainImpl(init: std.process.Init) !void {
                 slog.err("Failed to parse arguments: --profile needs a profile name", .{});
                 return error.InvalidArguments;
             }
-        } else if (std.mem.eql(u8, args2[j], "--config") or std.mem.eql(u8, args2[j], "--knots-config")) {
+        } else if (std.mem.eql(u8, args2[j], "--config")) {
             // Handled before the instance check above.
         } else if (std.mem.eql(u8, args2[j], "--protocol")) {
             // Skip protocol arg (already handled above)
@@ -333,7 +321,6 @@ fn mainImpl(init: std.process.Init) !void {
     defer _ = win32.DestroyWindow(timer_hwnd);
 
     g_timer_hwnd = timer_hwnd;
-    defer dialog_host.shutdown();
 
     g_tray_icon = try tray.TrayIcon.init(g_allocator, timer_hwnd);
     defer if (g_tray_icon) |*icon| icon.deinit();
@@ -374,8 +361,7 @@ fn mainImpl(init: std.process.Init) !void {
     }
     defer _ = win32.KillTimer(timer_hwnd, TIMER_ID);
 
-    if (open_config) dialog_host.open();
-    if (open_knots_config) knots_host.open();
+    if (open_config) knots_host.open();
 
     var msg: win32.MSG = undefined;
     while (win32.GetMessageA(&msg, null, 0, 0) != 0) {
@@ -478,17 +464,9 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
                     slog.info("Protocol handler: switch to profile: {s}", .{profile_name});
                     switchProfile(profile_name);
                 },
-                win32.PROTOCOL_OPEN_CONFIG => dialog_host.open(),
+                win32.PROTOCOL_OPEN_CONFIG => knots_host.open(),
                 else => {},
             }
-            return 0;
-        },
-        win32.WM_DIALOG_RPC => {
-            dialog_rpc.runOnMainThread(lParam);
-            return 0;
-        },
-        win32.WM_DIALOG_MOVED => {
-            dialog_host.onMoved(lParam);
             return 0;
         },
         win32.WM_KNOTS_COMMAND => {
@@ -544,8 +522,6 @@ fn onTimerTick() void {
         }
     }
 
-    dialog_host.tick();
-
     const wanted_interval = tickIntervalFor(scout_result.windows.len);
     if (wanted_interval != g_tick_interval_ms) {
         if (g_timer_hwnd) |timer_hwnd| {
@@ -556,7 +532,7 @@ fn onTimerTick() void {
 
 /// The configured scan interval, or IDLE_TICK_INTERVAL_MS while there's nothing to draw.
 fn tickIntervalFor(window_count: usize) win32.UINT {
-    if (window_count == 0 and !dialog_host.isOpen() and !knots_host.isOpen()) return IDLE_TICK_INTERVAL_MS;
+    if (window_count == 0 and !knots_host.isOpen()) return IDLE_TICK_INTERVAL_MS;
     return g_store.saved.timer.scanIntervalMs;
 }
 
@@ -698,7 +674,6 @@ fn reloadWithProfile(new_profile_name: []const u8, global_draft: ?*config.Global
         if (painter.g_painter_ptr) |painter_ptr| painter_ptr.notifyAll(.{ .ntype = .ProfileSwitch, .target = display_name });
     }
 
-    dialog_events.profileSwitched(g_store.live.profile_name);
     slog.info("=== Profile reload complete: {s} ===", .{new_profile_name});
 }
 

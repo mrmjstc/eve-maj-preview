@@ -40,11 +40,9 @@ The build reads the app version from the `VERSION` file at the repo root and emb
 
 ## Dependencies
 
-[webview/webview](https://github.com/webview/webview) is vendored in `deps/webview/` (its `core/` C++ sources, unmodified apart from dropping the macOS backend; `deps/webview/VENDORED` records the upstream commit), alongside `compat/WebView2.h` from the `Microsoft.Web.WebView2` SDK and webview's MinGW `EventToken.h`. `build.zig` compiles it, with `src/platform/webview_shim.cpp`, straight into `eve-maj-preview.exe` for the configuration window. webview is MIT-licensed (`licenses/webview-LICENSE.txt`) and the WebView2 SDK header BSD-style (`licenses/WebView2-LICENSE.txt`); both ship in release packages and the installer.
+The configuration window is drawn with [knots](https://github.com/knots-ui/knots), fetched by `zig build` as a `build.zig.zon` dependency. It renders with Vulkan, so the window needs a graphics driver with Vulkan 1.3 support; without one it shows an error instead of opening. knots is MIT-licensed (`licenses/knots-LICENSE.txt`), which ships in release packages and the installer.
 
-The window renders via the WebView2 Runtime, preinstalled on Windows 10/11. webview finds the runtime itself, so no `WebView2Loader.dll` ships with the app.
-
-Not every Windows install has [Cascadia Code](https://github.com/microsoft/cascadia-code) (v2407.24), so its fonts are bundled from `src/assets/fonts/`. `eve-maj-preview.exe` embeds the static Regular/SemiBold/Mono TTFs and registers them process-privately at startup (`platform/fonts.zig`); the configuration window serves the variable WOFF2 to its page for an `@font-face`. They're licensed under the SIL OFL 1.1 (`licenses/CascadiaCode-LICENSE.txt`), which ships in release packages and the installer; unmodified files keep the Reserved Font Name.
+Not every Windows install has [Cascadia Code](https://github.com/microsoft/cascadia-code) (v2407.24), so its fonts are bundled from `src/assets/fonts/`. `eve-maj-preview.exe` embeds the static Regular/SemiBold/Mono TTFs and registers them process-privately at startup (`platform/fonts.zig`), and the configuration window draws with the Regular and SemiBold ones. They're licensed under the SIL OFL 1.1 (`licenses/CascadiaCode-LICENSE.txt`), which ships in release packages and the installer; unmodified files keep the Reserved Font Name.
 
 ## Installer
 

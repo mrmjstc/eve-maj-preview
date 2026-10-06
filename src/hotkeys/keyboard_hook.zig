@@ -2,7 +2,6 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const vk = @import("../platform/virtual_keys.zig");
-const dialog_events = @import("../dialog/events.zig");
 const HookBindings = @import("hook_bindings.zig").HookBindings;
 const log = @import("../log.zig");
 
@@ -18,6 +17,8 @@ var g_hook: HookBindings = .{
 var g_swallow_release: ?std.AutoHashMap(u32, bool) = null;
 /// Set while the config dialog is recording a new binding; see armWinKeyCapture's doc comment.
 var g_capture_win_key = false;
+/// Given the modifiers held with a bare Win press while the config dialog records; set by the dialog.
+pub var g_on_win_key: ?*const fn (modifiers: u32) void = null;
 
 /// Installs the hook on first registration.
 pub fn register(allocator: std.mem.Allocator, target_hwnd: win32.HWND, combined_vk: u32, id: c_int) !void {
@@ -126,7 +127,7 @@ fn lowLevelKeyboardProc(nCode: c_int, wParam: win32.WPARAM, lParam: win32.LPARAM
             // The conduit hotkey only consumes the down; a stray up reaching the new client makes it drop held modifiers.
             if (info.vkCode == vk.VK_FOCUS_GRANT) return 1;
             if (g_capture_win_key and is_win_vk) {
-                dialog_events.winKeyCaptured(vk.currentModifiers() & ~vk.MOD_WIN);
+                if (g_on_win_key) |on_win_key| on_win_key(vk.currentModifiers() & ~vk.MOD_WIN);
                 return 1;
             }
             if (g_swallow_release) |*map| {

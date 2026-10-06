@@ -1,4 +1,4 @@
-//! The knots configuration window's layout pieces and low-level controls, styled like the WebView2 page; main thread only.
+//! The configuration window's layout pieces and low-level controls; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const style = @import("style.zig");
@@ -19,11 +19,11 @@ const slog = log.scoped("dialog_knots");
 
 /// Most sections a tab has; past this they still draw, but miss the sidebar and their hint button.
 const MAX_SECTIONS = 32;
-/// The gap the page's scroll-margin-top leaves above a section jumped to.
+/// The gap left above a section jumped to.
 const JUMP_MARGIN = 8;
 /// Movement under this is a click on a row, not a drag.
 const REORDER_THRESHOLD = 4;
-/// How long a confirm button waits for its second click, as the page's confirmRemove does.
+/// How long a confirm button waits for its second click.
 const CONFIRM_TIMEOUT_MS = 2000;
 
 /// Which settings file a section's settings are saved to, shown as a chip beside its heading.
@@ -195,7 +195,7 @@ pub fn openSection(context: *ui.Frame, comptime title: []const u8, comptime hint
     return openAnySection(context, title, hint, scope, section_style, true);
 }
 
-/// Like the page's no-subheader sections: left out of the sidebar, and outlined along with the section before it.
+/// A section left out of the sidebar, and outlined along with the section before it.
 pub fn openLinkedSection(context: *ui.Frame, comptime title: []const u8, comptime hint: []const u8, scope: Scope, section_style: *const ui.Style) !Section {
     return openAnySection(context, title, hint, scope, section_style, false);
 }
@@ -336,7 +336,7 @@ pub fn reorderFinish(context: *ui.Frame, base: ui.Key, count: usize) ?Move {
     return .{ .from = finished.from, .before = finished.insert };
 }
 
-/// A run of settings that dims, and stops taking clicks, while `is_enabled` is false, like the page's .is-disabled.
+/// A run of settings that dims, and stops taking clicks, while `is_enabled` is false.
 pub fn openGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
     const ui_state = context.ui();
     _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.hash());
@@ -345,7 +345,7 @@ pub fn openGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
     return .{ .key = key, .rect = rect, .is_enabled = is_enabled };
 }
 
-/// Like the page's confirmRemove: the first click arms it and shows `confirm_label`; a second within two seconds returns true.
+/// The first click arms it and shows `confirm_label`; a second within two seconds returns true.
 pub fn confirmButton(context: *ui.Frame, key: ui.Key, label: []const u8, confirm_label: []const u8, button_style: *const ui.Style, armed_style: *const ui.Style) !bool {
     const id = key.hash();
     const now = context.ui().input.now_ms;
@@ -368,7 +368,7 @@ pub fn confirmButton(context: *ui.Frame, key: ui.Key, label: []const u8, confirm
     return false;
 }
 
-/// A button whose label starts with a drawn glyph, for the page's labels whose symbol Cascadia Code lacks.
+/// A button whose label starts with a drawn glyph, for symbols Cascadia Code lacks.
 pub fn glyphButton(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, label: []const u8, button_style: *const ui.Style, disabled: bool) !bool {
     const button = Button{ .key = key, .disabled = disabled, .style = if (disabled) &style.disabled_button else button_style };
     const response = try button.openResponse(context);
@@ -384,7 +384,7 @@ pub fn glyphButton(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, label: 
     return response.clicked and !disabled;
 }
 
-/// A field hint ending in a link, like the page's "Learn more"; returns whether the link was clicked.
+/// A field hint ending in a link, e.g. "Learn more"; returns whether the link was clicked.
 pub fn hintWithLink(context: *ui.Frame, key: ui.Key, content: []const u8, link_label: []const u8) !bool {
     search.captureText(content);
     if (g_open_section) |id| {
@@ -399,13 +399,13 @@ pub fn hintWithLink(context: *ui.Frame, key: ui.Key, content: []const u8, link_l
     return clicked;
 }
 
-/// Text in the hint style that always shows, like the page's plain p.hint.
+/// Text in the hint style that always shows.
 pub fn paragraph(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
     search.captureText(content);
     try context.e(Text{ .selectable = false, .key = key, .content = content, .style = &style.hint });
 }
 
-/// Inside a section, a field hint like the page's hint-extra: hidden until the section's ? button shows it.
+/// Inside a section, a field hint: hidden until the section's ? button shows it.
 pub fn hintText(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
     search.captureText(content);
     if (g_open_section) |id| {

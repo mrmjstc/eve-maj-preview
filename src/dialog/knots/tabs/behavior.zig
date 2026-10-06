@@ -38,7 +38,7 @@ const PotatoScan = union(enum) {
 };
 
 var g_allocator: std.mem.Allocator = undefined;
-/// Open clients for Set All, scanned when the tab first shows and on ↻ like the page's dropdown.
+/// Open clients for Set All, scanned when the tab first shows and on ↻.
 var g_sources: ?Scan = null;
 var g_potato: PotatoScan = .not_scanned;
 
@@ -195,7 +195,7 @@ fn sourceSelect(context: *ui.Frame) !?[]const u8 {
     return sources.names[@min(sources.selected, sources.names.len - 1)];
 }
 
-/// Keeps the picked client selected when it's still open, as the page's refresh does.
+/// Keeps the picked client selected when it's still open.
 fn scanSources() void {
     const scanned = scanOpenClients() catch |err| {
         slog.err("Failed to refresh window position source options: {}", .{err});
