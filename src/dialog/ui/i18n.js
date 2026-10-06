@@ -15,11 +15,11 @@ import { populateWindowFilters, saveWindowFilters } from './window_filters.js';
 let catalog = catalogs[document.documentElement.lang] || catalogs.en;
 
 export function t(key) {
-    if (!(key in catalog)) {
-        console.warn('Missing i18n key: ' + key);
-        return key;
-    }
-    return catalog[key];
+    if (key in catalog) return catalog[key];
+    // A string not translated yet shows in English.
+    if (key in catalogs.en) return catalogs.en[key];
+    console.warn('Missing i18n key: ' + key);
+    return key;
 }
 
 export function applyTranslations() {
