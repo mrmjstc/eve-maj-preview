@@ -53,7 +53,7 @@ fn hasValidate(comptime T: type) bool {
     return @typeInfo(T) == .@"struct" and @hasDecl(T, "validate");
 }
 
-/// The default replacing a 0 isn't clamped, since it may lie outside the bounds (dialogScale's 0 means "auto").
+/// The default replacing a 0 isn't clamped, since it may lie outside the bounds.
 fn clampField(comptime R: type, comptime name: []const u8, field: anytype) void {
     if (comptime isZeroMeansDefault(R, name)) {
         if (field.* == 0) {

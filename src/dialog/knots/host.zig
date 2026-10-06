@@ -25,6 +25,7 @@ const notifications = @import("tabs/notifications.zig");
 const lang = @import("lang.zig");
 const search = @import("search.zig");
 const import_dialog = @import("import_dialog.zig");
+const update_notice = @import("update_notice.zig");
 const overlays = @import("tabs/overlays.zig");
 const prices = @import("prices.zig");
 const behavior = @import("tabs/behavior.zig");
@@ -172,6 +173,8 @@ fn run() void {
     defer search.reset();
     import_dialog.init(g_allocator);
     defer import_dialog.reset();
+    update_notice.init(g_allocator);
+    defer update_notice.reset();
     notifications.init(g_allocator);
     defer notifications.reset();
     general.init(g_allocator);

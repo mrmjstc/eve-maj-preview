@@ -58,21 +58,13 @@ pub const LabelStyle = struct {
 const Handle = enum { none, move, left, right, top, bottom, top_left, top_right, bottom_left, bottom_right };
 const Button = enum { save, cancel };
 
-/// The overlay's on-screen text, translated by the config dialog since only it has the language files; English defaults if it sends nothing.
+/// The overlay's on-screen text.
 pub const Labels = struct {
     save: [32]u8 = fixedText(32, "Save"),
     cancel: [32]u8 = fixedText(32, "Cancel"),
     hint_new: [192]u8 = fixedText(192, "Drag to draw the region, then drag its edges to adjust"),
     hint_edit: [192]u8 = fixedText(192, "Drag the edges to resize, or the inside to move"),
     hint_confirm: [192]u8 = fixedText(192, "Enter or Save to confirm, Esc or right-click to cancel"),
-};
-
-pub const Request = struct {
-    /// Hide the visible thumbnails for the duration of the selection so they don't cover the overlay.
-    hide_thumbnails: bool = false,
-    /// The region to adjust; null starts a fresh drag.
-    edit_region: ?win32.RECT = null,
-    labels: Labels = .{},
 };
 
 pub const Status = enum { success, cancelled, too_small };

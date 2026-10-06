@@ -8,6 +8,7 @@ const style = @import("style.zig");
 const widgets = @import("widgets.zig");
 const glyphs = @import("glyphs.zig");
 const import_dialog = @import("import_dialog.zig");
+const update_notice = @import("update_notice.zig");
 const search = @import("search.zig");
 const hotkey = @import("hotkey.zig");
 const header = @import("header.zig");
@@ -163,6 +164,7 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
 
     try footer(context);
     try import_dialog.show(context);
+    try update_notice.show(context);
     try unsavedPrompt(context);
     // An edit made after what shows it was drawn, e.g. + Add Character under its list, appears on the next frame.
     if (session.takeEdited()) context.requestRedraw();

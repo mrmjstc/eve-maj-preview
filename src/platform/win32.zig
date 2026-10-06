@@ -20,7 +20,6 @@ pub const HCURSOR = HANDLE;
 pub const HBRUSH = HANDLE;
 pub const HMENU = HANDLE;
 pub const HFONT = HANDLE;
-pub const HPEN = HANDLE;
 pub const HBITMAP = HANDLE;
 pub const HTHUMBNAIL = HANDLE;
 pub const HMODULE = HANDLE;
@@ -29,15 +28,8 @@ pub const LPVOID = ?*anyopaque;
 pub const LPCSTR = [*:0]const u8;
 pub const LPSTR = [*:0]u8;
 
-pub const WS_OVERLAPPEDWINDOW = 0x00CF0000;
 pub const WS_VISIBLE = 0x10000000;
-pub const WS_CHILD = 0x40000000;
 pub const WS_POPUP = 0x80000000;
-pub const WS_CAPTION = 0x00C00000;
-pub const WS_SYSMENU = 0x00080000;
-pub const WS_THICKFRAME = 0x00040000;
-pub const WS_MINIMIZEBOX = 0x00020000;
-pub const WS_MAXIMIZEBOX = 0x00010000;
 
 pub const WS_EX_TOPMOST = 0x00000008;
 pub const WS_EX_TRANSPARENT = 0x00000020;
@@ -46,7 +38,6 @@ pub const WS_EX_LAYERED = 0x00080000;
 pub const WS_EX_NOACTIVATE = 0x08000000;
 
 pub const WM_DESTROY = 0x0002;
-pub const WM_SIZE = 0x0005;
 pub const WM_MOVING = 0x0216;
 pub const WM_ACTIVATE = 0x0006;
 pub const WM_CLOSE = 0x0010;
@@ -78,8 +69,6 @@ pub const ICON_SMALL = 0;
 pub const ICON_BIG = 1;
 pub const WM_HOTKEY = 0x0312;
 pub const WM_DPICHANGED = 0x02E0;
-pub const WM_DWMSENDICONICTHUMBNAIL = 0x0323;
-pub const WM_DWMSENDICONICLIVEPREVIEWBITMAP = 0x0326;
 pub const WM_COPYDATA = 0x004A;
 pub const WM_USER = 0x0400;
 pub const WM_APP = 0x8000;
@@ -95,19 +84,12 @@ pub const PROTOCOL_SWITCH_PROFILE: usize = 2;
 // 3-8 were the old config.exe's commands; skipped so a stale copy can't be misread.
 pub const PROTOCOL_OPEN_CONFIG: usize = 9;
 
-pub const SMTO_ABORTIFHUNG: UINT = 0x0002;
-pub extern "user32" fn SendMessageTimeoutA(hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM, fuFlags: UINT, uTimeout: UINT, lpdwResult: ?*usize) callconv(.c) LRESULT;
-
 pub const SPI_GETANIMATION = 0x0048;
 pub const SPI_SETANIMATION = 0x0049;
-pub const SPIF_SENDCHANGE = 0x0002;
 
-pub const CW_USEDEFAULT = @as(c_int, @bitCast(@as(c_uint, 0x80000000)));
-pub const COLOR_WINDOW = 5;
 pub const SW_HIDE = 0;
 pub const SW_SHOWNOACTIVATE = 4;
 pub const SW_SHOW = 5;
-pub const SW_MINIMIZE = 6;
 pub const SW_SHOWMINIMIZED = 2;
 pub const SW_SHOWMAXIMIZED = 3;
 pub const SW_RESTORE = 9;
@@ -116,8 +98,6 @@ pub const TRUE = 1;
 pub const FALSE = 0;
 pub const DWM_TNP_VISIBLE = 0x8;
 pub const DWM_TNP_RECTDESTINATION = 0x1;
-pub const DWM_TNP_RECTSOURCE = 0x2;
-pub const DWM_TNP_OPACITY = 0x4;
 pub const DWM_TNP_SOURCECLIENTAREAONLY = 0x10;
 
 pub const INVALID_HANDLE_VALUE = @as(HANDLE, @ptrFromInt(@as(usize, @bitCast(@as(isize, -1)))));
@@ -284,15 +264,6 @@ pub const WNDCLASSEXA = extern struct {
     hIconSm: ?HICON,
 };
 
-pub const PAINTSTRUCT = extern struct {
-    hdc: HDC,
-    fErase: BOOL,
-    rcPaint: RECT,
-    fRestore: BOOL,
-    fIncUpdate: BOOL,
-    rgbReserved: [32]BYTE,
-};
-
 pub const DWM_THUMBNAIL_PROPERTIES = extern struct {
     dwFlags: DWORD,
     rcDestination: RECT,
@@ -339,7 +310,6 @@ pub const MB_ICONERROR = 0x00000010;
 pub extern "user32" fn MessageBoxA(hWnd: ?HWND, lpText: [*:0]const u8, lpCaption: [*:0]const u8, uType: UINT) callconv(.c) c_int;
 
 pub extern "kernel32" fn CreateMutexW(lpMutexAttributes: ?*anyopaque, bInitialOwner: BOOL, lpName: [*:0]const u16) callconv(.c) ?HANDLE;
-pub extern "kernel32" fn ReleaseMutex(hMutex: HANDLE) callconv(.c) BOOL;
 pub extern "kernel32" fn GetLastError() callconv(.c) DWORD;
 
 // ContextRecord is left opaque - the arch-specific CONTEXT layout is never read here.
@@ -409,8 +379,6 @@ pub extern "dbghelp" fn MiniDumpWriteDump(
 ) callconv(.c) BOOL;
 
 pub extern "kernel32" fn SetCurrentDirectoryA(lpPathName: LPCSTR) callconv(.c) BOOL;
-pub extern "kernel32" fn SetEnvironmentVariableA(lpName: LPCSTR, lpValue: ?LPCSTR) callconv(.c) BOOL;
-pub extern "kernel32" fn GetEnvironmentVariableA(lpName: LPCSTR, lpBuffer: ?[*]u8, nSize: DWORD) callconv(.c) DWORD;
 pub extern "advapi32" fn RegCreateKeyExA(
     hKey: HKEY,
     lpSubKey: LPCSTR,
@@ -448,13 +416,10 @@ pub extern "user32" fn IsWindow(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn IsIconic(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn IsZoomed(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn GetWindowTextA(hWnd: HWND, lpString: LPSTR, nMaxCount: c_int) callconv(.c) c_int;
-pub extern "user32" fn GetWindowTextLengthA(hWnd: HWND) callconv(.c) c_int;
 pub extern "user32" fn GetWindowThreadProcessId(hWnd: HWND, lpdwProcessId: ?*DWORD) callconv(.c) DWORD;
 pub extern "user32" fn IsWindowVisible(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn GetClassNameA(hWnd: HWND, lpClassName: LPSTR, nMaxCount: c_int) callconv(.c) c_int;
 pub extern "user32" fn EnumWindows(lpEnumFunc: WNDENUMPROC, lParam: LPARAM) callconv(.c) BOOL;
-pub extern "user32" fn BeginPaint(hWnd: HWND, lpPaint: *PAINTSTRUCT) callconv(.c) ?HDC;
-pub extern "user32" fn EndPaint(hWnd: HWND, lpPaint: *const PAINTSTRUCT) callconv(.c) BOOL;
 pub extern "user32" fn GetClientRect(hWnd: HWND, lpRect: *RECT) callconv(.c) BOOL;
 pub extern "user32" fn GetWindowRect(hWnd: HWND, lpRect: *RECT) callconv(.c) BOOL;
 pub extern "user32" fn InvalidateRect(hWnd: HWND, lpRect: ?*const RECT, bErase: BOOL) callconv(.c) BOOL;
@@ -521,7 +486,6 @@ pub fn setWinEventHookForProcess(event: DWORD, proc: WINEVENTPROC, process_id: D
 
 pub extern "user32" fn SetWindowLongPtrA(hWnd: HWND, nIndex: c_int, dwNewLong: isize) callconv(.c) isize;
 pub extern "user32" fn GetWindowLongPtrA(hWnd: HWND, nIndex: c_int) callconv(.c) isize;
-pub extern "user32" fn CallWindowProcA(lpPrevWndFunc: isize, hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.c) LRESULT;
 /// For subclassing a Unicode window, which the A versions would hand converted messages.
 pub extern "user32" fn SetWindowLongPtrW(hWnd: HWND, nIndex: c_int, dwNewLong: isize) callconv(.c) isize;
 pub extern "user32" fn CallWindowProcW(lpPrevWndFunc: isize, hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.c) LRESULT;
@@ -664,7 +628,6 @@ pub const MOD_ALT = 0x0001;
 pub const MOD_CONTROL = 0x0002;
 pub const MOD_SHIFT = 0x0004;
 pub const MOD_WIN = 0x0008;
-pub const MOD_NOREPEAT = 0x4000;
 
 pub const NIM_ADD = 0x00000000;
 pub const NIM_DELETE = 0x00000002;
@@ -695,7 +658,6 @@ pub const IDM_PROFILE_BASE = 2000;
 
 pub const IDI_APPLICATION: LPCSTR = @ptrFromInt(32512);
 pub const IMAGE_ICON = 1;
-pub const LR_LOADFROMFILE = 0x00000010;
 
 pub const VK_SHIFT = 0x10;
 pub const VK_CONTROL = 0x11;
@@ -721,12 +683,6 @@ pub extern "kernel32" fn GetModuleHandleA(lpModuleName: ?LPCSTR) callconv(.c) ?H
 pub extern "kernel32" fn OpenProcess(dwDesiredAccess: DWORD, bInheritHandle: BOOL, dwProcessId: DWORD) callconv(.c) ?HANDLE;
 pub extern "kernel32" fn CloseHandle(hObject: HANDLE) callconv(.c) BOOL;
 
-pub const PAGE_READWRITE: DWORD = 0x04;
-pub const FILE_MAP_ALL_ACCESS: DWORD = 0x000F001F;
-pub extern "kernel32" fn CreateFileMappingA(hFile: HANDLE, lpFileMappingAttributes: ?*anyopaque, flProtect: DWORD, dwMaximumSizeHigh: DWORD, dwMaximumSizeLow: DWORD, lpName: ?LPCSTR) callconv(.c) ?HANDLE;
-pub extern "kernel32" fn OpenFileMappingA(dwDesiredAccess: DWORD, bInheritHandle: BOOL, lpName: LPCSTR) callconv(.c) ?HANDLE;
-pub extern "kernel32" fn MapViewOfFile(hFileMappingObject: HANDLE, dwDesiredAccess: DWORD, dwFileOffsetHigh: DWORD, dwFileOffsetLow: DWORD, dwNumberOfBytesToMap: usize) callconv(.c) LPVOID;
-pub extern "kernel32" fn UnmapViewOfFile(lpBaseAddress: LPVOID) callconv(.c) BOOL;
 pub extern "kernel32" fn GetModuleFileNameExA(hProcess: HANDLE, hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;
 pub extern "kernel32" fn GetModuleFileNameA(hModule: ?HMODULE, lpFilename: LPSTR, nSize: DWORD) callconv(.c) DWORD;
 
@@ -802,7 +758,6 @@ pub const SYSTEMTIME = extern struct {
     wMilliseconds: WORD,
 };
 pub extern "kernel32" fn GetLocalTime(lpSystemTime: *SYSTEMTIME) callconv(.c) void;
-pub extern "kernel32" fn Sleep(dwMilliseconds: DWORD) callconv(.c) void;
 pub extern "kernel32" fn GetTickCount64() callconv(.c) u64;
 
 pub extern "gdi32" fn TextOutA(hdc: HDC, x: c_int, y: c_int, lpString: LPCSTR, c: c_int) callconv(.c) BOOL;
@@ -833,9 +788,6 @@ pub extern "gdi32" fn CreateFontA(
 ) callconv(.c) ?HFONT;
 pub extern "gdi32" fn SelectObject(hdc: HDC, h: HANDLE) callconv(.c) ?HANDLE;
 pub extern "gdi32" fn DeleteObject(ho: HANDLE) callconv(.c) BOOL;
-pub extern "gdi32" fn Rectangle(hdc: HDC, left: c_int, top: c_int, right: c_int, bottom: c_int) callconv(.c) BOOL;
-pub extern "gdi32" fn CreatePen(iStyle: c_int, cWidth: c_int, color: DWORD) callconv(.c) ?HPEN;
-pub extern "gdi32" fn FrameRect(hDC: HDC, lprc: *const RECT, hbr: HBRUSH) callconv(.c) c_int;
 pub extern "gdi32" fn CreateCompatibleDC(hdc: ?HDC) callconv(.c) ?HDC;
 pub extern "gdi32" fn CreateDIBSection(
     hdc: ?HDC,
@@ -847,7 +799,6 @@ pub extern "gdi32" fn CreateDIBSection(
 ) callconv(.c) ?HANDLE;
 pub extern "gdi32" fn DeleteDC(hdc: HDC) callconv(.c) BOOL;
 pub extern "gdi32" fn CreateSolidBrush(color: DWORD) callconv(.c) ?HBRUSH;
-pub extern "gdi32" fn FillRect(hDC: HDC, lprc: *const RECT, hbr: HBRUSH) callconv(.c) c_int;
 
 pub extern "dwmapi" fn DwmRegisterThumbnail(
     hwndDestination: HWND,
@@ -861,19 +812,15 @@ pub extern "dwmapi" fn DwmUpdateThumbnailProperties(
 ) callconv(.c) LONG;
 
 pub const TRANSPARENT = 1;
-pub const PS_SOLID = 0;
 pub const FW_NORMAL = 400;
 pub const FW_SEMIBOLD = 600;
 pub const FW_BOLD = 700;
 pub const DEFAULT_CHARSET = 1;
 pub const OUT_DEFAULT_PRECIS = 0;
 pub const CLIP_DEFAULT_PRECIS = 0;
-pub const DEFAULT_QUALITY = 0;
-pub const ANTIALIASED_QUALITY = 4;
 pub const CLEARTYPE_QUALITY = 5;
 pub const DEFAULT_PITCH = 0;
 
-pub const LWA_COLORKEY = 0x00000001;
 pub const LWA_ALPHA = 0x00000002;
 pub const ULW_ALPHA = 0x00000002;
 pub const AC_SRC_OVER = 0x00;

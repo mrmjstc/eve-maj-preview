@@ -277,8 +277,6 @@
   "field.exactHotkeyModifiers.hint": "Only fire a hotkey when exactly its modifiers are held, so a hotkey on 1 won't fire on Alt+1 and Alt+1 reaches the game.",
   "field.exactHotkeyModifiers.label": "Match Modifiers Exactly",
   "field.alwaysOnTopToggle.label": "Always on Top",
-  "field.dialogScaleSelect.label": "UI Scale",
-  "field.dialogScaleSelect.auto": "Auto",
   "field.animationStyle.hint": "No Animation restores and minimizes clients instantly; Original Animation keeps Windows' native effect.",
   "field.animationStyle.label": "Animation Style",
   "field.applyOpacityToOverlayTexts.hint": "Also fades the name/badge/combat/mining/bounty/resource overlay text and backgrounds with the Opacity slider above; otherwise they stay fully opaque.",

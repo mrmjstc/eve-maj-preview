@@ -490,53 +490,12 @@ pub const grid_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = 
 /// A row's checkbox and its label, which turns the row's settings on.
 pub const grid_state_cell: Style = .{ .width = .fixed(GRID_STATE_WIDTH) };
 pub const grid_cells: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
-/// The cells of a row whose setting is off: still editable, but visibly not in effect.
-pub const grid_cells_dimmed: Style = grid_cells.with(.{ .opacity = 0.45 });
 pub const grid_header: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED } };
 pub const grid_header_state: Style = grid_header.with(.{ .width = .fixed(GRID_STATE_WIDTH) });
 /// Matches number_input's width, so the header sits over its column.
 pub const grid_header_number: Style = grid_header.with(.{ .width = .fixed(80) });
 pub const grid_header_select: Style = grid_header.with(.{ .width = .fixed(130) });
 const GRID_STATE_WIDTH = 140;
-
-/// The text overlay list beside the selected overlay's settings.
-pub const overlay_list: Style = .{
-    .width = .fixed(190),
-    .direction = .column,
-    .border_width = .all(1),
-    .border_color = .{ .color = BORDER },
-    .radius = .lg,
-};
-pub const overlay_row: Style = .{
-    .width = .grow(),
-    .direction = .row,
-    .@"align" = .center,
-    .gap = 2,
-    .padding = .init(4, 6, 4, 8),
-    .border_width = .edges(0, 0, 1, 2),
-    .border_color = .{ .color = BORDER },
-};
-pub const overlay_row_selected: Style = overlay_row.with(.{ .background = .{ .color = SURFACE }, .border_color = .accent });
-pub const overlay_name: Style = .{
-    .width = .grow(),
-    .justify = .start,
-    .padding = .xy(4, 2),
-    .background = .transparent,
-    .foreground = .{ .color = MUTED },
-    .radius = .none,
-    .hover = &.{ .foreground = .{ .color = TEXT }, .state_layer = 0 },
-    .active = &.{ .state_layer = 0 },
-};
-pub const overlay_name_selected: Style = overlay_name.with(.{ .foreground = .{ .color = TEXT }, .font = FONT_SEMIBOLD });
-pub const overlay_detail: Style = .{
-    .width = .grow(),
-    .direction = .column,
-    .gap = 8,
-    .padding = .all(10),
-    .border_width = .all(1),
-    .border_color = .{ .color = BORDER },
-    .radius = .lg,
-};
 
 /// Wide enough for a label column beside a standard dropdown.
 pub const POPOVER_WIDTH = 420;
@@ -805,3 +764,6 @@ pub const suggest_row: Style = .{
 
 /// .modal-content.modal-wide: room for the Import dialog's lists.
 pub const modal_wide: Style = modal.with(.{ .width = .fixed(520) });
+
+/// Modal text that sits on a line with something after it, e.g. a link.
+pub const modal_text_inline: Style = .{ .foreground = .{ .color = TEXT_SECONDARY } };

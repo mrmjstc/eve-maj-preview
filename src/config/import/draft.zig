@@ -141,11 +141,6 @@ pub const Draft = struct {
         return &entry.value_ptr.array;
     }
 
-    pub fn itemCount(self: *Draft, list_name: []const u8) usize {
-        const entry = self.root.get(list_name) orelse return 0;
-        return if (entry == .array) entry.array.items.len else 0;
-    }
-
     pub fn put(self: *Draft, fields: *ObjectMap, path: []const u8, value: Value) !void {
         try setIn(self.arena, fields, path, value);
     }

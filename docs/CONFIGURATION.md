@@ -1135,7 +1135,6 @@ Some settings persist across all profiles and are configured in `profiles\global
   "autoRegisterProtocol": true,
   "runOnStartup": false,
   "alwaysOnTop": true,
-  "language": "en",
   "advancedMode": false,
   "logLevel": "err",
   "oreTable": [
@@ -1160,11 +1159,9 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **autoRegisterProtocol**: See [Registration](#registration) under Protocol Handler (default: `true`)
 - **runOnStartup**: Start EVE-Maj Preview when you sign in to Windows, through the current user's `Run` registry key (default: `false`)
 - **alwaysOnTop**: Keep the configuration window above other windows (default: `true`)
-- **language**: Configuration window language: `en`, `de`, `es`, `fr`, `pl`, `pt`, `ru` or `zh` (default: `en`)
 - **logLevel**: See [Logging](#logging) (default: `err`)
 - **advancedMode**: See [Config Dialog Advanced Mode](#config-dialog-advanced-mode) (default: `false`)
 - **dialogX** / **dialogY**: Where the configuration window last was, saved when you move it (default: `null`, near the top-left of the screen; also used when the saved spot is on no monitor)
-- **dialogScale**: The configuration window's UI scale in percent, 50–300; `0` picks one from the screen resolution (default: `0`)
 - **oreTable**: Your ISK-per-unit price overrides for the mining ISK rate, one `{ "name", "price" }` entry per ore; ores you haven't overridden use the built-in price. A name matches its grade variants too (e.g. `Veldspar` covers `Veldspar II-Grade`). Editable from the config dialog's ore price table (0–1,000,000,000,000).
 
 **Profile Cycling Features:**

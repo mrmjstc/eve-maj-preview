@@ -62,10 +62,6 @@ pub fn endIndex() void {
     g_is_indexed = true;
 }
 
-pub fn isCapturing() bool {
-    return g_capture_tab != null;
-}
-
 /// From widgets.openSection while the index is built: what's captured next belongs to this section.
 pub fn captureSection(id: u64) void {
     const tab = g_capture_tab orelse return;

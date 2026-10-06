@@ -69,10 +69,6 @@ pub fn reset() void {
     keyboard_hook.g_on_win_key = null;
 }
 
-pub fn isRecording() bool {
-    return g_recording != null;
-}
-
 /// From the window procedure while a field records: takes the keys, mouse buttons and wheel turns it binds; returns whether it consumed the message.
 pub fn onWindowMessage(msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) bool {
     _ = lParam;

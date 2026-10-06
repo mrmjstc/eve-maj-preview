@@ -172,22 +172,14 @@ pub const GlobalConfig = struct {
     autoRegisterProtocol: bool = true,
     alwaysOnTop: bool = true,
     advancedMode: bool = false,
-    language: []const u8 = "en",
     oreTable: std.ArrayList(OrePriceConfig) = .empty,
     dialogX: ?i32 = null,
     dialogY: ?i32 = null,
-    dialogScale: u16 = 0,
 
     pub const runtime_fields = .{"allocator"};
 
     /// Saved, but changed by the app as it runs rather than by the settings form.
-    pub const running_fields = .{ "lastUsedProfile", "dialogX", "dialogY", "dialogScale" };
-
-    pub const ranges = .{
-        .dialogScale = .{ 50, 300 },
-    };
-    /// 0 is "auto": the dialog picks a scale from the monitor.
-    pub const zero_means_default = .{"dialogScale"};
+    pub const running_fields = .{ "lastUsedProfile", "dialogX", "dialogY" };
 
     pub fn validate(self: *GlobalConfig) void {
         ranges_mod.clamp(GlobalConfig, self);

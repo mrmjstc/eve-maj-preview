@@ -42,7 +42,6 @@ pub const restoreProfileBackup = profiles.restoreBackup;
 pub const deleteProfileToBackup = profiles.deleteToBackup;
 pub const checkProfileDeletable = profiles.checkDeletable;
 pub const listProfileBackups = profiles.listBackups;
-pub const validateProfileName = profiles.validateName;
 pub const profileFileName = profiles.fileNameFor;
 pub const ProfileStore = store.ProfileStore;
 pub const applyWindowPosition = store.applyWindowPosition;

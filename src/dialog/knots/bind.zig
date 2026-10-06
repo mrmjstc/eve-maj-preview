@@ -269,12 +269,6 @@ pub fn colorBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !v
     })).changed) ref.set(field, widgets.argbFromColor(value));
 }
 
-/// An ARGB setting split in two: a colour for the RGB, and a percentage slider for the alpha.
-pub fn colorAndOpacity(context: *ui.Frame, ref: anytype, comptime field: []const u8, color_label: []const u8, opacity_label: []const u8) !void {
-    try rgb(context, ref, field, color_label);
-    try alpha(context, ref, field, opacity_label);
-}
-
 /// The RGB of an ARGB setting, keeping its alpha.
 pub fn rgb(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
     const argb: u32 = ref.get(field);

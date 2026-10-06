@@ -6,7 +6,6 @@ const log = @import("../log.zig");
 const slog = log.scoped("virtual_keys");
 
 pub const VK_F1: u32 = 0x70;
-pub const VK_F24: u32 = 0x87;
 pub const VK_TAB: u32 = 0x09;
 pub const VK_PAUSE: u32 = 0x13;
 pub const VK_CAPITAL: u32 = 0x14;
@@ -46,7 +45,6 @@ pub const VK_XBUTTON2: u32 = 0x06;
 pub const VK_WHEELUP: u32 = 0x0A;
 pub const VK_WHEELDOWN: u32 = 0x0B;
 pub const VK_NUMPAD0: u32 = 0x60;
-pub const VK_NUMPAD9: u32 = 0x69;
 pub const VK_MULTIPLY: u32 = 0x6A;
 pub const VK_ADD: u32 = 0x6B;
 pub const VK_SUBTRACT: u32 = 0x6D;
