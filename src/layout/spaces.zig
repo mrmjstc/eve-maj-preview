@@ -86,10 +86,6 @@ pub fn anyActive(cfg: *const Config) bool {
     return false;
 }
 
-pub fn loginScreenHasSpace(cfg: *const Config) bool {
-    return loginScreenSpaceIn(listed(cfg)) != null;
-}
-
 /// Where login-screen clients go: the Login Screen space when it's active, else the first active space taking them; null when they're placed by hand.
 pub fn loginScreenSpaceIn(items: []const ThumbnailSpace) ?usize {
     return firstActiveWith(items, "holdsLoginScreen") orelse firstActiveWith(items, "takesLoginScreen");

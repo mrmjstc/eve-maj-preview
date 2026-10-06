@@ -103,8 +103,6 @@ fn spacesMode(context: *ui.Frame, display: DisplayRef) !void {
     try master_detail.close(context);
 
     try widgets.subheading(context, .src(@src()), "All Spaces");
-    try bind.toggle(context, display, "regionFitReorderLoggedOut", "Close Gaps Immediately on Logout");
-    try widgets.hintText(context, .src(@src()), "When off, a logged-out character's spot in its space stays put until the next reflow instead of closing the gap immediately.");
     try bind.toggle(context, display, "hideThumbnailsDuringRegionSelect", "Hide Thumbnails While Drawing a Region");
     try widgets.hintText(context, .src(@src()), "Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.");
 }
