@@ -291,13 +291,13 @@ fn holds(context: *ui.Frame, profile: ProfileRef, space: SpaceRef) !void {
     }
 }
 
-/// Warns about each group of this space that an active space earlier in the list already takes.
+/// Warns about each group of this space whose characters another space gets.
 fn overlaps(context: *ui.Frame, items: []const config.ThumbnailSpace, index: usize) !void {
     for (items[index].groups.items, 0..) |name, held_index| {
-        const earlier = for (items[0..index]) |*other| {
-            if (spaces.isActive(other) and other.groupIndex(name) != null) break other;
-        } else continue;
-        const content = try std.fmt.allocPrint(context.arena(), "'{s}' is also in '{s}', which comes first, so its characters go there.", .{ name, if (earlier.name.len > 0) earlier.name else "Unnamed Space" });
+        const winner_index = spaces.groupSpaceIn(items, name) orelse continue;
+        if (winner_index == index) continue;
+        const winner = &items[winner_index];
+        const content = try std.fmt.allocPrint(context.arena(), "Characters in '{s}' go to '{s}' instead.", .{ name, if (winner.name.len > 0) winner.name else "Unnamed Space" });
         try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.space.overlap").indexed(held_index), .content = content, .style = &style.hint_warning });
     }
 }
@@ -344,10 +344,11 @@ fn regionRow(context: *ui.Frame, space_id: u32) !void {
 
 /// The whole desktop in miniature with every space's region, the selected one drawn last and bolder.
 fn regionMap(context: *ui.Frame, items: []const config.ThumbnailSpace, selected: usize) !void {
-    const left: f32 = @floatFromInt(win32.GetSystemMetrics(win32.SM_XVIRTUALSCREEN));
-    const top: f32 = @floatFromInt(win32.GetSystemMetrics(win32.SM_YVIRTUALSCREEN));
-    const desktop_width: f32 = @floatFromInt(@max(1, win32.GetSystemMetrics(win32.SM_CXVIRTUALSCREEN)));
-    const desktop_height: f32 = @floatFromInt(@max(1, win32.GetSystemMetrics(win32.SM_CYVIRTUALSCREEN)));
+    const desktop = win32.virtualScreenRect();
+    const left: f32 = @floatFromInt(desktop.left);
+    const top: f32 = @floatFromInt(desktop.top);
+    const desktop_width: f32 = @floatFromInt(@max(1, win32.rectWidth(desktop)));
+    const desktop_height: f32 = @floatFromInt(@max(1, win32.rectHeight(desktop)));
     const scale = MAP_WIDTH / desktop_width;
     const map_height = @max(1, @round(desktop_height * scale));
 

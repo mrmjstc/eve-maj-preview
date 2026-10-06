@@ -102,12 +102,7 @@ pub const Layout = struct {
         const step_y = thumb_height + scalePixels(cfg.newThumbnailSpacing, scale);
 
         // Monitor bounds if one's configured, otherwise the real current virtual screen, not a guessed multi-monitor range.
-        const bounds = monitor_bounds orelse win32.RECT{
-            .left = win32.GetSystemMetrics(win32.SM_XVIRTUALSCREEN),
-            .top = win32.GetSystemMetrics(win32.SM_YVIRTUALSCREEN),
-            .right = win32.GetSystemMetrics(win32.SM_XVIRTUALSCREEN) + win32.GetSystemMetrics(win32.SM_CXVIRTUALSCREEN),
-            .bottom = win32.GetSystemMetrics(win32.SM_YVIRTUALSCREEN) + win32.GetSystemMetrics(win32.SM_CYVIRTUALSCREEN),
-        };
+        const bounds = monitor_bounds orelse win32.virtualScreenRect();
 
         // startX/startY are monitor-relative when a monitor is configured, absolute otherwise.
         const start_x = scalePixels(cfg.startX, scale) + (if (monitor_bounds != null) bounds.left else 0);

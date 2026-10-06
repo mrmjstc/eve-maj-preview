@@ -110,9 +110,10 @@ pub fn spaceFor(cfg: *const Config, character_name: []const u8) ?usize {
     return unassignedSpaceIn(items);
 }
 
-fn firstActiveWith(items: []const ThumbnailSpace, comptime flag: []const u8) ?usize {
+/// The first active space holding hotkey group `group_name`; a space later in the list that also holds it doesn't get its characters.
+pub fn groupSpaceIn(items: []const ThumbnailSpace, group_name: []const u8) ?usize {
     for (items, 0..) |*space, i| {
-        if (isActive(space) and @field(space, flag)) return i;
+        if (isActive(space) and space.groupIndex(group_name) != null) return i;
     }
     return null;
 }
@@ -148,6 +149,13 @@ pub fn assign(allocator: std.mem.Allocator, cfg: *const Config, names: []const [
         for (members[0..count], 0..) |name_index, cell| rank[name_index] = cell;
     }
     return assignment;
+}
+
+fn firstActiveWith(items: []const ThumbnailSpace, comptime flag: []const u8) ?usize {
+    for (items, 0..) |*space, i| {
+        if (isActive(space) and @field(space, flag)) return i;
+    }
+    return null;
 }
 
 /// Whether one of this space's hotkey groups lists the character.
@@ -261,6 +269,14 @@ test "a character in two spaces' groups goes to the first space in the list" {
 
     try testing.expectEqual(@as(?usize, 0), spaceFor(&cfg, "Pilot"));
     try testing.expectEqual(@as(?usize, 1), spaceFor(&cfg, "Miner"));
+}
+
+test "a group goes to the first active space holding it" {
+    var spaces = [_]ThumbnailSpace{ testSpace("Off", &.{"Miners"}), testSpace("Mining", &.{"Miners"}), testSpace("More Mining", &.{"Miners"}) };
+    spaces[0].enabled = false;
+
+    try testing.expectEqual(@as(?usize, 1), groupSpaceIn(&spaces, "Miners"));
+    try testing.expectEqual(@as(?usize, null), groupSpaceIn(&spaces, "Scouts"));
 }
 
 test "a disabled space or one with no region is skipped" {

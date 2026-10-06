@@ -130,11 +130,11 @@ pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelSty
     g_label_style = label_style;
     g_labels = labels;
 
-    const left: i32 = win32.GetSystemMetrics(win32.SM_XVIRTUALSCREEN);
-    const top: i32 = win32.GetSystemMetrics(win32.SM_YVIRTUALSCREEN);
-    const width: i32 = win32.GetSystemMetrics(win32.SM_CXVIRTUALSCREEN);
-    const height: i32 = win32.GetSystemMetrics(win32.SM_CYVIRTUALSCREEN);
-    g_virtual_screen = .{ .left = left, .top = top, .right = left + width, .bottom = top + height };
+    g_virtual_screen = win32.virtualScreenRect();
+    const left = g_virtual_screen.left;
+    const top = g_virtual_screen.top;
+    const width = win32.rectWidth(g_virtual_screen);
+    const height = win32.rectHeight(g_virtual_screen);
     g_bounds = g_virtual_screen;
     g_dragging = false;
     g_edit_handle = .none;
