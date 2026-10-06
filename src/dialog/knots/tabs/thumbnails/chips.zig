@@ -23,12 +23,11 @@ pub const PopoverField = union(enum) {
     toggle: struct { field: []const u8, label: []const u8, disables_color: bool = false },
     /// The chip's text colour, under this label.
     color: []const u8,
-    font_name,
-    /// The font size, under this label.
-    font_size: []const u8,
+    /// Name and size on one row.
+    font,
     font_weight,
+    /// Colour and opacity on one row.
     background,
-    background_opacity,
 };
 
 pub const Chip = struct {
@@ -48,8 +47,7 @@ pub const Chip = struct {
     popover: []const PopoverField,
 };
 
-const STYLE_ROWS = [_]PopoverField{ .font_name, .{ .font_size = "Font Size (px)" }, .font_weight, .background, .background_opacity };
-const ACTIVITY_STYLE_ROWS = [_]PopoverField{ .font_name, .{ .font_size = "Font Size" }, .font_weight, .background, .background_opacity };
+const STYLE_ROWS = [_]PopoverField{ .font, .font_weight, .background };
 
 pub const CHIPS = [_]Chip{
     .{
@@ -131,7 +129,7 @@ pub const CHIPS = [_]Chip{
             .{ .toggle = .{ .field = "show_incoming", .label = "Show Incoming Damage" } },
             .{ .toggle = .{ .field = "incoming_show_prefix", .label = "Show IN: Prefix" } },
             .{ .color = "Text Color" },
-        } ++ ACTIVITY_STYLE_ROWS),
+        } ++ STYLE_ROWS),
     },
     .{
         .label = "Outgoing DPS",
@@ -147,7 +145,7 @@ pub const CHIPS = [_]Chip{
             .{ .toggle = .{ .field = "show_outgoing", .label = "Show Outgoing Damage" } },
             .{ .toggle = .{ .field = "outgoing_show_prefix", .label = "Show OUT: Prefix" } },
             .{ .color = "Text Color" },
-        } ++ ACTIVITY_STYLE_ROWS),
+        } ++ STYLE_ROWS),
     },
     .{
         .label = "Mining Rate",
@@ -161,7 +159,7 @@ pub const CHIPS = [_]Chip{
             .{ .toggle = .{ .field = "enabled", .label = "Show Mining Rate" } },
             .{ .toggle = .{ .field = "show_prefix", .label = "Show M: Prefix" } },
             .{ .color = "Text Color" },
-        } ++ ACTIVITY_STYLE_ROWS),
+        } ++ STYLE_ROWS),
     },
     .{
         .label = "Bounty Rate",
@@ -175,7 +173,7 @@ pub const CHIPS = [_]Chip{
             .{ .toggle = .{ .field = "enabled", .label = "Show Bounty Rate" } },
             .{ .toggle = .{ .field = "show_prefix", .label = "Show ISK: Prefix" } },
             .{ .color = "Text Color" },
-        } ++ ACTIVITY_STYLE_ROWS),
+        } ++ STYLE_ROWS),
     },
     .{
         .label = "Resource Usage",
@@ -190,7 +188,7 @@ pub const CHIPS = [_]Chip{
             .{ .toggle = .{ .field = "show_ram", .label = "Show RAM" } },
             .{ .toggle = .{ .field = "show_vram", .label = "Show VRAM" } },
             .{ .color = "Text Color" },
-        } ++ ACTIVITY_STYLE_ROWS),
+        } ++ STYLE_ROWS),
     },
 };
 
@@ -284,8 +282,8 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
     const weight_before = ref.get(fields.font_weight);
     const background_before = ref.get(fields.bg_color);
 
-    const previous_label = widgets.useLabelStyle(&style.popover_label);
-    defer _ = widgets.useLabelStyle(previous_label);
+    const was_aligned = widgets.useAlignedRows(true);
+    defer _ = widgets.useAlignedRows(was_aligned);
     var color_disabled = false;
     inline for (chip.popover) |row| {
         switch (row) {
@@ -298,11 +296,19 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
                 try bind.rgb(context, ref, fields.color.?, label);
                 try color.close(context);
             },
-            .font_name => try bind.fontName(context, ref, fields.font_name, "Font Name"),
-            .font_size => |label| try bind.number(context, ref, fields.font_size, label, .{}),
-            .font_weight => try bind.choice(context, ref, fields.font_weight, "Font Weight"),
-            .background => try bind.rgb(context, ref, fields.bg_color, "Background Color"),
-            .background_opacity => try bind.alpha(context, ref, fields.bg_color, "Background Opacity"),
+            .font => {
+                const font = try widgets.openBinding(context, .str("knots.chip.font:" ++ chip.label), "Font");
+                try bind.fontBox(context, ref, fields.font_name);
+                try bind.unitNumberBox(context, ref, fields.font_size, "px", .{});
+                try font.close(context);
+            },
+            .font_weight => try bind.choice(context, ref, fields.font_weight, "Weight"),
+            .background => {
+                const background = try widgets.openBinding(context, .str("knots.chip.background:" ++ chip.label), "Background");
+                try bind.rgbBox(context, ref, fields.bg_color);
+                try bind.alphaBox(context, ref, fields.bg_color);
+                try background.close(context);
+            },
         }
     }
 

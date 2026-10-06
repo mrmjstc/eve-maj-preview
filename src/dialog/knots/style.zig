@@ -9,6 +9,8 @@ pub const PANEL = color("#131416");
 pub const SURFACE = color("#1a1b1d");
 pub const SURFACE_ALT = color("#202224");
 pub const BORDER = color("#35383d");
+/// Between rows inside a section: quieter than BORDER.
+pub const DIVIDER = color("#2a2c30");
 pub const BORDER_STRONG = color("#6b6e75");
 pub const TEXT = color("#e8e6e1");
 pub const TEXT_SECONDARY = color("#c4c0b6");
@@ -61,8 +63,11 @@ pub const theme = ui.Theme.parse(.{
 
 pub const FONT_REGULAR = "regular";
 pub const FONT_SEMIBOLD = "semibold";
-pub const FONT_REGULAR_DATA = @embedFile("../../assets/fonts/CascadiaCode-Regular.ttf");
-pub const FONT_SEMIBOLD_DATA = @embedFile("../../assets/fonts/CascadiaCode-SemiBold.ttf");
+/// For numbers being edited, so digits line up.
+pub const FONT_MONO = "mono";
+pub const FONT_REGULAR_DATA = @embedFile("../../assets/fonts/Geist-Regular.ttf");
+pub const FONT_SEMIBOLD_DATA = @embedFile("../../assets/fonts/Geist-SemiBold.ttf");
+pub const FONT_MONO_DATA = @embedFile("../../assets/fonts/GeistMono-Regular.ttf");
 
 pub const CONTROL_HEIGHT = 28;
 const SCROLLBAR_THICKNESS = 8;
@@ -96,25 +101,22 @@ pub const sidebar: Style = .{
     .border_color = .{ .color = BORDER },
 };
 
-/// .tab-item: a 2px left rail that turns amber when active; holds the glyph and label.
+/// .tab-item: holds the glyph and label; the active one is lit by its fill, amber glyph and brighter label.
 pub const tab_item: Style = .{
     .width = .grow(),
     .justify = .start,
     .gap = 8,
-    .padding = .init(6, 14, 6, 8),
+    .padding = .init(6, 14, 6, 10),
     .background = .transparent,
     .foreground = .{ .color = MUTED },
     .font = FONT_SEMIBOLD,
     .radius = .none,
-    .border_width = .edges(0, 0, 0, 2),
-    .border_color = .transparent,
     .hover = &.{ .background = .{ .color = SURFACE }, .foreground = .{ .color = TEXT }, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
 pub const tab_item_active: Style = tab_item.with(.{
     .background = .{ .color = SURFACE_ALT },
     .foreground = .{ .color = TEXT },
-    .border_color = .accent,
     .hover = &.{ .state_layer = 0 },
 });
 pub const tab_label: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = MUTED } };
@@ -234,7 +236,7 @@ pub const subheading: Style = .{
     .foreground = .{ .color = TEXT_SECONDARY },
 };
 
-/// No italics: Cascadia Code ships them as a separate face we don't embed.
+/// No italics: Geist ships them as a separate face we don't embed.
 pub const hint: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED }, .wrap = true, .width = .grow() };
 
 /// A warning, tinted by the accent.
@@ -270,19 +272,96 @@ pub const hint_toggle_on: Style = hint_toggle.with(.{
     .hover = &.{ .state_layer = 0 },
 });
 
-pub const scope_chip: Style = .{
-    .padding = .xy(5, 1),
-    .font_size = .{ .px = 9 },
-    .foreground = .{ .color = MUTED },
-    .border_width = .all(1),
-    .border_color = .{ .color = BORDER },
-    .radius = .{ .fixed = 2 },
-};
-
 pub const label: Style = .{ .width = .fixed(LABEL_WIDTH), .wrap = true, .foreground = .{ .color = TEXT_SECONDARY } };
+/// Grows to push the row's controls to its right edge.
+pub const label_aligned: Style = label.with(.{ .width = .grow() });
+/// As tall as a control, so a checkbox row spaces like one with a box in it.
+pub const aligned_row: Style = .{
+    .width = .grow(),
+    .height = .{ .kind = .fit, .min = CONTROL_HEIGHT },
+    .direction = .row,
+    .@"align" = .center,
+    .gap = 8,
+};
+/// Its padding matches the section's gap, so the divider sits midway between two rows' controls.
+pub const divided_row: Style = aligned_row.with(.{
+    .height = .{ .kind = .fit, .min = CONTROL_HEIGHT + ROW_DIVIDER_SPACE },
+    .padding = .init(ROW_DIVIDER_SPACE, 0, 0, 0),
+    .border_width = .edges(1, 0, 0, 0),
+    .border_color = .{ .color = DIVIDER },
+});
+const ROW_DIVIDER_SPACE = 8;
+
+/// widgets.toggleSwitch's track; the switch slides its knob across by SWITCH_TRAVEL itself.
+pub const switch_off: Style = .{
+    .width = .fixed(SWITCH_WIDTH),
+    .height = .fixed(SWITCH_HEIGHT),
+    .padding = .all(SWITCH_INSET),
+    .justify = .start,
+    .background = .{ .color = SURFACE },
+    .border_width = .all(1),
+    .border_color = .{ .color = BORDER_STRONG },
+    .radius = .{ .fixed = SWITCH_HEIGHT / 2 },
+    .hover = &.{ .border_color = .accent, .state_layer = 0 },
+    .active = &.{ .state_layer = 0 },
+    .transition = .{ .duration_ms = SWITCH_ANIMATION_MS },
+};
+pub const switch_on: Style = switch_off.with(.{
+    .background = .accent,
+    .border_color = .accent,
+});
+pub const switch_knob_off: Style = .{
+    .width = .fixed(SWITCH_KNOB),
+    .height = .fixed(SWITCH_KNOB),
+    .background = .{ .color = TEXT_SECONDARY },
+    .radius = .{ .fixed = SWITCH_KNOB / 2 },
+    .transition = .{ .duration_ms = SWITCH_ANIMATION_MS },
+};
+pub const switch_knob_on: Style = switch_knob_off.with(.{ .background = .{ .color = INK_DARK } });
+pub const SWITCH_ANIMATION_MS = 200;
+/// How far the knob moves from off to on.
+pub const SWITCH_TRAVEL = SWITCH_WIDTH - 2 * SWITCH_INSET - SWITCH_KNOB;
+const SWITCH_WIDTH = 30;
+const SWITCH_HEIGHT = 16;
+const SWITCH_INSET = 2;
+const SWITCH_KNOB = SWITCH_HEIGHT - 2 * SWITCH_INSET;
+
+pub const slider_box: Style = .{ .width = .grow(), .padding = .xy(8, 0) };
+/// Fixed, so it doesn't share the row's spare width with a growing label.
+pub const slider_box_aligned: Style = .{ .width = .fixed(220), .padding = .xy(8, 0) };
+
+pub const segmented: Style = .{
+    .direction = .row,
+    .gap = 2,
+    .padding = .all(2),
+    .background = .{ .color = SURFACE },
+    .border_width = .all(1),
+    .border_color = .{ .color = BORDER_STRONG },
+    .radius = .md,
+};
+pub const segment: Style = .{
+    // Inside segmented's 2px padding, so the whole control is as tall as an input.
+    .height = .fixed(CONTROL_HEIGHT - 4),
+    .padding = .xy(10, 0),
+    .background = .transparent,
+    .radius = .{ .fixed = 2 },
+    .hover = &.{ .background = .{ .color = SURFACE_ALT }, .state_layer = 0 },
+    .active = &.{ .state_layer = 0 },
+};
+pub const segment_selected: Style = segment.with(.{
+    .background = .accent,
+    .hover = &.{ .state_layer = 0 },
+});
+/// Set on the label itself: knots' button label otherwise takes the theme's on-accent ink, which the accent can wash out.
+pub const segment_label: Style = .{
+    .foreground = .{ .color = TEXT_SECONDARY },
+    .hover = &.{ .foreground = .{ .color = TEXT } },
+};
+pub const segment_label_selected: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = INK_DARK } };
 
 pub const number_input: Style = .{
     .width = .fixed(80),
+    .font = FONT_MONO,
     .height = .fixed(CONTROL_HEIGHT),
     .padding = .xy(8, 4),
     .background = .{ .color = SURFACE },
@@ -291,13 +370,33 @@ pub const number_input: Style = .{
     .hover = &.{ .border_color = .accent },
     .focus = &.{ .border_color = .accent },
 };
+/// A number box with its unit inside, e.g. "85 %": this field draws the box, around unit_field_input and the unit.
+pub const unit_field: Style = .{
+    .width = .fixed(64),
+    .height = .fixed(CONTROL_HEIGHT),
+    .direction = .row,
+    .@"align" = .center,
+    .padding = .init(0, 8, 0, 0),
+    .background = .{ .color = SURFACE },
+    .border_width = .all(1),
+    .border_color = .{ .color = BORDER_STRONG },
+    .radius = .md,
+};
+pub const unit_field_focused: Style = unit_field.with(.{ .border_color = .accent });
+pub const unit_field_input: Style = number_input.with(.{
+    .width = .grow(),
+    .padding = .init(4, 2, 4, 8),
+    .background = .transparent,
+    .border_width = .zero,
+});
 
 /// No fill: the track is one colour either side of the thumb.
 pub const slider_track: Style = .{ .height = .fixed(6), .background = .{ .color = BORDER }, .radius = .md };
 pub const slider_fill: Style = .{ .background = .{ .color = BORDER } };
-pub const slider_thumb: Style = .{ .width = .fixed(16), .background = .accent };
+/// knots grows the knob and draws a halo around it on hover and drag, both scaled from this width, so it's kept small.
+pub const slider_thumb: Style = .{ .width = .fixed(12), .background = .accent };
 
-pub const slider_value: Style = .{ .width = .fixed(48), .foreground = .{ .color = TEXT_SECONDARY } };
+pub const slider_value: Style = .{ .width = .fixed(48), .font = FONT_MONO, .foreground = .{ .color = TEXT_SECONDARY } };
 
 pub const select: Style = .{
     .width = .fixed(230),
@@ -330,6 +429,13 @@ pub const color_picker: Style = .{
     .hover = &.{ .border_color = .accent },
 };
 pub const color_swatch: Style = .{ .width = .fixed(20), .height = .fixed(20) };
+/// A picker drawn without its hex: just the swatch, centred. Its popup still has a hex box.
+pub const color_picker_swatch: Style = color_picker.with(.{
+    .width = .fixed(CONTROL_HEIGHT),
+    .height = .fixed(CONTROL_HEIGHT),
+    .padding = .all(0),
+    .justify = .center,
+});
 /// Above the modal layer, so a picker inside a prompt opens over it rather than under it.
 pub const color_popup: Style = .{ .layer = ui.Layer.fromIndex(ui.Layer.modal.z + 1) };
 /// Likewise for a dropdown's option list.
@@ -485,18 +591,6 @@ pub const muted_text: Style = .{ .foreground = .{ .color = MUTED } };
 pub const select_wide: Style = select.with(.{ .width = .fixed(300) });
 pub const select_narrow: Style = select.with(.{ .width = .fixed(130) });
 
-/// A row of a settings grid: the label column, then fixed-width cells so columns line up.
-pub const grid_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
-/// A row's checkbox and its label, which turns the row's settings on.
-pub const grid_state_cell: Style = .{ .width = .fixed(GRID_STATE_WIDTH) };
-pub const grid_cells: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
-pub const grid_header: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED } };
-pub const grid_header_state: Style = grid_header.with(.{ .width = .fixed(GRID_STATE_WIDTH) });
-/// Matches number_input's width, so the header sits over its column.
-pub const grid_header_number: Style = grid_header.with(.{ .width = .fixed(80) });
-pub const grid_header_select: Style = grid_header.with(.{ .width = .fixed(130) });
-const GRID_STATE_WIDTH = 140;
-
 /// Wide enough for a label column beside a standard dropdown.
 pub const POPOVER_WIDTH = 420;
 /// A Dialog panel used as a popover beside what it edits.
@@ -514,6 +608,9 @@ pub const popover_close: Style = plain_button.with(.{ .width = .fixed(CONTROL_HE
 /// openGroup's column, which dims while disabled.
 pub const group: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
 pub const group_disabled: Style = group.with(.{ .opacity = 0.5 });
+/// openInlineGroup's run of controls within a row.
+pub const group_inline: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
+pub const group_inline_disabled: Style = group_inline.with(.{ .opacity = 0.5 });
 /// Laid over a disabled group to take its clicks; sized from the group's last layout.
 pub const group_blocker: Style = .{
     .position = .absolute,
@@ -554,10 +651,62 @@ pub const stage_frame: Style = .{
 };
 pub const stage_row: Style = .{ .width = .grow(), .justify = .center };
 
-/// Fields sharing one row with their labels above them, e.g. Font Name, Size and Weight.
-pub const stacked_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .end, .gap = 8 };
-pub const stacked_field: Style = .{ .direction = .column, .gap = 4 };
-pub const stacked_label: Style = .{ .foreground = .{ .color = TEXT_SECONDARY } };
+/// A thumbnail space, or another foldable group of settings, inside a section.
+pub const space_card: Style = .{
+    .width = .grow(),
+    .direction = .column,
+    .background = .{ .color = BG },
+    .border_width = .all(1),
+    .border_color = .{ .color = DIVIDER },
+    .radius = .md,
+};
+pub const space_card_open: Style = space_card.with(.{ .border_color = .{ .color = BORDER } });
+pub const space_card_header: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8, .padding = .init(4, 10, 4, 4) };
+/// The header's clickable part, which folds the card.
+pub const space_card_toggle: Style = .{
+    .width = .grow(),
+    .height = .fixed(CONTROL_HEIGHT),
+    .direction = .row,
+    .@"align" = .center,
+    .justify = .start,
+    .gap = 8,
+    .padding = .xy(6, 0),
+    .background = .transparent,
+    .border_width = .zero,
+    .radius = .md,
+    .hover = &.{ .background = .{ .color = SURFACE }, .state_layer = 0 },
+    .active = &.{ .state_layer = 0 },
+};
+pub const space_card_body: Style = .{ .width = .grow(), .direction = .column, .gap = 8, .padding = .init(0, 10, 10, 30) };
+pub const space_card_dot: Style = .{ .width = .fixed(10), .height = .fixed(10), .radius = .{ .fixed = 2 } };
+pub const space_card_name: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } };
+pub const space_card_status_warning: Style = .{ .foreground = .accent };
+pub const space_card_chevron: Style = .{ .width = .fixed(10), .height = .fixed(10) };
+pub const fill: Style = .{ .width = .grow() };
+
+/// A text overlay's tag on the stage; the stage sets its offset, and outlines the selected one.
+pub const overlay_chip: Style = .{
+    .position = .absolute,
+    .direction = .row,
+    .@"align" = .center,
+    .gap = 5,
+    .padding = .xy(5, 3),
+    .background = .accent,
+    .border_width = .all(1),
+    .border_color = .accent,
+    .radius = .{ .fixed = 3 },
+    .hover = &.{ .border_color = .{ .color = TEXT }, .state_layer = 0 },
+    .active = &.{ .state_layer = 0 },
+};
+pub const overlay_chip_label_box: Style = .{};
+pub const overlay_chip_label: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = INK_DARK } };
+/// Laid across the label while its overlay is off; the stage sets its width and height position.
+pub const overlay_chip_strike: Style = .{
+    .position = .absolute,
+    .height = .fixed(1),
+    .background = .{ .color = INK_DARK },
+};
+pub const overlay_chip_glyph: Style = .{ .width = .fixed(12), .height = .fixed(12) };
 
 /// An icon button with a text glyph, e.g. × to clear a region.
 pub const icon_button_danger_text: Style = icon_button.with(.{
@@ -584,9 +733,6 @@ pub const hint_inline: Style = .{ .font_size = .xs, .foreground = .{ .color = MU
 /// Side-by-side columns inside a section.
 pub const columns: Style = .{ .width = .grow(), .direction = .row, .@"align" = .start, .gap = 16 };
 pub const column: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
-
-/// #overlayPopoverBody's label column, as wide as its longest label.
-pub const popover_label: Style = label.with(.{ .width = .fixed(150) });
 
 /// .notification-types-table: bordered rows with a category column, as the ore price table shows them.
 pub const table: Style = .{

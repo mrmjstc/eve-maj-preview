@@ -27,7 +27,7 @@ When editing by hand, a value the app can't read (an unknown option name, a malf
     "width": 200,
     "height": 112,
     "thumbnailOpacity": 255,
-    "applyOpacityToOverlayTexts": false
+    "applyOpacityToOverlayTexts": true
   }
 }
 ```
@@ -100,7 +100,7 @@ The character name and system name each have their own color, background and fon
 {
   "thumbnail": {
     "thumbnailOpacity": 255,
-    "applyOpacityToOverlayTexts": false,
+    "applyOpacityToOverlayTexts": true,
     "activeThumbnailHidden": false,
     "hideWhenNoEveFocus": false,
     "hideDebounceMs": 500

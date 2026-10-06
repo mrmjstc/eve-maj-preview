@@ -1,0 +1,646 @@
+const std = @import("std");
+const builtin = @import("builtin");
+
+const gpu = @import("gpu");
+const Perf = @import("Perf.zig");
+const ui = @import("ui");
+const Frame = ui.Frame;
+const Context = ui.Context;
+const component = @import("ui").component;
+
+const Element = @import("layout").Element;
+
+pub const PresentMode = gpu.Context.PresentMode;
+
+const config = @import("debug_config");
+
+const Button = component.Button;
+const Graph = component.Graph;
+const Rect = component.Rect;
+const SelectInput = component.SelectInput;
+const Text = component.Text;
+const Layer = ui.Layer;
+const Style = ui.Style;
+
+const panel_style: Style = .{
+    .padding = .all(14),
+    .direction = .column,
+    .gap = 12,
+    .overflow = .scroll_y,
+    .layer = panel_z,
+    .background = .elevated,
+    .radius = .lg,
+    .border_width = .all(1),
+    .border_color = .toned,
+};
+const card_style: Style = .{
+    .width = .grow(),
+    .padding = .xy(10, 8),
+    .direction = .column,
+    .gap = 8,
+    .background = .muted,
+    .radius = .sm,
+    .border_width = .all(1),
+    .border_color = .toned,
+};
+const metric_card_style: Style = card_style.with(.{ .padding = .xy(8, 5), .gap = 0 });
+const caption_style: Style = .{ .font_size = .xs, .foreground = .dimmed };
+const tab_style: Style = .{ .width = .grow(), .height = .grow(), .padding = .all(0), .font_size = .xs };
+const inactive_tab_style: Style = tab_style.with(.{ .background = .muted, .foreground = .text, .hover = &.{ .background = .toned } });
+
+/// Enables the Renderer tab, null hides it. `reconfigure_error` is `anyerror` so
+/// `debug` needs no dependency on a concrete renderer.
+pub const RendererInfo = struct {
+    present_mode: PresentMode,
+    supported_present_modes: gpu.Context.PresentModes,
+    reconfigure_error: ?anyerror,
+};
+
+/// Plain per-frame data supplied by either `App` or an embedded host.
+pub const HostInfo = struct {
+    frame_delta_ns: u64,
+    window_width: f32,
+    window_height: f32,
+    concurrency_in_flight: ?usize = null,
+    renderer: ?RendererInfo = null,
+};
+
+const panel_w: f32 = 680.0;
+const panel_landscape_h: f32 = 260.0;
+const panel_portrait_max_h: f32 = 360.0;
+const margin: f32 = 16.0;
+const trigger_size: f32 = 40.0;
+const trigger_visible_h: f32 = trigger_size / 2.0;
+const panel_gap: f32 = 6.0;
+const panel_z: Layer = Layer.fromIndex(240);
+const trigger_z: Layer = Layer.fromIndex(245);
+const popup_z: Layer = Layer.fromIndex(250);
+
+const Tab = enum {
+    metrics,
+    runtime,
+    renderer,
+};
+
+const RuntimeHistory = struct {
+    latest: usize = 0,
+    peak: usize = 0,
+
+    fn update(self: *RuntimeHistory, capacity: usize) void {
+        self.latest = capacity;
+        self.peak = @max(self.peak, capacity);
+    }
+};
+
+const State = struct {
+    present_mode: PresentMode,
+    panel_open: bool = false,
+    active_tab: Tab = .metrics,
+    perf: Perf = .{},
+    runtime: RuntimeHistory = .{},
+    present_mode_request: ?PresentMode = null,
+};
+
+state: *State,
+
+const DevTools = @This();
+
+fn mustFindIdx(slice: anytype, needle: anytype) u32 {
+    for (slice, 0..) |value, i| {
+        if (needle == value) return @intCast(i);
+    }
+    unreachable;
+}
+
+pub fn init(allocator: std.mem.Allocator, present_mode: PresentMode) !DevTools {
+    const state = try allocator.create(State);
+    state.* = .{
+        .present_mode = present_mode,
+    };
+    return .{ .state = state };
+}
+
+pub fn deinit(self: *const DevTools, allocator: std.mem.Allocator) void {
+    allocator.destroy(self.state);
+}
+
+/// Consume the Apply button's present-mode request. A host supplying
+/// `HostInfo.renderer` must drain this each frame, or Apply does nothing.
+pub fn takePresentModeRequest(self: *const DevTools) ?PresentMode {
+    const request = self.state.present_mode_request;
+    self.state.present_mode_request = null;
+    return request;
+}
+
+const trigger_key: ui.Key = .str("debug_devtools_trigger");
+const trigger_button_key: ui.Key = .str("debug_devtools_trigger_button");
+const panel_key: ui.Key = .str("debug_devtools_panel");
+const metrics_tab_key: ui.Key = .str("debug_devtools_metrics_tab");
+const runtime_tab_key: ui.Key = .str("debug_devtools_runtime_tab");
+const renderer_tab_key: ui.Key = .str("debug_devtools_renderer_tab");
+const close_key: ui.Key = .str("debug_devtools_close");
+const apply_key: ui.Key = .str("debug_devtools_apply");
+const present_mode_key: ui.Key = .str("debug_devtools_present_mode");
+const spark_key: ui.Key = .str("debug_devtools_spark");
+
+fn selectedIdx(app: *Frame, key: ui.Key, fallback: u32) u32 {
+    const s = app.ui().state.get(.select_input, key.hash()) orelse return fallback;
+    return s.selected orelse fallback;
+}
+
+pub fn render(self: *const DevTools, app: *Frame, info: HostInfo) anyerror!void {
+    self.state.perf.update(.fromNanoseconds(@intCast(info.frame_delta_ns)));
+    self.state.runtime.update(app.arenaCapacity());
+
+    const w = info.window_width;
+    const h = info.window_height;
+    const trigger_x = @max(0, (w - trigger_size) / 2.0);
+    const trigger_y = @max(0, h - trigger_visible_h);
+
+    try self.renderTrigger(app, trigger_x, trigger_y);
+    if (app.ui().leftClicked(trigger_button_key.hash(), .within)) self.state.panel_open = !self.state.panel_open;
+
+    if (self.state.panel_open) try self.renderPanel(app, info, w, trigger_y);
+    if (app.ui().leftClicked(close_key.hash(), .within)) self.state.panel_open = false;
+}
+
+fn renderTrigger(_: *const DevTools, app: *Frame, x: f32, y: f32) !void {
+    _ = try app.ui().openWith(trigger_key, .{
+        .width = .fixed(trigger_size),
+        .height = .fixed(trigger_size),
+        .z_index = trigger_z.index(),
+    }, .none, .{ .root = .{ x, y } });
+
+    try app.e(Button{
+        .key = trigger_button_key,
+        .label = ">_",
+        .style = &.{
+            .width = .grow(),
+            .height = .grow(),
+            .padding = .init(0, 0, 18, 0),
+            .radius = .{ .fixed = trigger_size / 2.0 },
+            .font_size = .xs,
+        },
+    });
+
+    app.ui().close();
+}
+
+fn renderPanel(self: *const DevTools, app: *Frame, info: HostInfo, window_w: f32, trigger_y: f32) !void {
+    const width = @min(panel_w, @max(trigger_size, window_w - margin * 2.0));
+    const x = centeredOverlayX(window_w, width);
+    const is_landscape = width >= 560.0;
+    const max_h = @max(80.0, trigger_y - margin - panel_gap);
+    const desired_h = if (is_landscape) panel_landscape_h else panel_portrait_max_h;
+    const height = @min(desired_h, max_h);
+    const y = @max(margin, trigger_y - height - panel_gap);
+
+    const panel = app.ui().resolveStyle(panel_key.hash(), .{ .base = &panel_style, .user = &.{} }, .{}, null);
+    var panel_config = panel.element(.{});
+    panel_config.width = .fixed(width);
+    panel_config.height = if (is_landscape) .fixed(height) else .{ .kind = .fit, .max = height };
+    _ = try app.ui().openResolved(panel_key, &panel, panel_config, .{ x, y });
+
+    try app.e(.{
+        Rect{
+            .key = .src(@src()),
+            .style = &.{ .width = .grow(), .@"align" = .center, .justify = .space_between },
+        },
+        .{
+            Text{
+                .content = std.fmt.comptimePrint("knots v{s}", .{config.version}),
+                .key = .src(@src()),
+                .style = &caption_style,
+                .selectable = false,
+            },
+            Text{
+                .content = std.fmt.comptimePrint("{s}-{s}", .{ @tagName(builtin.target.os.tag), @tagName(builtin.target.cpu.arch) }),
+                .key = .src(@src()),
+                .style = &caption_style,
+                .selectable = false,
+            },
+        },
+    });
+
+    try self.renderTabs(app, info.renderer != null);
+    if (app.ui().leftClicked(metrics_tab_key.hash(), .within)) self.state.active_tab = .metrics;
+    if (app.ui().leftClicked(runtime_tab_key.hash(), .within)) self.state.active_tab = .runtime;
+    if (info.renderer != null and app.ui().leftClicked(renderer_tab_key.hash(), .within)) self.state.active_tab = .renderer;
+    if (info.renderer == null and self.state.active_tab == .renderer) self.state.active_tab = .metrics;
+
+    const content_w = @max(0, width - 28.0);
+    switch (self.state.active_tab) {
+        .metrics => try self.renderMetricsTab(app, content_w),
+        .runtime => try self.renderRuntimeTab(app, info, content_w),
+        .renderer => if (info.renderer) |renderer_info| try self.renderRenderer(app, renderer_info),
+    }
+
+    app.ui().close();
+}
+
+fn centeredOverlayX(window_w: f32, width: f32) f32 {
+    if (window_w <= width + margin * 2.0) return @max(0, (window_w - width) / 2.0);
+    return std.math.clamp((window_w - width) / 2.0, margin, window_w - width - margin);
+}
+
+fn renderTabs(self: *const DevTools, app: *Frame, show_renderer_tab: bool) !void {
+    _ = try app.ui().open(panel_key.indexed(4), .{
+        .width = .grow(),
+        .height = .fixed(30),
+        .direction = .row,
+        .gap = 6,
+    }, .none);
+
+    try app.e(Button{
+        .key = metrics_tab_key,
+        .label = "Metrics",
+        .style = if (self.state.active_tab == .metrics) &tab_style else &inactive_tab_style,
+    });
+
+    try app.e(Button{
+        .key = runtime_tab_key,
+        .label = "Runtime",
+        .style = if (self.state.active_tab == .runtime) &tab_style else &inactive_tab_style,
+    });
+
+    if (show_renderer_tab) {
+        try app.e(Button{
+            .key = renderer_tab_key,
+            .label = "Renderer",
+            .style = if (self.state.active_tab == .renderer) &tab_style else &inactive_tab_style,
+        });
+    }
+
+    app.ui().close();
+}
+
+fn renderMetricsTab(self: *const DevTools, app: *Frame, content_w: f32) !void {
+    _ = try app.ui().open(panel_key.indexed(40), .{
+        .width = .grow(),
+        .direction = .column,
+        .gap = 12,
+    }, .none);
+
+    try self.renderMetricsGrid(app);
+    try self.renderSparkline(app, content_w);
+
+    app.ui().close();
+}
+
+fn renderRuntimeTab(self: *const DevTools, app: *Frame, info: HostInfo, content_w: f32) !void {
+    _ = try app.ui().open(panel_key.indexed(50), .{
+        .width = .grow(),
+        .direction = .column,
+        .gap = 12,
+    }, .none);
+
+    const columns: usize = if (content_w >= 620) 6 else if (content_w >= 420) 3 else 2;
+    try self.renderRuntimeGrid(app, info, columns);
+
+    app.ui().close();
+}
+
+fn renderRuntimeGrid(self: *const DevTools, app: *Frame, info: HostInfo, columns: usize) !void {
+    const arena = app.arena();
+    const runtime = &self.state.runtime;
+
+    if (info.concurrency_in_flight) |in_flight| {
+        try metricGridColumns(app, panel_key.indexed(51), columns, &.{
+            .{ "Concurrency", try std.fmt.allocPrint(arena, "{d}", .{in_flight}) },
+            .{ "Arena capacity", try formatBytes(arena, runtime.latest) },
+            .{ "Peak capacity", try formatBytes(arena, runtime.peak) },
+        });
+    } else {
+        try metricGridColumns(app, panel_key.indexed(51), columns, &.{
+            .{ "Arena capacity", try formatBytes(arena, runtime.latest) },
+            .{ "Peak capacity", try formatBytes(arena, runtime.peak) },
+        });
+    }
+}
+
+fn renderPerformance(self: *const DevTools, app: *Frame, width: f32) !void {
+    try self.renderPerformanceMetrics(app);
+    try self.renderSparkline(app, width);
+}
+
+fn renderPerformanceMetrics(self: *const DevTools, app: *Frame) !void {
+    const arena = app.arena();
+    const mm = self.state.perf.minMaxMs();
+
+    try metricGrid(app, panel_key.indexed(11), &.{
+        .{ "FPS", try std.fmt.allocPrint(arena, "{d:.1}", .{self.state.perf.averageFps()}) },
+        .{ "Frame", try std.fmt.allocPrint(arena, "{d:.2} ms", .{self.state.perf.latest_ms}) },
+        .{ "Min", try std.fmt.allocPrint(arena, "{d:.2} ms", .{mm.min}) },
+        .{ "Max", try std.fmt.allocPrint(arena, "{d:.2} ms", .{mm.max}) },
+    });
+}
+
+fn renderMetricsGrid(self: *const DevTools, app: *Frame) !void {
+    const arena = app.arena();
+    const mm = self.state.perf.minMaxMs();
+    const stats = app.ui().last_stats;
+
+    try metricGridColumns(app, panel_key.indexed(12), 5, &.{
+        .{ "FPS", try std.fmt.allocPrint(arena, "{d:.1}", .{self.state.perf.averageFps()}) },
+        .{ "Frame", try std.fmt.allocPrint(arena, "{d:.2} ms", .{self.state.perf.latest_ms}) },
+        .{ "Min", try std.fmt.allocPrint(arena, "{d:.2} ms", .{mm.min}) },
+        .{ "Max", try std.fmt.allocPrint(arena, "{d:.2} ms", .{mm.max}) },
+        .{ "Elements", try std.fmt.allocPrint(arena, "{d}", .{stats.elements}) },
+        .{ "Hit records", try std.fmt.allocPrint(arena, "{d}", .{stats.hit_records}) },
+        .{ "Scroll roots", try std.fmt.allocPrint(arena, "{d}", .{stats.scroll_containers}) },
+        .{ "Draw layers", try std.fmt.allocPrint(arena, "{d}", .{stats.layers}) },
+        .{ "Hovered", try formatId(arena, app.ui().state.hovered) },
+        .{ "Focused", try formatId(arena, app.ui().state.focused) },
+    });
+}
+
+fn renderSparkline(self: *const DevTools, app: *Frame, width: f32) !void {
+    _ = width;
+    const arena = app.arena();
+    const samples = try arena.alloc(f32, self.state.perf.count);
+    for (samples, 0..) |*sample, i| sample.* = self.state.perf.sampleAt(i);
+
+    const mm = self.state.perf.minMaxMs();
+    const max_ms = @max(16.7, mm.max);
+
+    _ = try app.ui().open(spark_key.indexed(1), .{
+        .width = .grow(),
+        .height = .fixed(68),
+        .direction = .row,
+        .alignment = .center,
+        .gap = 8,
+    }, .none);
+
+    try app.e(Text{
+        .key = spark_key.indexed(2),
+        .content = "ms",
+        .style = &caption_style,
+        .selectable = false,
+    });
+
+    try app.e(Graph{
+        .key = spark_key,
+        .style = &.{ .height = .fixed(68), .padding = .init(8, 0, 8, 0) },
+        .y_domain = .{ .min = 0, .max = max_ms },
+        .rules = &.{
+            .{ .axis = .y, .value = max_ms * 0.5 },
+        },
+        .series = &.{
+            .{ .data = .{ .y_values = samples } },
+        },
+    });
+
+    app.ui().close();
+}
+
+fn renderRenderer(self: *const DevTools, app: *Frame, renderer_info: RendererInfo) !void {
+    if (renderer_info.reconfigure_error != null) self.state.present_mode = renderer_info.present_mode;
+
+    var supported_modes = renderer_info.supported_present_modes;
+    var mode_values: [std.enums.values(PresentMode).len]PresentMode = undefined;
+    var mode_labels: [mode_values.len][]const u8 = undefined;
+    var mode_count: usize = 0;
+    var mode_it = supported_modes.iterator();
+    while (mode_it.next()) |mode| {
+        mode_values[mode_count] = mode;
+        mode_labels[mode_count] = @tagName(mode);
+        mode_count += 1;
+    }
+
+    _ = try app.ui().open(panel_key.indexed(20), .{
+        .width = .grow(),
+        .direction = .column,
+        .gap = 8,
+    }, .none);
+
+    _ = try app.ui().openStyled(panel_key.indexed(21), .{ .base = &card_style, .user = &.{} }, .{}, .{});
+    _ = try app.ui().open(panel_key.indexed(22), .{
+        .width = .grow(),
+        .direction = .column,
+        .gap = 4,
+    }, .none);
+    try app.e(Text{
+        .key = panel_key.indexed(23),
+        .content = "GPU API",
+        .style = &caption_style,
+        .selectable = false,
+    });
+    try app.e(Text{
+        .key = panel_key.indexed(26),
+        .content = @tagName(gpu.Backend),
+        .style = &.{ .width = .grow() },
+        .selectable = false,
+    });
+    app.ui().close();
+
+    _ = try app.ui().open(panel_key.indexed(24), .{
+        .width = .grow(),
+        .direction = .column,
+        .gap = 4,
+    }, .none);
+    try app.e(Text{
+        .key = panel_key.indexed(25),
+        .content = "Present mode",
+        .style = &caption_style,
+        .selectable = false,
+    });
+    if (mode_count == 1) {
+        try app.e(Text{
+            .key = present_mode_key,
+            .content = mode_labels[0],
+            .style = &.{ .width = .grow() },
+            .selectable = false,
+        });
+    } else if (mode_count > 1) {
+        try app.e(SelectInput(PresentMode){
+            .key = present_mode_key,
+            .labels = mode_labels[0..mode_count],
+            .values = mode_values[0..mode_count],
+            .initial_selected = mustFindIdx(mode_values[0..mode_count], self.state.present_mode),
+            .style = &.{ .font_size = .sm },
+            .parts = .{ .popup = &.{ .layer = popup_z } },
+        });
+    }
+    app.ui().close();
+
+    if (mode_count > 1) {
+        try app.e(Button{
+            .key = apply_key,
+            .label = "Apply",
+            .style = &.{ .width = .grow(), .height = .fixed(32) },
+        });
+    }
+
+    if (renderer_info.reconfigure_error) |err| {
+        try app.e(Text{
+            .key = panel_key.indexed(27),
+            .content = try std.fmt.allocPrint(app.arena(), "Reconfigure failed: {s}", .{@errorName(err)}),
+            .style = &.{ .font_size = .xs, .foreground = .@"error" },
+            .selectable = false,
+        });
+    }
+
+    app.ui().close();
+
+    app.ui().close();
+
+    if (mode_count > 1 and app.ui().leftClicked(apply_key.hash(), .within)) {
+        const present_mode_idx = selectedIdx(app, present_mode_key, mustFindIdx(mode_values[0..mode_count], self.state.present_mode));
+        self.state.present_mode = mode_values[present_mode_idx];
+        self.state.present_mode_request = self.state.present_mode;
+    }
+}
+
+fn renderDiagnostics(_: *const DevTools, app: *Frame) !void {
+    const arena = app.arena();
+    const stats = app.ui().last_stats;
+
+    try metricGrid(app, panel_key.indexed(31), &.{
+        .{ "Elements", try std.fmt.allocPrint(arena, "{d}", .{stats.elements}) },
+        .{ "Hit records", try std.fmt.allocPrint(arena, "{d}", .{stats.hit_records}) },
+        .{ "Scroll roots", try std.fmt.allocPrint(arena, "{d}", .{stats.scroll_containers}) },
+        .{ "Draw layers", try std.fmt.allocPrint(arena, "{d}", .{stats.layers}) },
+        .{ "Hovered", try formatId(arena, app.ui().state.hovered) },
+        .{ "Focused", try formatId(arena, app.ui().state.focused) },
+    });
+}
+
+fn label(app: *Frame, key: ui.Key, content: []const u8) !void {
+    try app.e(Text{
+        .key = key,
+        .content = content,
+        .style = &caption_style,
+        .selectable = false,
+    });
+}
+
+fn metricGrid(app: *Frame, key: ui.Key, items: []const struct { []const u8, []const u8 }) !void {
+    try metricGridColumns(app, key, 2, items);
+}
+
+fn metricGridColumns(app: *Frame, key: ui.Key, columns: usize, items: []const struct { []const u8, []const u8 }) !void {
+    _ = try app.ui().open(key, .{
+        .width = .grow(),
+        .direction = .column,
+        .gap = 4,
+    }, .none);
+
+    var i: usize = 0;
+    while (i < items.len) : (i += columns) {
+        _ = try app.ui().open(key.indexed(100 + i), .{
+            .width = .grow(),
+            .direction = .row,
+            .gap = 4,
+        }, .none);
+
+        var col: usize = 0;
+        while (col < columns) : (col += 1) {
+            const item_idx = i + col;
+            if (item_idx < items.len) {
+                try app.e(MetricCard{
+                    .key = key.indexed(200 + item_idx),
+                    .name_key = key.indexed(300 + item_idx * 2),
+                    .value_key = key.indexed(301 + item_idx * 2),
+                    .name = items[item_idx][0],
+                    .value = items[item_idx][1],
+                });
+            } else {
+                try app.e(Rect{ .key = key.indexed(200 + item_idx), .style = &.{ .width = .grow() } });
+            }
+        }
+
+        app.ui().close();
+    }
+
+    app.ui().close();
+}
+
+const MetricCard = struct {
+    key: ui.Key,
+    name_key: ui.Key,
+    value_key: ui.Key,
+    name: []const u8,
+    value: []const u8,
+
+    pub fn render(self: *const MetricCard, app: *Frame) anyerror!void {
+        try app.e(.{
+            Rect{
+                .key = self.key,
+                .style = &metric_card_style,
+            },
+            .{
+                Text{ .key = self.name_key, .content = self.name, .style = &caption_style, .selectable = false },
+                Text{ .key = self.value_key, .content = self.value, .style = &.{ .font_size = .xs }, .selectable = false },
+            },
+        });
+    }
+};
+
+fn formatId(allocator: std.mem.Allocator, id: Element.Id) ![]const u8 {
+    if (id == Element.INVALID_ID) return "none";
+    return std.fmt.allocPrint(allocator, "0x{x}", .{@as(u32, @truncate(id))});
+}
+
+fn formatBytes(allocator: std.mem.Allocator, bytes: usize) ![]const u8 {
+    if (bytes < 1024) return std.fmt.allocPrint(allocator, "{d} B", .{bytes});
+
+    const value: f64 = @floatFromInt(bytes);
+    if (bytes < 1024 * 1024) return std.fmt.allocPrint(allocator, "{d:.1} KiB", .{value / 1024.0});
+    return std.fmt.allocPrint(allocator, "{d:.1} MiB", .{value / (1024.0 * 1024.0)});
+}
+
+fn testFrameInput() @import("input").FrameInput {
+    return .{
+        .input = .{ .pos = .{ 0, 0 } },
+        .now_ms = 0,
+        .delta_ns = 16 * std.time.ns_per_ms,
+        .logical_extent = .{ .width = 800, .height = 600 },
+        .physical_extent = .{ .width = 800, .height = 600 },
+        .content_scale = 1.0,
+    };
+}
+
+test "render is host-neutral: works with no renderer attached" {
+    var view = try Context.init(std.testing.allocator, .{});
+    defer view.deinit();
+
+    var dev_tools = try DevTools.init(std.testing.allocator, .fifo);
+    defer dev_tools.deinit(std.testing.allocator);
+    dev_tools.state.panel_open = true;
+
+    var frame = try view.beginFrame(testFrameInput());
+    try dev_tools.render(&frame, .{
+        .frame_delta_ns = 16 * std.time.ns_per_ms,
+        .window_width = 800,
+        .window_height = 600,
+    });
+    _ = try view.endFrame(&frame);
+}
+
+test "render accepts plain renderer state without callbacks" {
+    var view = try Context.init(std.testing.allocator, .{});
+    defer view.deinit();
+
+    var dev_tools = try DevTools.init(std.testing.allocator, .fifo);
+    defer dev_tools.deinit(std.testing.allocator);
+    dev_tools.state.panel_open = true;
+    dev_tools.state.active_tab = .renderer;
+
+    var supported_modes: gpu.Context.PresentModes = .empty;
+    supported_modes.insert(.fifo);
+    supported_modes.insert(.mailbox);
+
+    var frame = try view.beginFrame(testFrameInput());
+    try dev_tools.render(&frame, .{
+        .frame_delta_ns = 16 * std.time.ns_per_ms,
+        .window_width = 800,
+        .window_height = 600,
+        .concurrency_in_flight = 2,
+        .renderer = .{
+            .present_mode = .fifo,
+            .supported_present_modes = supported_modes,
+            .reconfigure_error = null,
+        },
+    });
+    _ = try view.endFrame(&frame);
+}

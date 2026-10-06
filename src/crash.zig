@@ -18,8 +18,25 @@ pub fn install() void {
 
 /// For main.zig's root `panic`: Zig's default handler only writes to stderr, which this GUI build doesn't show outside logLevel=debug.
 pub fn handlePanic(msg: []const u8, ret_addr: ?usize) noreturn {
-    log.writeCrashLine("PANIC: {s}", .{msg});
+    const base: usize = if (win32.GetModuleHandleA(null)) |h| @intFromPtr(h) else 0;
+    // The base turns the trace's addresses into RVAs for llvm-symbolizer when the trace itself can't name them.
+    log.writeCrashLine("PANIC: {s} (module base 0x{x})", .{ msg, base });
+    logStackTrace(ret_addr orelse @returnAddress());
     std.debug.defaultPanic(msg, ret_addr);
+}
+
+/// The panic's stack, symbolized from the .pdb beside the exe, one crash line per line of the trace.
+fn logStackTrace(first_address: usize) void {
+    var addresses: [32]usize = undefined;
+    const trace = std.debug.captureCurrentStackTrace(.{ .first_address = first_address }, &addresses);
+    var buf: [16 * 1024]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&buf);
+    // Mid-crash there's nothing to do about a failed write but log what fit.
+    std.debug.writeStackTrace(&trace, .{ .writer = &writer, .mode = .no_color }) catch {};
+    var lines = std.mem.splitScalar(u8, writer.buffered(), '\n');
+    while (lines.next()) |line| {
+        if (line.len > 0) log.writeCrashLine("  {s}", .{line});
+    }
 }
 
 fn writeMinidump(info: *win32.EXCEPTION_POINTERS) void {

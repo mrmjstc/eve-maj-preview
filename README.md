@@ -98,7 +98,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a map of how the source mod
 
 See [LICENSE](LICENSE) file for details.
 
-Bundled third-party components: [Cascadia Code](https://github.com/microsoft/cascadia-code) fonts under the SIL Open Font License 1.1 ([CascadiaCode-LICENSE.txt](licenses/CascadiaCode-LICENSE.txt)), and [knots](https://github.com/knots-ui/knots) under the MIT License ([knots-LICENSE.txt](licenses/knots-LICENSE.txt)).
+Bundled third-party components: [Geist](https://github.com/vercel/geist-font) fonts ([Geist-LICENSE.txt](licenses/Geist-LICENSE.txt)) and [Cascadia Code](https://github.com/microsoft/cascadia-code) fonts ([CascadiaCode-LICENSE.txt](licenses/CascadiaCode-LICENSE.txt)), both under the SIL Open Font License 1.1, and [knots](https://github.com/knots-ui/knots) under the MIT License ([knots-LICENSE.txt](licenses/knots-LICENSE.txt)).
 
 ## Fenris Creations Copyright Notice
 

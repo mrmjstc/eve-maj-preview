@@ -3,10 +3,8 @@
     .version = "0.15.2",
     .minimum_zig_version = "0.17.0",
     .dependencies = .{
-        .knots = .{
-            .url = "git+https://github.com/knots-ui/knots.git#9cd60181892ef12d9cb3e0d87f5461e928140a92",
-            .hash = "knots-0.3.0-g0L13Y3hMwCpRF1YNjgUfB7jGE3OKFaxXGi6hQ7yLdmq",
-        },
+        // Vendored from knots-ui/knots@9cd60181892ef12d9cb3e0d87f5461e928140a92, with deps/knots/PATCHES.md's changes.
+        .knots = .{ .path = "deps/knots" },
     },
     .paths = .{""},
     .fingerprint = 0x92cdb9db8adfb629,

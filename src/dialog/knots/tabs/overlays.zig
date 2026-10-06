@@ -1,4 +1,4 @@
-//! The configuration window's Combat, Mining, Bounty and Resources tabs, whose texts are placed and styled on the Thumbnails tab's preview; main thread only.
+//! The configuration window's Combat, Mining, Bounty and Resources tabs, whose texts are placed and styled on the Display tab's preview; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -17,7 +17,7 @@ const Text = ui.component.Text;
 const ORE_CATEGORIES = [_][]const u8{ "Ore", "Ice", "Moons", "Gas" };
 
 pub fn showCombat(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Combat Overlay Settings", "Displays incoming and outgoing DPS below each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Combat Overlay Settings", "Displays incoming and outgoing DPS below each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.", &style.section);
     const ref = session.profile().child("combat");
     try bind.toggle(context, ref, "enabled", "Enable Text Overlays");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
@@ -32,7 +32,7 @@ pub fn showCombat(context: *ui.Frame) !void {
 
 pub fn showMining(context: *ui.Frame) !void {
     const ref = session.profile().child("mining");
-    const section = try widgets.openSection(context, "Mining Overlay Settings", "Displays m3 mined per second on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Mining Overlay Settings", "Displays m3 mined per second on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.", &style.section);
     try bind.toggle(context, ref, "enabled", "Enable Text Overlays");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.number(context, ref, "window_seconds", "Window (seconds)", .{});
@@ -47,7 +47,7 @@ pub fn showMining(context: *ui.Frame) !void {
     try options.close(context);
     try section.close(context);
 
-    const alerts = try widgets.openSection(context, "Alerts", "Notifications triggered by mining laser activity. Requires Text Overlays above to be enabled.", .profile, &style.section);
+    const alerts = try widgets.openSection(context, "Alerts", "Notifications triggered by mining laser activity. Requires Text Overlays above to be enabled.", &style.section);
     const alert_options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try widgets.subheading(context, .src(@src()), "Laser Idle Alert");
     try widgets.hintText(context, .src(@src()), "Fires when fewer than Event Threshold mining hits occur within Detection Window - a slowdown, not full silence.");
@@ -59,7 +59,7 @@ pub fn showMining(context: *ui.Frame) !void {
     try alert_options.close(context);
     try alerts.close(context);
 
-    const prices_section = try widgets.openSection(context, "Ore / Ice / Gas Prices", "\"Fetch Prices\" pulls current Jita buy prices from EVE's market.", .profile, &style.section);
+    const prices_section = try widgets.openSection(context, "Ore / Ice / Gas Prices", "\"Fetch Prices\" pulls current Jita buy prices from EVE's market.", &style.section);
     try oreTable(context);
     const fetching = prices.isFetching();
     if (try widgets.glyphButton(context, .src(@src()), .refresh, "Fetch Prices", &style.full_width_button, fetching)) {
@@ -123,7 +123,7 @@ pub fn setOrePrice(name: []const u8, price: f64) void {
 }
 
 pub fn showBounty(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Bounty Overlay Settings", "Displays ISK bounty payouts per minute/hour on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Bounty Overlay Settings", "Displays ISK bounty payouts per minute/hour on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.", &style.section);
     const ref = session.profile().child("bounty");
     try bind.toggle(context, ref, "enabled", "Enable Text Overlays");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
@@ -137,7 +137,7 @@ pub fn showBounty(context: *ui.Frame) !void {
 }
 
 pub fn showResources(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Resource Usage Overlay Settings", "Displays each client's CPU%, RAM, and VRAM usage on its thumbnail, sampled directly from Windows rather than from EVE's logs.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Resource Usage Overlay Settings", "Displays each client's CPU%, RAM, and VRAM usage on its thumbnail, sampled directly from Windows rather than from EVE's logs.", &style.section);
     const ref = session.profile().child("resources");
     try bind.toggle(context, ref, "enabled", "Enable Text Overlays");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));

@@ -80,10 +80,10 @@ pub fn show(context: *ui.Frame) !void {
 }
 
 fn system(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Notification System", "Configure position, duration, and suppression behavior for event notifications.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Notification System", "Configure position, duration, and suppression behavior for event notifications.", &style.section);
     const ref = session.profile().child("thumbnail").child("notifications");
     try bind.toggle(context, ref, "enabled", "Enable Notifications");
-    // Its placement and font are edited from its chip on the Thumbnails tab's Text Overlays preview.
+    // Its placement and font are edited from its chip on the Display tab's Text Overlays preview.
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.number(context, ref, "suppress_click_duration_ms", "Click Suppress Duration (s)", .{ .ms_as_seconds = true });
     try widgets.hintText(context, .src(@src()), "Suppresses further notifications on a thumbnail for this long after you click it.");
@@ -94,7 +94,7 @@ fn system(context: *ui.Frame) !void {
 }
 
 fn speech(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Text-to-Speech", "Speak alerts aloud using the Windows system voice. Enable individual event types below in the \"TTS\" column.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Text-to-Speech", "Speak alerts aloud using the Windows system voice. Enable individual event types below in the \"TTS\" column.", &style.section);
     const ref = session.profile().child("thumbnail").child("notifications");
     // Speech only means something while notifications fire, so the section dims with them.
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
@@ -120,7 +120,7 @@ fn speech(context: *ui.Frame) !void {
 }
 
 fn eventAlerts(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Event Alerts", "Per-event notification, suppression, speech, and border behavior. Select an event on the left to edit it.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Event Alerts", "Per-event notification, suppression, speech, and border behavior. Select an event on the left to edit it.", &style.section);
     const enabled = session.profile().ptr.thumbnail.notifications.enabled;
     const options = try widgets.openGroup(context, .src(@src()), enabled);
     try searchBox(context);
@@ -414,7 +414,7 @@ fn testNotification(ntype: NotificationType, is_enabled: bool) void {
 }
 
 fn historyPanel(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "History Panel", "A draggable, resizable panel showing recent notification history. Click a row to jump to that character.", .profile, &style.section);
+    const section = try widgets.openSection(context, "History Panel", "A draggable, resizable panel showing recent notification history. Click a row to jump to that character.", &style.section);
     const ref = session.profile().child("display");
     try bind.toggle(context, ref, "showNotifInfoPanel", "Show History Panel");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("showNotifInfoPanel"));
@@ -445,7 +445,7 @@ fn historyPanel(context: *ui.Frame) !void {
 }
 
 fn travel(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Travel Mode", "Detects when a tracked character falls behind while the rest of the group jumps together, and fires a notification. Runs automatically once enabled below - no manual start/stop needed. Border color, duration, and TTS for the alert are configured above under \"Left Behind\".", .profile, &style.section);
+    const section = try widgets.openSection(context, "Travel Mode", "Detects when a tracked character falls behind while the rest of the group jumps together, and fires a notification. Runs automatically once enabled below - no manual start/stop needed. Border color, duration, and TTS for the alert are configured above under \"Left Behind\".", &style.section);
     const ref = session.profile().child("travel");
     try bind.toggle(context, ref, "enabled", "Enable Travel Mode");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));

@@ -44,21 +44,21 @@ pub fn show(context: *ui.Frame) !void {
 }
 
 fn logging(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Logging", "How much detail is written to the log file.", .global, &style.section);
+    const section = try widgets.openSection(context, "Logging", "How much detail is written to the log file.", &style.section);
     try bind.choice(context, session.global(), "logLevel", "Log Level");
     try widgets.hintText(context, .src(@src()), "Debug is verbose and mainly useful for troubleshooting; Warning/Error only record problems.");
     try section.close(context);
 }
 
 fn scanning(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Scanning", "How often to check for new EVE windows.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Scanning", "How often to check for new EVE windows.", &style.section);
     try bind.number(context, session.profile().child("timer"), "scanIntervalMs", "Scan Interval (s)", .{ .ms_as_seconds = true });
     try widgets.hintText(context, .src(@src()), "Lower values pick up new or closed clients faster, at the cost of slightly more CPU usage.");
     try section.close(context);
 }
 
 fn windowFilters(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Window Filters", "Configure which applications to track. Each filter can match by window class name and executable name.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Window Filters", "Configure which applications to track. Each filter can match by window class name and executable name.", &style.section);
     const profile = session.profile();
     var is_enabled = g_filters_enabled orelse (profile.ptr.windowFilters.items.len > 0);
     if (try widgets.checkbox(context, .src(@src()), "Enable Window Filters", &is_enabled)) g_filters_enabled = is_enabled;

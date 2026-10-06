@@ -18,7 +18,7 @@ pub fn show(context: *ui.Frame) !void {
 }
 
 fn monitoring(context: *ui.Frame, chatlog: ChatlogRef) !void {
-    const section = try widgets.openSection(context, "Log Monitoring", "Watches EVE's chatlog and gamelog files to drive the DPS overlay, mining overlay, and system-location display. In EVE, enable Esc > Chat Channel Settings > Log chat to file so logs get written to disk.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Log Monitoring", "Watches EVE's chatlog and gamelog files to drive the DPS overlay, mining overlay, and system-location display. In EVE, enable Esc > Chat Channel Settings > Log chat to file so logs get written to disk.", &style.section);
     try bind.toggle(context, chatlog, "enabled", "Enable Log Monitoring");
     const options = try widgets.openGroup(context, .src(@src()), chatlog.get("enabled"));
     try directory(context, chatlog, "chatlogDir", "Chatlog Directory", "C:\\Users\\...\\Chatlogs", .chatlog_dir, "Select Chatlog Directory");
@@ -38,7 +38,7 @@ fn directory(context: *ui.Frame, chatlog: ChatlogRef, comptime field: []const u8
 }
 
 fn polling(context: *ui.Frame, chatlog: ChatlogRef) !void {
-    const section = try widgets.openSection(context, "Polling & Performance", "", .profile, &style.section);
+    const section = try widgets.openSection(context, "Polling & Performance", "", &style.section);
     try bind.number(context, chatlog, "pollIntervalMs", "Poll Interval (s)", .{ .ms_as_seconds = true });
     try widgets.hintText(context, .src(@src()), "How often each log file is checked for new lines, before any idle backoff kicks in.");
     try bind.number(context, chatlog, "idlePollThreshold", "Idle Threshold (polls)", .{});

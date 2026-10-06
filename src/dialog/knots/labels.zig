@@ -3,16 +3,15 @@ const std = @import("std");
 
 /// Where a tag spelled as words isn't clear enough, keyed by "<enum name>.<tag>".
 const OVERRIDES = std.StaticStringMap([]const u8).initComptime(.{
-    .{ "RegionFitOrder.Characters", "Character Order" },
-    .{ "RegionFitOrder.HotkeyGroups", "Hotkey Group Order" },
-    .{ "RegionFitDirection.RowFirst_LTR_TTB", "Rows: left to right, top to bottom" },
-    .{ "RegionFitDirection.RowFirst_RTL_TTB", "Rows: right to left, top to bottom" },
-    .{ "RegionFitDirection.RowFirst_LTR_BTT", "Rows: left to right, bottom to top" },
-    .{ "RegionFitDirection.RowFirst_RTL_BTT", "Rows: right to left, bottom to top" },
-    .{ "RegionFitDirection.ColumnFirst_TTB_LTR", "Columns: top to bottom, left to right" },
-    .{ "RegionFitDirection.ColumnFirst_TTB_RTL", "Columns: top to bottom, right to left" },
-    .{ "RegionFitDirection.ColumnFirst_BTT_LTR", "Columns: bottom to top, left to right" },
-    .{ "RegionFitDirection.ColumnFirst_BTT_RTL", "Columns: bottom to top, right to left" },
+    // The fill direction as arrows: the way along a row (or column), then the way to the next.
+    .{ "RegionFitDirection.RowFirst_LTR_TTB", "Rows \u{2192} \u{2193}" },
+    .{ "RegionFitDirection.RowFirst_RTL_TTB", "Rows \u{2190} \u{2193}" },
+    .{ "RegionFitDirection.RowFirst_LTR_BTT", "Rows \u{2192} \u{2191}" },
+    .{ "RegionFitDirection.RowFirst_RTL_BTT", "Rows \u{2190} \u{2191}" },
+    .{ "RegionFitDirection.ColumnFirst_TTB_LTR", "Columns \u{2193} \u{2192}" },
+    .{ "RegionFitDirection.ColumnFirst_TTB_RTL", "Columns \u{2193} \u{2190}" },
+    .{ "RegionFitDirection.ColumnFirst_BTT_LTR", "Columns \u{2191} \u{2192}" },
+    .{ "RegionFitDirection.ColumnFirst_BTT_RTL", "Columns \u{2191} \u{2190}" },
     .{ "LayoutMode.RegionFit", "Region Fit (Auto)" },
     .{ "BorderStyle.DashDot", "Dash-Dot" },
     .{ "ViewMode.Thumbnails", "Thumbnails (live video preview)" },

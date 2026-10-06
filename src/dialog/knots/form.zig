@@ -17,7 +17,7 @@ const about = @import("tabs/about.zig");
 const general = @import("tabs/general.zig");
 const hotkeys = @import("tabs/hotkeys.zig");
 const hotkey_groups = @import("tabs/hotkey_groups.zig");
-const thumbnails = @import("tabs/thumbnails.zig");
+const display = @import("tabs/display.zig");
 const characters = @import("tabs/characters.zig");
 const behavior = @import("tabs/behavior.zig");
 const chatlog = @import("tabs/chatlog.zig");
@@ -36,7 +36,7 @@ const SEARCH_KEY: ui.Key = .str("knots.search");
 const Tab = enum {
     about,
     general,
-    thumbnails,
+    display,
     characters,
     behavior,
     hotkeys,
@@ -52,7 +52,7 @@ const Tab = enum {
         return switch (tab) {
             .about => "About",
             .general => "General",
-            .thumbnails => "Thumbnails",
+            .display => "Display",
             .characters => "Characters",
             .behavior => "Behavior",
             .hotkeys => "Hotkeys",
@@ -70,7 +70,7 @@ const Tab = enum {
         return switch (tab) {
             .about => .star,
             .general => .gear,
-            .thumbnails => .thumbnail,
+            .display => .thumbnail,
             .characters => .list,
             .behavior => .spokes,
             .hotkeys => .keyboard,
@@ -87,7 +87,7 @@ const Tab = enum {
     /// Lists its sections under it in the sidebar while open; tabs with too few to be worth it don't.
     fn listsSections(tab: Tab) bool {
         return switch (tab) {
-            .general, .thumbnails, .behavior, .hotkeys, .notifications, .mining => true,
+            .general, .display, .behavior, .hotkeys, .notifications, .mining => true,
             .about, .characters, .hotkey_groups, .chatlog, .combat, .bounty, .resources => false,
         };
     }
@@ -96,7 +96,7 @@ const Tab = enum {
     fn isAdvanced(tab: Tab) bool {
         return switch (tab) {
             .general, .combat, .mining, .bounty, .resources => true,
-            .about, .thumbnails, .characters, .behavior, .hotkeys, .hotkey_groups, .chatlog, .notifications => false,
+            .about, .display, .characters, .behavior, .hotkeys, .hotkey_groups, .chatlog, .notifications => false,
         };
     }
 
@@ -104,7 +104,7 @@ const Tab = enum {
     fn fills(tab: Tab) bool {
         return switch (tab) {
             .characters => true,
-            .about, .general, .thumbnails, .behavior, .hotkeys, .hotkey_groups, .chatlog, .notifications, .combat, .mining, .bounty, .resources => false,
+            .about, .general, .display, .behavior, .hotkeys, .hotkey_groups, .chatlog, .notifications, .combat, .mining, .bounty, .resources => false,
         };
     }
 };
@@ -175,7 +175,7 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
 fn showTab(context: *ui.Frame, tab: Tab) !void {
     switch (tab) {
         .about => try about.show(context),
-        .thumbnails => try thumbnails.show(context),
+        .display => try display.show(context),
         .characters => try characters.show(context),
         .behavior => try behavior.show(context),
         .chatlog => try chatlog.show(context),
@@ -283,11 +283,11 @@ fn footer(context: *ui.Frame) !void {
             Text{ .selectable = false, .key = .src(@src()), .content = "Unsaved changes", .style = &style.unsaved_text },
         },
     });
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "Save", .style = &style.primary_button })).clicked) {
-        host.postCommand(.save);
-    }
     if ((try context.interact(Button{ .key = .src(@src()), .label = "Close", .style = &style.outline_button })).clicked) {
         host.requestClose();
+    }
+    if ((try context.interact(Button{ .key = .src(@src()), .label = "Save", .style = &style.primary_button })).clicked) {
+        host.postCommand(.save);
     }
     try bar.close(context);
 }
@@ -319,10 +319,7 @@ fn unsavedPrompt(context: *ui.Frame) !void {
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "You have unsaved changes. Save them before closing, or close without saving?", .style = &style.modal_text });
     const actions = Rect{ .key = .src(@src()), .style = &style.modal_actions };
     _ = try actions.open(context);
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "Save", .style = &style.primary_button })).clicked) {
-        g_confirm_close = false;
-        host.postCommand(.save_and_close);
-    }
+    // Furthest from Save, so the destructive choice isn't beside the default one.
     if ((try context.interact(Button{ .key = .src(@src()), .label = "Discard", .style = &style.danger_button })).clicked) {
         g_confirm_close = false;
         host.postCommand(.discard_and_close);
@@ -330,6 +327,10 @@ fn unsavedPrompt(context: *ui.Frame) !void {
     if ((try context.interact(Button{ .key = .src(@src()), .label = "Cancel", .style = &style.outline_button })).clicked) {
         g_confirm_close = false;
         context.requestRedraw();
+    }
+    if ((try context.interact(Button{ .key = .src(@src()), .label = "Save", .style = &style.primary_button })).clicked) {
+        g_confirm_close = false;
+        host.postCommand(.save_and_close);
     }
     try actions.close(context);
     try dialog.close(context);

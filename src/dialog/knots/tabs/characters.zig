@@ -57,7 +57,6 @@ pub fn show(context: *ui.Frame) !void {
         context,
         "Character List",
         "Customize each character's saved position, size, border color, display name, and jump-to hotkey. Characters are added automatically when detected.",
-        .profile,
         &style.fill_section,
     );
     try searchBox(context);
@@ -194,10 +193,10 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     try hotkey_row.close(context);
 
     try thumbnailSize(context, character);
-    try widgets.hintText(context, .str("knots.character.size.hint"), "Leave both blank to use the global thumbnail size from the Thumbnails tab.");
+    try widgets.hintText(context, .str("knots.character.size.hint"), "Leave both blank to use the global thumbnail size from the Display tab.");
 
     try opacity(context, character);
-    try widgets.hintText(context, .str("knots.character.opacity.hint"), "Stays linked to the Thumbnails tab's Opacity setting unless you move this slider away from it.");
+    try widgets.hintText(context, .str("knots.character.opacity.hint"), "Stays linked to the Display tab's Opacity setting unless you move this slider away from it.");
 
     try colors(context, character);
 
@@ -217,7 +216,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     }
 }
 
-/// Unset follows the Thumbnails tab's size; either box alone overrides that half.
+/// Unset follows the Display tab's size; either box alone overrides that half.
 fn thumbnailSize(context: *ui.Frame, character: CharacterRef) !void {
     const row = try widgets.openBinding(context, .str("knots.character.size"), "Thumbnail Size");
     const size = character.get("thumbnailSize") orelse config.CharacterThumbnailSizeConfig{};
@@ -241,7 +240,7 @@ fn toFloat(value: ?i32) ?f64 {
     return if (value) |number| @floatFromInt(number) else null;
 }
 
-/// Unset follows the Thumbnails tab's opacity; moving the slider gives the character its own.
+/// Unset follows the Display tab's opacity; moving the slider gives the character its own.
 fn opacity(context: *ui.Frame, character: CharacterRef) !void {
     const inherited = session.profile().ptr.thumbnail.thumbnailOpacity;
     const row = try widgets.openBinding(context, .str("knots.character.opacity"), "Opacity (%)");
@@ -288,7 +287,7 @@ fn windowPosition(context: *ui.Frame, character: CharacterRef) !void {
     const shown = if (character.get("windowPosition")) |pos| try std.fmt.allocPrint(context.arena(), "{d}, {d}", .{ pos.x, pos.y }) else "Not set";
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = shown, .style = &style.detail_value });
     const name = character.get("name");
-    if (try widgets.confirmButton(context, ui.Key.str("knots.character.position.clear").indexed(character.index), "\u{00D7}", "\u{2713}", &style.icon_button_danger_text, &style.icon_button_confirm)) {
+    if (try widgets.confirmButton(context, ui.Key.str("knots.character.position.clear").indexed(character.index), "\u{00D7}", "OK", &style.icon_button_danger_text, &style.icon_button_confirm)) {
         positions.clear(name) catch |err| {
             slog.err("Failed to clear the window position of '{s}': {}", .{ name, err });
             status.show(.failure, "Failed to save: {}", .{err});

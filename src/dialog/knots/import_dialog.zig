@@ -248,13 +248,13 @@ fn summaryView(context: *ui.Frame, summary: Summary) !void {
 fn buttons(context: *ui.Frame) !void {
     const row = Rect{ .key = .src(@src()), .style = &style.modal_actions };
     _ = try row.open(context);
-    if (g_summary == null) {
-        const can_import = g_analysis != null;
-        if ((try context.interact(Button{ .key = .src(@src()), .label = "Import", .disabled = !can_import, .style = if (can_import) &style.primary_button else &style.disabled_button })).clicked and can_import) runImport();
-    }
     if ((try context.interact(Button{ .key = .src(@src()), .label = if (g_summary == null) "Cancel" else "Done", .style = &style.outline_button })).clicked) {
         g_is_open = false;
         context.requestRedraw();
+    }
+    if (g_summary == null) {
+        const can_import = g_analysis != null;
+        if ((try context.interact(Button{ .key = .src(@src()), .label = "Import", .disabled = !can_import, .style = if (can_import) &style.primary_button else &style.disabled_button })).clicked and can_import) runImport();
     }
     try row.close(context);
 }

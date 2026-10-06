@@ -35,9 +35,9 @@ const GlobalConfig = config.GlobalConfig;
 const slog = log.scoped("dialog_knots");
 
 const WINDOW_TITLE = "EVE-Maj Preview Configuration (knots)";
-/// In logical pixels; knots has no zoom yet, so the dialog scale setting doesn't apply.
-const DESIGN_WIDTH = 900;
-const DESIGN_HEIGHT = 760;
+/// In logical pixels; knots has no zoom yet.
+const DESIGN_WIDTH = 820;
+const DESIGN_HEIGHT = 900;
 const DEFAULT_POSITION: win32.POINT = .{ .x = 20, .y = 20 };
 const APP_ICON_ID = 101;
 
@@ -208,6 +208,7 @@ fn run() void {
             .fonts = &.{
                 .{ .name = style.FONT_REGULAR, .data = style.FONT_REGULAR_DATA },
                 .{ .name = style.FONT_SEMIBOLD, .data = style.FONT_SEMIBOLD_DATA },
+                .{ .name = style.FONT_MONO, .data = style.FONT_MONO_DATA },
             },
         },
     }) catch |err| {

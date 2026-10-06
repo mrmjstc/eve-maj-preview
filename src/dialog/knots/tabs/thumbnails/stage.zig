@@ -7,8 +7,11 @@ const style = @import("../../style.zig");
 const widgets = @import("../../widgets.zig");
 const chips = @import("chips.zig");
 const images = @import("../../images.zig");
+const glyphs = @import("../../glyphs.zig");
 
 const Rect = ui.component.Rect;
+const Text = ui.component.Text;
+const Canvas = ui.component.Canvas;
 const Button = ui.component.Button;
 const Dialog = ui.component.Dialog;
 /// A laid-out element's rectangle, in window coordinates.
@@ -22,7 +25,8 @@ const SNAP_DISTANCE: f32 = 5;
 /// Movement under this is a click, not a drag.
 const DRAG_THRESHOLD: f64 = 4;
 const CLIENT_BACKGROUND = 0xFF2A3240;
-const HIDDEN_OPACITY = 0.35;
+/// The grip's and the pencil's boxes on a chip.
+const CHIP_GLYPH_BOX: f32 = 12;
 const POPOVER_KEY: ui.Key = .str("knots.stage.popover");
 /// Dialog keys its panel as its own key indexed by this.
 const DIALOG_PANEL_INDEX = 2;
@@ -76,9 +80,8 @@ pub fn show(context: *ui.Frame) !void {
     _ = try stage.open(context);
     try stageBackground(context, stage_size, opacity);
 
-    const text_opacity = if (thumbnail.applyOpacityToOverlayTexts) opacity else 1.0;
     inline for (chips.CHIPS, 0..) |chip, index| {
-        try showChip(context, chip, index, stage_box, stage_size, scale, text_opacity);
+        try showChip(context, chip, index, stage_box, stage_size, scale);
     }
 
     try stage.close(context);
@@ -139,7 +142,8 @@ fn chipKey(index: usize) ui.Key {
     return ui.Key.str("knots.stage.chip").indexed(index);
 }
 
-fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize, stage_box: Box, stage_size: [2]f32, scale: f32, text_opacity: f32) !void {
+/// An amber tag naming the overlay, between a grip and a pencil; struck through while the overlay is off.
+fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize, stage_box: Box, stage_size: [2]f32, scale: f32) !void {
     const ui_state = context.ui();
     const key = chipKey(index);
     const id = key.hash();
@@ -182,22 +186,43 @@ fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize
     };
 
     const is_selected = index == g_selected_index;
-    const chip_style = try context.arena().create(ui.Style);
-    chip_style.* = .{
-        .position = .absolute,
+    const arena = context.arena();
+    const chip_style = try arena.create(ui.Style);
+    chip_style.* = style.overlay_chip.with(.{
         .offset = position,
-        .padding = .xy(4, 2),
-        .font_size = .{ .px = @floatFromInt(@max(look.font_size, 8)) },
-        .foreground = .{ .color = widgets.colorFromArgb(look.color | 0xFF000000) },
-        .background = .{ .color = widgets.colorFromArgb(look.bg_color) },
-        .radius = .none,
-        .border_width = .all(1),
-        .border_color = if (is_selected) .accent else .transparent,
-        .opacity = if (look.is_shown) text_opacity else HIDDEN_OPACITY,
-        .hover = &.{ .border_color = .accent, .state_layer = 0 },
-        .active = &.{ .state_layer = 0 },
-    };
-    _ = try context.interact(Button{ .key = key, .label = chip.sample, .style = chip_style });
+        .border_color = if (is_selected) .{ .color = style.TEXT } else .accent,
+    });
+    const button = Button{ .key = key, .style = chip_style };
+    _ = try button.openResponse(context);
+    try chipGlyph(context, key.indexed(1), .grip);
+
+    // knots has no strikethrough, so a line is laid over the label at its last measured size.
+    const label_key = key.indexed(2);
+    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, label_key.hash());
+    const label_box = measuredBox(ui_state, label_key);
+    const label = Rect{ .key = label_key, .style = &style.overlay_chip_label_box };
+    _ = try label.open(context);
+    try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = chip.label, .style = &style.overlay_chip_label });
+    if (!look.is_shown and label_box.w() > 0) {
+        const strike = try arena.create(ui.Style);
+        strike.* = style.overlay_chip_strike.with(.{
+            .offset = .{ 0, @round(label_box.h() / 2) },
+            .width = .fixed(label_box.w()),
+        });
+        try context.e(Rect{ .key = key.indexed(5), .style = strike });
+    }
+    try label.close(context);
+
+    try chipGlyph(context, key.indexed(4), .pencil);
+    try button.close(context);
+}
+
+fn chipGlyph(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph) !void {
+    try context.e(Canvas{
+        .key = key,
+        .commands = try glyphs.commands(context.arena(), glyph, CHIP_GLYPH_BOX, try glyphs.snapOffset(context, key), style.INK_DARK.value),
+        .style = &style.overlay_chip_glyph,
+    });
 }
 
 /// Where the settings put a chip: its anchor's box corner plus the scaled offsets, kept on the stage.

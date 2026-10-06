@@ -1,4 +1,4 @@
-//! The window's drawn icons, as pixel bitmaps: Cascadia Code lacks most of these symbols, and knots draws lines and triangles without antialiasing.
+//! The window's drawn icons, as pixel bitmaps: Geist lacks most of these symbols, and knots draws lines and triangles without antialiasing.
 const std = @import("std");
 const ui = @import("ui");
 
@@ -30,6 +30,9 @@ pub const Glyph = enum {
     import,
     pencil,
     refresh,
+    grip,
+    chevron_down,
+    chevron_right,
 };
 
 /// The glyph's rows, `#` for a lit pixel.
@@ -278,6 +281,33 @@ fn bitmap(glyph: Glyph) []const []const u8 {
             ".#.......#.",
             "..##...##..",
             "....###....",
+        },
+        .grip => &.{
+            "##.##",
+            "##.##",
+            ".....",
+            "##.##",
+            "##.##",
+            ".....",
+            "##.##",
+            "##.##",
+        },
+        .chevron_down => &.{
+            "#.....#",
+            "##...##",
+            ".##.##.",
+            "..###..",
+            "...#...",
+        },
+        .chevron_right => &.{
+            "#....",
+            "##...",
+            ".##..",
+            "..##.",
+            "..##.",
+            ".##..",
+            "##...",
+            "#....",
         },
     };
 }

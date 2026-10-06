@@ -71,16 +71,38 @@ pub fn toggle(context: *ui.Frame, ref: anytype, comptime field: []const u8, labe
     if (try widgets.checkbox(context, fieldKey(ref, field), label, &value)) ref.set(field, value);
 }
 
+/// In aligned rows the unit sits inside the box.
 pub fn number(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, options: NumberOptions) !void {
     const key = fieldKey(ref, field);
     const row = try widgets.openBinding(context, key, label);
-    try numberBox(context, ref, field, options);
-    if (options.unit) |unit| try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = unit, .style = &.{ .foreground = .{ .color = style.MUTED } } });
+    if (options.unit) |unit| {
+        if (widgets.isAligned()) {
+            try unitNumberBox(context, ref, field, unit, options);
+        } else {
+            try numberBox(context, ref, field, options);
+            try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = unit, .style = &style.muted_text });
+        }
+    } else {
+        try numberBox(context, ref, field, options);
+    }
     try row.close(context);
 }
 
 /// Just the box, for a row holding several, e.g. width × height. An optional setting is unset by clearing the box.
 pub fn numberBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, options: NumberOptions) !void {
+    try styledNumberBox(context, ref, field, options, &style.number_input);
+}
+
+/// Just the box, with `unit` inside it, e.g. a border's width in "px".
+pub fn unitNumberBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, unit: []const u8, options: NumberOptions) !void {
+    const key = fieldKey(ref, field);
+    const box = try openUnitField(context, key.indexed(6), key.indexed(2));
+    try styledNumberBox(context, ref, field, options, &style.unit_field_input);
+    try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = unit, .style = &style.muted_text });
+    try box.close(context);
+}
+
+fn styledNumberBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, options: NumberOptions, box_style: *const ui.Style) !void {
     const F = FieldOf(@TypeOf(ref), field);
     const is_optional = @typeInfo(F) == .optional;
     const N = if (is_optional) @typeInfo(F).optional.child else F;
@@ -107,7 +129,15 @@ pub fn numberBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, o
             try syncText(state, "");
         }
     }
-    try context.e(TextInput{ .key = key, .buf = &state.text, .style = &style.number_input, .placeholder = options.placeholder });
+    try context.e(TextInput{ .key = key, .buf = &state.text, .style = box_style, .placeholder = options.placeholder });
+}
+
+/// The box around a borderless number input and its unit, outlined in the accent while the input keyed `input_key` has focus; the caller adds both and closes it.
+fn openUnitField(context: *ui.Frame, key: ui.Key, input_key: ui.Key) !ui.component.Rect {
+    const is_focused = context.ui().focused(input_key.hash());
+    const field_rect = ui.component.Rect{ .key = key, .style = if (is_focused) &style.unit_field_focused else &style.unit_field };
+    _ = try field_rect.open(context);
+    return field_rect;
 }
 
 /// An optional text field is unset when left empty.
@@ -243,12 +273,41 @@ pub fn slider(context: *ui.Frame, ref: anytype, comptime field: []const u8, labe
     if (try widgets.slider(context, key.indexed(2), &value, min, max, options.step)) {
         ref.set(field, numberFrom(F, @round(value)));
     }
-    const shown = switch (options.display) {
-        .value => try std.fmt.allocPrint(context.arena(), "{d:.0}", .{value}),
-        .percent_of_255 => try std.fmt.allocPrint(context.arena(), "{d:.0}%", .{value / 255.0 * 100.0}),
-    };
-    try widgets.valueText(context, key.indexed(3), shown);
+    if (widgets.isAligned()) {
+        try sliderBox(context, ref, field, key, value, min, max, options.display);
+    } else {
+        const shown = switch (options.display) {
+            .value => try std.fmt.allocPrint(context.arena(), "{d:.0}", .{value}),
+            .percent_of_255 => try std.fmt.allocPrint(context.arena(), "{d:.0}%", .{value / 255.0 * 100.0}),
+        };
+        try widgets.valueText(context, key.indexed(3), shown);
+    }
     try row.close(context);
+}
+
+/// A slider's value as a box to type into, in the units it's shown in; `key` is the row's.
+fn sliderBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, key: ui.Key, value: f32, min: f32, max: f32, display: Display) !void {
+    const F = FieldOf(@TypeOf(ref), field);
+    const shown: f64 = switch (display) {
+        .value => @round(value),
+        .percent_of_255 => @round(value / 255.0 * 100.0),
+    };
+    const box_key = key.indexed(4);
+    const field_rect = try openUnitField(context, key.indexed(6), box_key);
+    const typed = try valueBox(context, box_key, shown, &style.unit_field_input);
+    const unit = switch (display) {
+        .value => "",
+        .percent_of_255 => "%",
+    };
+    if (unit.len > 0) try context.e(Text{ .selectable = false, .key = key.indexed(5), .content = unit, .style = &style.muted_text });
+    try field_rect.close(context);
+
+    const value_typed = typed orelse return;
+    const raw: f64 = switch (display) {
+        .value => value_typed,
+        .percent_of_255 => value_typed / 100.0 * 255.0,
+    };
+    ref.set(field, numberFrom(F, std.math.clamp(raw, min, max)));
 }
 
 /// An ARGB `u32` setting.
@@ -259,29 +318,41 @@ pub fn color(context: *ui.Frame, ref: anytype, comptime field: []const u8, label
 }
 
 /// Just the picker, for a row or grid of several.
+/// In aligned rows it's just the swatch, and RGB only: a colour saved with alpha shows, and saves, opaque.
 pub fn colorBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
-    var value = widgets.colorFromArgb(ref.get(field));
+    const is_aligned = widgets.isAligned();
+    const opaque_mask: u32 = if (is_aligned) 0xFF000000 else 0;
+    var value = widgets.colorFromArgb(ref.get(field) | opaque_mask);
     if ((try context.interact(ColorPicker{
         .key = fieldKey(ref, field).indexed(2),
         .value = &value,
-        .style = &style.color_picker,
+        .style = if (is_aligned) &style.color_picker_swatch else &style.color_picker,
         .parts = .{ .swatch = &style.color_swatch, .popup = &style.color_popup },
-    })).changed) ref.set(field, widgets.argbFromColor(value));
+        .show_hex = !is_aligned,
+        .show_alpha = !is_aligned,
+    })).changed) ref.set(field, widgets.argbFromColor(value) | opaque_mask);
 }
 
 /// The RGB of an ARGB setting, keeping its alpha.
 pub fn rgb(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
+    const row = try widgets.openBinding(context, fieldKey(ref, field), label);
+    try rgbBox(context, ref, field);
+    try row.close(context);
+}
+
+/// Just the picker, for a row with more in it, e.g. a background's opacity; in aligned rows it's just the swatch.
+pub fn rgbBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
     const argb: u32 = ref.get(field);
-    const key = fieldKey(ref, field);
-    const row = try widgets.openBinding(context, key, label);
+    const is_aligned = widgets.isAligned();
     var value = widgets.colorFromArgb(argb | 0xFF000000);
     if ((try context.interact(ColorPicker{
-        .key = key.indexed(2),
+        .key = fieldKey(ref, field).indexed(2),
         .value = &value,
-        .style = &style.color_picker,
+        .style = if (is_aligned) &style.color_picker_swatch else &style.color_picker,
         .parts = .{ .swatch = &style.color_swatch, .popup = &style.color_popup },
+        .show_hex = !is_aligned,
+        .show_alpha = false,
     })).changed) ref.set(field, (widgets.argbFromColor(value) & 0x00FFFFFF) | (argb & 0xFF000000));
-    try row.close(context);
 }
 
 /// The alpha of an ARGB setting as a 0-100% slider, keeping its RGB.
@@ -295,6 +366,20 @@ pub fn alpha(context: *ui.Frame, ref: anytype, comptime field: []const u8, label
     }
     try widgets.valueText(context, key.indexed(3), try std.fmt.allocPrint(context.arena(), "{d:.0}%", .{value / 255.0 * 100.0}));
     try row.close(context);
+}
+
+/// The alpha of an ARGB setting as a 0-100 box with "%" inside, keeping its RGB.
+pub fn alphaBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
+    const argb: u32 = ref.get(field);
+    const key = fieldKey(ref, field).indexed(10);
+    const box_key = key.indexed(4);
+    const box = try openUnitField(context, key.indexed(6), box_key);
+    const typed = try valueBox(context, box_key, @round(@as(f64, @floatFromInt(argb >> 24)) / 255.0 * 100.0), &style.unit_field_input);
+    try context.e(Text{ .selectable = false, .key = key.indexed(5), .content = "%", .style = &style.muted_text });
+    try box.close(context);
+    const percent = typed orelse return;
+    const byte: u32 = @intFromFloat(@round(std.math.clamp(percent, 0, 100) / 100.0 * 255.0));
+    ref.set(field, (argb & 0x00FFFFFF) | (byte << 24));
 }
 
 /// A font name from FONT_OPTIONS, plus the current one if it was set by hand.
@@ -344,6 +429,18 @@ pub fn choice(context: *ui.Frame, ref: anytype, comptime field: []const u8, labe
 pub fn choiceStyled(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, box_style: *const ui.Style) !void {
     const row = try widgets.openBinding(context, fieldKey(ref, field), label);
     try choiceBox(context, ref, field, box_style);
+    try row.close(context);
+}
+
+/// An enum setting with few options, as a row of buttons; `option_labels` names each tag in declaration order.
+pub fn segmented(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, comptime option_labels: []const []const u8) !void {
+    const F = FieldOf(@TypeOf(ref), field);
+    const values = comptime std.enums.values(F);
+    comptime std.debug.assert(option_labels.len == values.len);
+    const key = fieldKey(ref, field);
+    const row = try widgets.openBinding(context, key, label);
+    const current = std.mem.indexOfScalar(F, values, ref.get(field)) orelse 0;
+    if (try widgets.segmented(context, key.indexed(2), option_labels, current)) |picked| ref.set(field, values[picked]);
     try row.close(context);
 }
 

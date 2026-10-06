@@ -62,14 +62,14 @@ fn fact(context: *ui.Frame, comptime label: []const u8, value: []const u8, url: 
 }
 
 fn credits(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Credits", "", .none, &style.section);
+    const section = try widgets.openSection(context, "Credits", "", &style.section);
     try widgets.paragraph(context, .str("knots.about.made_by"), "Made by Mr Majestic for the APM special interest group in Goonswarm.");
     try widgets.paragraph(context, .str("knots.about.inspired_by"), "Heavily inspired by the original EVE-O Preview and related tools.");
     try section.close(context);
 }
 
 fn thanks(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Thanks", "", .none, &style.section);
+    const section = try widgets.openSection(context, "Thanks", "", &style.section);
     try widgets.paragraph(context, .str("knots.about.thanks"), "Everyone in the APM special interest group for their feedback");
     var start: usize = 0;
     while (start < THANKS.len) : (start += THANKS_COLUMNS) {
@@ -84,9 +84,9 @@ fn thanks(context: *ui.Frame) !void {
 }
 
 fn license(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "License", "", .none, &style.section);
+    const section = try widgets.openSection(context, "License", "", &style.section);
     try widgets.paragraph(context, .str("knots.about.license"), "This project is open source and released under the GNU General Public License v3.0 (GPLv3). A copy of the license is included with the application.");
-    try widgets.paragraph(context, .str("knots.about.third_party"), "This application bundles third-party components: the Cascadia Code fonts (SIL Open Font License 1.1) and knots (MIT License). Their license texts are included with the application.");
+    try widgets.paragraph(context, .str("knots.about.third_party"), "This application bundles third-party components: the Geist and Cascadia Code fonts (SIL Open Font License 1.1) and knots (MIT License). Their license texts are included with the application.");
     try section.close(context);
 }
 
@@ -95,7 +95,6 @@ fn preferences(context: *ui.Frame) !void {
         context,
         "Preferences",
         "Reveals power-user settings across the app (extra tabs, position/spacing parameters, snapping, layout system, and more). These preferences are global and apply across all profiles.",
-        .global,
         &style.section,
     );
     const global = session.global();

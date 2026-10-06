@@ -67,7 +67,7 @@ pub fn show(context: *ui.Frame) !void {
 }
 
 fn startup(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Startup", "Launch on Windows login, and register the evemajpreview:// URL protocol for external control (Stream Deck, scripts, etc.).", .global, &style.section);
+    const section = try widgets.openSection(context, "Startup", "Launch on Windows login, and register the evemajpreview:// URL protocol for external control (Stream Deck, scripts, etc.).", &style.section);
     const global = session.global();
     try bind.toggle(context, global, "runOnStartup", "Run on Startup");
     try bind.toggle(context, global, "autoRegisterProtocol", "Auto-Register Protocol Handler");
@@ -79,7 +79,7 @@ fn startup(context: *ui.Frame) !void {
 }
 
 fn interaction(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Interaction", "Mouse behavior for repositioning and activating thumbnails, including when to activate the EVE client window on left-click, and whether client windows animate when restored or minimized.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Interaction", "Mouse behavior for repositioning and activating thumbnails, including when to activate the EVE client window on left-click, and whether client windows animate when restored or minimized.", &style.section);
     const ref = session.profile().child("interaction");
     try bind.toggle(context, ref, "clickThrough", "Click Through Thumbnails");
     try widgets.hintText(context, .src(@src()), "Thumbnails ignore all mouse input and let clicks/drags pass through to whatever is behind them; disables click-to-focus, exclusion toggling, and dragging.");
@@ -90,7 +90,7 @@ fn interaction(context: *ui.Frame) !void {
     const dragging = try widgets.openGroup(context, .src(@src()), session.profile().ptr.display.layoutMode != .RegionFit);
     try bind.toggle(context, ref, "enableDragging", "Enable Dragging");
     try dragging.close(context);
-    try widgets.hintText(context, .src(@src()), "Has no effect while Thumbnail Space is enabled, since it places every thumbnail.");
+    try widgets.hintText(context, .src(@src()), "Has no effect while the Display tab's Thumbnail Placement is set to Fit to Region, since that places every thumbnail.");
     try bind.choice(context, ref, "clickTrigger", "Click Trigger");
     try widgets.hintText(context, .src(@src()), "Mouse Up avoids accidental drags from a quick click.");
     try bind.choice(context, ref, "hoverCursor", "Hover Cursor");
@@ -114,7 +114,7 @@ fn interaction(context: *ui.Frame) !void {
 }
 
 fn autoMinimize(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Auto-Minimize", "Minimizes an EVE client window after it's been unfocused for the configured delay.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Auto-Minimize", "Minimizes an EVE client window after it's been unfocused for the configured delay.", &style.section);
     const ref = session.profile().child("autoMinimize");
     try bind.toggle(context, ref, "enabled", "Enable Auto-Minimize");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
@@ -127,7 +127,7 @@ fn autoMinimize(context: *ui.Frame) !void {
 }
 
 fn exclusion(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Character Exclusion", "Controls Shift+Click exclusion of characters from hotkey cycling.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Character Exclusion", "Controls Shift+Click exclusion of characters from hotkey cycling.", &style.section);
     const ref = session.profile().child("exclusion");
     try bind.toggle(context, ref, "enableShiftClickExclude", "Enable Shift+Click to Exclude");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enableShiftClickExclude"));
@@ -144,7 +144,7 @@ fn exclusion(context: *ui.Frame) !void {
 }
 
 fn windowPosition(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Window Position", "Saves each character's real EVE client window position, restored via the Move to Saved Positions hotkey or automatically on login. Set All copies the selected window's current position to every character; Clear All removes every saved position.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Window Position", "Saves each character's real EVE client window position, restored via the Move to Saved Positions hotkey or automatically on login. Set All copies the selected window's current position to every character; Clear All removes every saved position.", &style.section);
     const ref = session.profile().child("autoMovePosition");
     try bind.toggle(context, ref, "enabled", "Restore Saved Position on Login");
     try widgets.hintText(context, .src(@src()), "Moves a client to its saved position when its character logs in.");
@@ -236,7 +236,7 @@ fn setAll(source: ?[]const u8) void {
 }
 
 fn ultraPotato(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Ultra Potato Mode", "Forces EVE Online's heaviest graphics settings (shaders, shadows, textures, reflections, post-processing, cloth, ambient occlusion, volumetrics) to their lowest quality. Close all EVE clients first - the client overwrites these files on exit. A .bak backup of each file is made before its first edit.", .external, &style.section);
+    const section = try widgets.openSection(context, "Ultra Potato Mode", "Forces EVE Online's heaviest graphics settings (shaders, shadows, textures, reflections, post-processing, cloth, ambient occlusion, volumetrics) to their lowest quality. Close all EVE clients first - the client overwrites these files on exit. A .bak backup of each file is made before its first edit.", &style.section);
     if (g_potato == .not_scanned) scanPotato();
     const row = try widgets.openBinding(context, .src(@src()), "EVE Settings Profile");
     const paths = try potatoSelect(context);

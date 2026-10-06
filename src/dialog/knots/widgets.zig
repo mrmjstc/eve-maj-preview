@@ -26,15 +26,6 @@ const REORDER_THRESHOLD = 4;
 /// How long a confirm button waits for its second click.
 const CONFIRM_TIMEOUT_MS = 2000;
 
-/// Which settings file a section's settings are saved to, shown as a chip beside its heading.
-pub const Scope = enum {
-    none,
-    profile,
-    global,
-    /// Files outside the app, e.g. EVE's own settings.
-    external,
-};
-
 /// A drawn section, for the sidebar to list and jump to.
 pub const SectionEntry = struct {
     /// Comptime, so it outlives every frame.
@@ -114,6 +105,10 @@ pub const DropMark = enum { none, above, below };
 
 /// What openBinding styles its label with; narrowed in tight spots like a popover by useLabelStyle.
 var g_label_style: *const ui.Style = &style.label;
+/// Set by useAlignedRows: rows put their label left and their control at the right edge.
+var g_is_aligned: bool = false;
+/// Aligned rows drawn so far in the open section; every one after the first gets a divider above it.
+var g_section_row_count: usize = 0;
 var g_drawn: SectionList = .{};
 /// Last frame's sections: the sidebar is drawn before this frame's.
 var g_drawn_before: SectionList = .{};
@@ -126,8 +121,6 @@ var g_open_section: ?u64 = null;
 /// The section last jumped to from the sidebar, outlined until the tab changes.
 var g_active_section: ?u64 = null;
 var g_pending_jump: ?u64 = null;
-/// The last section listed in the sidebar, which a linked section outlines along with.
-var g_last_listed: ?u64 = null;
 var g_confirm_key: ?u64 = null;
 /// The row being dragged to a new place in its list.
 var g_reorder: ?struct { list: u64, from: usize, start_y: f64, insert: usize, moved: bool = false } = null;
@@ -150,7 +143,6 @@ pub fn reset() void {
     g_open_section = null;
     g_active_section = null;
     g_pending_jump = null;
-    g_last_listed = null;
     g_confirm_key = null;
 }
 
@@ -190,17 +182,8 @@ pub fn applyJump(context: *ui.Frame, pane_key: ui.Key) void {
     context.requestRedraw();
 }
 
-/// A panel with its heading, the scope chip, a button for its field hints when it has any, and the intro hint; the caller closes it.
-pub fn openSection(context: *ui.Frame, comptime title: []const u8, comptime hint: []const u8, scope: Scope, section_style: *const ui.Style) !Section {
-    return openAnySection(context, title, hint, scope, section_style, true);
-}
-
-/// A section left out of the sidebar, and outlined along with the section before it.
-pub fn openLinkedSection(context: *ui.Frame, comptime title: []const u8, comptime hint: []const u8, scope: Scope, section_style: *const ui.Style) !Section {
-    return openAnySection(context, title, hint, scope, section_style, false);
-}
-
-fn openAnySection(context: *ui.Frame, comptime title: []const u8, comptime hint: []const u8, scope: Scope, section_style: *const ui.Style, is_listed: bool) !Section {
+/// A panel with its heading, a button for its field hints when it has any, and the intro hint; the caller closes it.
+pub fn openSection(context: *ui.Frame, comptime title: []const u8, comptime hint: []const u8, section_style: *const ui.Style) !Section {
     const key: ui.Key = .str("knots.section:" ++ title);
     const id = key.hash();
     const ui_state = context.ui();
@@ -210,14 +193,10 @@ fn openAnySection(context: *ui.Frame, comptime title: []const u8, comptime hint:
     search.captureText(hint);
     // A section the search doesn't match is laid out of sight rather than skipped, so its caller needn't know.
     const is_hidden = !search.sectionMatches(id);
-    if (is_listed and !is_hidden) {
-        g_drawn.append(.{ .title = title, .id = id });
-        g_last_listed = id;
-    }
-    const outline_id = if (is_listed) id else g_last_listed;
+    if (!is_hidden) g_drawn.append(.{ .title = title, .id = id });
 
     var shown_style = if (is_hidden) &style.section_hidden else section_style;
-    if (!is_hidden and g_active_section != null and g_active_section == outline_id) {
+    if (!is_hidden and g_active_section == id) {
         const active = try context.arena().create(ui.Style);
         active.* = section_style.with(.{ .border_color = .accent });
         shown_style = active;
@@ -225,18 +204,13 @@ fn openAnySection(context: *ui.Frame, comptime title: []const u8, comptime hint:
     const section = Rect{ .key = key, .style = shown_style };
     _ = try section.open(context);
     g_open_section = id;
+    g_section_row_count = 0;
 
     const heading = Rect{ .key = .str("knots.heading:" ++ title), .style = &style.section_heading };
     _ = try heading.open(context);
     try context.e(Text{ .selectable = false, .key = .str("knots.title:" ++ title), .content = title, .style = &style.heading });
     const actions = Rect{ .key = .str("knots.heading.actions:" ++ title), .style = &style.section_heading_actions };
     _ = try actions.open(context);
-    if (scope != .none) try context.e(Text{ .selectable = false, .key = .str("knots.scope:" ++ title), .content = switch (scope) {
-        .none => "",
-        .profile => "PROFILE",
-        .global => "ALL PROFILES",
-        .external => "EVE SETTINGS",
-    }, .style = &style.scope_chip });
     if (g_hinted_before.contains(id)) {
         const is_shown = g_hints_shown.contains(id);
         if ((try context.interact(Button{
@@ -257,7 +231,7 @@ fn openAnySection(context: *ui.Frame, comptime title: []const u8, comptime hint:
 
 /// A label-then-controls row; the caller adds the controls and closes it.
 pub fn openBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Rect {
-    const row = Rect{ .key = key, .style = &.{
+    const row = Rect{ .key = key, .style = if (g_is_aligned) nextRowStyle() else &.{
         .width = .grow(),
         .direction = .row,
         .@"align" = .center,
@@ -265,7 +239,7 @@ pub fn openBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Rect {
     } };
     _ = try row.open(context);
     search.captureText(label);
-    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = label, .style = g_label_style });
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = label, .style = if (g_is_aligned) &style.label_aligned else g_label_style });
     return row;
 }
 
@@ -274,6 +248,43 @@ pub fn useLabelStyle(label_style: *const ui.Style) *const ui.Style {
     const previous = g_label_style;
     g_label_style = label_style;
     return previous;
+}
+
+/// Rows and checkboxes drawn after it put their label left and their control at the right edge; returns the setting it replaced, for putting back.
+pub fn useAlignedRows(is_aligned: bool) bool {
+    const previous = g_is_aligned;
+    g_is_aligned = is_aligned;
+    return previous;
+}
+
+pub fn isAligned() bool {
+    return g_is_aligned;
+}
+
+/// A row of the caller's own cells, e.g. a grid's, spaced and divided like the aligned rows around it; the caller closes it.
+pub fn openRow(context: *ui.Frame, key: ui.Key) !Rect {
+    const row = Rect{ .key = key, .style = if (g_is_aligned) nextRowStyle() else &style.aligned_row };
+    _ = try row.open(context);
+    return row;
+}
+
+/// A row of buttons, one per option, with `selected` highlighted; returns the index clicked, if it isn't the selected one.
+pub fn segmented(context: *ui.Frame, key: ui.Key, options: []const []const u8, selected: usize) !?usize {
+    const group = Rect{ .key = key, .style = &style.segmented };
+    _ = try group.open(context);
+    var clicked: ?usize = null;
+    for (options, 0..) |option, index| {
+        search.captureText(option);
+        const is_selected = index == selected;
+        if ((try context.interact(Button{
+            .key = key.indexed(index + 1),
+            .label = option,
+            .style = if (is_selected) &style.segment_selected else &style.segment,
+            .parts = .{ .label = if (is_selected) &style.segment_label_selected else &style.segment_label },
+        })).clicked and !is_selected) clicked = index;
+    }
+    try group.close(context);
+    return clicked;
 }
 
 /// A colour that can be left unset to inherit `fallback`: a tick sets it, and picking a colour ticks it.
@@ -336,11 +347,25 @@ pub fn reorderFinish(context: *ui.Frame, base: ui.Key, count: usize) ?Move {
     return .{ .from = finished.from, .before = finished.insert };
 }
 
+/// Settings that depend on a switch are hidden while it's off, except during a search, so the index and its matches still include them.
+pub fn showsDependents(is_enabled: bool) bool {
+    return is_enabled or search.isActive();
+}
+
 /// A run of settings that dims, and stops taking clicks, while `is_enabled` is false.
 pub fn openGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
+    return openAnyGroup(context, key, if (is_enabled) &style.group else &style.group_disabled, is_enabled);
+}
+
+/// Like openGroup, for controls side by side inside one row.
+pub fn openInlineGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
+    return openAnyGroup(context, key, if (is_enabled) &style.group_inline else &style.group_inline_disabled, is_enabled);
+}
+
+fn openAnyGroup(context: *ui.Frame, key: ui.Key, group_style: *const ui.Style, is_enabled: bool) !Group {
     const ui_state = context.ui();
     _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.hash());
-    const rect = Rect{ .key = key, .style = if (is_enabled) &style.group else &style.group_disabled };
+    const rect = Rect{ .key = key, .style = group_style };
     _ = try rect.open(context);
     return .{ .key = key, .rect = rect, .is_enabled = is_enabled };
 }
@@ -368,7 +393,7 @@ pub fn confirmButton(context: *ui.Frame, key: ui.Key, label: []const u8, confirm
     return false;
 }
 
-/// A button whose label starts with a drawn glyph, for symbols Cascadia Code lacks.
+/// A button whose label starts with a drawn glyph, for symbols Geist lacks.
 pub fn glyphButton(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, label: []const u8, button_style: *const ui.Style, disabled: bool) !bool {
     const button = Button{ .key = key, .disabled = disabled, .style = if (disabled) &style.disabled_button else button_style };
     const response = try button.openResponse(context);
@@ -427,7 +452,7 @@ pub fn subheading(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
 
 /// Returns whether the user moved it this frame.
 pub fn slider(context: *ui.Frame, key: ui.Key, value: *f32, min: f32, max: f32, steps: f32) !bool {
-    const track = Rect{ .key = key, .style = &.{ .width = .grow(), .padding = .xy(8, 0) } };
+    const track = Rect{ .key = key, .style = if (g_is_aligned) &style.slider_box_aligned else &style.slider_box };
     _ = try track.open(context);
     const response = try context.interact(SliderInput{
         .key = key.indexed(1),
@@ -449,13 +474,37 @@ pub fn valueText(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
 /// Returns whether the user toggled it this frame.
 pub fn checkbox(context: *ui.Frame, key: ui.Key, label: []const u8, checked: *bool) !bool {
     search.captureText(label);
-    return (try context.interact(Checkbox{
+    if (!g_is_aligned) return (try context.interact(Checkbox{
         .key = key,
         .checked = checked,
         .label = label,
         .style = &style.checkbox,
         .parts = .{ .box = &style.checkbox_box, .label = &style.checkbox_label },
     })).changed;
+    if (label.len == 0) return toggleSwitch(context, key, checked);
+
+    const row = try openRow(context, key.indexed(9));
+    try context.e(Text{ .selectable = false, .key = key.indexed(8), .content = label, .style = &style.label_aligned });
+    const changed = try toggleSwitch(context, key, checked);
+    try row.close(context);
+    return changed;
+}
+
+/// An on/off switch: knots has none, so it's a pill-shaped button with a knob that slides to the side it's set to. Returns whether it was flipped this frame.
+pub fn toggleSwitch(context: *ui.Frame, key: ui.Key, checked: *bool) !bool {
+    // knots never animates layout, so the knob is pushed along by a spacer whose width is eased here.
+    const position = context.ui().anim(key.hash(), "knob", if (checked.*) 1 else 0, .{ .duration_ms = style.SWITCH_ANIMATION_MS });
+    const spacer = try context.arena().create(ui.Style);
+    spacer.* = .{ .width = .fixed(position * style.SWITCH_TRAVEL) };
+    const button = Button{ .key = key, .style = if (checked.*) &style.switch_on else &style.switch_off };
+    const response = try button.openResponse(context);
+    try context.e(Rect{ .key = key.indexed(2), .style = spacer });
+    try context.e(Rect{ .key = key.indexed(1), .style = if (checked.*) &style.switch_knob_on else &style.switch_knob_off });
+    try button.close(context);
+    if (!response.clicked) return false;
+    checked.* = !checked.*;
+    context.requestRedraw();
+    return true;
 }
 
 pub fn colorFromArgb(argb: u32) Color {
@@ -468,6 +517,12 @@ pub fn argbFromColor(color: Color) u32 {
     const b: u32 = channelToByte(Color.linearToSrgb(color.value[2]));
     const a: u32 = channelToByte(color.value[3]);
     return (a << 24) | (r << 16) | (g << 8) | b;
+}
+
+/// Counts the row: the section's first has no divider above it.
+fn nextRowStyle() *const ui.Style {
+    defer g_section_row_count += 1;
+    return if (g_open_section != null and g_section_row_count > 0) &style.divided_row else &style.aligned_row;
 }
 
 fn channelToByte(value: f32) u8 {

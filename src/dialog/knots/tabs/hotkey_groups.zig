@@ -40,7 +40,7 @@ pub fn reset() void {
 }
 
 pub fn show(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Hotkey Groups", "Groups of characters you can cycle through with hotkeys. List members here, or assign them live.", .profile, &style.section);
+    const section = try widgets.openSection(context, "Hotkey Groups", "Groups of characters you can cycle through with hotkeys. List members here, or assign them live.", &style.section);
     const profile = session.profile();
     try bind.toggle(context, profile.child("hotkeys"), "resetGroupIndexOnNonGroupFocus", "Reset Cycle Position When Leaving a Group");
 

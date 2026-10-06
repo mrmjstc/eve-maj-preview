@@ -74,7 +74,7 @@ pub fn show(context: *ui.Frame) !void {
     const profile_hotkeys = session.profile().child("hotkeys");
     const global = session.global();
 
-    const system = try widgets.openSection(context, "Hotkey System", "Controls how the hotkeys below are registered and triggered.", .profile, &style.section);
+    const system = try widgets.openSection(context, "Hotkey System", "Controls how the hotkeys below are registered and triggered.", &style.section);
     try bind.toggle(context, profile_hotkeys, "requireEveFocus", "Require EVE Focus");
     try widgets.hintText(context, .src(@src()), "Hotkeys are ignored unless an EVE window is currently focused.");
     try bind.toggle(context, profile_hotkeys, "allowHotkeyAutoRepeat", "Repeat Hotkey While Held");
@@ -83,7 +83,7 @@ pub fn show(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "Only fire a hotkey when exactly its modifiers are held, so a hotkey on 1 won't fire on Alt+1 and Alt+1 reaches the game.");
     try system.close(context);
 
-    const actions = try widgets.openSection(context, "Window Actions", "Minimize, close, hide thumbnails, toggle auto-minimize, or send every window back to its saved position.", .profile, &style.section);
+    const actions = try widgets.openSection(context, "Window Actions", "Minimize, close, hide thumbnails, toggle auto-minimize, or send every window back to its saved position.", &style.section);
     const close_all = session.profile().child("closeAll");
     try bind.toggle(context, close_all, "excludeCycleExcludedClients", "Don't Close Excluded Clients");
     try widgets.hintText(context, .src(@src()), "Same exclusion list as Character Exclusion on the Behavior tab.");
@@ -98,7 +98,7 @@ pub fn show(context: *ui.Frame) !void {
     try binding(context, profile_hotkeys, "hotkeyMoveToSavedPositions", "Move Windows to Saved Positions");
     try actions.close(context);
 
-    const cycling = try widgets.openSection(context, "Special Cycling", "Step through the characters this profile sets apart - the excluded ones, or the ones that recently notified.", .profile, &style.section);
+    const cycling = try widgets.openSection(context, "Special Cycling", "Step through the characters this profile sets apart - the excluded ones, or the ones that recently notified.", &style.section);
     try pair(context, profile_hotkeys, "hotkeyPreviousExcluded", "hotkeyNextExcluded", "Excluded Characters");
     try pair(context, profile_hotkeys, "hotkeyPreviousNotified", "hotkeyCycleNotified", "Notified Characters");
     try widgets.hintText(context, .src(@src()), "How long a character counts as \"recently notified\" is set by Recently-Notified Cycle Retention on the Notifications tab.");
@@ -106,12 +106,12 @@ pub fn show(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "Applies to whichever EVE window currently has Windows focus, not the thumbnail under your cursor.");
     try cycling.close(context);
 
-    const suspend_exit = try widgets.openSection(context, "Suspend and Exit", "Suspend or resume every hotkey (the suspend hotkey itself always works), or close EVE-Maj Preview. EVE clients stay open.", .profile, &style.section);
+    const suspend_exit = try widgets.openSection(context, "Suspend and Exit", "Suspend or resume every hotkey (the suspend hotkey itself always works), or close EVE-Maj Preview. EVE clients stay open.", &style.section);
     try binding(context, profile_hotkeys, "hotkeySuspend", "Toggle Suspend Hotkeys");
     try binding(context, profile_hotkeys, "hotkeyExitApp", "Exit App");
     try suspend_exit.close(context);
 
-    const clients = try widgets.openSection(context, "Client Cycling", "Step through open EVE client windows, ordered by the Characters list of whichever profile is loaded.", .global, &style.section);
+    const clients = try widgets.openSection(context, "Client Cycling", "Step through open EVE client windows, ordered by the Characters list of whichever profile is loaded.", &style.section);
     try bind.toggle(context, global, "cycleAllClientsRespectExclusions", "Skip Excluded Characters");
     try widgets.hintText(context, .src(@src()), "Same exclusion list as Character Exclusion on the Behavior tab.");
     try pair(context, global, "hotkeyCycleAllClientsBackward", "hotkeyCycleAllClientsForward", "Logged-In Clients");
@@ -119,12 +119,12 @@ pub fn show(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "Steps through EVE client windows still sitting at the login/character-select screen.");
     try clients.close(context);
 
-    const profile_section = try widgets.openSection(context, "Profiles", "Cycle through profiles, or switch straight to one.", .global, &style.section);
+    const profile_section = try widgets.openSection(context, "Profiles", "Cycle through profiles, or switch straight to one.", &style.section);
     try pair(context, global, "hotkeyPreviousProfile", "hotkeyNextProfile", "Profile");
     try profileSwitchRows(context);
     try profile_section.close(context);
 
-    const outside = try widgets.openSection(context, "Outside EVE", "Jump to the app you last had focused, to a specific running application, or to a URL in your browser.", .global, &style.section);
+    const outside = try widgets.openSection(context, "Outside EVE", "Jump to the app you last had focused, to a specific running application, or to a URL in your browser.", &style.section);
     try binding(context, global, "hotkeyReturnToLastApp", "Return to Last App");
     try widgets.subheading(context, .src(@src()), "App Hotkeys");
     try appHotkeys(context);

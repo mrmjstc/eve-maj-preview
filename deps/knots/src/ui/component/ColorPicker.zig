@@ -1,0 +1,668 @@
+const std = @import("std");
+
+const Frame = @import("../root.zig").Frame;
+const Element = @import("layout").Element;
+const ui_mod = @import("../root.zig");
+
+const Color = ui_mod.Color;
+const Decoration = ui_mod.Decoration;
+const Key = ui_mod.Key;
+const State = ui_mod.State;
+const Style = ui_mod.Style;
+const UI = ui_mod.UI;
+
+value: *Color,
+key: Key,
+/// The trigger; also styles the hex field in the popup.
+style: *const Style = &.{},
+parts: Parts = .{},
+/// EVE-Maj patch: off, the trigger is just the swatch, with no hex beside it.
+show_hex: bool = true,
+/// EVE-Maj patch: off, the popup has no alpha strip, the hex has no alpha, and picked colours are opaque.
+show_alpha: bool = true,
+
+pub const Parts = struct {
+    /// Fixed `width` / `height` size the color swatch.
+    swatch: *const Style = &.{},
+    /// A fixed `width` sets the popup width.
+    popup: *const Style = &.{},
+    /// Saturation/value area; a fixed `height` sizes it.
+    area: *const Style = &.{},
+    /// Hue and alpha strips; a fixed `height` sizes them.
+    strip: *const Style = &.{},
+};
+
+pub const base = struct {
+    pub const root: Style = .{
+        .width = .fixed(180),
+        .direction = .row,
+        .@"align" = .center,
+        .gap = 8,
+        .padding = .xy(8, 4),
+        .background = .muted,
+        .radius = .sm,
+        .border_width = .all(1),
+        .border_color = .toned,
+        .focus = &.{ .background = .elevated, .border_color = .accent },
+        .open = &.{ .background = .elevated, .border_color = .accent },
+    };
+    pub const swatch: Style = .{ .width = .fixed(18), .height = .fixed(18) };
+    pub const popup: Style = .{
+        .width = .fixed(240),
+        .direction = .column,
+        .padding = .all(10),
+        .gap = 8,
+        .overflow = .scroll_y,
+        .layer = .dropdown,
+        .background = .elevated,
+        .radius = .md,
+        .border_width = .all(1),
+        .border_color = .toned,
+    };
+    pub const area: Style = .{ .width = .grow(), .height = .fixed(150) };
+    pub const strip: Style = .{ .width = .grow(), .height = .fixed(16) };
+};
+
+/// Resolved geometry shared by the trigger and the popup.
+const Metrics = struct {
+    swatch_w: f32,
+    swatch_h: f32,
+    popup_w: f32,
+    inner_w: f32,
+    area_h: f32,
+    strip_h: f32,
+};
+
+fn fixedOr(axis: Element.sizing.Axis, fallback: f32) f32 {
+    return if (axis.kind == .fixed) axis.value else fallback;
+}
+
+fn metrics(self: *const ColorPicker, ui: *UI) Metrics {
+    const content = ui.parentContent();
+    const theme = &ui.theme;
+    const swatch = Style.resolve(.{ .base = &base.swatch, .user = self.parts.swatch }, .{}, &content, theme);
+    const popup = Style.resolve(.{ .base = &base.popup, .user = self.parts.popup }, .{}, &content, theme);
+    const area = Style.resolve(.{ .base = &base.area, .user = self.parts.area }, .{}, &content, theme);
+    const strip = Style.resolve(.{ .base = &base.strip, .user = self.parts.strip }, .{}, &content, theme);
+    const popup_w = fixedOr(popup.layout.width, 240);
+    return .{
+        .swatch_w = fixedOr(swatch.layout.width, 18),
+        .swatch_h = fixedOr(swatch.layout.height, 18),
+        .popup_w = popup_w,
+        .inner_w = @max(0, popup_w - popup.layout.padding.left() - popup.layout.padding.right()),
+        .area_h = fixedOr(area.layout.height, 150),
+        .strip_h = fixedOr(strip.layout.height, 16),
+    };
+}
+
+const ColorPicker = @This();
+
+pub const Response = struct {
+    id: Element.Id,
+    changed: bool,
+};
+
+const SWATCH_INDEX: usize = 1;
+const TEXT_INDEX: usize = 2;
+const POPUP_INDEX: usize = 3;
+const SV_INDEX: usize = 4;
+const HUE_INDEX: usize = 5;
+const ALPHA_INDEX: usize = 6;
+const PREVIEW_INDEX: usize = 7;
+const HEX_INDEX: usize = 8;
+
+pub fn open(self: *const ColorPicker, frame: *Frame) !Element.Id {
+    const ui = frame.ui();
+    const id = self.key.hash();
+    const s = try ui.state.getOrCreate(.color_picker, ui.allocator, id);
+
+    syncStateFromColor(s, self.value.*);
+
+    if (ui.leftPressed(id, .exact)) {
+        s.open = !s.open;
+        s.editing_hex = false;
+        if (s.open) {
+            s.original_color = self.value.value;
+            s.has_original = true;
+        } else {
+            s.has_original = false;
+        }
+    }
+
+    if (s.open) {
+        try handlePickerInput(self, frame, s);
+        if (ui.input.mouseButton(.left).pressed and !self.isPointerInside(frame, s)) {
+            s.open = false;
+            s.editing_hex = false;
+            s.has_original = false;
+        }
+    }
+
+    const m = self.metrics(ui);
+    const root = ui.resolveStyle(id, .{ .base = &base.root, .user = self.style }, ui.states(id, .{ .open = s.open }), null);
+    var config = root.element(.{ .interactive = true });
+    config.height.min = @max(config.height.min, @max(m.swatch_h + 8, try ui.lineHeight(root.content.font_size, root.content.font) + 8));
+    return try ui.openResolved(self.key, &root, config, null);
+}
+
+pub fn interact(self: *const ColorPicker, frame: *Frame) !Response {
+    const previous = self.value.*;
+    const id = try self.open(frame);
+    try self.close(frame);
+    return .{
+        .id = id,
+        .changed = !std.meta.eql(previous, self.value.*),
+    };
+}
+
+pub fn close(self: *const ColorPicker, frame: *Frame) !void {
+    const ui = frame.ui();
+    const id = self.key.hash();
+    const s = try ui.state.getOrCreate(.color_picker, ui.allocator, id);
+    const content = ui.contents.items[ui.currentSlot()];
+    const m = self.metrics(ui);
+
+    var swatch_cmds: std.ArrayList(Decoration.DrawCmd) = .empty;
+    const arena = frame.arena();
+    try appendCheckerboard(&swatch_cmds, arena, m.swatch_w, m.swatch_h, 6);
+    try swatch_cmds.append(arena, .{ .fill_rect = .{
+        .x = 0,
+        .y = 0,
+        .w = m.swatch_w,
+        .h = m.swatch_h,
+        .color = self.value.value,
+        .corner_radius = .all(3),
+    } });
+    try swatch_cmds.append(arena, .{ .stroke_rect = .{
+        .x = 0.5,
+        .y = 0.5,
+        .w = m.swatch_w - 1,
+        .h = m.swatch_h - 1,
+        .color = .{ 0, 0, 0, 0.35 },
+        .corner_radius = .all(2.5),
+        .thickness = 1,
+    } });
+    _ = try ui.open(self.key.indexed(SWATCH_INDEX), .{
+        .width = .fixed(m.swatch_w),
+        .height = .fixed(m.swatch_h),
+    }, .{ .canvas = .{ .cmds = swatch_cmds.items } });
+    ui.close();
+
+    if (self.show_hex) {
+        const hex = try formatHexAlloc(frame.arena(), self.value.*, self.show_alpha);
+        var deco = try ui.textDecoration(hex, content.font_size, content.font, false);
+        deco.text.color = content.foreground;
+        _ = try ui.open(self.key.indexed(TEXT_INDEX), .{ .width = .fit(), .height = .fit() }, deco);
+        ui.close();
+    }
+
+    ui.close();
+
+    if (s.open) try self.renderPopover(frame, s, &content, m);
+}
+
+fn handlePickerInput(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker) !void {
+    const ui = frame.ui();
+    const sv_id = self.key.indexed(SV_INDEX).hash();
+    const hue_id = self.key.indexed(HUE_INDEX).hash();
+    const alpha_id = self.key.indexed(ALPHA_INDEX).hash();
+    const hex_id = self.key.indexed(HEX_INDEX).hash();
+
+    if (ui.pressing(sv_id) and ui.input.mouseButton(.left).down) {
+        if (ui.state.get(.measured, sv_id)) |m| {
+            const p = pointInBox(m, ui.input.mouse_pos);
+            s.saturation = p[0];
+            s.value = 1.0 - p[1];
+            try setColorFromState(self, frame, s);
+        }
+    }
+
+    if (ui.pressing(hue_id) and ui.input.mouseButton(.left).down) {
+        if (ui.state.get(.measured, hue_id)) |m| {
+            s.hue = pointInBox(m, ui.input.mouse_pos)[0];
+            try setColorFromState(self, frame, s);
+        }
+    }
+
+    if (ui.pressing(alpha_id) and ui.input.mouseButton(.left).down) {
+        if (ui.state.get(.measured, alpha_id)) |m| {
+            s.alpha = pointInBox(m, ui.input.mouse_pos)[0];
+            try setColorFromState(self, frame, s);
+        }
+    }
+
+    const hex_focused = ui.focused(hex_id);
+    if (hex_focused and !s.editing_hex) {
+        var buf: [10]u8 = undefined;
+        const hex = formatHex(&buf, self.value.*, true);
+        @memcpy(s.hex_buf[0..hex.len], hex);
+        s.hex_len = @intCast(hex.len);
+        s.editing_hex = true;
+    } else if (!hex_focused and s.editing_hex) {
+        try commitHexInput(self, frame, s, true);
+        s.editing_hex = false;
+    }
+
+    if (hex_focused) {
+        var changed = false;
+        var commit = false;
+        for (ui.input.chars) |ch| {
+            if (ch == 0) break;
+            if (s.hex_len >= @as(u32, s.hex_buf.len)) continue;
+
+            const c: u8 = switch (ch) {
+                '#' => '#',
+                '0'...'9' => @intCast(ch),
+                'a'...'f' => @as(u8, @intCast(ch)) - 'a' + 'A',
+                'A'...'F' => @intCast(ch),
+                else => continue,
+            };
+
+            if (c == '#' and s.hex_len != 0) continue;
+            if (s.hex_len == 0 and c != '#') s.hex_buf[s.hex_len] = '#';
+            if (s.hex_len == 0 and c != '#') s.hex_len += 1;
+            if (s.hex_len < @as(u32, s.hex_buf.len)) {
+                s.hex_buf[s.hex_len] = c;
+                s.hex_len += 1;
+                changed = true;
+            }
+        }
+
+        for (ui.input.key_events) |event| {
+            if (event.action == .release) continue;
+            switch (event.key) {
+                .backspace => if (s.hex_len > 0) {
+                    s.hex_len -= 1;
+                    changed = true;
+                },
+                .delete => {
+                    s.hex_len = 0;
+                    changed = true;
+                },
+                .enter => commit = true,
+                .escape => {
+                    s.editing_hex = false;
+                    var buf: [10]u8 = undefined;
+                    const hex = formatHex(&buf, self.value.*, true);
+                    @memcpy(s.hex_buf[0..hex.len], hex);
+                    s.hex_len = @intCast(hex.len);
+                },
+                else => {},
+            }
+        }
+
+        if (changed) try commitHexInput(self, frame, s, false);
+        if (commit) try commitHexInput(self, frame, s, true);
+        ui.input.consumeKeyboard();
+    }
+}
+
+fn commitHexInput(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker, allow_shorthand: bool) !void {
+    const hex = s.hex_buf[0..s.hex_len];
+    if (!isCommittableHexLen(hex, allow_shorthand)) return;
+    if (Color.hex(hex)) |color| try setColor(self, frame, s, color) else |_| {}
+}
+
+fn isCommittableHexLen(hex: []const u8, allow_shorthand: bool) bool {
+    if (hex.len == 0) return false;
+    const len = if (hex[0] == '#') hex.len - 1 else hex.len;
+    return len == 6 or len == 8 or (allow_shorthand and (len == 3 or len == 4));
+}
+
+fn renderPopover(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker, parent: *const Style.Content, m: Metrics) !void {
+    const ui = frame.ui();
+    const anchor = s.anchor_box;
+    const viewport = s.viewport_box;
+    const popup_id = self.key.indexed(POPUP_INDEX).hash();
+
+    const line_h = try ui.lineHeight(parent.font_size, parent.font);
+    const strip_count: f32 = if (self.show_alpha) 2 else 1;
+    const popup_h = m.area_h + m.strip_h * strip_count + line_h + 76;
+    const viewport_bottom = viewport.y() + viewport.h();
+    const space_below = viewport_bottom - (anchor.y() + anchor.h());
+    const space_above = anchor.y() - viewport.y();
+    const open_above = popup_h > space_below and space_above > space_below;
+    const max_h = if (open_above) space_above else space_below;
+    const popup_y = if (open_above) anchor.y() - @min(popup_h, max_h) else anchor.y() + anchor.h();
+
+    _ = try ui.state.getOrCreate(.measured, ui.allocator, popup_id);
+    const popup = ui.resolveStyle(popup_id, .{ .base = &base.popup, .user = self.parts.popup }, .{}, parent);
+    var config = popup.element(.{ .interactive = true });
+    config.width = .fixed(m.popup_w);
+    config.height = .{ .kind = .fit, .max = max_h };
+    // EVE-Maj patch: shifted left, as far as the viewport allows, so a trigger near the right edge doesn't push the popup off it.
+    const popup_x = @max(viewport.x(), @min(anchor.x(), viewport.x() + viewport.w() - m.popup_w));
+    _ = try ui.openResolved(self.key.indexed(POPUP_INDEX), &popup, config, .{ popup_x, popup_y });
+
+    try self.renderSvControl(frame, s, m);
+    try self.renderHueControl(frame, s, m);
+    if (self.show_alpha) try self.renderAlphaControl(frame, s, m);
+    try self.renderPreview(frame, s, m);
+    try self.renderHexField(frame, s);
+
+    ui.close();
+}
+
+fn isPointerInside(self: *const ColorPicker, frame: *Frame, s: *const State.ColorPicker) bool {
+    const ui = frame.ui();
+    const p = .{ @as(f32, @floatCast(ui.input.mouse_pos[0])), @as(f32, @floatCast(ui.input.mouse_pos[1])) };
+    if (s.anchor_box.contains(p)) return true;
+
+    const popup_id = self.key.indexed(POPUP_INDEX).hash();
+    if (ui.state.get(.measured, popup_id)) |m| {
+        if (m.box.contains(p)) return true;
+    }
+
+    return false;
+}
+
+fn renderSvControl(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker, m: Metrics) !void {
+    const ui = frame.ui();
+    const id = self.key.indexed(SV_INDEX).hash();
+    _ = try ui.state.getOrCreate(.measured, ui.allocator, id);
+
+    var cmds: std.ArrayList(Decoration.DrawCmd) = .empty;
+    const arena = frame.arena();
+    const w = m.inner_w;
+    const h = m.area_h;
+    const hue_color = hsvToLinearColor(s.hue, 1, 1, 1);
+    const marker_x = s.saturation * w;
+    const marker_y = (1.0 - s.value) * h;
+
+    try cmds.append(arena, .{ .fill_rect = .{
+        .x = 0,
+        .y = 0,
+        .w = w,
+        .h = h,
+        .color = hue_color.value,
+        .corner_radius = .all(4),
+    } });
+    try cmds.append(arena, .{ .fill_rect_gradient = .{
+        .x = 0,
+        .y = 0,
+        .w = w,
+        .h = h,
+        .colors = .{
+            .{ 1, 1, 1, 1 },
+            .{ 1, 1, 1, 0 },
+            .{ 1, 1, 1, 0 },
+            .{ 1, 1, 1, 1 },
+        },
+        .corner_radius = .all(4),
+    } });
+    try cmds.append(arena, .{ .fill_rect_gradient = .{
+        .x = 0,
+        .y = 0,
+        .w = w,
+        .h = h,
+        .colors = .{
+            .{ 0, 0, 0, 0 },
+            .{ 0, 0, 0, 0 },
+            .{ 0, 0, 0, 1 },
+            .{ 0, 0, 0, 1 },
+        },
+        .corner_radius = .all(4),
+    } });
+    try cmds.append(arena, .{ .stroke_rect = .{ .x = 0.5, .y = 0.5, .w = w - 1, .h = h - 1, .color = .{ 0, 0, 0, 0.35 }, .corner_radius = .all(3.5) } });
+    try cmds.append(arena, .{ .stroke_circle = .{ .cx = marker_x, .cy = marker_y, .radius = 6, .color = .{ 1, 1, 1, 1 }, .thickness = 2 } });
+    try cmds.append(arena, .{ .stroke_circle = .{ .cx = marker_x, .cy = marker_y, .radius = 7, .color = .{ 0, 0, 0, 0.65 }, .thickness = 1 } });
+
+    _ = try ui.open(self.key.indexed(SV_INDEX), .{
+        .width = .grow(),
+        .height = .fixed(h),
+        .interactive = true,
+    }, .{ .canvas = .{ .cmds = cmds.items } });
+    ui.close();
+}
+
+fn renderHueControl(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker, m: Metrics) !void {
+    const ui = frame.ui();
+    const id = self.key.indexed(HUE_INDEX).hash();
+    _ = try ui.state.getOrCreate(.measured, ui.allocator, id);
+
+    var cmds: std.ArrayList(Decoration.DrawCmd) = .empty;
+    const arena = frame.arena();
+    const w = m.inner_w;
+    const h = m.strip_h;
+    const segment_w = w / 6.0;
+
+    for (0..6) |i| {
+        const x = @as(f32, @floatFromInt(i)) * segment_w;
+        const c0 = hsvToLinearColor(@as(f32, @floatFromInt(i)) / 6.0, 1, 1, 1).value;
+        const c1 = hsvToLinearColor(@as(f32, @floatFromInt(i + 1)) / 6.0, 1, 1, 1).value;
+        try cmds.append(arena, .{ .fill_rect_gradient = .{
+            .x = x,
+            .y = 0,
+            .w = if (i == 5) w - x else segment_w,
+            .h = h,
+            .colors = .{ c0, c1, c1, c0 },
+            .corner_radius = .zero,
+        } });
+    }
+
+    const marker_x = s.hue * w;
+    try cmds.append(arena, .{ .stroke_rect = .{ .x = 0.5, .y = 0.5, .w = w - 1, .h = h - 1, .color = .{ 0, 0, 0, 0.35 }, .corner_radius = .all(3) } });
+    try cmds.append(arena, .{ .line = .{ .from = .{ marker_x, -2 }, .to = .{ marker_x, h + 2 }, .color = .{ 1, 1, 1, 1 }, .thickness = 3 } });
+    try cmds.append(arena, .{ .line = .{ .from = .{ marker_x, -2 }, .to = .{ marker_x, h + 2 }, .color = .{ 0, 0, 0, 0.65 }, .thickness = 1 } });
+
+    _ = try ui.open(self.key.indexed(HUE_INDEX), .{
+        .width = .grow(),
+        .height = .fixed(h),
+        .interactive = true,
+    }, .{ .canvas = .{ .cmds = cmds.items } });
+    ui.close();
+}
+
+fn renderAlphaControl(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker, m: Metrics) !void {
+    const ui = frame.ui();
+    const id = self.key.indexed(ALPHA_INDEX).hash();
+    _ = try ui.state.getOrCreate(.measured, ui.allocator, id);
+
+    var cmds: std.ArrayList(Decoration.DrawCmd) = .empty;
+    const arena = frame.arena();
+    const w = m.inner_w;
+    const h = m.strip_h;
+    try appendCheckerboard(&cmds, arena, w, h, 8);
+
+    const solid = hsvToLinearColor(s.hue, s.saturation, s.value, 1).value;
+    const transparent = .{ solid[0], solid[1], solid[2], 0 };
+    try cmds.append(arena, .{ .fill_rect_gradient = .{
+        .x = 0,
+        .y = 0,
+        .w = w,
+        .h = h,
+        .colors = .{ transparent, solid, solid, transparent },
+        .corner_radius = .all(3),
+    } });
+    const marker_x = s.alpha * w;
+    try cmds.append(arena, .{ .stroke_rect = .{ .x = 0.5, .y = 0.5, .w = w - 1, .h = h - 1, .color = .{ 0, 0, 0, 0.35 }, .corner_radius = .all(3) } });
+    try cmds.append(arena, .{ .line = .{ .from = .{ marker_x, -2 }, .to = .{ marker_x, h + 2 }, .color = .{ 1, 1, 1, 1 }, .thickness = 3 } });
+    try cmds.append(arena, .{ .line = .{ .from = .{ marker_x, -2 }, .to = .{ marker_x, h + 2 }, .color = .{ 0, 0, 0, 0.65 }, .thickness = 1 } });
+
+    _ = try ui.open(self.key.indexed(ALPHA_INDEX), .{
+        .width = .grow(),
+        .height = .fixed(h),
+        .interactive = true,
+    }, .{ .canvas = .{ .cmds = cmds.items } });
+    ui.close();
+}
+
+fn renderPreview(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker, m: Metrics) !void {
+    const ui = frame.ui();
+    var cmds: std.ArrayList(Decoration.DrawCmd) = .empty;
+    const arena = frame.arena();
+    const w = m.inner_w;
+    const h: f32 = 28;
+    const half = w * 0.5;
+    const original = if (s.has_original) s.original_color else self.value.value;
+
+    try appendCheckerboard(&cmds, arena, w, h, 7);
+    try cmds.append(arena, .{ .fill_rect = .{ .x = 0, .y = 0, .w = half, .h = h, .color = original, .corner_radius = .all(4) } });
+    try cmds.append(arena, .{ .fill_rect = .{ .x = half, .y = 0, .w = half, .h = h, .color = self.value.value, .corner_radius = .all(4) } });
+    try cmds.append(arena, .{ .line = .{ .from = .{ half, 0 }, .to = .{ half, h }, .color = .{ 0, 0, 0, 0.35 }, .thickness = 1 } });
+    try cmds.append(arena, .{ .stroke_rect = .{ .x = 0.5, .y = 0.5, .w = w - 1, .h = h - 1, .color = .{ 0, 0, 0, 0.35 }, .corner_radius = .all(3.5) } });
+
+    _ = try ui.open(self.key.indexed(PREVIEW_INDEX), .{
+        .width = .grow(),
+        .height = .fixed(h),
+    }, .{ .canvas = .{ .cmds = cmds.items } });
+    ui.close();
+}
+
+fn renderHexField(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker) !void {
+    const ui = frame.ui();
+    const id = self.key.indexed(HEX_INDEX).hash();
+    const field = ui.resolveStyle(id, .{ .base = &base.root, .user = self.style }, ui.states(id, .{}), null);
+    const line_h = try ui.lineHeight(field.content.font_size, field.content.font);
+
+    var config = field.element(.{ .interactive = true });
+    config.width = .grow();
+    config.height = .fixed(line_h + 12);
+    config.padding = .xy(8, 0);
+    _ = try ui.openWith(self.key.indexed(HEX_INDEX), config, .{ .rect = field.surface }, .{ .content = field.content });
+
+    const display = if (s.editing_hex)
+        s.hex_buf[0..s.hex_len]
+    else
+        try formatHexAlloc(frame.arena(), self.value.*, self.show_alpha);
+    var deco = try ui.textDecoration(display, field.content.font_size, field.content.font, false);
+    deco.text.color = field.content.foreground;
+    _ = try ui.open(self.key.indexed(HEX_INDEX + 100), .{ .width = .fit(), .height = .fit() }, deco);
+    ui.close();
+
+    ui.close();
+}
+
+fn syncStateFromColor(s: *State.ColorPicker, color: Color) void {
+    const srgb = linearRgbaToSrgb(color.value);
+    const hsv = rgbToHsv(srgb[0], srgb[1], srgb[2], s.hue);
+    if (hsv.s > 0.001) s.hue = hsv.h;
+    s.saturation = hsv.s;
+    s.value = hsv.v;
+    s.alpha = srgb[3];
+}
+
+fn setColorFromState(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker) !void {
+    try setColor(self, frame, s, hsvToLinearColor(s.hue, s.saturation, s.value, s.alpha));
+}
+
+fn setColor(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker, picked: Color) !void {
+    var color = picked;
+    if (!self.show_alpha) color.value[3] = 1;
+    if (std.meta.eql(self.value.value, color.value)) return;
+    self.value.* = color;
+    syncStateFromColor(s, color);
+    _ = frame;
+}
+
+fn pointInBox(m: *const State.Measured, mouse_pos: [2]f64) [2]f32 {
+    const x = std.math.clamp((@as(f32, @floatCast(mouse_pos[0])) - m.box.x()) / @max(m.width, 1), 0, 1);
+    const y = std.math.clamp((@as(f32, @floatCast(mouse_pos[1])) - m.box.y()) / @max(m.height, 1), 0, 1);
+    return .{ x, y };
+}
+
+fn appendCheckerboard(cmds: *std.ArrayList(Decoration.DrawCmd), allocator: std.mem.Allocator, w: f32, h: f32, cell: f32) !void {
+    var y: f32 = 0;
+    var row: usize = 0;
+    while (y < h) : ({
+        y += cell;
+        row += 1;
+    }) {
+        var x: f32 = 0;
+        var col: usize = 0;
+        while (x < w) : ({
+            x += cell;
+            col += 1;
+        }) {
+            try cmds.append(allocator, .{ .fill_rect = .{
+                .x = x,
+                .y = y,
+                .w = @min(cell, w - x),
+                .h = @min(cell, h - y),
+                .color = checkerColor((row + col) & 1),
+            } });
+        }
+    }
+}
+
+fn checkerColor(index: usize) [4]f32 {
+    return if (index == 0) .{ 0.82, 0.82, 0.82, 1 } else .{ 0.58, 0.58, 0.58, 1 };
+}
+
+const Hsv = struct { h: f32, s: f32, v: f32 };
+
+fn rgbToHsv(r: f32, g: f32, b: f32, fallback_hue: f32) Hsv {
+    const max_c = @max(r, @max(g, b));
+    const min_c = @min(r, @min(g, b));
+    const delta = max_c - min_c;
+    if (delta <= 0.00001) return .{ .h = fallback_hue, .s = 0, .v = max_c };
+
+    var h: f32 = if (max_c == r)
+        @mod((g - b) / delta, 6.0)
+    else if (max_c == g)
+        ((b - r) / delta) + 2.0
+    else
+        ((r - g) / delta) + 4.0;
+    h /= 6.0;
+    if (h < 0) h += 1.0;
+
+    return .{ .h = h, .s = if (max_c == 0) 0 else delta / max_c, .v = max_c };
+}
+
+fn hsvToLinearColor(h_: f32, s: f32, v: f32, a: f32) Color {
+    const h = @mod(h_, 1.0) * 6.0;
+    const c = v * s;
+    const x = c * (1.0 - @abs(@mod(h, 2.0) - 1.0));
+    const m = v - c;
+
+    const rgb: [3]f32 = if (h < 1.0)
+        .{ c, x, 0 }
+    else if (h < 2.0)
+        .{ x, c, 0 }
+    else if (h < 3.0)
+        .{ 0, c, x }
+    else if (h < 4.0)
+        .{ 0, x, c }
+    else if (h < 5.0)
+        .{ x, 0, c }
+    else
+        .{ c, 0, x };
+
+    return .{ .value = .{
+        Color.srgbToLinear(rgb[0] + m),
+        Color.srgbToLinear(rgb[1] + m),
+        Color.srgbToLinear(rgb[2] + m),
+        std.math.clamp(a, 0, 1),
+    } };
+}
+
+fn linearRgbaToSrgb(rgba: [4]f32) [4]f32 {
+    return .{
+        std.math.clamp(Color.linearToSrgb(rgba[0]), 0, 1),
+        std.math.clamp(Color.linearToSrgb(rgba[1]), 0, 1),
+        std.math.clamp(Color.linearToSrgb(rgba[2]), 0, 1),
+        std.math.clamp(rgba[3], 0, 1),
+    };
+}
+
+fn formatHex(buf: *[10]u8, color: Color, include_alpha: bool) []const u8 {
+    const srgb = linearRgbaToSrgb(color.value);
+    const r = toByte(srgb[0]);
+    const g = toByte(srgb[1]);
+    const b = toByte(srgb[2]);
+    const a = toByte(srgb[3]);
+    if (include_alpha) {
+        return std.fmt.bufPrint(buf, "#{X:0>2}{X:0>2}{X:0>2}{X:0>2}", .{ r, g, b, a }) catch unreachable;
+    }
+    return std.fmt.bufPrint(buf, "#{X:0>2}{X:0>2}{X:0>2}", .{ r, g, b }) catch unreachable;
+}
+
+fn formatHexAlloc(allocator: std.mem.Allocator, color: Color, include_alpha: bool) ![]const u8 {
+    var buf: [10]u8 = undefined;
+    const hex = formatHex(&buf, color, include_alpha);
+    return try allocator.dupe(u8, hex);
+}
+
+fn toByte(v: f32) u8 {
+    return @intFromFloat(@round(std.math.clamp(v, 0, 1) * 255.0));
+}
