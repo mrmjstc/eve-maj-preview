@@ -43,6 +43,8 @@ pub const DisplayConfig = struct {
     notifInfoPanelShowNavigation: bool = true,
     notifInfoPanelShowGeneral: bool = true,
 
+    /// Manual ignores thumbnailSpaces, so every thumbnail is placed by hand.
+    placementMode: types.PlacementMode = .Manual,
     /// Puts logged-out characters after the logged-in ones within each thumbnail space.
     regionFitReorderLoggedOut: bool = true,
     hideThumbnailsDuringRegionSelect: bool = true,

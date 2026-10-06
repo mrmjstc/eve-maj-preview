@@ -1,19 +1,26 @@
-//! Thumbnail spaces: screen regions that the thumbnails of chosen hotkey groups, or of clients at the login screen, auto-fit into.
+//! Thumbnail spaces: screen regions that the thumbnails of chosen hotkey groups, login-screen clients or unassigned characters auto-fit into.
 const std = @import("std");
 const types = @import("types.zig");
 const wire = @import("wire.zig");
 const ranges_mod = @import("ranges.zig");
 const strings = @import("../util/strings.zig");
 
+pub const LOGIN_SCREEN_NAME = "Login Screen";
+pub const UNASSIGNED_NAME = "Unassigned Characters";
+
 pub const ThumbnailSpace = struct {
     name: []const u8 = "",
     enabled: bool = true,
     /// Hotkey group names, since a group's id isn't saved; a character in any of them belongs here.
     groups: std.ArrayList([]const u8) = .empty,
-    /// Holds clients still at the login screen, as if they were a group.
+    /// Marks the Login Screen space, which holds clients still at the login screen.
     holdsLoginScreen: bool = false,
-    /// Characters no enabled space holds are added after this space's own, in the first space that has this on.
+    /// Marks the Unassigned Characters space, which holds characters no other active space holds.
+    holdsUnassigned: bool = false,
+    /// Characters no active space holds fill in after this space's own, in the first space with this on, unless the Unassigned Characters space is active.
     takesUnassigned: bool = false,
+    /// Login-screen clients fill in last, in the first space with this on, unless the Login Screen space is active.
+    takesLoginScreen: bool = false,
     x: ?i32 = null,
     y: ?i32 = null,
     width: ?i32 = null,
@@ -47,3 +54,73 @@ pub const ThumbnailSpace = struct {
 
     pub const Wire = wire.Wire(ThumbnailSpace);
 };
+
+/// Adds the Login Screen space first and the Unassigned Characters space last, both off, when they're missing; the dialog can't remove them, so every profile has both.
+pub fn ensureSpecialSpaces(allocator: std.mem.Allocator, list: *std.ArrayList(ThumbnailSpace)) !void {
+    if (!hasSpace(list.items, "holdsLoginScreen")) {
+        const name = try allocator.dupe(u8, LOGIN_SCREEN_NAME);
+        errdefer allocator.free(name);
+        try list.insert(allocator, 0, .{ .name = name, .enabled = false, .holdsLoginScreen = true });
+    }
+    if (!hasSpace(list.items, "holdsUnassigned")) {
+        const name = try allocator.dupe(u8, UNASSIGNED_NAME);
+        errdefer allocator.free(name);
+        try list.append(allocator, .{ .name = name, .enabled = false, .holdsUnassigned = true });
+    }
+}
+
+/// Only the first space marked as each special space keeps the mark, and a space is at most one of them.
+pub fn keepOneOfEachSpecialSpace(list: []ThumbnailSpace) void {
+    var has_login_screen = false;
+    var has_unassigned = false;
+    for (list) |*space| {
+        if (space.holdsLoginScreen) {
+            if (has_login_screen) space.holdsLoginScreen = false;
+            has_login_screen = true;
+            space.holdsUnassigned = false;
+        }
+        if (space.holdsUnassigned) {
+            if (has_unassigned) space.holdsUnassigned = false;
+            has_unassigned = true;
+        }
+    }
+}
+
+fn hasSpace(items: []const ThumbnailSpace, comptime mark: []const u8) bool {
+    for (items) |space| {
+        if (@field(space, mark)) return true;
+    }
+    return false;
+}
+
+const testing = std.testing;
+
+test "a list missing the special spaces gets Login Screen first and Unassigned Characters last, both off" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var list: std.ArrayList(ThumbnailSpace) = .empty;
+    try list.append(arena.allocator(), .{ .name = "Miners" });
+    try ensureSpecialSpaces(arena.allocator(), &list);
+    try testing.expectEqual(@as(usize, 3), list.items.len);
+    try testing.expect(list.items[0].holdsLoginScreen and !list.items[0].enabled);
+    try testing.expectEqualStrings(LOGIN_SCREEN_NAME, list.items[0].name);
+    try testing.expect(list.items[2].holdsUnassigned and !list.items[2].enabled);
+    try testing.expectEqualStrings(UNASSIGNED_NAME, list.items[2].name);
+
+    try ensureSpecialSpaces(arena.allocator(), &list);
+    try testing.expectEqual(@as(usize, 3), list.items.len);
+}
+
+test "only the first space marked as each special space keeps the mark" {
+    var list = [_]ThumbnailSpace{
+        .{ .name = "A", .holdsLoginScreen = true, .holdsUnassigned = true },
+        .{ .name = "B", .holdsLoginScreen = true },
+        .{ .name = "C", .holdsUnassigned = true },
+        .{ .name = "D", .holdsUnassigned = true },
+    };
+    keepOneOfEachSpecialSpace(&list);
+    try testing.expect(list[0].holdsLoginScreen and !list[0].holdsUnassigned);
+    try testing.expect(!list[1].holdsLoginScreen);
+    try testing.expect(list[2].holdsUnassigned);
+    try testing.expect(!list[3].holdsUnassigned);
+}

@@ -34,10 +34,11 @@ const RankContext = struct {
     names: []const []const u8,
     order_map: *const std.StringHashMap(usize),
 
-    /// The space's own characters, then unassigned ones, then login-screen clients it only took as unassigned.
+    /// The space's own characters, then unassigned ones it took, then login-screen clients it took.
     fn tier(context: RankContext, name: []const u8) u2 {
-        if (holds(context.cfg, context.space, name)) return 0;
-        return if (scout.isGenericCharacterName(name)) 2 else 1;
+        const space = context.space;
+        if (scout.isGenericCharacterName(name)) return if (space.holdsLoginScreen) 0 else 2;
+        return if (space.holdsUnassigned or holdsGroupOf(context.cfg, space, name)) 0 else 1;
     }
 
     fn lessThan(context: RankContext, a_index: usize, b_index: usize) bool {
@@ -68,8 +69,12 @@ pub fn isActive(space: *const ThumbnailSpace) bool {
     return activeRect(space) != null;
 }
 
-/// The spaces layout considers, in list order.
+/// The spaces layout considers, in list order; none in Manual placement mode.
 pub fn listed(cfg: *const Config) []const ThumbnailSpace {
+    switch (cfg.display.placementMode) {
+        .Manual => return &.{},
+        .ThumbnailSpaces => {},
+    }
     const items = cfg.thumbnailSpaces.items;
     return items[0..@min(items.len, MAX_SPACES)];
 }
@@ -81,20 +86,33 @@ pub fn anyActive(cfg: *const Config) bool {
     return false;
 }
 
-pub fn loginScreenHasOwnSpace(cfg: *const Config) bool {
-    for (listed(cfg)) |*space| {
-        if (isActive(space) and space.holdsLoginScreen) return true;
-    }
-    return false;
+pub fn loginScreenHasSpace(cfg: *const Config) bool {
+    return loginScreenSpaceIn(listed(cfg)) != null;
 }
 
-/// The first active space holding this character, else the first active one taking unassigned characters; null when it's placed by hand.
+/// Where login-screen clients go: the Login Screen space when it's active, else the first active space taking them; null when they're placed by hand.
+pub fn loginScreenSpaceIn(items: []const ThumbnailSpace) ?usize {
+    return firstActiveWith(items, "holdsLoginScreen") orelse firstActiveWith(items, "takesLoginScreen");
+}
+
+/// Where characters no active space holds go: the Unassigned Characters space when it's active, else the first active space taking them; null when they're placed by hand.
+pub fn unassignedSpaceIn(items: []const ThumbnailSpace) ?usize {
+    return firstActiveWith(items, "holdsUnassigned") orelse firstActiveWith(items, "takesUnassigned");
+}
+
+/// The first active space holding one of this character's hotkey groups, else where unassigned characters go; null when it's placed by hand.
 pub fn spaceFor(cfg: *const Config, character_name: []const u8) ?usize {
-    for (listed(cfg), 0..) |*space, i| {
-        if (isActive(space) and holds(cfg, space, character_name)) return i;
+    const items = listed(cfg);
+    if (scout.isGenericCharacterName(character_name)) return loginScreenSpaceIn(items);
+    for (items, 0..) |*space, i| {
+        if (isActive(space) and holdsGroupOf(cfg, space, character_name)) return i;
     }
-    for (listed(cfg), 0..) |*space, i| {
-        if (isActive(space) and space.takesUnassigned) return i;
+    return unassignedSpaceIn(items);
+}
+
+fn firstActiveWith(items: []const ThumbnailSpace, comptime flag: []const u8) ?usize {
+    for (items, 0..) |*space, i| {
+        if (isActive(space) and @field(space, flag)) return i;
     }
     return null;
 }
@@ -132,9 +150,8 @@ pub fn assign(allocator: std.mem.Allocator, cfg: *const Config, names: []const [
     return assignment;
 }
 
-/// Whether this space holds the character itself, rather than taking it as unassigned.
-fn holds(cfg: *const Config, space: *const ThumbnailSpace, character_name: []const u8) bool {
-    if (scout.isGenericCharacterName(character_name)) return space.holdsLoginScreen;
+/// Whether one of this space's hotkey groups lists the character.
+fn holdsGroupOf(cfg: *const Config, space: *const ThumbnailSpace, character_name: []const u8) bool {
     for (cfg.hotkeyGroups.items) |group| {
         if (space.groupIndex(group.name) == null) continue;
         if (strings.indexOfString(group.characters.items, character_name) != null) return true;
@@ -171,7 +188,7 @@ const testing = std.testing;
 const LOGIN_SCREEN = "EVE";
 
 fn testConfig(groups: []config_mod.HotkeyGroupConfig, spaces: []ThumbnailSpace) Config {
-    return .{ .allocator = testing.allocator, .profile_name = "", .hotkeyGroups = .fromOwnedSlice(groups), .thumbnailSpaces = .fromOwnedSlice(spaces) };
+    return .{ .allocator = testing.allocator, .profile_name = "", .display = .{ .placementMode = .ThumbnailSpaces }, .hotkeyGroups = .fromOwnedSlice(groups), .thumbnailSpaces = .fromOwnedSlice(spaces) };
 }
 
 fn testSpace(name: []const u8, groups: []const []const u8) ThumbnailSpace {
@@ -190,7 +207,42 @@ test "a character goes to the space holding its group, the rest to the space tak
 
     try testing.expectEqual(@as(?usize, 0), spaceFor(&cfg, "Miner B"));
     try testing.expectEqual(@as(?usize, 1), spaceFor(&cfg, "Hauler"));
+    try testing.expectEqual(@as(?usize, null), spaceFor(&cfg, LOGIN_SCREEN));
+}
+
+test "login-screen clients go to the first active space taking them" {
+    var spaces = [_]ThumbnailSpace{ testSpace("Off", &.{}), testSpace("Fleet", &.{}), testSpace("Mining", &.{}) };
+    spaces[0].takesLoginScreen = true;
+    spaces[0].enabled = false;
+    spaces[1].takesLoginScreen = true;
+    spaces[2].takesLoginScreen = true;
+    const cfg = testConfig(&.{}, &spaces);
+
     try testing.expectEqual(@as(?usize, 1), spaceFor(&cfg, LOGIN_SCREEN));
+    try testing.expectEqual(@as(?usize, null), spaceFor(&cfg, "Pilot"));
+}
+
+test "an active Unassigned Characters space wins over spaces taking unassigned characters" {
+    var spaces = [_]ThumbnailSpace{ testSpace("Fleet", &.{}), testSpace("Unassigned Characters", &.{}) };
+    spaces[0].takesUnassigned = true;
+    spaces[1].holdsUnassigned = true;
+    const cfg = testConfig(&.{}, &spaces);
+
+    try testing.expectEqual(@as(?usize, 1), spaceFor(&cfg, "Pilot"));
+    spaces[1].enabled = false;
+    try testing.expectEqual(@as(?usize, 0), spaceFor(&cfg, "Pilot"));
+}
+
+test "in Manual placement mode every character is placed by hand" {
+    var groups = [_]config_mod.HotkeyGroupConfig{testGroup("Miners", &.{"Miner A"})};
+    var spaces = [_]ThumbnailSpace{testSpace("Mining", &.{"Miners"})};
+    spaces[0].takesUnassigned = true;
+    var cfg = testConfig(&groups, &spaces);
+    cfg.display.placementMode = .Manual;
+
+    try testing.expectEqual(@as(?usize, null), spaceFor(&cfg, "Miner A"));
+    try testing.expectEqual(@as(?usize, null), spaceFor(&cfg, "Hauler"));
+    try testing.expect(!anyActive(&cfg));
 }
 
 test "with no space taking unassigned characters they're placed by hand" {
@@ -222,9 +274,10 @@ test "a disabled space or one with no region is skipped" {
     try testing.expect(!anyActive(&cfg));
 }
 
-test "login-screen clients go to the space holding them ahead of a catch-all" {
+test "login-screen clients go to the Login Screen space ahead of a space taking them" {
     var spaces = [_]ThumbnailSpace{ testSpace("Everyone", &.{}), testSpace("Login Screen", &.{}) };
     spaces[0].takesUnassigned = true;
+    spaces[0].takesLoginScreen = true;
     spaces[1].holdsLoginScreen = true;
     const cfg = testConfig(&.{}, &spaces);
 
@@ -236,6 +289,7 @@ test "a space fills with its own characters, then unassigned ones, then login-sc
     var groups = [_]config_mod.HotkeyGroupConfig{testGroup("Miners", &.{"Miner"})};
     var spaces = [_]ThumbnailSpace{testSpace("Mining", &.{"Miners"})};
     spaces[0].takesUnassigned = true;
+    spaces[0].takesLoginScreen = true;
     const cfg = testConfig(&groups, &spaces);
 
     var assignment = try assign(testing.allocator, &cfg, &.{ LOGIN_SCREEN, "Hauler", "Miner" });

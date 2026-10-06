@@ -238,6 +238,8 @@ pub const subheading: Style = .{
 
 /// No italics: Geist ships them as a separate face we don't embed.
 pub const hint: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED }, .wrap = true, .width = .grow() };
+/// A hint that always shows, warning that a setting won't take effect.
+pub const hint_warning: Style = hint.with(.{ .foreground = .accent });
 
 /// A warning, tinted by the accent.
 pub const notice: Style = .{
@@ -651,52 +653,29 @@ pub const stage_frame: Style = .{
 };
 pub const stage_row: Style = .{ .width = .grow(), .justify = .center };
 
-/// A thumbnail space, or another foldable group of settings, inside a section.
-pub const space_card: Style = .{
-    .width = .grow(),
-    .direction = .column,
-    .background = .{ .color = BG },
-    .border_width = .all(1),
-    .border_color = .{ .color = DIVIDER },
-    .radius = .md,
-};
-pub const space_card_open: Style = space_card.with(.{ .border_color = .{ .color = BORDER } });
-pub const space_card_drop_above: Style = space_card.with(.{ .border_width = .edges(2, 1, 1, 1), .border_color = .accent });
-pub const space_card_drop_below: Style = space_card.with(.{ .border_width = .edges(1, 1, 2, 1), .border_color = .accent });
-/// The handle a space card is dragged by to reorder it.
-pub const space_card_grip: Style = .{
-    .width = .fixed(18),
-    .height = .fixed(CONTROL_HEIGHT),
-    .@"align" = .center,
+/// A thumbnail space's colour in the roster; the roster sets its colour.
+pub const space_dot: Style = .{ .width = .fixed(10), .height = .fixed(10), .radius = .{ .fixed = 2 } };
+pub const space_status_warning: Style = .{ .foreground = .accent };
+/// A space's Holds grid of hotkey group pills; the dialog sets its rows.
+pub const group_chip_grid: Style = .{ .width = .grow(), .direction = .grid, .gap = 6 };
+pub const GROUP_CHIP_HEIGHT = 26;
+/// A hotkey group's pill; the held ones are filled with the accent.
+pub const group_chip: Style = .{
     .justify = .center,
-    .background = .transparent,
-    .border_width = .zero,
-    .radius = .md,
-    .hover = &.{ .background = .{ .color = SURFACE }, .state_layer = 0 },
-    .active = &.{ .state_layer = 0 },
-};
-pub const space_card_header: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8, .padding = .init(4, 10, 4, 4) };
-/// The header's clickable part, which folds the card.
-pub const space_card_toggle: Style = .{
-    .width = .grow(),
-    .height = .fixed(CONTROL_HEIGHT),
-    .direction = .row,
     .@"align" = .center,
-    .justify = .start,
-    .gap = 8,
-    .padding = .xy(6, 0),
-    .background = .transparent,
-    .border_width = .zero,
-    .radius = .md,
-    .hover = &.{ .background = .{ .color = SURFACE }, .state_layer = 0 },
+    .padding = .xy(8, 0),
+    .overflow = .hidden,
+    .background = .{ .color = SURFACE },
+    .border_width = .all(1),
+    .border_color = .{ .color = BORDER_STRONG },
+    .radius = .{ .fixed = GROUP_CHIP_HEIGHT / 2 },
+    .hover = &.{ .border_color = .accent, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
-pub const space_card_body: Style = .{ .width = .grow(), .direction = .column, .gap = 8, .padding = .init(0, 10, 10, 30) };
-pub const space_card_dot: Style = .{ .width = .fixed(10), .height = .fixed(10), .radius = .{ .fixed = 2 } };
-pub const space_card_name: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } };
-pub const space_card_status_warning: Style = .{ .foreground = .accent };
-pub const space_card_chevron: Style = .{ .width = .fixed(10), .height = .fixed(10) };
-pub const fill: Style = .{ .width = .grow() };
+pub const group_chip_held: Style = group_chip.with(.{ .background = .accent, .border_color = .accent });
+pub const group_chip_disabled: Style = group_chip.with(.{ .opacity = 0.5, .hover = &.{ .state_layer = 0 } });
+pub const group_chip_label: Style = .{ .foreground = .{ .color = TEXT_SECONDARY } };
+pub const group_chip_label_held: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = INK_DARK } };
 
 /// A text overlay's tag on the stage; the stage sets its offset, and outlines the selected one.
 pub const overlay_chip: Style = .{
@@ -737,6 +716,7 @@ pub const roster_filters: Style = roster.with(.{ .width = .fixed(190), .height =
 pub const detail_fit: Style = detail_stack.with(.{ .height = .fit(), .overflow = .visible, .padding = .all(8) });
 /// .roster-hotkey-badge, e.g. a filter's Disabled.
 pub const roster_badge: Style = .{ .font_size = .{ .px = 10 }, .foreground = .{ .color = MUTED } };
+pub const roster_badge_warning: Style = roster_badge.with(.{ .foreground = .accent });
 pub const inline_label: Style = .{ .foreground = .{ .color = TEXT_SECONDARY } };
 pub const select_fill: Style = select.with(.{ .width = .grow() });
 

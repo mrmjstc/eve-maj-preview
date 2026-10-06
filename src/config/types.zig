@@ -70,6 +70,12 @@ pub const ListViewOrder = enum {
     ConfiguredCharacters,
 };
 
+/// How thumbnails get their position: dragged by hand, or filled into thumbnail spaces.
+pub const PlacementMode = enum {
+    Manual,
+    ThumbnailSpaces,
+};
+
 /// Fill order for RegionFit's grid: configured character list, or grouped by hotkey group membership.
 pub const RegionFitOrder = enum {
     Characters,

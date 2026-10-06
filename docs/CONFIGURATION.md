@@ -235,7 +235,7 @@ Configure which applications to create thumbnails for. By default, only EVE Onli
 
 ## Display and Positioning
 
-Each thumbnail is either placed by a [thumbnail space](#thumbnail-spaces) or placed by hand. A hand-placed thumbnail spawns at its saved position (see `honorSavedPositions`), or at `startX`/`startY` while it has none, and can be dragged and snapped. Full multi-monitor support.
+`display.placementMode` picks how thumbnails are placed: `Manual` (default) places every thumbnail by hand and ignores `thumbnailSpaces`; `ThumbnailSpaces` lets [thumbnail spaces](#thumbnail-spaces) place the characters they hold, and the rest are placed by hand. A hand-placed thumbnail spawns at its saved position (see `honorSavedPositions`), or at `startX`/`startY` while it has none, and can be dragged and snapped. Full multi-monitor support.
 
 **Basic Configuration:**
 
@@ -244,30 +244,33 @@ Each thumbnail is either placed by a [thumbnail space](#thumbnail-spaces) or pla
   "display": {
     "startX": 10,
     "startY": 10,
-    "honorSavedPositions": true
+    "honorSavedPositions": true,
+    "placementMode": "Manual"
   }
 }
 ```
 
 ## Thumbnail Spaces
 
-A thumbnail space is a screen rectangle that chosen characters' thumbnails auto-fit into. Each space holds one or more hotkey groups, by name, and optionally clients still at the login screen (the "EVE" placeholders), as if they were a group. That lets you split characters by role: miners in one space, scouts in another, logins in a third.
+A thumbnail space is a screen rectangle that chosen characters' thumbnails auto-fit into. Spaces only place thumbnails while `display.placementMode` is `ThumbnailSpaces`; a profile from before that setting existed gets `ThumbnailSpaces` when it has an enabled space. Each space holds one or more hotkey groups, by name. Two spaces are always in the list and can't be removed or renamed in the dialog: **Login Screen** (`holdsLoginScreen`), holding clients still at the login screen (the "EVE" placeholders), and **Unassigned Characters** (`holdsUnassigned`), holding characters no other active space holds. A profile missing either gets it added, switched off. That lets you split characters by role: miners in one space, scouts in another, logins in a third.
 
 Who goes where:
-- A character goes to the **first enabled space in the list** that holds any of its hotkey groups (or holds the login screen, for a placeholder). Reorder the list to change who wins.
-- A character no enabled space holds goes to the first enabled space with `takesUnassigned` on, after that space's own characters (and login-screen placeholders last). With none, it's placed by hand.
+- A character goes to the **first enabled space in the list** that holds any of its hotkey groups. Reorder the list to change who wins.
+- A character no enabled space holds goes to the Unassigned Characters space when that's enabled with a region, else to the first enabled space with `takesUnassigned` on, after that space's own characters. With neither, it's placed by hand.
+- A login-screen placeholder goes to the Login Screen space when that's enabled with a region, else to the first enabled space with `takesLoginScreen` on, after everyone else there. With neither, it's placed by hand.
 - A space needs `enabled` and a full rectangle (`x`/`y`/`width`/`height`) to place anyone.
 
 Rather than a fixed per-thumbnail size and an unbounded grid, a space fits however many thumbnails it holds into its rectangle, sizing every cell to keep the configured thumbnail's aspect ratio. The grid grows one column or row at a time, whichever gives the bigger cell. Cells are packed against each other (with `spacing`), so slack collects at the region's far edge. A space overrides saved positions, dragging and thumbnail sizes (`thumbnail.width`/`height`, `characters[].thumbnailSize`) for the characters it holds. Spaces reflow on login and logout, when a thumbnail opens or closes, and when hotkey group membership changes.
 
-The rectangle is drawn in the config dialog (a space card's New/Edit buttons), using a full-desktop drag-to-select overlay; × clears it. If `display.hideThumbnailsDuringRegionSelect` (default `true`) is on, visible thumbnails are hidden while the overlay is up.
+The rectangle is drawn in the config dialog (the selected space's New/Edit buttons), using a full-desktop drag-to-select overlay; × clears it. If `display.hideThumbnailsDuringRegionSelect` (default `true`) is on, visible thumbnails are hidden while the overlay is up.
 
 Per-space fields:
 - `name`: Shown in the config dialog
 - `enabled`: Default `true`
 - `groups`: Hotkey group names this space holds (renaming or removing a group in the dialog updates every space)
-- `holdsLoginScreen`: Holds clients still at the login screen
-- `takesUnassigned`: Takes characters no enabled space holds
+- `holdsLoginScreen`, `holdsUnassigned`: Mark the Login Screen and Unassigned Characters spaces; only the first space with each keeps it
+- `takesUnassigned`: Unassigned characters fill in at the end of this space ("Move Unassigned Characters to the End")
+- `takesLoginScreen`: Login-screen placeholders fill in at the end of this space ("Move Logged-Out Characters to the End")
 - `x`, `y`, `width`, `height`: The rectangle, in physical pixels (null until drawn)
 - `order`: `Characters` (the Characters list order) or `HotkeyGroups` (this space's groups in `hotkeyGroups` order, each group's member order kept, then other groups). Unranked characters sort after ranked ones.
 - `direction`: which corner the grid fills from and whether it goes row-first or column-first:
@@ -282,7 +285,7 @@ Per-space fields:
 - `spacing`: Gap between cells (default `0`)
 - `limitToThumbnailSize`: Caps cells at the configured thumbnail size (DPI-scaled for the region's monitor), leaving unused room in the region rather than growing past it
 
-`display.regionFitReorderLoggedOut` (default `true`): whether a character logging out reflows its space straight away, or keeps its slot until the next reflow. A logout always reflows when a space holds the login screen, since the placeholder moves there.
+`display.regionFitReorderLoggedOut` (default `true`): whether a character logging out reflows its space straight away, or keeps its slot until the next reflow. Shown in the dialog as Close Gaps Immediately on Logout. A logout always reflows when login-screen placeholders go to a space, since the placeholder moves there.
 
 ```json
 {
@@ -302,6 +305,7 @@ Per-space fields:
     {
       "name": "Everyone Else",
       "takesUnassigned": true,
+      "takesLoginScreen": true,
       "x": 820, "y": 0, "width": 800, "height": 600,
       "direction": "ColumnFirst_TTB_LTR",
       "limitToThumbnailSize": true
@@ -310,7 +314,7 @@ Per-space fields:
 }
 ```
 
-Profiles from before format version 3 are migrated on load: the old fit region (`display.layoutMode`, `regionX`/`Y`/`Width`/`Height`, `spacing`, `regionFitOrder`, `regionFitDirection`, `regionFitLimitToThumbnailSize`) becomes an "Everyone" space that takes unassigned characters (disabled unless `layoutMode` was `RegionFit`), and the not-logged-in space (`notLoggedInSpace*`) becomes a "Login Screen" space ahead of it.
+Profiles from before format version 3 are migrated on load: the old fit region (`display.layoutMode`, `regionX`/`Y`/`Width`/`Height`, `spacing`, `regionFitOrder`, `regionFitDirection`, `regionFitLimitToThumbnailSize`) becomes an "Everyone" space that takes unassigned characters and login-screen placeholders (disabled unless `layoutMode` was `RegionFit`), and the not-logged-in space (`notLoggedInSpace*`) becomes a "Login Screen" space ahead of it.
 
 **Multi-Monitor Support:**
 
@@ -337,6 +341,7 @@ All pixel-based values here (thumbnail size, `startX`/`startY`, spacing, font si
 
 - `startX`, `startY`: Starting position (absolute or monitor-relative); also the spawn point for hand-placed characters with no saved position
 - `newThumbnailSpacing`: Horizontal gap between hand-placed thumbnails with no saved position yet - they're lined up left-to-right from `startX`/`startY` instead of stacking on top of each other
+- `placementMode`: `Manual` (default) or `ThumbnailSpaces` - see [Thumbnail Spaces](#thumbnail-spaces)
 - `regionFitReorderLoggedOut`, `hideThumbnailsDuringRegionSelect`: Logout reflow and select-overlay hiding for every space - see [Thumbnail Spaces](#thumbnail-spaces)
 - `monitorIndex`: Target monitor (0-based, null = absolute)
 - `useMonitorWorkArea`: Respect taskbar

@@ -16,6 +16,7 @@ test {
     _ = @import("hotkeys/exclusions.zig");
     _ = @import("layout/placement.zig");
     _ = @import("layout/spaces.zig");
+    _ = @import("config/spaces.zig");
     _ = @import("layout/zoom.zig");
     _ = @import("notifications/gamelog_events.zig");
     _ = @import("notifications/notification.zig");

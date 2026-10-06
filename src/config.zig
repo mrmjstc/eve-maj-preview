@@ -143,6 +143,7 @@ pub const Config = struct {
         var cfg: Config = .{ .allocator = allocator, .profile_name = try allocator.dupe(u8, profile_name) };
         errdefer cfg.deinit();
         try wire.fromWireInto(Config, w, allocator, &cfg);
+        try spaces.ensureSpecialSpaces(allocator, &cfg.thumbnailSpaces);
 
         if (cfg.formatVersion < 2) {
             for (cfg.characters.items) |*char| {
@@ -281,6 +282,7 @@ pub const Config = struct {
         ranges.clamp(Config, self);
         for (self.characters.items) |*char| char.validate();
         for (self.thumbnailSpaces.items) |*space| space.validate();
+        spaces.keepOneOfEachSpecialSpace(self.thumbnailSpaces.items);
     }
 
     pub fn deinit(self: *Config) void {

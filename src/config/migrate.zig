@@ -7,8 +7,14 @@ const Value = std.json.Value;
 /// Profiles from before thumbnailSpaces kept one fit region and a not-logged-in space as display settings.
 pub const SPACES_VERSION = 3;
 
-/// Moves the old fit region and not-logged-in space into thumbnailSpaces; a profile already in the current schema is left alone.
+/// Brings an older profile up to the current schema; a profile already in it is left alone.
 pub fn profile(arena: std.mem.Allocator, root: *Value) !void {
+    try spacesFromDisplay(arena, root);
+    try placementModeFromSpaces(arena, root);
+}
+
+/// Moves the old fit region and not-logged-in space into thumbnailSpaces.
+fn spacesFromDisplay(arena: std.mem.Allocator, root: *Value) !void {
     if (root.* != .object) return;
     const version = values.integerAt(root.*, "formatVersion") orelse 1;
     if (version >= SPACES_VERSION or root.object.get("thumbnailSpaces") != null) return;
@@ -33,6 +39,7 @@ pub fn profile(arena: std.mem.Allocator, root: *Value) !void {
         try space.put(arena, "name", .{ .string = "Everyone" });
         try space.put(arena, "enabled", .{ .bool = std.mem.eql(u8, layout_mode, "RegionFit") });
         try space.put(arena, "takesUnassigned", .{ .bool = true });
+        try space.put(arena, "takesLoginScreen", .{ .bool = true });
         try copy(arena, &space, display, "spacing", "spacing");
         try copy(arena, &space, display, "regionFitLimitToThumbnailSize", "limitToThumbnailSize");
         try copy(arena, &space, display, "regionFitDirection", "direction");
@@ -55,6 +62,20 @@ fn rectFields(arena: std.mem.Allocator, display: Value, comptime x: []const u8, 
     return space;
 }
 
+/// Before placementMode, any enabled space placed thumbnails, so a profile with one keeps them placed.
+fn placementModeFromSpaces(arena: std.mem.Allocator, root: *Value) !void {
+    if (root.* != .object) return;
+    const spaces = root.object.get("thumbnailSpaces") orelse return;
+    if (spaces != .array) return;
+    const display = root.object.getPtr("display") orelse return;
+    if (display.* != .object or display.object.get("placementMode") != null) return;
+    for (spaces.array.items) |space| {
+        if (!(values.boolAt(space, "enabled") orelse true)) continue;
+        try display.object.put(arena, "placementMode", .{ .string = "ThumbnailSpaces" });
+        return;
+    }
+}
+
 fn copy(arena: std.mem.Allocator, space: *std.json.ObjectMap, display: Value, from: []const u8, to: []const u8) !void {
     const value = values.get(display, from) orelse return;
     try space.put(arena, to, value);
@@ -68,7 +89,7 @@ fn migrated(arena: std.mem.Allocator, json: []const u8) !Value {
     return root;
 }
 
-test "an old fit region becomes an enabled catch-all space with its settings" {
+test "an old fit region becomes an enabled catch-all space, login-screen clients included, with its settings" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const root = try migrated(arena.allocator(),
@@ -81,6 +102,7 @@ test "an old fit region becomes an enabled catch-all space with its settings" {
     try testing.expectEqualStrings("Everyone", values.stringAt(space, "name").?);
     try testing.expectEqual(true, values.boolAt(space, "enabled").?);
     try testing.expectEqual(true, values.boolAt(space, "takesUnassigned").?);
+    try testing.expectEqual(true, values.boolAt(space, "takesLoginScreen").?);
     try testing.expectEqual(@as(i64, 300), values.integerAt(space, "width").?);
     try testing.expectEqual(@as(i64, 6), values.integerAt(space, "spacing").?);
     try testing.expectEqualStrings("HotkeyGroups", values.stringAt(space, "order").?);
@@ -126,4 +148,26 @@ test "a region missing a coordinate and a current profile are left alone" {
         \\{"formatVersion":3,"display":{"layoutMode":"RegionFit","regionX":0,"regionY":0,"regionWidth":800,"regionHeight":400}}
     );
     try testing.expect(current.object.get("thumbnailSpaces") == null);
+}
+
+test "a profile with an enabled space from before placementMode uses thumbnail spaces" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const root = try migrated(arena.allocator(),
+        \\{"formatVersion":3,"display":{},"thumbnailSpaces":[{"name":"Off","enabled":false},{"name":"On"}]}
+    );
+    try testing.expectEqualStrings("ThumbnailSpaces", values.stringAt(root.object.get("display").?, "placementMode").?);
+}
+
+test "a saved placementMode, or no enabled space, is left alone" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const saved = try migrated(arena.allocator(),
+        \\{"formatVersion":3,"display":{"placementMode":"Manual"},"thumbnailSpaces":[{"name":"On"}]}
+    );
+    try testing.expectEqualStrings("Manual", values.stringAt(saved.object.get("display").?, "placementMode").?);
+    const disabled = try migrated(arena.allocator(),
+        \\{"formatVersion":3,"display":{},"thumbnailSpaces":[{"name":"Off","enabled":false}]}
+    );
+    try testing.expect(values.get(disabled.object.get("display").?, "placementMode") == null);
 }

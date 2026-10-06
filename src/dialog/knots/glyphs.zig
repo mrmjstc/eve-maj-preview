@@ -31,8 +31,6 @@ pub const Glyph = enum {
     pencil,
     refresh,
     grip,
-    chevron_down,
-    chevron_right,
 };
 
 /// The glyph's rows, `#` for a lit pixel.
@@ -291,23 +289,6 @@ fn bitmap(glyph: Glyph) []const []const u8 {
             ".....",
             "##.##",
             "##.##",
-        },
-        .chevron_down => &.{
-            "#.....#",
-            "##...##",
-            ".##.##.",
-            "..###..",
-            "...#...",
-        },
-        .chevron_right => &.{
-            "#....",
-            "##...",
-            ".##..",
-            "..##.",
-            "..##.",
-            ".##..",
-            "##...",
-            "#....",
         },
     };
 }

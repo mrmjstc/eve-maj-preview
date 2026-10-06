@@ -79,15 +79,13 @@ fn startup(context: *ui.Frame) !void {
 }
 
 fn interaction(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Interaction", "Mouse behavior for repositioning and activating thumbnails, including when to activate the EVE client window on left-click, and whether client windows animate when restored or minimized.", &style.section);
+    const section = try widgets.openSection(context, "Interaction", "Mouse behavior for activating thumbnails, including when to activate the EVE client window on left-click, and whether client windows animate when restored or minimized.", &style.section);
     const ref = session.profile().child("interaction");
     try bind.toggle(context, ref, "clickThrough", "Click Through Thumbnails");
     try widgets.hintText(context, .src(@src()), "Thumbnails ignore all mouse input and let clicks/drags pass through to whatever is behind them; disables click-to-focus, exclusion toggling, and dragging.");
     const click_through = ref.get("clickThrough");
 
     const mouse_options = try widgets.openGroup(context, .src(@src()), !click_through);
-    try bind.toggle(context, ref, "enableDragging", "Enable Dragging");
-    try widgets.hintText(context, .src(@src()), "Thumbnails in a thumbnail space can't be dragged, since the space places them.");
     try bind.choice(context, ref, "clickTrigger", "Click Trigger");
     try widgets.hintText(context, .src(@src()), "Mouse Up avoids accidental drags from a quick click.");
     try bind.choice(context, ref, "hoverCursor", "Hover Cursor");

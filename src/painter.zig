@@ -542,8 +542,8 @@ pub const Painter = struct {
         }
 
         if (!spaces.anyActive(self.config)) return false;
-        // A space holding the login screen takes the client away, so that move can't wait for regionFitReorderLoggedOut.
-        return any_login or (any_logout and (self.config.display.regionFitReorderLoggedOut or spaces.loginScreenHasOwnSpace(self.config)));
+        // A space taking login-screen clients moves the client away, so that move can't wait for regionFitReorderLoggedOut.
+        return any_login or (any_logout and (self.config.display.regionFitReorderLoggedOut or spaces.loginScreenHasSpace(self.config)));
     }
 
     /// Keeps the old name if copying fails.
