@@ -126,9 +126,11 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const header = Rect{ .key = .src(@src()), .style = &style.detail_header };
     _ = try header.open(context);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Group Name", .style = &style.inline_label });
+    const name_before = try context.arena().dupe(u8, group.get("name"));
     try bind.textBox(context, group, "name", try std.fmt.allocPrint(context.arena(), "Hotkey Group {d}", .{index + 1}));
     const removed = try widgets.confirmButton(context, ui.Key.str("knots.groups.remove").indexed(index), "Remove", "Confirm", &style.plain_button, &style.confirm_button);
     try header.close(context);
+    carryToSpaces(profile, name_before, group.get("name"));
 
     // The arrow hangs into the label column, so the first key field lines up with the Assign Key's.
     const rail_label = widgets.useLabelStyle(&style.rail_label_paired);
@@ -169,8 +171,30 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     }
 
     if (removed) {
+        const name = try context.arena().dupe(u8, group.get("name"));
         profile.remove("hotkeyGroups", index);
+        carryToSpaces(profile, name, null);
         g_selected_index = @min(index, profile.ptr.hotkeyGroups.items.len -| 1);
+    }
+}
+
+/// Spaces hold hotkey groups by name, so they follow a group's rename, or drop it once it's removed (`new_name` null); a name another group still has stays.
+fn carryToSpaces(profile: ProfileRef, old_name: []const u8, new_name: ?[]const u8) void {
+    if (old_name.len == 0 or profile.ptr.hasHotkeyGroupNamed(old_name)) return;
+    // An emptied name box is mid-edit, not a removal.
+    if (new_name) |name| if (name.len == 0) return;
+    for (0..profile.ptr.thumbnailSpaces.items.len) |space_index| {
+        const space = profile.item("thumbnailSpaces", space_index);
+        const at = space.ptr.groupIndex(old_name) orelse continue;
+        const renamed = new_name orelse {
+            space.remove("groups", at);
+            continue;
+        };
+        if (space.ptr.groupIndex(renamed) != null) {
+            space.remove("groups", at);
+        } else {
+            space.setStringAt("groups", at, renamed);
+        }
     }
 }
 

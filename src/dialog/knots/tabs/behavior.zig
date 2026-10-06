@@ -86,11 +86,8 @@ fn interaction(context: *ui.Frame) !void {
     const click_through = ref.get("clickThrough");
 
     const mouse_options = try widgets.openGroup(context, .src(@src()), !click_through);
-    // Thumbnail Space places every thumbnail, so dragging can't do anything while it's on.
-    const dragging = try widgets.openGroup(context, .src(@src()), session.profile().ptr.display.layoutMode != .RegionFit);
     try bind.toggle(context, ref, "enableDragging", "Enable Dragging");
-    try dragging.close(context);
-    try widgets.hintText(context, .src(@src()), "Has no effect while the Display tab's Thumbnail Placement is set to Fit to Region, since that places every thumbnail.");
+    try widgets.hintText(context, .src(@src()), "Thumbnails in a thumbnail space can't be dragged, since the space places them.");
     try bind.choice(context, ref, "clickTrigger", "Click Trigger");
     try widgets.hintText(context, .src(@src()), "Mouse Up avoids accidental drags from a quick click.");
     try bind.choice(context, ref, "hoverCursor", "Hover Cursor");

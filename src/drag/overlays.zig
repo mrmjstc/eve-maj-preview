@@ -6,7 +6,7 @@ const color = @import("../util/color.zig");
 const painter_mod = @import("../painter.zig");
 const draw = @import("../thumbnail/draw.zig");
 const monitors = @import("../layout/monitors.zig");
-const arrange = @import("../thumbnail/arrange.zig");
+const spaces = @import("../layout/spaces.zig");
 const log = @import("../log.zig");
 
 const Painter = painter_mod.Painter;
@@ -166,12 +166,12 @@ pub fn collectGhostGroups(painter: *const Painter, exclude_character: []const u8
     var raw: std.ArrayList(RawEntry) = .empty;
     defer raw.deinit(allocator);
 
-    const region_fit_grid = if (arrange.regionFit(painter, painter.layout().regionFitGridCount())) |rf| rf.grid else null;
-
     for (painter.config.characters.items) |char_config| {
         if (std.mem.eql(u8, char_config.name, exclude_character)) continue;
         const pos = char_config.position orelse continue;
-        const size = painter.layout().getThumbnailSize(char_config.name, painter.thumbnails.items.len, region_fit_grid);
+        // A space ignores the saved position, so it's no snap target.
+        if (spaces.spaceFor(painter.config, char_config.name) != null) continue;
+        const size = painter.layout().configuredSize(char_config.name);
         try raw.append(allocator, .{
             .name = char_config.name,
             .rect = .{ .left = pos.x, .top = pos.y, .right = pos.x + size.width, .bottom = pos.y + size.height },

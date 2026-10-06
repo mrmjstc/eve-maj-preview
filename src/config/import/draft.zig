@@ -10,10 +10,11 @@ const KeyList = key_list.KeyList;
 const ObjectMap = std.json.ObjectMap;
 const Config = config.Config;
 
-/// Lists merged item by item, matching on this field; characters and hotkey groups keep their ids, the others are replaced whole.
+/// Lists merged item by item, matching on this field; characters, hotkey groups and thumbnail spaces keep their ids, the others are replaced whole.
 const MERGED_LISTS = [_]struct { []const u8, []const u8 }{
     .{ "characters", "name" },
     .{ "hotkeyGroups", "name" },
+    .{ "thumbnailSpaces", "name" },
     .{ "systemColors", "systemName" },
     .{ "windowFilters", "name" },
 };
@@ -184,7 +185,7 @@ pub fn toOps(arena: std.mem.Allocator, draft: *const Draft, doc: *const Config) 
         if (mergedListKey(key)) |key_field| {
             if (value != .array) continue;
             const existing = try toValue(arena, Config, doc, &.{.{ .string = key }});
-            if (std.mem.eql(u8, key, "characters") or std.mem.eql(u8, key, "hotkeyGroups")) {
+            if (std.mem.eql(u8, key, "characters") or std.mem.eql(u8, key, "hotkeyGroups") or std.mem.eql(u8, key, "thumbnailSpaces")) {
                 try keyedListOps(arena, &ops, key, key_field, existing.array.items, value.array.items);
             } else {
                 try ops.append(arena, try setOp(arena, &.{key}, try mergedList(arena, key_field, existing.array.items, value.array.items)));

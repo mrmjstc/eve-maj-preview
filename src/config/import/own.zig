@@ -27,10 +27,12 @@ fn isList(comptime T: type) bool {
 
 /// Every saved section, so one added later is importable without a change here.
 pub fn sections(d: *Draft, root: Value) ![]const Section {
+    var migrated = root;
+    try config.migrateProfileJson(d.arena, &migrated);
     var out: std.ArrayList(Section) = .empty;
     inline for (comptime wire.savedFields(Config)) |f| {
         if (comptime isStamp(f.name)) continue;
-        const raw = values.get(root, f.name);
+        const raw = values.get(migrated, f.name);
         const key = "dynamic.import.maj." ++ f.name;
         if (comptime isList(f.type)) {
             const n = if (raw) |r| (if (r == .array) r.array.items.len else 0) else 0;
@@ -46,6 +48,8 @@ pub fn sections(d: *Draft, root: Value) ![]const Section {
 pub fn build(d: *Draft, text: []const u8, root: Value, chosen: []const []const u8) !void {
     // So an unreadable setting keeps the profile's current value instead of taking the default.
     var readable_root = root;
+    // The same upgrade buildConfigFromJson applies, so present() still finds the migrated sections in the file.
+    try config.migrateProfileJson(d.arena, &readable_root);
     var skipped: std.ArrayList([]const u8) = .empty;
     _ = readable.dropUnreadable(Config.Wire, d.arena, &readable_root, &skipped);
 
@@ -89,6 +93,7 @@ fn sectionNote(d: *Draft, comptime name: []const u8, n: usize) !void {
         .{ "systemColors", "dynamic.import.maj.systemColorsImportedNote" },
         .{ "hotkeyGroups", "dynamic.import.hotkeyGroupsImportedNote" },
         .{ "windowFilters", "dynamic.import.maj.windowFiltersImportedNote" },
+        .{ "thumbnailSpaces", "dynamic.import.maj.thumbnailSpacesImportedNote" },
     };
     inline for (list_notes) |entry| {
         if (comptime std.mem.eql(u8, entry[0], name)) return d.noteCount(entry[1], "n", n);

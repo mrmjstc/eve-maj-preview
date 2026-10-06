@@ -1,8 +1,10 @@
-//! Drawing a Thumbnail Space on screen with the app's region overlay, and storing the result in the edited profile; main thread only.
+//! Drawing a thumbnail space on screen with the app's region overlay, and storing the result in the edited profile; main thread only.
 const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
 const painter_mod = @import("../../painter.zig");
+const config = @import("../../config.zig");
 const monitors = @import("../../layout/monitors.zig");
+const spaces = @import("../../layout/spaces.zig");
 const region_select = @import("../tools/region_select.zig");
 const session = @import("session.zig");
 const status = @import("status.zig");
@@ -11,12 +13,9 @@ const log = @import("../../log.zig");
 
 const slog = log.scoped("dialog_knots");
 
-/// Which space's four settings a selection fills.
-pub const Space = enum { thumbnail, not_logged_in };
-
 var g_allocator: std.mem.Allocator = undefined;
-/// The space a running selection fills; null when none is running.
-var g_target: ?Space = null;
+/// The id of the space a running selection fills, so a reorder or removal meanwhile can't redirect it; null when none is running.
+var g_target: ?u32 = null;
 /// The thumbnail windows a selection hid, to show again once it ends.
 var g_hidden: std.ArrayList(win32.HWND) = .empty;
 
@@ -24,16 +23,12 @@ pub fn init(allocator: std.mem.Allocator) void {
     g_allocator = allocator;
 }
 
-/// Starts the overlay; `edit` adjusts the space's current rectangle instead of dragging a new one.
-pub fn start(space: Space, edit: bool) void {
+/// Starts the overlay for the space with id `space_id`; `edit` adjusts its current rectangle instead of dragging a new one.
+pub fn start(space_id: u32, edit: bool) void {
     const painter = painter_mod.g_painter_ptr orelse return;
-    const current = rect(space);
+    const current = rect(space_id);
     if (edit and current == null) return;
-    const display = session.profile().ptr.display;
-    const hide = switch (space) {
-        .thumbnail => display.hideThumbnailsDuringRegionSelect,
-        .not_logged_in => display.notLoggedInSpaceHideThumbnailsDuringRegionSelect,
-    };
+    const hide = session.profile().ptr.display.hideThumbnailsDuringRegionSelect;
     const edit_region: ?win32.RECT = if (edit) current else null;
     const labels = region_select.Labels{};
 
@@ -50,7 +45,7 @@ pub fn start(space: Space, edit: bool) void {
         status.show(.failure, "Failed to start region selection: {}", .{err});
         return;
     };
-    g_target = space;
+    g_target = space_id;
     if (label_font) |font| {
         const line1 = region_select.labelText(if (edit_region != null) &labels.hint_edit else &labels.hint_new);
         painter.hint_box.show(painter.instance, font, text_color, line1, region_select.labelText(&labels.hint_confirm), cursor.bounds);
@@ -64,7 +59,7 @@ pub fn cancel() void {
 
 /// From the overlay once it closes.
 fn onSelected(result: region_select.Status, selected: win32.RECT) void {
-    const space = g_target orelse return;
+    const space_id = g_target orelse return;
     g_target = null;
     defer host.redraw();
     switch (result) {
@@ -75,45 +70,34 @@ fn onSelected(result: region_select.Status, selected: win32.RECT) void {
         },
         .success => {},
     }
-    setRect(space, selected.left, selected.top, win32.rectWidth(selected), win32.rectHeight(selected));
-    status.show(.success, "Thumbnail region set", .{});
+    setRect(space_id, selected.left, selected.top, win32.rectWidth(selected), win32.rectHeight(selected));
+    status.show(.success, "Space region set", .{});
 }
 
 /// The space's rectangle, or null while it's unset, which greys out Edit and Clear.
-pub fn rect(space: Space) ?win32.RECT {
-    const display = session.profile().ptr.display;
-    const values = switch (space) {
-        .thumbnail => [4]?i32{ display.regionX, display.regionY, display.regionWidth, display.regionHeight },
-        .not_logged_in => [4]?i32{ display.notLoggedInSpaceX, display.notLoggedInSpaceY, display.notLoggedInSpaceWidth, display.notLoggedInSpaceHeight },
-    };
-    const x = values[0] orelse return null;
-    const y = values[1] orelse return null;
-    const width = values[2] orelse return null;
-    const height = values[3] orelse return null;
-    if (width <= 0 or height <= 0) return null;
-    return .{ .left = x, .top = y, .right = x + width, .bottom = y + height };
+pub fn rect(space_id: u32) ?win32.RECT {
+    const space = find(space_id) orelse return null;
+    return spaces.rect(space.ptr);
 }
 
-pub fn clear(space: Space) void {
-    setRect(space, null, null, null, null);
+pub fn clear(space_id: u32) void {
+    setRect(space_id, null, null, null, null);
 }
 
-fn setRect(space: Space, x: ?i32, y: ?i32, width: ?i32, height: ?i32) void {
-    const display = session.profile().child("display");
-    switch (space) {
-        .thumbnail => {
-            display.set("regionX", x);
-            display.set("regionY", y);
-            display.set("regionWidth", width);
-            display.set("regionHeight", height);
-        },
-        .not_logged_in => {
-            display.set("notLoggedInSpaceX", x);
-            display.set("notLoggedInSpaceY", y);
-            display.set("notLoggedInSpaceWidth", width);
-            display.set("notLoggedInSpaceHeight", height);
-        },
+fn find(space_id: u32) ?session.Ref(config.ThumbnailSpace) {
+    const profile = session.profile();
+    for (profile.ptr.thumbnailSpaces.items, 0..) |space, i| {
+        if (space.id == space_id) return profile.item("thumbnailSpaces", i);
     }
+    return null;
+}
+
+fn setRect(space_id: u32, x: ?i32, y: ?i32, width: ?i32, height: ?i32) void {
+    const space = find(space_id) orelse return;
+    space.set("x", x);
+    space.set("y", y);
+    space.set("width", width);
+    space.set("height", height);
 }
 
 fn onFinished() void {

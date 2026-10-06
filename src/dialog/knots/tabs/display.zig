@@ -1,5 +1,4 @@
 //! The configuration window's Display tab: how clients are shown, then the thumbnail or client list settings for that mode; main thread only.
-const std = @import("std");
 const ui = @import("ui");
 const win32 = @import("../../../platform/win32.zig");
 const config = @import("../../../config.zig");
@@ -9,16 +8,13 @@ const bind = @import("../bind.zig");
 const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
-const region = @import("../region.zig");
-const search = @import("../search.zig");
-const glyphs = @import("../glyphs.zig");
 const stage = @import("thumbnails/stage.zig");
 const chips = @import("thumbnails/chips.zig");
+const placement = @import("placement.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
-const Canvas = ui.component.Canvas;
 const ThumbnailRef = session.Ref(config.ThumbnailConfig);
 const DisplayRef = session.Ref(config.DisplayConfig);
 
@@ -44,39 +40,6 @@ const RATIO_LABELS = blk: {
 const MATCH_CLIENT_INDEX = 0;
 const CUSTOM_INDEX = RATIOS.len - 1;
 
-const RegionStatus = struct { text: []const u8, is_missing: bool };
-
-/// A foldable card, open between openCard and close; its header is still open for the caller's switch until openBody.
-const Card = struct {
-    id: []const u8,
-    rect: Rect,
-    header: Rect,
-    is_open: bool,
-
-    /// Closes the header; returns the body to fill when the card is unfolded and `is_enabled`, or a search wants its rows.
-    fn openBody(self: *const Card, context: *ui.Frame, is_enabled: bool) !?widgets.Group {
-        try self.header.close(context);
-        if (!self.is_open or !widgets.showsDependents(is_enabled)) return null;
-        const body = Rect{ .key = ui.Key.str("knots.card.body").indexed(std.hash.Wyhash.hash(0, self.id)), .style = &style.space_card_body };
-        _ = try body.open(context);
-        g_open_body = body;
-        return try widgets.openGroup(context, ui.Key.str("knots.card.group").indexed(std.hash.Wyhash.hash(0, self.id)), is_enabled);
-    }
-
-    fn close(self: *const Card, context: *ui.Frame) !void {
-        if (g_open_body) |body| {
-            try body.close(context);
-            g_open_body = null;
-        }
-        try self.rect.close(context);
-    }
-};
-
-/// Which placement cards are unfolded; not saved.
-var g_open_cards: struct { snapping: bool = true, everyone: bool = true, login_screen: bool = false } = .{};
-/// The body of the card being drawn, closed by Card.close.
-var g_open_body: ?Rect = null;
-
 pub fn show(context: *ui.Frame) !void {
     const was_aligned = widgets.useAlignedRows(true);
     defer _ = widgets.useAlignedRows(was_aligned);
@@ -89,7 +52,7 @@ pub fn show(context: *ui.Frame) !void {
             try borders(context, thumbnail);
             try visibility(context, thumbnail);
             try textOverlays(context, thumbnail);
-            try placement(context, display);
+            try placement.show(context, display);
             try systemColors(context);
         },
         .ClientList => try clientList(context, display),
@@ -207,148 +170,6 @@ fn textOverlays(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
     try stage.show(context);
     try row.close(context);
     try section.close(context);
-}
-
-/// Manual placement with snapping, or the Everyone space; then the Login Screen space, which works in either mode.
-fn placement(context: *ui.Frame, display: DisplayRef) !void {
-    const section = try widgets.openSection(context, "Thumbnail Placement", "Drag thumbnails where you want them, or fit them into spaces you draw. Clients at the login screen can have a space of their own in either mode.", &style.section);
-    try bind.segmented(context, display, "layoutMode", "Mode", &.{ "Manual", "Fit to Spaces" });
-    const is_fit = display.get("layoutMode") == .RegionFit;
-
-    if (widgets.showsDependents(!is_fit)) {
-        const manual = try widgets.openGroup(context, .src(@src()), !is_fit);
-        try snappingCard(context);
-        try manual.close(context);
-    }
-    if (widgets.showsDependents(is_fit)) {
-        const fit = try widgets.openGroup(context, .src(@src()), is_fit);
-        try everyoneCard(context, display);
-        try fit.close(context);
-    }
-    try loginScreenCard(context, display);
-    try hideWhileDrawing(context, display);
-    try section.close(context);
-}
-
-fn snappingCard(context: *ui.Frame) !void {
-    const ref = session.profile().child("snapping");
-    var is_enabled: bool = ref.get("enabled");
-    const card = try openCard(context, "snapping", null, "Snap While Dragging", "", "", false, &g_open_cards.snapping);
-    if (try widgets.toggleSwitch(context, .str("knots.card.switch:snapping"), &is_enabled)) ref.set("enabled", is_enabled);
-    if (try card.openBody(context, is_enabled)) |body| {
-        try bind.toggle(context, ref, "screenEdges", "Snap to Screen Edges");
-        try bind.toggle(context, ref, "thumbnailEdges", "Snap to Thumbnail Edges");
-        try bind.toggle(context, ref, "ghostPositions", "Snap to Other Characters' Saved Positions");
-        try bind.toggle(context, ref, "showGhostPositionBorders", "Outline Saved Positions While Dragging");
-        try widgets.hintText(context, .src(@src()), "Outlines every other character's saved position on screen while you drag.");
-        try bind.number(context, ref, "threshold", "Snap Distance", .{ .unit = "px" });
-        try body.close(context);
-    }
-    try card.close(context);
-}
-
-fn everyoneCard(context: *ui.Frame, display: DisplayRef) !void {
-    const region_state = try regionStatus(context, .thumbnail);
-    const card = try openCard(context, "everyone", context.ui().theme.primary, "Everyone", "All characters", region_state.text, region_state.is_missing, &g_open_cards.everyone);
-    if (try card.openBody(context, true)) |body| {
-        try regionRow(context, .thumbnail);
-        try bind.choiceStyled(context, display, "regionFitDirection", "Fill Order", &style.select_narrow);
-        try widgets.hintText(context, .src(@src()), "The order the grid fills: Rows \u{2192} \u{2193} fills each row left to right, then moves down a row; Columns fill down (or up) each column first.");
-        try bind.segmented(context, display, "regionFitOrder", "Order By", &.{ "Characters", "Hotkey Groups" });
-        try widgets.hintText(context, .src(@src()), "Characters follows the Characters list; Hotkey Groups follows the hotkey groups instead.");
-        try bind.number(context, display, "spacing", "Spacing", .{ .unit = "px" });
-        try bind.toggle(context, display, "regionFitLimitToThumbnailSize", "Cap Size at Thumbnail Size");
-        try widgets.hintText(context, .src(@src()), "Stops thumbnails from growing past the Size setting, leaving unused space in the region instead.");
-        try bind.toggle(context, display, "regionFitReorderLoggedOut", "Move Logged-Out Characters to the End");
-        try widgets.hintText(context, .src(@src()), "When off, a logged-out character's spot stays put until the next reflow instead of closing the gap immediately.");
-        try body.close(context);
-    }
-    try card.close(context);
-}
-
-fn loginScreenCard(context: *ui.Frame, display: DisplayRef) !void {
-    var is_enabled: bool = display.get("notLoggedInSpaceEnabled");
-    const region_state = try regionStatus(context, .not_logged_in);
-    const card = try openCard(context, "login_screen", style.PURPLE, "Login Screen", "Clients at the login screen", region_state.text, region_state.is_missing and is_enabled, &g_open_cards.login_screen);
-    if (try widgets.toggleSwitch(context, .str("knots.card.switch:login_screen"), &is_enabled)) display.set("notLoggedInSpaceEnabled", is_enabled);
-    if (try card.openBody(context, is_enabled)) |body| {
-        try regionRow(context, .not_logged_in);
-        try bind.number(context, display, "notLoggedInSpaceSpacing", "Spacing", .{ .unit = "px" });
-        try bind.toggle(context, display, "notLoggedInSpaceLimitToThumbnailSize", "Cap Size at Thumbnail Size");
-        try body.close(context);
-    }
-    try card.close(context);
-}
-
-/// One switch for both spaces' saved settings, since drawing either region is the same overlay.
-fn hideWhileDrawing(context: *ui.Frame, display: DisplayRef) !void {
-    var is_hidden: bool = display.get("hideThumbnailsDuringRegionSelect");
-    if (try widgets.checkbox(context, .src(@src()), "Hide Thumbnails While Drawing a Region", &is_hidden)) {
-        display.set("hideThumbnailsDuringRegionSelect", is_hidden);
-        display.set("notLoggedInSpaceHideThumbnailsDuringRegionSelect", is_hidden);
-    }
-    try widgets.hintText(context, .src(@src()), "Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.");
-}
-
-/// The space's region as "width × height", or that it hasn't been drawn.
-fn regionStatus(context: *ui.Frame, space: region.Space) !RegionStatus {
-    const rect = region.rect(space) orelse return .{ .text = "No region yet", .is_missing = true };
-    return .{ .text = try std.fmt.allocPrint(context.arena(), "{d} \u{00D7} {d}", .{ rect.right - rect.left, rect.bottom - rect.top }), .is_missing = false };
-}
-
-/// A card with its fold arrow, colour dot, name, who it holds and its region's state; the caller adds a switch, then calls openBody.
-fn openCard(context: *ui.Frame, comptime id: []const u8, dot: ?ui.Color, name: []const u8, who: []const u8, state_text: []const u8, is_warning: bool, is_open: *bool) !Card {
-    const shows_open = is_open.* or search.isActive();
-    const rect = Rect{ .key = .str("knots.card:" ++ id), .style = if (shows_open) &style.space_card_open else &style.space_card };
-    _ = try rect.open(context);
-    const header = Rect{ .key = .str("knots.card.header:" ++ id), .style = &style.space_card_header };
-    _ = try header.open(context);
-
-    const toggle = Button{ .key = .str("knots.card.toggle:" ++ id), .style = &style.space_card_toggle };
-    const response = try toggle.openResponse(context);
-    const chevron_key: ui.Key = .str("knots.card.chevron:" ++ id);
-    try context.e(Canvas{
-        .key = chevron_key,
-        .commands = try glyphs.commands(context.arena(), if (shows_open) .chevron_down else .chevron_right, 10, try glyphs.snapOffset(context, chevron_key), style.MUTED.value),
-        .style = &style.space_card_chevron,
-    });
-    if (dot) |color| {
-        const dot_style = try context.arena().create(ui.Style);
-        dot_style.* = style.space_card_dot.with(.{ .background = .{ .color = color } });
-        try context.e(Rect{ .key = .str("knots.card.dot:" ++ id), .style = dot_style });
-    }
-    search.captureText(name);
-    try context.e(Text{ .selectable = false, .key = .str("knots.card.name:" ++ id), .content = name, .style = &style.space_card_name });
-    if (who.len > 0) try context.e(Text{ .selectable = false, .key = .str("knots.card.who:" ++ id), .content = who, .style = &style.muted_text });
-    try context.e(Rect{ .key = .str("knots.card.fill:" ++ id), .style = &style.fill });
-    if (state_text.len > 0) try context.e(Text{ .selectable = false, .key = .str("knots.card.status:" ++ id), .content = state_text, .style = if (is_warning) &style.space_card_status_warning else &style.muted_text });
-    try toggle.close(context);
-    if (response.clicked) {
-        is_open.* = !is_open.*;
-        context.requestRedraw();
-    }
-    return .{ .id = id, .rect = rect, .header = header, .is_open = shows_open };
-}
-
-/// Buttons to draw a new rectangle for the space, adjust it, or clear it; the last two need one set.
-fn regionRow(context: *ui.Frame, comptime space: region.Space) !void {
-    const name = @tagName(space);
-    const row = try widgets.openBinding(context, .str("knots.region.row:" ++ name), "Region");
-    const current = region.rect(space);
-    if ((try context.interact(Button{ .key = .str("knots.region.new:" ++ name), .label = "New", .style = &style.plain_button })).clicked) {
-        region.start(space, false);
-    }
-    if (try widgets.glyphButton(context, .str("knots.region.edit:" ++ name), .pencil, "Edit", &style.plain_button, current == null)) {
-        region.start(space, true);
-    }
-    if (current != null) {
-        if (try widgets.confirmButton(context, .str("knots.region.clear:" ++ name), "\u{00D7}", "OK", &style.icon_button_danger_text, &style.icon_button_confirm)) {
-            region.clear(space);
-        }
-    } else {
-        _ = try context.interact(Button{ .key = .str("knots.region.clear:" ++ name), .label = "\u{00D7}", .disabled = true, .style = &style.icon_button_disabled_text });
-    }
-    try row.close(context);
 }
 
 /// Picks which of the tab's other sections are drawn.

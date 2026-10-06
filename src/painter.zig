@@ -13,6 +13,7 @@ const exclusions = @import("hotkeys/exclusions.zig");
 const thumbnail_drag = @import("drag/thumbnail.zig");
 const drag_overlays = @import("drag/overlays.zig");
 const placement = @import("layout/placement.zig");
+const spaces = @import("layout/spaces.zig");
 const monitors = @import("layout/monitors.zig");
 const state = @import("thumbnail/state.zig");
 const window = @import("thumbnail/window.zig");
@@ -108,8 +109,7 @@ pub const Painter = struct {
     pub const refreshAllThumbnailVisuals = arrange.refreshVisuals;
     pub const repositionAllThumbnails = arrange.repositionAll;
     pub const resizeThumbnailIfNeeded = arrange.resizeIfNeeded;
-    pub const reflowIfRegionFitActive = arrange.reflowIfRegionFitActive;
-    pub const reflowIfThumbnailSpaceActive = arrange.reflowIfThumbnailSpaceActive;
+    pub const reflowIfSpacesActive = arrange.reflowIfSpacesActive;
     pub const checkHoverZoom = hover_zoom_mod.check;
 
     pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore) !Painter {
@@ -250,7 +250,7 @@ pub const Painter = struct {
             self.removeThumbnailAt(index);
             removed_any = true;
         }
-        return removed_any and placement.isRegionFitActive(&self.config.display);
+        return removed_any and spaces.anyActive(self.config);
     }
 
     fn indexOfSource(self: *const Painter, source_hwnd: win32.HWND) ?usize {
@@ -541,10 +541,9 @@ pub const Painter = struct {
             slog.info("Updated thumbnail for {s}", .{thumbnail.character_name});
         }
 
-        // notLoggedInSpace is count-dependent, so crossing its boundary must reflow it regardless of regionFitReorderLoggedOut.
-        if (placement.notLoggedInSpaceRectFromConfig(&self.config.display) != null and (any_login or any_logout)) return true;
-
-        return placement.isRegionFitActive(&self.config.display) and (any_login or (any_logout and self.config.display.regionFitReorderLoggedOut));
+        if (!spaces.anyActive(self.config)) return false;
+        // A space holding the login screen takes the client away, so that move can't wait for regionFitReorderLoggedOut.
+        return any_login or (any_logout and (self.config.display.regionFitReorderLoggedOut or spaces.loginScreenHasOwnSpace(self.config)));
     }
 
     /// Keeps the old name if copying fails.
@@ -560,8 +559,8 @@ pub const Painter = struct {
     /// The client went from the login screen to a character: move it to that character's spots and restore its exclusion.
     fn onLogin(self: *Painter, thumbnail: *ThumbnailWindow) void {
         const name = thumbnail.character_name;
-        // RegionFit ignores the saved spot; applyNameChanges' reflow places it instead.
-        if (thumbnail.win32_enabled and !placement.isRegionFitActive(&self.config.display)) {
+        // A space ignores the saved spot; applyNameChanges' reflow places it instead.
+        if (thumbnail.win32_enabled and spaces.spaceFor(self.config, name) == null) {
             if (self.config.getCharacterPosition(name)) |saved_pos| {
                 thumbnail.moveTo(saved_pos.x, saved_pos.y, null);
                 self.resizeThumbnailIfNeeded(thumbnail, null);
@@ -760,12 +759,12 @@ pub const Painter = struct {
         }
 
         const name = eve_window.character_name;
-        const total_count = self.thumbnails.items.len + 1;
         const monitor_placement = monitors.resolveMonitorPlacement(&self.config.display);
         const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
         const scale = win32.dpiToScale(monitors.dpiForMonitor(if (monitor_placement) |mp| mp.monitor else null));
-        const size = arrange.targetSize(self, name, total_count, null, scale);
-        const pos = self.layout().calculateThumbnailPosition(name, size.width, size.height, self.thumbnails.items.len, total_count, monitor_bounds, scale);
+        const place = arrange.newPlace(self, name, monitor_bounds, scale);
+        const pos = place.pos;
+        const size = place.size;
 
         const handles = try window.create(self.allocator, self.instance, eve_window.hwnd, name, pos, size, self.config.getCharacterOpacity(name), self.config.interaction.clickThrough);
         errdefer window.destroyHandles(handles);

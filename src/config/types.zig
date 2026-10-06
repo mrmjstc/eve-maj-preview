@@ -56,11 +56,6 @@ pub const TextPosition = enum {
     BottomRight,
 };
 
-pub const LayoutMode = enum {
-    Custom,
-    RegionFit,
-};
-
 /// Primary display mode: how EVE clients are presented
 pub const ViewMode = enum {
     Thumbnails,

@@ -80,8 +80,8 @@ pub fn assignHoveredToGroup(manager: *HotkeyManager, group_index: usize) void {
 
     // Before the reflow, so the reflow's render already has the new label.
     manager.painter.refreshGroupBadge(thumbnail);
-    // Group membership only feeds RegionFit's display order under HotkeyGroups ordering; reflowing under Characters ordering would be a no-op.
-    if (manager.live().display.regionFitOrder == .HotkeyGroups) manager.painter.reflowIfRegionFitActive();
+    // Membership decides which space a character goes to, and its order there.
+    manager.painter.reflowIfSpacesActive();
     manager.painter.renderThumbnail(thumbnail) catch |err| {
         slog.err("Failed to render thumbnail after group assignment: {}", .{err});
     };

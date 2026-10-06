@@ -661,6 +661,20 @@ pub const space_card: Style = .{
     .radius = .md,
 };
 pub const space_card_open: Style = space_card.with(.{ .border_color = .{ .color = BORDER } });
+pub const space_card_drop_above: Style = space_card.with(.{ .border_width = .edges(2, 1, 1, 1), .border_color = .accent });
+pub const space_card_drop_below: Style = space_card.with(.{ .border_width = .edges(1, 1, 2, 1), .border_color = .accent });
+/// The handle a space card is dragged by to reorder it.
+pub const space_card_grip: Style = .{
+    .width = .fixed(18),
+    .height = .fixed(CONTROL_HEIGHT),
+    .@"align" = .center,
+    .justify = .center,
+    .background = .transparent,
+    .border_width = .zero,
+    .radius = .md,
+    .hover = &.{ .background = .{ .color = SURFACE }, .state_layer = 0 },
+    .active = &.{ .state_layer = 0 },
+};
 pub const space_card_header: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8, .padding = .init(4, 10, 4, 4) };
 /// The header's clickable part, which folds the card.
 pub const space_card_toggle: Style = .{

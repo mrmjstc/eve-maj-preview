@@ -32,6 +32,18 @@ pub fn stringAt(object: ?Value, key: []const u8) ?[]const u8 {
     return if (value == .string) value.string else null;
 }
 
+/// Only an actual JSON integer, unlike number.
+pub fn integerAt(object: ?Value, key: []const u8) ?i64 {
+    const value = get(object, key) orelse return null;
+    return if (value == .integer) value.integer else null;
+}
+
+/// Only an actual JSON bool, unlike flag.
+pub fn boolAt(object: ?Value, key: []const u8) ?bool {
+    const value = get(object, key) orelse return null;
+    return if (value == .bool) value.bool else null;
+}
+
 pub fn count(object: ?Value) usize {
     const value = object orelse return 0;
     return if (value == .object) value.object.count() else 0;

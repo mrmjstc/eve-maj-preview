@@ -79,11 +79,19 @@ pub fn Ref(comptime T: type) type {
             return .{ .doc = self.doc, .ptr = &@field(self.ptr, field).items[index], .layout = comptime layoutFor(T, field, .none), .index = index };
         }
 
-        /// Adds `value` to the end of the list field `field`; its strings must be literals, as set copies any it's given later.
+        /// Adds a copy of `value` to the end of the list field `field`.
         pub fn append(self: Self, comptime field: []const u8, value: ListItem(@FieldType(T, field))) void {
+            const allocator = documentAllocator(self.doc);
             const list = &@field(self.ptr, field);
-            list.append(documentAllocator(self.doc), value) catch |err| {
+            var entry = value;
+            // Copied, since a later set frees the string it replaces.
+            ownStrings(@TypeOf(entry), allocator, &entry) catch |err| {
                 slog.err("Failed to add to '{s}': {}", .{ field, err });
+                return;
+            };
+            list.append(allocator, entry) catch |err| {
+                slog.err("Failed to add to '{s}': {}", .{ field, err });
+                freeOwnedStrings(@TypeOf(entry), allocator, &entry);
                 return;
             };
             // Characters and hotkey groups are tracked by id, e.g. to keep a selection across a reorder.
@@ -232,6 +240,7 @@ pub fn editProfile(name: []const u8) !void {
     if (std.mem.eql(u8, name, main.g_store.live.profile_name)) return;
     var draft = try config.loadProfile(g_allocator, name);
     errdefer draft.deinit();
+    patch.assignIds(config.Config, &draft);
     g_profile_draft_json = try draft.toJsonString(g_allocator);
     g_profile_draft = draft;
 }
@@ -304,7 +313,11 @@ pub fn applyOps(arena: std.mem.Allocator, ops: []const patch.Op) !void {
     const target = profile().ptr;
     const ctx: patch.Context = .{ .arena = arena, .allocator = target.allocator };
     // Even after a failed op, since those before it were applied.
-    defer edited(.profile, .all, .none);
+    defer {
+        // A list set whole comes in without ids.
+        patch.assignIds(config.Config, target);
+        edited(.profile, .all, .none);
+    }
     for (ops) |op| _ = try patch.apply(config.Config, target, op, ctx);
 }
 
@@ -411,9 +424,46 @@ fn documentAllocator(doc: Doc) std.mem.Allocator {
     };
 }
 
+/// Replaces each string field of `item` that isn't its default with a copy owned by `allocator`.
+fn ownStrings(comptime Item: type, allocator: std.mem.Allocator, item: *Item) !void {
+    if (@typeInfo(Item) != .@"struct") return;
+    const info = @typeInfo(Item).@"struct";
+    // Every field is reset before any is copied, so a failed copy frees only copies.
+    var texts: [info.field_names.len][]const u8 = undefined;
+    inline for (info.field_names, info.field_types, 0..) |name, F, i| {
+        if (F == []const u8) {
+            texts[i] = @field(item, name);
+            @field(item, name) = fieldDefault(Item, name);
+        }
+    }
+    errdefer freeOwnedStrings(Item, allocator, item);
+    inline for (info.field_names, info.field_types, 0..) |name, F, i| {
+        if (F == []const u8) {
+            const text = texts[i];
+            if (isOwned(text, fieldDefault(Item, name))) @field(item, name) = try allocator.dupe(u8, text);
+        }
+    }
+}
+
+fn freeOwnedStrings(comptime Item: type, allocator: std.mem.Allocator, item: *Item) void {
+    if (@typeInfo(Item) != .@"struct") return;
+    const info = @typeInfo(Item).@"struct";
+    inline for (info.field_names, info.field_types) |name, F| {
+        if (F == []const u8) {
+            const text = @field(item, name);
+            if (isOwned(text, fieldDefault(Item, name))) allocator.free(text);
+            @field(item, name) = fieldDefault(Item, name);
+        }
+    }
+}
+
+/// A field still holding its default points at a string literal.
+fn isOwned(bytes: []const u8, default: []const u8) bool {
+    return bytes.len > 0 and bytes.ptr != default.ptr;
+}
+
 fn retireString(allocator: std.mem.Allocator, bytes: []const u8, default: []const u8) void {
-    // A field still holding its default points at a string literal.
-    if (bytes.len == 0 or bytes.ptr == default.ptr) return;
+    if (!isOwned(bytes, default)) return;
     g_retired.append(g_allocator, .{ .allocator = allocator, .bytes = bytes }) catch |err| {
         slog.warn("Failed to queue a replaced setting for freeing, leaking it: {}", .{err});
     };
@@ -435,13 +485,13 @@ fn ListItem(comptime List: type) type {
     return @typeInfo(@FieldType(List, "items")).pointer.child;
 }
 
-/// Display settings place every thumbnail; the thumbnail size shapes the Thumbnail Spaces; the character and hotkey group lists only rank them there.
+/// Display settings and the spaces themselves place every thumbnail; the thumbnail size shapes the spaces' cells; the character and hotkey group lists decide who goes to which space, and in what order.
 fn layoutFor(comptime T: type, comptime field: []const u8, comptime inherited: main.LiveLayout) main.LiveLayout {
     if (T == Config) {
-        if (std.mem.eql(u8, field, "display")) return .all;
-        if (std.mem.eql(u8, field, "characters") or std.mem.eql(u8, field, "hotkeyGroups")) return .region_fit;
+        if (std.mem.eql(u8, field, "display") or std.mem.eql(u8, field, "thumbnailSpaces")) return .all;
+        if (std.mem.eql(u8, field, "characters") or std.mem.eql(u8, field, "hotkeyGroups")) return .spaces;
     }
-    if (T == config.ThumbnailConfig and (std.mem.eql(u8, field, "width") or std.mem.eql(u8, field, "height"))) return .thumbnail_spaces;
+    if (T == config.ThumbnailConfig and (std.mem.eql(u8, field, "width") or std.mem.eql(u8, field, "height"))) return .spaces;
     return inherited;
 }
 

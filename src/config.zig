@@ -8,6 +8,8 @@ const global = @import("config/global.zig");
 const characters = @import("config/characters.zig");
 const system_colors = @import("config/system_colors.zig");
 const hotkeys = @import("config/hotkeys.zig");
+const spaces = @import("config/spaces.zig");
+const migrate = @import("config/migrate.zig");
 const chatlog = @import("config/chatlog.zig");
 const activity = @import("config/activity.zig");
 const notifications = @import("config/notifications.zig");
@@ -49,7 +51,8 @@ pub const applyWindowPosition = store.applyWindowPosition;
 /// Independent of the release version; bump PROFILE_FORMAT_VERSION only for schema changes that need a migration.
 pub const PROFILE_FORMAT_IDENTIFIER = "eve-maj-preview";
 /// v2: character positions saved while this app was DPI-unaware are migrated to physical pixels on load - see Config.fromWire.
-pub const PROFILE_FORMAT_VERSION: u32 = 2;
+/// v3: the fit region and not-logged-in space became thumbnailSpaces - see config/migrate.zig.
+pub const PROFILE_FORMAT_VERSION: u32 = migrate.SPACES_VERSION;
 
 pub const clampValue = ranges.clampValue;
 
@@ -68,6 +71,8 @@ pub const buildCharacterOrderMap = characters.buildCharacterOrderMap;
 pub const orderMapLessThan = characters.orderMapLessThan;
 pub const SystemColorConfig = system_colors.SystemColorConfig;
 pub const HotkeyGroupConfig = hotkeys.HotkeyGroupConfig;
+pub const ThumbnailSpace = spaces.ThumbnailSpace;
+pub const migrateProfileJson = migrate.profile;
 pub const ChatlogConfig = chatlog.ChatlogConfig;
 pub const CombatConfig = activity.CombatConfig;
 pub const MiningConfig = activity.MiningConfig;
@@ -116,6 +121,7 @@ pub const Config = struct {
     characters: std.ArrayList(CharacterConfig) = .empty,
     systemColors: std.ArrayList(SystemColorConfig) = .empty,
     hotkeyGroups: std.ArrayList(HotkeyGroupConfig) = .empty,
+    thumbnailSpaces: std.ArrayList(ThumbnailSpace) = .empty,
     hotkeys: HotkeysConfig = .{},
 
     pub const runtime_fields = .{ "allocator", "profile_name" };
@@ -158,7 +164,7 @@ pub const Config = struct {
 
     /// Unlike loadProfile, fails on a file that isn't JSON instead of falling back to defaults.
     pub fn buildConfigFromJson(allocator: std.mem.Allocator, json_text: []const u8, profile_name: []const u8) !Config {
-        const parsed = try wire.parse(Config.Wire, allocator, json_text);
+        const parsed = try wire.parseMigrated(Config.Wire, allocator, json_text, migrate.profile);
         defer parsed.deinit();
 
         var config = try Config.fromWire(parsed.value, allocator, profile_name);
@@ -210,6 +216,13 @@ pub const Config = struct {
             }
         }
         return null;
+    }
+
+    pub fn hasHotkeyGroupNamed(self: *const Config, name: []const u8) bool {
+        for (self.hotkeyGroups.items) |group| {
+            if (std.mem.eql(u8, group.name, name)) return true;
+        }
+        return false;
     }
 
     pub fn getCharacterPosition(self: *const Config, character_name: []const u8) ?Position {
@@ -267,6 +280,7 @@ pub const Config = struct {
     pub fn validate(self: *Config) void {
         ranges.clamp(Config, self);
         for (self.characters.items) |*char| char.validate();
+        for (self.thumbnailSpaces.items) |*space| space.validate();
     }
 
     pub fn deinit(self: *Config) void {

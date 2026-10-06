@@ -12,7 +12,6 @@ const OVERRIDES = std.StaticStringMap([]const u8).initComptime(.{
     .{ "RegionFitDirection.ColumnFirst_TTB_RTL", "Columns \u{2193} \u{2190}" },
     .{ "RegionFitDirection.ColumnFirst_BTT_LTR", "Columns \u{2191} \u{2192}" },
     .{ "RegionFitDirection.ColumnFirst_BTT_RTL", "Columns \u{2191} \u{2190}" },
-    .{ "LayoutMode.RegionFit", "Region Fit (Auto)" },
     .{ "BorderStyle.DashDot", "Dash-Dot" },
     .{ "ViewMode.Thumbnails", "Thumbnails (live video preview)" },
     .{ "ViewMode.ClientList", "Client List (compact text panel)" },
