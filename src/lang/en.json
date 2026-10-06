@@ -144,6 +144,8 @@
   "dynamic.space.regionLabel": "Region",
   "dynamic.space.regionNone": "No region yet",
   "dynamic.space.regionText": "{w} × {h} at {x}, {y}",
+  "dynamic.space.newRegion": "▭ New",
+  "dynamic.space.editRegion": "✎ Edit",
   "dynamic.space.spacingLabel": "Spacing (px)",
   "dynamic.space.sizeLabel": "Size",
   "dynamic.import.apm.actionLabel.closeAll": "Close-all-clients",

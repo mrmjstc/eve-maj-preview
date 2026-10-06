@@ -2571,6 +2571,11 @@ input[type="range"]::-moz-range-thumb {
     align-self: flex-start;
 }
 
+/* Wraps rather than cutting off a long name such as Unassigned Characters. */
+#thumbnailSpacesList .roster-name {
+    white-space: normal;
+}
+
 .space-add {
     width: calc(100% - 0.75rem);
     margin: 0.375rem;
@@ -2607,11 +2612,6 @@ input[type="range"]::-moz-range-thumb {
 .space-fixed-name {
     flex: 1;
     font-weight: var(--fw-bold);
-}
-
-.space-enabled {
-    margin-left: auto;
-    white-space: nowrap;
 }
 
 .space-holds {
@@ -2657,15 +2657,18 @@ input[type="range"]::-moz-range-thumb {
 
 .space-region {
     display: flex;
-    gap: 0.75rem;
+    flex-direction: column;
     align-items: flex-start;
-    flex-wrap: wrap;
+    gap: 0.5rem;
 }
 
-.space-region-side {
+.space-region-buttons {
     display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2);
+}
+
+.space-region-buttons > button {
+    white-space: nowrap;
 }
 
 .space-region-text {
@@ -2824,7 +2827,8 @@ input[type="range"]::-moz-range-thumb {
    below. */
 #hotkeyGroupsList .detail-panel-header,
 #charactersList .detail-panel-header,
-#windowFiltersList .detail-panel-header {
+#windowFiltersList .detail-panel-header,
+#thumbnailSpacesList .detail-panel-header {
     gap: var(--detail-label-gap);
 }
 

@@ -107,37 +107,39 @@ function detailPanelHtml(list, space, index, isSelected) {
         : `<label class="detail-panel-name-label" for="space_${index}_name">${t('dynamic.space.nameLabel')}</label>
            <input type="text" class="detail-panel-name-input" id="space_${index}_name" data-path="${path}.name" placeholder="${t('dynamic.space.namePlaceholder')}" oninput="updateThumbnailSpaceHeaderName(${index})">`;
     const remove = special ? '' : `<button type="button" id="space_${index}_removeBtn" onclick="confirmRemove('space_${index}_removeBtn', () => removeThumbnailSpace(${index}))">${t('common.remove')}</button>`;
+    // Every field but Enabled dims while the space is off, so it can still be switched back on.
+    const dim = space.enabled ? '' : ' is-disabled';
 
     return `
         <div class="detail-panel ${isSelected ? 'active' : ''}" data-index="${index}">
             <div class="detail-panel-header">
                 ${name}
-                <label class="space-enabled">
-                    <input type="checkbox" id="space_${index}_enabled" data-path="${path}.enabled" onchange="onThumbnailSpaceChanged()">
-                    <span class="label-body">${t('common.enabledLabel')}</span>
-                </label>
                 ${remove}
             </div>
-            <div class="detail-form${space.enabled ? '' : ' is-disabled'}">
-                ${holdsFieldHtml(list, space, index)}
-                ${takesFieldHtml(list, space, index)}
-                ${regionFieldHtml(list, space, index)}
-                <div class="detail-field">
+            <label>
+                <input type="checkbox" id="space_${index}_enabled" data-path="${path}.enabled" onchange="onThumbnailSpaceChanged()">
+                <span class="label-body">${t('common.enabledLabel')}</span>
+            </label>
+            <div class="detail-form">
+                ${holdsFieldHtml(list, space, index, dim)}
+                ${takesFieldHtml(list, space, index, dim)}
+                ${regionFieldHtml(list, space, index, dim)}
+                <div class="detail-field${dim}">
                     <label for="space_${index}_direction">${t('field.regionFitDirection.label')}</label>
                     <select id="space_${index}_direction" data-path="${path}.direction"></select>
                     <p class="hint hint-extra">${t('field.regionFitDirection.hint')}</p>
                 </div>
                 ${space.holdsLoginScreen ? '' : `
-                <div class="detail-field">
+                <div class="detail-field${dim}">
                     <label for="space_${index}_order">${t('field.regionFitOrder.label')}</label>
                     <select id="space_${index}_order" data-path="${path}.order"></select>
                     <p class="hint hint-extra">${t('field.regionFitOrder.hint')}</p>
                 </div>`}
-                <div class="detail-field">
+                <div class="detail-field${dim}">
                     <label for="space_${index}_spacing">${t('dynamic.space.spacingLabel')}</label>
                     <input type="number" id="space_${index}_spacing" data-path="${path}.spacing">
                 </div>
-                <div class="detail-field detail-field-top">
+                <div class="detail-field detail-field-top${dim}">
                     <label>${t('dynamic.space.sizeLabel')}</label>
                     <div class="detail-checks">
                         <label>
@@ -152,7 +154,7 @@ function detailPanelHtml(list, space, index, isSelected) {
     `;
 }
 
-function holdsFieldHtml(list, space, index) {
+function holdsFieldHtml(list, space, index, dim) {
     let body;
     if (space.holdsLoginScreen) {
         body = `<p class="hint">${t('dynamic.space.loginScreenHolds')}</p>`;
@@ -164,7 +166,7 @@ function holdsFieldHtml(list, space, index) {
                 ${overlapsHtml(list, index)}`;
     }
     return `
-        <div class="detail-field detail-field-top">
+        <div class="detail-field detail-field-top${dim}">
             <label>${t('dynamic.space.holdsLabel')}</label>
             <div class="space-holds">${body}</div>
         </div>
@@ -202,7 +204,7 @@ function overlapsHtml(list, index) {
     }).join('');
 }
 
-function takesFieldHtml(list, space, index) {
+function takesFieldHtml(list, space, index, dim) {
     const path = `thumbnailSpaces.${index}`;
     const checks = [];
     if (!space.holdsUnassigned) {
@@ -212,7 +214,7 @@ function takesFieldHtml(list, space, index) {
         checks.push(takeCheckHtml(index, `${path}.takesLoginScreen`, 'takesLoginScreen', space.takesLoginScreen, otherWinner(list, space, app.spacePlacement.loginScreenSpaceId), 'dynamic.space.takenLoginScreen'));
     }
     return `
-        <div class="detail-field detail-field-top">
+        <div class="detail-field detail-field-top${dim}">
             <label>${t('dynamic.space.alsoTakesLabel')}</label>
             <div class="detail-checks">${checks.join('')}</div>
         </div>
@@ -233,25 +235,23 @@ function takeCheckHtml(index, path, field, isOn, winner, takenKey) {
     `;
 }
 
-function regionFieldHtml(list, space, index) {
+function regionFieldHtml(list, space, index, dim) {
     const rect = spaceRect(space);
     const text = rect
         ? t('dynamic.space.regionText').replace('{w}', rect[2]).replace('{h}', rect[3]).replace('{x}', rect[0]).replace('{y}', rect[1])
         : t('dynamic.space.regionNone');
     const disabled = rect ? '' : 'disabled';
     return `
-        <div class="detail-field detail-field-top">
+        <div class="detail-field detail-field-top${dim}">
             <label>${t('dynamic.space.regionLabel')}</label>
             <div class="space-region">
-                ${mapHtml(list, index)}
-                <div class="space-region-side">
-                    <span class="space-region-text${rect ? '' : ' warn'}">${escapeHtml(text)}</span>
-                    <div class="button-row-flex">
-                        <button type="button" onclick="startSpaceRegionSelect(${index})">${t('field.newRegion.button')}</button>
-                        <button type="button" onclick="startSpaceRegionSelect(${index}, true)" ${disabled}>${t('field.editRegion.button')}</button>
-                        <button type="button" id="space_${index}_clearRegion" class="button-icon button-icon-danger" onclick="confirmRemove('space_${index}_clearRegion', () => clearSpaceRegion(${index}), '✓')" title="${t('field.clearRegion.title')}" ${disabled}>&times;</button>
-                    </div>
+                <span class="space-region-text${rect ? '' : ' warn'}">${escapeHtml(text)}</span>
+                <div class="space-region-buttons">
+                    <button type="button" onclick="startSpaceRegionSelect(${index})">${t('dynamic.space.newRegion')}</button>
+                    <button type="button" onclick="startSpaceRegionSelect(${index}, true)" ${disabled}>${t('dynamic.space.editRegion')}</button>
+                    <button type="button" id="space_${index}_clearRegion" class="button-icon button-icon-danger" onclick="confirmRemove('space_${index}_clearRegion', () => clearSpaceRegion(${index}), '✓')" title="${t('field.clearRegion.title')}" ${disabled}>&times;</button>
                 </div>
+                ${mapHtml(list, index)}
             </div>
         </div>
     `;
