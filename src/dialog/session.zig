@@ -95,18 +95,24 @@ pub fn globalDirty() bool {
     return !std.mem.eql(u8, edited, running);
 }
 
-/// Applies `ops` in order, then writes one result per op to `jw` if given: a `set`'s value as clamped, an `insert`'s new item with its id, otherwise null.
-pub fn apply(jw: ?*std.json.Stringify, arena: std.mem.Allocator, doc: Doc, ops: []const patch.Op) !void {
+/// Applies `ops` in order, writing one result per op to `jw` if given (a `set`'s clamped value, an `insert`'s new item with its id, else null); returns whether it also put back a thumbnail space the ops removed, so the window should reload.
+pub fn apply(jw: ?*std.json.Stringify, arena: std.mem.Allocator, doc: Doc, ops: []const patch.Op) !bool {
     switch (doc) {
         .profile => {
             // Even after a failed op, since those before it were applied.
             defer if (!editsDraft()) main.onLiveProfileEdited(layoutFor(ops));
-            try applyTo(Config, profile(), jw, arena, ops);
+            const target = profile();
+            try applyTo(Config, target, jw, arena, ops);
+            // The window never removes the Login Screen or Unassigned Characters space, but an import or a stray op can.
+            const restored = try config.ensureSpecialSpaces(target.allocator, &target.thumbnailSpaces);
+            if (restored) patch.assignIds(Config, target);
+            return restored;
         },
         .global => {
             const draft = try global();
             defer log.setLevel(draft.logLevel);
             try applyTo(GlobalConfig, draft, jw, arena, ops);
+            return false;
         },
     }
 }
@@ -159,18 +165,14 @@ fn applyTo(comptime T: type, target: *T, maybe_jw: ?*std.json.Stringify, arena: 
     try jw.endArray();
 }
 
-/// Display settings place the thumbnails; the thumbnail size sets the Thumbnail Spaces' cell shape and cap; the character and hotkey group lists only rank them in the Thumbnail Space.
+/// Display settings and the spaces themselves place every thumbnail; the thumbnail size shapes the spaces' cells; the character and hotkey group lists decide who goes to which space, and in what order.
 fn layoutFor(ops: []const patch.Op) main.LiveLayout {
     var layout: main.LiveLayout = .none;
     for (ops) |op| {
         if (op.path.len == 0 or op.path[0] != .string) continue;
         const root = op.path[0].string;
-        if (std.mem.eql(u8, root, "display")) return .all;
-        if (isThumbnailSize(op.path)) {
-            layout = .thumbnail_spaces;
-        } else if (layout == .none and (std.mem.eql(u8, root, "characters") or std.mem.eql(u8, root, "hotkeyGroups"))) {
-            layout = .region_fit;
-        }
+        if (std.mem.eql(u8, root, "display") or std.mem.eql(u8, root, "thumbnailSpaces")) return .all;
+        if (isThumbnailSize(op.path) or std.mem.eql(u8, root, "characters") or std.mem.eql(u8, root, "hotkeyGroups")) layout = .spaces;
     }
     return layout;
 }

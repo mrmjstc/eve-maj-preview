@@ -2565,6 +2565,141 @@ input[type="range"]::-moz-range-thumb {
     margin-left: 0.25rem;
 }
 
+/* Thumbnail spaces: a roster with a colour dot and region size per space, beside the selected one's details. */
+#thumbnailSpacesList .roster {
+    width: 12.5rem;
+    align-self: flex-start;
+}
+
+.space-add {
+    width: calc(100% - 0.75rem);
+    margin: 0.375rem;
+}
+
+.space-dot {
+    width: 0.625rem;
+    height: 0.625rem;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    background: var(--dot);
+    border: 0.125rem solid var(--dot);
+    box-sizing: border-box;
+}
+
+.space-dot.off {
+    background: transparent;
+    opacity: 0.6;
+}
+
+.space-state {
+    font-size: var(--fs-small);
+    font-family: var(--font-mono);
+    color: var(--color-muted);
+    white-space: nowrap;
+}
+
+.space-state.warn,
+.space-region-text.warn,
+.hint.hint-warning {
+    color: var(--color-accent);
+}
+
+.space-fixed-name {
+    flex: 1;
+    font-weight: var(--fw-bold);
+}
+
+.space-enabled {
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.space-holds {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.space-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+}
+
+/* Pills rather than checkboxes, so the groups a space holds read at a glance. */
+.space-chip {
+    height: 1.625rem;
+    padding: 0 0.75rem;
+    border-radius: 0.8125rem;
+    border: 0.0625rem solid var(--color-border-strong);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    font-size: var(--fs-body);
+    cursor: pointer;
+}
+
+.space-chip:hover:not(:disabled) {
+    border-color: var(--color-accent);
+}
+
+.space-chip.held {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-accent-ink);
+    font-weight: var(--fw-semibold);
+}
+
+.space-chip:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.space-region {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.space-region-side {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.space-region-text {
+    font-family: var(--font-mono);
+    color: var(--color-text-secondary);
+}
+
+/* The desktop in miniature; each box is a space's region, in its dot colour. */
+.space-map {
+    position: relative;
+    width: 14rem;
+    max-height: 9rem;
+    background: var(--color-bg);
+    border: 0.0625rem solid var(--color-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.space-map-box {
+    position: absolute;
+    box-sizing: border-box;
+    border: 0.0625rem solid var(--dot);
+    background: color-mix(in srgb, var(--dot) 15%, transparent);
+}
+
+.space-map-box.selected {
+    border-width: 0.125rem;
+    background: color-mix(in srgb, var(--dot) 35%, transparent);
+}
+
+.space-map-box.off {
+    opacity: 0.35;
+}
+
 .roster-row {
     display: flex;
     align-items: center;

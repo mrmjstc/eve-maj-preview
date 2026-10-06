@@ -9,10 +9,10 @@ import { applyAccentColorTheme, htmlColorToZig, zigColorToHtml } from './colors.
 import { populateHotkeyGroups } from './hotkey_groups.js';
 import { updateHotkeyConflictHighlights } from './hotkeys.js';
 import { populateNotificationTypes } from './notifications.js';
-import { toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleHoverZoomOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotificationOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, toggleNotLoggedInSpaceOptions, toggleQuickGroupBadgeOptions, toggleRegionFitOptions, toggleResourcesOptions, toggleSessionTimerOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
+import { toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleHoverZoomOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotificationOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, togglePlacementMode, toggleQuickGroupBadgeOptions, toggleResourcesOptions, toggleSessionTimerOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
 import { refreshOverlayLayoutPreview, syncOverlayStyleFromCharacterName } from './overlay_layout.js';
-import { refreshRegionButtons } from './region.js';
 import { populateSystemColors } from './system_colors.js';
+import { populateThumbnailSpaces } from './thumbnail_spaces.js';
 import { detectThumbnailClientSize, refreshThumbnailSize } from './thumbnail_size.js';
 import { populateWindowFilters } from './window_filters.js';
 
@@ -71,7 +71,6 @@ function applySpecialFieldsToForm() {
     setCheckboxValue('showBorderWhenFocused', app.currentConfig.thumbnail.showBorderWhenFocused);
     setCheckboxValue('showBorderWhenInactive', app.currentConfig.thumbnail.showBorderWhenInactive);
     setCheckboxValue('borderEnabled', app.currentConfig.thumbnail.showBorderWhenFocused || app.currentConfig.thumbnail.showBorderWhenInactive);
-    setCheckboxValue('regionFitEnabled', app.currentConfig.display.layoutMode === 'RegionFit');
 }
 
 export function readFormIntoConfig() {
@@ -110,6 +109,7 @@ export function populateFormFields() {
     ensureBlankRosterEntries();
     populateCharacters();
     populateHotkeyGroups();
+    populateThumbnailSpaces();
     populateNotificationTypes();
     detectThumbnailClientSize();
 
@@ -120,9 +120,7 @@ export function populateFormFields() {
 function refreshDependentOptions() {
     refreshThumbnailSize();
     toggleSnappingOptions();
-    toggleRegionFitOptions();
-    toggleNotLoggedInSpaceOptions();
-    refreshRegionButtons();
+    togglePlacementMode();
     toggleNotifInfoPanelOptions();
     toggleNotifInfoPanelMergeOptions();
     toggleShiftClickExcludeOptions();

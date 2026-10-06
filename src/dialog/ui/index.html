@@ -581,145 +581,73 @@
 
                     <div class="section">
                         <div class="section-heading">
-                            <h3 data-i18n="tab.thumbnails.section.region-fit.heading">Thumbnail Space</h3>
+                            <h3 data-i18n="tab.thumbnails.section.placement.heading">Thumbnail Placement</h3>
                             <div class="section-heading-actions">
                                 <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
                                 <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
                             </div>
                         </div>
-                        <p class="hint" data-i18n="tab.thumbnails.section.region-fit.hint">Drag a rectangle on screen; thumbnails auto-fit to fill it and reflow as characters log in/out.</p>
+                        <p class="hint" data-i18n="tab.thumbnails.section.placement.hint">Manual lets you drag each thumbnail where you want it. Thumbnail Spaces fills screen regions you draw with the thumbnails of the hotkey groups each one holds.</p>
 
-                        <label>
-                            <input type="checkbox" id="regionFitEnabled" onchange="toggleRegionFitOptions()">
-                            <span class="label-body" data-i18n="field.regionFitEnabled.label">Enable Thumbnail Space</span>
-                        </label>
-                        <p class="hint hint-extra" data-i18n="field.regionFitEnabled.hint">Switches this profile's layout mode to Region Fit, taking over thumbnail placement instead of using saved positions.</p>
-
-                        <div id="regionFitOptions">
-                            <label>
-                                <input type="checkbox" id="regionFitLimitToThumbnailSize" data-path="display.regionFitLimitToThumbnailSize">
-                                <span class="label-body" data-i18n="field.regionFitLimitToThumbnailSize.label">Cap Thumbnail Size to Configured Dimensions</span>
-                            </label>
-                            <p class="hint hint-extra" data-i18n="field.regionFitLimitToThumbnailSize.hint">Stops thumbnails from growing past the Thumbnail Size setting, leaving unused space in the region instead.</p>
-
-                            <div class="binding-list">
-                                <div class="binding">
-                                    <label for="regionFitOrder" data-i18n="field.regionFitOrder.label">Order By</label>
-                                    <select id="regionFitOrder" data-path="display.regionFitOrder"></select>
-                                </div>
-                                <p class="hint hint-extra" data-i18n="field.regionFitOrder.hint">Character Order follows the Characters list; Hotkey Group Order follows the hotkey groups instead.</p>
+                        <div class="binding-list">
+                            <div class="binding">
+                                <label for="placementMode" data-i18n="field.placementMode.label">Placement Mode</label>
+                                <select id="placementMode" data-path="display.placementMode" onchange="togglePlacementMode()"></select>
                             </div>
+                        </div>
+
+                        <div id="placementManualOptions">
+                            <label id="enableDraggingOption">
+                                <input type="checkbox" id="enableDragging" data-path="interaction.enableDragging">
+                                <span class="label-body" data-i18n="field.enableDragging.label">Enable Dragging</span>
+                            </label>
+                            <p class="hint hint-extra" data-i18n="field.enableDragging.hint">Move a thumbnail by dragging it; its position is saved for that character. Stays off while Click Through Thumbnails is on.</p>
+                            <label>
+                                <input type="checkbox" id="snappingEnabled" data-path="snapping.enabled" onchange="toggleSnappingOptions()">
+                                <span class="label-body" data-i18n="field.snappingEnabled.label">Enable Snapping</span>
+                            </label>
+
+                            <div id="snappingOptions">
+                                <label>
+                                    <input type="checkbox" id="snappingScreenEdges" data-path="snapping.screenEdges">
+                                    <span class="label-body" data-i18n="field.snappingScreenEdges.label">Snap to Screen Edges</span>
+                                </label>
+                                <label>
+                                    <input type="checkbox" id="snappingThumbnailEdges" data-path="snapping.thumbnailEdges">
+                                    <span class="label-body" data-i18n="field.snappingThumbnailEdges.label">Snap to Thumbnail Edges</span>
+                                </label>
+                                <label>
+                                    <input type="checkbox" id="snappingGhostPositions" data-path="snapping.ghostPositions">
+                                    <span class="label-body" data-i18n="field.snappingGhostPositions.label">Snap to Other Characters' Ghost Positions</span>
+                                </label>
+                                <p class="hint hint-extra" data-i18n="field.snappingGhostPositions.hint">Also snaps to other characters' saved positions while dragging.</p>
+                                <label>
+                                    <input type="checkbox" id="snappingShowGhostBorders" data-path="snapping.showGhostPositionBorders">
+                                    <span class="label-body" data-i18n="field.snappingShowGhostBorders.label">Show Ghost Position Borders</span>
+                                </label>
+                                <p class="hint hint-extra" data-i18n="field.snappingShowGhostBorders.hint">Outlines every other character's saved position on screen while you drag.</p>
+                                <div class="binding-list">
+                                    <div class="binding">
+                                        <label for="snappingThreshold" data-i18n="field.snappingThreshold.label">Snapping Threshold (px)</label>
+                                        <input type="number" id="snappingThreshold" data-path="snapping.threshold">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="placementSpacesOptions">
+                            <p class="hint hint-extra" data-i18n="field.placementSpaces.hint">A space can hold several hotkey groups. A character two spaces hold goes to the first one in the list; drag a space to reorder.</p>
+                            <div id="thumbnailSpacesList"></div>
                             <label>
                                 <input type="checkbox" id="regionFitReorderLoggedOut" data-path="display.regionFitReorderLoggedOut">
-                                <span class="label-body" data-i18n="field.regionFitReorderLoggedOut.label">Move Logged-Out Characters to the End</span>
+                                <span class="label-body" data-i18n="field.regionFitReorderLoggedOut.label">Close Gaps Immediately on Logout</span>
                             </label>
                             <p class="hint hint-extra" data-i18n="field.regionFitReorderLoggedOut.hint">When off, a logged-out character's spot stays put until the next reflow instead of closing the gap immediately.</p>
-                            <div class="binding-list">
-                                <div class="binding">
-                                    <label for="regionFitDirection" data-i18n="field.regionFitDirection.label">Fill Order</label>
-                                    <select id="regionFitDirection" data-path="display.regionFitDirection"></select>
-                                </div>
-                                <p class="hint hint-extra" data-i18n="field.regionFitDirection.hint">The order the grid fills as thumbnails are placed into the region.</p>
-                                <div class="binding">
-                                    <label for="spacing" data-i18n="field.spacing.label">Spacing (px)</label>
-                                    <input type="number" id="spacing" data-path="display.spacing">
-                                </div>
-                                <p class="hint hint-extra" data-i18n="field.spacing.hint">Gap between thumbnails inside the Thumbnail Space.</p>
-                            </div>
                             <label>
                                 <input type="checkbox" id="hideThumbnailsDuringRegionSelect" data-path="display.hideThumbnailsDuringRegionSelect">
                                 <span class="label-body" data-i18n="field.hideThumbnailsDuringRegionSelect.label">Hide Thumbnails During Region Selection</span>
                             </label>
                             <p class="hint hint-extra" data-i18n="field.hideThumbnailsDuringRegionSelect.hint">Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.</p>
-                            <div class="button-row-flex">
-                                <button type="button" onclick="startRegionSelectFlow(REGION_FIELD_IDS)" data-i18n="field.newRegion.button">▭ New Thumbnail Region</button>
-                                <button type="button" id="editRegionButton" onclick="startRegionSelectFlow(REGION_FIELD_IDS, true)" data-i18n="field.editRegion.button" disabled>✎ Edit Region</button>
-                                <button type="button" id="clearRegionButton" class="button-icon button-icon-danger" onclick="confirmRemove('clearRegionButton', () => clearRegion(REGION_FIELD_IDS), '✓')" title="Clear region" data-i18n-title="field.clearRegion.title" disabled>&times;</button>
-                            </div>
-                            <!-- Bound via CONFIG_SCHEMA; not something a user needs to see or edit. -->
-                            <div class="binding-list" style="display: none;">
-                                <div class="binding">
-                                    <label for="layoutMode" data-i18n="field.layoutMode.label">Layout Mode</label>
-                                    <select id="layoutMode" data-path="display.layoutMode"></select>
-                                </div>
-                                <div class="binding">
-                                    <label for="regionX" data-i18n="field.regionX.label">Region X</label>
-                                    <input type="number" id="regionX" data-path="display.regionX" readonly>
-                                </div>
-                                <div class="binding">
-                                    <label for="regionY" data-i18n="field.regionY.label">Region Y</label>
-                                    <input type="number" id="regionY" data-path="display.regionY" readonly>
-                                </div>
-                                <div class="binding">
-                                    <label for="regionWidth" data-i18n="field.regionWidth.label">Region Width</label>
-                                    <input type="number" id="regionWidth" data-path="display.regionWidth" readonly>
-                                </div>
-                                <div class="binding">
-                                    <label for="regionHeight" data-i18n="field.regionHeight.label">Region Height</label>
-                                    <input type="number" id="regionHeight" data-path="display.regionHeight" readonly>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="section no-subheader">
-                        <div class="section-heading">
-                            <h3 data-i18n="tab.thumbnails.section.not-logged-in-space.heading">Not-Logged-In Thumbnail Space</h3>
-                            <div class="section-heading-actions">
-                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
-                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
-                            </div>
-                        </div>
-                        <p class="hint" data-i18n="tab.thumbnails.section.not-logged-in-space.hint">Drag a separate rectangle for not-yet-logged-in placeholders; auto-fits the same way as Thumbnail Space, and works alongside it.</p>
-
-                        <label>
-                            <input type="checkbox" id="notLoggedInSpaceEnabled" data-path="display.notLoggedInSpaceEnabled" onchange="toggleNotLoggedInSpaceOptions()">
-                            <span class="label-body" data-i18n="field.notLoggedInSpaceEnabled.label">Enable Not-Logged-In Thumbnail Space</span>
-                        </label>
-
-                        <div id="notLoggedInSpaceOptions">
-                            <label>
-                                <input type="checkbox" id="notLoggedInSpaceLimitToThumbnailSize" data-path="display.notLoggedInSpaceLimitToThumbnailSize">
-                                <span class="label-body" data-i18n="field.regionFitLimitToThumbnailSize.label">Cap Thumbnail Size to Configured Dimensions</span>
-                            </label>
-                            <p class="hint hint-extra" data-i18n="field.regionFitLimitToThumbnailSize.hint">Stops thumbnails from growing past the Thumbnail Size setting, leaving unused space in the region instead.</p>
-
-                            <div class="binding-list">
-                                <div class="binding">
-                                    <label for="notLoggedInSpaceSpacing" data-i18n="field.notLoggedInSpaceSpacing.label">Spacing (px)</label>
-                                    <input type="number" id="notLoggedInSpaceSpacing" data-path="display.notLoggedInSpaceSpacing">
-                                </div>
-                                <p class="hint hint-extra" data-i18n="field.notLoggedInSpaceSpacing.hint">Gap between placeholders inside this space.</p>
-                            </div>
-                            <label>
-                                <input type="checkbox" id="notLoggedInSpaceHideThumbnailsDuringRegionSelect" data-path="display.notLoggedInSpaceHideThumbnailsDuringRegionSelect">
-                                <span class="label-body" data-i18n="field.hideThumbnailsDuringRegionSelect.label">Hide Thumbnails During Region Selection</span>
-                            </label>
-                            <p class="hint hint-extra" data-i18n="field.hideThumbnailsDuringRegionSelect.hint">Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.</p>
-                            <div class="button-row-flex">
-                                <button type="button" onclick="startRegionSelectFlow(NOT_LOGGED_IN_FIELD_IDS)" data-i18n="field.newRegion.button">▭ New Thumbnail Region</button>
-                                <button type="button" id="editNotLoggedInSpaceButton" onclick="startRegionSelectFlow(NOT_LOGGED_IN_FIELD_IDS, true)" data-i18n="field.editRegion.button" disabled>✎ Edit Region</button>
-                                <button type="button" id="clearNotLoggedInSpaceButton" class="button-icon button-icon-danger" onclick="confirmRemove('clearNotLoggedInSpaceButton', () => clearRegion(NOT_LOGGED_IN_FIELD_IDS), '✓')" title="Clear region" data-i18n-title="field.clearRegion.title" disabled>&times;</button>
-                            </div>
-                            <!-- Bound via CONFIG_SCHEMA; not something a user needs to see or edit. -->
-                            <div class="binding-list" style="display: none;">
-                                <div class="binding">
-                                    <label for="notLoggedInSpaceX" data-i18n="field.notLoggedInSpaceX.label">Space X</label>
-                                    <input type="number" id="notLoggedInSpaceX" data-path="display.notLoggedInSpaceX" readonly>
-                                </div>
-                                <div class="binding">
-                                    <label for="notLoggedInSpaceY" data-i18n="field.notLoggedInSpaceY.label">Space Y</label>
-                                    <input type="number" id="notLoggedInSpaceY" data-path="display.notLoggedInSpaceY" readonly>
-                                </div>
-                                <div class="binding">
-                                    <label for="notLoggedInSpaceWidth" data-i18n="field.notLoggedInSpaceWidth.label">Space Width</label>
-                                    <input type="number" id="notLoggedInSpaceWidth" data-path="display.notLoggedInSpaceWidth" readonly>
-                                </div>
-                                <div class="binding">
-                                    <label for="notLoggedInSpaceHeight" data-i18n="field.notLoggedInSpaceHeight.label">Space Height</label>
-                                    <input type="number" id="notLoggedInSpaceHeight" data-path="display.notLoggedInSpaceHeight" readonly>
-                                </div>
-                            </div>
                         </div>
                     </div>
 
@@ -875,49 +803,6 @@
 
                     <div class="section">
                         <div class="section-heading">
-                            <h3 data-i18n="tab.thumbnails.section.snapping-system.heading">Snapping</h3>
-                            <div class="section-heading-actions">
-                                <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
-                                <button class="button-icon hint-toggle" type="button" onclick="toggleSectionHint(this)" data-i18n-title="common.showHintTitle" title="Show hint">?</button>
-                            </div>
-                        </div>
-                        <p class="hint" data-i18n="tab.thumbnails.section.snapping-system.hint">Configure the snapping behavior for window edges.</p>
-
-                        <label>
-                            <input type="checkbox" id="snappingEnabled" data-path="snapping.enabled" onchange="toggleSnappingOptions()">
-                            <span class="label-body" data-i18n="field.snappingEnabled.label">Enable Snapping</span>
-                        </label>
-
-                        <div id="snappingOptions">
-                            <label>
-                                <input type="checkbox" id="snappingScreenEdges" data-path="snapping.screenEdges">
-                                <span class="label-body" data-i18n="field.snappingScreenEdges.label">Snap to Screen Edges</span>
-                            </label>
-                            <label>
-                                <input type="checkbox" id="snappingThumbnailEdges" data-path="snapping.thumbnailEdges">
-                                <span class="label-body" data-i18n="field.snappingThumbnailEdges.label">Snap to Thumbnail Edges</span>
-                            </label>
-                            <label>
-                                <input type="checkbox" id="snappingGhostPositions" data-path="snapping.ghostPositions">
-                                <span class="label-body" data-i18n="field.snappingGhostPositions.label">Snap to Other Characters' Ghost Positions</span>
-                            </label>
-                            <p class="hint hint-extra" data-i18n="field.snappingGhostPositions.hint">Also snaps to other characters' saved positions while dragging.</p>
-                            <label>
-                                <input type="checkbox" id="snappingShowGhostBorders" data-path="snapping.showGhostPositionBorders">
-                                <span class="label-body" data-i18n="field.snappingShowGhostBorders.label">Show Ghost Position Borders</span>
-                            </label>
-                            <p class="hint hint-extra" data-i18n="field.snappingShowGhostBorders.hint">Outlines every other character's saved position on screen while you drag.</p>
-                            <div class="binding-list">
-                                <div class="binding">
-                                    <label for="snappingThreshold" data-i18n="field.snappingThreshold.label">Snapping Threshold (px)</label>
-                                    <input type="number" id="snappingThreshold" data-path="snapping.threshold">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="section">
-                        <div class="section-heading">
                             <h3 data-i18n="tab.thumbnails.section.display-mode.heading">Display Mode</h3>
                             <span class="scope-chip" data-i18n="common.scopeProfile">profile</span>
                         </div>
@@ -1062,11 +947,6 @@
                         <p class="hint hint-extra" data-i18n="field.clickThrough.hint">Thumbnails ignore all mouse input and let clicks/drags pass through to whatever is behind them; disables click-to-focus, exclusion toggling, and dragging.</p>
 
                         <div id="clickThroughOptions">
-                            <label id="enableDraggingOption">
-                                <input type="checkbox" id="enableDragging" data-path="interaction.enableDragging">
-                                <span class="label-body" data-i18n="field.enableDragging.label">Enable Dragging</span>
-                            </label>
-                            <p class="hint hint-extra" data-i18n="field.enableDragging.hint">Has no effect while Thumbnail Space is enabled, since it places every thumbnail.</p>
                             <div class="binding-list">
                                 <div class="binding">
                                     <label for="clickTrigger" data-i18n="field.clickTrigger.label">Click Trigger</label>

@@ -7,10 +7,13 @@ import { escapeHtml, logError, rpc } from './core.js';
 import { renderHotkeyInputHtml, updateHotkeyConflictHighlights } from './hotkeys.js';
 import { t } from './i18n.js';
 import { scrollBehavior, showStatus } from './layout.js';
+import { carryHotkeyGroupRenameToSpaces, refreshThumbnailSpaces } from './thumbnail_spaces.js';
 import { alignDetailPanelNameLabel, moveArrayItem, selectMasterDetailRow, setupDragReorder, syncAccordionHeaderName } from './widgets.js';
 
 // Which group's detail panel is showing in the master-detail hotkey groups view.
 export let selectedHotkeyGroupIndex = 0;
+// The group name as its field took focus, for carryHotkeyGroupRename.
+let nameBeforeEdit = '';
 
 export function populateHotkeyGroups() {
     const container = document.getElementById('hotkeyGroupsList');
@@ -51,7 +54,7 @@ export function populateHotkeyGroups() {
         <div class="detail-panel ${index === selectedHotkeyGroupIndex ? 'active' : ''}" data-index="${index}">
             <div class="detail-panel-header">
                 <label class="detail-panel-name-label" for="hkgroup_${index}_name">${t('dynamic.hotkeyGroup.nameLabel')}</label>
-                <input type="text" class="detail-panel-name-input" id="hkgroup_${index}_name" data-path="hotkeyGroups.${index}.name" placeholder="${t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (index + 1)}" oninput="updateHotkeyGroupHeaderName(${index})">
+                <input type="text" class="detail-panel-name-input" id="hkgroup_${index}_name" data-path="hotkeyGroups.${index}.name" placeholder="${t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (index + 1)}" oninput="updateHotkeyGroupHeaderName(${index})" onfocus="rememberHotkeyGroupName(${index})" onchange="carryHotkeyGroupRename(${index})">
                 <button type="button" id="hkgroup_${index}_removeBtn" onclick="confirmRemove('hkgroup_${index}_removeBtn', () => removeHotkeyGroup(${index}))">${t('common.remove')}</button>
             </div>
             <div class="detail-form">
@@ -423,6 +426,7 @@ export function addHotkeyGroup() {
     populateHotkeyGroups();
     selectHotkeyGroup(app.currentConfig.hotkeyGroups.length - 1);
     scrollHotkeyGroupRosterToEnd();
+    refreshThumbnailSpaces();
 }
 
 export async function fillHotkeyGroupFromClients(index) {
@@ -470,11 +474,27 @@ export function removeHotkeyGroup(index) {
 
     saveHotkeyGroups();
     const selectedGroup = groups[selectedHotkeyGroupIndex];
-    groups.splice(index, 1);
+    const [removed] = groups.splice(index, 1);
     selectedHotkeyGroupIndex = reselectAfterRemoval(groups, selectedGroup, index);
 
     markAsChanged();
     populateHotkeyGroups();
+    carryHotkeyGroupRenameToSpaces(removed.name, null);
+    refreshThumbnailSpaces();
+}
+
+export function rememberHotkeyGroupName(index) {
+    nameBeforeEdit = document.getElementById(`hkgroup_${index}_name`)?.value.trim() || '';
+}
+
+// Thumbnail spaces hold groups by name, so they follow a rename.
+export function carryHotkeyGroupRename(index) {
+    const oldName = nameBeforeEdit;
+    nameBeforeEdit = document.getElementById(`hkgroup_${index}_name`)?.value.trim() || '';
+    saveHotkeyGroups();
+    if (oldName && nameBeforeEdit && oldName !== nameBeforeEdit) carryHotkeyGroupRenameToSpaces(oldName, nameBeforeEdit);
+    // A group named for the first time becomes a chip a space can hold.
+    refreshThumbnailSpaces();
 }
 
 export function updateHotkeyGroupHeaderName(index) {

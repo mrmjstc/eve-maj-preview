@@ -4,7 +4,7 @@ const painter_mod = @import("../painter.zig");
 const overlays = @import("overlays.zig");
 const snapping = @import("snapping.zig");
 const arrange = @import("../thumbnail/arrange.zig");
-const placement = @import("../layout/placement.zig");
+const spaces = @import("../layout/spaces.zig");
 const log = @import("../log.zig");
 
 const Painter = painter_mod.Painter;
@@ -72,7 +72,7 @@ pub fn end(hwnd: win32.HWND, thumbnail_hwnd: win32.HWND) void {
 /// A drop there would only last until the next reflow, and would save a position the layout ignores.
 fn grabbedThumbnailIsPlaced(painter: *Painter, hwnd: win32.HWND) bool {
     const thumbnail = painter.getThumbnailByOverlayHwnd(hwnd) orelse return false;
-    return placement.isPlacedByThumbnailSpace(&painter.config.display, thumbnail.character_name);
+    return spaces.spaceFor(painter.config, thumbnail.character_name) != null;
 }
 
 /// Cleared before any re-render, so effectiveRenderState already sees the drag as over.

@@ -20,6 +20,7 @@ pub fn applyImport(arena: std.mem.Allocator, args: struct {
     cycleGroupName: []const u8,
 }) !struct { notes: []const importer.Text, skipped: []const []const u8 } {
     const built = try importer.build(arena, args.text, args.sourceProfile, args.sections, args.cycleGroupName, session.profile());
-    try session.apply(null, arena, .profile, built.ops);
+    // The window reloads the whole profile after an import anyway.
+    _ = try session.apply(null, arena, .profile, built.ops);
     return .{ .notes = built.notes, .skipped = built.skipped };
 }

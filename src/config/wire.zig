@@ -358,11 +358,17 @@ pub fn hasPointers(comptime T: type) bool {
 /// Parses `json_text` into `T` via std.json.Value, since Argb and KeyListWire only implement jsonParseFromValue.
 /// A value that doesn't fit its setting is dropped with a warning, so that setting keeps its default instead of the whole file failing.
 pub fn parse(comptime T: type, allocator: std.mem.Allocator, json_text: []const u8) !std.json.Parsed(T) {
+    return parseMigrated(T, allocator, json_text, null);
+}
+
+/// Like parse, with `migrate` first upgrading an older file's JSON to the current schema.
+pub fn parseMigrated(comptime T: type, allocator: std.mem.Allocator, json_text: []const u8, migrate: ?*const fn (std.mem.Allocator, *std.json.Value) anyerror!void) !std.json.Parsed(T) {
     var tree = try std.json.parseFromSlice(std.json.Value, allocator, json_text, .{ .duplicate_field_behavior = .use_last });
     defer tree.deinit();
 
     var scratch = std.heap.ArenaAllocator.init(allocator);
     defer scratch.deinit();
+    if (migrate) |upgrade| try upgrade(scratch.allocator(), &tree.value);
     if (!readable.dropUnreadable(T, scratch.allocator(), &tree.value, null)) return error.UnexpectedToken;
     return std.json.parseFromValue(T, allocator, tree.value, readable.PARSE_OPTIONS);
 }

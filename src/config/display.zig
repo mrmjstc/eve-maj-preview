@@ -7,7 +7,6 @@ const ranges_mod = @import("ranges.zig");
 pub const DisplayConfig = struct {
     startX: i32 = 10,
     startY: i32 = 10,
-    spacing: i32 = 0,
 
     /// Horizontal gap for thumbnails with no saved position, lined up left-to-right from startX/startY instead of stacking.
     newThumbnailSpacing: i32 = 10,
@@ -44,26 +43,11 @@ pub const DisplayConfig = struct {
     notifInfoPanelShowNavigation: bool = true,
     notifInfoPanelShowGeneral: bool = true,
 
-    layoutMode: types.LayoutMode = .Custom,
-    regionFitDirection: types.RegionFitDirection = .RowFirst_LTR_TTB,
-
-    regionX: ?i32 = null,
-    regionY: ?i32 = null,
-    regionWidth: ?i32 = null,
-    regionHeight: ?i32 = null,
-    regionFitOrder: types.RegionFitOrder = .Characters,
+    /// Manual ignores thumbnailSpaces, so every thumbnail is placed by hand.
+    placementMode: types.PlacementMode = .Manual,
+    /// Puts logged-out characters after the logged-in ones within each thumbnail space.
     regionFitReorderLoggedOut: bool = true,
     hideThumbnailsDuringRegionSelect: bool = true,
-    regionFitLimitToThumbnailSize: bool = false,
-
-    notLoggedInSpaceEnabled: bool = false,
-    notLoggedInSpaceX: ?i32 = null,
-    notLoggedInSpaceY: ?i32 = null,
-    notLoggedInSpaceWidth: ?i32 = null,
-    notLoggedInSpaceHeight: ?i32 = null,
-    notLoggedInSpaceSpacing: i32 = 0,
-    notLoggedInSpaceLimitToThumbnailSize: bool = false,
-    notLoggedInSpaceHideThumbnailsDuringRegionSelect: bool = true,
 
     monitorIndex: ?u32 = null,
     useMonitorWorkArea: bool = true,
@@ -72,17 +56,13 @@ pub const DisplayConfig = struct {
 
     const SCREEN_X = ranges_mod.SCREEN_X;
     const SCREEN_Y = ranges_mod.SCREEN_Y;
-    const REGION_WIDTH = .{ 1, SCREEN_X[1] - SCREEN_X[0] };
-    const REGION_HEIGHT = .{ 1, SCREEN_Y[1] - SCREEN_Y[0] };
     const SPACING = .{ 0, 200 };
     pub const NOTIF_PANEL_MAX_ROWS = .{ 1, 30 };
 
     pub const ranges = .{
         .startX = SCREEN_X,
         .startY = SCREEN_Y,
-        .spacing = SPACING,
         .newThumbnailSpacing = SPACING,
-        .notLoggedInSpaceSpacing = SPACING,
         .notifInfoPanelX = SCREEN_X,
         .notifInfoPanelY = SCREEN_Y,
         .notifInfoPanelWidth = .{ 100, ranges_mod.MAX_WINDOW_WIDTH },
@@ -91,14 +71,6 @@ pub const DisplayConfig = struct {
         .notifInfoPanelMergeWindowSec = .{ 1, 300 },
         .notifInfoPanelFontSize = ranges_mod.FONT_SIZE,
         .notifInfoPanelOpacity = ranges_mod.OPACITY,
-        .regionX = SCREEN_X,
-        .regionY = SCREEN_Y,
-        .regionWidth = REGION_WIDTH,
-        .regionHeight = REGION_HEIGHT,
-        .notLoggedInSpaceX = SCREEN_X,
-        .notLoggedInSpaceY = SCREEN_Y,
-        .notLoggedInSpaceWidth = REGION_WIDTH,
-        .notLoggedInSpaceHeight = REGION_HEIGHT,
         .monitorIndex = .{ 0, 9 },
         .listViewColumns = .{ 1, 15 },
         .listViewFontSize = ranges_mod.FONT_SIZE,

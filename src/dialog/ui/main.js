@@ -6,20 +6,21 @@ import { logError, waitForBackend } from './core.js';
 import { populateLanguageSelect, populateSharedSelectOptions } from './form.js';
 import { addAppHotkey, addUrlHotkey, applyPickedWindowForAppHotkey, pickRunningWindowForAppHotkey, removeAppHotkey, removeUrlHotkey, updateUrlHotkeyUploadClipboardVisibility } from './global_hotkeys.js';
 import { changeDialogScale, toggleAdvancedMode, toggleAlwaysOnTop, toggleSectionHint } from './global_settings.js';
-import { addHotkeyGroup, addHotkeyGroupCharacter, fillHotkeyGroupFromClients, removeHotkeyGroup, removeHotkeyGroupCharacter, selectHotkeyGroup, suggestOpenClients, toggleHotkeyGroupMembershipEditor, updateHotkeyGroupHeaderName } from './hotkey_groups.js';
+import { addHotkeyGroup, addHotkeyGroupCharacter, carryHotkeyGroupRename, fillHotkeyGroupFromClients, rememberHotkeyGroupName, removeHotkeyGroup, removeHotkeyGroupCharacter, selectHotkeyGroup, suggestOpenClients, toggleHotkeyGroupMembershipEditor, updateHotkeyGroupHeaderName } from './hotkey_groups.js';
 import { alignBindingLabelColumns, clearHotkey, recordHotkey, renderHotkeyBindings, toggleManualHotkeyEdit } from './hotkeys.js';
 import { applyTranslations, switchLanguage, t } from './i18n.js';
 import { closeImportModal, handleImportFileSelected, initImportAccentColorPreview, onImportDestChanged, onImportSourceProfileChanged, openImportModal, runImport } from './import.js';
 import { buildSectionNav, closeDialog, initDelegatedKeyboardActivation, initializeTabs, showStatus } from './layout.js';
 import { browseSoundFile, clearNotifCustomText, clearNotificationTypeSearch, clearSoundFile, insertNotifPlaceholder, onNotificationTypeSearchInput, rememberNotifTextBox, selectNotificationType, testNotification, toggleNotifBorderColor, toggleNotificationTypeEnabled, toggleNotifShowBorder, toggleNotifSoundEnabled, toggleNotifTextColor, updateNotifTextPreview } from './notifications.js';
-import { browseChatlogDir, browseGamelogDir, initCombatShowRequiresEnabled, toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleHoverZoomOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotificationOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, toggleNotLoggedInSpaceOptions, toggleQuickGroupBadgeOptions, toggleRegionFitOptions, toggleResourcesOptions, toggleSessionTimerOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterColors, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
+import { browseChatlogDir, browseGamelogDir, initCombatShowRequiresEnabled, toggleAutoMinimizeOptions, toggleBorderOptions, toggleBountyOptions, toggleCharacterNameOptions, toggleChatlogOptions, toggleClickThroughOptions, toggleClientListOptions, toggleCombatOptions, toggleFocusedBorderOptions, toggleHoverZoomOptions, toggleInactiveBorderOptions, toggleMiningOptions, toggleNotificationOptions, toggleNotifInfoPanelMergeOptions, toggleNotifInfoPanelOptions, togglePlacementMode, toggleQuickGroupBadgeOptions, toggleResourcesOptions, toggleSessionTimerOptions, toggleShiftClickExcludeOptions, toggleSnappingOptions, toggleSystemNameOptions, toggleTextDisplayOptions, toggleTravelOptions, toggleTtsDisplayNameOption, toggleUniqueCharacterColors, toggleUniqueCharacterNameColors, toggleUniqueSystemColors, toggleWindowFilters } from './options.js';
 import { fetchOrePrices } from './ore_table.js';
 import { initOverlayLayoutPreview } from './overlay_layout.js';
 import { copyCurrentProfile, createNewProfile, deleteCurrentProfile, resetCurrentProfile, restoreSelectedProfileBackup, switchProfile } from './profiles.js';
-import { clearRegion, NOT_LOGGED_IN_FIELD_IDS, REGION_FIELD_IDS, startRegionSelectFlow } from './region.js';
+import { clearSpaceRegion, startSpaceRegionSelect } from './region.js';
 import { clearSearch, onSearchInput, searchState } from './search.js';
 import { loadAppVersion, openSession, saveConfiguration } from './session.js';
 import { addSystemColor, removeSystemColor } from './system_colors.js';
+import { addThumbnailSpace, onThumbnailSpaceChanged, removeThumbnailSpace, selectThumbnailSpace, toggleThumbnailSpaceGroup, updateThumbnailSpaceHeaderName } from './thumbnail_spaces.js';
 import { detectThumbnailClientSize, onThumbAspectRatioChange, onThumbHeightChange, onThumbHeightInput, onThumbSizeSlider, onThumbWidthChange, onThumbWidthInput } from './thumbnail_size.js';
 import { applyUltraPotatoMode, scanUltraPotatoProfiles } from './ultra_potato.js';
 import { checkForUpdateNotification, openExternalLink } from './update.js';
@@ -74,13 +75,12 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 // Inline on* handlers in the HTML and in rendered templates run in global scope.
 Object.assign(window, {
-    NOT_LOGGED_IN_FIELD_IDS,
-    REGION_FIELD_IDS,
     addAppHotkey,
     addCharacter,
     addHotkeyGroup,
     addHotkeyGroupCharacter,
     addSystemColor,
+    addThumbnailSpace,
     addUrlHotkey,
     addWindowFilter,
     applyPickedWindowForAppHotkey,
@@ -89,15 +89,16 @@ Object.assign(window, {
     browseChatlogDir,
     browseGamelogDir,
     browseSoundFile,
+    carryHotkeyGroupRename,
     carryWindowFilterRename,
     changeDialogScale,
     clearCharacterSearch,
     clearHotkey,
     clearNotifCustomText,
     clearNotificationTypeSearch,
-    clearRegion,
     clearSearch,
     clearSoundFile,
+    clearSpaceRegion,
     closeDialog,
     closeImportModal,
     confirmClearAllCharacterWindowPositions,
@@ -117,6 +118,7 @@ Object.assign(window, {
     onImportSourceProfileChanged,
     onNotificationTypeSearchInput,
     onSearchInput,
+    onThumbnailSpaceChanged,
     onThumbAspectRatioChange,
     onThumbHeightChange,
     onThumbHeightInput,
@@ -130,12 +132,14 @@ Object.assign(window, {
     populateCharactersFromClients,
     recordHotkey,
     refreshWindowPositionSourceOptions,
+    rememberHotkeyGroupName,
     rememberNotifTextBox,
     rememberWindowFilterName,
     removeAppHotkey,
     removeHotkeyGroup,
     removeHotkeyGroupCharacter,
     removeSystemColor,
+    removeThumbnailSpace,
     removeUrlHotkey,
     removeWindowFilter,
     resetCurrentProfile,
@@ -146,10 +150,11 @@ Object.assign(window, {
     selectCharacter,
     selectHotkeyGroup,
     selectNotificationType,
+    selectThumbnailSpace,
     selectWindowFilter,
     setAllCharacterWindowPositions,
     setCharacterWindowPosition,
-    startRegionSelectFlow,
+    startSpaceRegionSelect,
     suggestOpenClients,
     switchLanguage,
     switchProfile,
@@ -171,7 +176,6 @@ Object.assign(window, {
     toggleInactiveBorderOptions,
     toggleManualHotkeyEdit,
     toggleMiningOptions,
-    toggleNotLoggedInSpaceOptions,
     toggleNotifBorderColor,
     toggleNotifInfoPanelMergeOptions,
     toggleNotifInfoPanelOptions,
@@ -180,8 +184,8 @@ Object.assign(window, {
     toggleNotifTextColor,
     toggleNotificationOptions,
     toggleNotificationTypeEnabled,
+    togglePlacementMode,
     toggleQuickGroupBadgeOptions,
-    toggleRegionFitOptions,
     toggleResourcesOptions,
     toggleSectionHint,
     toggleSessionTimerOptions,
@@ -189,6 +193,7 @@ Object.assign(window, {
     toggleSnappingOptions,
     toggleSystemNameOptions,
     toggleTextDisplayOptions,
+    toggleThumbnailSpaceGroup,
     toggleTravelOptions,
     toggleTtsDisplayNameOption,
     toggleUniqueCharacterColors,
@@ -198,6 +203,7 @@ Object.assign(window, {
     updateCharacterHeaderName,
     updateHotkeyGroupHeaderName,
     updateNotifTextPreview,
+    updateThumbnailSpaceHeaderName,
     updateUrlHotkeyUploadClipboardVisibility,
     updateWindowFilterHeaderName,
 });

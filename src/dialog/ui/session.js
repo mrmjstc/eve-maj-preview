@@ -15,14 +15,16 @@ import { populateNotificationTypes } from './notifications.js';
 import { saveOreTable } from './ore_table.js';
 import { renderProfileSelect } from './profiles.js';
 import { populateSystemColors } from './system_colors.js';
+import { populateThumbnailSpaces, refreshThumbnailSpaces } from './thumbnail_spaces.js';
 import { populateWindowFilters } from './window_filters.js';
 
 const FLUSH_DELAY_MS = 120;
 // Lists whose items carry an `id`, so they're edited item by item rather than replaced whole.
-const KEYED_LISTS = new Set(['characters', 'hotkeyGroups']);
+const KEYED_LISTS = new Set(['characters', 'hotkeyGroups', 'thumbnailSpaces']);
 const LIST_VIEWS = {
     characters: populateCharacters,
     hotkeyGroups: populateHotkeyGroups,
+    thumbnailSpaces: populateThumbnailSpaces,
     windowFilters: populateWindowFilters,
     systemColors: populateSystemColors,
 };
@@ -208,6 +210,15 @@ async function sendEdits(name) {
     });
     setDirty(reply.dirty);
     if (changed.length > 0) refreshForm(name, changed);
+    if (reply.resync) {
+        // The app put back a space the edits removed.
+        await adoptSnapshot(await rpc('getSession'));
+        return;
+    }
+    if (!sameValue(reply.placement, app.spacePlacement)) {
+        app.spacePlacement = reply.placement;
+        refreshThumbnailSpaces();
+    }
 }
 
 async function flushNow() {
@@ -241,6 +252,8 @@ async function adoptSnapshot(snapshot) {
     app.editsDraft = snapshot.editsDraft;
     app.profiles = snapshot.profiles;
     app.characterIds = snapshot.characterIds;
+    app.spacePlacement = snapshot.placement;
+    app.desktop = snapshot.desktop;
     app.dialogEditingProfile = snapshot.profileName;
     renderProfileSelect();
     confirmed.profile = clone(snapshot.profile);

@@ -2,6 +2,7 @@
 import { logError, logWarn, rpc } from './core.js';
 import { notificationTypes, toggleNotificationTypeEnabled } from './notifications.js';
 import { setOverlayCheckboxValue } from './overlay_layout.js';
+import { alignDetailPanelNameLabel } from './widgets.js';
 
 // Returns the checkbox's checked state (or undefined if either element is missing) so callers that need to chain extra logic still can.
 function applyOptionToggle(checkboxId, optionsId) {
@@ -18,10 +19,6 @@ export function toggleSnappingOptions() {
     applyOptionToggle('snappingEnabled', 'snappingOptions');
 }
 
-export function toggleNotLoggedInSpaceOptions() {
-    applyOptionToggle('notLoggedInSpaceEnabled', 'notLoggedInSpaceOptions');
-}
-
 export function toggleNotifInfoPanelOptions() {
     applyOptionToggle('showNotifInfoPanel', 'notifInfoPanelOptions');
 }
@@ -30,21 +27,15 @@ export function toggleNotifInfoPanelMergeOptions() {
     applyOptionToggle('notifInfoPanelMergeEnabled', 'notifInfoPanelMergeOptions');
 }
 
-// regionFitEnabled isn't a saved field itself - it just drives the hidden layoutMode select's value.
-export function toggleRegionFitOptions() {
-    const enabled = applyOptionToggle('regionFitEnabled', 'regionFitOptions');
-    if (enabled === undefined) return;
-
-    const layoutModeField = document.getElementById('layoutMode');
-    if (!layoutModeField) return;
-
-    if (enabled) {
-        layoutModeField.value = 'RegionFit';
-    } else if (layoutModeField.value === 'RegionFit') {
-        layoutModeField.value = 'Custom';
-    }
-    // Thumbnail Space places every thumbnail, so dragging can't do anything while it's on.
-    document.getElementById('enableDraggingOption')?.classList.toggle('is-disabled', enabled);
+// Only the chosen placement mode's settings show.
+export function togglePlacementMode() {
+    const isSpaces = document.getElementById('placementMode')?.value === 'ThumbnailSpaces';
+    const manual = document.getElementById('placementManualOptions');
+    const spaces = document.getElementById('placementSpacesOptions');
+    if (manual) manual.style.display = isSpaces ? 'none' : '';
+    if (spaces) spaces.style.display = isSpaces ? '' : 'none';
+    // The list could only be measured once it's shown.
+    if (isSpaces) alignDetailPanelNameLabel('thumbnailSpacesList');
 }
 
 export function toggleShiftClickExcludeOptions() {
@@ -146,6 +137,7 @@ export function toggleUniqueSystemColors() {
 
 export function toggleClickThroughOptions() {
     toggleInverseOption('clickThrough', 'clickThroughOptions');
+    toggleInverseOption('clickThrough', 'enableDraggingOption');
     toggleInverseOption('clickThrough', 'hoverZoomClickThroughOptions');
 }
 

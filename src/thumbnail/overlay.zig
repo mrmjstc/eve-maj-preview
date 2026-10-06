@@ -11,6 +11,7 @@ const state_mod = @import("state.zig");
 const draw = @import("draw.zig");
 const font_cache_mod = @import("font_cache.zig");
 const window = @import("window.zig");
+const spaces = @import("../layout/spaces.zig");
 const log = @import("../log.zig");
 
 const ThumbnailWindow = window.ThumbnailWindow;
@@ -701,9 +702,9 @@ fn resolveBorder(cfg: *const config_mod.Config, thumbnail: *const ThumbnailWindo
     };
 }
 
-/// Reads RegionFit's already-sized window back rather than repeating the grid math; otherwise the configured (or per-character) size at the window's DPI.
+/// Reads a space's already-sized window back rather than repeating the grid math; otherwise the configured (or per-character) size at the window's DPI.
 fn overlaySize(cfg: *const config_mod.Config, thumbnail: *const ThumbnailWindow, dpi_scale: f32) window.Size {
-    if (cfg.display.layoutMode == .RegionFit) {
+    if (spaces.spaceFor(cfg, thumbnail.character_name) != null) {
         var client_rect: win32.RECT = undefined;
         if (win32.toBool(win32.GetClientRect(thumbnail.hwnd, &client_rect)) and client_rect.right > 0 and client_rect.bottom > 0) {
             return .{ .width = client_rect.right, .height = client_rect.bottom };

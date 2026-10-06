@@ -18,7 +18,7 @@ export function addCharacterIfMissing(name) {
 
     app.currentConfig.characters.push({
         name: name,
-        position: null, // Unset -> backend auto-arranges via layoutMode instead of pinning to (0,0)
+        position: null, // Unset, so the app places it (a thumbnail space or the new-thumbnail row) instead of pinning it to (0,0)
         borderColors: null,
         thumbnailSize: null,
         displayName: null,
@@ -427,7 +427,7 @@ export function addCharacter() {
 
     const newChar = {
         name: '',
-        position: null, // Unset -> backend auto-arranges via layoutMode instead of pinning to (0,0)
+        position: null, // Unset, so the app places it (a thumbnail space or the new-thumbnail row) instead of pinning it to (0,0)
         borderColors: null,
         thumbnailSize: null,
         displayName: null,
@@ -473,7 +473,7 @@ export async function populateCharactersFromClients() {
             if (!existing.has(name.trim().toLowerCase())) {
                 app.currentConfig.characters.push({
                     name: name,
-                    position: null, // Unset -> backend auto-arranges via layoutMode instead of pinning to (0,0)
+                    position: null, // Unset, so the app places it (a thumbnail space or the new-thumbnail row) instead of pinning it to (0,0)
                     borderColors: null,
                     thumbnailSize: null,
                     displayName: null,

@@ -56,11 +56,6 @@ pub const TextPosition = enum {
     BottomRight,
 };
 
-pub const LayoutMode = enum {
-    Custom,
-    RegionFit,
-};
-
 /// Primary display mode: how EVE clients are presented
 pub const ViewMode = enum {
     Thumbnails,
@@ -73,6 +68,12 @@ pub const ListViewOrder = enum {
     Tracked,
     Alphabetical,
     ConfiguredCharacters,
+};
+
+/// How thumbnails get their position: dragged by hand, or filled into thumbnail spaces.
+pub const PlacementMode = enum {
+    Manual,
+    ThumbnailSpaces,
 };
 
 /// Fill order for RegionFit's grid: configured character list, or grouped by hotkey group membership.

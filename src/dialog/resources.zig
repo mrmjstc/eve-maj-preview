@@ -10,7 +10,7 @@ const MODULES = [_][]const u8{
     "widgets",      "window_filters", "characters",      "system_colors",
     "ultra_potato", "hotkey_groups",  "global_settings", "global_hotkeys",
     "ore_table",    "notifications",  "options",         "overlay_layout",
-    "search",       "color_picker",   "thumbnail_size",
+    "search",       "color_picker",   "thumbnail_size",  "thumbnail_spaces",
 };
 
 /// Built at compile time, so serving a file is a lookup.

@@ -40,8 +40,8 @@ const IDLE_TICK_INTERVAL_MS: win32.UINT = FORCED_SCAN_INTERVAL_MS;
 const TRAVEL_CHECK_INTERVAL_MS: u64 = 2000;
 const PROFILE_NAME_BUF = 256;
 
-/// How far a live profile edit moves thumbnails: `region_fit` reflows only an active RegionFit, `thumbnail_spaces` also the not-logged-in space, `all` repositions every thumbnail.
-pub const LiveLayout = enum { none, region_fit, thumbnail_spaces, all };
+/// How far a live profile edit moves thumbnails: `spaces` reflows only while a thumbnail space is active, `all` repositions every thumbnail.
+pub const LiveLayout = enum { none, spaces, all };
 
 var g_allocator: std.mem.Allocator = undefined;
 var g_io: std.Io = undefined;
@@ -141,8 +141,7 @@ pub fn onLiveProfileEdited(layout: LiveLayout) void {
     painter_ptr.refreshAllThumbnailVisuals();
     switch (layout) {
         .none => {},
-        .region_fit => painter_ptr.reflowIfRegionFitActive(),
-        .thumbnail_spaces => painter_ptr.reflowIfThumbnailSpaceActive(),
+        .spaces => painter_ptr.reflowIfSpacesActive(),
         .all => painter_ptr.repositionAllThumbnails(),
     }
 }

@@ -5,6 +5,7 @@ test {
     _ = @import("chatlog/utf16.zig");
     _ = @import("config/import/values.zig");
     _ = @import("config/key_list.zig");
+    _ = @import("config/migrate.zig");
     _ = @import("config/profiles.zig");
     _ = @import("config/ranges.zig");
     _ = @import("config/readable.zig");
@@ -13,6 +14,8 @@ test {
     _ = @import("hotkeys/bindings.zig");
     _ = @import("hotkeys/exclusions.zig");
     _ = @import("layout/placement.zig");
+    _ = @import("layout/spaces.zig");
+    _ = @import("config/spaces.zig");
     _ = @import("layout/zoom.zig");
     _ = @import("notifications/gamelog_events.zig");
     _ = @import("notifications/notification.zig");

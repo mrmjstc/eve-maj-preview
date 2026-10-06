@@ -1,10 +1,11 @@
 //! Placing, sizing and restyling the thumbnail windows from the running profile.
 const win32 = @import("../platform/win32.zig");
+const config_mod = @import("../config.zig");
 const painter_mod = @import("../painter.zig");
 const window = @import("window.zig");
 const placement = @import("../layout/placement.zig");
+const spaces = @import("../layout/spaces.zig");
 const monitors = @import("../layout/monitors.zig");
-const scout = @import("../clients/scout.zig");
 const log = @import("../log.zig");
 const slog = log.scoped("arrange");
 
@@ -12,48 +13,52 @@ const Painter = painter_mod.Painter;
 const ThumbnailWindow = window.ThumbnailWindow;
 const Size = window.Size;
 
-pub const RegionFit = struct { region: win32.RECT, grid: placement.RegionFitGrid };
+pub const Place = struct { pos: config_mod.Position, size: Size };
 
-/// The RegionFit grid for `count` cells, or null outside RegionFit; the same for every thumbnail in a pass, so compute it once.
-pub fn regionFit(painter: *const Painter, count: usize) ?RegionFit {
-    const cfg = &painter.config.display;
-    if (!placement.isRegionFitActive(cfg)) return null;
-    // isRegionFitActive guarantees a region.
-    const region = placement.regionRectFromConfig(cfg).?;
+/// Every active space's grid for the current thumbnails.
+pub fn spaceCells(painter: *const Painter) placement.SpaceCells {
     const layout = painter.layout();
-    return .{
-        .region = region,
-        .grid = placement.calculateRegionFitGrid(region, count, cfg.spacing, cfg.spacing, layout.regionFitAspectRatio(), layout.regionFitMaxCellSize(region)),
-    };
+    return layout.spaceCells(&layout.spaceCounts());
 }
 
-/// Grid-fit sizes (RegionFit's or the not-logged-in space's) are already physical pixels; only a plain default or per-character size is DPI-scaled.
-pub fn targetSize(painter: *const Painter, character_name: []const u8, count: usize, grid: ?placement.RegionFitGrid, scale: f32) Size {
-    const cfg = &painter.config.display;
-    const size = painter.layout().getThumbnailSize(character_name, count, grid);
-    if (placement.isPlacedByThumbnailSpace(cfg, character_name)) return .{ .width = size.width, .height = size.height };
-    return .{ .width = win32.scalePixels(size.width, scale), .height = win32.scalePixels(size.height, scale) };
+/// A space's cell is already physical pixels; only a hand-placed thumbnail's configured size is DPI-scaled.
+pub fn targetSize(painter: *const Painter, character_name: []const u8, cells: *const placement.SpaceCells, scale: f32) Size {
+    if (placement.cellFor(painter.config, cells, character_name)) |cell| return cellSize(cell);
+    return handPlacedSize(painter, character_name, scale);
 }
 
-/// RegionFit and the not-logged-in space size every cell from the thumbnail count, so any arrival or departure reflows them all.
+/// Where a thumbnail not yet in the list goes: the end of its space until the reflow that follows ranks it, else its hand-placed spot.
+pub fn newPlace(painter: *const Painter, character_name: []const u8, monitor_bounds: ?win32.RECT, scale: f32) Place {
+    const layout = painter.layout();
+    if (spaces.spaceFor(painter.config, character_name)) |space_index| {
+        var counts = layout.spaceCounts();
+        counts[space_index] += 1;
+        if (layout.spaceCells(&counts)[space_index]) |cell| {
+            return .{ .pos = cell.position(counts[space_index] - 1), .size = cellSize(cell) };
+        }
+    }
+    const size = handPlacedSize(painter, character_name, scale);
+    return .{ .pos = layout.calculateThumbnailPosition(character_name, size.width, size.height, painter.thumbnails.items.len, monitor_bounds, scale), .size = size };
+}
+
+/// Spaces size every cell from how many thumbnails they hold, so any arrival or departure reflows them all.
 pub fn hasCountDependentLayout(painter: *const Painter) bool {
-    return placement.isAnyThumbnailSpaceActive(&painter.config.display);
+    return spaces.anyActive(painter.config);
 }
 
-/// After a rank or count change (bulk create loops, group membership); no-op outside RegionFit.
-pub fn reflowIfRegionFitActive(painter: *Painter) void {
-    if (placement.isRegionFitActive(&painter.config.display)) repositionAll(painter);
+/// After a change to who goes where or how big the cells are: membership, ranks, counts or the thumbnail size; no-op while no space is active.
+pub fn reflowIfSpacesActive(painter: *Painter) void {
+    if (spaces.anyActive(painter.config)) repositionAll(painter);
 }
 
-/// After a thumbnail size change, which reshapes (and, when capped, resizes) both spaces' cells.
-pub fn reflowIfThumbnailSpaceActive(painter: *Painter) void {
-    if (placement.isAnyThumbnailSpaceActive(&painter.config.display)) repositionAll(painter);
-}
-
-/// Resizes a thumbnail to its configured size if it differs. Pass `grid` when calling for every thumbnail in a batch (see getThumbnailSize).
-pub fn resizeIfNeeded(painter: *Painter, thumbnail: *ThumbnailWindow, grid: ?placement.RegionFitGrid) void {
-    const scale = win32.dpiToScale(monitors.getWindowDpi(thumbnail.hwnd));
-    const target = targetSize(painter, thumbnail.character_name, painter.thumbnails.items.len, grid, scale);
+/// Resizes a thumbnail to its target size if it differs. Pass `cells` when calling for every thumbnail in a batch.
+pub fn resizeIfNeeded(painter: *Painter, thumbnail: *ThumbnailWindow, cells: ?*const placement.SpaceCells) void {
+    var fresh: placement.SpaceCells = undefined;
+    const current_cells = cells orelse blk: {
+        fresh = spaceCells(painter);
+        break :blk &fresh;
+    };
+    const target = targetSize(painter, thumbnail.character_name, current_cells, windowScale(thumbnail));
 
     var current: win32.RECT = undefined;
     if (!win32.toBool(win32.GetClientRect(thumbnail.hwnd, &current))) return;
@@ -65,7 +70,7 @@ pub fn resizeIfNeeded(painter: *Painter, thumbnail: *ThumbnailWindow, grid: ?pla
 pub fn refreshVisuals(painter: *Painter) void {
     // Checked here so a live-preview toggle of hideWhenNoEveFocus reacts at once instead of on the next focus change.
     const any_eve_has_focus = painter.isEveWindowForeground();
-    const grid = if (regionFit(painter, painter.layout().regionFitGridCount())) |rf| rf.grid else null;
+    const cells = spaceCells(painter);
 
     for (painter.thumbnails.items) |*thumbnail| {
         // Must run for every thumbnail, not just win32_enabled ones: list_view.zig reads these cache fields directly.
@@ -82,7 +87,7 @@ pub fn refreshVisuals(painter: *Painter) void {
         _ = win32.SetLayeredWindowAttributes(thumbnail.hwnd, 0, thumbnail.cached_opacity, win32.LWA_ALPHA);
         win32.setClickThroughStyle(thumbnail.hwnd, painter.config.interaction.clickThrough);
         win32.setClickThroughStyle(thumbnail.text_hwnd, painter.config.interaction.clickThrough);
-        resizeIfNeeded(painter, thumbnail, grid);
+        resizeIfNeeded(painter, thumbnail, &cells);
         painter.renderThumbnailLogged(thumbnail, "visuals refresh");
     }
 }
@@ -99,62 +104,44 @@ pub fn beginDefer(painter: *const Painter) ?win32.HDWP {
 
 /// Moves every thumbnail to where the display settings put it. Never writes startX/startY, which can be live-dragged in the running app.
 pub fn repositionAll(painter: *Painter) void {
+    var assignment = assignSpaces(painter) catch |err| {
+        slog.err("Failed to assign thumbnails to their spaces: {}", .{err});
+        return;
+    };
+    defer assignment.deinit(painter.allocator);
+
     var hdwp = beginDefer(painter) orelse return;
-    const cfg = &painter.config.display;
     const layout = painter.layout();
-    const monitor_placement = monitors.resolveMonitorPlacement(cfg);
+    const monitor_placement = monitors.resolveMonitorPlacement(&painter.config.display);
     const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
     const scale = win32.dpiToScale(monitors.dpiForMonitor(if (monitor_placement) |mp| mp.monitor else null));
-    const not_logged_in_space = placement.notLoggedInSpaceRectFromConfig(cfg);
-    const total_count = painter.thumbnails.items.len;
+    const cells = layout.spaceCells(&assignment.counts);
 
-    // RegionFit fills in configured-order rank, not raw array position; notLoggedInSpace carves its placeholders out of that rank and count entirely.
-    const display_order: ?placement.RegionFitDisplayOrder = if (placement.isRegionFitActive(cfg))
-        layout.computeRegionFitDisplayOrder(painter.allocator, not_logged_in_space != null) catch |err| blk: {
-            slog.warn("Failed to compute RegionFit display order: {}", .{err});
-            break :blk null;
-        }
-    else
-        null;
-    defer if (display_order) |order| painter.allocator.free(order.ranks);
-
-    const region_fit = regionFit(painter, if (display_order) |order| order.count else total_count);
-    const not_logged_in: ?RegionFit = if (not_logged_in_space) |space|
-        .{ .region = space, .grid = layout.notLoggedInSpaceGrid(space, layout.notLoggedInSpaceCount()) }
-    else
-        null;
-
-    for (painter.thumbnails.items, 0..) |thumbnail, index| {
+    for (painter.thumbnails.items, assignment.space_of, assignment.rank, 0..) |thumbnail, space_of, rank, index| {
         if (!thumbnail.win32_enabled) continue;
-        const carved_out = not_logged_in_space != null and scout.isGenericCharacterName(thumbnail.character_name);
-
-        if (carved_out) {
-            const nl = not_logged_in.?;
-            const pos = placement.regionFitPositionForGrid(nl.region, nl.grid, layout.notLoggedInIndex(index), cfg.regionFitDirection, cfg.notLoggedInSpaceSpacing);
-            // Sized explicitly, since it may still have a previous RegionFit cell's size.
-            hdwp = thumbnail.deferPlace(hdwp, pos.x, pos.y, .{ .width = nl.grid.cell_width, .height = nl.grid.cell_height }) orelse return;
-        } else if (region_fit) |rf| {
-            const rank = if (display_order) |order| order.ranks[index] else index;
-            const pos = placement.regionFitPositionForGrid(rf.region, rf.grid, rank, cfg.regionFitDirection, cfg.spacing);
-            hdwp = thumbnail.deferPlace(hdwp, pos.x, pos.y, .{ .width = rf.grid.cell_width, .height = rf.grid.cell_height }) orelse return;
-        } else {
-            const size = targetSize(painter, thumbnail.character_name, total_count, null, scale);
-            const pos = layout.calculateThumbnailPosition(thumbnail.character_name, size.width, size.height, index, total_count, monitor_bounds, scale);
-            hdwp = thumbnail.deferPlace(hdwp, pos.x, pos.y, null) orelse return;
-        }
+        if (space_of) |space_index| if (cells[space_index]) |cell| {
+            const pos = cell.position(rank);
+            hdwp = thumbnail.deferPlace(hdwp, pos.x, pos.y, cellSize(cell)) orelse return;
+            continue;
+        };
+        // Sized too, since it may still have a space cell's size from before it left that space.
+        const size = handPlacedSize(painter, thumbnail.character_name, windowScale(&thumbnail));
+        const pos = layout.calculateThumbnailPosition(thumbnail.character_name, size.width, size.height, index, monitor_bounds, scale);
+        hdwp = thumbnail.deferPlace(hdwp, pos.x, pos.y, size) orelse return;
     }
     hdwp = painter.hover_zoom.deferRaise(hdwp) orelse return;
     _ = win32.EndDeferWindowPos(hdwp);
 
-    if (region_fit != null or not_logged_in != null) {
+    if (spaces.anyActive(painter.config)) {
         // Avoids a one-tick delay before the border catches up to the new cell size.
         for (painter.thumbnails.items) |*thumbnail| {
             if (!thumbnail.win32_enabled) continue;
             thumbnail.render_cache.settings = null;
-            painter.renderThumbnailLogged(thumbnail, "region fit resize");
+            painter.renderThumbnailLogged(thumbnail, "space resize");
         }
     }
 }
+
 
 /// Puts every thumbnail back on top after another app's topmost window took the z-order band.
 pub fn reassertTopmost(painter: *Painter) void {
@@ -167,4 +154,25 @@ pub fn reassertTopmost(painter: *Painter) void {
     }
     hdwp = painter.hover_zoom.deferRaise(hdwp) orelse return;
     _ = win32.EndDeferWindowPos(hdwp);
+}
+
+/// Caller frees with Assignment.deinit.
+fn assignSpaces(painter: *const Painter) !spaces.Assignment {
+    const names = try painter.allocator.alloc([]const u8, painter.thumbnails.items.len);
+    defer painter.allocator.free(names);
+    for (painter.thumbnails.items, names) |thumbnail, *name| name.* = thumbnail.character_name;
+    return spaces.assign(painter.allocator, painter.config, names);
+}
+
+fn cellSize(cell: placement.SpaceCell) Size {
+    return .{ .width = cell.grid.cell_width, .height = cell.grid.cell_height };
+}
+
+fn handPlacedSize(painter: *const Painter, character_name: []const u8, scale: f32) Size {
+    const size = painter.layout().configuredSize(character_name);
+    return .{ .width = win32.scalePixels(size.width, scale), .height = win32.scalePixels(size.height, scale) };
+}
+
+fn windowScale(thumbnail: *const ThumbnailWindow) f32 {
+    return win32.dpiToScale(monitors.getWindowDpi(thumbnail.hwnd));
 }

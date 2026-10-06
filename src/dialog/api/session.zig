@@ -7,6 +7,7 @@ const schema = @import("../../config/schema.zig");
 const notification = @import("../../notifications/notification.zig");
 const painter_mod = @import("../../painter.zig");
 const protocol = @import("../../protocol.zig");
+const spaces = @import("../../layout/spaces.zig");
 const main = @import("../../main.zig");
 const host = @import("../host.zig");
 const session = @import("../session.zig");
@@ -29,15 +30,19 @@ pub fn getSession(arena: std.mem.Allocator) !rpc.RawJson {
     return snapshot(arena);
 }
 
-/// Returns one result per op (see session.apply) and whether the document now differs from what's saved.
+/// Returns one result per op (see session.apply), whether the window should reload the documents, whether they now differ from what's saved, and where the spaces send characters.
 pub fn applyOps(arena: std.mem.Allocator, args: struct { doc: session.Doc, ops: []const patch.Op }) !rpc.RawJson {
     var out: std.Io.Writer.Allocating = .init(arena);
     var jw: std.json.Stringify = .{ .writer = &out.writer };
     try jw.beginObject();
     try jw.objectField("results");
-    try session.apply(&jw, arena, args.doc, args.ops);
+    const needs_resync = try session.apply(&jw, arena, args.doc, args.ops);
+    try jw.objectField("resync");
+    try jw.write(needs_resync);
     try jw.objectField("dirty");
     try writeDirty(&jw);
+    try jw.objectField("placement");
+    try writePlacement(&jw);
     try jw.endObject();
     return .{ .text = out.written() };
 }
@@ -86,7 +91,7 @@ pub fn testNotification(_: std.mem.Allocator, args: struct { type: []const u8 })
     try painter.showTestNotification(ntype, session.profile().thumbnail.notifications.getTypeConfig(ntype));
 }
 
-/// `oreCatalog` is the built-in ore list whose prices oreTable overrides, `profiles` feeds the dropdown and profile-switch hotkeys, and `characterIds` the portraits.
+/// `oreCatalog` is the built-in ore list whose prices oreTable overrides, `profiles` feeds the dropdown and profile-switch hotkeys, `characterIds` the portraits, and `desktop` the spaces' map.
 fn snapshot(arena: std.mem.Allocator) !rpc.RawJson {
     var out: std.Io.Writer.Allocating = .init(arena);
     var jw: std.json.Stringify = .{ .writer = &out.writer };
@@ -107,8 +112,37 @@ fn snapshot(arena: std.mem.Allocator) !rpc.RawJson {
     try main.g_character_ids.write(&jw);
     try jw.objectField("dirty");
     try writeDirty(&jw);
+    try jw.objectField("placement");
+    try writePlacement(&jw);
+    try jw.objectField("desktop");
+    const desktop = win32.virtualScreenRect();
+    try jw.write(.{ .x = desktop.left, .y = desktop.top, .width = win32.rectWidth(desktop), .height = win32.rectHeight(desktop) });
     try jw.endObject();
     return .{ .text = out.written() };
+}
+
+/// The ids of the spaces unassigned characters, login-screen clients and each named hotkey group go to, null where none takes them, so the window can say when another space wins.
+fn writePlacement(jw: *std.json.Stringify) !void {
+    const cfg = session.profile();
+    const items = cfg.thumbnailSpaces.items;
+    try jw.beginObject();
+    try jw.objectField("unassignedSpaceId");
+    try jw.write(spaceId(items, spaces.unassignedSpaceIn(items)));
+    try jw.objectField("loginScreenSpaceId");
+    try jw.write(spaceId(items, spaces.loginScreenSpaceIn(items)));
+    try jw.objectField("groupSpaceIds");
+    try jw.beginObject();
+    for (cfg.hotkeyGroups.items) |group| {
+        if (group.name.len == 0) continue;
+        try jw.objectField(group.name);
+        try jw.write(spaceId(items, spaces.groupSpaceIn(items, group.name)));
+    }
+    try jw.endObject();
+    try jw.endObject();
+}
+
+fn spaceId(items: []const config.ThumbnailSpace, index: ?usize) ?u32 {
+    return if (index) |at| items[at].id else null;
 }
 
 fn writeDirty(jw: *std.json.Stringify) !void {

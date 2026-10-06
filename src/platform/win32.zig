@@ -220,6 +220,13 @@ pub fn rectHeight(rect: RECT) LONG {
     return rect.bottom - rect.top;
 }
 
+/// The rectangle every monitor fits in, in physical pixels.
+pub fn virtualScreenRect() RECT {
+    const left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    const top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    return .{ .left = left, .top = top, .right = left + GetSystemMetrics(SM_CXVIRTUALSCREEN), .bottom = top + GetSystemMetrics(SM_CYVIRTUALSCREEN) };
+}
+
 pub fn rectCenter(rect: RECT) POINT {
     return .{ .x = rect.left + @divTrunc(rectWidth(rect), 2), .y = rect.top + @divTrunc(rectHeight(rect), 2) };
 }
