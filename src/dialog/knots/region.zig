@@ -31,6 +31,14 @@ pub fn start(space_id: u32, edit: bool) void {
     const hide = session.profile().ptr.display.hideThumbnailsDuringRegionSelect;
     const edit_region: ?win32.RECT = if (edit) current else null;
     const labels = region_select.Labels{};
+    comptime std.debug.assert(region_select.MAX_OTHER_REGIONS >= spaces.MAX_SPACES);
+    var others: [region_select.MAX_OTHER_REGIONS]win32.RECT = undefined;
+    var other_count: usize = 0;
+    for (session.profile().ptr.thumbnailSpaces.items) |*space| {
+        if (space.id == space_id or other_count == others.len) continue;
+        others[other_count] = spaces.rect(space) orelse continue;
+        other_count += 1;
+    }
 
     if (hide) painter.hideVisibleThumbnails(g_allocator, &g_hidden);
     const cursor = monitors.cursorMonitorBounds();
@@ -39,7 +47,7 @@ pub fn start(space_id: u32, edit: bool) void {
         slog.err("Failed to get font for region-select label: {}", .{err});
         break :blk null;
     };
-    region_select.start(painter.instance, painter.config.accentColor, .{ .font = label_font, .color = text_color }, edit_region, labels, onFinished, onSelected) catch |err| {
+    region_select.start(painter.instance, painter.config.accentColor, .{ .font = label_font, .color = text_color }, edit_region, others[0..other_count], labels, onFinished, onSelected) catch |err| {
         onFinished();
         slog.err("Failed to start region selection: {}", .{err});
         status.show(.failure, "Failed to start region selection: {}", .{err});
