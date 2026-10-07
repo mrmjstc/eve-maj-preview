@@ -11,6 +11,7 @@ test {
     _ = @import("config/readable.zig");
     _ = @import("config/system_colors.zig");
     _ = @import("config/wire.zig");
+    _ = @import("dialog/tools/region_math.zig");
     _ = @import("hotkeys/bindings.zig");
     _ = @import("hotkeys/exclusions.zig");
     _ = @import("layout/placement.zig");
