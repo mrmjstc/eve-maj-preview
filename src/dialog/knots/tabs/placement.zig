@@ -1,4 +1,4 @@
-//! The Display tab's Thumbnail Placement section: the placement mode, then hand-placement settings or a list of thumbnail spaces beside the selected one's details; main thread only.
+//! The configuration window's Placement tab: the placement mode, then hand-placement settings or a list of thumbnail spaces beside the selected one's details; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const win32 = @import("../../../platform/win32.zig");
@@ -39,7 +39,8 @@ const Chip = struct {
 /// The id of the space whose details are shown; not saved, and follows the space through reorders.
 var g_selected_id: u32 = 0;
 
-pub fn show(context: *ui.Frame, display: DisplayRef) !void {
+pub fn show(context: *ui.Frame) !void {
+    const display = session.profile().child("display");
     const section = try widgets.openSection(context, "Thumbnail Placement", "Manual lets you drag each thumbnail where you want it. Thumbnail Spaces fills screen regions you draw with the thumbnails of the hotkey groups each one holds.", &style.section);
     try bind.segmented(context, display, "placementMode", "Placement Mode", &.{ "Manual", "Thumbnail Spaces" });
     // A search shows both modes' settings, so a match in the other mode is still found.

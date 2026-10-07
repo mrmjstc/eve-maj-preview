@@ -193,10 +193,10 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     try hotkey_row.close(context);
 
     try thumbnailSize(context, character);
-    try widgets.hintText(context, .str("knots.character.size.hint"), "Leave both blank to use the global thumbnail size from the Display tab.");
+    try widgets.hintText(context, .str("knots.character.size.hint"), "Leave both blank to use the global thumbnail size from the Appearance tab.");
 
     try opacity(context, character);
-    try widgets.hintText(context, .str("knots.character.opacity.hint"), "Stays linked to the Display tab's Opacity setting unless you move this slider away from it.");
+    try widgets.hintText(context, .str("knots.character.opacity.hint"), "Stays linked to the Appearance tab's Opacity setting unless you move this slider away from it.");
 
     try colors(context, character);
 
@@ -216,7 +216,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     }
 }
 
-/// Unset follows the Display tab's size; either box alone overrides that half.
+/// Unset follows the Appearance tab's size; either box alone overrides that half.
 fn thumbnailSize(context: *ui.Frame, character: CharacterRef) !void {
     const row = try widgets.openBinding(context, .str("knots.character.size"), "Thumbnail Size");
     const size = character.get("thumbnailSize") orelse config.CharacterThumbnailSizeConfig{};
@@ -240,7 +240,7 @@ fn toFloat(value: ?i32) ?f64 {
     return if (value) |number| @floatFromInt(number) else null;
 }
 
-/// Unset follows the Display tab's opacity; moving the slider gives the character its own.
+/// Unset follows the Appearance tab's opacity; moving the slider gives the character its own.
 fn opacity(context: *ui.Frame, character: CharacterRef) !void {
     const inherited = session.profile().ptr.thumbnail.thumbnailOpacity;
     const row = try widgets.openBinding(context, .str("knots.character.opacity"), "Opacity (%)");

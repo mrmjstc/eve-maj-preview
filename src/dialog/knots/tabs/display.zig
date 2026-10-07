@@ -1,4 +1,4 @@
-//! The configuration window's Display tab: how clients are shown, then the thumbnail or client list settings for that mode; main thread only.
+//! The configuration window's Appearance tab: how clients are shown, then the thumbnail or client list settings for that mode; main thread only.
 const ui = @import("ui");
 const win32 = @import("../../../platform/win32.zig");
 const config = @import("../../../config.zig");
@@ -8,13 +8,8 @@ const bind = @import("../bind.zig");
 const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
-const stage = @import("thumbnails/stage.zig");
-const chips = @import("thumbnails/chips.zig");
-const placement = @import("placement.zig");
 
-const Rect = ui.component.Rect;
 const Text = ui.component.Text;
-const Button = ui.component.Button;
 const ThumbnailRef = session.Ref(config.ThumbnailConfig);
 const DisplayRef = session.Ref(config.DisplayConfig);
 
@@ -41,8 +36,6 @@ const MATCH_CLIENT_INDEX = 0;
 const CUSTOM_INDEX = RATIOS.len - 1;
 
 pub fn show(context: *ui.Frame) !void {
-    const was_aligned = widgets.useAlignedRows(true);
-    defer _ = widgets.useAlignedRows(was_aligned);
     const thumbnail = session.profile().child("thumbnail");
     const display = session.profile().child("display");
     try displayMode(context, display);
@@ -51,9 +44,6 @@ pub fn show(context: *ui.Frame) !void {
             try sizeAndOpacity(context, thumbnail);
             try borders(context, thumbnail);
             try visibility(context, thumbnail);
-            try textOverlays(context, thumbnail);
-            try placement.show(context, display);
-            try systemColors(context);
         },
         .ClientList => try clientList(context, display),
         .Nothing => {},
@@ -158,21 +148,7 @@ fn visibility(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
     try section.close(context);
 }
 
-fn textOverlays(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
-    const section = try widgets.openSection(context, "Text Overlays", "Texts shown on each thumbnail. Drag one on the preview to move it, or click it to turn it on or off and change its font and colours. Faded ones are off. The preview is not to scale.", &style.section);
-    try bind.toggle(context, thumbnail, "showText", "Show Text Overlays");
-    if (try widgets.checkbox(context, .src(@src()), "Sync Fonts and Backgrounds", &chips.g_sync_styling)) {
-        if (chips.g_sync_styling) chips.syncFromCharacterName();
-    }
-    try widgets.hintText(context, .src(@src()), "Editing one overlay's font or background applies it to all the others.");
-    const row = Rect{ .key = .src(@src()), .style = &style.stage_row };
-    _ = try row.open(context);
-    try stage.show(context);
-    try row.close(context);
-    try section.close(context);
-}
-
-/// Picks which of the tab's other sections are drawn.
+/// Picks which of the tab's other sections are drawn, and whether the Placement and Text Overlays tabs are offered.
 fn displayMode(context: *ui.Frame, display: DisplayRef) !void {
     const section = try widgets.openSection(context, "Display Mode", "Thumbnails shows a live preview of each client. Client List is a compact text panel that uses fewer resources, ideal with many clients. None shows nothing; hotkeys and notifications keep working.", &style.section);
     try bind.segmented(context, display, "viewMode", "Show Clients As", &.{ "Thumbnails", "Client List", "None" });
@@ -190,31 +166,5 @@ fn clientList(context: *ui.Frame, display: DisplayRef) !void {
     try bind.choiceBox(context, display, "listViewFontWeight", &style.select_narrow);
     try font.close(context);
     try bind.toggle(context, display, "rememberListViewPosition", "Remember Position");
-    try section.close(context);
-}
-
-fn systemColors(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "System Colors", "Define custom colors for specific solar systems. These take priority over Unique System Colors and the default color. Separate names with commas; * matches any text, ? any character, # any digit (e.g. J######).", &style.section);
-    const profile = session.profile();
-    const list = Rect{ .key = .src(@src()), .style = &style.list };
-    _ = try list.open(context);
-    var index: usize = 0;
-    while (index < profile.ptr.systemColors.items.len) : (index += 1) {
-        const entry = profile.item("systemColors", index);
-        const row = Rect{ .key = ui.Key.str("knots.system_color.row").indexed(index), .style = &style.list_row };
-        _ = try row.open(context);
-        try bind.textBox(context, entry, "systemName", "System name");
-        try bind.colorBox(context, entry, "color");
-        const removed = try widgets.confirmButton(context, ui.Key.str("knots.system_color.remove").indexed(index), "Remove", "Confirm", &style.remove_button, &style.confirm_remove_button);
-        try row.close(context);
-        if (removed) {
-            profile.remove("systemColors", index);
-            break;
-        }
-    }
-    try list.close(context);
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "+ Add System Color", .style = &style.full_width_button })).clicked) {
-        profile.append("systemColors", .{ .systemName = "", .color = 0xFFFFFFFF });
-    }
     try section.close(context);
 }

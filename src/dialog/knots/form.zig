@@ -1,4 +1,4 @@
-//! The configuration window's frame: tab sidebar, the open tab, the Save footer and the unsaved-changes prompt; main thread only.
+//! The configuration window's frame: categorised tab sidebar, the open tab, the Save footer and the unsaved-changes prompt; main thread only.
 const std = @import("std");
 const knots = @import("knots");
 const ui = @import("ui");
@@ -23,6 +23,8 @@ const behavior = @import("tabs/behavior.zig");
 const chatlog = @import("tabs/chatlog.zig");
 const notifications = @import("tabs/notifications.zig");
 const overlays = @import("tabs/overlays.zig");
+const placement = @import("tabs/placement.zig");
+const text_overlays = @import("tabs/text_overlays.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
@@ -33,70 +35,109 @@ const Canvas = ui.component.Canvas;
 const CONTENT_KEY: ui.Key = .str("knots.content");
 const SEARCH_KEY: ui.Key = .str("knots.search");
 
-const Tab = enum {
-    about,
-    general,
+/// A heading in the sidebar over the tabs that belong to it.
+const Category = enum {
+    clients,
     display,
+    input,
+    alerts,
+    overlays,
+    app,
+
+    fn label(category: Category) []const u8 {
+        return switch (category) {
+            .clients => "CLIENTS",
+            .display => "DISPLAY",
+            .input => "INPUT",
+            .alerts => "ALERTS",
+            .overlays => "OVERLAYS",
+            .app => "APP",
+        };
+    }
+};
+
+/// In sidebar order, each category's tabs together.
+const Tab = enum {
     characters,
-    behavior,
-    hotkeys,
     hotkey_groups,
-    chatlog,
+    appearance,
+    placement,
+    text_overlays,
+    hotkeys,
+    behavior,
     notifications,
+    chatlog,
     combat,
     mining,
     bounty,
     resources,
+    general,
+    about,
 
     fn label(tab: Tab) []const u8 {
         return switch (tab) {
-            .about => "About",
-            .general => "General",
-            .display => "Display",
             .characters => "Characters",
-            .behavior => "Behavior",
-            .hotkeys => "Hotkeys",
             .hotkey_groups => "Hotkey Groups",
-            .chatlog => "Log Monitoring",
+            .appearance => "Appearance",
+            .placement => "Placement",
+            .text_overlays => "Text Overlays",
+            .hotkeys => "Hotkeys",
+            .behavior => "Behavior",
             .notifications => "Notifications",
-            .combat => "Combat Overlay",
-            .mining => "Mining Overlay",
-            .bounty => "Bounty Overlay",
-            .resources => "Resource Overlay",
+            .chatlog => "Log Monitoring",
+            .combat => "Combat",
+            .mining => "Mining",
+            .bounty => "Bounty",
+            .resources => "Resources",
+            .general => "General",
+            .about => "About",
+        };
+    }
+
+    fn category(tab: Tab) Category {
+        return switch (tab) {
+            .characters, .hotkey_groups => .clients,
+            .appearance, .placement, .text_overlays => .display,
+            .hotkeys, .behavior => .input,
+            .notifications, .chatlog => .alerts,
+            .combat, .mining, .bounty, .resources => .overlays,
+            .general, .about => .app,
         };
     }
 
     fn glyph(tab: Tab) glyphs.Glyph {
         return switch (tab) {
-            .about => .star,
-            .general => .gear,
-            .display => .thumbnail,
             .characters => .list,
-            .behavior => .spokes,
-            .hotkeys => .keyboard,
             .hotkey_groups => .split_square,
-            .chatlog => .magnifier,
+            .appearance => .thumbnail,
+            .placement => .tiles,
+            .text_overlays => .letter_t,
+            .hotkeys => .keyboard,
+            .behavior => .spokes,
             .notifications => .envelope,
+            .chatlog => .magnifier,
             .combat => .swords,
             .mining => .diamond,
             .bounty => .dollar,
             .resources => .striped_square,
-        };
-    }
-
-    /// Lists its sections under it in the sidebar while open; tabs with too few to be worth it don't.
-    fn listsSections(tab: Tab) bool {
-        return switch (tab) {
-            .general, .display, .behavior, .hotkeys, .notifications, .mining => true,
-            .about, .characters, .hotkey_groups, .chatlog, .combat, .bounty, .resources => false,
+            .general => .gear,
+            .about => .star,
         };
     }
 
     /// Shown only in Advanced Mode.
     fn isAdvanced(tab: Tab) bool {
         return switch (tab) {
-            .general, .combat, .mining, .bounty, .resources => true,
-            .about, .display, .characters, .behavior, .hotkeys, .hotkey_groups, .chatlog, .notifications => false,
+            .combat, .mining, .bounty, .resources, .general => true,
+            .characters, .hotkey_groups, .appearance, .placement, .text_overlays, .hotkeys, .behavior, .notifications, .chatlog, .about => false,
+        };
+    }
+
+    /// Shown only while clients are shown as thumbnails.
+    fn needsThumbnails(tab: Tab) bool {
+        return switch (tab) {
+            .placement, .text_overlays => true,
+            .characters, .hotkey_groups, .appearance, .hotkeys, .behavior, .notifications, .chatlog, .combat, .mining, .bounty, .resources, .general, .about => false,
         };
     }
 
@@ -104,14 +145,40 @@ const Tab = enum {
     fn fills(tab: Tab) bool {
         return switch (tab) {
             .characters => true,
-            .about, .general, .display, .behavior, .hotkeys, .hotkey_groups, .chatlog, .notifications, .combat, .mining, .bounty, .resources => false,
+            .hotkey_groups, .appearance, .placement, .text_overlays, .hotkeys, .behavior, .notifications, .chatlog, .combat, .mining, .bounty, .resources, .general, .about => false,
         };
+    }
+
+    /// Puts each row's label left and its control at the right edge; see widgets.useAlignedRows.
+    fn alignsRows(tab: Tab) bool {
+        return switch (tab) {
+            .appearance, .placement, .text_overlays => true,
+            .characters, .hotkey_groups, .hotkeys, .behavior, .notifications, .chatlog, .combat, .mining, .bounty, .resources, .general, .about => false,
+        };
+    }
+
+    // The sidebar heads each category once, so its tabs must be adjacent.
+    comptime {
+        const tabs = std.enums.values(Tab);
+        for (tabs[0 .. tabs.len - 1], tabs[1..]) |previous, tab| {
+            std.debug.assert(@backingInt(previous.category()) <= @backingInt(tab.category()));
+        }
+    }
+};
+
+/// Which tabs the sidebar offers this frame.
+const Offered = struct {
+    advanced: bool,
+    thumbnails: bool,
+
+    fn has(offered: Offered, tab: Tab) bool {
+        if (!offered.advanced and tab.isAdvanced()) return false;
+        if (!offered.thumbnails and tab.needsThumbnails()) return false;
+        return true;
     }
 };
 
 var g_tab: Tab = .about;
-/// The tab whose sections widgets recorded last frame, so a just-opened tab doesn't list the previous one's.
-var g_tab_drawn: Tab = .about;
 var g_confirm_close: bool = false;
 
 /// The window's close button was pressed with unsaved changes.
@@ -125,9 +192,12 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     search.beginFrame();
     try hotkey.beginFrame(context.arena());
     applyAccent(context);
-    const advanced = session.global().get("advancedMode");
-    // Turning Advanced Mode off hides the open tab if it's an advanced one.
-    if (!advanced and g_tab.isAdvanced()) selectTab(context, .about);
+    const offered = Offered{
+        .advanced = session.global().get("advancedMode"),
+        .thumbnails = session.profile().child("display").get("viewMode") == .Thumbnails,
+    };
+    // Turning Advanced Mode off or leaving thumbnail mode can hide the open tab.
+    if (!offered.has(g_tab)) selectTab(context, if (g_tab.needsThumbnails()) .appearance else .about);
     const size = context.input().logical_extent;
     // Style pointers must outlive the frame's layout, which the arena does.
     const root_style = try context.arena().create(ui.Style);
@@ -143,14 +213,11 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
 
     const body = Rect{ .key = .src(@src()), .style = &.{ .width = .grow(), .height = .grow(), .direction = .row } };
     _ = try body.open(context);
-    try sidebar(context, advanced);
-    widgets.applyJump(context, CONTENT_KEY);
-    const ui_state = context.ui();
-    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, CONTENT_KEY.hash());
+    try sidebar(context, offered);
     const content = Rect{ .key = CONTENT_KEY, .style = if (g_tab.fills()) &style.content_fill else &style.content_scroll };
     _ = try content.open(context);
     if (search.needsIndex()) {
-        try indexTabs(context, advanced);
+        try indexTabs(context, offered);
     } else {
         if (search.isActive() and !search.tabHasMatches(@backingInt(g_tab))) {
             if (search.firstMatchingTab()) |first| selectTab(context, @fromBackingInt(@intCast(first)));
@@ -159,8 +226,6 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     }
     try content.close(context);
     try body.close(context);
-
-    g_tab_drawn = g_tab;
 
     try footer(context);
     try import_dialog.show(context);
@@ -173,9 +238,13 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
 }
 
 fn showTab(context: *ui.Frame, tab: Tab) !void {
+    const was_aligned = widgets.useAlignedRows(tab.alignsRows());
+    defer _ = widgets.useAlignedRows(was_aligned);
     switch (tab) {
         .about => try about.show(context),
-        .display => try display.show(context),
+        .appearance => try display.show(context),
+        .placement => try placement.show(context),
+        .text_overlays => try text_overlays.show(context),
         .characters => try characters.show(context),
         .behavior => try behavior.show(context),
         .chatlog => try chatlog.show(context),
@@ -191,11 +260,11 @@ fn showTab(context: *ui.Frame, tab: Tab) !void {
 }
 
 /// Draws every tab the sidebar offers out of sight, once, so the search can see sections on tabs that aren't open.
-fn indexTabs(context: *ui.Frame, advanced: bool) !void {
+fn indexTabs(context: *ui.Frame, offered: Offered) !void {
     const hidden = Rect{ .key = .src(@src()), .style = &style.section_hidden };
     _ = try hidden.open(context);
     for (std.enums.values(Tab)) |tab| {
-        if (!advanced and tab.isAdvanced()) continue;
+        if (!offered.has(tab)) continue;
         search.beginCapture(@backingInt(tab));
         try showTab(context, tab);
     }
@@ -204,14 +273,27 @@ fn indexTabs(context: *ui.Frame, advanced: bool) !void {
     context.requestRedraw();
 }
 
-fn sidebar(context: *ui.Frame, advanced: bool) !void {
+fn sidebar(context: *ui.Frame, offered: Offered) !void {
     const bar = Rect{ .key = .src(@src()), .style = &style.sidebar };
     _ = try bar.open(context);
+    var last_category: ?Category = null;
     for (std.enums.values(Tab)) |tab| {
-        if (!advanced and tab.isAdvanced()) continue;
+        if (!offered.has(tab)) continue;
         if (!search.tabHasMatches(@backingInt(tab))) continue;
+        if (last_category != tab.category()) {
+            last_category = tab.category();
+            const index = @backingInt(tab.category());
+            try context.e(.{
+                Rect{ .key = ui.Key.str("knots.tab.category").indexed(index), .style = &style.tab_category },
+                .{Text{
+                    .selectable = false,
+                    .key = ui.Key.str("knots.tab.category.label").indexed(index),
+                    .content = tab.category().label(),
+                    .style = &style.tab_category_text,
+                }},
+            });
+        }
         try tabItem(context, tab);
-        if (tab == g_tab and tab.listsSections()) try sectionList(context);
     }
     try bar.close(context);
 }
@@ -241,26 +323,9 @@ fn tabItem(context: *ui.Frame, tab: Tab) !void {
     if (response.clicked and !is_active) selectTab(context, tab);
 }
 
-/// Last frame's sections, which are this tab's once it has drawn once.
-fn sectionList(context: *ui.Frame) !void {
-    if (g_tab_drawn != g_tab) return;
-    for (widgets.drawnSections()) |entry| {
-        const is_active = widgets.isActiveSection(entry.id);
-        if ((try context.interact(Button{
-            .key = ui.Key.str("knots.subheader").indexed(@truncate(entry.id)),
-            .label = entry.title,
-            .style = if (is_active) &style.subheader_item_active else &style.subheader_item,
-        })).clicked) {
-            widgets.jumpTo(entry.id);
-            context.requestRedraw();
-        }
-    }
-}
-
-/// The new tab starts at its top, with nothing outlined.
+/// The new tab starts at its top.
 fn selectTab(context: *ui.Frame, tab: Tab) void {
     g_tab = tab;
-    widgets.clearActiveSection();
     const ui_state = context.ui();
     if (ui_state.state.get(.scroll, CONTENT_KEY.hash())) |scroll| scroll.offset = .{ 0, 0 };
     context.requestRedraw();

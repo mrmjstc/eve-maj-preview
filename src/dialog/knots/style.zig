@@ -89,12 +89,12 @@ pub const section: Style = .{
 /// A section that fills its tab, like the Characters list's.
 pub const fill_section: Style = section.with(.{ .height = .grow() });
 
-/// Fits Resource Overlay, the longest label; knots can't size a rail to stretched children.
+/// Fits the longest label inside the inset items; knots can't size a rail to stretched children.
 pub const sidebar: Style = .{
-    .width = .fixed(172),
+    .width = .fixed(184),
     .height = .grow(),
     .direction = .column,
-    .padding = .xy(0, 6),
+    .padding = .xy(6, 6),
     .overflow = .scroll_y,
     .background = .{ .color = PANEL },
     .border_width = .edges(0, 1, 0, 0),
@@ -110,7 +110,7 @@ pub const tab_item: Style = .{
     .background = .transparent,
     .foreground = .{ .color = MUTED },
     .font = FONT_SEMIBOLD,
-    .radius = .none,
+    .radius = .md,
     .hover = &.{ .background = .{ .color = SURFACE }, .foreground = .{ .color = TEXT }, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
@@ -119,23 +119,12 @@ pub const tab_item_active: Style = tab_item.with(.{
     .foreground = .{ .color = TEXT },
     .hover = &.{ .state_layer = 0 },
 });
+/// .nav-category: the small heading over a group of tabs, lined up with their glyphs.
+pub const tab_category: Style = .{ .width = .grow(), .padding = .init(14, 10, 4, 10) };
+pub const tab_category_text: Style = .{ .font = FONT_SEMIBOLD, .font_size = .{ .px = 10 }, .foreground = .{ .color = MUTED } };
 pub const tab_label: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = MUTED } };
 pub const tab_label_lit: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } };
 pub const tab_glyph: Style = .{ .width = .fixed(14), .height = .fixed(14) };
-
-/// .subheader-item: a section of the open tab, indented to line up with the tab's label.
-pub const subheader_item: Style = .{
-    .width = .grow(),
-    .justify = .start,
-    .padding = .init(3, 10, 3, 32),
-    .font_size = .{ .px = 10 },
-    .background = .transparent,
-    .foreground = .{ .color = MUTED },
-    .radius = .none,
-    .hover = &.{ .foreground = .{ .color = TEXT }, .state_layer = 0 },
-    .active = &.{ .state_layer = 0 },
-};
-pub const subheader_item_active: Style = subheader_item.with(.{ .foreground = .{ .color = TEXT }, .font = FONT_SEMIBOLD });
 
 /// The tab's content; scrolls unless the tab fills it itself.
 pub const content_scroll: Style = .{

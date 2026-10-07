@@ -5,7 +5,6 @@ const style = @import("style.zig");
 
 const glyphs = @import("glyphs.zig");
 const search = @import("search.zig");
-const log = @import("../../log.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
@@ -15,45 +14,33 @@ const ColorPicker = ui.component.ColorPicker;
 const Checkbox = ui.component.Checkbox;
 const Button = ui.component.Button;
 const Color = ui.Color;
-const slog = log.scoped("dialog_knots");
 
-/// Most sections a tab has; past this they still draw, but miss the sidebar and their hint button.
+/// Most sections a tab has; past this they still draw, but miss their hint button.
 const MAX_SECTIONS = 32;
-/// The gap left above a section jumped to.
-const JUMP_MARGIN = 8;
 /// Movement under this is a click on a row, not a drag.
 const REORDER_THRESHOLD = 4;
 /// How long a confirm button waits for its second click.
 const CONFIRM_TIMEOUT_MS = 2000;
 
-/// A drawn section, for the sidebar to list and jump to.
-pub const SectionEntry = struct {
-    /// Comptime, so it outlives every frame.
-    title: []const u8,
-    id: u64,
-};
-
+/// Section ids.
 const SectionList = struct {
-    entries: [MAX_SECTIONS]SectionEntry = undefined,
+    ids: [MAX_SECTIONS]u64 = undefined,
     count: usize = 0,
 
-    fn append(self: *SectionList, entry: SectionEntry) void {
+    fn append(self: *SectionList, id: u64) void {
         if (self.count == MAX_SECTIONS) return;
-        self.entries[self.count] = entry;
+        self.ids[self.count] = id;
         self.count += 1;
     }
 
     fn contains(self: *const SectionList, id: u64) bool {
-        for (self.entries[0..self.count]) |entry| {
-            if (entry.id == id) return true;
-        }
-        return false;
+        return std.mem.indexOfScalar(u64, self.ids[0..self.count], id) != null;
     }
 
     fn remove(self: *SectionList, id: u64) void {
-        for (self.entries[0..self.count], 0..) |entry, index| {
-            if (entry.id != id) continue;
-            self.entries[index] = self.entries[self.count - 1];
+        for (self.ids[0..self.count], 0..) |entry, index| {
+            if (entry != id) continue;
+            self.ids[index] = self.ids[self.count - 1];
             self.count -= 1;
             return;
         }
@@ -109,77 +96,29 @@ var g_label_style: *const ui.Style = &style.label;
 var g_is_aligned: bool = false;
 /// Aligned rows drawn so far in the open section; every one after the first gets a divider above it.
 var g_section_row_count: usize = 0;
-var g_drawn: SectionList = .{};
-/// Last frame's sections: the sidebar is drawn before this frame's.
-var g_drawn_before: SectionList = .{};
 var g_hinted: SectionList = .{};
 /// Last frame's sections with field hints, which get a button to show them.
 var g_hinted_before: SectionList = .{};
 /// Sections whose field hints the user turned on.
 var g_hints_shown: SectionList = .{};
 var g_open_section: ?u64 = null;
-/// The section last jumped to from the sidebar, outlined until the tab changes.
-var g_active_section: ?u64 = null;
-var g_pending_jump: ?u64 = null;
 var g_confirm_key: ?u64 = null;
 /// The row being dragged to a new place in its list.
 var g_reorder: ?struct { list: u64, from: usize, start_y: f64, insert: usize, moved: bool = false } = null;
 var g_confirm_until_ms: i64 = 0;
 
 pub fn beginFrame() void {
-    g_drawn_before = g_drawn;
-    g_drawn = .{};
     g_hinted_before = g_hinted;
     g_hinted = .{};
 }
 
 /// Once the window has closed.
 pub fn reset() void {
-    g_drawn = .{};
-    g_drawn_before = .{};
     g_hinted = .{};
     g_hinted_before = .{};
     g_hints_shown = .{};
     g_open_section = null;
-    g_active_section = null;
-    g_pending_jump = null;
     g_confirm_key = null;
-}
-
-/// The sections the open tab drew last frame.
-pub fn drawnSections() []const SectionEntry {
-    return g_drawn_before.entries[0..g_drawn_before.count];
-}
-
-pub fn isActiveSection(id: u64) bool {
-    return g_active_section == id;
-}
-
-/// Scrolls the section to the top of the pane on the next applyJump, and outlines it.
-pub fn jumpTo(id: u64) void {
-    g_active_section = id;
-    g_pending_jump = id;
-}
-
-/// When the tab changes.
-pub fn clearActiveSection() void {
-    g_active_section = null;
-    g_pending_jump = null;
-}
-
-/// Before the scrolling pane opens; positions are last frame's, which the jump was clicked from.
-pub fn applyJump(context: *ui.Frame, pane_key: ui.Key) void {
-    const id = g_pending_jump orelse return;
-    g_pending_jump = null;
-    const ui_state = context.ui();
-    const pane = ui_state.state.get(.measured, pane_key.hash()) orelse return;
-    const section = ui_state.state.get(.measured, id) orelse return;
-    const scroll = ui_state.state.getOrCreate(.scroll, ui_state.allocator, pane_key.hash()) catch |err| {
-        slog.warn("Failed to jump to a section: {}", .{err});
-        return;
-    };
-    scroll.offset[1] = @max(0, scroll.offset[1] + section.box.y() - pane.box.y() - JUMP_MARGIN);
-    context.requestRedraw();
 }
 
 /// A panel with its heading, a button for its field hints when it has any, and the intro hint; the caller closes it.
@@ -193,15 +132,7 @@ pub fn openSection(context: *ui.Frame, comptime title: []const u8, comptime hint
     search.captureText(hint);
     // A section the search doesn't match is laid out of sight rather than skipped, so its caller needn't know.
     const is_hidden = !search.sectionMatches(id);
-    if (!is_hidden) g_drawn.append(.{ .title = title, .id = id });
-
-    var shown_style = if (is_hidden) &style.section_hidden else section_style;
-    if (!is_hidden and g_active_section == id) {
-        const active = try context.arena().create(ui.Style);
-        active.* = section_style.with(.{ .border_color = .accent });
-        shown_style = active;
-    }
-    const section = Rect{ .key = key, .style = shown_style };
+    const section = Rect{ .key = key, .style = if (is_hidden) &style.section_hidden else section_style };
     _ = try section.open(context);
     g_open_section = id;
     g_section_row_count = 0;
@@ -218,7 +149,7 @@ pub fn openSection(context: *ui.Frame, comptime title: []const u8, comptime hint
             .label = "?",
             .style = if (is_shown) &style.hint_toggle_on else &style.hint_toggle,
         })).clicked) {
-            if (is_shown) g_hints_shown.remove(id) else g_hints_shown.append(.{ .title = title, .id = id });
+            if (is_shown) g_hints_shown.remove(id) else g_hints_shown.append(id);
             context.requestRedraw();
         }
     }
@@ -413,7 +344,7 @@ pub fn glyphButton(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, label: 
 pub fn hintWithLink(context: *ui.Frame, key: ui.Key, content: []const u8, link_label: []const u8) !bool {
     search.captureText(content);
     if (g_open_section) |id| {
-        if (!g_hinted.contains(id)) g_hinted.append(.{ .title = "", .id = id });
+        if (!g_hinted.contains(id)) g_hinted.append(id);
         if (!g_hints_shown.contains(id)) return false;
     }
     const row = Rect{ .key = key, .style = &style.hint_row };
@@ -434,7 +365,7 @@ pub fn paragraph(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
 pub fn hintText(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
     search.captureText(content);
     if (g_open_section) |id| {
-        if (!g_hinted.contains(id)) g_hinted.append(.{ .title = "", .id = id });
+        if (!g_hinted.contains(id)) g_hinted.append(id);
         if (!g_hints_shown.contains(id)) return;
     }
     try context.e(Text{ .selectable = false, .key = key, .content = content, .style = &style.hint });
