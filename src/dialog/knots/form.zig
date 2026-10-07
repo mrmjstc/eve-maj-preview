@@ -206,8 +206,13 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     const body = Rect{ .key = .src(@src()), .style = &.{ .width = .grow(), .height = .grow(), .direction = .row } };
     _ = try body.open(context);
     try sidebar(context, offered);
-    const content = Rect{ .key = CONTENT_KEY, .style = if (g_tab.fills()) &style.content_fill else &style.content_scroll };
-    _ = try content.open(context);
+    const fill = Rect{ .key = CONTENT_KEY, .style = &style.content_fill };
+    var scroll: ?widgets.ScrollPane = null;
+    if (g_tab.fills()) {
+        _ = try fill.open(context);
+    } else {
+        scroll = try widgets.openScrollPane(context, CONTENT_KEY, style.content_scroll);
+    }
     if (search.needsIndex()) {
         try indexTabs(context, offered);
     } else {
@@ -216,7 +221,7 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
         }
         try showTab(context, g_tab);
     }
-    try content.close(context);
+    if (scroll) |pane| try pane.close(context) else try fill.close(context);
     try body.close(context);
 
     try footer(context);

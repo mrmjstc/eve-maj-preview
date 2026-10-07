@@ -466,7 +466,7 @@ fn setIcon(window: win32.HWND) void {
 /// Colours the title bar like the header under it, so the two read as one bar.
 fn styleTitleBar(window: win32.HWND) void {
     setWindowAttribute(window, win32.DWMWA_USE_IMMERSIVE_DARK_MODE, 1);
-    setWindowAttribute(window, win32.DWMWA_CAPTION_COLOR, colorRef(style.PANEL));
+    setWindowAttribute(window, win32.DWMWA_CAPTION_COLOR, colorRef(style.CHROME));
     setWindowAttribute(window, win32.DWMWA_TEXT_COLOR, colorRef(style.MUTED));
     setWindowAttribute(window, win32.DWMWA_BORDER_COLOR, colorRef(style.BORDER));
 }

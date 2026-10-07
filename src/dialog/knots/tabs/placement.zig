@@ -123,7 +123,7 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const list = Rect{ .key = .src(@src()), .style = &style.roster_filters };
     _ = try list.open(context);
     if (items.len == 0) {
-        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "No spaces yet.", .style = &style.roster_empty });
+        try widgets.boxedText(context, .src(@src()), "No spaces yet.", &style.roster_empty, &style.roster_empty_text);
     }
     const arena = context.arena();
     for (items, 0..) |*space, index| {

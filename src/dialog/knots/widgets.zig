@@ -81,6 +81,17 @@ pub const Section = struct {
     }
 };
 
+/// What openScrollPane returns; closing it closes the pane and its content column.
+pub const ScrollPane = struct {
+    pane: Rect,
+    content: Rect,
+
+    pub fn close(self: ScrollPane, context: *ui.Frame) !void {
+        try self.content.close(context);
+        try self.pane.close(context);
+    }
+};
+
 /// What an optional colour row changed to.
 pub const ColorChange = union(enum) { cleared, set: u32 };
 
@@ -188,6 +199,28 @@ pub fn openRow(context: *ui.Frame, key: ui.Key) !Rect {
     const row = Rect{ .key = key, .style = if (g_is_aligned) nextRowStyle() else &style.aligned_row };
     _ = try row.open(context);
     return row;
+}
+
+/// A scrolling column that keeps a gutter for its scrollbar only while it has one, so its rows otherwise reach the edge like those around it.
+pub fn openScrollPane(context: *ui.Frame, key: ui.Key, styles: style.ScrollPane) !ScrollPane {
+    const content_key = key.indexed(1);
+    const ui_state = context.ui();
+    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.hash());
+    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, content_key.hash());
+    // Measured last frame; the content column fits its rows, so it outgrows the pane once the pane scrolls.
+    const is_scrolling = blk: {
+        const pane = ui_state.state.get(.measured, key.hash()) orelse break :blk false;
+        const content = ui_state.state.get(.measured, content_key.hash()) orelse break :blk false;
+        break :blk content.height > pane.height;
+    };
+    if (ui_state.state.get(.measured, key.hash())) |pane| {
+        if (pane.height == 0) context.requestRedraw();
+    }
+    const pane = Rect{ .key = key, .style = if (is_scrolling) styles.scrolling else styles.pane };
+    _ = try pane.open(context);
+    const content = Rect{ .key = content_key, .style = styles.content };
+    _ = try content.open(context);
+    return .{ .pane = pane, .content = content };
 }
 
 /// A row of buttons, one per option, with `selected` highlighted; returns the index clicked, if it isn't the selected one.
@@ -311,6 +344,8 @@ pub fn confirmButton(context: *ui.Frame, key: ui.Key, label: []const u8, confirm
     }
     g_confirm_key = id;
     g_confirm_until_ms = now + CONFIRM_TIMEOUT_MS;
+    // This frame already drew the unarmed label.
+    context.requestRedraw();
     return false;
 }
 
@@ -363,12 +398,21 @@ pub fn hintText(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
 
 /// A warning above a tab's sections, e.g. that it needs another setting turned on.
 pub fn notice(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
-    try context.e(Text{ .selectable = false, .key = key, .content = content, .style = &style.notice });
+    try boxedText(context, key, content, &style.notice, &style.notice_text);
+}
+
+/// Text inside a box: knots lays a Text out without its padding, border or background, so they go on a Rect around it.
+pub fn boxedText(context: *ui.Frame, key: ui.Key, content: []const u8, box_style: *const ui.Style, text_style: *const ui.Style) !void {
+    const box = Rect{ .key = key, .style = box_style };
+    _ = try box.open(context);
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = content, .style = text_style });
+    try box.close(context);
 }
 
 pub fn subheading(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
     search.captureText(content);
-    try context.e(Text{ .selectable = false, .key = key, .content = content, .style = &style.subheading });
+    try boxedText(context, key, content, &style.subheading_box, &style.subheading);
+    g_section_row_count = 0;
 }
 
 /// Returns whether the user moved it this frame.

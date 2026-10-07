@@ -93,7 +93,7 @@ fn filterList(context: *ui.Frame, profile: ProfileRef) !void {
     const roster = Rect{ .key = .src(@src()), .style = &style.roster_filters };
     _ = try roster.open(context);
     if (first_editable == null) {
-        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "No window filters yet.", .style = &style.roster_empty });
+        try widgets.boxedText(context, .src(@src()), "No window filters yet.", &style.roster_empty, &style.roster_empty_text);
         try roster.close(context);
         const empty = Rect{ .key = .src(@src()), .style = &style.detail_fit };
         _ = try empty.open(context);

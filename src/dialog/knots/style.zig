@@ -4,11 +4,17 @@ const ui = @import("ui");
 const Color = ui.Color;
 const Style = ui.Style;
 
-pub const BG = color("#0b0c0d");
-pub const PANEL = color("#131416");
-pub const SURFACE = color("#1a1b1d");
-pub const SURFACE_ALT = color("#202224");
+/// The window's frame (sidebar, header, footer, title bar): the darkest layer.
+pub const CHROME = color("#0b0c0d");
+/// The content area behind the cards.
+pub const BG = color("#111214");
+/// Cards, modals and popovers: a step lighter than BG, so they stand out by shade rather than outline.
+pub const PANEL = color("#18191c");
+pub const SURFACE = color("#1f2124");
+pub const SURFACE_ALT = color("#26282c");
 pub const BORDER = color("#35383d");
+/// A card's outline: quiet, since its shade already sets it apart.
+pub const CARD_BORDER = color("#24262a");
 /// Between rows inside a section: quieter than BORDER.
 pub const DIVIDER = color("#2a2c30");
 pub const BORDER_STRONG = color("#6b6e75");
@@ -41,21 +47,21 @@ pub const theme = ui.Theme.parse(.{
     .on_info = .{ .hex = "#1a1408" },
     .on_warning = .{ .hex = "#1a1408" },
     .on_error = .{ .hex = "#ffffff" },
-    .bg = .{ .hex = "#0b0c0d" },
-    .elevated = .{ .hex = "#131416" },
-    .muted = .{ .hex = "#1a1b1d" },
+    .bg = .{ .hex = "#111214" },
+    .elevated = .{ .hex = "#18191c" },
+    .muted = .{ .hex = "#1f2124" },
     // The accent's hover shade; form.applyAccent sets both from the profile's accentColor.
     .accented = .{ .hex = "#e8b75f" },
-    .inverted = .{ .hex = "#0b0c0d" },
+    .inverted = .{ .hex = "#111214" },
     .text = .{ .hex = "#e8e6e1" },
     .highlighted = .{ .hex = "#e8e6e1" },
     .toned = .{ .hex = "#6b6e75" },
     .dimmed = .{ .hex = "#8b8f96" },
-    .radius = 3,
+    .radius = 6,
     .font_size = .{ 11, 12, 14, 16, 20 },
     .scrollbar_thickness = SCROLLBAR_THICKNESS,
     .scrollbar_min_thumb = 24,
-    .scrollbar_track_color = .{ .hex = "#131416" },
+    .scrollbar_track_color = .{ .hex = "#111214" },
     .scrollbar_thumb_color = .{ .hex = "#35383d" },
     .scrollbar_thumb_hover_color = .{ .hex = "#6b6e75" },
     .scrollbar_corner_radius = 4,
@@ -82,7 +88,7 @@ pub const section: Style = .{
     .padding = .all(12),
     .background = .{ .color = PANEL },
     .border_width = .all(1),
-    .border_color = .{ .color = BORDER },
+    .border_color = .{ .color = CARD_BORDER },
     .radius = .md,
 };
 
@@ -96,9 +102,9 @@ pub const sidebar: Style = .{
     .direction = .column,
     .padding = .xy(6, 6),
     .overflow = .scroll_y,
-    .background = .{ .color = PANEL },
+    .background = .{ .color = CHROME },
     .border_width = .edges(0, 1, 0, 0),
-    .border_color = .{ .color = BORDER },
+    .border_color = .{ .color = DIVIDER },
 };
 
 /// .tab-item: holds the glyph and label; the active one is lit by its fill, amber glyph and brighter label.
@@ -125,26 +131,33 @@ pub const tab_category_text: Style = .{ .font = FONT_SEMIBOLD, .font_size = .{ .
 pub const tab_label: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = MUTED } };
 pub const tab_label_lit: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } };
 pub const tab_glyph: Style = .{ .width = .fixed(14), .height = .fixed(14) };
+/// widgets.openScrollPane's looks: the pane, the pane with its scrollbar gutter, and the column inside it.
+pub const ScrollPane = struct { pane: *const Style, scrolling: *const Style, content: *const Style };
 
-/// The tab's content; scrolls unless the tab fills it itself.
-pub const content_scroll: Style = .{
+/// The tab's content when it scrolls. Vertical padding is on the column, so the pane's height compares straight against it.
+pub const content_scroll: ScrollPane = .{
+    .pane = &content_scroll_pane,
+    .scrolling = &content_scroll_pane.with(.{ .padding = .init(0, SCROLLBAR_GUTTER, 0, 8) }),
+    .content = &.{ .width = .grow(), .direction = .column, .gap = 8, .padding = .xy(0, 8) },
+};
+const content_scroll_pane: Style = .{
     .width = .grow(),
     .height = .grow(),
     .direction = .column,
-    .gap = 8,
-    .padding = .init(8, SCROLLBAR_GUTTER, 8, 8),
+    .padding = .xy(8, 0),
     .overflow = .scroll_y,
 };
-pub const content_fill: Style = content_scroll.with(.{ .padding = .all(8), .overflow = .visible });
+/// The tab's content when the tab fills it itself.
+pub const content_fill: Style = .{ .width = .grow(), .height = .grow(), .direction = .column, .gap = 8, .padding = .all(8) };
 
+/// An inset well, darker than its section, rather than another bordered box.
 pub const roster: Style = .{
     .width = .fixed(175),
     .height = .grow(),
     .direction = .column,
     .overflow = .scroll_y,
-    .border_width = .all(1),
-    .border_color = .{ .color = BORDER },
-    .radius = .lg,
+    .background = .{ .color = BG },
+    .radius = .md,
 };
 
 /// .roster-row, a Button so the whole row is clickable.
@@ -168,29 +181,34 @@ pub const roster_row_selected: Style = roster_row.with(.{
     .border_color = .accent,
 });
 
-pub const roster_name: Style = .{ .width = .grow() };
-pub const roster_name_selected: Style = .{ .width = .grow(), .font = FONT_SEMIBOLD };
-pub const roster_empty: Style = .{ .padding = .xy(8, 6), .font_size = .xs, .foreground = .{ .color = MUTED } };
+/// Wraps: knots doesn't clip text, so a long name would otherwise run under the row's badge.
+pub const roster_name: Style = .{ .width = .grow(), .wrap = true };
+pub const roster_name_selected: Style = roster_name.with(.{ .font = FONT_SEMIBOLD });
+pub const roster_empty: Style = .{ .width = .grow(), .padding = .xy(8, 6) };
+pub const roster_empty_text: Style = .{ .width = .grow(), .wrap = true, .font_size = .xs, .foreground = .{ .color = MUTED } };
 
+/// widgets.boxedText's box around a row's number; index_chip_text is the number.
 pub const index_chip: Style = .{
-    .padding = .xy(2, 1),
-    .font_size = .xs,
+    .padding = .xy(4, 1),
     .background = .{ .color = SURFACE_ALT },
     .border_width = .all(1),
     .border_color = .{ .color = BORDER },
-    .radius = .md,
+    .radius = .sm,
 };
+pub const index_chip_text: Style = .{ .font = FONT_MONO, .font_size = .xs, .foreground = .{ .color = MUTED } };
 
-pub const detail_stack: Style = .{
+/// A master-detail list's details: unboxed, since the section around it is already a card.
+pub const detail_scroll: ScrollPane = .{
+    .pane = &detail_scroll_pane,
+    .scrolling = &detail_scroll_pane.with(.{ .padding = .init(0, SCROLLBAR_GUTTER, 0, 8) }),
+    .content = &.{ .width = .grow(), .direction = .column, .gap = 8 },
+};
+const detail_scroll_pane: Style = .{
     .width = .grow(),
     .height = .grow(),
     .direction = .column,
-    .gap = 8,
-    .padding = .init(8, SCROLLBAR_GUTTER, 8, 8),
+    .padding = .init(0, 0, 0, 8),
     .overflow = .scroll_y,
-    .border_width = .all(1),
-    .border_color = .{ .color = BORDER },
-    .radius = .lg,
 };
 
 pub const detail_header: Style = .{
@@ -214,32 +232,29 @@ pub const text_input: Style = .{
     .focus = &.{ .border_color = .accent },
 };
 
+/// Fixed in an aligned row, like select and slider_box_aligned, so a growing label can't squeeze it.
+pub const text_input_aligned: Style = text_input.with(.{ .width = .fixed(230) });
+
 pub const heading: Style = .{ .font = FONT_SEMIBOLD, .font_size = .md, .foreground = .{ .color = TEXT } };
 
-pub const subheading: Style = .{
-    .width = .grow(),
-    .padding = .init(8, 0, 2, 0),
-    .border_width = .edges(0, 0, 1, 0),
-    .border_color = .{ .color = BORDER },
-    .font = FONT_SEMIBOLD,
-    .foreground = .{ .color = TEXT_SECONDARY },
-};
+/// Set apart by the space above it, not a rule; the row after it starts a new run with no divider.
+pub const subheading_box: Style = .{ .width = .grow(), .padding = .init(16, 0, 0, 0) };
+pub const subheading: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } };
 
 /// No italics: Geist ships them as a separate face we don't embed.
 pub const hint: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED }, .wrap = true, .width = .grow() };
 /// A hint that always shows, warning that a setting won't take effect.
 pub const hint_warning: Style = hint.with(.{ .foreground = .accent });
 
-/// A warning, tinted by the accent.
+/// A warning, tinted by the accent: widgets.boxedText's outline, around notice_text.
 pub const notice: Style = .{
     .width = .grow(),
-    .wrap = true,
     .padding = .xy(10, 6),
-    .foreground = .accent,
     .border_width = .all(1),
     .border_color = .accent,
     .radius = .md,
 };
+pub const notice_text: Style = .{ .width = .grow(), .wrap = true, .foreground = .accent };
 
 pub const section_heading: Style = .{ .width = .grow(), .direction = .row, .justify = .space_between, .@"align" = .center };
 pub const section_heading_actions: Style = .{ .direction = .row, .@"align" = .center, .gap = 6 };
@@ -335,7 +350,8 @@ pub const segment: Style = .{
     .height = .fixed(CONTROL_HEIGHT - 4),
     .padding = .xy(10, 0),
     .background = .transparent,
-    .radius = .{ .fixed = 2 },
+    // The control's radius less its padding, so the corners nest.
+    .radius = .{ .fixed = 4 },
     .hover = &.{ .background = .{ .color = SURFACE_ALT }, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
@@ -438,9 +454,9 @@ pub const footer: Style = .{
     .@"align" = .center,
     .gap = 8,
     .padding = .xy(12, 8),
-    .background = .{ .color = PANEL },
+    .background = .{ .color = CHROME },
     .border_width = .edges(1, 0, 0, 0),
-    .border_color = .{ .color = BORDER },
+    .border_color = .{ .color = DIVIDER },
 };
 
 /// wordmark.svg at 96px high.
@@ -472,9 +488,9 @@ pub const header: Style = .{
     .@"align" = .center,
     .gap = 8,
     .padding = .xy(12, 8),
-    .background = .{ .color = PANEL },
+    .background = .{ .color = CHROME },
     .border_width = .edges(0, 0, 1, 0),
-    .border_color = .{ .color = BORDER },
+    .border_color = .{ .color = DIVIDER },
 };
 
 pub const app_mark: Style = .{ .width = .fixed(18), .height = .fixed(18) };
@@ -505,7 +521,7 @@ pub const unsaved_chip: Style = .{
     .padding = .xy(8, 0),
     .border_width = .all(1),
     .border_color = .accent,
-    .radius = .{ .fixed = 2 },
+    .radius = .md,
 };
 pub const unsaved_text: Style = .{ .foreground = .accent };
 pub const unsaved_dot: Style = .{ .font_size = .{ .px = 10 }, .foreground = .accent };
@@ -710,7 +726,7 @@ pub const icon_button_confirm: Style = confirm_button.with(.{ .width = .fixed(CO
 /// .master-detail outside a filling tab: a roster beside the selected item's details, both sized to their content.
 pub const master_detail: Style = .{ .width = .grow(), .direction = .row, .gap = 8 };
 pub const roster_filters: Style = roster.with(.{ .width = .fixed(190), .height = .fit(), .overflow = .visible });
-pub const detail_fit: Style = detail_stack.with(.{ .height = .fit(), .overflow = .visible, .padding = .all(8) });
+pub const detail_fit: Style = .{ .width = .grow(), .direction = .column, .gap = 8, .padding = .init(0, 0, 0, 8) };
 /// .roster-hotkey-badge, e.g. a filter's Disabled.
 pub const roster_badge: Style = .{ .font_size = .{ .px = 10 }, .foreground = .{ .color = MUTED } };
 pub const roster_badge_warning: Style = roster_badge.with(.{ .foreground = .accent });
@@ -756,18 +772,20 @@ pub const inline_row: Style = .{ .width = .grow(), .direction = .row, .@"align" 
 /// .placeholder-chips: small buttons that insert a {placeholder}.
 pub const chip_row: Style = .{ .width = .grow(), .direction = .row, .gap = 4, .wrap = true };
 pub const placeholder_chip: Style = plain_button.with(.{ .height = .fixed(22), .padding = .xy(6, 0), .font_size = .xs });
-/// A read-only path, shown as a box like an input.
+/// A read-only path, shown as a box like an input: widgets.boxedText's box, around path_text.
 pub const path_box: Style = .{
     .width = .grow(),
     .height = .fixed(CONTROL_HEIGHT),
-    .padding = .xy(8, 4),
+    .direction = .row,
+    .@"align" = .center,
+    .padding = .xy(8, 0),
     .background = .{ .color = SURFACE },
     .border_width = .all(1),
     .border_color = .{ .color = BORDER },
     .radius = .md,
-    .foreground = .{ .color = TEXT },
 };
-pub const path_box_empty: Style = path_box.with(.{ .foreground = .{ .color = MUTED } });
+pub const path_text: Style = .{ .foreground = .{ .color = TEXT } };
+pub const path_text_empty: Style = .{ .foreground = .{ .color = MUTED } };
 
 /// .keycap-field: a hotkey's combos drawn as key caps; clicking it records a new one.
 pub const hotkey_box: Style = .{

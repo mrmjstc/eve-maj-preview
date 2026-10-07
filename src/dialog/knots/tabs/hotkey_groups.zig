@@ -70,7 +70,7 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const list = Rect{ .key = .src(@src()), .style = &style.roster_filters };
     _ = try list.open(context);
     if (groups.len == 0) {
-        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "No hotkey groups yet.", .style = &style.roster_empty });
+        try widgets.boxedText(context, .src(@src()), "No hotkey groups yet.", &style.roster_empty, &style.roster_empty_text);
     }
     const arena = context.arena();
     for (groups, 0..) |*group, index| {
@@ -207,12 +207,7 @@ fn members(context: *ui.Frame, group: GroupRef) !void {
             .none => &style.member_row,
         } };
         _ = try row.open(context);
-        try context.e(Text{
-            .selectable = false,
-            .key = ui.Key.str("knots.groups.member.index").indexed(member_index),
-            .content = try std.fmt.allocPrint(arena, "{d:0>2}", .{member_index + 1}),
-            .style = &style.index_chip,
-        });
+        try widgets.boxedText(context, ui.Key.str("knots.groups.member.index").indexed(member_index), try std.fmt.allocPrint(arena, "{d:0>2}", .{member_index + 1}), &style.index_chip, &style.index_chip_text);
         if (try bind.stringBox(context, ui.Key.str("knots.groups.member.name").indexed(member_index), name, "Character Name", &style.text_input)) |typed| {
             group.setStringAt("characters", member_index, typed);
         }

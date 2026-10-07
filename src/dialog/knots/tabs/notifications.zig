@@ -326,12 +326,7 @@ fn sound(context: *ui.Frame, ref: TypeRef, type_index: usize) !void {
     try bind.toggle(context, ref, "sound_enabled", "Play Custom Sound");
     const row = try widgets.openBinding(context, .src(@src()), "Sound File");
     const path = ref.get("sound_path") orelse "";
-    try context.e(Text{
-        .selectable = false,
-        .key = .src(@src()),
-        .content = if (path.len == 0) "No file selected" else std.fs.path.basename(path),
-        .style = if (path.len == 0) &style.path_box_empty else &style.path_box,
-    });
+    try widgets.boxedText(context, .src(@src()), if (path.len == 0) "No file selected" else std.fs.path.basename(path), &style.path_box, if (path.len == 0) &style.path_text_empty else &style.path_text);
     if ((try context.interact(Button{ .key = .src(@src()), .label = "Browse", .style = &style.plain_button })).clicked) host.browseSoundFile(type_index);
     if ((try context.interact(Button{ .key = .src(@src()), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) ref.set("sound_path", null);
     try row.close(context);

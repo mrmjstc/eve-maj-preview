@@ -109,7 +109,7 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const list = Rect{ .key = .src(@src()), .style = &style.roster };
     _ = try list.open(context);
     if (characters.len == 0) {
-        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "No characters yet.", .style = &style.roster_empty });
+        try widgets.boxedText(context, .src(@src()), "No characters yet.", &style.roster_empty, &style.roster_empty_text);
     }
     const arena = context.arena();
     const query = std.mem.trim(u8, g_search.items, " ");
@@ -130,12 +130,7 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
             g_selected_index = index;
             context.requestRedraw();
         }
-        try context.e(Text{
-            .selectable = false,
-            .key = ui.Key.str("knots.roster.index").indexed(index),
-            .content = try std.fmt.allocPrint(arena, "{d:0>2}", .{index + 1}),
-            .style = &style.index_chip,
-        });
+        try widgets.boxedText(context, ui.Key.str("knots.roster.index").indexed(index), try std.fmt.allocPrint(arena, "{d:0>2}", .{index + 1}), &style.index_chip, &style.index_chip_text);
         try context.e(Text{
             .selectable = false,
             .key = ui.Key.str("knots.roster.name").indexed(index),
@@ -164,8 +159,7 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
 }
 
 fn detail(context: *ui.Frame, profile: ProfileRef) !void {
-    const stack = Rect{ .key = .src(@src()), .style = &style.detail_stack };
-    _ = try stack.open(context);
+    const stack = try widgets.openScrollPane(context, .str("knots.character.detail"), style.detail_scroll);
     if (profile.ptr.characters.items.len == 0) {
         try widgets.paragraph(context, .str("knots.characters.empty"), "Add a character below, or use \"Populate from Open Clients\" to detect one automatically.");
         try stack.close(context);
@@ -183,7 +177,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     const name_box = bind.boxKey(character, "name");
     if (try suggest.openClients(context, name_box, bind.typedText(name_box))) |picked| character.set("name", picked);
 
-    try bind.text(context, character, "displayName", "Display Name", "Leave empty to use character name");
+    try bind.text(context, character, "displayName", "Display Name", "Same as character name");
     try widgets.hintText(context, .str("knots.character.display.hint"), "Cosmetic only - shown on the thumbnail label and spoken by TTS if enabled. The Character Name above is still what's matched against your EVE login.");
 
     const hotkey_row = try widgets.openBinding(context, .str("knots.character.hotkey"), "Hotkey");

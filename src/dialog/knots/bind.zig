@@ -154,12 +154,16 @@ pub fn unitValueBox(context: *ui.Frame, key: ui.Key, value: f64, unit: []const u
 /// An optional text field is unset when left empty.
 pub fn text(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, placeholder: []const u8) !void {
     const row = try widgets.openBinding(context, fieldKey(ref, field), label);
-    try textBox(context, ref, field, placeholder);
+    try styledTextBox(context, ref, field, placeholder, if (widgets.isAligned()) &style.text_input_aligned else &style.text_input);
     try row.close(context);
 }
 
 /// Just the box, for a row with more in it, e.g. a Browse button.
 pub fn textBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, placeholder: []const u8) !void {
+    try styledTextBox(context, ref, field, placeholder, &style.text_input);
+}
+
+fn styledTextBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, placeholder: []const u8, box_style: *const ui.Style) !void {
     const F = FieldOf(@TypeOf(ref), field);
     const box_key = fieldKey(ref, field).indexed(2);
     const state = try textState(box_key);
@@ -177,7 +181,7 @@ pub fn textBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, pla
         const current: []const u8 = if (F == ?[]const u8) ref.get(field) orelse "" else ref.get(field);
         try syncText(state, current);
     }
-    try context.e(TextInput{ .key = box_key, .buf = &state.text, .style = &style.text_input, .placeholder = placeholder });
+    try context.e(TextInput{ .key = box_key, .buf = &state.text, .style = box_style, .placeholder = placeholder });
 }
 
 /// A text box for a string that isn't one setting, e.g. an entry of a list of names; returns what was typed once the box loses focus.
