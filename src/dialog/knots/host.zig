@@ -227,6 +227,7 @@ fn run() void {
     defer onClosed();
     g_knots_proc = win32.SetWindowLongPtrW(window, win32.GWLP_WNDPROC, @bitCast(@intFromPtr(&windowProc)));
     setIcon(window);
+    styleTitleBar(window);
     if (!is_placed) _ = win32.SetWindowPos(window, win32.HWND_NOTOPMOST, position.x, position.y, 0, 0, win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE);
     if (settings.alwaysOnTop) setAlwaysOnTop(true);
     _ = win32.SetForegroundWindow(window);
@@ -460,6 +461,27 @@ fn setIcon(window: win32.HWND) void {
     };
     _ = win32.SendMessageA(window, win32.WM_SETICON, win32.ICON_BIG, @bitCast(@intFromPtr(icon)));
     _ = win32.SendMessageA(window, win32.WM_SETICON, win32.ICON_SMALL, @bitCast(@intFromPtr(icon)));
+}
+
+/// Colours the title bar like the header under it, so the two read as one bar.
+fn styleTitleBar(window: win32.HWND) void {
+    setWindowAttribute(window, win32.DWMWA_USE_IMMERSIVE_DARK_MODE, 1);
+    setWindowAttribute(window, win32.DWMWA_CAPTION_COLOR, colorRef(style.PANEL));
+    setWindowAttribute(window, win32.DWMWA_TEXT_COLOR, colorRef(style.MUTED));
+    setWindowAttribute(window, win32.DWMWA_BORDER_COLOR, colorRef(style.BORDER));
+}
+
+/// Every attribute set here is a DWORD-sized BOOL or COLORREF.
+fn setWindowAttribute(window: win32.HWND, attribute: win32.DWORD, value: win32.DWORD) void {
+    const result = win32.DwmSetWindowAttribute(window, attribute, &value, @sizeOf(win32.DWORD));
+    // Debug only: Windows 10 rejects the colour attributes and just keeps its own title bar.
+    if (result < 0) slog.debug("Failed to set window attribute {d}: HRESULT 0x{x}", .{ attribute, @as(u32, @bitCast(result)) });
+}
+
+/// DWM's COLORREF: 0x00BBGGRR.
+fn colorRef(color: ui.Color) win32.DWORD {
+    const argb = widgets.argbFromColor(color);
+    return ((argb & 0xff) << 16) | (argb & 0xff00) | ((argb >> 16) & 0xff);
 }
 
 fn savePosition(window: win32.HWND) void {

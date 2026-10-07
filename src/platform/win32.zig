@@ -817,6 +817,18 @@ pub extern "dwmapi" fn DwmUpdateThumbnailProperties(
     hThumbnailId: HTHUMBNAIL,
     ptnProperties: *const DWM_THUMBNAIL_PROPERTIES,
 ) callconv(.c) LONG;
+pub extern "dwmapi" fn DwmSetWindowAttribute(
+    hwnd: HWND,
+    dwAttribute: DWORD,
+    pvAttribute: *const anyopaque,
+    cbAttribute: DWORD,
+) callconv(.c) LONG;
+
+pub const DWMWA_USE_IMMERSIVE_DARK_MODE: DWORD = 20;
+/// Windows 11 only, like the two after it; earlier versions reject them.
+pub const DWMWA_BORDER_COLOR: DWORD = 34;
+pub const DWMWA_CAPTION_COLOR: DWORD = 35;
+pub const DWMWA_TEXT_COLOR: DWORD = 36;
 
 pub const TRANSPARENT = 1;
 pub const FW_NORMAL = 400;
