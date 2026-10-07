@@ -21,6 +21,7 @@ pub const GlobalAction = enum(usize) {
     previous_excluded,
     suspend_hotkeys,
     toggle_auto_minimize,
+    toggle_alert_mute,
     cycle_notified,
     previous_notified,
     next_all_clients,

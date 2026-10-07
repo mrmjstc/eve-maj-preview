@@ -105,6 +105,8 @@ pub fn show(context: *ui.Frame) !void {
 
     const suspend_exit = try widgets.openSection(context, "Suspend and Exit", "Suspend or resume every hotkey (the suspend hotkey itself always works), or close EVE-Maj Preview. EVE clients stay open.", &style.section);
     try binding(context, profile_hotkeys, "hotkeySuspend", "Toggle Suspend Hotkeys");
+    try binding(context, profile_hotkeys, "hotkeyToggleAlertMute", "Mute Audio Alerts");
+    try widgets.hintText(context, .src(@src()), "Mutes every TTS and sound alert for this session; it isn't saved and resets on restart. Also in the tray menu.");
     try binding(context, profile_hotkeys, "hotkeyExitApp", "Exit App");
     try suspend_exit.close(context);
 

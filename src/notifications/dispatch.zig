@@ -87,7 +87,7 @@ pub fn showTest(painter: *Painter, ntype: notification_mod.NotificationType, typ
     }
 
     const speech = spoken orelse notification_mod.text(example, type_config.customText(), notification_mod.SAMPLE_CHARACTER, &spoken_buf);
-    alert_effects.play(&painter.config.thumbnail.notifications, type_config, speech, null);
+    alert_effects.playUnmuted(&painter.config.thumbnail.notifications, type_config, speech, null);
 }
 
 /// Removes click-dismissable notifications (clients/activation.zig's activate); returns whether anything was removed.
