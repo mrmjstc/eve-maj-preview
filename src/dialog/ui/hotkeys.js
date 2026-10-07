@@ -358,6 +358,17 @@ function isCharacterHotkeyInput(input) {
     return /^char_\d+_hotkey$/.test(input.id);
 }
 
+function hotkeyGroupCycleDirection(input) {
+    return /^hkgroup_\d+_(forward|backward)$/.exec(input.id)?.[1] ?? null;
+}
+
+// Characters sharing a hotkey cycle through each other, and hotkey groups sharing a cycle key cycle through their members in group order.
+function isSharedCycleKey(inputs) {
+    if (inputs.every(isCharacterHotkeyInput)) return true;
+    const direction = hotkeyGroupCycleDirection(inputs[0]);
+    return direction !== null && inputs.every(input => hotkeyGroupCycleDirection(input) === direction);
+}
+
 // Each group is the inputs sharing one combo, with that combo as its `combo`.
 function findHotkeyConflicts() {
     const byKey = new Map();
@@ -370,8 +381,7 @@ function findHotkeyConflicts() {
         }
     });
 
-    // Characters sharing a hotkey cycle instead of conflicting - only flag groups reaching outside the character roster.
-    return Array.from(byKey.values()).filter(inputs => inputs.length > 1 && inputs.some(input => !isCharacterHotkeyInput(input)));
+    return Array.from(byKey.values()).filter(inputs => inputs.length > 1 && !isSharedCycleKey(inputs));
 }
 
 // Returns the conflict groups so callers can report them.

@@ -1205,6 +1205,8 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **includeNotLoggedIn**: When `true`, cycling this group appends still-queued not-logged-in clients (the same windows the `next_not_logged_in`/`previous_not_logged_in` hotkeys cycle) after the group's characters, in the order they logged out (default: `false`)
 - **stopAtEnds**: When `true`, cycling stops at the group's first/last member instead of looping round; pressing on at the end refocuses that member if focus has moved away (default: `false`)
 
+**Sharing a cycle key:** Groups can share a `forwardKey` (or a `backwardKey`). The shared key cycles through all their members as one list, in group order - handy with a [thumbnail space](#thumbnail-spaces) per group. Not-logged-in clients are appended once at the end if any of the groups sets `includeNotLoggedIn`, and the ends stop only if every group sets `stopAtEnds`. One group's forward key can't be another's backward key, and assign keys can't be shared.
+
 **Supported Keys:**
 - **Function Keys**: F1-F24
 - **Arrow Keys**: Left, Right, Up, Down

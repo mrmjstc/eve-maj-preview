@@ -2,14 +2,19 @@
 const std = @import("std");
 const protocol = @import("../protocol.zig");
 
-// Hotkey IDs are banded to avoid collisions: 0-999 groups (3 per group), 1000s global, 2000s per-character, 3000s profile switch, 5000s app hotkeys, 6000s URL hotkeys.
+// Hotkey IDs are banded to avoid collisions: 0-999 group cycle keys (2 per combo), 1000s global, 2000s per-character, 3000s profile switch, 4000s group assign, 5000s app hotkeys, 6000s URL hotkeys.
 pub const HOTKEY_ID_CYCLE_GROUP_BASE: c_int = 0;
+
+/// IDs in the group cycle band, before it runs into the global band.
+pub const CYCLE_GROUP_SLOT_COUNT: usize = 1000;
 
 pub const HOTKEY_ID_GLOBAL_ACTION_BASE: c_int = 1000;
 
 pub const HOTKEY_ID_PER_CHARACTER_BASE: c_int = 2000;
 
 pub const HOTKEY_ID_PROFILE_SWITCH_BASE: c_int = 3000;
+
+pub const HOTKEY_ID_ASSIGN_GROUP_BASE: c_int = 4000;
 
 pub const HOTKEY_ID_APP_HOTKEY_BASE: c_int = 5000;
 
@@ -48,11 +53,15 @@ pub const CharacterGroup = struct {
     current_index: ?usize = null,
 };
 
+/// Hotkey groups sharing one cycle combo, cycled as one list; HotkeyManager.unregisterAll frees the owned index list.
+pub const GroupChain = struct {
+    /// In hotkeyGroups order.
+    group_indices: []const usize,
+    forward: bool,
+};
+
 pub const HotkeyAction = union(enum) {
-    cycle_group: struct {
-        group_index: usize,
-        forward: bool,
-    },
+    cycle_group: GroupChain,
     activate_character: CharacterGroup,
     assign_group: struct {
         group_index: usize,
