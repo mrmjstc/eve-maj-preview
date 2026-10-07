@@ -2492,8 +2492,7 @@ input[type="range"]::-moz-range-thumb {
     flex-direction: column;
 }
 
-/* Roster + single-panel detail, instead of an accordion list. Shared by the
-   characters panel and the hotkey groups section. */
+/* Roster + single-panel detail, instead of an accordion list. */
 .master-detail {
     display: flex;
     gap: 0.5rem;
@@ -2514,55 +2513,13 @@ input[type="range"]::-moz-range-thumb {
     width: 10.9375rem;
 }
 
+#hotkeyGroupsList .roster {
+    width: 9.375rem;
+}
+
 /* Sized to the longest event label, about 17 characters in any language. */
 #notificationTypesList .roster {
     width: 10.75rem;
-}
-
-#hotkeyGroupsList .master-detail {
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-/* Only a handful of profiles are expected, so the roster reads better as a
-   row of separate boxed chips (matching the dialog's other bordered panels)
-   than a vertical list. */
-#hotkeyGroupsList .roster {
-    display: flex;
-    width: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    overflow: visible;
-    border: none;
-    border-radius: 0;
-    gap: 0.375rem;
-}
-
-#hotkeyGroupsList .roster-row {
-    border: 0.0625rem solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface);
-    font-weight: var(--fw-bold);
-    letter-spacing: 0.03125rem;
-}
-
-#hotkeyGroupsList .roster-row:hover {
-    border-color: var(--color-border-strong);
-}
-
-#hotkeyGroupsList .roster-row.selected {
-    background: var(--color-surface-alt);
-    border-color: var(--color-accent);
-}
-
-#hotkeyGroupsList .roster-name {
-    max-width: 10rem;
-}
-
-/* Plain button (not a tab chip) so it reads as an action, not another profile. */
-#hotkeyGroupsList .hkgroup-tab-add {
-    margin-left: 0.25rem;
 }
 
 /* Thumbnail spaces: a roster with a colour dot and region size per space, beside the selected one's details. */

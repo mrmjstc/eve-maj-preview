@@ -28,7 +28,6 @@ export function populateHotkeyGroups() {
                     <div class="roster-row roster-row-empty">
                         <span class="hint">${t('tab.hotkey-groups.section.groups.empty-roster')}</span>
                     </div>
-                    <button type="button" class="hkgroup-tab-add" onclick="addHotkeyGroup()">${t('button.add-hotkey-group.label')}</button>
                 </div>
                 <div class="detail-stack">
                     <p class="hint">${t('tab.hotkey-groups.section.groups.empty-detail')}</p>
@@ -44,7 +43,8 @@ export function populateHotkeyGroups() {
     const rosterRows = groups.map((group, index) => {
         const groupName = group.name || t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (index + 1);
         return `
-            <div class="roster-row ${index === selectedHotkeyGroupIndex ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${index === selectedHotkeyGroupIndex}" data-index="${index}" onclick="selectHotkeyGroup(${index})" title="${t('common.dragToReorder')}">
+            <div class="roster-row ${index === selectedHotkeyGroupIndex ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${index === selectedHotkeyGroupIndex}" data-index="${index}" onclick="selectHotkeyGroup(${index})">
+                <span class="drag-index-chip character-drag-handle" draggable="true" title="${t('common.dragToReorder')}" onclick="event.stopPropagation()">${String(index + 1).padStart(2, '0')}</span>
                 <span class="roster-name" id="hkgroup_${index}_header_name">${escapeHtml(groupName)}</span>
             </div>
         `;
@@ -107,7 +107,7 @@ export function populateHotkeyGroups() {
 
     container.innerHTML = `
         <div class="master-detail">
-            <div class="roster" role="tablist">${rosterRows}<button type="button" class="hkgroup-tab-add" onclick="addHotkeyGroup()">${t('button.add-hotkey-group.label')}</button></div>
+            <div class="roster" role="tablist" aria-orientation="vertical">${rosterRows}</div>
             <div class="detail-stack">${detailPanels}</div>
         </div>
     `;
@@ -154,11 +154,11 @@ export function toggleHotkeyGroupMembershipEditor(index) {
 function setupHotkeyGroupDragAndDrop() {
     setupDragReorder(
         document.querySelector('#hotkeyGroupsList .roster'),
-        '.roster-row:not(.hkgroup-tab-add)',
-        null,
+        '.roster-row',
+        '.character-drag-handle',
         (item) => parseInt(item.dataset.index, 10),
         reorderHotkeyGroups,
-        { wholeRow: true, grid: true }
+        { wholeRow: true }
     );
 }
 
@@ -402,7 +402,7 @@ function scrollHotkeyGroupCharsToEnd(groupIndex) {
 }
 
 function scrollHotkeyGroupRosterToEnd() {
-    const rows = document.querySelectorAll('#hotkeyGroupsList .roster-row:not(.hkgroup-tab-add)');
+    const rows = document.querySelectorAll('#hotkeyGroupsList .roster-row');
     const last = rows[rows.length - 1];
     if (last) last.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' });
 }
