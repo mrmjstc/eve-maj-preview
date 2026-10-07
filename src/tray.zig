@@ -9,6 +9,7 @@ const painter_mod = @import("painter.zig");
 const auto_minimize = @import("clients/auto_minimize.zig");
 const dialog_host = @import("dialog/host.zig");
 const scout_mod = @import("clients/scout.zig");
+const alert_effects = @import("notifications/alert_effects.zig");
 const main = @import("main.zig");
 const log = @import("log.zig");
 
@@ -129,6 +130,7 @@ pub const TrayIcon = struct {
 
         appendChecked(menu, if (painter) |p| p.isHistoryPanelVisible() else config.display.showNotifInfoPanel, win32.IDM_TOGGLE_NOTIF_HISTORY, "Show History Panel");
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLEAR_NOTIF_HISTORY, "Clear Notification History");
+        appendChecked(menu, alert_effects.isMuted(), win32.IDM_TOGGLE_ALERT_MUTE, "Mute Audio Alerts");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
         if (hotkeys.g_hotkey_manager_ptr) |manager| {
@@ -233,6 +235,7 @@ pub const TrayIcon = struct {
                 };
                 painter.notification_history.clear();
             },
+            win32.IDM_TOGGLE_ALERT_MUTE => alert_effects.toggleMuted(),
             win32.IDM_SUSPEND_HOTKEYS => {
                 if (hotkeys.g_hotkey_manager_ptr) |manager| manager.runGlobalAction(.suspend_hotkeys);
             },

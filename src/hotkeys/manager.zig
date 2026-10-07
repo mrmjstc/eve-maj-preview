@@ -11,6 +11,7 @@ const protocol = @import("../protocol.zig");
 const painter_mod = @import("../painter.zig");
 const main = @import("../main.zig");
 const dialog_session = @import("../dialog/session.zig");
+const alert_effects = @import("../notifications/alert_effects.zig");
 const mouse_hook = @import("mouse_hook.zig");
 const keyboard_hook = @import("keyboard_hook.zig");
 const bindings = @import("bindings.zig");
@@ -363,6 +364,7 @@ pub const HotkeyManager = struct {
                 slog.info("Toggle auto-minimize hotkey pressed", .{});
                 auto_minimize.toggle(self.painter);
             },
+            .toggle_alert_mute => alert_effects.toggleMuted(),
             .cycle_notified => cycling.cycleNotified(self, true),
             .previous_notified => cycling.cycleNotified(self, false),
             .next_all_clients => cycling.cycleAllClients(self, true),

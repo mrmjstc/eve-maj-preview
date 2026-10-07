@@ -490,6 +490,7 @@ evemajpreview://<action>/<param>
 | `close_active` | Close the focused EVE client window |
 | `toggle_visibility` | Toggle visibility of all thumbnails |
 | `toggle_auto_minimize` | Toggle auto-minimize mode on/off |
+| `toggle_alert_mute` | Mute/unmute TTS and sound alerts |
 | `next_profile` / `previous_profile` | Cycle to next/previous profile |
 | `toggle_exclusion` | Toggle exclusion of the focused EVE window from cycling |
 | `next_excluded` / `previous_excluded` | Cycle through excluded characters |
@@ -1057,6 +1058,7 @@ Detects a tracked character falling behind while the rest of the group jumps tog
     "hotkeyCloseActive": null,
     "hotkeyToggleVisibility": null,
     "hotkeyToggleAutoMinimize": null,
+    "hotkeyToggleAlertMute": null,
     "hotkeyToggleExclusion": null,
     "hotkeyNextExcluded": null,
     "hotkeyPreviousExcluded": null,
@@ -1085,6 +1087,7 @@ Pressing **hotkeySuspend** fires a `HotkeySuspend` notification on every client 
 - **hotkeyCloseActive**: Close the focused EVE client window, even if its character is excluded from Close All
 - **hotkeyToggleVisibility**: Toggle visibility of all thumbnails
 - **hotkeyToggleAutoMinimize**: Toggle auto-minimize mode on/off
+- **hotkeyToggleAlertMute**: Mute/unmute all TTS and sound alerts for this session (not saved; also in the tray menu)
 - **hotkeyToggleExclusion**: Toggle exclusion from cycling for the currently focused EVE window
 - **hotkeyNextExcluded**: Cycle to the next excluded character (in the order they were excluded)
 - **hotkeyPreviousExcluded**: Cycle to the previous excluded character

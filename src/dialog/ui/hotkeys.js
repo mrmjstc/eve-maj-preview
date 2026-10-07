@@ -173,6 +173,7 @@ const HOTKEY_BINDINGS = [
         pathPrefix: 'hotkeys.',
         rows: [
             { id: 'hotkeySuspend', labelKey: 'field.hotkeySuspend.label', exampleKey: 'field.hotkeySuspend.placeholder' },
+            { id: 'hotkeyToggleAlertMute', labelKey: 'field.hotkeyToggleAlertMute.label', exampleKey: 'field.hotkeyToggleAlertMute.placeholder', hintKey: 'field.hotkeyToggleAlertMute.hint' },
             { id: 'hotkeyExitApp', labelKey: 'field.hotkeyExitApp.label', exampleKey: 'field.hotkeyExitApp.placeholder' },
         ],
     },
