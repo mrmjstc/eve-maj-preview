@@ -111,7 +111,8 @@ fn readFile(path: []const u8) !void {
 }
 
 pub fn show(context: *ui.Frame) !void {
-    if (!g_is_open) return;
+    // Cleared a frame after closing, not on the frame that closes it: that frame's text still borrows from the arena until it's drawn.
+    if (!g_is_open) return clearArena();
     const dialog = Dialog{ .is_open = &g_is_open, .key = .src(@src()), .style = &style.modal_wide };
     _ = try dialog.open(context);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Import Settings", .style = &style.heading });
@@ -123,7 +124,6 @@ pub fn show(context: *ui.Frame) !void {
     }
     try buttons(context);
     try dialog.close(context);
-    if (!g_is_open) clearArena();
 }
 
 fn fileStep(context: *ui.Frame) !void {
@@ -147,7 +147,7 @@ fn fileStep(context: *ui.Frame) !void {
     }
     const response = try context.interact(SelectInput(u32){ .key = .src(@src()), .labels = labels, .values = values, .initial_selected = g_backup_index, .style = &style.select_fill, .parts = .{ .popup = &style.select_popup } });
     if (response.selected) |selected| g_backup_index = selected.value;
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "Restore", .style = &style.outline_button })).clicked) {
+    if ((try context.interact(Button{ .key = .src(@src()), .label = "Restore", .style = &style.primary_button })).clicked) {
         const backup = g_backups[g_backup_index];
         g_is_open = false;
         host.restoreBackup(backup, backupDisplayName(backup));
