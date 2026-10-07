@@ -549,9 +549,11 @@ pub const disabled_button: Style = .{
     .active = &.{ .state_layer = 0 },
 };
 
+/// Not scrolled, unlike knots' default panel: its wrapped text can measure a fraction over the panel and show a scrollbar.
 pub const modal: Style = .{
     .width = .fixed(360),
     .gap = 12,
+    .overflow = .visible,
     .background = .{ .color = PANEL },
     .border_color = .{ .color = BORDER },
     .radius = .lg,
@@ -572,6 +574,12 @@ pub const primary_button: Style = .{
     .hover = &.{ .background = .accented, .border_color = .accented, .foreground = .on_accent, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
+/// primary_button for a destructive action: outlined in red at rest, filled on hover.
+pub const danger_primary_button: Style = primary_button.with(.{
+    .border_color = .{ .color = DESTRUCTIVE },
+    .foreground = .{ .color = DESTRUCTIVE },
+    .hover = &.{ .background = .{ .color = DESTRUCTIVE_FILL_HOVER }, .border_color = .{ .color = DESTRUCTIVE_FILL_HOVER }, .foreground = .{ .color = WHITE }, .state_layer = 0 },
+});
 
 fn color(comptime hex: []const u8) Color {
     return Color.hex(hex) catch unreachable;
@@ -872,8 +880,8 @@ pub const suggest_row: Style = .{
     .active = &.{ .state_layer = 0 },
 };
 
-/// .modal-content.modal-wide: room for the Import dialog's lists.
-pub const modal_wide: Style = modal.with(.{ .width = .fixed(520) });
+/// .modal-content.modal-wide: room for the Import dialog's lists, scrolling once they outgrow the window.
+pub const modal_wide: Style = modal.with(.{ .width = .fixed(520), .overflow = .scroll_y });
 
 /// Modal text that sits on a line with something after it, e.g. a link.
 pub const modal_text_inline: Style = .{ .foreground = .{ .color = TEXT_SECONDARY } };

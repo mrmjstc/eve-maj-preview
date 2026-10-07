@@ -298,7 +298,7 @@ fn confirmPrompt(context: *ui.Frame) !void {
     if (try modalButton(context, .src(@src()), switch (confirm) {
         .delete => "Delete",
         .reset => "Reset",
-    }, &style.danger_button)) {
+    }, &style.danger_primary_button)) {
         profiles.request(switch (confirm) {
             .delete => .delete,
             .reset => .reset,
