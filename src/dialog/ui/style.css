@@ -2522,7 +2522,7 @@ input[type="range"]::-moz-range-thumb {
     width: 10.75rem;
 }
 
-/* Thumbnail spaces: a roster with a colour dot and region size per space, beside the selected one's details. */
+/* Thumbnail spaces: a roster with a colour dot per space, beside the selected one's details. */
 #thumbnailSpacesList .roster {
     width: 12.5rem;
     align-self: flex-start;
@@ -2620,6 +2620,10 @@ input[type="range"]::-moz-range-thumb {
     white-space: nowrap;
 }
 
+.space-region-buttons > button:not(.button-icon) {
+    flex: 1;
+}
+
 .roster-row {
     display: flex;
     align-items: center;
@@ -2715,6 +2719,10 @@ input[type="range"]::-moz-range-thumb {
 
 .detail-panel.active {
     display: block;
+}
+
+/* Set only by picking a row, so a list rebuilt after an edit doesn't flash. */
+.detail-panel.fade-in {
     animation: fadeIn 0.15s;
 }
 
@@ -2752,6 +2760,7 @@ input[type="range"]::-moz-range-thumb {
 #hotkeyGroupsList .detail-panel-header,
 #charactersList .detail-panel-header,
 #windowFiltersList .detail-panel-header,
+#thumbnailSpacesList .detail-panel-header,
 #notificationTypesList .detail-panel-header {
     border-bottom: none;
     padding-bottom: 0;

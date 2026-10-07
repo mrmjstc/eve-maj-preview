@@ -15,7 +15,7 @@ import { populateNotificationTypes } from './notifications.js';
 import { saveOreTable } from './ore_table.js';
 import { renderProfileSelect } from './profiles.js';
 import { populateSystemColors } from './system_colors.js';
-import { populateThumbnailSpaces, refreshThumbnailSpaces } from './thumbnail_spaces.js';
+import { populateThumbnailSpaces } from './thumbnail_spaces.js';
 import { populateWindowFilters } from './window_filters.js';
 
 const FLUSH_DELAY_MS = 120;
@@ -213,11 +213,6 @@ async function sendEdits(name) {
     if (reply.resync) {
         // The app put back a space the edits removed.
         await adoptSnapshot(await rpc('getSession'));
-        return;
-    }
-    if (!sameValue(reply.placement, app.spacePlacement)) {
-        app.spacePlacement = reply.placement;
-        refreshThumbnailSpaces();
     }
 }
 
@@ -252,7 +247,6 @@ async function adoptSnapshot(snapshot) {
     app.editsDraft = snapshot.editsDraft;
     app.profiles = snapshot.profiles;
     app.characterIds = snapshot.characterIds;
-    app.spacePlacement = snapshot.placement;
     app.dialogEditingProfile = snapshot.profileName;
     renderProfileSelect();
     confirmed.profile = clone(snapshot.profile);

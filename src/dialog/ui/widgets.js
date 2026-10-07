@@ -190,7 +190,9 @@ export function selectMasterDetailRow(containerId, index) {
         row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
     });
     document.querySelectorAll(`#${containerId} .detail-panel`).forEach(panel => {
-        panel.classList.toggle('active', parseInt(panel.dataset.index, 10) === index);
+        const isActive = parseInt(panel.dataset.index, 10) === index;
+        panel.classList.toggle('active', isActive);
+        panel.classList.toggle('fade-in', isActive);
     });
 }
 

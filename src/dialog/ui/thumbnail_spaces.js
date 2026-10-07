@@ -25,10 +25,13 @@ export function spaceRect(space) {
     return values.every(Number.isInteger) && space.width > 0 && space.height > 0 ? values : null;
 }
 
-// The space the app sends these characters to (see app.spacePlacement), when it isn't `space` itself.
-function otherWinner(list, space, winnerId) {
-    if (winnerId == null || winnerId === space.id) return null;
-    return list.find(other => other.id === winnerId) || null;
+// Mirrors layout/spaces.zig: the first enabled space with a region drawn wins.
+function firstActive(list, test) {
+    return list.find(space => space.enabled && spaceRect(space) && test(space)) || null;
+}
+
+function otherWinner(space, winner) {
+    return winner && winner !== space ? winner : null;
 }
 
 function isSpecial(space) {
@@ -88,13 +91,13 @@ export function populateThumbnailSpaces() {
 
 function rosterRowHtml(space, index, isSelected) {
     const rect = spaceRect(space);
-    const state = !space.enabled ? t('dynamic.space.stateOff') : rect ? `${rect[2]}×${rect[3]}` : t('dynamic.space.stateNoRegion');
+    const state = !space.enabled ? t('dynamic.space.stateOff') : rect ? '' : t('dynamic.space.stateNoRegion');
     const isWarning = space.enabled && !rect;
     return `
         <div class="roster-row ${isSelected ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${isSelected}" data-index="${index}" onclick="selectThumbnailSpace(${index})" title="${t('common.dragToReorder')}">
             <span class="space-dot${space.enabled ? '' : ' off'}" style="--dot: ${dotColor(index)}"></span>
             <span class="roster-name" id="space_${index}_header_name">${escapeHtml(spaceName(space))}</span>
-            <span class="space-state${isWarning ? ' warn' : ''}">${escapeHtml(state)}</span>
+            ${state ? `<span class="space-state${isWarning ? ' warn' : ''}">${escapeHtml(state)}</span>` : ''}
         </div>
     `;
 }
@@ -103,7 +106,7 @@ function detailPanelHtml(list, space, index, isSelected) {
     const path = `thumbnailSpaces.${index}`;
     const special = isSpecial(space);
     const name = special
-        ? `<span class="detail-panel-name-label">${t('dynamic.space.nameLabel')}</span><span class="space-fixed-name">${escapeHtml(spaceName(space))}</span>`
+        ? `<label class="detail-panel-name-label">${t('dynamic.space.nameLabel')}</label><span class="space-fixed-name">${escapeHtml(spaceName(space))}</span>`
         : `<label class="detail-panel-name-label" for="space_${index}_name">${t('dynamic.space.nameLabel')}</label>
            <input type="text" class="detail-panel-name-input" id="space_${index}_name" data-path="${path}.name" placeholder="${t('dynamic.space.namePlaceholder')}" oninput="updateThumbnailSpaceHeaderName(${index})">`;
     const remove = special ? '' : `<button type="button" id="space_${index}_removeBtn" onclick="confirmRemove('space_${index}_removeBtn', () => removeThumbnailSpace(${index}))">${t('common.remove')}</button>`;
@@ -197,7 +200,7 @@ function chipHtml(index, name, isHeld, label) {
 function overlapsHtml(list, index) {
     const space = list[index];
     return (space.groups || []).map(name => {
-        const winner = otherWinner(list, space, app.spacePlacement.groupSpaceIds[name]);
+        const winner = otherWinner(space, firstActive(list, other => (other.groups || []).includes(name)));
         if (!winner) return '';
         const text = t('dynamic.space.overlap').replace('{group}', name).replace('{space}', spaceName(winner));
         return `<p class="hint hint-warning">${escapeHtml(text)}</p>`;
@@ -208,10 +211,11 @@ function takesFieldHtml(list, space, index, dim) {
     const path = `thumbnailSpaces.${index}`;
     const checks = [];
     if (!space.holdsUnassigned) {
-        checks.push(takeCheckHtml(index, `${path}.takesUnassigned`, 'takesUnassigned', space.takesUnassigned, otherWinner(list, space, app.spacePlacement.unassignedSpaceId), 'dynamic.space.takenUnassigned'));
+        const unassignedWinner = firstActive(list, other => other.holdsUnassigned) || firstActive(list, other => other.takesUnassigned);
+        checks.push(takeCheckHtml(index, `${path}.takesUnassigned`, 'takesUnassigned', space.takesUnassigned, otherWinner(space, unassignedWinner), 'dynamic.space.takenUnassigned'));
     }
     if (!space.holdsLoginScreen) {
-        checks.push(takeCheckHtml(index, `${path}.takesLoginScreen`, 'takesLoginScreen', space.takesLoginScreen, otherWinner(list, space, app.spacePlacement.loginScreenSpaceId), 'dynamic.space.takenLoginScreen'));
+        checks.push(takeCheckHtml(index, `${path}.takesLoginScreen`, 'takesLoginScreen', space.takesLoginScreen, null, null));
     }
     return `
         <div class="detail-field detail-field-top${dim}">

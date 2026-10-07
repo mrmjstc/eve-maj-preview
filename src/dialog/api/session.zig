@@ -7,7 +7,6 @@ const schema = @import("../../config/schema.zig");
 const notification = @import("../../notifications/notification.zig");
 const painter_mod = @import("../../painter.zig");
 const protocol = @import("../../protocol.zig");
-const spaces = @import("../../layout/spaces.zig");
 const main = @import("../../main.zig");
 const host = @import("../host.zig");
 const session = @import("../session.zig");
@@ -30,7 +29,7 @@ pub fn getSession(arena: std.mem.Allocator) !rpc.RawJson {
     return snapshot(arena);
 }
 
-/// Returns one result per op (see session.apply), whether the window should reload the documents, whether they now differ from what's saved, and where the spaces send characters.
+/// Returns one result per op (see session.apply), whether the window should reload the documents, and whether they now differ from what's saved.
 pub fn applyOps(arena: std.mem.Allocator, args: struct { doc: session.Doc, ops: []const patch.Op }) !rpc.RawJson {
     var out: std.Io.Writer.Allocating = .init(arena);
     var jw: std.json.Stringify = .{ .writer = &out.writer };
@@ -41,8 +40,6 @@ pub fn applyOps(arena: std.mem.Allocator, args: struct { doc: session.Doc, ops: 
     try jw.write(needs_resync);
     try jw.objectField("dirty");
     try writeDirty(&jw);
-    try jw.objectField("placement");
-    try writePlacement(&jw);
     try jw.endObject();
     return .{ .text = out.written() };
 }
@@ -112,34 +109,8 @@ fn snapshot(arena: std.mem.Allocator) !rpc.RawJson {
     try main.g_character_ids.write(&jw);
     try jw.objectField("dirty");
     try writeDirty(&jw);
-    try jw.objectField("placement");
-    try writePlacement(&jw);
     try jw.endObject();
     return .{ .text = out.written() };
-}
-
-/// The ids of the spaces unassigned characters, login-screen clients and each named hotkey group go to, null where none takes them, so the window can say when another space wins.
-fn writePlacement(jw: *std.json.Stringify) !void {
-    const cfg = session.profile();
-    const items = cfg.thumbnailSpaces.items;
-    try jw.beginObject();
-    try jw.objectField("unassignedSpaceId");
-    try jw.write(spaceId(items, spaces.unassignedSpaceIn(items)));
-    try jw.objectField("loginScreenSpaceId");
-    try jw.write(spaceId(items, spaces.loginScreenSpaceIn(items)));
-    try jw.objectField("groupSpaceIds");
-    try jw.beginObject();
-    for (cfg.hotkeyGroups.items) |group| {
-        if (group.name.len == 0) continue;
-        try jw.objectField(group.name);
-        try jw.write(spaceId(items, spaces.groupSpaceIn(items, group.name)));
-    }
-    try jw.endObject();
-    try jw.endObject();
-}
-
-fn spaceId(items: []const config.ThumbnailSpace, index: ?usize) ?u32 {
-    return if (index) |at| items[at].id else null;
 }
 
 fn writeDirty(jw: *std.json.Stringify) !void {
