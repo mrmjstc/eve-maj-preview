@@ -32,8 +32,10 @@ const CHIP_COLUMNS: [3]GridTrack = @splat(.{ .fr = 1 });
 /// A pill in a space's Holds grid.
 const Chip = struct {
     label: []const u8,
-    /// The group name it toggles; null for an unnamed group, which can't be held.
+    /// The group name it toggles; null for an unnamed group, which is named when clicked.
     name: ?[]const u8,
+    /// The unnamed group's index in hotkeyGroups.
+    group_index: usize = 0,
 };
 
 /// The id of the space whose details are shown; not saved, and follows the space through reorders.
@@ -126,9 +128,11 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
         try widgets.boxedText(context, .src(@src()), "No spaces yet.", &style.roster_empty, &style.roster_empty_text);
     }
     const arena = context.arena();
+    const fixed_count = fixedCount(items);
     for (items, 0..) |*space, index| {
         const is_selected = space.id == g_selected_id;
-        const mark = try widgets.reorderRow(context, SPACE_ROW_KEY, index, items.len);
+        // Fixed rows don't join the drag, so nothing can be dropped above them.
+        const mark: widgets.DropMark = if (index < fixed_count) .none else try widgets.reorderRow(context, SPACE_ROW_KEY, index, items.len);
         const row = Button{ .key = SPACE_ROW_KEY.indexed(index), .style = switch (mark) {
             .above => &style.roster_row_drop_above,
             .below => &style.roster_row_drop_below,
@@ -148,15 +152,11 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
             .content = if (space.name.len > 0) space.name else "Unnamed Space",
             .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
         });
-        const space_rect = spaces.rect(space);
-        const state_text = if (!space.enabled)
-            "Off"
-        else if (space_rect) |r|
-            try std.fmt.allocPrint(arena, "{d}\u{00D7}{d}", .{ r.right - r.left, r.bottom - r.top })
-        else
-            "No region";
-        const is_warning = space.enabled and space_rect == null;
-        try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.space.state").indexed(index), .content = state_text, .style = if (is_warning) &style.roster_badge_warning else &style.roster_badge });
+        const has_region = spaces.rect(space) != null;
+        if (!space.enabled or !has_region) {
+            const is_warning = space.enabled;
+            try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.space.state").indexed(index), .content = if (is_warning) "No region" else "Off", .style = if (is_warning) &style.roster_badge_warning else &style.roster_badge });
+        }
         try row.close(context);
     }
     const is_full = items.len >= spaces.MAX_SPACES;
@@ -168,7 +168,14 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     }
     try list.close(context);
 
-    if (widgets.reorderFinish(context, SPACE_ROW_KEY, items.len)) |moved| profile.move("thumbnailSpaces", moved.from, moved.before);
+    if (widgets.reorderFinish(context, SPACE_ROW_KEY, items.len)) |moved| profile.move("thumbnailSpaces", moved.from, @max(moved.before, fixed_count));
+}
+
+/// Login Screen and Unassigned Characters stay at the top, as config load puts them (see config/spaces.zig).
+fn fixedCount(items: []const config.ThumbnailSpace) usize {
+    var count: usize = 0;
+    while (count < items.len and (items[count].holdsLoginScreen or items[count].holdsUnassigned)) count += 1;
+    return count;
 }
 
 fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
@@ -217,7 +224,6 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     if (!is_login_screen) {
         try bind.toggle(context, space, "takesLoginScreen", "Move Logged-Out Characters to the End");
         try widgets.hintText(context, .src(@src()), "Clients at the login screen fill in last. Only the first space with this on takes them, and none does while the Login Screen space is on with a region.");
-        if (space.get("takesLoginScreen")) try takenElsewhere(context, items, index, spaces.loginScreenSpaceIn(items), "Logged-out clients");
     }
     try widgets.subheading(context, .src(@src()), "Layout");
     try regionRow(context, id);
@@ -244,7 +250,7 @@ fn holds(context: *ui.Frame, profile: ProfileRef, space: SpaceRef) !void {
     var chips: std.ArrayList(Chip) = .empty;
     for (groups, 0..) |group, group_index| {
         if (group.name.len == 0) {
-            try chips.append(arena, .{ .label = try std.fmt.allocPrint(arena, "Hotkey Group {d}", .{group_index + 1}), .name = null });
+            try chips.append(arena, .{ .label = try std.fmt.allocPrint(arena, "Hotkey Group {d}", .{group_index + 1}), .name = null, .group_index = group_index });
             continue;
         }
         try chips.append(arena, .{ .label = group.name, .name = group.name });
@@ -263,31 +269,41 @@ fn holds(context: *ui.Frame, profile: ProfileRef, space: SpaceRef) !void {
     const grid = Rect{ .key = .src(@src()), .style = grid_style };
     _ = try grid.open(context);
     const base = ui.Key.str("knots.space.chip");
-    var toggled: ?[]const u8 = null;
+    var toggled: ?Chip = null;
     for (chips.items, 0..) |chip, chip_index| {
         search.captureText(chip.label);
-        const name = chip.name;
-        const is_held = if (name) |held| space.ptr.groupIndex(held) != null else false;
+        const is_held = if (chip.name) |held| space.ptr.groupIndex(held) != null else false;
         const chip_style = try arena.create(ui.Style);
-        const look = if (name == null) &style.group_chip_disabled else if (is_held) &style.group_chip_held else &style.group_chip;
+        const look = if (is_held) &style.group_chip_held else &style.group_chip;
         chip_style.* = look.with(.{ .grid_cell = .{ .row = @intCast(chip_index / CHIP_COLUMNS.len), .col = @intCast(chip_index % CHIP_COLUMNS.len) } });
         if ((try context.interact(Button{
             .key = base.indexed(chip_index),
             .label = chip.label,
-            .disabled = name == null,
             .style = chip_style,
             .parts = .{ .label = if (is_held) &style.group_chip_label_held else &style.group_chip_label },
-        })).clicked) toggled = name;
+        })).clicked) toggled = chip;
     }
     try grid.close(context);
-    try widgets.hintText(context, .src(@src()), "Click a group to put its characters in this space, and again to take it out. Name an unnamed group in the Hotkey Groups tab to add it.");
+    try widgets.hintText(context, .src(@src()), "Click a group to put its characters in this space, and again to take it out.");
 
-    const name = toggled orelse return;
+    const chip = toggled orelse return;
+    const name = chip.name orelse try nameUnnamedGroup(arena, profile, chip.group_index);
     if (space.ptr.groupIndex(name)) |at| {
         space.remove("groups", at);
     } else {
         space.appendString("groups", name);
     }
+}
+
+/// Spaces hold groups by name, so an unnamed group takes the name its chip shows, or the next free number if another group has it.
+fn nameUnnamedGroup(arena: std.mem.Allocator, profile: ProfileRef, group_index: usize) ![]const u8 {
+    var number = group_index + 1;
+    const name = while (true) : (number += 1) {
+        const candidate = try std.fmt.allocPrint(arena, "Hotkey Group {d}", .{number});
+        if (!profile.ptr.hasHotkeyGroupNamed(candidate)) break candidate;
+    };
+    profile.item("hotkeyGroups", group_index).set("name", name);
+    return name;
 }
 
 /// Warns about each group of this space whose characters another space gets.
@@ -325,7 +341,7 @@ fn regionRow(context: *ui.Frame, space_id: u32) !void {
     } else {
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "No region yet", .style = &style.space_status_warning });
     }
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "New", .style = &style.plain_button })).clicked) {
+    if ((try context.interact(Button{ .key = .src(@src()), .label = "New Space", .style = &style.plain_button })).clicked) {
         region.start(space_id, false);
     }
     if (try widgets.glyphButton(context, .src(@src()), .pencil, "Edit", &style.plain_button, current == null)) {

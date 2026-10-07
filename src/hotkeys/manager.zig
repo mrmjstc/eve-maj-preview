@@ -26,6 +26,12 @@ const HotkeyAction = bindings.HotkeyAction;
 const KeyList = config_mod.KeyList;
 const slog = log.scoped("hotkeys");
 
+/// The characters or hotkey groups bound to one key combo, in config order.
+const ComboSharers = struct {
+    vk: u32,
+    indices: std.ArrayList(usize),
+};
+
 /// Cycling, exclusions, profile switching and app/URL launching live in their own modules.
 pub const HotkeyManager = struct {
     allocator: std.mem.Allocator,
@@ -118,6 +124,39 @@ pub const HotkeyManager = struct {
         return if (binding.in_global_settings) @field(self.global_settings, binding.field) else @field(self.config.hotkeys, binding.field);
     }
 
+    /// Groups sharing a combo cycle through each other's members, in group order. Returns how many keys failed to register.
+    fn registerGroupChains(self: *HotkeyManager, hwnd: win32.HWND, chains: []const ComboSharers, forward: bool) usize {
+        var failed_count: usize = 0;
+        var desc_buf: [160]u8 = undefined;
+        for (chains, 0..) |chain, chain_index| {
+            const first_name = self.config.hotkeyGroups.items[chain.indices.items[0]].name;
+            const slot = chain_index * 2 + @intFromBool(!forward);
+            if (slot >= bindings.CYCLE_GROUP_SLOT_COUNT) {
+                slog.err("Failed to register hotkey group '{s}' {s}: too many group cycle keys", .{ first_name, cycling.directionName(forward) });
+                failed_count += 1;
+                continue;
+            }
+
+            const desc = if (chain.indices.items.len == 1)
+                std.mem.print(&desc_buf, "group [{s}] {s}", .{ first_name, cycling.directionName(forward) }) catch "group cycle"
+            else
+                std.mem.print(&desc_buf, "groups [{s}...] {s} ({} sharing hotkey)", .{ first_name, cycling.directionName(forward), chain.indices.items.len }) catch "shared group cycle";
+
+            const owned_indices = self.allocator.dupe(usize, chain.indices.items) catch |err| {
+                slog.err("Failed to copy hotkey group chain '{s}': {}", .{ first_name, err });
+                failed_count += 1;
+                continue;
+            };
+            // A single key, so any failure means the action wasn't tracked and the indices are still ours.
+            const failed = self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, slot), .one(chain.vk), .{ .cycle_group = .{ .group_indices = owned_indices, .forward = forward } }, desc);
+            if (failed > 0) {
+                self.allocator.free(owned_indices);
+                failed_count += failed;
+            }
+        }
+        return failed_count;
+    }
+
     /// Returns how many of the binding's keys failed to register.
     fn registerGlobal(self: *HotkeyManager, hwnd: win32.HWND, comptime binding: bindings.GlobalBinding) usize {
         return self.registerKeys(hwnd, bindings.globalId(binding.action), self.bindingKeys(binding), bindings.actionFor(binding.action), binding.description);
@@ -126,33 +165,19 @@ pub const HotkeyManager = struct {
     pub fn registerHotkeys(self: *HotkeyManager, hwnd: win32.HWND) !void {
         keyboard_hook.setExactModifiers(self.config.hotkeys.exactHotkeyModifiers);
         mouse_hook.setExactModifiers(self.config.hotkeys.exactHotkeyModifiers);
-        const PerCharacterHotkeyGroup = struct {
-            vk: u32,
-            indices: std.ArrayList(usize),
-        };
-        var per_character_groups: std.ArrayList(PerCharacterHotkeyGroup) = .empty;
-        defer {
-            for (per_character_groups.items) |*group| group.indices.deinit(self.allocator);
-            per_character_groups.deinit(self.allocator);
-        }
-        // Grouped per combo, so characters sharing one cycle through each other while a character's other combos stay its own.
+        // Grouped per combo, so characters (or groups) sharing one cycle through each other while their other combos stay their own.
+        var per_character_groups: std.ArrayList(ComboSharers) = .empty;
+        defer deinitComboSharers(self.allocator, &per_character_groups);
         for (self.config.characters.items, 0..) |*char, char_index| {
-            for (char.hotkey.slice()) |char_vk| {
-                var existing: ?*PerCharacterHotkeyGroup = null;
-                for (per_character_groups.items) |*group| {
-                    if (group.vk == char_vk) {
-                        existing = group;
-                        break;
-                    }
-                }
-                if (existing) |group| {
-                    try group.indices.append(self.allocator, char_index);
-                } else {
-                    var new_group = PerCharacterHotkeyGroup{ .vk = char_vk, .indices = .empty };
-                    try new_group.indices.append(self.allocator, char_index);
-                    try per_character_groups.append(self.allocator, new_group);
-                }
-            }
+            for (char.hotkey.slice()) |char_vk| try addComboSharer(self.allocator, &per_character_groups, char_vk, char_index);
+        }
+        var forward_chains: std.ArrayList(ComboSharers) = .empty;
+        defer deinitComboSharers(self.allocator, &forward_chains);
+        var backward_chains: std.ArrayList(ComboSharers) = .empty;
+        defer deinitComboSharers(self.allocator, &backward_chains);
+        for (self.config.hotkeyGroups.items, 0..) |*group, group_index| {
+            for (group.forwardKey.slice()) |group_vk| try addComboSharer(self.allocator, &forward_chains, group_vk, group_index);
+            for (group.backwardKey.slice()) |group_vk| try addComboSharer(self.allocator, &backward_chains, group_vk, group_index);
         }
         const per_character_count = per_character_groups.items.len;
         const profile_switch_count = countBound(self.global_settings.profileSwitchHotkeys.items);
@@ -180,27 +205,13 @@ pub const HotkeyManager = struct {
         var failed_count: usize = 0;
         var desc_buf: [160]u8 = undefined;
 
+        failed_count += self.registerGroupChains(hwnd, forward_chains.items, true);
+        failed_count += self.registerGroupChains(hwnd, backward_chains.items, false);
+
         for (self.config.hotkeyGroups.items, 0..) |*group, group_index| {
-            const char_name = if (group.characters.items.len > 0)
-                group.characters.items[0]
-            else
-                "(empty)";
-            const first_slot = group_index * 3;
-
-            if (!group.forwardKey.isEmpty()) {
-                const desc = std.mem.print(&desc_buf, "group {} [{s}...] forward", .{ group_index, char_name }) catch "group forward";
-                failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot), group.forwardKey, .{ .cycle_group = .{ .group_index = group_index, .forward = true } }, desc);
-            }
-
-            if (!group.backwardKey.isEmpty()) {
-                const desc = std.mem.print(&desc_buf, "group {} [{s}...] backward", .{ group_index, char_name }) catch "group backward";
-                failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot + 1), group.backwardKey, .{ .cycle_group = .{ .group_index = group_index, .forward = false } }, desc);
-            }
-
-            if (!group.assignKey.isEmpty()) {
-                const desc = std.mem.print(&desc_buf, "group {} [{s}] assign", .{ group_index, group.name }) catch "group assign";
-                failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, first_slot + 2), group.assignKey, .{ .assign_group = .{ .group_index = group_index } }, desc);
-            }
+            if (group.assignKey.isEmpty()) continue;
+            const desc = std.mem.print(&desc_buf, "group {} [{s}] assign", .{ group_index, group.name }) catch "group assign";
+            failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_ASSIGN_GROUP_BASE, group_index), group.assignKey, .{ .assign_group = .{ .group_index = group_index } }, desc);
         }
 
         for (per_character_groups.items, 0..) |*group, group_index| {
@@ -268,9 +279,8 @@ pub const HotkeyManager = struct {
 
         var action_it = self.hotkey_map.valueIterator();
         while (action_it.next()) |action| {
-            if (action.* == .activate_character) {
-                self.allocator.free(action.activate_character.character_indices);
-            }
+            if (action.* == .activate_character) self.allocator.free(action.activate_character.character_indices);
+            if (action.* == .cycle_group) self.allocator.free(action.cycle_group.group_indices);
         }
 
         slog.debug("Unregistering {} hotkey(s)", .{self.hotkey_map.count()});
@@ -332,13 +342,7 @@ pub const HotkeyManager = struct {
     /// Takes a pointer so per-character hotkeys can advance their cursor in hotkey_map.
     fn runAction(self: *HotkeyManager, action: *HotkeyAction) void {
         switch (action.*) {
-            .cycle_group => |cycle_group| {
-                if (cycle_group.group_index >= self.config.hotkeyGroups.items.len) {
-                    slog.err("Failed to cycle group: index {} is out of range", .{cycle_group.group_index});
-                    return;
-                }
-                cycling.cycleGroup(self, cycle_group.group_index, cycle_group.forward);
-            },
+            .cycle_group => |chain| cycling.cycleGroups(self, chain.group_indices, chain.forward),
             .activate_character => |*character_group| cycling.activatePerCharacterGroup(self, character_group),
             .assign_group => |assign| membership.assignHoveredToGroup(self, assign.group_index),
             .minimize_all => {
@@ -386,7 +390,7 @@ pub const HotkeyManager = struct {
         }
     }
 
-    fn foregroundEveWindow(self: *HotkeyManager) ?scout.EveWindow {
+    pub fn foregroundEveWindow(self: *HotkeyManager) ?scout.EveWindow {
         const foreground_hwnd = win32.GetForegroundWindow() orelse return null;
         for (self.scout.getWindows()) |eve_window| {
             if (eve_window.hwnd == foreground_hwnd) return eve_window;
@@ -488,6 +492,21 @@ pub fn clearLoggedOutExclusion(character_name: []const u8) void {
 /// The window ReturnToLastApp goes back to.
 pub fn recordNonEveForeground(hwnd: win32.HWND) void {
     if (g_hotkey_manager_ptr) |manager| manager.last_non_eve_foreground = hwnd;
+}
+
+fn addComboSharer(allocator: std.mem.Allocator, list: *std.ArrayList(ComboSharers), combo_vk: u32, index: usize) !void {
+    for (list.items) |*sharers| {
+        if (sharers.vk == combo_vk) return sharers.indices.append(allocator, index);
+    }
+    var sharers: ComboSharers = .{ .vk = combo_vk, .indices = .empty };
+    errdefer sharers.indices.deinit(allocator);
+    try sharers.indices.append(allocator, index);
+    try list.append(allocator, sharers);
+}
+
+fn deinitComboSharers(allocator: std.mem.Allocator, list: *std.ArrayList(ComboSharers)) void {
+    for (list.items) |*sharers| sharers.indices.deinit(allocator);
+    list.deinit(allocator);
 }
 
 fn countBound(items: anytype) usize {

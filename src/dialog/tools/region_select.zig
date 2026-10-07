@@ -3,6 +3,7 @@ const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
 const gdi_overlay = @import("../../platform/gdi_overlay.zig");
 const color = @import("../../util/color.zig");
+const region_math = @import("region_math.zig");
 const log = @import("../../log.zig");
 
 const slog = log.scoped("region_select");
@@ -30,6 +31,8 @@ const HANDLE_COLOR: u32 = 0xFFFFFFFF;
 const LABEL_PADDING_X: usize = 10;
 const LABEL_PADDING_Y: usize = 4;
 const LABEL_CURSOR_OFFSET: i32 = 16;
+/// Enough for any monitor's width or height.
+const MAX_FIELD_DIGITS = 5;
 
 // Save/Cancel mirror the config dialog's buttons (dialog/ui/style.css): sizes are CSS px scaled by monitor DPI, colors are its palette.
 const BUTTON_WIDTH: i32 = 80;
@@ -64,6 +67,13 @@ pub const LabelStyle = struct {
 const Handle = enum { none, move, left, right, top, bottom, top_left, top_right, bottom_left, bottom_right };
 const Outline = enum { solid, dashed };
 const Button = enum { save, cancel };
+const Field = enum { width, height };
+
+/// The size fields sit in a row above Save/Cancel, each the width of the button below it.
+const Controls = struct {
+    fields: [2]win32.RECT,
+    buttons: [2]win32.RECT,
+};
 
 /// The overlay's on-screen text.
 pub const Labels = struct {
@@ -113,6 +123,13 @@ var g_size_ns_cursor: ?win32.HCURSOR = null;
 var g_size_nwse_cursor: ?win32.HCURSOR = null;
 var g_size_nesw_cursor: ?win32.HCURSOR = null;
 var g_size_all_cursor: ?win32.HCURSOR = null;
+var g_ibeam_cursor: ?win32.HCURSOR = null;
+
+var g_field_focus: ?Field = null;
+var g_field_digits: [MAX_FIELD_DIGITS]u8 = undefined;
+var g_field_digit_count: usize = 0;
+/// The focused field still shows the region's size, which the first digit typed replaces.
+var g_field_untouched = false;
 
 /// Zero-padded fixed-size copy of `text` (UTF-8), truncated at a character boundary so a NUL always fits.
 pub fn fixedText(comptime n: usize, text: []const u8) [n]u8 {
@@ -128,7 +145,7 @@ pub fn labelText(buf: []const u8) []const u8 {
     return std.mem.sliceTo(buf, 0);
 }
 
-/// Starts (or restarts) the overlay; the result goes to the config dialog as a regionSelected event. `accent_color` is forced opaque, and
+/// Starts (or restarts) the overlay. `accent_color` is forced opaque, and
 /// `edit_region` adjusts that region instead of dragging a new one; `other_regions` are copied and drawn dashed. `on_finished` runs once the overlay
 /// closes, then `on_result` with the selection; neither runs if this fails.
 pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelStyle, edit_region: ?win32.RECT, other_regions: []const win32.RECT, labels: Labels, on_finished: *const fn () void, on_result: *const fn (Status, win32.RECT) void) !void {
@@ -149,6 +166,7 @@ pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelSty
     g_bounds = g_virtual_screen;
     g_dragging = false;
     g_edit_handle = .none;
+    g_field_focus = null;
 
     // A region that's mostly off the current screens clamps to nothing usable, so fall back to a fresh drag.
     g_edit_mode = false;
@@ -196,6 +214,7 @@ fn registerWindowClass(instance: win32.HINSTANCE) !void {
     g_size_nesw_cursor = win32.LoadCursorA(null, win32.IDC_SIZENESW);
     g_size_all_cursor = win32.LoadCursorA(null, win32.IDC_SIZEALL);
     g_hand_cursor = win32.LoadCursorA(null, win32.IDC_HAND);
+    g_ibeam_cursor = win32.LoadCursorA(null, win32.IDC_IBEAM);
     try gdi_overlay.registerWindowClass(instance, wndProc, WINDOW_CLASS_NAME, null);
     g_window_class_registered = true;
 }
@@ -358,8 +377,12 @@ fn applyEditDrag(pt: win32.POINT) void {
     if (g_edit_handle == .move) {
         const w = win32.rectWidth(r);
         const h = win32.rectHeight(r);
-        r.left = std.math.clamp(r.left + dx, vs.left, vs.right - w);
-        r.top = std.math.clamp(r.top + dy, vs.top, vs.bottom - h);
+        var left = r.left + dx;
+        var top = r.top + dy;
+        left += region_math.snapSpanOffset(left, left + w, .x, otherRegions(), vs, region_math.SNAP_DISTANCE_PX);
+        top += region_math.snapSpanOffset(top, top + h, .y, otherRegions(), vs, region_math.SNAP_DISTANCE_PX);
+        r.left = std.math.clamp(left, vs.left, vs.right - w);
+        r.top = std.math.clamp(top, vs.top, vs.bottom - h);
         r.right = r.left + w;
         r.bottom = r.top + h;
     } else {
@@ -367,12 +390,24 @@ fn applyEditDrag(pt: win32.POINT) void {
         const moves_right = g_edit_handle == .right or g_edit_handle == .top_right or g_edit_handle == .bottom_right;
         const moves_top = g_edit_handle == .top or g_edit_handle == .top_left or g_edit_handle == .top_right;
         const moves_bottom = g_edit_handle == .bottom or g_edit_handle == .bottom_left or g_edit_handle == .bottom_right;
-        if (moves_left) r.left = std.math.clamp(r.left + dx, vs.left, r.right - MIN_DRAG_PX);
-        if (moves_right) r.right = std.math.clamp(r.right + dx, r.left + MIN_DRAG_PX, vs.right);
-        if (moves_top) r.top = std.math.clamp(r.top + dy, vs.top, r.bottom - MIN_DRAG_PX);
-        if (moves_bottom) r.bottom = std.math.clamp(r.bottom + dy, r.top + MIN_DRAG_PX, vs.bottom);
+        if (moves_left) r.left = std.math.clamp(snapEdge(r.left + dx, .x), vs.left, r.right - MIN_DRAG_PX);
+        if (moves_right) r.right = std.math.clamp(snapEdge(r.right + dx, .x), r.left + MIN_DRAG_PX, vs.right);
+        if (moves_top) r.top = std.math.clamp(snapEdge(r.top + dy, .y), vs.top, r.bottom - MIN_DRAG_PX);
+        if (moves_bottom) r.bottom = std.math.clamp(snapEdge(r.bottom + dy, .y), r.top + MIN_DRAG_PX, vs.bottom);
     }
     g_edit_rect = r;
+}
+
+fn otherRegions() []const win32.RECT {
+    return g_other_regions[0..g_other_region_count];
+}
+
+fn snapEdge(value: i32, axis: region_math.Axis) i32 {
+    return region_math.snapEdge(value, axis, otherRegions(), g_bounds, region_math.SNAP_DISTANCE_PX);
+}
+
+fn snapPoint(pt: win32.POINT) win32.POINT {
+    return .{ .x = snapEdge(pt.x, .x), .y = snapEdge(pt.y, .y) };
 }
 
 fn drawHandle(bitmap: *const gdi_overlay.OverlayBitmap, center_x: i32, center_y: i32) void {
@@ -417,33 +452,100 @@ fn buttonWidthCss() i32 {
     return @max(BUTTON_WIDTH, widest * BUTTON_CHAR_WIDTH + 2 * BUTTON_TEXT_PADDING);
 }
 
-/// Save then Cancel, right-aligned under the region; flips above it, or inside its bottom edge, when there's no room below.
-fn buttonRects() [2]win32.RECT {
+/// Width/Height over Save/Cancel, right-aligned under the region; flips above it, or inside its bottom edge, when there's no room below.
+fn controlRects(region: win32.RECT) Controls {
     const width = scaled(buttonWidthCss());
     const height = scaled(BUTTON_HEIGHT);
     const gap = scaled(BUTTON_GAP);
     const margin = scaled(BUTTON_MARGIN);
     const group_width = width * 2 + gap;
-    const region = g_edit_rect;
+    const group_height = height * 2 + gap;
 
     const x = @max(g_bounds.left + margin, @min(region.right - margin - group_width, g_bounds.right - margin - group_width));
     var y = region.bottom + margin;
-    if (y + height > g_bounds.bottom) y = region.top - margin - height;
-    if (y < g_bounds.top) y = @max(g_bounds.top, region.bottom - margin - height);
+    if (y + group_height > g_bounds.bottom) y = region.top - margin - group_height;
+    if (y < g_bounds.top) y = @max(g_bounds.top, region.bottom - margin - group_height);
+    const button_y = y + height + gap;
 
     return .{
-        .{ .left = x, .top = y, .right = x + width, .bottom = y + height },
-        .{ .left = x + width + gap, .top = y, .right = x + group_width, .bottom = y + height },
+        .fields = .{
+            .{ .left = x, .top = y, .right = x + width, .bottom = y + height },
+            .{ .left = x + width + gap, .top = y, .right = x + group_width, .bottom = y + height },
+        },
+        .buttons = .{
+            .{ .left = x, .top = button_y, .right = x + width, .bottom = button_y + height },
+            .{ .left = x + width + gap, .top = button_y, .right = x + group_width, .bottom = button_y + height },
+        },
     };
 }
 
 fn buttonAt(pt: win32.POINT) ?Button {
     if (!g_edit_mode or g_edit_handle != .none) return null;
-    const rects = buttonRects();
+    const rects = controlRects(g_edit_rect).buttons;
     inline for (.{ Button.save, Button.cancel }) |button| {
         if (win32.rectContains(rects[@backingInt(button)], pt)) return button;
     }
     return null;
+}
+
+fn fieldAt(pt: win32.POINT) ?Field {
+    if (!g_edit_mode or g_edit_handle != .none) return null;
+    const rects = controlRects(g_edit_rect).fields;
+    inline for (.{ Field.width, Field.height }) |field| {
+        if (win32.rectContains(rects[@backingInt(field)], pt)) return field;
+    }
+    return null;
+}
+
+fn focusField(field: Field) void {
+    commitField();
+    g_field_focus = field;
+    g_field_untouched = true;
+    g_field_digit_count = 0;
+}
+
+/// Applies what was typed into the focused field, if anything, and unfocuses it.
+fn commitField() void {
+    const field = g_field_focus orelse return;
+    g_field_focus = null;
+    if (g_field_untouched or g_field_digit_count == 0) return;
+    // Only ever digits, too few to overflow.
+    const length = std.fmt.parseInt(i32, g_field_digits[0..g_field_digit_count], 10) catch unreachable;
+    const axis: region_math.Axis = switch (field) {
+        .width => .x,
+        .height => .y,
+    };
+    g_edit_rect = region_math.withLength(g_edit_rect, axis, length, g_bounds, MIN_DRAG_PX);
+}
+
+/// Whether `key` went to the focused field.
+fn handleFieldKey(key: win32.WPARAM) bool {
+    const field = g_field_focus orelse return false;
+    switch (key) {
+        '0'...'9', win32.VK_NUMPAD0...win32.VK_NUMPAD0 + 9 => {
+            if (g_field_untouched) g_field_digit_count = 0;
+            g_field_untouched = false;
+            const digit: u8 = @intCast(if (key >= win32.VK_NUMPAD0) key - win32.VK_NUMPAD0 else key - '0');
+            if (g_field_digit_count < MAX_FIELD_DIGITS) {
+                g_field_digits[g_field_digit_count] = '0' + digit;
+                g_field_digit_count += 1;
+            }
+        },
+        win32.VK_BACK => {
+            g_field_digit_count = if (g_field_untouched) 0 else g_field_digit_count -| 1;
+            g_field_untouched = false;
+        },
+        win32.VK_TAB => focusField(switch (field) {
+            .width => .height,
+            .height => .width,
+        }),
+        win32.VK_RETURN => commitField(),
+        // Drops the typed value rather than closing the overlay.
+        win32.VK_ESCAPE => g_field_focus = null,
+        else => return false,
+    }
+    redraw();
+    return true;
 }
 
 fn ensureButtonFonts(dc: win32.HDC) void {
@@ -464,45 +566,69 @@ fn drawButton(bitmap: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, label:
     const hovered = g_button_hover == button or g_button_pressed == button;
     const accent = g_border_color;
 
-    var face = gdi_overlay.ButtonFace{
-        .fill = undefined,
-        .border = undefined,
-        .text_color = undefined,
+    const face = switch (button) {
+        .save => if (hovered) blk: {
+            const fill = color.lighten(accent, BUTTON_LIGHTEN_PERCENT);
+            break :blk controlFace(fill, fill, color.inkFor(accent));
+        } else controlFace(BUTTON_BG, accent, accent),
+        .cancel => controlFace(if (hovered) BUTTON_SURFACE_ALT else BUTTON_SURFACE, if (hovered) accent else BUTTON_BORDER, BUTTON_TEXT),
+    };
+    gdi_overlay.drawButtonFace(bitmap, toLocal(rect), label, font, face);
+}
+
+/// The buttons' and size fields' shared shape at the current scale.
+fn controlFace(fill: u32, border: u32, text_color: u32) gdi_overlay.ButtonFace {
+    return .{
+        .fill = fill,
+        .border = border,
+        .text_color = text_color,
         .radius = @intCast(scaled(BUTTON_RADIUS)),
         .border_px = @intCast(@max(1, scaled(1))),
     };
-    switch (button) {
-        .save => if (hovered) {
-            face.fill = color.lighten(accent, BUTTON_LIGHTEN_PERCENT);
-            face.border = face.fill;
-            face.text_color = color.inkFor(accent);
-        } else {
-            face.fill = BUTTON_BG;
-            face.border = accent;
-            face.text_color = accent;
-        },
-        .cancel => {
-            face.fill = if (hovered) BUTTON_SURFACE_ALT else BUTTON_SURFACE;
-            face.border = if (hovered) accent else BUTTON_BORDER;
-            face.text_color = BUTTON_TEXT;
-        },
-    }
-
-    const local = win32.RECT{
-        .left = rect.left - g_virtual_screen.left,
-        .top = rect.top - g_virtual_screen.top,
-        .right = rect.right - g_virtual_screen.left,
-        .bottom = rect.bottom - g_virtual_screen.top,
-    };
-    gdi_overlay.drawButtonFace(bitmap, local, label, font, face);
 }
 
 fn drawButtons(bitmap: *const gdi_overlay.OverlayBitmap) void {
     if (g_edit_handle != .none) return;
     ensureButtonFonts(bitmap.mem_dc);
-    const rects = buttonRects();
+    const rects = controlRects(g_edit_rect).buttons;
     drawButton(bitmap, rects[@backingInt(Button.save)], labelText(&g_labels.save), .save);
     drawButton(bitmap, rects[@backingInt(Button.cancel)], labelText(&g_labels.cancel), .cancel);
+}
+
+fn drawField(bitmap: *const gdi_overlay.OverlayBitmap, rect: win32.RECT, field: Field, length: i32) void {
+    const font = g_button_font orelse g_label_style.font orelse return;
+    const is_focused = g_field_focus == field;
+    const prefix = switch (field) {
+        .width => "W",
+        .height => "H",
+    };
+    const caret = if (is_focused) "_" else "";
+
+    var text_buf: [24]u8 = undefined;
+    const text = if (is_focused and !g_field_untouched)
+        std.mem.print(&text_buf, "{s} {s}{s}", .{ prefix, g_field_digits[0..g_field_digit_count], caret }) catch unreachable
+    else
+        std.mem.print(&text_buf, "{s} {d}{s}", .{ prefix, length, caret }) catch unreachable;
+
+    const face = controlFace(BUTTON_BG, if (is_focused) g_border_color else BUTTON_BORDER, BUTTON_TEXT);
+    gdi_overlay.drawButtonFace(bitmap, toLocal(rect), text, font, face);
+}
+
+/// Shown while drawing too, so they follow the region as it's dragged out.
+fn drawFields(bitmap: *const gdi_overlay.OverlayBitmap, region: win32.RECT) void {
+    ensureButtonFonts(bitmap.mem_dc);
+    const rects = controlRects(region).fields;
+    drawField(bitmap, rects[@backingInt(Field.width)], .width, win32.rectWidth(region));
+    drawField(bitmap, rects[@backingInt(Field.height)], .height, win32.rectHeight(region));
+}
+
+fn toLocal(rect: win32.RECT) win32.RECT {
+    return .{
+        .left = rect.left - g_virtual_screen.left,
+        .top = rect.top - g_virtual_screen.top,
+        .right = rect.right - g_virtual_screen.left,
+        .bottom = rect.bottom - g_virtual_screen.top,
+    };
 }
 
 fn redraw() void {
@@ -516,12 +642,16 @@ fn redraw() void {
     if (g_edit_mode) {
         drawRegion(bitmap, g_edit_rect, HIT_TESTABLE_CLEAR_COLOR, g_border_color, .solid);
         drawEditHandles(bitmap, g_edit_rect);
+        drawFields(bitmap, g_edit_rect);
         drawButtons(bitmap);
         if (g_edit_handle != .none) drawSizeLabel(bitmap, g_edit_rect);
     } else if (g_dragging) {
         const selection = normalizedSelection();
         drawRegion(bitmap, selection, CLEAR_COLOR, g_border_color, .solid);
-        if (win32.rectWidth(selection) > 0 and win32.rectHeight(selection) > 0) drawSizeLabel(bitmap, selection);
+        if (win32.rectWidth(selection) > 0 and win32.rectHeight(selection) > 0) {
+            drawSizeLabel(bitmap, selection);
+            drawFields(bitmap, selection);
+        }
     }
 
     gdi_overlay.presentLayered(hwnd, bitmap, 255);
@@ -535,6 +665,7 @@ fn maybeRedrawThrottled() void {
 }
 
 fn finish(cancelled: bool) void {
+    if (cancelled) g_field_focus = null else commitField();
     if (g_hwnd) |hwnd| _ = win32.ShowWindow(hwnd, win32.SW_HIDE);
     g_dragging = false;
 
@@ -569,6 +700,8 @@ fn wndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win3
                 _ = win32.GetCursorPos(&pt);
                 const cursor = if (g_edit_handle != .none)
                     cursorForHandle(g_edit_handle)
+                else if (fieldAt(pt) != null)
+                    g_ibeam_cursor
                 else if (buttonAt(pt) != null or g_button_pressed != null)
                     g_hand_cursor
                 else
@@ -584,14 +717,24 @@ fn wndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win3
             var pt: win32.POINT = undefined;
             _ = win32.GetCursorPos(&pt);
             if (g_edit_mode) {
+                if (fieldAt(pt)) |field| {
+                    if (g_field_focus != field) focusField(field);
+                    redraw();
+                    return 0;
+                }
+                // Save commits a typed value in finish(), after the release has been matched to the button it pressed.
                 if (buttonAt(pt)) |button| {
                     g_button_pressed = button;
                     _ = win32.SetCapture(hwnd);
                     redraw();
                     return 0;
                 }
+                commitField();
                 const handle = hitTestEditRect(pt);
-                if (handle == .none) return 0;
+                if (handle == .none) {
+                    redraw();
+                    return 0;
+                }
                 g_edit_handle = handle;
                 g_edit_grab = pt;
                 g_edit_grab_rect = g_edit_rect;
@@ -600,9 +743,10 @@ fn wndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win3
                 redraw();
                 return 0;
             }
-            g_anchor = pt;
-            g_current = pt;
             g_bounds = monitorBoundsAt(pt);
+            g_ui_scale = dpiScaleAt(pt);
+            g_anchor = snapPoint(pt);
+            g_current = g_anchor;
             g_dragging = true;
             _ = win32.SetCapture(hwnd);
             redraw();
@@ -621,7 +765,7 @@ fn wndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win3
             }
             if (!g_dragging and g_edit_handle == .none) return 0;
             g_current = pt;
-            if (g_edit_mode) applyEditDrag(pt);
+            if (g_edit_mode) applyEditDrag(pt) else g_current = snapPoint(pt);
             maybeRedrawThrottled();
             return 0;
         },
@@ -664,6 +808,12 @@ fn wndProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win3
             return 0;
         },
         win32.WM_KEYDOWN => {
+            if (g_edit_mode and handleFieldKey(wParam)) return 0;
+            if (wParam == win32.VK_TAB and g_edit_mode and g_edit_handle == .none) {
+                focusField(.width);
+                redraw();
+                return 0;
+            }
             if (wParam == win32.VK_ESCAPE) {
                 if (g_dragging or g_edit_handle != .none) _ = win32.ReleaseCapture();
                 finish(true);

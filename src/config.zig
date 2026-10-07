@@ -144,6 +144,7 @@ pub const Config = struct {
         errdefer cfg.deinit();
         try wire.fromWireInto(Config, w, allocator, &cfg);
         try spaces.ensureSpecialSpaces(allocator, &cfg.thumbnailSpaces);
+        spaces.keepSpecialSpacesFirst(cfg.thumbnailSpaces.items);
 
         if (cfg.formatVersion < 2) {
             for (cfg.characters.items) |*char| {

@@ -119,6 +119,7 @@ pub const GWL_EXSTYLE = -20;
 
 pub const IDC_ARROW: LPCSTR = @ptrFromInt(32512);
 pub const IDC_CROSS: LPCSTR = @ptrFromInt(32515);
+pub const IDC_IBEAM: LPCSTR = @ptrFromInt(32513);
 pub const IDC_SIZENESW: LPCSTR = @ptrFromInt(32643);
 pub const IDC_SIZENWSE: LPCSTR = @ptrFromInt(32642);
 pub const IDC_SIZEWE: LPCSTR = @ptrFromInt(32644);
@@ -675,6 +676,9 @@ pub const VK_LWIN = 0x5B;
 pub const VK_RWIN = 0x5C;
 pub const VK_ESCAPE = 0x1B;
 pub const VK_RETURN = 0x0D;
+pub const VK_BACK = 0x08;
+pub const VK_TAB = 0x09;
+pub const VK_NUMPAD0 = 0x60;
 // WH_KEYBOARD_LL reports these side-specific codes for Ctrl/Alt/Shift, never the generic ones above.
 pub const VK_LSHIFT = 0xA0;
 pub const VK_RSHIFT = 0xA1;

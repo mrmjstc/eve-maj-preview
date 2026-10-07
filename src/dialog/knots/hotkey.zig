@@ -30,8 +30,11 @@ const MODIFIER_ORDER = [_]struct { flag: u32, name: []const u8 }{
 const CLICK_TO_BIND = "Click to bind";
 const RECORDING_PROMPT = "Press keys...";
 
-/// How many bindings hold a combo, and how many of those aren't a character's own.
-const Holders = struct { total: usize = 0, others: usize = 0 };
+/// Bindings that may share a combo with others of their own kind: characters cycle through each other, and hotkey groups through their members in group order.
+const HolderKind = enum { other, character, group_forward, group_backward };
+
+/// How many bindings hold a combo, and whether they're all of one kind.
+const Holders = struct { total: usize = 0, kind: HolderKind = .other, is_mixed: bool = false };
 
 /// A field waiting for a key; the window's messages feed it until something is captured or it's cancelled.
 const Recording = struct {
@@ -174,16 +177,16 @@ pub fn field(context: *ui.Frame, ref: anytype, comptime field_name: []const u8) 
     try row.close(context);
 }
 
-/// Finds this frame's conflicting combos; characters sharing one only cycle through it, so those don't count.
+/// Finds this frame's conflicting combos; ones shared only within a HolderKind cycle instead, so those don't count.
 pub fn beginFrame(arena: std.mem.Allocator) !void {
     var holders: std.AutoArrayHashMapUnmanaged(u32, Holders) = .empty;
-    try collect(arena, &holders, session.profile().ptr, false);
-    try collect(arena, &holders, session.global().ptr, false);
+    try collect(arena, &holders, session.profile().ptr, .other);
+    try collect(arena, &holders, session.global().ptr, .other);
     var conflicts: std.ArrayList(u32) = .empty;
     var it = holders.iterator();
     while (it.next()) |entry| {
         const counted = entry.value_ptr.*;
-        if (counted.total > 1 and counted.others > 0) try conflicts.append(arena, entry.key_ptr.*);
+        if (counted.total > 1 and (counted.is_mixed or counted.kind == .other)) try conflicts.append(arena, entry.key_ptr.*);
     }
     g_conflicts = conflicts.items;
 }
@@ -196,33 +199,40 @@ pub fn isConflict(keys: KeyList) bool {
     return false;
 }
 
-/// Every KeyList in `value`, however deeply nested; a character's own hotkey is counted apart from the rest.
-fn collect(arena: std.mem.Allocator, holders: *std.AutoArrayHashMapUnmanaged(u32, Holders), value: anytype, is_character: bool) !void {
+/// Every KeyList in `value`, however deeply nested, counted under the HolderKind of the field it sits in.
+fn collect(arena: std.mem.Allocator, holders: *std.AutoArrayHashMapUnmanaged(u32, Holders), value: anytype, kind: HolderKind) !void {
     const T = @TypeOf(value.*);
     if (T == KeyList) {
         // One binding listing a combo twice still counts once.
         for (value.slice(), 0..) |combo, index| {
             if (std.mem.findScalar(u32, value.slice()[0..index], combo) != null) continue;
             const gop = try holders.getOrPut(arena, combo);
-            if (!gop.found_existing) gop.value_ptr.* = .{};
+            if (!gop.found_existing) gop.value_ptr.* = .{ .kind = kind };
             gop.value_ptr.total += 1;
-            if (!is_character) gop.value_ptr.others += 1;
+            if (gop.value_ptr.kind != kind) gop.value_ptr.is_mixed = true;
         }
         return;
     }
     switch (@typeInfo(T)) {
         .@"struct" => |info| {
             if (@hasField(T, "items") and @hasField(T, "capacity")) {
-                for (value.items) |*item| try collect(arena, holders, item, is_character);
+                for (value.items) |*item| try collect(arena, holders, item, kind);
                 return;
             }
             inline for (info.field_names, info.field_types) |name, F| {
-                if (comptime holdsKeys(F)) try collect(arena, holders, &@field(value, name), is_character or comptime std.mem.eql(u8, name, "characters"));
+                if (comptime holdsKeys(F)) try collect(arena, holders, &@field(value, name), if (kind != .other) kind else comptime holderKind(name));
             }
         },
-        .optional => if (value.*) |*inner| try collect(arena, holders, inner, is_character),
+        .optional => if (value.*) |*inner| try collect(arena, holders, inner, kind),
         else => {},
     }
+}
+
+fn holderKind(comptime field_name: []const u8) HolderKind {
+    if (std.mem.eql(u8, field_name, "characters")) return .character;
+    if (std.mem.eql(u8, field_name, "forwardKey")) return .group_forward;
+    if (std.mem.eql(u8, field_name, "backwardKey")) return .group_backward;
+    return .other;
 }
 
 /// Whether a field's type can contain a KeyList, so the walk skips strings, numbers and the like.

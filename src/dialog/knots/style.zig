@@ -686,7 +686,6 @@ pub const group_chip: Style = .{
     .active = &.{ .state_layer = 0 },
 };
 pub const group_chip_held: Style = group_chip.with(.{ .background = .accent, .border_color = .accent });
-pub const group_chip_disabled: Style = group_chip.with(.{ .opacity = 0.5, .hover = &.{ .state_layer = 0 } });
 pub const group_chip_label: Style = .{ .foreground = .{ .color = TEXT_SECONDARY } };
 pub const group_chip_label_held: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = INK_DARK } };
 

@@ -15,6 +15,8 @@ const slog = log.scoped("hotkeys");
 pub const CycleState = struct {
     /// Each hotkey group's position, in config.hotkeyGroups order; null = not yet cycled.
     group_cursors: []?usize,
+    /// Where the last group cycle landed, for a character in several groups sharing a key.
+    last_cycled_group: ?usize = null,
     /// Global across all groups; null = not yet cycled.
     excluded_index: ?usize = null,
     /// Owned; a name rather than an index since notified_queue mutates between presses.
@@ -131,22 +133,33 @@ pub fn activatePerCharacterGroup(manager: *HotkeyManager, group: *bindings.Chara
     slog.warn("No character sharing this hotkey is currently running", .{});
 }
 
-/// Like cycleNotLoggedIn but scoped to one group, with not-logged-in clients appended after the group's characters when includeNotLoggedIn is set.
-pub fn cycleGroup(manager: *HotkeyManager, group_index: usize, forward: bool) void {
-    const group = &manager.config.hotkeyGroups.items[group_index];
-    const cursor = &manager.cycle.group_cursors[group_index];
-    const num_chars = group.characters.items.len;
+/// Cycles the groups' members as one list, in order; not-logged-in clients follow once if any group includes them, and the ends stop only if every group does.
+pub fn cycleGroups(manager: *HotkeyManager, group_indices: []const usize, forward: bool) void {
+    const groups = manager.config.hotkeyGroups.items;
+    var member_count: usize = 0;
+    var include_not_logged_in = false;
+    var stop_at_ends = true;
+    for (group_indices) |group_index| {
+        if (group_index >= groups.len) {
+            slog.err("Failed to cycle group: index {} is out of range", .{group_index});
+            return;
+        }
+        const group = &groups[group_index];
+        member_count += group.characters.items.len;
+        include_not_logged_in = include_not_logged_in or group.includeNotLoggedIn;
+        stop_at_ends = stop_at_ends and group.stopAtEnds;
+    }
 
     var not_logged_in_hwnds: std.ArrayList(win32.HWND) = .empty;
     defer not_logged_in_hwnds.deinit(manager.allocator);
-    if (group.includeNotLoggedIn) {
+    if (include_not_logged_in) {
         not_logged_in_hwnds = manager.scout.getNotLoggedInHwnds(manager.allocator) catch |err| blk: {
             slog.err("Failed to build not-logged-in window list for group cycle: {}", .{err});
             break :blk .empty;
         };
     }
-    const num_not_logged_in = not_logged_in_hwnds.items.len;
-    const total = num_chars + num_not_logged_in;
+    const not_logged_in_count = not_logged_in_hwnds.items.len;
+    const total = member_count + not_logged_in_count;
     if (total == 0) {
         slog.warn("Attempted to cycle empty hotkey group", .{});
         return;
@@ -154,24 +167,21 @@ pub fn cycleGroup(manager: *HotkeyManager, group_index: usize, forward: bool) vo
 
     // Prefers the real foreground window for the not-logged-in tail, since logging out while already focused fires no OS focus event to update the cursor.
     var found_index: ?usize = null;
-    if (num_not_logged_in > 0) {
-        if (indexOfHwnd(not_logged_in_hwnds.items, win32.GetForegroundWindow())) |i| found_index = num_chars + i;
+    if (not_logged_in_count > 0) {
+        if (indexOfHwnd(not_logged_in_hwnds.items, win32.GetForegroundWindow())) |i| found_index = member_count + i;
     }
-    if (found_index == null) {
-        if (cursor.*) |ci| {
-            if (ci < num_chars) found_index = ci;
-        }
-    }
-    if (found_index == null and num_not_logged_in > 0) {
+    if (found_index == null) found_index = chainCursor(manager, group_indices);
+    if (found_index == null and not_logged_in_count > 0) {
         if (manager.cycle.last_not_logged_in_hwnd) |last_hwnd| {
-            if (indexOfHwnd(not_logged_in_hwnds.items, last_hwnd)) |i| found_index = num_chars + i;
+            if (indexOfHwnd(not_logged_in_hwnds.items, last_hwnd)) |i| found_index = member_count + i;
         }
     }
 
-    var it = CycleOrder.init(found_index, total, forward, !group.stopAtEnds);
+    var it = CycleOrder.init(found_index, total, forward, !stop_at_ends);
     while (it.next()) |idx| {
-        if (idx < num_chars) {
-            const char_name = group.characters.items[idx];
+        if (idx < member_count) {
+            const member = chainMember(groups, group_indices, idx);
+            const char_name = groups[member.group_index].characters.items[member.index];
 
             if (manager.exclusions.contains(char_name)) {
                 slog.debug("Skipping excluded character: {s}", .{char_name});
@@ -179,7 +189,8 @@ pub fn cycleGroup(manager: *HotkeyManager, group_index: usize, forward: bool) vo
             }
 
             if (manager.scout.getHwndByName(char_name)) |hwnd| {
-                cursor.* = idx;
+                manager.cycle.group_cursors[member.group_index] = member.index;
+                manager.cycle.last_cycled_group = member.group_index;
                 slog.info("Cycling {s} to: {s} ({}/{})", .{ directionName(forward), char_name, idx + 1, total });
                 activation.activate(hwnd);
                 return;
@@ -187,17 +198,18 @@ pub fn cycleGroup(manager: *HotkeyManager, group_index: usize, forward: bool) vo
             continue;
         }
 
-        const hwnd = not_logged_in_hwnds.items[idx - num_chars];
-        cursor.* = idx;
+        const hwnd = not_logged_in_hwnds.items[idx - member_count];
+        // The not-logged-in tail is tracked by hwnd, so no group position applies.
+        for (group_indices) |group_index| manager.cycle.group_cursors[group_index] = null;
         slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(forward), idx + 1, total });
         activation.activate(hwnd);
         manager.cycle.last_not_logged_in_hwnd = hwnd;
         return;
     }
 
-    if (group.stopAtEnds) {
+    if (stop_at_ends) {
         if (found_index) |current| {
-            if (groupEntryHwnd(manager, group_index, not_logged_in_hwnds.items, current)) |hwnd| {
+            if (chainEntryHwnd(manager, group_indices, member_count, not_logged_in_hwnds.items, current)) |hwnd| {
                 if (hwnd == win32.GetForegroundWindow()) {
                     slog.debug("Already at the {s} end of hotkey group", .{directionName(forward)});
                     return;
@@ -395,16 +407,56 @@ fn indexOfHwnd(hwnds: []const win32.HWND, target: ?win32.HWND) ?usize {
     return std.mem.findScalar(win32.HWND, hwnds, target orelse return null);
 }
 
-/// The window for a group cycle position, where not-logged-in positions follow the group's characters; null if it isn't a valid target.
-fn groupEntryHwnd(manager: *HotkeyManager, group_index: usize, not_logged_in_hwnds: []const win32.HWND, index: usize) ?win32.HWND {
-    const group = &manager.config.hotkeyGroups.items[group_index];
-    const num_chars = group.characters.items.len;
-    if (index < num_chars) {
-        const char_name = group.characters.items[index];
-        if (manager.exclusions.contains(char_name)) return null;
-        return manager.scout.getHwndByName(char_name);
+const ChainMember = struct {
+    group_index: usize,
+    /// Into that group's characters.
+    index: usize,
+};
+
+/// `position` must be below the chain's total member count.
+fn chainMember(groups: []const config.HotkeyGroupConfig, group_indices: []const usize, position: usize) ChainMember {
+    var remaining = position;
+    for (group_indices) |group_index| {
+        const member_count = groups[group_index].characters.items.len;
+        if (remaining < member_count) return .{ .group_index = group_index, .index = remaining };
+        remaining -= member_count;
     }
-    return not_logged_in_hwnds[index - num_chars];
+    unreachable;
+}
+
+/// Prefers the group whose cursor is on the focused character, then the last-cycled one, since a character can sit in several groups.
+fn chainCursor(manager: *HotkeyManager, group_indices: []const usize) ?usize {
+    const groups = manager.config.hotkeyGroups.items;
+    const focused_name = if (manager.foregroundEveWindow()) |eve_window| eve_window.character_name else null;
+    var best: ?usize = null;
+    var best_rank: u8 = 0;
+    var offset: usize = 0;
+    for (group_indices) |group_index| {
+        const members = groups[group_index].characters.items;
+        const start = offset;
+        offset += members.len;
+
+        const cursor = manager.cycle.group_cursors[group_index] orelse continue;
+        if (cursor >= members.len) continue;
+        const is_focused = if (focused_name) |name| std.mem.eql(u8, members[cursor], name) else false;
+        const is_last = manager.cycle.last_cycled_group == group_index;
+        const rank: u8 = 1 + 2 * @as(u8, @intFromBool(is_focused)) + @intFromBool(is_last);
+        if (rank > best_rank) {
+            best_rank = rank;
+            best = start + cursor;
+        }
+    }
+    return best;
+}
+
+/// The window for a chain position, where not-logged-in positions follow the groups' characters; null if it isn't a valid target.
+fn chainEntryHwnd(manager: *HotkeyManager, group_indices: []const usize, member_count: usize, not_logged_in_hwnds: []const win32.HWND, position: usize) ?win32.HWND {
+    if (position >= member_count) return not_logged_in_hwnds[position - member_count];
+    const groups = manager.config.hotkeyGroups.items;
+    const member = chainMember(groups, group_indices, position);
+    const char_name = groups[member.group_index].characters.items[member.index];
+    if (manager.exclusions.contains(char_name)) return null;
+    return manager.scout.getHwndByName(char_name);
 }
 
 /// Replaces `field.*` with an owned copy of name, freeing the previous value.
