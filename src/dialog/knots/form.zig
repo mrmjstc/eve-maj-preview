@@ -149,14 +149,6 @@ const Tab = enum {
         };
     }
 
-    /// Puts each row's label left and its control at the right edge; see widgets.useAlignedRows.
-    fn alignsRows(tab: Tab) bool {
-        return switch (tab) {
-            .appearance, .placement, .text_overlays => true,
-            .characters, .hotkey_groups, .hotkeys, .behavior, .notifications, .chatlog, .combat, .mining, .bounty, .resources, .general, .about => false,
-        };
-    }
-
     // The sidebar heads each category once, so its tabs must be adjacent.
     comptime {
         const tabs = std.enums.values(Tab);
@@ -238,7 +230,7 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
 }
 
 fn showTab(context: *ui.Frame, tab: Tab) !void {
-    const was_aligned = widgets.useAlignedRows(tab.alignsRows());
+    const was_aligned = widgets.useAlignedRows(true);
     defer _ = widgets.useAlignedRows(was_aligned);
     switch (tab) {
         .about => try about.show(context),

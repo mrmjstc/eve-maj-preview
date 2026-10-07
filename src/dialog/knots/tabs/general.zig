@@ -52,7 +52,7 @@ fn logging(context: *ui.Frame) !void {
 
 fn scanning(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Scanning", "How often to check for new EVE windows.", &style.section);
-    try bind.number(context, session.profile().child("timer"), "scanIntervalMs", "Scan Interval (s)", .{ .ms_as_seconds = true });
+    try bind.number(context, session.profile().child("timer"), "scanIntervalMs", "Scan Interval", .{ .ms_as_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "Lower values pick up new or closed clients faster, at the cost of slightly more CPU usage.");
     try section.close(context);
 }
@@ -151,7 +151,7 @@ fn filterDetail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     try bind.csvBox(context, filter, "executable_names", "e.g., exefile.exe");
     try exes.close(context);
     const detect = try widgets.openBinding(context, ui.Key.str("knots.filter.detect").indexed(index), "Detect");
-    if (try widgets.glyphButton(context, ui.Key.str("knots.filter.pick").indexed(index), .refresh, "Pick Running Window", &style.full_width_button, false)) window_picker.open(g_allocator, &g_picker, index);
+    if (try widgets.glyphButton(context, ui.Key.str("knots.filter.pick").indexed(index), .refresh, "Pick Running Window", &style.plain_button, false)) window_picker.open(g_allocator, &g_picker, index);
     try detect.close(context);
     try picker(context, profile, filter);
     try stack.close(context);

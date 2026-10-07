@@ -21,9 +21,9 @@ pub fn showCombat(context: *ui.Frame) !void {
     const ref = session.profile().child("combat");
     try bind.toggle(context, ref, "enabled", "Enable Text Overlays");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
-    try bind.number(context, ref, "window_seconds", "Window (seconds)", .{});
+    try bind.number(context, ref, "window_seconds", "Window", .{ .unit = "s" });
     try widgets.hintText(context, .src(@src()), "The rolling look-back period DPS is averaged over, not how often the number updates.");
-    try bind.number(context, ref, "update_interval_ms", "Update Interval (s)", .{ .ms_as_seconds = true });
+    try bind.number(context, ref, "update_interval_ms", "Update Interval", .{ .ms_as_seconds = true, .unit = "s" });
     try bind.text(context, ref, "damage_alert_excluded_weapons", "Exclude Weapons", "e.g. Smartbomb, Warp Scrambler");
     try widgets.hintText(context, .src(@src()), "Case-insensitive, comma-separated name matches. Only suppresses the Taking Damage alert - excluded hits still count toward the DPS shown above.");
     try options.close(context);
@@ -35,9 +35,9 @@ pub fn showMining(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Mining Overlay Settings", "Displays m3 mined per second on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.", &style.section);
     try bind.toggle(context, ref, "enabled", "Enable Text Overlays");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
-    try bind.number(context, ref, "window_seconds", "Window (seconds)", .{});
+    try bind.number(context, ref, "window_seconds", "Window", .{ .unit = "s" });
     try widgets.hintText(context, .src(@src()), "The rolling look-back period the m3/s rate is averaged over, not how often the number updates.");
-    try bind.number(context, ref, "update_interval_ms", "Update Interval (s)", .{ .ms_as_seconds = true });
+    try bind.number(context, ref, "update_interval_ms", "Update Interval", .{ .ms_as_seconds = true, .unit = "s" });
     try bind.toggle(context, ref, "show_isk_rate", "Show ISK Rate");
     try widgets.hintText(context, .src(@src()), "Valued using the prices set in Ore / Ice / Gas Prices below - fetch or fill those in first, or this reads 0.");
     const isk_rate = try widgets.openGroup(context, .src(@src()), ref.get("show_isk_rate"));
@@ -51,11 +51,11 @@ pub fn showMining(context: *ui.Frame) !void {
     const alert_options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try widgets.subheading(context, .src(@src()), "Laser Idle Alert");
     try widgets.hintText(context, .src(@src()), "Fires when fewer than Event Threshold mining hits occur within Detection Window - a slowdown, not full silence.");
-    try bind.number(context, ref, "idle_alert_window_seconds", "Detection Window (seconds)", .{});
+    try bind.number(context, ref, "idle_alert_window_seconds", "Detection Window", .{ .unit = "s" });
     try bind.number(context, ref, "idle_alert_threshold", "Event Threshold", .{});
     try widgets.subheading(context, .src(@src()), "Mining Stopped Alert");
     try widgets.hintText(context, .src(@src()), "Fires once mining has been completely silent for the Silence Window; rearms as soon as mining resumes.");
-    try bind.number(context, ref, "stopped_alert_window_seconds", "Silence Window (seconds)", .{});
+    try bind.number(context, ref, "stopped_alert_window_seconds", "Silence Window", .{ .unit = "s" });
     try alert_options.close(context);
     try alerts.close(context);
 
@@ -127,9 +127,9 @@ pub fn showBounty(context: *ui.Frame) !void {
     const ref = session.profile().child("bounty");
     try bind.toggle(context, ref, "enabled", "Enable Text Overlays");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
-    try bind.number(context, ref, "window_seconds", "Window (seconds)", .{});
+    try bind.number(context, ref, "window_seconds", "Window", .{ .unit = "s" });
     try widgets.hintText(context, .src(@src()), "The rolling look-back period the ISK/s rate is averaged over, not how often the number updates.");
-    try bind.number(context, ref, "update_interval_ms", "Update Interval (s)", .{ .ms_as_seconds = true });
+    try bind.number(context, ref, "update_interval_ms", "Update Interval", .{ .ms_as_seconds = true, .unit = "s" });
     try bind.choice(context, ref, "isk_rate_unit", "ISK Rate Unit");
     try bind.toggle(context, ref, "show_prefix", "Show ISK: Prefix");
     try options.close(context);
@@ -146,7 +146,7 @@ pub fn showResources(context: *ui.Frame) !void {
     try bind.toggle(context, ref, "show_ram", "Show RAM");
     try bind.toggle(context, ref, "show_vram", "Show VRAM");
     try widgets.hintText(context, .src(@src()), "Only counts video memory that EVE client's own process has allocated, not the GPU's total usage.");
-    try bind.number(context, ref, "update_interval_ms", "Update Interval (s)", .{ .ms_as_seconds = true });
+    try bind.number(context, ref, "update_interval_ms", "Update Interval", .{ .ms_as_seconds = true, .unit = "s" });
     try options.close(context);
     try section.close(context);
 }

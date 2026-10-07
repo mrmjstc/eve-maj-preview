@@ -68,9 +68,6 @@ pub fn reset() void {
 }
 
 pub fn show(context: *ui.Frame) !void {
-    // One label column for the whole tab, as wide as its widest label.
-    const previous_label = widgets.useLabelStyle(&style.binding_label);
-    defer _ = widgets.useLabelStyle(previous_label);
     const profile_hotkeys = session.profile().child("hotkeys");
     const global = session.global();
 
@@ -139,12 +136,9 @@ fn binding(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: 
     try row.close(context);
 }
 
-/// A backward/forward set on one row, each half marked with its direction.
+/// A backward/forward set in one row, each half marked with its direction.
 fn pair(context: *ui.Frame, ref: anytype, comptime previous: []const u8, comptime next: []const u8, label: []const u8) !void {
-    // The arrow hangs into the label column, so the first key field lines up with a single binding's.
-    const previous_label = widgets.useLabelStyle(&style.binding_label_paired);
     const row = try widgets.openBinding(context, .str("knots.hotkeys.pair:" ++ previous), label);
-    _ = widgets.useLabelStyle(previous_label);
     const halves = Rect{ .key = .str("knots.hotkeys.pair.halves:" ++ previous), .style = &style.pair_column };
     _ = try halves.open(context);
     inline for (.{ .{ previous, "\u{2190}" }, .{ next, "\u{2192}" } }) |half| {

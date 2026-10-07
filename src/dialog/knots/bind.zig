@@ -140,6 +140,17 @@ fn openUnitField(context: *ui.Frame, key: ui.Key, input_key: ui.Key) !ui.compone
     return field_rect;
 }
 
+/// A value that isn't one setting as a box with `unit` inside it, e.g. a slider's "85 %"; returns what was typed once the box loses focus.
+/// `key` is the row's; the box takes its indices 4 to 6.
+pub fn unitValueBox(context: *ui.Frame, key: ui.Key, value: f64, unit: []const u8) !?f64 {
+    const box_key = key.indexed(4);
+    const field_rect = try openUnitField(context, key.indexed(6), box_key);
+    const typed = try valueBox(context, box_key, value, &style.unit_field_input);
+    if (unit.len > 0) try context.e(Text{ .selectable = false, .key = key.indexed(5), .content = unit, .style = &style.muted_text });
+    try field_rect.close(context);
+    return typed;
+}
+
 /// An optional text field is unset when left empty.
 pub fn text(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, placeholder: []const u8) !void {
     const row = try widgets.openBinding(context, fieldKey(ref, field), label);
@@ -292,17 +303,11 @@ fn sliderBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, key: 
         .value => @round(value),
         .percent_of_255 => @round(value / 255.0 * 100.0),
     };
-    const box_key = key.indexed(4);
-    const field_rect = try openUnitField(context, key.indexed(6), box_key);
-    const typed = try valueBox(context, box_key, shown, &style.unit_field_input);
     const unit = switch (display) {
         .value => "",
         .percent_of_255 => "%",
     };
-    if (unit.len > 0) try context.e(Text{ .selectable = false, .key = key.indexed(5), .content = unit, .style = &style.muted_text });
-    try field_rect.close(context);
-
-    const value_typed = typed orelse return;
+    const value_typed = try unitValueBox(context, key, shown, unit) orelse return;
     const raw: f64 = switch (display) {
         .value => value_typed,
         .percent_of_255 => value_typed / 100.0 * 255.0,
@@ -355,41 +360,16 @@ pub fn rgbBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !voi
     })).changed) ref.set(field, (widgets.argbFromColor(value) & 0x00FFFFFF) | (argb & 0xFF000000));
 }
 
-/// The alpha of an ARGB setting as a 0-100% slider, keeping its RGB.
-pub fn alpha(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
-    const argb: u32 = ref.get(field);
-    const key = fieldKey(ref, field).indexed(10);
-    const row = try widgets.openBinding(context, key, label);
-    var value: f32 = @floatFromInt(argb >> 24);
-    if (try widgets.slider(context, key.indexed(2), &value, 0, 255, 1)) {
-        ref.set(field, (argb & 0x00FFFFFF) | (@as(u32, @intFromFloat(@round(value))) << 24));
-    }
-    try widgets.valueText(context, key.indexed(3), try std.fmt.allocPrint(context.arena(), "{d:.0}%", .{value / 255.0 * 100.0}));
-    try row.close(context);
-}
-
 /// The alpha of an ARGB setting as a 0-100 box with "%" inside, keeping its RGB.
 pub fn alphaBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
     const argb: u32 = ref.get(field);
     const key = fieldKey(ref, field).indexed(10);
-    const box_key = key.indexed(4);
-    const box = try openUnitField(context, key.indexed(6), box_key);
-    const typed = try valueBox(context, box_key, @round(@as(f64, @floatFromInt(argb >> 24)) / 255.0 * 100.0), &style.unit_field_input);
-    try context.e(Text{ .selectable = false, .key = key.indexed(5), .content = "%", .style = &style.muted_text });
-    try box.close(context);
-    const percent = typed orelse return;
+    const percent = try unitValueBox(context, key, @round(@as(f64, @floatFromInt(argb >> 24)) / 255.0 * 100.0), "%") orelse return;
     const byte: u32 = @intFromFloat(@round(std.math.clamp(percent, 0, 100) / 100.0 * 255.0));
     ref.set(field, (argb & 0x00FFFFFF) | (byte << 24));
 }
 
-/// A font name from FONT_OPTIONS, plus the current one if it was set by hand.
-pub fn fontName(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
-    const row = try widgets.openBinding(context, fieldKey(ref, field), label);
-    try fontBox(context, ref, field);
-    try row.close(context);
-}
-
-/// Just the dropdown, for a row with the font's size and weight beside it.
+/// A font name from FONT_OPTIONS, plus the current one if it was set by hand; the row holds the font's size and weight beside it.
 pub fn fontBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
     const current: []const u8 = ref.get(field);
     const arena = context.arena();

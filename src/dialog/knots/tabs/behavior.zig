@@ -13,7 +13,6 @@ const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const log = @import("../../../log.zig");
 
-const Rect = ui.component.Rect;
 const Button = ui.component.Button;
 const SelectInput = ui.component.SelectInput;
 const slog = log.scoped("dialog_knots");
@@ -99,7 +98,7 @@ fn interaction(context: *ui.Frame) !void {
     try bind.toggle(context, ref, "hoverZoomEnabled", "Zoom on Hover");
     try widgets.hintText(context, .src(@src()), "Shows an enlarged copy of a thumbnail, with its overlay text, while the cursor rests on it.");
     const zoom = try widgets.openGroup(context, .src(@src()), ref.get("hoverZoomEnabled"));
-    try bind.number(context, ref, "hoverZoomPercent", "Zoom Size (%)", .{});
+    try bind.number(context, ref, "hoverZoomPercent", "Zoom Size", .{ .unit = "%" });
     try widgets.hintText(context, .src(@src()), "Size of the zoom relative to the thumbnail, shrunk if needed to fit its monitor.");
     try bind.choice(context, ref, "hoverZoomAnchor", "Zoom Anchor");
     try widgets.hintText(context, .src(@src()), "The point of the thumbnail that stays in place as the zoom grows.");
@@ -115,7 +114,7 @@ fn autoMinimize(context: *ui.Frame) !void {
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.toggle(context, ref, "exemptLastActiveOnFocusLoss", "Keep Last-Active Client Visible");
     try widgets.hintText(context, .src(@src()), "Exempts whichever client you focused most recently, even past the delay.");
-    try bind.number(context, ref, "delayMs", "Delay (s)", .{ .ms_as_seconds = true });
+    try bind.number(context, ref, "delayMs", "Delay", .{ .ms_as_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "How long a client can sit unfocused before it's minimized.");
     try options.close(context);
     try section.close(context);
@@ -132,8 +131,10 @@ fn exclusion(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "Includes a character again once its client returns to the login screen.");
     const thumbnail = session.profile().child("thumbnail");
     try bind.choice(context, thumbnail, "exclusionOverlayStyle", "Overlay Style");
-    try bind.alpha(context, thumbnail, "exclusionOverlayColor", "Overlay Opacity");
-    try bind.rgb(context, thumbnail, "exclusionOverlayColor", "Overlay Color");
+    const overlay = try widgets.openBinding(context, .src(@src()), "Overlay Color");
+    try bind.rgbBox(context, thumbnail, "exclusionOverlayColor");
+    try bind.alphaBox(context, thumbnail, "exclusionOverlayColor");
+    try overlay.close(context);
     try options.close(context);
     try section.close(context);
 }
@@ -145,27 +146,30 @@ fn windowPosition(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "Moves a client to its saved position when its character logs in.");
     try bind.toggle(context, ref, "moveOnStartup", "Restore Saved Position on App Startup");
     try widgets.hintText(context, .src(@src()), "Moves clients already logged in when the app launches.");
-    try bind.number(context, ref, "verifyIntervalMs", "Re-check Interval (s)", .{ .ms_as_seconds = true });
+    try bind.number(context, ref, "verifyIntervalMs", "Re-check Interval", .{ .ms_as_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "How often a moved client's position is re-checked; EVE can shift its own window while loading.");
     try bind.number(context, ref, "verifyCount", "Re-check Count", .{});
     try widgets.hintText(context, .src(@src()), "How many times to re-check and re-apply the position after a move. 0 disables re-checking.");
 
     if (g_sources == null) scanSources();
-    const row = Rect{ .key = .src(@src()), .style = &style.button_row };
-    _ = try row.open(context);
+    const set_all = try widgets.openBinding(context, .src(@src()), "Copy to All From");
     const source = try sourceSelect(context);
     if (try widgets.glyphButton(context, .src(@src()), .refresh, "", &style.icon_button, false)) scanSources();
     if ((try context.interact(Button{ .key = .src(@src()), .label = "Set All", .style = &style.plain_button })).clicked) setAll(source);
-    if (try widgets.confirmButton(context, .src(@src()), "Clear All", "Confirm", &style.danger_button, &style.confirm_button)) {
-        positions.clearAll() catch |err| {
-            slog.err("Failed to clear all character window positions: {}", .{err});
-            status.show(.failure, "Failed to save: {}", .{err});
-            return section.close(context);
-        };
-        status.show(.success, "Window positions cleared", .{});
-    }
-    try row.close(context);
+    try set_all.close(context);
+    const clear_all = try widgets.openBinding(context, .src(@src()), "Saved Positions");
+    if (try widgets.confirmButton(context, .src(@src()), "Clear All", "Confirm", &style.danger_button, &style.confirm_button)) clearAll();
+    try clear_all.close(context);
     try section.close(context);
+}
+
+fn clearAll() void {
+    positions.clearAll() catch |err| {
+        slog.err("Failed to clear all character window positions: {}", .{err});
+        status.show(.failure, "Failed to save: {}", .{err});
+        return;
+    };
+    status.show(.success, "Window positions cleared", .{});
 }
 
 /// The open client Set All copies from, or null when none is open.
@@ -237,10 +241,12 @@ fn ultraPotato(context: *ui.Frame) !void {
     const paths = try potatoSelect(context);
     if (try widgets.glyphButton(context, .src(@src()), .refresh, "", &style.icon_button, false)) scanPotato();
     try row.close(context);
+    const apply = try widgets.openBinding(context, .src(@src()), "Lowest Graphics Settings");
     const can_apply = paths != null;
     if ((try context.interact(Button{ .key = .src(@src()), .label = "Apply Ultra Potato Mode", .disabled = !can_apply, .style = if (can_apply) &style.plain_button else &style.disabled_button })).clicked) {
         if (paths) |chosen| applyPotato(chosen);
     }
+    try apply.close(context);
     try section.close(context);
 }
 

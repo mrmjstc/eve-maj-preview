@@ -90,8 +90,6 @@ pub const Move = struct { from: usize, before: usize };
 /// Where a dragged row would land, drawn by the rows as a line above themselves.
 pub const DropMark = enum { none, above, below };
 
-/// What openBinding styles its label with; narrowed in tight spots like a popover by useLabelStyle.
-var g_label_style: *const ui.Style = &style.label;
 /// Set by useAlignedRows: rows put their label left and their control at the right edge.
 var g_is_aligned: bool = false;
 /// Aligned rows drawn so far in the open section; every one after the first gets a divider above it.
@@ -170,15 +168,8 @@ pub fn openBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Rect {
     } };
     _ = try row.open(context);
     search.captureText(label);
-    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = label, .style = if (g_is_aligned) &style.label_aligned else g_label_style });
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = label, .style = if (g_is_aligned) &style.label_aligned else &style.label });
     return row;
-}
-
-/// Styles the labels of rows opened after it; returns the style it replaced, for putting back.
-pub fn useLabelStyle(label_style: *const ui.Style) *const ui.Style {
-    const previous = g_label_style;
-    g_label_style = label_style;
-    return previous;
 }
 
 /// Rows and checkboxes drawn after it put their label left and their control at the right edge; returns the setting it replaced, for putting back.
@@ -218,21 +209,20 @@ pub fn segmented(context: *ui.Frame, key: ui.Key, options: []const []const u8, s
     return clicked;
 }
 
-/// A colour that can be left unset to inherit `fallback`: a tick sets it, and picking a colour ticks it.
+/// A colour row that can be left unset to inherit `fallback`: its switch sets it, and picking a colour switches it on.
 pub fn optionalColor(context: *ui.Frame, key: ui.Key, label: []const u8, current: ?u32, fallback: u32) !?ColorChange {
-    const row = Rect{ .key = key, .style = &style.inline_row };
-    _ = try row.open(context);
-    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = label, .style = &style.inline_label_wide });
+    const row = try openBinding(context, key, label);
     var change: ?ColorChange = null;
-    var is_set = current != null;
-    if (try checkbox(context, key.indexed(2), "", &is_set)) change = if (is_set) .{ .set = current orelse fallback } else .cleared;
     var value = colorFromArgb(current orelse fallback);
     if ((try context.interact(ColorPicker{
         .key = key.indexed(3),
         .value = &value,
-        .style = &style.color_picker,
+        .style = if (g_is_aligned) &style.color_picker_swatch else &style.color_picker,
         .parts = .{ .swatch = &style.color_swatch, .popup = &style.color_popup },
+        .show_hex = !g_is_aligned,
     })).changed) change = .{ .set = argbFromColor(value) };
+    var is_set = current != null;
+    if (try checkbox(context, key.indexed(2), "", &is_set)) change = if (is_set) .{ .set = current orelse fallback } else .cleared;
     try row.close(context);
     return change;
 }

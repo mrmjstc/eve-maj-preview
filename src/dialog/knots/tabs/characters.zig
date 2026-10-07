@@ -173,8 +173,6 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     }
     const index = g_selected_index;
     const character = profile.item("characters", index);
-    const previous_label = widgets.useLabelStyle(&style.rail_label);
-    defer _ = widgets.useLabelStyle(previous_label);
 
     const header = Rect{ .key = .src(@src()), .style = &style.detail_header };
     _ = try header.open(context);
@@ -200,12 +198,8 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
 
     try colors(context, character);
 
-    const behavior = try widgets.openBinding(context, .str("knots.character.behavior"), "Behavior");
-    const checks = Rect{ .key = .src(@src()), .style = &.{ .direction = .column, .gap = 6 } };
-    _ = try checks.open(context);
+    try widgets.subheading(context, .str("knots.character.behavior"), "Behavior");
     inline for (FLAGS) |flag| try bind.toggle(context, character, flag.field, flag.label);
-    try checks.close(context);
-    try behavior.close(context);
 
     try windowPosition(context, character);
     try stack.close(context);
@@ -243,19 +237,20 @@ fn toFloat(value: ?i32) ?f64 {
 /// Unset follows the Appearance tab's opacity; moving the slider gives the character its own.
 fn opacity(context: *ui.Frame, character: CharacterRef) !void {
     const inherited = session.profile().ptr.thumbnail.thumbnailOpacity;
-    const row = try widgets.openBinding(context, .str("knots.character.opacity"), "Opacity (%)");
+    const key: ui.Key = .str("knots.character.opacity");
+    const row = try widgets.openBinding(context, key, "Opacity");
     var value: f32 = @floatFromInt(character.get("opacity") orelse inherited);
     if (try widgets.slider(context, ui.Key.str("knots.character.opacity.slider").indexed(character.index), &value, ranges.OPACITY[0], ranges.OPACITY[1], 1)) {
         character.set("opacity", @as(u8, @intFromFloat(@round(value))));
     }
-    try widgets.valueText(context, .str("knots.character.opacity.value"), try std.fmt.allocPrint(context.arena(), "{d:.0}%", .{value / 255.0 * 100.0}));
+    if (try bind.unitValueBox(context, key.indexed(character.index), @round(value / 255.0 * 100.0), "%")) |percent| {
+        const byte = std.math.clamp(@round(percent / 100.0 * 255.0), ranges.OPACITY[0], ranges.OPACITY[1]);
+        character.set("opacity", @as(u8, @intFromFloat(byte)));
+    }
     try row.close(context);
 }
 
 fn colors(context: *ui.Frame, character: CharacterRef) !void {
-    const row = try widgets.openBinding(context, .str("knots.character.colors"), "Colors");
-    const stack = Rect{ .key = .src(@src()), .style = &.{ .direction = .column, .gap = 6 } };
-    _ = try stack.open(context);
     const borders = character.get("borderColors") orelse config.CharacterBorderColorsConfig{};
     var next = borders;
     if (try widgets.optionalColor(context, ui.Key.str("knots.character.active").indexed(character.index), "Active Border Color", borders.activeBorderColor, DEFAULT_ACTIVE_BORDER)) |change| {
@@ -277,15 +272,13 @@ fn colors(context: *ui.Frame, character: CharacterRef) !void {
             .set => |argb| argb,
         });
     }
-    try stack.close(context);
-    try row.close(context);
 }
 
 /// Saved at once for the running profile, like a drag; Save Position needs the character's client open.
 fn windowPosition(context: *ui.Frame, character: CharacterRef) !void {
     const row = try widgets.openBinding(context, .str("knots.character.window_position"), "Window Position");
     const shown = if (character.get("windowPosition")) |pos| try std.fmt.allocPrint(context.arena(), "{d}, {d}", .{ pos.x, pos.y }) else "Not set";
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = shown, .style = &style.detail_value });
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = shown, .style = &style.muted_text });
     const name = character.get("name");
     if (try widgets.confirmButton(context, ui.Key.str("knots.character.position.clear").indexed(character.index), "\u{00D7}", "OK", &style.icon_button_danger_text, &style.icon_button_confirm)) {
         positions.clear(name) catch |err| {

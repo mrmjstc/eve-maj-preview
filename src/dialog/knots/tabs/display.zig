@@ -162,7 +162,7 @@ fn clientList(context: *ui.Frame, display: DisplayRef) !void {
     try bind.slider(context, display, "listViewOpacity", "Opacity", .{ .display = .percent_of_255 });
     const font = try widgets.openBinding(context, .src(@src()), "Font");
     try bind.fontBox(context, display, "listViewFontName");
-    try bind.numberBox(context, display, "listViewFontSize", .{});
+    try bind.unitNumberBox(context, display, "listViewFontSize", "px", .{});
     try bind.choiceBox(context, display, "listViewFontWeight", &style.select_narrow);
     try font.close(context);
     try bind.toggle(context, display, "rememberListViewPosition", "Remember Position");

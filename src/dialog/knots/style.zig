@@ -713,10 +713,6 @@ pub const select_fill: Style = select.with(.{ .width = .grow() });
 pub const hint_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 4 };
 pub const hint_inline: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED }, .wrap = true };
 
-/// Side-by-side columns inside a section.
-pub const columns: Style = .{ .width = .grow(), .direction = .row, .@"align" = .start, .gap = 16 };
-pub const column: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
-
 /// .notification-types-table: bordered rows with a category column, as the ore price table shows them.
 pub const table: Style = .{
     .width = .grow(),
@@ -747,14 +743,8 @@ const PRICE_INPUT_WIDTH = 140;
 /// A search box with its clear button, above a roster.
 pub const search_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 4 };
 pub const roster_events: Style = roster.with(.{ .width = .fixed(175), .height = .fit(), .overflow = .visible });
-/// .detail-form: a label rail beside each row's stacked controls.
-pub const rail_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .start, .gap = 12 };
-pub const rail_label: Style = label.with(.{ .width = .fixed(RAIL_LABEL_WIDTH) });
-const RAIL_LABEL_WIDTH = 110;
-pub const rail_body: Style = .{ .width = .grow(), .direction = .column, .gap = 6 };
 /// Several labelled controls on one line.
 pub const inline_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
-pub const inline_label_fixed: Style = inline_label.with(.{ .width = .fixed(90) });
 /// .placeholder-chips: small buttons that insert a {placeholder}.
 pub const chip_row: Style = .{ .width = .grow(), .direction = .row, .gap = 4, .wrap = true };
 pub const placeholder_chip: Style = plain_button.with(.{ .height = .fixed(22), .padding = .xy(6, 0), .font_size = .xs });
@@ -807,23 +797,14 @@ pub const keycap_text: Style = .{ .font_size = .{ .px = 10 }, .foreground = .{ .
 pub const keycap_modifier_text: Style = keycap_text.with(.{ .foreground = .{ .color = MUTED } });
 pub const keycap_plus: Style = .{ .font_size = .{ .px = 9 }, .foreground = .{ .color = MUTED } };
 pub const keycap_separator: Style = .{ .font_size = .sm, .foreground = .{ .color = MUTED } };
-pub const inline_label_wide: Style = inline_label.with(.{ .width = .fixed(150) });
 /// A roster row with the drop line above or below it while another is dragged.
 pub const roster_row_drop_above: Style = roster_row.with(.{ .border_width = .edges(2, 0, 1, 2), .border_color = .accent });
 pub const roster_row_drop_below: Style = roster_row.with(.{ .border_width = .edges(0, 0, 2, 2), .border_color = .accent });
-/// .detail-value: a read-only value in a detail form, e.g. a saved position.
+/// .detail-value: a read-only value in a detail form, e.g. the file an import reads.
 pub const detail_value: Style = .{ .width = .grow(), .foreground = .{ .color = TEXT_SECONDARY } };
 
-/// The Hotkeys tab's one label column, wide enough for its longest label.
-pub const binding_label: Style = label.with(.{ .width = .fixed(BINDING_LABEL_WIDTH) });
-const BINDING_LABEL_WIDTH = 240;
-/// .binding-paired's label: narrower by the arrow and its gap, which hang into the label column.
-pub const binding_label_paired: Style = label.with(.{ .width = .fixed(BINDING_LABEL_WIDTH - BINDING_ARROW_OFFSET) });
-pub const rail_label_paired: Style = label.with(.{ .width = .fixed(RAIL_LABEL_WIDTH - BINDING_ARROW_OFFSET) });
-/// --binding-dir-offset: the arrow's width plus the row gap after it.
-const BINDING_ARROW_OFFSET = 14 + 8;
-/// .binding-control: a binding's backward and forward halves side by side, each taking half.
-pub const pair_column: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 12 };
+/// A binding's backward and forward halves, one above the other.
+pub const pair_column: Style = .{ .width = .grow(), .direction = .column, .gap = 6 };
 /// .binding-dir: the arrow marking a pair's half.
 pub const binding_arrow: Style = .{ .width = .fixed(14), .foreground = .{ .color = MUTED } };
 

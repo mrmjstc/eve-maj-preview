@@ -85,9 +85,9 @@ fn system(context: *ui.Frame) !void {
     try bind.toggle(context, ref, "enabled", "Enable Notifications");
     // Its placement and font are edited from its chip on the Text Overlays tab's preview.
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
-    try bind.number(context, ref, "suppress_click_duration_ms", "Click Suppress Duration (s)", .{ .ms_as_seconds = true });
+    try bind.number(context, ref, "suppress_click_duration_ms", "Click Suppress Duration", .{ .ms_as_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "Suppresses further notifications on a thumbnail for this long after you click it.");
-    try bind.number(context, ref, "notified_cycle_retention_seconds", "Recently-Notified Cycle Retention (s)", .{});
+    try bind.number(context, ref, "notified_cycle_retention_seconds", "Recently-Notified Cycle Retention", .{ .unit = "s" });
     try widgets.hintText(context, .src(@src()), "How long a character stays in the \"recently notified\" cycle group after its last alert.");
     try options.close(context);
     try section.close(context);
@@ -103,18 +103,9 @@ fn speech(context: *ui.Frame) !void {
     try bind.toggle(context, ref, "tts_use_display_name", "Speak Display Name Instead of Character Name");
     try display_name.close(context);
     try widgets.hintText(context, .src(@src()), "Only takes effect while Prefix Spoken Alerts with the Character Name is also on.");
-    const columns = Rect{ .key = .src(@src()), .style = &style.columns };
-    _ = try columns.open(context);
-    const volume = Rect{ .key = .src(@src()), .style = &style.column };
-    _ = try volume.open(context);
     try bind.slider(context, ref, "tts_volume", "Volume", .{});
-    try volume.close(context);
-    const rate = Rect{ .key = .src(@src()), .style = &style.column };
-    _ = try rate.open(context);
     try bind.slider(context, ref, "tts_rate", "Speed", .{});
     try widgets.hintText(context, .src(@src()), "0 is normal speaking speed; negative is slower, positive is faster.");
-    try rate.close(context);
-    try columns.close(context);
     try options.close(context);
     try section.close(context);
 }
@@ -188,49 +179,39 @@ fn typeDetail(context: *ui.Frame, ntype: NotificationType) !void {
     const ref = typeRef(@backingInt(ntype));
     const stack = Rect{ .key = .src(@src()), .style = &style.detail_fit };
     _ = try stack.open(context);
-    const previous_label = widgets.useLabelStyle(&style.rail_label);
-    defer _ = widgets.useLabelStyle(previous_label);
 
     const header = Rect{ .key = .src(@src()), .style = &style.detail_header };
     _ = try header.open(context);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = typeLabel(ntype), .style = &style.heading });
     try header.close(context);
 
-    const is_enabled = ref.get("enabled");
-    const timing = try rail(context, .src(@src()), "Notification");
     try bind.toggle(context, ref, "enabled", "Enable");
-    const timing_options = try widgets.openGroup(context, .src(@src()), is_enabled);
-    try inlineNumber(context, ref, "duration_ms", "Duration (s)", .{ .ms_as_seconds = true });
+    const rest = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    try bind.number(context, ref, "duration_ms", "Duration", .{ .ms_as_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "How long the alert stays on screen; 0 keeps it up until dismissed.");
-    try inlineNumber(context, ref, "throttle_ms", "Limit (s)", .{ .ms_as_seconds = true });
+    try bind.number(context, ref, "throttle_ms", "Limit", .{ .ms_as_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "Drops repeats of this alert that happen within this many seconds of the last one shown.");
-    try timing_options.close(context);
-    try closeRail(context, timing);
 
-    const rest = try widgets.openGroup(context, .src(@src()), is_enabled);
     try customText(context, ref, ntype);
 
-    const behavior = try rail(context, .src(@src()), "Behavior");
+    try widgets.subheading(context, .src(@src()), "Behavior");
     try bind.toggle(context, ref, "suppress_when_focused", "Suppress While Focused");
     try widgets.hintText(context, .src(@src()), "Skips this alert while that character's EVE window is the one currently focused.");
     try bind.toggle(context, ref, "suppress_when_clicked", "Suppress After Click");
     try widgets.hintText(context, .src(@src()), "Skips this alert for a short time after you click the character's thumbnail.");
     try bind.toggle(context, ref, "tts_enabled", "Speak Aloud (TTS)");
-    try bind.toggle(context, ref, "sound_enabled", "Play Custom Sound");
     try bind.toggle(context, ref, "show_border", "Show Border");
     // A hidden border has no colour to set and nothing to flash.
     const flash = try widgets.openGroup(context, .src(@src()), ref.get("show_border"));
     try bind.toggle(context, ref, "flash_border", "Flash Border");
     try flash.close(context);
-    try closeRail(context, behavior);
 
-    const colors = try rail(context, .src(@src()), "Colors");
+    try widgets.subheading(context, .src(@src()), "Colors");
     const defaults = config.ThumbnailConfig{};
     try optionalColor(context, ref, "text_color", "Text Color", defaults.characterNameColor);
     const border_color = try widgets.openGroup(context, .src(@src()), ref.get("show_border"));
     try optionalColor(context, ref, "border_color", "Border Color", defaults.inactiveBorderColor);
     try border_color.close(context);
-    try closeRail(context, colors);
 
     try sound(context, ref, @backingInt(ntype));
 
@@ -241,34 +222,11 @@ fn typeDetail(context: *ui.Frame, ntype: NotificationType) !void {
     try stack.close(context);
 }
 
-/// A detail-form row: a label on the left rail, with the caller's controls stacked beside it.
-fn rail(context: *ui.Frame, key: ui.Key, label: []const u8) !Rect {
-    const row = Rect{ .key = key, .style = &style.rail_row };
-    _ = try row.open(context);
-    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = label, .style = &style.rail_label });
-    const body = Rect{ .key = key.indexed(2), .style = &style.rail_body };
-    _ = try body.open(context);
-    return row;
-}
-
-fn closeRail(context: *ui.Frame, row: Rect) !void {
-    context.ui().close();
-    try row.close(context);
-}
-
-fn inlineNumber(context: *ui.Frame, ref: TypeRef, comptime field: []const u8, label: []const u8, options: bind.NumberOptions) !void {
-    const row = Rect{ .key = ui.Key.str("knots.events.inline:" ++ field).indexed(ref.index), .style = &style.inline_row };
-    _ = try row.open(context);
-    try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.events.inline.label:" ++ field).indexed(ref.index), .content = label, .style = &style.inline_label });
-    try bind.numberBox(context, ref, field, options);
-    try row.close(context);
-}
-
 /// One box per state the type has, the placeholder chips that fill in event values, and a preview of each box.
 fn customText(context: *ui.Frame, ref: TypeRef, ntype: NotificationType) !void {
     const primary_sample = notification.sample(ntype);
     const alt_state = notification.altState(ntype);
-    const row = try rail(context, .src(@src()), "Custom Text");
+    try widgets.subheading(context, .src(@src()), "Custom Text");
     try textBox(context, ref, ntype, .custom_text, primary_sample, alt_state != null);
     if (alt_state) |state| {
         var alt_sample = primary_sample;
@@ -296,22 +254,13 @@ fn customText(context: *ui.Frame, ref: TypeRef, ntype: NotificationType) !void {
         try preview(context, ntype, .custom_text_alt, ref.get("custom_text_alt"), alt_sample);
     }
     try widgets.hintText(context, .src(@src()), "Leave empty to use the default wording shown in grey. Click a placeholder to insert it; it's filled in from the event. Type \\n for a new line.");
-    try closeRail(context, row);
 }
 
 fn textBox(context: *ui.Frame, ref: TypeRef, ntype: NotificationType, comptime field: TextField, sample: notification.Notification, has_states: bool) !void {
     const name = @tagName(field);
-    const row = Rect{ .key = ui.Key.str("knots.events.text:" ++ name).indexed(ref.index), .style = &style.inline_row };
-    _ = try row.open(context);
-    if (has_states) {
-        const state = sample.state orelse .on;
-        try context.e(Text{
-            .selectable = false,
-            .key = ui.Key.str("knots.events.text.state:" ++ name).indexed(ref.index),
-            .content = lang.textFmt("notification.state.{s}.label", .{@tagName(state)}, @tagName(state)),
-            .style = &style.inline_label,
-        });
-    }
+    const state = sample.state orelse .on;
+    const label = if (has_states) lang.textFmt("notification.state.{s}.label", .{@tagName(state)}, @tagName(state)) else "Text";
+    const row = try widgets.openBinding(context, ui.Key.str("knots.events.text:" ++ name).indexed(ref.index), label);
     var buf: [128]u8 = undefined;
     // The box keeps its placeholder until the frame is drawn, so it can't point at this stack buffer.
     try bind.textBox(context, ref, name, try context.arena().dupe(u8, notification.defaultText(sample, &buf)));
@@ -362,30 +311,20 @@ fn preview(context: *ui.Frame, ntype: NotificationType, comptime field: TextFiel
     try widgets.paragraph(context, ui.Key.str("knots.events.preview:" ++ @tagName(field)).indexed(@backingInt(ntype)), try std.fmt.allocPrint(context.arena(), "Preview: {s}", .{kept.items}));
 }
 
-/// Unticked leaves it unset, inheriting `fallback`; picking a colour ticks it.
+/// Unset inherits `fallback`.
 fn optionalColor(context: *ui.Frame, ref: TypeRef, comptime field: []const u8, label: []const u8, fallback: u32) !void {
-    const row = Rect{ .key = ui.Key.str("knots.events.color:" ++ field).indexed(ref.index), .style = &style.inline_row };
-    _ = try row.open(context);
-    try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.events.color.label:" ++ field).indexed(ref.index), .content = label, .style = &style.inline_label_fixed });
-    var is_set = ref.get(field) != null;
-    if (try widgets.checkbox(context, ui.Key.str("knots.events.color.set:" ++ field).indexed(ref.index), "", &is_set)) {
-        ref.set(field, if (is_set) fallback else null);
-    }
-    var value = widgets.colorFromArgb(ref.get(field) orelse fallback);
-    if ((try context.interact(ui.component.ColorPicker{
-        .key = ui.Key.str("knots.events.color.picker:" ++ field).indexed(ref.index),
-        .value = &value,
-        .style = &style.color_picker,
-        .parts = .{ .swatch = &style.color_swatch, .popup = &style.color_popup },
-    })).changed) ref.set(field, widgets.argbFromColor(value));
-    try row.close(context);
+    const change = try widgets.optionalColor(context, ui.Key.str("knots.events.color:" ++ field).indexed(ref.index), label, ref.get(field), fallback) orelse return;
+    ref.set(field, switch (change) {
+        .cleared => null,
+        .set => |argb| argb,
+    });
 }
 
 /// The file's name only; the full path is what's saved.
 fn sound(context: *ui.Frame, ref: TypeRef, type_index: usize) !void {
-    const path_row = try rail(context, .src(@src()), "Custom Sound");
-    const line = Rect{ .key = .src(@src()), .style = &style.inline_row };
-    _ = try line.open(context);
+    try widgets.subheading(context, .src(@src()), "Sound");
+    try bind.toggle(context, ref, "sound_enabled", "Play Custom Sound");
+    const row = try widgets.openBinding(context, .src(@src()), "Sound File");
     const path = ref.get("sound_path") orelse "";
     try context.e(Text{
         .selectable = false,
@@ -395,12 +334,8 @@ fn sound(context: *ui.Frame, ref: TypeRef, type_index: usize) !void {
     });
     if ((try context.interact(Button{ .key = .src(@src()), .label = "Browse", .style = &style.plain_button })).clicked) host.browseSoundFile(type_index);
     if ((try context.interact(Button{ .key = .src(@src()), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) ref.set("sound_path", null);
-    try line.close(context);
-    try closeRail(context, path_row);
-
-    const volume_row = try rail(context, .src(@src()), "");
+    try row.close(context);
     try bind.slider(context, ref, "sound_volume", "Volume", .{});
-    try closeRail(context, volume_row);
 }
 
 /// Fires the type on every thumbnail with the settings the window has for it, saved or not.
@@ -418,15 +353,18 @@ fn historyPanel(context: *ui.Frame) !void {
     const ref = session.profile().child("display");
     try bind.toggle(context, ref, "showNotifInfoPanel", "Show History Panel");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("showNotifInfoPanel"));
-    try bind.number(context, ref, "notifInfoPanelWidth", "Panel Width (px)", .{});
-    try bind.number(context, ref, "notifInfoPanelHeight", "Panel Height (px)", .{});
+    const size = try widgets.openBinding(context, .src(@src()), "Panel Size");
+    try bind.numberBox(context, ref, "notifInfoPanelWidth", .{});
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "\u{00D7}", .style = &style.muted_text });
+    try bind.numberBox(context, ref, "notifInfoPanelHeight", .{});
+    try size.close(context);
     try bind.number(context, ref, "notifInfoPanelMaxRows", "Max History Rows", .{});
     try bind.slider(context, ref, "notifInfoPanelOpacity", "Panel Opacity", .{ .display = .percent_of_255 });
-
-    try widgets.subheading(context, .src(@src()), "Font");
-    try bind.fontName(context, ref, "notifInfoPanelFontName", "Font Name");
-    try bind.number(context, ref, "notifInfoPanelFontSize", "Font Size (px)", .{});
-    try bind.choice(context, ref, "notifInfoPanelFontWeight", "Font Weight");
+    const font = try widgets.openBinding(context, .src(@src()), "Font");
+    try bind.fontBox(context, ref, "notifInfoPanelFontName");
+    try bind.unitNumberBox(context, ref, "notifInfoPanelFontSize", "px", .{});
+    try bind.choiceBox(context, ref, "notifInfoPanelFontWeight", &style.select_narrow);
+    try font.close(context);
 
     try widgets.subheading(context, .src(@src()), "Behavior");
     try bind.toggle(context, ref, "rememberNotifInfoPanelPosition", "Remember History Panel Position");
@@ -438,7 +376,7 @@ fn historyPanel(context: *ui.Frame) !void {
     try bind.toggle(context, ref, "notifInfoPanelMergeEnabled", "Merge Repeated Notifications");
     try widgets.hintText(context, .src(@src()), "Combines identical notifications fired back to back into one row with a +N count. Click a merged row to expand it.");
     const merge = try widgets.openGroup(context, .src(@src()), ref.get("notifInfoPanelMergeEnabled"));
-    try bind.number(context, ref, "notifInfoPanelMergeWindowSec", "Merge Window (seconds)", .{});
+    try bind.number(context, ref, "notifInfoPanelMergeWindowSec", "Merge Window", .{ .unit = "s" });
     try merge.close(context);
     try options.close(context);
     try section.close(context);
@@ -449,12 +387,12 @@ fn travel(context: *ui.Frame) !void {
     const ref = session.profile().child("travel");
     try bind.toggle(context, ref, "enabled", "Enable Travel Mode");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
-    try bind.number(context, ref, "window_seconds", "Catch-Up Window (seconds)", .{});
+    try bind.number(context, ref, "window_seconds", "Catch-Up Window", .{ .unit = "s" });
     try widgets.hintText(context, .src(@src()), "How long a character can lag behind the group's jump before this fires.");
     try bind.choice(context, ref, "threshold_mode", "Group Size Threshold");
     try widgets.hintText(context, .src(@src()), "Minimum group size required before a straggler triggers an alert.");
     switch (ref.get("threshold_mode")) {
-        .percent => try bind.number(context, ref, "threshold_percent", "Minimum Percentage", .{}),
+        .percent => try bind.number(context, ref, "threshold_percent", "Minimum Percentage", .{ .unit = "%" }),
         .count => try bind.number(context, ref, "threshold_count", "Minimum Count", .{}),
     }
     try options.close(context);

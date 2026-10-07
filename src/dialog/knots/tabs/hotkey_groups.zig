@@ -120,8 +120,6 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
 
 fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const group = profile.item("hotkeyGroups", index);
-    const previous_label = widgets.useLabelStyle(&style.rail_label);
-    defer _ = widgets.useLabelStyle(previous_label);
 
     const header = Rect{ .key = .src(@src()), .style = &style.detail_header };
     _ = try header.open(context);
@@ -132,10 +130,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     try header.close(context);
     carryToSpaces(profile, name_before, group.get("name"));
 
-    // The arrow hangs into the label column, so the first key field lines up with the Assign Key's.
-    const rail_label = widgets.useLabelStyle(&style.rail_label_paired);
     const keys = try widgets.openBinding(context, .src(@src()), "Cycle Keys");
-    _ = widgets.useLabelStyle(rail_label);
     const halves = Rect{ .key = .src(@src()), .style = &style.pair_column };
     _ = try halves.open(context);
     inline for (.{ .{ "backwardKey", "\u{2190}" }, .{ "forwardKey", "\u{2192}" } }) |half| {
@@ -153,15 +148,11 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     try assign.close(context);
     try widgets.hintText(context, .src(@src()), "Hover a thumbnail and press this to toggle that character in or out of this group's Characters list.");
 
-    const behavior = try widgets.openBinding(context, .src(@src()), "Behavior");
-    const checks = Rect{ .key = .src(@src()), .style = &.{ .direction = .column, .gap = 6 } };
-    _ = try checks.open(context);
+    try widgets.subheading(context, .src(@src()), "Behavior");
     try bind.toggle(context, group, "includeNotLoggedIn", "Include Not Logged In Clients");
     try bind.toggle(context, group, "stopAtEnds", "Stop at First/Last Character (Don't Loop)");
     try bind.toggle(context, group, "temporaryMembership", "Temporary Membership (Resets on Restart)");
     try bind.toggle(context, group, "showBadge", "Show Group Badge on Thumbnails");
-    try checks.close(context);
-    try behavior.close(context);
 
     // Temporary members are assigned while the app runs, so there's no list to edit.
     if (group.get("temporaryMembership")) {
@@ -199,7 +190,7 @@ fn carryToSpaces(profile: ProfileRef, old_name: []const u8, new_name: ?[]const u
 }
 
 fn members(context: *ui.Frame, group: GroupRef) !void {
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Characters", .style = &style.inline_label });
+    try widgets.subheading(context, .src(@src()), "Characters");
     const list = Rect{ .key = .src(@src()), .style = &style.members_list };
     _ = try list.open(context);
     const names = group.ptr.characters.items;
