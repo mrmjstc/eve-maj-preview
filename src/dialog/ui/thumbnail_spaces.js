@@ -67,7 +67,8 @@ export function populateThumbnailSpaces() {
 
     const list = spaces();
     const selected = selectedIndex(list);
-    const rosterRows = list.map((space, index) => rosterRowHtml(space, index, index === selected)).join('');
+    const fixed = fixedCount(list);
+    const rosterRows = list.map((space, index) => rosterRowHtml(space, index, index === selected, index < fixed)).join('');
     const panels = list.map((space, index) => detailPanelHtml(list, space, index, index === selected)).join('');
     container.innerHTML = `
         <div class="master-detail">
@@ -78,23 +79,32 @@ export function populateThumbnailSpaces() {
 
     applySchemaToInputs(container);
     applyDocToForm(path => path.startsWith('thumbnailSpaces.'), container);
+    // The fixed rows sit outside the drag, so its positions count from just below them.
     setupDragReorder(
         container.querySelector('.roster'),
-        '.roster-row',
+        '.roster-row:not(.space-fixed)',
         null,
-        (item) => parseInt(item.dataset.index, 10),
-        reorderThumbnailSpaces,
+        (item) => parseInt(item.dataset.index, 10) - fixed,
+        (fromIndex, insertBeforeIndex) => reorderThumbnailSpaces(fromIndex + fixed, insertBeforeIndex + fixed),
         { wholeRow: true }
     );
     alignDetailPanelNameLabel(LIST_ID);
 }
 
-function rosterRowHtml(space, index, isSelected) {
+// Login Screen and Unassigned Characters stay at the top, as the app loads them (see config/spaces.zig).
+function fixedCount(list) {
+    let count = 0;
+    while (count < list.length && isSpecial(list[count])) count++;
+    return count;
+}
+
+function rosterRowHtml(space, index, isSelected, isFixed) {
     const rect = spaceRect(space);
     const state = !space.enabled ? t('dynamic.space.stateOff') : rect ? '' : t('dynamic.space.stateNoRegion');
     const isWarning = space.enabled && !rect;
+    const dragTitle = isFixed ? '' : ` title="${t('common.dragToReorder')}"`;
     return `
-        <div class="roster-row ${isSelected ? 'selected' : ''}" role="tab" tabindex="0" aria-selected="${isSelected}" data-index="${index}" onclick="selectThumbnailSpace(${index})" title="${t('common.dragToReorder')}">
+        <div class="roster-row ${isSelected ? 'selected' : ''}${isFixed ? ' space-fixed' : ''}" role="tab" tabindex="0" aria-selected="${isSelected}" data-index="${index}" onclick="selectThumbnailSpace(${index})"${dragTitle}>
             <span class="space-dot${space.enabled ? '' : ' off'}" style="--dot: ${dotColor(index)}"></span>
             <span class="roster-name" id="space_${index}_header_name">${escapeHtml(spaceName(space))}</span>
             ${state ? `<span class="space-state${isWarning ? ' warn' : ''}">${escapeHtml(state)}</span>` : ''}

@@ -55,7 +55,7 @@ pub const ThumbnailSpace = struct {
     pub const Wire = wire.Wire(ThumbnailSpace);
 };
 
-/// Adds the Login Screen space first and the Unassigned Characters space last, both off, when they're missing, so every profile has both; returns whether it added either.
+/// Adds the Login Screen space first and the Unassigned Characters space second, both off, when they're missing, so every profile has both; returns whether it added either.
 pub fn ensureSpecialSpaces(allocator: std.mem.Allocator, list: *std.ArrayList(ThumbnailSpace)) !bool {
     var added = false;
     if (!hasSpace(list.items, "holdsLoginScreen")) {
@@ -67,10 +67,21 @@ pub fn ensureSpecialSpaces(allocator: std.mem.Allocator, list: *std.ArrayList(Th
     if (!hasSpace(list.items, "holdsUnassigned")) {
         const name = try allocator.dupe(u8, UNASSIGNED_NAME);
         errdefer allocator.free(name);
-        try list.append(allocator, .{ .name = name, .enabled = false, .holdsUnassigned = true });
+        try list.insert(allocator, @min(1, list.items.len), .{ .name = name, .enabled = false, .holdsUnassigned = true });
         added = true;
     }
     return added;
+}
+
+/// Moves the Login Screen space to the top and the Unassigned Characters space under it, keeping the rest in order; placement finds both by their mark, so only the list changes.
+pub fn keepSpecialSpacesFirst(list: []ThumbnailSpace) void {
+    var front: usize = 0;
+    inline for (.{ "holdsLoginScreen", "holdsUnassigned" }) |mark| {
+        if (indexOfSpace(list[front..], mark)) |offset| {
+            std.mem.rotate(ThumbnailSpace, list[front .. front + offset + 1], offset);
+            front += 1;
+        }
+    }
 }
 
 /// Only the first space marked as each special space keeps the mark, and a space is at most one of them.
@@ -91,15 +102,19 @@ pub fn keepOneOfEachSpecialSpace(list: []ThumbnailSpace) void {
 }
 
 fn hasSpace(items: []const ThumbnailSpace, comptime mark: []const u8) bool {
-    for (items) |space| {
-        if (@field(space, mark)) return true;
+    return indexOfSpace(items, mark) != null;
+}
+
+fn indexOfSpace(items: []const ThumbnailSpace, comptime mark: []const u8) ?usize {
+    for (items, 0..) |space, i| {
+        if (@field(space, mark)) return i;
     }
-    return false;
+    return null;
 }
 
 const testing = std.testing;
 
-test "a list missing the special spaces gets Login Screen first and Unassigned Characters last, both off" {
+test "a list missing the special spaces gets Login Screen first and Unassigned Characters second, both off" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     var list: std.ArrayList(ThumbnailSpace) = .empty;
@@ -108,11 +123,25 @@ test "a list missing the special spaces gets Login Screen first and Unassigned C
     try testing.expectEqual(@as(usize, 3), list.items.len);
     try testing.expect(list.items[0].holdsLoginScreen and !list.items[0].enabled);
     try testing.expectEqualStrings(LOGIN_SCREEN_NAME, list.items[0].name);
-    try testing.expect(list.items[2].holdsUnassigned and !list.items[2].enabled);
-    try testing.expectEqualStrings(UNASSIGNED_NAME, list.items[2].name);
+    try testing.expect(list.items[1].holdsUnassigned and !list.items[1].enabled);
+    try testing.expectEqualStrings(UNASSIGNED_NAME, list.items[1].name);
+    try testing.expectEqualStrings("Miners", list.items[2].name);
 
     try testing.expect(!try ensureSpecialSpaces(arena.allocator(), &list));
     try testing.expectEqual(@as(usize, 3), list.items.len);
+}
+
+test "special spaces move to the top with the other spaces kept in order" {
+    var list = [_]ThumbnailSpace{
+        .{ .name = "A" },
+        .{ .name = "Unassigned", .holdsUnassigned = true },
+        .{ .name = "B" },
+        .{ .name = "Login", .holdsLoginScreen = true },
+        .{ .name = "C" },
+    };
+    keepSpecialSpacesFirst(&list);
+    const expected = [_][]const u8{ "Login", "Unassigned", "A", "B", "C" };
+    for (expected, list) |name, space| try testing.expectEqualStrings(name, space.name);
 }
 
 test "only the first space marked as each special space keeps the mark" {

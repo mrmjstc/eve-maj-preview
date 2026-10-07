@@ -2524,7 +2524,7 @@ input[type="range"]::-moz-range-thumb {
 
 /* Thumbnail spaces: a roster with a colour dot per space, beside the selected one's details. */
 #thumbnailSpacesList .roster {
-    width: 12.5rem;
+    width: 11.875rem;
     align-self: flex-start;
 }
 
@@ -2565,8 +2565,13 @@ input[type="range"]::-moz-range-thumb {
     color: var(--color-accent);
 }
 
+/* Stands where other spaces have a name field and Remove button, so it takes their height and text inset to keep the panel from shifting. */
 .space-fixed-name {
     flex: 1;
+    display: flex;
+    align-items: center;
+    min-height: var(--control-h);
+    padding-left: calc(0.5rem + 0.0625rem);
     font-weight: var(--fw-bold);
 }
 
