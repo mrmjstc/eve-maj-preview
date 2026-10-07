@@ -129,7 +129,6 @@
   "dynamic.space.holdsLabel": "Hotkey Groups",
   "dynamic.space.groupsHint": "Click a group to put its characters in this space, and again to take it out.",
   "dynamic.space.noGroups": "No hotkey groups yet: add some in the Hotkey Groups tab to put their characters in this space.",
-  "dynamic.space.unnamedGroupTitle": "Name this group in the Hotkey Groups tab to add it.",
   "dynamic.space.missingGroup": "{name} (no such group)",
   "dynamic.space.overlap": "Characters in '{group}' go to '{space}' instead.",
   "dynamic.space.loginScreenHolds": "Holds clients still at the login screen.",

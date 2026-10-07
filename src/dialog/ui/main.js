@@ -20,7 +20,7 @@ import { clearSpaceRegion, startSpaceRegionSelect } from './region.js';
 import { clearSearch, onSearchInput, searchState } from './search.js';
 import { loadAppVersion, openSession, saveConfiguration } from './session.js';
 import { addSystemColor, removeSystemColor } from './system_colors.js';
-import { addThumbnailSpace, onThumbnailSpaceChanged, removeThumbnailSpace, selectThumbnailSpace, toggleThumbnailSpaceGroup, updateThumbnailSpaceHeaderName } from './thumbnail_spaces.js';
+import { addThumbnailSpace, holdUnnamedHotkeyGroup, onThumbnailSpaceChanged, removeThumbnailSpace, selectThumbnailSpace, toggleThumbnailSpaceGroup, updateThumbnailSpaceHeaderName } from './thumbnail_spaces.js';
 import { detectThumbnailClientSize, onThumbAspectRatioChange, onThumbHeightChange, onThumbHeightInput, onThumbSizeSlider, onThumbWidthChange, onThumbWidthInput } from './thumbnail_size.js';
 import { applyUltraPotatoMode, scanUltraPotatoProfiles } from './ultra_potato.js';
 import { checkForUpdateNotification, openExternalLink } from './update.js';
@@ -112,6 +112,7 @@ Object.assign(window, {
     fetchOrePrices,
     fillHotkeyGroupFromClients,
     handleImportFileSelected,
+    holdUnnamedHotkeyGroup,
     insertNotifPlaceholder,
     onCharacterSearchInput,
     onImportDestChanged,

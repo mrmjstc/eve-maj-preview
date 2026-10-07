@@ -3,6 +3,7 @@ import { app } from './state.js';
 import { applyDocToForm, applySchemaToInputs, defaultFor, readFormToDoc } from './binding.js';
 import { markAsChanged } from './changes.js';
 import { escapeHtml } from './core.js';
+import { populateHotkeyGroups, saveHotkeyGroups } from './hotkey_groups.js';
 import { t } from './i18n.js';
 import { scrollBehavior } from './layout.js';
 import { alignDetailPanelNameLabel, moveArrayItem, selectMasterDetailRow, setupDragReorder } from './widgets.js';
@@ -191,7 +192,7 @@ function chipsHtml(space, index) {
     const held = space.groups || [];
     const chips = groups.map((group, groupIndex) => {
         if (!group.name) {
-            return `<button type="button" class="space-chip" disabled title="${t('dynamic.space.unnamedGroupTitle')}">${escapeHtml(t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (groupIndex + 1))}</button>`;
+            return `<button type="button" class="space-chip" aria-pressed="false" onclick="holdUnnamedHotkeyGroup(${index}, ${groupIndex})">${escapeHtml(defaultGroupName(groupIndex))}</button>`;
         }
         return chipHtml(index, group.name, held.includes(group.name), group.name);
     });
@@ -291,6 +292,25 @@ export function toggleThumbnailSpaceGroup(index, name) {
     space.groups = groups.includes(name) ? groups.filter(held => held !== name) : [...groups, name];
     markAsChanged();
     populateThumbnailSpaces();
+}
+
+function defaultGroupName(groupIndex) {
+    return t('dynamic.hotkeyGroup.defaultNamePrefix') + ' ' + (groupIndex + 1);
+}
+
+// Spaces hold groups by name, so an unnamed group takes the name it's shown with, or the next free number if another group has it.
+export function holdUnnamedHotkeyGroup(spaceIndex, groupIndex) {
+    saveHotkeyGroups();
+    const groups = app.currentConfig.hotkeyGroups || [];
+    const group = groups[groupIndex];
+    if (!group || group.name) return;
+
+    const taken = new Set(groups.map(other => other.name));
+    let number = groupIndex;
+    while (taken.has(defaultGroupName(number))) number++;
+    group.name = defaultGroupName(number);
+    populateHotkeyGroups();
+    toggleThumbnailSpaceGroup(spaceIndex, group.name);
 }
 
 function reorderThumbnailSpaces(fromIndex, insertBeforeIndex) {
