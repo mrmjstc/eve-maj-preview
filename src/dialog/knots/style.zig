@@ -654,10 +654,12 @@ pub const popover_close: Style = plain_button.with(.{ .width = .fixed(CONTROL_HE
 
 /// openGroup's column, which dims while disabled.
 pub const group: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
-pub const group_disabled: Style = group.with(.{ .opacity = 0.5 });
+pub const group_disabled: Style = group.with(.{ .opacity = DISABLED_OPACITY });
 /// openInlineGroup's run of controls within a row.
 pub const group_inline: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
-pub const group_inline_disabled: Style = group_inline.with(.{ .opacity = 0.5 });
+pub const group_inline_disabled: Style = group_inline.with(.{ .opacity = DISABLED_OPACITY });
+/// Faint enough that a lit switch or accent colour inside reads as off.
+const DISABLED_OPACITY = 0.3;
 /// Laid over a disabled group to take its clicks; sized from the group's last layout.
 pub const group_blocker: Style = .{
     .position = .absolute,
