@@ -670,7 +670,7 @@ pub const Painter = struct {
         return false;
     }
 
-    /// Tray menu's checked state for "Show History Panel".
+    /// Tray menu's checked state for "Show Notification History".
     pub fn isHistoryPanelVisible(self: *const Painter) bool {
         return self.history_panel.isVisible(self.config, self.anyCharacterLoggedIn());
     }
@@ -681,7 +681,7 @@ pub const Painter = struct {
         if (self.list_window) |*list| list.sync();
     }
 
-    /// Tray menu's "Show History Panel" item.
+    /// Tray menu's "Show Notification History" item.
     pub fn toggleHistoryPanel(self: *Painter) void {
         self.history_panel.toggle(self.allocator, self.store, self.instance, self.anyCharacterLoggedIn());
     }

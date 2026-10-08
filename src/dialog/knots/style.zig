@@ -655,6 +655,8 @@ pub const popover_close: Style = plain_button.with(.{ .width = .fixed(CONTROL_HE
 /// openGroup's column, which dims while disabled.
 pub const group: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
 pub const group_disabled: Style = group.with(.{ .opacity = DISABLED_OPACITY });
+pub const group_fill: Style = group.with(.{ .height = .grow() });
+pub const group_fill_disabled: Style = group_fill.with(.{ .opacity = DISABLED_OPACITY });
 /// openInlineGroup's run of controls within a row.
 pub const group_inline: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
 pub const group_inline_disabled: Style = group_inline.with(.{ .opacity = DISABLED_OPACITY });
@@ -809,7 +811,6 @@ const PRICE_INPUT_WIDTH = 140;
 
 /// A search box with its clear button, above a roster.
 pub const search_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 4 };
-pub const roster_events: Style = roster.with(.{ .width = .fixed(175), .height = .fit(), .overflow = .visible });
 /// Several labelled controls on one line.
 pub const inline_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
 /// .placeholder-chips: small buttons that insert a {placeholder}.

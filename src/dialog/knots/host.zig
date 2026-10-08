@@ -21,7 +21,7 @@ const general = @import("tabs/general.zig");
 const characters = @import("tabs/characters.zig");
 const hotkeys_tab = @import("tabs/hotkeys.zig");
 const hotkey_groups = @import("tabs/hotkey_groups.zig");
-const notifications = @import("tabs/notifications.zig");
+const event_alerts = @import("tabs/event_alerts.zig");
 const lang = @import("lang.zig");
 const search = @import("search.zig");
 const import_dialog = @import("import_dialog.zig");
@@ -187,8 +187,8 @@ fn run() void {
     defer import_dialog.reset();
     update_notice.init(g_allocator);
     defer update_notice.reset();
-    notifications.init(g_allocator);
-    defer notifications.reset();
+    event_alerts.init(g_allocator);
+    defer event_alerts.reset();
     general.init(g_allocator);
     defer general.reset();
     characters.init(g_allocator);
@@ -414,7 +414,7 @@ fn applyPicked(lParam: win32.LPARAM) void {
         .import_file => import_dialog.loadFile(picked.path),
         // Picking a file means the sound is wanted.
         .sound_file => {
-            const type_config = notifications.typeRef(picked.index);
+            const type_config = event_alerts.typeRef(picked.index);
             type_config.set("sound_path", picked.path);
             type_config.set("sound_enabled", true);
         },

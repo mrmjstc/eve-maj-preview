@@ -759,9 +759,9 @@ Every type also offers `{character}`, except `HotkeySuspend`, `ProfileSwitch` an
 - `SavedPositionMove`: Client window moved by the "move to saved positions" hotkey; shown only on the clients that moved
 - `Generic`: Other game events
 
-### History Panel
+### Notification History
 
-A draggable list of recent notifications across all characters, with filter buttons for each category. Toggle it from the tray's "Show History Panel".
+A draggable list of recent notifications across all characters, with filter buttons for each category. Toggle it from the tray's "Show Notification History".
 
 ```json
 {
@@ -896,7 +896,7 @@ Display real-time incoming/outgoing damage-per-second labels directly on each ch
 
 Incoming and outgoing damage are rendered as two independently-positioned labels rather than a single combined box.
 
-**Taking-Damage Alert** (`TakingDamage` notification type): Fires when incoming damage lands, at most once per the type's `throttle_ms`, and stays silent once combat actually stops instead of repeating on a timer. It's switched on and off with the type's Enabled box in the Notifications tab (`type_configs.TakingDamage.enabled`), where its border color, duration, suppression and TTS are also set.
+**Taking-Damage Alert** (`TakingDamage` notification type): Fires when incoming damage lands, at most once per the type's `throttle_ms`, and stays silent once combat actually stops instead of repeating on a timer. It's switched on and off with the type's Enabled box in the Event Alerts tab (`type_configs.TakingDamage.enabled`), where its border color, duration, suppression and TTS are also set.
 
 **Direction Classification**: EVE gamelog `(combat)` lines start with the damage number, and the text after it decides the direction, `" from "` checked before `" to "`:
 - **Incoming**: `" from "` anywhere after the amount - e.g. `63 from Gistatis Legatus - Hits` or `26 from Gistatis Legatus - Nova Light Missile - Hits`
@@ -954,7 +954,7 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
 | `isk_rate_unit` | `hour` | Show the ISK rate per `hour` or per `minute` |
 | `show_prefix` | `true` | Show the label's prefix before the numbers |
 
-The Laser Idle and Mining Stopped alerts are switched on and off with their types' Enabled boxes in the Notifications tab (`type_configs.MiningIdle.enabled` and `type_configs.MiningStopped.enabled`).
+The Laser Idle and Mining Stopped alerts are switched on and off with their types' Enabled boxes in the Event Alerts tab (`type_configs.MiningIdle.enabled` and `type_configs.MiningStopped.enabled`).
 
 **Rate Formula**: Total m³ mined within the window (units × the ore's volume) divided by `window_seconds`, converted to per-minute for display. Displays as `M: XXXX m3/min`, with the ISK rate of the same yield beneath it when `show_isk_rate` is on. During the first `window_seconds` of mining, it's the units mined after the first cycle divided by the time from the first yield to the latest, so lasers cycling in step read their true rate from the second cycle on. Bounty ISK/hr works the same way.
 

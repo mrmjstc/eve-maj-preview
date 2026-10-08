@@ -514,6 +514,11 @@ pub fn openGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
     return openAnyGroup(context, key, if (is_enabled) &style.group else &style.group_disabled, is_enabled);
 }
 
+/// Like openGroup, filling the rest of a filling tab's section.
+pub fn openFillGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
+    return openAnyGroup(context, key, if (is_enabled) &style.group_fill else &style.group_fill_disabled, is_enabled);
+}
+
 /// Like openGroup, for controls side by side inside one row.
 pub fn openInlineGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
     return openAnyGroup(context, key, if (is_enabled) &style.group_inline else &style.group_inline_disabled, is_enabled);

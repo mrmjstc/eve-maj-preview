@@ -22,6 +22,8 @@ const characters = @import("tabs/characters.zig");
 const behavior = @import("tabs/behavior.zig");
 const chatlog = @import("tabs/chatlog.zig");
 const notifications = @import("tabs/notifications.zig");
+const event_alerts = @import("tabs/event_alerts.zig");
+const notification_history = @import("tabs/notification_history.zig");
 const overlays = @import("tabs/overlays.zig");
 const placement = @import("tabs/placement.zig");
 const text_overlays = @import("tabs/text_overlays.zig");
@@ -66,6 +68,8 @@ const Tab = enum {
     hotkeys,
     behavior,
     notifications,
+    event_alerts,
+    notification_history,
     chatlog,
     combat,
     mining,
@@ -84,6 +88,8 @@ const Tab = enum {
             .hotkeys => "Hotkeys",
             .behavior => "Behavior",
             .notifications => "Notifications",
+            .event_alerts => "Event Alerts",
+            .notification_history => "Notification History",
             .chatlog => "Log Monitoring",
             .combat => "Combat",
             .mining => "Mining",
@@ -99,7 +105,7 @@ const Tab = enum {
             .characters, .hotkey_groups => .clients,
             .appearance, .placement, .text_overlays => .display,
             .hotkeys, .behavior => .input,
-            .notifications, .chatlog => .alerts,
+            .notifications, .event_alerts, .notification_history, .chatlog => .alerts,
             .combat, .mining, .bounty, .resources => .overlays,
             .general, .about => .app,
         };
@@ -115,6 +121,8 @@ const Tab = enum {
             .hotkeys => .keyboard,
             .behavior => .spokes,
             .notifications => .envelope,
+            .event_alerts => .bell,
+            .notification_history => .clock,
             .chatlog => .magnifier,
             .combat => .swords,
             .mining => .diamond,
@@ -129,7 +137,7 @@ const Tab = enum {
     fn isAdvanced(tab: Tab) bool {
         return switch (tab) {
             .combat, .mining, .bounty, .resources, .general => true,
-            .characters, .hotkey_groups, .appearance, .placement, .text_overlays, .hotkeys, .behavior, .notifications, .chatlog, .about => false,
+            .characters, .hotkey_groups, .appearance, .placement, .text_overlays, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .about => false,
         };
     }
 
@@ -137,16 +145,16 @@ const Tab = enum {
     fn needsThumbnails(tab: Tab) bool {
         return switch (tab) {
             .placement, .text_overlays => true,
-            .characters, .hotkey_groups, .appearance, .hotkeys, .behavior, .notifications, .chatlog, .combat, .mining, .bounty, .resources, .general, .about => false,
+            .characters, .hotkey_groups, .appearance, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .combat, .mining, .bounty, .resources, .general, .about => false,
         };
     }
 
     /// Fills the content area itself instead of scrolling in it.
     fn fills(tab: Tab) bool {
         return switch (tab) {
-            .characters, .hotkey_groups => true,
+            .characters, .hotkey_groups, .event_alerts => true,
             .placement => placement.fillsWindow(),
-            .appearance, .text_overlays, .hotkeys, .behavior, .notifications, .chatlog, .combat, .mining, .bounty, .resources, .general, .about => false,
+            .appearance, .text_overlays, .hotkeys, .behavior, .notifications, .notification_history, .chatlog, .combat, .mining, .bounty, .resources, .general, .about => false,
         };
     }
 
@@ -247,6 +255,8 @@ fn showTab(context: *ui.Frame, tab: Tab) !void {
         .behavior => try behavior.show(context),
         .chatlog => try chatlog.show(context),
         .notifications => try notifications.show(context),
+        .event_alerts => try event_alerts.show(context),
+        .notification_history => try notification_history.show(context),
         .combat => try overlays.showCombat(context),
         .mining => try overlays.showMining(context),
         .bounty => try overlays.showBounty(context),

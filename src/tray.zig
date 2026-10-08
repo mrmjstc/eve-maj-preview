@@ -128,7 +128,7 @@ pub const TrayIcon = struct {
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_RESTORE_SAVED_POSITIONS, "Restore Saved Positions");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
-        appendChecked(menu, if (painter) |p| p.isHistoryPanelVisible() else config.display.showNotifInfoPanel, win32.IDM_TOGGLE_NOTIF_HISTORY, "Show History Panel");
+        appendChecked(menu, if (painter) |p| p.isHistoryPanelVisible() else config.display.showNotifInfoPanel, win32.IDM_TOGGLE_NOTIF_HISTORY, "Show Notification History");
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLEAR_NOTIF_HISTORY, "Clear Notification History");
         appendChecked(menu, alert_effects.isMuted(), win32.IDM_TOGGLE_ALERT_MUTE, "Mute Audio Alerts");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
