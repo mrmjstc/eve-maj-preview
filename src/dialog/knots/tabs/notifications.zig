@@ -349,7 +349,7 @@ fn historyPanel(context: *ui.Frame) !void {
     const font = try widgets.openBinding(context, .src(@src()), "Font");
     try bind.fontBox(context, ref, "notifInfoPanelFontName");
     try bind.unitNumberBox(context, ref, "notifInfoPanelFontSize", "px", .{});
-    try bind.choiceBox(context, ref, "notifInfoPanelFontWeight", &style.select_narrow);
+    try bind.choiceBox(context, ref, "notifInfoPanelFontWeight", &style.select_font_weight);
     try font.close(context);
 
     try widgets.subheading(context, .src(@src()), "Behavior");

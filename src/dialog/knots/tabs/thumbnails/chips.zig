@@ -293,7 +293,7 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
                 try bind.unitNumberBox(context, ref, fields.font_size, "px", .{});
                 try font.close(context);
             },
-            .font_weight => try bind.choice(context, ref, fields.font_weight, "Weight"),
+            .font_weight => try bind.choiceStyled(context, ref, fields.font_weight, "Weight", &style.select_font_weight),
             .background => {
                 const background = try widgets.openBinding(context, .str("knots.chip.background:" ++ chip.label), "Background");
                 try bind.rgbBox(context, ref, fields.bg_color);

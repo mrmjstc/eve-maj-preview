@@ -143,7 +143,7 @@ pub fn show(context: *ui.Frame, display: DisplayRef) !void {
     const font = try widgets.openBinding(context, .src(@src()), "Font");
     try bind.fontBox(context, display, "listViewFontName");
     try bind.unitNumberBox(context, display, "listViewFontSize", "px", .{});
-    try bind.choiceBox(context, display, "listViewFontWeight", &style.select_narrow);
+    try bind.choiceBox(context, display, "listViewFontWeight", &style.select_font_weight);
     try font.close(context);
     try bind.segmented(context, display, "listViewIndicatorStyle", "Indicator", &.{ "Dot", "Square", "None" });
     try bind.toggle(context, display, "rememberListViewPosition", "Remember Position");
