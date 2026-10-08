@@ -25,28 +25,33 @@ const SAMPLE_LINE: ui.Style = .{ .width = .grow(), .direction = .row };
 const PART_PADDING: i32 = 3;
 /// How faded a part's text is while it's turned off.
 const HIDDEN_OPACITY = 0.35;
-/// About a space's width as a share of the font size, which the panel puts between rates.
-const SPACE_EM = 0.3;
+/// One row's rates side by side, each its own part.
+const STATS_GROUP: ui.Style = .{ .direction = .row, .@"align" = .center };
 
-/// The stats row's sample rates: DPS only, since every rate at once runs past a column.
-const SAMPLE_STATS = [_]Sample.Reading{ .{ .stat = .incoming_dps, .value = 412 }, .{ .stat = .outgoing_dps, .value = 980 } };
+/// Each rate's sample, in list_look.Stat order: mining in m3 per minute, bounty in ISK per period.
+const SAMPLE_VALUES = [list_look.STAT_COUNT]f32{ 412, 980, 21.4, 38_200_000 };
 /// Drawn in Fleet Invite's own colour, or the list's notification colour when it has none.
 const SAMPLE_NOTIFICATION = "Fleet Invite";
+/// Two rates to a stats row, so each fits a column.
 const SAMPLES = [_]Sample{
     .{ .name = "Pilot Alpha", .state = .active, .system = "Jita" },
     .{ .name = "Pilot Bravo", .state = .inactive, .system = "Perimeter", .is_name_part = true },
     .{ .name = "Pilot Delta", .state = .inactive, .right = .notification },
-    .{ .name = "Pilot Echo", .state = .inactive, .right = .stats },
+    .{ .name = "Pilot Echo", .state = .inactive, .right = .{ .stats = &.{ .incoming_dps, .outgoing_dps } } },
+    .{ .name = "Pilot Foxtrot", .state = .inactive, .right = .{ .stats = &.{ .mining_rate, .bounty_rate } } },
     .{ .name = "Pilot Charlie", .state = .excluded },
 };
 
-/// What a click on the preview opens.
+/// What a click on the preview opens: one per text, as on the Text Overlays stage.
 const Part = enum {
     active,
     names,
     systems,
     notifications,
-    stats,
+    incoming_dps,
+    outgoing_dps,
+    mining_rate,
+    bounty_rate,
 
     fn label(self: Part) []const u8 {
         return switch (self) {
@@ -54,26 +59,35 @@ const Part = enum {
             .names => "Character Names",
             .systems => "System Names",
             .notifications => "Notifications",
-            .stats => "Combat, Mining and Bounty",
+            .incoming_dps => "Incoming DPS",
+            .outgoing_dps => "Outgoing DPS",
+            .mining_rate => "Mining Rate",
+            .bounty_rate => "Bounty Rate",
+        };
+    }
+
+    fn ofStat(stat: list_look.Stat) Part {
+        return switch (stat) {
+            .incoming_dps => .incoming_dps,
+            .outgoing_dps => .outgoing_dps,
+            .mining_rate => .mining_rate,
+            .bounty_rate => .bounty_rate,
         };
     }
 };
 
 const Sample = struct {
-    /// A rate the stats row shows.
-    const Reading = struct { stat: list_look.Stat, value: f32 };
-
     name: []const u8,
     state: enum { active, inactive, excluded },
     /// What its right-hand slot shows; the system's name is `system`.
-    right: enum { system, notification, stats } = .system,
+    right: union(enum) { system, notification, stats: []const list_look.Stat } = .system,
     system: []const u8 = "",
     /// Only one row's name opens Character Names, since a part has one key.
     is_name_part: bool = false,
 };
 
-/// One rate on the stats row, as the panel draws it.
-const StatLabel = struct { text: []const u8, color: u32 };
+/// One rate as the panel draws it; faded while the list doesn't show it.
+const StatLabel = struct { text: []const u8, color: u32, is_shown: bool };
 
 /// The preview's colours and text sizes, read from the edited settings.
 const Look = struct {
@@ -87,9 +101,8 @@ const Look = struct {
     shows_systems: bool,
     shows_notifications: bool,
     indicator: types.ListIndicatorStyle,
-    /// The stats row's rates, each in its own colour; faded while the list shows none.
-    stats: []const StatLabel,
-    shows_stats: bool,
+    /// Every rate, in list_look.Stat order.
+    stat_labels: [list_look.STAT_COUNT]StatLabel,
     sizes: list_look.Metrics,
     columns: usize,
     /// Shrinks the preview to fit its section; 1 at real size.
@@ -247,23 +260,29 @@ fn sampleRow(context: *ui.Frame, sample: Sample, index: usize, look: Look) !void
     }
 }
 
-/// An inactive row's right-hand slot, as the part that edits what it shows.
+/// An inactive row's right-hand slot, as the parts that edit what it shows.
 fn rightPart(context: *ui.Frame, sample: Sample, key: ui.Key, look: Look) !void {
     const arena = context.arena();
-    const part: Part = switch (sample.right) {
-        .system => .systems,
-        .notification => .notifications,
-        .stats => .stats,
-    };
-    const button = Button{ .key = partKey(part), .style = try partStyle(arena, look, .{ .gap = look.small_size * SPACE_EM }, list_look.PANEL, part) };
-    if (try openPart(context, button, part)) select(context, part);
     switch (sample.right) {
-        .system => try context.e(Text{ .selectable = false, .key = key, .content = sample.system, .style = try textStyle(arena, look.system_color, look.small_size, false, look.shows_systems) }),
-        .notification => try context.e(Text{ .selectable = false, .key = key, .content = SAMPLE_NOTIFICATION, .style = try textStyle(arena, look.notification_color, look.small_size, false, look.shows_notifications) }),
-        .stats => for (look.stats, 0..) |label, index| {
-            try context.e(Text{ .selectable = false, .key = key.indexed(index), .content = label.text, .style = try textStyle(arena, label.color, look.small_size, false, look.shows_stats) });
+        .system => try textPart(context, .systems, key, sample.system, try textStyle(arena, look.system_color, look.small_size, false, look.shows_systems), look),
+        .notification => try textPart(context, .notifications, key, SAMPLE_NOTIFICATION, try textStyle(arena, look.notification_color, look.small_size, false, look.shows_notifications), look),
+        .stats => |stats| {
+            const group = Rect{ .key = key, .style = &STATS_GROUP };
+            _ = try group.open(context);
+            for (stats, 1..) |stat, index| {
+                const label = look.stat_labels[@intFromEnum(stat)];
+                try textPart(context, .ofStat(stat), key.indexed(index), label.text, try textStyle(arena, label.color, look.small_size, false, label.is_shown), look);
+            }
+            try group.close(context);
         },
     }
+}
+
+/// `content` as the part that edits it.
+fn textPart(context: *ui.Frame, part: Part, key: ui.Key, content: []const u8, text_style: *const ui.Style, look: Look) !void {
+    const button = Button{ .key = partKey(part), .style = try partStyle(context.arena(), look, .{}, list_look.PANEL, part) };
+    if (try openPart(context, button, part)) select(context, part);
+    try context.e(Text{ .selectable = false, .key = key, .content = content, .style = text_style });
     try button.close(context);
 }
 
@@ -278,26 +297,11 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, available_wid
     const uses_unique_names = display.listViewUseUniqueCharacterNameColors;
     const stat_settings: list_look.StatSettings = .{ .display = display, .combat = &profile.combat, .mining = &profile.mining, .bounty = &profile.bounty };
 
-    var readings: [SAMPLE_STATS.len]list_look.StatReading = undefined;
-    var count: usize = 0;
-    for (SAMPLE_STATS) |sample| {
-        if (!list_look.showsStat(stat_settings, sample.stat)) continue;
-        readings[count] = .{ .stat = sample.stat, .value = sample.value, .has_prefix = list_look.hasPrefix(display, sample.stat) };
-        count += 1;
-    }
-    const shows_stats = count > 0;
-    // With none shown, every sample stands in, faded, so the part can still be clicked.
-    if (!shows_stats) {
-        for (SAMPLE_STATS, &readings) |sample, *reading| {
-            reading.* = .{ .stat = sample.stat, .value = sample.value, .has_prefix = list_look.hasPrefix(display, sample.stat) };
-        }
-        count = SAMPLE_STATS.len;
-    }
-    const stats = try arena.alloc(StatLabel, count);
-    for (readings[0..count], stats) |reading, *label| {
+    var stat_labels: [list_look.STAT_COUNT]StatLabel = undefined;
+    for (std.enums.values(list_look.Stat), SAMPLE_VALUES, &stat_labels) |stat, value, *label| {
         var writer: std.Io.Writer = .fixed(try arena.alloc(u8, list_look.STAT_TEXT_MAX));
-        list_look.writeStat(&writer, reading);
-        label.* = .{ .text = writer.buffered(), .color = list_look.statColor(display, reading.stat) };
+        list_look.writeStat(&writer, .{ .stat = stat, .value = value, .has_prefix = list_look.hasPrefix(display, stat) });
+        label.* = .{ .text = writer.buffered(), .color = list_look.statColor(display, stat), .is_shown = list_look.showsStat(stat_settings, stat) };
     }
 
     return .{
@@ -311,8 +315,7 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, available_wid
         .shows_systems = display.listViewShowSystemName,
         .shows_notifications = display.listViewShowNotifications,
         .indicator = display.listViewIndicatorStyle,
-        .stats = stats,
-        .shows_stats = shows_stats,
+        .stat_labels = stat_labels,
         .sizes = sizes,
         .columns = columns,
         .scale = scale,
@@ -406,6 +409,7 @@ fn popover(context: *ui.Frame, display: DisplayRef) !void {
 /// Returns whether close was pressed.
 fn settings(context: *ui.Frame, display: DisplayRef, part: Part) !bool {
     const close_clicked = try widgets.popoverTitle(context, .src(@src()), part.label());
+    try requirementNotices(context, part);
 
     const was_aligned = widgets.useAlignedRows(true);
     defer _ = widgets.useAlignedRows(was_aligned);
@@ -415,58 +419,46 @@ fn settings(context: *ui.Frame, display: DisplayRef, part: Part) !bool {
             const group = try widgets.openGroup(context, .src(@src()), !display.get("listViewUseUniqueActiveColors"));
             try bind.rgb(context, display, "listViewActiveColor", "Active Color");
             try group.close(context);
-            try widgets.paragraph(context, .src(@src()), "Colours the active client's dot, row and name. A character's own active border colour on the Characters tab comes first.");
         },
-        .names => {
-            try bind.toggle(context, display, "listViewUseUniqueCharacterNameColors", "Unique Character Name Colors");
-            try widgets.paragraph(context, .src(@src()), "A character's own name colour on the Characters tab comes first.");
-        },
+        .names => try bind.toggle(context, display, "listViewUseUniqueCharacterNameColors", "Unique Character Name Colors"),
         .systems => {
             try bind.toggle(context, display, "listViewShowSystemName", "Show System Name");
             try bind.toggle(context, display, "listViewUseUniqueSystemColors", "Unique System Colors");
             const group = try widgets.openGroup(context, .src(@src()), !display.get("listViewUseUniqueSystemColors"));
             try bind.rgb(context, display, "listViewSystemNameColor", "Text Color");
             try group.close(context);
-            try widgets.paragraph(context, .src(@src()), "A system's own custom colour comes first.");
         },
         .notifications => {
             try bind.toggle(context, display, "listViewShowNotifications", "Show Notifications");
             try bind.rgb(context, display, "listViewNotificationColor", "Text Color");
-            try widgets.paragraph(context, .src(@src()), "The newest notification takes a row's right-hand slot until it expires. A type's own Text Color on the Notifications tab overrides this one.");
         },
-        .stats => try statSettings(context, display),
+        .incoming_dps => try statSettings(context, display, "listViewShowIncomingDps", "Show Incoming Damage", "listViewShowIncomingPrefix", "Show IN: Prefix", "listViewIncomingDpsColor"),
+        .outgoing_dps => try statSettings(context, display, "listViewShowOutgoingDps", "Show Outgoing Damage", "listViewShowOutgoingPrefix", "Show OUT: Prefix", "listViewOutgoingDpsColor"),
+        .mining_rate => try statSettings(context, display, "listViewShowMiningRate", "Show Mining Rate", "listViewShowMiningPrefix", "Show M: Prefix", "listViewMiningRateColor"),
+        .bounty_rate => try statSettings(context, display, "listViewShowBountyRate", "Show Bounty Rate", "listViewShowBountyPrefix", "Show ISK: Prefix", "listViewBountyRateColor"),
     }
     return close_clicked;
 }
 
-fn statSettings(context: *ui.Frame, display: DisplayRef) !void {
-    try widgets.subheading(context, .src(@src()), "Incoming DPS");
-    try bind.toggle(context, display, "listViewShowIncomingDps", "Show Incoming DPS");
-    const incoming = try widgets.openGroup(context, .src(@src()), display.get("listViewShowIncomingDps"));
-    try bind.toggle(context, display, "listViewShowIncomingPrefix", "Show IN: Prefix");
-    try bind.rgb(context, display, "listViewIncomingDpsColor", "Text Color");
-    try incoming.close(context);
+/// What else has to be on for the part's text to show, as the Text Overlays chips say.
+fn requirementNotices(context: *ui.Frame, part: Part) !void {
+    const profile = session.profile().ptr;
+    const needs_chatlog = switch (part) {
+        .active, .names => false,
+        .systems, .notifications, .incoming_dps, .outgoing_dps, .mining_rate, .bounty_rate => true,
+    };
+    if (needs_chatlog and !profile.chatlog.enabled) try widgets.notice(context, .src(@src()), "Requires Log Monitoring to be enabled.");
+    const missing_overlay: ?[]const u8 = switch (part) {
+        .active, .names, .systems, .notifications => null,
+        .incoming_dps, .outgoing_dps => if (profile.combat.enabled) null else "Requires the Combat overlay to be enabled on the Combat tab.",
+        .mining_rate => if (profile.mining.enabled) null else "Requires the Mining overlay to be enabled on the Mining tab.",
+        .bounty_rate => if (profile.bounty.enabled) null else "Requires the Bounty overlay to be enabled on the Bounty tab.",
+    };
+    if (missing_overlay) |text| try widgets.notice(context, .src(@src()), text);
+}
 
-    try widgets.subheading(context, .src(@src()), "Outgoing DPS");
-    try bind.toggle(context, display, "listViewShowOutgoingDps", "Show Outgoing DPS");
-    const outgoing = try widgets.openGroup(context, .src(@src()), display.get("listViewShowOutgoingDps"));
-    try bind.toggle(context, display, "listViewShowOutgoingPrefix", "Show OUT: Prefix");
-    try bind.rgb(context, display, "listViewOutgoingDpsColor", "Text Color");
-    try outgoing.close(context);
-
-    try widgets.subheading(context, .src(@src()), "Mining Rate");
-    try bind.toggle(context, display, "listViewShowMiningRate", "Show Mining Rate");
-    const mining = try widgets.openGroup(context, .src(@src()), display.get("listViewShowMiningRate"));
-    try bind.toggle(context, display, "listViewShowMiningPrefix", "Show M: Prefix");
-    try bind.rgb(context, display, "listViewMiningRateColor", "Text Color");
-    try mining.close(context);
-
-    try widgets.subheading(context, .src(@src()), "Bounty Rate");
-    try bind.toggle(context, display, "listViewShowBountyRate", "Show Bounty Rate");
-    const bounty = try widgets.openGroup(context, .src(@src()), display.get("listViewShowBountyRate"));
-    try bind.toggle(context, display, "listViewShowBountyPrefix", "Show ISK: Prefix");
-    try bind.rgb(context, display, "listViewBountyRateColor", "Text Color");
-    try bounty.close(context);
-
-    try widgets.paragraph(context, .src(@src()), "A row shows these together, each in its own colour. Each also needs its overlay enabled on the Combat, Mining or Bounty tab.");
+fn statSettings(context: *ui.Frame, display: DisplayRef, comptime show_field: []const u8, show_label: []const u8, comptime prefix_field: []const u8, prefix_label: []const u8, comptime color_field: []const u8) !void {
+    try bind.toggle(context, display, show_field, show_label);
+    try bind.toggle(context, display, prefix_field, prefix_label);
+    try bind.rgb(context, display, color_field, "Text Color");
 }
