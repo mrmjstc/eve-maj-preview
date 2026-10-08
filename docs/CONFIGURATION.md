@@ -360,7 +360,7 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
 {
   "display": {
     "viewMode": "ClientList",
-    "listViewOrder": "Tracked",
+    "listViewOrder": "ConfiguredCharacters",
     "rememberListViewPosition": true,
     "listViewOpacity": 255,
     "listViewColumns": 1,
@@ -395,7 +395,7 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
 ```
 
 - `viewMode`: `Thumbnails` (default), `ClientList`, or `Nothing` (no visual output; tracking only)
-- `listViewOrder`: Row ordering - `Tracked` (default, internal tracking order), `Alphabetical` (by character name), or `ConfiguredCharacters` (order of `characters` array)
+- `listViewOrder`: Row ordering - `ConfiguredCharacters` (default, order of `characters` array), `Tracked` (internal tracking order), or `Alphabetical` (by character name)
 - `rememberListViewPosition`: Save/restore the panel's position (default: `true`)
 - `listViewOpacity`: Panel opacity, 51–255 (default: `255`)
 - `listViewColumns`: Number of columns, 1–6 (default: `1`)

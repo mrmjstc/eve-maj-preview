@@ -12,7 +12,7 @@ pub const DisplayConfig = struct {
     newThumbnailSpacing: i32 = 10,
 
     viewMode: types.ViewMode = .Thumbnails,
-    listViewOrder: types.ListViewOrder = .Tracked,
+    listViewOrder: types.ListViewOrder = .ConfiguredCharacters,
     rememberListViewPosition: bool = true,
     listViewOpacity: u8 = 255,
     listViewColumns: u32 = 1,
