@@ -92,9 +92,12 @@ pub fn close(self: *const TextInput, frame: *Frame) !void {
         const line_h = shaped.line_height / scale;
         const measured = try ui.state.getOrCreate(.measured, ui.allocator, id);
         const scroll = try ui.state.getOrCreate(.scroll, ui.allocator, id);
+        // EVE-Maj patch: the root centres its line, so the caret and selection are offset to match it.
+        const content_h = measured.height - padding.top() - padding.bottom();
+        const line_y = @max(0, (content_h - line_h) / 2);
         const content_origin = [2]f32{
             measured.box.x() + padding.left(),
-            measured.box.y() + padding.top(),
+            measured.box.y() + padding.top() + line_y,
         };
 
         edit.processMouse(ui, id, items, s, shaped, content_origin, scroll.offset, scale);
@@ -123,12 +126,12 @@ pub fn close(self: *const TextInput, frame: *Frame) !void {
             const spans = try util.lineSpansForRange(ui.allocator, shaped, sel_lo, sel_hi, scale);
             defer ui.allocator.free(spans);
             for (spans, 0..) |sp, i| {
-                _ = try ui.open(self.key.indexed(SELECTION_BASE + i), .at(sp.x - scroll_x, sp.y, sp.w, line_h), .{ .rect = selection.surface });
+                _ = try ui.open(self.key.indexed(SELECTION_BASE + i), .at(sp.x - scroll_x, sp.y + line_y, sp.w, line_h), .{ .rect = selection.surface });
                 ui.close();
             }
         } else {
             const caret = ui.resolveStyle(self.key.indexed(CURSOR_INDEX).hash(), .{ .base = &base.caret, .user = self.parts.caret }, .{}, null);
-            _ = try ui.open(self.key.indexed(CURSOR_INDEX), .at(cursor_pos.x - scroll_x, cursor_pos.y, 1, line_h), .{ .rect = caret.surface });
+            _ = try ui.open(self.key.indexed(CURSOR_INDEX), .at(cursor_pos.x - scroll_x, cursor_pos.y + line_y, 1, line_h), .{ .rect = caret.surface });
             ui.close();
         }
 

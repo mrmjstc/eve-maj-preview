@@ -211,6 +211,14 @@ const detail_scroll_pane: Style = .{
     .overflow = .scroll_y,
 };
 
+/// A master-detail pane's label column, narrower than label to leave its controls room.
+pub const detail_label: Style = label.with(.{ .width = .fixed(110) });
+/// widgets.openFieldGroup's row: its label stays at the top beside a taller column.
+pub const field_group: Style = .{ .width = .grow(), .direction = .row, .@"align" = .start, .gap = 8 };
+/// Drops the label to line up with the first control's text.
+pub const field_group_label: Style = .{ .padding = .init(6, 0, 0, 0) };
+pub const field_group_column: Style = .{ .width = .grow(), .direction = .column, .gap = 6 };
+
 pub const detail_header: Style = .{
     .width = .grow(),
     .direction = .row,
@@ -278,9 +286,15 @@ pub const hint_toggle_on: Style = hint_toggle.with(.{
     .hover = &.{ .state_layer = 0 },
 });
 
-pub const label: Style = .{ .width = .fixed(LABEL_WIDTH), .wrap = true, .foreground = .{ .color = TEXT_SECONDARY } };
+pub const label: Style = .{ .width = .fixed(LABEL_WIDTH), .wrap = true, .foreground = .{ .color = TEXT } };
 /// Grows to push the row's controls to its right edge.
 pub const label_aligned: Style = label.with(.{ .width = .grow() });
+/// A row's label under a field group's own, softer so the group's label leads.
+pub const label_aligned_grouped: Style = label_aligned.with(.{ .foreground = .{ .color = TEXT_SECONDARY } });
+/// widgets.separator's rule, coloured like the dividers between aligned rows.
+pub const separator: Style = .{ .width = .grow(), .height = .fixed(1), .background = .{ .color = DIVIDER } };
+/// Takes a row's spare width, pushing what follows it to the right edge.
+pub const spacer: Style = .{ .width = .grow() };
 /// As tall as a control, so a checkbox row spaces like one with a box in it.
 pub const aligned_row: Style = .{
     .width = .grow(),
@@ -418,7 +432,7 @@ pub const select: Style = .{
 
 pub const checkbox: Style = .{ .gap = 6 };
 /// On the label, not the checkbox: a custom foreground there restarts the box's transition every frame, so knots never stops redrawing.
-pub const checkbox_label: Style = .{ .foreground = .{ .color = TEXT_SECONDARY } };
+pub const checkbox_label: Style = .{ .foreground = .{ .color = TEXT } };
 pub const checkbox_box: Style = .{
     .width = .fixed(14),
     .height = .fixed(14),
@@ -436,6 +450,8 @@ pub const color_picker: Style = .{
     .hover = &.{ .border_color = .accent },
 };
 pub const color_swatch: Style = .{ .width = .fixed(20), .height = .fixed(20) };
+/// color_picker_swatch's colour, filling it inside its 1px border, with the corners nested in its own.
+pub const color_swatch_fill: Style = .{ .width = .fixed(CONTROL_HEIGHT - 2), .height = .fixed(CONTROL_HEIGHT - 2), .radius = .{ .fixed = 5 } };
 /// A picker drawn without its hex: just the swatch, centred. Its popup still has a hex box.
 pub const color_picker_swatch: Style = color_picker.with(.{
     .width = .fixed(CONTROL_HEIGHT),
@@ -729,7 +745,7 @@ pub const detail_fit: Style = .{ .width = .grow(), .direction = .column, .gap = 
 /// .roster-hotkey-badge, e.g. a filter's Disabled.
 pub const roster_badge: Style = .{ .font_size = .{ .px = 10 }, .foreground = .{ .color = MUTED } };
 pub const roster_badge_warning: Style = roster_badge.with(.{ .foreground = .accent });
-pub const inline_label: Style = .{ .foreground = .{ .color = TEXT_SECONDARY } };
+pub const inline_label: Style = .{ .foreground = .{ .color = TEXT } };
 pub const select_fill: Style = select.with(.{ .width = .grow() });
 
 /// A field hint with a link after it.

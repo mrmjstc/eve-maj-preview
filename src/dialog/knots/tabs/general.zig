@@ -132,8 +132,7 @@ fn filterDetail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const stack = Rect{ .key = .src(@src()), .style = &style.detail_fit };
     _ = try stack.open(context);
 
-    const header = Rect{ .key = .src(@src()), .style = &style.detail_header };
-    _ = try header.open(context);
+    const header = try widgets.openDetailHeader(context, .src(@src()));
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Filter Name", .style = &style.inline_label });
     const name_before = try context.arena().dupe(u8, filter.get("name"));
     try bind.textBox(context, filter, "name", "e.g., EVE Online");

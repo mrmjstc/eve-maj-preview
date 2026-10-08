@@ -180,8 +180,7 @@ fn typeDetail(context: *ui.Frame, ntype: NotificationType) !void {
     const stack = Rect{ .key = .src(@src()), .style = &style.detail_fit };
     _ = try stack.open(context);
 
-    const header = Rect{ .key = .src(@src()), .style = &style.detail_header };
-    _ = try header.open(context);
+    const header = try widgets.openDetailHeader(context, .src(@src()));
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = typeLabel(ntype), .style = &style.heading });
     try header.close(context);
 

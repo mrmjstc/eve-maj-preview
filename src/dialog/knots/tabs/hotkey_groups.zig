@@ -42,7 +42,6 @@ pub fn reset() void {
 pub fn show(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Hotkey Groups", "Groups of characters you can cycle through with hotkeys. List members here, or assign them live.", &style.section);
     const profile = session.profile();
-    try bind.toggle(context, profile.child("hotkeys"), "resetGroupIndexOnNonGroupFocus", "Reset Cycle Position When Leaving a Group");
 
     const count = profile.ptr.hotkeyGroups.items.len;
     if (g_selected_index >= count) g_selected_index = count -| 1;
@@ -58,6 +57,9 @@ pub fn show(context: *ui.Frame) !void {
     }
     try stack.close(context);
     try master_detail.close(context);
+
+    try widgets.subheading(context, .src(@src()), "All Groups");
+    try bind.toggle(context, profile.child("hotkeys"), "resetGroupIndexOnNonGroupFocus", "Reset Cycle Position When Leaving a Group");
     try section.close(context);
 }
 
@@ -94,6 +96,12 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
             .content = try groupName(arena, group, index),
             .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
         });
+        try context.e(Text{
+            .selectable = false,
+            .key = ui.Key.str("knots.groups.badge").indexed(index),
+            .content = if (group.temporaryMembership) "Temporary" else try std.fmt.allocPrint(arena, "{d}", .{group.characters.items.len}),
+            .style = &style.roster_badge,
+        });
         try row.close(context);
     }
     if ((try context.interact(Button{ .key = .src(@src()), .label = "+ Add Group", .style = &style.roster_add })).clicked) {
@@ -121,8 +129,7 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
 fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const group = profile.item("hotkeyGroups", index);
 
-    const header = Rect{ .key = .src(@src()), .style = &style.detail_header };
-    _ = try header.open(context);
+    const header = try widgets.openDetailHeader(context, .src(@src()));
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Group Name", .style = &style.inline_label });
     const name_before = try context.arena().dupe(u8, group.get("name"));
     try bind.textBox(context, group, "name", try std.fmt.allocPrint(context.arena(), "Hotkey Group {d}", .{index + 1}));
@@ -130,22 +137,12 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     try header.close(context);
     carryToSpaces(profile, name_before, group.get("name"));
 
-    const keys = try widgets.openBinding(context, .src(@src()), "Cycle Keys");
-    const halves = Rect{ .key = .src(@src()), .style = &style.pair_column };
-    _ = try halves.open(context);
-    inline for (.{ .{ "backwardKey", "\u{2190}" }, .{ "forwardKey", "\u{2192}" } }) |half| {
-        const line = Rect{ .key = .str("knots.groups.half:" ++ half[0]), .style = &style.inline_row };
-        _ = try line.open(context);
-        try context.e(Text{ .selectable = false, .key = .str("knots.groups.arrow:" ++ half[0]), .content = half[1], .style = &style.binding_arrow });
-        try hotkey.field(context, group, half[0]);
-        try line.close(context);
+    try widgets.subheading(context, .src(@src()), "Keys");
+    inline for (.{ .{ "backwardKey", "Cycle Backward" }, .{ "forwardKey", "Cycle Forward" }, .{ "assignKey", "Assign Key" } }) |key| {
+        const row = try widgets.openBinding(context, .str("knots.groups.key:" ++ key[0]), key[1]);
+        try hotkey.field(context, group, key[0]);
+        try row.close(context);
     }
-    try halves.close(context);
-    try keys.close(context);
-
-    const assign = try widgets.openBinding(context, .src(@src()), "Assign Key");
-    try hotkey.field(context, group, "assignKey");
-    try assign.close(context);
     try widgets.hintText(context, .src(@src()), "Hover a thumbnail and press this to toggle that character in or out of this group's Characters list.");
 
     try widgets.subheading(context, .src(@src()), "Behavior");

@@ -185,8 +185,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const is_unassigned = space.get("holdsUnassigned");
     // The Login Screen and Unassigned Characters spaces are always in the list, so they can't be renamed or removed.
     const is_special = is_login_screen or is_unassigned;
-    const header = Rect{ .key = .src(@src()), .style = &style.detail_header };
-    _ = try header.open(context);
+    const header = try widgets.openDetailHeader(context, .src(@src()));
     if (is_special) {
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = space.get("name"), .style = &style.roster_name_selected });
     } else {

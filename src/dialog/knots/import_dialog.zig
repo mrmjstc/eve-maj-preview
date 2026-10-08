@@ -212,7 +212,7 @@ fn optionsStep(context: *ui.Frame, analysis: *Analysis) !void {
         const row = Rect{ .key = .src(@src()), .style = &style.inline_row };
         _ = try row.open(context);
         try context.e(TextInput{ .key = .str("knots.import.new_name"), .buf = &g_new_name, .style = &style.text_input, .placeholder = "New profile name" });
-        _ = try context.interact(ColorPicker{ .key = .src(@src()), .value = &g_new_accent, .style = &style.color_picker, .parts = .{ .swatch = &style.color_swatch, .popup = &style.color_popup } });
+        _ = try context.interact(ColorPicker{ .key = .src(@src()), .value = &g_new_accent, .style = &style.color_picker_swatch, .parts = .{ .swatch = &style.color_swatch_fill, .popup = &style.color_popup }, .show_hex = false, .show_alpha = false });
         try row.close(context);
     }
 

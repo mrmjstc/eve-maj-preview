@@ -92,6 +92,21 @@ pub const ScrollPane = struct {
     }
 };
 
+/// What openFieldGroup returns; closing it puts back the row settings it replaced.
+pub const FieldGroup = struct {
+    row: Rect,
+    column: Rect,
+    was_aligned: bool,
+    was_in_field_group: bool,
+
+    pub fn close(self: FieldGroup, context: *ui.Frame) !void {
+        g_is_aligned = self.was_aligned;
+        g_in_field_group = self.was_in_field_group;
+        try self.column.close(context);
+        try self.row.close(context);
+    }
+};
+
 /// What an optional colour row changed to.
 pub const ColorChange = union(enum) { cleared, set: u32 };
 
@@ -103,6 +118,10 @@ pub const DropMark = enum { none, above, below };
 
 /// Set by useAlignedRows: rows put their label left and their control at the right edge.
 var g_is_aligned: bool = false;
+/// Set by useLabelStyle: the label column of unaligned rows.
+var g_label_style: *const ui.Style = &style.label;
+/// Set by openFieldGroup: its rows go undivided, with softer labels.
+var g_in_field_group: bool = false;
 /// Aligned rows drawn so far in the open section; every one after the first gets a divider above it.
 var g_section_row_count: usize = 0;
 var g_hinted: SectionList = .{};
@@ -179,8 +198,42 @@ pub fn openBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Rect {
     } };
     _ = try row.open(context);
     search.captureText(label);
-    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = label, .style = if (g_is_aligned) &style.label_aligned else &style.label });
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = label, .style = if (g_is_aligned) alignedLabelStyle() else g_label_style });
     return row;
+}
+
+/// A label beside a column of aligned rows without dividers, e.g. a set of switches; the caller closes it.
+pub fn openFieldGroup(context: *ui.Frame, key: ui.Key, label: []const u8) !FieldGroup {
+    const row = Rect{ .key = key, .style = &style.field_group };
+    _ = try row.open(context);
+    search.captureText(label);
+    try boxedText(context, key.indexed(1), label, &style.field_group_label, g_label_style);
+    const column = Rect{ .key = key.indexed(2), .style = &style.field_group_column };
+    _ = try column.open(context);
+    const group: FieldGroup = .{ .row = row, .column = column, .was_aligned = g_is_aligned, .was_in_field_group = g_in_field_group };
+    g_is_aligned = true;
+    g_in_field_group = true;
+    return group;
+}
+
+/// A rule between runs of unaligned rows, which draw no dividers of their own.
+pub fn separator(context: *ui.Frame, key: ui.Key) !void {
+    try context.e(Rect{ .key = key, .style = &style.separator });
+}
+
+/// Sets the label column of unaligned rows; returns the style it replaced, for putting back.
+pub fn useLabelStyle(label_style: *const ui.Style) *const ui.Style {
+    const previous = g_label_style;
+    g_label_style = label_style;
+    return previous;
+}
+
+/// A detail pane's top row, e.g. a name box and Remove; the caller closes it. Its rule stands in for the next row's divider.
+pub fn openDetailHeader(context: *ui.Frame, key: ui.Key) !Rect {
+    const header = Rect{ .key = key, .style = &style.detail_header };
+    _ = try header.open(context);
+    g_section_row_count = 0;
+    return header;
 }
 
 /// Rows and checkboxes drawn after it put their label left and their control at the right edge; returns the setting it replaced, for putting back.
@@ -242,20 +295,28 @@ pub fn segmented(context: *ui.Frame, key: ui.Key, options: []const []const u8, s
     return clicked;
 }
 
-/// A colour row that can be left unset to inherit `fallback`: its switch sets it, and picking a colour switches it on.
+/// A colour row that can be left unset to inherit `fallback`, shown struck through; the popup's Reset unsets it.
 pub fn optionalColor(context: *ui.Frame, key: ui.Key, label: []const u8, current: ?u32, fallback: u32) !?ColorChange {
     const row = try openBinding(context, key, label);
     var change: ?ColorChange = null;
     var value = colorFromArgb(current orelse fallback);
+    var is_reset = false;
     if ((try context.interact(ColorPicker{
         .key = key.indexed(3),
         .value = &value,
         .style = if (g_is_aligned) &style.color_picker_swatch else &style.color_picker,
-        .parts = .{ .swatch = &style.color_swatch, .popup = &style.color_popup },
+        .parts = .{
+            .swatch = if (g_is_aligned) &style.color_swatch_fill else &style.color_swatch,
+            .popup = &style.color_popup,
+            .reset = &style.full_width_button,
+            .reset_label = &style.button_text,
+        },
         .show_hex = !g_is_aligned,
+        .show_alpha = false,
+        .is_unset = current == null,
+        .reset = &is_reset,
     })).changed) change = .{ .set = argbFromColor(value) };
-    var is_set = current != null;
-    if (try checkbox(context, key.indexed(2), "", &is_set)) change = if (is_set) .{ .set = current orelse fallback } else .cleared;
+    if (is_reset) change = .cleared;
     try row.close(context);
     return change;
 }
@@ -449,7 +510,7 @@ pub fn checkbox(context: *ui.Frame, key: ui.Key, label: []const u8, checked: *bo
     if (label.len == 0) return toggleSwitch(context, key, checked);
 
     const row = try openRow(context, key.indexed(9));
-    try context.e(Text{ .selectable = false, .key = key.indexed(8), .content = label, .style = &style.label_aligned });
+    try context.e(Text{ .selectable = false, .key = key.indexed(8), .content = label, .style = alignedLabelStyle() });
     const changed = try toggleSwitch(context, key, checked);
     try row.close(context);
     return changed;
@@ -484,10 +545,14 @@ pub fn argbFromColor(color: Color) u32 {
     return (a << 24) | (r << 16) | (g << 8) | b;
 }
 
+fn alignedLabelStyle() *const ui.Style {
+    return if (g_in_field_group) &style.label_aligned_grouped else &style.label_aligned;
+}
+
 /// Counts the row: the section's first has no divider above it.
 fn nextRowStyle() *const ui.Style {
     defer g_section_row_count += 1;
-    return if (g_open_section != null and g_section_row_count > 0) &style.divided_row else &style.aligned_row;
+    return if (!g_in_field_group and g_open_section != null and g_section_row_count > 0) &style.divided_row else &style.aligned_row;
 }
 
 fn channelToByte(value: f32) u8 {

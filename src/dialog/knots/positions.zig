@@ -7,13 +7,14 @@ const main = @import("../../main.zig");
 const scout_mod = @import("../../clients/scout.zig");
 const session = @import("session.zig");
 
-/// Logged-in clients' character names, for picking a window to copy from. Borrows from the scout's window list, so use them this frame.
+/// Logged-in clients' character names, for picking a window to copy from. Copied into `arena`.
 pub fn openClients(arena: std.mem.Allocator) ![]const []const u8 {
     const scout = scout_mod.g_scout_ptr orelse return &.{};
     var names: std.ArrayList([]const u8) = .empty;
     for (scout.getWindows()) |window| {
         if (!window.is_eve_client or scout_mod.isGenericCharacterName(window.character_name)) continue;
-        try names.append(arena, window.character_name);
+        // A later edit this frame can rescan and free the scout's copy before the list is drawn.
+        try names.append(arena, try arena.dupe(u8, window.character_name));
     }
     return names.items;
 }

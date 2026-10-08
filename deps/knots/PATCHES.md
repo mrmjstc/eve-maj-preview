@@ -7,6 +7,14 @@ Vendored from [knots-ui/knots](https://github.com/knots-ui/knots) at commit `9cd
 - `show_hex` (default `true`): off, the trigger is just the swatch, with no hex beside it.
 - `show_alpha` (default `true`): off, the popup has no alpha strip, the hex has no alpha, and picked colours are opaque.
 - The popup is shifted left, as far as the viewport allows, so a trigger near the window's right edge doesn't push it off screen.
+- The swatch's corner radius comes from its style (`parts.swatch`, default 3). With `show_hex` off, the trigger's minimum height is just the swatch plus its padding, and the swatch has no outline of its own, so a swatch can fill its trigger.
+- `is_unset` (default `false`): on, the swatch is struck through, showing its colour is only a fallback.
+- `reset` (default `null`): set, the popup ends with a Reset button (styled by `parts.reset`/`parts.reset_label`, disabled while `is_unset`) whose click sets it true and closes the popup.
+- Checkerboards round their corner cells to match the fill over them, the swatch skips its board for an opaque colour, and the preview rounds only its outer corners, so no checker pixels show at rounded corners.
+
+## `src/ui/component/TextInput.zig`
+
+- The caret, selection and mouse hit-testing are offset by the gap the root's centring leaves above the line, so they line up with the text in an input taller than one line.
 
 ## `src/ui/Context.zig`
 

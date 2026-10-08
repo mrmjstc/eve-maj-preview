@@ -336,7 +336,7 @@ pub fn colorBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !v
         .key = fieldKey(ref, field).indexed(2),
         .value = &value,
         .style = if (is_aligned) &style.color_picker_swatch else &style.color_picker,
-        .parts = .{ .swatch = &style.color_swatch, .popup = &style.color_popup },
+        .parts = .{ .swatch = if (is_aligned) &style.color_swatch_fill else &style.color_swatch, .popup = &style.color_popup },
         .show_hex = !is_aligned,
         .show_alpha = !is_aligned,
     })).changed) ref.set(field, widgets.argbFromColor(value) | opaque_mask);
@@ -358,7 +358,7 @@ pub fn rgbBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !voi
         .key = fieldKey(ref, field).indexed(2),
         .value = &value,
         .style = if (is_aligned) &style.color_picker_swatch else &style.color_picker,
-        .parts = .{ .swatch = &style.color_swatch, .popup = &style.color_popup },
+        .parts = .{ .swatch = if (is_aligned) &style.color_swatch_fill else &style.color_swatch, .popup = &style.color_popup },
         .show_hex = !is_aligned,
         .show_alpha = false,
     })).changed) ref.set(field, (widgets.argbFromColor(value) & 0x00FFFFFF) | (argb & 0xFF000000));

@@ -216,7 +216,7 @@ fn namePrompt(context: *ui.Frame) !void {
     const row = Rect{ .key = .src(@src()), .style = &.{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 } };
     _ = try row.open(context);
     try context.e(TextInput{ .key = .src(@src()), .buf = &g_name_text, .placeholder = "Profile name", .style = &style.text_input });
-    _ = try context.interact(ColorPicker{ .key = .src(@src()), .value = &g_name_color, .style = &style.color_picker, .parts = .{ .swatch = &style.color_swatch, .popup = &style.color_popup } });
+    _ = try context.interact(ColorPicker{ .key = .src(@src()), .value = &g_name_color, .style = &style.color_picker_swatch, .parts = .{ .swatch = &style.color_swatch_fill, .popup = &style.color_popup }, .show_hex = false, .show_alpha = false });
     try row.close(context);
     try widgets.hintText(context, .src(@src()), "Letters, digits, spaces, '-' and '_', up to 16 characters. The colour tints this window while the profile is edited.");
     const actions = Rect{ .key = .src(@src()), .style = &style.modal_actions };

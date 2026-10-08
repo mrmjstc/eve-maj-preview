@@ -22,10 +22,8 @@ const CharacterRef = session.Ref(config.CharacterConfig);
 const slog = log.scoped("dialog_knots");
 
 const ROW_KEY: ui.Key = .str("knots.roster.row");
-/// What the border overrides start at when ticked; the name colour starts at white.
-const DEFAULT_ACTIVE_BORDER = 0xFFFFFF00;
-const DEFAULT_INACTIVE_BORDER = 0xFF606060;
-const DEFAULT_NAME_COLOR = 0xFFFFFFFF;
+/// The thumbnail's name colour is saved without alpha, which a swatch reads as transparent.
+const OPAQUE = 0xFF000000;
 
 const Flag = struct { field: []const u8, label: []const u8 };
 
@@ -167,10 +165,14 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     }
     const index = g_selected_index;
     const character = profile.item("characters", index);
+    // Controls beside a label column read better in this narrow pane than at its far edge.
+    const was_aligned = widgets.useAlignedRows(false);
+    defer _ = widgets.useAlignedRows(was_aligned);
+    const previous_label = widgets.useLabelStyle(&style.detail_label);
+    defer _ = widgets.useLabelStyle(previous_label);
 
-    const header = Rect{ .key = .src(@src()), .style = &style.detail_header };
-    _ = try header.open(context);
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Character Name", .style = &style.inline_label });
+    const header = try widgets.openDetailHeader(context, .src(@src()));
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Character Name", .style = &style.detail_label });
     try bind.textBox(context, character, "name", "Character Name");
     const removed = try widgets.confirmButton(context, ui.Key.str("knots.character.remove").indexed(index), "Remove", "Confirm", &style.plain_button, &style.confirm_button);
     try header.close(context);
@@ -183,17 +185,23 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     const hotkey_row = try widgets.openBinding(context, .str("knots.character.hotkey"), "Hotkey");
     try hotkey.field(context, character, "hotkey");
     try hotkey_row.close(context);
+    try widgets.separator(context, .str("knots.character.separator.identity"));
 
     try thumbnailSize(context, character);
     try widgets.hintText(context, .str("knots.character.size.hint"), "Leave both blank to use the global thumbnail size from the Appearance tab.");
+    try widgets.separator(context, .str("knots.character.separator.size"));
 
     try opacity(context, character);
     try widgets.hintText(context, .str("knots.character.opacity.hint"), "Stays linked to the Appearance tab's Opacity setting unless you move this slider away from it.");
+    try widgets.separator(context, .str("knots.character.separator.thumbnail"));
 
     try colors(context, character);
+    try widgets.separator(context, .str("knots.character.separator.colors"));
 
-    try widgets.subheading(context, .str("knots.character.behavior"), "Behavior");
+    const behavior = try widgets.openFieldGroup(context, .str("knots.character.behavior"), "Behavior");
     inline for (FLAGS) |flag| try bind.toggle(context, character, flag.field, flag.label);
+    try behavior.close(context);
+    try widgets.separator(context, .str("knots.character.separator.behavior"));
 
     try windowPosition(context, character);
     try stack.close(context);
@@ -207,6 +215,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
 /// Unset follows the Appearance tab's size; either box alone overrides that half.
 fn thumbnailSize(context: *ui.Frame, character: CharacterRef) !void {
     const row = try widgets.openBinding(context, .str("knots.character.size"), "Thumbnail Size");
+    try context.e(Rect{ .key = .src(@src()), .style = &style.spacer });
     const size = character.get("thumbnailSize") orelse config.CharacterThumbnailSizeConfig{};
     var next = size;
     switch (try bind.optionalValueBox(context, ui.Key.str("knots.character.width").indexed(character.index), toFloat(size.width), "Default", &style.number_input)) {
@@ -245,32 +254,36 @@ fn opacity(context: *ui.Frame, character: CharacterRef) !void {
 }
 
 fn colors(context: *ui.Frame, character: CharacterRef) !void {
+    const group = try widgets.openFieldGroup(context, .str("knots.character.colors"), "Colors");
+    const inherited = &session.profile().ptr.thumbnail;
     const borders = character.get("borderColors") orelse config.CharacterBorderColorsConfig{};
     var next = borders;
-    if (try widgets.optionalColor(context, ui.Key.str("knots.character.active").indexed(character.index), "Active Border Color", borders.activeBorderColor, DEFAULT_ACTIVE_BORDER)) |change| {
+    if (try widgets.optionalColor(context, ui.Key.str("knots.character.active").indexed(character.index), "Active Border Color", borders.activeBorderColor, inherited.borderColor)) |change| {
         next.activeBorderColor = switch (change) {
             .cleared => null,
             .set => |argb| argb,
         };
     }
-    if (try widgets.optionalColor(context, ui.Key.str("knots.character.inactive").indexed(character.index), "Inactive Border Color", borders.inactiveBorderColor, DEFAULT_INACTIVE_BORDER)) |change| {
+    if (try widgets.optionalColor(context, ui.Key.str("knots.character.inactive").indexed(character.index), "Inactive Border Color", borders.inactiveBorderColor, inherited.inactiveBorderColor)) |change| {
         next.inactiveBorderColor = switch (change) {
             .cleared => null,
             .set => |argb| argb,
         };
     }
     if (!std.meta.eql(next, borders)) character.set("borderColors", if (next.activeBorderColor == null and next.inactiveBorderColor == null) null else next);
-    if (try widgets.optionalColor(context, ui.Key.str("knots.character.name_color").indexed(character.index), "Character Name Color", character.get("nameColor"), DEFAULT_NAME_COLOR)) |change| {
+    if (try widgets.optionalColor(context, ui.Key.str("knots.character.name_color").indexed(character.index), "Character Name Color", character.get("nameColor"), inherited.characterNameColor | OPAQUE)) |change| {
         character.set("nameColor", switch (change) {
             .cleared => null,
             .set => |argb| argb,
         });
     }
+    try group.close(context);
 }
 
 /// Saved at once for the running profile, like a drag; Save Position needs the character's client open.
 fn windowPosition(context: *ui.Frame, character: CharacterRef) !void {
     const row = try widgets.openBinding(context, .str("knots.character.window_position"), "Window Position");
+    try context.e(Rect{ .key = .src(@src()), .style = &style.spacer });
     const shown = if (character.get("windowPosition")) |pos| try std.fmt.allocPrint(context.arena(), "{d}, {d}", .{ pos.x, pos.y }) else "Not set";
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = shown, .style = &style.muted_text });
     const name = character.get("name");

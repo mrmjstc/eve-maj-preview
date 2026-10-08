@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const Button = @import("Button.zig");
 const Frame = @import("../root.zig").Frame;
 const Element = @import("layout").Element;
 const ui_mod = @import("../root.zig");
@@ -7,6 +8,7 @@ const ui_mod = @import("../root.zig");
 const Color = ui_mod.Color;
 const Decoration = ui_mod.Decoration;
 const Key = ui_mod.Key;
+const Radius = ui_mod.Radius;
 const State = ui_mod.State;
 const Style = ui_mod.Style;
 const UI = ui_mod.UI;
@@ -20,6 +22,10 @@ parts: Parts = .{},
 show_hex: bool = true,
 /// EVE-Maj patch: off, the popup has no alpha strip, the hex has no alpha, and picked colours are opaque.
 show_alpha: bool = true,
+/// EVE-Maj patch: on, the swatch is struck through, showing `value` is only a fallback.
+is_unset: bool = false,
+/// EVE-Maj patch: set, the popup ends with a Reset button, disabled while `is_unset`; clicking it sets this true and closes the popup.
+reset: ?*bool = null,
 
 pub const Parts = struct {
     /// Fixed `width` / `height` size the color swatch.
@@ -30,6 +36,9 @@ pub const Parts = struct {
     area: *const Style = &.{},
     /// Hue and alpha strips; a fixed `height` sizes them.
     strip: *const Style = &.{},
+    /// EVE-Maj patch: the Reset button and its label.
+    reset: *const Style = &.{},
+    reset_label: *const Style = &.{},
 };
 
 pub const base = struct {
@@ -46,7 +55,8 @@ pub const base = struct {
         .focus = &.{ .background = .elevated, .border_color = .accent },
         .open = &.{ .background = .elevated, .border_color = .accent },
     };
-    pub const swatch: Style = .{ .width = .fixed(18), .height = .fixed(18) };
+    /// EVE-Maj patch: the radius is the swatch's own, so a `parts.swatch` can set it.
+    pub const swatch: Style = .{ .width = .fixed(18), .height = .fixed(18), .radius = .{ .fixed = 3 } };
     pub const popup: Style = .{
         .width = .fixed(240),
         .direction = .column,
@@ -67,6 +77,7 @@ pub const base = struct {
 const Metrics = struct {
     swatch_w: f32,
     swatch_h: f32,
+    swatch_radius: Radius,
     popup_w: f32,
     inner_w: f32,
     area_h: f32,
@@ -88,6 +99,7 @@ fn metrics(self: *const ColorPicker, ui: *UI) Metrics {
     return .{
         .swatch_w = fixedOr(swatch.layout.width, 18),
         .swatch_h = fixedOr(swatch.layout.height, 18),
+        .swatch_radius = swatch.surface.corner_radius,
         .popup_w = popup_w,
         .inner_w = @max(0, popup_w - popup.layout.padding.left() - popup.layout.padding.right()),
         .area_h = fixedOr(area.layout.height, 150),
@@ -110,6 +122,7 @@ const HUE_INDEX: usize = 5;
 const ALPHA_INDEX: usize = 6;
 const PREVIEW_INDEX: usize = 7;
 const HEX_INDEX: usize = 8;
+const RESET_INDEX: usize = 9;
 
 pub fn open(self: *const ColorPicker, frame: *Frame) !Element.Id {
     const ui = frame.ui();
@@ -141,7 +154,11 @@ pub fn open(self: *const ColorPicker, frame: *Frame) !Element.Id {
     const m = self.metrics(ui);
     const root = ui.resolveStyle(id, .{ .base = &base.root, .user = self.style }, ui.states(id, .{ .open = s.open }), null);
     var config = root.element(.{ .interactive = true });
-    config.height.min = @max(config.height.min, @max(m.swatch_h + 8, try ui.lineHeight(root.content.font_size, root.content.font) + 8));
+    // EVE-Maj patch: with no hex, the trigger only needs room for the swatch inside its own padding.
+    config.height.min = if (self.show_hex)
+        @max(config.height.min, @max(m.swatch_h + 8, try ui.lineHeight(root.content.font_size, root.content.font) + 8))
+    else
+        @max(config.height.min, m.swatch_h + config.padding.top() + config.padding.bottom());
     return try ui.openResolved(self.key, &root, config, null);
 }
 
@@ -164,24 +181,34 @@ pub fn close(self: *const ColorPicker, frame: *Frame) !void {
 
     var swatch_cmds: std.ArrayList(Decoration.DrawCmd) = .empty;
     const arena = frame.arena();
-    try appendCheckerboard(&swatch_cmds, arena, m.swatch_w, m.swatch_h, 6);
+    // EVE-Maj patch: an opaque colour covers the board, so it's only drawn under a translucent one.
+    if (self.value.value[3] < 1) try appendCheckerboard(&swatch_cmds, arena, m.swatch_w, m.swatch_h, 6, m.swatch_radius.value[0]);
     try swatch_cmds.append(arena, .{ .fill_rect = .{
         .x = 0,
         .y = 0,
         .w = m.swatch_w,
         .h = m.swatch_h,
         .color = self.value.value,
-        .corner_radius = .all(3),
+        .corner_radius = m.swatch_radius,
     } });
-    try swatch_cmds.append(arena, .{ .stroke_rect = .{
+    // EVE-Maj patch: with no hex, the trigger's own border frames the swatch, so it has no outline of its own.
+    if (self.show_hex) try swatch_cmds.append(arena, .{ .stroke_rect = .{
         .x = 0.5,
         .y = 0.5,
         .w = m.swatch_w - 1,
         .h = m.swatch_h - 1,
         .color = .{ 0, 0, 0, 0.35 },
-        .corner_radius = .all(2.5),
+        .corner_radius = m.swatch_radius.shrink(0.5),
         .thickness = 1,
     } });
+    // EVE-Maj patch: an unset colour is struck through, dark under light so it shows on any fallback.
+    if (self.is_unset) {
+        const inset: f32 = 4;
+        const from: [2]f32 = .{ inset, m.swatch_h - inset };
+        const to: [2]f32 = .{ m.swatch_w - inset, inset };
+        try swatch_cmds.append(arena, .{ .line = .{ .from = from, .to = to, .color = .{ 0, 0, 0, 0.6 }, .thickness = 3 } });
+        try swatch_cmds.append(arena, .{ .line = .{ .from = from, .to = to, .color = .{ 0.9, 0.3, 0.25, 1 }, .thickness = 1.5 } });
+    }
     _ = try ui.open(self.key.indexed(SWATCH_INDEX), .{
         .width = .fixed(m.swatch_w),
         .height = .fixed(m.swatch_h),
@@ -317,7 +344,9 @@ fn renderPopover(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker,
 
     const line_h = try ui.lineHeight(parent.font_size, parent.font);
     const strip_count: f32 = if (self.show_alpha) 2 else 1;
-    const popup_h = m.area_h + m.strip_h * strip_count + line_h + 76;
+    // EVE-Maj patch: the Reset button adds a line and its padding.
+    const reset_h: f32 = if (self.reset != null) line_h + 20 else 0;
+    const popup_h = m.area_h + m.strip_h * strip_count + line_h + 76 + reset_h;
     const viewport_bottom = viewport.y() + viewport.h();
     const space_below = viewport_bottom - (anchor.y() + anchor.h());
     const space_above = anchor.y() - viewport.y();
@@ -339,6 +368,21 @@ fn renderPopover(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker,
     if (self.show_alpha) try self.renderAlphaControl(frame, s, m);
     try self.renderPreview(frame, s, m);
     try self.renderHexField(frame, s);
+    // EVE-Maj patch: a Reset button that hands the click back through `reset`.
+    if (self.reset) |reset| {
+        if ((try (Button{
+            .key = self.key.indexed(RESET_INDEX),
+            .label = "Reset",
+            .disabled = self.is_unset,
+            .style = self.parts.reset,
+            .parts = .{ .label = self.parts.reset_label },
+        }).interact(frame)).clicked) {
+            reset.* = true;
+            s.open = false;
+            s.editing_hex = false;
+            s.has_original = false;
+        }
+    }
 
     ui.close();
 }
@@ -462,7 +506,7 @@ fn renderAlphaControl(self: *const ColorPicker, frame: *Frame, s: *State.ColorPi
     const arena = frame.arena();
     const w = m.inner_w;
     const h = m.strip_h;
-    try appendCheckerboard(&cmds, arena, w, h, 8);
+    try appendCheckerboard(&cmds, arena, w, h, 8, 3);
 
     const solid = hsvToLinearColor(s.hue, s.saturation, s.value, 1).value;
     const transparent = .{ solid[0], solid[1], solid[2], 0 };
@@ -496,9 +540,10 @@ fn renderPreview(self: *const ColorPicker, frame: *Frame, s: *State.ColorPicker,
     const half = w * 0.5;
     const original = if (s.has_original) s.original_color else self.value.value;
 
-    try appendCheckerboard(&cmds, arena, w, h, 7);
-    try cmds.append(arena, .{ .fill_rect = .{ .x = 0, .y = 0, .w = half, .h = h, .color = original, .corner_radius = .all(4) } });
-    try cmds.append(arena, .{ .fill_rect = .{ .x = half, .y = 0, .w = half, .h = h, .color = self.value.value, .corner_radius = .all(4) } });
+    try appendCheckerboard(&cmds, arena, w, h, 7, 4);
+    // EVE-Maj patch: only the outer corners are rounded, so the board doesn't show at the seam between the halves.
+    try cmds.append(arena, .{ .fill_rect = .{ .x = 0, .y = 0, .w = half, .h = h, .color = original, .corner_radius = .corners(4, 0, 0, 4) } });
+    try cmds.append(arena, .{ .fill_rect = .{ .x = half, .y = 0, .w = half, .h = h, .color = self.value.value, .corner_radius = .corners(0, 4, 4, 0) } });
     try cmds.append(arena, .{ .line = .{ .from = .{ half, 0 }, .to = .{ half, h }, .color = .{ 0, 0, 0, 0.35 }, .thickness = 1 } });
     try cmds.append(arena, .{ .stroke_rect = .{ .x = 0.5, .y = 0.5, .w = w - 1, .h = h - 1, .color = .{ 0, 0, 0, 0.35 }, .corner_radius = .all(3.5) } });
 
@@ -561,7 +606,8 @@ fn pointInBox(m: *const State.Measured, mouse_pos: [2]f64) [2]f32 {
     return .{ x, y };
 }
 
-fn appendCheckerboard(cmds: *std.ArrayList(Decoration.DrawCmd), allocator: std.mem.Allocator, w: f32, h: f32, cell: f32) !void {
+/// EVE-Maj patch: `radius` rounds the outer corner of each corner cell, so the board doesn't show past a rounded fill drawn over it.
+fn appendCheckerboard(cmds: *std.ArrayList(Decoration.DrawCmd), allocator: std.mem.Allocator, w: f32, h: f32, cell: f32, radius: f32) !void {
     var y: f32 = 0;
     var row: usize = 0;
     while (y < h) : ({
@@ -574,12 +620,22 @@ fn appendCheckerboard(cmds: *std.ArrayList(Decoration.DrawCmd), allocator: std.m
             x += cell;
             col += 1;
         }) {
+            const is_top = y == 0;
+            const is_left = x == 0;
+            const is_bottom = y + cell >= h;
+            const is_right = x + cell >= w;
             try cmds.append(allocator, .{ .fill_rect = .{
                 .x = x,
                 .y = y,
                 .w = @min(cell, w - x),
                 .h = @min(cell, h - y),
                 .color = checkerColor((row + col) & 1),
+                .corner_radius = .corners(
+                    if (is_top and is_left) radius else 0,
+                    if (is_top and is_right) radius else 0,
+                    if (is_bottom and is_right) radius else 0,
+                    if (is_bottom and is_left) radius else 0,
+                ),
             } });
         }
     }
