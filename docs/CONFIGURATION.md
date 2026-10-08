@@ -1321,7 +1321,7 @@ Define custom colors for specific solar systems:
 
 With `useUniqueSystemColors` on, systems without an override get an automatically assigned color: the palette color farthest from your overrides and every other assigned color. `useUniqueCharacterNameColors` does the same for character names, and `useUniqueCharacterBorderColors` for the focused border (a character's own `borderColors.activeBorderColor` wins); a character gets one stored color used for both, avoiding every character's own `nameColor` and active border color. Assignments are kept for the 64 most recently seen systems and 64 most recently seen characters in `data/colors.json` (shared by all profiles), written when the last EVE client closes or the app exits; delete the file to reassign them.
 
-Chatlog monitoring also keeps each character's EVE character ID, read from its log file names, in `data/character_ids.json`, so later lookups skip reading log headers; it's managed automatically, and deleting it only means the IDs are found again from the logs.
+Chatlog monitoring also keeps each character's EVE character ID, read from its log file names, in `data/character_ids.json`, so later lookups skip reading log headers; it's managed automatically, and deleting it only means the IDs are found again from the logs. The Characters tab shows each known character's portrait, downloaded once from EVE's image server into `data/portraits/` and never fetched again; delete a file there to fetch that portrait anew.
 
 > **Note**: The key is `systemName`, not `name`. Unknown keys are ignored, so an entry using `name` loads with no system names and never matches.
 
