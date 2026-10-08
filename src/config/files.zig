@@ -13,6 +13,8 @@ pub const MAX_CONFIG_FILE_SIZE: u64 = 300 * 1024;
 pub const DATA_DIR = "data";
 pub const AUTO_COLORS_FILE = DATA_DIR ++ "/colors.json";
 pub const CHARACTER_IDS_FILE = DATA_DIR ++ "/character_ids.json";
+/// Downloaded character portraits, one `{id}.jpg` each, kept for good.
+pub const PORTRAITS_DIR = DATA_DIR ++ "/portraits";
 
 /// Files older versions kept beside the exe, and where they live now.
 const LEGACY_FILES = [_]struct { from: []const u8, to: []const u8 }{

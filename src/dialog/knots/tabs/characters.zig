@@ -6,6 +6,7 @@ const ranges = @import("../../../config/ranges.zig");
 const session = @import("../session.zig");
 const bind = @import("../bind.zig");
 const hotkey = @import("../hotkey.zig");
+const portraits = @import("../portraits.zig");
 const positions = @import("../positions.zig");
 const suggest = @import("../suggest.zig");
 const status = @import("../status.zig");
@@ -22,6 +23,7 @@ const CharacterRef = session.Ref(config.CharacterConfig);
 const slog = log.scoped("dialog_knots");
 
 const ROW_KEY: ui.Key = .str("knots.roster.row");
+const PORTRAIT_KEY: ui.Key = .str("knots.roster.portrait");
 /// The thumbnail's name colour is saved without alpha, which a swatch reads as transparent.
 const OPAQUE = 0xFF000000;
 
@@ -130,7 +132,11 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
             g_selected_index = index;
             context.requestRedraw();
         }
-        try widgets.boxedText(context, ui.Key.str("knots.roster.index").indexed(index), try std.fmt.allocPrint(arena, "{d:0>2}", .{index + 1}), &style.index_chip, &style.index_chip_text);
+        if (portraits.image(arena, PORTRAIT_KEY, character.name, &style.roster_portrait)) |portrait| {
+            try context.e(portrait);
+        } else {
+            try context.e(Rect{ .key = ui.Key.str("knots.roster.portrait_blank").indexed(index), .style = &style.roster_portrait_blank });
+        }
         try context.e(Text{
             .selectable = false,
             .key = ui.Key.str("knots.roster.name").indexed(index),

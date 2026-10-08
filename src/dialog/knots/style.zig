@@ -187,6 +187,10 @@ pub const roster_name_selected: Style = roster_name.with(.{ .font = FONT_SEMIBOL
 pub const roster_empty: Style = .{ .width = .grow(), .padding = .xy(8, 6) };
 pub const roster_empty_text: Style = .{ .width = .grow(), .wrap = true, .font_size = .xs, .foreground = .{ .color = MUTED } };
 
+pub const roster_portrait: Style = .{ .width = .fixed(16), .height = .fixed(16), .radius = .sm };
+/// Holds a portrait's place until it loads, or when it can't.
+pub const roster_portrait_blank: Style = roster_portrait.with(.{ .background = .{ .color = SURFACE_ALT } });
+
 /// Around a row's number, unboxed so it doesn't outshine the name.
 pub const index_chip: Style = .{ .padding = .xy(2, 1) };
 pub const index_chip_text: Style = .{ .font = FONT_MONO, .font_size = .xs, .foreground = .{ .color = MUTED } };

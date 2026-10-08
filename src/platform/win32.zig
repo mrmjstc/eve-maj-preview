@@ -1211,7 +1211,7 @@ pub const CLSCTX_INPROC_SERVER: u32 = 0x1;
 
 pub extern "ole32" fn CoInitializeEx(pvReserved: ?*anyopaque, dwCoInit: u32) callconv(.c) c_long;
 pub extern "ole32" fn CoUninitialize() callconv(.c) void;
-extern "ole32" fn CoCreateInstance(
+pub extern "ole32" fn CoCreateInstance(
     rclsid: *const GUID,
     pUnkOuter: ?*anyopaque,
     dwClsContext: u32,

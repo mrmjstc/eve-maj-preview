@@ -160,6 +160,7 @@ fn mainImpl(init: std.process.Init) !void {
     config.setEnvironMap(init.environ_map);
     g_allocator = init.gpa;
     knots_host.init(g_allocator, g_io);
+    defer knots_host.deinit();
     g_trackers = .{ .allocator = g_allocator, .io = g_io };
 
     setCwdToExeDir();

@@ -27,6 +27,7 @@ const search = @import("search.zig");
 const import_dialog = @import("import_dialog.zig");
 const update_notice = @import("update_notice.zig");
 const overlays = @import("tabs/overlays.zig");
+const portraits = @import("portraits.zig");
 const prices = @import("prices.zig");
 const behavior = @import("tabs/behavior.zig");
 const log = @import("../../log.zig");
@@ -56,6 +57,8 @@ pub const Command = enum(usize) {
     picked,
     /// An ore price fetch's result, as a *prices.Fetched in lParam.
     prices_fetched,
+    /// A character portrait's load result, as a *portraits.Loaded in lParam.
+    portrait_loaded,
 };
 
 const State = enum { closed, open };
@@ -78,6 +81,11 @@ var g_spawn_hook: ?win32.HHOOK = null;
 pub fn init(allocator: std.mem.Allocator, io: std.Io) void {
     g_allocator = allocator;
     g_io = io;
+}
+
+/// At app exit.
+pub fn deinit() void {
+    portraits.deinit();
 }
 
 pub fn isOpen() bool {
@@ -137,6 +145,7 @@ pub fn onCommand(wParam: win32.WPARAM, lParam: win32.LPARAM) void {
         .profile_action => profiles.runPending(),
         .picked => applyPicked(lParam),
         .prices_fetched => applyPrices(lParam),
+        .portrait_loaded => applyPortrait(lParam),
     }
     requestFrame();
 }
@@ -167,6 +176,8 @@ fn run() void {
     region.init(g_allocator);
     defer region.cancel();
     prices.init(g_allocator);
+    portraits.init(g_allocator, main.g_timer_hwnd, @backingInt(Command.portrait_loaded));
+    for (session.profile().ptr.characters.items) |character| portraits.preload(character.name);
     lang.init(g_allocator);
     defer lang.deinit();
     search.init(g_allocator);
@@ -380,6 +391,12 @@ fn applyPrices(lParam: win32.LPARAM) void {
     }
     for (fetched.prices) |price| overlays.setOrePrice(price.name, price.price);
     status.show(if (fetched.prices.len > 0) .success else .failure, "Updated {d} of {d} price(s)", .{ fetched.prices.len, prices.NAMES.len });
+}
+
+fn applyPortrait(lParam: win32.LPARAM) void {
+    if (lParam == 0) return;
+    // Stored even once the window has closed, since the cache outlives it.
+    portraits.store(@ptrFromInt(@as(usize, @bitCast(lParam))));
 }
 
 fn applyPicked(lParam: win32.LPARAM) void {
