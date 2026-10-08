@@ -433,6 +433,16 @@ pub fn segmented(context: *ui.Frame, key: ui.Key, options: []const []const u8, s
 }
 
 /// A colour row that can be left unset to inherit `fallback`, shown struck through; the popup's Reset unsets it.
+/// The swatch, its popup and the popup's Reset button, as every colour setting draws them.
+pub fn colorParts(is_aligned: bool) ColorPicker.Parts {
+    return .{
+        .swatch = if (is_aligned) &style.color_swatch_fill else &style.color_swatch,
+        .popup = &style.color_popup,
+        .reset = &style.full_width_button,
+        .reset_label = &style.button_text,
+    };
+}
+
 pub fn optionalColor(context: *ui.Frame, key: ui.Key, label: []const u8, current: ?u32, fallback: u32) !?ColorChange {
     const row = try openBinding(context, key, label);
     var change: ?ColorChange = null;
@@ -442,12 +452,7 @@ pub fn optionalColor(context: *ui.Frame, key: ui.Key, label: []const u8, current
         .key = key.indexed(3),
         .value = &value,
         .style = if (g_is_aligned) &style.color_picker_swatch else &style.color_picker,
-        .parts = .{
-            .swatch = if (g_is_aligned) &style.color_swatch_fill else &style.color_swatch,
-            .popup = &style.color_popup,
-            .reset = &style.full_width_button,
-            .reset_label = &style.button_text,
-        },
+        .parts = colorParts(g_is_aligned),
         .show_hex = !g_is_aligned,
         .show_alpha = false,
         .is_unset = current == null,

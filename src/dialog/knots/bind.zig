@@ -325,19 +325,22 @@ pub fn color(context: *ui.Frame, ref: anytype, comptime field: []const u8, label
     try row.close(context);
 }
 
-/// Just the picker; aligned, it's a bare swatch that saves RGB only, so a colour with alpha comes out opaque.
+/// Just the picker, whose Reset restores the field's default; aligned, it's a bare swatch that saves RGB only, so a colour with alpha comes out opaque.
 pub fn colorBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
     const is_aligned = widgets.isAligned();
     const opaque_mask: u32 = if (is_aligned) 0xFF000000 else 0;
     var value = widgets.colorFromArgb(ref.get(field) | opaque_mask);
+    var is_reset = false;
     if ((try context.interact(ColorPicker{
         .key = fieldKey(ref, field).indexed(2),
         .value = &value,
         .style = if (is_aligned) &style.color_picker_swatch else &style.color_picker,
-        .parts = .{ .swatch = if (is_aligned) &style.color_swatch_fill else &style.color_swatch, .popup = &style.color_popup },
+        .parts = widgets.colorParts(is_aligned),
         .show_hex = !is_aligned,
         .show_alpha = !is_aligned,
+        .reset = if (defaultOf(@TypeOf(ref), field) != null) &is_reset else null,
     })).changed) ref.set(field, widgets.argbFromColor(value) | opaque_mask);
+    if (is_reset) if (defaultOf(@TypeOf(ref), field)) |default| ref.set(field, default);
 }
 
 /// An optional colour setting, shown as `fallback` while unset; resetting it clears it.
@@ -356,19 +359,22 @@ pub fn rgb(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: 
     try row.close(context);
 }
 
-/// Just the picker, for a row with more in it, e.g. a background's opacity; in aligned rows it's just the swatch.
+/// Just the picker, for a row with more in it, e.g. a background's opacity; its Reset restores the default's RGB, keeping the alpha.
 pub fn rgbBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
     const argb: u32 = ref.get(field);
     const is_aligned = widgets.isAligned();
     var value = widgets.colorFromArgb(argb | 0xFF000000);
+    var is_reset = false;
     if ((try context.interact(ColorPicker{
         .key = fieldKey(ref, field).indexed(2),
         .value = &value,
         .style = if (is_aligned) &style.color_picker_swatch else &style.color_picker,
-        .parts = .{ .swatch = if (is_aligned) &style.color_swatch_fill else &style.color_swatch, .popup = &style.color_popup },
+        .parts = widgets.colorParts(is_aligned),
         .show_hex = !is_aligned,
         .show_alpha = false,
+        .reset = if (defaultOf(@TypeOf(ref), field) != null) &is_reset else null,
     })).changed) ref.set(field, (widgets.argbFromColor(value) & 0x00FFFFFF) | (argb & 0xFF000000));
+    if (is_reset) if (defaultOf(@TypeOf(ref), field)) |default| ref.set(field, (default & 0x00FFFFFF) | (argb & 0xFF000000));
 }
 
 /// The alpha of an ARGB setting as a 0-100 box with "%" inside, keeping its RGB.
@@ -473,6 +479,12 @@ pub fn boxKey(ref: anytype, comptime field: []const u8) ui.Key {
 }
 
 /// Unique per setting, and per item when the setting is in a list.
+/// `field`'s default in the settings struct `Ref` edits; null when it has none, so its swatch offers no Reset.
+fn defaultOf(comptime Ref: type, comptime field: []const u8) ?@FieldType(@typeInfo(@FieldType(Ref, "ptr")).pointer.child, field) {
+    const T = @typeInfo(@FieldType(Ref, "ptr")).pointer.child;
+    return comptime std.meta.fieldInfo(T, @field(std.meta.FieldEnum(T), field)).attrs.defaultValue(@FieldType(T, field));
+}
+
 fn fieldKey(ref: anytype, comptime field: []const u8) ui.Key {
     const T = @typeInfo(@FieldType(@TypeOf(ref), "ptr")).pointer.child;
     return ui.Key.str("knots.bind:" ++ @typeName(T) ++ "." ++ field).indexed(ref.index);
