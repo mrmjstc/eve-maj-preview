@@ -45,10 +45,7 @@ pub fn environMap() *const std.process.Environ.Map {
 pub fn migrateLegacyLayout() void {
     const cwd = std.Io.Dir.cwd();
     for ([_][]const u8{ DATA_DIR, log.LOG_DIR }) |dir| {
-        cwd.createDir(g_io, dir, .default_dir) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
-            else => slog.err("Failed to create folder '{s}': {}", .{ dir, err }),
-        };
+        createDirIfMissing(dir) catch |err| slog.err("Failed to create folder '{s}': {}", .{ dir, err });
     }
 
     // Log files come first in LEGACY_FILES, so the old log is moved before these messages reopen it.
@@ -67,7 +64,15 @@ pub fn migrateLegacyLayout() void {
     }
 }
 
-/// Writes via a temp file + rename so a failed write can't corrupt the destination file.
+/// An existing folder isn't a failure; doesn't log.
+pub fn createDirIfMissing(path: []const u8) !void {
+    std.Io.Dir.cwd().createDir(g_io, path, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+}
+
+/// Writes via a temp file + rename so a failed write can't corrupt the destination file. Logs every failure itself.
 pub fn atomicWriteFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8, content: []const u8) !void {
     // Unique per call so overlapping saves of the same path can't share a temp file.
     const unique = blk: {

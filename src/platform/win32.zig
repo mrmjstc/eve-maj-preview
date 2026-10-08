@@ -1204,6 +1204,11 @@ const IID_IFileOpenDialog = GUID{
 const FOS_PICKFOLDERS: u32 = 0x00000020;
 const SIGDN_FILESYSPATH: u32 = 0x80058000;
 
+pub const COINIT_MULTITHREADED: u32 = 0x0;
+pub const COINIT_APARTMENTTHREADED: u32 = 0x2;
+pub const COINIT_DISABLE_OLE1DDE: u32 = 0x4;
+pub const CLSCTX_INPROC_SERVER: u32 = 0x1;
+
 pub extern "ole32" fn CoInitializeEx(pvReserved: ?*anyopaque, dwCoInit: u32) callconv(.c) c_long;
 pub extern "ole32" fn CoUninitialize() callconv(.c) void;
 extern "ole32" fn CoCreateInstance(
@@ -1310,8 +1315,6 @@ const IShellItem = extern struct {
 /// Shows the Win32 "Select Folder" dialog with `title`, returning the chosen path (caller frees) or null if cancelled.
 /// `owner`, when given, keeps the picker above a topmost owner window (an owned window always draws above its owner, even a HWND_TOPMOST one).
 pub fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8, owner: ?HWND) !?[]const u8 {
-    const COINIT_APARTMENTTHREADED: u32 = 0x2;
-    const COINIT_DISABLE_OLE1DDE: u32 = 0x4;
     const hr = CoInitializeEx(null, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     // 0x00000001 is S_FALSE (already initialized), which is OK.
     if (hr < 0 and hr != 0x00000001) {
@@ -1319,7 +1322,6 @@ pub fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8, owner: 
     }
     defer CoUninitialize();
 
-    const CLSCTX_INPROC_SERVER: u32 = 0x1;
     var dialog_ptr: ?*anyopaque = null;
     const create_hr = CoCreateInstance(
         &CLSID_FileOpenDialog,
@@ -1362,8 +1364,6 @@ pub fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8, owner: 
 
 /// Shows the Win32 "Open File" dialog restricted to `filter_spec` (e.g. "*.wav;*.mp3"); see showFolderPicker for the rest.
 pub fn showFilePicker(allocator: std.mem.Allocator, title: []const u8, filter_name: []const u8, filter_spec: []const u8, owner: ?HWND) !?[]const u8 {
-    const COINIT_APARTMENTTHREADED: u32 = 0x2;
-    const COINIT_DISABLE_OLE1DDE: u32 = 0x4;
     const hr = CoInitializeEx(null, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     // 0x00000001 is S_FALSE (already initialized), which is OK.
     if (hr < 0 and hr != 0x00000001) {
@@ -1371,7 +1371,6 @@ pub fn showFilePicker(allocator: std.mem.Allocator, title: []const u8, filter_na
     }
     defer CoUninitialize();
 
-    const CLSCTX_INPROC_SERVER: u32 = 0x1;
     var dialog_ptr: ?*anyopaque = null;
     const create_hr = CoCreateInstance(
         &CLSID_FileOpenDialog,

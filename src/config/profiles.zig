@@ -108,10 +108,7 @@ pub fn deleteToBackup(allocator: std.mem.Allocator, name: []const u8) !void {
 fn newBackupPath(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
     const backup_dir = try path(allocator, BACKUP_DIR);
     defer allocator.free(backup_dir);
-    std.Io.Dir.cwd().createDir(files.g_io, backup_dir, .default_dir) catch |err| switch (err) {
-        error.PathAlreadyExists => {},
-        else => return err,
-    };
+    try files.createDirIfMissing(backup_dir);
     return allocator.print("{s}{c}{d}_{s}", .{ backup_dir, std.Io.Dir.path.sep, std.Io.Clock.real.now(files.g_io).toSeconds(), name });
 }
 
@@ -270,10 +267,7 @@ pub fn writeDefault(allocator: std.mem.Allocator, name: []const u8, accent_color
 fn ensureDir(allocator: std.mem.Allocator) !void {
     const cwd = std.Io.Dir.cwd();
 
-    cwd.createDir(files.g_io, files.PROFILES_DIR, .default_dir) catch |err| switch (err) {
-        error.PathAlreadyExists => {},
-        else => return err,
-    };
+    try files.createDirIfMissing(files.PROFILES_DIR);
 
     const default_path = try path(allocator, files.DEFAULT_PROFILE);
     defer allocator.free(default_path);
