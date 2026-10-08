@@ -866,8 +866,8 @@ pub const roster_row_drop_below: Style = roster_row.with(.{ .border_width = .edg
 /// .detail-value: a read-only value in a detail form, e.g. the file an import reads.
 pub const detail_value: Style = .{ .width = .grow(), .foreground = .{ .color = TEXT_SECONDARY } };
 
-/// A binding's backward and forward halves, one above the other.
-pub const pair_column: Style = .{ .width = .grow(), .direction = .column, .gap = 6 };
+/// widgets.openMarkedBinding's label and mark, outside aligned rows.
+pub const label_cell: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
 /// .binding-dir: the arrow marking a pair's half.
 pub const binding_arrow: Style = .{ .width = .fixed(14), .foreground = .{ .color = MUTED } };
 

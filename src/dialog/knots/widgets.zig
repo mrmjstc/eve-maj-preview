@@ -236,6 +236,19 @@ pub fn openBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Rect {
     return row;
 }
 
+/// openBinding with `mark` at the end of the label's column, so the controls still start where other rows' do.
+pub fn openMarkedBinding(context: *ui.Frame, key: ui.Key, label: []const u8, mark: []const u8) !Rect {
+    const row = Rect{ .key = key, .style = if (g_is_aligned) nextRowStyle() else &style.aligned_row };
+    _ = try row.open(context);
+    const cell = Rect{ .key = key.indexed(2), .style = if (g_is_aligned) &style.inline_row else &style.label_cell };
+    _ = try cell.open(context);
+    search.captureText(label);
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = label, .style = if (g_is_aligned) alignedLabelStyle() else g_label_style });
+    try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = mark, .style = &style.binding_arrow });
+    try cell.close(context);
+    return row;
+}
+
 /// A label beside a column of aligned rows without dividers, e.g. a set of switches; the caller closes it.
 pub fn openFieldGroup(context: *ui.Frame, key: ui.Key, label: []const u8) !FieldGroup {
     const row = Rect{ .key = key, .style = &style.field_group };

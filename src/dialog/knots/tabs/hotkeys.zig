@@ -140,16 +140,12 @@ fn binding(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: 
 
 /// A backward/forward set in one row, each half marked with its direction.
 fn pair(context: *ui.Frame, ref: anytype, comptime previous: []const u8, comptime next: []const u8, label: []const u8) !void {
-    const row = try widgets.openBinding(context, .str("knots.hotkeys.pair:" ++ previous), label);
-    const halves = Rect{ .key = .str("knots.hotkeys.pair.halves:" ++ previous), .style = &style.pair_column };
+    const row = try widgets.openMarkedBinding(context, .str("knots.hotkeys.pair:" ++ previous), label, "\u{2190}");
+    const halves = Rect{ .key = .str("knots.hotkeys.pair.halves:" ++ previous), .style = &style.inline_row };
     _ = try halves.open(context);
-    inline for (.{ .{ previous, "\u{2190}" }, .{ next, "\u{2192}" } }) |half| {
-        const line = Rect{ .key = .str("knots.hotkeys.pair.half:" ++ half[0]), .style = &style.inline_row };
-        _ = try line.open(context);
-        try context.e(Text{ .selectable = false, .key = .str("knots.hotkeys.pair.arrow:" ++ half[0]), .content = half[1], .style = &style.binding_arrow });
-        try hotkey.field(context, ref, half[0]);
-        try line.close(context);
-    }
+    try hotkey.field(context, ref, previous);
+    try context.e(Text{ .selectable = false, .key = .str("knots.hotkeys.pair.arrow:" ++ next), .content = "\u{2192}", .style = &style.binding_arrow });
+    try hotkey.field(context, ref, next);
     try halves.close(context);
     try row.close(context);
 }
