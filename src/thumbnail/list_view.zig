@@ -462,7 +462,6 @@ fn drawIndicator(bitmap: *const gdi_overlay.OverlayBitmap, style: types.ListIndi
     switch (style) {
         .Dot => drawDot(bitmap.pixels, width, height, cx, cy, radius, argb),
         .Square => gdi_overlay.fillRect(bitmap.pixels, width, height, @intCast(cx - radius), @intCast(cy - radius), @intCast(radius * 2), @intCast(radius * 2), argb),
-        .Bar => gdi_overlay.fillRect(bitmap.pixels, width, height, @intCast(col_left + list_look.BORDER_WIDTH), @intCast(row_top), @intCast(list_look.BAR_WIDTH), @intCast(row_height), argb),
         .None => {},
     }
 }

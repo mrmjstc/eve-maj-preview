@@ -145,7 +145,7 @@ pub fn show(context: *ui.Frame, display: DisplayRef) !void {
     try bind.unitNumberBox(context, display, "listViewFontSize", "px", .{});
     try bind.choiceBox(context, display, "listViewFontWeight", &style.select_narrow);
     try font.close(context);
-    try bind.segmented(context, display, "listViewIndicatorStyle", "Indicator", &.{ "Dot", "Square", "Bar", "None" });
+    try bind.segmented(context, display, "listViewIndicatorStyle", "Indicator", &.{ "Dot", "Square", "None" });
     try bind.toggle(context, display, "rememberListViewPosition", "Remember Position");
     try bind.toggle(context, display, "listViewHideWhenNoEveFocus", "Hide When No EVE Focus");
     try widgets.hintText(context, .src(@src()), "Hides the list while no EVE client window has focus.");
@@ -220,8 +220,7 @@ fn sampleRow(context: *ui.Frame, sample: Sample, index: usize, look: Look) !void
         .direction = .row,
         .@"align" = .center,
         .gap = look.px(list_look.INDICATOR_GAP),
-        // A bar runs down the row's very edge.
-        .padding = .init(0, look.px(list_look.PADDING_X), 0, if (look.indicator == .Bar) 0 else look.px(list_look.PADDING_X)),
+        .padding = .xy(look.px(list_look.PADDING_X), 0),
     };
     switch (sample.state) {
         .active => {
@@ -364,7 +363,6 @@ fn indicator(context: *ui.Frame, key: ui.Key, color: u32, look: Look) !void {
     const shape: ui.Style = switch (look.indicator) {
         .Dot => .{ .width = .fixed(radius * 2), .height = .fixed(radius * 2), .radius = .{ .fixed = radius } },
         .Square => .{ .width = .fixed(radius * 2), .height = .fixed(radius * 2) },
-        .Bar => .{ .width = .fixed(look.px(list_look.BAR_WIDTH)), .height = .grow() },
         .None => return,
     };
     const indicator_shape = try context.arena().create(ui.Style);

@@ -401,7 +401,7 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
 - `listViewColumns`: Number of columns, 1–6 (default: `1`)
 - `listViewColumnWidth`: Width of each column in pixels, 120–500 (default: `230`); names and right-hand text are cut short to fit
 - `listViewFontName`, `listViewFontSize`, `listViewFontWeight`: Font used for character names; the header and right-hand text are drawn 2px smaller, and rows and the header grow with the font so its text always fits (font weight uses the same values as [Text Overlay Settings](#text-overlay-settings))
-- `listViewIndicatorStyle`: How each row marks its state - `Dot` (default), `Square`, `Bar` (down the row's left edge), or `None`
+- `listViewIndicatorStyle`: How each row marks its state - `Dot` (default), `Square`, or `None`
 - `listViewShowSystemName`: Show each client's system on the right of its row (default: `true`)
 - `listViewSystemNameColor`: System name colour (default: `0xFF8B8F96`)
 - `listViewUseUniqueSystemColors`: Give each system its own generated colour instead of `listViewSystemNameColor` (default: `false`)

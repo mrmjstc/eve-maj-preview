@@ -74,8 +74,6 @@ pub const ListViewOrder = enum {
 pub const ListIndicatorStyle = enum {
     Dot,
     Square,
-    /// Down the row's left edge.
-    Bar,
     None,
 };
 

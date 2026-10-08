@@ -10,10 +10,8 @@ const DisplayConfig = display_mod.DisplayConfig;
 const IndicatorStyle = types.ListIndicatorStyle;
 
 pub const BOTTOM_PADDING: i32 = 4;
-pub const BORDER_WIDTH: i32 = 1;
 pub const PADDING_X: i32 = 10;
 pub const BADGE_RADIUS: i32 = 3;
-pub const BAR_WIDTH: i32 = 3;
 /// Between a row's indicator and its name.
 pub const INDICATOR_GAP: i32 = 8;
 pub const CORNER_RADIUS: usize = 4;
@@ -76,7 +74,6 @@ pub const StatSettings = struct {
 pub fn textLeft(style: IndicatorStyle) i32 {
     return switch (style) {
         .Dot, .Square => PADDING_X + BADGE_RADIUS * 2 + INDICATOR_GAP,
-        .Bar => BORDER_WIDTH + BAR_WIDTH + INDICATOR_GAP,
         .None => PADDING_X,
     };
 }
