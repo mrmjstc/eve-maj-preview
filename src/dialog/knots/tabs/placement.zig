@@ -43,13 +43,18 @@ var g_selected_id: u32 = 0;
 
 pub fn show(context: *ui.Frame) !void {
     const display = session.profile().child("display");
-    const section = try widgets.openSection(context, "Thumbnail Placement", "Manual lets you drag each thumbnail where you want it. Thumbnail Spaces fills screen regions you draw with the thumbnails of the hotkey groups each one holds.", &style.section);
+    const section = try widgets.openSection(context, "Thumbnail Placement", "Manual lets you drag each thumbnail where you want it. Thumbnail Spaces fills screen regions you draw with the thumbnails of the hotkey groups each one holds.", if (fillsWindow()) &style.fill_section else &style.section);
     try bind.segmented(context, display, "placementMode", "Placement Mode", &.{ "Manual", "Thumbnail Spaces" });
     // A search shows both modes' settings, so a match in the other mode is still found.
     const mode = display.get("placementMode");
     if (mode == .Manual or search.isActive()) try manual(context, display);
     if (mode == .ThumbnailSpaces or search.isActive()) try spacesMode(context, display);
     try section.close(context);
+}
+
+/// Spaces mode fills the window like Characters; Manual's settings, or both modes during a search, scroll instead.
+pub fn fillsWindow() bool {
+    return session.profile().ptr.display.placementMode == .ThumbnailSpaces and !search.isActive();
 }
 
 fn manual(context: *ui.Frame, display: DisplayRef) !void {
@@ -92,22 +97,33 @@ fn spacesMode(context: *ui.Frame, display: DisplayRef) !void {
     try widgets.subheading(context, .src(@src()), "Spaces");
     try widgets.hintText(context, .src(@src()), "A space can hold several hotkey groups. A character two spaces hold goes to the first one in the list; drag a space to reorder.");
 
-    const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail };
+    const is_filling = fillsWindow();
+    const master_detail = Rect{ .key = .src(@src()), .style = if (is_filling) &style.master_detail_fill else &style.master_detail };
     _ = try master_detail.open(context);
-    try roster(context, profile);
-    const stack = Rect{ .key = .src(@src()), .style = &style.detail_fit };
-    _ = try stack.open(context);
-    if (selectedIndex(profile.ptr.thumbnailSpaces.items)) |index| {
-        try detail(context, profile, index);
+    try roster(context, profile, if (is_filling) &style.roster_wide else &style.roster_filters);
+    if (is_filling) {
+        const pane = try widgets.openScrollPane(context, .str("knots.space.detail"), style.detail_scroll);
+        try selectedDetail(context, profile);
+        try pane.close(context);
     } else {
-        try widgets.paragraph(context, .src(@src()), "Add a space, then draw its region and pick the hotkey groups whose thumbnails fill it.");
+        const stack = Rect{ .key = .src(@src()), .style = &style.detail_fit };
+        _ = try stack.open(context);
+        try selectedDetail(context, profile);
+        try stack.close(context);
     }
-    try stack.close(context);
     try master_detail.close(context);
 
     try widgets.subheading(context, .src(@src()), "All Spaces");
     try bind.toggle(context, display, "hideThumbnailsDuringRegionSelect", "Hide Thumbnails While Drawing a Region");
     try widgets.hintText(context, .src(@src()), "Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.");
+}
+
+fn selectedDetail(context: *ui.Frame, profile: ProfileRef) !void {
+    if (selectedIndex(profile.ptr.thumbnailSpaces.items)) |index| {
+        try detail(context, profile, index);
+    } else {
+        try widgets.paragraph(context, .src(@src()), "Add a space, then draw its region and pick the hotkey groups whose thumbnails fill it.");
+    }
 }
 
 /// The selected space, else the first, so a removed or never-picked selection still shows one.
@@ -120,9 +136,9 @@ fn selectedIndex(items: []const config.ThumbnailSpace) ?usize {
     return 0;
 }
 
-fn roster(context: *ui.Frame, profile: ProfileRef) !void {
+fn roster(context: *ui.Frame, profile: ProfileRef, list_style: *const ui.Style) !void {
     const items = profile.ptr.thumbnailSpaces.items;
-    const list = Rect{ .key = .src(@src()), .style = &style.roster_filters };
+    const list = Rect{ .key = .src(@src()), .style = list_style };
     _ = try list.open(context);
     if (items.len == 0) {
         try widgets.boxedText(context, .src(@src()), "No spaces yet.", &style.roster_empty, &style.roster_empty_text);

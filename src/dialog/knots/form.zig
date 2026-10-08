@@ -144,8 +144,9 @@ const Tab = enum {
     /// Fills the content area itself instead of scrolling in it.
     fn fills(tab: Tab) bool {
         return switch (tab) {
-            .characters => true,
-            .hotkey_groups, .appearance, .placement, .text_overlays, .hotkeys, .behavior, .notifications, .chatlog, .combat, .mining, .bounty, .resources, .general, .about => false,
+            .characters, .hotkey_groups => true,
+            .placement => placement.fillsWindow(),
+            .appearance, .text_overlays, .hotkeys, .behavior, .notifications, .chatlog, .combat, .mining, .bounty, .resources, .general, .about => false,
         };
     }
 

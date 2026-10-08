@@ -61,12 +61,7 @@ pub fn show(context: *ui.Frame) !void {
     );
     try searchBox(context);
 
-    const master_detail = Rect{ .key = .src(@src()), .style = &.{
-        .width = .grow(),
-        .height = .grow(),
-        .direction = .row,
-        .gap = 8,
-    } };
+    const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail_fill };
     _ = try master_detail.open(context);
     const profile = session.profile();
     const count = profile.ptr.characters.items.len;

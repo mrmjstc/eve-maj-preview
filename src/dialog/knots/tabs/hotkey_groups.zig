@@ -40,16 +40,15 @@ pub fn reset() void {
 }
 
 pub fn show(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Hotkey Groups", "Groups of characters you can cycle through with hotkeys. List members here, or assign them live.", &style.section);
+    const section = try widgets.openSection(context, "Hotkey Groups", "Groups of characters you can cycle through with hotkeys. List members here, or assign them live.", &style.fill_section);
     const profile = session.profile();
 
     const count = profile.ptr.hotkeyGroups.items.len;
     if (g_selected_index >= count) g_selected_index = count -| 1;
-    const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail };
+    const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail_fill };
     _ = try master_detail.open(context);
     try roster(context, profile);
-    const stack = Rect{ .key = .src(@src()), .style = &style.detail_fit };
-    _ = try stack.open(context);
+    const stack = try widgets.openScrollPane(context, .str("knots.groups.detail"), style.detail_scroll);
     if (count == 0) {
         try widgets.paragraph(context, .src(@src()), "Add a hotkey group below to give a set of characters their own cycling keys.");
     } else {
@@ -69,7 +68,7 @@ fn groupName(arena: std.mem.Allocator, group: *const config.HotkeyGroupConfig, i
 
 fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const groups = profile.ptr.hotkeyGroups.items;
-    const list = Rect{ .key = .src(@src()), .style = &style.roster_filters };
+    const list = Rect{ .key = .src(@src()), .style = &style.roster_wide };
     _ = try list.open(context);
     if (groups.len == 0) {
         try widgets.boxedText(context, .src(@src()), "No hotkey groups yet.", &style.roster_empty, &style.roster_empty_text);
