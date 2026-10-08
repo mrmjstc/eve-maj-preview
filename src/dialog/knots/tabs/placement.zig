@@ -94,7 +94,8 @@ fn manual(context: *ui.Frame, display: DisplayRef) !void {
 
 fn spacesMode(context: *ui.Frame, display: DisplayRef) !void {
     const profile = session.profile();
-    try widgets.subheading(context, .src(@src()), "Spaces");
+    try bind.toggle(context, display, "hideThumbnailsDuringRegionSelect", "Hide Thumbnails While Drawing a Region");
+    try widgets.hintText(context, .src(@src()), "Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.");
     try widgets.hintText(context, .src(@src()), "A space can hold several hotkey groups. A character two spaces hold goes to the first one in the list; drag a space to reorder.");
 
     const is_filling = fillsWindow();
@@ -112,10 +113,6 @@ fn spacesMode(context: *ui.Frame, display: DisplayRef) !void {
         try stack.close(context);
     }
     try master_detail.close(context);
-
-    try widgets.subheading(context, .src(@src()), "All Spaces");
-    try bind.toggle(context, display, "hideThumbnailsDuringRegionSelect", "Hide Thumbnails While Drawing a Region");
-    try widgets.hintText(context, .src(@src()), "Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.");
 }
 
 fn selectedDetail(context: *ui.Frame, profile: ProfileRef) !void {
@@ -357,13 +354,11 @@ fn dotColor(context: *ui.Frame, index: usize) ui.Color {
     return palette[index % palette.len];
 }
 
-/// Buttons to draw a new rectangle for the space, adjust it, or clear it, after its size; the last two need one set.
+/// Buttons to draw a new rectangle for the space, adjust it, or clear it; the last two need one set.
 fn regionRow(context: *ui.Frame, space_id: u32) !void {
     const row = try widgets.openBinding(context, .src(@src()), "Region");
     const current = region.rect(space_id);
-    if (current) |r| {
-        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = try std.fmt.allocPrint(context.arena(), "{d} \u{00D7} {d} at {d}, {d}", .{ r.right - r.left, r.bottom - r.top, r.left, r.top }), .style = &style.muted_text });
-    } else {
+    if (current == null) {
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "No region yet", .style = &style.space_status_warning });
     }
     if ((try context.interact(Button{ .key = .src(@src()), .label = "New Space", .style = &style.plain_button })).clicked) {
