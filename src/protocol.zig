@@ -38,7 +38,7 @@ pub const Command = union(enum) {
     switch_character: []const u8,
     profile: []const u8,
     hotkey: GlobalAction,
-    /// Sent by a second `--config` launch so the running instance opens its configuration window.
+    /// Sent by any second launch so the running instance opens its configuration window.
     open_config: void,
 
     /// Frees what parseUrl allocated; commands built any other way borrow their payloads.

@@ -189,11 +189,9 @@ fn mainImpl(init: std.process.Init) !void {
 
     const last_error = win32.GetLastError();
     if (last_error == win32.ERROR_ALREADY_EXISTS) {
-        if (open_config) {
-            if (protocol.findExistingInstance()) |hwnd| {
-                protocol.sendCommandToInstance(hwnd, .{ .open_config = {} });
-                return;
-            }
+        if (protocol.findExistingInstance()) |hwnd| {
+            protocol.sendCommandToInstance(hwnd, .{ .open_config = {} });
+            return;
         }
         slog.info("Another instance of EVE-Maj Preview is already running", .{});
         return error.AlreadyRunning;
