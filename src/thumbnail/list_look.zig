@@ -41,7 +41,6 @@ pub const BORDER: u32 = 0xFF6B6E75;
 pub const DIVIDER: u32 = 0xFF2A2C30;
 pub const NAME: u32 = 0xFFE8E6E1;
 pub const MUTED: u32 = 0xFF8B8F96;
-pub const NOTIFICATION_TEXT: u32 = 0xFFFFAA00;
 pub const BADGE_ALERT: u32 = 0xFFFF8833;
 pub const BADGE_INACTIVE: u32 = 0xFF7FB3D9;
 pub const BADGE_MINIMIZED: u32 = 0xFF3D5566;

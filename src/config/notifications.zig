@@ -165,6 +165,8 @@ pub const NotificationConfig = struct {
     font_name: []const u8 = "Segoe UI",
     font_size: i32 = 12,
     font_weight: types.FontWeight = .Regular,
+    /// A type without a text colour of its own uses this.
+    color: u32 = 0xFFFFFFFF,
     bg_color: u32 = 0xE6000000,
 
     suppress_click_duration_ms: u32 = 2000,

@@ -30,6 +30,7 @@ const SPACE_EM = 0.3;
 
 /// The stats row's sample rates: DPS only, since every rate at once runs past a column.
 const SAMPLE_STATS = [_]Sample.Reading{ .{ .stat = .incoming_dps, .value = 412 }, .{ .stat = .outgoing_dps, .value = 980 } };
+/// Drawn in Fleet Invite's own colour, or the list's notification colour when it has none.
 const SAMPLE_NOTIFICATION = "Fleet Invite";
 const SAMPLES = [_]Sample{
     .{ .name = "Pilot Alpha", .state = .active, .system = "Jita" },
@@ -80,6 +81,7 @@ const Look = struct {
     active_name_color: u32,
     name_color: u32,
     system_color: u32,
+    notification_color: u32,
     name_size: f32,
     small_size: f32,
     shows_systems: bool,
@@ -257,7 +259,7 @@ fn rightPart(context: *ui.Frame, sample: Sample, key: ui.Key, look: Look) !void 
     if (try openPart(context, button, part)) select(context, part);
     switch (sample.right) {
         .system => try context.e(Text{ .selectable = false, .key = key, .content = sample.system, .style = try textStyle(arena, look.system_color, look.small_size, false, look.shows_systems) }),
-        .notification => try context.e(Text{ .selectable = false, .key = key, .content = SAMPLE_NOTIFICATION, .style = try textStyle(arena, list_look.NOTIFICATION_TEXT, look.small_size, false, look.shows_notifications) }),
+        .notification => try context.e(Text{ .selectable = false, .key = key, .content = SAMPLE_NOTIFICATION, .style = try textStyle(arena, look.notification_color, look.small_size, false, look.shows_notifications) }),
         .stats => for (look.stats, 0..) |label, index| {
             try context.e(Text{ .selectable = false, .key = key.indexed(index), .content = label.text, .style = try textStyle(arena, label.color, look.small_size, false, look.shows_stats) });
         },
@@ -302,6 +304,7 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, available_wid
         .active_color = active_color,
         .active_name_color = if (uses_unique_names) style.UNIQUE_SAMPLE else list_look.activeNameColor(active_color),
         .name_color = if (uses_unique_names) style.UNIQUE_SAMPLE else list_look.NAME,
+        .notification_color = profile.thumbnail.notifications.getTypeConfig(.FleetInvite).text_color orelse display.listViewNotificationColor,
         .system_color = if (display.listViewUseUniqueSystemColors) style.UNIQUE_SAMPLE else display.listViewSystemNameColor,
         .name_size = @as(f32, @floatFromInt(display.listViewFontSize)) * scale,
         .small_size = @as(f32, @floatFromInt(list_look.smallFontSize(display.listViewFontSize))) * scale,
@@ -422,13 +425,14 @@ fn settings(context: *ui.Frame, display: DisplayRef, part: Part) !bool {
             try bind.toggle(context, display, "listViewShowSystemName", "Show System Name");
             try bind.toggle(context, display, "listViewUseUniqueSystemColors", "Unique System Colors");
             const group = try widgets.openGroup(context, .src(@src()), !display.get("listViewUseUniqueSystemColors"));
-            try bind.rgb(context, display, "listViewSystemNameColor", "System Name Color");
+            try bind.rgb(context, display, "listViewSystemNameColor", "Text Color");
             try group.close(context);
             try widgets.paragraph(context, .src(@src()), "A system's own custom colour comes first.");
         },
         .notifications => {
             try bind.toggle(context, display, "listViewShowNotifications", "Show Notifications");
-            try widgets.paragraph(context, .src(@src()), "The newest notification takes a row's right-hand slot until it expires. Each type's colour is set on the Notifications tab.");
+            try bind.rgb(context, display, "listViewNotificationColor", "Text Color");
+            try widgets.paragraph(context, .src(@src()), "The newest notification takes a row's right-hand slot until it expires. A type's own Text Color on the Notifications tab overrides this one.");
         },
         .stats => try statSettings(context, display),
     }

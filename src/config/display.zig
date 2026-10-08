@@ -29,6 +29,8 @@ pub const DisplayConfig = struct {
     listViewActiveColor: u32 = 0xFFD9A441,
     listViewUseUniqueActiveColors: bool = false,
     listViewShowNotifications: bool = true,
+    /// A notification type without a text colour of its own uses this.
+    listViewNotificationColor: u32 = 0xFFFFFFFF,
     listViewShowIncomingDps: bool = true,
     listViewShowIncomingPrefix: bool = true,
     listViewIncomingDpsColor: u32 = 0xFFFF4444,

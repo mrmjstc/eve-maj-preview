@@ -409,6 +409,7 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
 - `listViewActiveColor`: The active client's dot, row tint and name colour (default: `0xFFD9A441`)
 - `listViewUseUniqueActiveColors`: Use each character's generated colour as its active colour (default: `false`)
 - `listViewShowNotifications`: Show the newest notification in a row's right-hand slot (default: `true`)
+- `listViewNotificationColor`: Notification text colour for any type without its own `text_color` (default: `0xFFFFFFFF`, white)
 - `listViewShowIncomingDps`, `listViewShowOutgoingDps`, `listViewShowMiningRate`, `listViewShowBountyRate`: Show each rate in the right-hand slot (default: `true`); each also needs its overlay's `enabled` on
 - `listViewShowIncomingPrefix`, `listViewShowOutgoingPrefix`, `listViewShowMiningPrefix`, `listViewShowBountyPrefix`: Show the `IN:`, `OUT:`, `M:` and `ISK:` prefixes (default: `true`)
 - `listViewIncomingDpsColor`, `listViewOutgoingDpsColor`, `listViewMiningRateColor`, `listViewBountyRateColor`: Each rate's colour (defaults match the thumbnail overlays')
@@ -676,6 +677,7 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `enabled`: Master switch for notification system (per-character mute is set via `notificationsMuted` on the character entry - see [Per-Character Configuration](#per-character-configuration)) (default: `true`)
 - `position`: Where notifications appear on thumbnails (see Text Positions above)
 - `offset_x`/`offset_y`: Fine-tune notification position (pixels)
+- `color`: Notification text colour on thumbnails for any type without its own `text_color` (default: `0xFFFFFFFF`, white)
 - `suppress_click_duration_ms`: How long to suppress after click, applies per-type when that type's `suppress_when_clicked` is `true` (milliseconds, default: `2000`)
 - `tts_volume`: Speech volume, 0–100 (default: `100`)
 - `tts_rate`: Speech rate, native SAPI range -10 (slowest) to 10 (fastest) (default: `0`)
@@ -696,7 +698,7 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `show_border`: Whether to draw a border at all while this notification is active; `false` suppresses the border entirely regardless of the Alert state's border settings or any `border_color` override (default: `false`)
 - `flash_border`: Blink the border on/off 4 times (150ms per phase) when the notification starts, then settle into a steady-on border for the rest of the duration; has no effect when `show_border` is `false` (default: `false`)
 - `border_color`: Optional ARGB color override for the thumbnail border while this notification is active (default: `null`, falls back to the Alert state's border color)
-- `text_color`: Optional ARGB color override for the notification text while this notification is active (default: `null`, falls back to the thumbnail's normal text color)
+- `text_color`: Optional ARGB color override for the notification text while this notification is active (default: `null`, falls back to `color` above, or the Client List's `listViewNotificationColor`)
 - `custom_text`: Wording shown (and spoken) instead of the built-in text, with `{name}` placeholders filled from the event - see Custom Text Placeholders below. Names are case-insensitive, unknown names are kept as typed, and if a placeholder used has no value for that event the built-in text is shown instead. Type `\n` for a line break, up to 3 lines per notification; the Client List and History Panel show them on one line (default: `null`, the built-in text)
 - `custom_text_alt`: `custom_text` for a two-state type's second state: Self-Destruct aborted, hotkeys resumed, auto-minimize off, removed from group, included in cycle (default: `null`)
 

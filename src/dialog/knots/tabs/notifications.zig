@@ -207,9 +207,9 @@ fn typeDetail(context: *ui.Frame, ntype: NotificationType) !void {
 
     try widgets.subheading(context, .src(@src()), "Colors");
     const defaults = config.ThumbnailConfig{};
-    try optionalColor(context, ref, "text_color", "Text Color", defaults.characterNameColor);
+    try bind.optionalColor(context, ref, "text_color", "Text Color", session.profile().ptr.thumbnail.notifications.color);
     const border_color = try widgets.openGroup(context, .src(@src()), ref.get("show_border"));
-    try optionalColor(context, ref, "border_color", "Border Color", defaults.inactiveBorderColor);
+    try bind.optionalColor(context, ref, "border_color", "Border Color", defaults.inactiveBorderColor);
     try border_color.close(context);
 
     try sound(context, ref, @backingInt(ntype));
@@ -311,14 +311,6 @@ fn preview(context: *ui.Frame, ntype: NotificationType, comptime field: TextFiel
 }
 
 /// Unset inherits `fallback`.
-fn optionalColor(context: *ui.Frame, ref: TypeRef, comptime field: []const u8, label: []const u8, fallback: u32) !void {
-    const change = try widgets.optionalColor(context, ui.Key.str("knots.events.color:" ++ field).indexed(ref.index), label, ref.get(field), fallback) orelse return;
-    ref.set(field, switch (change) {
-        .cleared => null,
-        .set => |argb| argb,
-    });
-}
-
 /// The file's name only; the full path is what's saved.
 fn sound(context: *ui.Frame, ref: TypeRef, type_index: usize) !void {
     try widgets.subheading(context, .src(@src()), "Sound");

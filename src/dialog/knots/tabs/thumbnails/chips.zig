@@ -18,8 +18,8 @@ pub const Section = enum { thumbnail, notifications, combat, mining, bounty, res
 pub const PopoverField = union(enum) {
     /// A setting of the chip's section; `disables_color` greys out the text colour while it's on.
     toggle: struct { field: []const u8, label: []const u8, disables_color: bool = false },
-    /// The chip's text colour, under this label.
-    color: []const u8,
+    /// The chip's text colour.
+    color,
     /// Name and size on one row.
     font,
     font_weight,
@@ -58,7 +58,7 @@ pub const CHIPS = [_]Chip{
         .popover = &([_]PopoverField{
             .{ .toggle = .{ .field = "showCharacterName", .label = "Show Character Name" } },
             .{ .toggle = .{ .field = "useUniqueCharacterNameColors", .label = "Unique Character Name Colors", .disables_color = true } },
-            .{ .color = "Character Name Color" },
+            .color,
         } ++ STYLE_ROWS),
     },
     .{
@@ -73,7 +73,7 @@ pub const CHIPS = [_]Chip{
         .popover = &([_]PopoverField{
             .{ .toggle = .{ .field = "showSystemName", .label = "Show System Name" } },
             .{ .toggle = .{ .field = "useUniqueSystemColors", .label = "Unique System Colors", .disables_color = true } },
-            .{ .color = "System Name Color" },
+            .color,
         } ++ STYLE_ROWS),
     },
     .{
@@ -85,7 +85,7 @@ pub const CHIPS = [_]Chip{
         .needs_show_text = true,
         .popover = &([_]PopoverField{
             .{ .toggle = .{ .field = "showQuickGroupBadge", .label = "Show Group Badge" } },
-            .{ .color = "Badge Color" },
+            .color,
         } ++ STYLE_ROWS),
     },
     .{
@@ -97,19 +97,20 @@ pub const CHIPS = [_]Chip{
         .needs_show_text = true,
         .popover = &([_]PopoverField{
             .{ .toggle = .{ .field = "showSessionTimer", .label = "Show Session Timer" } },
-            .{ .color = "Text Color" },
+            .color,
         } ++ STYLE_ROWS),
     },
     .{
         .label = "Notification",
         .sample = "Fleet Invite",
         .section = .notifications,
-        .fields = .snakeCase("", false),
+        .fields = .snakeCase("", true),
         .show_field = "enabled",
         .needs_show_text = true,
         .needs_chatlog = true,
         .popover = &([_]PopoverField{
             .{ .toggle = .{ .field = "enabled", .label = "Show Notifications" } },
+            .color,
         } ++ STYLE_ROWS),
     },
     .{
@@ -125,7 +126,7 @@ pub const CHIPS = [_]Chip{
             .{ .toggle = .{ .field = "enabled", .label = "Enable Combat Overlays" } },
             .{ .toggle = .{ .field = "show_incoming", .label = "Show Incoming Damage" } },
             .{ .toggle = .{ .field = "incoming_show_prefix", .label = "Show IN: Prefix" } },
-            .{ .color = "Text Color" },
+            .color,
         } ++ STYLE_ROWS),
     },
     .{
@@ -141,7 +142,7 @@ pub const CHIPS = [_]Chip{
             .{ .toggle = .{ .field = "enabled", .label = "Enable Combat Overlays" } },
             .{ .toggle = .{ .field = "show_outgoing", .label = "Show Outgoing Damage" } },
             .{ .toggle = .{ .field = "outgoing_show_prefix", .label = "Show OUT: Prefix" } },
-            .{ .color = "Text Color" },
+            .color,
         } ++ STYLE_ROWS),
     },
     .{
@@ -155,7 +156,7 @@ pub const CHIPS = [_]Chip{
         .popover = &([_]PopoverField{
             .{ .toggle = .{ .field = "enabled", .label = "Show Mining Rate" } },
             .{ .toggle = .{ .field = "show_prefix", .label = "Show M: Prefix" } },
-            .{ .color = "Text Color" },
+            .color,
         } ++ STYLE_ROWS),
     },
     .{
@@ -169,7 +170,7 @@ pub const CHIPS = [_]Chip{
         .popover = &([_]PopoverField{
             .{ .toggle = .{ .field = "enabled", .label = "Show Bounty Rate" } },
             .{ .toggle = .{ .field = "show_prefix", .label = "Show ISK: Prefix" } },
-            .{ .color = "Text Color" },
+            .color,
         } ++ STYLE_ROWS),
     },
     .{
@@ -184,7 +185,7 @@ pub const CHIPS = [_]Chip{
             .{ .toggle = .{ .field = "show_cpu", .label = "Show CPU %" } },
             .{ .toggle = .{ .field = "show_ram", .label = "Show RAM" } },
             .{ .toggle = .{ .field = "show_vram", .label = "Show VRAM" } },
-            .{ .color = "Text Color" },
+            .color,
         } ++ STYLE_ROWS),
     },
 };
@@ -237,7 +238,7 @@ pub fn look(comptime chip: Chip) Look {
         .offset_x = ref.get(fields.offset_x),
         .offset_y = ref.get(fields.offset_y),
         .font_size = ref.get(fields.font_size),
-        // A notification has no text colour of its own; unique colours vary per character, so a sample stands in.
+        // Unique colours vary per character, so a sample stands in.
         .color = if (unique) style.UNIQUE_SAMPLE else if (fields.color) |field| ref.get(field) else 0xFFFFFFFF,
         .bg_color = ref.get(fields.bg_color),
         .is_shown = ref.get(chip.show_field) and enabled and (!chip.needs_show_text or thumbnail.showText),
@@ -281,9 +282,9 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
                 try bind.toggle(context, ref, toggle.field, toggle.label);
                 if (toggle.disables_color and ref.get(toggle.field)) color_disabled = true;
             },
-            .color => |label| {
+            .color => {
                 const color = try widgets.openGroup(context, .str("knots.chip.color:" ++ chip.label), !color_disabled);
-                try bind.rgb(context, ref, fields.color.?, label);
+                try bind.rgb(context, ref, fields.color.?, "Text Color");
                 try color.close(context);
             },
             .font => {

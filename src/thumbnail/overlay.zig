@@ -489,7 +489,7 @@ pub fn createRenderSettings(cfg: *const config_mod.Config, thumbnail: *const Thu
         .resources_color = cfg.resources.color,
     };
     if (settings.show_notifications) {
-        settings.notification_line_count = notificationLines(&settings.notification_lines, thumbnail, is_focused, state_cfg.textColor orelse tc.characterNameColor);
+        settings.notification_line_count = notificationLines(&settings.notification_lines, thumbnail, is_focused, tc.notifications.color);
     }
     return settings;
 }

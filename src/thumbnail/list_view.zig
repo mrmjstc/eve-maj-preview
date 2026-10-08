@@ -162,6 +162,7 @@ pub const ListWindow = struct {
         h.update(std.mem.asBytes(&display.listViewShowSystemName));
         h.update(std.mem.asBytes(&display.listViewIndicatorStyle));
         h.update(std.mem.asBytes(&display.listViewShowNotifications));
+        h.update(std.mem.asBytes(&display.listViewNotificationColor));
         h.update(std.mem.asBytes(&display.listViewShowIncomingDps));
         h.update(std.mem.asBytes(&display.listViewShowIncomingPrefix));
         h.update(std.mem.asBytes(&display.listViewIncomingDpsColor));
@@ -362,7 +363,7 @@ pub const ListWindow = struct {
         var notif_buf: [TEXT_BUF]u8 = undefined;
         const newest = if (display.listViewShowNotifications) thumb.notifications.newest() else null;
         if (newest) |notif| {
-            drawTextRight(dc, template.oneLine(notif.text, &notif_buf), right_x, small_y, notif.text_color_override orelse list_look.NOTIFICATION_TEXT, text_left);
+            drawTextRight(dc, template.oneLine(notif.text, &notif_buf), right_x, small_y, notif.text_color_override orelse display.listViewNotificationColor, text_left);
         } else if (readings.len > 0) {
             drawStatsRight(dc, display, readings, right_x, small_y, text_left);
         } else if (is_excluded) {

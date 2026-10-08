@@ -340,6 +340,15 @@ pub fn colorBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !v
     })).changed) ref.set(field, widgets.argbFromColor(value) | opaque_mask);
 }
 
+/// An optional colour setting, shown as `fallback` while unset; resetting it clears it.
+pub fn optionalColor(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, fallback: u32) !void {
+    const change = try widgets.optionalColor(context, fieldKey(ref, field), label, ref.get(field), fallback) orelse return;
+    ref.set(field, switch (change) {
+        .cleared => null,
+        .set => |argb| argb,
+    });
+}
+
 /// The RGB of an ARGB setting, keeping its alpha.
 pub fn rgb(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
     const row = try widgets.openBinding(context, fieldKey(ref, field), label);
