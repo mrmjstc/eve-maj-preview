@@ -144,7 +144,7 @@ pub const ThumbnailWindow = struct {
 
     /// Re-resolves every config-derived cached_* field (except the owned group badge label) for the current character_name/system_name.
     pub fn refreshConfigCache(self: *ThumbnailWindow, config: *const config_mod.Config, auto_colors: *config_mod.AutoColorStore) void {
-        self.cached_system_color = if (self.system_name.len > 0) auto_colors.systemNameColor(config, self.system_name) else config.thumbnail.systemNameColor;
+        self.cached_system_color = if (self.system_name.len > 0) auto_colors.systemNameColor(config, self.system_name) else config.shownColors().system_name_color;
         const is_logged_in = !scout.isGenericCharacterName(self.character_name);
         self.cached_character_color = if (is_logged_in) auto_colors.characterNameColor(config, self.character_name) else null;
         self.cached_display_name = config.getDisplayName(self.character_name);

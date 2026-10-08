@@ -30,6 +30,7 @@ const overlays = @import("tabs/overlays.zig");
 const portraits = @import("portraits.zig");
 const prices = @import("prices.zig");
 const behavior = @import("tabs/behavior.zig");
+const client_list = @import("tabs/client_list.zig");
 const log = @import("../../log.zig");
 
 const GlobalConfig = config.GlobalConfig;
@@ -198,6 +199,7 @@ fn run() void {
     defer hotkey_groups.reset();
     behavior.init(g_allocator);
     defer behavior.reset();
+    defer client_list.reset();
     images.init(g_allocator);
     defer images.deinit();
     header.init(g_allocator);

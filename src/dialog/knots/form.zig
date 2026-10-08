@@ -187,7 +187,7 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     applyAccent(context);
     const offered = Offered{
         .advanced = session.global().get("advancedMode"),
-        .thumbnails = session.profile().child("display").get("viewMode") == .Thumbnails,
+        .thumbnails = session.showsThumbnails(),
     };
     // Turning Advanced Mode off or leaving thumbnail mode can hide the open tab.
     if (!offered.has(g_tab)) selectTab(context, if (g_tab.needsThumbnails()) .appearance else .about);

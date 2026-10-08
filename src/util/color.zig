@@ -123,10 +123,16 @@ pub fn premultiplyAlpha(color: u32) u32 {
 
 /// Mixes each channel `percent`% of the way toward white, keeping alpha.
 pub fn lighten(color: u32, percent: u32) u32 {
-    var out = color & 0xFF00_0000;
+    return mix(0x00FF_FFFF, color, percent);
+}
+
+/// `color` laid `percent`% over `background`, with background's alpha.
+pub fn mix(color: u32, background: u32, percent: u32) u32 {
+    var out = background & 0xFF00_0000;
     inline for (.{ 16, 8, 0 }) |shift| {
-        const channel = (color >> shift) & 0xFF;
-        out |= (channel + (255 - channel) * percent / 100) << shift;
+        const top = (color >> shift) & 0xFF;
+        const bottom = (background >> shift) & 0xFF;
+        out |= ((top * percent + bottom * (100 - percent)) / 100) << shift;
     }
     return out;
 }
@@ -223,6 +229,12 @@ test "lighten mixes toward white and keeps alpha" {
     try testing.expectEqual(@as(u32, 0xFF123456), lighten(0xFF123456, 0));
     try testing.expectEqual(@as(u32, 0x80FFFFFF), lighten(0x80000000, 100));
     try testing.expectEqual(@as(u32, 0xFF7F7F7F), lighten(0xFF000000, 50));
+}
+
+test "mix lays a color over the background and keeps the background's alpha" {
+    try testing.expectEqual(@as(u32, 0xFF102030), mix(0x00FFFFFF, 0xFF102030, 0));
+    try testing.expectEqual(@as(u32, 0xFFFFFFFF), mix(0x00FFFFFF, 0xFF102030, 100));
+    try testing.expectEqual(@as(u32, 0xFF7F7F7F), mix(0xFFFFFFFF, 0xFF000000, 50));
 }
 
 test "inkFor picks dark ink on light backgrounds and light ink on dark ones" {

@@ -68,7 +68,7 @@ pub fn resizeIfNeeded(painter: *Painter, thumbnail: *ThumbnailWindow, cells: ?*c
 
 /// Re-applies every thumbnail's config-derived look, visibility and size and redraws it, ignoring needs_render; for the config dialog's live preview.
 pub fn refreshVisuals(painter: *Painter) void {
-    // Checked here so a live-preview toggle of hideWhenNoEveFocus reacts at once instead of on the next focus change.
+    // Checked here so a live-preview toggle of the focus auto-hide reacts at once instead of on the next focus change.
     const any_eve_has_focus = painter.isEveWindowForeground();
     const cells = spaceCells(painter);
 
@@ -78,10 +78,10 @@ pub fn refreshVisuals(painter: *Painter) void {
         painter.refreshGroupBadge(thumbnail);
         // Measured text sizes are cached by font, not text, so a changed display name would keep the old size.
         thumbnail.render_cache.invalidate();
+        // Before the skip too: the client list shows tracking-only entries by their visibility.
+        _ = painter.applyAutoVisibility(thumbnail, any_eve_has_focus);
 
         if (!thumbnail.win32_enabled) continue;
-
-        _ = painter.applyAutoVisibility(thumbnail, any_eve_has_focus);
 
         // Opacity is otherwise only applied at window creation.
         _ = win32.SetLayeredWindowAttributes(thumbnail.hwnd, 0, thumbnail.cached_opacity, win32.LWA_ALPHA);

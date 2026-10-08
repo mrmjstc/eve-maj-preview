@@ -336,7 +336,7 @@ pub const Painter = struct {
 
     fn startHideTimer(self: *Painter) void {
         const timer_hwnd = main.g_timer_hwnd orelse return;
-        if (win32.SetTimer(timer_hwnd, HIDE_DEBOUNCE_TIMER_ID, self.config.thumbnail.hideDebounceMs, null) == 0) {
+        if (win32.SetTimer(timer_hwnd, HIDE_DEBOUNCE_TIMER_ID, self.config.shownAutoHide().delay_ms, null) == 0) {
             slog.err("Failed to start hide debounce timer", .{});
             return;
         }
@@ -363,7 +363,7 @@ pub const Painter = struct {
 
     /// The auto-hide rule: hidden while "hide when no EVE window has focus" is on and none has.
     pub fn autoVisibility(self: *const Painter, eve_has_focus: bool) state.VisibilityState {
-        return if (self.config.thumbnail.hideWhenNoEveFocus and !eve_has_focus) .hidden_automatic else .visible;
+        return if (self.config.shownAutoHide().is_enabled and !eve_has_focus) .hidden_automatic else .visible;
     }
 
     /// Moves a thumbnail between visible and auto-hidden by autoVisibility, leaving one hidden by hand alone; returns whether it changed.
@@ -598,7 +598,7 @@ pub const Painter = struct {
         };
         self.allocator.free(thumbnail.system_name);
         thumbnail.system_name = empty_system;
-        thumbnail.cached_system_color = self.config.thumbnail.systemNameColor;
+        thumbnail.cached_system_color = self.config.shownColors().system_name_color;
         thumbnail.render_cache.system_name.dims = null;
         slog.debug("Cleared system name for logged out client", .{});
     }
@@ -837,11 +837,12 @@ fn winEventProc(_: win32.HANDLE, _: win32.DWORD, hwnd: win32.HWND, _: win32.LONG
             hotkeys.recordNonEveForeground(hwnd);
         }
 
-        if (painter.config.thumbnail.hideWhenNoEveFocus) {
-            slog.debug("Untracked window focused (hwnd={*}), starting {}ms debounce timer (hideWhenNoEveFocus=true)", .{ hwnd, painter.config.thumbnail.hideDebounceMs });
+        const auto_hide = painter.config.shownAutoHide();
+        if (auto_hide.is_enabled) {
+            slog.debug("Untracked window focused (hwnd={*}), starting {}ms debounce timer (auto-hide on)", .{ hwnd, auto_hide.delay_ms });
             painter.startHideTimer();
         } else {
-            slog.debug("Untracked window focused (hwnd={*}), ignoring (hideWhenNoEveFocus=false)", .{hwnd});
+            slog.debug("Untracked window focused (hwnd={*}), ignoring (auto-hide off)", .{hwnd});
         }
         return;
     }

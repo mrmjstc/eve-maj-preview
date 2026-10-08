@@ -8,6 +8,7 @@ const bind = @import("../bind.zig");
 const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
+const client_list = @import("client_list.zig");
 
 const Text = ui.component.Text;
 const ThumbnailRef = session.Ref(config.ThumbnailConfig);
@@ -45,7 +46,7 @@ pub fn show(context: *ui.Frame) !void {
             try borders(context, thumbnail);
             try visibility(context, thumbnail);
         },
-        .ClientList => try clientList(context, display),
+        .ClientList => try client_list.show(context, display),
         .Nothing => {},
     }
 }
@@ -152,19 +153,5 @@ fn visibility(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
 fn displayMode(context: *ui.Frame, display: DisplayRef) !void {
     const section = try widgets.openSection(context, "Display Mode", "Thumbnails shows a live preview of each client. Client List is a compact text panel that uses fewer resources, ideal with many clients. None shows nothing; hotkeys and notifications keep working.", &style.section);
     try bind.segmented(context, display, "viewMode", "Show Clients As", &.{ "Thumbnails", "Client List", "None" });
-    try section.close(context);
-}
-
-fn clientList(context: *ui.Frame, display: DisplayRef) !void {
-    const section = try widgets.openSection(context, "Client List", "A compact panel listing each client by name; click a name to bring that client to the front.", &style.section);
-    try bind.choiceStyled(context, display, "listViewOrder", "Order", &style.select_wide);
-    try bind.number(context, display, "listViewColumns", "Columns", .{});
-    try bind.slider(context, display, "listViewOpacity", "Opacity", .{ .display = .percent_of_255 });
-    const font = try widgets.openBinding(context, .src(@src()), "Font");
-    try bind.fontBox(context, display, "listViewFontName");
-    try bind.unitNumberBox(context, display, "listViewFontSize", "px", .{});
-    try bind.choiceBox(context, display, "listViewFontWeight", &style.select_narrow);
-    try font.close(context);
-    try bind.toggle(context, display, "rememberListViewPosition", "Remember Position");
     try section.close(context);
 }

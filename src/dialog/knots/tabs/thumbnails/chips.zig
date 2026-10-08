@@ -9,9 +9,6 @@ const style = @import("../../style.zig");
 const widgets = @import("../../widgets.zig");
 const overlay_text = @import("../overlay_text.zig");
 
-const Rect = ui.component.Rect;
-const Text = ui.component.Text;
-const Button = ui.component.Button;
 const Fields = overlay_text.Fields;
 
 /// The settings struct a chip's fields live in.
@@ -241,14 +238,11 @@ pub fn look(comptime chip: Chip) Look {
         .offset_y = ref.get(fields.offset_y),
         .font_size = ref.get(fields.font_size),
         // A notification has no text colour of its own; unique colours vary per character, so a sample stands in.
-        .color = if (unique) UNIQUE_SAMPLE else if (fields.color) |field| ref.get(field) else 0xFFFFFFFF,
+        .color = if (unique) style.UNIQUE_SAMPLE else if (fields.color) |field| ref.get(field) else 0xFFFFFFFF,
         .bg_color = ref.get(fields.bg_color),
         .is_shown = ref.get(chip.show_field) and enabled and (!chip.needs_show_text or thumbnail.showText),
     };
 }
-
-/// Stands in for each character's or system's own colour while a "unique colors" setting is on.
-pub const UNIQUE_SAMPLE = 0xFF5EC9C9;
 
 /// Saves a drag's result; `offset_x`/`offset_y` are already clamped to the field's range.
 pub fn place(comptime chip: Chip, position: types.TextPosition, offset_x: i32, offset_y: i32) void {
@@ -267,11 +261,7 @@ pub fn offsetRange(comptime chip: Chip) [2]f32 {
 pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usize) !bool {
     const ref = refFor(chip.section);
     const fields = chip.fields;
-    const title = Rect{ .key = .str("knots.chip.title:" ++ chip.label), .style = &style.popover_title };
-    _ = try title.open(context);
-    try context.e(Text{ .selectable = false, .key = .str("knots.chip.heading:" ++ chip.label), .content = chip.label, .style = &style.heading });
-    const close_clicked = (try context.interact(Button{ .key = .str("knots.chip.close:" ++ chip.label), .label = "\u{00D7}", .style = &style.popover_close })).clicked;
-    try title.close(context);
+    const close_clicked = try widgets.popoverTitle(context, .str("knots.chip.title:" ++ chip.label), chip.label);
 
     if (chip.needs_chatlog and !session.profile().ptr.chatlog.enabled) {
         try widgets.notice(context, .str("knots.chip.chatlog:" ++ chip.label), "Requires Log Monitoring to be enabled.");

@@ -1,4 +1,4 @@
-//! Mouse input on a thumbnail and its text overlay: clicks, drags, the hover cursor and hover zoom.
+//! Mouse input on a thumbnail and its text overlay: clicks, drags, the hover cursor and hover zoom; the client list's rows share its clicks and cursor.
 const win32 = @import("../platform/win32.zig");
 const painter_mod = @import("../painter.zig");
 const hotkeys = @import("../hotkeys/manager.zig");
@@ -34,16 +34,47 @@ pub fn resolveThumbnailUnderCursor() ?*ThumbnailWindow {
     return painter.getThumbnailBySourceHwnd(source_hwnd);
 }
 
-pub fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
+/// A left press on `hwnd` for `source_hwnd`'s client: activates it, or toggles its exclusion with Shift, now or on release by Click Trigger.
+pub fn press(hwnd: win32.HWND, source_hwnd: win32.HWND) void {
     const painter = painter_mod.g_painter_ptr orelse return;
+    const shift_pressed = win32.isShiftPressed();
 
-    if (!painter.config.exclusion.enableShiftClickExclude) {
-        // Exclusion disabled: fall back to a plain click instead of swallowing the input
-        activation.activate(source_hwnd);
-        return;
+    if (painter.config.interaction.clickTrigger == .MouseDown) {
+        dispatchClick(source_hwnd, shift_pressed);
+    } else {
+        g_click_state = .{
+            .pending = true,
+            .hwnd = hwnd,
+            .source_hwnd = source_hwnd,
+            .shift_pressed = shift_pressed,
+        };
     }
+}
 
-    if (hotkeys.g_hotkey_manager_ptr) |manager| membership.toggleThumbnailExclusion(manager, source_hwnd);
+/// A left release on `hwnd`, completing a press made there while clicks trigger on mouse-up.
+pub fn release(hwnd: win32.HWND) void {
+    const click = g_click_state;
+    g_click_state = .{};
+
+    const painter = painter_mod.g_painter_ptr orelse return;
+    if (painter.config.interaction.clickTrigger != .MouseUp or !click.pending or click.hwnd != hwnd) return;
+    if (click.source_hwnd) |source_hwnd| dispatchClick(source_hwnd, click.shift_pressed);
+}
+
+/// Sets the Hover Cursor setting's cursor; false when it's Default or fails to load, so the caller lets Windows set its class cursor.
+pub fn applyHoverCursor() bool {
+    const painter = painter_mod.g_painter_ptr orelse return false;
+    const resource: win32.LPCSTR = switch (painter.config.interaction.hoverCursor) {
+        .Default => return false,
+        .Hand => win32.IDC_HAND,
+        .Crosshair => win32.IDC_CROSS,
+        .Move => win32.IDC_SIZEALL,
+        .Help => win32.IDC_HELP,
+    };
+    // SetCursor(null) hides the cursor, so a failed load must fall back to the class cursor.
+    const cursor = win32.LoadCursorA(null, resource) orelse return false;
+    _ = win32.SetCursor(cursor);
+    return true;
 }
 
 pub fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
@@ -84,6 +115,18 @@ fn raiseTextOverlay(hwnd: win32.HWND) void {
     _ = win32.EndDeferWindowPos(hdwp);
 }
 
+fn handleThumbnailShiftClick(source_hwnd: win32.HWND) void {
+    const painter = painter_mod.g_painter_ptr orelse return;
+
+    if (!painter.config.exclusion.enableShiftClickExclude) {
+        // Exclusion disabled: fall back to a plain click instead of swallowing the input
+        activation.activate(source_hwnd);
+        return;
+    }
+
+    if (hotkeys.g_hotkey_manager_ptr) |manager| membership.toggleThumbnailExclusion(manager, source_hwnd);
+}
+
 fn dispatchClick(source_hwnd: win32.HWND, shift_pressed: bool) void {
     if (shift_pressed) {
         handleThumbnailShiftClick(source_hwnd);
@@ -94,28 +137,7 @@ fn dispatchClick(source_hwnd: win32.HWND, shift_pressed: bool) void {
 
 fn handleLButtonDown(hwnd: win32.HWND) void {
     const source_hwnd = win32.GetPropA(hwnd, "SOURCE_HWND") orelse return;
-    const painter = painter_mod.g_painter_ptr orelse return;
-    const shift_pressed = win32.isShiftPressed();
-
-    if (painter.config.interaction.clickTrigger == .MouseDown) {
-        dispatchClick(source_hwnd, shift_pressed);
-    } else {
-        g_click_state = .{
-            .pending = true,
-            .hwnd = hwnd,
-            .source_hwnd = source_hwnd,
-            .shift_pressed = shift_pressed,
-        };
-    }
-}
-
-fn handleLButtonUp(hwnd: win32.HWND) void {
-    const click = g_click_state;
-    g_click_state = .{};
-
-    const painter = painter_mod.g_painter_ptr orelse return;
-    if (painter.config.interaction.clickTrigger != .MouseUp or !click.pending or click.hwnd != hwnd) return;
-    if (click.source_hwnd) |source_hwnd| dispatchClick(source_hwnd, click.shift_pressed);
+    press(hwnd, source_hwnd);
 }
 
 fn handleMouseMove(hwnd: win32.HWND) void {
@@ -126,27 +148,11 @@ fn handleMouseMove(hwnd: win32.HWND) void {
     hover_zoom.onHover(painter, hwnd, thumbnail);
 }
 
-/// Returns whether it set the cursor.
-fn applyHoverCursor() bool {
-    const painter = painter_mod.g_painter_ptr orelse return false;
-    const resource: win32.LPCSTR = switch (painter.config.interaction.hoverCursor) {
-        .Default => return false,
-        .Hand => win32.IDC_HAND,
-        .Crosshair => win32.IDC_CROSS,
-        .Move => win32.IDC_SIZEALL,
-        .Help => win32.IDC_HELP,
-    };
-    // SetCursor(null) hides the cursor, so a failed load must fall back to the class cursor.
-    const cursor = win32.LoadCursorA(null, resource) orelse return false;
-    _ = win32.SetCursor(cursor);
-    return true;
-}
-
 /// Messages the thumbnail and its text overlay handle identically; null for anything else.
 fn handleSharedMessage(hwnd: win32.HWND, msg: win32.UINT, lParam: win32.LPARAM, is_text_overlay: bool) ?win32.LRESULT {
     switch (msg) {
         win32.WM_LBUTTONDOWN => handleLButtonDown(hwnd),
-        win32.WM_LBUTTONUP => handleLButtonUp(hwnd),
+        win32.WM_LBUTTONUP => release(hwnd),
         win32.WM_RBUTTONDOWN => thumbnail_drag.start(hwnd, lParam),
         win32.WM_RBUTTONUP => {
             // A drag started on the text overlay still saves the thumbnail's position.

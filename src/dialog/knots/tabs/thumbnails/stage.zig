@@ -13,9 +13,8 @@ const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Canvas = ui.component.Canvas;
 const Button = ui.component.Button;
-const Dialog = ui.component.Dialog;
-/// A laid-out element's rectangle, in window coordinates.
-const Box = @FieldType(ui.State.Measured, "box");
+const Box = widgets.Box;
+const measuredBox = widgets.measuredBox;
 
 /// The stage fits this box; small thumbnails are enlarged so their chips are easy to grab.
 const MAX_WIDTH: f32 = 540;
@@ -28,13 +27,6 @@ const CLIENT_BACKGROUND = 0xFF2A3240;
 /// The grip's and the pencil's boxes on a chip.
 const CHIP_GLYPH_BOX: f32 = 12;
 const POPOVER_KEY: ui.Key = .str("knots.stage.popover");
-/// Dialog keys its panel as its own key indexed by this.
-const DIALOG_PANEL_INDEX = 2;
-/// Kept between the popover and the window's edges.
-const POPOVER_MARGIN: f32 = 8;
-const POPOVER_GAP: f32 = 8;
-/// Until the popover has been laid out once.
-const POPOVER_HEIGHT_GUESS: f32 = 480;
 
 const Drag = struct {
     index: usize,
@@ -93,31 +85,7 @@ pub fn show(context: *ui.Frame) !void {
 fn popover(context: *ui.Frame) !void {
     if (!g_popover_open) return;
     const ui_state = context.ui();
-    const chip_box = measuredBox(ui_state, chipKey(g_selected_index));
-    const extent = context.input().logical_extent;
-    const viewport = [2]f32{ @floatFromInt(extent.width), @floatFromInt(extent.height) };
-    const panel_id = POPOVER_KEY.indexed(DIALOG_PANEL_INDEX).hash();
-    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, panel_id);
-    const panel_box = measuredBox(ui_state, POPOVER_KEY.indexed(DIALOG_PANEL_INDEX));
-    const panel_size = [2]f32{ style.POPOVER_WIDTH, if (panel_box.h() > 0) panel_box.h() else POPOVER_HEIGHT_GUESS };
-
-    const right_of_chip = chip_box.x() + chip_box.w() + POPOVER_GAP;
-    const x = if (right_of_chip + panel_size[0] + POPOVER_MARGIN <= viewport[0])
-        right_of_chip
-    else
-        @max(POPOVER_MARGIN, chip_box.x() - POPOVER_GAP - panel_size[0]);
-    const y = std.math.clamp(chip_box.y(), POPOVER_MARGIN, @max(POPOVER_MARGIN, viewport[1] - panel_size[1] - POPOVER_MARGIN));
-
-    // The backdrop's padding is how far the panel sits from the window's top-left corner.
-    const backdrop = try context.arena().create(ui.Style);
-    backdrop.* = .{
-        .@"align" = .start,
-        .justify = .start,
-        .padding = .init(y, POPOVER_MARGIN, POPOVER_MARGIN, x),
-        .background = .transparent,
-    };
-    const dialog = Dialog{ .is_open = &g_popover_open, .key = POPOVER_KEY, .style = &style.popover, .parts = .{ .backdrop = backdrop } };
-    _ = try dialog.open(context);
+    const dialog = try widgets.openPopover(context, POPOVER_KEY, &g_popover_open, measuredBox(ui_state, chipKey(g_selected_index)));
     inline for (chips.CHIPS, 0..) |chip, index| {
         if (index == g_selected_index) {
             if (try chips.showSettings(context, chip, index)) {
@@ -292,11 +260,6 @@ fn stageBackground(context: *ui.Frame, stage_size: [2]f32, opacity: f32) !void {
         .opacity = opacity,
     };
     if (images.g_layout_preview.image(.str("knots.stage.backdrop"), image_style)) |image| try context.e(image);
-}
-
-fn measuredBox(ui_state: *ui.UI, key: ui.Key) Box {
-    const measured = ui_state.state.get(.measured, key.hash()) orelse return .zero;
-    return measured.box;
 }
 
 fn withAlpha(value: u32, alpha: f32) ui.Color {

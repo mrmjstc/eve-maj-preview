@@ -95,6 +95,17 @@ pub const CloseAllConfig = behavior.CloseAllConfig;
 pub const HotkeysConfig = hotkeys.HotkeysConfig;
 pub const AutoColorStore = auto_colors.AutoColorStore;
 
+pub const ShownColors = struct {
+    system_name_color: u32,
+    uses_unique_system_colors: bool,
+    uses_unique_name_colors: bool,
+    /// For thumbnails their active border; for the client list its active colour.
+    uses_unique_border_colors: bool,
+};
+
+/// Hidden after `delay_ms` without EVE focus, while enabled.
+pub const AutoHide = struct { is_enabled: bool, delay_ms: u32 };
+
 pub const Config = struct {
     allocator: std.mem.Allocator,
     profile_name: []const u8,
@@ -274,6 +285,32 @@ pub const Config = struct {
 
     pub fn getDisplayName(self: *const Config, character_name: []const u8) []const u8 {
         return self.characterSetting(character_name, "displayName", null) orelse character_name;
+    }
+
+    /// The colour settings of whichever view is shown, since the client list has its own.
+    pub fn shownColors(self: *const Config) ShownColors {
+        return switch (self.display.viewMode) {
+            .ClientList => .{
+                .system_name_color = self.display.listViewSystemNameColor,
+                .uses_unique_system_colors = self.display.listViewUseUniqueSystemColors,
+                .uses_unique_name_colors = self.display.listViewUseUniqueCharacterNameColors,
+                .uses_unique_border_colors = self.display.listViewUseUniqueActiveColors,
+            },
+            .Thumbnails, .Nothing => .{
+                .system_name_color = self.thumbnail.systemNameColor,
+                .uses_unique_system_colors = self.thumbnail.useUniqueSystemColors,
+                .uses_unique_name_colors = self.thumbnail.useUniqueCharacterNameColors,
+                .uses_unique_border_colors = self.thumbnail.useUniqueCharacterBorderColors,
+            },
+        };
+    }
+
+    /// The focus auto-hide of whichever view is shown, since the client list has its own.
+    pub fn shownAutoHide(self: *const Config) AutoHide {
+        return switch (self.display.viewMode) {
+            .ClientList => .{ .is_enabled = self.display.listViewHideWhenNoEveFocus, .delay_ms = self.display.listViewHideDebounceMs },
+            .Thumbnails, .Nothing => .{ .is_enabled = self.thumbnail.hideWhenNoEveFocus, .delay_ms = self.thumbnail.hideDebounceMs },
+        };
     }
 
     /// The badge-enabled groups `character_name` is in, comma-joined by name or 1-based number ("1, Miners"); "" when none. Owned by the caller.

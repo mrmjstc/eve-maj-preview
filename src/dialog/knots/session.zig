@@ -228,6 +228,11 @@ pub fn profile() Ref(Config) {
     return .{ .doc = .profile, .ptr = &main.g_store.live, .layout = .none };
 }
 
+/// Whether the edited profile shows thumbnails, which decides where thumbnail-only settings are offered.
+pub fn showsThumbnails() bool {
+    return profile().ptr.display.viewMode == .Thumbnails;
+}
+
 pub fn editsDraft() bool {
     return g_profile_draft != null;
 }

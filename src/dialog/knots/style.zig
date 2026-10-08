@@ -633,6 +633,9 @@ pub const muted_text: Style = .{ .foreground = .{ .color = MUTED } };
 pub const select_wide: Style = select.with(.{ .width = .fixed(300) });
 pub const select_narrow: Style = select.with(.{ .width = .fixed(130) });
 
+/// Stands in on a preview for each character's or system's own colour while a "unique colors" setting is on.
+pub const UNIQUE_SAMPLE: u32 = 0xFF5EC9C9;
+
 /// Wide enough for a label column beside a standard dropdown.
 pub const POPOVER_WIDTH = 420;
 /// A Dialog panel used as a popover beside what it edits.

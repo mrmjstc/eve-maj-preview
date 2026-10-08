@@ -62,6 +62,9 @@ pub const WM_XBUTTONUP = 0x020C;
 pub const WM_CAPTURECHANGED = 0x0215;
 pub const WM_MOUSELEAVE = 0x02A3;
 pub const WM_SETCURSOR = 0x0020;
+/// WM_NCHITTEST results; WM_SETCURSOR carries one in its lParam's low word.
+pub const HTCLIENT: LRESULT = 1;
+pub const HTCAPTION: LRESULT = 2;
 pub const WM_ENTERSIZEMOVE = 0x0231;
 pub const WM_EXITSIZEMOVE = 0x0232;
 pub const WM_SETICON = 0x0080;

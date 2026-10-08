@@ -70,6 +70,15 @@ pub const ListViewOrder = enum {
     ConfiguredCharacters,
 };
 
+/// How the client list marks each row's state.
+pub const ListIndicatorStyle = enum {
+    Dot,
+    Square,
+    /// Down the row's left edge.
+    Bar,
+    None,
+};
+
 /// How thumbnails get their position: dragged by hand, or filled into thumbnail spaces.
 pub const PlacementMode = enum {
     Manual,

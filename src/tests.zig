@@ -25,6 +25,7 @@ test {
     _ = @import("notifications/template.zig");
     _ = @import("platform/virtual_keys.zig");
     _ = @import("protocol.zig");
+    _ = @import("thumbnail/list_look.zig");
     _ = @import("util/color.zig");
     _ = @import("util/format.zig");
     _ = @import("util/rgba.zig");

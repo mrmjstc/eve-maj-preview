@@ -78,22 +78,27 @@ fn startup(context: *ui.Frame) !void {
 }
 
 fn interaction(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Interaction", "Mouse behavior for activating thumbnails, including when to activate the EVE client window on left-click, and whether client windows animate when restored or minimized.", &style.section);
+    const section = try widgets.openSection(context, "Interaction", "Mouse behavior for thumbnails and client list rows, including when to activate the EVE client window on left-click, and whether client windows animate when restored or minimized.", &style.section);
     const ref = session.profile().child("interaction");
-    try bind.toggle(context, ref, "clickThrough", "Click Through Thumbnails");
-    try widgets.hintText(context, .src(@src()), "Thumbnails ignore all mouse input and let clicks/drags pass through to whatever is behind them; disables click-to-focus, exclusion toggling, and dragging.");
+    try bind.toggle(context, ref, "clickThrough", "Click Through");
+    try widgets.hintText(context, .src(@src()), "Thumbnails and the client list ignore all mouse input and let clicks/drags pass through to whatever is behind them; disables click-to-focus, exclusion toggling, and dragging.");
     const click_through = ref.get("clickThrough");
 
     const mouse_options = try widgets.openGroup(context, .src(@src()), !click_through);
     try bind.choice(context, ref, "clickTrigger", "Click Trigger");
     try widgets.hintText(context, .src(@src()), "Mouse Up avoids accidental drags from a quick click.");
     try bind.choice(context, ref, "hoverCursor", "Hover Cursor");
-    try widgets.hintText(context, .src(@src()), "Mouse cursor shown while hovering a thumbnail.");
+    try widgets.hintText(context, .src(@src()), "Mouse cursor shown while hovering a thumbnail or a client list row.");
     try mouse_options.close(context);
 
     try bind.choice(context, ref, "animationStyle", "Animation Style");
     try widgets.hintText(context, .src(@src()), "No Animation restores and minimizes clients instantly; Original Animation keeps Windows' native effect.");
 
+    if (session.showsThumbnails()) try hoverZoom(context, ref, click_through);
+    try section.close(context);
+}
+
+fn hoverZoom(context: *ui.Frame, ref: session.Ref(config.InteractionConfig), click_through: bool) !void {
     const zoom_options = try widgets.openGroup(context, .src(@src()), !click_through);
     try bind.toggle(context, ref, "hoverZoomEnabled", "Zoom on Hover");
     try widgets.hintText(context, .src(@src()), "Shows an enlarged copy of a thumbnail, with its overlay text, while the cursor rests on it.");
@@ -104,7 +109,6 @@ fn interaction(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "The point of the thumbnail that stays in place as the zoom grows.");
     try zoom.close(context);
     try zoom_options.close(context);
-    try section.close(context);
 }
 
 fn autoMinimize(context: *ui.Frame) !void {
@@ -129,14 +133,19 @@ fn exclusion(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "Minimizes immediately on exclusion, not on the Auto-Minimize delay above.");
     try bind.toggle(context, ref, "logoutClearsExclusion", "Logging Out Clears Exclusion");
     try widgets.hintText(context, .src(@src()), "Includes a character again once its client returns to the login screen.");
+    if (session.showsThumbnails()) try exclusionOverlay(context);
+    try options.close(context);
+    try section.close(context);
+}
+
+/// Drawn over an excluded thumbnail; the client list dims the row instead.
+fn exclusionOverlay(context: *ui.Frame) !void {
     const thumbnail = session.profile().child("thumbnail");
     try bind.choice(context, thumbnail, "exclusionOverlayStyle", "Overlay Style");
     const overlay = try widgets.openBinding(context, .src(@src()), "Overlay Color");
     try bind.rgbBox(context, thumbnail, "exclusionOverlayColor");
     try bind.alphaBox(context, thumbnail, "exclusionOverlayColor");
     try overlay.close(context);
-    try options.close(context);
-    try section.close(context);
 }
 
 fn windowPosition(context: *ui.Frame) !void {

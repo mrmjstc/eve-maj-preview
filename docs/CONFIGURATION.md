@@ -350,7 +350,9 @@ All pixel-based values here (thumbnail size, `startX`/`startY`, spacing, font si
 
 ## List View Mode
 
-An alternative to live DWM thumbnails: a single semi-transparent panel with one row per tracked client, showing a state badge dot, character name, and either the current system name or an active notification message. Clicking a row activates that client; Shift+click toggles exclusion from hotkey cycling. The header bar can be dragged to reposition the panel.
+An alternative to live DWM thumbnails: a single semi-transparent panel with one row per tracked client, showing a state badge dot, character name, and either the current system name or an active notification message. The active client's row is tinted with the active colour, and excluded clients are dimmed and marked "Excluded". Clicking a row activates that client; Shift+click toggles exclusion from hotkey cycling. The header bar can be dragged to reposition the panel.
+
+The list has its own system name, colour and focus auto-hide settings below; the thumbnail ones (`showSystemName`, `systemNameColor`, `useUniqueSystemColors`, `useUniqueCharacterNameColors`, `useUniqueCharacterBorderColors`, `hideWhenNoEveFocus`, `hideDebounceMs`, `notifications.enabled`, and combat's `show_incoming`, `show_outgoing`, prefixes and colours, mining's and bounty's `color` and `show_prefix`) apply to thumbnails only. Per-character colours and display names, custom `systemColors` and each overlay's `enabled` (which also runs its tracker) are shared by both.
 
 Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and no list panel - while still tracking clients internally, so hotkeys (including client cycling) and notifications keep working. This avoids the DWM thumbnail and panel rendering overhead entirely.
 
@@ -362,9 +364,32 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
     "rememberListViewPosition": true,
     "listViewOpacity": 255,
     "listViewColumns": 1,
+    "listViewColumnWidth": 230,
     "listViewFontName": "Segoe UI",
     "listViewFontSize": 13,
-    "listViewFontWeight": "Regular"
+    "listViewFontWeight": "Regular",
+    "listViewIndicatorStyle": "Dot",
+    "listViewShowSystemName": true,
+    "listViewSystemNameColor": "0xFF8B8F96",
+    "listViewUseUniqueSystemColors": false,
+    "listViewUseUniqueCharacterNameColors": false,
+    "listViewActiveColor": "0xFFD9A441",
+    "listViewUseUniqueActiveColors": false,
+    "listViewShowNotifications": true,
+    "listViewShowIncomingDps": true,
+    "listViewShowIncomingPrefix": true,
+    "listViewIncomingDpsColor": "0xFFFF4444",
+    "listViewShowOutgoingDps": true,
+    "listViewShowOutgoingPrefix": true,
+    "listViewOutgoingDpsColor": "0xFF44FF44",
+    "listViewShowMiningRate": true,
+    "listViewShowMiningPrefix": true,
+    "listViewMiningRateColor": "0xFF44AAFF",
+    "listViewShowBountyRate": true,
+    "listViewShowBountyPrefix": true,
+    "listViewBountyRateColor": "0xFFFFD700",
+    "listViewHideWhenNoEveFocus": false,
+    "listViewHideDebounceMs": 500
   }
 }
 ```
@@ -373,8 +398,22 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
 - `listViewOrder`: Row ordering - `Tracked` (default, internal tracking order), `Alphabetical` (by character name), or `ConfiguredCharacters` (order of `characters` array)
 - `rememberListViewPosition`: Save/restore the panel's position (default: `true`)
 - `listViewOpacity`: Panel opacity, 51–255 (default: `255`)
-- `listViewColumns`: Number of columns, 1–15 (default: `1`)
-- `listViewFontName`, `listViewFontSize`, `listViewFontWeight`: Font used for row text (font weight uses the same values as [Text Overlay Settings](#text-overlay-settings))
+- `listViewColumns`: Number of columns, 1–6 (default: `1`)
+- `listViewColumnWidth`: Width of each column in pixels, 120–500 (default: `230`); names and right-hand text are cut short to fit
+- `listViewFontName`, `listViewFontSize`, `listViewFontWeight`: Font used for character names; the header and right-hand text are drawn 2px smaller, and rows and the header grow with the font so its text always fits (font weight uses the same values as [Text Overlay Settings](#text-overlay-settings))
+- `listViewIndicatorStyle`: How each row marks its state - `Dot` (default), `Square`, `Bar` (down the row's left edge), or `None`
+- `listViewShowSystemName`: Show each client's system on the right of its row (default: `true`)
+- `listViewSystemNameColor`: System name colour (default: `0xFF8B8F96`)
+- `listViewUseUniqueSystemColors`: Give each system its own generated colour instead of `listViewSystemNameColor` (default: `false`)
+- `listViewUseUniqueCharacterNameColors`: Give each character's name its own generated colour (default: `false`)
+- `listViewActiveColor`: The active client's dot, row tint and name colour (default: `0xFFD9A441`)
+- `listViewUseUniqueActiveColors`: Use each character's generated colour as its active colour (default: `false`)
+- `listViewShowNotifications`: Show the newest notification in a row's right-hand slot (default: `true`)
+- `listViewShowIncomingDps`, `listViewShowOutgoingDps`, `listViewShowMiningRate`, `listViewShowBountyRate`: Show each rate in the right-hand slot (default: `true`); each also needs its overlay's `enabled` on
+- `listViewShowIncomingPrefix`, `listViewShowOutgoingPrefix`, `listViewShowMiningPrefix`, `listViewShowBountyPrefix`: Show the `IN:`, `OUT:`, `M:` and `ISK:` prefixes (default: `true`)
+- `listViewIncomingDpsColor`, `listViewOutgoingDpsColor`, `listViewMiningRateColor`, `listViewBountyRateColor`: Each rate's colour (defaults match the thumbnail overlays')
+- `listViewHideWhenNoEveFocus`: Hide the list while no EVE client window has focus (default: `false`)
+- `listViewHideDebounceMs`: Delay before hiding, 0–5000 ms (default: `500`)
 
 ## Window Snapping
 
@@ -416,11 +455,11 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
 - `animationStyle`: Control Windows animations when the app minimizes or restores a client
   - `"NoAnimation"` (default): Temporarily disable system animations so it happens instantly
   - `"OriginalAnimation"`: Use Windows default minimize/restore animations
-- `clickTrigger`: When left-click activates the EVE client
+- `clickTrigger`: When left-click on a thumbnail or Client List row activates the EVE client
   - `"MouseDown"` (default): Activate immediately on mouse button press
   - `"MouseUp"`: Activate on mouse button release
-- `clickThrough`: Make thumbnails ignore all mouse input (default: `false`), so clicks and drags pass through to whatever is behind them on screen. Disables click-to-focus, shift-click exclusion toggling, and dragging on every thumbnail while enabled.
-- `hoverCursor`: System mouse cursor shown while hovering a thumbnail (thumbnails only, not the Client List or History panels)
+- `clickThrough`: Make thumbnails and the Client List ignore all mouse input (default: `false`), so clicks and drags pass through to whatever is behind them on screen. Disables click-to-focus, shift-click exclusion toggling, and dragging while enabled.
+- `hoverCursor`: System mouse cursor shown while hovering a thumbnail or a Client List row (not the Client List's header or the History panel)
   - `"Default"` (default): The standard arrow
   - `"Hand"`: Link-select hand
   - `"Crosshair"`: Precision-select crosshair

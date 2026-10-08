@@ -41,7 +41,8 @@ pub const AutoColorStore = struct {
     /// A custom override first, then the unique generated colour if enabled, then the configured default.
     pub fn systemNameColor(self: *AutoColorStore, cfg: *const config.Config, system_name: []const u8) u32 {
         if (cfg.findSystemColor(system_name)) |custom_color| return custom_color;
-        if (!cfg.thumbnail.useUniqueSystemColors) return cfg.thumbnail.systemNameColor;
+        const shown = cfg.shownColors();
+        if (!shown.uses_unique_system_colors) return shown.system_name_color;
 
         self.load();
 
@@ -57,7 +58,7 @@ pub const AutoColorStore = struct {
         if (cfg.findCharacterConst(character_name)) |char| {
             if (char.nameColor) |custom_color| return custom_color;
         }
-        if (!cfg.thumbnail.useUniqueCharacterNameColors) return null;
+        if (!cfg.shownColors().uses_unique_name_colors) return null;
 
         return self.characterColor(cfg, character_name);
     }
@@ -65,7 +66,7 @@ pub const AutoColorStore = struct {
     /// The character's own active border colour, else the unique colour if enabled; the inactive one is left as set.
     pub fn characterBorderColors(self: *AutoColorStore, cfg: *const config.Config, character_name: []const u8) ?config.CharacterBorderColorsConfig {
         const configured = if (cfg.findCharacterConst(character_name)) |char| char.borderColors else null;
-        if (!cfg.thumbnail.useUniqueCharacterBorderColors) return configured;
+        if (!cfg.shownColors().uses_unique_border_colors) return configured;
 
         var colors = configured orelse config.CharacterBorderColorsConfig{};
         if (colors.activeBorderColor == null) colors.activeBorderColor = self.characterColor(cfg, character_name);

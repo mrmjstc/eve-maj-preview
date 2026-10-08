@@ -2,9 +2,6 @@
 const win32 = @import("../platform/win32.zig");
 const snapping = @import("snapping.zig");
 
-const HTCAPTION: win32.LRESULT = 2;
-const HTCLIENT: win32.LRESULT = 1;
-
 // Anchors a drag to the cursor position at WM_ENTERSIZEMOVE, since WM_MOVING's rect reflects prior snap overrides; a single shared pair is safe since only one window can be mid-drag at a time.
 var g_panel_drag_anchor_cursor: win32.POINT = .{ .x = 0, .y = 0 };
 var g_panel_drag_anchor_rect: win32.RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
@@ -16,7 +13,7 @@ pub fn handleMessage(hwnd: win32.HWND, msg: win32.UINT, lParam: win32.LPARAM, he
         win32.WM_NCHITTEST => {
             var window_rect: win32.RECT = undefined;
             _ = win32.GetWindowRect(hwnd, &window_rect);
-            return if (win32.lparamY(lParam) - window_rect.top < header_height) HTCAPTION else HTCLIENT;
+            return if (win32.lparamY(lParam) - window_rect.top < header_height) win32.HTCAPTION else win32.HTCLIENT;
         },
         win32.WM_MOVING => {
             updatePanelDragRect(hwnd, win32.lparamToPtr(win32.RECT, lParam));

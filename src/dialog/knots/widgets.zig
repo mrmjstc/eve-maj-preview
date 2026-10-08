@@ -14,10 +14,21 @@ const ColorPicker = ui.component.ColorPicker;
 const Checkbox = ui.component.Checkbox;
 const Button = ui.component.Button;
 const Tooltip = ui.component.Tooltip;
+const Dialog = ui.component.Dialog;
 const Color = ui.Color;
+
+/// A laid-out element's rectangle, in window coordinates.
+pub const Box = @FieldType(ui.State.Measured, "box");
 
 /// Most sections a tab has; past this they still draw, but miss their hint button.
 const MAX_SECTIONS = 32;
+/// Dialog keys its panel as its own key indexed by this.
+const DIALOG_PANEL_INDEX = 2;
+/// Kept between a popover and the window's edges.
+const POPOVER_MARGIN: f32 = 8;
+const POPOVER_GAP: f32 = 8;
+/// Until the popover has been laid out once.
+const POPOVER_HEIGHT_GUESS: f32 = 480;
 /// Movement under this is a click on a row, not a drag.
 const REORDER_THRESHOLD = 4;
 /// How long a confirm button waits for its second click.
@@ -247,6 +258,52 @@ pub fn openMarkedBinding(context: *ui.Frame, key: ui.Key, label: []const u8, mar
     try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = mark, .style = &style.binding_arrow });
     try cell.close(context);
     return row;
+}
+
+/// A popover beside `anchor`, on whichever side has room; the caller fills it and ends it with closeResponse, where `.backdrop` is a click outside.
+pub fn openPopover(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box) !Dialog {
+    const ui_state = context.ui();
+    const extent = context.input().logical_extent;
+    const viewport = [2]f32{ @floatFromInt(extent.width), @floatFromInt(extent.height) };
+    const panel_key = key.indexed(DIALOG_PANEL_INDEX);
+    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, panel_key.hash());
+    const panel_box = measuredBox(ui_state, panel_key);
+    const panel_size = [2]f32{ style.POPOVER_WIDTH, if (panel_box.h() > 0) panel_box.h() else POPOVER_HEIGHT_GUESS };
+
+    const right_of_anchor = anchor.x() + anchor.w() + POPOVER_GAP;
+    const x = if (right_of_anchor + panel_size[0] + POPOVER_MARGIN <= viewport[0])
+        right_of_anchor
+    else
+        @max(POPOVER_MARGIN, anchor.x() - POPOVER_GAP - panel_size[0]);
+    const y = std.math.clamp(anchor.y(), POPOVER_MARGIN, @max(POPOVER_MARGIN, viewport[1] - panel_size[1] - POPOVER_MARGIN));
+
+    // The backdrop's padding is how far the panel sits from the window's top-left corner.
+    const backdrop = try context.arena().create(ui.Style);
+    backdrop.* = .{
+        .@"align" = .start,
+        .justify = .start,
+        .padding = .init(y, POPOVER_MARGIN, POPOVER_MARGIN, x),
+        .background = .transparent,
+    };
+    const dialog = Dialog{ .is_open = is_open, .key = key, .style = &style.popover, .parts = .{ .backdrop = backdrop } };
+    _ = try dialog.open(context);
+    return dialog;
+}
+
+/// A popover's heading beside its close button; returns whether close was clicked.
+pub fn popoverTitle(context: *ui.Frame, key: ui.Key, title: []const u8) !bool {
+    const row = Rect{ .key = key, .style = &style.popover_title };
+    _ = try row.open(context);
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = title, .style = &style.heading });
+    const close_clicked = (try context.interact(Button{ .key = key.indexed(2), .label = "\u{00D7}", .style = &style.popover_close })).clicked;
+    try row.close(context);
+    return close_clicked;
+}
+
+/// Zero until `key` has been laid out with a measured state.
+pub fn measuredBox(ui_state: *ui.UI, key: ui.Key) Box {
+    const measured = ui_state.state.get(.measured, key.hash()) orelse return .zero;
+    return measured.box;
 }
 
 /// A label beside a column of aligned rows without dividers, e.g. a set of switches; the caller closes it.
