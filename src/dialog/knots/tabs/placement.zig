@@ -1,4 +1,4 @@
-//! The configuration window's Placement tab: the placement mode, then hand-placement settings or a list of thumbnail spaces beside the selected one's details; main thread only.
+//! The configuration window's Placement tab: the placement mode and a screen preview, then hand-placement settings or a list of thumbnail spaces beside the selected one's details; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const win32 = @import("../../../platform/win32.zig");
@@ -10,23 +10,22 @@ const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const region = @import("../region.zig");
 const search = @import("../search.zig");
-const glyphs = @import("../glyphs.zig");
+const screen_map = @import("../screen_map.zig");
+const screen_math = @import("../screen_math.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
-const Canvas = ui.component.Canvas;
-const DrawCmd = Canvas.DrawCmd;
 const ProfileRef = session.Ref(config.Config);
 const DisplayRef = session.Ref(config.DisplayConfig);
 const SpaceRef = session.Ref(config.ThumbnailSpace);
+const ScreenMap = screen_map.ScreenMap;
 
 // knots doesn't export its grid types by name.
 const GridTemplate = @typeInfo(@FieldType(ui.Style, "grid")).optional.child;
 const GridTrack = @typeInfo(@FieldType(GridTemplate, "rows")).pointer.child;
 
 const SPACE_ROW_KEY: ui.Key = .str("knots.space.row");
-const MAP_WIDTH = 224;
 const CHIP_COLUMNS: [3]GridTrack = @splat(.{ .fr = 1 });
 
 /// A pill in a space's Holds grid.
@@ -42,14 +41,32 @@ const Chip = struct {
 var g_selected_id: u32 = 0;
 
 pub fn show(context: *ui.Frame) !void {
-    const display = session.profile().child("display");
-    const section = try widgets.openSection(context, "Thumbnail Placement", "Manual lets you drag each thumbnail where you want it. Thumbnail Spaces fills screen regions you draw with the thumbnails of the hotkey groups each one holds.", if (fillsWindow()) &style.fill_section else &style.section);
-    try bind.segmented(context, display, "placementMode", "Placement Mode", &.{ "Manual", "Thumbnail Spaces" });
+    const profile = session.profile();
+    const display = profile.child("display");
     // A search shows both modes' settings, so a match in the other mode is still found.
     const mode = display.get("placementMode");
-    if (mode == .Manual or search.isActive()) try manual(context, display);
-    if (mode == .ThumbnailSpaces or search.isActive()) try spacesMode(context, display);
+    const shows_manual = mode == .Manual or search.isActive();
+    const shows_spaces = mode == .ThumbnailSpaces or search.isActive();
+
+    const section = try widgets.openSection(context, "Thumbnail Placement", "Manual lets you drag each thumbnail where you want it. Thumbnail Spaces fills screen regions you draw with the thumbnails of the hotkey groups each one holds.", &style.section);
+    try bind.segmented(context, display, "placementMode", "Placement Mode", &.{ "Manual", "Thumbnail Spaces" });
+    if (shows_manual) try savedPositionMap(context, profile);
+    if (shows_spaces) {
+        const items = profile.ptr.thumbnailSpaces.items;
+        try regionMap(context, items, selectedIndex(items));
+    }
     try section.close(context);
+
+    if (shows_manual) {
+        const manual_section = try widgets.openSection(context, "Manual Placement", "Where thumbnails go when you place them by hand.", &style.section);
+        try manual(context, display);
+        try manual_section.close(context);
+    }
+    if (shows_spaces) {
+        const spaces_section = try widgets.openSection(context, "Thumbnail Spaces", "A space can hold several hotkey groups. A character two spaces hold goes to the first one in the list; drag a space to reorder.", if (fillsWindow()) &style.fill_section else &style.section);
+        try spacesMode(context, display);
+        try spaces_section.close(context);
+    }
 }
 
 /// Spaces mode fills the window like Characters; Manual's settings, or both modes during a search, scroll instead.
@@ -96,7 +113,7 @@ fn spacesMode(context: *ui.Frame, display: DisplayRef) !void {
     const profile = session.profile();
     try bind.toggle(context, display, "hideThumbnailsDuringRegionSelect", "Hide Thumbnails While Drawing a Region");
     try widgets.hintText(context, .src(@src()), "Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.");
-    try widgets.hintText(context, .src(@src()), "A space can hold several hotkey groups. A character two spaces hold goes to the first one in the list; drag a space to reorder.");
+    try widgets.separator(context, .str("knots.space.separator.hide"));
 
     const is_filling = fillsWindow();
     const master_detail = Rect{ .key = .src(@src()), .style = if (is_filling) &style.master_detail_fill else &style.master_detail };
@@ -248,7 +265,6 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
 
     const layout = try widgets.openFieldGroup(context, .str("knots.space.layout"), "Layout");
     try regionRow(context, id);
-    try regionMap(context, profile.ptr.thumbnailSpaces.items, index);
     try bind.choiceStyled(context, space, "direction", "Fill Order", &style.select_narrow);
     try widgets.hintText(context, .src(@src()), "The order the grid fills: Rows \u{2192} \u{2193} fills each row left to right, then moves down a row; Columns fill down (or up) each column first.");
     if (!is_login_screen) {
@@ -356,7 +372,7 @@ fn dotColor(context: *ui.Frame, index: usize) ui.Color {
 
 /// Buttons to draw a new rectangle for the space, adjust it, or clear it; the last two need one set.
 fn regionRow(context: *ui.Frame, space_id: u32) !void {
-    const row = try widgets.openBinding(context, .src(@src()), "Region");
+    const row = try widgets.openRow(context, .src(@src()));
     const current = region.rect(space_id);
     if (current == null) {
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "No region yet", .style = &style.space_status_warning });
@@ -377,55 +393,79 @@ fn regionRow(context: *ui.Frame, space_id: u32) !void {
     try row.close(context);
 }
 
-/// The whole desktop in miniature with every space's region, the selected one drawn last and bolder.
-fn regionMap(context: *ui.Frame, items: []const config.ThumbnailSpace, selected: usize) !void {
-    const desktop = win32.virtualScreenRect();
-    const left: f32 = @floatFromInt(desktop.left);
-    const top: f32 = @floatFromInt(desktop.top);
-    const desktop_width: f32 = @floatFromInt(@max(1, win32.rectWidth(desktop)));
-    const desktop_height: f32 = @floatFromInt(@max(1, win32.rectHeight(desktop)));
-    const scale = MAP_WIDTH / desktop_width;
-    const map_height = @max(1, @round(desktop_height * scale));
+/// Every monitor in miniature with every space's region, the selected one drawn last and filled stronger; clicking a region selects its space.
+fn regionMap(context: *ui.Frame, items: []const config.ThumbnailSpace, initial_selected: ?usize) !void {
+    var map = try ScreenMap.init(context, .str("knots.space.map"));
+    const ui_state = context.ui();
+    var selected = initial_selected;
+    if (regionUnderMouse(&map, ui_state, items, selected)) |index| {
+        ui_state.requestCursor(.pointer);
+        const is_new = if (selected) |selected_index| index != selected_index else true;
+        if (ui_state.leftClicked(map.key.hash(), .within) and is_new) {
+            g_selected_id = items[index].id;
+            selected = index;
+            context.requestRedraw();
+        }
+    }
 
     const arena = context.arena();
-    const key: ui.Key = .str("knots.space.map");
-    const snap = try glyphs.snapOffset(context, key);
-    var commands: std.ArrayList(DrawCmd) = .empty;
-    try commands.append(arena, .{ .fill_rect = .{ .x = snap[0], .y = snap[1], .w = MAP_WIDTH, .h = map_height, .color = style.BG.value } });
-    try outline(arena, &commands, .{ snap[0], snap[1], MAP_WIDTH, map_height }, 1, style.BORDER.value);
     for (0..items.len + 1) |pass| {
         // The selected space is drawn on the last pass, over the others.
-        const index = if (pass < items.len) pass else selected;
-        const is_selected = index == selected;
+        const index = if (pass < items.len) pass else selected orelse break;
+        const is_selected = if (selected) |selected_index| index == selected_index else false;
         if (pass < items.len and is_selected) continue;
-        const space_rect = spaces.rect(&items[index]) orelse continue;
-        const x0 = std.math.clamp((@as(f32, @floatFromInt(space_rect.left)) - left) * scale, 0, MAP_WIDTH);
-        const y0 = std.math.clamp((@as(f32, @floatFromInt(space_rect.top)) - top) * scale, 0, map_height);
-        const x1 = std.math.clamp((@as(f32, @floatFromInt(space_rect.right)) - left) * scale, 0, MAP_WIDTH);
-        const y1 = std.math.clamp((@as(f32, @floatFromInt(space_rect.bottom)) - top) * scale, 0, map_height);
-        if (x1 - x0 < 1 or y1 - y0 < 1) continue;
-        const box = [4]f32{ @round(x0) + snap[0], @round(y0) + snap[1], @round(x1 - x0), @round(y1 - y0) };
+        const box = regionBox(&map, &items[index]) orelse continue;
         var fill_color = dotColor(context, index).value;
         var line_color = fill_color;
         const strength: f32 = if (items[index].enabled) 1 else 0.35;
         fill_color[3] = (if (is_selected) @as(f32, 0.3) else 0.12) * strength;
         line_color[3] = strength;
-        try commands.append(arena, .{ .fill_rect = .{ .x = box[0], .y = box[1], .w = box[2], .h = box[3], .color = fill_color } });
-        try outline(arena, &commands, box, if (is_selected) 2 else 1, line_color);
+        try map.addBox(arena, box, fill_color, line_color);
     }
-
-    const row = try widgets.openBinding(context, .src(@src()), "Screen");
-    const map_style = try arena.create(ui.Style);
-    map_style.* = .{ .width = .fixed(MAP_WIDTH), .height = .fixed(map_height) };
-    try context.e(Canvas{ .key = key, .commands = commands.items, .style = map_style });
-    try row.close(context);
+    try map.show(context, true);
 }
 
-/// `box` is x, y, width, height.
-fn outline(arena: std.mem.Allocator, commands: *std.ArrayList(DrawCmd), box: [4]f32, thickness: f32, color: [4]f32) !void {
-    const x, const y, const width, const height = box;
-    try commands.append(arena, .{ .fill_rect = .{ .x = x, .y = y, .w = width, .h = thickness, .color = color } });
-    try commands.append(arena, .{ .fill_rect = .{ .x = x, .y = y + height - thickness, .w = width, .h = thickness, .color = color } });
-    try commands.append(arena, .{ .fill_rect = .{ .x = x, .y = y + thickness, .w = thickness, .h = height - 2 * thickness, .color = color } });
-    try commands.append(arena, .{ .fill_rect = .{ .x = x + width - thickness, .y = y + thickness, .w = thickness, .h = height - 2 * thickness, .color = color } });
+/// Every monitor in miniature with each hand-placed character's saved thumbnail position.
+fn savedPositionMap(context: *ui.Frame, profile: ProfileRef) !void {
+    var map = try ScreenMap.init(context, .str("knots.manual.map"));
+    const arena = context.arena();
+    const line_color = context.ui().theme.primary.value;
+    var fill_color = line_color;
+    fill_color[3] = 0.25;
+    for (profile.ptr.characters.items) |character| {
+        const position = character.position orelse continue;
+        // A space ignores the saved position.
+        if (spaces.spaceFor(profile.ptr, character.name) != null) continue;
+        const size = profile.ptr.handPlacedSize(character.name);
+        // Scaled for the monitor the thumbnail sits on, as thumbnail/arrange.zig does.
+        const scale = win32.dpiToScale(win32.dpiForPoint(.{ .x = position.x, .y = position.y }));
+        const rect = win32.RECT{
+            .left = position.x,
+            .top = position.y,
+            .right = position.x + win32.scalePixels(size.width, scale),
+            .bottom = position.y + win32.scalePixels(size.height, scale),
+        };
+        const box = map.frame.visibleBox(rect) orelse continue;
+        try map.addBox(arena, box, fill_color, line_color);
+    }
+    try map.show(context, false);
+}
+
+fn regionBox(map: *const ScreenMap, space: *const config.ThumbnailSpace) ?screen_math.Box {
+    return map.frame.visibleBox(spaces.rect(space) orelse return null);
+}
+
+/// The topmost region under the mouse, checked in reverse of the order regionMap draws them in.
+fn regionUnderMouse(map: *const ScreenMap, ui_state: *ui.UI, items: []const config.ThumbnailSpace, selected: ?usize) ?usize {
+    const point = map.mousePoint(ui_state) orelse return null;
+    if (selected) |index| {
+        if (regionBox(map, &items[index])) |box| if (screen_math.contains(box, point)) return index;
+    }
+    var index = items.len;
+    while (index > 0) {
+        index -= 1;
+        if (selected) |selected_index| if (index == selected_index) continue;
+        if (regionBox(map, &items[index])) |box| if (screen_math.contains(box, point)) return index;
+    }
+    return null;
 }

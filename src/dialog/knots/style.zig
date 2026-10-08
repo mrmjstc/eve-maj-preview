@@ -671,6 +671,12 @@ pub const button_row: Style = .{ .width = .grow(), .direction = .row, .@"align" 
 pub const list_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
 pub const list: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
 
+/// Centres a Placement tab screen preview in its section.
+pub const screen_map_row: Style = .{ .width = .grow(), .direction = .row, .justify = .center };
+/// Laid over a monitor on a screen preview, centring its number; ScreenMap.show sets its offset and size.
+pub const monitor_label: Style = .{ .position = .absolute, .justify = .center, .@"align" = .center };
+pub const monitor_label_text: Style = .{ .font_size = .{ .px = 13 }, .foreground = .{ .color = MUTED } };
+
 /// #overlayLayoutStage's frame: a 1px border, centred in its section.
 pub const stage_frame: Style = .{
     .padding = .all(1),

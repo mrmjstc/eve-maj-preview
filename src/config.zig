@@ -239,6 +239,15 @@ pub const Config = struct {
         return self.characterSetting(character_name, "thumbnailSize", null);
     }
 
+    /// A hand-placed thumbnail's size before DPI scaling: its own if set, else the configured one.
+    pub fn handPlacedSize(self: *const Config, character_name: []const u8) struct { width: i32, height: i32 } {
+        const own_size = self.getCharacterSize(character_name) orelse return .{ .width = self.thumbnail.width, .height = self.thumbnail.height };
+        return .{
+            .width = own_size.width orelse self.thumbnail.width,
+            .height = own_size.height orelse self.thumbnail.height,
+        };
+    }
+
     pub fn isExcludedFromMinimize(self: *const Config, character_name: []const u8) bool {
         return self.characterSetting(character_name, "excludeFromMinimize", false);
     }

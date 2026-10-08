@@ -171,7 +171,7 @@ pub fn collectGhostGroups(painter: *const Painter, exclude_character: []const u8
         const pos = char_config.position orelse continue;
         // A space ignores the saved position, so it's no snap target.
         if (spaces.spaceFor(painter.config, char_config.name) != null) continue;
-        const size = painter.layout().configuredSize(char_config.name);
+        const size = painter.config.handPlacedSize(char_config.name);
         try raw.append(allocator, .{
             .name = char_config.name,
             .rect = .{ .left = pos.x, .top = pos.y, .right = pos.x + size.width, .bottom = pos.y + size.height },

@@ -1,4 +1,5 @@
 //! Monitor bounds and DPI lookups.
+const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config = @import("../config.zig");
 const log = @import("../log.zig");
@@ -17,6 +18,12 @@ pub const MonitorPlacement = struct {
 };
 
 pub const MonitorBounds = struct { bounds: win32.RECT, monitor: ?win32.HMONITOR };
+
+const RectList = struct {
+    /// Borrows monitorRects' caller's buffer.
+    buffer: []win32.RECT,
+    count: usize = 0,
+};
 
 /// Bounds of the monitor nearest `hwnd`, falling back to primary-monitor metrics (GetSystemMetrics only reports the primary monitor) if the lookup fails; also returns the resolved monitor handle, if any, for a DPI lookup.
 pub fn nearestMonitorBounds(hwnd: win32.HWND) MonitorBounds {
@@ -47,6 +54,22 @@ pub fn dpiForMonitor(monitor: ?win32.HMONITOR) u32 {
 /// DPI for the system default monitor; used as a fallback when no target monitor is configured.
 pub fn defaultDpi() u32 {
     return win32.GetDpiForSystem();
+}
+
+/// Every monitor's full bounds, up to `buffer.len` of them, primary first; borrows from `buffer`.
+pub fn monitorRects(buffer: []win32.RECT) []win32.RECT {
+    var list = RectList{ .buffer = buffer };
+    if (!win32.toBool(win32.EnumDisplayMonitors(null, null, rectEnumProc, win32.ptrToLparam(&list)))) {
+        slog.warn("Failed to enumerate monitors", .{});
+    }
+    const rects = buffer[0..list.count];
+    // The primary monitor is the one at the desktop's origin.
+    for (rects, 0..) |rect, index| {
+        if (rect.left != 0 or rect.top != 0) continue;
+        std.mem.rotate(win32.RECT, rects[0 .. index + 1], index);
+        break;
+    }
+    return rects;
 }
 
 pub fn resolveMonitorPlacement(cfg: *const config.DisplayConfig) ?MonitorPlacement {
@@ -102,6 +125,15 @@ fn monitorBounds(nearest: ?win32.HMONITOR) MonitorBounds {
         }
     }
     return .{ .bounds = bounds, .monitor = monitor };
+}
+
+fn rectEnumProc(_: win32.HMONITOR, _: ?win32.HDC, rect: ?*win32.RECT, lparam: win32.LPARAM) callconv(.c) win32.BOOL {
+    const list: *RectList = win32.lparamToPtr(RectList, lparam);
+    const bounds = rect orelse return win32.TRUE;
+    if (list.count == list.buffer.len) return win32.TRUE;
+    list.buffer[list.count] = bounds.*;
+    list.count += 1;
+    return win32.TRUE;
 }
 
 fn monitorEnumProc(monitor: win32.HMONITOR, _: ?win32.HDC, _: ?*win32.RECT, lparam: win32.LPARAM) callconv(.c) win32.BOOL {

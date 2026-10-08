@@ -169,7 +169,7 @@ fn cellSize(cell: placement.SpaceCell) Size {
 }
 
 fn handPlacedSize(painter: *const Painter, character_name: []const u8, scale: f32) Size {
-    const size = painter.layout().configuredSize(character_name);
+    const size = painter.config.handPlacedSize(character_name);
     return .{ .width = win32.scalePixels(size.width, scale), .height = win32.scalePixels(size.height, scale) };
 }
 

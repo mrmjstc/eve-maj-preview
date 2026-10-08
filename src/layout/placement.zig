@@ -137,15 +137,6 @@ pub const Layout = struct {
         const scale = dpiToScale(dpi);
         return .{ .width = scalePixels(self.config.thumbnail.width, scale), .height = scalePixels(self.config.thumbnail.height, scale) };
     }
-
-    /// A hand-placed thumbnail's size before DPI scaling: its own if set, else the configured one.
-    pub fn configuredSize(self: Layout, character_name: []const u8) struct { width: i32, height: i32 } {
-        const char_size = self.config.getCharacterSize(character_name) orelse return .{ .width = self.config.thumbnail.width, .height = self.config.thumbnail.height };
-        return .{
-            .width = char_size.width orelse self.config.thumbnail.width,
-            .height = char_size.height orelse self.config.thumbnail.height,
-        };
-    }
 };
 
 /// The cell grid this character's space uses, or null when it's placed by hand.
