@@ -213,14 +213,18 @@ fn preview(context: *ui.Frame, display: *const config.DisplayConfig, look: Look)
 fn sampleRow(context: *ui.Frame, sample: Sample, index: usize, look: Look) !void {
     const arena = context.arena();
     const key = ROW_KEY.indexed(index);
+    // A part pads its text for its outline, so the space before a name part and after a right-hand part gives that back.
+    const name_inset: f32 = if (sample.is_name_part) look.px(PART_PADDING) else 0;
+    const right_inset: f32 = if (sample.state == .inactive) look.px(PART_PADDING) else 0;
+    const has_indicator = look.indicator != .None;
     const row_style = try arena.create(ui.Style);
     row_style.* = .{
         .width = .grow(),
         .height = .fixed(look.px(look.sizes.row_height)),
         .direction = .row,
         .@"align" = .center,
-        .gap = look.px(list_look.INDICATOR_GAP),
-        .padding = .xy(look.px(list_look.PADDING_X), 0),
+        .gap = look.px(list_look.INDICATOR_GAP) - (if (has_indicator) name_inset else 0),
+        .padding = .init(0, look.px(list_look.PADDING_X) - right_inset, 0, look.px(list_look.PADDING_X) - (if (has_indicator) 0 else name_inset)),
     };
     switch (sample.state) {
         .active => {
