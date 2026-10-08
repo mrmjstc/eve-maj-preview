@@ -124,7 +124,9 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
                 .none => if (is_selected) &style.roster_row_selected else &style.roster_row,
             },
         };
-        if ((try row.openResponse(context)).clicked and !is_selected) {
+        const response = try row.openResponse(context);
+        if (response.hovered) context.ui().requestCursor(.pointer);
+        if (response.clicked and !is_selected) {
             g_selected_index = index;
             context.requestRedraw();
         }

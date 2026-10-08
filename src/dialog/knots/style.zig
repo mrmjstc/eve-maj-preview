@@ -156,29 +156,29 @@ pub const roster: Style = .{
     .height = .grow(),
     .direction = .column,
     .overflow = .scroll_y,
+    .gap = 2,
+    .padding = .all(4),
     .background = .{ .color = BG },
     .radius = .md,
 };
 
-/// .roster-row, a Button so the whole row is clickable.
+/// .roster-row, a Button so the whole row is clickable; inset like the sidebar's tabs.
 pub const roster_row: Style = .{
     .width = .grow(),
     .height = .fit(),
     .justify = .start,
     .gap = 6,
-    .padding = .init(6, 8, 6, 6),
+    .padding = .xy(6, 6),
     .background = .transparent,
     .foreground = .{ .color = MUTED },
-    .radius = .none,
-    .border_width = .edges(0, 0, 1, 2),
-    .border_color = .{ .color = color("#26282c") },
+    .radius = .md,
     .hover = &.{ .background = .{ .color = SURFACE }, .foreground = .{ .color = TEXT }, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
 pub const roster_row_selected: Style = roster_row.with(.{
-    .background = .{ .color = SURFACE },
+    .background = .{ .color = SURFACE_ALT },
     .foreground = .{ .color = TEXT },
-    .border_color = .accent,
+    .hover = &.{ .state_layer = 0 },
 });
 
 /// Wraps: knots doesn't clip text, so a long name would otherwise run under the row's badge.
@@ -187,14 +187,8 @@ pub const roster_name_selected: Style = roster_name.with(.{ .font = FONT_SEMIBOL
 pub const roster_empty: Style = .{ .width = .grow(), .padding = .xy(8, 6) };
 pub const roster_empty_text: Style = .{ .width = .grow(), .wrap = true, .font_size = .xs, .foreground = .{ .color = MUTED } };
 
-/// widgets.boxedText's box around a row's number; index_chip_text is the number.
-pub const index_chip: Style = .{
-    .padding = .xy(4, 1),
-    .background = .{ .color = SURFACE_ALT },
-    .border_width = .all(1),
-    .border_color = .{ .color = BORDER },
-    .radius = .sm,
-};
+/// Around a row's number, unboxed so it doesn't outshine the name.
+pub const index_chip: Style = .{ .padding = .xy(2, 1) };
 pub const index_chip_text: Style = .{ .font = FONT_MONO, .font_size = .xs, .foreground = .{ .color = MUTED } };
 
 /// A master-detail list's details: unboxed, since the section around it is already a card.
@@ -839,8 +833,9 @@ pub const keycap_modifier_text: Style = keycap_text.with(.{ .foreground = .{ .co
 pub const keycap_plus: Style = .{ .font_size = .{ .px = 9 }, .foreground = .{ .color = MUTED } };
 pub const keycap_separator: Style = .{ .font_size = .sm, .foreground = .{ .color = MUTED } };
 /// A roster row with the drop line above or below it while another is dragged.
-pub const roster_row_drop_above: Style = roster_row.with(.{ .border_width = .edges(2, 0, 1, 2), .border_color = .accent });
-pub const roster_row_drop_below: Style = roster_row.with(.{ .border_width = .edges(0, 0, 2, 2), .border_color = .accent });
+/// Square on the side without the line: a rounded corner there leaks accent pixels.
+pub const roster_row_drop_above: Style = roster_row.with(.{ .border_width = .edges(2, 0, 0, 0), .border_color = .accent, .radius = .{ .corners = .{ .md, .md, .none, .none } } });
+pub const roster_row_drop_below: Style = roster_row.with(.{ .border_width = .edges(0, 0, 2, 0), .border_color = .accent, .radius = .{ .corners = .{ .none, .none, .md, .md } } });
 /// .detail-value: a read-only value in a detail form, e.g. the file an import reads.
 pub const detail_value: Style = .{ .width = .grow(), .foreground = .{ .color = TEXT_SECONDARY } };
 
@@ -853,11 +848,11 @@ pub const binding_arrow: Style = .{ .width = .fixed(14), .foreground = .{ .color
 pub const roster_add: Style = .{
     .width = .grow(),
     .justify = .start,
-    .padding = .init(6, 8, 6, 8),
+    .padding = .xy(6, 6),
     .background = .transparent,
     .foreground = .{ .color = MUTED },
-    .radius = .none,
-    .hover = &.{ .foreground = .accent, .state_layer = 0 },
+    .radius = .md,
+    .hover = &.{ .background = .{ .color = SURFACE }, .foreground = .{ .color = TEXT }, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
 /// .hkgroup-chars-list: a group's members, each a draggable row.
