@@ -123,6 +123,8 @@ pub fn compute(el: *const Element, offset: math.Vec2, theme: *const Theme) ?Geom
     const box_w = el.box.w();
     const box_h = el.box.h();
 
+    // EVE-Maj patch: scroll_x_bare scrolls but has no bar to draw or grab.
+    if (el.overflow == .scroll_x_bare) return null;
     const metrics = Element.scrollMetrics(el.overflow, el.box, el.content_w, el.content_h, thickness);
     if (!metrics.has_x and !metrics.has_y) return null;
 
@@ -231,7 +233,7 @@ pub fn route(ui: *UI) !void {
         const el = &elements[w.slot];
         const resolved = try resolveScrollInput(ui, el);
         const delta: math.Vec2 = switch (el.overflow) {
-            .scroll_x => .{ resolved[0], 0 },
+            .scroll_x, .scroll_x_bare => .{ resolved[0], 0 },
             .scroll_y => .{ 0, resolved[1] },
             .scroll => try lockedWheelDelta(ui, el, resolved),
             else => unreachable,

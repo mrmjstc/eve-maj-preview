@@ -726,7 +726,7 @@ fn positionChildren(self: *Context, el: *Element, axis: AxisInfo, fixed_used: f3
     const scroll_offset: [2]f32 = if (el.overflow.isScroll()) blk: {
         const raw = scroll.get(el.id);
         break :blk switch (el.overflow) {
-            .scroll_x => .{ std.math.clamp(raw[0], 0, metrics.max_offset[0]), 0 },
+            .scroll_x, .scroll_x_bare => .{ std.math.clamp(raw[0], 0, metrics.max_offset[0]), 0 },
             .scroll_y => .{ 0, std.math.clamp(raw[1], 0, metrics.max_offset[1]) },
             .scroll => .{ std.math.clamp(raw[0], 0, metrics.max_offset[0]), std.math.clamp(raw[1], 0, metrics.max_offset[1]) },
             else => unreachable,

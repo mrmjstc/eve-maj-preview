@@ -36,7 +36,8 @@ pub const base = struct {
         .width = .grow(),
         .@"align" = .center,
         .padding = .init(6, 10, 6, 10),
-        .overflow = .scroll_x,
+        // EVE-Maj patch: scrolls to keep the caret in view without a scrollbar, which a one-line box has no room for.
+        .overflow = .scroll_x_bare,
         .background = .elevated,
         .border_width = .all(1),
         .border_color = .toned,

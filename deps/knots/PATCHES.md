@@ -14,7 +14,12 @@ Vendored from [knots-ui/knots](https://github.com/knots-ui/knots) at commit `9cd
 
 ## `src/ui/component/TextInput.zig`
 
+- The root's overflow is `scroll_x_bare`, so long text still scrolls to keep the caret in view, but no scrollbar is drawn over the box.
 - The caret, selection and mouse hit-testing are offset by the gap the root's centring leaves above the line, so they line up with the text in an input taller than one line.
+
+## `src/layout/Element.zig`, `src/layout/Context.zig`, `src/ui/scrollbar.zig`
+
+- `Overflow.scroll_x_bare`: scrolls horizontally like `scroll_x`, but `scrollbar.compute` gives it no bar, so none is drawn or hit-tested.
 
 ## `src/ui/Context.zig`
 

@@ -110,9 +110,11 @@ pub const Overflow = enum {
     scroll_x,
     scroll_y,
     hidden,
+    /// EVE-Maj patch: scrolls horizontally like scroll_x, but draws no scrollbar.
+    scroll_x_bare,
 
     pub fn isScroll(self: Overflow) bool {
-        return self == .scroll or self == .scroll_x or self == .scroll_y;
+        return self == .scroll or self == .scroll_x or self == .scroll_y or self == .scroll_x_bare;
     }
 };
 
@@ -133,7 +135,7 @@ pub fn scrollMetrics(overflow: Overflow, box: math.Rect, content_w: f32, content
     var has_y = false;
 
     switch (overflow) {
-        .scroll_x => has_x = content_w > box_w and box_w > thickness,
+        .scroll_x, .scroll_x_bare => has_x = content_w > box_w and box_w > thickness,
         .scroll_y => has_y = content_h > box_h and box_h > thickness,
         .scroll => {
             has_x = content_w > box_w and box_w > thickness;
