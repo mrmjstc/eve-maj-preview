@@ -127,7 +127,7 @@ fn spacesMode(context: *ui.Frame, display: DisplayRef) !void {
     const is_filling = fillsWindow();
     const master_detail = Rect{ .key = .src(@src()), .style = if (is_filling) &style.master_detail_fill else &style.master_detail };
     _ = try master_detail.open(context);
-    try roster(context, profile, if (is_filling) &style.roster_wide else &style.roster_filters);
+    try roster(context, profile, is_filling);
     if (is_filling) {
         const pane = try widgets.openScrollPane(context, .str("knots.space.detail"), style.detail_scroll);
         try selectedDetail(context, profile);
@@ -159,10 +159,9 @@ fn selectedIndex(items: []const config.ThumbnailSpace) ?usize {
     return 0;
 }
 
-fn roster(context: *ui.Frame, profile: ProfileRef, list_style: *const ui.Style) !void {
+fn roster(context: *ui.Frame, profile: ProfileRef, is_filling: bool) !void {
     const items = profile.ptr.thumbnailSpaces.items;
-    const list = Rect{ .key = .src(@src()), .style = list_style };
-    _ = try list.open(context);
+    const list = try widgets.openRoster(context, .str("knots.space.roster"), if (is_filling) &style.roster_wide else &style.roster_filters, is_filling);
     if (items.len == 0) {
         try widgets.boxedText(context, .src(@src()), "No spaces yet.", &style.roster_empty, &style.roster_empty_text);
     }
@@ -199,15 +198,15 @@ fn roster(context: *ui.Frame, profile: ProfileRef, list_style: *const ui.Style) 
         try row.close(context);
     }
     const is_full = items.len >= spaces.MAX_SPACES;
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "+ Add Space", .disabled = is_full, .style = &style.roster_add })).clicked) {
-        const count = items.len;
+    const action = try list.close(context, .{ .add_label = "+ Add Space", .is_add_disabled = is_full });
+
+    if (widgets.reorderFinish(context, SPACE_ROW_KEY, items.len)) |moved| profile.move("thumbnailSpaces", moved.from, @max(moved.before, fixed_count));
+    if (action == .add) {
+        const count = profile.ptr.thumbnailSpaces.items.len;
         profile.append("thumbnailSpaces", .{ .name = "New Space" });
         const added = profile.ptr.thumbnailSpaces.items;
         if (added.len > count) g_selected_id = added[added.len - 1].id;
     }
-    try list.close(context);
-
-    if (widgets.reorderFinish(context, SPACE_ROW_KEY, items.len)) |moved| profile.move("thumbnailSpaces", moved.from, @max(moved.before, fixed_count));
 }
 
 /// Login Screen and Unassigned Characters stay at the top, as config load puts them (see config/spaces.zig).
@@ -382,9 +381,6 @@ fn regionRow(context: *ui.Frame, space_id: u32) !void {
     const row = try widgets.openRow(context, .src(@src()));
     try context.e(Rect{ .key = .src(@src()), .style = &style.spacer });
     const current = region.rect(space_id);
-    if (current == null) {
-        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "No region yet", .style = &style.space_status_warning });
-    }
     if ((try context.interact(Button{ .key = .src(@src()), .label = "New Space", .style = &style.plain_button })).clicked) {
         region.start(space_id, false);
     }

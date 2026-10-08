@@ -13,6 +13,7 @@ const SliderInput = ui.component.SliderInput;
 const ColorPicker = ui.component.ColorPicker;
 const Checkbox = ui.component.Checkbox;
 const Button = ui.component.Button;
+const Tooltip = ui.component.Tooltip;
 const Color = ui.Color;
 
 /// Most sections a tab has; past this they still draw, but miss their hint button.
@@ -106,6 +107,36 @@ pub const FieldGroup = struct {
         try self.row.close(context);
     }
 };
+
+/// What openRoster returns: the caller draws its rows, then close draws the footer.
+pub const Roster = struct {
+    key: ui.Key,
+    frame: Rect,
+    rows: Rect,
+
+    /// Closes the rows, then draws the footer every master list shares; returns which of its buttons was clicked.
+    pub fn close(self: Roster, context: *ui.Frame, footer: RosterFooter) !RosterAction {
+        try self.rows.close(context);
+        const bar = Rect{ .key = self.key.indexed(2), .style = &style.roster_footer };
+        _ = try bar.open(context);
+        var action: RosterAction = .none;
+        search.captureText(footer.add_label);
+        if ((try context.interact(Button{ .key = self.key.indexed(3), .label = footer.add_label, .disabled = footer.is_add_disabled, .style = &style.roster_add })).clicked) action = .add;
+        if (footer.has_open_clients and try addOpenClientsButton(context, self.key.indexed(4), &style.roster_icon_button)) action = .add_open_clients;
+        try bar.close(context);
+        try self.frame.close(context);
+        return action;
+    }
+};
+
+pub const RosterFooter = struct {
+    /// e.g. "+ Add Character".
+    add_label: []const u8,
+    is_add_disabled: bool = false,
+    has_open_clients: bool = false,
+};
+
+pub const RosterAction = enum { none, add, add_open_clients };
 
 /// What useDetailRows replaced.
 pub const RowSettings = struct { is_aligned: bool, label_style: *const ui.Style };
@@ -235,6 +266,26 @@ pub fn useDetailRows() RowSettings {
 pub fn restoreRows(previous: RowSettings) void {
     g_is_aligned = previous.is_aligned;
     g_label_style = previous.label_style;
+}
+
+/// A master list whose rows scroll, or fit when `is_filling` is false, above a pinned footer of add buttons.
+pub fn openRoster(context: *ui.Frame, key: ui.Key, frame_style: *const ui.Style, is_filling: bool) !Roster {
+    const frame = Rect{ .key = key, .style = frame_style };
+    _ = try frame.open(context);
+    const rows = Rect{ .key = key.indexed(1), .style = if (is_filling) &style.roster_rows else &style.roster_rows_fit };
+    _ = try rows.open(context);
+    return .{ .key = key, .frame = frame, .rows = rows };
+}
+
+/// The refresh icon that adds every open EVE client; a tooltip names it, since the icon alone doesn't.
+pub fn addOpenClientsButton(context: *ui.Frame, key: ui.Key, button_style: *const ui.Style) !bool {
+    const label = "Add Open Clients";
+    search.captureText(label);
+    const tip = Tooltip{ .key = key, .content = label };
+    _ = try tip.open(context);
+    const clicked = try glyphButton(context, key.indexed(3), .refresh, "", button_style, false);
+    try tip.close(context);
+    return clicked;
 }
 
 /// A master list's row, showing the hand cursor while hovered; the caller closes it.

@@ -43,6 +43,9 @@ pub fn show(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Hotkey Groups", "Groups of characters you can cycle through with hotkeys. List members here, or assign them live.", &style.fill_section);
     const profile = session.profile();
 
+    try bind.toggle(context, profile.child("hotkeys"), "resetGroupIndexOnNonGroupFocus", "Reset Cycle Position When Leaving a Group");
+    try widgets.separator(context, .str("knots.groups.separator.reset"));
+
     const count = profile.ptr.hotkeyGroups.items.len;
     if (g_selected_index >= count) g_selected_index = count -| 1;
     const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail_fill };
@@ -50,15 +53,12 @@ pub fn show(context: *ui.Frame) !void {
     try roster(context, profile);
     const stack = try widgets.openScrollPane(context, .str("knots.groups.detail"), style.detail_scroll);
     if (count == 0) {
-        try widgets.paragraph(context, .src(@src()), "Add a hotkey group below to give a set of characters their own cycling keys.");
+        try widgets.paragraph(context, .src(@src()), "Add a hotkey group under the list to give a set of characters their own cycling keys.");
     } else {
         try detail(context, profile, g_selected_index);
     }
     try stack.close(context);
     try master_detail.close(context);
-
-    try widgets.subheading(context, .src(@src()), "All Groups");
-    try bind.toggle(context, profile.child("hotkeys"), "resetGroupIndexOnNonGroupFocus", "Reset Cycle Position When Leaving a Group");
     try section.close(context);
 }
 
@@ -68,8 +68,7 @@ fn groupName(arena: std.mem.Allocator, group: *const config.HotkeyGroupConfig, i
 
 fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const groups = profile.ptr.hotkeyGroups.items;
-    const list = Rect{ .key = .src(@src()), .style = &style.roster_wide };
-    _ = try list.open(context);
+    const list = try widgets.openRoster(context, .str("knots.groups.roster"), &style.roster_wide, true);
     if (groups.len == 0) {
         try widgets.boxedText(context, .src(@src()), "No hotkey groups yet.", &style.roster_empty, &style.roster_empty_text);
     }
@@ -103,11 +102,10 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
         });
         try row.close(context);
     }
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "+ Add Group", .style = &style.roster_add })).clicked) {
+    if (try list.close(context, .{ .add_label = "+ Add Group" }) == .add) {
         profile.append("hotkeyGroups", .{});
         g_selected_index = profile.ptr.hotkeyGroups.items.len - 1;
     }
-    try list.close(context);
 
     // The selection follows the group it was on, not the slot.
     if (widgets.reorderFinish(context, GROUP_ROW_KEY, groups.len)) |moved| {
@@ -198,7 +196,7 @@ fn members(context: *ui.Frame, group: GroupRef) !void {
     _ = try list.open(context);
     const names = group.ptr.characters.items;
     if (names.len == 0) {
-        try widgets.paragraph(context, .src(@src()), "No characters in this group yet - add one below, or fill the group from the open clients.");
+        try widgets.paragraph(context, .src(@src()), "No characters in this group yet - add one below, or add every open client with the refresh button.");
     }
     const arena = context.arena();
     var removed: ?usize = null;
@@ -229,7 +227,7 @@ fn members(context: *ui.Frame, group: GroupRef) !void {
     try context.e(TextInput{ .key = ADD_MEMBER_KEY, .buf = &g_new_member, .style = &style.text_input, .placeholder = "Add character name\u{2026}" });
     const add_clicked = (try context.interact(Button{ .key = .src(@src()), .label = "+ Add", .style = &style.plain_button })).clicked;
     if (add_clicked or (is_focused and context.ui().input.containsKey(.enter))) addMember(group);
-    if (try widgets.glyphButton(context, .src(@src()), .refresh, "Fill from Open Clients", &style.plain_button, false)) fillFromClients(context, group);
+    if (try widgets.addOpenClientsButton(context, .src(@src()), &style.plain_button)) fillFromClients(context, group);
     try add_row.close(context);
     if (try suggest.openClients(context, ADD_MEMBER_KEY, g_new_member.items)) |picked| {
         g_new_member.clearRetainingCapacity();

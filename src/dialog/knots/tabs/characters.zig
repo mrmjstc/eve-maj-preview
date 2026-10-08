@@ -70,15 +70,6 @@ pub fn show(context: *ui.Frame) !void {
     try roster(context, profile);
     try detail(context, profile);
     try master_detail.close(context);
-
-    const buttons = Rect{ .key = .src(@src()), .style = &style.button_row };
-    _ = try buttons.open(context);
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "+ Add Character", .style = &style.plain_button })).clicked) {
-        profile.append("characters", .{});
-        g_selected_index = profile.ptr.characters.items.len - 1;
-    }
-    if (try widgets.glyphButton(context, .src(@src()), .refresh, "Populate from Open Clients", &style.plain_button, false)) populateFromClients(context, profile);
-    try buttons.close(context);
     try section.close(context);
 }
 
@@ -101,8 +92,7 @@ fn rosterName(arena: std.mem.Allocator, character: *const config.CharacterConfig
 
 fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const characters = profile.ptr.characters.items;
-    const list = Rect{ .key = .src(@src()), .style = &style.roster };
-    _ = try list.open(context);
+    const list = try widgets.openRoster(context, .str("knots.characters.roster"), &style.roster, true);
     if (characters.len == 0) {
         try widgets.boxedText(context, .src(@src()), "No characters yet.", &style.roster_empty, &style.roster_empty_text);
     }
@@ -145,7 +135,7 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
         }
         try row.close(context);
     }
-    try list.close(context);
+    const action = try list.close(context, .{ .add_label = "+ Add Character", .has_open_clients = true });
 
     // The selection follows the character it was on, not the slot.
     if (widgets.reorderFinish(context, ROW_KEY, characters.len)) |moved| {
@@ -155,12 +145,21 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
             if (character.id == selected_id) g_selected_index = index;
         }
     }
+    // After the reorder, which reads `characters`, since adding can move the list.
+    switch (action) {
+        .none => {},
+        .add => {
+            profile.append("characters", .{});
+            g_selected_index = profile.ptr.characters.items.len - 1;
+        },
+        .add_open_clients => populateFromClients(context, profile),
+    }
 }
 
 fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     const stack = try widgets.openScrollPane(context, .str("knots.character.detail"), style.detail_scroll);
     if (profile.ptr.characters.items.len == 0) {
-        try widgets.paragraph(context, .str("knots.characters.empty"), "Add a character below, or use \"Populate from Open Clients\" to detect one automatically.");
+        try widgets.paragraph(context, .str("knots.characters.empty"), "Add a character under the list, or add every open client with the refresh button beside it.");
         try stack.close(context);
         return;
     }

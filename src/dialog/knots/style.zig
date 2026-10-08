@@ -155,11 +155,24 @@ pub const roster: Style = .{
     .width = .fixed(175),
     .height = .grow(),
     .direction = .column,
-    .overflow = .scroll_y,
+    .overflow = .hidden,
     .gap = 2,
     .padding = .all(4),
     .background = .{ .color = BG },
     .radius = .md,
+};
+/// widgets.openRoster's rows, scrolling above its footer.
+pub const roster_rows: Style = .{ .width = .grow(), .height = .grow(), .direction = .column, .gap = 2, .overflow = .scroll_y };
+pub const roster_rows_fit: Style = .{ .width = .grow(), .direction = .column, .gap = 2 };
+/// Every master list's add buttons, ruled off from its rows.
+pub const roster_footer: Style = .{
+    .width = .grow(),
+    .direction = .row,
+    .@"align" = .center,
+    .gap = 2,
+    .padding = .init(2, 0, 0, 0),
+    .border_width = .edges(1, 0, 0, 0),
+    .border_color = .{ .color = DIVIDER },
 };
 
 /// .roster-row, a Button so the whole row is clickable; inset like the sidebar's tabs.
@@ -688,7 +701,6 @@ pub const stage_row: Style = .{ .width = .grow(), .justify = .center };
 
 /// A thumbnail space's colour in the roster; the roster sets its colour.
 pub const space_dot: Style = .{ .width = .fixed(10), .height = .fixed(10), .radius = .{ .fixed = 2 } };
-pub const space_status_warning: Style = .{ .foreground = .accent };
 /// A space's Holds grid of hotkey group pills; the dialog sets its rows.
 pub const group_chip_grid: Style = .{ .width = .grow(), .direction = .grid, .gap = 6 };
 pub const GROUP_CHIP_HEIGHT = 26;
@@ -870,6 +882,8 @@ pub const roster_add: Style = .{
     .hover = &.{ .background = .{ .color = SURFACE }, .foreground = .{ .color = TEXT }, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
+/// A roster footer's icon-only button, sized to its glyph.
+pub const roster_icon_button: Style = roster_add.with(.{ .width = .fit(), .justify = .center });
 /// .hkgroup-chars-list: a group's members, each a draggable row.
 pub const members_list: Style = .{ .width = .grow(), .direction = .column, .gap = 4 };
 pub const member_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 6, .border_width = .edges(2, 0, 2, 0), .border_color = .transparent };
