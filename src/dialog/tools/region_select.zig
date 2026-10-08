@@ -145,9 +145,7 @@ pub fn labelText(buf: []const u8) []const u8 {
     return std.mem.sliceTo(buf, 0);
 }
 
-/// Starts (or restarts) the overlay. `accent_color` is forced opaque, and
-/// `edit_region` adjusts that region instead of dragging a new one; `other_regions` are copied and drawn dashed. `on_finished` runs once the overlay
-/// closes, then `on_result` with the selection; neither runs if this fails.
+/// Starts or restarts the overlay, copying `other_regions`; `on_finished` then `on_result` run as it closes, neither if this fails.
 pub fn start(instance: win32.HINSTANCE, accent_color: u32, label_style: LabelStyle, edit_region: ?win32.RECT, other_regions: []const win32.RECT, labels: Labels, on_finished: *const fn () void, on_result: *const fn (Status, win32.RECT) void) !void {
     try registerWindowClass(instance);
     g_on_finished = on_finished;

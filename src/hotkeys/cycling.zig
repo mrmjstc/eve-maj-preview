@@ -133,7 +133,7 @@ pub fn activatePerCharacterGroup(manager: *HotkeyManager, group: *bindings.Chara
     slog.warn("No character sharing this hotkey is currently running", .{});
 }
 
-/// Cycles the groups' members as one list, in order; not-logged-in clients follow once if any group includes them, and the ends stop only if every group does.
+/// Cycles the groups' members as one list; logged-out clients join if any group includes them, ends stop only if all do.
 pub fn cycleGroups(manager: *HotkeyManager, group_indices: []const usize, forward: bool) void {
     const groups = manager.config.hotkeyGroups.items;
     var member_count: usize = 0;

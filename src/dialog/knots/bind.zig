@@ -132,7 +132,7 @@ fn styledNumberBox(context: *ui.Frame, ref: anytype, comptime field: []const u8,
     try context.e(TextInput{ .key = key, .buf = &state.text, .style = box_style, .placeholder = options.placeholder });
 }
 
-/// The box around a borderless number input and its unit, outlined in the accent while the input keyed `input_key` has focus; the caller adds both and closes it.
+/// A number input and its unit in one box, outlined while `input_key` has focus; the caller adds both and closes it.
 fn openUnitField(context: *ui.Frame, key: ui.Key, input_key: ui.Key) !ui.component.Rect {
     const is_focused = context.ui().focused(input_key.hash());
     const field_rect = ui.component.Rect{ .key = key, .style = if (is_focused) &style.unit_field_focused else &style.unit_field };
@@ -140,8 +140,7 @@ fn openUnitField(context: *ui.Frame, key: ui.Key, input_key: ui.Key) !ui.compone
     return field_rect;
 }
 
-/// A value that isn't one setting as a box with `unit` inside it, e.g. a slider's "85 %"; returns what was typed once the box loses focus.
-/// `key` is the row's; the box takes its indices 4 to 6.
+/// A unit box for a value that isn't one setting, e.g. a slider's "85 %"; returns what was typed on blur, using `key` indices 4 to 6.
 pub fn unitValueBox(context: *ui.Frame, key: ui.Key, value: f64, unit: []const u8) !?f64 {
     const box_key = key.indexed(4);
     const field_rect = try openUnitField(context, key.indexed(6), box_key);
@@ -326,8 +325,7 @@ pub fn color(context: *ui.Frame, ref: anytype, comptime field: []const u8, label
     try row.close(context);
 }
 
-/// Just the picker, for a row or grid of several.
-/// In aligned rows it's just the swatch, and RGB only: a colour saved with alpha shows, and saves, opaque.
+/// Just the picker; aligned, it's a bare swatch that saves RGB only, so a colour with alpha comes out opaque.
 pub fn colorBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
     const is_aligned = widgets.isAligned();
     const opaque_mask: u32 = if (is_aligned) 0xFF000000 else 0;

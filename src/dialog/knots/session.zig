@@ -485,7 +485,7 @@ fn ListItem(comptime List: type) type {
     return @typeInfo(@FieldType(List, "items")).pointer.child;
 }
 
-/// Display settings and the spaces themselves place every thumbnail; the thumbnail size shapes the spaces' cells; the character and hotkey group lists decide who goes to which space, and in what order.
+/// What an edit to `field` re-lays out: display and spaces everything; thumbnail size and member lists the spaces.
 fn layoutFor(comptime T: type, comptime field: []const u8, comptime inherited: main.LiveLayout) main.LiveLayout {
     if (T == Config) {
         if (std.mem.eql(u8, field, "display") or std.mem.eql(u8, field, "thumbnailSpaces")) return .all;

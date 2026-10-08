@@ -124,7 +124,7 @@ pub const HotkeyManager = struct {
         return if (binding.in_global_settings) @field(self.global_settings, binding.field) else @field(self.config.hotkeys, binding.field);
     }
 
-    /// Groups sharing a combo cycle through each other's members, in group order. Returns how many keys failed to register.
+    /// Returns how many keys failed to register; groups sharing a combo cycle as one list.
     fn registerGroupChains(self: *HotkeyManager, hwnd: win32.HWND, chains: []const ComboSharers, forward: bool) usize {
         var failed_count: usize = 0;
         var desc_buf: [160]u8 = undefined;

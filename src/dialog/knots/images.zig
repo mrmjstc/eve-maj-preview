@@ -38,14 +38,14 @@ pub const PackedImage = struct {
     fn unpack(self: *PackedImage) ?[]const u8 {
         if (self.pixels) |pixels| return pixels;
         const pixels = g_allocator.alloc(u8, self.width * self.height * 4) catch |err| {
-            slog.warn("Failed to unpack the {s} image: {}", .{ self.name, err });
+            slog.warn("Failed to unpack the '{s}' image: {}", .{ self.name, err });
             return null;
         };
         var input: std.Io.Reader = .fixed(self.packed_rgba);
         var decompress: std.compress.flate.Decompress = .init(&input, .zlib, &.{});
         var output: std.Io.Writer = .fixed(pixels);
         _ = decompress.reader.streamRemaining(&output) catch |err| {
-            slog.warn("Failed to unpack the {s} image: {}", .{ self.name, err });
+            slog.warn("Failed to unpack the '{s}' image: {}", .{ self.name, err });
             g_allocator.free(pixels);
             return null;
         };

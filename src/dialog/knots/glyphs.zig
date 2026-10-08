@@ -319,8 +319,7 @@ fn bitmap(glyph: Glyph) []const []const u8 {
     };
 }
 
-/// The glyph centred in a `box`-sized square, one rect per run of lit pixels.
-/// `snap` moves it onto whole device pixels; see snapOffset.
+/// The glyph centred in a `box`-sized square, moved onto whole device pixels by `snap` (see snapOffset).
 pub fn commands(arena: std.mem.Allocator, glyph: Glyph, box: f32, snap: [2]f32, color: [4]f32) ![]const DrawCmd {
     const rows = bitmap(glyph);
     const width: f32 = @floatFromInt(rows[0].len);

@@ -17,7 +17,7 @@ pub const ThumbnailSpace = struct {
     holdsLoginScreen: bool = false,
     /// Marks the Unassigned Characters space, which holds characters no other active space holds.
     holdsUnassigned: bool = false,
-    /// Characters no active space holds fill in after this space's own, in the first space with this on, unless the Unassigned Characters space is active.
+    /// Takes characters no space holds, after its own; the first such space wins, unless Unassigned Characters is active.
     takesUnassigned: bool = false,
     /// Login-screen clients fill in last, in the first space with this on, unless the Login Screen space is active.
     takesLoginScreen: bool = false,
@@ -55,7 +55,7 @@ pub const ThumbnailSpace = struct {
     pub const Wire = wire.Wire(ThumbnailSpace);
 };
 
-/// Adds the Login Screen space first and the Unassigned Characters space second, both off, when they're missing; the dialog can't remove them, so every profile has both.
+/// Adds the Login Screen and Unassigned Characters spaces, off, when missing, so every profile has both.
 pub fn ensureSpecialSpaces(allocator: std.mem.Allocator, list: *std.ArrayList(ThumbnailSpace)) !void {
     if (!hasSpace(list.items, "holdsLoginScreen")) {
         const name = try allocator.dupe(u8, LOGIN_SCREEN_NAME);
@@ -69,7 +69,7 @@ pub fn ensureSpecialSpaces(allocator: std.mem.Allocator, list: *std.ArrayList(Th
     }
 }
 
-/// Moves the Login Screen space to the top and the Unassigned Characters space under it, keeping the rest in order; placement finds both by their mark, so only the list changes.
+/// Moves the Login Screen space first and Unassigned Characters second, keeping the rest in order.
 pub fn keepSpecialSpacesFirst(list: []ThumbnailSpace) void {
     var front: usize = 0;
     inline for (.{ "holdsLoginScreen", "holdsUnassigned" }) |mark| {

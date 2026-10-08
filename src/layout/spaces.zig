@@ -86,12 +86,12 @@ pub fn anyActive(cfg: *const Config) bool {
     return false;
 }
 
-/// Where login-screen clients go: the Login Screen space when it's active, else the first active space taking them; null when they're placed by hand.
+/// The Login Screen space if active, else the first active space taking login screens; null when placed by hand.
 pub fn loginScreenSpaceIn(items: []const ThumbnailSpace) ?usize {
     return firstActiveWith(items, "holdsLoginScreen") orelse firstActiveWith(items, "takesLoginScreen");
 }
 
-/// Where characters no active space holds go: the Unassigned Characters space when it's active, else the first active space taking them; null when they're placed by hand.
+/// The Unassigned Characters space if active, else the first active space taking unheld characters; null when placed by hand.
 pub fn unassignedSpaceIn(items: []const ThumbnailSpace) ?usize {
     return firstActiveWith(items, "holdsUnassigned") orelse firstActiveWith(items, "takesUnassigned");
 }

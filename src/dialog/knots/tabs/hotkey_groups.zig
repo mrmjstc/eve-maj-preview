@@ -166,7 +166,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     }
 }
 
-/// Spaces hold hotkey groups by name, so they follow a group's rename, or drop it once it's removed (`new_name` null); a name another group still has stays.
+/// Carries a group's rename to spaces holding it, or drops it (`new_name` null), unless another group shares the name.
 fn carryToSpaces(profile: ProfileRef, old_name: []const u8, new_name: ?[]const u8) void {
     if (old_name.len == 0 or profile.ptr.hasHotkeyGroupNamed(old_name)) return;
     // An emptied name box is mid-edit, not a removal.

@@ -702,7 +702,7 @@ fn resolveBorder(cfg: *const config_mod.Config, thumbnail: *const ThumbnailWindo
     };
 }
 
-/// Reads a space's already-sized window back rather than repeating the grid math; otherwise the configured (or per-character) size at the window's DPI.
+/// A space's window size as already laid out, else the configured or per-character size at the window's DPI.
 fn overlaySize(cfg: *const config_mod.Config, thumbnail: *const ThumbnailWindow, dpi_scale: f32) window.Size {
     if (spaces.spaceFor(cfg, thumbnail.character_name) != null) {
         var client_rect: win32.RECT = undefined;

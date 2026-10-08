@@ -22,7 +22,7 @@ pub fn snapEdge(value: i32, axis: Axis, others: []const RECT, bounds: RECT, dist
     return nearestEdge(value, axis, others, bounds, distance) orelse value;
 }
 
-/// How far to shift the span `low`..`high` along `axis` so whichever of its ends is nearer an edge lands on it; 0 if neither is within `distance`.
+/// The shift that lands the nearer end of `low`..`high` on an edge within `distance`, else 0.
 pub fn snapSpanOffset(low: i32, high: i32, axis: Axis, others: []const RECT, bounds: RECT, distance: i32) i32 {
     const low_shift = if (nearestEdge(low, axis, others, bounds, distance)) |edge| edge - low else null;
     const high_shift = if (nearestEdge(high, axis, others, bounds, distance)) |edge| edge - high else null;

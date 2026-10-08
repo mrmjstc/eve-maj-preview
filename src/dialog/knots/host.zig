@@ -238,7 +238,7 @@ fn run() void {
     };
 }
 
-/// Hooks this thread's window creation so the next top-level window starts at `position`; returns false if it couldn't, leaving the caller to move it.
+/// Makes the next top-level window this thread creates start at `position`; false if it couldn't.
 fn installPlacement(position: win32.POINT) bool {
     g_spawn_position = position;
     g_spawn_hook = win32.SetWindowsHookExA(win32.WH_CBT, placeWindowHook, null, win32.GetCurrentThreadId()) orelse {
@@ -436,7 +436,6 @@ fn onClosed() void {
     }
 }
 
-/// knots draws on WM_PAINT, so invalidating the window asks it for a frame.
 /// Draws a frame soon, for a change made outside one, e.g. a region selection finishing.
 pub fn redraw() void {
     requestFrame();

@@ -30,7 +30,7 @@ const MODIFIER_ORDER = [_]struct { flag: u32, name: []const u8 }{
 const CLICK_TO_BIND = "Click to bind";
 const RECORDING_PROMPT = "Press keys...";
 
-/// Bindings that may share a combo with others of their own kind: characters cycle through each other, and hotkey groups through their members in group order.
+/// Bindings that may share a combo with their own kind, cycling through each other in order.
 const HolderKind = enum { other, character, group_forward, group_backward };
 
 /// How many bindings hold a combo, and whether they're all of one kind.
@@ -72,7 +72,7 @@ pub fn reset() void {
     keyboard_hook.g_on_win_key = null;
 }
 
-/// From the window procedure while a field records: takes the keys, mouse buttons and wheel turns it binds; returns whether it consumed the message.
+/// From the window procedure while a field records; returns whether it consumed the message.
 pub fn onWindowMessage(msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) bool {
     _ = lParam;
     const recording = &(g_recording orelse return false);
@@ -121,8 +121,7 @@ fn onWinKey(modifiers: u32) void {
     if (recording.captured == null) capture(vk.VK_LWIN, modifiers);
 }
 
-/// The field: its combos as key caps (click to record a new one), a clear button, and in Advanced Mode a button to type them in.
-/// `ref` is a session.Ref, or anything with the same get, set and index.
+/// Key caps for each combo, a clear button and, in Advanced Mode, a typing button; `ref` needs session.Ref's get, set and index.
 pub fn field(context: *ui.Frame, ref: anytype, comptime field_name: []const u8) !void {
     // Typed by the setting's struct, so a character's and a group's hotkey at the same index differ.
     const key = ui.Key.str("knots.hotkey:" ++ @typeName(@TypeOf(ref)) ++ "." ++ field_name).indexed(ref.index);

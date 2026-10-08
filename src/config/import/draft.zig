@@ -10,7 +10,7 @@ const KeyList = key_list.KeyList;
 const ObjectMap = std.json.ObjectMap;
 const Config = config.Config;
 
-/// Lists merged item by item, matching on this field; characters, hotkey groups and thumbnail spaces keep their ids, the others are replaced whole.
+/// Matches list items on this field; characters, hotkey groups and spaces keep their ids, other lists are replaced whole.
 const MERGED_LISTS = [_]struct { []const u8, []const u8 }{
     .{ "characters", "name" },
     .{ "hotkeyGroups", "name" },

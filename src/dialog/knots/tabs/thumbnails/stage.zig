@@ -89,7 +89,7 @@ pub fn show(context: *ui.Frame) !void {
     try popover(context);
 }
 
-/// Beside the selected chip, on whichever side has room. A click outside closes it, or opens another chip's when it lands on one.
+/// Beside the selected chip, on whichever side has room; a click outside closes it.
 fn popover(context: *ui.Frame) !void {
     if (!g_popover_open) return;
     const ui_state = context.ui();

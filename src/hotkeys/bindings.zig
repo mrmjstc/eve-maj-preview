@@ -2,7 +2,7 @@
 const std = @import("std");
 const protocol = @import("../protocol.zig");
 
-// Hotkey IDs are banded to avoid collisions: 0-999 group cycle keys (2 per combo), 1000s global, 2000s per-character, 3000s profile switch, 4000s group assign, 5000s app hotkeys, 6000s URL hotkeys.
+// ID bands: 0 group cycle (2 per combo), 1000 global, 2000 character, 3000 profile, 4000 group assign, 5000 app, 6000 URL.
 pub const HOTKEY_ID_CYCLE_GROUP_BASE: c_int = 0;
 
 /// IDs in the group cycle band, before it runs into the global band.

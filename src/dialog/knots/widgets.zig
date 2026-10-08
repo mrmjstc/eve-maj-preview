@@ -228,7 +228,7 @@ pub fn useLabelStyle(label_style: *const ui.Style) *const ui.Style {
     return previous;
 }
 
-/// A detail pane's top row, e.g. a name box and Remove; the caller closes it. Its rule stands in for the next row's divider.
+/// A detail pane's top row, whose rule replaces the next row's divider; the caller closes it.
 pub fn openDetailHeader(context: *ui.Frame, key: ui.Key) !Rect {
     const header = Rect{ .key = key, .style = &style.detail_header };
     _ = try header.open(context);
@@ -236,7 +236,7 @@ pub fn openDetailHeader(context: *ui.Frame, key: ui.Key) !Rect {
     return header;
 }
 
-/// Rows and checkboxes drawn after it put their label left and their control at the right edge; returns the setting it replaced, for putting back.
+/// Puts row labels left and controls at the right edge; returns the previous setting, for putting back.
 pub fn useAlignedRows(is_aligned: bool) bool {
     const previous = g_is_aligned;
     g_is_aligned = is_aligned;
@@ -516,7 +516,7 @@ pub fn checkbox(context: *ui.Frame, key: ui.Key, label: []const u8, checked: *bo
     return changed;
 }
 
-/// An on/off switch: knots has none, so it's a pill-shaped button with a knob that slides to the side it's set to. Returns whether it was flipped this frame.
+/// knots has no switch, so it's a pill button whose knob slides across; returns whether it was flipped this frame.
 pub fn toggleSwitch(context: *ui.Frame, key: ui.Key, checked: *bool) !bool {
     // knots never animates layout, so the knob is pushed along by a spacer whose width is eased here.
     const position = context.ui().anim(key.hash(), "knob", if (checked.*) 1 else 0, .{ .duration_ms = style.SWITCH_ANIMATION_MS });

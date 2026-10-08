@@ -263,7 +263,7 @@ pub fn offsetRange(comptime chip: Chip) [2]f32 {
     return bind.rangeOf(SectionType(chip.section), chip.fields.offset_x) orelse .{ -1000, 1000 };
 }
 
-/// A chip's popover: its title and close button, the Log Monitoring notice where it applies, then its fields; returns whether close was pressed.
+/// A chip's popover with its title, notice and fields; returns whether close was pressed.
 pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usize) !bool {
     const ref = refFor(chip.section);
     const fields = chip.fields;

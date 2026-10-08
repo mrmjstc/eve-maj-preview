@@ -51,7 +51,7 @@ pub fn reflowIfSpacesActive(painter: *Painter) void {
     if (spaces.anyActive(painter.config)) repositionAll(painter);
 }
 
-/// Resizes a thumbnail to its target size if it differs. Pass `cells` when calling for every thumbnail in a batch.
+/// Pass `cells` when resizing every thumbnail in a batch.
 pub fn resizeIfNeeded(painter: *Painter, thumbnail: *ThumbnailWindow, cells: ?*const placement.SpaceCells) void {
     var fresh: placement.SpaceCells = undefined;
     const current_cells = cells orelse blk: {
