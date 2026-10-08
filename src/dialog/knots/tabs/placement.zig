@@ -77,15 +77,21 @@ pub fn fillsWindow() bool {
 fn manual(context: *ui.Frame, display: DisplayRef) !void {
     const profile = session.profile();
     const interaction = profile.child("interaction");
-    try widgets.subheading(context, .src(@src()), "Dragging");
+    const previous_rows = widgets.useDetailRows();
+    defer widgets.restoreRows(previous_rows);
+
+    const dragging = try widgets.openFieldGroup(context, .str("knots.manual.dragging"), "Dragging");
     const drag = try widgets.openGroup(context, .src(@src()), !interaction.get("clickThrough"));
     try bind.toggle(context, interaction, "enableDragging", "Enable Dragging");
     try drag.close(context);
     try widgets.hintText(context, .src(@src()), "Stays off while Click Through Thumbnails is on in the Behavior tab.");
     try bind.toggle(context, display, "honorSavedPositions", "Restore Saved Positions");
     try widgets.hintText(context, .src(@src()), "Puts each character's thumbnail back where it was last dragged.");
+    try dragging.close(context);
+    try widgets.separator(context, .str("knots.manual.separator.dragging"));
 
     const snapping = profile.child("snapping");
+    const snapping_group = try widgets.openFieldGroup(context, .str("knots.manual.snapping"), "Snapping");
     try bind.toggle(context, snapping, "enabled", "Snap While Dragging");
     if (widgets.showsDependents(snapping.get("enabled"))) {
         const group = try widgets.openGroup(context, .src(@src()), snapping.get("enabled"));
@@ -97,8 +103,10 @@ fn manual(context: *ui.Frame, display: DisplayRef) !void {
         try bind.number(context, snapping, "threshold", "Snap Distance", .{ .unit = "px" });
         try group.close(context);
     }
+    try snapping_group.close(context);
+    try widgets.separator(context, .str("knots.manual.separator.snapping"));
 
-    try widgets.subheading(context, .src(@src()), "New Thumbnails");
+    const new_thumbnails = try widgets.openFieldGroup(context, .str("knots.manual.new"), "New Thumbnails");
     const start = try widgets.openBinding(context, .src(@src()), "Start Position");
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "X", .style = &style.muted_text });
     try bind.numberBox(context, display, "startX", .{});
@@ -107,6 +115,7 @@ fn manual(context: *ui.Frame, display: DisplayRef) !void {
     try start.close(context);
     try bind.number(context, display, "newThumbnailSpacing", "Spacing", .{ .unit = "px" });
     try widgets.hintText(context, .src(@src()), "Where a character with no saved position appears: lined up left to right from the start position with this gap.");
+    try new_thumbnails.close(context);
 }
 
 fn spacesMode(context: *ui.Frame, display: DisplayRef) !void {
@@ -236,7 +245,6 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
         return;
     }
 
-    const body = try widgets.openGroup(context, ui.Key.str("knots.space.body").indexed(id), is_enabled);
     const items = profile.ptr.thumbnailSpaces.items;
     if (is_login_screen) {
         try widgets.paragraph(context, .src(@src()), "Holds clients still at the login screen.");
@@ -275,7 +283,6 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     try bind.toggle(context, space, "limitToThumbnailSize", "Cap Size at Thumbnail Size");
     try widgets.hintText(context, .src(@src()), "Stops thumbnails from growing past the Size setting, leaving unused space in the region instead.");
     try layout.close(context);
-    try body.close(context);
 }
 
 /// A pill per hotkey group, filled while this space holds it; a name no group has any more stays until it's clicked off.
@@ -373,6 +380,7 @@ fn dotColor(context: *ui.Frame, index: usize) ui.Color {
 /// Buttons to draw a new rectangle for the space, adjust it, or clear it; the last two need one set.
 fn regionRow(context: *ui.Frame, space_id: u32) !void {
     const row = try widgets.openRow(context, .src(@src()));
+    try context.e(Rect{ .key = .src(@src()), .style = &style.spacer });
     const current = region.rect(space_id);
     if (current == null) {
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "No region yet", .style = &style.space_status_warning });

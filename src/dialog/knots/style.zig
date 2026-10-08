@@ -747,8 +747,9 @@ pub const master_detail: Style = .{ .width = .grow(), .direction = .row, .gap = 
 /// A master-detail filling the rest of its section, for a tab that fills the window.
 pub const master_detail_fill: Style = master_detail.with(.{ .height = .grow() });
 /// A filling roster, at roster_filters' width.
-pub const roster_wide: Style = roster.with(.{ .width = .fixed(190) });
-pub const roster_filters: Style = roster.with(.{ .width = .fixed(190), .height = .fit(), .overflow = .visible });
+pub const roster_wide: Style = roster.with(.{ .width = .fixed(WIDE_ROSTER_WIDTH) });
+pub const roster_filters: Style = roster.with(.{ .width = .fixed(WIDE_ROSTER_WIDTH), .height = .fit(), .overflow = .visible });
+const WIDE_ROSTER_WIDTH = 195;
 pub const detail_fit: Style = .{ .width = .grow(), .direction = .column, .gap = 8, .padding = .init(0, 0, 0, 8) };
 /// .roster-hotkey-badge, e.g. a filter's Disabled.
 pub const roster_badge: Style = .{ .font_size = .{ .px = 10 }, .foreground = .{ .color = MUTED } };
