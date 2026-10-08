@@ -107,6 +107,9 @@ pub const FieldGroup = struct {
     }
 };
 
+/// What useDetailRows replaced.
+pub const RowSettings = struct { is_aligned: bool, label_style: *const ui.Style };
+
 /// What an optional colour row changed to.
 pub const ColorChange = union(enum) { cleared, set: u32 };
 
@@ -118,7 +121,7 @@ pub const DropMark = enum { none, above, below };
 
 /// Set by useAlignedRows: rows put their label left and their control at the right edge.
 var g_is_aligned: bool = false;
-/// Set by useLabelStyle: the label column of unaligned rows.
+/// Set by useDetailRows: the label column of unaligned rows.
 var g_label_style: *const ui.Style = &style.label;
 /// Set by openFieldGroup: its rows go undivided, with softer labels.
 var g_in_field_group: bool = false;
@@ -221,11 +224,24 @@ pub fn separator(context: *ui.Frame, key: ui.Key) !void {
     try context.e(Rect{ .key = key, .style = &style.separator });
 }
 
-/// Sets the label column of unaligned rows; returns the style it replaced, for putting back.
-pub fn useLabelStyle(label_style: *const ui.Style) *const ui.Style {
-    const previous = g_label_style;
-    g_label_style = label_style;
+/// A master-detail pane's rows: a narrow label column, controls straight after; returns what it replaced, for restoreRows.
+pub fn useDetailRows() RowSettings {
+    const previous: RowSettings = .{ .is_aligned = g_is_aligned, .label_style = g_label_style };
+    g_is_aligned = false;
+    g_label_style = &style.detail_label;
     return previous;
+}
+
+pub fn restoreRows(previous: RowSettings) void {
+    g_is_aligned = previous.is_aligned;
+    g_label_style = previous.label_style;
+}
+
+/// A master list's row, showing the hand cursor while hovered; the caller closes it.
+pub fn openRosterRow(context: *ui.Frame, row: Button) !Button.Response {
+    const response = try row.openResponse(context);
+    if (response.hovered) context.ui().requestCursor(.pointer);
+    return response;
 }
 
 /// A detail pane's top row, whose rule replaces the next row's divider; the caller closes it.

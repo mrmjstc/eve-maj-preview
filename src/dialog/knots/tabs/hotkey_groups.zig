@@ -86,7 +86,7 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
                 .none => if (is_selected) &style.roster_row_selected else &style.roster_row,
             },
         };
-        if ((try row.openResponse(context)).clicked and !is_selected) {
+        if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
             g_selected_index = index;
             context.requestRedraw();
         }
@@ -128,35 +128,43 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
 
 fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const group = profile.item("hotkeyGroups", index);
+    const previous_rows = widgets.useDetailRows();
+    defer widgets.restoreRows(previous_rows);
 
     const header = try widgets.openDetailHeader(context, .src(@src()));
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Group Name", .style = &style.inline_label });
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Group Name", .style = &style.detail_label });
     const name_before = try context.arena().dupe(u8, group.get("name"));
     try bind.textBox(context, group, "name", try std.fmt.allocPrint(context.arena(), "Hotkey Group {d}", .{index + 1}));
     const removed = try widgets.confirmButton(context, ui.Key.str("knots.groups.remove").indexed(index), "Remove", "Confirm", &style.plain_button, &style.confirm_button);
     try header.close(context);
     carryToSpaces(profile, name_before, group.get("name"));
 
-    try widgets.subheading(context, .src(@src()), "Keys");
+    const keys = try widgets.openFieldGroup(context, .str("knots.groups.keys"), "Keys");
     inline for (.{ .{ "backwardKey", "Cycle Backward" }, .{ "forwardKey", "Cycle Forward" }, .{ "assignKey", "Assign Key" } }) |key| {
         const row = try widgets.openBinding(context, .str("knots.groups.key:" ++ key[0]), key[1]);
         try hotkey.field(context, group, key[0]);
         try row.close(context);
     }
-    try widgets.hintText(context, .src(@src()), "Hover a thumbnail and press this to toggle that character in or out of this group's Characters list.");
+    try widgets.hintText(context, .src(@src()), "Hover a thumbnail and press Assign Key to toggle that character in or out of this group's Characters list.");
+    try keys.close(context);
+    try widgets.separator(context, .str("knots.groups.separator.keys"));
 
-    try widgets.subheading(context, .src(@src()), "Behavior");
+    const behavior = try widgets.openFieldGroup(context, .str("knots.groups.behavior"), "Behavior");
     try bind.toggle(context, group, "includeNotLoggedIn", "Include Not Logged In Clients");
     try bind.toggle(context, group, "stopAtEnds", "Stop at First/Last Character (Don't Loop)");
     try bind.toggle(context, group, "temporaryMembership", "Temporary Membership (Resets on Restart)");
     try bind.toggle(context, group, "showBadge", "Show Group Badge on Thumbnails");
+    try behavior.close(context);
+    try widgets.separator(context, .str("knots.groups.separator.behavior"));
 
+    const characters = try widgets.openFieldGroup(context, .str("knots.groups.characters"), "Characters");
     // Temporary members are assigned while the app runs, so there's no list to edit.
     if (group.get("temporaryMembership")) {
         try widgets.paragraph(context, .src(@src()), "Members are assigned while the app runs: hover a thumbnail and press the assign key to toggle it in or out.");
     } else {
         try members(context, group);
     }
+    try characters.close(context);
 
     if (removed) {
         const name = try context.arena().dupe(u8, group.get("name"));
@@ -187,7 +195,6 @@ fn carryToSpaces(profile: ProfileRef, old_name: []const u8, new_name: ?[]const u
 }
 
 fn members(context: *ui.Frame, group: GroupRef) !void {
-    try widgets.subheading(context, .src(@src()), "Characters");
     const list = Rect{ .key = .src(@src()), .style = &style.members_list };
     _ = try list.open(context);
     const names = group.ptr.characters.items;

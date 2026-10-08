@@ -138,7 +138,7 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
             .below => &style.roster_row_drop_below,
             .none => if (is_selected) &style.roster_row_selected else &style.roster_row,
         } };
-        if ((try row.openResponse(context)).clicked and !is_selected) {
+        if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
             g_selected_id = space.id;
             context.requestRedraw();
         }
@@ -185,11 +185,13 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const is_unassigned = space.get("holdsUnassigned");
     // The Login Screen and Unassigned Characters spaces are always in the list, so they can't be renamed or removed.
     const is_special = is_login_screen or is_unassigned;
+    const previous_rows = widgets.useDetailRows();
+    defer widgets.restoreRows(previous_rows);
     const header = try widgets.openDetailHeader(context, .src(@src()));
     if (is_special) {
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = space.get("name"), .style = &style.roster_name_selected });
     } else {
-        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Name", .style = &style.inline_label });
+        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Name", .style = &style.detail_label });
         try bind.textBox(context, space, "name", "e.g., Miners");
     }
     var is_enabled: bool = space.get("enabled");
@@ -211,10 +213,14 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     } else if (is_unassigned) {
         try widgets.paragraph(context, .src(@src()), "Holds characters no other active space holds.");
     } else {
-        try widgets.subheading(context, .src(@src()), "Holds");
+        const held = try widgets.openFieldGroup(context, .str("knots.space.holds"), "Holds");
         try holds(context, profile, space);
         try overlaps(context, items, index);
+        try held.close(context);
     }
+    try widgets.separator(context, .str("knots.space.separator.holds"));
+
+    const behavior = try widgets.openFieldGroup(context, .str("knots.space.behavior"), "Behavior");
     if (!is_unassigned) {
         try bind.toggle(context, space, "takesUnassigned", "Move Unassigned Characters to the End");
         try widgets.hintText(context, .src(@src()), "Characters no space holds fill in after this space's own. Only the first space with this on takes them, and none does while the Unassigned Characters space is on with a region.");
@@ -224,7 +230,10 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
         try bind.toggle(context, space, "takesLoginScreen", "Move Logged-Out Characters to the End");
         try widgets.hintText(context, .src(@src()), "Clients at the login screen fill in last. Only the first space with this on takes them, and none does while the Login Screen space is on with a region.");
     }
-    try widgets.subheading(context, .src(@src()), "Layout");
+    try behavior.close(context);
+    try widgets.separator(context, .str("knots.space.separator.behavior"));
+
+    const layout = try widgets.openFieldGroup(context, .str("knots.space.layout"), "Layout");
     try regionRow(context, id);
     try regionMap(context, profile.ptr.thumbnailSpaces.items, index);
     try bind.choiceStyled(context, space, "direction", "Fill Order", &style.select_narrow);
@@ -236,6 +245,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     try bind.number(context, space, "spacing", "Spacing", .{ .unit = "px" });
     try bind.toggle(context, space, "limitToThumbnailSize", "Cap Size at Thumbnail Size");
     try widgets.hintText(context, .src(@src()), "Stops thumbnails from growing past the Size setting, leaving unused space in the region instead.");
+    try layout.close(context);
     try body.close(context);
 }
 

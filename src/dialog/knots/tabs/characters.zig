@@ -126,9 +126,7 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
                 .none => if (is_selected) &style.roster_row_selected else &style.roster_row,
             },
         };
-        const response = try row.openResponse(context);
-        if (response.hovered) context.ui().requestCursor(.pointer);
-        if (response.clicked and !is_selected) {
+        if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
             g_selected_index = index;
             context.requestRedraw();
         }
@@ -173,11 +171,8 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     }
     const index = g_selected_index;
     const character = profile.item("characters", index);
-    // Controls beside a label column read better in this narrow pane than at its far edge.
-    const was_aligned = widgets.useAlignedRows(false);
-    defer _ = widgets.useAlignedRows(was_aligned);
-    const previous_label = widgets.useLabelStyle(&style.detail_label);
-    defer _ = widgets.useLabelStyle(previous_label);
+    const previous_rows = widgets.useDetailRows();
+    defer widgets.restoreRows(previous_rows);
 
     const header = try widgets.openDetailHeader(context, .src(@src()));
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Character Name", .style = &style.detail_label });
