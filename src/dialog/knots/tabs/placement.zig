@@ -233,16 +233,17 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const previous_rows = widgets.useDetailRows();
     defer widgets.restoreRows(previous_rows);
     const header = try widgets.openDetailHeader(context, .src(@src()));
-    if (is_special) {
-        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = space.get("name"), .style = &style.roster_name_selected });
-    } else {
-        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Name", .style = &style.detail_label });
-        try bind.textBox(context, space, "name", "e.g., Miners");
-    }
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Name", .style = &style.detail_label });
+    // A column, not an inline group, which would only fit the box and so shrink its grow width to nothing.
+    const name = try widgets.openGroup(context, .src(@src()), !is_special);
+    try bind.textBox(context, space, "name", "e.g., Miners");
+    try name.close(context);
     var is_enabled: bool = space.get("enabled");
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Enabled", .style = &style.muted_text });
     if (try widgets.toggleSwitch(context, ui.Key.str("knots.space.enabled").indexed(id), &is_enabled)) space.set("enabled", is_enabled);
-    const removed = !is_special and try widgets.confirmButton(context, ui.Key.str("knots.space.remove").indexed(id), "Remove", "Confirm", &style.plain_button, &style.confirm_button);
+    const remove = try widgets.openInlineGroup(context, .src(@src()), !is_special);
+    const removed = try widgets.confirmButton(context, ui.Key.str("knots.space.remove").indexed(id), "Remove", "Confirm", &style.plain_button, &style.confirm_button) and !is_special;
+    try remove.close(context);
     try header.close(context);
     if (removed) {
         const items = profile.ptr.thumbnailSpaces.items;
@@ -252,16 +253,17 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     }
 
     const items = profile.ptr.thumbnailSpaces.items;
-    if (is_login_screen) {
-        try widgets.paragraph(context, .src(@src()), "Holds clients still at the login screen.");
-    } else if (is_unassigned) {
-        try widgets.paragraph(context, .src(@src()), "Holds characters no other active space holds.");
+    const held = try widgets.openFieldGroup(context, .str("knots.space.holds"), "Holds");
+    if (is_special) {
+        // A settings row, so the text lines up with the Holds label and the rows below it.
+        const row = try widgets.openRow(context, .src(@src()));
+        try widgets.paragraph(context, .src(@src()), if (is_login_screen) "Clients still at the login screen." else "Characters no other active space holds.");
+        try row.close(context);
     } else {
-        const held = try widgets.openFieldGroup(context, .str("knots.space.holds"), "Holds");
         try holds(context, profile, space);
         try overlaps(context, items, index);
-        try held.close(context);
     }
+    try held.close(context);
     try widgets.separator(context, .str("knots.space.separator.holds"));
 
     const behavior = try widgets.openFieldGroup(context, .str("knots.space.behavior"), "Behavior");
