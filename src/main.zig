@@ -136,12 +136,14 @@ pub fn onLiveProfileEdited(layout: LiveLayout) void {
         return;
     }
     painter_ptr.syncPanels();
-    painter_ptr.refreshAllThumbnailVisuals();
+    painter_ptr.refreshAllThumbnailConfigCaches();
+    // Moved before they're redrawn, so a thumbnail shown again appears in its new place rather than flashing up in its old one.
     switch (layout) {
         .none => {},
         .spaces => painter_ptr.reflowIfSpacesActive(),
         .all => painter_ptr.repositionAllThumbnails(),
     }
+    painter_ptr.refreshAllThumbnailVisuals();
 }
 
 /// Quits the message loop, after the knots configuration window has closed if it's open.

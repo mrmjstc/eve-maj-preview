@@ -16,7 +16,7 @@ pub const SpaceCounts = [MAX_SPACES]usize;
 
 /// Each thumbnail's space and cell for one layout pass.
 pub const Assignment = struct {
-    /// Per name: index into thumbnailSpaces, or null when it's placed by hand.
+    /// Per name: index into thumbnailSpaces, or null when it's placed by hand or its thumbnail is hidden.
     space_of: []?usize,
     /// Per name: its cell within its space; unused when placed by hand.
     rank: []usize,
@@ -96,8 +96,10 @@ pub fn unassignedSpaceIn(items: []const ThumbnailSpace) ?usize {
     return firstActiveWith(items, "holdsUnassigned") orelse firstActiveWith(items, "takesUnassigned");
 }
 
-/// The first active space holding one of this character's hotkey groups, else where unassigned characters go; null when it's placed by hand.
+/// The first active space holding one of this character's hotkey groups, else where unassigned characters go; null when it's placed by hand or its thumbnail is hidden.
 pub fn spaceFor(cfg: *const Config, character_name: []const u8) ?usize {
+    // A hidden thumbnail takes no cell, so its space closes up around it rather than leaving a gap.
+    if (cfg.isThumbnailHidden(character_name)) return null;
     const items = listed(cfg);
     if (scout.isGenericCharacterName(character_name)) return loginScreenSpaceIn(items);
     for (items, 0..) |*space, i| {
@@ -308,6 +310,21 @@ test "a space fills with its own characters, then unassigned ones, then login-sc
     defer assignment.deinit(testing.allocator);
     try testing.expectEqual(@as(usize, 3), assignment.counts[0]);
     try testing.expectEqualSlices(usize, &.{ 2, 1, 0 }, assignment.rank);
+}
+
+test "a character whose thumbnail is hidden takes no cell in its space" {
+    var characters = [_]config_mod.CharacterConfig{ .{ .name = "First" }, .{ .name = "Hidden", .hideThumbnail = true }, .{ .name = "Last" } };
+    var spaces = [_]ThumbnailSpace{testSpace("Everyone", &.{})};
+    spaces[0].takesUnassigned = true;
+    var cfg = testConfig(&.{}, &spaces);
+    cfg.characters = .fromOwnedSlice(&characters);
+
+    var assignment = try assign(testing.allocator, &cfg, &.{ "First", "Hidden", "Last" });
+    defer assignment.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 2), assignment.counts[0]);
+    try testing.expectEqual(@as(?usize, null), assignment.space_of[1]);
+    try testing.expectEqual(@as(usize, 0), assignment.rank[0]);
+    try testing.expectEqual(@as(usize, 1), assignment.rank[2]);
 }
 
 test "hotkey group order fills by the space's own groups in hotkey group list order" {

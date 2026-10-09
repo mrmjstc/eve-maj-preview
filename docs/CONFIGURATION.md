@@ -1337,7 +1337,7 @@ Customize individual characters with position, size, border colors, display name
 - **excludeFromMinimize**: Skip this character when auto-minimize fires (default: `false`). See [Auto-Minimize](#auto-minimize).
 - **excludeFromCloseAll**: Skip this character when the Close All hotkey fires (default: `false`). See [Close All](#close-all).
 - **excludeFromAutoMove**: Skip this character when moving EVE client windows to their saved positions, whether via the auto-move-on-login setting or the `hotkeyMoveToSavedPositions` hotkey (default: `false`).
-- **hideThumbnail**: Hide this character's thumbnail (and its row in list view) entirely, regardless of state (default: `false`).
+- **hideThumbnail**: Hide this character's thumbnail (and its row in list view) entirely, regardless of state; it takes no cell in a thumbnail space, so the others close up (default: `false`).
 - **notificationsMuted**: Suppress all notifications for this character, regardless of the global/per-type notification settings (default: `false`). See [Notification System](#notification-system).
 
 **Note**: Character positions are automatically saved when you drag thumbnails. Manual editing is not recommended.

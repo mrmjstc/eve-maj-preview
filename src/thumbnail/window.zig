@@ -257,7 +257,7 @@ pub fn registerClasses(instance: win32.HINSTANCE) !void {
     g_classes_registered = true;
 }
 
-/// Creates the thumbnail window showing `source_hwnd` through DWM and its (still hidden) text overlay, linked to each other and the source.
+/// Creates the thumbnail window showing `source_hwnd` through DWM and its text overlay, linked to each other and the source; both stay hidden until the first render shows them.
 pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hwnd: win32.HWND, character_name: []const u8, pos: config_mod.Position, size: Size, opacity: u8, click_through: bool) !Handles {
     const name_z = try allocator.dupeSentinel(u8, character_name, 0);
     defer allocator.free(name_z);
@@ -269,7 +269,7 @@ pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hw
         win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_LAYERED | win32.WS_EX_NOACTIVATE | click_through_ex,
         WINDOW_CLASS_NAME,
         name_z.ptr,
-        win32.WS_POPUP | win32.WS_VISIBLE,
+        win32.WS_POPUP,
         pos.x,
         pos.y,
         size.width,
@@ -291,9 +291,6 @@ pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hw
     _ = win32.GetClientRect(hwnd, &client_rect);
     const props = thumbnailProps(.{ .width = client_rect.right, .height = client_rect.bottom }, win32.DWM_TNP_VISIBLE | win32.DWM_TNP_RECTDESTINATION | win32.DWM_TNP_SOURCECLIENTAREAONLY);
     if (win32.DwmUpdateThumbnailProperties(thumbnail_id, &props) != 0) return error.DwmUpdateThumbnailPropertiesFailed;
-
-    _ = win32.ShowWindow(hwnd, win32.SW_SHOW);
-    _ = win32.UpdateWindow(hwnd);
 
     const text_hwnd = win32.CreateWindowExA(
         win32.WS_EX_LAYERED | win32.WS_EX_TOPMOST | win32.WS_EX_TOOLWINDOW | win32.WS_EX_NOACTIVATE | click_through_ex,

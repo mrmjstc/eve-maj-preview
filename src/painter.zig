@@ -106,6 +106,7 @@ pub const Painter = struct {
     pub const showTestNotification = dispatch.showTest;
     pub const dismissClickSuppressedNotifications = dispatch.dismissClickSuppressed;
     pub const updateNotifications = dispatch.expire;
+    pub const refreshAllThumbnailConfigCaches = arrange.refreshConfigCaches;
     pub const refreshAllThumbnailVisuals = arrange.refreshVisuals;
     pub const repositionAllThumbnails = arrange.repositionAll;
     pub const resizeThumbnailIfNeeded = arrange.resizeIfNeeded;
@@ -776,7 +777,8 @@ pub const Painter = struct {
         errdefer self.freeThumbnailData(thumbnail);
         try self.renderThumbnail(&thumbnail);
         errdefer thumbnail.render_cache.deinit();
-        window.showText(handles, pos, size);
+        const is_shown = if (thumbnail.render_cache.settings) |settings| settings.show_thumbnail else false;
+        if (is_shown) window.showText(handles, pos, size);
 
         try self.addThumbnail(thumbnail);
 

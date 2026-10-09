@@ -66,18 +66,24 @@ pub fn resizeIfNeeded(painter: *Painter, thumbnail: *ThumbnailWindow, cells: ?*c
     thumbnail.resize(target);
 }
 
-/// Re-applies every thumbnail's config-derived look, visibility and size and redraws it, ignoring needs_render; for the config dialog's live preview.
+/// Re-reads every thumbnail's config-derived settings, e.g. whether it's hidden; for the config dialog's live preview, before the reflow and refreshVisuals.
+pub fn refreshConfigCaches(painter: *Painter) void {
+    // Every thumbnail, not just win32_enabled ones: list_view.zig reads these cache fields directly.
+    for (painter.thumbnails.items) |*thumbnail| {
+        thumbnail.refreshConfigCache(painter.config, &painter.auto_colors);
+        painter.refreshGroupBadge(thumbnail);
+        // Measured text sizes are cached by font, not text, so a changed display name would keep the old size.
+        thumbnail.render_cache.invalidate();
+    }
+}
+
+/// Re-applies every thumbnail's visibility and size and redraws it, ignoring needs_render; for the config dialog's live preview, after refreshConfigCaches.
 pub fn refreshVisuals(painter: *Painter) void {
     // Checked here so a live-preview toggle of the focus auto-hide reacts at once instead of on the next focus change.
     const any_eve_has_focus = painter.isEveWindowForeground();
     const cells = spaceCells(painter);
 
     for (painter.thumbnails.items) |*thumbnail| {
-        // Must run for every thumbnail, not just win32_enabled ones: list_view.zig reads these cache fields directly.
-        thumbnail.refreshConfigCache(painter.config, &painter.auto_colors);
-        painter.refreshGroupBadge(thumbnail);
-        // Measured text sizes are cached by font, not text, so a changed display name would keep the old size.
-        thumbnail.render_cache.invalidate();
         // Before the skip too: the client list shows tracking-only entries by their visibility.
         _ = painter.applyAutoVisibility(thumbnail, any_eve_has_focus);
 
@@ -119,6 +125,8 @@ pub fn repositionAll(painter: *Painter) void {
 
     for (painter.thumbnails.items, assignment.space_of, assignment.rank, 0..) |thumbnail, space_of, rank, index| {
         if (!thumbnail.win32_enabled) continue;
+        // Hidden before it moves, or it shows at its new place until the next render hides it.
+        if (thumbnail.cached_hide_thumbnail) thumbnail.show(false);
         if (space_of) |space_index| if (cells[space_index]) |cell| {
             const pos = cell.position(rank);
             hdwp = thumbnail.deferPlace(hdwp, pos.x, pos.y, cellSize(cell)) orelse return;
