@@ -141,7 +141,8 @@ fn filterDetail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     try header.close(context);
     if (!std.mem.eql(u8, name_before, name_after)) carryRename(profile, std.mem.trim(u8, name_before, " "), std.mem.trim(u8, name_after, " "));
 
-    try bind.toggle(context, filter, "enabled", "Enabled");
+    var is_enabled: bool = filter.get("enabled");
+    if (try widgets.switchRow(context, ui.Key.str("knots.filter.enabled").indexed(index), "Enabled", &is_enabled)) filter.set("enabled", is_enabled);
     const classes = try widgets.openBinding(context, ui.Key.str("knots.filter.classes").indexed(index), "Window Classes");
     try bind.csvBox(context, filter, "class_names", "e.g., trinityWindow");
     try classes.close(context);

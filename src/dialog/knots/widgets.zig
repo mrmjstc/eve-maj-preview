@@ -782,6 +782,18 @@ pub fn checkbox(context: *ui.Frame, key: ui.Key, label: []const u8, checked: *bo
     return true;
 }
 
+/// A detail pane's lone setting: `label`, then a switch at the row's end that a click anywhere on the row flips; returns whether it was flipped.
+pub fn switchRow(context: *ui.Frame, key: ui.Key, label: []const u8, checked: *bool) !bool {
+    const row = try openBinding(context, key, label);
+    try context.e(Rect{ .key = key.indexed(3), .style = &style.spacer });
+    const is_flipped = try toggleSwitch(context, key.indexed(4), checked);
+    try row.close(context);
+    if (is_flipped) return true;
+    if (!row.is_clicked) return false;
+    checked.* = !checked.*;
+    return true;
+}
+
 /// knots has no switch, so it's a pill button whose knob slides across; returns whether it was flipped this frame.
 pub fn toggleSwitch(context: *ui.Frame, key: ui.Key, checked: *bool) !bool {
     // knots never animates layout, so the knob is pushed along by a spacer whose width is eased here.

@@ -238,9 +238,6 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const name = try widgets.openGroup(context, .src(@src()), !is_special);
     try bind.textBox(context, space, "name", "e.g., Miners");
     try name.close(context);
-    var is_enabled: bool = space.get("enabled");
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Enabled", .style = &style.muted_text });
-    if (try widgets.toggleSwitch(context, ui.Key.str("knots.space.enabled").indexed(id), &is_enabled)) space.set("enabled", is_enabled);
     const remove = try widgets.openInlineGroup(context, .src(@src()), !is_special);
     const removed = try widgets.confirmButton(context, ui.Key.str("knots.space.remove").indexed(id), "Remove", "Confirm", &style.plain_button, &style.confirm_button) and !is_special;
     try remove.close(context);
@@ -251,6 +248,10 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
         profile.remove("thumbnailSpaces", index);
         return;
     }
+
+    var is_enabled: bool = space.get("enabled");
+    if (try widgets.switchRow(context, ui.Key.str("knots.space.enabled").indexed(id), "Enabled", &is_enabled)) space.set("enabled", is_enabled);
+    try widgets.separator(context, .str("knots.space.separator.enabled"));
 
     const items = profile.ptr.thumbnailSpaces.items;
     const held = try widgets.openFieldGroup(context, .str("knots.space.holds"), "Holds");

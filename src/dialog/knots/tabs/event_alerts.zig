@@ -149,12 +149,12 @@ fn typeDetail(context: *ui.Frame, ntype: NotificationType) !void {
     const header = try widgets.openDetailHeader(context, .src(@src()));
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = typeLabel(ntype), .style = &style.roster_name_selected });
     var is_enabled: bool = ref.get("enabled");
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Enabled", .style = &style.muted_text });
-    if (try widgets.toggleSwitch(context, ui.Key.str("knots.events.enabled").indexed(ref.index), &is_enabled)) ref.set("enabled", is_enabled);
     if ((try context.interact(Button{ .key = .src(@src()), .label = "\u{25B6} Test", .disabled = !is_enabled, .style = &style.plain_button })).clicked) {
         testNotification(ntype);
     }
     try header.close(context);
+    if (try widgets.switchRow(context, ui.Key.str("knots.events.enabled").indexed(ref.index), "Enabled", &is_enabled)) ref.set("enabled", is_enabled);
+    try widgets.separator(context, .str("knots.events.separator.enabled"));
 
     const rest = try widgets.openGroup(context, .src(@src()), is_enabled);
     const timing = try widgets.openFieldGroup(context, .str("knots.events.timing"), "Timing");
