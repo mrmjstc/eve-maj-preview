@@ -19,6 +19,7 @@ fn textOverlays(context: *ui.Frame) !void {
     const thumbnail = session.profile().child("thumbnail");
     const section = try widgets.openSection(context, "Text Overlays", "Texts shown on each thumbnail. Drag one on the preview to move it, or click it to turn it on or off and change its font and colours. Faded ones are off. The preview is not to scale.", &style.section);
     try bind.toggle(context, thumbnail, "showText", "Show Text Overlays");
+    const options = try widgets.openGroup(context, .src(@src()), thumbnail.get("showText"));
     if (try widgets.checkbox(context, .src(@src()), "Sync Fonts and Backgrounds", &chips.g_sync_styling)) {
         if (chips.g_sync_styling) chips.syncFromCharacterName();
     }
@@ -27,6 +28,7 @@ fn textOverlays(context: *ui.Frame) !void {
     _ = try row.open(context);
     try stage.show(context);
     try row.close(context);
+    try options.close(context);
     try section.close(context);
 }
 

@@ -38,7 +38,6 @@ fn speech(context: *ui.Frame) !void {
     const display_name = try widgets.openGroup(context, .src(@src()), ref.get("tts_speak_character_name"));
     try bind.toggle(context, ref, "tts_use_display_name", "Speak Display Name Instead of Character Name");
     try display_name.close(context);
-    try widgets.hintText(context, .src(@src()), "Only takes effect while Prefix Spoken Alerts with the Character Name is also on.");
     try bind.slider(context, ref, "tts_volume", "Volume", .{});
     try bind.slider(context, ref, "tts_rate", "Speed", .{});
     try widgets.hintText(context, .src(@src()), "0 is normal speaking speed; negative is slower, positive is faster.");
@@ -49,6 +48,8 @@ fn speech(context: *ui.Frame) !void {
 fn travel(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Travel Mode", "Detects when a tracked character falls behind while the rest of the group jumps together, and fires a notification. Runs automatically once enabled below - no manual start/stop needed. Border color, duration, and TTS for the alert are configured on the Event Alerts tab under \"Left Behind\".", &style.section);
     const ref = session.profile().child("travel");
+    // Its only output is a notification.
+    const notifications = try widgets.openGroup(context, .src(@src()), session.profile().ptr.thumbnail.notifications.enabled);
     try bind.toggle(context, ref, "enabled", "Enable Travel Mode");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.number(context, ref, "window_seconds", "Catch-Up Window", .{ .unit = "s" });
@@ -60,5 +61,6 @@ fn travel(context: *ui.Frame) !void {
         .count => try bind.number(context, ref, "threshold_count", "Minimum Count", .{}),
     }
     try options.close(context);
+    try notifications.close(context);
     try section.close(context);
 }

@@ -288,6 +288,7 @@ fn preview(context: *ui.Frame, ntype: NotificationType, comptime field: TextFiel
 fn sound(context: *ui.Frame, ref: TypeRef, type_index: usize) !void {
     const group = try widgets.openFieldGroup(context, .str("knots.events.sound"), "Sound");
     try bind.toggle(context, ref, "sound_enabled", "Play Custom Sound");
+    const options = try widgets.openGroup(context, .src(@src()), ref.get("sound_enabled"));
     const row = try widgets.openBinding(context, .src(@src()), "Sound File");
     const path = ref.get("sound_path") orelse "";
     try widgets.boxedText(context, .src(@src()), if (path.len == 0) "None" else std.fs.path.basename(path), &style.path_box, if (path.len == 0) &style.path_text_empty else &style.path_text);
@@ -295,6 +296,7 @@ fn sound(context: *ui.Frame, ref: TypeRef, type_index: usize) !void {
     if ((try context.interact(Button{ .key = .src(@src()), .label = "Browse", .style = &style.plain_button })).clicked) host.browseSoundFile(type_index);
     try row.close(context);
     try bind.slider(context, ref, "sound_volume", "Volume", .{});
+    try options.close(context);
     try group.close(context);
 }
 

@@ -149,8 +149,10 @@ pub fn show(context: *ui.Frame, display: DisplayRef) !void {
     try bind.toggle(context, display, "rememberListViewPosition", "Remember Position");
     try bind.toggle(context, display, "listViewHideWhenNoEveFocus", "Hide When No EVE Focus");
     try widgets.hintText(context, .src(@src()), "Hides the list while no EVE client window has focus.");
+    const delay = try widgets.openGroup(context, .src(@src()), display.get("listViewHideWhenNoEveFocus"));
     try bind.number(context, display, "listViewHideDebounceMs", "Hide Delay", .{ .ms_as_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "Delay before hiding, so switching briefly doesn't flicker.");
+    try delay.close(context);
     try section.close(context);
     try popover(context, display);
 }
@@ -273,7 +275,7 @@ fn rightPart(context: *ui.Frame, sample: Sample, key: ui.Key, look: Look) !void 
             const group = Rect{ .key = key, .style = &STATS_GROUP };
             _ = try group.open(context);
             for (stats, 1..) |stat, index| {
-                const label = look.stat_labels[@intFromEnum(stat)];
+                const label = look.stat_labels[@backingInt(stat)];
                 try textPart(context, .ofStat(stat), key.indexed(index), label.text, try textStyle(arena, label.color, look.small_size, false, label.is_shown), look);
             }
             try group.close(context);
@@ -359,7 +361,7 @@ fn select(context: *ui.Frame, part: Part) void {
 }
 
 fn partKey(part: Part) ui.Key {
-    return PART_KEY.indexed(@intFromEnum(part));
+    return PART_KEY.indexed(@backingInt(part));
 }
 
 fn indicator(context: *ui.Frame, key: ui.Key, color: u32, look: Look) !void {
@@ -421,14 +423,18 @@ fn settings(context: *ui.Frame, display: DisplayRef, part: Part) !bool {
         .names => try bind.toggle(context, display, "listViewUseUniqueCharacterNameColors", "Unique Character Name Colors"),
         .systems => {
             try bind.toggle(context, display, "listViewShowSystemName", "Show System Name");
+            const shown = try widgets.openGroup(context, .src(@src()), display.get("listViewShowSystemName"));
             try bind.toggle(context, display, "listViewUseUniqueSystemColors", "Unique System Colors");
             const group = try widgets.openGroup(context, .src(@src()), !display.get("listViewUseUniqueSystemColors"));
             try bind.rgb(context, display, "listViewSystemNameColor", "Text Color");
             try group.close(context);
+            try shown.close(context);
         },
         .notifications => {
             try bind.toggle(context, display, "listViewShowNotifications", "Show Notifications");
+            const shown = try widgets.openGroup(context, .src(@src()), display.get("listViewShowNotifications"));
             try bind.rgb(context, display, "listViewNotificationColor", "Text Color");
+            try shown.close(context);
         },
         .incoming_dps => try statSettings(context, display, "listViewShowIncomingDps", "Show Incoming Damage", "listViewShowIncomingPrefix", "Show IN: Prefix", "listViewIncomingDpsColor"),
         .outgoing_dps => try statSettings(context, display, "listViewShowOutgoingDps", "Show Outgoing Damage", "listViewShowOutgoingPrefix", "Show OUT: Prefix", "listViewOutgoingDpsColor"),
@@ -446,6 +452,7 @@ fn requirementNotices(context: *ui.Frame, part: Part) !void {
         .systems, .notifications, .incoming_dps, .outgoing_dps, .mining_rate, .bounty_rate => true,
     };
     if (needs_chatlog and !profile.chatlog.enabled) try widgets.notice(context, .src(@src()), "Requires Log Monitoring to be enabled.");
+    if (part == .notifications and !profile.thumbnail.notifications.enabled) try widgets.notice(context, .src(@src()), "Requires Enable Notifications on the Notifications tab.");
     const missing_overlay: ?[]const u8 = switch (part) {
         .active, .names, .systems, .notifications => null,
         .incoming_dps, .outgoing_dps => if (profile.combat.enabled) null else "Requires the Combat overlay to be enabled on the Combat tab.",
@@ -457,6 +464,8 @@ fn requirementNotices(context: *ui.Frame, part: Part) !void {
 
 fn statSettings(context: *ui.Frame, display: DisplayRef, comptime show_field: []const u8, show_label: []const u8, comptime prefix_field: []const u8, prefix_label: []const u8, comptime color_field: []const u8) !void {
     try bind.toggle(context, display, show_field, show_label);
+    const shown = try widgets.openGroup(context, .str("knots.client_list.shown:" ++ show_field), display.get(show_field));
     try bind.toggle(context, display, prefix_field, prefix_label);
     try bind.rgb(context, display, color_field, "Text Color");
+    try shown.close(context);
 }

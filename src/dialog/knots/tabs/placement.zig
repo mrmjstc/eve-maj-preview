@@ -80,6 +80,7 @@ fn manual(context: *ui.Frame, display: DisplayRef) !void {
     const previous_rows = widgets.useDetailRows();
     defer widgets.restoreRows(previous_rows);
 
+    const can_drag = !interaction.get("clickThrough") and interaction.get("enableDragging");
     const dragging = try widgets.openFieldGroup(context, .str("knots.manual.dragging"), "Dragging");
     const drag = try widgets.openGroup(context, .src(@src()), !interaction.get("clickThrough"));
     try bind.toggle(context, interaction, "enableDragging", "Enable Dragging");
@@ -92,17 +93,17 @@ fn manual(context: *ui.Frame, display: DisplayRef) !void {
 
     const snapping = profile.child("snapping");
     const snapping_group = try widgets.openFieldGroup(context, .str("knots.manual.snapping"), "Snapping");
+    const drag_options = try widgets.openGroup(context, .src(@src()), can_drag);
     try bind.toggle(context, snapping, "enabled", "Snap While Dragging");
-    if (widgets.showsDependents(snapping.get("enabled"))) {
-        const group = try widgets.openGroup(context, .src(@src()), snapping.get("enabled"));
-        try bind.toggle(context, snapping, "screenEdges", "Snap to Screen Edges");
-        try bind.toggle(context, snapping, "thumbnailEdges", "Snap to Thumbnail Edges");
-        try bind.toggle(context, snapping, "ghostPositions", "Snap to Other Characters' Saved Positions");
-        try bind.toggle(context, snapping, "showGhostPositionBorders", "Outline Saved Positions While Dragging");
-        try widgets.hintText(context, .src(@src()), "Outlines every other character's saved position on screen while you drag.");
-        try bind.number(context, snapping, "threshold", "Snap Distance", .{ .unit = "px" });
-        try group.close(context);
-    }
+    const group = try widgets.openGroup(context, .src(@src()), snapping.get("enabled"));
+    try bind.toggle(context, snapping, "screenEdges", "Snap to Screen Edges");
+    try bind.toggle(context, snapping, "thumbnailEdges", "Snap to Thumbnail Edges");
+    try bind.toggle(context, snapping, "ghostPositions", "Snap to Other Characters' Saved Positions");
+    try bind.number(context, snapping, "threshold", "Snap Distance", .{ .unit = "px" });
+    try group.close(context);
+    try bind.toggle(context, snapping, "showGhostPositionBorders", "Outline Saved Positions While Dragging");
+    try widgets.hintText(context, .src(@src()), "Outlines every other character's saved position on screen while you drag.");
+    try drag_options.close(context);
     try snapping_group.close(context);
     try widgets.separator(context, .str("knots.manual.separator.snapping"));
 

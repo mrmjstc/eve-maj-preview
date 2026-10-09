@@ -52,8 +52,11 @@ const Look = struct {
 };
 
 pub fn show(context: *ui.Frame) !void {
+    const are_notifications_enabled = session.profile().ptr.thumbnail.notifications.enabled;
+    if (!are_notifications_enabled) try widgets.notice(context, .src(@src()), "Notification History requires Enable Notifications on the Notifications tab.");
     const section = try widgets.openSection(context, "Notification History", "A draggable, resizable panel showing recent notification history. Click a row to jump to that character.", &style.section);
     const ref = session.profile().child("display");
+    const notifications = try widgets.openGroup(context, .src(@src()), are_notifications_enabled);
     try bind.toggle(context, ref, "showNotifInfoPanel", "Show Notification History");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("showNotifInfoPanel"));
     try preview(context, session.profile().ptr);
@@ -83,6 +86,7 @@ pub fn show(context: *ui.Frame) !void {
     try bind.number(context, ref, "notifInfoPanelMergeWindowSec", "Merge Window", .{ .unit = "s" });
     try merge.close(context);
     try options.close(context);
+    try notifications.close(context);
     try section.close(context);
 }
 

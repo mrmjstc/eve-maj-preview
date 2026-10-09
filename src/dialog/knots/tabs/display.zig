@@ -116,22 +116,24 @@ fn clientRatio() ?f32 {
 
 fn borders(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
     const section = try widgets.openSection(context, "Borders", "Draw a styled border around thumbnails based on their focus state.", &style.section);
-    const unique = thumbnail.get("useUniqueCharacterBorderColors");
-    try borderRow(context, thumbnail, "Focused Border", "showBorderWhenFocused", "borderWidth", "borderStyle", "borderColor", unique);
-    try borderRow(context, thumbnail, "Inactive Border", "showBorderWhenInactive", "inactiveBorderWidth", "inactiveBorderStyle", "inactiveBorderColor", unique);
-    try bind.toggle(context, thumbnail, "useUniqueCharacterBorderColors", "Unique Character Border Colors");
-    try widgets.hintText(context, .src(@src()), "Auto-generates a color per character name, overriding the Focused/Inactive colors above.");
+    const uses_unique = thumbnail.get("useUniqueCharacterBorderColors");
+    try borderRow(context, thumbnail, "Focused Border", "showBorderWhenFocused", "borderWidth", "borderStyle", "borderColor", uses_unique);
+    try borderRow(context, thumbnail, "Inactive Border", "showBorderWhenInactive", "inactiveBorderWidth", "inactiveBorderStyle", "inactiveBorderColor", false);
+    const unique_group = try widgets.openGroup(context, .src(@src()), thumbnail.get("showBorderWhenFocused"));
+    try bind.toggle(context, thumbnail, "useUniqueCharacterBorderColors", "Unique Character Focused Border Colors");
+    try widgets.hintText(context, .src(@src()), "Auto-generates a color per character name, overriding the Focused Border color above.");
+    try unique_group.close(context);
     try section.close(context);
 }
 
 /// The state's width, style and colour, then its checkbox last so it lines up with the other rows' checkboxes.
-fn borderRow(context: *ui.Frame, thumbnail: ThumbnailRef, comptime label: []const u8, comptime show_field: []const u8, comptime width_field: []const u8, comptime style_field: []const u8, comptime color_field: []const u8, unique: bool) !void {
+fn borderRow(context: *ui.Frame, thumbnail: ThumbnailRef, comptime label: []const u8, comptime show_field: []const u8, comptime width_field: []const u8, comptime style_field: []const u8, comptime color_field: []const u8, is_color_overridden: bool) !void {
     const row = try widgets.openBinding(context, .str("knots.border.row:" ++ label), label);
     const settings = try widgets.openInlineGroup(context, .str("knots.border.settings:" ++ label), thumbnail.get(show_field));
     try bind.unitNumberBox(context, thumbnail, width_field, "px", .{});
     try bind.choiceBox(context, thumbnail, style_field, &style.select_narrow);
-    // Overridden per character while unique colours are on.
-    const color = try widgets.openInlineGroup(context, .str("knots.border.color:" ++ label), !unique);
+    // Unique colours replace it per character.
+    const color = try widgets.openInlineGroup(context, .str("knots.border.color:" ++ label), !is_color_overridden);
     try bind.colorBox(context, thumbnail, color_field);
     try color.close(context);
     try settings.close(context);
@@ -144,8 +146,10 @@ fn visibility(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
     try bind.toggle(context, thumbnail, "activeThumbnailHidden", "Hide Active Thumbnail");
     try bind.toggle(context, thumbnail, "hideWhenNoEveFocus", "Hide When No EVE Focus");
     try widgets.hintText(context, .src(@src()), "Hides all thumbnails while no EVE client window has focus.");
+    const delay = try widgets.openGroup(context, .src(@src()), thumbnail.get("hideWhenNoEveFocus"));
     try bind.number(context, thumbnail, "hideDebounceMs", "Hide Delay", .{ .ms_as_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "Delay before hiding, so switching briefly doesn't flicker.");
+    try delay.close(context);
     try section.close(context);
 }
 

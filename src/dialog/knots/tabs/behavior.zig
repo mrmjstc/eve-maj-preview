@@ -127,14 +127,13 @@ fn autoMinimize(context: *ui.Frame) !void {
 fn exclusion(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Character Exclusion", "Controls Shift+Click exclusion of characters from hotkey cycling.", &style.section);
     const ref = session.profile().child("exclusion");
+    // The Toggle Character Exclusion hotkey excludes too, so the settings below don't depend on Shift+Click.
     try bind.toggle(context, ref, "enableShiftClickExclude", "Enable Shift+Click to Exclude");
-    const options = try widgets.openGroup(context, .src(@src()), ref.get("enableShiftClickExclude"));
     try bind.toggle(context, ref, "autoMinimizeExcluded", "Auto-Minimize Excluded Characters");
     try widgets.hintText(context, .src(@src()), "Minimizes immediately on exclusion, not on the Auto-Minimize delay above.");
     try bind.toggle(context, ref, "logoutClearsExclusion", "Logging Out Clears Exclusion");
     try widgets.hintText(context, .src(@src()), "Includes a character again once its client returns to the login screen.");
     if (session.showsThumbnails()) try exclusionOverlay(context);
-    try options.close(context);
     try section.close(context);
 }
 

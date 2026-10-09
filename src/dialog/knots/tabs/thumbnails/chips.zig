@@ -276,11 +276,18 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
     const was_aligned = widgets.useAlignedRows(true);
     defer _ = widgets.useAlignedRows(was_aligned);
     var color_disabled = false;
+    // Every row after the section's master switch, or the chip's show switch, waits on it.
+    var gates: [2]widgets.Group = undefined;
+    var gate_count: usize = 0;
     inline for (chip.popover) |row| {
         switch (row) {
             .toggle => |toggle| {
                 try bind.toggle(context, ref, toggle.field, toggle.label);
                 if (toggle.disables_color and ref.get(toggle.field)) color_disabled = true;
+                if (comptime isGate(chip, toggle.field)) {
+                    gates[gate_count] = try widgets.openGroup(context, .str("knots.chip.gate:" ++ chip.label ++ ":" ++ toggle.field), ref.get(toggle.field));
+                    gate_count += 1;
+                }
             },
             .color => {
                 const color = try widgets.openGroup(context, .str("knots.chip.color:" ++ chip.label), !color_disabled);
@@ -301,6 +308,10 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
                 try background.close(context);
             },
         }
+    }
+    while (gate_count > 0) {
+        gate_count -= 1;
+        try gates[gate_count].close(context);
     }
 
     const is_restyled = !std.mem.eql(u8, font_before, ref.get(fields.font_name)) or size_before != ref.get(fields.font_size) or
@@ -326,4 +337,10 @@ fn copyStyleToOthers(comptime source_index: usize) void {
             to.set(chip.fields.bg_color, from.get(source.fields.bg_color));
         }
     }
+}
+
+fn isGate(comptime chip: Chip, comptime field: []const u8) bool {
+    if (std.mem.eql(u8, field, chip.show_field)) return true;
+    const enabled_field = chip.enabled_field orelse return false;
+    return std.mem.eql(u8, field, enabled_field);
 }

@@ -59,7 +59,7 @@ const SectionList = struct {
     }
 };
 
-/// What openGroup returns; closing it covers a disabled group so it can't be clicked.
+/// What openGroup returns; closing it veils a disabled group so it reads as off and can't be clicked.
 pub const Group = struct {
     key: ui.Key,
     rect: Rect,
@@ -504,24 +504,19 @@ pub fn reorderFinish(context: *ui.Frame, base: ui.Key, count: usize) ?Move {
     return .{ .from = finished.from, .before = finished.insert };
 }
 
-/// Settings that depend on a switch are hidden while it's off, except during a search, so the index and its matches still include them.
-pub fn showsDependents(is_enabled: bool) bool {
-    return is_enabled or search.isActive();
-}
-
 /// A run of settings that dims, and stops taking clicks, while `is_enabled` is false.
 pub fn openGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
-    return openAnyGroup(context, key, if (is_enabled) &style.group else &style.group_disabled, is_enabled);
+    return openAnyGroup(context, key, &style.group, is_enabled);
 }
 
 /// Like openGroup, filling the rest of a filling tab's section.
 pub fn openFillGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
-    return openAnyGroup(context, key, if (is_enabled) &style.group_fill else &style.group_fill_disabled, is_enabled);
+    return openAnyGroup(context, key, &style.group_fill, is_enabled);
 }
 
 /// Like openGroup, for controls side by side inside one row.
 pub fn openInlineGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
-    return openAnyGroup(context, key, if (is_enabled) &style.group_inline else &style.group_inline_disabled, is_enabled);
+    return openAnyGroup(context, key, &style.group_inline, is_enabled);
 }
 
 fn openAnyGroup(context: *ui.Frame, key: ui.Key, group_style: *const ui.Style, is_enabled: bool) !Group {

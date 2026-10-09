@@ -17,6 +17,7 @@ const Text = ui.component.Text;
 const ORE_CATEGORIES = [_][]const u8{ "Ore", "Ice", "Moons", "Gas" };
 
 pub fn showCombat(context: *ui.Frame) !void {
+    try chatlogNotice(context, "Combat");
     const section = try widgets.openSection(context, "Combat Overlay Settings", "Displays incoming and outgoing DPS below each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.", &style.section);
     const ref = session.profile().child("combat");
     try bind.toggle(context, ref, "enabled", "Enable Text Overlays");
@@ -31,6 +32,7 @@ pub fn showCombat(context: *ui.Frame) !void {
 }
 
 pub fn showMining(context: *ui.Frame) !void {
+    try chatlogNotice(context, "Mining");
     const ref = session.profile().child("mining");
     const section = try widgets.openSection(context, "Mining Overlay Settings", "Displays m3 mined per second on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.", &style.section);
     try bind.toggle(context, ref, "enabled", "Enable Text Overlays");
@@ -123,6 +125,7 @@ pub fn setOrePrice(name: []const u8, price: f64) void {
 }
 
 pub fn showBounty(context: *ui.Frame) !void {
+    try chatlogNotice(context, "Bounty");
     const section = try widgets.openSection(context, "Bounty Overlay Settings", "Displays ISK bounty payouts per minute/hour on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.", &style.section);
     const ref = session.profile().child("bounty");
     try bind.toggle(context, ref, "enabled", "Enable Text Overlays");
@@ -149,4 +152,9 @@ pub fn showResources(context: *ui.Frame) !void {
     try bind.number(context, ref, "update_interval_ms", "Update Interval", .{ .ms_as_seconds = true, .unit = "s" });
     try options.close(context);
     try section.close(context);
+}
+
+fn chatlogNotice(context: *ui.Frame, comptime overlay: []const u8) !void {
+    if (session.profile().ptr.chatlog.enabled) return;
+    try widgets.notice(context, .str("knots.overlays.chatlog:" ++ overlay), "The " ++ overlay ++ " overlay requires Log Monitoring enabled to read logs.");
 }

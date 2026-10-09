@@ -654,22 +654,19 @@ pub const popover: Style = .{
 pub const popover_title: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .justify = .space_between };
 pub const popover_close: Style = plain_button.with(.{ .width = .fixed(CONTROL_HEIGHT), .padding = .all(0), .justify = .center });
 
-/// openGroup's column, which dims while disabled.
+/// openGroup's column.
 pub const group: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
-pub const group_disabled: Style = group.with(.{ .opacity = DISABLED_OPACITY });
 pub const group_fill: Style = group.with(.{ .height = .grow() });
-pub const group_fill_disabled: Style = group_fill.with(.{ .opacity = DISABLED_OPACITY });
 /// openInlineGroup's run of controls within a row.
 pub const group_inline: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
-pub const group_inline_disabled: Style = group_inline.with(.{ .opacity = DISABLED_OPACITY });
-/// Faint enough that a lit switch or accent colour inside reads as off.
-const DISABLED_OPACITY = 0.3;
-/// Laid over a disabled group to take its clicks; sized from the group's last layout.
+/// Strong enough that a lit switch under the veil reads as off.
+const GROUP_VEIL_ALPHA = 0.7;
+/// Veils a disabled group and takes its clicks; knots' opacity wouldn't fade the children's boxes and borders.
 pub const group_blocker: Style = .{
     .position = .absolute,
     .offset = .{ 0, 0 },
     .padding = .all(0),
-    .background = .transparent,
+    .background = .{ .color = .{ .value = .{ PANEL.value[0], PANEL.value[1], PANEL.value[2], GROUP_VEIL_ALPHA } } },
     .radius = .none,
     .hover = &.{ .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
