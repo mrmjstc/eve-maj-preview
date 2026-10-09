@@ -1,7 +1,6 @@
 //! The ClientList view mode: one compact panel with a row per client, in place of thumbnail windows.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const fonts = @import("../platform/fonts.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const PanelWindow = @import("../platform/panel_window.zig").PanelWindow;
 const config_mod = @import("../config.zig");
@@ -38,12 +37,6 @@ pub const ListWindow = struct {
     rows: std.ArrayList(usize) = .empty,
     /// Each row's client, for clicks between renders.
     row_source_hwnds: std.ArrayList(win32.HWND) = .empty,
-    /// The header's and right-hand slot's font.
-    small_font: ?win32.HFONT = null,
-    /// Owned; freed in deinit.
-    small_font_name: []const u8 = "",
-    small_font_size: i32 = 0,
-    small_font_weight: fonts.FontWeight = .Regular,
 
     pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) !ListWindow {
         const cfg = &store.live;
@@ -59,8 +52,6 @@ pub const ListWindow = struct {
     pub fn deinit(self: *ListWindow) void {
         self.rows.deinit(self.panel.allocator);
         self.row_source_hwnds.deinit(self.panel.allocator);
-        if (self.small_font) |font| _ = win32.DeleteObject(font);
-        self.panel.allocator.free(self.small_font_name);
         self.panel.deinit();
     }
 
@@ -240,7 +231,7 @@ pub const ListWindow = struct {
     pub fn render(self: *ListWindow, thumbnails: []const ThumbnailWindow, active_source_hwnd: ?win32.HWND) !void {
         const display = &self.config.display;
         try self.panel.ensureFont("List View", display.listViewFontName, display.listViewFontSize, display.listViewFontWeight);
-        try gdi_overlay.ensureFont(self.panel.allocator, "List View small", &self.small_font, &self.small_font_name, &self.small_font_size, &self.small_font_weight, display.listViewFontName, list_look.smallFontSize(display.listViewFontSize), display.listViewFontWeight);
+        try self.panel.ensureSmallFont("List View small", display.listViewFontName, list_look.smallFontSize(display.listViewFontSize), display.listViewFontWeight);
 
         self.rows.clearRetainingCapacity();
         var any_visible = false;
@@ -275,7 +266,7 @@ pub const ListWindow = struct {
         var row_text: ?RowText = null;
         var old_font: ?win32.HANDLE = null;
         if (self.panel.font) |name_font| {
-            if (self.small_font) |small_font| {
+            if (self.panel.small_font) |small_font| {
                 old_font = win32.SelectObject(dc, small_font);
                 const small_height = lineHeight(dc);
                 var header_buf: [list_look.HEADER_TEXT_MAX]u8 = undefined;
@@ -292,7 +283,7 @@ pub const ListWindow = struct {
         for (self.rows.items, 0..) |thumb_index, i| self.drawRow(bitmap, &thumbnails[thumb_index], i, columns, sizes, row_text, active_source_hwnd);
 
         gdi_overlay.fixTextAlpha(bitmap.pixels, width, height);
-        drawFrame(bitmap);
+        gdi_overlay.drawRoundedFrame(bitmap, list_look.CORNER_RADIUS, list_look.BORDER);
 
         self.panel.present(display.listViewOpacity, signature);
     }
@@ -380,32 +371,6 @@ var g_class_registered: bool = false;
 fn alertColor(thumb: *const ThumbnailWindow) u32 {
     const notif = thumb.notifications.newest() orelse return list_look.BADGE_ALERT;
     return notif.border_color_override orelse list_look.BADGE_ALERT;
-}
-
-/// A 1px border with rounded corners; outside them the pixels are cleared so the desktop shows through.
-fn drawFrame(bitmap: *const gdi_overlay.OverlayBitmap) void {
-    const width: usize = bitmap.width;
-    const height: usize = bitmap.height;
-    gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, width, 1, list_look.BORDER);
-    gdi_overlay.fillRect(bitmap.pixels, width, height, 0, height - 1, width, 1, list_look.BORDER);
-    gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, 1, height, list_look.BORDER);
-    gdi_overlay.fillRect(bitmap.pixels, width, height, width - 1, 0, 1, height, list_look.BORDER);
-    if (width < 2 * list_look.CORNER_RADIUS or height < 2 * list_look.CORNER_RADIUS) return;
-
-    const radius: f32 = @floatFromInt(list_look.CORNER_RADIUS);
-    for (0..list_look.CORNER_RADIUS) |dy| {
-        for (0..list_look.CORNER_RADIUS) |dx| {
-            // From the corner arc's centre to this pixel's centre.
-            const fx = radius - @as(f32, @floatFromInt(dx)) - 0.5;
-            const fy = radius - @as(f32, @floatFromInt(dy)) - 0.5;
-            const distance = @sqrt(fx * fx + fy * fy);
-            const pixel: u32 = if (distance > radius) 0 else if (distance > radius - 1) list_look.BORDER else continue;
-            bitmap.pixels[dy * width + dx] = pixel;
-            bitmap.pixels[dy * width + width - 1 - dx] = pixel;
-            bitmap.pixels[(height - 1 - dy) * width + dx] = pixel;
-            bitmap.pixels[(height - 1 - dy) * width + width - 1 - dx] = pixel;
-        }
-    }
 }
 
 fn registerWindowClass(instance: win32.HINSTANCE) !void {

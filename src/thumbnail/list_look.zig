@@ -1,4 +1,4 @@
-//! The client list panel's look, shared by the panel and the config dialog's preview: its sizes, palette, colour rules and stat text; no I/O.
+//! The client list panel's look, shared by the panel and the config dialog's preview: its sizes, palette, colour rules and stat text; no I/O. The History Panel shares its palette and sizes.
 const std = @import("std");
 const types = @import("../config/types.zig");
 const activity = @import("../config/activity.zig");
@@ -83,9 +83,19 @@ pub fn metrics(display: *const DisplayConfig) Metrics {
     const font_size = display.listViewFontSize;
     return .{
         .column_width = display.listViewColumnWidth,
-        .header_height = @max(MIN_HEADER_HEIGHT, lineHeight(smallFontSize(font_size)) + HEADER_TEXT_PADDING),
-        .row_height = @max(MIN_ROW_HEIGHT, lineHeight(font_size) + ROW_TEXT_PADDING),
+        .header_height = headerHeight(font_size),
+        .row_height = rowHeight(font_size),
     };
+}
+
+/// A header whose text is drawn in smallFontSize(`font_size`); the History Panel's too.
+pub fn headerHeight(font_size: i32) i32 {
+    return @max(MIN_HEADER_HEIGHT, lineHeight(smallFontSize(font_size)) + HEADER_TEXT_PADDING);
+}
+
+/// A row whose main text is drawn at `font_size`; the History Panel's too.
+pub fn rowHeight(font_size: i32) i32 {
+    return @max(MIN_ROW_HEIGHT, lineHeight(font_size) + ROW_TEXT_PADDING);
 }
 
 /// Columns to lay `count` rows out in, row by row: the configured number, at most MAX_COLUMNS, and never more than there are rows.

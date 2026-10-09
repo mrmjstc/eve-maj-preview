@@ -21,6 +21,7 @@ test {
     _ = @import("config/spaces.zig");
     _ = @import("layout/zoom.zig");
     _ = @import("notifications/gamelog_events.zig");
+    _ = @import("notifications/history_look.zig");
     _ = @import("notifications/notification.zig");
     _ = @import("notifications/template.zig");
     _ = @import("platform/virtual_keys.zig");

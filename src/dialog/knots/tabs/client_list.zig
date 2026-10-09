@@ -164,9 +164,9 @@ fn preview(context: *ui.Frame, display: *const config.DisplayConfig, look: Look)
         .width = .fixed(look.px(look.sizes.column_width * @as(i32, @intCast(columns)))),
         .direction = .column,
         .padding = .init(0, 0, look.px(list_look.BOTTOM_PADDING), 0),
-        .background = argb(list_look.PANEL),
+        .background = widgets.solidColor(list_look.PANEL),
         .border_width = .all(1),
-        .border_color = argb(list_look.BORDER),
+        .border_color = widgets.solidColor(list_look.BORDER),
         .radius = .{ .fixed = look.px(@intCast(list_look.CORNER_RADIUS)) },
         .opacity = @as(f32, @floatFromInt(display.listViewOpacity)) / 255.0,
         .overflow = .hidden,
@@ -182,7 +182,7 @@ fn preview(context: *ui.Frame, display: *const config.DisplayConfig, look: Look)
         .@"align" = .center,
         .padding = .xy(look.px(list_look.PADDING_X), 0),
         .border_width = .edges(0, 0, 1, 0),
-        .border_color = argb(list_look.DIVIDER),
+        .border_color = widgets.solidColor(list_look.DIVIDER),
     };
     const header = Rect{ .key = .src(@src()), .style = header_style };
     _ = try header.open(context);
@@ -332,7 +332,7 @@ fn partStyle(arena: std.mem.Allocator, look: Look, base: ui.Style, background: u
     part_style.* = base.with(.{
         // A Button centres its content, which pushes a row with a growing name off its right edge.
         .justify = .start,
-        .background = argb(background),
+        .background = widgets.solidColor(background),
         .border_width = .all(1),
         .border_color = if (is_selected) .accent else .transparent,
         .radius = .{ .fixed = 3 },
@@ -370,7 +370,7 @@ fn indicator(context: *ui.Frame, key: ui.Key, color: u32, look: Look) !void {
         .None => return,
     };
     const indicator_shape = try context.arena().create(ui.Style);
-    indicator_shape.* = shape.with(.{ .background = argb(color) });
+    indicator_shape.* = shape.with(.{ .background = widgets.solidColor(color) });
     try context.e(Rect{ .key = key, .style = indicator_shape });
 }
 
@@ -378,16 +378,12 @@ fn indicator(context: *ui.Frame, key: ui.Key, color: u32, look: Look) !void {
 fn textStyle(arena: std.mem.Allocator, color: u32, size: f32, is_grown: bool, is_shown: bool) !*const ui.Style {
     const text_style = try arena.create(ui.Style);
     text_style.* = .{
-        .foreground = argb(color),
+        .foreground = widgets.solidColor(color),
         .font_size = .{ .px = size },
         .opacity = if (is_shown) 1 else HIDDEN_OPACITY,
     };
     if (is_grown) text_style.width = .grow();
     return text_style;
-}
-
-fn argb(color: u32) ui.Color.Input {
-    return .{ .color = widgets.colorFromArgb(color | 0xFF000000) };
 }
 
 /// Beside the clicked part; a click on another part moves it there.

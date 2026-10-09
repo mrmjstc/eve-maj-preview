@@ -4,9 +4,10 @@ const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const PanelWindow = @import("../platform/panel_window.zig").PanelWindow;
 const config_mod = @import("../config.zig");
-const color = @import("../util/color.zig");
+const list_look = @import("../thumbnail/list_look.zig");
 const notification = @import("notification.zig");
 const history = @import("history.zig");
+const history_look = @import("history_look.zig");
 const painter_mod = @import("../painter.zig");
 const activation = @import("../clients/activation.zig");
 const drag_panel = @import("../drag/panel.zig");
@@ -14,36 +15,20 @@ const log = @import("../log.zig");
 
 const slog = log.scoped("history_panel");
 
-const HEADER_HEIGHT: i32 = 18;
-const FOOTER_HEIGHT: i32 = 18;
-const ROW_HEIGHT: i32 = 16;
-const TEXT_LEFT: i32 = 6;
-const RIGHT_MARGIN: i32 = 6;
 const TEXT_BUF: usize = 160;
-
-const RGB_HEADER: u32 = 0x001A1A1A;
-const RGB_BODY: u32 = 0x000F0F0F;
-const ARGB_SEPARATOR: u32 = 0xFF888888;
-const ARGB_HDR_TEXT: u32 = 0xFFFFFFFF;
-const ARGB_CHAR_NAME: u32 = 0xFFCCCCCC;
-const ARGB_EMPTY_TEXT: u32 = 0xFF666666;
-const ARGB_TIMESTAMP: u32 = 0xFF666666;
-const RGB_FRAME: u32 = 0x00888888;
-// Neutral gray, not an accent color, to match the panel's existing monochrome palette.
-const RGB_BUTTON_ACTIVE_BG: u32 = 0x00404040;
-const ARGB_BUTTON_ACTIVE_TEXT: u32 = ARGB_HDR_TEXT;
-const ARGB_BUTTON_INACTIVE_TEXT: u32 = ARGB_EMPTY_TEXT;
 
 /// Granularity of the timestamp text baked into the render signature, so it doesn't redraw every scan tick.
 const TIMESTAMP_BUCKET_MS: u64 = 15_000;
 
-/// Order and labels for the footer's category filter buttons; index-paired with each other and with HistoryPanelWindow.category_button_rects.
-const CATEGORY_ORDER = [_]notification.NotificationCategory{ .Fleet, .Mining, .Combat, .Navigation, .General };
-const CATEGORY_LABELS = [_][]const u8{ "FLT", "MIN", "CBT", "NAV", "GEN" };
-
 const HISTORY_PANEL_WINDOW_CLASS = "EVE_HISTORY_PANEL_CLASS";
 
-const ButtonRect = struct { left: i32 = 0, right: i32 = 0 };
+/// The fonts the text draws with, and their line heights.
+const PanelText = struct {
+    name_font: win32.HFONT,
+    small_font: win32.HFONT,
+    name_height: i32,
+    small_height: i32,
+};
 
 /// Owns the History Panel window and when it's on-screen: display.showNotifInfoPanel creates it, hideNotifInfoPanelWhenNoCharacters auto-hides it, and the tray toggle can force it visible.
 pub const HistoryPanel = struct {
@@ -137,8 +122,6 @@ pub const HistoryPanelWindow = struct {
     config: *const config_mod.Config,
     history_rows: [history.CAPACITY]HistoryRow = undefined,
     history_row_count: usize = 0,
-    /// Index-paired with CATEGORY_ORDER; recomputed every render for WM_LBUTTONDOWN's footer hit-test.
-    category_button_rects: [CATEGORY_ORDER.len]ButtonRect = undefined,
 
     pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) !HistoryPanelWindow {
         const display = &store.live.display;
@@ -166,29 +149,13 @@ pub const HistoryPanelWindow = struct {
         self.store.update(.{ .display = .{ .notifInfoPanelX = pos.x, .notifInfoPanelY = pos.y } });
     }
 
-    /// The type's configured color, else the thumbnail overlay's default text color.
-    fn resolveNotifTextColor(self: *const HistoryPanelWindow, ntype: notification.NotificationType) u32 {
-        const type_cfg = self.config.thumbnail.notifications.getTypeConfig(ntype);
-        return (type_cfg.text_color orelse self.config.thumbnail.characterNameColor) & 0x00FF_FFFF;
+    fn messageColor(self: *const HistoryPanelWindow, notification_type: notification.NotificationType) u32 {
+        return history_look.messageColor(&self.config.thumbnail.notifications, notification_type);
     }
 
-    fn updateCategoryButtonRects(self: *HistoryPanelWindow, win_w: i32) void {
-        const n: i64 = @intCast(CATEGORY_ORDER.len);
-        for (0..CATEGORY_ORDER.len) |i| {
-            const left: i32 = @intCast(@divTrunc(@as(i64, win_w) * @as(i64, @intCast(i)), n));
-            const right: i32 = @intCast(@divTrunc(@as(i64, win_w) * @as(i64, @intCast(i + 1)), n));
-            self.category_button_rects[i] = .{ .left = left, .right = right };
-        }
-    }
-
-    fn handleFooterClick(self: *HistoryPanelWindow, cx: i32) void {
-        for (CATEGORY_ORDER, 0..) |category, i| {
-            const rect = self.category_button_rects[i];
-            if (cx < rect.left or cx >= rect.right) continue;
-
-            setCategoryEnabled(self.store, category, !categoryEnabled(self.config, category));
-            return;
-        }
+    fn handleFooterClick(self: *HistoryPanelWindow, x: i32) void {
+        const category = history_look.filterAt(self.panel.width, x) orelse return;
+        setCategoryEnabled(self.store, category, !history_look.categoryEnabled(&self.config.display, category));
     }
 
     fn computeRenderSignature(self: *const HistoryPanelWindow, painter: *const painter_mod.Painter) u64 {
@@ -204,25 +171,25 @@ pub const HistoryPanelWindow = struct {
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelShowCategoryFilters));
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelMergeEnabled));
         h.update(std.mem.asBytes(&self.config.display.notifInfoPanelMergeWindowSec));
-        for (CATEGORY_ORDER) |category| {
-            const enabled = categoryEnabled(self.config, category);
-            h.update(std.mem.asBytes(&enabled));
+        for (history_look.CATEGORY_ORDER) |category| {
+            const is_enabled = history_look.categoryEnabled(&self.config.display, category);
+            h.update(std.mem.asBytes(&is_enabled));
         }
         h.update(std.mem.asBytes(&painter.notification_history.revision));
 
         const show_timestamp = self.config.display.notifInfoPanelShowTimestamp;
         const now = win32.Ticks.now();
 
-        var entries: [history.CAPACITY]history.Entry = undefined;
-        const hist = painter.notification_history.snapshot(&entries);
-        for (hist) |*entry| {
+        var entry_buf: [history.CAPACITY]history.Entry = undefined;
+        const entries = painter.notification_history.snapshot(&entry_buf);
+        for (entries) |*entry| {
             h.update(entry.characterName());
             h.update(entry.text());
             h.update(std.mem.asBytes(&entry.unmerged));
-            const char_color = (entry.character_color orelse ARGB_CHAR_NAME) & 0x00FF_FFFF;
-            const text_color = self.resolveNotifTextColor(entry.notification_type);
-            h.update(std.mem.asBytes(&char_color));
-            h.update(std.mem.asBytes(&text_color));
+            const name_color = entry.character_color orelse list_look.NAME;
+            const message_color = self.messageColor(entry.notification_type);
+            h.update(std.mem.asBytes(&name_color));
+            h.update(std.mem.asBytes(&message_color));
             if (show_timestamp) {
                 const bucket = now.elapsedSince(entry.timestamp_ms) / TIMESTAMP_BUCKET_MS;
                 h.update(std.mem.asBytes(&bucket));
@@ -232,151 +199,151 @@ pub const HistoryPanelWindow = struct {
         return h.final();
     }
 
+    /// Fills history_rows from `entries`, skipping filtered categories and merging repeats, up to `capacity` rows.
+    fn buildRows(self: *HistoryPanelWindow, entries: []const history.Entry, capacity: usize) void {
+        const display = &self.config.display;
+        const merge_window_ms: u64 = @as(u64, @intCast(@max(0, display.notifInfoPanelMergeWindowSec))) * 1000;
+        const row_limit = @min(capacity, self.history_rows.len);
+        var shown_count: usize = 0;
+        for (entries, 0..) |*entry, i| {
+            if (!history_look.showsCategory(display, notification.notificationCategory(entry.notification_type))) continue;
+
+            if (display.notifInfoPanelMergeEnabled and shown_count > 0 and !entry.unmerged) {
+                const row = &self.history_rows[shown_count - 1];
+                const prev = &entries[row.last];
+                if (!prev.unmerged and prev.notification_type == entry.notification_type and
+                    std.mem.eql(u8, prev.text(), entry.text()) and
+                    prev.timestamp_ms.elapsedSince(entry.timestamp_ms) <= merge_window_ms)
+                {
+                    row.count += 1;
+                    row.last = i;
+                    continue;
+                }
+            }
+
+            if (shown_count >= row_limit) break;
+            self.history_rows[shown_count] = .{ .hwnd = entry.source_hwnd, .count = 1, .first = i, .last = i };
+            shown_count += 1;
+        }
+        self.history_row_count = shown_count;
+    }
+
     /// Called every painter tick; redraws only when the render signature changed.
     pub fn render(self: *HistoryPanelWindow, painter: *const painter_mod.Painter) !void {
         const display = &self.config.display;
         try self.panel.ensureFont("History Panel", display.notifInfoPanelFontName, display.notifInfoPanelFontSize, display.notifInfoPanelFontWeight);
+        try self.panel.ensureSmallFont("History Panel small", display.notifInfoPanelFontName, list_look.smallFontSize(display.notifInfoPanelFontSize), display.notifInfoPanelFontWeight);
 
         const signature = self.computeRenderSignature(painter);
         if (self.panel.isUnchanged(signature)) return;
 
-        const win_w: i32 = @max(1, display.notifInfoPanelWidth);
-        const win_h: i32 = @max(1, display.notifInfoPanelHeight);
-        const bitmap = try self.panel.beginFrame(win_w, win_h);
+        var entry_buf: [history.CAPACITY]history.Entry = undefined;
+        const entries = painter.notification_history.snapshot(&entry_buf);
+        const sizes = history_look.metrics(display);
+        self.buildRows(entries, history_look.rowCapacity(display, sizes));
+
+        const panel_width: i32 = @max(1, display.notifInfoPanelWidth);
+        const panel_height: i32 = @max(1, display.notifInfoPanelHeight);
+        const bitmap = try self.panel.beginFrame(panel_width, panel_height);
         const width: usize = bitmap.width;
         const height: usize = bitmap.height;
+        const dc = bitmap.mem_dc;
+        // A large font can leave no room below the header.
+        const footer_top = @max(sizes.header_height, panel_height - sizes.footer_height);
 
-        const show_filters = self.config.display.notifInfoPanelShowCategoryFilters;
-        const footer_top: i32 = if (show_filters) @max(HEADER_HEIGHT, win_h - FOOTER_HEIGHT) else win_h;
-
-        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, width, @intCast(HEADER_HEIGHT), color.withAlpha(RGB_HEADER, 0xFF));
-        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(HEADER_HEIGHT), width, height - @as(usize, @intCast(HEADER_HEIGHT)), color.withAlpha(RGB_BODY, 0xFF));
-
-        if (show_filters) {
-            gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(footer_top), width, @intCast(win_h - footer_top), color.withAlpha(RGB_HEADER, 0xFF));
-
-            self.updateCategoryButtonRects(win_w);
-            for (CATEGORY_ORDER, 0..) |category, i| {
-                if (!categoryEnabled(self.config, category)) continue;
-                const rect = self.category_button_rects[i];
-                gdi_overlay.fillRect(bitmap.pixels, width, height, @intCast(rect.left), @intCast(footer_top), @intCast(rect.right - rect.left), @intCast(win_h - footer_top), color.withAlpha(RGB_BUTTON_ACTIVE_BG, 0xFF));
-            }
-
-            gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(footer_top), width, 1, ARGB_SEPARATOR);
-            for (1..CATEGORY_ORDER.len) |i| {
-                const x: usize = @intCast(self.category_button_rects[i].left);
-                gdi_overlay.fillRect(bitmap.pixels, width, height, x, @intCast(footer_top), 1, @intCast(win_h - footer_top), ARGB_SEPARATOR);
+        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, width, height, list_look.PANEL);
+        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(sizes.header_height - 1), width, 1, list_look.DIVIDER);
+        if (sizes.footer_height > 0) {
+            gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(footer_top), width, 1, list_look.DIVIDER);
+            for (history_look.CATEGORY_ORDER, 0..) |category, index| {
+                if (!history_look.categoryEnabled(display, category)) continue;
+                const span = history_look.filterSpan(panel_width, index);
+                gdi_overlay.fillRoundedRect(bitmap.pixels, width, height, @intCast(span.left), @intCast(footer_top + history_look.FILTER_GAP), @intCast(span.right - span.left), @intCast(sizes.header_height), history_look.FILTER_RADIUS, history_look.FILTER_ON);
             }
         }
 
-        const history_area_h: i32 = @max(0, footer_top - HEADER_HEIGHT);
-        const history_rows_fit: usize = @intCast(@max(0, @divTrunc(history_area_h, ROW_HEIGHT)));
-        const configured_max_rows: usize = @intCast(@max(1, self.config.display.notifInfoPanelMaxRows));
-        const show_timestamp = self.config.display.notifInfoPanelShowTimestamp;
-        const now = win32.Ticks.now();
-
-        if (self.panel.font) |f| {
-            const old = win32.SelectObject(bitmap.mem_dc, f);
-            defer {
-                if (old) |o| _ = win32.SelectObject(bitmap.mem_dc, o);
+        if (self.panel.font) |name_font| {
+            if (self.panel.small_font) |small_font| {
+                const old_font = win32.SelectObject(dc, small_font);
+                // A font still selected into the DC can't be deleted when the settings change.
+                defer if (old_font) |font| {
+                    _ = win32.SelectObject(dc, font);
+                };
+                const small_height = lineHeight(dc);
+                _ = win32.SelectObject(dc, name_font);
+                const text: PanelText = .{ .name_font = name_font, .small_font = small_font, .name_height = lineHeight(dc), .small_height = small_height };
+                self.drawText(dc, entries, sizes, panel_width, footer_top, text);
             }
-
-            const header_text = "Notification History";
-            const header_text_h = measureTextHeight(bitmap.mem_dc, header_text);
-            const header_text_y = @max(0, @divTrunc(HEADER_HEIGHT - header_text_h, 2));
-            drawText(bitmap.mem_dc, header_text, TEXT_LEFT, header_text_y, ARGB_HDR_TEXT);
-
-            var entries: [history.CAPACITY]history.Entry = undefined;
-            const hist = painter.notification_history.snapshot(&entries);
-            const cap = @min(history_rows_fit, configured_max_rows);
-
-            const max_w: usize = @intCast(@max(0, win_w - TEXT_LEFT - RIGHT_MARGIN));
-            const merge_enabled = self.config.display.notifInfoPanelMergeEnabled;
-            const merge_window_ms: u64 = @as(u64, @intCast(@max(0, self.config.display.notifInfoPanelMergeWindowSec))) * 1000;
-            var shown: usize = 0;
-            for (hist, 0..) |*entry, i| {
-                if (!effectiveCategoryEnabled(self.config, notification.notificationCategory(entry.notification_type))) continue;
-
-                if (merge_enabled and shown > 0 and !entry.unmerged) {
-                    const row = &self.history_rows[shown - 1];
-                    const prev = &hist[row.last];
-                    if (!prev.unmerged and prev.notification_type == entry.notification_type and
-                        std.mem.eql(u8, prev.text(), entry.text()) and
-                        prev.timestamp_ms.elapsedSince(entry.timestamp_ms) <= merge_window_ms)
-                    {
-                        row.count += 1;
-                        row.last = i;
-                        continue;
-                    }
-                }
-
-                if (shown >= cap) break;
-                self.history_rows[shown] = .{ .hwnd = entry.source_hwnd, .count = 1, .first = i, .last = i };
-                shown += 1;
-            }
-            self.history_row_count = shown;
-
-            for (self.history_rows[0..shown], 0..) |row, row_i| {
-                const entry = &hist[row.first];
-                const row_top = HEADER_HEIGHT + @as(i32, @intCast(row_i)) * ROW_HEIGHT;
-                const char_color = (entry.character_color orelse ARGB_CHAR_NAME) & 0x00FF_FFFF;
-                const text_color = self.resolveNotifTextColor(entry.notification_type);
-                var ts_buf: [24]u8 = undefined;
-                const timestamp = if (show_timestamp) formatRelativeTime(&ts_buf, now, entry.timestamp_ms) else null;
-                if (row.count > 1) {
-                    drawMergedRow(bitmap.mem_dc, entry.text(), row.count, TEXT_LEFT, row_top + 1, char_color, text_color, max_w, timestamp);
-                } else {
-                    drawHistoryRow(bitmap.mem_dc, entry.characterName(), entry.text(), TEXT_LEFT, row_top + 1, char_color, text_color, max_w, timestamp);
-                }
-            }
-
-            if (shown == 0) {
-                const empty_text = if (hist.len == 0) "No notifications yet" else "All notifications filtered";
-                drawText(bitmap.mem_dc, empty_text, TEXT_LEFT, HEADER_HEIGHT + 2, ARGB_EMPTY_TEXT);
-            }
-
-            if (show_filters) {
-                for (CATEGORY_ORDER, 0..) |category, i| {
-                    const rect = self.category_button_rects[i];
-                    const label = CATEGORY_LABELS[i];
-                    const active = categoryEnabled(self.config, category);
-                    const label_color = if (active) ARGB_BUTTON_ACTIVE_TEXT else ARGB_BUTTON_INACTIVE_TEXT;
-                    const label_w = measureTextWidth(bitmap.mem_dc, label);
-                    const cell_w: usize = @intCast(@max(0, rect.right - rect.left));
-                    const label_x = rect.left + @as(i32, @intCast((cell_w -| label_w) / 2));
-                    const label_h = measureTextHeight(bitmap.mem_dc, label);
-                    const label_y = footer_top + @max(0, @divTrunc(FOOTER_HEIGHT - label_h, 2));
-                    drawText(bitmap.mem_dc, label, label_x, label_y, label_color);
-                }
-            }
-        }
-
-        gdi_overlay.fillRect(bitmap.pixels, width, height, 0, @intCast(HEADER_HEIGHT - 1), width, 1, ARGB_SEPARATOR);
-
-        {
-            const frame_col = color.withAlpha(RGB_FRAME, 0xFF);
-            gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, width, 1, frame_col);
-            gdi_overlay.fillRect(bitmap.pixels, width, height, 0, height - 1, width, 1, frame_col);
-            gdi_overlay.fillRect(bitmap.pixels, width, height, 0, 0, 1, height, frame_col);
-            gdi_overlay.fillRect(bitmap.pixels, width, height, width - 1, 0, 1, height, frame_col);
         }
 
         gdi_overlay.fixTextAlpha(bitmap.pixels, width, height);
+        gdi_overlay.drawRoundedFrame(bitmap, list_look.CORNER_RADIUS, list_look.BORDER);
         self.panel.present(display.notifInfoPanelOpacity, signature);
+    }
+
+    /// The header, the rows (or why there are none) and the filter buttons' labels.
+    fn drawText(self: *const HistoryPanelWindow, dc: win32.HDC, entries: []const history.Entry, sizes: history_look.Metrics, panel_width: i32, footer_top: i32, text: PanelText) void {
+        _ = win32.SelectObject(dc, text.small_font);
+        drawLine(dc, history_look.HEADER_TEXT, list_look.PADDING_X, @divTrunc(sizes.header_height - text.small_height, 2), list_look.MUTED);
+        if (sizes.footer_height > 0) self.drawFilterLabels(dc, panel_width, footer_top + history_look.FILTER_GAP + @divTrunc(sizes.header_height - text.small_height, 2));
+
+        _ = win32.SelectObject(dc, text.name_font);
+        if (self.history_row_count == 0) {
+            const empty_text = if (entries.len == 0) "No notifications yet" else "All notifications filtered";
+            drawLine(dc, empty_text, list_look.PADDING_X, sizes.header_height + @divTrunc(sizes.row_height - text.name_height, 2), list_look.MUTED);
+            return;
+        }
+        const now = win32.Ticks.now();
+        for (self.history_rows[0..self.history_row_count], 0..) |row, index| {
+            const row_top = sizes.header_height + @as(i32, @intCast(index)) * sizes.row_height;
+            self.drawRow(dc, entries, row, row_top, sizes.row_height, panel_width - list_look.PADDING_X, text, now);
+        }
+    }
+
+    /// The name (or a merged row's count) then the message in the main font, and the timestamp right-aligned at `right` in the small one.
+    fn drawRow(self: *const HistoryPanelWindow, dc: win32.HDC, entries: []const history.Entry, row: HistoryRow, row_top: i32, row_height: i32, right: i32, text: PanelText, now: win32.Ticks) void {
+        const entry = &entries[row.first];
+        const left = list_look.PADDING_X;
+        var message_right = right;
+        if (self.config.display.notifInfoPanelShowTimestamp) {
+            var time_buf: [history_look.TIME_TEXT_MAX]u8 = undefined;
+            const time_text = history_look.relativeTime(&time_buf, now.elapsedSince(entry.timestamp_ms));
+            _ = win32.SelectObject(dc, text.small_font);
+            const time_width: i32 = @intCast(measureTextWidth(dc, time_text));
+            drawLine(dc, time_text, @max(left, right - time_width), row_top + @divTrunc(row_height - text.small_height, 2), list_look.MUTED);
+            _ = win32.SelectObject(dc, text.name_font);
+            message_right = right - time_width - history_look.TEXT_GAP;
+        }
+
+        const y = row_top + @divTrunc(row_height - text.name_height, 2);
+        var count_buf: [history_look.COUNT_TEXT_MAX]u8 = undefined;
+        const is_merged = row.count > 1;
+        const name = if (is_merged) history_look.countText(&count_buf, row.count) else entry.characterName();
+        const name_color = if (is_merged) list_look.MUTED else entry.character_color orelse list_look.NAME;
+        const name_max = @divTrunc(@max(0, message_right - left) * history_look.NAME_MAX_PERCENT, 100);
+        const message_x = left + drawFitted(dc, name, left, y, name_color, name_max) + history_look.TEXT_GAP;
+        if (message_x >= message_right) return;
+        _ = drawFitted(dc, entry.text(), message_x, y, self.messageColor(entry.notification_type), message_right - message_x);
+    }
+
+    /// Each filter button's label centred in it, brighter while its category shows.
+    fn drawFilterLabels(self: *const HistoryPanelWindow, dc: win32.HDC, panel_width: i32, y: i32) void {
+        for (history_look.CATEGORY_ORDER, 0..) |category, index| {
+            const span = history_look.filterSpan(panel_width, index);
+            const label = history_look.categoryLabel(category);
+            const color = if (history_look.categoryEnabled(&self.config.display, category)) list_look.NAME else list_look.MUTED;
+            const label_width: i32 = @intCast(measureTextWidth(dc, label));
+            const span_width = span.right - span.left;
+            if (label_width <= span_width) {
+                drawLine(dc, label, span.left + @divTrunc(span_width - label_width, 2), y, color);
+            } else {
+                _ = drawFitted(dc, label, span.left, y, color, span_width);
+            }
+        }
     }
 };
 
 var g_class_registered: bool = false;
-
-fn categoryEnabled(cfg: *const config_mod.Config, category: notification.NotificationCategory) bool {
-    return switch (category) {
-        .Fleet => cfg.display.notifInfoPanelShowFleet,
-        .Mining => cfg.display.notifInfoPanelShowMining,
-        .Combat => cfg.display.notifInfoPanelShowCombat,
-        .Navigation => cfg.display.notifInfoPanelShowNavigation,
-        .General => cfg.display.notifInfoPanelShowGeneral,
-    };
-}
 
 fn setCategoryEnabled(store: *config_mod.ProfileStore, category: notification.NotificationCategory, value: bool) void {
     switch (category) {
@@ -388,86 +355,6 @@ fn setCategoryEnabled(store: *config_mod.ProfileStore, category: notification.No
     }
 }
 
-/// With the filter buttons hidden (notifInfoPanelShowCategoryFilters off), notifications aren't silently dropped by a filter state the user can't see or change - everything shows.
-fn effectiveCategoryEnabled(cfg: *const config_mod.Config, category: notification.NotificationCategory) bool {
-    if (!cfg.display.notifInfoPanelShowCategoryFilters) return true;
-    return categoryEnabled(cfg, category);
-}
-
-/// Formats how long ago `entry_ts` was relative to `now` as e.g. "just now", "5m ago", "2h ago".
-fn formatRelativeTime(buf: *[24]u8, now: win32.Ticks, entry_ts: win32.Ticks) []const u8 {
-    const elapsed_s = now.elapsedSince(entry_ts) / 1000;
-    if (elapsed_s < 60) return "just now";
-    if (elapsed_s < 3600) {
-        return std.mem.print(buf, "{d}m ago", .{elapsed_s / 60}) catch "?m ago";
-    }
-    return std.mem.print(buf, "{d}h ago", .{elapsed_s / 3600}) catch "?h ago";
-}
-
-fn drawTimestampSuffix(dc: win32.HDC, x: i32, y: i32, max_w: usize, timestamp: ?[]const u8) usize {
-    const ts = timestamp orelse return max_w;
-    const ts_w = @min(measureTextWidth(dc, ts), max_w);
-    const gap_w = measureTextWidth(dc, " ");
-    drawText(dc, ts, x + @as(i32, @intCast(max_w - ts_w)), y, ARGB_TIMESTAMP);
-    return max_w -| (ts_w + gap_w);
-}
-
-fn drawMergedRow(dc: win32.HDC, msg: []const u8, count: usize, x: i32, y: i32, count_color: u32, msg_color: u32, max_w: usize, timestamp: ?[]const u8) void {
-    const remaining = drawTimestampSuffix(dc, x, y, max_w, timestamp);
-
-    var count_buf: [16]u8 = undefined;
-    const count_text = std.mem.print(&count_buf, "+{d}", .{count}) catch unreachable;
-    const sep = ": ";
-    const count_w = measureTextWidth(dc, count_text);
-    const prefix_w = count_w + measureTextWidth(dc, sep);
-    if (prefix_w > remaining) {
-        drawTextTruncated(dc, count_text, x, y, count_color, remaining);
-        return;
-    }
-    drawText(dc, count_text, x, y, count_color);
-    drawText(dc, sep, x + @as(i32, @intCast(count_w)), y, msg_color);
-
-    const msg_max = remaining - prefix_w;
-    if (msg_max == 0) return;
-    const msg_x = x + @as(i32, @intCast(prefix_w));
-    if (measureTextWidth(dc, msg) <= msg_max) {
-        drawText(dc, msg, msg_x, y, msg_color);
-    } else {
-        drawTextTruncated(dc, msg, msg_x, y, msg_color, msg_max);
-    }
-}
-
-/// Draws "CharacterName: message" (name/message truncated to make room) followed by a right-aligned "timestamp" suffix, which is never dropped, even if it's all that fits.
-fn drawHistoryRow(dc: win32.HDC, name: []const u8, msg: []const u8, x: i32, y: i32, name_color: u32, msg_color: u32, max_w: usize, timestamp: ?[]const u8) void {
-    const remaining = drawTimestampSuffix(dc, x, y, max_w, timestamp);
-
-    const name_w = measureTextWidth(dc, name);
-    if (name_w > remaining) {
-        drawTextTruncated(dc, name, x, y, name_color, remaining);
-        return;
-    }
-    drawText(dc, name, x, y, name_color);
-
-    const remaining_after_name = remaining -| name_w;
-    if (remaining_after_name == 0) return;
-
-    const sep = ": ";
-    const sep_w = measureTextWidth(dc, sep);
-    if (sep_w > remaining_after_name) return;
-    drawText(dc, sep, x + @as(i32, @intCast(name_w)), y, msg_color);
-
-    const remaining_for_msg = remaining_after_name - sep_w;
-    if (remaining_for_msg == 0) return;
-    const msg_x = x + @as(i32, @intCast(name_w + sep_w));
-
-    const msg_w = measureTextWidth(dc, msg);
-    if (msg_w <= remaining_for_msg) {
-        drawText(dc, msg, msg_x, y, msg_color);
-    } else {
-        drawTextTruncated(dc, msg, msg_x, y, msg_color, remaining_for_msg);
-    }
-}
-
 fn registerWindowClass(instance: win32.HINSTANCE) !void {
     if (g_class_registered) return;
 
@@ -476,8 +363,15 @@ fn registerWindowClass(instance: win32.HINSTANCE) !void {
     g_class_registered = true;
 }
 
+fn historyWindow() ?*HistoryPanelWindow {
+    const painter = painter_mod.g_painter_ptr orelse return null;
+    return if (painter.history_panel.window) |*window| window else null;
+}
+
 fn historyPanelWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
-    if (drag_panel.handleMessage(hwnd, msg, lParam, HEADER_HEIGHT)) |result| return result;
+    // The painter only holds the panel once its window exists, so creation's messages go without a header.
+    const header_height = if (historyWindow()) |window| history_look.metrics(&window.config.display).header_height else 0;
+    if (drag_panel.handleMessage(hwnd, msg, lParam, header_height)) |result| return result;
     switch (msg) {
         win32.WM_ENTERSIZEMOVE => {
             drag_panel.beginPanelDrag(hwnd);
@@ -492,25 +386,23 @@ fn historyPanelWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARA
             return 0;
         },
         win32.WM_LBUTTONDOWN => {
-            const cy = win32.lparamY(lParam);
-            if (cy < HEADER_HEIGHT) return 0;
-
             const painter = painter_mod.g_painter_ptr orelse return 0;
             const window = if (painter.history_panel.window) |*w| w else return 0;
-            const show_filters = window.config.display.notifInfoPanelShowCategoryFilters;
-            const footer_top = if (show_filters) window.panel.height - FOOTER_HEIGHT else window.panel.height;
-            if (show_filters and cy >= footer_top) {
+            const sizes = history_look.metrics(&window.config.display);
+            const y = win32.lparamY(lParam);
+            if (y < sizes.header_height) return 0;
+            if (sizes.footer_height > 0 and y >= window.panel.height - sizes.footer_height) {
                 window.handleFooterClick(win32.lparamX(lParam));
                 return 0;
             }
 
-            const row: usize = @intCast(@divTrunc(cy - HEADER_HEIGHT, ROW_HEIGHT));
+            const row: usize = @intCast(@divTrunc(y - sizes.header_height, sizes.row_height));
             if (row >= window.history_row_count) return 0;
-            const hist_row = window.history_rows[row];
-            if (hist_row.count > 1) {
-                painter.notification_history.unmergeRange(hist_row.first, hist_row.last);
+            const history_row = window.history_rows[row];
+            if (history_row.count > 1) {
+                painter.notification_history.unmergeRange(history_row.first, history_row.last);
             } else {
-                activation.activate(hist_row.hwnd);
+                activation.activate(history_row.hwnd);
             }
             return 0;
         },
@@ -518,33 +410,24 @@ fn historyPanelWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARA
     }
 }
 
-fn toBufZ(text: []const u8) [TEXT_BUF:0]u8 {
-    return gdi_overlay.toBufZ(TEXT_BUF, text);
+/// Ignores `color`'s alpha byte.
+fn drawLine(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32) void {
+    gdi_overlay.drawText(TEXT_BUF, dc, x, y, text, color & 0x00FF_FFFF);
 }
 
-fn drawText(dc: win32.HDC, text: []const u8, x: i32, y: i32, rgb: u32) void {
-    _ = win32.SetBkMode(dc, win32.TRANSPARENT);
-    const buf = toBufZ(text);
-    const n = @min(text.len, TEXT_BUF - 1);
+/// Cut short with "..." to fit `max_width` pixels; returns the width drawn.
+fn drawFitted(dc: win32.HDC, text: []const u8, x: i32, y: i32, color: u32, max_width: i32) i32 {
+    var out: [TEXT_BUF:0]u8 = undefined;
+    const fitted = gdi_overlay.truncateTextToFit(TEXT_BUF, dc, &out, text, @intCast(@max(0, max_width)));
+    drawLine(dc, fitted, x, y, color);
+    return @intCast(measureTextWidth(dc, fitted));
+}
 
-    _ = win32.SetTextColor(dc, gdi_overlay.toColorRef(rgb & 0x00FF_FFFF));
-    _ = win32.TextOutA(dc, x, y, &buf, @intCast(n));
+/// The selected font's line height.
+fn lineHeight(dc: win32.HDC) i32 {
+    return gdi_overlay.measureTextSize(TEXT_BUF, dc, "Ag").cy;
 }
 
 fn measureTextWidth(dc: win32.HDC, text: []const u8) usize {
     return gdi_overlay.measureTextWidth(TEXT_BUF, dc, text);
-}
-
-fn measureTextHeight(dc: win32.HDC, text: []const u8) i32 {
-    const buf = toBufZ(text);
-    const n = @min(text.len, TEXT_BUF - 1);
-    var sz: win32.SIZE = undefined;
-    _ = win32.GetTextExtentPoint32A(dc, &buf, @intCast(n), &sz);
-    return @max(0, sz.cy);
-}
-
-fn drawTextTruncated(dc: win32.HDC, text: []const u8, x: i32, y: i32, rgb: u32, max_w: usize) void {
-    var out: [TEXT_BUF:0]u8 = undefined;
-    const truncated = gdi_overlay.truncateTextToFit(TEXT_BUF, dc, &out, text, max_w);
-    drawText(dc, truncated, x, y, rgb);
 }

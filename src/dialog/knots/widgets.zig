@@ -681,6 +681,11 @@ pub fn toggleSwitch(context: *ui.Frame, key: ui.Key, checked: *bool) !bool {
     return true;
 }
 
+/// `argb` as a style colour, fully opaque whatever its alpha.
+pub fn solidColor(argb: u32) Color.Input {
+    return .{ .color = colorFromArgb(argb | 0xFF000000) };
+}
+
 pub fn colorFromArgb(argb: u32) Color {
     return .rgba(@truncate(argb >> 16), @truncate(argb >> 8), @truncate(argb), @truncate(argb >> 24));
 }

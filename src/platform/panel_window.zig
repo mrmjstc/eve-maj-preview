@@ -12,6 +12,12 @@ pub const PanelWindow = struct {
     font_name: []const u8 = "",
     font_size: i32 = 0,
     font_weight: fonts.FontWeight = .Regular,
+    /// A smaller font for headers and secondary text; ensureSmallFont makes it.
+    small_font: ?win32.HFONT = null,
+    /// Owned; freed in deinit.
+    small_font_name: []const u8 = "",
+    small_font_size: i32 = 0,
+    small_font_weight: fonts.FontWeight = .Regular,
     bitmap: ?gdi_overlay.OverlayBitmap = null,
     // -1 forces a resize on the first frame.
     width: i32 = -1,
@@ -49,12 +55,19 @@ pub const PanelWindow = struct {
         if (self.bitmap) |bitmap| bitmap.destroy();
         if (self.font) |font| _ = win32.DeleteObject(font);
         self.allocator.free(self.font_name);
+        if (self.small_font) |font| _ = win32.DeleteObject(font);
+        self.allocator.free(self.small_font_name);
         _ = win32.DestroyWindow(self.hwnd);
     }
 
     /// Makes `font` match these settings, recreating it after a live-previewed change.
     pub fn ensureFont(self: *PanelWindow, context: []const u8, name: []const u8, size: i32, weight: fonts.FontWeight) !void {
         try gdi_overlay.ensureFont(self.allocator, context, &self.font, &self.font_name, &self.font_size, &self.font_weight, name, size, weight);
+    }
+
+    /// Like ensureFont, for `small_font`.
+    pub fn ensureSmallFont(self: *PanelWindow, context: []const u8, name: []const u8, size: i32, weight: fonts.FontWeight) !void {
+        try gdi_overlay.ensureFont(self.allocator, context, &self.small_font, &self.small_font_name, &self.small_font_size, &self.small_font_weight, name, size, weight);
     }
 
     /// Whether `signature` matches the last frame shown, so there's nothing to redraw; keeps the window shown either way.

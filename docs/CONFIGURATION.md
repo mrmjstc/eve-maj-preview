@@ -797,7 +797,7 @@ A draggable list of recent notifications across all characters, with filter butt
 - `rememberNotifInfoPanelPosition`: Save the position when you drag the panel (default: `true`)
 - `hideNotifInfoPanelWhenNoCharacters`: Hide the panel while no character is logged in (default: `true`); turning it on from the tray shows it anyway until the next time everyone logs out
 - `notifInfoPanelOpacity`: Panel opacity, 51–255 (default: `255`)
-- `notifInfoPanelFontName`, `notifInfoPanelFontSize`, `notifInfoPanelFontWeight`: Font for the rows (default: `Segoe UI`, `13`, `Regular`; size 6–72)
+- `notifInfoPanelFontName`, `notifInfoPanelFontSize`, `notifInfoPanelFontWeight`: Font for the rows (default: `Segoe UI`, `13`, `Regular`; size 6–72); the header, timestamps and filter buttons are drawn 2px smaller, and rows grow with the font as the Client List's do
 - `notifInfoPanelMaxRows`: How many notifications the panel lists, 1–30 (default: `15`)
 - `notifInfoPanelShowTimestamp`: Show each notification's time (default: `false`)
 - `notifInfoPanelMergeEnabled`: Merge back-to-back identical notifications from different characters into one row with a `+N` count; clicking a merged row expands it (default: `false`)

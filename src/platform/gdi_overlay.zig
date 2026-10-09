@@ -355,6 +355,32 @@ pub fn drawDashedRectOutline(pixels: [*]u32, buf_width: usize, buf_height: usize
     }
 }
 
+/// A 1px border round the whole bitmap with `radius` rounded corners; outside them the pixels are cleared so the desktop shows through.
+pub fn drawRoundedFrame(bmp: *const OverlayBitmap, radius: usize, argb: u32) void {
+    const width = bmp.width;
+    const height = bmp.height;
+    fillRect(bmp.pixels, width, height, 0, 0, width, 1, argb);
+    fillRect(bmp.pixels, width, height, 0, height - 1, width, 1, argb);
+    fillRect(bmp.pixels, width, height, 0, 0, 1, height, argb);
+    fillRect(bmp.pixels, width, height, width - 1, 0, 1, height, argb);
+    if (width < 2 * radius or height < 2 * radius) return;
+
+    const radius_f: f32 = @floatFromInt(radius);
+    for (0..radius) |dy| {
+        for (0..radius) |dx| {
+            // From the corner arc's centre to this pixel's centre.
+            const fx = radius_f - @as(f32, @floatFromInt(dx)) - 0.5;
+            const fy = radius_f - @as(f32, @floatFromInt(dy)) - 0.5;
+            const distance = @sqrt(fx * fx + fy * fy);
+            const pixel: u32 = if (distance > radius_f) 0 else if (distance > radius_f - 1) argb else continue;
+            bmp.pixels[dy * width + dx] = pixel;
+            bmp.pixels[dy * width + width - 1 - dx] = pixel;
+            bmp.pixels[(height - 1 - dy) * width + dx] = pixel;
+            bmp.pixels[(height - 1 - dy) * width + width - 1 - dx] = pixel;
+        }
+    }
+}
+
 /// Pushes the bitmap to a layered window at its origin using per-pixel alpha, scaled by `opacity`.
 pub fn presentLayered(hwnd: win32.HWND, bmp: *const OverlayBitmap, opacity: u8) void {
     const window_size = win32.SIZE{ .cx = @intCast(bmp.width), .cy = @intCast(bmp.height) };
