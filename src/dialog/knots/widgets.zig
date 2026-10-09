@@ -33,6 +33,8 @@ const POPOVER_HEIGHT_GUESS: f32 = 480;
 const REORDER_THRESHOLD = 4;
 /// How long a confirm button waits for its second click.
 const CONFIRM_TIMEOUT_MS = 2000;
+/// A row's divider wrapper is keyed as the row's own key indexed by this.
+const ROW_DIVIDER_INDEX = 10;
 /// A dropdown hugs its longest option up to this, so a long profile or client name is clipped rather than stretching its row.
 const SELECT_MAX_WIDTH: f32 = 300;
 /// Space between a dropdown's longest option and its arrow.
@@ -71,6 +73,7 @@ pub const Group = struct {
 
     pub fn close(self: Group, context: *ui.Frame) !void {
         if (!self.is_enabled) {
+            g_disabled_depth -= 1;
             const ui_state = context.ui();
             const measured = ui_state.state.get(.measured, self.key.hash()) orelse {
                 try self.rect.close(context);
@@ -84,6 +87,20 @@ pub const Group = struct {
             try context.e(Button{ .key = self.key.indexed(1), .style = blocker });
         }
         try self.rect.close(context);
+    }
+};
+
+/// A settings row from openBinding or openRow, lit while the cursor is over it; closing it ends the row.
+pub const Row = struct {
+    rect: Rect,
+    /// Holds the divider above the row, so the row's highlight doesn't take in the gap.
+    divider: ?Rect,
+    /// The row's own space, e.g. its label, was clicked rather than a control in it.
+    is_clicked: bool,
+
+    pub fn close(self: Row, context: *ui.Frame) !void {
+        try self.rect.close(context);
+        if (self.divider) |divider| try divider.close(context);
     }
 };
 
@@ -171,6 +188,8 @@ var g_is_aligned: bool = false;
 var g_label_style: *const ui.Style = &style.label;
 /// Set by openFieldGroup: its rows go undivided, with softer labels.
 var g_in_field_group: bool = false;
+/// Disabled groups open around the row being drawn; their rows don't light up or take label clicks.
+var g_disabled_depth: usize = 0;
 /// Aligned rows drawn so far in the open section; every one after the first gets a divider above it.
 var g_section_row_count: usize = 0;
 var g_hinted: SectionList = .{};
@@ -238,23 +257,16 @@ pub fn openSection(context: *ui.Frame, comptime title: []const u8, comptime hint
 }
 
 /// A label-then-controls row; the caller adds the controls and closes it.
-pub fn openBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Rect {
-    const row = Rect{ .key = key, .style = if (g_is_aligned) nextRowStyle() else &.{
-        .width = .grow(),
-        .direction = .row,
-        .@"align" = .center,
-        .gap = 8,
-    } };
-    _ = try row.open(context);
+pub fn openBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Row {
+    const row = try openSettingsRow(context, key, if (g_is_aligned) &style.aligned_row else &style.binding_row);
     search.captureText(label);
     try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = label, .style = if (g_is_aligned) alignedLabelStyle() else g_label_style });
     return row;
 }
 
 /// openBinding with `mark` at the end of the label's column, so the controls still start where other rows' do.
-pub fn openMarkedBinding(context: *ui.Frame, key: ui.Key, label: []const u8, mark: []const u8) !Rect {
-    const row = Rect{ .key = key, .style = if (g_is_aligned) nextRowStyle() else &style.aligned_row };
-    _ = try row.open(context);
+pub fn openMarkedBinding(context: *ui.Frame, key: ui.Key, label: []const u8, mark: []const u8) !Row {
+    const row = try openSettingsRow(context, key, &style.aligned_row);
     const cell = Rect{ .key = key.indexed(2), .style = if (g_is_aligned) &style.inline_row else &style.label_cell };
     _ = try cell.open(context);
     search.captureText(label);
@@ -407,10 +419,8 @@ pub fn isAligned() bool {
 }
 
 /// A row of the caller's own cells, e.g. a grid's, spaced and divided like the aligned rows around it; the caller closes it.
-pub fn openRow(context: *ui.Frame, key: ui.Key) !Rect {
-    const row = Rect{ .key = key, .style = if (g_is_aligned) nextRowStyle() else &style.aligned_row };
-    _ = try row.open(context);
-    return row;
+pub fn openRow(context: *ui.Frame, key: ui.Key) !Row {
+    return openSettingsRow(context, key, &style.aligned_row);
 }
 
 /// A scrolling column that keeps a gutter for its scrollbar only while it has one, so its rows otherwise reach the edge like those around it.
@@ -546,6 +556,7 @@ fn openAnyGroup(context: *ui.Frame, key: ui.Key, group_style: *const ui.Style, i
     _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.hash());
     const rect = Rect{ .key = key, .style = group_style };
     _ = try rect.open(context);
+    if (!is_enabled) g_disabled_depth += 1;
     return .{ .key = key, .rect = rect, .is_enabled = is_enabled };
 }
 
@@ -676,9 +687,12 @@ pub fn checkbox(context: *ui.Frame, key: ui.Key, label: []const u8, checked: *bo
 
     const row = try openRow(context, key.indexed(9));
     try context.e(Text{ .selectable = false, .key = key.indexed(8), .content = label, .style = alignedLabelStyle() });
-    const changed = try toggleSwitch(context, key, checked);
+    const is_flipped = try toggleSwitch(context, key, checked);
     try row.close(context);
-    return changed;
+    if (is_flipped) return true;
+    if (!row.is_clicked) return false;
+    checked.* = !checked.*;
+    return true;
 }
 
 /// knots has no switch, so it's a pill button whose knob slides across; returns whether it was flipped this frame.
@@ -720,9 +734,26 @@ fn alignedLabelStyle() *const ui.Style {
 }
 
 /// Counts the row: the section's first has no divider above it.
-fn nextRowStyle() *const ui.Style {
+fn nextRowHasDivider() bool {
     defer g_section_row_count += 1;
-    return if (!g_in_field_group and g_open_section != null and g_section_row_count > 0) &style.divided_row else &style.aligned_row;
+    return !g_in_field_group and g_open_section != null and g_section_row_count > 0;
+}
+
+/// Lit while the cursor is anywhere in last frame's box, controls included, since knots only hovers the innermost element.
+fn openSettingsRow(context: *ui.Frame, key: ui.Key, row_style: *const ui.Style) !Row {
+    const divider: ?Rect = if (g_is_aligned and nextRowHasDivider()) Rect{ .key = key.indexed(ROW_DIVIDER_INDEX), .style = &style.row_divider } else null;
+    if (divider) |rect| _ = try rect.open(context);
+
+    const ui_state = context.ui();
+    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.hash());
+    const is_live = g_disabled_depth == 0 and ui_state.acceptsInput(key.hash());
+    const mouse = ui_state.input.mouse_pos;
+    const is_lit = is_live and measuredBox(ui_state, key).contains(.{ @floatCast(mouse[0]), @floatCast(mouse[1]) });
+    const lit_style = try context.arena().create(ui.Style);
+    lit_style.* = row_style.with(.{ .padding = .xy(style.ROW_INSET, 0), .radius = .sm, .background = if (is_lit) .{ .color = style.ROW_HOVER } else .transparent });
+    // Interactive, so the cursor moving onto another row redraws, and a click on the label lands on the row.
+    _ = try ui_state.openStyled(key, .{ .base = &Rect.base.root, .user = lit_style }, .{}, .{ .interactive = true });
+    return .{ .rect = .{ .key = key, .style = lit_style }, .divider = divider, .is_clicked = is_live and ui_state.leftClicked(key.hash(), .exact) };
 }
 
 fn channelToByte(value: f32) u8 {

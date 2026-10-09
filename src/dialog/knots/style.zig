@@ -226,8 +226,8 @@ const detail_scroll_pane: Style = .{
 pub const detail_label: Style = label.with(.{ .width = .fixed(110) });
 /// widgets.openFieldGroup's row: its label stays at the top beside a taller column.
 pub const field_group: Style = .{ .width = .grow(), .direction = .row, .@"align" = .start, .gap = 8 };
-/// Drops the label to line up with the first control's text.
-pub const field_group_label: Style = .{ .padding = .init(6, 0, 0, 0) };
+/// Drops the label to line up with the first control's text, and insets it like a row's own label.
+pub const field_group_label: Style = .{ .padding = .init(6, 0, 0, ROW_INSET) };
 pub const field_group_column: Style = .{ .width = .grow(), .direction = .column, .gap = 6 };
 
 pub const detail_header: Style = .{
@@ -235,7 +235,7 @@ pub const detail_header: Style = .{
     .direction = .row,
     .@"align" = .center,
     .gap = 8,
-    .padding = .init(0, 0, 8, 0),
+    .padding = .init(0, ROW_INSET, 8, ROW_INSET),
     .border_width = .edges(0, 0, 1, 0),
     .border_color = .{ .color = BORDER },
 };
@@ -261,7 +261,7 @@ pub const subheading_box: Style = .{ .width = .grow(), .padding = .init(16, 0, 0
 pub const subheading: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } };
 
 /// No italics: Geist ships them as a separate face we don't embed.
-pub const hint: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED }, .wrap = true, .width = .grow() };
+pub const hint: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED }, .wrap = true, .width = .grow(), .padding = .xy(ROW_INSET, 0) };
 /// A hint that always shows, warning that a setting won't take effect.
 pub const hint_warning: Style = hint.with(.{ .foreground = .accent });
 
@@ -314,13 +314,19 @@ pub const aligned_row: Style = .{
     .@"align" = .center,
     .gap = 8,
 };
-/// Its padding matches the section's gap, so the divider sits midway between two rows' controls.
-pub const divided_row: Style = aligned_row.with(.{
-    .height = .{ .kind = .fit, .min = CONTROL_HEIGHT + ROW_DIVIDER_SPACE },
+/// Wraps a row after a section's first; its padding matches the section's gap, so the divider sits midway between two rows' controls.
+pub const row_divider: Style = .{
+    .width = .grow(),
     .padding = .init(ROW_DIVIDER_SPACE, 0, 0, 0),
     .border_width = .edges(1, 0, 0, 0),
     .border_color = .{ .color = DIVIDER },
-});
+};
+/// A detail pane's row: label column, then controls straight after.
+pub const binding_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
+/// A row's sides inside its hover highlight, so the label doesn't touch the highlight's edge.
+pub const ROW_INSET = 6;
+/// A shade past SURFACE; text boxes on a lit row keep their outline to stand out.
+pub const ROW_HOVER = color("#212327");
 const ROW_DIVIDER_SPACE = 8;
 
 /// widgets.toggleSwitch's track; the switch slides its knob across by SWITCH_TRAVEL itself.
