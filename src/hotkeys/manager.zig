@@ -380,6 +380,8 @@ pub const HotkeyManager = struct {
                 client_actions.moveAllClientsToSavedPositions(self.scout.getWindows(), self.live(), self.painter);
             },
             .return_to_last_app => launch.returnToLastApp(&self.last_non_eve_foreground),
+            .next_app => launch.cycleApps(self.global_settings, true),
+            .previous_app => launch.cycleApps(self.global_settings, false),
             .exit_app => {
                 slog.info("Exit hotkey pressed", .{});
                 main.requestExit();

@@ -30,6 +30,8 @@ pub const GlobalAction = enum(usize) {
     previous_not_logged_in,
     move_to_saved_positions,
     return_to_last_app,
+    next_app,
+    previous_app,
     exit_app,
     close_active,
 };

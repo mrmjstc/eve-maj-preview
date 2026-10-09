@@ -40,6 +40,8 @@ pub const GLOBAL_BINDINGS = [_]GlobalBinding{
     .{ .action = .previous_not_logged_in, .protocol = .previous_not_logged_in, .field = "hotkeyCycleNotLoggedInBackward", .in_global_settings = true, .description = "cycle backward through not-logged-in clients" },
     .{ .action = .move_to_saved_positions, .protocol = .move_to_saved_positions, .field = "hotkeyMoveToSavedPositions", .description = "move all clients to saved positions" },
     .{ .action = .return_to_last_app, .protocol = .return_to_last_app, .field = "hotkeyReturnToLastApp", .in_global_settings = true, .description = "return focus to the last non-EVE app" },
+    .{ .action = .next_app, .protocol = .next_app, .field = "hotkeyCycleAppsForward", .in_global_settings = true, .description = "cycle forward through the app hotkeys' running apps" },
+    .{ .action = .previous_app, .protocol = .previous_app, .field = "hotkeyCycleAppsBackward", .in_global_settings = true, .description = "cycle backward through the app hotkeys' running apps" },
     .{ .action = .exit_app, .protocol = .exit_app, .field = "hotkeyExitApp", .description = "exit the application" },
     .{ .action = .close_active, .protocol = .close_active, .field = "hotkeyCloseActive", .description = "close the focused client" },
 };
@@ -88,6 +90,8 @@ pub const HotkeyAction = union(enum) {
     previous_not_logged_in: void,
     move_to_saved_positions: void,
     return_to_last_app: void,
+    next_app: void,
+    previous_app: void,
     exit_app: void,
     close_active: void,
     activate_app: struct {

@@ -125,6 +125,8 @@ pub fn show(context: *ui.Frame) !void {
 
     const outside = try widgets.openSection(context, "Outside EVE", "Jump to the app you last had focused, to a specific running application, or to a URL in your browser.", &style.section);
     try binding(context, global, "hotkeyReturnToLastApp", "Return to Last App");
+    try pair(context, global, "hotkeyCycleAppsBackward", "hotkeyCycleAppsForward", "Cycle Apps");
+    try widgets.hintText(context, .src(@src()), "Steps through the App Hotkeys below, in list order, skipping any that aren't running.");
     try widgets.subheading(context, .src(@src()), "App Hotkeys");
     try appHotkeys(context);
     try widgets.subheading(context, .src(@src()), "URL Hotkeys");

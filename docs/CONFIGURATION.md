@@ -540,6 +540,7 @@ evemajpreview://<action>/<param>
 | `next_not_logged_in` / `previous_not_logged_in` | Cycle forward/backward through not-logged-in clients |
 | `move_to_saved_positions` | Move all clients back to their saved positions |
 | `return_to_last_app` | Return focus to the last non-EVE application you used |
+| `next_app` / `previous_app` | Cycle forward/backward through the running apps in App Hotkeys |
 | `exit_app` | Exit EVE-Maj Preview |
 
 These correspond directly to the actions in [Hotkey Configuration](#hotkey-configuration) - see that section for details on what each one does.
@@ -1169,6 +1170,8 @@ Some settings persist across all profiles and are configured in `profiles\global
   "hotkeyCycleNotLoggedInForward": "F18",
   "hotkeyCycleNotLoggedInBackward": "F19",
   "hotkeyReturnToLastApp": "LWin+Z",
+  "hotkeyCycleAppsForward": "LWin+X",
+  "hotkeyCycleAppsBackward": "LWin+Shift+X",
   "disableUpdateChecks": false,
   "autoRegisterProtocol": true,
   "runOnStartup": false,
@@ -1193,6 +1196,7 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **cycleAllClientsRespectExclusions**: If `true`, characters excluded via Shift+Click (or `hotkeyToggleExclusion`) are skipped when cycling all clients, whether or not they belong to a hotkey group (default: `false`, cycles through every client)
 - **hotkeyCycleNotLoggedInForward** / **hotkeyCycleNotLoggedInBackward**: Cycle through the clients sitting at the login screen (title just "EVE"), oldest logout first. Stays active regardless of which profile is loaded.
 - **hotkeyReturnToLastApp**: Refocus whichever non-EVE window last held focus (e.g. jump back to your browser or Discord after switching into EVE). Stays active regardless of which profile is loaded; editable from the config dialog's Hotkeys tab ("Outside EVE" section).
+- **hotkeyCycleAppsForward** / **hotkeyCycleAppsBackward**: Step through the `appHotkeys` list in its order, focusing the next (or previous) app with a running window and skipping any that aren't running. Starts from the app in front when it's one of them, else from the start (or end) of the list. Stays active regardless of which profile is loaded; editable from the config dialog's Hotkeys tab ("Outside EVE" section).
 - **disableUpdateChecks**: Set to `true` to disable automatic update checks on startup (default: `false`)
 - **autoRegisterProtocol**: See [Registration](#registration) under Protocol Handler (default: `true`)
 - **runOnStartup**: Start EVE-Maj Preview when you sign in to Windows, through the current user's `Run` registry key (default: `false`)
