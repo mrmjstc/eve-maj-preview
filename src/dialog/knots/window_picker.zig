@@ -94,9 +94,9 @@ fn collectWindow(window: win32.HWND, lParam: win32.LPARAM) callconv(.c) win32.BO
     const scan: *WindowScan = win32.lparamToPtr(WindowScan, lParam);
     if (!win32.toBool(win32.IsWindowVisible(window))) return win32.TRUE;
 
-    var title_buf: [512:0]u8 = undefined;
-    const title_len = win32.GetWindowTextA(window, &title_buf, title_buf.len);
-    if (title_len <= 0) return win32.TRUE;
+    var title_buf: [win32.WINDOW_TITLE_MAX_UNITS * 3]u8 = undefined;
+    // UTF-8, since the dialog's text, picked labels included, must be.
+    const title = win32.getWindowTitleUtf8(window, &title_buf) orelse return win32.TRUE;
     var class_buf: [64:0]u8 = undefined;
     const class = win32.getClassNameBuf(window, &class_buf) orelse return win32.TRUE;
     var exe_buf: [260:0]u8 = undefined;
@@ -109,7 +109,7 @@ fn collectWindow(window: win32.HWND, lParam: win32.LPARAM) callconv(.c) win32.BO
     const entry = RunningWindow{
         .class = scan.arena.dupe(u8, class) catch |err| return stopScan(scan, err),
         .exe = scan.arena.dupe(u8, exe) catch |err| return stopScan(scan, err),
-        .title = scan.arena.dupe(u8, title_buf[0..@intCast(title_len)]) catch |err| return stopScan(scan, err),
+        .title = scan.arena.dupe(u8, title) catch |err| return stopScan(scan, err),
     };
     scan.windows.append(scan.arena, entry) catch |err| return stopScan(scan, err);
     return win32.TRUE;

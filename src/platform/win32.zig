@@ -427,6 +427,7 @@ pub extern "user32" fn IsWindow(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn IsIconic(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn IsZoomed(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn GetWindowTextA(hWnd: HWND, lpString: LPSTR, nMaxCount: c_int) callconv(.c) c_int;
+pub extern "user32" fn GetWindowTextW(hWnd: HWND, lpString: [*:0]u16, nMaxCount: c_int) callconv(.c) c_int;
 pub extern "user32" fn GetWindowThreadProcessId(hWnd: HWND, lpdwProcessId: ?*DWORD) callconv(.c) DWORD;
 pub extern "user32" fn IsWindowVisible(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn GetClassNameA(hWnd: HWND, lpClassName: LPSTR, nMaxCount: c_int) callconv(.c) c_int;
@@ -1033,6 +1034,18 @@ pub fn getWindowTitleBuf(hwnd: HWND, buffer: []u8) ![]const u8 {
     const title_len = GetWindowTextA(hwnd, buf_ptr, @intCast(buffer.len));
     if (title_len == 0) return error.MissingWindowTitle;
     return buffer[0..@intCast(title_len)];
+}
+
+/// Longest title getWindowTitleUtf8 reads, in UTF-16 units; its buffer needs 3 bytes per unit.
+pub const WINDOW_TITLE_MAX_UNITS = 512;
+
+/// The title as UTF-8, read as UTF-16 since GetWindowTextA's code-page text isn't UTF-8 past ASCII; null if there's none or it can't be converted.
+pub fn getWindowTitleUtf8(hwnd: HWND, buffer: *[WINDOW_TITLE_MAX_UNITS * 3]u8) ?[]const u8 {
+    var wide: [WINDOW_TITLE_MAX_UNITS:0]u16 = undefined;
+    const wide_len = GetWindowTextW(hwnd, &wide, wide.len);
+    if (wide_len <= 0) return null;
+    const len = std.unicode.utf16LeToUtf8(buffer, wide[0..@intCast(wide_len)]) catch return null;
+    return buffer[0..len];
 }
 
 pub fn getClassNameBuf(hwnd: HWND, buffer: []u8) ?[]const u8 {
