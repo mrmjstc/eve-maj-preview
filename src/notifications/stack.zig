@@ -55,6 +55,8 @@ pub const ActiveNotification = struct {
 pub const NotificationStack = struct {
     entries: [CAPACITY]ActiveNotification = undefined,
     len: usize = 0,
+    /// Bumped on every change, so a render can tell the entries changed without reading text that may since have been freed.
+    revision: u32 = 0,
     /// Suppressed attempts don't update this, so throttle_ms anchors to the last one actually displayed.
     last_shown_by_type: std.enums.EnumArray(notification.NotificationType, win32.Ticks) = .initFill(.{}),
 
@@ -94,6 +96,7 @@ pub const NotificationStack = struct {
         @memmove(self.entries[1 .. self.len + 1], self.entries[0..self.len]);
         self.entries[0] = entry;
         self.len += 1;
+        self.revision +%= 1;
     }
 
     /// Returns whether anything was removed.
@@ -127,6 +130,7 @@ pub const NotificationStack = struct {
         self.deinit(allocator);
         const had_any = self.len > 0;
         self.len = 0;
+        if (had_any) self.revision +%= 1;
         return had_any;
     }
 
@@ -149,6 +153,7 @@ pub const NotificationStack = struct {
         }
         const removed_any = write < self.len;
         self.len = write;
+        if (removed_any) self.revision +%= 1;
         return removed_any;
     }
 };

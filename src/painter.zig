@@ -288,6 +288,7 @@ pub const Painter = struct {
         self.allocator.free(thumbnail.cached_group_badge_label);
         thumbnail.cached_group_badge_label = new_label;
         thumbnail.render_cache.group_badge.dims = null;
+        thumbnail.render_cache.settings = null;
     }
 
     /// Reconciles focus, then marks thumbnails dirty whose minimized state changed.
@@ -457,6 +458,7 @@ pub const Painter = struct {
         thumbnail.system_name_event_ts = event_ts;
         thumbnail.cached_system_color = self.auto_colors.systemNameColor(self.config, system_name);
         thumbnail.render_cache.system_name.dims = null;
+        thumbnail.render_cache.settings = null;
         slog.debug("System '{s}' color resolved to: 0x{X:0>6}", .{ system_name, thumbnail.cached_system_color & 0xFFFFFF });
 
         if (is_jump) thumbnail.travel.recordJump();
@@ -551,6 +553,7 @@ pub const Painter = struct {
         self.allocator.free(thumbnail.character_name);
         thumbnail.character_name = name_copy;
         thumbnail.render_cache.character_name.dims = null;
+        thumbnail.render_cache.settings = null;
         thumbnail.refreshConfigCache(self.config, &self.auto_colors);
         self.refreshGroupBadge(thumbnail);
     }
@@ -600,6 +603,7 @@ pub const Painter = struct {
         thumbnail.system_name = empty_system;
         thumbnail.cached_system_color = self.config.shownColors().system_name_color;
         thumbnail.render_cache.system_name.dims = null;
+        thumbnail.render_cache.settings = null;
         slog.debug("Cleared system name for logged out client", .{});
     }
 

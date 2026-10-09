@@ -65,8 +65,10 @@ pub const RenderSettings = struct {
     system_name_font_size: i32 = 12,
     system_name_font_weight: types.FontWeight = .Regular,
     show_notifications: bool = false,
+    /// Borrows from the thumbnail's notification stack, whose text is freed as entries expire, so it's compared by notification_revision, never read from a cached copy.
     notification_lines: [MAX_NOTIFICATION_LINES]NotificationLine = @splat(.{}),
     notification_line_count: usize = 0,
+    notification_revision: u32 = 0,
     notifications_position: TextPosition = .Center,
     notifications_offset_x: i32 = 0,
     notifications_offset_y: i32 = 0,
@@ -164,6 +166,7 @@ pub const RenderCache = struct {
     /// Recreated only on resize.
     bitmap: ?gdi_overlay.OverlayBitmap = null,
     /// Last rendered settings; Painter.renderThumbnail compares against it to skip redundant redraws.
+    /// Borrows the thumbnail's own strings (system name, badge label, name), so whatever frees one must set this to null.
     settings: ?RenderSettings = null,
     character_name: MeasuredText = .{},
     system_name: MeasuredText = .{},
@@ -490,6 +493,7 @@ pub fn createRenderSettings(cfg: *const config_mod.Config, thumbnail: *const Thu
     };
     if (settings.show_notifications) {
         settings.notification_line_count = notificationLines(&settings.notification_lines, thumbnail, is_focused, tc.notifications.color);
+        settings.notification_revision = thumbnail.notifications.revision;
     }
     return settings;
 }
@@ -506,6 +510,8 @@ fn visualEqual(a: RenderSettings, b: RenderSettings) bool {
 
 fn valuesEqual(comptime T: type, a: T, b: T) bool {
     if (T == []const u8) return stringsEqualFast(a, b);
+    // The cached line's text may have been freed; notification_revision catches a change its address and length miss.
+    if (T == NotificationLine) return a.text.ptr == b.text.ptr and a.text.len == b.text.len and a.color == b.color;
     switch (@typeInfo(T)) {
         .@"struct" => |info| {
             inline for (info.field_names, info.field_types) |name, F| {
