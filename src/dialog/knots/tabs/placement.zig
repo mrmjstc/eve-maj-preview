@@ -273,7 +273,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
 
     const layout = try widgets.openFieldGroup(context, .str("knots.space.layout"), "Layout");
     try regionRow(context, id);
-    try bind.choiceStyled(context, space, "direction", "Fill Order", &style.select_narrow);
+    try bind.choice(context, space, "direction", "Fill Order");
     try widgets.hintText(context, .src(@src()), "The order the grid fills: Rows \u{2192} \u{2193} fills each row left to right, then moves down a row; Columns fill down (or up) each column first.");
     if (!is_login_screen) {
         try bind.segmented(context, space, "order", "Order By", &.{ "Characters", "Hotkey Groups" });

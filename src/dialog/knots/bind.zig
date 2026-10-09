@@ -410,7 +410,7 @@ pub fn fontBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !vo
         .labels = names,
         .values = values,
         .initial_selected = selected_index,
-        .style = &style.select_font,
+        .style = try widgets.fittedSelect(context, names),
         .parts = .{ .popup = &style.select_popup },
     });
     if (response.selected) |selected| {
@@ -420,13 +420,8 @@ pub fn fontBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !vo
 
 /// An enum setting, offered by its tags spelled as words ("TopLeft" reads "Top Left").
 pub fn choice(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
-    try choiceStyled(context, ref, field, label, &style.select);
-}
-
-/// For options too long for the standard dropdown.
-pub fn choiceStyled(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, box_style: *const ui.Style) !void {
     const row = try widgets.openBinding(context, fieldKey(ref, field), label);
-    try choiceBox(context, ref, field, box_style);
+    try choiceBox(context, ref, field);
     try row.close(context);
 }
 
@@ -443,7 +438,7 @@ pub fn segmented(context: *ui.Frame, ref: anytype, comptime field: []const u8, l
 }
 
 /// Just the dropdown, for a row or grid of several.
-pub fn choiceBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, box_style: *const ui.Style) !void {
+pub fn choiceBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
     const F = FieldOf(@TypeOf(ref), field);
     const values = comptime std.enums.values(F);
     const option_labels = comptime labels.enumLabels(F);
@@ -458,7 +453,7 @@ pub fn choiceBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, b
         .labels = &option_labels,
         .values = values,
         .initial_selected = current,
-        .style = box_style,
+        .style = try widgets.fittedSelect(context, &option_labels),
         .parts = .{ .popup = &style.select_popup },
     });
     if (response.selected) |selected| ref.set(field, selected.value);

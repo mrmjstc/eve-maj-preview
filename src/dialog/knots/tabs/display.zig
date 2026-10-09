@@ -131,7 +131,7 @@ fn borderRow(context: *ui.Frame, thumbnail: ThumbnailRef, comptime label: []cons
     const row = try widgets.openBinding(context, .str("knots.border.row:" ++ label), label);
     const settings = try widgets.openInlineGroup(context, .str("knots.border.settings:" ++ label), thumbnail.get(show_field));
     try bind.unitNumberBox(context, thumbnail, width_field, "px", .{});
-    try bind.choiceBox(context, thumbnail, style_field, &style.select_narrow);
+    try bind.choiceBox(context, thumbnail, style_field);
     // Unique colours replace it per character.
     const color = try widgets.openInlineGroup(context, .str("knots.border.color:" ++ label), !is_color_overridden);
     try bind.colorBox(context, thumbnail, color_field);

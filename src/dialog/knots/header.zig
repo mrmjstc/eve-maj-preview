@@ -129,7 +129,7 @@ fn profileSelect(context: *ui.Frame) !void {
         .labels = labels,
         .values = values,
         .initial_selected = current,
-        .style = &style.profile_select,
+        .style = try widgets.fittedSelect(context, labels),
         .parts = .{ .popup = &style.select_popup },
     });
     const selected = response.selected orelse return;

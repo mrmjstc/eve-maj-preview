@@ -525,8 +525,6 @@ pub const header: Style = .{
 pub const app_mark: Style = .{ .width = .fixed(18), .height = .fixed(18) };
 pub const app_name: Style = .{ .font = FONT_SEMIBOLD, .font_size = .md, .foreground = .{ .color = TEXT } };
 
-pub const profile_select: Style = select.with(.{ .width = .fixed(170) });
-
 /// .button-icon: a square plain button holding a drawn icon.
 pub const icon_button: Style = plain_button.with(.{ .width = .fixed(CONTROL_HEIGHT), .padding = .all(0), .justify = .center });
 pub const icon_button_disabled: Style = disabled_button.with(.{ .width = .fixed(CONTROL_HEIGHT), .padding = .all(0), .justify = .center });
@@ -631,13 +629,6 @@ fn color(comptime hex: []const u8) Color {
 }
 
 pub const muted_text: Style = .{ .foreground = .{ .color = MUTED } };
-
-pub const select_wide: Style = select.with(.{ .width = .fixed(300) });
-pub const select_narrow: Style = select.with(.{ .width = .fixed(130) });
-/// Fits the longest weight, Bold Italic, beside its arrow.
-pub const select_font_weight: Style = select.with(.{ .width = .fixed(100) });
-/// Fits the longest listed font, Times New Roman, beside its arrow.
-pub const select_font: Style = select.with(.{ .width = .fixed(150) });
 
 /// Stands in on a preview for each character's or system's own colour while a "unique colors" setting is on.
 pub const UNIQUE_SAMPLE: u32 = 0xFF5EC9C9;

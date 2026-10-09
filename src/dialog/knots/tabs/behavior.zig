@@ -185,7 +185,8 @@ fn sourceSelect(context: *ui.Frame) !?[]const u8 {
     const sources = &(g_sources orelse return null);
     const key: ui.Key = .str("knots.positions.source");
     if (sources.names.len == 0) {
-        _ = try context.interact(SelectInput(u32){ .key = key, .labels = &.{"No open EVE clients found"}, .values = &.{0}, .initial_selected = 0, .style = &style.select, .parts = .{ .popup = &style.select_popup } });
+        const labels: []const []const u8 = &.{"No open EVE clients found"};
+        _ = try context.interact(SelectInput(u32){ .key = key, .labels = labels, .values = &.{0}, .initial_selected = 0, .style = try widgets.fittedSelect(context, labels), .parts = .{ .popup = &style.select_popup } });
         return null;
     }
     const values = try context.arena().alloc(u32, sources.names.len);
@@ -195,7 +196,7 @@ fn sourceSelect(context: *ui.Frame) !?[]const u8 {
         .labels = sources.names,
         .values = values,
         .initial_selected = sources.selected,
-        .style = &style.select,
+        .style = try widgets.fittedSelect(context, sources.names),
         .parts = .{ .popup = &style.select_popup },
     });
     if (response.selected) |selected| sources.selected = selected.value;
@@ -265,12 +266,14 @@ fn potatoSelect(context: *ui.Frame) !?[]const []const u8 {
         .found => |*found| found,
         .not_scanned, .failed => {
             const message: []const u8 = if (g_potato == .failed) "Failed to scan for EVE settings profiles." else "Scanning for EVE settings profiles...";
-            _ = try context.interact(SelectInput(u32){ .key = key, .labels = &.{message}, .values = &.{0}, .initial_selected = 0, .style = &style.select_wide, .parts = .{ .popup = &style.select_popup } });
+            const labels: []const []const u8 = &.{message};
+            _ = try context.interact(SelectInput(u32){ .key = key, .labels = labels, .values = &.{0}, .initial_selected = 0, .style = try widgets.fittedSelect(context, labels), .parts = .{ .popup = &style.select_popup } });
             return null;
         },
     };
     if (found.profiles.len == 0) {
-        _ = try context.interact(SelectInput(u32){ .key = key, .labels = &.{"No EVE settings profiles found."}, .values = &.{0}, .initial_selected = 0, .style = &style.select_wide, .parts = .{ .popup = &style.select_popup } });
+        const labels: []const []const u8 = &.{"No EVE settings profiles found."};
+        _ = try context.interact(SelectInput(u32){ .key = key, .labels = labels, .values = &.{0}, .initial_selected = 0, .style = try widgets.fittedSelect(context, labels), .parts = .{ .popup = &style.select_popup } });
         return null;
     }
     const arena = context.arena();
@@ -281,7 +284,7 @@ fn potatoSelect(context: *ui.Frame) !?[]const []const u8 {
     if (has_all) labels[0] = "All Profiles";
     for (found.profiles, @intFromBool(has_all)..) |profile, index| labels[index] = profile.label;
     for (values, 0..) |*value, index| value.* = @intCast(index);
-    const response = try context.interact(SelectInput(u32){ .key = key, .labels = labels, .values = values, .initial_selected = found.selected, .style = &style.select_wide, .parts = .{ .popup = &style.select_popup } });
+    const response = try context.interact(SelectInput(u32){ .key = key, .labels = labels, .values = values, .initial_selected = found.selected, .style = try widgets.fittedSelect(context, labels), .parts = .{ .popup = &style.select_popup } });
     if (response.selected) |selected| found.selected = selected.value;
 
     const all_paths = try arena.alloc([]const u8, found.profiles.len);

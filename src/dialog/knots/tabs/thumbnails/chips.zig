@@ -297,7 +297,7 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
                 const font = try widgets.openBinding(context, .str("knots.chip.font:" ++ chip.label), "Font");
                 try bind.fontBox(context, ref, fields.font_name);
                 try bind.unitNumberBox(context, ref, fields.font_size, "px", .{});
-                try bind.choiceBox(context, ref, fields.font_weight, &style.select_font_weight);
+                try bind.choiceBox(context, ref, fields.font_weight);
                 try font.close(context);
             },
             .background => {

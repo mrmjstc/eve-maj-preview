@@ -136,14 +136,14 @@ pub fn show(context: *ui.Frame, display: DisplayRef) !void {
     try stage.close(context);
     if (look.scale < 1) try widgets.paragraph(context, .src(@src()), "Shrunk to fit; the list itself is wider.");
 
-    try bind.choiceStyled(context, display, "listViewOrder", "Order", &style.select_wide);
+    try bind.choice(context, display, "listViewOrder", "Order");
     try bind.number(context, display, "listViewColumns", "Columns", .{});
     try bind.number(context, display, "listViewColumnWidth", "Column Width", .{ .unit = "px" });
     try bind.slider(context, display, "listViewOpacity", "Opacity", .{ .display = .percent_of_255 });
     const font = try widgets.openBinding(context, .src(@src()), "Font");
     try bind.fontBox(context, display, "listViewFontName");
     try bind.unitNumberBox(context, display, "listViewFontSize", "px", .{});
-    try bind.choiceBox(context, display, "listViewFontWeight", &style.select_font_weight);
+    try bind.choiceBox(context, display, "listViewFontWeight");
     try font.close(context);
     try bind.segmented(context, display, "listViewIndicatorStyle", "Indicator", &.{ "Dot", "Square", "None" });
     try bind.toggle(context, display, "rememberListViewPosition", "Remember Position");

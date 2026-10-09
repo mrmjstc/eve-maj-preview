@@ -33,6 +33,10 @@ const POPOVER_HEIGHT_GUESS: f32 = 480;
 const REORDER_THRESHOLD = 4;
 /// How long a confirm button waits for its second click.
 const CONFIRM_TIMEOUT_MS = 2000;
+/// A dropdown hugs its longest option up to this, so a long profile or client name is clipped rather than stretching its row.
+const SELECT_MAX_WIDTH: f32 = 300;
+/// Space between a dropdown's longest option and its arrow.
+const SELECT_ARROW_GAP: f32 = 12;
 
 /// Section ids.
 const SectionList = struct {
@@ -304,6 +308,24 @@ pub fn popoverTitle(context: *ui.Frame, key: ui.Key, title: []const u8) !bool {
 pub fn measuredBox(ui_state: *ui.UI, key: ui.Key) Box {
     const measured = ui_state.state.get(.measured, key.hash()) orelse return .zero;
     return measured.box;
+}
+
+/// style.select as wide as the longest of `labels`, with SelectInput's padding, arrow and border around it.
+pub fn fittedSelect(context: *ui.Frame, labels: []const []const u8) !*const ui.Style {
+    const ui_state = context.ui();
+    const font_size = (style.select.font_size orelse .sm).resolve(&ui_state.theme);
+    const face = try ui_state.font.getFace(style.select.font);
+    const scale = ui_state.content_scale;
+    var widest: f32 = 0;
+    for (labels) |label| widest = @max(widest, (try face.measure(label, font_size * scale)).width / scale);
+    const padding = comptime style.select.padding.?;
+    // SelectInput's own arrow sizing.
+    const arrow = @max(10, font_size * 0.55);
+    const border = 2;
+    const width = padding.left() + widest + SELECT_ARROW_GAP + arrow + padding.right() + border;
+    const fitted = try context.arena().create(ui.Style);
+    fitted.* = style.select.with(.{ .width = .fixed(@min(@ceil(width), SELECT_MAX_WIDTH)), .overflow = .hidden });
+    return fitted;
 }
 
 /// A label beside a column of aligned rows without dividers, e.g. a set of switches; the caller closes it.
