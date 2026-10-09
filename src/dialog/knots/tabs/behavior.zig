@@ -40,6 +40,10 @@ var g_allocator: std.mem.Allocator = undefined;
 /// Open clients for Set All, scanned when the tab first shows and on ↻.
 var g_sources: ?Scan = null;
 var g_potato: PotatoScan = .not_scanned;
+/// Set by a ↻ click and done before the next frame draws its dropdown, since a rescan frees the names this frame's dropdown drew.
+var g_is_sources_rescan_due: bool = false;
+/// Like g_is_sources_rescan_due, for the EVE settings profiles.
+var g_is_potato_rescan_due: bool = false;
 
 pub fn init(allocator: std.mem.Allocator) void {
     g_allocator = allocator;
@@ -54,6 +58,8 @@ pub fn reset() void {
         .not_scanned, .failed => {},
     }
     g_potato = .not_scanned;
+    g_is_sources_rescan_due = false;
+    g_is_potato_rescan_due = false;
 }
 
 pub fn show(context: *ui.Frame) !void {
@@ -159,10 +165,13 @@ fn windowPosition(context: *ui.Frame) !void {
     try bind.number(context, ref, "verifyCount", "Re-check Count", .{});
     try widgets.hintText(context, .src(@src()), "How many times to re-check and re-apply the position after a move. 0 disables re-checking.");
 
-    if (g_sources == null) scanSources();
+    if (g_sources == null or g_is_sources_rescan_due) scanSources();
     const set_all = try widgets.openBinding(context, .src(@src()), "Copy to All From");
     const source = try sourceSelect(context);
-    if (try widgets.glyphButton(context, .src(@src()), .refresh, "", &style.icon_button, false)) scanSources();
+    if (try widgets.glyphButton(context, .src(@src()), .refresh, "", &style.icon_button, false)) {
+        g_is_sources_rescan_due = true;
+        context.requestRedraw();
+    }
     if ((try context.interact(Button{ .key = .src(@src()), .label = "Set All", .style = &style.plain_button })).clicked) setAll(source);
     try set_all.close(context);
     const clear_all = try widgets.openBinding(context, .src(@src()), "Saved Positions");
@@ -205,6 +214,7 @@ fn sourceSelect(context: *ui.Frame) !?[]const u8 {
 
 /// Keeps the picked client selected when it's still open.
 fn scanSources() void {
+    g_is_sources_rescan_due = false;
     const scanned = scanOpenClients() catch |err| {
         slog.err("Failed to refresh window position source options: {}", .{err});
         return;
@@ -245,10 +255,13 @@ fn setAll(source: ?[]const u8) void {
 
 fn ultraPotato(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Ultra Potato Mode", "Forces EVE Online's heaviest graphics settings (shaders, shadows, textures, reflections, post-processing, cloth, ambient occlusion, volumetrics) to their lowest quality. Close all EVE clients first - the client overwrites these files on exit. A .bak backup of each file is made before its first edit.", &style.section);
-    if (g_potato == .not_scanned) scanPotato();
+    if (g_potato == .not_scanned or g_is_potato_rescan_due) scanPotato();
     const row = try widgets.openBinding(context, .src(@src()), "EVE Settings Profile");
     const paths = try potatoSelect(context);
-    if (try widgets.glyphButton(context, .src(@src()), .refresh, "", &style.icon_button, false)) scanPotato();
+    if (try widgets.glyphButton(context, .src(@src()), .refresh, "", &style.icon_button, false)) {
+        g_is_potato_rescan_due = true;
+        context.requestRedraw();
+    }
     try row.close(context);
     const apply = try widgets.openBinding(context, .src(@src()), "Lowest Graphics Settings");
     const can_apply = paths != null;
@@ -295,6 +308,7 @@ fn potatoSelect(context: *ui.Frame) !?[]const []const u8 {
 }
 
 fn scanPotato() void {
+    g_is_potato_rescan_due = false;
     switch (g_potato) {
         .found => |*found| found.arena.deinit(),
         .not_scanned, .failed => {},
