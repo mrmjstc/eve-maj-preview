@@ -410,7 +410,7 @@ pub fn fontBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !vo
         .labels = names,
         .values = values,
         .initial_selected = selected_index,
-        .style = &style.select,
+        .style = &style.select_font,
         .parts = .{ .popup = &style.select_popup },
     });
     if (response.selected) |selected| {
