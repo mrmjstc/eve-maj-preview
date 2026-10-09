@@ -137,34 +137,34 @@ pub fn show(context: *ui.Frame, display: DisplayRef) !void {
     if (look.scale < 1) try widgets.paragraph(context, .src(@src()), "Shrunk to fit; the list itself is wider.");
     try section.close(context);
 
-    const settings_section = try widgets.openSection(context, "List Settings", "How the list is laid out and when it hides.", &style.section);
-    try listSettings(context, display);
-    try settings_section.close(context);
+    try layout(context, display);
+    try appearance(context, display);
+    try visibility(context, display);
     try popover(context, display);
 }
 
-fn listSettings(context: *ui.Frame, display: DisplayRef) !void {
-    const previous_rows = widgets.useDetailRows();
-    defer widgets.restoreRows(previous_rows);
-
-    const layout = try widgets.openFieldGroup(context, .str("knots.client_list.layout"), "Layout");
+fn layout(context: *ui.Frame, display: DisplayRef) !void {
+    const section = try widgets.openSection(context, "Layout", "How the list orders and arranges its clients.", &style.section);
     try bind.choice(context, display, "listViewOrder", "Order");
     try bind.number(context, display, "listViewColumns", "Columns", .{});
     try bind.number(context, display, "listViewColumnWidth", "Column Width", .{ .unit = "px" });
-    try bind.slider(context, display, "listViewOpacity", "Opacity", .{ .display = .percent_of_255 });
     try bind.segmented(context, display, "listViewIndicatorStyle", "Indicator", &.{ "Dot", "Square", "None" });
-    try layout.close(context);
-    try widgets.separator(context, .str("knots.client_list.separator.layout"));
+    try section.close(context);
+}
 
+fn appearance(context: *ui.Frame, display: DisplayRef) !void {
+    const section = try widgets.openSection(context, "Appearance", "The list's font, and how see-through it is.", &style.section);
     const font = try widgets.openBinding(context, .src(@src()), "Font");
-    try context.e(Rect{ .key = .src(@src()), .style = &style.spacer });
     try bind.fontBox(context, display, "listViewFontName");
     try bind.unitNumberBox(context, display, "listViewFontSize", "px", .{});
     try bind.choiceBox(context, display, "listViewFontWeight");
     try font.close(context);
-    try widgets.separator(context, .str("knots.client_list.separator.font"));
+    try bind.slider(context, display, "listViewOpacity", "Opacity", .{ .display = .percent_of_255 });
+    try section.close(context);
+}
 
-    const behavior = try widgets.openFieldGroup(context, .str("knots.client_list.behavior"), "Behavior");
+fn visibility(context: *ui.Frame, display: DisplayRef) !void {
+    const section = try widgets.openSection(context, "Position and Visibility", "Where the list opens, and when it's hidden automatically.", &style.section);
     try bind.toggle(context, display, "rememberListViewPosition", "Remember Position");
     try bind.toggle(context, display, "listViewHideWhenNoEveFocus", "Hide When No EVE Focus");
     try widgets.hintText(context, .src(@src()), "Hides the list while no EVE client window has focus.");
@@ -172,7 +172,7 @@ fn listSettings(context: *ui.Frame, display: DisplayRef) !void {
     try bind.number(context, display, "listViewHideDebounceMs", "Hide Delay", .{ .ms_as_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "Delay before hiding, so switching briefly doesn't flicker.");
     try delay.close(context);
-    try behavior.close(context);
+    try section.close(context);
 }
 
 /// The panel in list_look's look, with sample clients, at `look.scale`.
