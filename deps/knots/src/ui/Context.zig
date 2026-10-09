@@ -918,6 +918,16 @@ fn childClip(ui: *UI, slot: Element.Slot, parent_clip: Clip.State) !Clip.State {
         has_rounding = !math.isZero(radii);
     }
 
+    // EVE-Maj patch: a text input's line is clipped at its padding, so long text doesn't run into the border.
+    if (el.overflow == .scroll_x_bare) {
+        clip_rect = .init(
+            el.box.x() + el.padding.left(),
+            clip_rect.y(),
+            @max(0, el.box.w() - el.padding.left() - el.padding.right()),
+            clip_rect.h(),
+        );
+    }
+
     var out = parent_clip;
     out.scissor = if (parent_clip.scissor) |scissor| scissor.intersect(clip_rect) else clip_rect;
 

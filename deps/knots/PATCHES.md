@@ -23,4 +23,5 @@ Vendored from [knots-ui/knots](https://github.com/knots-ui/knots) at commit `9cd
 
 ## `src/ui/Context.zig`
 
+- A `scroll_x_bare` box clips its children at its left and right padding, so a text input's long line stops short of the border.
 - Rectangles are drawn with their edges and border widths rounded to whole device pixels (`snapToPixel`), so a box laid out on a half pixel, e.g. centred in a row, doesn't smear its 1px border over two pixels.
