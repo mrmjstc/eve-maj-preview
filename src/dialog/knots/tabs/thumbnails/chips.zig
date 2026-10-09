@@ -20,9 +20,8 @@ pub const PopoverField = union(enum) {
     toggle: struct { field: []const u8, label: []const u8, disables_color: bool = false },
     /// The chip's text colour.
     color,
-    /// Name and size on one row.
+    /// Name, size and weight on one row.
     font,
-    font_weight,
     /// Colour and opacity on one row.
     background,
 };
@@ -44,7 +43,7 @@ pub const Chip = struct {
     popover: []const PopoverField,
 };
 
-const STYLE_ROWS = [_]PopoverField{ .font, .font_weight, .background };
+const STYLE_ROWS = [_]PopoverField{ .font, .background };
 
 pub const CHIPS = [_]Chip{
     .{
@@ -298,9 +297,9 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
                 const font = try widgets.openBinding(context, .str("knots.chip.font:" ++ chip.label), "Font");
                 try bind.fontBox(context, ref, fields.font_name);
                 try bind.unitNumberBox(context, ref, fields.font_size, "px", .{});
+                try bind.choiceBox(context, ref, fields.font_weight, &style.select_font_weight);
                 try font.close(context);
             },
-            .font_weight => try bind.choiceStyled(context, ref, fields.font_weight, "Weight", &style.select_font_weight),
             .background => {
                 const background = try widgets.openBinding(context, .str("knots.chip.background:" ++ chip.label), "Background");
                 try bind.rgbBox(context, ref, fields.bg_color);
