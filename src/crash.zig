@@ -74,7 +74,19 @@ fn firstChanceExceptionHandler(info: *win32.EXCEPTION_POINTERS) callconv(.c) win
     } else {
         log.writeCrashLine("First-chance exception 0x{x} at address 0x{x} (module base 0x{x}, RVA 0x{x})", .{ rec.ExceptionCode, addr, base, addr -% base });
     }
+    logReturnRvas(base);
     return win32.EXCEPTION_CONTINUE_SEARCH;
+}
+
+/// Unsymbolized, since loading the .pdb mid-fault can fault again; the RVAs are resolved offline against the release build's .pdb.
+fn logReturnRvas(base: usize) void {
+    var addresses: [24]usize = undefined;
+    const trace = std.debug.captureCurrentStackTrace(.{}, &addresses);
+    var buf: [400]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&buf);
+    // Mid-crash there's nothing to do about a failed write but log what fit.
+    for (trace.return_addresses) |address| writer.print(" 0x{x}", .{address -% base}) catch {};
+    log.writeCrashLine("  Return RVAs:{s}", .{writer.buffered()});
 }
 
 /// Last handler in the chain, after Zig's own panic/segfault handling already ran (if any); returns EXCEPTION_CONTINUE_SEARCH so Windows' normal handling still runs after.
