@@ -12,6 +12,7 @@ const widgets = @import("../widgets.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
+const DisplayRef = session.Ref(config.DisplayConfig);
 
 const STAGE_KEY: ui.Key = .str("knots.notification_history.stage");
 const ROW_KEY: ui.Key = .str("knots.notification_history.row");
@@ -54,40 +55,60 @@ const Look = struct {
 pub fn show(context: *ui.Frame) !void {
     const are_notifications_enabled = session.profile().ptr.thumbnail.notifications.enabled;
     if (!are_notifications_enabled) try widgets.notice(context, .src(@src()), "Notification History requires Enable Notifications on the Notifications tab.");
-    const section = try widgets.openSection(context, "Notification History", "A draggable, resizable panel showing recent notification history. Click a row to jump to that character.", &style.section);
     const ref = session.profile().child("display");
+
+    const section = try widgets.openSection(context, "Notification History", "A draggable, resizable panel showing recent notification history. Click a row to jump to that character.", &style.section);
     const notifications = try widgets.openGroup(context, .src(@src()), are_notifications_enabled);
     try bind.toggle(context, ref, "showNotifInfoPanel", "Show Notification History");
-    const options = try widgets.openGroup(context, .src(@src()), ref.get("showNotifInfoPanel"));
+    const shown = try widgets.openGroup(context, .src(@src()), ref.get("showNotifInfoPanel"));
     try preview(context, session.profile().ptr);
-    const size = try widgets.openBinding(context, .src(@src()), "Panel Size");
+    try shown.close(context);
+    try notifications.close(context);
+    try section.close(context);
+
+    const panel_section = try widgets.openSection(context, "Panel Settings", "How the panel looks and behaves.", &style.section);
+    const options = try widgets.openGroup(context, .src(@src()), are_notifications_enabled and ref.get("showNotifInfoPanel"));
+    try panelSettings(context, ref);
+    try options.close(context);
+    try panel_section.close(context);
+}
+
+fn panelSettings(context: *ui.Frame, ref: DisplayRef) !void {
+    const previous_rows = widgets.useDetailRows();
+    defer widgets.restoreRows(previous_rows);
+
+    const layout = try widgets.openFieldGroup(context, .str("knots.notification_history.layout"), "Layout");
+    const size = try widgets.openBinding(context, .src(@src()), "Size");
     try bind.numberBox(context, ref, "notifInfoPanelWidth", .{});
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "\u{00D7}", .style = &style.muted_text });
     try bind.numberBox(context, ref, "notifInfoPanelHeight", .{});
     try size.close(context);
-    try bind.number(context, ref, "notifInfoPanelMaxRows", "Max History Rows", .{});
-    try bind.slider(context, ref, "notifInfoPanelOpacity", "Panel Opacity", .{ .display = .percent_of_255 });
+    try bind.number(context, ref, "notifInfoPanelMaxRows", "Max Rows", .{});
+    try bind.slider(context, ref, "notifInfoPanelOpacity", "Opacity", .{ .display = .percent_of_255 });
+    try layout.close(context);
+    try widgets.separator(context, .str("knots.notification_history.separator.layout"));
+
     const font = try widgets.openBinding(context, .src(@src()), "Font");
+    try context.e(Rect{ .key = .src(@src()), .style = &style.spacer });
     try bind.fontBox(context, ref, "notifInfoPanelFontName");
     try bind.unitNumberBox(context, ref, "notifInfoPanelFontSize", "px", .{});
     try bind.choiceBox(context, ref, "notifInfoPanelFontWeight");
     try font.close(context);
+    try widgets.separator(context, .str("knots.notification_history.separator.font"));
 
-    try widgets.subheading(context, .src(@src()), "Behavior");
-    try bind.toggle(context, ref, "rememberNotifInfoPanelPosition", "Remember Notification History Position");
-    try bind.toggle(context, ref, "hideNotifInfoPanelWhenNoCharacters", "Hide Panel When No Characters Are Logged In");
-    try bind.toggle(context, ref, "notifInfoPanelShowTimestamp", "Show Relative Timestamps");
+    const behavior = try widgets.openFieldGroup(context, .str("knots.notification_history.behavior"), "Behavior");
+    try bind.toggle(context, ref, "rememberNotifInfoPanelPosition", "Remember Position");
+    try bind.toggle(context, ref, "hideNotifInfoPanelWhenNoCharacters", "Hide When No Characters Are Logged In");
+    try bind.toggle(context, ref, "notifInfoPanelShowTimestamp", "Relative Timestamps");
     try widgets.hintText(context, .src(@src()), "Shows times like \"5m ago\" instead of a fixed clock time.");
-    try bind.toggle(context, ref, "notifInfoPanelShowCategoryFilters", "Show Category Filters");
+    try bind.toggle(context, ref, "notifInfoPanelShowCategoryFilters", "Category Filters");
     try widgets.hintText(context, .src(@src()), "Adds filter buttons for each notification category to the panel.");
-    try bind.toggle(context, ref, "notifInfoPanelMergeEnabled", "Merge Repeated Notifications");
+    try bind.toggle(context, ref, "notifInfoPanelMergeEnabled", "Merge Repeats");
     try widgets.hintText(context, .src(@src()), "Combines identical notifications fired back to back into one row with a +N count. Click a merged row to expand it.");
     const merge = try widgets.openGroup(context, .src(@src()), ref.get("notifInfoPanelMergeEnabled"));
     try bind.number(context, ref, "notifInfoPanelMergeWindowSec", "Merge Window", .{ .unit = "s" });
     try merge.close(context);
-    try options.close(context);
-    try notifications.close(context);
-    try section.close(context);
+    try behavior.close(context);
 }
 
 /// The panel in history_look's look, with sample notifications, shrunk to fit the section.
