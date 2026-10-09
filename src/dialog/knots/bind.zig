@@ -162,7 +162,8 @@ pub fn textBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, pla
     try styledTextBox(context, ref, field, placeholder, &style.text_input);
 }
 
-fn styledTextBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, placeholder: []const u8, box_style: *const ui.Style) !void {
+/// textBox with its own box style, e.g. a fixed width in an aligned row.
+pub fn styledTextBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, placeholder: []const u8, box_style: *const ui.Style) !void {
     const F = FieldOf(@TypeOf(ref), field);
     const box_key = fieldKey(ref, field).indexed(2);
     const state = try textState(box_key);

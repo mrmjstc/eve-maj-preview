@@ -147,51 +147,57 @@ fn typeDetail(context: *ui.Frame, ntype: NotificationType) !void {
     defer widgets.restoreRows(previous_rows);
 
     const header = try widgets.openDetailHeader(context, .src(@src()));
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = typeLabel(ntype), .style = &style.heading });
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = typeLabel(ntype), .style = &style.roster_name_selected });
+    var is_enabled: bool = ref.get("enabled");
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Enabled", .style = &style.muted_text });
+    if (try widgets.toggleSwitch(context, ui.Key.str("knots.events.enabled").indexed(ref.index), &is_enabled)) ref.set("enabled", is_enabled);
+    if ((try context.interact(Button{ .key = .src(@src()), .label = "\u{25B6} Test", .disabled = !is_enabled, .style = &style.plain_button })).clicked) {
+        testNotification(ntype);
+    }
     try header.close(context);
 
-    try bind.toggle(context, ref, "enabled", "Enable");
-    const rest = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    const rest = try widgets.openGroup(context, .src(@src()), is_enabled);
+    const timing = try widgets.openFieldGroup(context, .str("knots.events.timing"), "Timing");
     try bind.number(context, ref, "duration_ms", "Duration", .{ .ms_as_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "How long the alert stays on screen; 0 keeps it up until dismissed.");
     try bind.number(context, ref, "throttle_ms", "Limit", .{ .ms_as_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "Drops repeats of this alert that happen within this many seconds of the last one shown.");
+    try timing.close(context);
+    try widgets.separator(context, .str("knots.events.separator.timing"));
 
     try customText(context, ref, ntype);
+    try widgets.separator(context, .str("knots.events.separator.text"));
 
-    try widgets.subheading(context, .src(@src()), "Behavior");
+    const behavior = try widgets.openFieldGroup(context, .str("knots.events.behavior"), "Behavior");
     try bind.toggle(context, ref, "suppress_when_focused", "Suppress While Focused");
     try widgets.hintText(context, .src(@src()), "Skips this alert while that character's EVE window is the one currently focused.");
     try bind.toggle(context, ref, "suppress_when_clicked", "Suppress After Click");
     try widgets.hintText(context, .src(@src()), "Skips this alert for a short time after you click the character's thumbnail.");
     try bind.toggle(context, ref, "tts_enabled", "Speak Aloud (TTS)");
+    try behavior.close(context);
+    try widgets.separator(context, .str("knots.events.separator.behavior"));
+
+    const border = try widgets.openFieldGroup(context, .str("knots.events.border"), "Border");
     try bind.toggle(context, ref, "show_border", "Show Border");
     // A hidden border has no colour to set and nothing to flash.
-    const flash = try widgets.openGroup(context, .src(@src()), ref.get("show_border"));
+    const border_options = try widgets.openGroup(context, .src(@src()), ref.get("show_border"));
     try bind.toggle(context, ref, "flash_border", "Flash Border");
-    try flash.close(context);
-
-    try widgets.subheading(context, .src(@src()), "Colors");
     const defaults = config.ThumbnailConfig{};
-    try bind.optionalColor(context, ref, "text_color", "Text Color", session.profile().ptr.thumbnail.notifications.color);
-    const border_color = try widgets.openGroup(context, .src(@src()), ref.get("show_border"));
     try bind.optionalColor(context, ref, "border_color", "Border Color", defaults.inactiveBorderColor);
-    try border_color.close(context);
+    try border_options.close(context);
+    try border.close(context);
+    try widgets.separator(context, .str("knots.events.separator.border"));
 
     try sound(context, ref, @backingInt(ntype));
-
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "\u{25B6} Test Notification", .style = &style.plain_button })).clicked) {
-        testNotification(ntype, ref.get("enabled"));
-    }
     try rest.close(context);
     try stack.close(context);
 }
 
-/// One box per state the type has, the placeholder chips that fill in event values, and a preview of each box.
+/// One box per state the type has, the placeholder chips that fill in event values, a preview of each box, and the text colour.
 fn customText(context: *ui.Frame, ref: TypeRef, ntype: NotificationType) !void {
     const primary_sample = notification.sample(ntype);
     const alt_state = notification.altState(ntype);
-    try widgets.subheading(context, .src(@src()), "Custom Text");
+    const group = try widgets.openFieldGroup(context, .str("knots.events.text"), "Custom Text");
     try textBox(context, ref, ntype, .custom_text, primary_sample, alt_state != null);
     if (alt_state) |state| {
         var alt_sample = primary_sample;
@@ -219,6 +225,8 @@ fn customText(context: *ui.Frame, ref: TypeRef, ntype: NotificationType) !void {
         try preview(context, ntype, .custom_text_alt, ref.get("custom_text_alt"), alt_sample);
     }
     try widgets.hintText(context, .src(@src()), "Leave empty to use the default wording shown in grey. Click a placeholder to insert it; it's filled in from the event. Type \\n for a new line.");
+    try bind.optionalColor(context, ref, "text_color", "Text Color", session.profile().ptr.thumbnail.notifications.color);
+    try group.close(context);
 }
 
 fn textBox(context: *ui.Frame, ref: TypeRef, ntype: NotificationType, comptime field: TextField, sample: notification.Notification, has_states: bool) !void {
@@ -228,7 +236,7 @@ fn textBox(context: *ui.Frame, ref: TypeRef, ntype: NotificationType, comptime f
     const row = try widgets.openBinding(context, ui.Key.str("knots.events.text:" ++ name).indexed(ref.index), label);
     var buf: [128]u8 = undefined;
     // The box keeps its placeholder until the frame is drawn, so it can't point at this stack buffer.
-    try bind.textBox(context, ref, name, try context.arena().dupe(u8, notification.defaultText(sample, &buf)));
+    try bind.styledTextBox(context, ref, name, try context.arena().dupe(u8, notification.defaultText(sample, &buf)), &style.custom_text_input);
     if (context.ui().focused(bind.boxKey(ref, name).hash())) g_last_text_field.set(ntype, field);
     if ((try context.interact(Button{ .key = ui.Key.str("knots.events.text.clear:" ++ name).indexed(ref.index), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) {
         ref.set(name, null);
@@ -278,21 +286,24 @@ fn preview(context: *ui.Frame, ntype: NotificationType, comptime field: TextFiel
 
 /// The file's name only; the full path is what's saved.
 fn sound(context: *ui.Frame, ref: TypeRef, type_index: usize) !void {
-    try widgets.subheading(context, .src(@src()), "Sound");
+    const group = try widgets.openFieldGroup(context, .str("knots.events.sound"), "Sound");
     try bind.toggle(context, ref, "sound_enabled", "Play Custom Sound");
     const row = try widgets.openBinding(context, .src(@src()), "Sound File");
     const path = ref.get("sound_path") orelse "";
-    try widgets.boxedText(context, .src(@src()), if (path.len == 0) "No file selected" else std.fs.path.basename(path), &style.path_box, if (path.len == 0) &style.path_text_empty else &style.path_text);
+    try widgets.boxedText(context, .src(@src()), if (path.len == 0) "None" else std.fs.path.basename(path), &style.path_box, if (path.len == 0) &style.path_text_empty else &style.path_text);
+    if (path.len > 0 and (try context.interact(Button{ .key = .src(@src()), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) ref.set("sound_path", null);
     if ((try context.interact(Button{ .key = .src(@src()), .label = "Browse", .style = &style.plain_button })).clicked) host.browseSoundFile(type_index);
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) ref.set("sound_path", null);
     try row.close(context);
     try bind.slider(context, ref, "sound_volume", "Volume", .{});
+    try group.close(context);
 }
 
 /// Fires the type on every thumbnail with the settings the window has for it, saved or not.
-fn testNotification(ntype: NotificationType, is_enabled: bool) void {
-    if (!is_enabled) return;
-    const painter = painter_mod.g_painter_ptr orelse return;
+fn testNotification(ntype: NotificationType) void {
+    const painter = painter_mod.g_painter_ptr orelse {
+        slog.warn("Failed to test notification: the painter isn't ready", .{});
+        return;
+    };
     painter.showTestNotification(ntype, session.profile().ptr.thumbnail.notifications.getTypeConfig(ntype)) catch |err| {
         slog.err("Failed to test notification: {}", .{err});
         status.show(.failure, "Failed to test notification: {}", .{err});

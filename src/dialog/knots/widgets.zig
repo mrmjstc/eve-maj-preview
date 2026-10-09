@@ -625,7 +625,8 @@ pub fn subheading(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
 
 /// Returns whether the user moved it this frame.
 pub fn slider(context: *ui.Frame, key: ui.Key, value: *f32, min: f32, max: f32, steps: f32) !bool {
-    const track = Rect{ .key = key, .style = if (g_is_aligned) &style.slider_box_aligned else &style.slider_box };
+    const track_style = if (g_in_field_group) &style.slider_box_grouped else if (g_is_aligned) &style.slider_box_aligned else &style.slider_box;
+    const track = Rect{ .key = key, .style = track_style };
     _ = try track.open(context);
     const response = try context.interact(SliderInput{
         .key = key.indexed(1),

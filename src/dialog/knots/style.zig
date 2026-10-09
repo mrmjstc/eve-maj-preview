@@ -360,6 +360,8 @@ const SWITCH_KNOB = SWITCH_HEIGHT - 2 * SWITCH_INSET;
 pub const slider_box: Style = .{ .width = .grow(), .padding = .xy(8, 0) };
 /// Fixed, so it doesn't share the row's spare width with a growing label.
 pub const slider_box_aligned: Style = .{ .width = .fixed(220), .padding = .xy(8, 0) };
+/// Narrower, to fit beside its label in a detail pane's field group.
+pub const slider_box_grouped: Style = slider_box_aligned.with(.{ .width = .fixed(140) });
 
 pub const segmented: Style = .{
     .direction = .row,
@@ -813,21 +815,13 @@ const PRICE_INPUT_WIDTH = 140;
 pub const search_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 4 };
 /// Several labelled controls on one line.
 pub const inline_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
-/// .placeholder-chips: small buttons that insert a {placeholder}.
-pub const chip_row: Style = .{ .width = .grow(), .direction = .row, .gap = 4, .wrap = true };
+/// .placeholder-chips: small buttons that insert a {placeholder}, at the right edge like an aligned row's controls.
+pub const chip_row: Style = .{ .width = .grow(), .direction = .row, .justify = .end, .gap = 4, .wrap = true };
+/// A notification's custom text box: wider than an even split with its short state label.
+pub const custom_text_input: Style = text_input.with(.{ .width = .fixed(190) });
 pub const placeholder_chip: Style = plain_button.with(.{ .height = .fixed(22), .padding = .xy(6, 0), .font_size = .xs });
-/// A read-only path, shown as a box like an input: widgets.boxedText's box, around path_text.
-pub const path_box: Style = .{
-    .width = .grow(),
-    .height = .fixed(CONTROL_HEIGHT),
-    .direction = .row,
-    .@"align" = .center,
-    .padding = .xy(8, 0),
-    .background = .{ .color = SURFACE },
-    .border_width = .all(1),
-    .border_color = .{ .color = BORDER },
-    .radius = .md,
-};
+/// widgets.boxedText's box around path_text, clipping a long file name so the row's buttons stay in view.
+pub const path_box: Style = .{ .width = .{ .kind = .fit, .max = 110 }, .overflow = .hidden };
 pub const path_text: Style = .{ .foreground = .{ .color = TEXT } };
 pub const path_text_empty: Style = .{ .foreground = .{ .color = MUTED } };
 
