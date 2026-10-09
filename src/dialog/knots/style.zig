@@ -205,7 +205,19 @@ pub const roster_portrait: Style = .{ .width = .fixed(16), .height = .fixed(16),
 pub const roster_portrait_blank: Style = roster_portrait.with(.{ .background = .{ .color = SURFACE_ALT } });
 
 /// Around a row's number, unboxed so it doesn't outshine the name.
-pub const index_chip: Style = .{ .padding = .xy(2, 1) };
+/// widgets.dragHandle: no fill of its own, so it reads as part of its row.
+pub const drag_handle: Style = .{
+    .direction = .row,
+    .@"align" = .center,
+    .gap = 2,
+    .padding = .xy(2, 4),
+    .background = .transparent,
+    .radius = .sm,
+    .hover = &.{ .background = .{ .color = SURFACE }, .state_layer = 0 },
+    .active = &.{ .state_layer = 0 },
+};
+pub const DRAG_GRIP_SIZE = 12;
+pub const drag_grip: Style = .{ .width = .fixed(DRAG_GRIP_SIZE), .height = .fixed(DRAG_GRIP_SIZE) };
 pub const index_chip_text: Style = .{ .font = FONT_MONO, .font_size = .xs, .foreground = .{ .color = MUTED } };
 
 /// A master-detail list's details: unboxed, since the section around it is already a card.
@@ -862,8 +874,6 @@ pub const keycap_plus: Style = .{ .font_size = .{ .px = 9 }, .foreground = .{ .c
 pub const keycap_separator: Style = .{ .font_size = .sm, .foreground = .{ .color = MUTED } };
 /// A roster row with the drop line above or below it while another is dragged.
 /// Square on the side without the line: a rounded corner there leaks accent pixels.
-pub const roster_row_drop_above: Style = roster_row.with(.{ .border_width = .edges(2, 0, 0, 0), .border_color = .accent, .radius = .{ .corners = .{ .md, .md, .none, .none } } });
-pub const roster_row_drop_below: Style = roster_row.with(.{ .border_width = .edges(0, 0, 2, 0), .border_color = .accent, .radius = .{ .corners = .{ .none, .none, .md, .md } } });
 /// .detail-value: a read-only value in a detail form, e.g. the file an import reads.
 pub const detail_value: Style = .{ .width = .grow(), .foreground = .{ .color = TEXT_SECONDARY } };
 
@@ -888,8 +898,19 @@ pub const roster_icon_button: Style = roster_add.with(.{ .width = .fit(), .justi
 /// .hkgroup-chars-list: a group's members, each a draggable row.
 pub const members_list: Style = .{ .width = .grow(), .direction = .column, .gap = 4 };
 pub const member_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 6, .border_width = .edges(2, 0, 2, 0), .border_color = .transparent };
-pub const member_row_drop_above: Style = member_row.with(.{ .border_color = .accent, .border_width = .edges(2, 0, 0, 0) });
-pub const member_row_drop_below: Style = member_row.with(.{ .border_color = .accent, .border_width = .edges(0, 0, 2, 0) });
+/// A member row lifted by a drag: padded so its contents clear the lifted outline.
+pub const member_row_lift: Style = member_row.with(.{ .padding = .xy(4, 2) });
+/// Laid over a row's own style while it's dragged, raised under the cursor; ReorderList sets its width and place.
+pub const lifted_row: Style = .{
+    .position = .absolute,
+    .background = .{ .color = SURFACE_ALT },
+    .border_width = .all(1),
+    .border_color = .accent,
+    .radius = .md,
+    .hover = &.{ .background = .{ .color = SURFACE_ALT }, .state_layer = 0 },
+};
+/// Where a dragged row would land; ReorderList sets its height.
+pub const reorder_gap: Style = .{ .width = .grow(), .background = .{ .color = SURFACE }, .radius = .md };
 
 /// Laid out of sight: absolute so it takes no room, and clipped to nothing.
 pub const section_hidden: Style = .{

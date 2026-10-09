@@ -22,6 +22,7 @@ const slog = log.scoped("dialog_knots");
 
 const GROUP_ROW_KEY: ui.Key = .str("knots.groups.row");
 const MEMBER_ROW_KEY: ui.Key = .str("knots.groups.member");
+const MEMBERS_KEY: ui.Key = .str("knots.groups.members");
 const ADD_MEMBER_KEY: ui.Key = .str("knots.groups.add_member");
 
 var g_allocator: std.mem.Allocator = undefined;
@@ -68,39 +69,17 @@ fn groupName(arena: std.mem.Allocator, group: *const config.HotkeyGroupConfig, i
 
 fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const groups = profile.ptr.hotkeyGroups.items;
-    const list = try widgets.openRoster(context, .str("knots.groups.roster"), &style.roster_wide, true);
+    const list = try widgets.openRoster(context, .str("knots.groups.roster"), &style.roster, true);
     if (groups.len == 0) {
         try widgets.boxedText(context, .src(@src()), "No hotkey groups yet.", &style.roster_empty, &style.roster_empty_text);
     }
-    const arena = context.arena();
+    var order = widgets.ReorderList.begin(context, GROUP_ROW_KEY, groups.len, 0);
     for (groups, 0..) |*group, index| {
-        const is_selected = index == g_selected_index;
-        const mark = try widgets.reorderRow(context, GROUP_ROW_KEY, index, groups.len);
-        const row = Button{
-            .key = GROUP_ROW_KEY.indexed(index),
-            .style = switch (mark) {
-                .above => &style.roster_row_drop_above,
-                .below => &style.roster_row_drop_below,
-                .none => if (is_selected) &style.roster_row_selected else &style.roster_row,
-            },
-        };
-        if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
-            g_selected_index = index;
-            context.requestRedraw();
-        }
-        try context.e(Text{
-            .selectable = false,
-            .key = ui.Key.str("knots.groups.name").indexed(index),
-            .content = try groupName(arena, group, index),
-            .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
-        });
-        try context.e(Text{
-            .selectable = false,
-            .key = ui.Key.str("knots.groups.badge").indexed(index),
-            .content = if (group.temporaryMembership) "Temporary" else try std.fmt.allocPrint(arena, "{d}", .{group.characters.items.len}),
-            .style = &style.roster_badge,
-        });
-        try row.close(context);
+        try widgets.reorderRow(context, GROUP_ROW_KEY, index);
+        if (try order.next(context, index)) try groupRow(context, group, index, null);
+    }
+    if (try order.end(context)) |lifted| {
+        try groupRow(context, &groups[lifted], lifted, try order.liftedStyle(context, list.rowsKey(), rosterRowStyle(lifted == g_selected_index)));
     }
     if (try list.close(context, .{ .add_label = "+ Add Group" }) == .add) {
         profile.append("hotkeyGroups", .{});
@@ -171,6 +150,34 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     }
 }
 
+/// `lifted_style` while it's being dragged, otherwise the roster's own.
+fn groupRow(context: *ui.Frame, group: *const config.HotkeyGroupConfig, index: usize, lifted_style: ?*const ui.Style) !void {
+    const arena = context.arena();
+    const is_selected = index == g_selected_index;
+    const row = Button{ .key = GROUP_ROW_KEY.indexed(index), .style = lifted_style orelse rosterRowStyle(is_selected) };
+    if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
+        g_selected_index = index;
+        context.requestRedraw();
+    }
+    try context.e(Text{
+        .selectable = false,
+        .key = ui.Key.str("knots.groups.name").indexed(index),
+        .content = try groupName(arena, group, index),
+        .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
+    });
+    try context.e(Text{
+        .selectable = false,
+        .key = ui.Key.str("knots.groups.badge").indexed(index),
+        .content = if (group.temporaryMembership) "Temporary" else try std.fmt.allocPrint(arena, "{d}", .{group.characters.items.len}),
+        .style = &style.roster_badge,
+    });
+    try row.close(context);
+}
+
+fn rosterRowStyle(is_selected: bool) *const ui.Style {
+    return if (is_selected) &style.roster_row_selected else &style.roster_row;
+}
+
 /// Carries a group's rename to spaces holding it, or drops it (`new_name` null), unless another group shares the name.
 fn carryToSpaces(profile: ProfileRef, old_name: []const u8, new_name: ?[]const u8) void {
     if (old_name.len == 0 or profile.ptr.hasHotkeyGroupNamed(old_name)) return;
@@ -192,30 +199,23 @@ fn carryToSpaces(profile: ProfileRef, old_name: []const u8, new_name: ?[]const u
 }
 
 fn members(context: *ui.Frame, group: GroupRef) !void {
-    const list = Rect{ .key = .src(@src()), .style = &style.members_list };
+    const ui_state = context.ui();
+    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, MEMBERS_KEY.hash());
+    const list = Rect{ .key = MEMBERS_KEY, .style = &style.members_list };
     _ = try list.open(context);
     const names = group.ptr.characters.items;
     if (names.len == 0) {
         try widgets.paragraph(context, .src(@src()), "No characters in this group yet - add one below, or add every open client with the refresh button.");
     }
-    const arena = context.arena();
+    var order = widgets.ReorderList.begin(context, MEMBER_ROW_KEY, names.len, 0);
     var removed: ?usize = null;
-    for (names, 0..) |name, member_index| {
-        const mark = try widgets.reorderRow(context, MEMBER_ROW_KEY, member_index, names.len);
-        const row = Rect{ .key = MEMBER_ROW_KEY.indexed(member_index), .style = switch (mark) {
-            .above => &style.member_row_drop_above,
-            .below => &style.member_row_drop_below,
-            .none => &style.member_row,
-        } };
-        _ = try row.open(context);
-        try widgets.boxedText(context, ui.Key.str("knots.groups.member.index").indexed(member_index), try std.fmt.allocPrint(arena, "{d:0>2}", .{member_index + 1}), &style.index_chip, &style.index_chip_text);
-        if (try bind.stringBox(context, ui.Key.str("knots.groups.member.name").indexed(member_index), name, "Character Name", &style.text_input)) |typed| {
-            group.setStringAt("characters", member_index, typed);
-        }
-        if ((try context.interact(Button{ .key = ui.Key.str("knots.groups.member.remove").indexed(member_index), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) removed = member_index;
-        try row.close(context);
-        const member_box = ui.Key.str("knots.groups.member.name").indexed(member_index);
-        if (try suggest.openClients(context, member_box, bind.typedText(member_box))) |picked| group.setStringAt("characters", member_index, picked);
+    for (0..names.len) |member_index| {
+        try widgets.reorderRowByHandle(context, MEMBER_ROW_KEY, member_index, memberHandleKey(member_index));
+        if (!try order.next(context, member_index)) continue;
+        if (try memberRow(context, group, member_index, &style.member_row)) removed = member_index;
+    }
+    if (try order.end(context)) |lifted| {
+        _ = try memberRow(context, group, lifted, try order.liftedStyle(context, MEMBERS_KEY, &style.member_row_lift));
     }
     try list.close(context);
     if (removed) |member_index| group.remove("characters", member_index);
@@ -240,6 +240,25 @@ fn addMember(group: GroupRef) void {
     if (name.len == 0) return;
     group.appendString("characters", name);
     g_new_member.clearRetainingCapacity();
+}
+
+/// One member: its drag handle, name box and remove button; returns whether remove was clicked.
+fn memberRow(context: *ui.Frame, group: GroupRef, member_index: usize, row_style: *const ui.Style) !bool {
+    const row = Rect{ .key = MEMBER_ROW_KEY.indexed(member_index), .style = row_style };
+    _ = try row.open(context);
+    try widgets.dragHandle(context, memberHandleKey(member_index), try std.fmt.allocPrint(context.arena(), "{d:0>2}", .{member_index + 1}));
+    const name_key = ui.Key.str("knots.groups.member.name").indexed(member_index);
+    if (try bind.stringBox(context, name_key, group.ptr.characters.items[member_index], "Character Name", &style.text_input)) |typed| {
+        group.setStringAt("characters", member_index, typed);
+    }
+    const is_removed = (try context.interact(Button{ .key = ui.Key.str("knots.groups.member.remove").indexed(member_index), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked;
+    try row.close(context);
+    if (try suggest.openClients(context, name_key, bind.typedText(name_key))) |picked| group.setStringAt("characters", member_index, picked);
+    return is_removed;
+}
+
+fn memberHandleKey(member_index: usize) ui.Key {
+    return ui.Key.str("knots.groups.member.handle").indexed(member_index);
 }
 
 /// Adds every logged-in client the group doesn't list yet.

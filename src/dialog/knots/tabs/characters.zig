@@ -86,6 +86,39 @@ fn searchBox(context: *ui.Frame) !void {
     try row.close(context);
 }
 
+/// `lifted_style` while it's being dragged, otherwise the roster's own.
+fn characterRow(context: *ui.Frame, character: *const config.CharacterConfig, index: usize, name: []const u8, lifted_style: ?*const ui.Style) !void {
+    const arena = context.arena();
+    const is_selected = index == g_selected_index;
+    const row = Button{
+        .key = ROW_KEY.indexed(index),
+        .style = lifted_style orelse if (is_selected) &style.roster_row_selected else &style.roster_row,
+    };
+    if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
+        g_selected_index = index;
+        context.requestRedraw();
+    }
+    if (portraits.image(arena, PORTRAIT_KEY, character.name, &style.roster_portrait)) |portrait| {
+        try context.e(portrait);
+    } else {
+        try context.e(Rect{ .key = ui.Key.str("knots.roster.portrait_blank").indexed(index), .style = &style.roster_portrait_blank });
+    }
+    try context.e(Text{
+        .selectable = false,
+        .key = ui.Key.str("knots.roster.name").indexed(index),
+        .content = name,
+        .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
+    });
+    if (character.hotkey.len > 0) {
+        var text: std.Io.Writer.Allocating = .init(arena);
+        try text.writer.writeByte('[');
+        try hotkey.writeKeys(&text.writer, character.hotkey);
+        try text.writer.writeByte(']');
+        try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.roster.hotkey").indexed(index), .content = text.written(), .style = &style.roster_badge });
+    }
+    try row.close(context);
+}
+
 fn rosterName(arena: std.mem.Allocator, character: *const config.CharacterConfig, index: usize) ![]const u8 {
     return if (character.name.len > 0) character.name else try std.fmt.allocPrint(arena, "Character {d}", .{index + 1});
 }
@@ -98,42 +131,17 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     }
     const arena = context.arena();
     const query = std.mem.trim(u8, g_search.items, " ");
+    var order = widgets.ReorderList.begin(context, ROW_KEY, characters.len, 0);
     for (characters, 0..) |*character, index| {
         const name = try rosterName(arena, character, index);
         if (query.len > 0 and std.ascii.findIgnoreCase(name, query) == null) continue;
-        const is_selected = index == g_selected_index;
-        const mark = try widgets.reorderRow(context, ROW_KEY, index, characters.len);
-        const row = Button{
-            .key = ROW_KEY.indexed(index),
-            .style = switch (mark) {
-                .above => &style.roster_row_drop_above,
-                .below => &style.roster_row_drop_below,
-                .none => if (is_selected) &style.roster_row_selected else &style.roster_row,
-            },
-        };
-        if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
-            g_selected_index = index;
-            context.requestRedraw();
-        }
-        if (portraits.image(arena, PORTRAIT_KEY, character.name, &style.roster_portrait)) |portrait| {
-            try context.e(portrait);
-        } else {
-            try context.e(Rect{ .key = ui.Key.str("knots.roster.portrait_blank").indexed(index), .style = &style.roster_portrait_blank });
-        }
-        try context.e(Text{
-            .selectable = false,
-            .key = ui.Key.str("knots.roster.name").indexed(index),
-            .content = name,
-            .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
-        });
-        if (character.hotkey.len > 0) {
-            var text: std.Io.Writer.Allocating = .init(arena);
-            try text.writer.writeByte('[');
-            try hotkey.writeKeys(&text.writer, character.hotkey);
-            try text.writer.writeByte(']');
-            try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.roster.hotkey").indexed(index), .content = text.written(), .style = &style.roster_badge });
-        }
-        try row.close(context);
+        // A filtered list isn't reordered: its hidden rows would have nowhere to go.
+        if (query.len == 0) try widgets.reorderRow(context, ROW_KEY, index);
+        if (try order.next(context, index)) try characterRow(context, character, index, name, null);
+    }
+    if (try order.end(context)) |lifted| {
+        const lifted_style = try order.liftedStyle(context, list.rowsKey(), if (lifted == g_selected_index) &style.roster_row_selected else &style.roster_row);
+        try characterRow(context, &characters[lifted], lifted, try rosterName(arena, &characters[lifted], lifted), lifted_style);
     }
     const action = try list.close(context, .{ .add_label = "+ Add Character", .has_open_clients = true });
 

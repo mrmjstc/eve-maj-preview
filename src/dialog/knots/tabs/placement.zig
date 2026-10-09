@@ -166,37 +166,16 @@ fn roster(context: *ui.Frame, profile: ProfileRef, is_filling: bool) !void {
     if (items.len == 0) {
         try widgets.boxedText(context, .src(@src()), "No spaces yet.", &style.roster_empty, &style.roster_empty_text);
     }
-    const arena = context.arena();
     const fixed_count = fixedCount(items);
+    // Fixed rows don't join the drag, so nothing can be dropped above them.
+    var order = widgets.ReorderList.begin(context, SPACE_ROW_KEY, items.len, fixed_count);
     for (items, 0..) |*space, index| {
-        const is_selected = space.id == g_selected_id;
-        // Fixed rows don't join the drag, so nothing can be dropped above them.
-        const mark: widgets.DropMark = if (index < fixed_count) .none else try widgets.reorderRow(context, SPACE_ROW_KEY, index, items.len);
-        const row = Button{ .key = SPACE_ROW_KEY.indexed(index), .style = switch (mark) {
-            .above => &style.roster_row_drop_above,
-            .below => &style.roster_row_drop_below,
-            .none => if (is_selected) &style.roster_row_selected else &style.roster_row,
-        } };
-        if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
-            g_selected_id = space.id;
-            context.requestRedraw();
-        }
-        const dot_style = try arena.create(ui.Style);
-        dot_style.* = style.space_dot.with(.{ .background = .{ .color = dotColor(context, index) }, .opacity = if (space.enabled) @as(f32, 1) else 0.35 });
-        try context.e(Rect{ .key = ui.Key.str("knots.space.dot").indexed(index), .style = dot_style });
-        search.captureText(space.name);
-        try context.e(Text{
-            .selectable = false,
-            .key = ui.Key.str("knots.space.name").indexed(index),
-            .content = if (space.name.len > 0) space.name else "Unnamed Space",
-            .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
-        });
-        const has_region = spaces.rect(space) != null;
-        if (!space.enabled or !has_region) {
-            const is_warning = space.enabled;
-            try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.space.state").indexed(index), .content = if (is_warning) "No region" else "Off", .style = if (is_warning) &style.roster_badge_warning else &style.roster_badge });
-        }
-        try row.close(context);
+        if (index >= fixed_count) try widgets.reorderRow(context, SPACE_ROW_KEY, index);
+        if (try order.next(context, index)) try spaceRow(context, space, index, null);
+    }
+    if (try order.end(context)) |lifted| {
+        const lifted_style = try order.liftedStyle(context, list.rowsKey(), if (items[lifted].id == g_selected_id) &style.roster_row_selected else &style.roster_row);
+        try spaceRow(context, &items[lifted], lifted, lifted_style);
     }
     const is_full = items.len >= spaces.MAX_SPACES;
     const action = try list.close(context, .{ .add_label = "+ Add Space", .is_add_disabled = is_full });
@@ -208,6 +187,33 @@ fn roster(context: *ui.Frame, profile: ProfileRef, is_filling: bool) !void {
         const added = profile.ptr.thumbnailSpaces.items;
         if (added.len > count) g_selected_id = added[added.len - 1].id;
     }
+}
+
+/// `lifted_style` while it's being dragged, otherwise the roster's own.
+fn spaceRow(context: *ui.Frame, space: *const config.ThumbnailSpace, index: usize, lifted_style: ?*const ui.Style) !void {
+    const arena = context.arena();
+    const is_selected = space.id == g_selected_id;
+    const row = Button{ .key = SPACE_ROW_KEY.indexed(index), .style = lifted_style orelse if (is_selected) &style.roster_row_selected else &style.roster_row };
+    if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
+        g_selected_id = space.id;
+        context.requestRedraw();
+    }
+    const dot_style = try arena.create(ui.Style);
+    dot_style.* = style.space_dot.with(.{ .background = .{ .color = dotColor(context, index) }, .opacity = if (space.enabled) @as(f32, 1) else 0.35 });
+    try context.e(Rect{ .key = ui.Key.str("knots.space.dot").indexed(index), .style = dot_style });
+    search.captureText(space.name);
+    try context.e(Text{
+        .selectable = false,
+        .key = ui.Key.str("knots.space.name").indexed(index),
+        .content = if (space.name.len > 0) space.name else "Unnamed Space",
+        .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
+    });
+    const has_region = spaces.rect(space) != null;
+    if (!space.enabled or !has_region) {
+        const is_warning = space.enabled;
+        try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.space.state").indexed(index), .content = if (is_warning) "No region" else "Off", .style = if (is_warning) &style.roster_badge_warning else &style.roster_badge });
+    }
+    try row.close(context);
 }
 
 /// Login Screen and Unassigned Characters stay at the top, as config load puts them (see config/spaces.zig).

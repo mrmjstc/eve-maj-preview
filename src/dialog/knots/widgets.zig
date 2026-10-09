@@ -146,6 +146,11 @@ pub const Roster = struct {
     frame: Rect,
     rows: Rect,
 
+    /// The rows' container, for ReorderList.liftedStyle.
+    pub fn rowsKey(self: Roster) ui.Key {
+        return self.key.indexed(1);
+    }
+
     /// Closes the rows, then draws the footer every master list shares; returns which of its buttons was clicked.
     pub fn close(self: Roster, context: *ui.Frame, footer: RosterFooter) !RosterAction {
         try self.rows.close(context);
@@ -179,8 +184,63 @@ pub const ColorChange = union(enum) { cleared, set: u32 };
 /// A finished drag: item `from` now goes before what was item `before`.
 pub const Move = struct { from: usize, before: usize };
 
-/// Where a dragged row would land, drawn by the rows as a line above themselves.
-pub const DropMark = enum { none, above, below };
+/// A row being dragged, drawn under the cursor with a gap where it would land.
+const Lifted = struct {
+    from: usize,
+    /// The gap's place among the other rows.
+    slot: usize,
+    /// Where the row's top is drawn, in window coordinates.
+    top: f32,
+    row_height: f32,
+};
+
+/// A reorderable list's drawing order: call next for each row, then end, then draw the row end returns last, with liftedStyle.
+pub const ReorderList = struct {
+    lifted: ?Lifted,
+    /// Rows before this can't be moved, so the gap never opens among them.
+    first_slot: usize,
+    slot: usize = 0,
+
+    pub fn begin(context: *ui.Frame, base: ui.Key, count: usize, first_slot: usize) ReorderList {
+        const lifted = reorderLifted(context, base);
+        const is_valid = if (lifted) |row| row.from < count else false;
+        return .{ .lifted = if (is_valid) lifted else null, .first_slot = first_slot };
+    }
+
+    /// Whether to draw row `index` in its place; false for the lifted row, which is drawn after end.
+    pub fn next(self: *ReorderList, context: *ui.Frame, index: usize) !bool {
+        const lifted = self.lifted orelse return true;
+        if (index == lifted.from) return false;
+        try self.gapIfDue(context, lifted);
+        self.slot += 1;
+        return true;
+    }
+
+    /// After the rows; returns the lifted row's index, if one is being dragged.
+    pub fn end(self: *ReorderList, context: *ui.Frame) !?usize {
+        const lifted = self.lifted orelse return null;
+        try self.gapIfDue(context, lifted);
+        return lifted.from;
+    }
+
+    /// `row_style` raised and under the cursor, over the rows container keyed `container`.
+    pub fn liftedStyle(self: ReorderList, context: *ui.Frame, container: ui.Key, row_style: *const ui.Style) !*const ui.Style {
+        const lifted = self.lifted.?;
+        const box = measuredBox(context.ui(), container);
+        const lifted_style = try context.arena().create(ui.Style);
+        lifted_style.* = row_style.with(style.lifted_row);
+        lifted_style.width = .fixed(box.w());
+        lifted_style.offset = .{ 0, lifted.top - box.y() };
+        return lifted_style;
+    }
+
+    fn gapIfDue(self: ReorderList, context: *ui.Frame, lifted: Lifted) !void {
+        if (self.slot != @max(lifted.slot, self.first_slot)) return;
+        const gap_style = try context.arena().create(ui.Style);
+        gap_style.* = style.reorder_gap.with(.{ .height = .fixed(lifted.row_height) });
+        try context.e(Rect{ .key = .src(@src()), .style = gap_style });
+    }
+};
 
 /// Set by useAlignedRows: rows put their label left and their control at the right edge.
 var g_is_aligned: bool = false;
@@ -198,7 +258,8 @@ var g_hints_shown: SectionList = .{};
 var g_open_section: ?u64 = null;
 var g_confirm_key: ?u64 = null;
 /// The row being dragged to a new place in its list.
-var g_reorder: ?struct { list: u64, from: usize, start_y: f64, insert: usize, moved: bool = false } = null;
+/// `grab_y` is how far below the row's top it was picked up, and `row_height` its height then, for drawing it lifted.
+var g_reorder: ?struct { list: u64, from: usize, start_y: f64, grab_y: f32, row_height: f32, insert: usize, moved: bool = false } = null;
 var g_confirm_until_ms: i64 = 0;
 
 pub fn beginFrame() void {
@@ -374,6 +435,8 @@ pub fn restoreRows(previous: RowSettings) void {
 pub fn openRoster(context: *ui.Frame, key: ui.Key, frame_style: *const ui.Style, is_filling: bool) !Roster {
     const frame = Rect{ .key = key, .style = frame_style };
     _ = try frame.open(context);
+    const ui_state = context.ui();
+    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.indexed(1).hash());
     const rows = Rect{ .key = key.indexed(1), .style = if (is_filling) &style.roster_rows else &style.roster_rows_fit };
     _ = try rows.open(context);
     return .{ .key = key, .frame = frame, .rows = rows };
@@ -493,19 +556,28 @@ pub fn optionalColor(context: *ui.Frame, key: ui.Key, label: []const u8, current
     return change;
 }
 
-/// Call for each row, keyed `base.indexed(index)`, before drawing it: a press starts dragging it; returns where the drop line goes.
-pub fn reorderRow(context: *ui.Frame, base: ui.Key, index: usize, count: usize) !DropMark {
+/// Call for each row, keyed `base.indexed(index)`, before drawing it: a press on it starts dragging it.
+pub fn reorderRow(context: *ui.Frame, base: ui.Key, index: usize) !void {
+    try reorderRowByHandle(context, base, index, base.indexed(index));
+}
+
+/// reorderRow for a row whose controls would take the press, e.g. a text box: only a press on `handle` starts the drag.
+pub fn reorderRowByHandle(context: *ui.Frame, base: ui.Key, index: usize, handle: ui.Key) !void {
     const ui_state = context.ui();
     const id = base.indexed(index).hash();
     _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, id);
-    if (ui_state.leftPressed(id, .within)) {
-        g_reorder = .{ .list = base.hash(), .from = index, .start_y = ui_state.input.mouse_pos[1], .insert = index };
+    if (ui_state.leftPressed(handle.hash(), .within)) {
+        const box = measuredBox(ui_state, base.indexed(index));
+        const mouse_y = ui_state.input.mouse_pos[1];
+        g_reorder = .{ .list = base.hash(), .from = index, .start_y = mouse_y, .grab_y = @as(f32, @floatCast(mouse_y)) - box.y(), .row_height = box.h(), .insert = index };
     }
-    const drag = g_reorder orelse return .none;
-    if (drag.list != base.hash() or !drag.moved) return .none;
-    if (drag.insert == index) return .above;
-    if (drag.insert == count and index == count - 1) return .below;
-    return .none;
+}
+
+fn reorderLifted(context: *ui.Frame, base: ui.Key) ?Lifted {
+    const drag = g_reorder orelse return null;
+    if (drag.list != base.hash() or !drag.moved) return null;
+    const mouse_y: f32 = @floatCast(context.ui().input.mouse_pos[1]);
+    return .{ .from = drag.from, .slot = if (drag.insert > drag.from) drag.insert - 1 else drag.insert, .top = mouse_y - drag.grab_y, .row_height = drag.row_height };
 }
 
 /// Call once the rows are drawn: follows the drag, and returns the move once it's dropped somewhere new.
@@ -517,12 +589,15 @@ pub fn reorderFinish(context: *ui.Frame, base: ui.Key, count: usize) ?Move {
     if (ui_state.input.mouseButton(.left).down) {
         if (@abs(mouse_y - drag.start_y) > REORDER_THRESHOLD) drag.moved = true;
         if (drag.moved) {
-            var insert: usize = 0;
+            ui_state.requestCursor(.move);
+            // Counted without the dragged row, which may be drawn under the cursor; rows moving to open a gap move away from it, so this settles.
+            var slot: usize = 0;
             for (0..count) |index| {
+                if (index == drag.from) continue;
                 const measured = ui_state.state.get(.measured, base.indexed(index).hash()) orelse continue;
-                if (mouse_y > measured.box.y() + measured.box.h() / 2) insert = index + 1;
+                if (mouse_y > measured.box.y() + measured.box.h() / 2) slot += 1;
             }
-            drag.insert = insert;
+            drag.insert = if (slot >= drag.from) slot + 1 else slot;
             context.requestRedraw();
         }
         return null;
@@ -581,6 +656,20 @@ pub fn confirmButton(context: *ui.Frame, key: ui.Key, label: []const u8, confirm
     // This frame already drew the unarmed label.
     context.requestRedraw();
     return false;
+}
+
+/// A grip and `label` that a row is dragged by, for reorderRowByHandle.
+pub fn dragHandle(context: *ui.Frame, key: ui.Key, label: []const u8) !void {
+    const handle = Button{ .key = key, .style = &style.drag_handle };
+    if ((try handle.openResponse(context)).hovered) context.ui().requestCursor(.move);
+    const glyph_key = key.indexed(1);
+    try context.e(Canvas{
+        .key = glyph_key,
+        .commands = try glyphs.commands(context.arena(), .grip, style.DRAG_GRIP_SIZE, try glyphs.snapOffset(context, glyph_key), style.MUTED.value),
+        .style = &style.drag_grip,
+    });
+    try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = label, .style = &style.index_chip_text });
+    try handle.close(context);
 }
 
 /// A button whose label starts with a drawn glyph, for symbols Geist lacks.
