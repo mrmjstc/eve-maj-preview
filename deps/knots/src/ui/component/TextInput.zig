@@ -139,11 +139,13 @@ pub fn close(self: *const TextInput, frame: *Frame) !void {
         if (has_sel) ui.state.selection_text = items[sel_lo..sel_hi];
     }
 
-    if (!is_focused and items.len == 0) {
+    // EVE-Maj patch: drawn from a copy, which lives to the end of the frame, so the caller can clear or refill its buffer later in the frame.
+    const text = try frame.arena().dupe(u8, self.buf.items);
+    if (!is_focused and text.len == 0) {
         if (self.placeholder.len > 0)
             _ = try ui.styledText(self.key.indexed(BODY_INDEX), self.placeholder, .{ .base = &base.placeholder, .user = self.parts.placeholder }, .{});
-    } else if (items.len > 0) {
-        var deco = try ui.textDecoration(items, content.font_size, content.font, false);
+    } else if (text.len > 0) {
+        var deco = try ui.textDecoration(text, content.font_size, content.font, false);
         deco.text.color = content.foreground;
         _ = try ui.open(self.key.indexed(BODY_INDEX), .{ .width = .fit(), .height = .fit() }, deco);
         ui.close();
