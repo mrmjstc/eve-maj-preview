@@ -812,9 +812,12 @@ pub const search_row: Style = .{ .width = .grow(), .direction = .row, .@"align" 
 /// Several labelled controls on one line.
 pub const inline_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
 /// .placeholder-chips: small buttons that insert a {placeholder}, at the right edge like an aligned row's controls.
-pub const chip_row: Style = .{ .width = .grow(), .direction = .row, .justify = .end, .gap = 4, .wrap = true };
+pub const chip_row: Style = .{ .width = .grow(), .direction = .row, .justify = .end, .padding = .xy(ROW_INSET, 0) };
+/// As wide as a custom text box and its clear button, so the chips start under the box.
+pub const chip_box: Style = .{ .width = .fixed(CUSTOM_TEXT_WIDTH + 8 + CONTROL_HEIGHT), .direction = .row, .gap = 4, .wrap = true };
 /// A notification's custom text box: wider than an even split with its short state label.
-pub const custom_text_input: Style = text_input.with(.{ .width = .fixed(190) });
+pub const custom_text_input: Style = text_input.with(.{ .width = .fixed(CUSTOM_TEXT_WIDTH) });
+const CUSTOM_TEXT_WIDTH = 190;
 pub const placeholder_chip: Style = plain_button.with(.{ .height = .fixed(22), .padding = .xy(6, 0), .font_size = .xs });
 /// widgets.boxedText's box around path_text, clipping a long file name so the row's buttons stay in view.
 pub const path_box: Style = .{ .width = .{ .kind = .fit, .max = 110 }, .overflow = .hidden };

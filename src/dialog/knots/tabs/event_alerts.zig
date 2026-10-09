@@ -207,6 +207,8 @@ fn customText(context: *ui.Frame, ref: TypeRef, ntype: NotificationType) !void {
 
     const chips = Rect{ .key = .src(@src()), .style = &style.chip_row };
     _ = try chips.open(context);
+    const chip_box = Rect{ .key = .src(@src()), .style = &style.chip_box };
+    _ = try chip_box.open(context);
     for (notification.placeholders(ntype), 0..) |placeholder, index| {
         const token = try std.fmt.allocPrint(context.arena(), "{{{s}}}", .{placeholder.name});
         if ((try context.interact(Button{ .key = ui.Key.str("knots.events.chip").indexed(index), .label = token, .style = &style.placeholder_chip })).clicked) {
@@ -216,6 +218,7 @@ fn customText(context: *ui.Frame, ref: TypeRef, ntype: NotificationType) !void {
     if ((try context.interact(Button{ .key = .src(@src()), .label = NEWLINE_TOKEN, .style = &style.placeholder_chip })).clicked) {
         insertToken(context, ref, ntype, NEWLINE_TOKEN);
     }
+    try chip_box.close(context);
     try chips.close(context);
 
     try preview(context, ntype, .custom_text, ref.get("custom_text"), primary_sample);
