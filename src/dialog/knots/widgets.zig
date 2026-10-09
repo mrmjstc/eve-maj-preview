@@ -65,7 +65,7 @@ const SectionList = struct {
     }
 };
 
-/// What openGroup returns; closing it veils a disabled group so it reads as off and can't be clicked.
+/// What openGroup returns; a disabled group's controls are inert, and closing it veils them so they read as off.
 pub const Group = struct {
     key: ui.Key,
     rect: Rect,
@@ -73,8 +73,8 @@ pub const Group = struct {
 
     pub fn close(self: Group, context: *ui.Frame) !void {
         if (!self.is_enabled) {
-            g_disabled_depth -= 1;
             const ui_state = context.ui();
+            ui_state.inert_depth -= 1;
             const measured = ui_state.state.get(.measured, self.key.hash()) orelse {
                 try self.rect.close(context);
                 return;
@@ -188,8 +188,6 @@ var g_is_aligned: bool = false;
 var g_label_style: *const ui.Style = &style.label;
 /// Set by openFieldGroup: its rows go undivided, with softer labels.
 var g_in_field_group: bool = false;
-/// Disabled groups open around the row being drawn; their rows don't light up or take label clicks.
-var g_disabled_depth: usize = 0;
 /// Aligned rows drawn so far in the open section; every one after the first gets a divider above it.
 var g_section_row_count: usize = 0;
 var g_hinted: SectionList = .{};
@@ -536,7 +534,7 @@ pub fn reorderFinish(context: *ui.Frame, base: ui.Key, count: usize) ?Move {
     return .{ .from = finished.from, .before = finished.insert };
 }
 
-/// A run of settings that dims, and stops taking clicks, while `is_enabled` is false.
+/// A run of settings that dims, and takes no clicks or keyboard focus, while `is_enabled` is false.
 pub fn openGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
     return openAnyGroup(context, key, &style.group, is_enabled);
 }
@@ -556,7 +554,7 @@ fn openAnyGroup(context: *ui.Frame, key: ui.Key, group_style: *const ui.Style, i
     _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.hash());
     const rect = Rect{ .key = key, .style = group_style };
     _ = try rect.open(context);
-    if (!is_enabled) g_disabled_depth += 1;
+    if (!is_enabled) ui_state.inert_depth += 1;
     return .{ .key = key, .rect = rect, .is_enabled = is_enabled };
 }
 
@@ -746,7 +744,8 @@ fn openSettingsRow(context: *ui.Frame, key: ui.Key, row_style: *const ui.Style) 
 
     const ui_state = context.ui();
     _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.hash());
-    const is_live = g_disabled_depth == 0 and ui_state.acceptsInput(key.hash());
+    // Rows in a disabled group are inert, so they don't light up or take label clicks.
+    const is_live = ui_state.inert_depth == 0 and ui_state.acceptsInput(key.hash());
     const mouse = ui_state.input.mouse_pos;
     const is_lit = is_live and measuredBox(ui_state, key).contains(.{ @floatCast(mouse[0]), @floatCast(mouse[1]) });
     const lit_style = try context.arena().create(ui.Style);

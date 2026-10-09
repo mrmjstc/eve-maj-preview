@@ -21,6 +21,10 @@ Vendored from [knots-ui/knots](https://github.com/knots-ui/knots) at commit `9cd
 
 - `Overflow.scroll_x_bare`: scrolls horizontally like `scroll_x`, but `scrollbar.compute` gives it no bar, so none is drawn or hit-tested.
 
+## `src/ui/UI.zig`
+
+- `inert_depth` (default 0): while above 0, `openWith` makes every element it opens non-interactive and non-focusable, so a disabled group of controls takes no clicks and drops out of Tab order.
+
 ## `src/ui/Context.zig`
 
 - A `scroll_x_bare` box clips its children at its left and right padding, so a text input's long line stops short of the border.

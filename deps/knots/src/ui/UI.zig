@@ -95,6 +95,8 @@ cull_ancestors: std.ArrayList(Element.Slot) = .empty,
 /// 1 inside a culled element, plus one per nested open, which creates no element.
 cull_depth: u32 = 0,
 culled_count: u32 = 0,
+/// EVE-Maj patch: above 0, elements opened are neither interactive nor focusable, so a disabled run of controls can't be clicked or tabbed into.
+inert_depth: u32 = 0,
 content_scale: f32,
 scroll_line_size: FontSize.Input,
 anim_active: bool,
@@ -180,6 +182,11 @@ pub fn openWith(self: *UI, key: Key, element: Element.Config, decoration: Decora
     }
     var cfg = element;
     var decoration_used = decoration;
+    // EVE-Maj patch: see inert_depth.
+    if (self.inert_depth > 0) {
+        cfg.interactive = false;
+        cfg.focusable = false;
+    }
     if (options.root == null) {
         if (self.cullRecord(key.hash())) |record| {
             if (cfg.width.kind == .fit) cfg.width = .fixed(record.size[0]);
