@@ -107,7 +107,7 @@ fn manual(context: *ui.Frame, display: DisplayRef) !void {
     try snapping_group.close(context);
     try widgets.separator(context, .str("knots.manual.separator.snapping"));
 
-    const new_thumbnails = try widgets.openFieldGroup(context, .str("knots.manual.new"), "New Thumbnails");
+    const unplaced = try widgets.openFieldGroup(context, .str("knots.manual.new"), "Unplaced");
     const start = try widgets.openBinding(context, .src(@src()), "Start Position");
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "X", .style = &style.muted_text });
     try bind.numberBox(context, display, "startX", .{});
@@ -116,7 +116,7 @@ fn manual(context: *ui.Frame, display: DisplayRef) !void {
     try start.close(context);
     try bind.number(context, display, "newThumbnailSpacing", "Spacing", .{ .unit = "px" });
     try widgets.hintText(context, .src(@src()), "Where a character with no saved position appears: lined up left to right from the start position with this gap.");
-    try new_thumbnails.close(context);
+    try unplaced.close(context);
 }
 
 fn spacesMode(context: *ui.Frame, display: DisplayRef) !void {

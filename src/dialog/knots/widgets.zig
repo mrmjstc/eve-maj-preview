@@ -404,7 +404,7 @@ pub fn openFieldGroup(context: *ui.Frame, key: ui.Key, label: []const u8) !Field
     const row = Rect{ .key = key, .style = &style.field_group };
     _ = try row.open(context);
     search.captureText(label);
-    try boxedText(context, key.indexed(1), label, &style.field_group_label, g_label_style);
+    try boxedText(context, key.indexed(1), label, &style.field_group_label, &style.field_group_label_text);
     const column = Rect{ .key = key.indexed(2), .style = &style.field_group_column };
     _ = try column.open(context);
     const group: FieldGroup = .{ .row = row, .column = column, .was_aligned = g_is_aligned, .was_in_field_group = g_in_field_group };

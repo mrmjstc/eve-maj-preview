@@ -234,12 +234,16 @@ const detail_scroll_pane: Style = .{
     .overflow = .scroll_y,
 };
 
+/// Fits the longest plain detail row label, e.g. Character Name.
+const DETAIL_LABEL_WIDTH = 96;
 /// A master-detail pane's label column, narrower than label to leave its controls room.
-pub const detail_label: Style = label.with(.{ .width = .fixed(110) });
+pub const detail_label: Style = label.with(.{ .width = .fixed(DETAIL_LABEL_WIDTH) });
 /// widgets.openFieldGroup's row: its label stays at the top beside a taller column.
 pub const field_group: Style = .{ .width = .grow(), .direction = .row, .@"align" = .start, .gap = 8 };
 /// Drops the label to line up with the first control's text, and insets it like a row's own label.
 pub const field_group_label: Style = .{ .padding = .init(6, 0, 0, ROW_INSET) };
+/// Short of detail_label by its rows' inset, so a group's row labels line up with plain detail rows' controls.
+pub const field_group_label_text: Style = detail_label.with(.{ .width = .fixed(DETAIL_LABEL_WIDTH - ROW_INSET) });
 pub const field_group_column: Style = .{ .width = .grow(), .direction = .column, .gap = 6 };
 
 pub const detail_header: Style = .{
