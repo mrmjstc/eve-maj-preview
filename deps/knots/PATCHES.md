@@ -22,6 +22,10 @@ Vendored from [knots-ui/knots](https://github.com/knots-ui/knots) at commit `9cd
 
 - `Overflow.scroll_x_bare`: scrolls horizontally like `scroll_x`, but `scrollbar.compute` gives it no bar, so none is drawn or hit-tested.
 
+## `src/layout/Context.zig`, `src/layout/tests.zig`
+
+- `distributeGrow` works each pass's share out afresh from the children it clamps, then sizes every grow child from it. A grow child with a `min` starts at that min and was skipped, so it never grew past it; a child clamped in an earlier pass was subtracted from the free space again. Tested in `tests.zig`'s new `min/max` tests.
+
 ## `src/ui/UI.zig`
 
 - `inert_depth` (default 0): while above 0, `openWith` makes every element it opens non-interactive and non-focusable, so a disabled group of controls takes no clicks and drops out of Tab order.

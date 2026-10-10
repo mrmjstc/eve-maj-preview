@@ -194,6 +194,82 @@ test "min/max: grow does not exceed max" {
     try expectRect(ctx.pool.get(2), 100, 0, 300, 50);
 }
 
+// EVE-Maj patch: see distributeGrow.
+test "min/max: grow with a min still grows past it" {
+    var ctx = initCtx();
+    defer ctx.deinit();
+
+    _ = try ctx.open(0, .{ .width = .fixed(400), .height = .fixed(50), .direction = .row });
+    defer ctx.close();
+    {
+        _ = try ctx.open(1, .{ .width = .{ .kind = .grow, .min = 100 }, .height = .fixed(50) });
+        defer ctx.close();
+    }
+    {
+        _ = try ctx.open(2, .{ .width = .grow(), .height = .fixed(50) });
+        defer ctx.close();
+    }
+
+    try runLayout(&ctx);
+
+    try expectRect(ctx.pool.get(1), 0, 0, 200, 50);
+    try expectRect(ctx.pool.get(2), 200, 0, 200, 50);
+}
+
+// EVE-Maj patch: see distributeGrow.
+test "min/max: grow held at its min leaves the rest to the others" {
+    var ctx = initCtx();
+    defer ctx.deinit();
+
+    _ = try ctx.open(0, .{ .width = .fixed(400), .height = .fixed(50), .direction = .row });
+    defer ctx.close();
+    {
+        _ = try ctx.open(1, .{ .width = .{ .kind = .grow, .min = 250 }, .height = .fixed(50) });
+        defer ctx.close();
+    }
+    {
+        _ = try ctx.open(2, .{ .width = .grow(), .height = .fixed(50) });
+        defer ctx.close();
+    }
+    {
+        _ = try ctx.open(3, .{ .width = .grow(), .height = .fixed(50) });
+        defer ctx.close();
+    }
+
+    try runLayout(&ctx);
+
+    try expectRect(ctx.pool.get(1), 0, 0, 250, 50);
+    try expectRect(ctx.pool.get(2), 250, 0, 75, 50);
+    try expectRect(ctx.pool.get(3), 325, 0, 75, 50);
+}
+
+// EVE-Maj patch: see distributeGrow.
+test "min/max: grow clamped at a max is subtracted from the free space once" {
+    var ctx = initCtx();
+    defer ctx.deinit();
+
+    _ = try ctx.open(0, .{ .width = .fixed(400), .height = .fixed(50), .direction = .row });
+    defer ctx.close();
+    {
+        _ = try ctx.open(1, .{ .width = .{ .kind = .grow, .max = 50 }, .height = .fixed(50) });
+        defer ctx.close();
+    }
+    {
+        _ = try ctx.open(2, .{ .width = .{ .kind = .grow, .max = 150 }, .height = .fixed(50) });
+        defer ctx.close();
+    }
+    {
+        _ = try ctx.open(3, .{ .width = .grow(), .height = .fixed(50) });
+        defer ctx.close();
+    }
+
+    try runLayout(&ctx);
+
+    try expectRect(ctx.pool.get(1), 0, 0, 50, 50);
+    try expectRect(ctx.pool.get(2), 50, 0, 150, 50);
+    try expectRect(ctx.pool.get(3), 200, 0, 200, 50);
+}
+
 test "nested: row inside column" {
     var ctx = initCtx();
     defer ctx.deinit();

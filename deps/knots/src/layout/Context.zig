@@ -640,12 +640,13 @@ fn measureChildren(self: *Context, el: *const Element, axis: AxisInfo) Measureme
     return .{ .used = used, .fixed_used = fixed_used, .grow_count = grow_count, .static_count = static_count };
 }
 
-fn distributeGrow(self: *Context, el: *const Element, axis: AxisInfo, initial_free: f32, initial_grow_count: f32) void {
-    var remaining_free = initial_free;
-    var grow_count = initial_grow_count;
+// EVE-Maj patch: each pass works the share out afresh from the children it clamps, then every grow child takes it; a child with a min, which starts at it, was otherwise never grown, and a child clamped in an earlier pass was subtracted twice.
+fn distributeGrow(self: *Context, el: *const Element, axis: AxisInfo, free: f32, grow_count: f32) void {
+    var grow_unit = if (grow_count > 0) free / grow_count else 0;
 
-    while (grow_count > 0) {
-        const grow_unit = remaining_free / grow_count;
+    // Capped, since a min on one child and a max on another can trade a clamp back and forth.
+    var pass: f32 = 0;
+    while (pass <= grow_count) : (pass += 1) {
         var clamped_space: f32 = 0;
         var still_growing: f32 = 0;
 
@@ -654,27 +655,23 @@ fn distributeGrow(self: *Context, el: *const Element, axis: AxisInfo, initial_fr
             const child = self.pool.get(child_slot);
             if (child.position != .absolute and axis.childMainKind(child) == .grow) {
                 const clamped = std.math.clamp(grow_unit, axis.childMainMin(child), axis.childMainMax(child));
-                if (clamped != grow_unit) {
-                    axis.setChildMainSize(child, clamped);
-                    clamped_space += clamped;
-                } else still_growing += 1;
+                if (clamped != grow_unit) clamped_space += clamped else still_growing += 1;
             }
             child_slot = child.next_sibling;
         }
 
-        if (still_growing == grow_count) break;
-
-        remaining_free -= clamped_space;
-        grow_count = still_growing;
+        if (still_growing == 0) break;
+        const next_unit = @max(0, free - clamped_space) / still_growing;
+        if (next_unit == grow_unit) break;
+        grow_unit = next_unit;
     }
 
-    const final_grow_unit = if (grow_count > 0) remaining_free / grow_count else 0;
     var child_slot = el.first_child;
     while (child_slot != Element.INVALID_SLOT) {
         const child = self.pool.get(child_slot);
         if (child.position != .absolute) {
-            if (axis.childMainKind(child) == .grow and axis.childMainSize(child) == 0)
-                axis.setChildMainSize(child, std.math.clamp(final_grow_unit, axis.childMainMin(child), axis.childMainMax(child)));
+            if (axis.childMainKind(child) == .grow)
+                axis.setChildMainSize(child, std.math.clamp(grow_unit, axis.childMainMin(child), axis.childMainMax(child)));
             if (axis.childCrossKind(child) == .grow)
                 axis.setChildCrossSize(child, axis.cross_size);
         }
