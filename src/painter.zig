@@ -611,6 +611,8 @@ pub const Painter = struct {
     pub const PopulateOptions = struct {
         /// Moves each new client window to its saved position (auto-move).
         move_to_saved: bool,
+        /// Minimizes each new client window; false at startup/reload so clients already running stay put.
+        minimize_new: bool = false,
         /// Seeds each new thumbnail's system name, so a reload doesn't show them blank.
         system_names: ?*const SystemNameSnapshot = null,
     };
@@ -637,6 +639,9 @@ pub const Painter = struct {
             if (opts.move_to_saved and eve_window.is_eve_client) {
                 self.auto_move.moveToSavedPosition(self.config, eve_window.hwnd, eve_window.character_name);
             }
+            if (opts.minimize_new and eve_window.is_eve_client) {
+                auto_minimize_mod.minimizeNewClient(self.config, eve_window.hwnd);
+            }
         }
 
         return created_new;
@@ -650,7 +655,10 @@ pub const Painter = struct {
         self.auto_move.verify(self.config);
 
         // createThumbnail seeds character_name from eve_window, so new thumbnails need no re-sync.
-        const created_new = self.addMissingThumbnails(eve_windows, .{ .move_to_saved = self.config.autoMovePosition.enabled });
+        const created_new = self.addMissingThumbnails(eve_windows, .{
+            .move_to_saved = self.config.autoMovePosition.enabled,
+            .minimize_new = self.config.autoMinimize.startMinimized,
+        });
         needs_region_reflow = (created_new and arrange.hasCountDependentLayout(self)) or needs_region_reflow;
 
         // Coalesced into one reflow, since any combination of the three triggers above can fire in the same tick.

@@ -1,12 +1,14 @@
-//! Minimizing EVE clients left inactive, and the hotkey and tray toggle for it.
+//! Minimizing EVE clients left inactive or newly launched, and the hotkey and tray toggle for it.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const focus_grant = @import("../platform/focus_grant.zig");
 const thumbnail_drag = @import("../drag/thumbnail.zig");
+const config_mod = @import("../config.zig");
 const painter_mod = @import("../painter.zig");
 const animation = @import("animation.zig");
 const log = @import("../log.zig");
 
+const Config = config_mod.Config;
 const Painter = painter_mod.Painter;
 const slog = log.scoped("auto_minimize");
 
@@ -127,6 +129,12 @@ pub const AutoMinimizer = struct {
         }
     }
 };
+
+/// Ignores excludeFromMinimize: a new client is still at the login screen, so it has no character yet.
+pub fn minimizeNewClient(config: *const Config, source_hwnd: win32.HWND) void {
+    animation.showClient(config, source_hwnd, win32.SW_FORCEMINIMIZE);
+    slog.info("Started a new client minimized", .{});
+}
 
 /// Temporary, not saved to the profile (hotkey and tray action).
 pub fn toggle(painter: *Painter) void {

@@ -127,6 +127,8 @@ fn autoMinimize(context: *ui.Frame) !void {
     try bind.number(context, ref, "delayMs", "Delay", .{ .ms_as_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "How long a client can sit unfocused before it's minimized.");
     try options.close(context);
+    try bind.toggle(context, ref, "startMinimized", "Start Clients Minimized");
+    try widgets.hintText(context, .src(@src()), "Minimizes each EVE client as soon as it launches, even with Auto-Minimize off.");
     try section.close(context);
 }
 
