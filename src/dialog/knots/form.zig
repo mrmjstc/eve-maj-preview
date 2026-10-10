@@ -14,6 +14,7 @@ const hotkey = @import("hotkey.zig");
 const header = @import("header.zig");
 const status = @import("status.zig");
 const about = @import("tabs/about.zig");
+const backups = @import("tabs/backups.zig");
 const general = @import("tabs/general.zig");
 const hotkeys = @import("tabs/hotkeys.zig");
 const hotkey_groups = @import("tabs/hotkey_groups.zig");
@@ -60,6 +61,7 @@ const Category = enum {
 /// In sidebar order, each category's tabs together.
 const Tab = enum {
     about,
+    backups,
     general,
     characters,
     hotkey_groups,
@@ -96,6 +98,7 @@ const Tab = enum {
             .resources => "Resources",
             .general => "General",
             .about => "About",
+            .backups => "Backups",
         };
     }
 
@@ -106,7 +109,7 @@ const Tab = enum {
             .hotkeys, .behavior => .input,
             .notifications, .event_alerts, .notification_history, .chatlog => .alerts,
             .combat, .mining, .bounty, .resources => .overlays,
-            .about, .general => .app,
+            .about, .backups, .general => .app,
         };
     }
 
@@ -129,6 +132,7 @@ const Tab = enum {
             .resources => .striped_square,
             .general => .gear,
             .about => .star,
+            .backups => .reset,
         };
     }
 
@@ -136,7 +140,7 @@ const Tab = enum {
     fn isAdvanced(tab: Tab) bool {
         return switch (tab) {
             .combat, .mining, .bounty, .resources, .general => true,
-            .characters, .hotkey_groups, .appearance, .placement, .text_overlays, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .about => false,
+            .characters, .hotkey_groups, .appearance, .placement, .text_overlays, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .about, .backups => false,
         };
     }
 
@@ -144,7 +148,7 @@ const Tab = enum {
     fn needsThumbnails(tab: Tab) bool {
         return switch (tab) {
             .placement, .text_overlays => true,
-            .characters, .hotkey_groups, .appearance, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .combat, .mining, .bounty, .resources, .general, .about => false,
+            .characters, .hotkey_groups, .appearance, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .combat, .mining, .bounty, .resources, .general, .about, .backups => false,
         };
     }
 
@@ -153,7 +157,7 @@ const Tab = enum {
         return switch (tab) {
             .characters, .hotkey_groups, .event_alerts => true,
             .placement => placement.fillsWindow(),
-            .appearance, .text_overlays, .hotkeys, .behavior, .notifications, .notification_history, .chatlog, .combat, .mining, .bounty, .resources, .general, .about => false,
+            .appearance, .text_overlays, .hotkeys, .behavior, .notifications, .notification_history, .chatlog, .combat, .mining, .bounty, .resources, .general, .about, .backups => false,
         };
     }
 
@@ -247,6 +251,7 @@ fn showTab(context: *ui.Frame, tab: Tab) !void {
     defer _ = widgets.useAlignedRows(was_aligned);
     switch (tab) {
         .about => try about.show(context),
+        .backups => try backups.show(context),
         .appearance => try display.show(context),
         .placement => try placement.show(context),
         .text_overlays => try text_overlays.show(context),

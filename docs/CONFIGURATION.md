@@ -2,7 +2,7 @@
 
 Configuration files use **JSON format**. The application generates a default profile at `profiles\default.json` on first run.
 
-When editing by hand, a value the app can't read (an unknown option name, a malformed color, text where a number belongs) is skipped with a warning in the log, and that one setting uses its default; the rest of the file loads as written. A file that isn't valid JSON at all loads with default settings, after a copy is kept: a profile in `profiles\backup\` (restorable from the config dialog's Import), the global settings as `profiles\global.settings.json.bak`.
+When editing by hand, a value the app can't read (an unknown option name, a malformed color, text where a number belongs) is skipped with a warning in the log, and that one setting uses its default; the rest of the file loads as written. A file that isn't valid JSON at all loads with default settings, after a copy is kept: a profile in `profiles\backup\` (restorable from the config dialog's Backups tab), the global settings as `profiles\global.settings.json.bak`.
 
 ## Logging
 
@@ -1211,7 +1211,7 @@ Some settings persist across all profiles and are configured in `profiles\global
 - Set either or both hotkeys to `null` to disable
 - Profiles are enumerated from the `profiles` directory
 - Allows quick switching between different profile configurations (e.g., PvP, Mining, Trading) without using the system tray or command-line arguments
-- Deleting a profile moves its file to `profiles\backup\` (timestamp-prefixed) instead of removing it; the config dialog's Import modal can restore from these backups
+- Deleting a profile moves its file to `profiles\backup\` (timestamp-prefixed) instead of removing it; the config dialog's Backups tab lists these backups, restores one as a new profile, or deletes one for good
 
 ### Hotkey Groups (Character Cycling)
 

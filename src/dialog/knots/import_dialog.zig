@@ -1,4 +1,4 @@
-//! The Import Settings dialog: reading another preview tool's file or an EVE-Maj profile, choosing its sections and where they go, and restoring a profile backup; main thread only.
+//! The Import Settings dialog: reading another preview tool's file or an EVE-Maj profile, and choosing its sections and where they go; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../config.zig");
@@ -48,7 +48,7 @@ const Summary = struct {
 
 var g_allocator: std.mem.Allocator = undefined;
 var g_is_open: bool = false;
-/// Holds the file, the analysis, the backups and the summary; reset each time the dialog opens.
+/// Holds the file, the analysis and the summary; reset each time the dialog opens.
 var g_arena: std.heap.ArenaAllocator = undefined;
 var g_file_text: ?[]const u8 = null;
 var g_file_name: []const u8 = "";
@@ -60,8 +60,6 @@ var g_into_new: bool = false;
 var g_new_name: std.ArrayList(u8) = .empty;
 var g_new_accent: ui.Color = undefined;
 var g_summary: ?Summary = null;
-var g_backups: []const []const u8 = &.{};
-var g_backup_index: u32 = 0;
 
 pub fn init(allocator: std.mem.Allocator) void {
     g_allocator = allocator;
@@ -82,12 +80,6 @@ pub fn open() void {
     g_into_new = false;
     g_new_name.clearRetainingCapacity();
     g_new_accent = widgets.colorFromArgb(header.DEFAULT_ACCENT);
-    g_backup_index = 0;
-    const names = config.listProfileBackups(arena()) catch |err| blk: {
-        slog.warn("Failed to list profile backups: {}", .{err});
-        break :blk std.ArrayList([]const u8).empty;
-    };
-    g_backups = names.items;
     g_is_open = true;
 }
 
@@ -133,56 +125,6 @@ fn fileStep(context: *ui.Frame) !void {
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = g_file_name, .style = &style.detail_value });
     try row.close(context);
     if (g_file_status.len > 0) try widgets.paragraph(context, .src(@src()), g_file_status);
-
-    if (g_backups.len == 0) return;
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Restore from backup", .style = &style.inline_label });
-    const backup_row = Rect{ .key = .src(@src()), .style = &style.inline_row };
-    _ = try backup_row.open(context);
-    const labels = try context.arena().alloc([]const u8, g_backups.len);
-    const values = try context.arena().alloc(u32, g_backups.len);
-    for (g_backups, labels, values, 0..) |name, *label, *value, index| {
-        label.* = try backupLabel(context.arena(), name);
-        value.* = @intCast(index);
-    }
-    const response = try context.interact(SelectInput(u32){ .key = .src(@src()), .labels = labels, .values = values, .initial_selected = g_backup_index, .style = &style.select_fill, .parts = .{ .popup = &style.select_popup } });
-    if (response.selected) |selected| g_backup_index = selected.value;
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "Restore", .style = &style.primary_button })).clicked) {
-        const backup = g_backups[g_backup_index];
-        g_is_open = false;
-        host.restoreBackup(backup, backupDisplayName(backup));
-    }
-    try backup_row.close(context);
-}
-
-/// "Main" from "1717171717_Main.json", a backup's timestamp and name.
-fn backupDisplayName(file_name: []const u8) []const u8 {
-    const stem = profiles.displayName(file_name);
-    const underscore = std.mem.findScalar(u8, stem, '_') orelse return stem;
-    for (stem[0..underscore]) |char| {
-        if (!std.ascii.isDigit(char)) return stem;
-    }
-    return stem[underscore + 1 ..];
-}
-
-/// The name and, where the file name has one, when the backup was made.
-fn backupLabel(arena_allocator: std.mem.Allocator, file_name: []const u8) ![]const u8 {
-    const stem = profiles.displayName(file_name);
-    const name = backupDisplayName(file_name);
-    if (name.len == stem.len) return name;
-    // A prefix too long for a timestamp gets no date rather than a wrong one.
-    const seconds = std.fmt.parseInt(u64, stem[0 .. stem.len - name.len - 1], 10) catch return name;
-    const day = std.time.epoch.EpochSeconds{ .secs = seconds };
-    const year_day = day.getEpochDay().calculateYearDay();
-    const month_day = year_day.calculateMonthDay();
-    const time = day.getDaySeconds();
-    return std.fmt.allocPrint(arena_allocator, "{s} \u{2014} {d}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}", .{
-        name,
-        year_day.year,
-        month_day.month.numeric(),
-        month_day.day_index + 1,
-        time.getHoursIntoDay(),
-        time.getMinutesIntoHour(),
-    });
 }
 
 fn optionsStep(context: *ui.Frame, analysis: *Analysis) !void {
@@ -407,5 +349,4 @@ fn clearArena() void {
     g_file_status = "";
     g_analysis = null;
     g_summary = null;
-    g_backups = &.{};
 }

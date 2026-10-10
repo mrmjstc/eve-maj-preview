@@ -1,4 +1,4 @@
-//! Profile files on disk: where they live, loading with fallbacks, saving, and creating defaults.
+//! Profile files on disk: where they live, loading with fallbacks, saving, creating defaults, and the backups kept when one is deleted or unreadable.
 const std = @import("std");
 const files = @import("files.zig");
 const Config = @import("../config.zig").Config;
@@ -9,6 +9,9 @@ const slog = log.scoped("config");
 /// A profile's display name, without ".json"; longer names from older versions still load.
 pub const MAX_NAME_LEN: usize = 16;
 const BACKUP_DIR = "backup";
+
+/// `name` borrows from the file name; null `saved_at_seconds` for a backup named any other way.
+pub const BackupName = struct { name: []const u8, saved_at_seconds: ?u64 };
 
 /// Caller owns the returned slice.
 pub fn path(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
@@ -60,10 +63,23 @@ pub fn copy(allocator: std.mem.Allocator, source: []const u8, target: []const u8
 
 /// Restores a file from PROFILES_DIR/backup (see deleteToBackup) as the new profile `target`.
 pub fn restoreBackup(allocator: std.mem.Allocator, backup: []const u8, target: []const u8, accent_color: ?u32) !void {
-    try validateName(backup);
-    const source_path = try std.Io.Dir.path.join(allocator, &.{ files.PROFILES_DIR, BACKUP_DIR, backup });
+    const source_path = try backupPath(allocator, backup);
     defer allocator.free(source_path);
     try copyFrom(allocator, source_path, target, accent_color);
+}
+
+/// Removes a file from PROFILES_DIR/backup for good.
+pub fn deleteBackup(allocator: std.mem.Allocator, backup: []const u8) !void {
+    const backup_path = try backupPath(allocator, backup);
+    defer allocator.free(backup_path);
+    try std.Io.Dir.cwd().deleteFile(files.g_io, backup_path);
+    slog.info("Deleted profile backup '{s}'", .{backup});
+}
+
+/// `backup`'s path in PROFILES_DIR/backup, once it's checked to be a plain file name; caller owns the result.
+fn backupPath(allocator: std.mem.Allocator, backup: []const u8) ![]u8 {
+    try validateName(backup);
+    return std.Io.Dir.path.join(allocator, &.{ files.PROFILES_DIR, BACKUP_DIR, backup });
 }
 
 fn copyFrom(allocator: std.mem.Allocator, source_path: []const u8, target: []const u8, accent_color: ?u32) !void {
@@ -125,6 +141,18 @@ fn backUpUnreadable(allocator: std.mem.Allocator, profile_path: []const u8, name
         return;
     };
     slog.warn("Backed up unreadable profile '{s}' to '{s}'", .{ name, backup_path });
+}
+
+/// Splits a backup's `<unix time>_<name>.json` file name (see newBackupPath) into its profile name and time.
+pub fn parseBackupName(file_name: []const u8) BackupName {
+    const stem = if (std.mem.endsWith(u8, file_name, ".json")) file_name[0 .. file_name.len - ".json".len] else file_name;
+    const underscore = std.mem.findScalar(u8, stem, '_') orelse return .{ .name = stem, .saved_at_seconds = null };
+    const prefix = stem[0..underscore];
+    for (prefix) |char| {
+        if (!std.ascii.isDigit(char)) return .{ .name = stem, .saved_at_seconds = null };
+    }
+    // A prefix too long for a timestamp gets no time rather than a wrong one.
+    return .{ .name = stem[underscore + 1 ..], .saved_at_seconds = std.fmt.parseInt(u64, prefix, 10) catch null };
 }
 
 /// Backed-up profile file names, newest first; caller owns the list and its strings.
@@ -335,4 +363,17 @@ test "checkDeletable refuses the default profile" {
     try checkDeletable("Main.json");
     try testing.expectError(error.CannotDeleteDefaultProfile, checkDeletable(files.DEFAULT_PROFILE));
     try testing.expectError(error.InvalidProfileName, checkDeletable("Main"));
+}
+
+test "parseBackupName splits a timestamped backup into its time and profile name" {
+    const parsed = parseBackupName("1717171717_My_Alts.json");
+    try testing.expectEqualStrings("My_Alts", parsed.name);
+    try testing.expectEqual(@as(?u64, 1717171717), parsed.saved_at_seconds);
+}
+
+test "parseBackupName keeps a backup named any other way whole, with no time" {
+    const parsed = parseBackupName("Main_Old.json");
+    try testing.expectEqualStrings("Main_Old", parsed.name);
+    try testing.expectEqual(@as(?u64, null), parsed.saved_at_seconds);
+    try testing.expectEqualStrings("Main", parseBackupName("Main.json").name);
 }

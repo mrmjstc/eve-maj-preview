@@ -1,4 +1,4 @@
-//! The header's profile actions, run between frames since each replaces the documents or reloads the app, and the profile list they keep current; main thread only.
+//! Profile actions from the header and the Backups tab, run between frames since each can replace the documents, reload the app or change the profile folder, and the profile list they keep current; main thread only.
 const std = @import("std");
 const config = @import("../../config.zig");
 const main = @import("../../main.zig");
@@ -22,6 +22,8 @@ pub const Action = enum {
     reset,
     /// A backup restored under the profile's name; the pending backup says which.
     restore,
+    /// A backup removed for good; the name is the backup's file name.
+    delete_backup,
     /// A new profile, edited as a draft, with the Import dialog's chosen sections applied to it.
     import_new,
 };
@@ -37,6 +39,8 @@ var g_name: ?[]u8 = null;
 var g_accent: ?u32 = null;
 /// The backup file a pending restore reads. Owned; freed by runPending.
 var g_backup: ?[]u8 = null;
+/// Bumped each time the profile list is re-read, i.e. after every action.
+var g_revision: u32 = 0;
 /// A profile just created or copied, which the header offers to switch to. Owned; freed by takeCreated or deinit.
 var g_created: ?[]u8 = null;
 /// Profile file names, sorted. Owned; refreshed after every action.
@@ -98,7 +102,7 @@ pub fn runPending() void {
     defer g_allocator.free(name);
     run(action, name, g_accent) catch |err| {
         slog.err("Failed to {s} profile '{s}': {}", .{ verb(action), name, err });
-        status.show(.failure, "Failed to {s} profile '{s}': {t}", .{ verb(action), displayName(name), err });
+        status.show(.failure, "Failed to {s} profile '{s}': {t}", .{ verb(action), shownName(action, name), err });
     };
     refresh();
 }
@@ -113,6 +117,11 @@ pub fn takeCreated() ?[]u8 {
 /// "Main" for "Main.json".
 pub fn displayName(file_name: []const u8) []const u8 {
     return if (std.mem.endsWith(u8, file_name, ".json")) file_name[0 .. file_name.len - ".json".len] else file_name;
+}
+
+/// Changes after every profile action, so a list built from the profile folder, e.g. the backups, can tell to read it again.
+pub fn revision() u32 {
+    return g_revision;
 }
 
 fn run(action: Action, name: []const u8, accent: ?u32) !void {
@@ -155,6 +164,10 @@ fn run(action: Action, name: []const u8, accent: ?u32) !void {
             try offerSwitch(name);
             status.show(.success, "Profile restored successfully", .{});
         },
+        .delete_backup => {
+            try config.deleteProfileBackup(g_allocator, name);
+            status.show(.success, "Deleted the backup of '{s}'", .{shownName(action, name)});
+        },
         .import_new => {
             try config.createProfile(g_allocator, name, accent);
             try session.editProfile(name);
@@ -189,11 +202,21 @@ fn verb(action: Action) []const u8 {
         .delete => "delete",
         .reset => "reset",
         .restore => "restore",
+        .delete_backup => "delete the backup of",
         .import_new => "import into",
     };
 }
 
+/// How `name` reads in a status message: a backup's file name is shown as the profile it holds.
+fn shownName(action: Action, name: []const u8) []const u8 {
+    return switch (action) {
+        .delete_backup => config.parseBackupName(name).name,
+        .make_live, .edit, .create, .copy, .delete, .reset, .restore, .import_new => displayName(name),
+    };
+}
+
 fn refresh() void {
+    g_revision +%= 1;
     freeProfiles();
     g_profiles = config.listProfiles(g_allocator) catch |err| blk: {
         slog.err("Failed to list profiles: {}", .{err});
