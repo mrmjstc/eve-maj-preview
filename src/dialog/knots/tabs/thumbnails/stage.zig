@@ -1,31 +1,26 @@
-//! The Text Overlays section's stage: a thumbnail drawn from the edited settings and enlarged, whose text chips are dragged into place and clicked to edit in a popover; main thread only.
+//! The Appearance tab's thumbnail preview: drawn from the edited settings at its real size, its texts dragged into place and clicked to edit in a popover; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const types = @import("../../../../config/types.zig");
+const draw = @import("../../../../thumbnail/draw.zig");
 const session = @import("../../session.zig");
 const style = @import("../../style.zig");
 const widgets = @import("../../widgets.zig");
 const chips = @import("chips.zig");
 const images = @import("../../images.zig");
-const glyphs = @import("../../glyphs.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
-const Canvas = ui.component.Canvas;
 const Button = ui.component.Button;
 const Box = widgets.Box;
 const measuredBox = widgets.measuredBox;
 
-/// The stage fits this box; small thumbnails are enlarged so their chips are easy to grab.
-const MAX_WIDTH: f32 = 540;
-const MAX_HEIGHT: f32 = 300;
+const STAGE_ROW_KEY: ui.Key = .str("knots.stage.row");
 /// Within this many stage pixels a dragged chip locks flush to its anchor.
 const SNAP_DISTANCE: f32 = 5;
-/// Movement under this is a click, not a drag.
-const DRAG_THRESHOLD: f64 = 4;
+/// Movement under this is a click, not a drag; matches knots' own click slop.
+const DRAG_THRESHOLD: f64 = 8;
 const CLIENT_BACKGROUND = 0xFF2A3240;
-/// The grip's and the pencil's boxes on a chip.
-const CHIP_GLYPH_BOX: f32 = 12;
 const POPOVER_KEY: ui.Key = .str("knots.stage.popover");
 
 const Drag = struct {
@@ -44,16 +39,23 @@ var g_drag: ?Drag = null;
 var g_selected_index: usize = 0;
 var g_popover_open: bool = false;
 
+/// At the thumbnail's size, shrunk only to fit the section.
 pub fn show(context: *ui.Frame) !void {
     const thumbnail = &session.profile().ptr.thumbnail;
     const width: f32 = @floatFromInt(@max(thumbnail.width, 1));
     const height: f32 = @floatFromInt(@max(thumbnail.height, 1));
-    const scale = @min(MAX_WIDTH / width, MAX_HEIGHT / height);
-    const stage_size = [2]f32{ @round(width * scale), @round(height * scale) };
     const arena = context.arena();
     const ui_state = context.ui();
+    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, STAGE_ROW_KEY.hash());
+    const available_width = measuredBox(ui_state, STAGE_ROW_KEY).w();
+    // Not laid out yet, so draw once more knowing the room there is.
+    if (available_width == 0) context.requestRedraw();
+    // The frame's 1px border on each side.
+    const scale = if (available_width > 2 and width > available_width - 2) (available_width - 2) / width else 1;
+    const stage_size = [2]f32{ @round(width * scale), @round(height * scale) };
 
-    // Centred in the section.
+    const row = Rect{ .key = STAGE_ROW_KEY, .style = &style.stage_row };
+    _ = try row.open(context);
     const frame = Rect{ .key = .src(@src()), .style = &style.stage_frame };
     _ = try frame.open(context);
 
@@ -78,6 +80,7 @@ pub fn show(context: *ui.Frame) !void {
 
     try stage.close(context);
     try frame.close(context);
+    try row.close(context);
     try popover(context);
 }
 
@@ -110,7 +113,7 @@ fn chipKey(index: usize) ui.Key {
     return ui.Key.str("knots.stage.chip").indexed(index);
 }
 
-/// An amber tag naming the overlay, between a grip and a pencil; struck through while the overlay is off.
+/// The overlay as a thumbnail draws it, with its sample text; outlined while hovered or edited, and faded while it's off.
 fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize, stage_box: Box, stage_size: [2]f32, scale: f32) !void {
     const ui_state = context.ui();
     const key = chipKey(index);
@@ -153,44 +156,30 @@ fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize
         }
     };
 
-    const is_selected = index == g_selected_index;
+    const is_selected = g_popover_open and index == g_selected_index;
     const arena = context.arena();
     const chip_style = try arena.create(ui.Style);
-    chip_style.* = style.overlay_chip.with(.{
+    chip_style.* = style.overlay_text.with(.{
         .offset = position,
-        .border_color = if (is_selected) .{ .color = style.TEXT } else .accent,
+        .padding = .xy(draw.TEXT_PADDING_X * scale, draw.TEXT_PADDING_Y * scale),
+        .background = .{ .color = widgets.colorFromArgb(look.bg_color) },
+        // At rest the outline is the background, so the text box reaches the edge as the thumbnail's does.
+        .border_color = if (is_selected) .accent else .{ .color = widgets.colorFromArgb(look.bg_color) },
+        .opacity = if (look.is_shown) 1 else style.OFF_TEXT_OPACITY,
     });
     const button = Button{ .key = key, .style = chip_style };
-    _ = try button.openResponse(context);
-    try chipGlyph(context, key.indexed(1), .grip);
-
-    // knots has no strikethrough, so a line is laid over the label at its last measured size.
-    const label_key = key.indexed(2);
-    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, label_key.hash());
-    const label_box = measuredBox(ui_state, label_key);
-    const label = Rect{ .key = label_key, .style = &style.overlay_chip_label_box };
-    _ = try label.open(context);
-    try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = chip.label, .style = &style.overlay_chip_label });
-    if (!look.is_shown and label_box.w() > 0) {
-        const strike = try arena.create(ui.Style);
-        strike.* = style.overlay_chip_strike.with(.{
-            .offset = .{ 0, @round(label_box.h() / 2) },
-            .width = .fixed(label_box.w()),
-        });
-        try context.e(Rect{ .key = key.indexed(5), .style = strike });
-    }
-    try label.close(context);
-
-    try chipGlyph(context, key.indexed(4), .pencil);
+    if ((try button.openResponse(context)).hovered) ui_state.requestCursor(.move);
+    const text_style = try arena.create(ui.Style);
+    text_style.* = .{
+        .font = switch (look.font_weight) {
+            .Regular, .Italic => style.FONT_REGULAR,
+            .Bold, .BoldItalic => style.FONT_SEMIBOLD,
+        },
+        .font_size = .{ .px = @as(f32, @floatFromInt(look.font_size)) * scale },
+        .foreground = widgets.solidColor(look.color),
+    };
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = chip.sample, .style = text_style });
     try button.close(context);
-}
-
-fn chipGlyph(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph) !void {
-    try context.e(Canvas{
-        .key = key,
-        .commands = try glyphs.commands(context.arena(), glyph, CHIP_GLYPH_BOX, try glyphs.snapOffset(context, key), style.INK_DARK.value),
-        .style = &style.overlay_chip_glyph,
-    });
 }
 
 /// Where the settings put a chip: its anchor's box corner plus the scaled offsets, kept on the stage.

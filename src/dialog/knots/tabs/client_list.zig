@@ -23,8 +23,6 @@ const STAGE_KEY: ui.Key = .str("knots.client_list.stage");
 const SAMPLE_LINE: ui.Style = .{ .width = .grow(), .direction = .row };
 /// How much a clickable part's outline pads its text, in real pixels.
 const PART_PADDING: i32 = 3;
-/// How faded a part's text is while it's turned off.
-const HIDDEN_OPACITY = 0.35;
 /// One row's rates side by side, each its own part.
 const STATS_GROUP: ui.Style = .{ .direction = .row, .@"align" = .center };
 
@@ -42,7 +40,7 @@ const SAMPLES = [_]Sample{
     .{ .name = "Pilot Charlie", .state = .excluded },
 };
 
-/// What a click on the preview opens: one per text, as on the Text Overlays stage.
+/// What a click on the preview opens: one per text, as on the thumbnail preview.
 const Part = enum {
     active,
     names,
@@ -400,7 +398,7 @@ fn textStyle(arena: std.mem.Allocator, color: u32, size: f32, is_grown: bool, is
     text_style.* = .{
         .foreground = widgets.solidColor(color),
         .font_size = .{ .px = size },
-        .opacity = if (is_shown) 1 else HIDDEN_OPACITY,
+        .opacity = if (is_shown) 1 else style.OFF_TEXT_OPACITY,
     };
     if (is_grown) text_style.width = .grow();
     return text_style;
@@ -462,7 +460,7 @@ fn settings(context: *ui.Frame, display: DisplayRef, part: Part) !bool {
     return close_clicked;
 }
 
-/// What else has to be on for the part's text to show, as the Text Overlays chips say.
+/// What else has to be on for the part's text to show, as the thumbnail preview's popovers say.
 fn requirementNotices(context: *ui.Frame, part: Part) !void {
     const profile = session.profile().ptr;
     const needs_chatlog = switch (part) {

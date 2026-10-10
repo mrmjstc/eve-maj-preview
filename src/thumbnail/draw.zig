@@ -8,8 +8,9 @@ const TextPosition = types.TextPosition;
 const BorderStyle = types.BorderStyle;
 
 const TEXT_BUFFER_SIZE = 256;
-const TEXT_PADDING_X = 5;
-const TEXT_PADDING_Y = 2;
+/// Around each text run's background, in real pixels; the config dialog's preview pads the same.
+pub const TEXT_PADDING_X = 5;
+pub const TEXT_PADDING_Y = 2;
 
 pub const TextDimensions = struct {
     width: usize,

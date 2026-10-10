@@ -657,6 +657,8 @@ pub const muted_text: Style = .{ .foreground = .{ .color = MUTED } };
 
 /// Stands in on a preview for each character's or system's own colour while a "unique colors" setting is on.
 pub const UNIQUE_SAMPLE: u32 = 0xFF5EC9C9;
+/// How faded a preview's text is while it's turned off, so it can still be clicked to turn it back on.
+pub const OFF_TEXT_OPACITY = 0.35;
 
 /// Wide enough for a label column beside a standard dropdown.
 pub const POPOVER_WIDTH = 420;
@@ -747,29 +749,14 @@ pub const group_chip_held: Style = group_chip.with(.{ .background = .accent, .bo
 pub const group_chip_label: Style = .{ .foreground = .{ .color = TEXT_SECONDARY } };
 pub const group_chip_label_held: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = INK_DARK } };
 
-/// A text overlay's tag on the stage; the stage sets its offset, and outlines the selected one.
-pub const overlay_chip: Style = .{
+/// A text on the thumbnail preview; the stage sets its place, padding, background and outline from the overlay's settings.
+pub const overlay_text: Style = .{
     .position = .absolute,
-    .direction = .row,
-    .@"align" = .center,
-    .gap = 5,
-    .padding = .xy(5, 3),
-    .background = .accent,
     .border_width = .all(1),
-    .border_color = .accent,
-    .radius = .{ .fixed = 3 },
-    .hover = &.{ .border_color = .{ .color = TEXT }, .state_layer = 0 },
+    .radius = .{ .fixed = 2 },
+    .hover = &.{ .border_color = .accent, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
-pub const overlay_chip_label_box: Style = .{};
-pub const overlay_chip_label: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = INK_DARK } };
-/// Laid across the label while its overlay is off; the stage sets its width and height position.
-pub const overlay_chip_strike: Style = .{
-    .position = .absolute,
-    .height = .fixed(1),
-    .background = .{ .color = INK_DARK },
-};
-pub const overlay_chip_glyph: Style = .{ .width = .fixed(12), .height = .fixed(12) };
 
 /// An icon button with a text glyph, e.g. × to clear a region.
 pub const icon_button_danger_text: Style = icon_button.with(.{

@@ -1,4 +1,4 @@
-//! The texts a thumbnail can show, as chips on the Text Overlays stage: which settings each one reads, and its popover; main thread only.
+//! The texts a thumbnail can show, as placed on the Appearance tab's thumbnail preview: which settings each one reads, and its popover; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../../config.zig");
@@ -48,7 +48,7 @@ const STYLE_ROWS = [_]PopoverField{ .font, .background };
 pub const CHIPS = [_]Chip{
     .{
         .label = "Character Name",
-        .sample = "Character Name",
+        .sample = "Pilot Alpha",
         .section = .thumbnail,
         .fields = .camelCase("characterName"),
         .show_field = "showCharacterName",
@@ -195,6 +195,7 @@ pub const Look = struct {
     offset_x: i32,
     offset_y: i32,
     font_size: i32,
+    font_weight: types.FontWeight,
     color: u32,
     bg_color: u32,
     is_shown: bool,
@@ -237,6 +238,7 @@ pub fn look(comptime chip: Chip) Look {
         .offset_x = ref.get(fields.offset_x),
         .offset_y = ref.get(fields.offset_y),
         .font_size = ref.get(fields.font_size),
+        .font_weight = ref.get(fields.font_weight),
         // Unique colours vary per character, so a sample stands in.
         .color = if (unique) style.UNIQUE_SAMPLE else if (fields.color) |field| ref.get(field) else 0xFFFFFFFF,
         .bg_color = ref.get(fields.bg_color),
