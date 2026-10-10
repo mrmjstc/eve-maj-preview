@@ -27,13 +27,13 @@ pub const ScreenMap = struct {
     /// Each monitor's box, primary first; borrows from the frame arena.
     screen_boxes: []const Box,
 
-    /// Draws the monitors; boxes added afterwards go over them.
+    /// Draws the monitors, shrunk to fit their section; boxes added afterwards go over them.
     pub fn init(context: *ui.Frame, key: ui.Key) !ScreenMap {
         const arena = context.arena();
         const desktop = win32.virtualScreenRect();
         var map: ScreenMap = .{
             .key = key,
-            .frame = .fit(desktop, MAX_WIDTH, MAX_HEIGHT),
+            .frame = .fit(desktop, try availableWidth(context, key), MAX_HEIGHT),
             .snap = try glyphs.snapOffset(context, key),
             .screen_boxes = &.{},
         };
@@ -98,5 +98,15 @@ pub const ScreenMap = struct {
         }
         try canvas.close(context);
         try centered.close(context);
+    }
+
+    /// Its row's width, measured last frame, up to MAX_WIDTH; MAX_WIDTH until the row has been laid out once.
+    fn availableWidth(context: *ui.Frame, key: ui.Key) !f32 {
+        const ui_state = context.ui();
+        const row_key = key.indexed(1);
+        const measured = try ui_state.state.getOrCreate(.measured, ui_state.allocator, row_key.hash());
+        if (measured.box.w() > 0) return @min(measured.box.w(), MAX_WIDTH);
+        context.requestRedraw();
+        return MAX_WIDTH;
     }
 };

@@ -245,7 +245,7 @@ fn setAll(source: ?[]const u8) void {
         status.show(.failure, "No open EVE clients found", .{});
         return;
     };
-    _ = positions.setAll(name) catch |err| {
+    positions.setAll(name) catch |err| {
         slog.err("Failed to set all character window positions: {}", .{err});
         status.show(.failure, "Failed to save: {}", .{err});
         return;

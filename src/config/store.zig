@@ -59,10 +59,10 @@ pub const ProfileStore = struct {
         char.position = entry.pos;
     }
 
-    /// Sets `character_name`'s saved game-window position, or with a null name every character's; clearing a missing character is a no-op.
-    pub fn setWindowPosition(self: *ProfileStore, character_name: ?[]const u8, pos: ?config.Position) !void {
-        try applyWindowPosition(&self.live, character_name, pos);
-        try applyWindowPosition(&self.saved, character_name, pos);
+    /// Sets `character_name`'s saved game-window position and size, or with a null name every character's; clearing a missing character is a no-op.
+    pub fn setWindowPosition(self: *ProfileStore, character_name: ?[]const u8, pos: ?config.Position, size: ?config.WindowSize) !void {
+        try applyWindowPosition(&self.live, character_name, pos, size);
+        try applyWindowPosition(&self.saved, character_name, pos, size);
         // A character this created needs an id, which the config dialog tracks it by.
         patch_mod.assignIds(Config, &self.live);
         self.persist();
@@ -130,13 +130,17 @@ pub const ProfileStore = struct {
 };
 
 /// Shared with the dialog's edits to a profile the app isn't running, which only exist on disk.
-pub fn applyWindowPosition(cfg: *Config, character_name: ?[]const u8, pos: ?config.Position) !void {
+pub fn applyWindowPosition(cfg: *Config, character_name: ?[]const u8, pos: ?config.Position, size: ?config.WindowSize) !void {
     if (character_name) |name| {
         if (pos == null and cfg.findCharacter(name) == null) return;
         const char = try cfg.getOrCreateCharacter(cfg.allocator, name);
         char.windowPosition = pos;
+        char.windowSize = size;
     } else {
-        for (cfg.characters.items) |*char| char.windowPosition = pos;
+        for (cfg.characters.items) |*char| {
+            char.windowPosition = pos;
+            char.windowSize = size;
+        }
     }
 }
 

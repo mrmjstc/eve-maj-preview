@@ -1301,6 +1301,7 @@ Customize individual characters with position, size, border colors, display name
       "name": "Main Character",
       "position": { "x": 100, "y": 200 },
       "windowPosition": { "x": -7, "y": 0 },
+      "windowSize": { "width": 1934, "height": 1087 },
       "borderColors": {
         "activeBorderColor": "0xFFFF00FF",
         "inactiveBorderColor": "0xFF808080"
@@ -1332,6 +1333,7 @@ Customize individual characters with position, size, border colors, display name
 
 - **position**: Where this character's thumbnail sits (screen pixels).
 - **windowPosition**: Where this character's EVE client window goes when moved to its saved position (see [Auto-Move Position](#auto-move-position)). Set it with Save Position on the Characters tab while the client is running. It's the window's top-left corner, including the few pixels of invisible resize border Windows adds, so a client snapped to a screen's left edge saves at about `x: -7`. A position whose title bar would be off every screen (e.g. after a monitor was removed) is pulled onto the nearest monitor.
+- **windowSize**: The window's size when its position was saved, set and cleared with it. Only the Characters tab's position preview uses it; moving a client to its saved position doesn't resize it.
 - **borderColors**: Optional `activeBorderColor` / `inactiveBorderColor` overrides for this character's thumbnail border; either can be left out to use the thumbnail's own.
 - **thumbnailSize**: Optional `width` / `height` override for this character's thumbnail (ignored while a thumbnail space holds the character).
 - **nameColor**: Optional color for this character's name text, taking precedence over `useUniqueCharacterNameColors`.

@@ -8,12 +8,15 @@ const bind = @import("../bind.zig");
 const hotkey = @import("../hotkey.zig");
 const portraits = @import("../portraits.zig");
 const positions = @import("../positions.zig");
+const screen_map = @import("../screen_map.zig");
+const screen_math = @import("../screen_math.zig");
 const suggest = @import("../suggest.zig");
 const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const log = @import("../../../log.zig");
 
+const ScreenMap = screen_map.ScreenMap;
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
@@ -24,6 +27,8 @@ const slog = log.scoped("dialog_knots");
 
 const ROW_KEY: ui.Key = .str("knots.roster.row");
 const PORTRAIT_KEY: ui.Key = .str("knots.roster.portrait");
+/// How big, in preview pixels, a saved position is marked when it was saved without a size.
+const POSITION_MARKER_SIZE = 6;
 /// The thumbnail's name colour is saved without alpha, which a swatch reads as transparent.
 const OPAQUE = 0xFF000000;
 
@@ -299,7 +304,7 @@ fn windowPosition(context: *ui.Frame, character: CharacterRef) !void {
         };
     }
     if ((try context.interact(Button{ .key = ui.Key.str("knots.character.position.set").indexed(character.index), .label = "Save Position", .style = &style.plain_button })).clicked) {
-        if (positions.set(name)) |_| {
+        if (positions.set(name)) {
             status.show(.success, "Window position saved", .{});
         } else |err| {
             slog.err("Failed to save the window position of '{s}': {}", .{ name, err });
@@ -307,7 +312,25 @@ fn windowPosition(context: *ui.Frame, character: CharacterRef) !void {
         }
     }
     try row.close(context);
+    try positionMap(context, character);
     try widgets.hintText(context, .str("knots.character.window_position.hint"), "Save Position requires this character's EVE client to be running right now.");
+}
+
+/// Every monitor with the saved window on it, or a marker at its top-left when it was saved without a size.
+fn positionMap(context: *ui.Frame, character: CharacterRef) !void {
+    var map = try ScreenMap.init(context, .str("knots.character.position.map"));
+    if (character.get("windowPosition")) |pos| {
+        const line_color = context.ui().theme.primary.value;
+        var fill_color = line_color;
+        fill_color[3] = 0.25;
+        const size = character.get("windowSize");
+        const width = if (size) |saved| saved.width else 0;
+        const height = if (size) |saved| saved.height else 0;
+        const window_box = map.frame.box(.{ .left = pos.x, .top = pos.y, .right = pos.x + width, .bottom = pos.y + height });
+        const box: screen_math.Box = if (window_box[2] >= 1 and window_box[3] >= 1) window_box else .{ window_box[0], window_box[1], POSITION_MARKER_SIZE, POSITION_MARKER_SIZE };
+        try map.addBox(context.arena(), box, fill_color, line_color);
+    }
+    try map.show(context, false);
 }
 
 /// Adds every logged-in client that isn't listed yet.

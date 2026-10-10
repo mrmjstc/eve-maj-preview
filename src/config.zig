@@ -64,6 +64,7 @@ pub const OrePriceConfig = global.OrePriceConfig;
 pub const DEFAULT_ORE_TABLE = global.DEFAULT_ORE_TABLE;
 pub const GlobalConfig = global.GlobalConfig;
 pub const Position = characters.Position;
+pub const WindowSize = characters.WindowSize;
 pub const CharacterBorderColorsConfig = characters.CharacterBorderColorsConfig;
 pub const CharacterThumbnailSizeConfig = characters.CharacterThumbnailSizeConfig;
 pub const CharacterConfig = characters.CharacterConfig;

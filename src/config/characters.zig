@@ -19,6 +19,12 @@ pub const Position = struct {
     }
 };
 
+/// A saved EVE client window's size, kept beside its windowPosition.
+pub const WindowSize = struct {
+    width: i32,
+    height: i32,
+};
+
 pub const CharacterBorderColorsConfig = struct {
     activeBorderColor: ?u32 = null,
     inactiveBorderColor: ?u32 = null,
@@ -44,6 +50,8 @@ pub const CharacterConfig = struct {
     name: []const u8 = "",
     position: ?Position = null,
     windowPosition: ?Position = null,
+    /// Saved with windowPosition, for the config dialog's preview; null on positions saved before sizes were.
+    windowSize: ?WindowSize = null,
     borderColors: ?CharacterBorderColorsConfig = null,
     nameColor: ?u32 = null,
     thumbnailSize: ?CharacterThumbnailSizeConfig = null,
