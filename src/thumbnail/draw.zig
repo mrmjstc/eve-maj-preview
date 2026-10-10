@@ -235,8 +235,8 @@ pub fn drawBorder(pixels: [*]u32, width: usize, height: usize, border_width: usi
                 for (region.y_start..region.y_end) |y| {
                     const row_start = y * width;
                     for (region.x_start..region.x_end) |x| {
-                        const pos = if (is_horizontal) x else y;
-                        const phase = pos % pattern_length;
+                        const distance = if (is_horizontal) x else y;
+                        const phase = distance % pattern_length;
                         const in_dash = phase < dash_length;
                         const in_dot = phase >= dot_start and phase < dot_start + dot_length;
 
@@ -307,7 +307,7 @@ fn borderRegions(width: usize, height: usize, border_width: usize) [4]BorderRegi
     };
 }
 
-/// Marks pixels along the border's length using a repeating mark/gap pattern, where `pos` runs along the edge; shared by Dashed and Dotted, which differ only in the mark/gap lengths.
+/// Marks pixels along the border's length using a repeating mark/gap pattern, where `distance` runs along the edge; shared by Dashed and Dotted, which differ only in the mark/gap lengths.
 fn drawLengthwisePattern(pixels: [*]u32, width: usize, height: usize, border_width: usize, color: u32, mark_length: usize, gap_length: usize) void {
     const pattern_length = mark_length + gap_length;
 
@@ -317,9 +317,9 @@ fn drawLengthwisePattern(pixels: [*]u32, width: usize, height: usize, border_wid
         for (region.y_start..region.y_end) |y| {
             const row_start = y * width;
             for (region.x_start..region.x_end) |x| {
-                const pos = if (is_horizontal) x else y;
+                const distance = if (is_horizontal) x else y;
 
-                if ((pos % pattern_length) < mark_length) {
+                if ((distance % pattern_length) < mark_length) {
                     pixels[row_start + x] = color;
                 }
             }

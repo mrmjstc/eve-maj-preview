@@ -60,7 +60,7 @@ pub const ChatlogMonitor = struct {
     rescan_names: std.ArrayList([]u8) = .empty,
     rescan_index: usize = 0,
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, cfg: *const config.ChatlogConfig, global_settings: ?*config.GlobalConfig, character_ids: ?*CharacterIds) !*ChatlogMonitor {
+    pub fn init(allocator: std.mem.Allocator, io: std.Io, chatlog_config: *const config.ChatlogConfig, global_settings: ?*config.GlobalConfig, character_ids: ?*CharacterIds) !*ChatlogMonitor {
         const monitor = try allocator.create(ChatlogMonitor);
         errdefer allocator.destroy(monitor);
         const stop_event = win32.CreateEventA(null, win32.TRUE, win32.FALSE, null) orelse return error.CreateEventFailed;
@@ -69,7 +69,7 @@ pub const ChatlogMonitor = struct {
             .allocator = allocator,
             .io = io,
             .stop_event = stop_event,
-            .finder = try discovery.LogFinder.init(allocator, io, cfg.chatlogDir, cfg.gamelogDir, character_ids),
+            .finder = try discovery.LogFinder.init(allocator, io, chatlog_config.chatlogDir, chatlog_config.gamelogDir, character_ids),
             .global_settings = global_settings,
             .character_ids = character_ids,
             .commands = .init(allocator, io),
@@ -80,7 +80,7 @@ pub const ChatlogMonitor = struct {
             .monitored_paths = .init(allocator),
             .wanted = .init(allocator),
         };
-        monitor.applySettings(cfg);
+        monitor.applySettings(chatlog_config);
         return monitor;
     }
 
@@ -108,18 +108,18 @@ pub const ChatlogMonitor = struct {
         map.deinit();
     }
 
-    /// Whether this monitor already watches what `cfg` asks for, so a reload can keep it and its scan state.
-    pub fn runsWith(self: *const ChatlogMonitor, cfg: *const config.ChatlogConfig) bool {
-        return cfg.enabled and
-            std.mem.eql(u8, cfg.chatlogDir, self.finder.chatlog_dir) and
-            std.mem.eql(u8, cfg.gamelogDir, self.finder.gamelog_dir);
+    /// Whether this monitor already watches what `chatlog_config` asks for, so a reload can keep it and its scan state.
+    pub fn runsWith(self: *const ChatlogMonitor, chatlog_config: *const config.ChatlogConfig) bool {
+        return chatlog_config.enabled and
+            std.mem.eql(u8, chatlog_config.chatlogDir, self.finder.chatlog_dir) and
+            std.mem.eql(u8, chatlog_config.gamelogDir, self.finder.gamelog_dir);
     }
 
     /// The polling settings a profile reload can change without rebuilding the monitor; only while the worker is stopped.
-    pub fn applySettings(self: *ChatlogMonitor, cfg: *const config.ChatlogConfig) void {
-        self.idle_poll_threshold = cfg.idlePollThreshold;
-        self.max_poll_multiplier = cfg.maxPollMultiplier;
-        self.poll_interval_ms = cfg.pollIntervalMs;
+    pub fn applySettings(self: *ChatlogMonitor, chatlog_config: *const config.ChatlogConfig) void {
+        self.idle_poll_threshold = chatlog_config.idlePollThreshold;
+        self.max_poll_multiplier = chatlog_config.maxPollMultiplier;
+        self.poll_interval_ms = chatlog_config.pollIntervalMs;
     }
 
     /// Owned, since the worker reads it while a dialog preview may replace the config's copy; only while the worker is stopped.

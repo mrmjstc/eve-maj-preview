@@ -93,8 +93,8 @@ pub const TrayIcon = struct {
     }
 
     fn showContextMenu(self: *TrayIcon, config: *const config_mod.Config) void {
-        var cursor_pos: win32.POINT = undefined;
-        if (win32.GetCursorPos(&cursor_pos) == 0) {
+        var cursor_position: win32.POINT = undefined;
+        if (win32.GetCursorPos(&cursor_position) == 0) {
             slog.err("Failed to get cursor position", .{});
             return;
         }
@@ -149,7 +149,7 @@ pub const TrayIcon = struct {
 
         // Without this the menu stays open when clicking elsewhere.
         _ = win32.SetForegroundWindow(self.hwnd);
-        _ = win32.TrackPopupMenu(menu, win32.TPM_RIGHTBUTTON | win32.TPM_BOTTOMALIGN, cursor_pos.x, cursor_pos.y, 0, self.hwnd, null);
+        _ = win32.TrackPopupMenu(menu, win32.TPM_RIGHTBUTTON | win32.TPM_BOTTOMALIGN, cursor_position.x, cursor_position.y, 0, self.hwnd, null);
     }
 
     /// Re-reads the profiles, so the list matches the folder each time the menu opens.

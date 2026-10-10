@@ -292,9 +292,9 @@ fn mainImpl(init: std.process.Init) !void {
         startChatlogWorker(monitor);
         slog.debug("Chatlog monitoring enabled", .{});
 
-        for (g_store.live.characters.items) |char_config| {
-            monitor.resolveCharacterId(char_config.name) catch |err| {
-                slog.warn("Failed to queue ID backfill for '{s}': {}", .{ char_config.name, err });
+        for (g_store.live.characters.items) |character_config| {
+            monitor.resolveCharacterId(character_config.name) catch |err| {
+                slog.warn("Failed to queue ID backfill for '{s}': {}", .{ character_config.name, err });
             };
         }
     }
@@ -450,13 +450,13 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             const payload = protocol.copyDataBytes(cds);
 
             switch (cds.dwData) {
-                win32.PROTOCOL_SWITCH_CHARACTER => if (payload) |char_name| {
-                    slog.info("Protocol handler: switch to character: {s}", .{char_name});
+                win32.PROTOCOL_SWITCH_CHARACTER => if (payload) |character_name| {
+                    slog.info("Protocol handler: switch to character: {s}", .{character_name});
                     if (scout.g_scout_ptr) |scout_ptr| {
-                        if (scout_ptr.getHwndByName(char_name)) |target_hwnd| {
+                        if (scout_ptr.getHwndByName(character_name)) |target_hwnd| {
                             activation.activate(target_hwnd);
                         } else {
-                            slog.warn("Failed to switch to character '{s}': not running", .{char_name});
+                            slog.warn("Failed to switch to character '{s}': not running", .{character_name});
                         }
                     }
                 },

@@ -3,7 +3,7 @@ const std = @import("std");
 const color = @import("../util/color.zig");
 const wire = @import("wire.zig");
 const files = @import("files.zig");
-const config = @import("../config.zig");
+const config_mod = @import("../config.zig");
 const log = @import("../log.zig");
 
 const slog = log.scoped("config");
@@ -39,49 +39,49 @@ pub const AutoColorStore = struct {
     }
 
     /// A custom override first, then the unique generated colour if enabled, then the configured default.
-    pub fn systemNameColor(self: *AutoColorStore, cfg: *const config.Config, system_name: []const u8) u32 {
-        if (cfg.findSystemColor(system_name)) |custom_color| return custom_color;
-        const shown = cfg.shownColors();
+    pub fn systemNameColor(self: *AutoColorStore, config: *const config_mod.Config, system_name: []const u8) u32 {
+        if (config.findSystemColor(system_name)) |custom_color| return custom_color;
+        const shown = config.shownColors();
         if (!shown.uses_unique_system_colors) return shown.system_name_color;
 
         self.load();
 
         var overrides: [color.AutoColors.MAX_AVOIDED]u32 = undefined;
-        const override_count = @min(cfg.systemColors.items.len, overrides.len);
-        for (cfg.systemColors.items[0..override_count], 0..) |sc, i| overrides[i] = sc.color;
+        const override_count = @min(config.systemColors.items.len, overrides.len);
+        for (config.systemColors.items[0..override_count], 0..) |sc, i| overrides[i] = sc.color;
 
         return self.system.colorFor(self.allocator, system_name, overrides[0..override_count]);
     }
 
     /// The character's own override, then the unique colour if enabled; null means the caller's own default.
-    pub fn characterNameColor(self: *AutoColorStore, cfg: *const config.Config, character_name: []const u8) ?u32 {
-        if (cfg.findCharacterConst(character_name)) |char| {
-            if (char.nameColor) |custom_color| return custom_color;
+    pub fn characterNameColor(self: *AutoColorStore, config: *const config_mod.Config, character_name: []const u8) ?u32 {
+        if (config.findCharacterConst(character_name)) |character| {
+            if (character.nameColor) |custom_color| return custom_color;
         }
-        if (!cfg.shownColors().uses_unique_name_colors) return null;
+        if (!config.shownColors().uses_unique_name_colors) return null;
 
-        return self.characterColor(cfg, character_name);
+        return self.characterColor(config, character_name);
     }
 
     /// The character's own active border colour, else the unique colour if enabled; the inactive one is left as set.
-    pub fn characterBorderColors(self: *AutoColorStore, cfg: *const config.Config, character_name: []const u8) ?config.CharacterBorderColorsConfig {
-        const configured = if (cfg.findCharacterConst(character_name)) |char| char.borderColors else null;
-        if (!cfg.shownColors().uses_unique_border_colors) return configured;
+    pub fn characterBorderColors(self: *AutoColorStore, config: *const config_mod.Config, character_name: []const u8) ?config_mod.CharacterBorderColorsConfig {
+        const configured = if (config.findCharacterConst(character_name)) |character| character.borderColors else null;
+        if (!config.shownColors().uses_unique_border_colors) return configured;
 
-        var colors = configured orelse config.CharacterBorderColorsConfig{};
-        if (colors.activeBorderColor == null) colors.activeBorderColor = self.characterColor(cfg, character_name);
+        var colors = configured orelse config_mod.CharacterBorderColorsConfig{};
+        if (colors.activeBorderColor == null) colors.activeBorderColor = self.characterColor(config, character_name);
         return colors;
     }
 
     /// One stored colour per character, shared by its name and border; steers clear of every character's own name and active border overrides.
-    fn characterColor(self: *AutoColorStore, cfg: *const config.Config, character_name: []const u8) u32 {
+    fn characterColor(self: *AutoColorStore, config: *const config_mod.Config, character_name: []const u8) u32 {
         self.load();
 
         var overrides: [color.AutoColors.MAX_AVOIDED]u32 = undefined;
         var override_count: usize = 0;
-        collect: for (cfg.characters.items) |char| {
-            const border_color = if (char.borderColors) |border| border.activeBorderColor else null;
-            for ([_]?u32{ char.nameColor, border_color }) |maybe_color| {
+        collect: for (config.characters.items) |character| {
+            const border_color = if (character.borderColors) |border| border.activeBorderColor else null;
+            for ([_]?u32{ character.nameColor, border_color }) |maybe_color| {
                 const custom_color = maybe_color orelse continue;
                 if (override_count == overrides.len) break :collect;
                 overrides[override_count] = custom_color;

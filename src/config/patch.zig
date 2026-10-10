@@ -148,34 +148,34 @@ fn writeFieldAt(jw: anytype, comptime F: type, comptime name: []const u8, ptr: *
 }
 
 /// Returns the id an `insert` gave its item. Validation is the caller's, once a batch is applied.
-pub fn apply(comptime T: type, doc: *T, op: Op, ctx: Context) !?u32 {
+pub fn apply(comptime T: type, doc: *T, op: Op, context: Context) !?u32 {
     const kind = std.meta.stringToEnum(Kind, op.op) orelse return error.UnknownOp;
-    return applyIn(T, doc, op.path, kind, op, ctx);
+    return applyIn(T, doc, op.path, kind, op, context);
 }
 
-fn applyIn(comptime T: type, target: *T, path: []const std.json.Value, kind: Kind, op: Op, ctx: Context) !?u32 {
+fn applyIn(comptime T: type, target: *T, path: []const std.json.Value, kind: Kind, op: Op, context: Context) !?u32 {
     if (path.len == 0) return error.InvalidPath;
     const key = try fieldKey(path[0]);
     if (comptime isKeyedMap(T)) {
         const child = target.childAt(key) orelse return error.UnknownPath;
-        return applyIn(ChildOf(T), child, path[1..], kind, op, ctx);
+        return applyIn(ChildOf(T), child, path[1..], kind, op, context);
     } else {
         inline for (comptime wire.savedFields(T)) |f| {
-            if (std.mem.eql(u8, key, f.name)) return applyField(f.type, f.name, &@field(target, f.name), f.defaultValue(), path[1..], kind, op, ctx);
+            if (std.mem.eql(u8, key, f.name)) return applyField(f.type, f.name, &@field(target, f.name), f.defaultValue(), path[1..], kind, op, context);
         }
         return error.UnknownPath;
     }
 }
 
-fn applyField(comptime F: type, comptime name: []const u8, ptr: *F, default: ?F, path: []const std.json.Value, kind: Kind, op: Op, ctx: Context) !?u32 {
+fn applyField(comptime F: type, comptime name: []const u8, ptr: *F, default: ?F, path: []const std.json.Value, kind: Kind, op: Op, context: Context) !?u32 {
     if (path.len == 0) {
         switch (kind) {
             .set => {
-                try setValue(F, name, ptr, default, op.value, ctx);
+                try setValue(F, name, ptr, default, op.value, context);
                 return null;
             },
             .insert => if (comptime wire.ListItem(F)) |Item| {
-                if (comptime hasId(Item)) return try insertItem(Item, ptr, op, ctx) else return error.ListIsNotKeyed;
+                if (comptime hasId(Item)) return try insertItem(Item, ptr, op, context) else return error.ListIsNotKeyed;
             } else return error.NotAList,
             .remove, .move => return error.InvalidPath,
         }
@@ -183,12 +183,12 @@ fn applyField(comptime F: type, comptime name: []const u8, ptr: *F, default: ?F,
     if (comptime wire.ListItem(F)) |Item| {
         if (comptime hasId(Item)) {
             const index = try findItem(Item, ptr.items, path[0]);
-            if (path.len > 1) return applyIn(Item, &ptr.items[index], path[1..], kind, op, ctx);
+            if (path.len > 1) return applyIn(Item, &ptr.items[index], path[1..], kind, op, context);
             switch (kind) {
-                .set => try replaceItem(Item, ptr, index, op.value, ctx),
+                .set => try replaceItem(Item, ptr, index, op.value, context),
                 .remove => {
                     var removed = ptr.orderedRemove(index);
-                    wire.free(Item, &removed, ctx.allocator);
+                    wire.free(Item, &removed, context.allocator);
                 },
                 .move => {
                     const to = op.index orelse return error.MissingIndex;
@@ -200,38 +200,38 @@ fn applyField(comptime F: type, comptime name: []const u8, ptr: *F, default: ?F,
             return null;
         } else return error.ListIsNotKeyed;
     }
-    if (comptime isKeyedMap(F)) return applyIn(F, ptr, path, kind, op, ctx);
+    if (comptime isKeyedMap(F)) return applyIn(F, ptr, path, kind, op, context);
     if (comptime OptionalStruct(F)) |N| {
         // Editing one field of an unset override starts it from the defaults, and zero where there are none (Position).
         if (ptr.* == null) ptr.* = std.mem.zeroInit(N, .{});
-        return applyIn(N, &ptr.*.?, path, kind, op, ctx);
+        return applyIn(N, &ptr.*.?, path, kind, op, context);
     }
-    if (comptime isStruct(F)) return applyIn(F, ptr, path, kind, op, ctx);
+    if (comptime isStruct(F)) return applyIn(F, ptr, path, kind, op, context);
     return error.InvalidPath;
 }
 
-fn setValue(comptime F: type, comptime name: []const u8, ptr: *F, default: ?F, json: std.json.Value, ctx: Context) !void {
-    const saved = std.json.parseFromValueLeaky(wire.FieldWire(F, name), ctx.arena, json, .{ .ignore_unknown_fields = true }) catch return error.InvalidValue;
-    const fresh = try wire.fieldFromWire(F, saved, ctx.allocator);
-    wire.freeField(F, ptr, default, ctx.allocator);
+fn setValue(comptime F: type, comptime name: []const u8, ptr: *F, default: ?F, json: std.json.Value, context: Context) !void {
+    const saved = std.json.parseFromValueLeaky(wire.FieldWire(F, name), context.arena, json, .{ .ignore_unknown_fields = true }) catch return error.InvalidValue;
+    const fresh = try wire.fieldFromWire(F, saved, context.allocator);
+    wire.freeField(F, ptr, default, context.allocator);
     ptr.* = fresh;
 }
 
-fn replaceItem(comptime Item: type, list: *std.ArrayList(Item), index: usize, json: std.json.Value, ctx: Context) !void {
-    const saved = std.json.parseFromValueLeaky(wire.WireOf(Item), ctx.arena, json, .{ .ignore_unknown_fields = true }) catch return error.InvalidValue;
-    var fresh = try wire.decode(Item, saved, ctx.allocator);
+fn replaceItem(comptime Item: type, list: *std.ArrayList(Item), index: usize, json: std.json.Value, context: Context) !void {
+    const saved = std.json.parseFromValueLeaky(wire.WireOf(Item), context.arena, json, .{ .ignore_unknown_fields = true }) catch return error.InvalidValue;
+    var fresh = try wire.decode(Item, saved, context.allocator);
     fresh.id = list.items[index].id;
-    wire.free(Item, &list.items[index], ctx.allocator);
+    wire.free(Item, &list.items[index], context.allocator);
     list.items[index] = fresh;
 }
 
-fn insertItem(comptime Item: type, list: *std.ArrayList(Item), op: Op, ctx: Context) !u32 {
+fn insertItem(comptime Item: type, list: *std.ArrayList(Item), op: Op, context: Context) !u32 {
     const json = op.value;
-    const saved = std.json.parseFromValueLeaky(wire.WireOf(Item), ctx.arena, json, .{ .ignore_unknown_fields = true }) catch return error.InvalidValue;
-    var fresh = try wire.decode(Item, saved, ctx.allocator);
-    errdefer wire.free(Item, &fresh, ctx.allocator);
+    const saved = std.json.parseFromValueLeaky(wire.WireOf(Item), context.arena, json, .{ .ignore_unknown_fields = true }) catch return error.InvalidValue;
+    var fresh = try wire.decode(Item, saved, context.allocator);
+    errdefer wire.free(Item, &fresh, context.allocator);
     fresh.id = nextId();
-    try list.insert(ctx.allocator, @min(op.index orelse list.items.len, list.items.len), fresh);
+    try list.insert(context.allocator, @min(op.index orelse list.items.len, list.items.len), fresh);
     return fresh.id;
 }
 

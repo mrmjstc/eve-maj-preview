@@ -37,8 +37,8 @@ pub const FontCache = struct {
     }
 
     /// The thumbnail character-name font at `dpi`, for overlays not tied to one thumbnail window (ghost outlines, hint box, region-select label).
-    pub fn characterNameFont(self: *FontCache, thumbnail_cfg: *const config.ThumbnailConfig, dpi: u32) !win32.HFONT {
-        return self.get(.main, dpi, thumbnail_cfg.characterNameFontName, win32.scalePixels(thumbnail_cfg.characterNameFontSize, win32.dpiToScale(dpi)), thumbnail_cfg.characterNameFontWeight);
+    pub fn characterNameFont(self: *FontCache, thumbnail_config: *const config.ThumbnailConfig, dpi: u32) !win32.HFONT {
+        return self.get(.main, dpi, thumbnail_config.characterNameFontName, win32.scalePixels(thumbnail_config.characterNameFontSize, win32.dpiToScale(dpi)), thumbnail_config.characterNameFontWeight);
     }
 
     /// Gets or creates the cached font for the given (slot, dpi), recreating it only if its settings changed.

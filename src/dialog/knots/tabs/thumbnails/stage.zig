@@ -221,10 +221,10 @@ fn dropResult(position: [2]f32, chip_size: [2]f32, stage_size: [2]f32, scale: f3
 
 fn zoneFor(position: [2]f32, chip_size: [2]f32, stage_size: [2]f32) types.TextPosition {
     const centre = [2]f32{ position[0] + chip_size[0] / 2, position[1] + chip_size[1] / 2 };
-    const col: u8 = if (centre[0] < stage_size[0] / 3) 0 else if (centre[0] < stage_size[0] * 2 / 3) 1 else 2;
+    const column: u8 = if (centre[0] < stage_size[0] / 3) 0 else if (centre[0] < stage_size[0] * 2 / 3) 1 else 2;
     const row: u8 = if (centre[1] < stage_size[1] / 3) 0 else if (centre[1] < stage_size[1] * 2 / 3) 1 else 2;
     // TextPosition's tags run in reading order, three to a row.
-    return @fromBackingInt(@intCast(row * 3 + col));
+    return @fromBackingInt(@intCast(row * 3 + column));
 }
 
 /// The chip's top-left when it sits flush in `position`'s corner or edge.

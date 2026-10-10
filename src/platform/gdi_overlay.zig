@@ -384,7 +384,7 @@ pub fn drawRoundedFrame(bmp: *const OverlayBitmap, radius: usize, argb: u32) voi
 /// Pushes the bitmap to a layered window at its origin using per-pixel alpha, scaled by `opacity`.
 pub fn presentLayered(hwnd: win32.HWND, bmp: *const OverlayBitmap, opacity: u8) void {
     const window_size = win32.SIZE{ .cx = @intCast(bmp.width), .cy = @intCast(bmp.height) };
-    const source_pos = win32.POINT{ .x = 0, .y = 0 };
+    const source_point = win32.POINT{ .x = 0, .y = 0 };
     var blend = win32.BLENDFUNCTION{
         .BlendOp = win32.AC_SRC_OVER,
         .BlendFlags = 0,
@@ -392,7 +392,7 @@ pub fn presentLayered(hwnd: win32.HWND, bmp: *const OverlayBitmap, opacity: u8) 
         .AlphaFormat = win32.AC_SRC_ALPHA,
     };
     // A null hdcDst is valid with an hdcSrc: UpdateLayeredWindow uses the screen DC itself, sparing a GetDC/ReleaseDC pair every frame.
-    _ = win32.UpdateLayeredWindow(hwnd, null, null, @constCast(&window_size), bmp.mem_dc, @constCast(&source_pos), 0, &blend, win32.ULW_ALPHA);
+    _ = win32.UpdateLayeredWindow(hwnd, null, null, @constCast(&window_size), bmp.mem_dc, @constCast(&source_point), 0, &blend, win32.ULW_ALPHA);
 }
 
 /// Longest prefix of `text` (plus "...") that fits within `max_w` pixels measured on `dc`, written into `out`; returns the prefix as-is (no ellipsis) if it already fits.

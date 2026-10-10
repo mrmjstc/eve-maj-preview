@@ -71,8 +71,8 @@ const CharacterOrderCache = struct {
             windows: []const scout.EveWindow,
             order_map: *const std.StringHashMap(usize),
 
-            fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
-                return config.orderMapLessThan(ctx.order_map, ctx.windows[a_index].character_name, ctx.windows[b_index].character_name, a_index, b_index);
+            fn lessThan(context: @This(), a_index: usize, b_index: usize) bool {
+                return config.orderMapLessThan(context.order_map, context.windows[a_index].character_name, context.windows[b_index].character_name, a_index, b_index);
             }
         };
 
@@ -81,31 +81,31 @@ const CharacterOrderCache = struct {
     }
 };
 
-/// Visits every index in [0, num) once, starting one step past `cursor`; a missing or stale cursor starts at the first index in `forward` direction.
+/// Visits every index in [0, count) once, starting one step past `cursor`; a missing or stale cursor starts at the first index in `forward` direction.
 /// Without `wrap`, stops at the last index in `forward` direction instead of going round.
 pub const CycleOrder = struct {
-    idx: usize,
-    num: usize,
+    index: usize,
+    count: usize,
     forward: bool,
     remaining: usize,
 
-    pub fn init(cursor: ?usize, num: usize, forward: bool, wrap: bool) CycleOrder {
-        const valid_cursor = if (cursor) |c| (if (c < num) c else null) else null;
-        // Wraps harmlessly when num == 0: remaining is 0, so next() never steps.
-        const before_start = valid_cursor orelse (if (forward) num -% 1 else 0);
-        const remaining = if (wrap) num else if (valid_cursor) |c| (if (forward) num - 1 - c else c) else num;
-        return .{ .idx = before_start, .num = num, .forward = forward, .remaining = remaining };
+    pub fn init(cursor: ?usize, count: usize, forward: bool, wrap: bool) CycleOrder {
+        const valid_cursor = if (cursor) |c| (if (c < count) c else null) else null;
+        // Wraps harmlessly when count == 0: remaining is 0, so next() never steps.
+        const before_start = valid_cursor orelse (if (forward) count -% 1 else 0);
+        const remaining = if (wrap) count else if (valid_cursor) |c| (if (forward) count - 1 - c else c) else count;
+        return .{ .index = before_start, .count = count, .forward = forward, .remaining = remaining };
     }
 
     pub fn next(self: *CycleOrder) ?usize {
         if (self.remaining == 0) return null;
         self.remaining -= 1;
         if (self.forward) {
-            self.idx = (self.idx + 1) % self.num;
+            self.index = (self.index + 1) % self.count;
         } else {
-            self.idx = if (self.idx == 0) self.num - 1 else self.idx - 1;
+            self.index = if (self.index == 0) self.count - 1 else self.index - 1;
         }
-        return self.idx;
+        return self.index;
     }
 };
 
@@ -115,16 +115,16 @@ pub fn directionName(forward: bool) []const u8 {
 
 /// Cycles to the next running character sharing this hotkey.
 pub fn activatePerCharacterGroup(manager: *HotkeyManager, group: *bindings.CharacterGroup) void {
-    const num = group.character_indices.len;
-    var it = CycleOrder.init(group.current_index, num, true, true);
-    while (it.next()) |idx| {
-        const char_index = group.character_indices[idx];
-        if (char_index >= manager.config.characters.items.len) continue;
-        const char_name = manager.config.characters.items[char_index].name;
+    const count = group.character_indices.len;
+    var it = CycleOrder.init(group.current_index, count, true, true);
+    while (it.next()) |member_index| {
+        const character_index = group.character_indices[member_index];
+        if (character_index >= manager.config.characters.items.len) continue;
+        const character_name = manager.config.characters.items[character_index].name;
 
-        if (manager.scout.getHwndByName(char_name)) |hwnd| {
-            group.current_index = idx;
-            slog.info("Activating character: {s} ({}/{})", .{ char_name, idx + 1, num });
+        if (manager.scout.getHwndByName(character_name)) |hwnd| {
+            group.current_index = member_index;
+            slog.info("Activating character: {s} ({}/{})", .{ character_name, member_index + 1, count });
             activation.activate(hwnd);
             return;
         }
@@ -178,30 +178,30 @@ pub fn cycleGroups(manager: *HotkeyManager, group_indices: []const usize, forwar
     }
 
     var it = CycleOrder.init(found_index, total, forward, !stop_at_ends);
-    while (it.next()) |idx| {
-        if (idx < member_count) {
-            const member = chainMember(groups, group_indices, idx);
-            const char_name = groups[member.group_index].characters.items[member.index];
+    while (it.next()) |slot_index| {
+        if (slot_index < member_count) {
+            const member = chainMember(groups, group_indices, slot_index);
+            const character_name = groups[member.group_index].characters.items[member.index];
 
-            if (manager.exclusions.contains(char_name)) {
-                slog.debug("Skipping excluded character: {s}", .{char_name});
+            if (manager.exclusions.contains(character_name)) {
+                slog.debug("Skipping excluded character: {s}", .{character_name});
                 continue;
             }
 
-            if (manager.scout.getHwndByName(char_name)) |hwnd| {
+            if (manager.scout.getHwndByName(character_name)) |hwnd| {
                 manager.cycle.group_cursors[member.group_index] = member.index;
                 manager.cycle.last_cycled_group = member.group_index;
-                slog.info("Cycling {s} to: {s} ({}/{})", .{ directionName(forward), char_name, idx + 1, total });
+                slog.info("Cycling {s} to: {s} ({}/{})", .{ directionName(forward), character_name, slot_index + 1, total });
                 activation.activate(hwnd);
                 return;
             }
             continue;
         }
 
-        const hwnd = not_logged_in_hwnds.items[idx - member_count];
+        const hwnd = not_logged_in_hwnds.items[slot_index - member_count];
         // The not-logged-in tail is tracked by hwnd, so no group position applies.
         for (group_indices) |group_index| manager.cycle.group_cursors[group_index] = null;
-        slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(forward), idx + 1, total });
+        slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(forward), slot_index + 1, total });
         activation.activate(hwnd);
         manager.cycle.last_not_logged_in_hwnd = hwnd;
         return;
@@ -229,23 +229,23 @@ pub fn cycleExcluded(manager: *HotkeyManager, forward: bool) void {
     slog.info("{s} excluded character hotkey pressed", .{if (forward) "Next" else "Previous"});
     const excluded_names = manager.exclusions.names.items;
 
-    const num_excluded = excluded_names.len;
-    if (num_excluded == 0) {
+    const excluded_count = excluded_names.len;
+    if (excluded_count == 0) {
         slog.info("No excluded characters to cycle through", .{});
         return;
     }
 
-    var it = CycleOrder.init(manager.cycle.excluded_index, num_excluded, forward, true);
-    while (it.next()) |idx| {
-        const char_name = excluded_names[idx];
+    var it = CycleOrder.init(manager.cycle.excluded_index, excluded_count, forward, true);
+    while (it.next()) |name_index| {
+        const character_name = excluded_names[name_index];
 
-        if (manager.scout.getHwndByName(char_name)) |hwnd| {
-            manager.cycle.excluded_index = idx;
-            slog.info("Cycling {s} to excluded character: {s} ({}/{})", .{ directionName(forward), char_name, idx + 1, num_excluded });
+        if (manager.scout.getHwndByName(character_name)) |hwnd| {
+            manager.cycle.excluded_index = name_index;
+            slog.info("Cycling {s} to excluded character: {s} ({}/{})", .{ directionName(forward), character_name, name_index + 1, excluded_count });
             activation.activate(hwnd);
             return;
         }
-        slog.debug("Excluded character {s} is not currently running, skipping", .{char_name});
+        slog.debug("Excluded character {s} is not currently running, skipping", .{character_name});
     }
 
     slog.warn("No excluded characters are currently running", .{});
@@ -262,24 +262,24 @@ pub fn cycleNotified(manager: *HotkeyManager, forward: bool) void {
     };
     defer names.deinit(manager.allocator);
 
-    const num_notified = names.items.len;
-    if (num_notified == 0) {
+    const notified_count = names.items.len;
+    if (notified_count == 0) {
         slog.info("No recently-notified characters to cycle through", .{});
         return;
     }
 
     const found_index = if (manager.cycle.last_notified_name) |last_name| strings.indexOfString(names.items, last_name) else null;
-    var it = CycleOrder.init(found_index, num_notified, forward, true);
+    var it = CycleOrder.init(found_index, notified_count, forward, true);
     while (it.next()) |index| {
-        const char_name = names.items[index];
+        const character_name = names.items[index];
 
-        if (manager.scout.getHwndByName(char_name)) |hwnd| {
-            slog.info("Cycling {s} to notified character: {s} ({}/{})", .{ directionName(forward), char_name, index + 1, num_notified });
+        if (manager.scout.getHwndByName(character_name)) |hwnd| {
+            slog.info("Cycling {s} to notified character: {s} ({}/{})", .{ directionName(forward), character_name, index + 1, notified_count });
             activation.activate(hwnd);
-            setOwnedCursorName(manager.allocator, &manager.cycle.last_notified_name, char_name, "notified");
+            setOwnedCursorName(manager.allocator, &manager.cycle.last_notified_name, character_name, "notified");
             return;
         }
-        slog.debug("Notified character {s} is not currently running, skipping", .{char_name});
+        slog.debug("Notified character {s} is not currently running, skipping", .{character_name});
     }
 
     slog.warn("No recently-notified characters are currently running", .{});
@@ -289,8 +289,8 @@ pub fn cycleNotified(manager: *HotkeyManager, forward: bool) void {
 pub fn cycleAllClients(manager: *HotkeyManager, forward: bool) void {
     slog.info("Cycle all clients hotkey pressed ({s})", .{directionName(forward)});
     const windows = manager.scout.getWindows();
-    const num = windows.len;
-    if (num == 0) {
+    const count = windows.len;
+    if (count == 0) {
         slog.info("No logged-in clients to cycle through", .{});
         return;
     }
@@ -312,13 +312,13 @@ pub fn cycleAllClients(manager: *HotkeyManager, forward: bool) void {
     }
 
     const respect_exclusions = manager.liveGlobal().cycleAllClientsRespectExclusions;
-    var it = CycleOrder.init(found_index, num, forward, true);
+    var it = CycleOrder.init(found_index, count, forward, true);
     while (it.next()) |index| {
         const w = windows[order[index]];
         if (scout.isGenericCharacterName(w.character_name)) continue;
         if (respect_exclusions and manager.exclusions.contains(w.character_name)) continue;
 
-        slog.info("Cycling {s} to client: {s} ({}/{})", .{ directionName(forward), w.character_name, index + 1, num });
+        slog.info("Cycling {s} to client: {s} ({}/{})", .{ directionName(forward), w.character_name, index + 1, count });
         activation.activate(w.hwnd);
         setOwnedCursorName(manager.allocator, &manager.cycle.last_all_clients_name, w.character_name, "all-clients");
         return;
@@ -336,8 +336,8 @@ pub fn cycleNotLoggedIn(manager: *HotkeyManager, forward: bool) void {
     };
     defer hwnds.deinit(manager.allocator);
 
-    const num = hwnds.items.len;
-    if (num == 0) {
+    const count = hwnds.items.len;
+    if (count == 0) {
         slog.info("No not-logged-in clients to cycle through", .{});
         return;
     }
@@ -350,10 +350,10 @@ pub fn cycleNotLoggedIn(manager: *HotkeyManager, forward: bool) void {
         }
     }
 
-    var it = CycleOrder.init(found_index, num, forward, true);
+    var it = CycleOrder.init(found_index, count, forward, true);
     const index = it.next() orelse return;
     const hwnd = hwnds.items[index];
-    slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(forward), index + 1, num });
+    slog.info("Cycling {s} to not-logged-in client ({}/{})", .{ directionName(forward), index + 1, count });
     activation.activate(hwnd);
     manager.cycle.last_not_logged_in_hwnd = hwnd;
 }
@@ -381,9 +381,9 @@ pub fn syncToFocusedCharacter(manager: *HotkeyManager, character_name: []const u
     while (actions.next()) |action| {
         if (action.* != .activate_character) continue;
         const group = &action.activate_character;
-        for (group.character_indices, 0..) |char_index, idx| {
-            if (char_index < manager.config.characters.items.len and std.mem.eql(u8, manager.config.characters.items[char_index].name, character_name)) {
-                group.current_index = idx;
+        for (group.character_indices, 0..) |character_index, member_index| {
+            if (character_index < manager.config.characters.items.len and std.mem.eql(u8, manager.config.characters.items[character_index].name, character_name)) {
+                group.current_index = member_index;
                 break;
             }
         }
@@ -394,10 +394,10 @@ pub fn syncToFocusedCharacter(manager: *HotkeyManager, character_name: []const u
 
 fn characterOrderSignature(characters: []const config.CharacterConfig) u64 {
     var h = std.hash.Wyhash.init(0);
-    for (characters) |char| {
-        h.update(char.name);
+    for (characters) |character| {
+        h.update(character.name);
         // The map's keys borrow these names, so a reallocated but equal name (a discarded dialog preview) must rebuild it too.
-        h.update(std.mem.asBytes(&char.name.ptr));
+        h.update(std.mem.asBytes(&character.name.ptr));
     }
     return h.final();
 }
@@ -454,9 +454,9 @@ fn chainEntryHwnd(manager: *HotkeyManager, group_indices: []const usize, member_
     if (position >= member_count) return not_logged_in_hwnds[position - member_count];
     const groups = manager.config.hotkeyGroups.items;
     const member = chainMember(groups, group_indices, position);
-    const char_name = groups[member.group_index].characters.items[member.index];
-    if (manager.exclusions.contains(char_name)) return null;
-    return manager.scout.getHwndByName(char_name);
+    const character_name = groups[member.group_index].characters.items[member.index];
+    if (manager.exclusions.contains(character_name)) return null;
+    return manager.scout.getHwndByName(character_name);
 }
 
 /// Replaces `field.*` with an owned copy of name, freeing the previous value.

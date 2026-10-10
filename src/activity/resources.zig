@@ -105,10 +105,10 @@ pub const ResourceTracker = struct {
         var user: win32.FILETIME = undefined;
         if (win32.GetProcessTimes(handle, &creation, &exit_time, &kernel, &user) != 0) {
             const cpu_time_ms = (kernel.toU64() + user.toU64()) / 10_000;
-            if (self.cpu_samples.get(pid)) |prev| {
-                const wall_delta_ms = now_ms - prev.wall_time_ms;
-                if (wall_delta_ms > 0 and cpu_time_ms >= prev.cpu_time_ms) {
-                    const cpu_delta_ms = cpu_time_ms - prev.cpu_time_ms;
+            if (self.cpu_samples.get(pid)) |previous| {
+                const wall_delta_ms = now_ms - previous.wall_time_ms;
+                if (wall_delta_ms > 0 and cpu_time_ms >= previous.cpu_time_ms) {
+                    const cpu_delta_ms = cpu_time_ms - previous.cpu_time_ms;
                     const raw = (@as(f64, @floatFromInt(cpu_delta_ms)) / @as(f64, @floatFromInt(wall_delta_ms))) / self.logical_processors * 100.0;
                     entry.value_ptr.cpu_percent = @floatCast(std.math.clamp(raw, 0.0, 100.0));
                 }
@@ -182,8 +182,8 @@ pub const ResourceTracker = struct {
 };
 
 fn parsePidFromInstanceName(name: []const u8) ?win32.DWORD {
-    const pid_pos = std.mem.find(u8, name, PID_TOKEN) orelse return null;
-    const digits_start = pid_pos + PID_TOKEN.len;
+    const pid_index = std.mem.find(u8, name, PID_TOKEN) orelse return null;
+    const digits_start = pid_index + PID_TOKEN.len;
     var end = digits_start;
     while (end < name.len and std.ascii.isDigit(name[end])) : (end += 1) {}
     if (end == digits_start) return null;

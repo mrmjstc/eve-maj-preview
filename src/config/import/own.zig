@@ -4,16 +4,16 @@ const values = @import("values.zig");
 const draft = @import("draft.zig");
 const wire = @import("../wire.zig");
 const readable = @import("../readable.zig");
-const config = @import("../../config.zig");
+const config_mod = @import("../../config.zig");
 
 const Value = std.json.Value;
-const Config = config.Config;
+const Config = config_mod.Config;
 const Draft = draft.Draft;
 const Section = draft.Section;
 
 pub fn isFile(root: Value) bool {
     const app = values.stringAt(root, "app") orelse return false;
-    return std.mem.eql(u8, app, config.PROFILE_FORMAT_IDENTIFIER);
+    return std.mem.eql(u8, app, config_mod.PROFILE_FORMAT_IDENTIFIER);
 }
 
 /// Stamped on every save rather than chosen by the user.
@@ -28,7 +28,7 @@ fn isList(comptime T: type) bool {
 /// Every saved section, so one added later is importable without a change here.
 pub fn sections(d: *Draft, root: Value) ![]const Section {
     var migrated = root;
-    try config.migrateProfileJson(d.arena, &migrated);
+    try config_mod.migrateProfileJson(d.arena, &migrated);
     var out: std.ArrayList(Section) = .empty;
     inline for (comptime wire.savedFields(Config)) |f| {
         if (comptime isStamp(f.name)) continue;
@@ -49,14 +49,14 @@ pub fn build(d: *Draft, text: []const u8, root: Value, chosen: []const []const u
     // So an unreadable setting keeps the profile's current value instead of taking the default.
     var readable_root = root;
     // The same upgrade buildConfigFromJson applies, so present() still finds the migrated sections in the file.
-    try config.migrateProfileJson(d.arena, &readable_root);
+    try config_mod.migrateProfileJson(d.arena, &readable_root);
     var skipped: std.ArrayList([]const u8) = .empty;
     _ = readable.dropUnreadable(Config.Wire, d.arena, &readable_root, &skipped);
 
-    const cfg = try Config.buildConfigFromJson(d.arena, text, "import");
+    const config = try Config.buildConfigFromJson(d.arena, text, "import");
     inline for (comptime wire.savedFields(Config)) |f| {
         if (comptime isStamp(f.name)) continue;
-        if (draft.isChosen(chosen, f.name)) try importSection(d, &cfg, readable_root, f.name);
+        if (draft.isChosen(chosen, f.name)) try importSection(d, &config, readable_root, f.name);
     }
     for (skipped.items) |path| {
         const section_end = std.mem.findScalar(u8, path, '.') orelse path.len;
@@ -65,10 +65,10 @@ pub fn build(d: *Draft, text: []const u8, root: Value, chosen: []const []const u
     }
 }
 
-fn importSection(d: *Draft, cfg: *const Config, root: Value, comptime name: []const u8) !void {
+fn importSection(d: *Draft, config: *const Config, root: Value, comptime name: []const u8) !void {
     const raw = values.get(root, name) orelse return;
     if (raw == .null) return;
-    const loaded = try draft.toValue(d.arena, Config, cfg, &.{.{ .string = name }});
+    const loaded = try draft.toValue(d.arena, Config, config, &.{.{ .string = name }});
     var section = try present(d.arena, loaded, raw);
     if (comptime std.mem.eql(u8, name, "characters")) dropPlaceholderCharacters(&section);
     try d.root.put(d.arena, name, section);

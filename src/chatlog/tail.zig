@@ -194,15 +194,15 @@ pub const LogFile = struct {
     fn findSystemBackward(self: *LogFile, allocator: std.mem.Allocator, io: std.Io, file: std.Io.File, file_size: u64) !?lines_mod.SystemMatch {
         var buffer: [SCAN_CHUNK_SIZE]u8 = undefined;
         // Even for chatlogs, so each chunk starts on a UTF-16 character; an odd size means EVE is mid-write.
-        var scan_pos: u64 = if (self.is_chatlog) file_size & ~@as(u64, 1) else file_size;
+        var scan_offset: u64 = if (self.is_chatlog) file_size & ~@as(u64, 1) else file_size;
         // Longer than any line the scans look for, so a line split across a chunk boundary is whole in the earlier chunk.
         const overlap: u64 = 512;
         const scan_floor: u64 = file_size -| MAX_BACKWARD_SCAN_BYTES;
 
-        while (scan_pos > scan_floor) {
-            const chunk_size = @min(SCAN_CHUNK_SIZE, scan_pos);
-            const start_pos = scan_pos - chunk_size;
-            const bytes_read = try file.readPositionalAll(io, buffer[0..chunk_size], start_pos);
+        while (scan_offset > scan_floor) {
+            const chunk_size = @min(SCAN_CHUNK_SIZE, scan_offset);
+            const start_offset = scan_offset - chunk_size;
+            const bytes_read = try file.readPositionalAll(io, buffer[0..chunk_size], start_offset);
             if (bytes_read == 0) break;
             const chunk = buffer[0..bytes_read];
 
@@ -219,7 +219,7 @@ pub const LogFile = struct {
                 return .{ .system = self.system_name_buffer.items, .event_ts = match.event_ts };
             }
 
-            scan_pos = if (start_pos > 0) start_pos + overlap else 0;
+            scan_offset = if (start_offset > 0) start_offset + overlap else 0;
         }
         return null;
     }

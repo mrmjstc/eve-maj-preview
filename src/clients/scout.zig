@@ -214,9 +214,9 @@ pub const Scout = struct {
             },
         };
 
-        const new_char_name = extractCharacterName(current_title);
-        if (!std.mem.eql(u8, eve_window.character_name, new_char_name)) {
-            self.renameWindow(eve_window, new_char_name);
+        const new_character_name = extractCharacterName(current_title);
+        if (!std.mem.eql(u8, eve_window.character_name, new_character_name)) {
+            self.renameWindow(eve_window, new_character_name);
         }
     }
 
@@ -300,8 +300,8 @@ pub const Scout = struct {
 
     /// "EVE - CharacterName" gives "CharacterName"; the whole title when nothing follows a " - ".
     fn extractCharacterName(title: []const u8) []const u8 {
-        const dash_pos = std.mem.find(u8, title, " - ") orelse return title;
-        const name = title[dash_pos + " - ".len ..];
+        const dash_index = std.mem.find(u8, title, " - ") orelse return title;
+        const name = title[dash_index + " - ".len ..];
         return if (name.len == 0) title else name;
     }
 

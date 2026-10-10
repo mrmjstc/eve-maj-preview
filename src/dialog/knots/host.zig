@@ -292,12 +292,12 @@ fn frame(view: *knots.View, context: *ui.Frame) !void {
 fn choosePresentMode(view: *knots.View) void {
     g_present_mode_chosen = true;
     const modes = view.renderer.supported_present_modes;
-    var cfg = view.renderer.config;
-    cfg.present_mode = if (modes.contains(.mailbox)) .mailbox else if (modes.contains(.immediate)) .immediate else {
+    var renderer_config = view.renderer.config;
+    renderer_config.present_mode = if (modes.contains(.mailbox)) .mailbox else if (modes.contains(.immediate)) .immediate else {
         slog.warn("Configuration window can only present with vsync, input hooks may lag while it redraws", .{});
         return;
     };
-    view.app.reconfigureRenderer(view.id, cfg) catch |err| {
+    view.app.reconfigureRenderer(view.id, renderer_config) catch |err| {
         slog.warn("Failed to switch the configuration window off vsync, input hooks may lag while it redraws: {}", .{err});
     };
 }

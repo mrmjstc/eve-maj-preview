@@ -22,7 +22,7 @@ const MERGED_LISTS = [_]struct { []const u8, []const u8 }{
 /// A translation key and its parameters, which the config dialog puts into words.
 pub const Text = struct {
     key: []const u8,
-    params: []const Param = &.{},
+    parameters: []const Parameter = &.{},
 
     pub fn jsonStringify(self: Text, jw: anytype) !void {
         try jw.beginObject();
@@ -30,9 +30,9 @@ pub const Text = struct {
         try jw.write(self.key);
         try jw.objectField("params");
         try jw.beginObject();
-        for (self.params) |param| {
-            try jw.objectField(param.name);
-            if (param.translate) try jw.write(.{ .t = param.value }) else try jw.write(param.value);
+        for (self.parameters) |parameter| {
+            try jw.objectField(parameter.name);
+            if (parameter.translate) try jw.write(.{ .t = parameter.value }) else try jw.write(parameter.value);
         }
         try jw.endObject();
         try jw.endObject();
@@ -48,7 +48,7 @@ pub const Section = struct {
 };
 
 /// `translate` marks `value` as a translation key of its own, e.g. the label of the hotkey a note is about.
-pub const Param = struct { name: []const u8, value: []const u8, translate: bool = false };
+pub const Parameter = struct { name: []const u8, value: []const u8, translate: bool = false };
 
 pub const Draft = struct {
     arena: std.mem.Allocator,
@@ -61,13 +61,13 @@ pub const Draft = struct {
         return .{ .arena = arena };
     }
 
-    pub fn note(self: *Draft, key: []const u8, params: []const Param) !void {
-        try self.notes.append(self.arena, .{ .key = key, .params = try self.arena.dupe(Param, params) });
+    pub fn note(self: *Draft, key: []const u8, parameters: []const Parameter) !void {
+        try self.notes.append(self.arena, .{ .key = key, .parameters = try self.arena.dupe(Parameter, parameters) });
     }
 
-    /// Copies `params`, which callers build on the stack.
-    pub fn text(self: *Draft, key: []const u8, params: []const Param) !Text {
-        return .{ .key = key, .params = try self.arena.dupe(Param, params) };
+    /// Copies `parameters`, which callers build on the stack.
+    pub fn text(self: *Draft, key: []const u8, parameters: []const Parameter) !Text {
+        return .{ .key = key, .parameters = try self.arena.dupe(Parameter, parameters) };
     }
 
     pub fn countText(self: *Draft, key: []const u8, n: usize) !Text {

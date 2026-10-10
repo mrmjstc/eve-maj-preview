@@ -16,22 +16,22 @@ const FindByExecutableContext = struct {
 };
 
 fn findByExecutableCallback(hwnd: win32.HWND, lparam: win32.LPARAM) callconv(.c) win32.BOOL {
-    const ctx: *FindByExecutableContext = win32.lparamToPtr(FindByExecutableContext, lparam);
+    const context: *FindByExecutableContext = win32.lparamToPtr(FindByExecutableContext, lparam);
     if (!win32.isWindowVisible(hwnd)) return win32.TRUE;
 
     var exe_path: [260:0]u8 = undefined;
     const exe_name = win32.windowExeName(hwnd, &exe_path) orelse return win32.TRUE;
-    if (!std.ascii.eqlIgnoreCase(exe_name, ctx.executable_name)) return win32.TRUE;
+    if (!std.ascii.eqlIgnoreCase(exe_name, context.executable_name)) return win32.TRUE;
 
-    ctx.found = hwnd;
+    context.found = hwnd;
     return win32.FALSE;
 }
 
 /// First visible top-level window (in Z-order, so effectively the frontmost) owned by executable_name.
 fn findWindowByExecutable(executable_name: []const u8) ?win32.HWND {
-    var ctx = FindByExecutableContext{ .executable_name = executable_name };
-    _ = win32.EnumWindows(findByExecutableCallback, win32.ptrToLparam(&ctx));
-    return ctx.found;
+    var context = FindByExecutableContext{ .executable_name = executable_name };
+    _ = win32.EnumWindows(findByExecutableCallback, win32.ptrToLparam(&context));
+    return context.found;
 }
 
 fn focusWindow(target: win32.HWND) void {

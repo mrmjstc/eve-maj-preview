@@ -34,8 +34,8 @@ pub fn classify(event_text: []const u8) ?Notification {
 pub fn conduitDestination(text: []const u8) ?[]const u8 {
     if (std.mem.find(u8, text, "Conduit Field") == null) return null;
     const needle = "jumps you to ";
-    const pos = std.mem.find(u8, text, needle) orelse return null;
-    const after = text[pos + needle.len ..];
+    const match_index = std.mem.find(u8, text, needle) orelse return null;
+    const after = text[match_index + needle.len ..];
     const end = std.mem.findAny(u8, after, "\r\n.,") orelse after.len;
     const system = std.mem.trim(u8, after[0..end], " \t");
     return if (system.len == 0) null else system;

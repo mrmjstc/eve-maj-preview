@@ -94,10 +94,10 @@ fn copyFrom(allocator: std.mem.Allocator, source_path: []const u8, target: []con
     };
 
     const color = accent_color orelse return;
-    var cfg = try load(allocator, target);
-    defer cfg.deinit();
-    cfg.accentColor = color;
-    try save(&cfg, allocator, target_path);
+    var config = try load(allocator, target);
+    defer config.deinit();
+    config.accentColor = color;
+    try save(&config, allocator, target_path);
 }
 
 /// Any profile but the default one, which the app falls back to.
@@ -273,8 +273,8 @@ pub fn list(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
     return names;
 }
 
-pub fn save(cfg: *const Config, allocator: std.mem.Allocator, file_path: []const u8) !void {
-    const json = try cfg.toJsonString(allocator);
+pub fn save(config: *const Config, allocator: std.mem.Allocator, file_path: []const u8) !void {
+    const json = try config.toJsonString(allocator);
     defer allocator.free(json);
 
     try files.atomicWriteFile(allocator, files.g_io, file_path, json);
@@ -283,13 +283,13 @@ pub fn save(cfg: *const Config, allocator: std.mem.Allocator, file_path: []const
 
 /// Writes a fresh default profile named `name`, optionally with its own accent colour.
 pub fn writeDefault(allocator: std.mem.Allocator, name: []const u8, accent_color: ?u32) !void {
-    var cfg = try Config.getDefaultsWithProfile(allocator, name);
-    defer cfg.deinit();
-    if (accent_color) |c| cfg.accentColor = c;
+    var config = try Config.getDefaultsWithProfile(allocator, name);
+    defer config.deinit();
+    if (accent_color) |c| config.accentColor = c;
 
     const profile_path = try path(allocator, name);
     defer allocator.free(profile_path);
-    try save(&cfg, allocator, profile_path);
+    try save(&config, allocator, profile_path);
 }
 
 fn ensureDir(allocator: std.mem.Allocator) !void {

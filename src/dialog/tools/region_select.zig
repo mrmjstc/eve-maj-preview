@@ -423,9 +423,9 @@ fn drawEditHandles(bitmap: *const gdi_overlay.OverlayBitmap, rect: win32.RECT) v
     const roomy_h = win32.rectHeight(rect) >= HANDLE_SIZE * 4;
 
     for (ys, 0..) |cy, row| {
-        for (xs, 0..) |cx, col| {
-            if (row == 1 and col == 1) continue;
-            if (col == 1 and !roomy_w) continue;
+        for (xs, 0..) |cx, column| {
+            if (row == 1 and column == 1) continue;
+            if (column == 1 and !roomy_w) continue;
             if (row == 1 and !roomy_h) continue;
             drawHandle(bitmap, cx, cy);
         }
@@ -670,7 +670,7 @@ fn finish(cancelled: bool) void {
     if (g_bitmap) |bitmap| bitmap.destroy();
     g_bitmap = null;
 
-    if (g_on_finished) |cb| cb();
+    if (g_on_finished) |callback| callback();
 
     const empty_rect = win32.RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
     if (cancelled) {

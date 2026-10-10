@@ -17,12 +17,12 @@ pub fn install() void {
 }
 
 /// For main.zig's root `panic`: Zig's default handler only writes to stderr, which this GUI build doesn't show outside logLevel=debug.
-pub fn handlePanic(msg: []const u8, ret_addr: ?usize) noreturn {
+pub fn handlePanic(msg: []const u8, return_address: ?usize) noreturn {
     const base: usize = if (win32.GetModuleHandleA(null)) |h| @intFromPtr(h) else 0;
     // The base turns the trace's addresses into RVAs for llvm-symbolizer when the trace itself can't name them.
     log.writeCrashLine("PANIC: {s} (module base 0x{x})", .{ msg, base });
-    logStackTrace(ret_addr orelse @returnAddress());
-    std.debug.defaultPanic(msg, ret_addr);
+    logStackTrace(return_address orelse @returnAddress());
+    std.debug.defaultPanic(msg, return_address);
 }
 
 /// The panic's stack, symbolized from the .pdb beside the exe, one crash line per line of the trace.
@@ -66,13 +66,13 @@ fn firstChanceExceptionHandler(info: *win32.EXCEPTION_POINTERS) callconv(.c) win
     }
 
     const base: usize = if (win32.GetModuleHandleA(null)) |h| @intFromPtr(h) else 0;
-    const addr: usize = if (rec.ExceptionAddress) |a| @intFromPtr(a) else 0;
+    const address: usize = if (rec.ExceptionAddress) |a| @intFromPtr(a) else 0;
     if (rec.ExceptionCode == win32.EXCEPTION_ACCESS_VIOLATION and rec.NumberParameters >= 2) {
         const is_write = rec.ExceptionInformation[0] == 1;
-        const fault_addr = rec.ExceptionInformation[1];
-        log.writeCrashLine("First-chance access violation ({s}) at address 0x{x}, code address 0x{x} (module base 0x{x}, RVA 0x{x})", .{ if (is_write) "write" else "read", fault_addr, addr, base, addr -% base });
+        const fault_address = rec.ExceptionInformation[1];
+        log.writeCrashLine("First-chance access violation ({s}) at address 0x{x}, code address 0x{x} (module base 0x{x}, RVA 0x{x})", .{ if (is_write) "write" else "read", fault_address, address, base, address -% base });
     } else {
-        log.writeCrashLine("First-chance exception 0x{x} at address 0x{x} (module base 0x{x}, RVA 0x{x})", .{ rec.ExceptionCode, addr, base, addr -% base });
+        log.writeCrashLine("First-chance exception 0x{x} at address 0x{x} (module base 0x{x}, RVA 0x{x})", .{ rec.ExceptionCode, address, base, address -% base });
     }
     logReturnRvas(base);
     return win32.EXCEPTION_CONTINUE_SEARCH;
@@ -93,9 +93,9 @@ fn logReturnRvas(base: usize) void {
 fn unhandledExceptionFilter(info: *win32.EXCEPTION_POINTERS) callconv(.c) win32.LONG {
     const base: usize = if (win32.GetModuleHandleA(null)) |h| @intFromPtr(h) else 0;
     if (info.ExceptionRecord) |rec| {
-        const addr: usize = if (rec.ExceptionAddress) |a| @intFromPtr(a) else 0;
+        const address: usize = if (rec.ExceptionAddress) |a| @intFromPtr(a) else 0;
         // Wrapping sub: a wild jump could fault below the module base and this handler must not itself panic on overflow.
-        log.writeCrashLine("Unhandled exception 0x{x} at address 0x{x} (module base 0x{x}, RVA 0x{x})", .{ rec.ExceptionCode, addr, base, addr -% base });
+        log.writeCrashLine("Unhandled exception 0x{x} at address 0x{x} (module base 0x{x}, RVA 0x{x})", .{ rec.ExceptionCode, address, base, address -% base });
     } else {
         log.writeCrashLine("Unhandled exception (no exception record), module base 0x{x}", .{base});
     }

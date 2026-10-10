@@ -204,14 +204,14 @@ fn parseModifierToken(token: []const u8) ?u32 {
 }
 
 /// A name from KEY_NAMES, or one of the aliases hand-edited profiles may use (a shifted OEM character, "Control", "LWin", "RWin").
-fn parseBaseKey(key_str: []const u8) ?u32 {
+fn parseBaseKey(key_text: []const u8) ?u32 {
     for (KEY_NAMES) |key| {
-        if (std.ascii.eqlIgnoreCase(key.name, key_str)) return key.vk;
+        if (std.ascii.eqlIgnoreCase(key.name, key_text)) return key.vk;
     }
 
-    if (key_str.len == 1) {
+    if (key_text.len == 1) {
         // '+' itself is never a valid base key here since it's the modifier-combo delimiter; only '=' maps to VK_OEM_PLUS.
-        const shifted_vk: ?u32 = switch (key_str[0]) {
+        const shifted_vk: ?u32 = switch (key_text[0]) {
             ':' => VK_OEM_1,
             '<' => VK_OEM_COMMA,
             '_' => VK_OEM_MINUS,
@@ -226,20 +226,20 @@ fn parseBaseKey(key_str: []const u8) ?u32 {
         };
         if (shifted_vk) |vk_code| return vk_code;
     }
-    if (std.ascii.eqlIgnoreCase(key_str, "control")) return VK_CONTROL;
-    if (std.ascii.eqlIgnoreCase(key_str, "lwin") or std.ascii.eqlIgnoreCase(key_str, "rwin")) return VK_LWIN;
+    if (std.ascii.eqlIgnoreCase(key_text, "control")) return VK_CONTROL;
+    if (std.ascii.eqlIgnoreCase(key_text, "lwin") or std.ascii.eqlIgnoreCase(key_text, "rwin")) return VK_LWIN;
 
     return null;
 }
 
 /// A combined value (see combineKey) from "F9", "Ctrl+Alt+F9", or the hex form older profiles saved ("0x0278").
 /// Null for anything that isn't a bindable key; the caller logs it, with the setting it came from.
-pub fn parseVirtualKey(key_str: []const u8) ?u32 {
-    if (key_str.len == 0) return null;
+pub fn parseVirtualKey(key_text: []const u8) ?u32 {
+    if (key_text.len == 0) return null;
 
-    if (key_str.len >= 3 and key_str[0] == '0' and (key_str[1] == 'x' or key_str[1] == 'X')) {
-        const hex_str = key_str[2..];
-        const combined = std.fmt.parseInt(u32, hex_str, 16) catch return null;
+    if (key_text.len >= 3 and key_text[0] == '0' and (key_text[1] == 'x' or key_text[1] == 'X')) {
+        const hex_text = key_text[2..];
+        const combined = std.fmt.parseInt(u32, hex_text, 16) catch return null;
         const vk_code = combined & VK_MASK;
         if (vk_code >= 0x01 and vk_code <= 0xFE) {
             return combined;
@@ -248,10 +248,10 @@ pub fn parseVirtualKey(key_str: []const u8) ?u32 {
     }
 
     // Combo format: everything before the last '+' is modifiers, the final token is the key.
-    if (std.mem.findScalarLast(u8, key_str, '+')) |last_plus| {
-        const key_part = std.mem.trim(u8, key_str[last_plus + 1 ..], " ");
+    if (std.mem.findScalarLast(u8, key_text, '+')) |last_plus| {
+        const key_part = std.mem.trim(u8, key_text[last_plus + 1 ..], " ");
         var modifiers: u32 = 0;
-        var it = std.mem.splitScalar(u8, key_str[0..last_plus], '+');
+        var it = std.mem.splitScalar(u8, key_text[0..last_plus], '+');
         while (it.next()) |tok| {
             const mod_name = std.mem.trim(u8, tok, " ");
             if (mod_name.len == 0) continue;
@@ -270,14 +270,14 @@ pub fn parseVirtualKey(key_str: []const u8) ?u32 {
             else => false,
         };
         if (self_referential) {
-            slog.warn("Failed to parse hotkey '{s}': '{s}' is already its modifier", .{ key_str, key_part });
+            slog.warn("Failed to parse hotkey '{s}': '{s}' is already its modifier", .{ key_text, key_part });
             return null;
         }
 
         return combineKey(vk_code, modifiers);
     }
 
-    return parseBaseKey(key_str);
+    return parseBaseKey(key_text);
 }
 
 const testing = std.testing;

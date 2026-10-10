@@ -12,16 +12,16 @@ const slog = log.scoped("hotkeys");
 /// Toggles a client in/out of cycling, with visual feedback via a semi-transparent overlay.
 pub fn toggleThumbnailExclusion(manager: *HotkeyManager, source_hwnd: win32.HWND) void {
     const thumbnail = manager.painter.getThumbnailBySourceHwnd(source_hwnd) orelse return;
-    const char_name = thumbnail.character_name;
+    const character_name = thumbnail.character_name;
 
     // Exclusions are by name, and every login-screen window shares "EVE", so one toggle would hit them all.
-    if (scout.isGenericCharacterName(char_name)) {
+    if (scout.isGenericCharacterName(character_name)) {
         slog.debug("Ignoring exclusion toggle for a login-screen client", .{});
         return;
     }
 
-    _ = manager.exclusions.toggle(char_name) catch |err| {
-        slog.err("Failed to toggle exclusion for '{s}': {}", .{ char_name, err });
+    _ = manager.exclusions.toggle(character_name) catch |err| {
+        slog.err("Failed to toggle exclusion for '{s}': {}", .{ character_name, err });
         return;
     };
     // The excluded list's order changed, so its cycle position no longer means anything.
@@ -39,7 +39,7 @@ pub fn toggleThumbnailExclusion(manager: *HotkeyManager, source_hwnd: win32.HWND
     };
 
     slog.info("Toggled cycle exclusion for {s}: {s}", .{
-        char_name,
+        character_name,
         if (thumbnail.is_excluded_from_cycle) "Excluded" else "Included",
     });
 }
@@ -63,16 +63,16 @@ pub fn assignHoveredToGroup(manager: *HotkeyManager, group_index: usize) void {
     };
 
     const group = &manager.config.hotkeyGroups.items[group_index];
-    const char_name = thumbnail.character_name;
+    const character_name = thumbnail.character_name;
 
-    const added = manager.store.toggleGroupMember(group_index, char_name) catch |err| {
-        slog.err("Failed to toggle '{s}' in group {} '{s}': {}", .{ char_name, group_index, group.name, err });
+    const added = manager.store.toggleGroupMember(group_index, character_name) catch |err| {
+        slog.err("Failed to toggle '{s}' in group {} '{s}': {}", .{ character_name, group_index, group.name, err });
         return;
     };
     if (added) {
-        slog.info("Added {s} to group {} [{s}]", .{ char_name, group_index, group.name });
+        slog.info("Added {s} to group {} [{s}]", .{ character_name, group_index, group.name });
     } else {
-        slog.info("Removed {s} from group {} [{s}]", .{ char_name, group_index, group.name });
+        slog.info("Removed {s} from group {} [{s}]", .{ character_name, group_index, group.name });
     }
 
     // Membership changed - old index may now point at a shifted member

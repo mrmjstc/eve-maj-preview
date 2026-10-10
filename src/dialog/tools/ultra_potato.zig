@@ -218,15 +218,15 @@ fn patchLine(allocator: std.mem.Allocator, line: []const u8) !PatchedLine {
         if (!std.mem.startsWith(u8, after_key, ": [")) continue;
 
         const after_bracket = after_key[": [".len..];
-        const close_idx = std.mem.findScalar(u8, after_bracket, ']') orelse continue;
-        const content = after_bracket[0..close_idx];
-        const comma_idx = std.mem.findScalar(u8, content, ',') orelse continue;
-        const id_str = std.mem.trim(u8, content[0..comma_idx], " ");
-        const val_str = std.mem.trim(u8, content[comma_idx + 1 ..], " ");
+        const close_index = std.mem.findScalar(u8, after_bracket, ']') orelse continue;
+        const content = after_bracket[0..close_index];
+        const comma_index = std.mem.findScalar(u8, content, ',') orelse continue;
+        const id_text = std.mem.trim(u8, content[0..comma_index], " ");
+        const value_text = std.mem.trim(u8, content[comma_index + 1 ..], " ");
 
-        if (std.mem.eql(u8, val_str, "-300")) break;
+        if (std.mem.eql(u8, value_text, "-300")) break;
 
-        const new_line = try allocator.print("{s}{s}: [{s}, -300]{s}", .{ body[0..indent_len], key, id_str, cr });
+        const new_line = try allocator.print("{s}{s}: [{s}, -300]{s}", .{ body[0..indent_len], key, id_text, cr });
         return .{ .text = new_line, .changed = true };
     }
 

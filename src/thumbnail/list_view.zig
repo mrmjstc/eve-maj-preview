@@ -36,14 +36,14 @@ pub const ListWindow = struct {
     row_source_hwnds: std.ArrayList(win32.HWND) = .empty,
 
     pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) !ListWindow {
-        const cfg = &store.live;
+        const config = &store.live;
         try registerWindowClass(instance);
-        const x = cfg.display.startX;
-        const y = cfg.display.startY;
-        const sizes = list_look.metrics(&cfg.display);
+        const x = config.display.startX;
+        const y = config.display.startY;
+        const sizes = list_look.metrics(&config.display);
         const panel = try PanelWindow.create(allocator, instance, LIST_WINDOW_CLASS, "EVE Client List", .{ .left = x, .top = y, .right = x + sizes.column_width, .bottom = y + sizes.header_height });
-        win32.setClickThroughStyle(panel.hwnd, cfg.interaction.clickThrough);
-        return .{ .panel = panel, .store = store, .config = cfg };
+        win32.setClickThroughStyle(panel.hwnd, config.interaction.clickThrough);
+        return .{ .panel = panel, .store = store, .config = config };
     }
 
     pub fn deinit(self: *ListWindow) void {
@@ -64,16 +64,16 @@ pub const ListWindow = struct {
         if (y < sizes.header_height) return null;
         const row: usize = @intCast(@divTrunc(y - sizes.header_height, sizes.row_height));
         const columns: i32 = list_look.effectiveColumns(self.config.display.listViewColumns, self.row_source_hwnds.items.len);
-        const col: usize = @intCast(std.math.clamp(@divTrunc(x, sizes.column_width), 0, columns - 1));
-        const index: usize = row * @as(usize, @intCast(columns)) + col;
+        const column: usize = @intCast(std.math.clamp(@divTrunc(x, sizes.column_width), 0, columns - 1));
+        const index: usize = row * @as(usize, @intCast(columns)) + column;
         if (index >= self.row_source_hwnds.items.len) return null;
         return self.row_source_hwnds.items[index];
     }
 
     fn saveWindowPosition(self: *ListWindow) void {
         if (!self.config.display.rememberListViewPosition) return;
-        const pos = self.panel.topLeft();
-        self.store.update(.{ .display = .{ .startX = pos.x, .startY = pos.y } });
+        const top_left = self.panel.topLeft();
+        self.store.update(.{ .display = .{ .startX = top_left.x, .startY = top_left.y } });
     }
 
     /// The list's active colour, or the character's own (or unique) active border colour.
@@ -87,7 +87,7 @@ pub const ListWindow = struct {
     /// Puts `rows` in the configured order and records each row's client.
     fn sortRows(self: *ListWindow, thumbnails: []const ThumbnailWindow) !void {
         const SortContext = struct {
-            cfg: *const config_mod.Config,
+            config: *const config_mod.Config,
             thumbnails: []const ThumbnailWindow,
             order_map: ?*const std.StringHashMap(usize),
 
@@ -104,13 +104,13 @@ pub const ListWindow = struct {
                 }
             }
 
-            fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
-                const a = &ctx.thumbnails[a_index];
-                const b = &ctx.thumbnails[b_index];
-                return switch (ctx.cfg.display.listViewOrder) {
+            fn lessThan(context: @This(), a_index: usize, b_index: usize) bool {
+                const a = &context.thumbnails[a_index];
+                const b = &context.thumbnails[b_index];
+                return switch (context.config.display.listViewOrder) {
                     .Tracked => a_index < b_index,
                     .Alphabetical => alphabeticalLessThan(a, b, a_index, b_index),
-                    .ConfiguredCharacters => config_mod.orderMapLessThan(ctx.order_map.?, a.character_name, b.character_name, a_index, b_index),
+                    .ConfiguredCharacters => config_mod.orderMapLessThan(context.order_map.?, a.character_name, b.character_name, a_index, b_index),
                 };
             }
         };
@@ -125,7 +125,7 @@ pub const ListWindow = struct {
         // Rows start in tracked order.
         if (self.config.display.listViewOrder != .Tracked) {
             std.sort.pdq(usize, self.rows.items, SortContext{
-                .cfg = self.config,
+                .config = self.config,
                 .thumbnails = thumbnails,
                 .order_map = if (order_map) |*m| m else null,
             }, SortContext.lessThan);
@@ -205,10 +205,10 @@ pub const ListWindow = struct {
 
     /// The row's combat, mining and bounty rates the list shows, in writing order; empty when none is.
     fn statReadings(self: *const ListWindow, thumb: *const ThumbnailWindow, out: *[list_look.STAT_COUNT]list_look.StatReading) []const list_look.StatReading {
-        const cfg = self.config;
-        const settings: list_look.StatSettings = .{ .display = &cfg.display, .combat = &cfg.combat, .mining = &cfg.mining, .bounty = &cfg.bounty };
+        const config = self.config;
+        const settings: list_look.StatSettings = .{ .display = &config.display, .combat = &config.combat, .mining = &config.mining, .bounty = &config.bounty };
         const stats = &thumb.stats;
-        const bounty_period_seconds: f32 = if (cfg.bounty.isk_rate_unit == .hour) 3600.0 else 60.0;
+        const bounty_period_seconds: f32 = if (config.bounty.isk_rate_unit == .hour) 3600.0 else 60.0;
         var count: usize = 0;
         for (std.enums.values(list_look.Stat)) |stat| {
             if (!list_look.showsStat(settings, stat)) continue;
@@ -218,7 +218,7 @@ pub const ListWindow = struct {
                 .mining_rate => if (stats.showsMining()) (if (stats.mining_rate) |rate| rate * 60.0 else null) else continue,
                 .bounty_rate => if (stats.showsBounty()) (if (stats.bounty_isk_rate) |rate| rate * bounty_period_seconds else null) else continue,
             };
-            out[count] = .{ .stat = stat, .value = value, .has_prefix = list_look.hasPrefix(&cfg.display, stat) };
+            out[count] = .{ .stat = stat, .value = value, .has_prefix = list_look.hasPrefix(&config.display, stat) };
             count += 1;
         }
         return out[0..count];
@@ -292,9 +292,9 @@ pub const ListWindow = struct {
         const height: usize = bitmap.height;
         const columns_u: usize = @intCast(columns);
         const row: i32 = @intCast(i / columns_u);
-        const col: i32 = @intCast(i % columns_u);
+        const column: i32 = @intCast(i % columns_u);
         const row_top: i32 = sizes.header_height + row * sizes.row_height;
-        const col_left: i32 = col * sizes.column_width;
+        const column_left: i32 = column * sizes.column_width;
         const render_state = thumb.effectiveRenderState(active_source_hwnd);
         const is_active = render_state == .active;
         const is_alert = render_state == .alert;
@@ -307,7 +307,7 @@ pub const ListWindow = struct {
             list_look.activeTint(active_color)
         else
             null;
-        if (tint) |row_bg| gdi_overlay.fillRect(bitmap.pixels, width, height, @intCast(col_left), @intCast(row_top), @intCast(sizes.column_width), @intCast(sizes.row_height), row_bg);
+        if (tint) |row_bg| gdi_overlay.fillRect(bitmap.pixels, width, height, @intCast(column_left), @intCast(row_top), @intCast(sizes.column_width), @intCast(sizes.row_height), row_bg);
 
         const badge_color: u32 = if (is_excluded)
             list_look.BADGE_EXCLUDED
@@ -320,12 +320,12 @@ pub const ListWindow = struct {
         else
             list_look.BADGE_INACTIVE;
         const indicator_style = display.listViewIndicatorStyle;
-        drawIndicator(bitmap, indicator_style, col_left, row_top, sizes.row_height, badge_color);
+        drawIndicator(bitmap, indicator_style, column_left, row_top, sizes.row_height, badge_color);
 
         const text = row_text orelse return;
         const dc = bitmap.mem_dc;
         const name_offset = list_look.textLeft(indicator_style);
-        const text_left = col_left + name_offset;
+        const text_left = column_left + name_offset;
 
         _ = win32.SelectObject(dc, text.name_font);
         const name_y = row_top + @divTrunc(sizes.row_height - text.name_height, 2);
@@ -345,7 +345,7 @@ pub const ListWindow = struct {
 
         _ = win32.SelectObject(dc, text.small_font);
         const small_y = row_top + @divTrunc(sizes.row_height - text.small_height, 2);
-        const right_x = col_left + sizes.column_width - list_look.PADDING_X;
+        const right_x = column_left + sizes.column_width - list_look.PADDING_X;
 
         // One slot only: the newest notification wins, then stats, then exclusion, then the system.
         var notif_buf: [TEXT_BUF]u8 = undefined;
@@ -414,12 +414,12 @@ fn listWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPara
     }
 }
 
-/// The row's state marker in `style`, for the row whose top-left is `col_left`, `row_top`.
-fn drawIndicator(bitmap: *const gdi_overlay.OverlayBitmap, style: types.ListIndicatorStyle, col_left: i32, row_top: i32, row_height: i32, argb: u32) void {
+/// The row's state marker in `style`, for the row whose top-left is `column_left`, `row_top`.
+fn drawIndicator(bitmap: *const gdi_overlay.OverlayBitmap, style: types.ListIndicatorStyle, column_left: i32, row_top: i32, row_height: i32, argb: u32) void {
     const width: usize = bitmap.width;
     const height: usize = bitmap.height;
     const radius = list_look.BADGE_RADIUS;
-    const cx = col_left + list_look.PADDING_X + radius;
+    const cx = column_left + list_look.PADDING_X + radius;
     const cy = row_top + @divTrunc(row_height, 2);
     switch (style) {
         .Dot => drawDot(bitmap.pixels, width, height, cx, cy, radius, argb),

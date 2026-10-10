@@ -69,12 +69,12 @@ pub fn parseUrl(url: []const u8, allocator: std.mem.Allocator) !Command {
     };
 
     if (std.mem.eql(u8, action, "switch")) {
-        const char_name_encoded = iter.next() orelse {
+        const character_name_encoded = iter.next() orelse {
             slog.err("Failed to parse switch command: no character name", .{});
             return error.MissingParameter;
         };
-        const char_name = try urlDecode(allocator, char_name_encoded);
-        return Command{ .switch_character = char_name };
+        const character_name = try urlDecode(allocator, character_name_encoded);
+        return Command{ .switch_character = character_name };
     } else if (std.mem.eql(u8, action, "profile")) {
         const profile_name_encoded = iter.next() orelse {
             slog.err("Failed to parse profile command: no profile name", .{});
@@ -121,9 +121,9 @@ pub fn forwardToRunningInstance(url: []const u8, allocator: std.mem.Allocator) !
 
 pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
     switch (cmd) {
-        .switch_character => |char_name| {
-            sendCopyData(hwnd, win32.PROTOCOL_SWITCH_CHARACTER, char_name);
-            slog.info("Sent switch to '{s}'", .{char_name});
+        .switch_character => |character_name| {
+            sendCopyData(hwnd, win32.PROTOCOL_SWITCH_CHARACTER, character_name);
+            slog.info("Sent switch to '{s}'", .{character_name});
         },
         .profile => |profile_name| {
             sendCopyData(hwnd, win32.PROTOCOL_SWITCH_PROFILE, profile_name);

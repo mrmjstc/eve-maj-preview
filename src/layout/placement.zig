@@ -40,9 +40,9 @@ pub const Layout = struct {
 
     /// Always false for the generic "not logged in" name, which never has a saved position of its own.
     fn hasSavedPosition(self: Layout, character_name: []const u8) bool {
-        const cfg = &self.config.display;
+        const display = &self.config.display;
         return !scout.isGenericCharacterName(character_name) and
-            cfg.honorSavedPositions and
+            display.honorSavedPositions and
             self.config.getCharacterPosition(character_name) != null;
     }
 
@@ -87,41 +87,41 @@ pub const Layout = struct {
         monitor_bounds: ?win32.RECT,
         scale: f32,
     ) config_mod.Position {
-        const cfg = &self.config.display;
+        const display = &self.config.display;
 
         if (self.hasSavedPosition(character_name)) {
             // Saved positions are absolute physical pixels (see saveThumbnailPosition), so scaling doesn't apply.
-            const saved_pos = self.config.getCharacterPosition(character_name).?;
-            slog.debug("Using saved position for {s}: ({}, {})", .{ character_name, saved_pos.x, saved_pos.y });
-            return .{ .x = saved_pos.x, .y = saved_pos.y };
+            const saved_position = self.config.getCharacterPosition(character_name).?;
+            slog.debug("Using saved position for {s}: ({}, {})", .{ character_name, saved_position.x, saved_position.y });
+            return .{ .x = saved_position.x, .y = saved_position.y };
         }
 
         // No saved position: flow left-to-right from startX/startY, wrapping to a new row instead of overlapping once a row runs out of width.
         const slot = @as(i32, @intCast(self.unpositionedIndex(index)));
-        const step_x = thumb_width + scalePixels(cfg.newThumbnailSpacing, scale);
-        const step_y = thumb_height + scalePixels(cfg.newThumbnailSpacing, scale);
+        const step_x = thumb_width + scalePixels(display.newThumbnailSpacing, scale);
+        const step_y = thumb_height + scalePixels(display.newThumbnailSpacing, scale);
 
         // Monitor bounds if one's configured, otherwise the real current virtual screen, not a guessed multi-monitor range.
         const bounds = monitor_bounds orelse win32.virtualScreenRect();
 
         // startX/startY are monitor-relative when a monitor is configured, absolute otherwise.
-        const start_x = scalePixels(cfg.startX, scale) + (if (monitor_bounds != null) bounds.left else 0);
-        const start_y = scalePixels(cfg.startY, scale) + (if (monitor_bounds != null) bounds.top else 0);
+        const start_x = scalePixels(display.startX, scale) + (if (monitor_bounds != null) bounds.left else 0);
+        const start_y = scalePixels(display.startY, scale) + (if (monitor_bounds != null) bounds.top else 0);
 
         const columns_per_row = @max(@divTrunc(bounds.right - start_x, @max(step_x, 1)), 1);
         const row = @divTrunc(slot, columns_per_row);
-        const col = @mod(slot, columns_per_row);
-        slog.debug("Thumbnail #{} has no saved position, spawning at unpositioned slot {} (row {}, col {})", .{ index, slot, row, col });
+        const column = @mod(slot, columns_per_row);
+        slog.debug("Thumbnail #{} has no saved position, spawning at unpositioned slot {} (row {}, col {})", .{ index, slot, row, column });
 
-        var pos = config_mod.Position{ .x = start_x + col * step_x, .y = start_y + row * step_y };
+        var position = config_mod.Position{ .x = start_x + column * step_x, .y = start_y + row * step_y };
 
         // Clamp to keep thumbnails from spawning fully off-screen, while still allowing edge placement; only bites once rows also overflow the screen's height.
         const clamp_margin = 50;
         const monitor_suffix = if (monitor_bounds != null) " for monitor" else "";
-        clampAxisWithWarn(&pos.x, bounds.left - clamp_margin, bounds.right - thumb_width + clamp_margin, "X", "left", "right", monitor_suffix);
-        clampAxisWithWarn(&pos.y, bounds.top - clamp_margin, bounds.bottom - thumb_height + clamp_margin, "Y", "up", "down", monitor_suffix);
+        clampAxisWithWarn(&position.x, bounds.left - clamp_margin, bounds.right - thumb_width + clamp_margin, "X", "left", "right", monitor_suffix);
+        clampAxisWithWarn(&position.y, bounds.top - clamp_margin, bounds.bottom - thumb_height + clamp_margin, "Y", "up", "down", monitor_suffix);
 
-        return pos;
+        return position;
     }
 
     /// Spaces always keep the configured thumbnail's shape; limitToThumbnailSize additionally caps its absolute size.
@@ -140,8 +140,8 @@ pub const Layout = struct {
 };
 
 /// The cell grid this character's space uses, or null when it's placed by hand.
-pub fn cellFor(cfg: *const config_mod.Config, cells: *const SpaceCells, character_name: []const u8) ?SpaceCell {
-    const space_index = spaces.spaceFor(cfg, character_name) orelse return null;
+pub fn cellFor(config: *const config_mod.Config, cells: *const SpaceCells, character_name: []const u8) ?SpaceCell {
+    const space_index = spaces.spaceFor(config, character_name) orelse return null;
     return cells[space_index];
 }
 
@@ -181,10 +181,10 @@ pub fn calculateRegionFitGrid(region: win32.RECT, count: usize, spacing_x: i32, 
 
 /// The top-left of cell `index` once the grid fills in `direction`.
 pub fn regionFitPositionForGrid(region: win32.RECT, grid: RegionFitGrid, index: usize, direction: types.RegionFitDirection, spacing: i32) config_mod.Position {
-    const cell = regionFitColRow(direction, index, grid.columns, grid.rows);
+    const cell = regionFitColumnRow(direction, index, grid.columns, grid.rows);
     // Stride by cell size, not the wider box, so slack collects at the region's far edge instead of as gaps between thumbnails.
     return .{
-        .x = region.left + cell.col * (grid.cell_width + spacing),
+        .x = region.left + cell.column * (grid.cell_width + spacing),
         .y = region.top + cell.row * (grid.cell_height + spacing),
     };
 }
@@ -231,16 +231,16 @@ fn regionFitAxisCapacity(dimension: i32, spacing: i32, cell_dimension: i32) u32 
 }
 
 /// BTT/RTL directions stay within [0, rows/columns) since the region is fixed-size.
-fn regionFitColRow(direction: types.RegionFitDirection, index: usize, columns: u32, rows: u32) struct { col: i32, row: i32 } {
+fn regionFitColumnRow(direction: types.RegionFitDirection, index: usize, columns: u32, rows: u32) struct { column: i32, row: i32 } {
     return switch (direction) {
-        .RowFirst_RTL_TTB => .{ .col = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns)), .row = @intCast(index / columns) },
-        .RowFirst_LTR_BTT => .{ .col = @intCast(index % columns), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index / columns)) },
-        .RowFirst_RTL_BTT => .{ .col = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns)), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index / columns)) },
-        .ColumnFirst_TTB_LTR => .{ .col = @intCast(index / rows), .row = @intCast(index % rows) },
-        .ColumnFirst_BTT_LTR => .{ .col = @intCast(index / rows), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index % rows)) },
-        .ColumnFirst_TTB_RTL => .{ .col = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index / rows)), .row = @intCast(index % rows) },
-        .ColumnFirst_BTT_RTL => .{ .col = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index / rows)), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index % rows)) },
-        .RowFirst_LTR_TTB => .{ .col = @intCast(index % columns), .row = @intCast(index / columns) },
+        .RowFirst_RTL_TTB => .{ .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns)), .row = @intCast(index / columns) },
+        .RowFirst_LTR_BTT => .{ .column = @intCast(index % columns), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index / columns)) },
+        .RowFirst_RTL_BTT => .{ .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index % columns)), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index / columns)) },
+        .ColumnFirst_TTB_LTR => .{ .column = @intCast(index / rows), .row = @intCast(index % rows) },
+        .ColumnFirst_BTT_LTR => .{ .column = @intCast(index / rows), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index % rows)) },
+        .ColumnFirst_TTB_RTL => .{ .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index / rows)), .row = @intCast(index % rows) },
+        .ColumnFirst_BTT_RTL => .{ .column = @as(i32, @intCast(columns - 1)) - @as(i32, @intCast(index / rows)), .row = @as(i32, @intCast(rows - 1)) - @as(i32, @intCast(index % rows)) },
+        .RowFirst_LTR_TTB => .{ .column = @intCast(index % columns), .row = @intCast(index / columns) },
     };
 }
 
@@ -313,7 +313,7 @@ test "fitAspect fits the box by its tighter side and never goes below 1px" {
 
 test "regionFitColRow starts each direction in its own corner" {
     inline for (comptime std.enums.values(types.RegionFitDirection)) |direction| {
-        // Expected (col, row) of index 0 and index 1 in a 3x2 grid.
+        // Expected (column, row) of index 0 and index 1 in a 3x2 grid.
         const expected: [2][2]i32 = switch (direction) {
             .RowFirst_LTR_TTB => .{ .{ 0, 0 }, .{ 1, 0 } },
             .RowFirst_RTL_TTB => .{ .{ 2, 0 }, .{ 1, 0 } },
@@ -325,8 +325,8 @@ test "regionFitColRow starts each direction in its own corner" {
             .ColumnFirst_BTT_RTL => .{ .{ 2, 1 }, .{ 2, 0 } },
         };
         for (expected, 0..) |cell, index| {
-            const actual = regionFitColRow(direction, index, 3, 2);
-            try testing.expectEqual(cell[0], actual.col);
+            const actual = regionFitColumnRow(direction, index, 3, 2);
+            try testing.expectEqual(cell[0], actual.column);
             try testing.expectEqual(cell[1], actual.row);
         }
     }
@@ -336,9 +336,9 @@ test "regionFitColRow puts each index of a full grid in its own cell" {
     for (std.enums.values(types.RegionFitDirection)) |direction| {
         var seen: [6]bool = @splat(false);
         for (0..6) |index| {
-            const cell = regionFitColRow(direction, index, 3, 2);
-            try testing.expect(cell.col >= 0 and cell.col < 3 and cell.row >= 0 and cell.row < 2);
-            const slot: usize = @intCast(cell.row * 3 + cell.col);
+            const cell = regionFitColumnRow(direction, index, 3, 2);
+            try testing.expect(cell.column >= 0 and cell.column < 3 and cell.row >= 0 and cell.row < 2);
+            const slot: usize = @intCast(cell.row * 3 + cell.column);
             try testing.expect(!seen[slot]);
             seen[slot] = true;
         }

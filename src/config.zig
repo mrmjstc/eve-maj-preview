@@ -155,23 +155,23 @@ pub const Config = struct {
 
     /// The only way a Config is built, so `fromWire(.{}, ...)` is also the default profile.
     pub fn fromWire(w: Wire, allocator: std.mem.Allocator, profile_name: []const u8) !Config {
-        var cfg: Config = .{ .allocator = allocator, .profile_name = try allocator.dupe(u8, profile_name) };
-        errdefer cfg.deinit();
-        try wire.fromWireInto(Config, w, allocator, &cfg);
-        try spaces.ensureSpecialSpaces(allocator, &cfg.thumbnailSpaces);
-        spaces.keepSpecialSpacesFirst(cfg.thumbnailSpaces.items);
+        var config: Config = .{ .allocator = allocator, .profile_name = try allocator.dupe(u8, profile_name) };
+        errdefer config.deinit();
+        try wire.fromWireInto(Config, w, allocator, &config);
+        try spaces.ensureSpecialSpaces(allocator, &config.thumbnailSpaces);
+        spaces.keepSpecialSpacesFirst(config.thumbnailSpaces.items);
 
-        if (cfg.formatVersion < 2) {
-            for (cfg.characters.items) |*char| {
-                if (char.position) |pos| char.position = pos.scaleFromLegacyDpiUnaware();
+        if (config.formatVersion < 2) {
+            for (config.characters.items) |*character| {
+                if (character.position) |position| character.position = position.scaleFromLegacyDpiUnaware();
             }
         }
 
-        wire.freeField([]const u8, &cfg.app, PROFILE_FORMAT_IDENTIFIER, allocator);
-        cfg.app = PROFILE_FORMAT_IDENTIFIER;
-        cfg.formatVersion = PROFILE_FORMAT_VERSION;
+        wire.freeField([]const u8, &config.app, PROFILE_FORMAT_IDENTIFIER, allocator);
+        config.app = PROFILE_FORMAT_IDENTIFIER;
+        config.formatVersion = PROFILE_FORMAT_VERSION;
 
-        return cfg;
+        return config;
     }
 
     /// Caller owns the returned slice.
@@ -194,8 +194,8 @@ pub const Config = struct {
     }
 
     pub fn characterIndex(self: *const Config, name: []const u8) ?usize {
-        for (self.characters.items, 0..) |char, i| {
-            if (std.mem.eql(u8, char.name, name)) return i;
+        for (self.characters.items, 0..) |character, i| {
+            if (std.mem.eql(u8, character.name, name)) return i;
         }
         return null;
     }
@@ -209,13 +209,13 @@ pub const Config = struct {
     }
 
     fn characterSetting(self: *const Config, character_name: []const u8, comptime field: []const u8, default: @FieldType(CharacterConfig, field)) @FieldType(CharacterConfig, field) {
-        const char = self.findCharacterConst(character_name) orelse return default;
-        return @field(char, field);
+        const character = self.findCharacterConst(character_name) orelse return default;
+        return @field(character, field);
     }
 
     pub fn getOrCreateCharacter(self: *Config, allocator: std.mem.Allocator, name: []const u8) !*CharacterConfig {
-        if (self.findCharacter(name)) |char| {
-            return char;
+        if (self.findCharacter(name)) |character| {
+            return character;
         }
 
         const owned_name = try allocator.dupe(u8, name);
@@ -331,7 +331,7 @@ pub const Config = struct {
 
     pub fn validate(self: *Config) void {
         ranges.clamp(Config, self);
-        for (self.characters.items) |*char| char.validate();
+        for (self.characters.items) |*character| character.validate();
         for (self.thumbnailSpaces.items) |*space| space.validate();
         spaces.keepOneOfEachSpecialSpace(self.thumbnailSpaces.items);
     }

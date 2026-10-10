@@ -84,8 +84,8 @@ pub const CharacterConfig = struct {
 pub fn buildCharacterOrderMap(characters: []const CharacterConfig, allocator: std.mem.Allocator) !std.StringHashMap(usize) {
     var map = std.StringHashMap(usize).init(allocator);
     errdefer map.deinit();
-    for (characters, 0..) |char, i| {
-        const gop = try map.getOrPut(char.name);
+    for (characters, 0..) |character, i| {
+        const gop = try map.getOrPut(character.name);
         if (!gop.found_existing) gop.value_ptr.* = i;
     }
     return map;

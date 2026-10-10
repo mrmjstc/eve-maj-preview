@@ -316,14 +316,14 @@ pub fn discard() !void {
 /// Edit ops (see config/patch.zig) on the profile being edited, e.g. an import's; `arena` holds what they allocate along the way.
 pub fn applyOps(arena: std.mem.Allocator, ops: []const patch.Op) !void {
     const target = profile().ptr;
-    const ctx: patch.Context = .{ .arena = arena, .allocator = target.allocator };
+    const patch_context: patch.Context = .{ .arena = arena, .allocator = target.allocator };
     // Even after a failed op, since those before it were applied.
     defer {
         // A list set whole comes in without ids.
         patch.assignIds(config.Config, target);
         edited(.profile, .all, .none);
     }
-    for (ops) |op| _ = try patch.apply(config.Config, target, op, ctx);
+    for (ops) |op| _ = try patch.apply(config.Config, target, op, patch_context);
 }
 
 /// After a draft was changed without Ref.set, e.g. by config.applyWindowPosition.

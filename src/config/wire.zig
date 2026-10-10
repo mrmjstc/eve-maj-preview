@@ -28,18 +28,18 @@ pub const Argb = struct {
 
 /// A `u32`/`?u32` field whose name ends in "color"/"Color" is an ARGB colour, saved as a hex string.
 /// Accepts "0xAARRGGBB", "#AARRGGBB" or bare hex.
-pub fn parseHexColor(str: []const u8) !u32 {
-    if (str.len < 3) return error.InvalidColorFormat;
+pub fn parseHexColor(text: []const u8) !u32 {
+    if (text.len < 3) return error.InvalidColorFormat;
 
-    const start: usize = if (std.mem.startsWith(u8, str, "0x") or std.mem.startsWith(u8, str, "0X"))
+    const start: usize = if (std.mem.startsWith(u8, text, "0x") or std.mem.startsWith(u8, text, "0X"))
         2
-    else if (std.mem.startsWith(u8, str, "#"))
+    else if (std.mem.startsWith(u8, text, "#"))
         1
     else
         0;
-    const hex_str = str[start..];
+    const hex_text = text[start..];
 
-    return std.fmt.parseInt(u32, hex_str, 16) catch error.InvalidColorFormat;
+    return std.fmt.parseInt(u32, hex_text, 16) catch error.InvalidColorFormat;
 }
 
 pub fn isColorField(comptime name: []const u8) bool {

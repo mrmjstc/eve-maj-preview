@@ -233,7 +233,7 @@ const WAVEHDR = extern struct {
 const DecodedPcm = struct {
     data: []u8,
     channels: u16,
-    samples_per_sec: u32,
+    samples_per_second: u32,
     bits_per_sample: u16,
 
     fn deinit(self: *const DecodedPcm, allocator: std.mem.Allocator) void {
@@ -327,12 +327,12 @@ fn decodeToPcm(allocator: std.mem.Allocator, path_w: [*:0]const WCHAR) !DecodedP
     defer actual_type.release();
 
     var channels: u32 = 0;
-    var samples_per_sec: u32 = 0;
+    var samples_per_second: u32 = 0;
     var bits_per_sample: u32 = 0;
     _ = actual_type.vtable.GetUINT32(actual_type, &MF_MT_AUDIO_NUM_CHANNELS, &channels);
-    _ = actual_type.vtable.GetUINT32(actual_type, &MF_MT_AUDIO_SAMPLES_PER_SECOND, &samples_per_sec);
+    _ = actual_type.vtable.GetUINT32(actual_type, &MF_MT_AUDIO_SAMPLES_PER_SECOND, &samples_per_second);
     _ = actual_type.vtable.GetUINT32(actual_type, &MF_MT_AUDIO_BITS_PER_SAMPLE, &bits_per_sample);
-    if (channels == 0 or samples_per_sec == 0 or bits_per_sample == 0) return error.InvalidAudioFormat;
+    if (channels == 0 or samples_per_second == 0 or bits_per_sample == 0) return error.InvalidAudioFormat;
 
     var pcm_data: std.ArrayList(u8) = .empty;
     errdefer pcm_data.deinit(allocator);
@@ -365,7 +365,7 @@ fn decodeToPcm(allocator: std.mem.Allocator, path_w: [*:0]const WCHAR) !DecodedP
     return .{
         .data = try pcm_data.toOwnedSlice(allocator),
         .channels = @intCast(channels),
-        .samples_per_sec = samples_per_sec,
+        .samples_per_second = samples_per_second,
         .bits_per_sample = @intCast(bits_per_sample),
     };
 }
@@ -380,9 +380,9 @@ fn playBlocking(allocator: std.mem.Allocator, path: []const u8, volume_percent: 
 
     const format = WAVEFORMATEX{
         .nChannels = pcm.channels,
-        .nSamplesPerSec = pcm.samples_per_sec,
+        .nSamplesPerSec = pcm.samples_per_second,
         .nBlockAlign = pcm.channels * (pcm.bits_per_sample / 8),
-        .nAvgBytesPerSec = pcm.samples_per_sec * @as(u32, pcm.channels) * (pcm.bits_per_sample / 8),
+        .nAvgBytesPerSec = pcm.samples_per_second * @as(u32, pcm.channels) * (pcm.bits_per_sample / 8),
         .wBitsPerSample = pcm.bits_per_sample,
     };
 

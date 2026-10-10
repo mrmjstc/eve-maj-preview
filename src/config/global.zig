@@ -325,12 +325,12 @@ pub const GlobalConfig = struct {
 fn isGradeVariant(name: []const u8, base: []const u8) bool {
     if (base.len == 0 or base.len >= name.len) return false;
     var search_start: usize = 0;
-    while (std.mem.findPos(u8, name, search_start, base)) |pos| {
-        const before_ok = pos == 0 or name[pos - 1] == ' ';
-        const after_pos = pos + base.len;
-        const after_ok = after_pos == name.len or name[after_pos] == ' ';
+    while (std.mem.findPos(u8, name, search_start, base)) |match_index| {
+        const before_ok = match_index == 0 or name[match_index - 1] == ' ';
+        const after_index = match_index + base.len;
+        const after_ok = after_index == name.len or name[after_index] == ' ';
         if (before_ok and after_ok) return true;
-        search_start = pos + 1;
+        search_start = match_index + 1;
     }
     return false;
 }

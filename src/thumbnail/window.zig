@@ -258,7 +258,7 @@ pub fn registerClasses(instance: win32.HINSTANCE) !void {
 }
 
 /// Creates the thumbnail window showing `source_hwnd` through DWM and its text overlay, linked to each other and the source; both stay hidden until the first render shows them.
-pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hwnd: win32.HWND, character_name: []const u8, pos: config_mod.Position, size: Size, opacity: u8, click_through: bool) !Handles {
+pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hwnd: win32.HWND, character_name: []const u8, position: config_mod.Position, size: Size, opacity: u8, click_through: bool) !Handles {
     const name_z = try allocator.dupeSentinel(u8, character_name, 0);
     defer allocator.free(name_z);
 
@@ -270,8 +270,8 @@ pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hw
         WINDOW_CLASS_NAME,
         name_z.ptr,
         win32.WS_POPUP,
-        pos.x,
-        pos.y,
+        position.x,
+        position.y,
         size.width,
         size.height,
         null,
@@ -297,8 +297,8 @@ pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hw
         TEXT_WINDOW_CLASS_NAME,
         name_z.ptr,
         win32.WS_POPUP,
-        pos.x,
-        pos.y,
+        position.x,
+        position.y,
         size.width,
         size.height,
         null,
@@ -317,8 +317,8 @@ pub fn create(allocator: std.mem.Allocator, instance: win32.HINSTANCE, source_hw
 }
 
 /// Shows the text overlay once its first render is in place, so it never flashes up empty.
-pub fn showText(handles: Handles, pos: config_mod.Position, size: Size) void {
-    _ = win32.SetWindowPos(handles.text_hwnd, win32.HWND_TOPMOST, pos.x, pos.y, size.width, size.height, win32.SWP_NOACTIVATE);
+pub fn showText(handles: Handles, position: config_mod.Position, size: Size) void {
+    _ = win32.SetWindowPos(handles.text_hwnd, win32.HWND_TOPMOST, position.x, position.y, size.width, size.height, win32.SWP_NOACTIVATE);
     _ = win32.ShowWindow(handles.text_hwnd, win32.SW_SHOW);
     _ = win32.UpdateWindow(handles.text_hwnd);
 }

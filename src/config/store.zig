@@ -1,22 +1,22 @@
 //! The only writer of the running profile: `live` is what the app shows, including unsaved dialog edits, and `saved` is what's on disk.
 const std = @import("std");
-const config = @import("../config.zig");
+const config_mod = @import("../config.zig");
 const profiles = @import("profiles.zig");
 const wire = @import("wire.zig");
 const patch_mod = @import("patch.zig");
 const strings = @import("../util/strings.zig");
 const log = @import("../log.zig");
 
-const Config = config.Config;
+const Config = config_mod.Config;
 const slog = log.scoped("config");
 
 pub const ProfileStore = struct {
     live: Config,
     saved: Config,
 
-    /// Takes ownership of `cfg`, freeing it on failure.
-    pub fn init(cfg: Config) !ProfileStore {
-        var live = cfg;
+    /// Takes ownership of `config`, freeing it on failure.
+    pub fn init(config: Config) !ProfileStore {
+        var live = config;
         errdefer live.deinit();
         patch_mod.assignIds(Config, &live);
         return .{ .live = live, .saved = try live.clone(live.allocator) };
@@ -35,7 +35,7 @@ pub const ProfileStore = struct {
         self.persist();
     }
 
-    pub const CharacterPosition = struct { name: []const u8, pos: config.Position };
+    pub const CharacterPosition = struct { name: []const u8, position: config_mod.Position };
 
     /// Saved once for the whole batch, so a group drag writes the profile once rather than per thumbnail.
     pub fn setCharacterPositions(self: *ProfileStore, entries: []const CharacterPosition) void {
@@ -54,15 +54,15 @@ pub const ProfileStore = struct {
         self.persist();
     }
 
-    fn setPosition(cfg: *Config, entry: CharacterPosition) !void {
-        const char = try cfg.getOrCreateCharacter(cfg.allocator, entry.name);
-        char.position = entry.pos;
+    fn setPosition(config: *Config, entry: CharacterPosition) !void {
+        const character = try config.getOrCreateCharacter(config.allocator, entry.name);
+        character.position = entry.position;
     }
 
     /// Sets `character_name`'s saved game-window position and size, or with a null name every character's; clearing a missing character is a no-op.
-    pub fn setWindowPosition(self: *ProfileStore, character_name: ?[]const u8, pos: ?config.Position, size: ?config.WindowSize) !void {
-        try applyWindowPosition(&self.live, character_name, pos, size);
-        try applyWindowPosition(&self.saved, character_name, pos, size);
+    pub fn setWindowPosition(self: *ProfileStore, character_name: ?[]const u8, position: ?config_mod.Position, size: ?config_mod.WindowSize) !void {
+        try applyWindowPosition(&self.live, character_name, position, size);
+        try applyWindowPosition(&self.saved, character_name, position, size);
         // A character this created needs an id, which the config dialog tracks it by.
         patch_mod.assignIds(Config, &self.live);
         self.persist();
@@ -130,30 +130,30 @@ pub const ProfileStore = struct {
 };
 
 /// Shared with the dialog's edits to a profile the app isn't running, which only exist on disk.
-pub fn applyWindowPosition(cfg: *Config, character_name: ?[]const u8, pos: ?config.Position, size: ?config.WindowSize) !void {
+pub fn applyWindowPosition(config: *Config, character_name: ?[]const u8, position: ?config_mod.Position, size: ?config_mod.WindowSize) !void {
     if (character_name) |name| {
-        if (pos == null and cfg.findCharacter(name) == null) return;
-        const char = try cfg.getOrCreateCharacter(cfg.allocator, name);
-        char.windowPosition = pos;
-        char.windowSize = size;
+        if (position == null and config.findCharacter(name) == null) return;
+        const character = try config.getOrCreateCharacter(config.allocator, name);
+        character.windowPosition = position;
+        character.windowSize = size;
     } else {
-        for (cfg.characters.items) |*char| {
-            char.windowPosition = pos;
-            char.windowSize = size;
+        for (config.characters.items) |*character| {
+            character.windowPosition = position;
+            character.windowSize = size;
         }
     }
 }
 
 /// Idempotent, so both copies end up agreeing even if they didn't before.
-fn setMembership(cfg: *Config, group: *config.HotkeyGroupConfig, character_name: []const u8, member: bool) !void {
+fn setMembership(config: *Config, group: *config_mod.HotkeyGroupConfig, character_name: []const u8, member: bool) !void {
     const members = &group.characters;
     const index = strings.indexOfString(members.items, character_name);
     if (member and index == null) {
-        const owned = try cfg.allocator.dupe(u8, character_name);
-        errdefer cfg.allocator.free(owned);
-        try members.append(cfg.allocator, owned);
+        const owned = try config.allocator.dupe(u8, character_name);
+        errdefer config.allocator.free(owned);
+        try members.append(config.allocator, owned);
     } else if (!member) {
-        if (index) |i| cfg.allocator.free(members.orderedRemove(i));
+        if (index) |i| config.allocator.free(members.orderedRemove(i));
     }
 }
 

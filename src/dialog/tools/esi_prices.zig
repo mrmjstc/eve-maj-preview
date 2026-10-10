@@ -67,15 +67,15 @@ pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io
     const lookups = try allocator.alloc(PriceLookup, type_ids.count());
     defer allocator.free(lookups);
     {
-        var idx: usize = 0;
+        var index: usize = 0;
         var it = type_ids.iterator();
-        while (it.next()) |entry| : (idx += 1) {
-            lookups[idx] = .{ .name = entry.key_ptr.*, .type_id = entry.value_ptr.* };
+        while (it.next()) |entry| : (index += 1) {
+            lookups[index] = .{ .name = entry.key_ptr.*, .type_id = entry.value_ptr.* };
         }
     }
 
     if (lookups.len > 0) {
-        var ctx = PriceFetchContext{
+        var context = PriceFetchContext{
             .allocator = allocator,
             .io = io,
             .client = &client,
@@ -89,12 +89,12 @@ pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io
         var threads: [MAX_CONCURRENT_PRICE_REQUESTS - 1]?std.Thread = @splat(null);
         const background_workers = worker_count - 1;
         for (threads[0..background_workers]) |*slot| {
-            slot.* = std.Thread.spawn(.{}, priceFetchWorker, .{&ctx}) catch |err| blk: {
+            slot.* = std.Thread.spawn(.{}, priceFetchWorker, .{&context}) catch |err| blk: {
                 slog.warn("Failed to spawn price-fetch worker: {}", .{err});
                 break :blk null;
             };
         }
-        priceFetchWorker(&ctx);
+        priceFetchWorker(&context);
         for (threads[0..background_workers]) |maybe_t| {
             if (maybe_t) |t| t.join();
         }
@@ -151,17 +151,17 @@ fn resolveOreTypeIds(allocator: std.mem.Allocator, client: *std.http.Client, nam
 
     for (inventory_types.array.items) |item| {
         if (item != .object) continue;
-        const id_val = item.object.get("id") orelse continue;
-        const name_val = item.object.get("name") orelse continue;
-        if (id_val != .integer or name_val != .string) continue;
+        const id_value = item.object.get("id") orelse continue;
+        const name_value = item.object.get("name") orelse continue;
+        if (id_value != .integer or name_value != .string) continue;
 
         const prefix = "Compressed ";
-        if (!std.mem.startsWith(u8, name_val.string, prefix)) continue;
-        const base_name = name_val.string[prefix.len..];
+        if (!std.mem.startsWith(u8, name_value.string, prefix)) continue;
+        const base_name = name_value.string[prefix.len..];
 
         const key = try allocator.dupe(u8, base_name);
         errdefer allocator.free(key);
-        try result.put(key, id_val.integer);
+        try result.put(key, id_value.integer);
     }
 
     return result;
@@ -189,11 +189,11 @@ fn fetchJitaBuyPrice(allocator: std.mem.Allocator, client: *std.http.Client, typ
     var best: ?f64 = null;
     for (parsed.value.array.items) |order| {
         if (order != .object) continue;
-        const location_val = order.object.get("location_id") orelse continue;
-        if (location_val != .integer or location_val.integer != ESI_JITA_STATION_ID) continue;
+        const location_value = order.object.get("location_id") orelse continue;
+        if (location_value != .integer or location_value.integer != ESI_JITA_STATION_ID) continue;
 
-        const price_val = order.object.get("price") orelse continue;
-        const price: f64 = switch (price_val) {
+        const price_value = order.object.get("price") orelse continue;
+        const price: f64 = switch (price_value) {
             .float => |f| f,
             .integer => |i| @floatFromInt(i),
             else => continue,
@@ -203,21 +203,21 @@ fn fetchJitaBuyPrice(allocator: std.mem.Allocator, client: *std.http.Client, typ
     return best;
 }
 
-/// Pulls lookups off ctx's shared index until exhausted; safe to run on several threads (including the caller's) at once.
-fn priceFetchWorker(ctx: *PriceFetchContext) void {
+/// Pulls lookups off context's shared index until exhausted; safe to run on several threads (including the caller's) at once.
+fn priceFetchWorker(context: *PriceFetchContext) void {
     while (true) {
-        const i = ctx.next_index.fetchAdd(1, .monotonic);
-        if (i >= ctx.lookups.len) return;
+        const i = context.next_index.fetchAdd(1, .monotonic);
+        if (i >= context.lookups.len) return;
 
-        const lookup = ctx.lookups[i];
-        const price = fetchJitaBuyPrice(ctx.allocator, ctx.client, lookup.type_id) orelse continue;
+        const lookup = context.lookups[i];
+        const price = fetchJitaBuyPrice(context.allocator, context.client, lookup.type_id) orelse continue;
 
-        ctx.results_mutex.lock(ctx.io) catch |err| {
+        context.results_mutex.lock(context.io) catch |err| {
             slog.warn("Failed to lock price results mutex for '{s}': {}", .{ lookup.name, err });
             continue;
         };
-        defer ctx.results_mutex.unlock(ctx.io);
-        ctx.results.append(ctx.allocator, .{ .name = lookup.name, .price = price }) catch |err| {
+        defer context.results_mutex.unlock(context.io);
+        context.results.append(context.allocator, .{ .name = lookup.name, .price = price }) catch |err| {
             slog.warn("Failed to store price for '{s}': {}", .{ lookup.name, err });
         };
     }

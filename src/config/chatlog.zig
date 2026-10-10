@@ -48,18 +48,18 @@ pub const ChatlogConfig = struct {
 
     /// Expands %VAR% references in the log directories; an empty one gets EVE's default, which depends on the machine so can't be a field default.
     pub fn fromWire(w: Wire, allocator: std.mem.Allocator) !ChatlogConfig {
-        var cfg = try wire.fromWire(ChatlogConfig, w, allocator);
-        errdefer wire.deinit(ChatlogConfig, &cfg, allocator);
-        replaceDir(allocator, &cfg.chatlogDir, try files.expandEnvironmentVariables(allocator, cfg.chatlogDir));
-        replaceDir(allocator, &cfg.gamelogDir, try files.expandEnvironmentVariables(allocator, cfg.gamelogDir));
+        var config = try wire.fromWire(ChatlogConfig, w, allocator);
+        errdefer wire.deinit(ChatlogConfig, &config, allocator);
+        replaceDir(allocator, &config.chatlogDir, try files.expandEnvironmentVariables(allocator, config.chatlogDir));
+        replaceDir(allocator, &config.gamelogDir, try files.expandEnvironmentVariables(allocator, config.gamelogDir));
 
-        if (cfg.chatlogDir.len == 0 or cfg.gamelogDir.len == 0) {
+        if (config.chatlogDir.len == 0 or config.gamelogDir.len == 0) {
             const documents_dir = try documentsDir(allocator);
             defer allocator.free(documents_dir);
-            if (cfg.chatlogDir.len == 0) replaceDir(allocator, &cfg.chatlogDir, try allocator.print("{s}/EVE/logs/Chatlogs", .{documents_dir}));
-            if (cfg.gamelogDir.len == 0) replaceDir(allocator, &cfg.gamelogDir, try allocator.print("{s}/EVE/logs/Gamelogs", .{documents_dir}));
+            if (config.chatlogDir.len == 0) replaceDir(allocator, &config.chatlogDir, try allocator.print("{s}/EVE/logs/Chatlogs", .{documents_dir}));
+            if (config.gamelogDir.len == 0) replaceDir(allocator, &config.gamelogDir, try allocator.print("{s}/EVE/logs/Gamelogs", .{documents_dir}));
         }
-        return cfg;
+        return config;
     }
 
     fn replaceDir(allocator: std.mem.Allocator, dir: *[]const u8, new_dir: []const u8) void {

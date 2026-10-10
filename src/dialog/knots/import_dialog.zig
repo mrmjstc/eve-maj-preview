@@ -303,12 +303,12 @@ fn stringAt(value: std.json.Value, name: []const u8) ?[]const u8 {
     return if (field == .string) field.string else null;
 }
 
-/// A note in words: its key's English text with each {param} filled in, translating the ones that are keys themselves.
+/// A note in words: its key's English text with each {parameter} filled in, translating the ones that are keys themselves.
 fn translate(allocator: std.mem.Allocator, note: importer.Text) ![]const u8 {
     var out: []const u8 = try allocator.dupe(u8, lang.text(note.key, note.key));
-    for (note.params) |param| {
-        const value = if (param.translate) lang.text(param.value, param.value) else param.value;
-        out = try replace(allocator, out, param.name, value);
+    for (note.parameters) |parameter| {
+        const value = if (parameter.translate) lang.text(parameter.value, parameter.value) else parameter.value;
+        out = try replace(allocator, out, parameter.name, value);
     }
     return out;
 }
@@ -317,9 +317,9 @@ fn translate(allocator: std.mem.Allocator, note: importer.Text) ![]const u8 {
 fn translateValue(allocator: std.mem.Allocator, hint: std.json.Value) ![]const u8 {
     const key = stringAt(hint, "key") orelse return "";
     var out: []const u8 = try allocator.dupe(u8, lang.text(key, key));
-    if (hint.object.get("params")) |params| {
-        if (params == .object) {
-            var it = params.object.iterator();
+    if (hint.object.get("params")) |parameters| {
+        if (parameters == .object) {
+            var it = parameters.object.iterator();
             while (it.next()) |entry| {
                 const value = switch (entry.value_ptr.*) {
                     .string => |text| text,

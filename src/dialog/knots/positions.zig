@@ -8,7 +8,7 @@ const scout_mod = @import("../../clients/scout.zig");
 const session = @import("session.zig");
 
 /// A live game window's top-left corner and size.
-const LiveWindow = struct { pos: config.Position, size: config.WindowSize };
+const LiveWindow = struct { position: config.Position, size: config.WindowSize };
 
 /// Logged-in clients' character names, for picking a window to copy from. Copied into `arena`.
 pub fn openClients(arena: std.mem.Allocator) ![]const []const u8 {
@@ -46,15 +46,15 @@ fn liveWindow(character_name: []const u8) !LiveWindow {
     if (win32.isWindowIconic(window)) return error.CharacterWindowIsMinimized;
     var rect: win32.RECT = undefined;
     if (!win32.toBool(win32.GetWindowRect(window, &rect))) return error.WindowPositionUnavailable;
-    return .{ .pos = .{ .x = rect.left, .y = rect.top }, .size = .{ .width = win32.rectWidth(rect), .height = win32.rectHeight(rect) } };
+    return .{ .position = .{ .x = rect.left, .y = rect.top }, .size = .{ .width = win32.rectWidth(rect), .height = win32.rectHeight(rect) } };
 }
 
 fn setWindowPositions(character_name: ?[]const u8, window: ?LiveWindow) !void {
-    const pos: ?config.Position = if (window) |live| live.pos else null;
+    const position: ?config.Position = if (window) |live| live.position else null;
     const size: ?config.WindowSize = if (window) |live| live.size else null;
-    if (!session.editsDraft()) return main.g_store.setWindowPosition(character_name, pos, size);
+    if (!session.editsDraft()) return main.g_store.setWindowPosition(character_name, position, size);
     const draft = session.profile().ptr;
-    try config.applyWindowPosition(draft, character_name, pos, size);
+    try config.applyWindowPosition(draft, character_name, position, size);
     patch.assignIds(config.Config, draft);
     session.editedOutside();
 }

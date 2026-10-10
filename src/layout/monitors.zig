@@ -72,8 +72,8 @@ pub fn monitorRects(buffer: []win32.RECT) []win32.RECT {
     return rects;
 }
 
-pub fn resolveMonitorPlacement(cfg: *const config.DisplayConfig) ?MonitorPlacement {
-    return if (cfg.monitorIndex) |monitor_index| getMonitorPlacement(monitor_index, cfg.useMonitorWorkArea) else null;
+pub fn resolveMonitorPlacement(display: *const config.DisplayConfig) ?MonitorPlacement {
+    return if (display.monitorIndex) |monitor_index| getMonitorPlacement(monitor_index, display.useMonitorWorkArea) else null;
 }
 
 /// By 0-based index; null if out of range.

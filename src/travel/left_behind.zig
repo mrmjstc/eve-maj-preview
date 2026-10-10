@@ -22,8 +22,8 @@ pub const LeftBehindState = struct {
 
 /// Flags characters behind the group's current system by more than config.travel.window_seconds.
 pub fn check(painter: *Painter, now: win32.Ticks) void {
-    const cfg = painter.config.travel;
-    if (!cfg.enabled) return;
+    const travel = painter.config.travel;
+    if (!travel.enabled) return;
 
     var eligible_count: usize = 0;
     for (painter.thumbnails.items) |*thumb| {
@@ -56,13 +56,13 @@ pub fn check(painter: *Painter, now: win32.Ticks) void {
     }
     if (group_count == 0) return;
 
-    const required: usize = switch (cfg.threshold_mode) {
-        .percent => @intFromFloat(@ceil(cfg.threshold_percent / 100.0 * @as(f32, @floatFromInt(eligible_count)))),
-        .count => cfg.threshold_count,
+    const required: usize = switch (travel.threshold_mode) {
+        .percent => @intFromFloat(@ceil(travel.threshold_percent / 100.0 * @as(f32, @floatFromInt(eligible_count)))),
+        .count => travel.threshold_count,
     };
     if (group_count < required) return;
 
-    const window_ms: u64 = @as(u64, cfg.window_seconds) * 1000;
+    const window_ms: u64 = @as(u64, travel.window_seconds) * 1000;
     if (now.elapsedSince(group_arrival_ms) < window_ms) return;
 
     for (painter.thumbnails.items) |*thumb| {

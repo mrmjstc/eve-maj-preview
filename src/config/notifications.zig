@@ -81,7 +81,7 @@ pub const NotificationTypeConfigs = struct {
     pub fn clone(self: *const NotificationTypeConfigs, allocator: std.mem.Allocator) !NotificationTypeConfigs {
         var out: NotificationTypeConfigs = .{};
         errdefer out.deinit(allocator);
-        for (&out.map.values, self.map.values) |*dst, src| dst.* = try wire.clone(NotificationTypeConfig, src, allocator);
+        for (&out.map.values, self.map.values) |*destination, source| destination.* = try wire.clone(NotificationTypeConfig, source, allocator);
         return out;
     }
 

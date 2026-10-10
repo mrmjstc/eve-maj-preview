@@ -13,7 +13,7 @@ const Painter = painter_mod.Painter;
 const ThumbnailWindow = window.ThumbnailWindow;
 const Size = window.Size;
 
-pub const Place = struct { pos: config_mod.Position, size: Size };
+pub const Place = struct { position: config_mod.Position, size: Size };
 
 /// Every active space's grid for the current thumbnails.
 pub fn spaceCells(painter: *const Painter) placement.SpaceCells {
@@ -34,11 +34,11 @@ pub fn newPlace(painter: *const Painter, character_name: []const u8, monitor_bou
         var counts = layout.spaceCounts();
         counts[space_index] += 1;
         if (layout.spaceCells(&counts)[space_index]) |cell| {
-            return .{ .pos = cell.position(counts[space_index] - 1), .size = cellSize(cell) };
+            return .{ .position = cell.position(counts[space_index] - 1), .size = cellSize(cell) };
         }
     }
     const size = handPlacedSize(painter, character_name, scale);
-    return .{ .pos = layout.calculateThumbnailPosition(character_name, size.width, size.height, painter.thumbnails.items.len, monitor_bounds, scale), .size = size };
+    return .{ .position = layout.calculateThumbnailPosition(character_name, size.width, size.height, painter.thumbnails.items.len, monitor_bounds, scale), .size = size };
 }
 
 /// Spaces size every cell from how many thumbnails they hold, so any arrival or departure reflows them all.
@@ -128,14 +128,14 @@ pub fn repositionAll(painter: *Painter) void {
         // Hidden before it moves, or it shows at its new place until the next render hides it.
         if (thumbnail.cached_hide_thumbnail) thumbnail.show(false);
         if (space_of) |space_index| if (cells[space_index]) |cell| {
-            const pos = cell.position(rank);
-            hdwp = thumbnail.deferPlace(hdwp, pos.x, pos.y, cellSize(cell)) orelse return;
+            const position = cell.position(rank);
+            hdwp = thumbnail.deferPlace(hdwp, position.x, position.y, cellSize(cell)) orelse return;
             continue;
         };
         // Sized too, since it may still have a space cell's size from before it left that space.
         const size = handPlacedSize(painter, thumbnail.character_name, windowScale(&thumbnail));
-        const pos = layout.calculateThumbnailPosition(thumbnail.character_name, size.width, size.height, index, monitor_bounds, scale);
-        hdwp = thumbnail.deferPlace(hdwp, pos.x, pos.y, size) orelse return;
+        const position = layout.calculateThumbnailPosition(thumbnail.character_name, size.width, size.height, index, monitor_bounds, scale);
+        hdwp = thumbnail.deferPlace(hdwp, position.x, position.y, size) orelse return;
     }
     hdwp = painter.hover_zoom.deferRaise(hdwp) orelse return;
     _ = win32.EndDeferWindowPos(hdwp);

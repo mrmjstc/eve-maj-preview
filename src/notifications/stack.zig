@@ -113,8 +113,8 @@ pub const NotificationStack = struct {
     pub fn expire(self: *NotificationStack, allocator: std.mem.Allocator, now: win32.Ticks) bool {
         const Ctx = struct {
             now: win32.Ticks,
-            fn shouldRemove(ctx: @This(), entry: ActiveNotification) bool {
-                return entry.duration_ms > 0 and ctx.now.elapsedSince(entry.start_time) >= entry.duration_ms;
+            fn shouldRemove(context: @This(), entry: ActiveNotification) bool {
+                return entry.duration_ms > 0 and context.now.elapsedSince(entry.start_time) >= entry.duration_ms;
             }
         };
         return self.removeIf(allocator, Ctx{ .now = now });
@@ -140,11 +140,11 @@ pub const NotificationStack = struct {
         self.len -= 1;
     }
 
-    fn removeIf(self: *NotificationStack, allocator: std.mem.Allocator, ctx: anytype) bool {
+    fn removeIf(self: *NotificationStack, allocator: std.mem.Allocator, context: anytype) bool {
         var write: usize = 0;
         for (0..self.len) |read| {
             const entry = self.entries[read];
-            if (ctx.shouldRemove(entry)) {
+            if (context.shouldRemove(entry)) {
                 allocator.free(entry.text);
                 continue;
             }

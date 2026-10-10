@@ -228,9 +228,9 @@ fn characterPositions(d: *Draft, s: Source) !void {
 /// EVE-X ran DPI-unaware, so its positions are in a 96-DPI space Windows scaled for it.
 pub fn putPosition(d: *Draft, character: *std.json.ObjectMap, x: f64, y: f64) !void {
     const legacy: config.Position = .{ .x = std.math.lossyCast(i32, @round(x)), .y = std.math.lossyCast(i32, @round(y)) };
-    const pos = legacy.scaleFromLegacyDpiUnaware();
-    try d.put(character, "position.x", .{ .integer = pos.x });
-    try d.put(character, "position.y", .{ .integer = pos.y });
+    const position = legacy.scaleFromLegacyDpiUnaware();
+    try d.put(character, "position.x", .{ .integer = position.x });
+    try d.put(character, "position.y", .{ .integer = position.y });
 }
 
 fn colorsAndHotkeys(d: *Draft, s: Source) !void {

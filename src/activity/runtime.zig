@@ -1,6 +1,6 @@
 //! The profile's live activity trackers, and the throttled push of their values into the painter.
 const std = @import("std");
-const config = @import("../config.zig");
+const config_mod = @import("../config.zig");
 const painter_mod = @import("../painter.zig");
 const scout = @import("../clients/scout.zig");
 const chatlog = @import("../chatlog.zig");
@@ -10,7 +10,7 @@ const schedule = @import("../util/schedule.zig");
 const log = @import("../log.zig");
 
 const Painter = painter_mod.Painter;
-const Config = config.Config;
+const Config = config_mod.Config;
 const slog = log.scoped("activity");
 
 /// Independent of the overlay refresh, and also the cap when an alert's throttle is 0.
@@ -29,24 +29,24 @@ pub const Trackers = struct {
     last_resource_update_ms: i64 = 0,
     last_alert_check_ms: i64 = 0,
 
-    /// Matches the trackers to `cfg`, keeping each one that stays enabled with its history while a monitor feeds it, and hands them to `monitor`, whose worker thread must be stopped.
+    /// Matches the trackers to `config`, keeping each one that stays enabled with its history while a monitor feeds it, and hands them to `monitor`, whose worker thread must be stopped.
     /// Fail-soft: a tracker that can't be created is logged and left off rather than aborting startup or a reload.
-    pub fn setup(self: *Trackers, cfg: *const Config, monitor: ?*chatlog.ChatlogMonitor) void {
+    pub fn setup(self: *Trackers, config: *const Config, monitor: ?*chatlog.ChatlogMonitor) void {
         if (monitor == null) {
             self.destroy(tracker_mod.CombatTracker, &self.combat, "Combat DPS");
             self.destroy(tracker_mod.MiningTracker, &self.mining, "Mining rate");
             self.destroy(tracker_mod.BountyTracker, &self.bounty, "Bounty rate");
         }
-        self.reconcile(tracker_mod.CombatTracker, &self.combat, cfg.combat.enabled, cfg.combat.window_seconds, "Combat DPS");
-        self.reconcile(tracker_mod.MiningTracker, &self.mining, cfg.mining.enabled, cfg.mining.window_seconds, "Mining rate");
-        self.reconcile(tracker_mod.BountyTracker, &self.bounty, cfg.bounty.enabled, cfg.bounty.window_seconds, "Bounty rate");
-        self.setupResources(cfg.resources.enabled);
+        self.reconcile(tracker_mod.CombatTracker, &self.combat, config.combat.enabled, config.combat.window_seconds, "Combat DPS");
+        self.reconcile(tracker_mod.MiningTracker, &self.mining, config.mining.enabled, config.mining.window_seconds, "Mining rate");
+        self.reconcile(tracker_mod.BountyTracker, &self.bounty, config.bounty.enabled, config.bounty.window_seconds, "Bounty rate");
+        self.setupResources(config.resources.enabled);
 
         if (monitor) |m| {
             m.combat_tracker = self.combat;
             m.mining_tracker = self.mining;
             m.bounty_tracker = self.bounty;
-            m.setDamageAlertExcludedWeapons(cfg.combat.damage_alert_excluded_weapons);
+            m.setDamageAlertExcludedWeapons(config.combat.damage_alert_excluded_weapons);
         }
     }
 
@@ -103,19 +103,19 @@ pub const Trackers = struct {
 
     /// Pushes each enabled tracker's values into the painter at its configured interval, checks alerts every ALERT_CHECK_INTERVAL_MS, then redraws what changed once.
     /// `now_ms` is the tick's start, which keeps to the timer's schedule however long the tick's work took.
-    pub fn tick(self: *Trackers, cfg: *const Config, windows: []const scout.EveWindow, now_ms: i64, tick_interval_ms: i64) void {
-        if (self.combat) |t| pushThrottled(tracker_mod.CombatTracker, pushDps, t, cfg, windows, now_ms, tick_interval_ms, &self.last_dps_update_ms, cfg.combat.update_interval_ms);
-        if (self.mining) |t| pushThrottled(tracker_mod.MiningTracker, pushMining, t, cfg, windows, now_ms, tick_interval_ms, &self.last_mining_update_ms, cfg.mining.update_interval_ms);
-        if (self.bounty) |t| pushThrottled(tracker_mod.BountyTracker, pushBounty, t, cfg, windows, now_ms, tick_interval_ms, &self.last_bounty_update_ms, cfg.bounty.update_interval_ms);
+    pub fn tick(self: *Trackers, config: *const Config, windows: []const scout.EveWindow, now_ms: i64, tick_interval_ms: i64) void {
+        if (self.combat) |t| pushThrottled(tracker_mod.CombatTracker, pushDps, t, config, windows, now_ms, tick_interval_ms, &self.last_dps_update_ms, config.combat.update_interval_ms);
+        if (self.mining) |t| pushThrottled(tracker_mod.MiningTracker, pushMining, t, config, windows, now_ms, tick_interval_ms, &self.last_mining_update_ms, config.mining.update_interval_ms);
+        if (self.bounty) |t| pushThrottled(tracker_mod.BountyTracker, pushBounty, t, config, windows, now_ms, tick_interval_ms, &self.last_bounty_update_ms, config.bounty.update_interval_ms);
 
         if (schedule.isDue(now_ms - self.last_alert_check_ms, ALERT_CHECK_INTERVAL_MS, tick_interval_ms)) {
             self.last_alert_check_ms = now_ms;
-            self.checkAlerts(cfg, windows, now_ms);
+            self.checkAlerts(config, windows, now_ms);
         }
 
-        self.setupResources(cfg.resources.enabled);
+        self.setupResources(config.resources.enabled);
         if (self.resources) |t| {
-            if (schedule.isDue(now_ms - self.last_resource_update_ms, @intCast(cfg.resources.update_interval_ms), tick_interval_ms)) {
+            if (schedule.isDue(now_ms - self.last_resource_update_ms, @intCast(config.resources.update_interval_ms), tick_interval_ms)) {
                 self.last_resource_update_ms = now_ms;
                 pushResources(t, windows, now_ms);
             }
@@ -124,16 +124,16 @@ pub const Trackers = struct {
         if (painter_mod.g_painter_ptr) |painter| painter.renderDirtyThumbnails(null);
     }
 
-    fn checkAlerts(self: *const Trackers, cfg: *const Config, windows: []const scout.EveWindow, now_ms: i64) void {
+    fn checkAlerts(self: *const Trackers, config: *const Config, windows: []const scout.EveWindow, now_ms: i64) void {
         const painter = painter_mod.g_painter_ptr orelse return;
-        const idle_window_ms: i64 = @as(i64, cfg.mining.idle_alert_window_seconds) * std.time.ms_per_s;
-        const stopped_window_ms: i64 = @as(i64, cfg.mining.stopped_alert_window_seconds) * std.time.ms_per_s;
+        const idle_window_ms: i64 = @as(i64, config.mining.idle_alert_window_seconds) * std.time.ms_per_s;
+        const stopped_window_ms: i64 = @as(i64, config.mining.stopped_alert_window_seconds) * std.time.ms_per_s;
         for (windows) |eve_window| {
             if (self.combat) |combat| {
                 if (combat.query(eve_window.character_name, tracker_mod.CombatWindow.checkDamageAlert, .{}, false)) painter.notify(eve_window.hwnd, .{ .ntype = .TakingDamage });
             }
             if (self.mining) |mining| {
-                if (mining.query(eve_window.character_name, tracker_mod.MiningWindow.checkIdleAlert, .{ now_ms, idle_window_ms, cfg.mining.idle_alert_threshold }, false)) {
+                if (mining.query(eve_window.character_name, tracker_mod.MiningWindow.checkIdleAlert, .{ now_ms, idle_window_ms, config.mining.idle_alert_threshold }, false)) {
                     painter.notify(eve_window.hwnd, .{ .ntype = .MiningIdle });
                 }
                 if (mining.query(eve_window.character_name, tracker_mod.MiningWindow.checkStoppedAlert, .{ now_ms, stopped_window_ms }, false)) {
@@ -148,7 +148,7 @@ fn pushThrottled(
     comptime T: type,
     comptime perWindow: fn (*T, *Painter, *const Config, scout.EveWindow, i64) void,
     tracker: *T,
-    cfg: *const Config,
+    config: *const Config,
     windows: []const scout.EveWindow,
     now_ms: i64,
     tick_interval_ms: i64,
@@ -160,7 +160,7 @@ fn pushThrottled(
 
     const painter = painter_mod.g_painter_ptr orelse return;
     for (windows) |eve_window| {
-        perWindow(tracker, painter, cfg, eve_window, now_ms);
+        perWindow(tracker, painter, config, eve_window, now_ms);
     }
 }
 

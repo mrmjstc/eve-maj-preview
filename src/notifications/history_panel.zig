@@ -53,9 +53,9 @@ pub const HistoryPanel = struct {
     }
 
     /// Whether the panel is actually on-screen, accounting for hideNotifInfoPanelWhenNoCharacters and the tray-toggle override; drives both the render/hide gate and the tray menu's checked state.
-    pub fn isVisible(self: *const HistoryPanel, cfg: *const config_mod.Config, any_character_logged_in: bool) bool {
+    pub fn isVisible(self: *const HistoryPanel, config: *const config_mod.Config, any_character_logged_in: bool) bool {
         if (self.window == null) return false;
-        if (!cfg.display.hideNotifInfoPanelWhenNoCharacters) return true;
+        if (!config.display.hideNotifInfoPanelWhenNoCharacters) return true;
         return any_character_logged_in or self.force_visible;
     }
 
@@ -145,8 +145,8 @@ pub const HistoryPanelWindow = struct {
 
     fn saveWindowPosition(self: *HistoryPanelWindow) void {
         if (!self.config.display.rememberNotifInfoPanelPosition) return;
-        const pos = self.panel.topLeft();
-        self.store.update(.{ .display = .{ .notifInfoPanelX = pos.x, .notifInfoPanelY = pos.y } });
+        const top_left = self.panel.topLeft();
+        self.store.update(.{ .display = .{ .notifInfoPanelX = top_left.x, .notifInfoPanelY = top_left.y } });
     }
 
     fn messageColor(self: *const HistoryPanelWindow, notification_type: notification.NotificationType) u32 {
@@ -210,10 +210,10 @@ pub const HistoryPanelWindow = struct {
 
             if (display.notifInfoPanelMergeEnabled and shown_count > 0 and !entry.unmerged) {
                 const row = &self.history_rows[shown_count - 1];
-                const prev = &entries[row.last];
-                if (!prev.unmerged and prev.notification_type == entry.notification_type and
-                    std.mem.eql(u8, prev.text(), entry.text()) and
-                    prev.timestamp_ms.elapsedSince(entry.timestamp_ms) <= merge_window_ms)
+                const previous = &entries[row.last];
+                if (!previous.unmerged and previous.notification_type == entry.notification_type and
+                    std.mem.eql(u8, previous.text(), entry.text()) and
+                    previous.timestamp_ms.elapsedSince(entry.timestamp_ms) <= merge_window_ms)
                 {
                     row.count += 1;
                     row.last = i;

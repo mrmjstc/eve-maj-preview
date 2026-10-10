@@ -166,15 +166,15 @@ pub fn collectGhostGroups(painter: *const Painter, exclude_character: []const u8
     var raw: std.ArrayList(RawEntry) = .empty;
     defer raw.deinit(allocator);
 
-    for (painter.config.characters.items) |char_config| {
-        if (std.mem.eql(u8, char_config.name, exclude_character)) continue;
-        const pos = char_config.position orelse continue;
+    for (painter.config.characters.items) |character_config| {
+        if (std.mem.eql(u8, character_config.name, exclude_character)) continue;
+        const position = character_config.position orelse continue;
         // A space ignores the saved position, so it's no snap target.
-        if (spaces.spaceFor(painter.config, char_config.name) != null) continue;
-        const size = painter.config.handPlacedSize(char_config.name);
+        if (spaces.spaceFor(painter.config, character_config.name) != null) continue;
+        const size = painter.config.handPlacedSize(character_config.name);
         try raw.append(allocator, .{
-            .name = char_config.name,
-            .rect = .{ .left = pos.x, .top = pos.y, .right = pos.x + size.width, .bottom = pos.y + size.height },
+            .name = character_config.name,
+            .rect = .{ .left = position.x, .top = position.y, .right = position.x + size.width, .bottom = position.y + size.height },
         });
     }
 

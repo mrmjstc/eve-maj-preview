@@ -147,9 +147,9 @@ fn nonEmpty(text: []const u8) ?[]const u8 {
 /// The latest genuine Local change, skipping any a player typed.
 pub fn lastSystemInChat(text: []const u8) ?SystemMatch {
     var end = text.len;
-    while (std.mem.findLast(u8, text[0..end], LOCAL_CHANGE)) |pos| {
-        const line_start = if (std.mem.findScalarLast(u8, text[0..pos], '\n')) |newline| newline + 1 else 0;
-        if (parseChatLine(text[line_start..])) |system| return .{ .system = system, .event_ts = lineTimestamp(text, pos) };
+    while (std.mem.findLast(u8, text[0..end], LOCAL_CHANGE)) |match_index| {
+        const line_start = if (std.mem.findScalarLast(u8, text[0..match_index], '\n')) |newline| newline + 1 else 0;
+        if (parseChatLine(text[line_start..])) |system| return .{ .system = system, .event_ts = lineTimestamp(text, match_index) };
         end = line_start;
     }
     return null;
@@ -162,11 +162,11 @@ pub fn lastSystemInGame(text: []const u8) ?SystemMatch {
         const jump = std.mem.findLast(u8, text[0..end], JUMP);
         const undock = std.mem.findLast(u8, text[0..end], UNDOCK);
         const use_jump = if (jump) |j| (if (undock) |u| j > u else true) else false;
-        const pos = (if (use_jump) jump else undock) orelse return null;
-        const line_start = if (std.mem.findScalarLast(u8, text[0..pos], '\n')) |newline| newline + 1 else 0;
-        if (isTimestampPrefix(text[line_start..pos])) {
-            const system = (if (use_jump) jumpDestination(text[pos..]) else undockDestination(text[pos..])) orelse return null;
-            return .{ .system = system, .event_ts = lineTimestamp(text, pos) };
+        const match_index = (if (use_jump) jump else undock) orelse return null;
+        const line_start = if (std.mem.findScalarLast(u8, text[0..match_index], '\n')) |newline| newline + 1 else 0;
+        if (isTimestampPrefix(text[line_start..match_index])) {
+            const system = (if (use_jump) jumpDestination(text[match_index..]) else undockDestination(text[match_index..])) orelse return null;
+            return .{ .system = system, .event_ts = lineTimestamp(text, match_index) };
         }
         end = line_start;
     }
@@ -182,9 +182,9 @@ fn isTimestampPrefix(prefix: []const u8) bool {
 }
 
 /// YYYYMMDDHHMMSS, or 0; looks only 64 bytes back, so a chunk cut mid-line can't borrow an earlier line's bracket.
-pub fn lineTimestamp(text: []const u8, pos: usize) u64 {
-    const window_start = pos -| 64;
-    const open = window_start + (std.mem.findScalarLast(u8, text[window_start..pos], '[') orelse return 0);
+pub fn lineTimestamp(text: []const u8, match_index: usize) u64 {
+    const window_start = match_index -| 64;
+    const open = window_start + (std.mem.findScalarLast(u8, text[window_start..match_index], '[') orelse return 0);
     const close = std.mem.findScalarPos(u8, text, open, ']') orelse return 0;
     const inner = std.mem.trim(u8, text[open + 1 .. close], " \t");
 
@@ -252,8 +252,8 @@ fn withoutTxt(file_name: []const u8) []const u8 {
 
 pub fn listenerName(header: []const u8) ?[]const u8 {
     const needle = "Listener:";
-    const pos = std.mem.find(u8, header, needle) orelse return null;
-    return nonEmpty(untilLineEnd(header[pos + needle.len ..]));
+    const match_index = std.mem.find(u8, header, needle) orelse return null;
+    return nonEmpty(untilLineEnd(header[match_index + needle.len ..]));
 }
 
 const testing = std.testing;

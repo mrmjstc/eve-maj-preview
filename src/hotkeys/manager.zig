@@ -54,16 +54,16 @@ pub const HotkeyManager = struct {
 
     /// Registers from the profile's saved copy, since bindings only change on Save.
     pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, global_settings: *const config_mod.GlobalConfig, scout_ptr: *scout.Scout, painter: *painter_mod.Painter, exclusions: *exclusions_mod.Exclusions) !HotkeyManager {
-        const cfg = &store.saved;
+        const config = &store.saved;
         return HotkeyManager{
             .allocator = allocator,
-            .config = cfg,
+            .config = config,
             .store = store,
             .global_settings = global_settings,
             .scout = scout_ptr,
             .painter = painter,
             .hotkey_map = std.AutoHashMap(c_int, HotkeyAction).init(allocator),
-            .cycle = try cycling.CycleState.init(allocator, cfg.hotkeyGroups.items.len),
+            .cycle = try cycling.CycleState.init(allocator, config.hotkeyGroups.items.len),
             .exclusions = exclusions,
         };
     }
@@ -127,7 +127,7 @@ pub const HotkeyManager = struct {
     /// Returns how many keys failed to register; groups sharing a combo cycle as one list.
     fn registerGroupChains(self: *HotkeyManager, hwnd: win32.HWND, chains: []const ComboSharers, forward: bool) usize {
         var failed_count: usize = 0;
-        var desc_buf: [160]u8 = undefined;
+        var description_buf: [160]u8 = undefined;
         for (chains, 0..) |chain, chain_index| {
             const first_name = self.config.hotkeyGroups.items[chain.indices.items[0]].name;
             const slot = chain_index * 2 + @intFromBool(!forward);
@@ -137,10 +137,10 @@ pub const HotkeyManager = struct {
                 continue;
             }
 
-            const desc = if (chain.indices.items.len == 1)
-                std.mem.print(&desc_buf, "group [{s}] {s}", .{ first_name, cycling.directionName(forward) }) catch "group cycle"
+            const description = if (chain.indices.items.len == 1)
+                std.mem.print(&description_buf, "group [{s}] {s}", .{ first_name, cycling.directionName(forward) }) catch "group cycle"
             else
-                std.mem.print(&desc_buf, "groups [{s}...] {s} ({} sharing hotkey)", .{ first_name, cycling.directionName(forward), chain.indices.items.len }) catch "shared group cycle";
+                std.mem.print(&description_buf, "groups [{s}...] {s} ({} sharing hotkey)", .{ first_name, cycling.directionName(forward), chain.indices.items.len }) catch "shared group cycle";
 
             const owned_indices = self.allocator.dupe(usize, chain.indices.items) catch |err| {
                 slog.err("Failed to copy hotkey group chain '{s}': {}", .{ first_name, err });
@@ -148,7 +148,7 @@ pub const HotkeyManager = struct {
                 continue;
             };
             // A single key, so any failure means the action wasn't tracked and the indices are still ours.
-            const failed = self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, slot), .one(chain.vk), .{ .cycle_group = .{ .group_indices = owned_indices, .forward = forward } }, desc);
+            const failed = self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CYCLE_GROUP_BASE, slot), .one(chain.vk), .{ .cycle_group = .{ .group_indices = owned_indices, .forward = forward } }, description);
             if (failed > 0) {
                 self.allocator.free(owned_indices);
                 failed_count += failed;
@@ -168,8 +168,8 @@ pub const HotkeyManager = struct {
         // Grouped per combo, so characters (or groups) sharing one cycle through each other while their other combos stay their own.
         var per_character_groups: std.ArrayList(ComboSharers) = .empty;
         defer deinitComboSharers(self.allocator, &per_character_groups);
-        for (self.config.characters.items, 0..) |*char, char_index| {
-            for (char.hotkey.slice()) |char_vk| try addComboSharer(self.allocator, &per_character_groups, char_vk, char_index);
+        for (self.config.characters.items, 0..) |*character, character_index| {
+            for (character.hotkey.slice()) |hotkey_vk| try addComboSharer(self.allocator, &per_character_groups, hotkey_vk, character_index);
         }
         var forward_chains: std.ArrayList(ComboSharers) = .empty;
         defer deinitComboSharers(self.allocator, &forward_chains);
@@ -203,23 +203,23 @@ pub const HotkeyManager = struct {
         });
 
         var failed_count: usize = 0;
-        var desc_buf: [160]u8 = undefined;
+        var description_buf: [160]u8 = undefined;
 
         failed_count += self.registerGroupChains(hwnd, forward_chains.items, true);
         failed_count += self.registerGroupChains(hwnd, backward_chains.items, false);
 
         for (self.config.hotkeyGroups.items, 0..) |*group, group_index| {
             if (group.assignKey.isEmpty()) continue;
-            const desc = std.mem.print(&desc_buf, "group {} [{s}] assign", .{ group_index, group.name }) catch "group assign";
-            failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_ASSIGN_GROUP_BASE, group_index), group.assignKey, .{ .assign_group = .{ .group_index = group_index } }, desc);
+            const description = std.mem.print(&description_buf, "group {} [{s}] assign", .{ group_index, group.name }) catch "group assign";
+            failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_ASSIGN_GROUP_BASE, group_index), group.assignKey, .{ .assign_group = .{ .group_index = group_index } }, description);
         }
 
         for (per_character_groups.items, 0..) |*group, group_index| {
             const first_name = self.config.characters.items[group.indices.items[0]].name;
-            const desc = if (group.indices.items.len == 1)
-                std.mem.print(&desc_buf, "activate character [{s}]", .{first_name}) catch "activate character"
+            const description = if (group.indices.items.len == 1)
+                std.mem.print(&description_buf, "activate character [{s}]", .{first_name}) catch "activate character"
             else
-                std.mem.print(&desc_buf, "activate character [{s}...] ({} sharing hotkey)", .{ first_name, group.indices.items.len }) catch "activate character group";
+                std.mem.print(&description_buf, "activate character [{s}...] ({} sharing hotkey)", .{ first_name, group.indices.items.len }) catch "activate character group";
 
             const owned_indices = self.allocator.dupe(usize, group.indices.items) catch |err| {
                 slog.err("Failed to copy the hotkey group starting with '{s}': {}", .{ first_name, err });
@@ -227,7 +227,7 @@ pub const HotkeyManager = struct {
                 continue;
             };
             // A single key, so any failure means the action wasn't tracked and the indices are still ours.
-            const failed = self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_PER_CHARACTER_BASE, group_index), .one(group.vk), .{ .activate_character = .{ .character_indices = owned_indices } }, desc);
+            const failed = self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_PER_CHARACTER_BASE, group_index), .one(group.vk), .{ .activate_character = .{ .character_indices = owned_indices } }, description);
             if (failed > 0) {
                 self.allocator.free(owned_indices);
                 failed_count += failed;
@@ -236,20 +236,20 @@ pub const HotkeyManager = struct {
 
         for (self.global_settings.profileSwitchHotkeys.items, 0..) |profile_hotkey, index| {
             if (profile_hotkey.hotkey.isEmpty()) continue;
-            const desc = std.mem.print(&desc_buf, "switch to profile [{s}]", .{profile_hotkey.targetProfile}) catch "switch to profile";
-            failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_PROFILE_SWITCH_BASE, index), profile_hotkey.hotkey, .{ .switch_to_profile = .{ .profile_index = index } }, desc);
+            const description = std.mem.print(&description_buf, "switch to profile [{s}]", .{profile_hotkey.targetProfile}) catch "switch to profile";
+            failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_PROFILE_SWITCH_BASE, index), profile_hotkey.hotkey, .{ .switch_to_profile = .{ .profile_index = index } }, description);
         }
 
         for (self.global_settings.appHotkeys.items, 0..) |app_hotkey, index| {
             if (app_hotkey.hotkey.isEmpty()) continue;
-            const desc = std.mem.print(&desc_buf, "activate app [{s}]", .{app_hotkey.executableName}) catch "activate app";
-            failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_APP_HOTKEY_BASE, index), app_hotkey.hotkey, .{ .activate_app = .{ .app_index = index } }, desc);
+            const description = std.mem.print(&description_buf, "activate app [{s}]", .{app_hotkey.executableName}) catch "activate app";
+            failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_APP_HOTKEY_BASE, index), app_hotkey.hotkey, .{ .activate_app = .{ .app_index = index } }, description);
         }
 
         for (self.global_settings.urlHotkeys.items, 0..) |url_hotkey, index| {
             if (url_hotkey.hotkey.isEmpty()) continue;
-            const desc = std.mem.print(&desc_buf, "open url [{s}]", .{url_hotkey.url}) catch "open url";
-            failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_URL_HOTKEY_BASE, index), url_hotkey.hotkey, .{ .open_url = .{ .url_index = index } }, desc);
+            const description = std.mem.print(&description_buf, "open url [{s}]", .{url_hotkey.url}) catch "open url";
+            failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_URL_HOTKEY_BASE, index), url_hotkey.hotkey, .{ .open_url = .{ .url_index = index } }, description);
         }
 
         inline for (bindings.GLOBAL_BINDINGS) |binding| {

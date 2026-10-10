@@ -115,7 +115,7 @@ pub const Painter = struct {
 
     pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore) !Painter {
         const instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
-        const cfg = &store.live;
+        const config = &store.live;
 
         var painter: Painter = .{
             .allocator = allocator,
@@ -126,9 +126,9 @@ pub const Painter = struct {
             .ghost_overlay = .init(allocator),
             .font_cache = .init(allocator),
             .instance = instance,
-            .config = cfg,
+            .config = config,
             .store = store,
-            .view_mode = cfg.display.viewMode,
+            .view_mode = config.display.viewMode,
         };
 
         try window.registerClasses(instance);
@@ -139,7 +139,7 @@ pub const Painter = struct {
         painter.destroy_event_hook = win32.setWinEventHookForProcess(win32.EVENT_OBJECT_DESTROY, windowDestroyProc, win32.GetCurrentProcessId());
         if (painter.destroy_event_hook == null) slog.err("Failed to set up destroy event hook", .{});
 
-        if (cfg.display.viewMode == .ClientList) {
+        if (config.display.viewMode == .ClientList) {
             painter.list_window = list_view.ListWindow.init(allocator, store, instance) catch |err| blk: {
                 slog.err("Failed to create list window: {}", .{err});
                 break :blk null;
@@ -564,10 +564,10 @@ pub const Painter = struct {
         const name = thumbnail.character_name;
         // A space ignores the saved spot; applyNameChanges' reflow places it instead.
         if (thumbnail.win32_enabled and spaces.spaceFor(self.config, name) == null) {
-            if (self.config.getCharacterPosition(name)) |saved_pos| {
-                thumbnail.moveTo(saved_pos.x, saved_pos.y, null);
+            if (self.config.getCharacterPosition(name)) |saved_position| {
+                thumbnail.moveTo(saved_position.x, saved_position.y, null);
                 self.resizeThumbnailIfNeeded(thumbnail, null);
-                slog.info("Moved {s} thumbnail to saved position: ({}, {})", .{ name, saved_pos.x, saved_pos.y });
+                slog.info("Moved {s} thumbnail to saved position: ({}, {})", .{ name, saved_position.x, saved_position.y });
             } else {
                 slog.debug("No saved thumbnail position for {s}, keeping current location", .{name});
             }
@@ -708,15 +708,15 @@ pub const Painter = struct {
     /// Dupes the three owned strings a ThumbnailWindow needs; on partial failure, whatever already succeeded is freed before the error propagates.
     fn dupeThumbnailStrings(self: *Painter, character_name: []const u8, system_name: []const u8) !ThumbnailStrings {
         const allocator = self.allocator;
-        const char_name_copy = try allocator.dupe(u8, character_name);
-        errdefer allocator.free(char_name_copy);
+        const character_name_copy = try allocator.dupe(u8, character_name);
+        errdefer allocator.free(character_name_copy);
         const sys_name_copy = try allocator.dupe(u8, system_name);
         errdefer allocator.free(sys_name_copy);
         const group_badge_label_copy = try self.config.groupBadgeLabel(allocator, character_name);
         errdefer allocator.free(group_badge_label_copy);
 
         return .{
-            .character_name = char_name_copy,
+            .character_name = character_name_copy,
             .system_name = sys_name_copy,
             .group_badge_label = group_badge_label_copy,
         };
@@ -775,10 +775,10 @@ pub const Painter = struct {
         const monitor_bounds = if (monitor_placement) |mp| mp.bounds else null;
         const scale = win32.dpiToScale(monitors.dpiForMonitor(if (monitor_placement) |mp| mp.monitor else null));
         const place = arrange.newPlace(self, name, monitor_bounds, scale);
-        const pos = place.pos;
+        const position = place.position;
         const size = place.size;
 
-        const handles = try window.create(self.allocator, self.instance, eve_window.hwnd, name, pos, size, self.config.getCharacterOpacity(name), self.config.interaction.clickThrough);
+        const handles = try window.create(self.allocator, self.instance, eve_window.hwnd, name, position, size, self.config.getCharacterOpacity(name), self.config.interaction.clickThrough);
         errdefer window.destroyHandles(handles);
 
         var thumbnail = try self.newThumbnailRecord(eve_window, initial_system_name, handles, true);
@@ -786,7 +786,7 @@ pub const Painter = struct {
         try self.renderThumbnail(&thumbnail);
         errdefer thumbnail.render_cache.deinit();
         const is_shown = if (thumbnail.render_cache.settings) |settings| settings.show_thumbnail else false;
-        if (is_shown) window.showText(handles, pos, size);
+        if (is_shown) window.showText(handles, position, size);
 
         try self.addThumbnail(thumbnail);
 
@@ -818,7 +818,7 @@ pub const Painter = struct {
         if (!thumbnail.win32_enabled) return null;
         var rect: win32.RECT = undefined;
         if (win32.GetWindowRect(thumbnail.hwnd, &rect) == 0) return null;
-        return .{ .name = thumbnail.character_name, .pos = .{ .x = rect.left, .y = rect.top } };
+        return .{ .name = thumbnail.character_name, .position = .{ .x = rect.left, .y = rect.top } };
     }
 };
 

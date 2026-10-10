@@ -30,17 +30,17 @@ pub const AutoMoveVerifier = struct {
     /// Callers gate on their own setting; only the per-character exclusion is checked here.
     pub fn moveToSavedPosition(self: *AutoMoveVerifier, config: *const config_mod.Config, hwnd: win32.HWND, character_name: []const u8) void {
         if (config.isExcludedFromAutoMove(character_name)) return;
-        const pos = config.getCharacterWindowPosition(character_name) orelse return;
-        actions.moveClientToPosition(config, hwnd, pos);
-        self.queue(config, hwnd, pos);
-        slog.info("Moved {s} client window to saved position: ({}, {})", .{ character_name, pos.x, pos.y });
+        const position = config.getCharacterWindowPosition(character_name) orelse return;
+        actions.moveClientToPosition(config, hwnd, position);
+        self.queue(config, hwnd, position);
+        slog.info("Moved {s} client window to saved position: ({}, {})", .{ character_name, position.x, position.y });
     }
 
-    pub fn queue(self: *AutoMoveVerifier, config: *const config_mod.Config, hwnd: win32.HWND, pos: config_mod.Position) void {
+    pub fn queue(self: *AutoMoveVerifier, config: *const config_mod.Config, hwnd: win32.HWND, position: config_mod.Position) void {
         if (config.autoMovePosition.verifyCount == 0) return;
         const entry = PendingAutoMove{
             .hwnd = hwnd,
-            .target = actions.clampOntoScreen(pos),
+            .target = actions.clampOntoScreen(position),
             .last_move = win32.Ticks.now(),
             .checks_left = config.autoMovePosition.verifyCount,
         };
