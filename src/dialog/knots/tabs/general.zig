@@ -1,9 +1,10 @@
-//! The configuration window's General tab (Advanced Mode): logging, scanning, and the window filters that pick which applications are tracked; main thread only.
+//! The configuration window's General tab: app-wide preferences, then, in Advanced Mode, logging, scanning, and the window filters that pick which applications are tracked; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
 const session = @import("../session.zig");
 const bind = @import("../bind.zig");
+const host = @import("../host.zig");
 const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
@@ -36,9 +37,26 @@ pub fn reset() void {
 }
 
 pub fn show(context: *ui.Frame) !void {
+    try preferences(context);
+    if (!session.global().get("advancedMode")) return;
     try logging(context);
     try scanning(context);
     try windowFilters(context);
+}
+
+fn preferences(context: *ui.Frame) !void {
+    const section = try widgets.openSection(
+        context,
+        "Preferences",
+        "Advanced Mode reveals power-user settings across the app (extra tabs, position/spacing parameters, snapping, layout system, and more). These preferences are global and apply across all profiles.",
+        &style.section,
+    );
+    const global = session.global();
+    try bind.toggle(context, global, "advancedMode", "Advanced Mode");
+    const was_on_top = global.get("alwaysOnTop");
+    try bind.toggle(context, global, "alwaysOnTop", "Always on Top");
+    if (global.get("alwaysOnTop") != was_on_top) host.setAlwaysOnTop(!was_on_top);
+    try section.close(context);
 }
 
 fn logging(context: *ui.Frame) !void {

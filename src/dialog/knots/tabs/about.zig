@@ -1,10 +1,7 @@
-//! The configuration window's About tab: wordmark, version and links, credits, licences and the window's own preferences; main thread only.
+//! The configuration window's About tab: wordmark, version and links, credits and licences; main thread only.
 const ui = @import("ui");
 const build_options = @import("build_options");
 const win32 = @import("../../../platform/win32.zig");
-const session = @import("../session.zig");
-const bind = @import("../bind.zig");
-const host = @import("../host.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const images = @import("../images.zig");
@@ -26,7 +23,6 @@ pub fn show(context: *ui.Frame) !void {
     try credits(context);
     try thanks(context);
     try license(context);
-    try preferences(context);
 }
 
 fn brand(context: *ui.Frame) !void {
@@ -87,20 +83,5 @@ fn license(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "License", "", &style.section);
     try widgets.paragraph(context, .str("knots.about.license"), "This project is open source and released under the GNU General Public License v3.0 (GPLv3). A copy of the license is included with the application.");
     try widgets.paragraph(context, .str("knots.about.third_party"), "This application bundles third-party components: the Geist and Cascadia Code fonts (SIL Open Font License 1.1) and knots (MIT License). Their license texts are included with the application.");
-    try section.close(context);
-}
-
-fn preferences(context: *ui.Frame) !void {
-    const section = try widgets.openSection(
-        context,
-        "Preferences",
-        "Reveals power-user settings across the app (extra tabs, position/spacing parameters, snapping, layout system, and more). These preferences are global and apply across all profiles.",
-        &style.section,
-    );
-    const global = session.global();
-    try bind.toggle(context, global, "advancedMode", "Advanced Mode");
-    const was_on_top = global.get("alwaysOnTop");
-    try bind.toggle(context, global, "alwaysOnTop", "Always on Top");
-    if (global.get("alwaysOnTop") != was_on_top) host.setAlwaysOnTop(!was_on_top);
     try section.close(context);
 }

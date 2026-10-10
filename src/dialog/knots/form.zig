@@ -135,8 +135,8 @@ const Tab = enum {
     /// Shown only in Advanced Mode.
     fn isAdvanced(tab: Tab) bool {
         return switch (tab) {
-            .combat, .mining, .bounty, .resources, .general => true,
-            .characters, .hotkey_groups, .appearance, .placement, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .about, .backups => false,
+            .combat, .mining, .bounty, .resources => true,
+            .characters, .hotkey_groups, .appearance, .placement, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .general, .about, .backups => false,
         };
     }
 
