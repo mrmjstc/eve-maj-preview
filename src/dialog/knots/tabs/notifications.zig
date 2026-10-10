@@ -19,7 +19,7 @@ fn system(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Notification System", "Configure position, duration, and suppression behavior for event notifications.", &style.section);
     const ref = session.profile().child("thumbnail").child("notifications");
     try bind.toggle(context, ref, "enabled", "Enable Notifications");
-    // Its placement and font are edited from its chip on the Text Overlays tab's preview.
+    // Its placement and font are edited from its text on the Appearance tab's thumbnail preview.
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.number(context, ref, "suppress_click_duration_ms", "Click Suppress Duration", .{ .ms_as_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "Suppresses further notifications on a thumbnail for this long after you click it.");

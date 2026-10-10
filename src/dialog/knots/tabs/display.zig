@@ -1,4 +1,4 @@
-//! The configuration window's Appearance tab: how clients are shown, then the thumbnail or client list settings for that mode; main thread only.
+//! The configuration window's Appearance tab: how clients are shown, then that mode's settings, texts and system colours; main thread only.
 const ui = @import("ui");
 const win32 = @import("../../../platform/win32.zig");
 const config = @import("../../../config.zig");
@@ -9,6 +9,8 @@ const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const client_list = @import("client_list.zig");
+const text_overlays = @import("text_overlays.zig");
+const system_colors = @import("system_colors.zig");
 
 const Text = ui.component.Text;
 const ThumbnailRef = session.Ref(config.ThumbnailConfig);
@@ -42,11 +44,16 @@ pub fn show(context: *ui.Frame) !void {
     try displayMode(context, display);
     switch (display.get("viewMode")) {
         .Thumbnails => {
+            try text_overlays.textOverlays(context);
             try sizeAndOpacity(context, thumbnail);
             try borders(context, thumbnail);
             try visibility(context, thumbnail);
+            try system_colors.show(context);
         },
-        .ClientList => try client_list.show(context, display),
+        .ClientList => {
+            try client_list.show(context, display);
+            try system_colors.show(context);
+        },
         .Nothing => {},
     }
 }
@@ -153,7 +160,7 @@ fn visibility(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
     try section.close(context);
 }
 
-/// Picks which of the tab's other sections are drawn, and whether the Placement and Text Overlays tabs are offered.
+/// Picks which of the tab's other sections are drawn, and whether the Placement tab is offered.
 fn displayMode(context: *ui.Frame, display: DisplayRef) !void {
     const section = try widgets.openSection(context, "Display Mode", "Thumbnails shows a live preview of each client. Client List is a compact text panel that uses fewer resources, ideal with many clients. None shows nothing; hotkeys and notifications keep working.", &style.section);
     try bind.segmented(context, display, "viewMode", "Show Clients As", &.{ "Thumbnails", "Client List", "None" });

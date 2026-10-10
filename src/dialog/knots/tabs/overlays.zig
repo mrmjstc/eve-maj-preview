@@ -1,4 +1,4 @@
-//! The configuration window's Combat, Mining, Bounty and Resources tabs, whose texts are placed and styled on the Text Overlays tab's preview; main thread only.
+//! The configuration window's Combat, Mining, Bounty and Resources tabs, whose texts are placed and styled on the Appearance tab's thumbnail preview; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");

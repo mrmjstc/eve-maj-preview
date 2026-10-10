@@ -62,7 +62,7 @@ pub const PackedImage = struct {
 var g_allocator: std.mem.Allocator = undefined;
 
 pub var g_wordmark: PackedImage = .{ .name = "wordmark", .packed_rgba = @embedFile("../../assets/wordmark_539x192.rgba.zlib"), .width = 539, .height = 192 };
-/// The Text Overlays stage's backdrop, from assets/layout_preview.jpg.
+/// The thumbnail preview's backdrop, from assets/layout_preview.jpg.
 pub var g_layout_preview: PackedImage = .{ .name = "layout preview", .packed_rgba = @embedFile("../../assets/layout_preview_540x304.rgba.zlib"), .width = 540, .height = 304 };
 pub var g_app_mark: PackedImage = .{ .name = "app mark", .packed_rgba = @embedFile("../../assets/icon_36x36.rgba.zlib"), .width = 36, .height = 36 };
 

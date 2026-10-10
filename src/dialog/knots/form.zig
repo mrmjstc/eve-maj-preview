@@ -27,7 +27,6 @@ const event_alerts = @import("tabs/event_alerts.zig");
 const notification_history = @import("tabs/notification_history.zig");
 const overlays = @import("tabs/overlays.zig");
 const placement = @import("tabs/placement.zig");
-const text_overlays = @import("tabs/text_overlays.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
@@ -67,7 +66,6 @@ const Tab = enum {
     hotkey_groups,
     appearance,
     placement,
-    text_overlays,
     hotkeys,
     behavior,
     notifications,
@@ -85,7 +83,6 @@ const Tab = enum {
             .hotkey_groups => "Hotkey Groups",
             .appearance => "Appearance",
             .placement => "Placement",
-            .text_overlays => "Text Overlays",
             .hotkeys => "Hotkeys",
             .behavior => "Behavior",
             .notifications => "Notifications",
@@ -105,7 +102,7 @@ const Tab = enum {
     fn category(tab: Tab) Category {
         return switch (tab) {
             .characters, .hotkey_groups => .clients,
-            .appearance, .placement, .text_overlays => .display,
+            .appearance, .placement => .display,
             .hotkeys, .behavior => .input,
             .notifications, .event_alerts, .notification_history, .chatlog => .alerts,
             .combat, .mining, .bounty, .resources => .overlays,
@@ -119,7 +116,6 @@ const Tab = enum {
             .hotkey_groups => .split_square,
             .appearance => .thumbnail,
             .placement => .tiles,
-            .text_overlays => .letter_t,
             .hotkeys => .keyboard,
             .behavior => .spokes,
             .notifications => .envelope,
@@ -140,14 +136,14 @@ const Tab = enum {
     fn isAdvanced(tab: Tab) bool {
         return switch (tab) {
             .combat, .mining, .bounty, .resources, .general => true,
-            .characters, .hotkey_groups, .appearance, .placement, .text_overlays, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .about, .backups => false,
+            .characters, .hotkey_groups, .appearance, .placement, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .about, .backups => false,
         };
     }
 
     /// Shown only while clients are shown as thumbnails.
     fn needsThumbnails(tab: Tab) bool {
         return switch (tab) {
-            .placement, .text_overlays => true,
+            .placement => true,
             .characters, .hotkey_groups, .appearance, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .combat, .mining, .bounty, .resources, .general, .about, .backups => false,
         };
     }
@@ -157,7 +153,7 @@ const Tab = enum {
         return switch (tab) {
             .characters, .hotkey_groups, .event_alerts => true,
             .placement => placement.fillsWindow(),
-            .appearance, .text_overlays, .hotkeys, .behavior, .notifications, .notification_history, .chatlog, .combat, .mining, .bounty, .resources, .general, .about, .backups => false,
+            .appearance, .hotkeys, .behavior, .notifications, .notification_history, .chatlog, .combat, .mining, .bounty, .resources, .general, .about, .backups => false,
         };
     }
 
@@ -254,7 +250,6 @@ fn showTab(context: *ui.Frame, tab: Tab) !void {
         .backups => try backups.show(context),
         .appearance => try display.show(context),
         .placement => try placement.show(context),
-        .text_overlays => try text_overlays.show(context),
         .characters => try characters.show(context),
         .behavior => try behavior.show(context),
         .chatlog => try chatlog.show(context),
