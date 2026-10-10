@@ -367,6 +367,11 @@ pub const switch_on: Style = switch_off.with(.{
     .background = .accent,
     .border_color = .accent,
 });
+/// A lit switch in a disabled group: grey, so it reads as on but not in effect.
+pub const switch_on_inert: Style = switch_on.with(.{
+    .background = .{ .color = MUTED },
+    .border_color = .{ .color = MUTED },
+});
 pub const switch_knob_off: Style = .{
     .width = .fixed(SWITCH_KNOB),
     .height = .fixed(SWITCH_KNOB),
@@ -683,7 +688,7 @@ pub const group: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
 pub const group_fill: Style = group.with(.{ .height = .grow() });
 /// openInlineGroup's run of controls within a row.
 pub const group_inline: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
-/// Strong enough that a lit switch under the veil reads as off.
+/// Strong enough that the controls under the veil read as disabled.
 const GROUP_VEIL_ALPHA = 0.7;
 /// Veils a disabled group and takes its clicks; knots' opacity wouldn't fade the children's boxes and borders.
 pub const group_blocker: Style = .{

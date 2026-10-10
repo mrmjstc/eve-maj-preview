@@ -812,7 +812,8 @@ pub fn toggleSwitch(context: *ui.Frame, key: ui.Key, checked: *bool) !bool {
     const position = context.ui().anim(key.hash(), "knob", if (checked.*) 1 else 0, .{ .duration_ms = style.SWITCH_ANIMATION_MS });
     const spacer = try context.arena().create(ui.Style);
     spacer.* = .{ .width = .fixed(position * style.SWITCH_TRAVEL) };
-    const button = Button{ .key = key, .style = if (checked.*) &style.switch_on else &style.switch_off };
+    const on_style = if (context.ui().inert_depth > 0) &style.switch_on_inert else &style.switch_on;
+    const button = Button{ .key = key, .style = if (checked.*) on_style else &style.switch_off };
     const response = try button.openResponse(context);
     try context.e(Rect{ .key = key.indexed(2), .style = spacer });
     try context.e(Rect{ .key = key.indexed(1), .style = if (checked.*) &style.switch_knob_on else &style.switch_knob_off });
