@@ -64,10 +64,6 @@ fn windowFilters(context: *ui.Frame) !void {
 
     const options = try widgets.openGroup(context, .src(@src()), is_enabled);
     try filterList(context, profile);
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "+ Add Window Filter", .style = &style.full_width_button })).clicked) {
-        profile.append("windowFilters", .{ .name = NEW_FILTER_NAME, .enabled = true });
-        g_selected_index = profile.ptr.windowFilters.items.len - 1;
-    }
     try options.close(context);
     try section.close(context);
 }
@@ -86,21 +82,15 @@ fn filterList(context: *ui.Frame, profile: ProfileRef) !void {
         if (first_editable == null) first_editable = index;
         if (index == g_selected_index) selected_is_editable = true;
     }
+    if (first_editable) |first| {
+        if (!selected_is_editable) g_selected_index = first;
+    }
     const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail };
     _ = try master_detail.open(context);
-    const roster = Rect{ .key = .src(@src()), .style = &style.roster_filters };
-    _ = try roster.open(context);
+    const list = try widgets.openRoster(context, .str("knots.filter.roster"), &style.roster_filters, false);
     if (first_editable == null) {
         try widgets.boxedText(context, .src(@src()), "No window filters yet.", &style.roster_empty, &style.roster_empty_text);
-        try roster.close(context);
-        const empty = Rect{ .key = .src(@src()), .style = &style.detail_fit };
-        _ = try empty.open(context);
-        try widgets.paragraph(context, .src(@src()), "Add a window filter below to start tracking another application.");
-        try empty.close(context);
-        try master_detail.close(context);
-        return;
     }
-    if (!selected_is_editable) g_selected_index = first_editable.?;
 
     const arena = context.arena();
     for (filters, 0..) |*filter, index| {
@@ -120,8 +110,19 @@ fn filterList(context: *ui.Frame, profile: ProfileRef) !void {
         if (!filter.enabled) try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.filter.badge").indexed(index), .content = "Disabled", .style = &style.roster_badge });
         try row.close(context);
     }
-    try roster.close(context);
-    try filterDetail(context, profile, g_selected_index);
+    const is_added = try list.close(context, .{ .add_label = "+ Add Window Filter" }) == .add;
+    if (is_added) {
+        profile.append("windowFilters", .{ .name = NEW_FILTER_NAME, .enabled = true });
+        g_selected_index = profile.ptr.windowFilters.items.len - 1;
+    }
+    if (first_editable == null and !is_added) {
+        const empty = Rect{ .key = .src(@src()), .style = &style.detail_fit };
+        _ = try empty.open(context);
+        try widgets.paragraph(context, .src(@src()), "Add a window filter under the list to start tracking another application.");
+        try empty.close(context);
+    } else {
+        try filterDetail(context, profile, g_selected_index);
+    }
     try master_detail.close(context);
 }
 
