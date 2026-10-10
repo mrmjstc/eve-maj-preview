@@ -334,7 +334,9 @@ pub fn forEach(
 }
 
 fn bridged(comptime field_name: []const u8) bool {
-    return !std.mem.eql(u8, field_name, "style_transition");
+    // EVE-Maj patch: none, since only hot reload reads them back and the bridge never drops an evicted widget's entry, so a long session filled it and stopped the window.
+    _ = field_name;
+    return false;
 }
 
 /// Restore widget values from the host-owned bridge. Transient hit/focus

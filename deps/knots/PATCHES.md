@@ -26,6 +26,10 @@ Vendored from [knots-ui/knots](https://github.com/knots-ui/knots) at commit `9cd
 
 - `inert_depth` (default 0): while above 0, `openWith` makes every element it opens non-interactive and non-focusable, so a disabled group of controls takes no clicks and drops out of Tab order.
 
+## `src/ui/State.zig`
+
+- No widget state is copied into the state bridge (`bridged` is always false). The bridge only feeds knots' hot reload, which EVE-Maj doesn't use, and it never drops a widget's entry once its state is evicted, so browsing tabs for long enough filled its 1024 entries and stopped the window with `TooManyStateValues`.
+
 ## `src/ui/Context.zig`
 
 - A `scroll_x_bare` box clips its children at its left and right padding, so a text input's long line stops short of the border.
