@@ -45,7 +45,7 @@ pub fn show(context: *ui.Frame) !void {
     switch (display.get("viewMode")) {
         .Thumbnails => {
             try text_overlays.textOverlays(context);
-            try sizeAndOpacity(context, thumbnail);
+            try dimensions(context, thumbnail);
             try borders(context, thumbnail);
             try visibility(context, thumbnail);
             try system_colors.show(context);
@@ -58,8 +58,8 @@ pub fn show(context: *ui.Frame) !void {
     }
 }
 
-fn sizeAndOpacity(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
-    const section = try widgets.openSection(context, "Size and Opacity", "The pixel size each thumbnail is rendered at, and how see-through it is.", &style.section);
+fn dimensions(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
+    const section = try widgets.openSection(context, "Dimensions", "The pixel size each thumbnail is rendered at.", &style.section);
     try aspectRatio(context, thumbnail);
 
     const row = try widgets.openBinding(context, .str("knots.thumbnails.size"), "Size");
@@ -77,10 +77,6 @@ fn sizeAndOpacity(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
     try bind.numberBox(context, thumbnail, "height", .{});
     try row.close(context);
     try widgets.hintText(context, .src(@src()), "Width \u{00D7} height in pixels. The slider keeps the current aspect ratio; type into the boxes for any size.");
-
-    try bind.slider(context, thumbnail, "thumbnailOpacity", "Opacity", .{ .display = .percent_of_255 });
-    try bind.toggle(context, thumbnail, "applyOpacityToOverlayTexts", "Apply Opacity to Overlay Texts");
-    try widgets.hintText(context, .src(@src()), "Also fades the name/badge/combat/mining/bounty/resource overlay text and backgrounds with the Opacity slider above; otherwise they stay fully opaque.");
     try section.close(context);
 }
 
@@ -152,7 +148,10 @@ fn borderRow(context: *ui.Frame, thumbnail: ThumbnailRef, comptime label: []cons
 }
 
 fn visibility(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
-    const section = try widgets.openSection(context, "Visibility", "When thumbnails are hidden automatically.", &style.section);
+    const section = try widgets.openSection(context, "Visibility", "How see-through thumbnails are, and when they're hidden automatically.", &style.section);
+    try bind.slider(context, thumbnail, "thumbnailOpacity", "Opacity", .{ .display = .percent_of_255 });
+    try bind.toggle(context, thumbnail, "applyOpacityToOverlayTexts", "Apply Opacity to Overlay Texts");
+    try widgets.hintText(context, .src(@src()), "Also fades the name/badge/combat/mining/bounty/resource overlay text and backgrounds with the Opacity slider above; otherwise they stay fully opaque.");
     try bind.toggle(context, thumbnail, "activeThumbnailHidden", "Hide Active Thumbnail");
     try bind.toggle(context, thumbnail, "hideWhenNoEveFocus", "Hide When No EVE Focus");
     try widgets.hintText(context, .src(@src()), "Hides all thumbnails while no EVE client window has focus.");

@@ -151,19 +151,19 @@ fn layout(context: *ui.Frame, display: DisplayRef) !void {
 }
 
 fn appearance(context: *ui.Frame, display: DisplayRef) !void {
-    const section = try widgets.openSection(context, "Appearance", "The list's font, and how see-through it is.", &style.section);
+    const section = try widgets.openSection(context, "Appearance", "The list's font.", &style.section);
     const font = try widgets.openBinding(context, .src(@src()), "Font");
     try bind.fontBox(context, display, "listViewFontName");
     try bind.unitNumberBox(context, display, "listViewFontSize", "px", .{});
     try bind.choiceBox(context, display, "listViewFontWeight");
     try font.close(context);
-    try bind.slider(context, display, "listViewOpacity", "Opacity", .{ .display = .percent_of_255 });
     try section.close(context);
 }
 
 fn visibility(context: *ui.Frame, display: DisplayRef) !void {
-    const section = try widgets.openSection(context, "Position and Visibility", "Where the list opens, and when it's hidden automatically.", &style.section);
+    const section = try widgets.openSection(context, "Position and Visibility", "Where the list opens, how see-through it is, and when it's hidden automatically.", &style.section);
     try bind.toggle(context, display, "rememberListViewPosition", "Remember Position");
+    try bind.slider(context, display, "listViewOpacity", "Opacity", .{ .display = .percent_of_255 });
     try bind.toggle(context, display, "listViewHideWhenNoEveFocus", "Hide When No EVE Focus");
     try widgets.hintText(context, .src(@src()), "Hides the list while no EVE client window has focus.");
     const delay = try widgets.openGroup(context, .src(@src()), display.get("listViewHideWhenNoEveFocus"));
