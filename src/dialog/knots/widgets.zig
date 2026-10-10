@@ -29,8 +29,8 @@ const POPOVER_MARGIN: f32 = 8;
 const POPOVER_GAP: f32 = 8;
 /// Until the popover has been laid out once.
 const POPOVER_HEIGHT_GUESS: f32 = 480;
-/// Movement under this is a click on a row, not a drag.
-const REORDER_THRESHOLD = 4;
+/// Movement under this is a click on a row, not a drag; matches knots' own click slop (press_drag_threshold_sq).
+const REORDER_THRESHOLD = 8;
 /// How long a confirm button waits for its second click.
 const CONFIRM_TIMEOUT_MS = 2000;
 /// A row's divider wrapper is keyed as the row's own key indexed by this.

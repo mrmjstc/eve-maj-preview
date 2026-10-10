@@ -29,7 +29,8 @@ const BorderWidth = style.BorderWidth;
 const Allocator = std.mem.Allocator;
 const HitRecord = UI.HitRecord;
 
-const press_drag_threshold_sq: f64 = 9.0;
+// EVE-Maj patch: 8px of slack, not 3, so a click made while the mouse is still moving still counts.
+const press_drag_threshold_sq: f64 = 64.0;
 
 const theme_state_key = StateBridge.key("knots.ui.theme");
 
