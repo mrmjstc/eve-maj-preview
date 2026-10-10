@@ -178,7 +178,7 @@ pub const ThumbnailWindow = struct {
     pub fn setVisibility(self: *ThumbnailWindow, new_visibility: state.VisibilityState) void {
         const blocks_hiding = !self.notifications.isEmpty() or thumbnail_drag.isDragging(self);
         if (new_visibility != .visible and blocks_hiding) {
-            slog.warn("Cannot hide '{s}' while it's alerting or being dragged", .{self.character_name});
+            slog.warn("Failed to hide '{s}': it's alerting or being dragged", .{self.character_name});
             return;
         }
 

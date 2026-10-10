@@ -234,7 +234,7 @@ pub const GlobalConfig = struct {
         defer allocator.free(content);
 
         const settings = loadFromJson(allocator, content) catch |err| {
-            slog.warn("Failed to parse global settings file ({}), using defaults and keeping it as '{s}'", .{ err, UNREADABLE_BACKUP_FILE });
+            slog.warn("Failed to parse global settings file, using defaults and keeping it as '{s}': {}", .{ UNREADABLE_BACKUP_FILE, err });
             const cwd = std.Io.Dir.cwd();
             cwd.rename(files.GLOBAL_SETTINGS_FILE, cwd, UNREADABLE_BACKUP_FILE, files.g_io) catch |rename_err| {
                 slog.err("Failed to keep unreadable global settings as '{s}': {}", .{ UNREADABLE_BACKUP_FILE, rename_err });

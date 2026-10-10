@@ -150,7 +150,6 @@ pub fn repositionAll(painter: *Painter) void {
     }
 }
 
-
 /// Puts every thumbnail back on top after another app's topmost window took the z-order band.
 pub fn reassertTopmost(painter: *Painter) void {
     // Batched so DWM applies the whole z-order change at once, instead of compositing each step and flashing thumbnails.

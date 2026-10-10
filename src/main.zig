@@ -599,7 +599,7 @@ fn createHotkeyManager(timer_hwnd: win32.HWND) !void {
     hotkeys.g_hotkey_manager_ptr = manager;
 
     manager.registerHotkeys(timer_hwnd) catch |err| {
-        slog.warn("Failed to register hotkeys: {} - continuing without hotkey support", .{err});
+        slog.warn("Failed to register hotkeys, continuing without hotkey support: {}", .{err});
     };
 }
 

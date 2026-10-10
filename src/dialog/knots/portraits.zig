@@ -126,11 +126,11 @@ fn lookUp(allocator: std.mem.Allocator, name: []const u8) ?[]const u8 {
 /// Adds the entry, then loads it; a failure leaves the entry empty until the window next opens, rather than retrying every frame.
 fn request(id: []const u8) void {
     const entry = addEntry(id) catch |err| {
-        slog.warn("Failed to load the portrait of character {s}: {}", .{ id, err });
+        slog.warn("Failed to load the portrait of character '{s}': {}", .{ id, err });
         return;
     };
     startLoad(id) catch |err| {
-        slog.warn("Failed to load the portrait of character {s}: {}", .{ id, err });
+        slog.warn("Failed to load the portrait of character '{s}': {}", .{ id, err });
         entry.is_loading = false;
     };
 }
@@ -155,16 +155,16 @@ fn startLoad(id: []const u8) !void {
 /// The load's thread; takes ownership of `id`, and touches nothing of the main thread's but the allocator and the posted message.
 fn loadThread(timer: win32.HWND, command: usize, id: []const u8) void {
     const loaded = g_allocator.create(Loaded) catch |err| {
-        slog.warn("Failed to load the portrait of character {s}: {}", .{ id, err });
+        slog.warn("Failed to load the portrait of character '{s}': {}", .{ id, err });
         g_allocator.free(id);
         return;
     };
     loaded.* = .{ .id = id, .image = load(id) catch |err| blk: {
-        slog.warn("Failed to load the portrait of character {s}: {}", .{ id, err });
+        slog.warn("Failed to load the portrait of character '{s}': {}", .{ id, err });
         break :blk null;
     } };
     if (!win32.toBool(win32.PostMessageA(timer, win32.WM_KNOTS_COMMAND, command, @bitCast(@intFromPtr(loaded))))) {
-        slog.warn("Failed to pass on the portrait of character {s}: error {d}", .{ id, win32.GetLastError() });
+        slog.warn("Failed to pass on the portrait of character '{s}': error {d}", .{ id, win32.GetLastError() });
         loaded.deinit();
     }
 }

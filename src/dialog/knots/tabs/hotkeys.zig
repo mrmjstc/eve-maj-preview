@@ -11,13 +11,11 @@ const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const window_picker = @import("../window_picker.zig");
-const log = @import("../../../log.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
 const KeyList = key_list.KeyList;
-const slog = log.scoped("dialog_knots");
 
 const DOTLAN_URL = "https://evemaps.dotlan.net/";
 const ADASHBOARD_URL = "https://adashboard.info/intel";

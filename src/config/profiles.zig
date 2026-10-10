@@ -227,7 +227,7 @@ fn loadFile(allocator: std.mem.Allocator, profile_path: []const u8, name: []cons
     defer allocator.free(content);
 
     return Config.buildConfigFromJson(allocator, content, name) catch |err| {
-        slog.err("Failed to parse config file '{s}' ({}), falling back to defaults", .{ profile_path, err });
+        slog.err("Failed to parse config file '{s}', falling back to defaults: {}", .{ profile_path, err });
         backUpUnreadable(allocator, profile_path, name);
         return Config.getDefaultsWithProfile(allocator, name);
     };

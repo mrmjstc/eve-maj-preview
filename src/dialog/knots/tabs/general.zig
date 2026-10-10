@@ -8,14 +8,12 @@ const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const window_picker = @import("../window_picker.zig");
-const log = @import("../../../log.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
 const ProfileRef = session.Ref(config.Config);
 const FilterRef = session.Ref(config.WindowFilterConfig);
-const slog = log.scoped("dialog_knots");
 
 const NEW_FILTER_NAME = "New Filter";
 

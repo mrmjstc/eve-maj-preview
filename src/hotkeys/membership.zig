@@ -66,7 +66,7 @@ pub fn assignHoveredToGroup(manager: *HotkeyManager, group_index: usize) void {
     const char_name = thumbnail.character_name;
 
     const added = manager.store.toggleGroupMember(group_index, char_name) catch |err| {
-        slog.err("Failed to toggle '{s}' in group {} [{s}]: {}", .{ char_name, group_index, group.name, err });
+        slog.err("Failed to toggle '{s}' in group {} '{s}': {}", .{ char_name, group_index, group.name, err });
         return;
     };
     if (added) {

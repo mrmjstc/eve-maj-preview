@@ -11,9 +11,6 @@ const ThumbnailWindow = @import("window.zig").ThumbnailWindow;
 const input = @import("input.zig");
 const drag_panel = @import("../drag/panel.zig");
 const template = @import("../notifications/template.zig");
-const log = @import("../log.zig");
-
-const slog = log.scoped("list_view");
 
 const TEXT_BUF: usize = 256;
 /// Kept clear for the right-hand slot when a long name is cut short.

@@ -222,7 +222,7 @@ pub const HotkeyManager = struct {
                 std.mem.print(&desc_buf, "activate character [{s}...] ({} sharing hotkey)", .{ first_name, group.indices.items.len }) catch "activate character group";
 
             const owned_indices = self.allocator.dupe(usize, group.indices.items) catch |err| {
-                slog.err("Failed to copy per-character hotkey group [{s}...]: {}", .{ first_name, err });
+                slog.err("Failed to copy the hotkey group starting with '{s}': {}", .{ first_name, err });
                 failed_count += 1;
                 continue;
             };
