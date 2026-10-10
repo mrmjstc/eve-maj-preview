@@ -422,7 +422,7 @@ pub fn fontBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !vo
 /// An enum setting, offered by its tags spelled as words ("TopLeft" reads "Top Left").
 pub fn choice(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
     const row = try widgets.openBinding(context, fieldKey(ref, field), label);
-    try choiceBox(context, ref, field);
+    try dropdown(context, ref, field, true);
     try row.close(context);
 }
 
@@ -440,6 +440,11 @@ pub fn segmented(context: *ui.Frame, ref: anytype, comptime field: []const u8, l
 
 /// Just the dropdown, for a row or grid of several.
 pub fn choiceBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
+    try dropdown(context, ref, field, false);
+}
+
+/// `is_row_only` widens it to widgets.rowSelect's floor.
+fn dropdown(context: *ui.Frame, ref: anytype, comptime field: []const u8, is_row_only: bool) !void {
     const F = FieldOf(@TypeOf(ref), field);
     const values = comptime std.enums.values(F);
     const option_labels = comptime labels.enumLabels(F);
@@ -454,7 +459,7 @@ pub fn choiceBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !
         .labels = &option_labels,
         .values = values,
         .initial_selected = current,
-        .style = try widgets.fittedSelect(context, &option_labels),
+        .style = if (is_row_only) try widgets.rowSelect(context, &option_labels) else try widgets.fittedSelect(context, &option_labels),
         .parts = .{ .popup = &style.select_popup },
     });
     if (response.selected) |selected| ref.set(field, selected.value);

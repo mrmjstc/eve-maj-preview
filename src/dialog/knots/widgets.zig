@@ -37,6 +37,8 @@ const CONFIRM_TIMEOUT_MS = 2000;
 const ROW_DIVIDER_INDEX = 10;
 /// A dropdown hugs its longest option up to this, so a long profile or client name is clipped rather than stretching its row.
 const SELECT_MAX_WIDTH: f32 = 300;
+/// rowSelect's floor: as wide as the widest single-row dropdown's options need, "Mouse Down (Instant)".
+const SELECT_MIN_WIDTH: f32 = 170;
 /// Space between a dropdown's longest option and its arrow.
 const SELECT_ARROW_GAP: f32 = 12;
 
@@ -388,6 +390,15 @@ pub fn measuredBox(ui_state: *ui.UI, key: ui.Key) Box {
 
 /// style.select as wide as the longest of `labels`, with SelectInput's padding, arrow and border around it.
 pub fn fittedSelect(context: *ui.Frame, labels: []const []const u8) !*const ui.Style {
+    return selectStyle(context, labels, 0);
+}
+
+/// fittedSelect for a row's only control, at least SELECT_MIN_WIDTH so a section's dropdowns line up.
+pub fn rowSelect(context: *ui.Frame, labels: []const []const u8) !*const ui.Style {
+    return selectStyle(context, labels, SELECT_MIN_WIDTH);
+}
+
+fn selectStyle(context: *ui.Frame, labels: []const []const u8, min_width: f32) !*const ui.Style {
     const ui_state = context.ui();
     const font_size = (style.select.font_size orelse .sm).resolve(&ui_state.theme);
     const face = try ui_state.font.getFace(style.select.font);
@@ -400,7 +411,7 @@ pub fn fittedSelect(context: *ui.Frame, labels: []const []const u8) !*const ui.S
     const border = 2;
     const width = padding.left() + widest + SELECT_ARROW_GAP + arrow + padding.right() + border;
     const fitted = try context.arena().create(ui.Style);
-    fitted.* = style.select.with(.{ .width = .fixed(@min(@ceil(width), SELECT_MAX_WIDTH)), .overflow = .hidden });
+    fitted.* = style.select.with(.{ .width = .fixed(std.math.clamp(@ceil(width), min_width, SELECT_MAX_WIDTH)), .overflow = .hidden });
     return fitted;
 }
 
