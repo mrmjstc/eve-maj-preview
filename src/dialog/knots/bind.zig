@@ -43,6 +43,8 @@ pub const SliderOptions = struct {
 
 pub const Display = enum {
     value,
+    /// A 0-100 value with a % after it.
+    percent,
     /// A 0-255 alpha shown as 0-100%.
     percent_of_255,
 };
@@ -296,12 +298,12 @@ fn sliderControls(context: *ui.Frame, key: ui.Key, value: f32, min: f32, max: f3
     var changed: ?f64 = null;
     if (try widgets.slider(context, key.indexed(2), &slider_value, min, max, step)) changed = @round(slider_value);
     const shown: f64 = switch (display) {
-        .value => @round(slider_value),
+        .value, .percent => @round(slider_value),
         .percent_of_255 => @round(slider_value / 255.0 * 100.0),
     };
     const unit = switch (display) {
         .value => "",
-        .percent_of_255 => "%",
+        .percent, .percent_of_255 => "%",
     };
     if (!widgets.isAligned()) {
         try widgets.valueText(context, key.indexed(3), try std.fmt.allocPrint(context.arena(), "{d:.0}{s}", .{ shown, unit }));
@@ -309,7 +311,7 @@ fn sliderControls(context: *ui.Frame, key: ui.Key, value: f32, min: f32, max: f3
     }
     const value_typed = try unitValueBox(context, key, shown, unit) orelse return changed;
     const raw: f64 = switch (display) {
-        .value => value_typed,
+        .value, .percent => value_typed,
         .percent_of_255 => value_typed / 100.0 * 255.0,
     };
     return std.math.clamp(raw, min, max);

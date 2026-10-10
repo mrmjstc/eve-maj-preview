@@ -298,7 +298,7 @@ fn sound(context: *ui.Frame, ref: TypeRef, type_index: usize) !void {
     if (path.len > 0 and (try context.interact(Button{ .key = .src(@src()), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) ref.set("sound_path", null);
     if ((try context.interact(Button{ .key = .src(@src()), .label = "Browse", .style = &style.plain_button })).clicked) host.browseSoundFile(type_index);
     try row.close(context);
-    try bind.slider(context, ref, "sound_volume", "Volume", .{});
+    try bind.slider(context, ref, "sound_volume", "Volume", .{ .display = .percent });
     try options.close(context);
     try group.close(context);
 }

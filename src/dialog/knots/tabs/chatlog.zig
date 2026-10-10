@@ -50,7 +50,7 @@ fn polling(context: *ui.Frame, chatlog: ChatlogRef) !void {
     try widgets.hintText(context, .src(@src()), "How often each log file is checked for new lines, before any idle backoff kicks in.");
     try bind.number(context, chatlog, "idlePollThreshold", "Idle Threshold (polls)", .{});
     try widgets.hintText(context, .src(@src()), "Consecutive empty polls of a log file before its interval starts backing off.");
-    try bind.number(context, chatlog, "maxPollMultiplier", "Max Poll Multiplier", .{});
+    try bind.number(context, chatlog, "maxPollMultiplier", "Max Poll Multiplier", .{ .unit = "\u{00D7}" });
     try widgets.hintText(context, .src(@src()), "Caps how much slower an idle file's interval can back off to; resets to 1x as soon as it has new lines again.");
     try options.close(context);
     try section.close(context);
