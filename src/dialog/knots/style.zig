@@ -424,8 +424,10 @@ pub const segment_label: Style = .{
 };
 pub const segment_label_selected: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = INK_DARK } };
 
+/// Shared by number boxes with and without a unit inside, so their left edges line up.
+const NUMBER_WIDTH = 64;
 pub const number_input: Style = .{
-    .width = .fixed(80),
+    .width = .fixed(NUMBER_WIDTH),
     .font = FONT_MONO,
     .height = .fixed(CONTROL_HEIGHT),
     .padding = .xy(8, 4),
@@ -437,7 +439,7 @@ pub const number_input: Style = .{
 };
 /// A number box with its unit inside, e.g. "85 %": this field draws the box, around unit_field_input and the unit.
 pub const unit_field: Style = .{
-    .width = .fixed(64),
+    .width = .fixed(NUMBER_WIDTH),
     .height = .fixed(CONTROL_HEIGHT),
     .direction = .row,
     .@"align" = .center,
