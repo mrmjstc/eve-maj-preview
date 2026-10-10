@@ -16,7 +16,7 @@ const Text = ui.component.Text;
 const ThumbnailRef = session.Ref(config.ThumbnailConfig);
 const DisplayRef = session.Ref(config.DisplayConfig);
 
-const MIN_SIZE_SLIDER = 50;
+/// The boxes can go up to the setting's own maximum.
 const MAX_SIZE_SLIDER = 1280;
 
 const Ratio = struct { label: []const u8, ratio: ?f32 };
@@ -65,7 +65,10 @@ fn sizeAndOpacity(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
     const row = try widgets.openBinding(context, .str("knots.thumbnails.size"), "Size");
     var width: f32 = @floatFromInt(thumbnail.get("width"));
     const ratio = width / @as(f32, @floatFromInt(@max(thumbnail.get("height"), 1)));
-    if (try widgets.slider(context, .str("knots.thumbnails.size.slider"), &width, MIN_SIZE_SLIDER, MAX_SIZE_SLIDER, 1)) {
+    // Stops where either side hits its bound, or saving clamps that side alone and breaks the ratio.
+    const min_width = @max(@as(f32, config.ThumbnailConfig.WIDTH[0]), @as(f32, config.ThumbnailConfig.HEIGHT[0]) * ratio);
+    const max_width = @max(min_width, @min(@as(f32, MAX_SIZE_SLIDER), @as(f32, config.ThumbnailConfig.HEIGHT[1]) * ratio));
+    if (try widgets.slider(context, .str("knots.thumbnails.size.slider"), &width, min_width, max_width, 1)) {
         thumbnail.set("width", @intFromFloat(@round(width)));
         thumbnail.set("height", @intFromFloat(@round(width / ratio)));
     }

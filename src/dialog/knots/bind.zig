@@ -141,7 +141,7 @@ fn openUnitField(context: *ui.Frame, key: ui.Key, input_key: ui.Key) !ui.compone
 }
 
 /// A unit box for a value that isn't one setting, e.g. a slider's "85 %"; returns what was typed on blur, using `key` indices 4 to 6.
-pub fn unitValueBox(context: *ui.Frame, key: ui.Key, value: f64, unit: []const u8) !?f64 {
+fn unitValueBox(context: *ui.Frame, key: ui.Key, value: f64, unit: []const u8) !?f64 {
     const box_key = key.indexed(4);
     const field_rect = try openUnitField(context, key.indexed(6), box_key);
     const typed = try valueBox(context, box_key, value, &style.unit_field_input);
@@ -353,15 +353,9 @@ pub fn optionalColor(context: *ui.Frame, ref: anytype, comptime field: []const u
     });
 }
 
-/// The RGB of an ARGB setting, keeping its alpha.
+/// The RGB of an ARGB setting, keeping its alpha, which alphaSlider sets; its Reset restores the default's RGB.
 pub fn rgb(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
     const row = try widgets.openBinding(context, fieldKey(ref, field), label);
-    try rgbBox(context, ref, field);
-    try row.close(context);
-}
-
-/// Just the picker, for a row with more in it, e.g. a background's opacity; its Reset restores the default's RGB, keeping the alpha.
-pub fn rgbBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
     const argb: u32 = ref.get(field);
     const is_aligned = widgets.isAligned();
     var value = widgets.colorFromArgb(argb | 0xFF000000);
@@ -376,15 +370,29 @@ pub fn rgbBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !voi
         .reset = if (defaultOf(@TypeOf(ref), field) != null) &is_reset else null,
     })).changed) ref.set(field, (widgets.argbFromColor(value) & 0x00FFFFFF) | (argb & 0xFF000000));
     if (is_reset) if (defaultOf(@TypeOf(ref), field)) |default| ref.set(field, (default & 0x00FFFFFF) | (argb & 0xFF000000));
+    try row.close(context);
 }
 
-/// The alpha of an ARGB setting as a 0-100 box with "%" inside, keeping its RGB.
-pub fn alphaBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
+/// The alpha of an ARGB setting as a slider row with its % box, keeping its RGB.
+pub fn alphaSlider(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
     const argb: u32 = ref.get(field);
-    const key = fieldKey(ref, field).indexed(10);
-    const percent = try unitValueBox(context, key, @round(@as(f64, @floatFromInt(argb >> 24)) / 255.0 * 100.0), "%") orelse return;
-    const byte: u32 = @intFromFloat(@round(std.math.clamp(percent, 0, 100) / 100.0 * 255.0));
-    ref.set(field, (argb & 0x00FFFFFF) | (byte << 24));
+    const key = fieldKey(ref, field).indexed(11);
+    const row = try widgets.openBinding(context, key, label);
+    if (try percentSlider(context, key, @intCast(argb >> 24), 0, 255)) |alpha| {
+        ref.set(field, (argb & 0x00FFFFFF) | (@as(u32, alpha) << 24));
+    }
+    try row.close(context);
+}
+
+/// A 0-255 value's slider and % box, in a row the caller opened with `key`; returns the new value if either changed it.
+pub fn percentSlider(context: *ui.Frame, key: ui.Key, value: u8, min: f32, max: f32) !?u8 {
+    var slider_value: f32 = @floatFromInt(value);
+    var changed: ?u8 = null;
+    if (try widgets.slider(context, key.indexed(2), &slider_value, min, max, 1)) changed = @intFromFloat(@round(slider_value));
+    if (try unitValueBox(context, key, @round(slider_value / 255.0 * 100.0), "%")) |percent| {
+        changed = @intFromFloat(std.math.clamp(@round(percent / 100.0 * 255.0), min, max));
+    }
+    return changed;
 }
 
 /// A font name from FONT_OPTIONS, plus the current one if it was set by hand; the row holds the font's size and weight beside it.

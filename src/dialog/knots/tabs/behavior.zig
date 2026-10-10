@@ -149,10 +149,8 @@ fn exclusion(context: *ui.Frame) !void {
 fn exclusionOverlay(context: *ui.Frame) !void {
     const thumbnail = session.profile().child("thumbnail");
     try bind.choice(context, thumbnail, "exclusionOverlayStyle", "Overlay Style");
-    const overlay = try widgets.openBinding(context, .src(@src()), "Overlay Color");
-    try bind.rgbBox(context, thumbnail, "exclusionOverlayColor");
-    try bind.alphaBox(context, thumbnail, "exclusionOverlayColor");
-    try overlay.close(context);
+    try bind.rgb(context, thumbnail, "exclusionOverlayColor", "Overlay Color");
+    try bind.alphaSlider(context, thumbnail, "exclusionOverlayColor", "Overlay Opacity");
 }
 
 fn windowPosition(context: *ui.Frame) !void {

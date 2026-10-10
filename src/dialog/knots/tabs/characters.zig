@@ -250,15 +250,10 @@ fn toFloat(value: ?i32) ?f64 {
 /// Unset follows the Appearance tab's opacity; moving the slider gives the character its own.
 fn opacity(context: *ui.Frame, character: CharacterRef) !void {
     const inherited = session.profile().ptr.thumbnail.thumbnailOpacity;
-    const key: ui.Key = .str("knots.character.opacity");
+    const key = ui.Key.str("knots.character.opacity").indexed(character.index);
     const row = try widgets.openBinding(context, key, "Opacity");
-    var value: f32 = @floatFromInt(character.get("opacity") orelse inherited);
-    if (try widgets.slider(context, ui.Key.str("knots.character.opacity.slider").indexed(character.index), &value, ranges.OPACITY[0], ranges.OPACITY[1], 1)) {
-        character.set("opacity", @as(u8, @intFromFloat(@round(value))));
-    }
-    if (try bind.unitValueBox(context, key.indexed(character.index), @round(value / 255.0 * 100.0), "%")) |percent| {
-        const byte = std.math.clamp(@round(percent / 100.0 * 255.0), ranges.OPACITY[0], ranges.OPACITY[1]);
-        character.set("opacity", @as(u8, @intFromFloat(byte)));
+    if (try bind.percentSlider(context, key, character.get("opacity") orelse inherited, ranges.OPACITY[0], ranges.OPACITY[1])) |value| {
+        character.set("opacity", value);
     }
     try row.close(context);
 }

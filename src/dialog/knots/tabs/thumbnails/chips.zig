@@ -22,7 +22,7 @@ pub const PopoverField = union(enum) {
     color,
     /// Name, size and weight on one row.
     font,
-    /// Colour and opacity on one row.
+    /// Colour, with an opacity slider row beneath it.
     background,
 };
 
@@ -303,10 +303,8 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
                 try font.close(context);
             },
             .background => {
-                const background = try widgets.openBinding(context, .str("knots.chip.background:" ++ chip.label), "Background");
-                try bind.rgbBox(context, ref, fields.bg_color);
-                try bind.alphaBox(context, ref, fields.bg_color);
-                try background.close(context);
+                try bind.rgb(context, ref, fields.bg_color, "Background");
+                try bind.alphaSlider(context, ref, fields.bg_color, "Background Opacity");
             },
         }
     }
