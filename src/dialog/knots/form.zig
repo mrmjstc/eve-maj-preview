@@ -31,7 +31,6 @@ const text_overlays = @import("tabs/text_overlays.zig");
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
-const Dialog = ui.component.Dialog;
 const Canvas = ui.component.Canvas;
 
 const CONTENT_KEY: ui.Key = .str("knots.content");
@@ -387,7 +386,7 @@ fn searchBox(context: *ui.Frame) !void {
 
 fn unsavedPrompt(context: *ui.Frame) !void {
     if (!g_confirm_close) return;
-    const dialog = Dialog{ .is_open = &g_confirm_close, .key = .src(@src()), .style = &style.modal };
+    const dialog = widgets.modal(.src(@src()), &g_confirm_close, &style.modal);
     _ = try dialog.open(context);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Unsaved Changes", .style = &style.heading });
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "You have unsaved changes. Save them before closing, or close without saving?", .style = &style.modal_text });

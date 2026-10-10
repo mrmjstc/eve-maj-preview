@@ -624,6 +624,9 @@ pub const modal: Style = .{
     .radius = .lg,
 };
 
+/// widgets.modal's backdrop: blurs the dialog under it on top of knots' own dimming, so the modal reads as in front.
+pub const modal_backdrop: Style = .{ .backdrop = .{ .blur = 3 } };
+
 pub const modal_text: Style = .{ .foreground = .{ .color = TEXT_SECONDARY }, .wrap = true, .width = .grow() };
 
 /// .button-primary: outlined in the accent at rest, filled on hover.

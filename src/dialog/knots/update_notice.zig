@@ -5,12 +5,12 @@ const win32 = @import("../../platform/win32.zig");
 const update = @import("../../update.zig");
 const session = @import("session.zig");
 const style = @import("style.zig");
+const widgets = @import("widgets.zig");
 const log = @import("../../log.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
-const Dialog = ui.component.Dialog;
 const slog = log.scoped("dialog_knots");
 
 /// The update check runs in the background, so a window opened at startup looks once more after this.
@@ -47,7 +47,7 @@ pub fn reset() void {
 pub fn show(context: *ui.Frame) !void {
     check(context);
     if (!g_is_open) return;
-    const dialog = Dialog{ .is_open = &g_is_open, .key = .src(@src()), .style = &style.modal_wide };
+    const dialog = widgets.modal(.src(@src()), &g_is_open, &style.modal_wide);
     _ = try dialog.open(context);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Update Available!", .style = &style.heading });
     const line = Rect{ .key = .src(@src()), .style = &style.hint_row };

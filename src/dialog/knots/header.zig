@@ -17,7 +17,6 @@ const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
 const Canvas = ui.component.Canvas;
-const Dialog = ui.component.Dialog;
 const TextInput = ui.component.TextInput;
 const ColorPicker = ui.component.ColorPicker;
 const SelectInput = ui.component.SelectInput;
@@ -152,7 +151,7 @@ fn switchPrompt(context: *ui.Frame) !void {
         clearSwitchTarget();
         return;
     }
-    const dialog = Dialog{ .is_open = &g_switch_open, .key = .src(@src()), .style = &style.modal };
+    const dialog = widgets.modal(.src(@src()), &g_switch_open, &style.modal);
     _ = try dialog.open(context);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Switch Profile?", .style = &style.heading });
     try context.e(Text{
@@ -201,7 +200,7 @@ fn namePrompt(context: *ui.Frame) !void {
         g_name_prompt = null;
         return;
     }
-    const dialog = Dialog{ .is_open = &g_name_open, .key = .src(@src()), .style = &style.modal };
+    const dialog = widgets.modal(.src(@src()), &g_name_open, &style.modal);
     _ = try dialog.open(context);
     try context.e(Text{
         .selectable = false,
@@ -277,7 +276,7 @@ fn confirmPrompt(context: *ui.Frame) !void {
         return;
     }
     const name = session.profile().ptr.profile_name;
-    const dialog = Dialog{ .is_open = &g_confirm_open, .key = .src(@src()), .style = &style.modal };
+    const dialog = widgets.modal(.src(@src()), &g_confirm_open, &style.modal);
     _ = try dialog.open(context);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = switch (confirm) {
         .delete => "Delete Profile?",

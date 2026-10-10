@@ -17,7 +17,6 @@ const log = @import("../../log.zig");
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
-const Dialog = ui.component.Dialog;
 const TextInput = ui.component.TextInput;
 const SelectInput = ui.component.SelectInput;
 const ColorPicker = ui.component.ColorPicker;
@@ -113,7 +112,7 @@ fn readFile(path: []const u8) !void {
 pub fn show(context: *ui.Frame) !void {
     // Cleared a frame after closing, not on the frame that closes it: that frame's text still borrows from the arena until it's drawn.
     if (!g_is_open) return clearArena();
-    const dialog = Dialog{ .is_open = &g_is_open, .key = .src(@src()), .style = &style.modal_wide };
+    const dialog = widgets.modal(.src(@src()), &g_is_open, &style.modal_wide);
     _ = try dialog.open(context);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Import Settings", .style = &style.heading });
     if (g_summary) |summary| {

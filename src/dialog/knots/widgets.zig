@@ -335,6 +335,11 @@ pub fn openMarkedBinding(context: *ui.Frame, key: ui.Key, label: []const u8, mar
     return row;
 }
 
+/// A modal over the whole window, behind which the rest of the dialog dims and blurs; the caller opens and closes it.
+pub fn modal(key: ui.Key, is_open: *bool, panel_style: *const ui.Style) Dialog {
+    return .{ .is_open = is_open, .key = key, .style = panel_style, .parts = .{ .backdrop = &style.modal_backdrop } };
+}
+
 /// A popover beside `anchor`, on whichever side has room; the caller fills it and ends it with closeResponse, where `.backdrop` is a click outside.
 pub fn openPopover(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box) !Dialog {
     const ui_state = context.ui();
