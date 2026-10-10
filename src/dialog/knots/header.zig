@@ -17,6 +17,7 @@ const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
 const Canvas = ui.component.Canvas;
+const Tooltip = ui.component.Tooltip;
 const TextInput = ui.component.TextInput;
 const ColorPicker = ui.component.ColorPicker;
 const SelectInput = ui.component.SelectInput;
@@ -319,8 +320,10 @@ fn clearSwitchTarget() void {
     g_switch_target = null;
 }
 
-/// Returns whether it was clicked.
+/// Returns whether it was clicked; hovering it names what it does.
 fn iconButton(context: *ui.Frame, icon: Icon, disabled: bool) !bool {
+    const tip = Tooltip{ .key = ui.Key.str("knots.header.icon.tip").indexed(@backingInt(icon)), .content = tooltip(icon) };
+    _ = try tip.open(context);
     const button = Button{
         .key = ui.Key.str("knots.header.icon").indexed(@backingInt(icon)),
         .disabled = disabled,
@@ -356,5 +359,16 @@ fn iconButton(context: *ui.Frame, icon: Icon, disabled: bool) !bool {
         .style = &.{ .width = .fixed(glyphs.ICON_SIZE), .height = .fixed(glyphs.ICON_SIZE) },
     });
     try button.close(context);
+    try tip.close(context);
     return response.clicked and !disabled;
+}
+
+fn tooltip(icon: Icon) []const u8 {
+    return switch (icon) {
+        .add => "New Profile",
+        .copy => "Copy Profile",
+        .delete => "Delete Profile",
+        .reset => "Reset Profile to Defaults",
+        .import => "Import Settings",
+    };
 }
