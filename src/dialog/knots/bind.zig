@@ -284,39 +284,35 @@ pub fn slider(context: *ui.Frame, ref: anytype, comptime field: []const u8, labe
     const max = options.max orelse if (bounds) |b| b[1] else 100;
     const key = fieldKey(ref, field);
     const row = try widgets.openBinding(context, key, label);
-    var value: f32 = @floatCast(numberTo(F, ref.get(field)));
-    if (try widgets.slider(context, key.indexed(2), &value, min, max, options.step)) {
-        ref.set(field, numberFrom(F, @round(value)));
-    }
-    if (widgets.isAligned()) {
-        try sliderBox(context, ref, field, key, value, min, max, options.display);
-    } else {
-        const shown = switch (options.display) {
-            .value => try std.fmt.allocPrint(context.arena(), "{d:.0}", .{value}),
-            .percent_of_255 => try std.fmt.allocPrint(context.arena(), "{d:.0}%", .{value / 255.0 * 100.0}),
-        };
-        try widgets.valueText(context, key.indexed(3), shown);
+    if (try sliderControls(context, key, @floatCast(numberTo(F, ref.get(field))), min, max, options.step, options.display)) |value| {
+        ref.set(field, numberFrom(F, value));
     }
     try row.close(context);
 }
 
-/// A slider's value as a box to type into, in the units it's shown in; `key` is the row's.
-fn sliderBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, key: ui.Key, value: f32, min: f32, max: f32, display: Display) !void {
-    const F = FieldOf(@TypeOf(ref), field);
+/// A slider and its value in `display`'s units, a box to type into when aligned, in a row the caller opened with `key`; returns the new value if either changed it.
+fn sliderControls(context: *ui.Frame, key: ui.Key, value: f32, min: f32, max: f32, step: f32, display: Display) !?f64 {
+    var slider_value = value;
+    var changed: ?f64 = null;
+    if (try widgets.slider(context, key.indexed(2), &slider_value, min, max, step)) changed = @round(slider_value);
     const shown: f64 = switch (display) {
-        .value => @round(value),
-        .percent_of_255 => @round(value / 255.0 * 100.0),
+        .value => @round(slider_value),
+        .percent_of_255 => @round(slider_value / 255.0 * 100.0),
     };
     const unit = switch (display) {
         .value => "",
         .percent_of_255 => "%",
     };
-    const value_typed = try unitValueBox(context, key, shown, unit) orelse return;
+    if (!widgets.isAligned()) {
+        try widgets.valueText(context, key.indexed(3), try std.fmt.allocPrint(context.arena(), "{d:.0}{s}", .{ shown, unit }));
+        return changed;
+    }
+    const value_typed = try unitValueBox(context, key, shown, unit) orelse return changed;
     const raw: f64 = switch (display) {
         .value => value_typed,
         .percent_of_255 => value_typed / 100.0 * 255.0,
     };
-    ref.set(field, numberFrom(F, std.math.clamp(raw, min, max)));
+    return std.math.clamp(raw, min, max);
 }
 
 /// An ARGB `u32` setting.
@@ -384,15 +380,10 @@ pub fn alphaSlider(context: *ui.Frame, ref: anytype, comptime field: []const u8,
     try row.close(context);
 }
 
-/// A 0-255 value's slider and % box, in a row the caller opened with `key`; returns the new value if either changed it.
+/// A 0-255 value's slider and %, in a row the caller opened with `key`; returns the new value if either changed it.
 pub fn percentSlider(context: *ui.Frame, key: ui.Key, value: u8, min: f32, max: f32) !?u8 {
-    var slider_value: f32 = @floatFromInt(value);
-    var changed: ?u8 = null;
-    if (try widgets.slider(context, key.indexed(2), &slider_value, min, max, 1)) changed = @intFromFloat(@round(slider_value));
-    if (try unitValueBox(context, key, @round(slider_value / 255.0 * 100.0), "%")) |percent| {
-        changed = @intFromFloat(std.math.clamp(@round(percent / 100.0 * 255.0), min, max));
-    }
-    return changed;
+    const changed = try sliderControls(context, key, @floatFromInt(value), min, max, 1, .percent_of_255) orelse return null;
+    return @intFromFloat(@round(changed));
 }
 
 /// A font name from FONT_OPTIONS, plus the current one if it was set by hand; the row holds the font's size and weight beside it.
