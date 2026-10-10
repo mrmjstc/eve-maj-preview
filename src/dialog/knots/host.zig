@@ -19,7 +19,6 @@ const region = @import("region.zig");
 const hotkey = @import("hotkey.zig");
 const general = @import("tabs/general.zig");
 const backups = @import("tabs/backups.zig");
-const characters = @import("tabs/characters.zig");
 const hotkeys_tab = @import("tabs/hotkeys.zig");
 const hotkey_groups = @import("tabs/hotkey_groups.zig");
 const event_alerts = @import("tabs/event_alerts.zig");
@@ -194,8 +193,6 @@ fn run() void {
     defer general.reset();
     backups.init(g_allocator);
     defer backups.reset();
-    characters.init(g_allocator);
-    defer characters.reset();
     hotkeys_tab.init(g_allocator);
     defer hotkeys_tab.reset();
     hotkey_groups.init(g_allocator);

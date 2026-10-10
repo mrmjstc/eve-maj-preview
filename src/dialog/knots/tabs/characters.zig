@@ -1,4 +1,4 @@
-//! The configuration window's Characters tab: a searchable, reorderable roster beside the selected character's details; main thread only.
+//! The configuration window's Characters tab: a reorderable roster beside the selected character's details; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -20,7 +20,6 @@ const ScreenMap = screen_map.ScreenMap;
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
-const TextInput = ui.component.TextInput;
 const ProfileRef = session.Ref(config.Config);
 const CharacterRef = session.Ref(config.CharacterConfig);
 const slog = log.scoped("dialog_knots");
@@ -42,20 +41,7 @@ const FLAGS = [_]Flag{
     .{ .field = "notificationsMuted", .label = "Mute Notifications" },
 };
 
-var g_allocator: std.mem.Allocator = undefined;
 var g_selected_index: usize = 0;
-/// The roster's search text. Owned; freed in reset.
-var g_search: std.ArrayList(u8) = .empty;
-
-pub fn init(allocator: std.mem.Allocator) void {
-    g_allocator = allocator;
-}
-
-/// Once the window has closed.
-pub fn reset() void {
-    g_search.deinit(g_allocator);
-    g_search = .empty;
-}
 
 pub fn show(context: *ui.Frame) !void {
     const section = try widgets.openSection(
@@ -64,8 +50,6 @@ pub fn show(context: *ui.Frame) !void {
         "Customize each character's saved position, size, border color, display name, and jump-to hotkey. Characters are added automatically when detected.",
         &style.fill_section,
     );
-    try searchBox(context);
-
     const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail_fill };
     _ = try master_detail.open(context);
     const profile = session.profile();
@@ -78,22 +62,10 @@ pub fn show(context: *ui.Frame) !void {
     try section.close(context);
 }
 
-fn searchBox(context: *ui.Frame) !void {
-    const row = Rect{ .key = .src(@src()), .style = &style.search_row };
-    _ = try row.open(context);
-    try context.e(TextInput{ .key = .str("knots.characters.search"), .buf = &g_search, .style = &style.text_input, .placeholder = "Search characters..." });
-    if (g_search.items.len > 0) {
-        if ((try context.interact(Button{ .key = .src(@src()), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) {
-            g_search.clearRetainingCapacity();
-            context.requestRedraw();
-        }
-    }
-    try row.close(context);
-}
-
 /// `lifted_style` while it's being dragged, otherwise the roster's own.
-fn characterRow(context: *ui.Frame, character: *const config.CharacterConfig, index: usize, name: []const u8, lifted_style: ?*const ui.Style) !void {
+fn characterRow(context: *ui.Frame, character: *const config.CharacterConfig, index: usize, lifted_style: ?*const ui.Style) !void {
     const arena = context.arena();
+    const name = try rosterName(arena, character, index);
     const is_selected = index == g_selected_index;
     const row = Button{
         .key = ROW_KEY.indexed(index),
@@ -134,19 +106,14 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     if (characters.len == 0) {
         try widgets.boxedText(context, .src(@src()), "No characters yet.", &style.roster_empty, &style.roster_empty_text);
     }
-    const arena = context.arena();
-    const query = std.mem.trim(u8, g_search.items, " ");
     var order = widgets.ReorderList.begin(context, ROW_KEY, characters.len, 0);
     for (characters, 0..) |*character, index| {
-        const name = try rosterName(arena, character, index);
-        if (query.len > 0 and std.ascii.findIgnoreCase(name, query) == null) continue;
-        // A filtered list isn't reordered: its hidden rows would have nowhere to go.
-        if (query.len == 0) try widgets.reorderRow(context, ROW_KEY, index);
-        if (try order.next(context, index)) try characterRow(context, character, index, name, null);
+        try widgets.reorderRow(context, ROW_KEY, index);
+        if (try order.next(context, index)) try characterRow(context, character, index, null);
     }
     if (try order.end(context)) |lifted| {
         const lifted_style = try order.liftedStyle(context, list.rowsKey(), if (lifted == g_selected_index) &style.roster_row_selected else &style.roster_row);
-        try characterRow(context, &characters[lifted], lifted, try rosterName(arena, &characters[lifted], lifted), lifted_style);
+        try characterRow(context, &characters[lifted], lifted, lifted_style);
     }
     const action = try list.close(context, .{ .add_label = "+ Add Character", .has_open_clients = true });
 
@@ -289,7 +256,7 @@ fn colors(context: *ui.Frame, character: CharacterRef) !void {
 fn windowPosition(context: *ui.Frame, character: CharacterRef) !void {
     const row = try widgets.openBinding(context, .str("knots.character.window_position"), "Window Position");
     try context.e(Rect{ .key = .src(@src()), .style = &style.spacer });
-    const shown = if (character.get("windowPosition")) |pos| try std.fmt.allocPrint(context.arena(), "{d}, {d}", .{ pos.x, pos.y }) else "Not set";
+    const shown = if (character.get("windowPosition")) |position| try std.fmt.allocPrint(context.arena(), "{d}, {d}", .{ position.x, position.y }) else "Not set";
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = shown, .style = &style.muted_text });
     const name = character.get("name");
     if (try widgets.confirmButton(context, ui.Key.str("knots.character.position.clear").indexed(character.index), "\u{00D7}", "OK", &style.icon_button_danger_text, &style.icon_button_confirm)) {
@@ -314,14 +281,14 @@ fn windowPosition(context: *ui.Frame, character: CharacterRef) !void {
 /// Every monitor with the saved window on it, or a marker at its top-left when it was saved without a size.
 fn positionMap(context: *ui.Frame, character: CharacterRef) !void {
     var map = try ScreenMap.init(context, .str("knots.character.position.map"));
-    if (character.get("windowPosition")) |pos| {
+    if (character.get("windowPosition")) |position| {
         const line_color = context.ui().theme.primary.value;
         var fill_color = line_color;
         fill_color[3] = 0.25;
         const size = character.get("windowSize");
         const width = if (size) |saved| saved.width else 0;
         const height = if (size) |saved| saved.height else 0;
-        const window_box = map.frame.box(.{ .left = pos.x, .top = pos.y, .right = pos.x + width, .bottom = pos.y + height });
+        const window_box = map.frame.box(.{ .left = position.x, .top = position.y, .right = position.x + width, .bottom = position.y + height });
         const box: screen_math.Box = if (window_box[2] >= 1 and window_box[3] >= 1) window_box else .{ window_box[0], window_box[1], POSITION_MARKER_SIZE, POSITION_MARKER_SIZE };
         try map.addBox(context.arena(), box, fill_color, line_color);
     }
