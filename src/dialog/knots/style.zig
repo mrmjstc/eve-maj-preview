@@ -269,6 +269,10 @@ pub const text_input: Style = .{
 
 /// Fixed in an aligned row, like select and slider_box_aligned, so a growing label can't squeeze it.
 pub const text_input_aligned: Style = text_input.with(.{ .width = .fixed(230) });
+/// Wider than text_input_aligned, since a folder path is the longest value a row holds.
+pub const path_input: Style = text_input.with(.{ .width = .fixed(360) });
+/// Wider than knots' 260, so a full path rarely wraps.
+pub const path_tooltip: Style = .{ .width = .{ .kind = .fit, .max = 480 } };
 
 pub const heading: Style = .{ .font = FONT_SEMIBOLD, .font_size = .md, .foreground = .{ .color = TEXT } };
 

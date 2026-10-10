@@ -9,6 +9,7 @@ const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 
 const Button = ui.component.Button;
+const Tooltip = ui.component.Tooltip;
 const ChatlogRef = session.Ref(config.ChatlogConfig);
 
 pub fn show(context: *ui.Frame) !void {
@@ -27,10 +28,15 @@ fn monitoring(context: *ui.Frame, chatlog: ChatlogRef) !void {
     try section.close(context);
 }
 
-/// A path box with a Browse button, whose folder picker sets the path once it closes.
+/// A path box with a Browse button, whose folder picker sets the path once it closes; hovering the box shows a path too long for it.
 fn directory(context: *ui.Frame, chatlog: ChatlogRef, comptime field: []const u8, label: []const u8, placeholder: []const u8, target: pickers.Target, title: []const u8) !void {
     const row = try widgets.openBinding(context, .str("knots.chatlog.dir:" ++ field), label);
-    try bind.textBox(context, chatlog, field, placeholder);
+    // Copied, since the box can replace the path before the tooltip draws it.
+    const path = try context.arena().dupe(u8, chatlog.get(field));
+    const tip: ?Tooltip = if (path.len > 0) .{ .key = .str("knots.chatlog.path:" ++ field), .content = path, .parts = .{ .popup = &style.path_tooltip } } else null;
+    if (tip) |t| _ = try t.open(context);
+    try bind.styledTextBox(context, chatlog, field, placeholder, &style.path_input);
+    if (tip) |t| try t.close(context);
     if ((try context.interact(Button{ .key = .str("knots.chatlog.browse:" ++ field), .label = "Browse", .style = &style.plain_button })).clicked) {
         host.browseFolder(target, title);
     }
