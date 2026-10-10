@@ -21,7 +21,7 @@ pub fn show(context: *ui.Frame) !void {
         _ = try row.open(context);
         try bind.textBox(context, entry, "systemName", "System name");
         try bind.colorBox(context, entry, "color");
-        const removed = try widgets.confirmButton(context, ui.Key.str("knots.system_color.remove").indexed(index), "Remove", "Confirm", &style.remove_button, &style.confirm_remove_button);
+        const removed = try widgets.confirmButton(context, ui.Key.str("knots.system_color.remove").indexed(index), "\u{00D7}", "OK", &style.icon_button_danger_text, &style.icon_button_confirm);
         try row.close(context);
         if (removed) {
             profile.remove("systemColors", index);

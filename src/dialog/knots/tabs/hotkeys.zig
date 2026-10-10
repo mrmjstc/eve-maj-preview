@@ -172,7 +172,7 @@ fn appHotkeys(context: *ui.Frame) !void {
         try bind.textBox(context, entry, "executableName", "e.g., Discord.exe");
         try hotkey.field(context, entry, "hotkey");
         if (try widgets.glyphButton(context, ui.Key.str("knots.hotkeys.app.pick").indexed(index), .refresh, "Pick Running Window", &style.plain_button, false)) window_picker.open(g_allocator, &g_picker, index);
-        const removed = try widgets.confirmButton(context, ui.Key.str("knots.hotkeys.app.remove").indexed(index), "Remove", "Confirm", &style.remove_button, &style.confirm_remove_button);
+        const removed = try widgets.confirmButton(context, ui.Key.str("knots.hotkeys.app.remove").indexed(index), "\u{00D7}", "OK", &style.icon_button_danger_text, &style.icon_button_confirm);
         try row.close(context);
         try picker(context, entry);
         if (removed) {
@@ -202,7 +202,7 @@ fn urlHotkeys(context: *ui.Frame) !void {
         _ = try row.open(context);
         try bind.textBox(context, entry, "url", "https://example.com");
         try hotkey.field(context, entry, "hotkey");
-        const removed = try widgets.confirmButton(context, ui.Key.str("knots.hotkeys.url.remove").indexed(index), "Remove", "Confirm", &style.remove_button, &style.confirm_remove_button);
+        const removed = try widgets.confirmButton(context, ui.Key.str("knots.hotkeys.url.remove").indexed(index), "\u{00D7}", "OK", &style.icon_button_danger_text, &style.icon_button_confirm);
         try row.close(context);
         // Only aDashboard takes a clipboard upload, so the option hangs under its row and is cleared for any other URL.
         if (isAdashboard(entry.get("url"))) {

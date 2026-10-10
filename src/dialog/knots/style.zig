@@ -699,16 +699,12 @@ pub const confirm_button: Style = plain_button.with(.{
     .foreground = .{ .color = WHITE },
     .hover = &.{ .background = .{ .color = DESTRUCTIVE_FILL_HOVER }, .foreground = .{ .color = WHITE }, .state_layer = 0 },
 });
-/// .button-remove: as wide as its armed Confirm label, so arming it doesn't resize it.
-pub const remove_button: Style = danger_button.with(.{ .width = .fixed(REMOVE_BUTTON_WIDTH) });
-pub const confirm_remove_button: Style = confirm_button.with(.{ .width = .fixed(REMOVE_BUTTON_WIDTH) });
-const REMOVE_BUTTON_WIDTH = 80;
 pub const button_text: Style = .{ .foreground = .{ .color = TEXT } };
 /// .full-width-btn under a list.
 pub const full_width_button: Style = plain_button.with(.{ .width = .grow() });
 /// .button-row-flex: buttons sharing a line.
 pub const button_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
-/// One item of a list, e.g. a system colour: its fields then a Remove button.
+/// One item of a list, e.g. a system colour: its fields then a remove button.
 pub const list_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
 pub const list: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
 
