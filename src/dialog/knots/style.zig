@@ -813,6 +813,8 @@ const PRICE_INPUT_WIDTH = 140;
 pub const search_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 4 };
 /// Several labelled controls on one line.
 pub const inline_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
+/// Fits its controls, so an aligned row's growing label pushes them to the right edge.
+pub const inline_row_fit: Style = inline_row.with(.{ .width = .fit() });
 /// .placeholder-chips: small buttons that insert a {placeholder}, at the right edge like an aligned row's controls.
 pub const chip_row: Style = .{ .width = .grow(), .direction = .row, .justify = .end, .padding = .xy(ROW_INSET, 0) };
 /// As wide as a custom text box and its clear button, so the chips start under the box.
@@ -843,6 +845,10 @@ pub const hotkey_box: Style = .{
     .hover = &.{ .border_color = .accent, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
+/// Laid over a hotkey box in an aligned row: wide enough for its placeholder, and wider for a long combo.
+pub const hotkey_width_aligned: Style = .{ .width = .{ .kind = .fit, .min = 130 } };
+/// Narrower, to fit beside its label in a detail pane's field group.
+pub const hotkey_width_grouped: Style = .{ .width = .{ .kind = .fit, .min = 100 } };
 pub const hotkey_box_recording: Style = hotkey_box.with(.{ .border_color = .accent });
 /// input.hotkey-conflict: a combo bound to something else too.
 pub const hotkey_box_conflict: Style = hotkey_box.with(.{ .border_color = .{ .color = ERROR }, .background = .{ .color = ERROR_TINT } });

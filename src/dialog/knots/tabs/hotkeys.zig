@@ -141,7 +141,7 @@ fn binding(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: 
 /// A backward/forward set in one row, each half marked with its direction.
 fn pair(context: *ui.Frame, ref: anytype, comptime previous: []const u8, comptime next: []const u8, label: []const u8) !void {
     const row = try widgets.openMarkedBinding(context, .str("knots.hotkeys.pair:" ++ previous), label, "\u{2190}");
-    const halves = Rect{ .key = .str("knots.hotkeys.pair.halves:" ++ previous), .style = &style.inline_row };
+    const halves = Rect{ .key = .str("knots.hotkeys.pair.halves:" ++ previous), .style = &style.inline_row_fit };
     _ = try halves.open(context);
     try hotkey.field(context, ref, previous);
     try context.e(Text{ .selectable = false, .key = .str("knots.hotkeys.pair.arrow:" ++ next), .content = "\u{2192}", .style = &style.binding_arrow });

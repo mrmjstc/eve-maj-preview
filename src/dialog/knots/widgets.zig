@@ -484,6 +484,13 @@ pub fn isAligned() bool {
     return g_is_aligned;
 }
 
+/// The width laid over a hotkey box in these rows, like slider's track; null keeps it growing.
+pub fn hotkeyWidth() ?*const ui.Style {
+    if (g_in_field_group) return &style.hotkey_width_grouped;
+    if (g_is_aligned) return &style.hotkey_width_aligned;
+    return null;
+}
+
 /// A row of the caller's own cells, e.g. a grid's, spaced and divided like the aligned rows around it; the caller closes it.
 pub fn openRow(context: *ui.Frame, key: ui.Key) !Row {
     return openSettingsRow(context, key, &style.aligned_row);

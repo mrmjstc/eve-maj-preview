@@ -141,13 +141,15 @@ pub fn field(context: *ui.Frame, ref: anytype, comptime field_name: []const u8) 
         }
     }
 
-    const row = Rect{ .key = key.indexed(1), .style = &style.inline_row };
+    const width = widgets.hotkeyWidth();
+    const row = Rect{ .key = key.indexed(1), .style = if (width != null) &style.inline_row_fit else &style.inline_row };
     _ = try row.open(context);
     if (editing(id)) |edit| {
-        try manualBox(context, edit, ref, field_name, key);
+        try manualBox(context, edit, ref, field_name, key, width);
     } else {
         const is_recording = isRecordingField(id);
-        const box = Button{ .key = key, .style = if (is_recording) &style.hotkey_box_recording else if (is_conflict) &style.hotkey_box_conflict else &style.hotkey_box };
+        const state_style = if (is_recording) &style.hotkey_box_recording else if (is_conflict) &style.hotkey_box_conflict else &style.hotkey_box;
+        const box = Button{ .key = key, .style = try sized(context, state_style, width) };
         const response = try box.openResponse(context);
         if (is_recording) {
             try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = RECORDING_PROMPT, .style = &style.hotkey_prompt });
@@ -287,7 +289,14 @@ fn cap(context: *ui.Frame, key: ui.Key, name: []const u8, is_modifier: bool) !vo
     });
 }
 
-fn manualBox(context: *ui.Frame, edit: *ManualEdit, ref: anytype, comptime field_name: []const u8, key: ui.Key) !void {
+fn sized(context: *ui.Frame, base: *const ui.Style, width: ?*const ui.Style) !*const ui.Style {
+    const over = width orelse return base;
+    const box_style = try context.arena().create(ui.Style);
+    box_style.* = base.with(over.*);
+    return box_style;
+}
+
+fn manualBox(context: *ui.Frame, edit: *ManualEdit, ref: anytype, comptime field_name: []const u8, key: ui.Key, width: ?*const ui.Style) !void {
     const box_key = key.indexed(5);
     const is_focused = context.ui().focused(box_key.hash());
     // Enter, or leaving the box, applies what was typed.
@@ -297,7 +306,7 @@ fn manualBox(context: *ui.Frame, edit: *ManualEdit, ref: anytype, comptime field
         return;
     }
     edit.was_focused = is_focused;
-    try context.e(TextInput{ .key = box_key, .buf = &edit.text, .style = &style.text_input });
+    try context.e(TextInput{ .key = box_key, .buf = &edit.text, .style = try sized(context, &style.text_input, width) });
 }
 
 fn isRecordingField(id: u64) bool {
