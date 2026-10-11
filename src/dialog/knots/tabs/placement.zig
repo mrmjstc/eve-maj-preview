@@ -165,7 +165,7 @@ fn selectedIndex(items: []const config.ThumbnailSpace) ?usize {
 
 fn roster(context: *ui.Frame, profile: ProfileRef, is_filling: bool) !void {
     const items = profile.ptr.thumbnailSpaces.items;
-    const list = try widgets.openRoster(context, .str("knots.space.roster"), if (is_filling) &style.roster_wide else &style.roster_filters, is_filling);
+    const list = try widgets.openRoster(context, .str("knots.space.roster"), if (is_filling) &style.roster else &style.roster_filters, is_filling);
     if (items.len == 0) {
         try widgets.boxedText(context, .src(@src()), "No spaces yet.", &style.roster_empty, &style.roster_empty_text);
     }

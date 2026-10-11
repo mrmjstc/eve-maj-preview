@@ -154,9 +154,11 @@ const content_scroll_pane: Style = .{
 /// The tab's content when the tab fills it itself.
 pub const content_fill: Style = .{ .width = .grow(), .height = .grow(), .direction = .column, .gap = 8, .padding = .all(8) };
 
+/// Every master list's width: the narrowest that fits the widest footer, Characters' Add Character and refresh buttons.
+const ROSTER_WIDTH = 170;
 /// An inset well, darker than its section, rather than another bordered box.
 pub const roster: Style = .{
-    .width = .fixed(175),
+    .width = .fixed(ROSTER_WIDTH),
     .height = .grow(),
     .direction = .column,
     .overflow = .hidden,
@@ -778,12 +780,9 @@ pub const icon_button_confirm: Style = confirm_button.with(.{ .width = .fixed(CO
 pub const master_detail: Style = .{ .width = .grow(), .direction = .row, .gap = 8 };
 /// A master-detail filling the rest of its section, for a tab that fills the window.
 pub const master_detail_fill: Style = master_detail.with(.{ .height = .grow() });
-/// A filling roster, at roster_filters' width.
-pub const roster_wide: Style = roster.with(.{ .width = .fixed(WIDE_ROSTER_WIDTH) });
-pub const roster_filters: Style = roster.with(.{ .width = .fixed(WIDE_ROSTER_WIDTH), .height = .fit(), .overflow = .visible });
+pub const roster_filters: Style = roster.with(.{ .height = .fit(), .overflow = .visible });
 /// A roster in a scrolling tab whose rows scroll inside it, so adding one doesn't push it off the bottom.
-pub const roster_fixed: Style = roster.with(.{ .width = .fixed(WIDE_ROSTER_WIDTH), .height = .fixed(220) });
-const WIDE_ROSTER_WIDTH = 195;
+pub const roster_fixed: Style = roster.with(.{ .height = .fixed(220) });
 pub const detail_fit: Style = .{ .width = .grow(), .direction = .column, .gap = 8, .padding = .init(0, 0, 0, 8) };
 /// A roster row's small trailing text, e.g. a filter's Disabled.
 pub const roster_badge: Style = .{ .font_size = .{ .px = 10 }, .foreground = .{ .color = MUTED } };
@@ -885,8 +884,8 @@ pub const detail_value: Style = .{ .width = .grow(), .foreground = .{ .color = T
 
 /// widgets.openMarkedBinding's label and mark, outside aligned rows.
 pub const label_cell: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
-/// The arrow marking a pair's half.
-pub const binding_arrow: Style = .{ .width = .fixed(14), .foreground = .{ .color = MUTED } };
+/// The arrow marking a pair's half; brighter than muted text so the direction reads at a glance.
+pub const binding_arrow: Style = .{ .width = .fixed(14), .foreground = .{ .color = TEXT_SECONDARY } };
 
 /// The roster's own add button, a plain button across its footer with the add glyph before its label.
 pub const roster_add: Style = plain_button.with(.{ .width = .grow(), .justify = .center, .gap = 6 });

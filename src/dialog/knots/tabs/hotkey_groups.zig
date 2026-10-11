@@ -118,11 +118,15 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     carryToSpaces(profile, name_before, group.get("name"));
 
     const keys = try widgets.openFieldGroup(context, .str("knots.groups.keys"), "Keys");
-    inline for (.{ .{ "backwardKey", "Cycle Backward" }, .{ "forwardKey", "Cycle Forward" }, .{ "assignKey", "Assign Key" } }) |key| {
-        const row = try widgets.openBinding(context, .str("knots.groups.key:" ++ key[0]), key[1]);
+    // Marked with the Hotkeys tab's pair arrows; a pair on one row doesn't fit this pane.
+    inline for (.{ .{ "backwardKey", "Cycle Backward", "\u{2190}" }, .{ "forwardKey", "Cycle Forward", "\u{2192}" } }) |key| {
+        const row = try widgets.openMarkedBinding(context, .str("knots.groups.key:" ++ key[0]), key[1], key[2]);
         try hotkey.field(context, group, key[0]);
         try row.close(context);
     }
+    const assign = try widgets.openBinding(context, .str("knots.groups.key:assignKey"), "Assign Key");
+    try hotkey.field(context, group, "assignKey");
+    try assign.close(context);
     try widgets.hintText(context, .src(@src()), "Hover a thumbnail and press Assign Key to toggle that character in or out of this group's Characters list.");
     try keys.close(context);
     try widgets.separator(context, .str("knots.groups.separator.keys"));
