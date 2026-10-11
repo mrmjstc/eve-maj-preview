@@ -82,16 +82,21 @@ pub const FONT_SEMIBOLD_DATA = fonts.GEIST_SEMIBOLD_DATA;
 pub const FONT_MONO_DATA = @embedFile("../../assets/fonts/GeistMono-Regular.ttf");
 
 pub const CONTROL_HEIGHT = 28;
+/// How far a section's text and controls sit from its border, on every side.
+const SECTION_EDGE = 12;
 const SCROLLBAR_THICKNESS = 8;
 /// Right padding in a scrolling pane: the scrollbar draws over the content, so this keeps a gap between it and what's inside.
 const SCROLLBAR_GUTTER = SCROLLBAR_THICKNESS + 10;
+/// A smaller gutter for panes of rows, whose content already sits a row's inset inside them.
+const ROW_SCROLLBAR_GUTTER = SCROLLBAR_THICKNESS + 2;
 pub const LABEL_WIDTH = 190;
 
+/// Its sides are a row's inset short of the top and bottom, so a row's hover fill reaches past its text and every text and control sits SECTION_EDGE in, like the heading.
 pub const section: Style = .{
     .width = .grow(),
     .direction = .column,
     .gap = 8,
-    .padding = .all(12),
+    .padding = .init(SECTION_EDGE, SECTION_EDGE - ROW_INSET, SECTION_EDGE, SECTION_EDGE - ROW_INSET),
     .background = .{ .color = PANEL },
     .border_width = .all(1),
     .border_color = .{ .color = CARD_BORDER },
@@ -173,7 +178,7 @@ pub const roster_rows_fit: Style = .{ .width = .grow(), .direction = .column, .g
 /// A roster's rows in widgets.openScrollPane: the scrollbar draws over its pane, so the gutter keeps it off the rows' badges and markers while they scroll.
 pub const roster_scroll: ScrollPane = .{
     .pane = &roster_rows,
-    .scrolling = &roster_rows.with(.{ .padding = .init(0, SCROLLBAR_THICKNESS + 2, 0, 0) }),
+    .scrolling = &roster_rows.with(.{ .padding = .init(0, ROW_SCROLLBAR_GUTTER, 0, 0) }),
     .content = &roster_rows_fit,
 };
 /// A roster whose rows fit rather than scroll, so it never needs the gutter.
@@ -233,7 +238,7 @@ pub const drag_grip: Style = .{ .width = .fixed(DRAG_GRIP_SIZE), .height = .fixe
 /// A master-detail list's details: unboxed, since the section around it is already a card.
 pub const detail_scroll: ScrollPane = .{
     .pane = &detail_scroll_pane,
-    .scrolling = &detail_scroll_pane.with(.{ .padding = .init(0, SCROLLBAR_GUTTER, 0, 8) }),
+    .scrolling = &detail_scroll_pane.with(.{ .padding = .init(0, ROW_SCROLLBAR_GUTTER, 0, 8) }),
     .content = &.{ .width = .grow(), .direction = .column, .gap = 8 },
 };
 const detail_scroll_pane: Style = .{
@@ -255,6 +260,10 @@ pub const field_group_label: Style = .{ .padding = .init(6, 0, 0, ROW_INSET) };
 /// Short of detail_label by its rows' inset, so a group's row labels line up with plain detail rows' controls.
 pub const field_group_label_text: Style = detail_label.with(.{ .width = .fixed(DETAIL_LABEL_WIDTH - ROW_INSET) });
 pub const field_group_column: Style = .{ .width = .grow(), .direction = .column, .gap = 6 };
+pub const field_group_fill: Style = field_group.with(.{ .height = .grow() });
+pub const field_group_column_fill: Style = field_group_column.with(.{ .height = .grow() });
+/// A master-detail pane's details that fill it without scrolling, so a list inside them can scroll alone.
+pub const detail_fill: Style = .{ .width = .grow(), .height = .grow(), .direction = .column, .gap = 8, .padding = .init(0, 0, 0, 8) };
 
 pub const detail_header: Style = .{
     .width = .grow(),
@@ -287,11 +296,19 @@ pub const path_tooltip: Style = .{ .width = .{ .kind = .fit, .max = 480 } };
 pub const heading: Style = .{ .font = FONT_SEMIBOLD, .font_size = .md, .foreground = .{ .color = TEXT } };
 
 /// Set apart by the space above it, not a rule; the row after it starts a new run with no divider.
-pub const subheading_box: Style = .{ .width = .grow(), .padding = .init(16, 0, 0, 0) };
+pub const subheading_box: Style = .{ .width = .grow(), .padding = .init(16, ROW_INSET, 0, ROW_INSET) };
 pub const subheading: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } };
+/// subheading_box outside a section, e.g. in a modal, where nothing is inset.
+pub const modal_subheading_box: Style = subheading_box.with(.{ .padding = .init(16, 0, 0, 0) });
+/// Inset like a row, for a section's content that isn't one, e.g. a table or a full-width button.
+pub const inset_column: Style = .{ .width = .grow(), .direction = .column, .gap = 8, .padding = .xy(ROW_INSET, 0) };
 
 /// No italics: Geist ships them as a separate face we don't embed.
-pub const hint: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED }, .wrap = true, .width = .grow(), .padding = .xy(ROW_INSET, 0) };
+pub const hint: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED }, .wrap = true, .width = .grow() };
+/// Around a hint that goes with rows, so it starts where their labels do; knots ignores a Text's own padding.
+pub const hint_box: Style = .{ .width = .grow(), .padding = .xy(ROW_INSET, 0) };
+/// widgets.hintWithLink's row, inset like hint_box.
+pub const hint_link_row: Style = hint_row.with(.{ .padding = .xy(ROW_INSET, 0) });
 /// A hint that always shows, warning that a setting won't take effect.
 pub const hint_warning: Style = hint.with(.{ .foreground = .accent });
 
@@ -305,11 +322,10 @@ pub const notice: Style = .{
 };
 pub const notice_text: Style = .{ .width = .grow(), .wrap = true, .foreground = .accent };
 
-pub const section_heading: Style = .{ .width = .grow(), .direction = .row, .justify = .space_between, .@"align" = .center };
+/// Inset like the rows, so the title, description and labels share one left edge and the switch lines up over the rows' own.
+pub const section_heading: Style = .{ .width = .grow(), .direction = .row, .justify = .space_between, .@"align" = .center, .padding = .xy(ROW_INSET, 0) };
 /// The title and its ? button, so the right of the heading is left to the section's switch.
 pub const section_heading_title: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
-/// Inset like the rows' own switches, so it lines up above them.
-pub const section_switch: Style = group_inline.with(.{ .padding = .init(0, ROW_INSET, 0, 0) });
 
 /// The section's ? button, filled while its field hints show.
 pub const hint_toggle: Style = .{
@@ -727,9 +743,11 @@ pub const paired_confirm_button: Style = confirm_button.with(.{ .width = .fixed(
 /// A button spanning its container, e.g. under a list.
 pub const full_width_button: Style = plain_button.with(.{ .width = .grow() });
 /// Buttons sharing a line.
-pub const button_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
+pub const button_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8, .padding = .xy(ROW_INSET, 0) };
+/// button_row at the right edge, under its rows' controls.
+pub const button_row_end: Style = button_row.with(.{ .justify = .end });
 /// One item of a list, e.g. a system colour: its fields then a remove button.
-pub const list_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
+pub const list_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8, .padding = .xy(ROW_INSET, 0) };
 pub const list: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
 
 /// Centres a Placement tab screen preview in its section.
@@ -788,7 +806,7 @@ pub const icon_button_disabled_text: Style = icon_button_disabled.with(.{ .font_
 pub const icon_button_confirm: Style = confirm_button.with(.{ .width = .fixed(CONTROL_HEIGHT), .padding = .all(0), .justify = .center });
 
 /// Outside a filling tab: a roster beside the selected item's details, both sized to their content.
-pub const master_detail: Style = .{ .width = .grow(), .direction = .row, .gap = 8 };
+pub const master_detail: Style = .{ .width = .grow(), .direction = .row, .gap = 8, .padding = .xy(ROW_INSET, 0) };
 /// A master-detail filling the rest of its section, for a tab that fills the window.
 pub const master_detail_fill: Style = master_detail.with(.{ .height = .grow() });
 pub const roster_filters: Style = roster.with(.{ .height = .fit(), .overflow = .visible });
@@ -854,8 +872,6 @@ pub const chip_box: Style = .{ .width = .fixed(CUSTOM_TEXT_WIDTH + 8 + CONTROL_H
 /// A notification's custom text box: wider than an even split with its short state label.
 pub const custom_text_input: Style = text_input.with(.{ .width = .fixed(CUSTOM_TEXT_WIDTH) });
 const CUSTOM_TEXT_WIDTH = 190;
-/// A custom text's preview, in a chip_box so it starts under its text box.
-pub const preview_text: Style = hint.with(.{ .padding = .all(0) });
 pub const placeholder_chip: Style = plain_button.with(.{ .height = .fixed(22), .padding = .xy(6, 0), .font_size = .xs });
 /// widgets.boxedText's box around path_text, clipping a long file name so the row's buttons stay in view.
 pub const path_box: Style = .{ .width = .{ .kind = .fit, .max = 110 }, .overflow = .hidden };
@@ -909,13 +925,25 @@ pub const label_cell: Style = .{ .direction = .row, .@"align" = .center, .gap = 
 /// The arrow marking a pair's half; brighter than muted text so the direction reads at a glance.
 pub const binding_arrow: Style = .{ .width = .fixed(14), .foreground = .{ .color = TEXT_SECONDARY } };
 
-/// The roster's own add button, a plain button across its footer with the add glyph before its label.
-pub const roster_add: Style = plain_button.with(.{ .width = .grow(), .justify = .center, .gap = 6 });
+/// Every Add button: a plain button with widgets.glyphButton's add glyph before its label, at its natural width.
+pub const add_button: Style = plain_button.with(.{ .gap = 6 });
+/// The roster's own add button, add_button across its footer.
+pub const roster_add: Style = add_button.with(.{ .width = .grow(), .justify = .center });
 /// A group's members, each a draggable row.
 pub const members_list: Style = .{ .width = .grow(), .direction = .column, .gap = 4 };
-pub const member_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 6, .border_width = .edges(2, 0, 2, 0), .border_color = .transparent };
+/// The members scrolling on their own, under the group's pinned settings.
+pub const members_scroll: ScrollPane = .{
+    .pane = &members_scroll_pane,
+    .scrolling = &members_scroll_pane.with(.{ .padding = .init(0, ROW_SCROLLBAR_GUTTER, 0, 0) }),
+    .content = &members_list,
+};
+const members_scroll_pane: Style = .{ .width = .grow(), .height = .grow(), .direction = .column, .overflow = .scroll_y };
+/// Inset like a settings row, so its controls end where the rows' above do.
+pub const member_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 6, .padding = .xy(ROW_INSET, 0), .border_width = .edges(2, 0, 2, 0), .border_color = .transparent };
+/// The box and buttons under a group's members, inset like them.
+pub const member_add_row: Style = inline_row.with(.{ .padding = .xy(ROW_INSET, 0) });
 /// A member row lifted by a drag: padded so its contents clear the lifted outline.
-pub const member_row_lift: Style = member_row.with(.{ .padding = .xy(4, 2) });
+pub const member_row_lift: Style = member_row.with(.{ .padding = .xy(ROW_INSET, 2) });
 /// Laid over a row's own style while it's dragged, raised under the cursor; ReorderList sets its width and place.
 pub const lifted_row: Style = .{
     .position = .absolute,

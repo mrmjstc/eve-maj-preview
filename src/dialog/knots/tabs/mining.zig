@@ -25,7 +25,7 @@ pub fn show(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "The rolling look-back period the m3/min rate is averaged over, not how often the number updates.");
     try bind.number(context, ref, "update_interval_ms", "Update Interval", .{ .shows_seconds = true, .unit = "s" });
     try bind.toggle(context, ref, "show_isk_rate", "Show ISK Rate");
-    try widgets.hintText(context, .src(@src()), "Valued using the prices set in Ore / Ice / Gas Prices below - fetch or fill those in first, or this reads 0.");
+    try widgets.hintText(context, .src(@src()), "Valued at the prices in Ore / Ice / Gas Prices below; fetch or fill those in first, or this reads 0.");
     const isk_rate = try widgets.openGroup(context, .src(@src()), ref.get("show_isk_rate"));
     try bind.choice(context, ref, "isk_rate_unit", "ISK Rate Unit");
     try isk_rate.close(context);
@@ -36,7 +36,7 @@ pub fn show(context: *ui.Frame) !void {
     const alerts = try widgets.openSection(context, "Alerts", "Notifications triggered by mining laser activity. Requires Mining Overlay Settings above to be switched on.", &style.section);
     const alert_options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try widgets.subheading(context, .src(@src()), "Laser Idle Alert");
-    try widgets.hintText(context, .src(@src()), "Fires when fewer than Event Threshold mining hits occur within Detection Window - a slowdown, not full silence.");
+    try widgets.hintText(context, .src(@src()), "Fires when fewer than Event Threshold mining hits occur within Detection Window: a slowdown, not full silence.");
     try bind.number(context, ref, "idle_alert_window_seconds", "Detection Window", .{ .unit = "s" });
     try bind.number(context, ref, "idle_alert_threshold", "Event Threshold", .{});
     try widgets.subheading(context, .src(@src()), "Mining Stopped Alert");
@@ -46,11 +46,14 @@ pub fn show(context: *ui.Frame) !void {
     try alerts.close(context);
 
     const prices_section = try widgets.openSection(context, "Ore / Ice / Gas Prices", "\"Fetch Prices\" pulls current Jita buy prices from EVE's market.", &style.section);
+    const inset = Rect{ .key = .src(@src()), .style = &style.inset_column };
+    _ = try inset.open(context);
     try oreTable(context);
     const is_fetching = prices.isFetching();
     if (try widgets.glyphButton(context, .src(@src()), .refresh, "Fetch Prices", &style.full_width_button, is_fetching)) {
         if (host.fetchPrices()) status.show(.info, "Fetching {d} price(s)", .{prices.NAMES.len});
     }
+    try inset.close(context);
     try prices_section.close(context);
 }
 

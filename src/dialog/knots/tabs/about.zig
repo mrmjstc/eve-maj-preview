@@ -43,7 +43,7 @@ fn brand(context: *ui.Frame) !void {
 
 /// A bold label and its value, which opens `url` in the browser when given.
 fn fact(context: *ui.Frame, comptime label: []const u8, value: []const u8, url: ?[]const u8) !void {
-    const row = Rect{ .key = .str("knots.about.fact:" ++ label), .style = &.{ .direction = .row, .@"align" = .center, .gap = 6 } };
+    const row = Rect{ .key = .str("knots.about.fact:" ++ label), .style = &.{ .direction = .row, .@"align" = .center, .gap = 6, .padding = .xy(style.ROW_INSET, 0) } };
     _ = try row.open(context);
     try context.e(Text{ .selectable = false, .key = .str("knots.about.fact.label:" ++ label), .content = label, .style = &style.fact_label });
     const target = url orelse {
@@ -69,7 +69,7 @@ fn thanks(context: *ui.Frame) !void {
     try widgets.paragraph(context, .str("knots.about.thanks"), "Everyone in the APM special interest group for their feedback");
     var start: usize = 0;
     while (start < THANKS.len) : (start += THANKS_COLUMNS) {
-        const row = Rect{ .key = ui.Key.str("knots.about.thanks.row").indexed(start), .style = &.{ .width = .grow(), .direction = .row, .gap = 16 } };
+        const row = Rect{ .key = ui.Key.str("knots.about.thanks.row").indexed(start), .style = &.{ .width = .grow(), .direction = .row, .gap = 16, .padding = .xy(style.ROW_INSET, 0) } };
         _ = try row.open(context);
         for (THANKS[start..@min(start + THANKS_COLUMNS, THANKS.len)], start..) |name, index| {
             try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.about.thanks.name").indexed(index), .content = name, .style = &style.thanks_name });

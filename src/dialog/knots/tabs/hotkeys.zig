@@ -13,7 +13,6 @@ const window_picker = @import("../window_picker.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
-const Button = ui.component.Button;
 const KeyList = key_list.KeyList;
 
 const DOTLAN_URL = "https://evemaps.dotlan.net/";
@@ -50,9 +49,43 @@ const ProfileSwitch = struct {
     }
 };
 
+/// Stands in for a session.Ref for draftAppRow's hotkey: binding a key there adds the app hotkey it belongs to.
+const DraftAppHotkey = struct {
+    /// Where the entry will go, so its hotkey box is keyed apart from the saved ones'.
+    index: usize,
+
+    pub fn get(_: DraftAppHotkey, comptime _: []const u8) KeyList {
+        return .empty;
+    }
+
+    pub fn set(_: DraftAppHotkey, comptime _: []const u8, value: KeyList) void {
+        if (!value.isEmpty()) addAppHotkey("hotkey", value);
+    }
+};
+
+/// DraftAppHotkey for draftUrlRow, carrying the URL a preset row shows.
+const DraftUrlHotkey = struct {
+    index: usize,
+    /// Borrows a comptime preset, or is empty.
+    url: []const u8,
+
+    pub fn get(_: DraftUrlHotkey, comptime _: []const u8) KeyList {
+        return .empty;
+    }
+
+    pub fn set(self: DraftUrlHotkey, comptime _: []const u8, value: KeyList) void {
+        if (value.isEmpty()) return;
+        const added = session.global().append("urlHotkeys", .{}) orelse return;
+        added.set("hotkey", value);
+        if (self.url.len > 0) added.set("url", self.url);
+    }
+};
+
 var g_allocator: std.mem.Allocator = undefined;
 /// The open "Pick Running Window" dropdown, under one app hotkey.
 var g_picker: ?window_picker.Picker = null;
+/// The URL hotkey Add URL Hotkey just added, kept while blank until its box has had focus.
+var g_fresh_url_index: ?usize = null;
 
 pub fn init(allocator: std.mem.Allocator) void {
     g_allocator = allocator;
@@ -61,6 +94,7 @@ pub fn init(allocator: std.mem.Allocator) void {
 /// Once the window has closed.
 pub fn reset() void {
     window_picker.close(&g_picker);
+    g_fresh_url_index = null;
 }
 
 pub fn show(context: *ui.Frame) !void {
@@ -77,12 +111,13 @@ pub fn show(context: *ui.Frame) !void {
     try system.close(context);
 
     const actions = try widgets.openSection(context, "Window Actions", "Minimize, close, hide thumbnails, toggle auto-minimize, or send every window back to its saved position.", &style.section);
+    try binding(context, profile_hotkeys, "hotkeyCloseAll", "Close All Clients");
+    // Straight under the hotkey they qualify.
     const close_all = session.profile().child("closeAll");
     try bind.toggle(context, close_all, "excludeCycleExcludedClients", "Don't Close Excluded Clients");
     try widgets.hintText(context, .src(@src()), "Same exclusion list as Character Exclusion on the Behavior tab.");
-    try bind.toggle(context, close_all, "excludeLoginScreenClients", "Don't Close Clients On Login Screen");
+    try bind.toggle(context, close_all, "excludeLoginScreenClients", "Don't Close Logged-Out Clients");
     try widgets.hintText(context, .src(@src()), "Skips any client still sitting at the character-selection screen.");
-    try binding(context, profile_hotkeys, "hotkeyCloseAll", "Close All Clients");
     try binding(context, profile_hotkeys, "hotkeyCloseActive", "Close Active Client");
     try binding(context, profile_hotkeys, "hotkeyMinimizeAll", "Minimize All Clients");
     try binding(context, profile_hotkeys, "hotkeyToggleVisibility", "Toggle Thumbnail Visibility");
@@ -91,10 +126,10 @@ pub fn show(context: *ui.Frame) !void {
     try binding(context, profile_hotkeys, "hotkeyMoveToSavedPositions", "Move Windows to Saved Positions");
     try actions.close(context);
 
-    const cycling = try widgets.openSection(context, "Special Cycling", "Step through the characters this profile sets apart - the excluded ones, or the ones that recently notified.", &style.section);
+    const cycling = try widgets.openSection(context, "Special Cycling", "Step through the excluded characters, or the ones that recently notified.", &style.section);
     try pair(context, profile_hotkeys, "hotkeyPreviousExcluded", "hotkeyNextExcluded", "Excluded Characters");
     try pair(context, profile_hotkeys, "hotkeyPreviousNotified", "hotkeyCycleNotified", "Notified Characters");
-    try widgets.hintText(context, .src(@src()), "How long a character counts as \"recently notified\" is set by Recently-Notified Cycle Retention on the Notifications tab.");
+    try widgets.hintText(context, .src(@src()), "How long a character counts as \"recently notified\" is set by Keep in Notified Cycle For on the Notifications tab.");
     try binding(context, profile_hotkeys, "hotkeyToggleExclusion", "Toggle Character Exclusion");
     try widgets.hintText(context, .src(@src()), "Applies to whichever EVE window currently has Windows focus, not the thumbnail under your cursor.");
     try cycling.close(context);
@@ -159,6 +194,7 @@ fn profileSwitchRows(context: *ui.Frame) !void {
     }
 }
 
+/// Each row ends in its hotkey box, lined up with the bindings above; a row left with no name and no key is removed.
 fn appHotkeys(context: *ui.Frame) !void {
     const global = session.global();
     var index: usize = 0;
@@ -167,20 +203,40 @@ fn appHotkeys(context: *ui.Frame) !void {
         const row = Rect{ .key = ui.Key.str("knots.hotkeys.app").indexed(index), .style = &style.list_row };
         _ = try row.open(context);
         try bind.textBox(context, entry, "executableName", "e.g., Discord.exe");
+        if (try widgets.glyphButton(context, ui.Key.str("knots.hotkeys.app.pick").indexed(index), .refresh, "Pick Running Window", &style.add_button, false)) window_picker.open(g_allocator, &g_picker, index);
         try hotkey.field(context, entry, "hotkey");
-        if (try widgets.glyphButton(context, ui.Key.str("knots.hotkeys.app.pick").indexed(index), .refresh, "Pick Running Window", &style.plain_button, false)) window_picker.open(g_allocator, &g_picker, index);
-        const removed = try widgets.confirmButton(context, ui.Key.str("knots.hotkeys.app.remove").indexed(index), "\u{00D7}", "OK", &style.icon_button_danger_text, &style.icon_button_confirm);
         try row.close(context);
         try picker(context, entry);
-        if (removed) {
+        if (isBlank(context, entry, "executableName")) {
             global.remove("appHotkeys", index);
             window_picker.close(&g_picker);
             break;
         }
     }
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "+ Add App Hotkey", .style = &style.full_width_button })).clicked) {
-        _ = global.append("appHotkeys", .{});
+    try draftAppRow(context, global.ptr.appHotkeys.items.len);
+    try widgets.hintText(context, .src(@src()), "Fill in the empty row to add one; clear a row's name and key to remove it.");
+}
+
+/// An empty row after the app hotkeys, so the list never looks empty; typing, binding or picking into it adds the entry.
+fn draftAppRow(context: *ui.Frame, index: usize) !void {
+    const row = Rect{ .key = .str("knots.hotkeys.app.draft"), .style = &style.list_row };
+    _ = try row.open(context);
+    if (try bind.stringBox(context, .str("knots.hotkeys.app.draft.name"), "", "e.g., Discord.exe", &style.text_input)) |typed| {
+        if (std.mem.trim(u8, typed, " ").len > 0) addAppHotkey("executableName", typed);
     }
+    if (try widgets.glyphButton(context, .str("knots.hotkeys.app.draft.pick"), .refresh, "Pick Running Window", &style.add_button, false)) window_picker.open(g_allocator, &g_picker, index);
+    try hotkey.field(context, DraftAppHotkey{ .index = index }, "hotkey");
+    try row.close(context);
+    if (try window_picker.select(context, &g_picker, .str("knots.hotkeys.app.picker"), index)) |chosen| {
+        addAppHotkey("executableName", chosen.executable);
+        window_picker.close(&g_picker);
+    }
+}
+
+/// A new app hotkey with just `field` set; `value` is of that field's type, e.g. the executable's name.
+fn addAppHotkey(comptime field: []const u8, value: anytype) void {
+    const added = session.global().append("appHotkeys", .{}) orelse return;
+    added.set(field, value);
 }
 
 /// Picking a window fills in its executable name.
@@ -190,6 +246,7 @@ fn picker(context: *ui.Frame, entry: session.Ref(global_mod.AppHotkeyConfig)) !v
     window_picker.close(&g_picker);
 }
 
+/// Like appHotkeys, ending in the presets.
 fn urlHotkeys(context: *ui.Frame) !void {
     const global = session.global();
     var index: usize = 0;
@@ -199,7 +256,6 @@ fn urlHotkeys(context: *ui.Frame) !void {
         _ = try row.open(context);
         try bind.textBox(context, entry, "url", "https://example.com");
         try hotkey.field(context, entry, "hotkey");
-        const removed = try widgets.confirmButton(context, ui.Key.str("knots.hotkeys.url.remove").indexed(index), "\u{00D7}", "OK", &style.icon_button_danger_text, &style.icon_button_confirm);
         try row.close(context);
         // Only aDashboard takes a clipboard upload, so the option hangs under its row and is cleared for any other URL.
         if (isAdashboard(entry.get("url"))) {
@@ -207,22 +263,54 @@ fn urlHotkeys(context: *ui.Frame) !void {
         } else if (entry.get("uploadClipboard")) {
             entry.set("uploadClipboard", false);
         }
-        if (removed) {
+        // A just-added row starts blank, so it stays until its box has had focus.
+        if (g_fresh_url_index == index and context.ui().focused(bind.boxKey(entry, "url").hash())) g_fresh_url_index = null;
+        if (g_fresh_url_index != index and isBlank(context, entry, "url")) {
             global.remove("urlHotkeys", index);
             break;
         }
     }
-    const buttons = Rect{ .key = .src(@src()), .style = &style.button_row };
-    _ = try buttons.open(context);
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "+ Add URL Hotkey", .style = &style.plain_button })).clicked) addUrlHotkey("");
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "+ Dotlan", .style = &style.plain_button })).clicked) addUrlHotkey(DOTLAN_URL);
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "+ aDashboard Intel", .style = &style.plain_button })).clicked) addUrlHotkey(ADASHBOARD_URL);
-    try buttons.close(context);
+    // The presets wait, filled in, until they're bound, so they're offered without being saved.
+    const count = global.ptr.urlHotkeys.items.len;
+    if (!hasUrlHotkey(isDotlan)) try draftUrlRow(context, .str("knots.hotkeys.url.draft.dotlan"), count, DOTLAN_URL);
+    if (!hasUrlHotkey(isAdashboard)) try draftUrlRow(context, .str("knots.hotkeys.url.draft.adashboard"), count + 1, ADASHBOARD_URL);
+    const add = Rect{ .key = .src(@src()), .style = &style.button_row_end };
+    _ = try add.open(context);
+    if (try widgets.glyphButton(context, .str("knots.hotkeys.url.add"), .add, "Add URL Hotkey", &style.add_button, false)) {
+        if (global.append("urlHotkeys", .{})) |added| g_fresh_url_index = added.index;
+    }
+    try add.close(context);
 }
 
-fn addUrlHotkey(url: []const u8) void {
-    const added = session.global().append("urlHotkeys", .{}) orelse return;
-    if (url.len > 0) added.set("url", url);
+fn hasUrlHotkey(comptime matches: fn ([]const u8) bool) bool {
+    for (session.global().ptr.urlHotkeys.items) |entry| {
+        if (matches(entry.url)) return true;
+    }
+    return false;
+}
+
+/// A preset's row after the URL hotkeys, like draftAppRow's, showing `url` filled in; typing a different URL or binding a key adds the entry.
+fn draftUrlRow(context: *ui.Frame, key: ui.Key, index: usize, url: []const u8) !void {
+    const row = Rect{ .key = key, .style = &style.list_row };
+    _ = try row.open(context);
+    if (try bind.stringBox(context, key.indexed(1), url, "https://example.com", &style.text_input)) |typed| {
+        if (std.mem.trim(u8, typed, " ").len > 0) {
+            const added = session.global().append("urlHotkeys", .{}) orelse return;
+            added.set("url", typed);
+        }
+    }
+    try hotkey.field(context, DraftUrlHotkey{ .index = index, .url = url }, "hotkey");
+    try row.close(context);
+}
+
+fn isDotlan(url: []const u8) bool {
+    return std.ascii.findIgnoreCase(url, "evemaps.dotlan.net") != null;
+}
+
+/// `entry` is an app or URL hotkey's session.Ref; true with no text in `text_field` and no key, once its box isn't being typed in.
+fn isBlank(context: *ui.Frame, entry: anytype, comptime text_field: []const u8) bool {
+    if (context.ui().focused(bind.boxKey(entry, text_field).hash())) return false;
+    return std.mem.trim(u8, entry.get(text_field), " ").len == 0 and entry.get("hotkey").isEmpty();
 }
 
 fn isAdashboard(url: []const u8) bool {

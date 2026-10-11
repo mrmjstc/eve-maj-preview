@@ -67,8 +67,14 @@ pub fn show(context: *ui.Frame) !void {
     }
     if (shows_spaces) {
         const spaces_section = try widgets.openSection(context, "Thumbnail Spaces", "A space can hold several hotkey groups. A character two spaces hold goes to the first one in the list; drag a space to reorder.", if (fillsWindow()) &style.fill_section else &style.section);
-        try spacesMode(context, display);
+        try spacesMode(context);
         try spaces_section.close(context);
+
+        // Its own card, so it doesn't read as a setting of the selected space.
+        const all = try widgets.openSection(context, "All Spaces", "", &style.section);
+        try bind.toggle(context, display, "hideThumbnailsDuringRegionSelect", "Hide Thumbnails While Drawing a Region");
+        try widgets.hintText(context, .src(@src()), "Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.");
+        try all.close(context);
     }
 }
 
@@ -122,12 +128,8 @@ fn manual(context: *ui.Frame, display: DisplayRef) !void {
     try unplaced.close(context);
 }
 
-fn spacesMode(context: *ui.Frame, display: DisplayRef) !void {
+fn spacesMode(context: *ui.Frame) !void {
     const profile = session.profile();
-    try bind.toggle(context, display, "hideThumbnailsDuringRegionSelect", "Hide Thumbnails While Drawing a Region");
-    try widgets.hintText(context, .src(@src()), "Temporarily hides visible thumbnails so they don't cover the drag-to-select overlay.");
-    try widgets.separator(context, .str("knots.space.separator.hide"));
-
     const is_filling = fillsWindow();
     const master_detail = Rect{ .key = .src(@src()), .style = if (is_filling) &style.master_detail_fill else &style.master_detail };
     _ = try master_detail.open(context);
@@ -261,9 +263,9 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const items = profile.ptr.thumbnailSpaces.items;
     const held = try widgets.openFieldGroup(context, .str("knots.space.holds"), "Holds");
     if (is_special) {
-        // A settings row, so the text lines up with the Holds label and the rows below it.
+        // A settings row, so the text lines up with the Holds label and the rows below it; the row insets it, so it isn't a paragraph.
         const row = try widgets.openRow(context, .src(@src()));
-        try widgets.paragraph(context, .src(@src()), if (is_login_screen) "Clients still at the login screen." else "Characters no other active space holds.");
+        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = if (is_login_screen) "Clients still at the login screen." else "Characters no other active space holds.", .style = &style.hint });
         try row.close(context);
     } else {
         try holds(context, profile, space);
@@ -377,7 +379,7 @@ fn overlaps(context: *ui.Frame, items: []const config.ThumbnailSpace, index: usi
         if (winner_index == index) continue;
         const winner = &items[winner_index];
         const content = try std.fmt.allocPrint(context.arena(), "Characters in '{s}' go to '{s}' instead.", .{ name, if (winner.name.len > 0) winner.name else "Unnamed Space" });
-        try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.space.overlap").indexed(held_index), .content = content, .style = &style.hint_warning });
+        try widgets.boxedText(context, ui.Key.str("knots.space.overlap").indexed(held_index), content, &style.hint_box, &style.hint_warning);
     }
 }
 
@@ -387,7 +389,7 @@ fn takenElsewhere(context: *ui.Frame, items: []const config.ThumbnailSpace, inde
     if (winner_index == index) return;
     const name = if (items[winner_index].name.len > 0) items[winner_index].name else "Unnamed Space";
     const content = try std.fmt.allocPrint(context.arena(), who ++ " go to '{s}' instead.", .{name});
-    try context.e(Text{ .selectable = false, .key = .str("knots.space.taken:" ++ who), .content = content, .style = &style.hint_warning });
+    try widgets.boxedText(context, .str("knots.space.taken:" ++ who), content, &style.hint_box, &style.hint_warning);
 }
 
 /// Cycled by position, so neighbouring spaces stay told apart.

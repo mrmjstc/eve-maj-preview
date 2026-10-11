@@ -102,7 +102,7 @@ pub const CHIPS = [_]Chip{
                 .field = "damage_alert_excluded_weapons",
                 .label = "Exclude Weapons",
                 .placeholder = "e.g. Smartbomb, Warp Scrambler",
-                .hint = "Case-insensitive, comma-separated name matches. Only suppresses the Taking Damage alert - excluded hits still count toward the DPS shown.",
+                .hint = "Case-insensitive, comma-separated name matches. Only suppresses the Taking Damage alert; excluded hits still count toward the DPS shown.",
             } },
             .color,
         } ++ STYLE_ROWS),

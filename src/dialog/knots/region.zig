@@ -79,7 +79,7 @@ fn onSelected(result: region_select.Status, selected: win32.RECT) void {
     switch (result) {
         .cancelled => return,
         .too_small => {
-            status.show(.info, "Selection too small - drag a larger area.", .{});
+            status.show(.info, "Selection too small: drag a larger area.", .{});
             return;
         },
         .success => {},

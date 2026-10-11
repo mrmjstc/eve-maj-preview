@@ -48,8 +48,6 @@ pub const Display = enum {
     percent,
     /// A 0-255 alpha shown as 0-100%.
     percent_of_255,
-    /// Either side of 0, with a + on positive values, e.g. a speed of +3.
-    signed,
 };
 
 /// What an optional number box was left holding when it lost focus.
@@ -218,7 +216,20 @@ pub fn optionalUnitValueBox(context: *ui.Frame, key: ui.Key, value: ?f64, placeh
 
 /// A number box for a value that isn't one setting, e.g. an ore's price override; returns what was typed once the box loses focus.
 pub fn valueBox(context: *ui.Frame, key: ui.Key, value: f64, box_style: *const ui.Style) !?f64 {
-    return signableValueBox(context, key, value, box_style, false);
+    const state = try textState(key);
+    var committed: ?f64 = null;
+    if (context.ui().focused(key.hash())) {
+        state.is_editing = true;
+    } else {
+        if (state.is_editing) {
+            state.is_editing = false;
+            // Not a number: the sync below puts the value back.
+            committed = std.fmt.parseFloat(f64, std.mem.trim(u8, state.text.items, " ")) catch null;
+        }
+        try syncText(state, try std.fmt.allocPrint(context.arena(), "{d}", .{committed orelse value}));
+    }
+    try context.e(TextInput{ .key = key, .buf = &state.text, .style = box_style });
+    return committed;
 }
 
 /// A string list typed as comma-separated text; empty entries are dropped.
@@ -425,28 +436,6 @@ fn styledNumberBox(context: *ui.Frame, ref: anytype, comptime field: []const u8,
     try context.e(TextInput{ .key = key, .buf = &state.text, .style = box_style, .placeholder = options.placeholder });
 }
 
-/// valueBox, writing a + before a positive value when `is_signed`.
-fn signableValueBox(context: *ui.Frame, key: ui.Key, value: f64, box_style: *const ui.Style, is_signed: bool) !?f64 {
-    const state = try textState(key);
-    var committed: ?f64 = null;
-    if (context.ui().focused(key.hash())) {
-        state.is_editing = true;
-    } else {
-        if (state.is_editing) {
-            state.is_editing = false;
-            // Not a number: the sync below puts the value back.
-            committed = std.fmt.parseFloat(f64, std.mem.trim(u8, state.text.items, " ")) catch null;
-        }
-        try syncText(state, try formatNumber(context.arena(), committed orelse value, is_signed));
-    }
-    try context.e(TextInput{ .key = key, .buf = &state.text, .style = box_style });
-    return committed;
-}
-
-fn formatNumber(arena: std.mem.Allocator, value: f64, is_signed: bool) ![]const u8 {
-    return std.fmt.allocPrint(arena, "{s}{d}", .{ if (is_signed and value > 0) "+" else "", value });
-}
-
 /// A number input and its unit in one box, outlined while `input_key` has focus; the caller adds both and closes it.
 fn openUnitField(context: *ui.Frame, key: ui.Key, input_key: ui.Key) !ui.component.Rect {
     const is_focused = context.ui().focused(input_key.hash());
@@ -456,10 +445,10 @@ fn openUnitField(context: *ui.Frame, key: ui.Key, input_key: ui.Key) !ui.compone
 }
 
 /// A unit box for a value that isn't one setting, e.g. a slider's "85 %"; returns what was typed on blur, using `key` indices 4 to 6.
-fn unitValueBox(context: *ui.Frame, key: ui.Key, value: f64, unit: []const u8, is_signed: bool) !?f64 {
+fn unitValueBox(context: *ui.Frame, key: ui.Key, value: f64, unit: []const u8) !?f64 {
     const box_key = key.indexed(4);
     const field_rect = try openUnitField(context, key.indexed(6), box_key);
-    const typed = try signableValueBox(context, box_key, value, &style.unit_field_input, is_signed);
+    const typed = try valueBox(context, box_key, value, &style.unit_field_input);
     if (unit.len > 0) try context.e(Text{ .selectable = false, .key = key.indexed(5), .content = unit, .style = &style.muted_text });
     try field_rect.close(context);
     return typed;
@@ -471,16 +460,16 @@ fn sliderControls(context: *ui.Frame, key: ui.Key, value: f32, min: f32, max: f3
     var changed: ?f64 = null;
     if (try widgets.slider(context, key.indexed(2), &slider_value, min, max, step)) changed = @round(slider_value);
     const shown: f64 = switch (display) {
-        .value, .percent, .signed => @round(slider_value),
+        .value, .percent => @round(slider_value),
         .percent_of_255 => @round(slider_value / 255.0 * 100.0),
     };
     const unit = switch (display) {
-        .value, .signed => "",
+        .value => "",
         .percent, .percent_of_255 => "%",
     };
-    const value_typed = try unitValueBox(context, key, shown, unit, display == .signed) orelse return changed;
+    const value_typed = try unitValueBox(context, key, shown, unit) orelse return changed;
     const raw: f64 = switch (display) {
-        .value, .percent, .signed => value_typed,
+        .value, .percent => value_typed,
         .percent_of_255 => value_typed / 100.0 * 255.0,
     };
     return std.math.clamp(raw, min, max);

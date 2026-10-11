@@ -128,13 +128,13 @@ fn readFile(path: []const u8) !void {
 }
 
 fn fileStep(context: *ui.Frame) !void {
-    try widgets.paragraph(context, .src(@src()), FILE_HINT);
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = FILE_HINT, .style = &style.hint });
     const row = Rect{ .key = .src(@src()), .style = &style.inline_row };
     _ = try row.open(context);
     if ((try context.interact(Button{ .key = .src(@src()), .label = "Choose File...", .style = &style.plain_button })).clicked) host.browseImportFile();
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = g_file_name, .style = &style.detail_value });
     try row.close(context);
-    if (g_file_status.len > 0) try widgets.paragraph(context, .src(@src()), g_file_status);
+    if (g_file_status.len > 0) try context.e(Text{ .selectable = false, .key = .src(@src()), .content = g_file_status, .style = &style.hint });
 }
 
 fn optionsStep(context: *ui.Frame, analysis: *Analysis) !void {
@@ -153,7 +153,7 @@ fn optionsStep(context: *ui.Frame, analysis: *Analysis) !void {
         }
     }
 
-    try widgets.subheading(context, .src(@src()), "Import into");
+    try widgets.boxedText(context, .src(@src()), "Import into", &style.modal_subheading_box, &style.subheading);
     const editing = profiles.displayName(session.profile().ptr.profile_name);
     var imports_into_current = !g_imports_into_new;
     if (try widgets.checkbox(context, .src(@src()), try std.fmt.allocPrint(context.arena(), "Current profile ({s})", .{editing}), &imports_into_current)) g_imports_into_new = false;
@@ -167,7 +167,7 @@ fn optionsStep(context: *ui.Frame, analysis: *Analysis) !void {
         try row.close(context);
     }
 
-    try widgets.subheading(context, .src(@src()), "Sections to import");
+    try widgets.boxedText(context, .src(@src()), "Sections to import", &style.modal_subheading_box, &style.subheading);
     for (analysis.sections, 0..) |*section, index| {
         const item = try widgets.openGroup(context, ui.Key.str("knots.import.section").indexed(index), section.is_available);
         const row = Rect{ .key = ui.Key.str("knots.import.section.row").indexed(index), .style = &style.inline_row };
@@ -181,7 +181,7 @@ fn optionsStep(context: *ui.Frame, analysis: *Analysis) !void {
 }
 
 fn summaryView(context: *ui.Frame, summary: Summary) !void {
-    try widgets.paragraph(context, .src(@src()), "Import complete");
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Import complete", .style = &style.hint });
     const arena_allocator = context.arena();
     if (summary.skipped.len > 0) {
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = try std.fmt.allocPrint(arena_allocator, "{d} setting(s) couldn't be read and were left unchanged:", .{summary.skipped.len}), .style = &style.status_failure });
@@ -192,7 +192,7 @@ fn summaryView(context: *ui.Frame, summary: Summary) !void {
     for (summary.notes, 0..) |note, index| {
         try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.import.note").indexed(index), .content = try std.fmt.allocPrint(arena_allocator, "\u{2022} {s}", .{note}), .style = &style.modal_text });
     }
-    try widgets.paragraph(context, .src(@src()), "Review the affected tabs, then click Save to keep these changes.");
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = "Review the affected tabs, then click Save to keep these changes.", .style = &style.hint });
 }
 
 fn buttons(context: *ui.Frame) !void {
@@ -291,7 +291,7 @@ fn analyzeFile(source_profile: ?[]const u8) !void {
     g_file_status = if (std.mem.eql(u8, format, "maj"))
         "Detected EVE-Maj Preview profile file."
     else if (std.mem.eql(u8, format, "evex"))
-        try std.fmt.allocPrint(allocator, "Detected EVE-X Preview settings file - loaded {d} profile(s).", .{profile_names.items.len})
+        try std.fmt.allocPrint(allocator, "Detected an EVE-X Preview settings file with {d} profile(s).", .{profile_names.items.len})
     else if (std.mem.eql(u8, format, "eveo"))
         "Detected EVE-O Preview settings file."
     else

@@ -407,16 +407,12 @@ pub fn rowSelect(context: *ui.Frame, labels: []const []const u8) !*const ui.Styl
 
 /// A label beside a column of aligned rows without dividers, e.g. a set of switches; the caller closes it.
 pub fn openFieldGroup(context: *ui.Frame, key: ui.Key, label: []const u8) !FieldGroup {
-    const row = Rect{ .key = key, .style = &style.field_group };
-    _ = try row.open(context);
-    search.captureText(label);
-    try boxedText(context, key.indexed(1), label, &style.field_group_label, &style.field_group_label_text);
-    const column = Rect{ .key = key.indexed(2), .style = &style.field_group_column };
-    _ = try column.open(context);
-    const group: FieldGroup = .{ .row = row, .column = column, .was_aligned = g_is_aligned, .was_in_field_group = g_is_in_field_group };
-    g_is_aligned = true;
-    g_is_in_field_group = true;
-    return group;
+    return openAnyFieldGroup(context, key, label, &style.field_group, &style.field_group_column);
+}
+
+/// openFieldGroup taking the rest of its pane's height, e.g. for a list that scrolls inside it.
+pub fn openFillFieldGroup(context: *ui.Frame, key: ui.Key, label: []const u8) !FieldGroup {
+    return openAnyFieldGroup(context, key, label, &style.field_group_fill, &style.field_group_column_fill);
 }
 
 /// A rule between runs of unaligned rows, which draw no dividers of their own.
@@ -717,7 +713,7 @@ pub fn hintWithLink(context: *ui.Frame, key: ui.Key, content: []const u8, link_l
         if (!g_hinted.contains(id)) g_hinted.append(id);
         if (!g_hints_shown.contains(id)) return false;
     }
-    const row = Rect{ .key = key, .style = &style.hint_row };
+    const row = Rect{ .key = key, .style = &style.hint_link_row };
     _ = try row.open(context);
     try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = content, .style = &style.hint_inline });
     const is_clicked = (try context.interact(Button{ .key = key.indexed(2), .label = link_label, .style = &style.link })).clicked;
@@ -725,10 +721,10 @@ pub fn hintWithLink(context: *ui.Frame, key: ui.Key, content: []const u8, link_l
     return is_clicked;
 }
 
-/// Text in the hint style that always shows.
+/// Text in the hint style that always shows, inset to start where rows' labels do.
 pub fn paragraph(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
     search.captureText(content);
-    try context.e(Text{ .selectable = false, .key = key, .content = content, .style = &style.hint });
+    try boxedText(context, key, content, &style.hint_box, &style.hint);
 }
 
 /// Inside a section, a field hint: hidden until the section's ? button shows it.
@@ -738,7 +734,7 @@ pub fn hintText(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
         if (!g_hinted.contains(id)) g_hinted.append(id);
         if (!g_hints_shown.contains(id)) return;
     }
-    try context.e(Text{ .selectable = false, .key = key, .content = content, .style = &style.hint });
+    try boxedText(context, key, content, &style.hint_box, &style.hint);
 }
 
 /// A warning above a tab's sections, e.g. that it needs another setting turned on.
@@ -920,14 +916,27 @@ fn openAnySection(context: *ui.Frame, comptime title: []const u8, comptime hint:
     try title_row.close(context);
     var is_flipped = false;
     if (header_switch) |toggle| {
-        const group = try openAnyGroup(context, .str("knots.section.switch.group:" ++ title), &style.section_switch, toggle.is_available);
+        const group = try openInlineGroup(context, .str("knots.section.switch.group:" ++ title), toggle.is_available);
         is_flipped = try toggleSwitch(context, .str("knots.section.switch:" ++ title), toggle.is_on);
         try group.close(context);
     }
     try heading.close(context);
 
-    if (hint.len > 0) try context.e(Text{ .selectable = false, .key = .str("knots.hint:" ++ title), .content = hint, .style = &style.hint });
+    if (hint.len > 0) try boxedText(context, .str("knots.hint:" ++ title), hint, &style.hint_box, &style.hint);
     return .{ .rect = section, .is_flipped = is_flipped };
+}
+
+fn openAnyFieldGroup(context: *ui.Frame, key: ui.Key, label: []const u8, row_style: *const ui.Style, column_style: *const ui.Style) !FieldGroup {
+    const row = Rect{ .key = key, .style = row_style };
+    _ = try row.open(context);
+    search.captureText(label);
+    try boxedText(context, key.indexed(1), label, &style.field_group_label, &style.field_group_label_text);
+    const column = Rect{ .key = key.indexed(2), .style = column_style };
+    _ = try column.open(context);
+    const group: FieldGroup = .{ .row = row, .column = column, .was_aligned = g_is_aligned, .was_in_field_group = g_is_in_field_group };
+    g_is_aligned = true;
+    g_is_in_field_group = true;
+    return group;
 }
 
 fn openAnyGroup(context: *ui.Frame, key: ui.Key, group_style: *const ui.Style, is_enabled: bool) !Group {

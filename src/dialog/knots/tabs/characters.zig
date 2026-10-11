@@ -84,8 +84,8 @@ pub fn show(context: *ui.Frame) !void {
 /// Instead of the list and details, until there's a character.
 fn emptyState(context: *ui.Frame, profile: ProfileRef) !void {
     const state = try widgets.openEmptyState(context, .str("knots.characters.empty"), "No characters yet", "They're added on their own as their EVE clients log in.");
-    if (try widgets.glyphButton(context, .str("knots.characters.empty.open"), .refresh, "Add Open Clients", &style.plain_button, false)) populateFromClients(context, profile);
-    if (try widgets.glyphButton(context, .str("knots.characters.empty.add"), .add, "Add Manually", &style.plain_button, false)) {
+    if (try widgets.glyphButton(context, .str("knots.characters.empty.open"), .refresh, "Add Open Clients", &style.add_button, false)) populateFromClients(context, profile);
+    if (try widgets.glyphButton(context, .str("knots.characters.empty.add"), .add, "Add Manually", &style.add_button, false)) {
         if (profile.append("characters", .{})) |added| g_selected_index = added.index;
     }
     try state.close(context);
@@ -194,7 +194,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     if (try suggest.openClients(context, name_box, bind.typedText(name_box))) |picked| character.set("name", picked);
 
     try bind.text(context, character, "displayName", "Display Name", "Same as character name");
-    try widgets.hintText(context, .str("knots.character.display.hint"), "Cosmetic only - shown on the thumbnail label and spoken by TTS if enabled. The Character Name above is still what's matched against your EVE login.");
+    try widgets.hintText(context, .str("knots.character.display.hint"), "Cosmetic only: shown on the thumbnail label and spoken by TTS if enabled. The Character Name above is still what's matched against your EVE login.");
 
     const hotkey_row = try widgets.openBinding(context, .str("knots.character.hotkey"), "Hotkey");
     try hotkey.field(context, character, "hotkey");

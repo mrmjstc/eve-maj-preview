@@ -300,7 +300,7 @@ fn preview(context: *ui.Frame, notification_type: NotificationType, comptime fie
     const key = ui.Key.str("knots.events.preview:" ++ @tagName(field)).indexed(@backingInt(notification_type));
     const row = Rect{ .key = key, .style = &style.chip_row };
     _ = try row.open(context);
-    try widgets.boxedText(context, key.indexed(1), try std.fmt.allocPrint(context.arena(), "Preview: {s}", .{kept.items}), &style.chip_box, &style.preview_text);
+    try widgets.boxedText(context, key.indexed(1), try std.fmt.allocPrint(context.arena(), "Preview: {s}", .{kept.items}), &style.chip_box, &style.hint);
     try row.close(context);
 }
 

@@ -159,7 +159,7 @@ fn filterDetail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const classes = try widgets.openBinding(context, ui.Key.str("knots.filter.classes").indexed(index), "Window Classes");
     try bind.csvBox(context, filter, "class_names", "e.g., trinityWindow");
     try classes.close(context);
-    try widgets.hintText(context, ui.Key.str("knots.filter.classes.hint").indexed(index), "Optional - narrows the match further, but leaving this blank still matches by Executable Name below.");
+    try widgets.hintText(context, ui.Key.str("knots.filter.classes.hint").indexed(index), "Optional: narrows the match further, but leaving this blank still matches by Executable Name below.");
     const executables = try widgets.openBinding(context, ui.Key.str("knots.filter.exes").indexed(index), "Executable Names");
     try bind.csvBox(context, filter, "executable_names", "e.g., exefile.exe");
     try executables.close(context);

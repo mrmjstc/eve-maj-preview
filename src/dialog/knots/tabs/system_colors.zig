@@ -18,7 +18,8 @@ var g_selected_index: usize = 0;
 
 /// Both thumbnails and the client list colour system names by these.
 pub fn show(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "System Colors", "Color solar system names on thumbnails and in the client list, ahead of Unique System Colors. An exact name beats a pattern; otherwise the first matching row wins.", &style.section);
+    const section = try widgets.openSection(context, "System Colors", "Colors chosen systems' names on thumbnails and in the client list.", &style.section);
+    try widgets.hintText(context, .src(@src()), "These win over Unique System Colors. An exact name beats a pattern; otherwise the first matching row wins.");
     const profile = session.profile();
     const count = profile.ptr.systemColors.items.len;
     // The list can shrink while the window is open, e.g. on a profile switch.

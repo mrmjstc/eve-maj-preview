@@ -45,14 +45,10 @@ pub fn reset() void {
 pub fn show(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Hotkey Groups", "Groups of characters you can cycle through with hotkeys. List members here, or assign them live.", &style.fill_section);
     const profile = session.profile();
-
-    try bind.toggle(context, profile.child("hotkeys"), "resetGroupIndexOnNonGroupFocus", "Reset Cycle Position When Leaving a Group");
-    try widgets.separator(context, .str("knots.groups.separator.reset"));
-
     const group_count = profile.ptr.hotkeyGroups.items.len;
     if (group_count == 0) {
         const state = try widgets.openEmptyState(context, .str("knots.groups.empty"), "No hotkey groups yet", "A group gives a set of characters their own cycle hotkeys.");
-        if (try widgets.glyphButton(context, .str("knots.groups.empty.add"), .add, "Add Group", &style.plain_button, false)) {
+        if (try widgets.glyphButton(context, .str("knots.groups.empty.add"), .add, "Add Group", &style.add_button, false)) {
             if (profile.append("hotkeyGroups", .{})) |added| g_selected_index = added.index;
         }
         try state.close(context);
@@ -63,11 +59,18 @@ pub fn show(context: *ui.Frame) !void {
     const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail_fill };
     _ = try master_detail.open(context);
     try roster(context, profile);
-    const stack = try widgets.openScrollPane(context, .str("knots.groups.detail"), style.detail_scroll);
+    // Pinned, so only the members scroll.
+    const stack = Rect{ .key = .str("knots.groups.detail"), .style = &style.detail_fill };
+    _ = try stack.open(context);
     try detail(context, profile, g_selected_index);
     try stack.close(context);
     try master_detail.close(context);
     try section.close(context);
+
+    // Its own card, so it doesn't read as a setting of the selected group.
+    const all = try widgets.openSection(context, "All Groups", "", &style.section);
+    try bind.toggle(context, profile.child("hotkeys"), "resetGroupIndexOnNonGroupFocus", "Reset Cycle Position When Leaving a Group");
+    try all.close(context);
 }
 
 fn groupName(context: *ui.Frame, index: usize) ![]const u8 {
@@ -134,14 +137,14 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     try widgets.separator(context, .str("knots.groups.separator.keys"));
 
     const behavior = try widgets.openFieldGroup(context, .str("knots.groups.behavior"), "Behavior");
-    try bind.toggle(context, group, "includeNotLoggedIn", "Include Not Logged In Clients");
+    try bind.toggle(context, group, "includeNotLoggedIn", "Include Logged-Out Clients");
     try bind.toggle(context, group, "stopAtEnds", "Stop at First/Last Character (Don't Loop)");
     try bind.toggle(context, group, "temporaryMembership", "Temporary Membership (Resets on Restart)");
     try bind.toggle(context, group, "showBadge", "Show Group Badge on Thumbnails");
     try behavior.close(context);
     try widgets.separator(context, .str("knots.groups.separator.behavior"));
 
-    const characters = try widgets.openFieldGroup(context, .str("knots.groups.characters"), "Characters");
+    const characters = try widgets.openFillFieldGroup(context, .str("knots.groups.characters"), "Characters");
     // Temporary members are assigned while the app runs, so there's no list to edit.
     if (group.get("temporaryMembership")) {
         try widgets.paragraph(context, .src(@src()), "Members are assigned while the app runs: hover a thumbnail and press the assign key to toggle it in or out.");
@@ -207,13 +210,10 @@ fn carryToSpaces(profile: ProfileRef, old_name: []const u8, new_name: ?[]const u
 }
 
 fn members(context: *ui.Frame, group: GroupRef) !void {
-    const ui_state = context.ui();
-    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, MEMBERS_KEY.hash());
-    const list = Rect{ .key = MEMBERS_KEY, .style = &style.members_list };
-    _ = try list.open(context);
+    const list = try widgets.openScrollPane(context, MEMBERS_KEY, style.members_scroll);
     const names = group.ptr.characters.items;
     if (names.len == 0) {
-        try widgets.paragraph(context, .src(@src()), "No characters in this group yet - add one below, or add every open client with the refresh button.");
+        try widgets.paragraph(context, .src(@src()), "No characters in this group yet. Add one below, or every open client with the refresh button.");
     }
     var order = widgets.ReorderList.begin(context, MEMBER_ROW_KEY, names.len, 0);
     var removed_index: ?usize = null;
@@ -223,17 +223,17 @@ fn members(context: *ui.Frame, group: GroupRef) !void {
         if (try memberRow(context, group, member_index, &style.member_row)) removed_index = member_index;
     }
     if (try order.end(context)) |lifted| {
-        _ = try memberRow(context, group, lifted, try order.liftedStyle(context, MEMBERS_KEY, &style.member_row_lift));
+        _ = try memberRow(context, group, lifted, try order.liftedStyle(context, MEMBERS_KEY.indexed(1), &style.member_row_lift));
     }
     try list.close(context);
     if (removed_index) |member_index| group.remove("characters", member_index);
     if (widgets.reorderFinish(context, MEMBER_ROW_KEY, names.len)) |moved| group.move("characters", moved.from, moved.before);
 
-    const add_row = Rect{ .key = .src(@src()), .style = &style.inline_row };
+    const add_row = Rect{ .key = .src(@src()), .style = &style.member_add_row };
     _ = try add_row.open(context);
     const is_focused = context.ui().focused(ADD_MEMBER_KEY.hash());
     try context.e(TextInput{ .key = ADD_MEMBER_KEY, .buf = &g_new_member, .style = &style.text_input, .placeholder = "Add character name\u{2026}" });
-    const is_add_clicked = (try context.interact(Button{ .key = .src(@src()), .label = "+ Add", .style = &style.plain_button })).clicked;
+    const is_add_clicked = try widgets.glyphButton(context, .str("knots.groups.member.add"), .add, "Add", &style.add_button, false);
     if (is_add_clicked or (is_focused and context.ui().input.containsKey(.enter))) addMember(group);
     if (try widgets.addOpenClientsButton(context, .src(@src()), &style.plain_button)) fillFromClients(context, group);
     try add_row.close(context);

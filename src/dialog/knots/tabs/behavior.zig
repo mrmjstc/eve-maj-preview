@@ -160,10 +160,10 @@ fn windowPosition(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "Moves a client to its saved position when its character logs in.");
     try bind.toggle(context, ref, "moveOnStartup", "Restore Saved Position on App Startup");
     try widgets.hintText(context, .src(@src()), "Moves clients already logged in when the app launches.");
-    try bind.number(context, ref, "verifyIntervalMs", "Re-check Interval", .{ .shows_seconds = true, .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "How often a moved client's position is re-checked; EVE can shift its own window while loading.");
-    try bind.number(context, ref, "verifyCount", "Re-check Count", .{});
-    try widgets.hintText(context, .src(@src()), "How many times to re-check and re-apply the position after a move. 0 disables re-checking.");
+    try bind.number(context, ref, "verifyIntervalMs", "Recheck Interval", .{ .shows_seconds = true, .unit = "s" });
+    try widgets.hintText(context, .src(@src()), "How often a moved client's position is rechecked, since EVE can shift its own window while loading.");
+    try bind.number(context, ref, "verifyCount", "Recheck Count", .{});
+    try widgets.hintText(context, .src(@src()), "How many times to recheck and reapply the position after a move. 0 turns rechecking off.");
 
     if (g_sources == null or g_is_sources_rescan_due) scanSources();
     const set_all = try widgets.openBinding(context, .src(@src()), "Copy to All From");
@@ -253,7 +253,7 @@ fn setAll(source: ?[]const u8) void {
 }
 
 fn ultraPotato(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Ultra Potato Mode", "Forces EVE Online's heaviest graphics settings (shaders, shadows, textures, reflections, post-processing, cloth, ambient occlusion, volumetrics) to their lowest quality. Close all EVE clients first - the client overwrites these files on exit. A .bak backup of each file is made before its first edit.", &style.section);
+    const section = try widgets.openSection(context, "Ultra Potato Mode", "Forces EVE Online's heaviest graphics settings (shaders, shadows, textures, reflections, post-processing, cloth, ambient occlusion, volumetrics) to their lowest quality. Close all EVE clients first, since a client overwrites these files on exit. A .bak backup of each file is made before its first edit.", &style.section);
     if (g_potato == .not_scanned or g_is_potato_rescan_due) scanPotato();
     const row = try widgets.openBinding(context, .src(@src()), "EVE Settings Profile");
     const paths = try potatoSelect(context);
