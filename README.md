@@ -1,7 +1,7 @@
 
 # EVE-Maj Preview
 
-![EVE-Maj Preview screenshot](http://i.mjst.cc/dGWbSjLfxM.png)
+![EVE-Maj Preview screenshot](http://i.mjst.cc/N60T032mJ1.png)
 ![EVE-Maj Preview thumbnails](http://i.mjst.cc/BGIojpNJon.gif)
 
 A *very* lightweight Windows tool for displaying DWM-based thumbnail previews of EVE Online client windows with customizable borders, text overlays, and advanced configuration options.
@@ -15,7 +15,7 @@ It's **never** going to let you input broadcast, display cropped portions of you
 ## Features
 
 - **Live Thumbnails**: Real-time DWM thumbnails of EVE client windows
-- **Configuration Editor**: Standalone interface (`config.exe`) for editing settings without touching files directly
+- **Configuration Editor**: A settings window for editing profiles without touching files directly
 - **Compact List View**: Single-panel alternative to thumbnails, one row per client with state, name, and system/notification text
 - **Multi-Application Support**: Configurable window filters to track any Windows app
 - **Notification System**: Per-type event alerts with suppression, border color/flash, and text-to-speech options
@@ -36,10 +36,14 @@ It's **never** going to let you input broadcast, display cropped portions of you
 
 ## Installation
 
-1. Download the latest release
-2. Extract to your desired location
-3. Run `config.exe` for configuration
-4. Run `eve-maj-preview.exe` for thumbnails
+Download the latest release, either:
+
+- **Installer** (`eve-maj-preview-vX.Y.Z-setup.exe`): installs per-user under `%LocalAppData%\Programs` (no admin) with Start Menu shortcuts for the app and its configuration window
+- **Portable** (`eve-maj-preview-vX.Y.Z-portable.zip`): extract anywhere and run `eve-maj-preview.exe`
+
+Everything, including the configuration window, runs from the single `eve-maj-preview.exe`. Double-click the tray icon (or run `eve-maj-preview.exe --config`) to open the configuration window.
+
+To build from source, see [docs/BUILDING.md](docs/BUILDING.md).
 
 ## Usage
 
@@ -52,19 +56,23 @@ The application will:
 2. Generate a default profile (`profiles\default.json`)
 3. Create thumbnail windows for each client found
 
+Logs and crash dumps go in `logs\`, and app data in `data\`, next to the exe.
+
 ### Command-Line Flags
 
 ```powershell
 .\eve-maj-preview.exe --profile pvp.json
 .\eve-maj-preview.exe -p pvp.json
+.\eve-maj-preview.exe --config
 ```
 
 - `--profile <name>` / `-p <name>`: Load a specific profile by filename (relative to the `profiles` directory - do not include the `profiles\` prefix)
+- `--config`: Open the configuration window on the running profile, starting the app first if it isn't already running
 - `--protocol <url>`: Internal flag used when Windows invokes the registered `evemajpreview://` protocol handler; not intended for manual use
 
 ### Configuration Editor
 
-Right-click the system tray icon and choose **Open Configuration** to launch `config.exe`, a standalone editor for the current profile's settings.
+Right-click the system tray icon and choose **Open Configuration** (or double-click the icon) to open the settings window for the current profile. Changes preview live on your thumbnails and are only kept once you Save.
 
 ### Protocol Handler
 
@@ -90,4 +98,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a map of how the source mod
 
 See [LICENSE](LICENSE) file for details.
 
-Bundled third-party components: [Cascadia Code](https://github.com/microsoft/cascadia-code) fonts under the SIL Open Font License 1.1 ([CascadiaCode-LICENSE.txt](CascadiaCode-LICENSE.txt)), WebUI, zig-webui and CivetWeb under the MIT License ([webui-LICENSE.txt](webui-LICENSE.txt)), and WebView2Loader ([WebView2Loader-LICENSE.txt](WebView2Loader-LICENSE.txt)).
+Bundled third-party components: [Geist](https://github.com/vercel/geist-font) fonts ([Geist-LICENSE.txt](licenses/Geist-LICENSE.txt)) and [Cascadia Code](https://github.com/microsoft/cascadia-code) fonts ([CascadiaCode-LICENSE.txt](licenses/CascadiaCode-LICENSE.txt)), both under the SIL Open Font License 1.1, and [knots](https://github.com/knots-ui/knots) under the MIT License ([knots-LICENSE.txt](licenses/knots-LICENSE.txt)).
+
+## Fenris Creations Copyright Notice
+
+EVE Online, the EVE logo, EVE and all associated logos and designs are the intellectual property of Fenris Creations. All artwork, screenshots, characters, vehicles, storylines, world facts or other recognizable features of the intellectual property relating to these trademarks are likewise the intellectual property of Fenris Creations. EVE Online and the EVE logo are the registered trademarks of Fenris Creations. All rights are reserved worldwide. All other trademarks are the property of their respective owners. Fenris Creations has granted permission to EVE-Maj Preview to use EVE Online and all associated logos and designs for promotional and information purposes on its website but does not endorse, and is not in any way affiliated with, EVE-Maj Preview. Fenris Creations is in no way responsible for the content on or functioning of this program, nor can it be liable for any damage arising from the use of this program.

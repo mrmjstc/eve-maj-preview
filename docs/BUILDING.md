@@ -1,6 +1,6 @@
 # Building from Source
 
-Requires [Zig 0.16.0](https://ziglang.org/download/). The project targets `x86_64-windows-gnu` and is Windows-only; Zig bundles its own mingw headers/libs, so no separate Windows SDK or MSVC install is needed.
+Requires [Zig 0.17.0](https://ziglang.org/download/). The project targets `x86_64-windows-gnu` and is Windows-only; Zig bundles its own mingw headers/libs, so no separate Windows SDK or MSVC install is needed.
 
 ## Build
 
@@ -8,11 +8,7 @@ Requires [Zig 0.16.0](https://ziglang.org/download/). The project targets `x86_6
 zig build
 ```
 
-This produces two executables in `zig-out\bin\`:
-- `eve-maj-preview.exe` - the main application
-- `config.exe` - the standalone configuration dialog
-
-`icon.ico` is copied into `zig-out\bin\` alongside them; both executables embed `app.rc` for their taskbar/tray icon.
+This produces `eve-maj-preview.exe` in `zig-out\bin\`, which also hosts the configuration window and is the only file it needs. The exe embeds its icon (`src/assets/icon.ico`, via `app.rc`), which the tray uses too. The configuration window's favicon is `src/assets/icon.svg`.
 
 ## Run
 
@@ -26,10 +22,16 @@ Builds and launches `eve-maj-preview.exe`, passing through any extra args after 
 zig build run -- --profile pvp.json
 ```
 
-To build and launch the configuration dialog instead:
+To build and launch it with the configuration window open (the same as `eve-maj-preview.exe --config`, which asks an already-running instance to open it instead):
 
 ```powershell
 zig build config
+```
+
+To run the unit tests (listed in `src/tests.zig`), which cover log parsing, hotkeys, URL commands, activity rates and layout math and don't need EVE or the app running:
+
+```powershell
+zig build test
 ```
 
 ## Version
@@ -38,15 +40,13 @@ The build reads the app version from the `VERSION` file at the repo root and emb
 
 ## Dependencies
 
-[zig-webui](https://github.com/webui-dev/zig-webui) is fetched automatically by the Zig package manager per `build.zig.zon` and statically linked into `config.exe` for its UI. webui, zig-webui and the CivetWeb server inside webui are MIT-licensed; their notices are in `webui-LICENSE.txt`, which ships in release packages and the installer.
+The configuration window is drawn with [knots](https://github.com/knots-ui/knots), fetched by `zig build` as a `build.zig.zon` dependency. It renders with Vulkan, so the window needs a graphics driver with Vulkan 1.3 support; without one it shows an error instead of opening. knots is MIT-licensed (`licenses/knots-LICENSE.txt`), which ships in release packages and the installer.
 
-`config.exe` renders that UI via WebView2, which needs `WebView2Loader.dll` next to the exe at runtime (the target machine's WebView2 Runtime itself is preinstalled on Windows 10/11). `build.zig` installs `src/WebView2Loader.dll` into `zig-out\bin` alongside `config.exe`, the same way it installs `icon.ico`. It's redistributed under the terms in `WebView2Loader-LICENSE.txt` (BSD-style, from the `Microsoft.Web.WebView2` NuGet package), which ships alongside `config.exe` in release packages.
-
-Not every Windows install has [Cascadia Code](https://github.com/microsoft/cascadia-code) (v2407.24), so its fonts are bundled from `src/assets/fonts/`. `eve-maj-preview.exe` embeds the static Regular/SemiBold/Mono TTFs and registers them process-privately at startup (`fonts.zig`); `config.exe` embeds the variable WOFF2 as a base64 `@font-face`. They're licensed under the SIL OFL 1.1 (`CascadiaCode-LICENSE.txt`), which ships in release packages and the installer; unmodified files keep the Reserved Font Name.
+Not every Windows install has [Cascadia Code](https://github.com/microsoft/cascadia-code) (v2407.24), so its fonts are bundled from `src/assets/fonts/`. `eve-maj-preview.exe` embeds the static Regular/SemiBold/Mono TTFs and registers them process-privately at startup (`platform/fonts.zig`), and the configuration window draws with the Regular and SemiBold ones. They're licensed under the SIL OFL 1.1 (`licenses/CascadiaCode-LICENSE.txt`), which ships in release packages and the installer; unmodified files keep the Reserved Font Name.
 
 ## Installer
 
-`installer\eve-maj-preview.iss` is an [Inno Setup](https://jrsoftware.org/isinfo.php) script that packages `zig-out\bin` into a Windows installer with Start Menu shortcuts, an optional desktop icon, and toggles on the finish page to launch the app and/or the configuration dialog. It always installs per-user under `%LocalAppData%\Programs` (no admin, never Program Files) since the app reads/writes its profiles, settings, and log file next to the exe.
+`installer\eve-maj-preview.iss` is an [Inno Setup](https://jrsoftware.org/isinfo.php) script that packages `zig-out\bin` into a Windows installer with Start Menu shortcuts, an optional desktop icon, and toggles on the finish page to launch the app and/or open its configuration window. Upgrades delete the separate `config.exe` and the `WebView2Loader.dll` older versions shipped. It always installs per-user under `%LocalAppData%\Programs` (no admin, never Program Files) since the app reads/writes its profiles, settings, and log file next to the exe.
 
 `build-release.ps1` builds it automatically if `ISCC.exe` (the Inno Setup compiler) is on `PATH` or in its default install location, and attaches the resulting setup exe to the GitHub release alongside the zip. To build it manually:
 

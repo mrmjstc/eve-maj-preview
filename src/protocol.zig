@@ -1,11 +1,15 @@
+//! The evemajpreview:// URL scheme and command-line commands, forwarded to the running instance over WM_COPYDATA.
 const std = @import("std");
-const win32 = @import("win32.zig");
+const win32 = @import("platform/win32.zig");
 const log = @import("log.zig");
-const slog = log.scoped("protocol");
 
-/// Global hotkey actions, mirroring hotkeys.zig's GlobalActionId.
-/// Backing type must match win32.WPARAM (usize): sent as the WM_PROTOCOL_HOTKEY wParam.
-pub const HotkeyAction = enum(usize) {
+const slog = log.Scoped("protocol");
+
+/// Window class of the main app's hidden timer window, the target of every WM_COPYDATA command; a second CLI invocation finds the running instance by it.
+pub const MAIN_WINDOW_CLASS = "EVE_TIMER_CLASS";
+
+/// Sent as the WM_PROTOCOL_HOTKEY wParam, so backed by usize; hotkeys/bindings.zig's GLOBAL_BINDINGS maps each to its HotkeyAction.
+pub const GlobalAction = enum(usize) {
     minimize_all,
     close_all,
     toggle_visibility,
@@ -16,6 +20,7 @@ pub const HotkeyAction = enum(usize) {
     previous_excluded,
     suspend_hotkeys,
     toggle_auto_minimize,
+    toggle_alert_mute,
     cycle_notified,
     previous_notified,
     next_all_clients,
@@ -24,103 +29,261 @@ pub const HotkeyAction = enum(usize) {
     previous_not_logged_in,
     move_to_saved_positions,
     return_to_last_app,
+    next_app,
+    previous_app,
+    exit_app,
+    close_active,
 };
 
 pub const Command = union(enum) {
-    Switch: []const u8,
-    Profile: []const u8,
-    Hotkey: HotkeyAction,
-    PreviewThumbnail: []const u8,
-    RevertPreview: void,
-    DialogSuspendHotkeys: void,
-    DialogResumeHotkeys: void,
-    StartRegionSelect: RegionSelectRequest,
-    TestNotification: []const u8,
+    switch_character: []const u8,
+    profile: []const u8,
+    hotkey: GlobalAction,
+    /// Sent by any second launch so the running instance opens its configuration window.
+    open_config: void,
+
+    /// Frees what parseUrl allocated; commands built any other way borrow their payloads.
+    pub fn deinit(self: Command, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .switch_character, .profile => |name| allocator.free(name),
+            .hotkey, .open_config => {},
+        }
+    }
 };
 
-/// Zero-padded fixed-size copy of `text` (UTF-8), truncated at a character boundary so a NUL always fits.
-pub fn fixedText(comptime n: usize, text: []const u8) [n]u8 {
-    var out = std.mem.zeroes([n]u8);
-    var len = @min(text.len, n - 1);
-    while (len > 0 and len < text.len and (text[len] & 0xC0) == 0x80) len -= 1;
-    @memcpy(out[0..len], text[0..len]);
-    return out;
-}
-
-/// The overlay's on-screen text, translated by the config dialog since only it has the language files; English defaults if the dialog sends nothing.
-pub const RegionSelectLabels = extern struct {
-    save: [32]u8 = fixedText(32, "Save"),
-    cancel: [32]u8 = fixedText(32, "Cancel"),
-    hint_new: [192]u8 = fixedText(192, "Drag to draw the region, then drag its edges to adjust"),
-    hint_edit: [192]u8 = fixedText(192, "Drag the edges to resize, or the inside to move"),
-    hint_confirm: [192]u8 = fixedText(192, "Enter or Save to confirm, Esc or right-click to cancel"),
-};
-
-/// The text in a fixed-size, NUL-padded label buffer.
-pub fn labelText(buf: []const u8) []const u8 {
-    return std.mem.sliceTo(buf, 0);
-}
-
-pub const RegionSelectRequest = struct {
-    /// Hide the visible thumbnails for the duration of the selection so they don't cover the overlay.
-    hide_thumbnails: bool = false,
-    /// The region to adjust; null starts a fresh drag.
-    edit_region: ?win32.RECT = null,
-    labels: RegionSelectLabels = .{},
-};
-
-const RegionSelectRequestWire = extern struct {
-    hide_thumbnails: u32,
-    has_edit_region: u32,
-    edit_region: win32.RECT,
-    labels: RegionSelectLabels,
-};
-
-/// Format: evemajpreview://action/params
-/// Caller owns returned string memory (for Switch and Profile commands)
+/// `evemajpreview://action/params`; logs each failure, and the result is freed with Command.deinit.
 pub fn parseUrl(url: []const u8, allocator: std.mem.Allocator) !Command {
     const protocol_prefix = "evemajpreview://";
     if (!std.mem.startsWith(u8, url, protocol_prefix)) {
-        slog.err("Invalid protocol URL: {s}", .{url});
+        slog.err("Failed to parse protocol URL '{s}': it doesn't start with '{s}'", .{ url, protocol_prefix });
         return error.InvalidProtocol;
     }
 
     const path = url[protocol_prefix.len..];
-    var iter = std.mem.splitScalar(u8, path, '/');
-
-    const action = iter.next() orelse {
-        slog.err("Missing action in protocol URL: {s}", .{url});
-        return error.MissingAction;
-    };
+    var segments = std.mem.splitScalar(u8, path, '/');
+    const action = segments.first();
 
     if (std.mem.eql(u8, action, "switch")) {
-        const char_name_encoded = iter.next() orelse {
-            slog.err("Missing character name in switch command", .{});
+        const character_name_encoded = segments.next() orelse {
+            slog.err("Failed to parse switch command: no character name", .{});
             return error.MissingParameter;
         };
-        const char_name = try urlDecode(allocator, char_name_encoded);
-        return Command{ .Switch = char_name };
+        const character_name = try urlDecode(allocator, character_name_encoded);
+        return .{ .switch_character = character_name };
     } else if (std.mem.eql(u8, action, "profile")) {
-        const profile_name_encoded = iter.next() orelse {
-            slog.err("Missing profile name in profile command", .{});
+        const profile_name_encoded = segments.next() orelse {
+            slog.err("Failed to parse profile command: no profile name", .{});
             return error.MissingParameter;
         };
         const profile_name = try urlDecode(allocator, profile_name_encoded);
-        return Command{ .Profile = profile_name };
+        return .{ .profile = profile_name };
     } else if (std.mem.eql(u8, action, "hotkey")) {
-        const hotkey_action = iter.next() orelse {
-            slog.err("Missing hotkey action in hotkey command", .{});
+        const hotkey_action = segments.next() orelse {
+            slog.err("Failed to parse hotkey command: no action", .{});
             return error.MissingParameter;
         };
-        const parsed_action = std.meta.stringToEnum(HotkeyAction, hotkey_action) orelse {
-            slog.err("Unknown hotkey action: {s}", .{hotkey_action});
-            return error.UnknownHotkeyAction;
+        const parsed_action = std.meta.stringToEnum(GlobalAction, hotkey_action) orelse {
+            slog.err("Failed to parse hotkey command: unknown action '{s}'", .{hotkey_action});
+            return error.InvalidGlobalAction;
         };
-        return Command{ .Hotkey = parsed_action };
+        return .{ .hotkey = parsed_action };
     } else {
-        slog.err("Unknown protocol action: {s}", .{action});
-        return error.UnknownAction;
+        slog.err("Failed to parse protocol URL: unknown action '{s}'", .{action});
+        return error.InvalidAction;
     }
+}
+
+pub fn findExistingInstance() ?win32.HWND {
+    return win32.FindWindowA(MAIN_WINDOW_CLASS, null);
+}
+
+/// Hands a --protocol URL to the already-running instance; protocol URLs never start one.
+pub fn forwardToRunningInstance(url: []const u8, allocator: std.mem.Allocator) !void {
+    const existing_hwnd = findExistingInstance() orelse {
+        slog.warn("Failed to forward the protocol command: no running instance", .{});
+        return error.MissingInstance;
+    };
+
+    const command = try parseUrl(url, allocator);
+    defer command.deinit(allocator);
+
+    sendCommandToInstance(existing_hwnd, command);
+    slog.info("Protocol command sent successfully", .{});
+}
+
+pub fn sendCommandToInstance(hwnd: win32.HWND, command: Command) void {
+    switch (command) {
+        .switch_character => |character_name| {
+            sendCopyData(hwnd, win32.PROTOCOL_SWITCH_CHARACTER, character_name);
+            slog.info("Sent switch to '{s}'", .{character_name});
+        },
+        .profile => |profile_name| {
+            sendCopyData(hwnd, win32.PROTOCOL_SWITCH_PROFILE, profile_name);
+            slog.info("Sent load profile '{s}'", .{profile_name});
+        },
+        .hotkey => |hotkey_action| {
+            _ = win32.SendMessageA(hwnd, win32.WM_PROTOCOL_HOTKEY, @backingInt(hotkey_action), 0);
+            slog.info("Sent hotkey action '{s}'", .{@tagName(hotkey_action)});
+        },
+        .open_config => {
+            sendCopyData(hwnd, win32.PROTOCOL_OPEN_CONFIG, "");
+            slog.info("Sent open configuration", .{});
+        },
+    }
+}
+
+/// Receiving side of sendCopyData; null for a message sent without a payload.
+pub fn copyDataBytes(copy_data: *const win32.COPYDATASTRUCT) ?[]const u8 {
+    const data_ptr = copy_data.lpData orelse return null;
+    return @as([*]const u8, @ptrCast(data_ptr))[0..copy_data.cbData];
+}
+
+/// Returns the protocol URL if --protocol was passed (caller must free), otherwise null.
+pub fn checkCommandLine(process_args: std.process.Args, allocator: std.mem.Allocator) !?[]const u8 {
+    // toSlice's result references several internal allocations, so it requires an arena rather than a plain allocator.
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    defer arena_state.deinit();
+    const args = try process_args.toSlice(arena_state.allocator());
+
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        if (std.mem.eql(u8, args[i], "--protocol")) {
+            if (i + 1 < args.len) {
+                // Must duplicate before the arena is freed.
+                return try allocator.dupe(u8, args[i + 1]);
+            }
+        }
+    }
+
+    return null;
+}
+
+/// Registers the evemajpreview:// handler unless it already is; failures are logged, not fatal.
+pub fn ensureRegistered(allocator: std.mem.Allocator) void {
+    if (isRegistered()) {
+        slog.debug("Protocol handler already registered", .{});
+        return;
+    }
+
+    slog.info("Protocol handler not registered, attempting auto-registration", .{});
+    register(allocator) catch |err| {
+        slog.warn("Failed to auto-register protocol handler (run as administrator, or use register-protocol.reg): {}", .{err});
+    };
+}
+
+pub fn isRegistered() bool {
+    var key: win32.HKEY = undefined;
+    const result = win32.RegOpenKeyExA(
+        win32.HKEY_CURRENT_USER,
+        "Software\\Classes\\evemajpreview",
+        0,
+        win32.KEY_READ,
+        &key,
+    );
+
+    if (result == win32.ERROR_SUCCESS) {
+        _ = win32.RegCloseKey(key);
+        return true;
+    }
+
+    return false;
+}
+
+/// Logs the failing registry call before returning error.RegistryWriteFailed.
+fn register(allocator: std.mem.Allocator) !void {
+    var executable_path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const executable_path = try win32.selfExecutablePath(&executable_path_buf);
+
+    var key: win32.HKEY = undefined;
+    var disposition: win32.DWORD = undefined;
+
+    // HKCU rather than HKEY_CLASSES_ROOT: the latter falls back to HKLM for new keys, which requires admin rights.
+    var result = win32.RegCreateKeyExA(
+        win32.HKEY_CURRENT_USER,
+        "Software\\Classes\\evemajpreview",
+        0,
+        null,
+        win32.REG_OPTION_NON_VOLATILE,
+        win32.KEY_WRITE,
+        null,
+        &key,
+        &disposition,
+    );
+
+    if (result != win32.ERROR_SUCCESS) {
+        slog.err("Failed to create registry key HKCU\\Software\\Classes\\evemajpreview: error {}", .{result});
+        return error.RegistryWriteFailed;
+    }
+    defer _ = win32.RegCloseKey(key);
+
+    const description = "URL:EVE-Maj Preview Protocol";
+    result = win32.RegSetValueExA(
+        key,
+        null,
+        0,
+        win32.REG_SZ,
+        description.ptr,
+        @intCast(description.len + 1),
+    );
+
+    if (result != win32.ERROR_SUCCESS) {
+        slog.err("Failed to set default value: error {}", .{result});
+        return error.RegistryWriteFailed;
+    }
+
+    const url_protocol = "";
+    result = win32.RegSetValueExA(
+        key,
+        "URL Protocol",
+        0,
+        win32.REG_SZ,
+        url_protocol.ptr,
+        @intCast(url_protocol.len + 1),
+    );
+
+    if (result != win32.ERROR_SUCCESS) {
+        slog.err("Failed to set URL Protocol value: error {}", .{result});
+        return error.RegistryWriteFailed;
+    }
+
+    var command_key: win32.HKEY = undefined;
+    result = win32.RegCreateKeyExA(
+        win32.HKEY_CURRENT_USER,
+        "Software\\Classes\\evemajpreview\\shell\\open\\command",
+        0,
+        null,
+        win32.REG_OPTION_NON_VOLATILE,
+        win32.KEY_WRITE,
+        null,
+        &command_key,
+        &disposition,
+    );
+
+    if (result != win32.ERROR_SUCCESS) {
+        slog.err("Failed to create command key: error {}", .{result});
+        return error.RegistryWriteFailed;
+    }
+    defer _ = win32.RegCloseKey(command_key);
+
+    // \x00 is embedded in the format string itself, so command.len already covers the terminator (unlike description/url_protocol above, which need +1).
+    const command = try allocator.print("\"{s}\" --protocol \"%1\"\x00", .{executable_path});
+    defer allocator.free(command);
+
+    result = win32.RegSetValueExA(
+        command_key,
+        null,
+        0,
+        win32.REG_SZ,
+        command.ptr,
+        @intCast(command.len),
+    );
+
+    if (result != win32.ERROR_SUCCESS) {
+        slog.err("Failed to set command value: error {}", .{result});
+        return error.RegistryWriteFailed;
+    }
+
+    slog.info("Protocol handler registered successfully: {s}", .{executable_path});
 }
 
 fn urlDecode(allocator: std.mem.Allocator, encoded: []const u8) ![]const u8 {
@@ -150,315 +313,57 @@ fn urlDecode(allocator: std.mem.Allocator, encoded: []const u8) ![]const u8 {
     return result.toOwnedSlice(allocator);
 }
 
-pub fn findExistingInstance(class_name: [*:0]const u8) ?win32.HWND {
-    return win32.FindWindowA(class_name, null);
-}
-
-pub fn sendCommandToInstance(hwnd: win32.HWND, cmd: Command) void {
-    switch (cmd) {
-        .Switch => |char_name| {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_SWITCH_CHARACTER,
-                .cbData = @intCast(char_name.len),
-                .lpData = char_name.ptr,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
-            slog.info("Sent switch to '{s}'", .{char_name});
-        },
-        .Profile => |profile_name| {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_SWITCH_PROFILE,
-                .cbData = @intCast(profile_name.len),
-                .lpData = profile_name.ptr,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
-            slog.info("Sent load profile '{s}'", .{profile_name});
-        },
-        .Hotkey => |hotkey_action| {
-            _ = win32.SendMessageA(hwnd, win32.WM_PROTOCOL_HOTKEY, @intFromEnum(hotkey_action), 0);
-            slog.info("Sent hotkey action '{s}'", .{@tagName(hotkey_action)});
-        },
-        .PreviewThumbnail => |json| {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_PREVIEW_THUMBNAIL,
-                .cbData = @intCast(json.len),
-                .lpData = json.ptr,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
-            slog.debug("Sent thumbnail preview patch ({} bytes)", .{json.len});
-        },
-        .RevertPreview => {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_REVERT_PREVIEW,
-                .cbData = 0,
-                .lpData = null,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
-            slog.info("Sent revert preview", .{});
-        },
-        .DialogSuspendHotkeys => {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_DIALOG_SUSPEND_HOTKEYS,
-                .cbData = 0,
-                .lpData = null,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
-            slog.debug("Sent dialog suspend hotkeys", .{});
-        },
-        .DialogResumeHotkeys => {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_DIALOG_RESUME_HOTKEYS,
-                .cbData = 0,
-                .lpData = null,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
-            slog.debug("Sent dialog resume hotkeys", .{});
-        },
-        .StartRegionSelect => |request| {
-            const wire = RegionSelectRequestWire{
-                .hide_thumbnails = @intFromBool(request.hide_thumbnails),
-                .has_edit_region = @intFromBool(request.edit_region != null),
-                .edit_region = request.edit_region orelse std.mem.zeroes(win32.RECT),
-                .labels = request.labels,
-            };
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_START_REGION_SELECT,
-                .cbData = @sizeOf(RegionSelectRequestWire),
-                .lpData = &wire,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
-            slog.info("Sent start region select", .{});
-        },
-        .TestNotification => |json| {
-            const cds = win32.COPYDATASTRUCT{
-                .dwData = win32.PROTOCOL_TEST_NOTIFICATION,
-                .cbData = @intCast(json.len),
-                .lpData = json.ptr,
-            };
-            _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&cds)));
-            slog.debug("Sent test notification ({} bytes)", .{json.len});
-        },
-    }
-}
-
-/// Receiving side of `Command.StartRegionSelect`; a malformed payload falls back to a plain fresh drag.
-pub fn regionSelectRequestFromCopyData(cds: *const win32.COPYDATASTRUCT) RegionSelectRequest {
-    const data_ptr = cds.lpData orelse return .{};
-    if (cds.cbData != @sizeOf(RegionSelectRequestWire)) return .{};
-    var wire: RegionSelectRequestWire = undefined;
-    @memcpy(std.mem.asBytes(&wire), @as([*]const u8, @ptrCast(data_ptr))[0..@sizeOf(RegionSelectRequestWire)]);
-    return .{
-        .hide_thumbnails = wire.hide_thumbnails != 0,
-        .edit_region = if (wire.has_edit_region != 0) wire.edit_region else null,
-        .labels = wire.labels,
+/// Synchronous, so `payload` only has to outlive the call; an empty payload is sent as a null lpData.
+fn sendCopyData(hwnd: win32.HWND, kind: usize, payload: []const u8) void {
+    const copy_data: win32.COPYDATASTRUCT = .{
+        .dwData = kind,
+        .cbData = @intCast(payload.len),
+        .lpData = if (payload.len > 0) payload.ptr else null,
     };
+    _ = win32.SendMessageA(hwnd, win32.WM_COPYDATA, 0, @intCast(@intFromPtr(&copy_data)));
 }
 
-pub const RegionSelectStatus = enum(u32) { none, success, cancelled, too_small };
+const testing = std.testing;
 
-/// Cross-process result of a "Start Region Selection" drag; a named shared-memory mapping since today's WM_COPYDATA IPC is one-way dialog->app.
-pub const RegionSelectResult = extern struct {
-    sequence: u32 = 0,
-    status: RegionSelectStatus = .none,
-    x: i32 = 0,
-    y: i32 = 0,
-    width: i32 = 0,
-    height: i32 = 0,
-};
+test "parseUrl reads switch and profile commands and decodes their names" {
+    const switch_cmd = try parseUrl("evemajpreview://switch/Some%20Pilot", testing.allocator);
+    defer switch_cmd.deinit(testing.allocator);
+    try testing.expectEqualStrings("Some Pilot", switch_cmd.switch_character);
 
-const REGION_SELECT_MAPPING_NAME = "Local\\EVE-Maj-Preview-RegionSelectResult";
-
-// A named file mapping only lives while a handle to it stays open somewhere, so this is kept open for the process's lifetime rather than per-write.
-var g_region_select_mapping: ?win32.HANDLE = null;
-
-fn ensureRegionSelectMapping() ?win32.HANDLE {
-    if (g_region_select_mapping) |h| return h;
-    const mapping = win32.CreateFileMappingA(
-        win32.INVALID_HANDLE_VALUE,
-        null,
-        win32.PAGE_READWRITE,
-        0,
-        @sizeOf(RegionSelectResult),
-        REGION_SELECT_MAPPING_NAME,
-    ) orelse {
-        slog.warn("Failed to create region-select file mapping", .{});
-        return null;
-    };
-    g_region_select_mapping = mapping;
-    return mapping;
+    const profile_cmd = try parseUrl("evemajpreview://profile/My+Alts/", testing.allocator);
+    defer profile_cmd.deinit(testing.allocator);
+    try testing.expectEqualStrings("My Alts", profile_cmd.profile);
 }
 
-/// Reads the current result; returns null if the mapping doesn't exist yet (main app hasn't published a result this run).
-pub fn readRegionSelectResult() ?RegionSelectResult {
-    const mapping = win32.OpenFileMappingA(win32.FILE_MAP_ALL_ACCESS, win32.FALSE, REGION_SELECT_MAPPING_NAME) orelse return null;
-    defer _ = win32.CloseHandle(mapping);
-
-    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(RegionSelectResult)) orelse {
-        slog.warn("Failed to map view of region-select file mapping", .{});
-        return null;
-    };
-    defer _ = win32.UnmapViewOfFile(view);
-
-    const result_ptr: *const RegionSelectResult = @ptrCast(@alignCast(view));
-    return result_ptr.*;
+test "parseUrl reads every hotkey action by name" {
+    var buf: [128]u8 = undefined;
+    for (std.enums.values(GlobalAction)) |action| {
+        const url = try std.mem.print(&buf, "evemajpreview://hotkey/{s}", .{@tagName(action)});
+        try testing.expectEqual(action, (try parseUrl(url, testing.allocator)).hotkey);
+    }
 }
 
-/// Increments the sequence and writes a fresh result; called by the main app once a drag finishes or is cancelled.
-pub fn publishRegionSelectResult(status: RegionSelectStatus, rect: win32.RECT) void {
-    const mapping = ensureRegionSelectMapping() orelse {
-        slog.err("Failed to create region-select result mapping", .{});
-        return;
-    };
-
-    const view = win32.MapViewOfFile(mapping, win32.FILE_MAP_ALL_ACCESS, 0, 0, @sizeOf(RegionSelectResult)) orelse {
-        slog.err("Failed to map region-select result view", .{});
-        return;
-    };
-    defer _ = win32.UnmapViewOfFile(view);
-
-    const result_ptr: *RegionSelectResult = @ptrCast(@alignCast(view));
-    const next_sequence = result_ptr.sequence +% 1;
-    result_ptr.* = .{
-        .sequence = next_sequence,
-        .status = status,
-        .x = rect.left,
-        .y = rect.top,
-        .width = win32.rectWidth(rect),
-        .height = win32.rectHeight(rect),
-    };
+test "parseUrl rejects other schemes, unknown actions and missing parameters" {
+    try testing.expectError(error.InvalidProtocol, parseUrl("https://example.com/switch/Pilot", testing.allocator));
+    try testing.expectError(error.InvalidAction, parseUrl("evemajpreview://launch/Pilot", testing.allocator));
+    try testing.expectError(error.InvalidAction, parseUrl("evemajpreview://", testing.allocator));
+    try testing.expectError(error.MissingParameter, parseUrl("evemajpreview://switch", testing.allocator));
+    try testing.expectError(error.MissingParameter, parseUrl("evemajpreview://hotkey", testing.allocator));
+    try testing.expectError(error.InvalidGlobalAction, parseUrl("evemajpreview://hotkey/self_destruct", testing.allocator));
 }
 
-/// Returns the protocol URL if --protocol was passed (caller must free), otherwise null.
-pub fn checkCommandLine(process_args: std.process.Args, allocator: std.mem.Allocator) !?[]const u8 {
-    // toSlice's result references several internal allocations, so it requires an arena rather than a plain allocator.
-    var arena_state = std.heap.ArenaAllocator.init(allocator);
-    defer arena_state.deinit();
-    const args = try process_args.toSlice(arena_state.allocator());
-
-    var i: usize = 1;
-    while (i < args.len) : (i += 1) {
-        if (std.mem.eql(u8, args[i], "--protocol")) {
-            if (i + 1 < args.len) {
-                // Must duplicate before the arena is freed.
-                return try allocator.dupe(u8, args[i + 1]);
-            }
-        }
-    }
-
-    return null;
+test "urlDecode decodes percent escapes and plus signs" {
+    const decoded = try urlDecode(testing.allocator, "Jita%204%20-%20Moon+4%2fX");
+    defer testing.allocator.free(decoded);
+    try testing.expectEqualStrings("Jita 4 - Moon 4/X", decoded);
 }
 
-pub fn isRegistered() bool {
-    var hKey: win32.HKEY = undefined;
-    const result = win32.RegOpenKeyExA(
-        win32.HKEY_CURRENT_USER,
-        "Software\\Classes\\evemajpreview",
-        0,
-        win32.KEY_READ,
-        &hKey,
-    );
+test "urlDecode keeps a malformed or truncated escape as written" {
+    const malformed = try urlDecode(testing.allocator, "100%zz");
+    defer testing.allocator.free(malformed);
+    try testing.expectEqualStrings("100%zz", malformed);
 
-    if (result == win32.ERROR_SUCCESS) {
-        _ = win32.RegCloseKey(hKey);
-        return true;
-    }
-
-    return false;
-}
-
-pub fn register(allocator: std.mem.Allocator) !bool {
-    var exe_path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const exe_path = try win32.selfExePath(&exe_path_buf);
-
-    var hKey: win32.HKEY = undefined;
-    var disposition: win32.DWORD = undefined;
-
-    // HKCU rather than HKEY_CLASSES_ROOT: the latter falls back to HKLM for new keys, which requires admin rights.
-    var result = win32.RegCreateKeyExA(
-        win32.HKEY_CURRENT_USER,
-        "Software\\Classes\\evemajpreview",
-        0,
-        null,
-        win32.REG_OPTION_NON_VOLATILE,
-        win32.KEY_WRITE,
-        null,
-        &hKey,
-        &disposition,
-    );
-
-    if (result != win32.ERROR_SUCCESS) {
-        slog.err("Failed to create registry key HKCU\\Software\\Classes\\evemajpreview: error {}", .{result});
-        return false;
-    }
-    defer _ = win32.RegCloseKey(hKey);
-
-    const description = "URL:EVE-Maj Preview Protocol";
-    result = win32.RegSetValueExA(
-        hKey,
-        null,
-        0,
-        win32.REG_SZ,
-        description.ptr,
-        @intCast(description.len + 1),
-    );
-
-    if (result != win32.ERROR_SUCCESS) {
-        slog.err("Failed to set default value: error {}", .{result});
-        return false;
-    }
-
-    const url_protocol = "";
-    result = win32.RegSetValueExA(
-        hKey,
-        "URL Protocol",
-        0,
-        win32.REG_SZ,
-        url_protocol.ptr,
-        @intCast(url_protocol.len + 1),
-    );
-
-    if (result != win32.ERROR_SUCCESS) {
-        slog.err("Failed to set URL Protocol value: error {}", .{result});
-        return false;
-    }
-
-    var hCommandKey: win32.HKEY = undefined;
-    result = win32.RegCreateKeyExA(
-        win32.HKEY_CURRENT_USER,
-        "Software\\Classes\\evemajpreview\\shell\\open\\command",
-        0,
-        null,
-        win32.REG_OPTION_NON_VOLATILE,
-        win32.KEY_WRITE,
-        null,
-        &hCommandKey,
-        &disposition,
-    );
-
-    if (result != win32.ERROR_SUCCESS) {
-        slog.err("Failed to create command key: error {}", .{result});
-        return false;
-    }
-    defer _ = win32.RegCloseKey(hCommandKey);
-
-    // \x00 is embedded in the format string itself, so command.len already covers the terminator (unlike description/url_protocol above, which need +1).
-    const command = try std.fmt.allocPrint(allocator, "\"{s}\" --protocol \"%1\"\x00", .{exe_path});
-    defer allocator.free(command);
-
-    result = win32.RegSetValueExA(
-        hCommandKey,
-        null,
-        0,
-        win32.REG_SZ,
-        command.ptr,
-        @intCast(command.len),
-    );
-
-    if (result != win32.ERROR_SUCCESS) {
-        slog.err("Failed to set command value: error {}", .{result});
-        return false;
-    }
-
-    slog.info("Protocol handler registered successfully: {s}", .{exe_path});
-    return true;
+    const truncated = try urlDecode(testing.allocator, "abc%4");
+    defer testing.allocator.free(truncated);
+    try testing.expectEqualStrings("abc%4", truncated);
 }

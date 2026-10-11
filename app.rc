@@ -1,4 +1,4 @@
 // Windows resource file for application icon
 #define IDI_ICON1 101
 
-IDI_ICON1 ICON "icon.ico"
+IDI_ICON1 ICON "src/assets/icon.ico"

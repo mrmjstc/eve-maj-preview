@@ -1,0 +1,213 @@
+const std = @import("std");
+const wgpu = @import("wgpu");
+const CommonPipeline = @import("gpu").Pipeline;
+const TextureFormat = @import("gpu").Texture.Format;
+
+const Device = @import("Device.zig");
+
+const Pipeline = @This();
+
+allocator: std.mem.Allocator,
+render_pipeline: wgpu.RenderPipeline,
+bind_group_layouts: []wgpu.BindGroupLayout,
+device: wgpu.Device,
+
+pub fn create(allocator: std.mem.Allocator, device: *Device, desc: CommonPipeline.Desc) !Pipeline {
+    if (desc.depth_stencil) |state| {
+        if (state.format != .depth24_plus) return error.UnsupportedDepthFormat;
+    }
+    const wgsl = switch (desc.shader) {
+        .wgsl => |s| s,
+        .spirv => return error.UnsupportedShaderSource,
+    };
+
+    const shader_module = try wgpu.ShaderModule.init(device.device.device, .{ .wgsl = wgsl });
+    defer shader_module.deinit();
+
+    const bgls = try allocator.alloc(wgpu.BindGroupLayout, desc.bind_group_layouts.len);
+    errdefer allocator.free(bgls);
+    var bgls_created: usize = 0;
+    errdefer for (bgls[0..bgls_created]) |bgl| bgl.deinit();
+
+    var pipeline_bgls: [8]?wgpu.BindGroupLayout = undefined;
+    if (desc.bind_group_layouts.len > pipeline_bgls.len) return error.TooManyBindGroupLayouts;
+    var entry_buf: [16]wgpu.BindGroupLayout.Entry = undefined;
+
+    for (desc.bind_group_layouts, 0..) |bgl_desc, bgl_i| {
+        if (bgl_desc.entries.len > entry_buf.len) return error.TooManyBindGroupEntries;
+        for (bgl_desc.entries, 0..) |e, i| {
+            entry_buf[i] = toWgpuBglEntry(e);
+        }
+        bgls[bgl_i] = try device.device.createBindGroupLayout(.{
+            .label = bgl_desc.label,
+            .entries = entry_buf[0..bgl_desc.entries.len],
+        });
+        pipeline_bgls[bgl_i] = bgls[bgl_i];
+        bgls_created += 1;
+    }
+
+    const pipeline_layout = try device.device.createPipelineLayout(desc.label, pipeline_bgls[0..bgls.len], 0);
+    defer pipeline_layout.deinit();
+
+    var attr_buf: [4][16]wgpu.RenderPipeline.VertexAttribute = undefined;
+    var vbl_buf: [4]wgpu.RenderPipeline.VertexBufferLayout = undefined;
+    if (desc.vertex_buffers.len > vbl_buf.len) return error.TooManyVertexBuffers;
+    for (desc.vertex_buffers, 0..) |vb, i| {
+        if (vb.attributes.len > attr_buf[i].len) return error.TooManyVertexAttributes;
+        for (vb.attributes, 0..) |a, j| {
+            attr_buf[i][j] = .{
+                .shader_location = a.location,
+                .offset = a.offset,
+                .format = toWgpuVertexFormat(a.format),
+            };
+        }
+        vbl_buf[i] = .{
+            .array_stride = vb.stride,
+            .step_mode = switch (vb.step_mode) {
+                .vertex => .vertex,
+                .instance => .instance,
+            },
+            .attributes = attr_buf[i][0..vb.attributes.len],
+        };
+    }
+
+    const target_format = if (desc.color_target.format) |f| toWgpuFormat(f) else device.surface_format;
+    const blend = if (desc.color_target.blend) |b| toWgpuBlend(b) else null;
+    const depth_stencil: ?wgpu.RenderPipeline.DepthStencilState = if (desc.depth_stencil) |state| .{
+        .format = toWgpuFormat(state.format),
+        .depth_write_enabled = state.depth_write_enabled,
+        .depth_compare = toWgpuCompareFunction(state.depth_compare),
+    } else null;
+
+    const pipeline = try device.device.createRenderPipeline(.{
+        .label = desc.label,
+        .layout = pipeline_layout,
+        .vertex = .{
+            .module = shader_module,
+            .entry_point = desc.vs_entry,
+            .buffers = vbl_buf[0..desc.vertex_buffers.len],
+        },
+        .fragment = .{
+            .module = shader_module,
+            .entry_point = desc.fs_entry,
+            .targets = &.{.{ .format = target_format, .blend = blend }},
+        },
+        .primitive = .{
+            .topology = .triangle_list,
+            .front_face = switch (desc.primitive.front_face) {
+                .ccw => .ccw,
+                .cw => .cw,
+            },
+            .cull_mode = switch (desc.primitive.cull_mode) {
+                .none => .none,
+                .back => .back,
+            },
+        },
+        .depth_stencil = depth_stencil,
+    });
+
+    return .{
+        .allocator = allocator,
+        .render_pipeline = pipeline,
+        .bind_group_layouts = bgls,
+        .device = device.device,
+    };
+}
+
+pub fn deinit(self: *Pipeline) void {
+    self.render_pipeline.deinit();
+    for (self.bind_group_layouts) |bgl| bgl.deinit();
+    self.allocator.free(self.bind_group_layouts);
+}
+
+fn toWgpuBglEntry(e: CommonPipeline.BindGroupLayoutEntry) wgpu.BindGroupLayout.Entry {
+    var out: wgpu.BindGroupLayout.Entry = .{
+        .binding = e.binding,
+        .visibility = .{ .vertex = e.visibility.vertex, .fragment = e.visibility.fragment },
+    };
+    switch (e.type) {
+        .uniform_buffer => out.buffer = .{ .binding_type = .uniform },
+        .read_only_storage_buffer => out.buffer = .{ .binding_type = .read_only_storage },
+        .sampled_texture => |st| out.texture = .{
+            .sample_type = switch (st) {
+                .float => .float,
+                .unfilterable_float => .unfilterable_float,
+                .uint => .uint,
+            },
+            .view_dimension = .@"2d",
+        },
+        .sampler => |sb| out.sampler = .{
+            .binding_type = switch (sb) {
+                .filtering => .filtering,
+                .non_filtering => .non_filtering,
+            },
+        },
+    }
+    return out;
+}
+
+fn toWgpuVertexFormat(f: CommonPipeline.VertexFormat) wgpu.RenderPipeline.VertexFormat {
+    return switch (f) {
+        .f32 => .float32,
+        .f32x2 => .float32x2,
+        .f32x3 => .float32x3,
+        .f32x4 => .float32x4,
+    };
+}
+
+fn toWgpuFormat(f: TextureFormat) wgpu.Texture.Format {
+    return switch (f) {
+        .rgba8 => .rgba8_unorm,
+        .rgba8_srgb => .rgba8_unorm_srgb,
+        .bgra8 => .bgra8_unorm,
+        .bgra8_srgb => .bgra8_unorm_srgb,
+        .r8 => .r8_unorm,
+        .rgba32f => .rgba32_float,
+        .rgba32u => .rgba32_uint,
+        .depth24_plus => .depth24_plus,
+    };
+}
+
+fn toWgpuCompareFunction(
+    value: CommonPipeline.CompareFunction,
+) wgpu.RenderPipeline.CompareFunction {
+    return switch (value) {
+        .always => .always,
+        .less => .less,
+        .less_equal => .less_equal,
+    };
+}
+
+fn toWgpuBlendFactor(f: CommonPipeline.BlendFactor) wgpu.RenderPipeline.BlendFactor {
+    return switch (f) {
+        .zero => .zero,
+        .one => .one,
+        .src_alpha => .src_alpha,
+        .one_minus_src_alpha => .one_minus_src_alpha,
+    };
+}
+
+fn toWgpuBlendOp(o: CommonPipeline.BlendOp) wgpu.RenderPipeline.BlendOperation {
+    return switch (o) {
+        .add => .add,
+    };
+}
+
+fn toWgpuBlend(b: CommonPipeline.BlendState) wgpu.RenderPipeline.BlendState {
+    return .{
+        .color = .{
+            .operation = toWgpuBlendOp(b.color.op),
+            .src_factor = toWgpuBlendFactor(b.color.src_factor),
+            .dst_factor = toWgpuBlendFactor(b.color.dst_factor),
+        },
+        .alpha = .{
+            .operation = toWgpuBlendOp(b.alpha.op),
+            .src_factor = toWgpuBlendFactor(b.alpha.src_factor),
+            .dst_factor = toWgpuBlendFactor(b.alpha.dst_factor),
+        },
+    };
+}
+
+pub fn bindGroupLayout(self: *const Pipeline, index: u32) wgpu.BindGroupLayout {
+    return self.bind_group_layouts[index];
+}

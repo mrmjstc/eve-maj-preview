@@ -2,10 +2,10 @@
 #define MyAppPublisher "mrmjstc"
 #define MyAppURL "https://github.com/mrmjstc/eve-maj-preview"
 #define MyAppExeName "eve-maj-preview.exe"
-#define MyConfigExeName "config.exe"
 #define BinDir "..\zig-out\bin"
 #define AppMutexName "Global\EVE-Maj-Preview-SingleInstance"
-#define ConfigMutexName "Global\EVE-Maj-Preview-ConfigDialog-SingleInstance"
+; The separate config.exe older versions shipped, which may still be open during an upgrade.
+#define LegacyConfigMutexName "Global\EVE-Maj-Preview-ConfigDialog-SingleInstance"
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
@@ -25,17 +25,18 @@ DisableProgramGroupPage=yes
 ; Files, since the app reads/writes profiles, settings, and its log next to
 ; the exe.
 PrivilegesRequired=lowest
-; Detect the running app/config dialog via their single-instance mutexes and
-; prompt to close them, and also let Setup auto-close anything still holding
-; a lock on the exes it's about to overwrite (Restart Manager).
-AppMutex={#AppMutexName},{#ConfigMutexName}
+; Detect the running app (and an old version's config dialog) via their
+; single-instance mutexes and prompt to close them, and also let Setup
+; auto-close anything still holding a lock on the files it's about to
+; overwrite (Restart Manager).
+AppMutex={#AppMutexName},{#LegacyConfigMutexName}
 CloseApplications=yes
 RestartApplications=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
 OutputBaseFilename=eve-maj-preview-v{#MyAppVersion}-setup
-SetupIconFile=..\icon.ico
+SetupIconFile=..\src\assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2
 SolidCompression=yes
@@ -50,24 +51,34 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#BinDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#BinDir}\{#MyConfigExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#BinDir}\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#BinDir}\WebView2Loader.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\WebView2Loader-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\CascadiaCode-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\webui-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
-Name: "{group}\{#MyAppName} Configuration"; Filename: "{app}\{#MyConfigExeName}"; WorkingDir: "{app}"
+Name: "{group}\{#MyAppName} Configuration"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--config"; WorkingDir: "{app}"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
-Filename: "{app}\{#MyConfigExeName}"; WorkingDir: "{app}"; Description: "Open the configuration dialog"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--config"; WorkingDir: "{app}"; Description: "Open the configuration window"; Flags: nowait postinstall skipifsilent unchecked
+
+[InstallDelete]
+; Older versions shipped the configuration window as a separate exe.
+Type: files; Name: "{app}\config.exe"
+; Older versions installed licenses next to the exe.
+Type: files; Name: "{app}\LICENSE"
+Type: files; Name: "{app}\WebView2Loader-LICENSE.txt"
+Type: files; Name: "{app}\CascadiaCode-LICENSE.txt"
+Type: files; Name: "{app}\webui-LICENSE.txt"
+; Older versions used webui, which needed WebView2Loader.dll.
+Type: files; Name: "{app}\WebView2Loader.dll"
+Type: files; Name: "{app}\licenses\WebView2Loader-LICENSE.txt"
+Type: files; Name: "{app}\licenses\webui-LICENSE.txt"
+; Older versions drew the configuration window with webview and WebView2.
+Type: files; Name: "{app}\licenses\webview-LICENSE.txt"
+Type: files; Name: "{app}\licenses\WebView2-LICENSE.txt"
 
 ; Profiles, settings and logs are created next to the exe at runtime (see
 ; docs/BUILDING.md) and deliberately left in place on uninstall so a

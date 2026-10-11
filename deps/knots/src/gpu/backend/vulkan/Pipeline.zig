@@ -1,0 +1,252 @@
+const std = @import("std");
+const vk = @import("vk");
+const Device = @import("Device.zig");
+const Texture = @import("Texture.zig");
+const CommonPipeline = @import("gpu").Pipeline;
+
+const Pipeline = @This();
+
+allocator: std.mem.Allocator,
+pipeline: vk.Pipeline,
+pipeline_layout: vk.PipelineLayout,
+descriptor_set_layouts: []vk.DescriptorSetLayout,
+vkd: vk.DeviceWrapper,
+device: vk.Device,
+
+pub fn create(allocator: std.mem.Allocator, device: *Device, desc: CommonPipeline.Desc) !Pipeline {
+    if (desc.depth_stencil != null) return error.UnsupportedDepthStencil;
+    const vkd = device.vkd;
+    const vk_device = device.device;
+
+    const spirv = switch (desc.shader) {
+        .spirv => |s| s,
+        .wgsl => return error.UnsupportedShaderSource,
+    };
+
+    const dsls = try allocator.alloc(vk.DescriptorSetLayout, desc.bind_group_layouts.len);
+    errdefer allocator.free(dsls);
+    var dsls_created: usize = 0;
+    errdefer for (dsls[0..dsls_created]) |dsl| vkd.destroyDescriptorSetLayout(vk_device, dsl, null);
+
+    var binding_buf: [16]vk.DescriptorSetLayoutBinding = undefined;
+    for (desc.bind_group_layouts, 0..) |bgl, i| {
+        if (bgl.entries.len > binding_buf.len) return error.TooManyBindGroupEntries;
+        for (bgl.entries, 0..) |e, j| {
+            binding_buf[j] = .{
+                .binding = e.binding,
+                .descriptor_type = toVkDescriptorType(e.type),
+                .descriptor_count = 1,
+                .stage_flags = .{
+                    .vertex = e.visibility.vertex,
+                    .fragment = e.visibility.fragment,
+                },
+                .p_immutable_samplers = null,
+            };
+        }
+        dsls[i] = try vkd.createDescriptorSetLayout(vk_device, &.{
+            .binding_count = @intCast(bgl.entries.len),
+            .p_bindings = binding_buf[0..bgl.entries.len].ptr,
+        }, null);
+        dsls_created += 1;
+        device.setDebugName(.descriptor_set_layout, @intFromEnum(dsls[i]), desc.bind_group_layouts[i].label);
+    }
+
+    const pipeline_layout = try vkd.createPipelineLayout(vk_device, &.{
+        .set_layout_count = @intCast(dsls.len),
+        .p_set_layouts = dsls.ptr,
+        .push_constant_range_count = 0,
+        .p_push_constant_ranges = null,
+    }, null);
+    errdefer vkd.destroyPipelineLayout(vk_device, pipeline_layout, null);
+    device.setDebugName(.pipeline_layout, @intFromEnum(pipeline_layout), desc.label);
+
+    const vert_module = try vkd.createShaderModule(vk_device, &.{
+        .code_size = spirv.vs.len,
+        .p_code = @ptrCast(@alignCast(spirv.vs.ptr)),
+    }, null);
+    defer vkd.destroyShaderModule(vk_device, vert_module, null);
+
+    const frag_module = try vkd.createShaderModule(vk_device, &.{
+        .code_size = spirv.fs.len,
+        .p_code = @ptrCast(@alignCast(spirv.fs.ptr)),
+    }, null);
+    defer vkd.destroyShaderModule(vk_device, frag_module, null);
+
+    var vk_attr_buf: [16]vk.VertexInputAttributeDescription = undefined;
+    var vk_binding_buf: [4]vk.VertexInputBindingDescription = undefined;
+    if (desc.vertex_buffers.len > vk_binding_buf.len) return error.TooManyVertexBuffers;
+    var attr_total: usize = 0;
+    for (desc.vertex_buffers, 0..) |vb, i| {
+        if (vb.attributes.len > vk_attr_buf.len - attr_total) return error.TooManyVertexAttributes;
+        vk_binding_buf[i] = .{
+            .binding = @intCast(i),
+            .stride = vb.stride,
+            .input_rate = switch (vb.step_mode) {
+                .vertex => .vertex,
+                .instance => .instance,
+            },
+        };
+        for (vb.attributes) |a| {
+            vk_attr_buf[attr_total] = .{
+                .location = a.location,
+                .binding = @intCast(i),
+                .offset = a.offset,
+                .format = toVkVertexFormat(a.format),
+            };
+            attr_total += 1;
+        }
+    }
+
+    const blend_attachment: vk.PipelineColorBlendAttachmentState = if (desc.color_target.blend) |b| .{
+        .blend_enable = .true,
+        .src_color_blend_factor = toVkBlendFactor(b.color.src_factor),
+        .dst_color_blend_factor = toVkBlendFactor(b.color.dst_factor),
+        .color_blend_op = toVkBlendOp(b.color.op),
+        .src_alpha_blend_factor = toVkBlendFactor(b.alpha.src_factor),
+        .dst_alpha_blend_factor = toVkBlendFactor(b.alpha.dst_factor),
+        .alpha_blend_op = toVkBlendOp(b.alpha.op),
+        .color_write_mask = .{ .r = true, .g = true, .b = true, .a = true },
+    } else .{
+        .blend_enable = .false,
+        .src_color_blend_factor = .one,
+        .dst_color_blend_factor = .zero,
+        .color_blend_op = .add,
+        .src_alpha_blend_factor = .one,
+        .dst_alpha_blend_factor = .zero,
+        .alpha_blend_op = .add,
+        .color_write_mask = .{ .r = true, .g = true, .b = true, .a = true },
+    };
+
+    var vs_entry_buf: [64]u8 = undefined;
+    var fs_entry_buf: [64]u8 = undefined;
+    if (spirv.vs_entry.len >= vs_entry_buf.len or spirv.fs_entry.len >= fs_entry_buf.len) {
+        return error.EntryPointNameTooLong;
+    }
+    @memcpy(vs_entry_buf[0..spirv.vs_entry.len], spirv.vs_entry);
+    vs_entry_buf[spirv.vs_entry.len] = 0;
+    @memcpy(fs_entry_buf[0..spirv.fs_entry.len], spirv.fs_entry);
+    fs_entry_buf[spirv.fs_entry.len] = 0;
+
+    const color_format = if (desc.color_target.format) |format| Texture.toVkFormat(format) else device.surface_format;
+    const rendering_info = vk.PipelineRenderingCreateInfo{
+        .view_mask = 0,
+        .color_attachment_count = 1,
+        .p_color_attachment_formats = &[_]vk.Format{color_format},
+        .depth_attachment_format = .undefined,
+        .stencil_attachment_format = .undefined,
+    };
+
+    var vk_pipeline: [1]vk.Pipeline = undefined;
+    _ = try vkd.createGraphicsPipelines(vk_device, device.pipeline_cache, &.{.{
+        .p_next = &rendering_info,
+        .stage_count = 2,
+        .p_stages = &[_]vk.PipelineShaderStageCreateInfo{
+            .{ .stage = .{ .vertex = true }, .module = vert_module, .p_name = @ptrCast(&vs_entry_buf) },
+            .{ .stage = .{ .fragment = true }, .module = frag_module, .p_name = @ptrCast(&fs_entry_buf) },
+        },
+        .p_vertex_input_state = &.{
+            .vertex_binding_description_count = @intCast(desc.vertex_buffers.len),
+            .p_vertex_binding_descriptions = vk_binding_buf[0..desc.vertex_buffers.len].ptr,
+            .vertex_attribute_description_count = @intCast(attr_total),
+            .p_vertex_attribute_descriptions = vk_attr_buf[0..attr_total].ptr,
+        },
+        .p_input_assembly_state = &.{ .topology = .triangle_list, .primitive_restart_enable = .false },
+        .p_viewport_state = &.{ .viewport_count = 1, .scissor_count = 1 },
+        .p_rasterization_state = &.{
+            .depth_clamp_enable = .false,
+            .rasterizer_discard_enable = .false,
+            .polygon_mode = .fill,
+            .cull_mode = switch (desc.primitive.cull_mode) {
+                .none => .{},
+                .back => .{ .back = true },
+            },
+            .front_face = switch (desc.primitive.front_face) {
+                .ccw => .counter_clockwise,
+                .cw => .clockwise,
+            },
+            .depth_bias_enable = .false,
+            .depth_bias_constant_factor = 0,
+            .depth_bias_clamp = 0,
+            .depth_bias_slope_factor = 0,
+            .line_width = 1.0,
+        },
+        .p_multisample_state = &.{
+            .rasterization_samples = .{ .@"1" = true },
+            .sample_shading_enable = .false,
+            .min_sample_shading = 1.0,
+            .alpha_to_coverage_enable = .false,
+            .alpha_to_one_enable = .false,
+        },
+        .p_depth_stencil_state = null,
+        .p_color_blend_state = &.{
+            .logic_op_enable = .false,
+            .logic_op = .copy,
+            .attachment_count = 1,
+            .p_attachments = &[_]vk.PipelineColorBlendAttachmentState{blend_attachment},
+            .blend_constants = .{ 0, 0, 0, 0 },
+        },
+        .p_dynamic_state = &.{
+            .dynamic_state_count = 2,
+            .p_dynamic_states = &[_]vk.DynamicState{ .viewport, .scissor },
+        },
+        .layout = pipeline_layout,
+        .render_pass = .null_handle,
+        .subpass = 0,
+        .base_pipeline_index = -1,
+    }}, null, vk_pipeline[0..1]);
+    device.setDebugName(.pipeline, @intFromEnum(vk_pipeline[0]), desc.label);
+
+    return .{
+        .allocator = allocator,
+        .pipeline = vk_pipeline[0],
+        .pipeline_layout = pipeline_layout,
+        .descriptor_set_layouts = dsls,
+        .vkd = vkd,
+        .device = vk_device,
+    };
+}
+
+pub fn deinit(self: *Pipeline) void {
+    self.vkd.destroyPipeline(self.device, self.pipeline, null);
+    self.vkd.destroyPipelineLayout(self.device, self.pipeline_layout, null);
+    for (self.descriptor_set_layouts) |dsl| self.vkd.destroyDescriptorSetLayout(self.device, dsl, null);
+    self.allocator.free(self.descriptor_set_layouts);
+}
+
+pub fn descriptorSetLayout(self: *const Pipeline, index: u32) vk.DescriptorSetLayout {
+    std.debug.assert(@as(usize, index) < self.descriptor_set_layouts.len);
+    return self.descriptor_set_layouts[index];
+}
+
+fn toVkDescriptorType(t: CommonPipeline.BindingType) vk.DescriptorType {
+    return switch (t) {
+        .uniform_buffer => .uniform_buffer,
+        .read_only_storage_buffer => .storage_buffer,
+        .sampled_texture => .sampled_image,
+        .sampler => .sampler,
+    };
+}
+
+fn toVkVertexFormat(f: CommonPipeline.VertexFormat) vk.Format {
+    return switch (f) {
+        .f32 => .r32_sfloat,
+        .f32x2 => .r32g32_sfloat,
+        .f32x3 => .r32g32b32_sfloat,
+        .f32x4 => .r32g32b32a32_sfloat,
+    };
+}
+
+fn toVkBlendFactor(f: CommonPipeline.BlendFactor) vk.BlendFactor {
+    return switch (f) {
+        .zero => .zero,
+        .one => .one,
+        .src_alpha => .src_alpha,
+        .one_minus_src_alpha => .one_minus_src_alpha,
+    };
+}
+
+fn toVkBlendOp(o: CommonPipeline.BlendOp) vk.BlendOp {
+    return switch (o) {
+        .add => .add,
+    };
+}

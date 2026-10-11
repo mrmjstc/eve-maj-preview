@@ -1,0 +1,253 @@
+//! Text-to-speech alerts through SAPI's SpVoice on a worker thread.
+const std = @import("std");
+const worker = @import("worker.zig");
+const log = @import("../log.zig");
+
+const windows = std.os.windows;
+const slog = log.Scoped("tts");
+
+const IID_IDispatch = windows.GUID{
+    .Data1 = 0x00020400,
+    .Data2 = 0x0000,
+    .Data3 = 0x0000,
+    .Data4 = [8]u8{ 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46 },
+};
+
+const IID_NULL = windows.GUID{
+    .Data1 = 0,
+    .Data2 = 0,
+    .Data3 = 0,
+    .Data4 = [8]u8{ 0, 0, 0, 0, 0, 0, 0, 0 },
+};
+
+/// CoInitializeEx's "already initialized on this thread", which is fine.
+const S_FALSE: c_long = 0x1;
+const COINIT_APARTMENTTHREADED: u32 = 0x2;
+const COINIT_DISABLE_OLE1DDE: u32 = 0x4;
+const CLSCTX_INPROC_SERVER: u32 = 0x1;
+// Not the real LOCALE_USER_DEFAULT (0x0400); SpVoice's member names aren't localized so any valid LCID works, and en-US is a safe choice.
+const LCID_EN_US: u32 = 0x0409;
+
+const DISPATCH_METHOD: u16 = 0x1;
+const DISPATCH_PROPERTYGET: u16 = 0x2;
+const DISPATCH_PROPERTYPUT: u16 = 0x4;
+const DISPID_PROPERTYPUT: i32 = -3;
+
+const VT_I4: u16 = 3;
+const VT_BSTR: u16 = 8;
+
+extern "ole32" fn CoInitializeEx(pvReserved: ?*anyopaque, dwCoInit: u32) callconv(.c) c_long;
+extern "ole32" fn CoUninitialize() callconv(.c) void;
+extern "ole32" fn CoCreateInstance(
+    rclsid: *const windows.GUID,
+    pUnkOuter: ?*anyopaque,
+    dwClsContext: u32,
+    riid: *const windows.GUID,
+    ppv: *?*anyopaque,
+) callconv(.c) c_long;
+extern "ole32" fn CLSIDFromProgID(lpszProgID: [*:0]const u16, lpclsid: *windows.GUID) callconv(.c) c_long;
+
+extern "oleaut32" fn SysAllocString(psz: [*:0]const u16) callconv(.c) ?[*:0]u16;
+extern "oleaut32" fn SysFreeString(bstr: ?[*:0]u16) callconv(.c) void;
+
+const VARIANT = extern struct {
+    vt: u16 = 0,
+    reserved1: u16 = 0,
+    reserved2: u16 = 0,
+    reserved3: u16 = 0,
+    payload: u64 = 0,
+
+    fn fromI32(value: i32) VARIANT {
+        return .{ .vt = VT_I4, .payload = @as(u64, @bitCast(@as(i64, value))) };
+    }
+
+    fn fromBstr(bstr: [*:0]u16) VARIANT {
+        return .{ .vt = VT_BSTR, .payload = @intFromPtr(bstr) };
+    }
+};
+
+const DISPPARAMS = extern struct {
+    rgvarg: ?[*]VARIANT,
+    rgdispidNamedArgs: ?[*]i32,
+    cArgs: u32,
+    cNamedArgs: u32,
+};
+
+/// Driven via late-bound Invoke rather than a hand-rolled ISpVoice vtable, since IDispatch's layout is fixed while SAPI's real vtable order is easy to mis-transcribe.
+const IDispatch = extern struct {
+    vtable: *const IDispatchVtbl,
+
+    const IDispatchVtbl = extern struct {
+        QueryInterface: *const fn (*IDispatch, *const windows.GUID, *?*anyopaque) callconv(.c) c_long,
+        AddRef: *const fn (*IDispatch) callconv(.c) u32,
+        Release: *const fn (*IDispatch) callconv(.c) u32,
+        GetTypeInfoCount: *const fn (*IDispatch, *u32) callconv(.c) c_long,
+        GetTypeInfo: *const fn (*IDispatch, u32, u32, *?*anyopaque) callconv(.c) c_long,
+        GetIDsOfNames: *const fn (*IDispatch, *const windows.GUID, [*]const [*:0]const u16, u32, u32, [*]i32) callconv(.c) c_long,
+        Invoke: *const fn (*IDispatch, i32, *const windows.GUID, u32, u16, *DISPPARAMS, ?*VARIANT, ?*anyopaque, ?*u32) callconv(.c) c_long,
+    };
+
+    fn release(self: *IDispatch) void {
+        _ = self.vtable.Release(self);
+    }
+
+    fn getDispId(self: *IDispatch, name: [*:0]const u16) !i32 {
+        var names = [_][*:0]const u16{name};
+        var dispids = [_]i32{0};
+        const hr = self.vtable.GetIDsOfNames(self, &IID_NULL, &names, 1, LCID_EN_US, &dispids);
+        if (hr < 0) return error.GetIDsOfNamesFailed;
+        return dispids[0];
+    }
+
+    fn invokeMethod(self: *IDispatch, dispid: i32, args: []VARIANT) !void {
+        var params = DISPPARAMS{
+            .rgvarg = args.ptr,
+            .rgdispidNamedArgs = null,
+            .cArgs = @intCast(args.len),
+            .cNamedArgs = 0,
+        };
+        // SAPI's SpVoice rejects a bare DISPATCH_METHOD flag; combine with DISPATCH_PROPERTYGET so Invoke can disambiguate a method call from an array-element get.
+        const hr = self.vtable.Invoke(self, dispid, &IID_NULL, LCID_EN_US, DISPATCH_METHOD | DISPATCH_PROPERTYGET, &params, null, null, null);
+        if (hr < 0) return error.InvokeFailed;
+    }
+
+    fn invokePropertyPut(self: *IDispatch, dispid: i32, value: i32) !void {
+        var args = [_]VARIANT{VARIANT.fromI32(value)};
+        var named_args = [_]i32{DISPID_PROPERTYPUT};
+        var params = DISPPARAMS{
+            .rgvarg = &args,
+            .rgdispidNamedArgs = &named_args,
+            .cArgs = 1,
+            .cNamedArgs = 1,
+        };
+        const hr = self.vtable.Invoke(self, dispid, &IID_NULL, LCID_EN_US, DISPATCH_PROPERTYPUT, &params, null, null, null);
+        if (hr < 0) return error.InvokeFailed;
+    }
+};
+
+/// COM objects are apartment-affine, so every method here (not just speak) must run on the same STA thread that created dispatch.
+const TtsEngine = struct {
+    dispatch: *IDispatch,
+    speak_dispid: i32,
+    rate_dispid: i32,
+    volume_dispid: i32,
+
+    pub fn init() !TtsEngine {
+        const hr_init = CoInitializeEx(null, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+        if (hr_init < 0 and hr_init != S_FALSE) {
+            return error.ComInitFailed;
+        }
+        errdefer CoUninitialize();
+
+        var clsid: windows.GUID = undefined;
+        const progid = std.unicode.utf8ToUtf16LeStringLiteral("SAPI.SpVoice");
+        if (CLSIDFromProgID(progid, &clsid) < 0) {
+            return error.ResolveSapiFailed;
+        }
+
+        var dispatch_ptr: ?*anyopaque = null;
+        const create_hr = CoCreateInstance(&clsid, null, CLSCTX_INPROC_SERVER, &IID_IDispatch, &dispatch_ptr);
+        if (create_hr < 0 or dispatch_ptr == null) {
+            return error.CreateSpVoiceFailed;
+        }
+
+        const dispatch: *IDispatch = @ptrCast(@alignCast(dispatch_ptr.?));
+        errdefer dispatch.release();
+
+        const speak_dispid = try dispatch.getDispId(std.unicode.utf8ToUtf16LeStringLiteral("Speak"));
+        const rate_dispid = try dispatch.getDispId(std.unicode.utf8ToUtf16LeStringLiteral("Rate"));
+        const volume_dispid = try dispatch.getDispId(std.unicode.utf8ToUtf16LeStringLiteral("Volume"));
+
+        return .{
+            .dispatch = dispatch,
+            .speak_dispid = speak_dispid,
+            .rate_dispid = rate_dispid,
+            .volume_dispid = volume_dispid,
+        };
+    }
+
+    fn setVolume(self: *const TtsEngine, volume_percent: u8) void {
+        self.dispatch.invokePropertyPut(self.volume_dispid, @intCast(volume_percent)) catch |err| {
+            slog.warn("Failed to set TTS volume: {}", .{err});
+        };
+    }
+
+    fn setRate(self: *const TtsEngine, rate: i8) void {
+        self.dispatch.invokePropertyPut(self.rate_dispid, @intCast(rate)) catch |err| {
+            slog.warn("Failed to set TTS rate: {}", .{err});
+        };
+    }
+
+    /// Blocks until finished: SpVoice's Invoke only accepts the Text-only call, not one with Flags, so this must never run on the main thread.
+    fn speak(self: *const TtsEngine, text: []const u8) void {
+        const text_w = std.unicode.utf8ToUtf16LeAllocZ(std.heap.page_allocator, text) catch |err| {
+            slog.warn("Failed to convert TTS text to UTF-16: {}", .{err});
+            return;
+        };
+        defer std.heap.page_allocator.free(text_w);
+
+        const bstr = SysAllocString(text_w) orelse {
+            slog.warn("Failed to allocate a BSTR for TTS text", .{});
+            return;
+        };
+        defer SysFreeString(bstr);
+
+        var args = [_]VARIANT{VARIANT.fromBstr(bstr)};
+        self.dispatch.invokeMethod(self.speak_dispid, &args) catch |err| {
+            slog.warn("Failed to speak TTS alert: {}", .{err});
+        };
+    }
+
+    pub fn run(self: *TtsEngine, command: Command) void {
+        switch (command) {
+            .speak => |text| self.speak(text),
+            .set_volume_percent => |volume_percent| self.setVolume(volume_percent),
+            .set_rate => |rate| self.setRate(rate),
+        }
+    }
+
+    pub fn deinit(self: *TtsEngine) void {
+        self.dispatch.release();
+        CoUninitialize();
+    }
+};
+
+const Command = union(enum) {
+    /// Owned by page_allocator.
+    speak: []const u8,
+    set_volume_percent: u8,
+    set_rate: i8,
+
+    pub fn deinit(self: Command) void {
+        if (self == .speak) std.heap.page_allocator.free(self.speak);
+    }
+};
+
+var g_worker: worker.Worker(Command, TtsEngine, "tts", "text-to-speech") = .{};
+
+/// Must be called once before any TTS function is used.
+pub fn setIo(io: std.Io) void {
+    g_worker.io = io;
+}
+
+/// Safe before TTS has started; does nothing if it can't start.
+pub fn setVoiceSettings(volume_percent: u8, rate: i8) void {
+    if (!g_worker.start()) return;
+    g_worker.push(.{ .set_volume_percent = volume_percent });
+    g_worker.push(.{ .set_rate = rate });
+}
+
+/// Returns at once; alerts are spoken in order, and not at all if SAPI is unavailable.
+pub fn speakAlert(text: []const u8) void {
+    if (!g_worker.start()) return;
+    const copy = std.heap.page_allocator.dupe(u8, text) catch |err| {
+        slog.warn("Failed to queue TTS alert: {}", .{err});
+        return;
+    };
+    g_worker.push(.{ .speak = copy });
+}
+
+/// Call once during app shutdown.
+pub fn shutdown() void {
+    g_worker.shutdown();
+}

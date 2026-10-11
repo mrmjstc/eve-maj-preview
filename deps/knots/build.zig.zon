@@ -1,0 +1,57 @@
+.{
+    .name = .knots,
+    .version = "0.3.0",
+    .minimum_zig_version = "0.17.0",
+    .dependencies = .{
+        .pack = .{
+            .url = "git+https://codeberg.org/shahwali/pack.git#5a97dd502b525bec9efc7a9add1847b3ebfb164c",
+            .hash = "pack-0.0.2-gq153kgtAAA6u9mi4oXfGC9kFf3pw3s_ttxRWjHW0TaM",
+        },
+        .celer = .{
+            .url = "git+https://codeberg.org/shahwali/celer.git#709c6b43eb3951b5b52bd0063e7f53d81dcad898",
+            .hash = "celer-0.0.2-qPUU5MNRAADkwaZT2ybwnvJnKON3FsGHistDLq7I4VDh",
+        },
+        .wgpu = .{
+            .url = "git+https://codeberg.org/shahwali/wgpu-zig.git#e06246ab84b83bfd3348fefd7d424236b40d2429",
+            .hash = "wgpu-0.0.4-Z1CB1huNAQBfdBXaeUJFc2-LgHPf_lgvwUn-zpwxbDXC",
+        },
+        .vulkan = .{
+            .url = "git+https://github.com/Snektron/vulkan-zig.git#f9688c6f4ebcb930f67044698ddd1322442e714b",
+            .hash = "vulkan-0.0.0-r7Ytx4yGAwDZf0XsT6_L1ol_XUAkyOgOyBqamf8begA0",
+        },
+        .vulkan_headers = .{
+            .url = "git+https://github.com/KhronosGroup/Vulkan-Headers#ee2ec5fd83dafce291024683b50dc89219333076",
+            .hash = "N-V-__8AAHhDhwIquH2tnZwoD6C1Lje5OG4Uvm0CHdU-VGy1",
+        },
+        .zig_objc = .{
+            .url = "git+https://github.com/loftafi/zig-objc.git#3352c12a868f8787ab71bf2ca6eab9fcfb635c52",
+            .hash = "zig_objc-0.0.0-Ir_Sp_4tAQDXtPi51nW_jD9LOEzBvU9lofwO9Pzi6IB4",
+        },
+        .win32 = .{
+            .url = "git+https://github.com/marlersoft/zigwin32.git#ec98bb4d9eea532320a8551720a9e3ec6de64994",
+            .hash = "win32-25.0.28-preview-mX5pFWMt5QPTVIGh3r2-OpPunpcCCjApyRbA6Zn6WALH",
+        },
+        .TrueType = .{
+            .url = "git+https://codeberg.org/andrewrk/TrueType.git#c90d976877f1dbd4014f6fa4da30139f41df366b",
+            .hash = "TrueType-1.0.0-Ne-mWFx1AQAk8u43nEzx-W3oPUGaXnuLNFa2jTStHFjj",
+        },
+        .wayland = .{
+            .url = "git+https://codeberg.org/ifreund/zig-wayland?ref=next-zig#5c01e66af4bd2b3672250c31f1a8036a720eb078",
+            .hash = "wayland-0.7.0-dev-lQa1krf8AQDEncPPkLgIo8fq4kXqSRsGdG1haA2hPj_w",
+        },
+        .js_bridge = .{ .path = "lib/js-bridge" },
+        .accesskit = .{ .path = "lib/accesskit", .lazy = true },
+        .wasmtime = .{ .path = "lib/wasmtime", .lazy = true },
+        .watch = .{ .path = "lib/watch" },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "HMR.zig",
+        "web_build.zig",
+        "src",
+        "lib",
+        "tests",
+    },
+    .fingerprint = 0x32ed2118ddf54283,
+}

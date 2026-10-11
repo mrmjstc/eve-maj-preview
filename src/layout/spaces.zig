@@ -1,0 +1,358 @@
+//! Which thumbnail space each character's thumbnail belongs to, and its cell within that space; no I/O.
+const std = @import("std");
+const win32 = @import("../platform/win32.zig");
+const config_mod = @import("../config.zig");
+const scout = @import("../clients/scout.zig");
+const strings = @import("../util/strings.zig");
+
+const Config = config_mod.Config;
+const ThumbnailSpace = config_mod.ThumbnailSpace;
+
+/// Spaces past this are ignored, so per-space state fits in fixed arrays.
+pub const MAX_SPACES = 32;
+
+/// How many thumbnails each space holds, indexed like thumbnailSpaces.
+pub const SpaceCounts = [MAX_SPACES]usize;
+
+/// Each thumbnail's space and cell for one layout pass.
+pub const Assignment = struct {
+    /// Per name: index into thumbnailSpaces, or null when it's placed by hand or its thumbnail is hidden. Owned; freed in deinit.
+    space_indices: []?usize,
+    /// Per name: its cell within its space; unused when placed by hand. Owned; freed in deinit.
+    rank: []usize,
+    counts: SpaceCounts = @splat(0),
+
+    pub fn deinit(self: *Assignment, allocator: std.mem.Allocator) void {
+        allocator.free(self.space_indices);
+        allocator.free(self.rank);
+    }
+};
+
+const RankContext = struct {
+    config: *const Config,
+    space: *const ThumbnailSpace,
+    names: []const []const u8,
+    order_map: *const std.StringHashMap(usize),
+
+    /// The space's own characters, then unassigned ones it took, then login-screen clients it took.
+    fn tier(self: RankContext, name: []const u8) u2 {
+        const space = self.space;
+        if (scout.isGenericCharacterName(name)) return if (space.holdsLoginScreen) 0 else 2;
+        return if (space.holdsUnassigned or holdsGroupOf(self.config, space, name)) 0 else 1;
+    }
+
+    fn lessThan(self: RankContext, a_index: usize, b_index: usize) bool {
+        const a_name = self.names[a_index];
+        const b_name = self.names[b_index];
+        const a_tier = self.tier(a_name);
+        const b_tier = self.tier(b_name);
+        if (a_tier != b_tier) return a_tier < b_tier;
+        return config_mod.orderMapLessThan(self.order_map, a_name, b_name, a_index, b_index);
+    }
+};
+
+pub fn rect(space: *const ThumbnailSpace) ?win32.RECT {
+    const x = space.x orelse return null;
+    const y = space.y orelse return null;
+    const width = space.width orelse return null;
+    const height = space.height orelse return null;
+    return .{ .left = x, .top = y, .right = x + width, .bottom = y + height };
+}
+
+/// The rectangle of a space that places thumbnails: enabled, with its region drawn.
+pub fn activeRect(space: *const ThumbnailSpace) ?win32.RECT {
+    if (!space.enabled) return null;
+    return rect(space);
+}
+
+pub fn isActive(space: *const ThumbnailSpace) bool {
+    return activeRect(space) != null;
+}
+
+/// The spaces layout considers, in list order; none in Manual placement mode.
+pub fn listed(config: *const Config) []const ThumbnailSpace {
+    switch (config.display.placementMode) {
+        .Manual => return &.{},
+        .ThumbnailSpaces => {},
+    }
+    const items = config.thumbnailSpaces.items;
+    return items[0..@min(items.len, MAX_SPACES)];
+}
+
+pub fn anyActive(config: *const Config) bool {
+    for (listed(config)) |*space| {
+        if (isActive(space)) return true;
+    }
+    return false;
+}
+
+/// The Login Screen space if active, else the first active space taking login screens; null when placed by hand.
+pub fn loginScreenSpaceIn(items: []const ThumbnailSpace) ?usize {
+    return firstActiveWith(items, "holdsLoginScreen") orelse firstActiveWith(items, "takesLoginScreen");
+}
+
+/// The Unassigned Characters space if active, else the first active space taking unheld characters; null when placed by hand.
+pub fn unassignedSpaceIn(items: []const ThumbnailSpace) ?usize {
+    return firstActiveWith(items, "holdsUnassigned") orelse firstActiveWith(items, "takesUnassigned");
+}
+
+/// The first active space holding one of this character's hotkey groups, else where unassigned characters go; null when it's placed by hand or its thumbnail is hidden.
+pub fn spaceFor(config: *const Config, character_name: []const u8) ?usize {
+    // A hidden thumbnail takes no cell, so its space closes up around it rather than leaving a gap.
+    if (config.isThumbnailHidden(character_name)) return null;
+    const items = listed(config);
+    if (scout.isGenericCharacterName(character_name)) return loginScreenSpaceIn(items);
+    for (items, 0..) |*space, i| {
+        if (isActive(space) and holdsGroupOf(config, space, character_name)) return i;
+    }
+    return unassignedSpaceIn(items);
+}
+
+/// The first active space holding hotkey group `group_name`; a space later in the list that also holds it doesn't get its characters.
+pub fn groupSpaceIn(items: []const ThumbnailSpace, group_name: []const u8) ?usize {
+    for (items, 0..) |*space, i| {
+        if (isActive(space) and space.groupIndex(group_name) != null) return i;
+    }
+    return null;
+}
+
+/// Caller frees with Assignment.deinit.
+pub fn assign(allocator: std.mem.Allocator, config: *const Config, names: []const []const u8) !Assignment {
+    const space_indices = try allocator.alloc(?usize, names.len);
+    errdefer allocator.free(space_indices);
+    const rank = try allocator.alloc(usize, names.len);
+    errdefer allocator.free(rank);
+    @memset(rank, 0);
+
+    var assignment: Assignment = .{ .space_indices = space_indices, .rank = rank };
+    for (names, space_indices) |name, *assigned_space| {
+        assigned_space.* = spaceFor(config, name);
+        if (assigned_space.*) |space_index| assignment.counts[space_index] += 1;
+    }
+
+    const members = try allocator.alloc(usize, names.len);
+    defer allocator.free(members);
+    for (listed(config), 0..) |*space, space_index| {
+        if (assignment.counts[space_index] == 0) continue;
+        var member_count: usize = 0;
+        for (space_indices, 0..) |assigned_space, i| {
+            if ((assigned_space orelse continue) != space_index) continue;
+            members[member_count] = i;
+            member_count += 1;
+        }
+        var order_map = try orderMap(allocator, config, space);
+        defer order_map.deinit();
+        const context: RankContext = .{ .config = config, .space = space, .names = names, .order_map = &order_map };
+        std.sort.pdq(usize, members[0..member_count], context, RankContext.lessThan);
+        for (members[0..member_count], 0..) |name_index, cell_index| rank[name_index] = cell_index;
+    }
+    return assignment;
+}
+
+fn firstActiveWith(items: []const ThumbnailSpace, comptime flag_name: []const u8) ?usize {
+    for (items, 0..) |*space, i| {
+        if (isActive(space) and @field(space, flag_name)) return i;
+    }
+    return null;
+}
+
+/// Whether one of this space's hotkey groups lists the character.
+fn holdsGroupOf(config: *const Config, space: *const ThumbnailSpace, character_name: []const u8) bool {
+    for (config.hotkeyGroups.items) |group| {
+        if (space.groupIndex(group.name) == null) continue;
+        if (strings.indexOfString(group.characters.items, character_name) != null) return true;
+    }
+    return false;
+}
+
+/// The space's own groups rank ahead of the rest under HotkeyGroups, so its members fill in that group order.
+fn orderMap(allocator: std.mem.Allocator, config: *const Config, space: *const ThumbnailSpace) !std.StringHashMap(usize) {
+    switch (space.order) {
+        .Characters => return config_mod.buildCharacterOrderMap(config.characters.items, allocator),
+        .HotkeyGroups => {
+            var map: std.StringHashMap(usize) = .init(allocator);
+            errdefer map.deinit();
+            var next: usize = 0;
+            for ([_]bool{ true, false }) |wants_own_groups| {
+                for (config.hotkeyGroups.items) |group| {
+                    if ((space.groupIndex(group.name) != null) != wants_own_groups) continue;
+                    for (group.characters.items) |name| {
+                        const entry = try map.getOrPut(name);
+                        if (entry.found_existing) continue;
+                        entry.value_ptr.* = next;
+                        next += 1;
+                    }
+                }
+            }
+            return map;
+        },
+    }
+}
+
+const testing = std.testing;
+
+const LOGIN_SCREEN = "EVE";
+
+fn testConfig(groups: []config_mod.HotkeyGroupConfig, spaces: []ThumbnailSpace) Config {
+    return .{ .allocator = testing.allocator, .profile_name = "", .display = .{ .placementMode = .ThumbnailSpaces }, .hotkeyGroups = .fromOwnedSlice(groups), .thumbnailSpaces = .fromOwnedSlice(spaces) };
+}
+
+fn testSpace(name: []const u8, groups: []const []const u8) ThumbnailSpace {
+    return .{ .name = name, .groups = .fromOwnedSlice(@constCast(groups)), .x = 0, .y = 0, .width = 800, .height = 600 };
+}
+
+fn testGroup(name: []const u8, characters: []const []const u8) config_mod.HotkeyGroupConfig {
+    return .{ .name = name, .characters = .fromOwnedSlice(@constCast(characters)) };
+}
+
+test "a character goes to the space holding its group, the rest to the space taking unassigned characters" {
+    var groups = [_]config_mod.HotkeyGroupConfig{testGroup("Miners", &.{ "Miner A", "Miner B" })};
+    var spaces = [_]ThumbnailSpace{ testSpace("Mining", &.{"Miners"}), testSpace("Everyone", &.{}) };
+    spaces[1].takesUnassigned = true;
+    const config = testConfig(&groups, &spaces);
+
+    try testing.expectEqual(@as(?usize, 0), spaceFor(&config, "Miner B"));
+    try testing.expectEqual(@as(?usize, 1), spaceFor(&config, "Hauler"));
+    try testing.expectEqual(@as(?usize, null), spaceFor(&config, LOGIN_SCREEN));
+}
+
+test "login-screen clients go to the first active space taking them" {
+    var spaces = [_]ThumbnailSpace{ testSpace("Off", &.{}), testSpace("Fleet", &.{}), testSpace("Mining", &.{}) };
+    spaces[0].takesLoginScreen = true;
+    spaces[0].enabled = false;
+    spaces[1].takesLoginScreen = true;
+    spaces[2].takesLoginScreen = true;
+    const config = testConfig(&.{}, &spaces);
+
+    try testing.expectEqual(@as(?usize, 1), spaceFor(&config, LOGIN_SCREEN));
+    try testing.expectEqual(@as(?usize, null), spaceFor(&config, "Pilot"));
+}
+
+test "an active Unassigned Characters space wins over spaces taking unassigned characters" {
+    var spaces = [_]ThumbnailSpace{ testSpace("Fleet", &.{}), testSpace("Unassigned Characters", &.{}) };
+    spaces[0].takesUnassigned = true;
+    spaces[1].holdsUnassigned = true;
+    const config = testConfig(&.{}, &spaces);
+
+    try testing.expectEqual(@as(?usize, 1), spaceFor(&config, "Pilot"));
+    spaces[1].enabled = false;
+    try testing.expectEqual(@as(?usize, 0), spaceFor(&config, "Pilot"));
+}
+
+test "in Manual placement mode every character is placed by hand" {
+    var groups = [_]config_mod.HotkeyGroupConfig{testGroup("Miners", &.{"Miner A"})};
+    var spaces = [_]ThumbnailSpace{testSpace("Mining", &.{"Miners"})};
+    spaces[0].takesUnassigned = true;
+    var config = testConfig(&groups, &spaces);
+    config.display.placementMode = .Manual;
+
+    try testing.expectEqual(@as(?usize, null), spaceFor(&config, "Miner A"));
+    try testing.expectEqual(@as(?usize, null), spaceFor(&config, "Hauler"));
+    try testing.expect(!anyActive(&config));
+}
+
+test "with no space taking unassigned characters they're placed by hand" {
+    var groups = [_]config_mod.HotkeyGroupConfig{testGroup("Miners", &.{"Miner A"})};
+    var spaces = [_]ThumbnailSpace{testSpace("Mining", &.{"Miners"})};
+    const config = testConfig(&groups, &spaces);
+
+    try testing.expectEqual(@as(?usize, null), spaceFor(&config, "Hauler"));
+    try testing.expectEqual(@as(?usize, null), spaceFor(&config, LOGIN_SCREEN));
+}
+
+test "a character in two spaces' groups goes to the first space in the list" {
+    var groups = [_]config_mod.HotkeyGroupConfig{ testGroup("Miners", &.{ "Pilot", "Miner" }), testGroup("Scouts", &.{"Pilot"}) };
+    var spaces = [_]ThumbnailSpace{ testSpace("Scouting", &.{"Scouts"}), testSpace("Mining", &.{"Miners"}) };
+    const config = testConfig(&groups, &spaces);
+
+    try testing.expectEqual(@as(?usize, 0), spaceFor(&config, "Pilot"));
+    try testing.expectEqual(@as(?usize, 1), spaceFor(&config, "Miner"));
+}
+
+test "a group goes to the first active space holding it" {
+    var spaces = [_]ThumbnailSpace{ testSpace("Off", &.{"Miners"}), testSpace("Mining", &.{"Miners"}), testSpace("More Mining", &.{"Miners"}) };
+    spaces[0].enabled = false;
+
+    try testing.expectEqual(@as(?usize, 1), groupSpaceIn(&spaces, "Miners"));
+    try testing.expectEqual(@as(?usize, null), groupSpaceIn(&spaces, "Scouts"));
+}
+
+test "a disabled space or one with no region is skipped" {
+    var groups = [_]config_mod.HotkeyGroupConfig{testGroup("Miners", &.{"Miner"})};
+    var spaces = [_]ThumbnailSpace{ testSpace("Off", &.{"Miners"}), testSpace("No region", &.{"Miners"}) };
+    spaces[0].enabled = false;
+    spaces[1].width = null;
+    const config = testConfig(&groups, &spaces);
+
+    try testing.expectEqual(@as(?usize, null), spaceFor(&config, "Miner"));
+    try testing.expect(!anyActive(&config));
+}
+
+test "login-screen clients go to the Login Screen space ahead of a space taking them" {
+    var spaces = [_]ThumbnailSpace{ testSpace("Everyone", &.{}), testSpace("Login Screen", &.{}) };
+    spaces[0].takesUnassigned = true;
+    spaces[0].takesLoginScreen = true;
+    spaces[1].holdsLoginScreen = true;
+    const config = testConfig(&.{}, &spaces);
+
+    try testing.expectEqual(@as(?usize, 1), spaceFor(&config, LOGIN_SCREEN));
+    try testing.expectEqual(@as(?usize, 0), spaceFor(&config, "Pilot"));
+}
+
+test "a space fills with its own characters, then unassigned ones, then login-screen clients" {
+    var groups = [_]config_mod.HotkeyGroupConfig{testGroup("Miners", &.{"Miner"})};
+    var spaces = [_]ThumbnailSpace{testSpace("Mining", &.{"Miners"})};
+    spaces[0].takesUnassigned = true;
+    spaces[0].takesLoginScreen = true;
+    const config = testConfig(&groups, &spaces);
+
+    var assignment = try assign(testing.allocator, &config, &.{ LOGIN_SCREEN, "Hauler", "Miner" });
+    defer assignment.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 3), assignment.counts[0]);
+    try testing.expectEqualSlices(usize, &.{ 2, 1, 0 }, assignment.rank);
+}
+
+test "a character whose thumbnail is hidden takes no cell in its space" {
+    var characters = [_]config_mod.CharacterConfig{ .{ .name = "First" }, .{ .name = "Hidden", .hideThumbnail = true }, .{ .name = "Last" } };
+    var spaces = [_]ThumbnailSpace{testSpace("Everyone", &.{})};
+    spaces[0].takesUnassigned = true;
+    var config = testConfig(&.{}, &spaces);
+    config.characters = .fromOwnedSlice(&characters);
+
+    var assignment = try assign(testing.allocator, &config, &.{ "First", "Hidden", "Last" });
+    defer assignment.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 2), assignment.counts[0]);
+    try testing.expectEqual(@as(?usize, null), assignment.space_indices[1]);
+    try testing.expectEqual(@as(usize, 0), assignment.rank[0]);
+    try testing.expectEqual(@as(usize, 1), assignment.rank[2]);
+}
+
+test "hotkey group order fills by the space's own groups in hotkey group list order" {
+    var groups = [_]config_mod.HotkeyGroupConfig{ testGroup("Other", &.{"Third"}), testGroup("A", &.{"First"}), testGroup("B", &.{ "Second", "Third" }) };
+    var spaces = [_]ThumbnailSpace{testSpace("Fleet", &.{ "B", "A" })};
+    spaces[0].order = .HotkeyGroups;
+    const config = testConfig(&groups, &spaces);
+
+    var assignment = try assign(testing.allocator, &config, &.{ "Third", "Second", "First" });
+    defer assignment.deinit(testing.allocator);
+    try testing.expectEqualSlices(usize, &.{ 2, 1, 0 }, assignment.rank);
+}
+
+test "character order fills by the Characters list" {
+    var characters = [_]config_mod.CharacterConfig{ .{ .name = "Beta" }, .{ .name = "Alpha" } };
+    var spaces = [_]ThumbnailSpace{testSpace("Everyone", &.{})};
+    spaces[0].takesUnassigned = true;
+    var config = testConfig(&.{}, &spaces);
+    config.characters = .fromOwnedSlice(&characters);
+
+    var assignment = try assign(testing.allocator, &config, &.{ "Alpha", "Beta" });
+    defer assignment.deinit(testing.allocator);
+    try testing.expectEqualSlices(usize, &.{ 1, 0 }, assignment.rank);
+}
+
+test "a character no space takes is left unassigned" {
+    const config = testConfig(&.{}, &.{});
+    var assignment = try assign(testing.allocator, &config, &.{"Pilot"});
+    defer assignment.deinit(testing.allocator);
+    try testing.expectEqual(@as(?usize, null), assignment.space_indices[0]);
+}

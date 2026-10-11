@@ -1,0 +1,379 @@
+//! Profile files on disk: where they live, loading with fallbacks, saving, creating defaults, and the backups kept when one is deleted or unreadable.
+const std = @import("std");
+const files = @import("files.zig");
+const config_mod = @import("../config.zig");
+const log = @import("../log.zig");
+
+const Config = config_mod.Config;
+const slog = log.Scoped("config");
+
+/// A profile's display name, without ".json"; longer names from older versions still load.
+pub const MAX_NAME_LENGTH: usize = 16;
+const BACKUP_DIR = "backup";
+
+/// `name` borrows from the file name; null `saved_at_seconds` for a backup named any other way.
+pub const BackupName = struct { name: []const u8, saved_at_seconds: ?u64 };
+
+/// Caller owns the returned slice.
+pub fn path(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
+    return std.Io.Dir.path.join(allocator, &[_][]const u8{ files.PROFILES_DIR, name });
+}
+
+/// Only a plain `<name>.json` file name, so a name from the dialog can't reach outside PROFILES_DIR.
+pub fn validateName(name: []const u8) !void {
+    if (!std.mem.endsWith(u8, name, ".json")) return error.InvalidProfileName;
+    const stem = name[0 .. name.len - ".json".len];
+    if (stem.len == 0 or stem[0] == '.') return error.InvalidProfileName;
+    if (std.mem.findAny(u8, stem, "/\\:*?\"<>|") != null) return error.InvalidProfileName;
+    if (std.mem.eql(u8, name, std.Io.Dir.path.basename(files.GLOBAL_SETTINGS_FILE))) return error.InvalidProfileName;
+}
+
+/// "<name>.json" for a display name typed by the user, which may only hold letters, digits, spaces, '-' and '_'; caller owns the result.
+pub fn fileNameFor(allocator: std.mem.Allocator, display_name: []const u8) ![]u8 {
+    if (display_name.len == 0 or display_name.len > MAX_NAME_LENGTH) return error.InvalidProfileName;
+    for (display_name) |c| {
+        if (!std.ascii.isAlphanumeric(c) and c != ' ' and c != '-' and c != '_') return error.InvalidProfileName;
+    }
+    const name = try allocator.print("{s}.json", .{display_name});
+    errdefer allocator.free(name);
+    try validateName(name);
+    return name;
+}
+
+/// A new default profile; fails with ProfileAlreadyExists rather than overwriting one.
+pub fn create(allocator: std.mem.Allocator, name: []const u8, accent_color: ?u32) !void {
+    try validateName(name);
+    const profile_path = try path(allocator, name);
+    defer allocator.free(profile_path);
+    // Claims the name first, so two creates of the same name can't both succeed.
+    const file = std.Io.Dir.cwd().createFile(files.g_io, profile_path, .{ .exclusive = true }) catch |err| switch (err) {
+        error.PathAlreadyExists => return error.ProfileAlreadyExists,
+        else => return err,
+    };
+    file.close(files.g_io);
+    try writeDefault(allocator, name, accent_color);
+}
+
+/// Copies `source` to a new profile `target`, optionally with its own accent colour; never overwrites.
+pub fn copy(allocator: std.mem.Allocator, source: []const u8, target: []const u8, accent_color: ?u32) !void {
+    try validateName(source);
+    const source_path = try path(allocator, source);
+    defer allocator.free(source_path);
+    try copyFrom(allocator, source_path, target, accent_color);
+}
+
+/// Restores a file from PROFILES_DIR/backup (see deleteToBackup) as the new profile `target`.
+pub fn restoreBackup(allocator: std.mem.Allocator, backup: []const u8, target: []const u8, accent_color: ?u32) !void {
+    const source_path = try backupPath(allocator, backup);
+    defer allocator.free(source_path);
+    try copyFrom(allocator, source_path, target, accent_color);
+}
+
+/// Removes a file from PROFILES_DIR/backup for good.
+pub fn deleteBackup(allocator: std.mem.Allocator, backup: []const u8) !void {
+    const backup_path = try backupPath(allocator, backup);
+    defer allocator.free(backup_path);
+    try std.Io.Dir.cwd().deleteFile(files.g_io, backup_path);
+    slog.info("Deleted profile backup '{s}'", .{backup});
+}
+
+/// Any profile but the default one, which the app falls back to.
+pub fn checkDeletable(name: []const u8) !void {
+    try validateName(name);
+    if (std.mem.eql(u8, name, files.DEFAULT_PROFILE)) return error.CannotDeleteDefaultProfile;
+}
+
+/// Moves the profile into PROFILES_DIR/backup, named `<unix time>_<name>` so the newest sorts first.
+pub fn deleteToBackup(allocator: std.mem.Allocator, name: []const u8) !void {
+    try checkDeletable(name);
+
+    const profile_path = try path(allocator, name);
+    defer allocator.free(profile_path);
+    const backup_path = try newBackupPath(allocator, name);
+    defer allocator.free(backup_path);
+
+    const cwd = std.Io.Dir.cwd();
+    try cwd.rename(profile_path, cwd, backup_path, files.g_io);
+    slog.info("Moved profile '{s}' to {s}", .{ name, backup_path });
+}
+
+/// Splits a backup's `<unix time>_<name>.json` file name (see newBackupPath) into its profile name and time.
+pub fn parseBackupName(file_name: []const u8) BackupName {
+    const stem = if (std.mem.endsWith(u8, file_name, ".json")) file_name[0 .. file_name.len - ".json".len] else file_name;
+    const underscore = std.mem.findScalar(u8, stem, '_') orelse return .{ .name = stem, .saved_at_seconds = null };
+    const prefix = stem[0..underscore];
+    for (prefix) |char| {
+        if (!std.ascii.isDigit(char)) return .{ .name = stem, .saved_at_seconds = null };
+    }
+    // A prefix too long for a timestamp gets no time rather than a wrong one.
+    return .{ .name = stem[underscore + 1 ..], .saved_at_seconds = std.fmt.parseInt(u64, prefix, 10) catch null };
+}
+
+/// Backed-up profile file names, newest first; caller owns the list and its strings.
+pub fn listBackups(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
+    var names: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (names.items) |name| allocator.free(name);
+        names.deinit(allocator);
+    }
+
+    const backup_dir = try path(allocator, BACKUP_DIR);
+    defer allocator.free(backup_dir);
+    var dir = std.Io.Dir.cwd().openDir(files.g_io, backup_dir, .{ .iterate = true }) catch |err| switch (err) {
+        error.FileNotFound => return names,
+        else => return err,
+    };
+    defer dir.close(files.g_io);
+
+    var it = dir.iterate();
+    while (try it.next(files.g_io)) |entry| {
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".json")) continue;
+        const name = try allocator.dupe(u8, entry.name);
+        errdefer allocator.free(name);
+        try names.append(allocator, name);
+    }
+
+    std.mem.sort([]const u8, names.items, {}, struct {
+        fn newerFirst(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.order(u8, a, b) == .gt;
+        }
+    }.newerFirst);
+    return names;
+}
+
+/// Falls back to DEFAULT_PROFILE when invalid or missing and to defaults when malformed; a name differing only in case takes the file's spelling.
+pub fn load(allocator: std.mem.Allocator, name: []const u8) !Config {
+    validateName(name) catch {
+        slog.warn("Refused profile name '{s}', falling back to default profile", .{name});
+        return load(allocator, files.DEFAULT_PROFILE);
+    };
+    try ensureDir(allocator);
+
+    var names = try list(allocator);
+    defer {
+        for (names.items) |listed| allocator.free(listed);
+        names.deinit(allocator);
+    }
+    if (listedSpelling(names.items, name)) |listed| {
+        if (!std.mem.eql(u8, listed, name)) return load(allocator, listed);
+    }
+
+    const profile_path = try path(allocator, name);
+    defer allocator.free(profile_path);
+
+    slog.info("Loading JSON config from: {s}", .{profile_path});
+    return loadFile(allocator, profile_path, name) catch |err| {
+        // ensureDir() above guarantees DEFAULT_PROFILE exists, so this can't recurse forever.
+        if (err == error.FileNotFound and !std.mem.eql(u8, name, files.DEFAULT_PROFILE)) {
+            slog.warn("Profile '{s}' not found, falling back to default profile", .{name});
+            return load(allocator, files.DEFAULT_PROFILE);
+        }
+        return err;
+    };
+}
+
+/// The profile file names in PROFILES_DIR, e.g. "default.json"; caller owns the list and its strings.
+pub fn list(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
+    var names: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (names.items) |name| allocator.free(name);
+        names.deinit(allocator);
+    }
+
+    var dir = std.Io.Dir.cwd().openDir(files.g_io, files.PROFILES_DIR, .{ .iterate = true }) catch |err| {
+        if (err == error.FileNotFound) {
+            slog.debug("Profiles directory not found", .{});
+            return names;
+        }
+        return err;
+    };
+    defer dir.close(files.g_io);
+
+    const global_settings_name = std.Io.Dir.path.basename(files.GLOBAL_SETTINGS_FILE);
+    var it = dir.iterate();
+    while (try it.next(files.g_io)) |entry| {
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".json")) continue;
+        if (std.mem.eql(u8, entry.name, global_settings_name)) continue;
+
+        const name = try allocator.dupe(u8, entry.name);
+        errdefer allocator.free(name);
+        try names.append(allocator, name);
+    }
+
+    slog.debug("Found {} profile(s)", .{names.items.len});
+    return names;
+}
+
+pub fn save(config: *const Config, allocator: std.mem.Allocator, file_path: []const u8) !void {
+    const json = try config.toJsonString(allocator);
+    defer allocator.free(json);
+
+    try files.atomicWriteFile(allocator, files.g_io, file_path, json);
+    slog.info("Saved JSON config to: {s}", .{file_path});
+}
+
+/// Writes a fresh default profile named `name`, optionally with its own accent colour.
+pub fn writeDefault(allocator: std.mem.Allocator, name: []const u8, accent_color: ?u32) !void {
+    var config = try Config.getDefaultsWithProfile(allocator, name);
+    defer config.deinit();
+    if (accent_color) |c| config.accentColor = c;
+
+    const profile_path = try path(allocator, name);
+    defer allocator.free(profile_path);
+    try save(&config, allocator, profile_path);
+}
+
+/// `backup`'s path in PROFILES_DIR/backup, once it's checked to be a plain file name; caller owns the result.
+fn backupPath(allocator: std.mem.Allocator, backup: []const u8) ![]u8 {
+    try validateName(backup);
+    return std.Io.Dir.path.join(allocator, &.{ files.PROFILES_DIR, BACKUP_DIR, backup });
+}
+
+fn copyFrom(allocator: std.mem.Allocator, source_path: []const u8, target: []const u8, accent_color: ?u32) !void {
+    try validateName(target);
+    const target_path = try path(allocator, target);
+    defer allocator.free(target_path);
+
+    const cwd = std.Io.Dir.cwd();
+    cwd.copyFile(source_path, cwd, target_path, files.g_io, .{ .replace = false }) catch |err| switch (err) {
+        error.PathAlreadyExists => return error.ProfileAlreadyExists,
+        else => return err,
+    };
+
+    const color = accent_color orelse return;
+    var config = try load(allocator, target);
+    defer config.deinit();
+    config.accentColor = color;
+    try save(&config, allocator, target_path);
+}
+
+/// `<unix time>_<name>` in PROFILES_DIR/backup, creating the folder; caller owns the result.
+fn newBackupPath(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
+    const backup_dir = try path(allocator, BACKUP_DIR);
+    defer allocator.free(backup_dir);
+    try files.createDirIfMissing(backup_dir);
+    return allocator.print("{s}{c}{d}_{s}", .{ backup_dir, std.Io.Dir.path.sep, std.Io.Clock.real.now(files.g_io).toSeconds(), name });
+}
+
+/// Keeps a copy of a profile that couldn't be read, since running on defaults saves over it.
+fn backUpUnreadable(allocator: std.mem.Allocator, profile_path: []const u8, name: []const u8) void {
+    const backup_path = newBackupPath(allocator, name) catch |err| {
+        slog.err("Failed to back up unreadable profile '{s}': {}", .{ name, err });
+        return;
+    };
+    defer allocator.free(backup_path);
+    const cwd = std.Io.Dir.cwd();
+    cwd.copyFile(profile_path, cwd, backup_path, files.g_io, .{}) catch |err| {
+        slog.err("Failed to back up unreadable profile '{s}' to '{s}': {}", .{ name, backup_path, err });
+        return;
+    };
+    slog.warn("Backed up unreadable profile '{s}' to '{s}'", .{ name, backup_path });
+}
+
+fn loadFile(allocator: std.mem.Allocator, profile_path: []const u8, name: []const u8) !Config {
+    const content = std.Io.Dir.cwd().readFileAlloc(files.g_io, profile_path, allocator, .limited(files.MAX_CONFIG_FILE_SIZE)) catch |err| {
+        if (err != error.FileNotFound) slog.err("Failed to read config file '{s}': {}", .{ profile_path, err });
+        return err;
+    };
+    defer allocator.free(content);
+
+    return Config.buildConfigFromJson(allocator, content, name) catch |err| {
+        slog.err("Failed to parse config file '{s}', falling back to defaults: {}", .{ profile_path, err });
+        backUpUnreadable(allocator, profile_path, name);
+        return Config.getDefaultsWithProfile(allocator, name);
+    };
+}
+
+/// Borrows from `names`.
+fn listedSpelling(names: []const []const u8, name: []const u8) ?[]const u8 {
+    for (names) |listed| {
+        if (std.ascii.eqlIgnoreCase(listed, name)) return listed;
+    }
+    return null;
+}
+
+fn ensureDir(allocator: std.mem.Allocator) !void {
+    const cwd = std.Io.Dir.cwd();
+
+    try files.createDirIfMissing(files.PROFILES_DIR);
+
+    const default_path = try path(allocator, files.DEFAULT_PROFILE);
+    defer allocator.free(default_path);
+
+    cwd.access(files.g_io, default_path, .{}) catch |err| switch (err) {
+        error.FileNotFound => {
+            slog.debug("Default profile not found, creating: {s}", .{default_path});
+            try writeDefault(allocator, files.DEFAULT_PROFILE, null);
+            slog.info("Created default profile: {s}", .{default_path});
+        },
+        else => return err,
+    };
+}
+
+const testing = std.testing;
+
+test "validateName accepts only a plain <name>.json" {
+    try validateName("Main.json");
+    try validateName("My Alts.json");
+    try testing.expectError(error.InvalidProfileName, validateName("Main"));
+    try testing.expectError(error.InvalidProfileName, validateName(".json"));
+    try testing.expectError(error.InvalidProfileName, validateName(".hidden.json"));
+    try testing.expectError(error.InvalidProfileName, validateName("../Main.json"));
+    try testing.expectError(error.InvalidProfileName, validateName("a:b.json"));
+    try testing.expectError(error.InvalidProfileName, validateName("what?.json"));
+}
+
+test "validateName accepts the default profile, so load's fallback can't recurse" {
+    try validateName(files.DEFAULT_PROFILE);
+}
+
+test "validateName refuses the global settings file" {
+    try testing.expectError(error.InvalidProfileName, validateName("global.settings.json"));
+}
+
+test "fileNameFor appends .json and rejects empty, long or unsafe names" {
+    const name = try fileNameFor(testing.allocator, "Main");
+    defer testing.allocator.free(name);
+    try testing.expectEqualStrings("Main.json", name);
+
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, ""));
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, &@as([MAX_NAME_LENGTH + 1]u8, @splat('a'))));
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "a*b"));
+}
+
+test "fileNameFor allows only letters, digits, spaces, '-' and '_'" {
+    const name = try fileNameFor(testing.allocator, "My Alts-2_b");
+    defer testing.allocator.free(name);
+    try testing.expectEqualStrings("My Alts-2_b.json", name);
+
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "PvP (main)"));
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "Für"));
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "a\tb"));
+    try testing.expectError(error.InvalidProfileName, fileNameFor(testing.allocator, "Main."));
+}
+
+test "listedSpelling finds a profile whose file name differs only in case" {
+    const names = [_][]const u8{ "default.json", "Main.json" };
+    try testing.expectEqualStrings("Main.json", listedSpelling(&names, "main.json").?);
+    try testing.expectEqualStrings("Main.json", listedSpelling(&names, "Main.json").?);
+    try testing.expectEqual(null, listedSpelling(&names, "Other.json"));
+}
+
+test "checkDeletable refuses the default profile" {
+    try checkDeletable("Main.json");
+    try testing.expectError(error.CannotDeleteDefaultProfile, checkDeletable(files.DEFAULT_PROFILE));
+    try testing.expectError(error.InvalidProfileName, checkDeletable("Main"));
+}
+
+test "parseBackupName splits a timestamped backup into its time and profile name" {
+    const parsed = parseBackupName("1717171717_My_Alts.json");
+    try testing.expectEqualStrings("My_Alts", parsed.name);
+    try testing.expectEqual(@as(?u64, 1717171717), parsed.saved_at_seconds);
+}
+
+test "parseBackupName keeps a backup named any other way whole, with no time" {
+    const parsed = parseBackupName("Main_Old.json");
+    try testing.expectEqualStrings("Main_Old", parsed.name);
+    try testing.expectEqual(@as(?u64, null), parsed.saved_at_seconds);
+    try testing.expectEqualStrings("Main", parseBackupName("Main.json").name);
+}

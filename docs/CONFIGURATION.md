@@ -1,6 +1,8 @@
 # Configuration Reference
 
-Configuration files use **JSON format**. The application generates a default profile at `profiles\default.json` on first run. 
+Configuration files use **JSON format**. The application generates a default profile at `profiles\default.json` on first run.
+
+When editing by hand, a value the app can't read (an unknown option name, a malformed color, text where a number belongs) is skipped with a warning in the log, and that one setting uses its default; the rest of the file loads as written. A file that isn't valid JSON at all loads with default settings, after a copy is kept: a profile in `profiles\backup\` (restorable from the config dialog's Backups tab), the global settings as `profiles\global.settings.json.bak`.
 
 ## Logging
 
@@ -10,7 +12,7 @@ Configuration files use **JSON format**. The application generates a default pro
 }
 ```
 
-Log levels (from most to least verbose):
+`logLevel` lives in `profiles\global.settings.json` (default: `err`). Log levels (from most to least verbose):
 - **debug**: Detailed troubleshooting info (positions, indices, state changes)
 - **info**: Important user-facing events (config loaded, thumbnails created)
 - **warn**: Warning conditions that don't prevent operation
@@ -25,7 +27,7 @@ Log levels (from most to least verbose):
     "width": 200,
     "height": 112,
     "thumbnailOpacity": 255,
-    "applyOpacityToOverlayTexts": false
+    "applyOpacityToOverlayTexts": true
   }
 }
 ```
@@ -41,15 +43,12 @@ Log levels (from most to least verbose):
     "borderColor": "0xFFD9A441",
     "borderStyle": "Solid",
     "showBorderWhenInactive": false,
-    "inactiveBorderWidth": 1,
+    "inactiveBorderWidth": 2,
     "inactiveBorderColor": "0xFF606060",
-    "inactiveBorderStyle": "Solid",
-    "textBgColorInheritBorderColor": false
+    "inactiveBorderStyle": "Solid"
   }
 }
 ```
-
-Set `textBgColorInheritBorderColor` to `true` to reuse the current border color for the text background while preserving the alpha from `textBgColor`.
 
 **Border Styles**: `Solid`, `Dashed`, `Dotted`, `Double`, `DiagonalHatch`, `DashDot`, `CornerBrackets`
 
@@ -60,16 +59,23 @@ Set `textBgColorInheritBorderColor` to `true` to reuse the current border color 
     "showText": true,
     "showCharacterName": true,
     "showSystemName": false,
-    "textColor": "0x00FFFFFF",
-    "textBgColor": "0x80000000",
-    "textFontName": "Segoe UI",
-    "textFontSize": 14,
-    "textFontWeight": "Regular",
-    "useUniqueSystemColors": false,
-    "systemNameColor": "0x00FFFFFF"
+    "characterNameColor": "0x00FFFFFF",
+    "characterNameBgColor": "0xE6000000",
+    "characterNameFontName": "Segoe UI",
+    "characterNameFontSize": 12,
+    "characterNameFontWeight": "Regular",
+    "useUniqueCharacterNameColors": false,
+    "systemNameColor": "0x00FFFFFF",
+    "systemNameBgColor": "0xE6000000",
+    "systemNameFontName": "Segoe UI",
+    "systemNameFontSize": 12,
+    "systemNameFontWeight": "Regular",
+    "useUniqueSystemColors": false
   }
 }
 ```
+
+The character name and system name each have their own color, background and font. Per-state `textColor` / `textBgColor` overrides live under `thumbnail.active`, `thumbnail.inactive` and the other state blocks.
 
 **Font Weights**: `Regular`, `Bold`, `Italic`, `BoldItalic`
 
@@ -94,7 +100,7 @@ Set `textBgColorInheritBorderColor` to `true` to reuse the current border color 
 {
   "thumbnail": {
     "thumbnailOpacity": 255,
-    "applyOpacityToOverlayTexts": false,
+    "applyOpacityToOverlayTexts": true,
     "activeThumbnailHidden": false,
     "hideWhenNoEveFocus": false,
     "hideDebounceMs": 500
@@ -109,14 +115,38 @@ Set `textBgColorInheritBorderColor` to `true` to reuse the current border color 
   "thumbnail": {
     "showQuickGroupBadge": true,
     "quickGroupBadgeColor": "0xFF44FF44",
+    "quickGroupBadgeBgColor": "0xE6000000",
     "quickGroupBadgePosition": "RightCenter",
     "quickGroupBadgeOffsetX": 0,
-    "quickGroupBadgeOffsetY": 0
+    "quickGroupBadgeOffsetY": 0,
+    "quickGroupBadgeFontName": "Segoe UI",
+    "quickGroupBadgeFontSize": 12,
+    "quickGroupBadgeFontWeight": "Regular"
   }
 }
 ```
 
-Drawn on a thumbnail whenever its character is a member of a [Hotkey Group](#hotkey-groups-character-cycling) with `showBadge` set. `quickGroupBadgePosition` uses the same values as [Text Positions](#text-overlay-settings).
+Drawn on a thumbnail whenever its character is a member of a [Hotkey Group](#hotkey-groups-character-cycling) with `showBadge` set. `quickGroupBadgePosition` uses the same values as [Text Positions](#text-positioning).
+
+### Session Timer
+
+```json
+{
+  "thumbnail": {
+    "showSessionTimer": false,
+    "sessionTimerColor": "0xFFFFFF",
+    "sessionTimerBgColor": "0xE6000000",
+    "sessionTimerPosition": "RightCenter",
+    "sessionTimerOffsetX": 0,
+    "sessionTimerOffsetY": -24,
+    "sessionTimerFontName": "Segoe UI",
+    "sessionTimerFontSize": 12,
+    "sessionTimerFontWeight": "Regular"
+  }
+}
+```
+
+How long each logged-in character has been logged in, as `42m` or `3h 07m`; resets on logout. A character already logged in when the app starts counts from its gamelog's session start if chatlog monitoring is on, otherwise from when the app first saw it. `sessionTimerPosition` uses the same values as [Text Positions](#text-positioning).
 
 ### Exclusion Overlay
 
@@ -124,7 +154,7 @@ Drawn on a thumbnail whenever its character is a member of a [Hotkey Group](#hot
 {
   "thumbnail": {
     "exclusionOverlayStyle": "X",
-    "exclusionOverlayColor": "0x33FF0000"
+    "exclusionOverlayColor": "0x33A62222"
   }
 }
 ```
@@ -151,7 +181,7 @@ Each thumbnail has one of these states at any time: `active`, `inactive`, `alert
 | `active` | Follows `activeThumbnailHidden` |
 | `inactive`, `alert`, `minimized`, `dragging` | `true` |
 
-> **Note:** These per-state overrides are not currently exposed as editable profile JSON keys - they exist as fixed built-in defaults used at render time. `alert` state visuals (border color/width) are driven separately via the per-notification-type `border_color` override - see [Notification System](#notification-system).
+> **Note:** These per-state overrides are saved in the profile as `thumbnail.active`, `thumbnail.inactive`, `thumbnail.alert`, `thumbnail.minimized` and `thumbnail.dragging`, and can be edited there by hand, but the config dialog doesn't show them. An active notification's border color comes from its type's `border_color` override when set - see [Notification System](#notification-system).
 
 ## Timer and Scanning
 
@@ -163,7 +193,7 @@ Each thumbnail has one of these states at any time: `active`, `inactive`, `alert
 }
 ```
 
-`scanIntervalMs` defaults to `50` and is clamped between `50` and `10000`.
+`scanIntervalMs` defaults to `50` and is clamped between `50` and `1000`. While no client is open and the configuration window is closed, the app ticks once a second instead, since there is nothing to draw.
 
 ## Window Filters
 
@@ -189,13 +219,15 @@ Configure which applications to create thumbnails for. By default, only EVE Onli
 ```
 
 **Filter Properties:**
-- **name**: User-friendly name for the filter (descriptive only)
+- **name**: The thumbnail label for the windows this filter matches, whatever their titles; EVE clients are named after their character instead
+- Windows that aren't EVE clients get thumbnails and hotkeys, but no log tracking (system, combat, mining, notifications), and Minimize All, Close All, Auto-Minimize and Auto-Move leave them alone
 - **enabled**: Whether this filter is active (default: `true`)
-- **class_names**: Array of window class names to match (empty array = match any)
-- **executable_names**: Array of executable names to match (case-insensitive, empty array = match any)
+- **class_names**: Array of window class names to match, exactly and case-sensitively (empty array = match any)
+- **executable_names**: Array of executable names, matched case-insensitively against the end of the window's executable path (empty array = match any)
+- A filter with both arrays empty matches nothing
 
 **How It Works:**
-1. The application scans all visible windows every `scanIntervalMs`
+1. The application scans all visible windows at least once a second
 2. Each window's class name is checked against all enabled filters
 3. If a class name matches, the executable path is verified against the filter's executable names
 4. Both checks must pass for a window to be tracked
@@ -203,7 +235,7 @@ Configure which applications to create thumbnails for. By default, only EVE Onli
 
 ## Display and Positioning
 
-The display configuration has two layout modes, with full multi-monitor support.
+`display.placementMode` picks how thumbnails are placed: `Manual` (default) places every thumbnail by hand and ignores `thumbnailSpaces`; `ThumbnailSpaces` lets [thumbnail spaces](#thumbnail-spaces) place the characters they hold, and the rest are placed by hand. A hand-placed thumbnail spawns at its saved position (see `honorSavedPositions`), or at `startX`/`startY` while it has none, and can be dragged and snapped. Full multi-monitor support.
 
 **Basic Configuration:**
 
@@ -212,31 +244,36 @@ The display configuration has two layout modes, with full multi-monitor support.
   "display": {
     "startX": 10,
     "startY": 10,
-    "spacing": 10,
-    "layoutMode": "Custom",
-    "honorSavedPositions": true
+    "honorSavedPositions": true,
+    "placementMode": "Manual"
   }
 }
 ```
 
-**Layout Modes:**
+## Thumbnail Spaces
 
-- **`Custom`** (default): No auto-layout. Each character spawns at its saved position (see `honorSavedPositions`); a character with no saved position yet spawns at `startX`/`startY`.
-- **`RegionFit`**: Auto-fits thumbnails into a user-dragged screen rectangle (`regionX`/`regionY`/`regionWidth`/`regionHeight`) - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit) below.
+A thumbnail space is a screen rectangle that chosen characters' thumbnails auto-fit into. Spaces only place thumbnails while `display.placementMode` is `ThumbnailSpaces`; a profile from before that setting existed gets `ThumbnailSpaces` when it has an enabled space. Each space holds one or more hotkey groups, by name. Two spaces are always in the list and can't be removed or renamed in the dialog: **Login Screen** (`holdsLoginScreen`), holding clients still at the login screen (the "EVE" placeholders), and **Unassigned Characters** (`holdsUnassigned`), holding characters no other active space holds. A profile missing either gets it added, switched off. That lets you split characters by role: miners in one space, scouts in another, logins in a third.
 
-## Thumbnail Space (Region Fit)
+Who goes where:
+- A character goes to the **first enabled space in the list** that holds any of its hotkey groups. Reorder the list to change who wins.
+- A character no enabled space holds goes to the Unassigned Characters space when that's enabled with a region, else to the first enabled space with `takesUnassigned` on, after that space's own characters. With neither, it's placed by hand.
+- A login-screen placeholder goes to the Login Screen space when that's enabled with a region, else to the first enabled space with `takesLoginScreen` on, after everyone else there. With neither, it's placed by hand.
+- A space needs `enabled` and a full rectangle (`x`/`y`/`width`/`height`) to place anyone.
 
-Rather than a fixed per-thumbnail size and an unbounded grid, `RegionFit` mode fits however many thumbnails are currently tracked into a fixed rectangle, sizing every cell to preserve the configured thumbnail's aspect ratio. The grid grows one column or row at a time as thumbnails spawn, always growing whichever gives the bigger cell, so it expands incrementally instead of being re-optimized from scratch on every count change.
+Rather than a fixed per-thumbnail size and an unbounded grid, a space fits however many thumbnails it holds into its rectangle, sizing every cell to keep the configured thumbnail's aspect ratio. The grid grows one column or row at a time, whichever gives the bigger cell. Cells are packed against each other (with `spacing`), so slack collects at the region's far edge. A space overrides saved positions, dragging and thumbnail sizes (`thumbnail.width`/`height`, `characters[].thumbnailSize`) for the characters it holds. Spaces reflow on login and logout, when a thumbnail opens or closes, and when hotkey group membership changes.
 
-Cells are packed snugly against each other (using `spacing`, not stretched to fill the region) so any slack collects as one block at the region's far edge instead of gaps between thumbnails. It reflows automatically on login, and on logout if `regionFitReorderLoggedOut` is true; while active it fully replaces per-character manual dragging and the global/per-character thumbnail size (`thumbnail.width`/`height`, `CharacterThumbnailSize`) - those are ignored.
+The rectangle is drawn in the config dialog (the Draw/Edit buttons in the selected space's Region group), using a full-desktop drag-to-select overlay; × clears it. If `display.hideThumbnailsDuringRegionSelect` (default `true`) is on, visible thumbnails are hidden while the overlay is up.
 
-The region itself is set via the config dialog's "New Thumbnail Region" button, which asks the running main app to show a full-desktop drag-to-select overlay; the captured rectangle is written into `regionX`/`regionY`/`regionWidth`/`regionHeight` (all `null` until first captured). Once a region exists, "Edit Region" reopens the overlay with the region's edges and body draggable, and the x button clears it. The overlay finishes with Save/Cancel buttons (or Enter/Esc). If `hideThumbnailsDuringRegionSelect` (default `true`) is on, currently-visible thumbnails are hidden for the duration of that overlay so they don't cover it, then restored exactly as they were once it closes (a thumbnail already hidden beforehand, e.g. manually, is left alone).
-
-If `regionFitLimitToThumbnailSize` (default `false`) is on, cell size is additionally capped at the configured thumbnail size (`thumbnail.width`/`height`, DPI-scaled for the region's own monitor) instead of always growing to fill the region; once cells hit that cap, extra thumbnails just wrap into more rows/columns, leaving unused space in the region rather than shrinking further.
-
-Fill order is controlled by two independent settings:
-- `regionFitOrder`: `Characters` (the profile's configured character list order) or `HotkeyGroups` (grouped by hotkey group membership, in `hotkeyGroups` order, each group's own member order preserved; a character in more than one group counts toward whichever it appears in first). Characters matching neither sort after ranked ones.
-- `regionFitDirection`: which corner the grid fills from and whether it goes row-first or column-first:
+Per-space fields:
+- `name`: Shown in the config dialog
+- `enabled`: Default `true`
+- `groups`: Hotkey group names this space holds (renaming or removing a group in the dialog updates every space)
+- `holdsLoginScreen`, `holdsUnassigned`: Mark the Login Screen and Unassigned Characters spaces; only the first space with each keeps it
+- `takesUnassigned`: Unassigned characters fill in at the end of this space ("Move Unassigned Characters to the End")
+- `takesLoginScreen`: Login-screen placeholders fill in at the end of this space ("Move Logged-Out Characters to the End")
+- `x`, `y`, `width`, `height`: The rectangle, in physical pixels (null until drawn)
+- `order`: `Characters` (the Characters list order) or `HotkeyGroups` (this space's groups in `hotkeyGroups` order, each group's member order kept, then other groups). Unranked characters sort after ranked ones.
+- `direction`: which corner the grid fills from and whether it goes row-first or column-first:
   - `RowFirst_LTR_TTB`: Left→right, top→bottom (default)
   - `RowFirst_RTL_TTB`: Right→left, top→bottom
   - `RowFirst_LTR_BTT`: Left→right, bottom→top
@@ -245,46 +282,39 @@ Fill order is controlled by two independent settings:
   - `ColumnFirst_BTT_LTR`: Bottom→top, left→right
   - `ColumnFirst_TTB_RTL`: Top→bottom, right→left
   - `ColumnFirst_BTT_RTL`: Bottom→top, right→left
+- `spacing`: Gap between cells (default `0`)
+- `limitToThumbnailSize`: Caps cells at the configured thumbnail size (DPI-scaled for the region's monitor), leaving unused room in the region rather than growing past it
 
-`regionFitReorderLoggedOut` (default `true`): whether a character logging out moves its thumbnail to the end of the grid (an unranked "EVE" placeholder always sorts last) or stays in its current slot until some other login/logout triggers a reflow. Ignored when [Not-Logged-In Thumbnail Space](#not-logged-in-thumbnail-space) is enabled - a logout always reflows then, since the placeholder must physically leave the grid for that space rather than just keep or lose its slot within it.
-
-```json
-{
-  "display": {
-    "layoutMode": "RegionFit",
-    "regionX": 100,
-    "regionY": 100,
-    "regionWidth": 800,
-    "regionHeight": 600,
-    "regionFitOrder": "Characters",
-    "regionFitDirection": "RowFirst_LTR_TTB",
-    "regionFitReorderLoggedOut": true,
-    "hideThumbnailsDuringRegionSelect": true,
-    "regionFitLimitToThumbnailSize": false,
-    "spacing": 10
-  }
-}
-```
-
-## Not-Logged-In Thumbnail Space
-
-A separate, optional auto-fit area just for not-yet-logged-in "EVE" placeholder windows, independent of `layoutMode`. When `notLoggedInSpaceEnabled` is on and `notLoggedInSpaceX`/`Y`/`Width`/`Height` are captured (same drag-to-select flow as Thumbnail Space, via its own "New Thumbnail Region" button, with the same Edit Region and clear controls), placeholders auto-fit to fill that rectangle - the same column/row/aspect-ratio grid-fit `RegionFit` itself uses (see above), sized for however many placeholders currently exist - instead of joining the regular unpositioned-thumbnail flow at `startX`/`startY`. It has its own `notLoggedInSpaceSpacing`, independent of `RegionFit`'s `spacing`, its own `notLoggedInSpaceHideThumbnailsDuringRegionSelect` (default `true`, same as `hideThumbnailsDuringRegionSelect` for this space's overlay), and its own `notLoggedInSpaceLimitToThumbnailSize` (default `false`), which caps its cell size at the configured thumbnail size the same way `regionFitLimitToThumbnailSize` does for the Thumbnail Space.
-
-It coexists with `RegionFit`: placeholders are carved out of the `RegionFit` grid entirely (they don't take a cell, and don't count toward its cell-count math) and auto-fit into the not-logged-in space instead, reflowing back into the grid the moment they log in. Both grids reflow (resizing every member, not just the one that changed) whenever a placeholder crosses between them.
+A character logging out rearranges the spaces straight away: its login-screen placeholder goes to the Login Screen space or the first space with `takesLoginScreen` on, else it's placed by hand.
 
 ```json
 {
-  "display": {
-    "notLoggedInSpaceEnabled": true,
-    "notLoggedInSpaceX": 100,
-    "notLoggedInSpaceY": 100,
-    "notLoggedInSpaceWidth": 400,
-    "notLoggedInSpaceHeight": 300,
-    "notLoggedInSpaceSpacing": 10,
-    "notLoggedInSpaceLimitToThumbnailSize": false
-  }
+  "thumbnailSpaces": [
+    {
+      "name": "Login Screen",
+      "holdsLoginScreen": true,
+      "x": 2600, "y": 0, "width": 400, "height": 300
+    },
+    {
+      "name": "Miners",
+      "groups": ["Miners", "Boosts"],
+      "order": "HotkeyGroups",
+      "x": 0, "y": 0, "width": 800, "height": 600,
+      "spacing": 4
+    },
+    {
+      "name": "Everyone Else",
+      "takesUnassigned": true,
+      "takesLoginScreen": true,
+      "x": 820, "y": 0, "width": 800, "height": 600,
+      "direction": "ColumnFirst_TTB_LTR",
+      "limitToThumbnailSize": true
+    }
+  ]
 }
 ```
+
+Profiles from before format version 3 are migrated on load: the old fit region (`display.layoutMode`, `regionX`/`Y`/`Width`/`Height`, `spacing`, `regionFitOrder`, `regionFitDirection`, `regionFitLimitToThumbnailSize`) becomes an "Everyone" space that takes unassigned characters and login-screen placeholders (disabled unless `layoutMode` was `RegionFit`), and the not-logged-in space (`notLoggedInSpace*`) becomes a "Login Screen" space ahead of it.
 
 **Multi-Monitor Support:**
 
@@ -293,7 +323,6 @@ Target specific monitors by index (0-based):
 ```json
 {
   "display": {
-    "layoutMode": "Custom",
     "monitorIndex": 1,
     "useMonitorWorkArea": true,
     "startX": 10,
@@ -310,13 +339,10 @@ All pixel-based values here (thumbnail size, `startX`/`startY`, spacing, font si
 
 **All Display Options:**
 
-- `startX`, `startY`: Starting position (absolute or monitor-relative); also the spawn point for characters with no saved position in `Custom` mode
-- `newThumbnailSpacing`: Horizontal gap between thumbnails with no saved position yet (new characters, and not-logged-in "EVE" placeholders not covered by `notLoggedInSpaceEnabled`) - they're lined up left-to-right from `startX`/`startY` instead of stacking on top of each other
-- `spacing`: Gap between thumbnails in `RegionFit` mode
-- `layoutMode`: `Custom` or `RegionFit`
-- `regionX`, `regionY`, `regionWidth`, `regionHeight`: Thumbnail Space rectangle for `RegionFit` mode (null until captured) - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit)
-- `regionFitOrder`, `regionFitDirection`, `regionFitReorderLoggedOut`, `hideThumbnailsDuringRegionSelect`, `regionFitLimitToThumbnailSize`: `RegionFit` fill order, logout behavior, select-overlay hiding, and thumbnail-size cap - see [Thumbnail Space (Region Fit)](#thumbnail-space-region-fit)
-- `notLoggedInSpaceEnabled`, `notLoggedInSpaceX`, `notLoggedInSpaceY`, `notLoggedInSpaceWidth`, `notLoggedInSpaceHeight`, `notLoggedInSpaceSpacing`, `notLoggedInSpaceLimitToThumbnailSize`, `notLoggedInSpaceHideThumbnailsDuringRegionSelect`: Separate auto-fit area just for not-logged-in placeholders - see [Not-Logged-In Thumbnail Space](#not-logged-in-thumbnail-space)
+- `startX`, `startY`: Starting position (absolute or monitor-relative); also the spawn point for hand-placed characters with no saved position
+- `newThumbnailSpacing`: Horizontal gap between hand-placed thumbnails with no saved position yet - they're lined up left-to-right from `startX`/`startY` instead of stacking on top of each other
+- `placementMode`: `Manual` (default) or `ThumbnailSpaces` - see [Thumbnail Spaces](#thumbnail-spaces)
+- `hideThumbnailsDuringRegionSelect`: Hides thumbnails while a space's region is drawn - see [Thumbnail Spaces](#thumbnail-spaces)
 - `monitorIndex`: Target monitor (0-based, null = absolute)
 - `useMonitorWorkArea`: Respect taskbar
 - `honorSavedPositions`: Use saved character positions
@@ -324,7 +350,9 @@ All pixel-based values here (thumbnail size, `startX`/`startY`, spacing, font si
 
 ## List View Mode
 
-An alternative to live DWM thumbnails: a single semi-transparent panel with one row per tracked client, showing a state badge dot, character name, and either the current system name or an active notification message. Clicking a row activates that client; Shift+click toggles exclusion from hotkey cycling. The header bar can be dragged to reposition the panel.
+An alternative to live DWM thumbnails: a single semi-transparent panel with one row per tracked client, showing a state badge dot, character name, and either the current system name or an active notification message. The active client's row is tinted with the active colour, and excluded clients are dimmed and marked "Excluded". Clicking a row activates that client; Shift+click toggles exclusion from hotkey cycling. The header bar can be dragged to reposition the panel.
+
+The list has its own system name, colour and focus auto-hide settings below; the thumbnail ones (`showSystemName`, `systemNameColor`, `useUniqueSystemColors`, `useUniqueCharacterNameColors`, `useUniqueCharacterBorderColors`, `hideWhenNoEveFocus`, `hideDebounceMs`, `notifications.enabled`, and combat's `show_incoming`, `show_outgoing`, prefixes and colours, mining's and bounty's `color` and `show_prefix`) apply to thumbnails only. Per-character colours and display names, custom `systemColors` and each overlay's `enabled` (which also runs its tracker) are shared by both.
 
 Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and no list panel - while still tracking clients internally, so hotkeys (including client cycling) and notifications keep working. This avoids the DWM thumbnail and panel rendering overhead entirely.
 
@@ -332,23 +360,61 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
 {
   "display": {
     "viewMode": "ClientList",
-    "listViewOrder": "Tracked",
+    "listViewOrder": "ConfiguredCharacters",
     "rememberListViewPosition": true,
     "listViewOpacity": 255,
     "listViewColumns": 1,
+    "listViewColumnWidth": 230,
     "listViewFontName": "Segoe UI",
     "listViewFontSize": 13,
-    "listViewFontWeight": "Regular"
+    "listViewFontWeight": "Regular",
+    "listViewIndicatorStyle": "Dot",
+    "listViewShowSystemName": true,
+    "listViewSystemNameColor": "0xFF8B8F96",
+    "listViewUseUniqueSystemColors": false,
+    "listViewUseUniqueCharacterNameColors": false,
+    "listViewActiveColor": "0xFFD9A441",
+    "listViewUseUniqueActiveColors": false,
+    "listViewShowNotifications": true,
+    "listViewShowIncomingDps": true,
+    "listViewShowIncomingPrefix": true,
+    "listViewIncomingDpsColor": "0xFFFF4444",
+    "listViewShowOutgoingDps": true,
+    "listViewShowOutgoingPrefix": true,
+    "listViewOutgoingDpsColor": "0xFF44FF44",
+    "listViewShowMiningRate": true,
+    "listViewShowMiningPrefix": true,
+    "listViewMiningRateColor": "0xFF44AAFF",
+    "listViewShowBountyRate": true,
+    "listViewShowBountyPrefix": true,
+    "listViewBountyRateColor": "0xFFFFD700",
+    "listViewHideWhenNoEveFocus": false,
+    "listViewHideDebounceMs": 500
   }
 }
 ```
 
 - `viewMode`: `Thumbnails` (default), `ClientList`, or `Nothing` (no visual output; tracking only)
-- `listViewOrder`: Row ordering - `Tracked` (default, internal tracking order), `Alphabetical` (by character name), or `ConfiguredCharacters` (order of `characters` array)
+- `listViewOrder`: Row ordering - `ConfiguredCharacters` (default, order of `characters` array), `Tracked` (internal tracking order), or `Alphabetical` (by character name)
 - `rememberListViewPosition`: Save/restore the panel's position (default: `true`)
-- `listViewOpacity`: Panel opacity, 0–255 (default: `255`)
-- `listViewColumns`: Number of columns, 1–15 (default: `1`)
-- `listViewFontName`, `listViewFontSize`, `listViewFontWeight`: Font used for row text (font weight uses the same values as [Text Overlay Settings](#text-overlay-settings))
+- `listViewOpacity`: Panel opacity, 51–255 (default: `255`)
+- `listViewColumns`: Number of columns, 1–6 (default: `1`)
+- `listViewColumnWidth`: Width of each column in pixels, 120–500 (default: `230`); names and right-hand text are cut short to fit
+- `listViewFontName`, `listViewFontSize`, `listViewFontWeight`: Font used for character names; the header and right-hand text are drawn 2px smaller, and rows and the header grow with the font so its text always fits (font weight uses the same values as [Text Overlay Settings](#text-overlay-settings))
+- `listViewIndicatorStyle`: How each row marks its state - `Dot` (default), `Square`, or `None`
+- `listViewShowSystemName`: Show each client's system on the right of its row (default: `true`)
+- `listViewSystemNameColor`: System name colour (default: `0xFF8B8F96`)
+- `listViewUseUniqueSystemColors`: Give each system its own generated colour instead of `listViewSystemNameColor` (default: `false`)
+- `listViewUseUniqueCharacterNameColors`: Give each character's name its own generated colour (default: `false`)
+- `listViewActiveColor`: The active client's dot, row tint and name colour (default: `0xFFD9A441`)
+- `listViewUseUniqueActiveColors`: Use each character's generated colour as its active colour (default: `false`)
+- `listViewShowNotifications`: Show the newest notification in a row's right-hand slot (default: `true`)
+- `listViewNotificationColor`: Notification text colour for any type without its own `text_color` (default: `0xFFFFFFFF`, white)
+- `listViewShowIncomingDps`, `listViewShowOutgoingDps`, `listViewShowMiningRate`, `listViewShowBountyRate`: Show each rate in the right-hand slot (default: `true`); each also needs its overlay's `enabled` on
+- `listViewShowIncomingPrefix`, `listViewShowOutgoingPrefix`, `listViewShowMiningPrefix`, `listViewShowBountyPrefix`: Show the `IN:`, `OUT:`, `M:` and `ISK:` prefixes (default: `true`)
+- `listViewIncomingDpsColor`, `listViewOutgoingDpsColor`, `listViewMiningRateColor`, `listViewBountyRateColor`: Each rate's colour (defaults match the thumbnail overlays')
+- `listViewHideWhenNoEveFocus`: Hide the list while no EVE client window has focus (default: `false`)
+- `listViewHideDebounceMs`: Delay before hiding, 0–5000 ms (default: `500`)
 
 ## Window Snapping
 
@@ -377,41 +443,63 @@ Setting `viewMode` to `Nothing` disables all visual output - no thumbnails and n
     "animationStyle": "NoAnimation",
     "clickTrigger": "MouseDown",
     "clickThrough": false,
-    "hoverCursor": "Default"
+    "hoverCursor": "Default",
+    "hoverZoomEnabled": false,
+    "hoverZoomPercent": 200,
+    "hoverZoomAnchor": "Center"
   }
 }
 ```
 
 **Configuration Options:**
-- `enableDragging`: Enable or disable thumbnail dragging (default: `true`)
-- `animationStyle`: Control Windows animations during window switching
-  - `"NoAnimation"` (default): Temporarily disable system animations for faster window switching
+- `enableDragging`: Enable or disable thumbnail dragging (default: `true`); a thumbnail in a [thumbnail space](#thumbnail-spaces) can't be dragged either way
+- `animationStyle`: Control Windows animations when the app minimizes or restores a client
+  - `"NoAnimation"` (default): Temporarily disable system animations so it happens instantly
   - `"OriginalAnimation"`: Use Windows default minimize/restore animations
-- `clickTrigger`: When left-click activates the EVE client
+- `clickTrigger`: When left-click on a thumbnail or Client List row activates the EVE client
   - `"MouseDown"` (default): Activate immediately on mouse button press
   - `"MouseUp"`: Activate on mouse button release
-- `clickThrough`: Make thumbnails ignore all mouse input (default: `false`), so clicks and drags pass through to whatever is behind them on screen. Disables click-to-focus, shift-click exclusion toggling, and dragging on every thumbnail while enabled.
-- `hoverCursor`: System mouse cursor shown while hovering a thumbnail (thumbnails only, not the Client List or History panels)
+- `clickThrough`: Make thumbnails and the Client List ignore all mouse input (default: `false`), so clicks and drags pass through to whatever is behind them on screen. Disables click-to-focus, shift-click exclusion toggling, and dragging while enabled.
+- `hoverCursor`: System mouse cursor shown while hovering a thumbnail or a Client List row (not the Client List's header or the History panel)
   - `"Default"` (default): The standard arrow
   - `"Hand"`: Link-select hand
   - `"Crosshair"`: Precision-select crosshair
   - `"Move"`: Four-way move arrows
   - `"Help"`: Arrow with a question mark
+- `hoverZoomEnabled`: While the cursor rests on a thumbnail, show an enlarged live copy of that client on top of it (default: `false`). The zoom carries the thumbnail's border and overlay texts, kept at their configured size and placed relative to the zoom's edges, and updates live. It lets clicks through to the thumbnail underneath, and closes when the cursor leaves the thumbnail or a drag starts. Not shown while `clickThrough` is on.
+- `hoverZoomPercent`: Zoom size as a percentage of the thumbnail, `110`-`1000` (default: `200`); shrunk, keeping its aspect, if it wouldn't fit on the thumbnail's monitor
+- `hoverZoomAnchor`: The point of the thumbnail that stays put as the zoom grows, one of the [Text Positions](#text-positioning) (default: `"Center"`; `"TopLeft"` grows right and down). The zoom is then shifted to stay on the thumbnail's monitor.
 
 **Animation Style Details:**
 
-By default (`"NoAnimation"`), the application temporarily disables Windows system-wide minimize and restore animations when switching to a client, then immediately restores them. This provides near-instant window switching. Set to `"OriginalAnimation"` if you prefer to keep Windows default animations.
+By default (`"NoAnimation"`), the application temporarily disables Windows system-wide minimize and restore animations whenever it minimizes or restores a client (switching to it, Auto-Minimize, Minimize All, minimizing an excluded client, and restoring a client to move it to its saved position), then puts your Windows setting back. This makes those near-instant. Set to `"OriginalAnimation"` if you prefer to keep Windows default animations.
 
 **Mouse Interactions:**
 - **Left-click**: Activate and bring the EVE client to foreground
-- **Right-click + Drag**: Move thumbnail position (hold Ctrl to move all thumbnails)
+- **Right-click + Drag**: Move thumbnail position (hold Ctrl to move all thumbnails); does nothing on a thumbnail a thumbnail space places
 - **Shift + Left-click**: Toggle character exclusion from hotkey cycling
   - Excluded characters show a visual overlay (default: semi-transparent red "X"; see [Exclusion Overlay](#exclusion-overlay) for other styles)
-  - "Excluded" or "Included" notification appears for 5 seconds
+  - "Excluded" or "Included" notification appears (the `CycleExclusion` notification type, 3s by default)
   - Excluded characters are skipped when using hotkey group cycling (if the character belongs to a group) and when using Cycle All Clients with `cycleAllClientsRespectExclusions` enabled - works even for characters that don't belong to any hotkey group
   - Exclusion state is temporary (resets when application restarts)
   - Can also be toggled via `hotkeyToggleExclusion` for the focused EVE window
   - Use `hotkeyNextExcluded`/`hotkeyPreviousExcluded` to cycle through excluded characters for review
+
+**Exclusion Options:**
+
+```json
+{
+  "exclusion": {
+    "enableShiftClickExclude": true,
+    "autoMinimizeExcluded": false,
+    "logoutClearsExclusion": true
+  }
+}
+```
+
+- `enableShiftClickExclude`: Whether Shift + Left-click toggles exclusion (default: `true`); when `false`, Shift + Left-click activates the client like a plain click
+- `autoMinimizeExcluded`: Minimize a client's EVE window as soon as it's excluded, by Shift + Left-click or `hotkeyToggleExclusion` (default: `false`)
+- `logoutClearsExclusion`: Include a character in cycling again when its client logs out to the login screen; when `false`, the exclusion lasts until the app exits (default: `true`)
 
 ## Protocol Handler
 
@@ -430,7 +518,7 @@ evemajpreview://<action>/<param>
 ```
 
 - **`switch/<character-name>`**: Switch to and foreground the named character's client. The name must be URL-encoded (spaces as `%20` or `+`).
-- **`profile/<filename>`**: Load the named profile (filename relative to `profiles\`, e.g. `pvp.json`).
+- **`profile/<filename>`**: Load the named profile (a plain file name inside `profiles\`, e.g. `pvp.json`; letter case doesn't matter). A name that isn't a plain `<name>.json`, or a profile that doesn't exist, loads the default profile instead.
 - **`hotkey/<action>`**: Trigger one of the hotkey actions below, exactly as if its configured global hotkey had been pressed.
 
 **Hotkey Actions:**
@@ -439,8 +527,10 @@ evemajpreview://<action>/<param>
 |---|---|
 | `minimize_all` | Minimize all EVE client windows |
 | `close_all` | Close all EVE client windows |
+| `close_active` | Close the focused EVE client window |
 | `toggle_visibility` | Toggle visibility of all thumbnails |
 | `toggle_auto_minimize` | Toggle auto-minimize mode on/off |
+| `toggle_alert_mute` | Mute/unmute TTS and sound alerts |
 | `next_profile` / `previous_profile` | Cycle to next/previous profile |
 | `toggle_exclusion` | Toggle exclusion of the focused EVE window from cycling |
 | `next_excluded` / `previous_excluded` | Cycle through excluded characters |
@@ -449,6 +539,9 @@ evemajpreview://<action>/<param>
 | `next_all_clients` / `previous_all_clients` | Cycle forward/backward through all logged-in clients |
 | `next_not_logged_in` / `previous_not_logged_in` | Cycle forward/backward through not-logged-in clients |
 | `move_to_saved_positions` | Move all clients back to their saved positions |
+| `return_to_last_app` | Return focus to the last non-EVE application you used |
+| `next_app` / `previous_app` | Cycle forward/backward through the running apps in App Hotkeys |
+| `exit_app` | Exit EVE-Maj Preview |
 
 These correspond directly to the actions in [Hotkey Configuration](#hotkey-configuration) - see that section for details on what each one does.
 
@@ -481,7 +574,8 @@ Automatically minimize inactive EVE clients after a delay:
   "autoMinimize": {
     "enabled": false,
     "delayMs": 5000,
-    "exemptLastActiveOnFocusLoss": true
+    "exemptLastActiveOnFocusLoss": true,
+    "startMinimized": false
   }
 }
 ```
@@ -491,6 +585,8 @@ Automatically minimize inactive EVE clients after a delay:
 The last-focused client on each monitor (by the monitor its EVE window is on) is treated as that monitor's last-active client. While an EVE client is focused, the last-active client on every other monitor stays visible, so one client per monitor can remain on screen; other clients minimize after the delay.
 
 `exemptLastActiveOnFocusLoss` (default: `true`) keeps each monitor's last-active client visible when EVE itself loses focus entirely (e.g. switching to another app), instead of minimizing it along with the rest once its delay elapses.
+
+`startMinimized` (default: `false`) minimizes each EVE client as soon as it launches, independent of `enabled`. Clients already running when the app starts or a profile reloads are left alone, and per-character exclusions don't apply since a new client is still at the login screen.
 
 Exclusions are configured per character, not here - set `excludeFromMinimize` on the character entry (see [Per-Character Configuration](#per-character-configuration)).
 
@@ -509,7 +605,7 @@ Move EVE client windows to their saved window positions automatically:
 }
 ```
 
-`enabled` moves a client when a character logs in. `moveOnStartup` moves clients that are already running when the application starts; it works independently of `enabled`.
+Each character's target is its `windowPosition` (see [Per-Character Configuration](#per-character-configuration)). `enabled` moves a client when a character logs in. `moveOnStartup` moves clients that are already running when the application starts; it works independently of `enabled`.
 
 After each move, the client's position is re-checked every `verifyIntervalMs` (clamped `250`-`10000`), up to `verifyCount` times (clamped `0`-`30`; `0` disables re-checking), and re-applied if EVE shifted its own window while loading.
 
@@ -520,10 +616,13 @@ Exclusions are configured per character - set `excludeFromAutoMove` on the chara
 ```json
 {
   "closeAll": {
+    "excludeCycleExcludedClients": false,
     "excludeLoginScreenClients": false
   }
 }
 ```
+
+`excludeCycleExcludedClients` (default: `false`) skips characters excluded from cycling (Shift+Click or `hotkeyToggleExclusion`).
 
 `excludeLoginScreenClients` (default: `false`) skips any client still sitting at the character-selection screen.
 
@@ -550,7 +649,7 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
       "type_configs": {
         "FleetInvite": {
           "enabled": true,
-          "duration_ms": 5000,
+          "duration_ms": 10000,
           "suppress_when_focused": false,
           "suppress_when_clicked": false,
           "throttle_ms": 10000,
@@ -579,9 +678,10 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 ```
 
 **Notification Settings:**
-- `enabled`: Master switch for notification system (per-character mute is set via `notificationsMuted` on the character entry - see [Per-Character Configuration](#per-character-configuration))
+- `enabled`: Master switch for notification system (per-character mute is set via `notificationsMuted` on the character entry - see [Per-Character Configuration](#per-character-configuration)) (default: `true`)
 - `position`: Where notifications appear on thumbnails (see Text Positions above)
 - `offset_x`/`offset_y`: Fine-tune notification position (pixels)
+- `color`: Notification text colour on thumbnails for any type without its own `text_color` (default: `0xFFFFFFFF`, white)
 - `suppress_click_duration_ms`: How long to suppress after click, applies per-type when that type's `suppress_when_clicked` is `true` (milliseconds, default: `2000`)
 - `tts_volume`: Speech volume, 0–100 (default: `100`)
 - `tts_rate`: Speech rate, native SAPI range -10 (slowest) to 10 (fastest) (default: `0`)
@@ -591,18 +691,39 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 
 **Per-Type Configuration** (each type has its own independent settings - there is no global default applied across types other than each field's own default shown below):
 - `enabled`: Whether this notification type fires at all (default: `true`)
-- `duration_ms`: How long the notification stays on screen (default: `5000`)
+- `duration_ms`: How long the notification stays on screen (default: `10000`, or `3000` for notifications of your own actions such as hotkey toggles)
 - `suppress_when_focused`: Suppress this type when the EVE client has focus (default: `false`)
 - `suppress_when_clicked`: Suppress this type for `suppress_click_duration_ms` after the user clicks the thumbnail (default: `false`)
-- `throttle_ms`: Ignore repeat notifications of this type until this many ms have passed since the last one actually shown (per thumbnail); suppressed attempts don't reset the window - `0` disables throttling (default: `10000`, clamped to 0–300000)
+- `throttle_ms`: Ignore repeat notifications of this type until this many ms have passed since the last one actually shown (per thumbnail); suppressed attempts don't reset the window - `0` disables throttling (default: `10000`, or `0` for notifications of your own actions; clamped to 0–300000)
 - `tts_enabled`: Speak this type's alert aloud - self-contained, there is no global TTS master switch (default: `false`)
 - `sound_enabled`: Play `sound_path` as a custom sound alert - self-contained too, there is no global sound master switch either (default: `false`)
 - `sound_path`: Absolute path to a `.wav` or `.mp3` file to play when this type fires; only these two formats are supported (decoded via Windows Media Foundation - no OGG or other formats). May be set while `sound_enabled` is `false` without losing the picked file (default: `null`)
 - `sound_volume`: Playback volume for this type's sound alert, 0–100 (default: `100`); each type has its own, there is no shared/global volume
-- `show_border`: Whether to draw a border at all while this notification is active; `false` suppresses the border entirely regardless of the Alert state's border settings or any `border_color` override (default: `true`)
+- `show_border`: Whether to draw a border at all while this notification is active; `false` suppresses the border entirely regardless of the Alert state's border settings or any `border_color` override (default: `false`)
 - `flash_border`: Blink the border on/off 4 times (150ms per phase) when the notification starts, then settle into a steady-on border for the rest of the duration; has no effect when `show_border` is `false` (default: `false`)
 - `border_color`: Optional ARGB color override for the thumbnail border while this notification is active (default: `null`, falls back to the Alert state's border color)
-- `text_color`: Optional ARGB color override for the notification text while this notification is active (default: `null`, falls back to the thumbnail's normal text color)
+- `text_color`: Optional ARGB color override for the notification text while this notification is active (default: `null`, falls back to `color` above, or the Client List's `listViewNotificationColor`)
+- `custom_text`: Wording shown (and spoken) instead of the built-in text, with `{name}` placeholders filled from the event - see Custom Text Placeholders below. Names are case-insensitive, unknown names are kept as typed, and if a placeholder used has no value for that event the built-in text is shown instead. Type `\n` for a line break, up to 3 lines per notification; the Client List and History Panel show them on one line (default: `null`, the built-in text)
+- `custom_text_alt`: `custom_text` for a two-state type's second state: Self-Destruct aborted, hotkeys resumed, auto-minimize off, removed from group, included in cycle (default: `null`)
+
+**Custom Text Placeholders:**
+
+| Type | Placeholders |
+|---|---|
+| `FleetInvite`, `ConversationInvite` | `{pilot}` |
+| `FleetFollow`, `FleetRegroup` | `{leader}` |
+| `MiningCompression` | `{ore}`, `{result}` (e.g. "10 Compressed Veldspar") |
+| `AsteroidDepleted`, `CargoFull`, `BombLauncherEmpty` | `{module}` |
+| `CrystalBroke` | `{module}`, `{crystal}` |
+| `WarpScrambled`, `WarpDisrupted` | `{attacker}` |
+| `Decloak`, `WarpBubble` | `{object}` |
+| `SystemChange`, `ConduitJump` | `{system}` |
+| `TravelLeftBehind` | `{system}`, `{group_system}` |
+| `GroupMembership` | `{group}` |
+| `ProfileSwitch` | `{profile}` |
+| `Generic` | `{message}` |
+
+Every type also offers `{character}`, except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle`, which show on every client at once.
 
 **Notification Types:**
 - `FleetInvite`: Fleet invitation received
@@ -634,7 +755,59 @@ Configure near-real-time event notifications from EVE game logs displayed as tex
 - `ConduitJump`: Jumped via Conduit Field to a new system
 - `SystemChange`: Jumped to new solar system
 - `TravelLeftBehind`: Character hasn't jumped with the group within Travel Mode's configured window - see [Travel Mode](#travel-mode)
+- `GroupMembership`: Character added to or removed from a hotkey group via its assign key; defaults to a 3s duration with no throttle
+- `CycleExclusion`: Character excluded from or included in hotkey cycling; defaults to a 3s duration with no throttle
+- `HotkeySuspend`: Hotkeys suspended or resumed; shown on every client
+- `ProfileSwitch`: Switched to another profile; shown on every client once the new profile has loaded
+- `AutoMinimizeToggle`: Auto-minimize toggled on or off by its hotkey; shown on every client
+- `SavedPositionMove`: Client window moved by the "move to saved positions" hotkey; shown only on the clients that moved
 - `Generic`: Other game events
+
+### Notification History
+
+A draggable list of recent notifications across all characters, with filter buttons for each category. Toggle it from the tray's "Show Notification History".
+
+```json
+{
+  "display": {
+    "showNotifInfoPanel": false,
+    "notifInfoPanelX": 10,
+    "notifInfoPanelY": 250,
+    "notifInfoPanelWidth": 300,
+    "notifInfoPanelHeight": 400,
+    "rememberNotifInfoPanelPosition": true,
+    "hideNotifInfoPanelWhenNoCharacters": true,
+    "notifInfoPanelOpacity": 255,
+    "notifInfoPanelFontName": "Segoe UI",
+    "notifInfoPanelFontSize": 13,
+    "notifInfoPanelFontWeight": "Regular",
+    "notifInfoPanelMaxRows": 15,
+    "notifInfoPanelShowTimestamp": false,
+    "notifInfoPanelMergeEnabled": false,
+    "notifInfoPanelMergeWindowSec": 10,
+    "notifInfoPanelShowCategoryFilters": true,
+    "notifInfoPanelShowFleet": true,
+    "notifInfoPanelShowMining": true,
+    "notifInfoPanelShowCombat": true,
+    "notifInfoPanelShowNavigation": true,
+    "notifInfoPanelShowGeneral": true
+  }
+}
+```
+
+- `showNotifInfoPanel`: Show the panel (default: `false`); the tray toggle sets this too
+- `notifInfoPanelX` / `notifInfoPanelY`: Panel position on screen (default: `10`, `250`)
+- `notifInfoPanelWidth` / `notifInfoPanelHeight`: Panel size, at least 100 × 60 (default: `300` × `400`)
+- `rememberNotifInfoPanelPosition`: Save the position when you drag the panel (default: `true`)
+- `hideNotifInfoPanelWhenNoCharacters`: Hide the panel while no character is logged in (default: `true`); turning it on from the tray shows it anyway until the next time everyone logs out
+- `notifInfoPanelOpacity`: Panel opacity, 51–255 (default: `255`)
+- `notifInfoPanelFontName`, `notifInfoPanelFontSize`, `notifInfoPanelFontWeight`: Font for the rows (default: `Segoe UI`, `13`, `Regular`; size 6–72); the header, timestamps and filter buttons are drawn 2px smaller, and rows grow with the font as the Client List's do
+- `notifInfoPanelMaxRows`: How many notifications the panel lists, 1–30 (default: `15`)
+- `notifInfoPanelShowTimestamp`: Show each notification's time (default: `false`)
+- `notifInfoPanelMergeEnabled`: Merge back-to-back identical notifications from different characters into one row with a `+N` count; clicking a merged row expands it (default: `false`)
+- `notifInfoPanelMergeWindowSec`: Max gap in seconds between consecutive notifications for them to merge, 1–300 (default: `10`)
+- `notifInfoPanelShowCategoryFilters`: Show the category filter buttons (default: `true`)
+- `notifInfoPanelShowFleet`, `notifInfoPanelShowMining`, `notifInfoPanelShowCombat`, `notifInfoPanelShowNavigation`, `notifInfoPanelShowGeneral`: Whether each category is listed (default: `true`); clicking a filter button toggles its category and saves it here
 
 ## Chatlog Monitoring
 
@@ -647,9 +820,8 @@ Monitor EVE Online chat and game logs for system changes and events:
     "chatlogDir": "C:/Users/YourName/Documents/EVE/logs/Chatlogs",
     "gamelogDir": "C:/Users/YourName/Documents/EVE/logs/Gamelogs",
     "pollIntervalMs": 500,
-    "idlePollThreshold": 20,
-    "maxPollMultiplier": 8,
-    "useThreading": true
+    "idlePollThreshold": 600,
+    "maxPollMultiplier": 2
   }
 }
 ```
@@ -661,16 +833,14 @@ Monitor EVE Online chat and game logs for system changes and events:
 
 Variables are expanded when the configuration is loaded. If a variable doesn't exist, the literal text is preserved in the path.
 
-**Threading Support**: When enabled (default: `true`), chatlog monitoring runs in a dedicated worker thread with async I/O processing:
-- Prevents blocking the main thread during file operations
-- Improves UI responsiveness and thumbnail rendering performance
-- Uses thread-safe event queues for communication between worker and main threads
-- Set to `false` to disable threading and run chatlog monitoring synchronously (useful for debugging)
+Either folder left empty (the default) uses EVE's own: `EVE\logs\Chatlogs` or `EVE\logs\Gamelogs` under your Windows Documents folder, wherever it has been moved to (e.g. OneDrive).
+
+**Threading**: Chatlog monitoring always runs on its own worker thread, so reading logs never holds up the thumbnails. (The old `useThreading` setting is ignored if a profile still has it.)
 
 **Polling Optimization**: The chatlog monitor uses exponential backoff to reduce CPU usage for inactive log files:
 - Files with no changes accumulate idle poll counts
-- After reaching `idlePollThreshold` * current multiplier, the multiplier doubles (1x → 2x → 4x → 8x)
-- The multiplier is capped at `maxPollMultiplier` to prevent excessive delays
+- After reaching `idlePollThreshold` * current multiplier, the multiplier doubles (1x → 2x → 4x → 8x), stopping at `maxPollMultiplier`
+- `maxPollMultiplier` (1–8) caps it to prevent excessive delays, e.g. a cap of 3 steps 1x → 2x → 3x
 - Any file change resets the idle count and multiplier to 1x
 
 ## Combat DPS Overlay
@@ -681,27 +851,29 @@ Display real-time incoming/outgoing damage-per-second labels directly on each ch
 {
   "combat": {
     "enabled": false,
-    "windowSeconds": 60,
-    "showIncoming": true,
-    "showOutgoing": true,
-    "incomingColor": 4294934596,
-    "outgoingColor": 4279017540,
-    "fontSize": 11,
-    "updateIntervalMs": 1000,
-    "incomingPosition": "TopCenter",
-    "outgoingPosition": "BottomCenter",
-    "incomingOffsetX": 0,
-    "incomingOffsetY": 0,
-    "outgoingOffsetX": 0,
-    "outgoingOffsetY": 0,
-    "damageAlertEnabled": false,
-    "damageAlertRepeatSeconds": 10,
-    "iconEnabled": false,
-    "iconColor": "0xFFFF4444",
-    "iconPosition": "TopRight",
-    "iconOffsetX": 0,
-    "iconOffsetY": 0,
-    "iconFontSize": 20
+    "window_seconds": 60,
+    "show_incoming": true,
+    "show_outgoing": true,
+    "incoming_color": "0xFFFF4444",
+    "outgoing_color": "0xFF44FF44",
+    "incoming_bg_color": "0xE6000000",
+    "outgoing_bg_color": "0xE6000000",
+    "incoming_font_size": 12,
+    "incoming_font_name": "Segoe UI",
+    "incoming_font_weight": "Regular",
+    "outgoing_font_size": 12,
+    "outgoing_font_name": "Segoe UI",
+    "outgoing_font_weight": "Regular",
+    "update_interval_ms": 1000,
+    "incoming_position": "TopCenter",
+    "outgoing_position": "BottomCenter",
+    "incoming_offset_x": 0,
+    "incoming_offset_y": 0,
+    "outgoing_offset_x": 0,
+    "outgoing_offset_y": 0,
+    "incoming_show_prefix": true,
+    "outgoing_show_prefix": true,
+    "damage_alert_excluded_weapons": ""
   }
 }
 ```
@@ -711,37 +883,32 @@ Display real-time incoming/outgoing damage-per-second labels directly on each ch
 | Field | Default | Description |
 |---|---|---|
 | `enabled` | `false` | Enable the DPS overlay |
-| `windowSeconds` | `60` | Sliding window duration for DPS calculation (1–3600 s) |
-| `showIncoming` | `true` | Show incoming damage label |
-| `showOutgoing` | `true` | Show outgoing damage label |
-| `incomingColor` | red | ARGB color for incoming damage text |
-| `outgoingColor` | green | ARGB color for outgoing damage text |
-| `fontSize` | `11` | Font size for DPS labels (6–72) |
-| `updateIntervalMs` | `1000` | How often the display refreshes (100–60000 ms) |
-| `incomingPosition` | `TopCenter` | Position of the incoming-damage label on the thumbnail (see [Text Positions](#text-overlay-settings)) |
-| `outgoingPosition` | `BottomCenter` | Position of the outgoing-damage label on the thumbnail |
-| `incomingOffsetX`/`incomingOffsetY` | `0` | Fine-tune incoming label position (pixels) |
-| `outgoingOffsetX`/`outgoingOffsetY` | `0` | Fine-tune outgoing label position (pixels) |
-| `damageAlertEnabled` | `false` | Enable the taking-damage alert (see below) |
-| `damageAlertRepeatSeconds` | `10` | Minimum seconds between repeat alerts while still taking damage (1–3600 s) |
-| `iconEnabled` | `false` | Enable the persistent combat icon (see below) |
-| `iconColor` | red | ARGB color for the combat icon |
-| `iconPosition` | `TopRight` | Position of the icon on the thumbnail |
-| `iconOffsetX`/`iconOffsetY` | `0` | Fine-tune icon position (pixels) |
-| `iconFontSize` | `20` | Icon size (6–72) |
+| `window_seconds` | `60` | Sliding window duration for DPS calculation (5–600 s) |
+| `show_incoming` / `show_outgoing` | `true` | Show the incoming / outgoing damage label |
+| `incoming_color` / `outgoing_color` | red / green | ARGB color for each label's text |
+| `incoming_bg_color` / `outgoing_bg_color` | `0xE6000000` | ARGB background behind each label |
+| `incoming_font_size` / `outgoing_font_size` | `12` | Font size for each label (6–72) |
+| `incoming_font_name` / `outgoing_font_name` | `Segoe UI` | Font for each label |
+| `incoming_font_weight` / `outgoing_font_weight` | `Regular` | Font weight for each label (see [Text Overlay Settings](#text-overlay-settings)) |
+| `update_interval_ms` | `1000` | How often the display refreshes (1000–10000 ms); alerts are checked every second regardless |
+| `incoming_position` | `TopCenter` | Position of the incoming-damage label on the thumbnail (see [Text Positioning](#text-positioning)) |
+| `outgoing_position` | `BottomCenter` | Position of the outgoing-damage label on the thumbnail |
+| `incoming_offset_x` / `incoming_offset_y` | `0` | Fine-tune incoming label position (-500–500 px) |
+| `outgoing_offset_x` / `outgoing_offset_y` | `0` | Fine-tune outgoing label position (-500–500 px) |
+| `incoming_show_prefix` / `outgoing_show_prefix` | `true` | Show each label's prefix before the number |
+| `damage_alert_excluded_weapons` | `""` | Comma-separated, case-insensitive weapon-name parts whose hits count toward DPS but don't trigger the Taking Damage alert |
 
 Incoming and outgoing damage are rendered as two independently-positioned labels rather than a single combined box.
 
-**Taking-Damage Alert**: When `damageAlertEnabled` is `true`, a `TakingDamage` notification (see [Notification Types](#notification-system)) fires the first time incoming damage is recorded, then re-fires at most once per `damageAlertRepeatSeconds` while more incoming hits keep landing - it stays silent once combat actually stops instead of repeating on a bare timer. Border color, duration, suppression, and TTS for the alert are configured generically like any other notification type, under `TakingDamage` in `type_configs`.
+**Taking-Damage Alert** (`TakingDamage` notification type): Fires when incoming damage lands, at most once per the type's `throttle_ms`, and stays silent once combat actually stops instead of repeating on a timer. It's switched on and off with the type's Enabled box in the Event Alerts tab (`type_configs.TakingDamage.enabled`), where its border color, duration, suppression and TTS are also set.
 
-**Combat Icon**: When `iconEnabled` is `true`, a persistent icon is drawn on the thumbnail for as long as incoming DPS is above zero - an ambient "under fire" indicator, independent of the one-shot taking-damage alert above.
+**Direction Classification**: EVE gamelog `(combat)` lines start with the damage number, and the text after it decides the direction, `" from "` checked before `" to "`:
+- **Incoming**: `" from "` anywhere after the amount - e.g. `63 from Gistatis Legatus - Hits` or `26 from Gistatis Legatus - Nova Light Missile - Hits`
+- **Outgoing**: otherwise `" to "` anywhere after the amount - e.g. `166 to Gistatis Legatus - Berserker II - Grazes`
+- **Incoming misses**: `misses you completely` counts as a zero-damage incoming hit, so it still raises Taking Damage
+- **Excluded**: remote repairs, boosts and cap transfers (`repairs your`, `shields your`, `boosts your`, `transfers`), outgoing misses (no leading damage number), and unrecognised formats
 
-**Direction Classification**: EVE gamelog `(combat)` lines are classified by the keyword immediately following the damage number:
-- **Incoming**: line contains `" from "` after the amount - e.g. `63 from Gistatis Legatus - Hits` or `26 from Gistatis Legatus - Nova Light Missile - Hits`
-- **Outgoing**: line contains `" to "` after the amount - e.g. `166 to Gistatis Legatus - Berserker II - Grazes`
-- **Excluded**: remote repairs/cap transfers (keyword scan), misses (no leading damage number), and unrecognised formats
-
-**DPS Formula**: Total damage within the window divided by `windowSeconds`. The display refreshes every `updateIntervalMs`.
+**DPS Formula**: Total damage within the window divided by `window_seconds`. During the first `window_seconds` of a fight (after a full window without hits), it's the damage after the first second divided by the time since, shown as `??` for the first 3 seconds. If every hit so far landed in the fight's first second, it's that damage divided by `window_seconds`. The display refreshes every `update_interval_ms`.
 
 ## Mining Rate Overlay
 
@@ -751,18 +918,22 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
 {
   "mining": {
     "enabled": false,
-    "windowSeconds": 60,
-    "color": 4282690303,
-    "fontSize": 11,
-    "updateIntervalMs": 1000,
+    "window_seconds": 60,
+    "color": "0xFF44AAFF",
+    "bg_color": "0xE6000000",
+    "font_size": 12,
+    "font_name": "Segoe UI",
+    "font_weight": "Regular",
+    "update_interval_ms": 1000,
     "position": "BottomRight",
-    "offsetX": 0,
-    "offsetY": 0,
-    "idleAlertEnabled": false,
-    "idleAlertWindowSeconds": 30,
-    "idleAlertThreshold": 1,
-    "stoppedAlertEnabled": false,
-    "stoppedAlertWindowSeconds": 60
+    "offset_x": 0,
+    "offset_y": 0,
+    "idle_alert_window_seconds": 30,
+    "idle_alert_threshold": 1,
+    "stopped_alert_window_seconds": 60,
+    "show_isk_rate": true,
+    "isk_rate_unit": "hour",
+    "show_prefix": true
   }
 }
 ```
@@ -772,30 +943,77 @@ Display a real-time mining rate overlay on each character's thumbnail, calculate
 | Field | Default | Description |
 |---|---|---|
 | `enabled` | `false` | Enable the mining rate overlay |
-| `windowSeconds` | `60` | Sliding window duration for rate calculation (1–3600 s) |
+| `window_seconds` | `60` | Sliding window duration for rate calculation (30–3600 s) |
 | `color` | light blue | ARGB color for the rate text |
-| `fontSize` | `11` | Font size for the rate label (6–72) |
-| `updateIntervalMs` | `1000` | How often the display refreshes (100–60000 ms) |
+| `bg_color` | `0xE6000000` | ARGB background behind the label |
+| `font_size` | `12` | Font size for the rate label (6–72) |
+| `font_name` / `font_weight` | `Segoe UI` / `Regular` | Font for the rate label (see [Text Overlay Settings](#text-overlay-settings)) |
+| `update_interval_ms` | `1000` | How often the display refreshes (1000–10000 ms); alerts are checked every second regardless |
 | `position` | `BottomRight` | Position of the text on the thumbnail |
-| `offsetX` / `offsetY` | `0` | Fine-tune position (pixels) |
-| `idleAlertEnabled` | `false` | Enable the laser-idle alert notification |
-| `idleAlertWindowSeconds` | `30` | Window in which events are counted for the idle check |
-| `idleAlertThreshold` | `1` | Fire alert when event count in window is ≤ this value |
-| `stoppedAlertEnabled` | `false` | Enable the mining-stopped alert notification |
-| `stoppedAlertWindowSeconds` | `60` | Seconds of silence before the stopped alert fires |
+| `offset_x` / `offset_y` | `0` | Fine-tune position (-500–500 px) |
+| `idle_alert_window_seconds` | `30` | Window in which events are counted for the idle check (30–600 s) |
+| `idle_alert_threshold` | `1` | Fire alert when event count in window is ≤ this value (0–60) |
+| `stopped_alert_window_seconds` | `60` | Seconds of silence before the stopped alert fires (30–3600 s) |
+| `show_isk_rate` | `true` | Show the ISK rate of what's mined alongside the m³ rate |
+| `isk_rate_unit` | `hour` | Show the ISK rate per `hour` or per `minute` |
+| `show_prefix` | `true` | Show the label's prefix before the numbers |
 
-**Rate Formula**: Total units mined within the window divided by `windowSeconds`, converted to per-minute for display. Displays as `M: XXXX u/min`.
+The Laser Idle and Mining Stopped alerts are switched on and off with their types' Enabled boxes in the Event Alerts tab (`type_configs.MiningIdle.enabled` and `type_configs.MiningStopped.enabled`).
+
+**Rate Formula**: Total m³ mined within the window (units × the ore's volume) divided by `window_seconds`, converted to per-minute for display. Displays as `M: XXXX m3/min`, with the ISK rate of the same yield beneath it when `show_isk_rate` is on. During the first `window_seconds` of mining, it's the units mined after the first cycle divided by the time from the first yield to the latest, so lasers cycling in step read their true rate from the second cycle on. Bounty ISK/hr works the same way.
 
 **Parsing**: EVE gamelog `(mining)` lines are parsed for yield quantity:
 - **Normal yield**: `You mined 42 units of Bistot II-Grade`
 - **Critical yield**: `Critical mining success! You mined an additional 124 units of Bistot II-Grade`
 - **Excluded**: residue/waste lines (`depleted from asteroid as residue`) are ignored
 
-**Laser Idle Alert** (`MiningIdle` notification type): Fires when the number of `(mining)` events within `idleAlertWindowSeconds` drops to `≤ idleAlertThreshold`. Useful for detecting when one of two lasers stops. The alert fires once per window-duration cooldown and resets when activity rises above threshold again.
+**Laser Idle Alert** (`MiningIdle` notification type): Fires when the number of `(mining)` events within `idle_alert_window_seconds` drops to `≤ idle_alert_threshold`. Useful for detecting when one of two lasers stops. It isn't checked until mining has run for a whole `idle_alert_window_seconds`, so starting to mine doesn't trigger it. The alert fires once per idle stretch and re-arms only when activity rises above the threshold again.
 
-**Mining Stopped Alert** (`MiningStopped` notification type): Fires once when no `(mining)` events have occurred for `stoppedAlertWindowSeconds` seconds, after the character was previously mining. Re-arms automatically when mining resumes.
+**Mining Stopped Alert** (`MiningStopped` notification type): Fires once when no `(mining)` events have occurred for `stopped_alert_window_seconds` seconds, after the character was previously mining. Re-arms automatically when mining resumes.
 
 **Cargo Full** (`CargoFull` notification type): Fires when the gamelog contains `"Ship's cargo hold is full"` - e.g. `Your Modulated Strip Miner II has completed operations. Ship's cargo hold is full.` This is a `(notify)` event and requires no extra configuration beyond enabling the notification type.
+
+## Bounty ISK Overlay
+
+Display each character's bounty ISK rate on its thumbnail, from the `(bounty)` lines EVE writes to the gamelog as bounties are added to the next payout (e.g. `120,272 ISK added to next bounty payout`).
+
+```json
+{
+  "bounty": {
+    "enabled": false,
+    "window_seconds": 1200,
+    "color": "0xFFFFD700",
+    "bg_color": "0xE6000000",
+    "font_size": 12,
+    "font_name": "Segoe UI",
+    "font_weight": "Regular",
+    "update_interval_ms": 1000,
+    "position": "TopRight",
+    "offset_x": 0,
+    "offset_y": 0,
+    "isk_rate_unit": "hour",
+    "show_prefix": true
+  }
+}
+```
+
+> **Note**: Requires `chatlog.enabled: true` and a valid `gamelogDir` to receive bounty events.
+
+| Field | Default | Description |
+|---|---|---|
+| `enabled` | `false` | Enable the bounty overlay |
+| `window_seconds` | `1200` | Sliding window duration for the rate (60–3600 s) |
+| `color` | gold | ARGB color for the rate text |
+| `bg_color` | `0xE6000000` | ARGB background behind the label |
+| `font_size` | `12` | Font size for the label (6–72) |
+| `font_name` / `font_weight` | `Segoe UI` / `Regular` | Font for the label (see [Text Overlay Settings](#text-overlay-settings)) |
+| `update_interval_ms` | `1000` | How often the display refreshes (1000–10000 ms) |
+| `position` | `TopRight` | Position of the text on the thumbnail |
+| `offset_x` / `offset_y` | `0` | Fine-tune position (-500–500 px) |
+| `isk_rate_unit` | `hour` | Show the rate per `hour` or per `minute` |
+| `show_prefix` | `true` | Show the label's prefix before the number |
+
+**Rate Formula**: The same as the mining rate: ISK added within the window divided by `window_seconds`, and during the first `window_seconds` of earning, the ISK after the first payout divided by the time from the first payout to the latest.
 
 ## Resource Usage Overlay
 
@@ -810,7 +1028,7 @@ Display each client's CPU%, RAM, and dedicated VRAM usage as a single combined t
     "show_vram": true,
     "color": "0xFFFFFFFF",
     "bg_color": "0xE6000000",
-    "font_size": 11,
+    "font_size": 12,
     "font_name": "Segoe UI",
     "font_weight": "Regular",
     "update_interval_ms": 10000,
@@ -827,11 +1045,11 @@ Display each client's CPU%, RAM, and dedicated VRAM usage as a single combined t
 | `show_cpu` | `true` | Include the CPU% segment |
 | `show_ram` | `true` | Include the RAM segment (process working-set memory, in MB) |
 | `show_vram` | `true` | Include the VRAM segment (dedicated GPU memory, in MB) - see note below |
-| `update_interval_ms` | `10000` | How often CPU/RAM/VRAM are resampled (500-60000 ms); shared by all three since VRAM sampling is the most expensive of the three |
-| `position` | `LeftCenter` | Position of the label on the thumbnail (see [Text Positions](#text-overlay-settings)) |
+| `update_interval_ms` | `10000` | How often CPU/RAM/VRAM are resampled (1000-60000 ms); shared by all three since VRAM sampling is the most expensive of the three |
+| `position` | `LeftCenter` | Position of the label on the thumbnail (see [Text Positions](#text-positioning)) |
 | `offset_x`/`offset_y` | `0` | Fine-tune label position (pixels) |
 
-**CPU%**: Process CPU time (kernel + user) sampled via `GetProcessTimes`, normalized by elapsed wall time and logical processor count - the same basis Task Manager uses, clamped to 0-100%. The first sample after a character logs in or a profile reload has nothing to diff against, so it reads 0% until the second sample.
+**CPU%**: Process CPU time (kernel + user) sampled via `GetProcessTimes`, normalized by elapsed wall time and logical processor count - the same basis Task Manager uses, clamped to 0-100%. The first sample after a character logs in or the overlay is turned on has nothing to diff against, so it reads 0% until the second sample.
 
 **RAM**: The process's current working-set size via `GetProcessMemoryInfo`.
 
@@ -877,16 +1095,20 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 {
   "hotkeys": {
     "requireEveFocus": false,
+    "resetGroupIndexOnNonGroupFocus": false,
     "allowHotkeyAutoRepeat": false,
-    "suspendHotkeyNotification": true,
+    "exactHotkeyModifiers": false,
     "hotkeyMinimizeAll": null,
     "hotkeyCloseAll": null,
+    "hotkeyCloseActive": null,
     "hotkeyToggleVisibility": null,
     "hotkeyToggleAutoMinimize": null,
+    "hotkeyToggleAlertMute": null,
     "hotkeyToggleExclusion": null,
     "hotkeyNextExcluded": null,
     "hotkeyPreviousExcluded": null,
     "hotkeySuspend": null,
+    "hotkeyExitApp": null,
     "hotkeyCycleNotified": null,
     "hotkeyPreviousNotified": null,
     "hotkeyMoveToSavedPositions": null
@@ -900,23 +1122,30 @@ Detects a tracked character falling behind while the rest of the group jumps tog
 
 **allowHotkeyAutoRepeat**: When `false` (default), holding a keyboard hotkey down fires its action once; when `true`, Windows' key-repeat re-fires it while held. Mouse-button hotkeys always fire once per click regardless (mouse buttons don't auto-repeat).
 
-**suspendHotkeyNotification**: When `true` (default), pressing **hotkeySuspend** shows a tray balloon notification announcing whether hotkeys are now suspended or resumed.
+**exactHotkeyModifiers**: When `false` (default), a combo with no binding of its own falls back to the bare key's binding, so a hotkey on `1` also fires (and swallows) `Alt+1`. When `true`, a hotkey fires only when exactly its modifiers are held, and unbound combos pass through to the game. Applies to keyboard and mouse hotkeys.
 
-**Global Hotkeys**: Set to a virtual key code string (e.g., `"F9"`, `"F10"`, `"0x70"`), a modifier combo (e.g., `"Ctrl+F9"`, `"Alt+Shift+F1"`, `"LWin+M"`), or `null` to disable
+Pressing **hotkeySuspend** fires a `HotkeySuspend` notification on every client (see [Notification System](#notification-system)).
+
+**Global Hotkeys**: Set to a key name (e.g., `"F9"`, `"F10"`), a modifier combo (e.g., `"Ctrl+F9"`, `"Alt+Shift+F1"`, `"LWin+M"`), a hex virtual key code (`"0x70"`), or `null` to disable. Names are accepted when editing by hand, but the app saves every hotkey back as its hex code (`"Ctrl+F9"` becomes `"0x278"`). A key the app can't read is skipped with a warning in the log, and the rest of the binding and profile load as normal.
 - **hotkeyMinimizeAll**: Minimize all EVE client windows
 - **hotkeyCloseAll**: Close all EVE client windows (respects per-character `excludeFromCloseAll`)
+- **hotkeyCloseActive**: Close the focused EVE client window, even if its character is excluded from Close All
 - **hotkeyToggleVisibility**: Toggle visibility of all thumbnails
 - **hotkeyToggleAutoMinimize**: Toggle auto-minimize mode on/off
+- **hotkeyToggleAlertMute**: Mute/unmute all TTS and sound alerts for this session (not saved; also in the tray menu)
 - **hotkeyToggleExclusion**: Toggle exclusion from cycling for the currently focused EVE window
 - **hotkeyNextExcluded**: Cycle to the next excluded character (in the order they were excluded)
 - **hotkeyPreviousExcluded**: Cycle to the previous excluded character
 - **hotkeySuspend**: Suspend/resume all other hotkeys at once
-- **hotkeyCycleNotified**: Cycle forward to the character that most recently triggered a notification (see [Notified-Character Cycling](#notified-character-cycling))
+- **hotkeyExitApp**: Exit EVE-Maj Preview, same as the tray menu's Exit. EVE clients stay open.
+- **hotkeyCycleNotified**: Cycle forward through recently notified characters, oldest first (see [Notified-Character Cycling](#notified-character-cycling))
 - **hotkeyPreviousNotified**: Cycle backward through recently notified characters
 - **hotkeyMoveToSavedPositions**: Move all EVE client windows to their saved positions (respects per-character `excludeFromAutoMove`)
-**Virtual Key Codes**: See [virtual_keys.zig](src/virtual_keys.zig) for full list
+**Virtual Key Codes**: See [virtual_keys.zig](../src/platform/virtual_keys.zig) for full list
 
 **Modifier Combos**: Any global hotkey field, hotkey group key, per-character hotkey, or profile-switch hotkey can be prefixed with one or more modifiers, combined with `+`: `Ctrl`/`Control`, `Alt`, `Shift`, `Win`/`LWin`/`RWin` (e.g. `"Ctrl+Alt+F9"`).
+
+**Multiple Keys**: Any of those fields (including app and URL hotkeys) also takes an array of up to 4 keys, each with its own modifiers, any of which triggers the action (e.g. `"forwardKey": ["F22", "XButton2", "Ctrl+1"]`). A single key is saved as a plain string; duplicates are dropped, and keys past the fourth are dropped with a warning in the log.
 
 ### Global Settings (profiles\global.settings.json)
 
@@ -941,9 +1170,20 @@ Some settings persist across all profiles and are configured in `profiles\global
   "hotkeyCycleAllClientsForward": "F22",
   "hotkeyCycleAllClientsBackward": "F23",
   "cycleAllClientsRespectExclusions": false,
+  "hotkeyCycleNotLoggedInForward": "F18",
+  "hotkeyCycleNotLoggedInBackward": "F19",
   "hotkeyReturnToLastApp": "LWin+Z",
+  "hotkeyCycleAppsForward": "LWin+X",
+  "hotkeyCycleAppsBackward": "LWin+Shift+X",
   "disableUpdateChecks": false,
-  "autoRegisterProtocol": true
+  "autoRegisterProtocol": true,
+  "runOnStartup": false,
+  "alwaysOnTop": true,
+  "advancedMode": false,
+  "logLevel": "err",
+  "oreTable": [
+    { "name": "Veldspar", "price": 11.53 }
+  ]
 }
 ```
 
@@ -957,17 +1197,24 @@ Some settings persist across all profiles and are configured in `profiles\global
   - **uploadClipboard**: If `true`, instead of just opening `url`, the current clipboard text is POSTed to it first as `application/x-www-form-urlencoded` (field `Paste anything`, matching aDashboard's paste-intake form and ShareX's custom uploader for it), the resulting page's URL replaces the clipboard content, and that page is opened instead. Falls back to opening the plain `url` if the clipboard has no text or the upload fails. Runs on a background thread so the app doesn't freeze during the request; a second press while one is still in flight is ignored rather than starting an overlapping upload. The config dialog's checkbox for this only appears when `url`'s host is `adashboard.info`, since the POST body shape is specific to that site's form.
 - **hotkeyCycleAllClientsForward** / **hotkeyCycleAllClientsBackward**: Cycle through every currently logged-in EVE client, ordered by the profile's Characters list (any client not yet added there follows after, in detection order), regardless of which profile is loaded or how hotkey groups are defined. Editable from the config dialog's Hotkeys tab ("Clients" section).
 - **cycleAllClientsRespectExclusions**: If `true`, characters excluded via Shift+Click (or `hotkeyToggleExclusion`) are skipped when cycling all clients, whether or not they belong to a hotkey group (default: `false`, cycles through every client)
+- **hotkeyCycleNotLoggedInForward** / **hotkeyCycleNotLoggedInBackward**: Cycle through the clients sitting at the login screen (title just "EVE"), oldest logout first. Stays active regardless of which profile is loaded.
 - **hotkeyReturnToLastApp**: Refocus whichever non-EVE window last held focus (e.g. jump back to your browser or Discord after switching into EVE). Stays active regardless of which profile is loaded; editable from the config dialog's Hotkeys tab ("Outside EVE" section).
+- **hotkeyCycleAppsForward** / **hotkeyCycleAppsBackward**: Step through the `appHotkeys` list in its order, focusing the next (or previous) app with a running window and skipping any that aren't running. Starts from the app in front when it's one of them, else from the start (or end) of the list. Stays active regardless of which profile is loaded; editable from the config dialog's Hotkeys tab ("Outside EVE" section).
 - **disableUpdateChecks**: Set to `true` to disable automatic update checks on startup (default: `false`)
 - **autoRegisterProtocol**: See [Registration](#registration) under Protocol Handler (default: `true`)
-- **characterIdMap**: Internal mapping of character names to session IDs (managed automatically)
+- **runOnStartup**: Start EVE-Maj Preview when you sign in to Windows, through the current user's `Run` registry key (default: `false`)
+- **alwaysOnTop**: Keep the configuration window above other windows (default: `true`)
+- **logLevel**: See [Logging](#logging) (default: `err`)
+- **advancedMode**: See [Config Dialog Advanced Mode](#config-dialog-advanced-mode) (default: `false`)
+- **dialogX** / **dialogY**: Where the configuration window last was, saved when you move it (default: `null`, near the top-left of the screen; also used when the saved spot is on no monitor)
+- **oreTable**: Your ISK-per-unit price overrides for the mining ISK rate, one `{ "name", "price" }` entry per ore; ores you haven't overridden use the built-in price. A name matches its grade variants too (e.g. `Veldspar` covers `Veldspar II-Grade`). Editable from the config dialog's ore price table (0–1,000,000,000,000).
 
 **Profile Cycling Features:**
 - Cycle forward/backward through profiles with wraparound
 - Set either or both hotkeys to `null` to disable
 - Profiles are enumerated from the `profiles` directory
 - Allows quick switching between different profile configurations (e.g., PvP, Mining, Trading) without using the system tray or command-line arguments
-- Deleting a profile moves its file to `profiles\backup\` (timestamp-prefixed) instead of removing it; the config dialog's Import modal can restore from these backups
+- Deleting a profile moves its file to `profiles\backup\` (timestamp-prefixed) instead of removing it; the config dialog's Backups tab lists these backups, restores one as a new profile, or deletes one for good
 
 ### Hotkey Groups (Character Cycling)
 
@@ -979,6 +1226,7 @@ Some settings persist across all profiles and are configured in `profiles\global
       "forwardKey": "F22",
       "backwardKey": null,
       "includeNotLoggedIn": false,
+      "stopAtEnds": false,
       "characters": ["Main Character", "Alt 1", "Alt 2"]
     },
     {
@@ -1000,8 +1248,9 @@ Some settings persist across all profiles and are configured in `profiles\global
 - **temporaryMembership**: When `true`, membership is runtime-only: assign-key edits are never written back to the profile and the group starts empty every launch. When `false`, assign-key edits change the profile's own character list (default: `false`)
 - **showBadge**: Draws the group's name on its members' thumbnails, styled by the [Group Badge](#group-badge) settings (default: `false`)
 - **includeNotLoggedIn**: When `true`, cycling this group appends still-queued not-logged-in clients (the same windows the `next_not_logged_in`/`previous_not_logged_in` hotkeys cycle) after the group's characters, in the order they logged out (default: `false`)
+- **stopAtEnds**: When `true`, cycling stops at the group's first/last member instead of looping round; pressing on at the end refocuses that member if focus has moved away (default: `false`)
 
-Profiles written by an older build carry a separate `quickGroups` array; it is folded into `hotkeyGroups` on load (as groups with `temporaryMembership` and `showBadge` set) and written back empty.
+**Sharing a cycle key:** Groups can share a `forwardKey` (or a `backwardKey`). The shared key cycles through all their members as one list, in group order - handy with a [thumbnail space](#thumbnail-spaces) per group. Not-logged-in clients are appended once at the end if any of the groups sets `includeNotLoggedIn`, and the ends stop only if every group sets `stopAtEnds`. One group's forward key can't be another's backward key, and assign keys can't be shared.
 
 **Supported Keys:**
 - **Function Keys**: F1-F24
@@ -1010,7 +1259,11 @@ Profiles written by an older build carry a separate `quickGroups` array; it is f
 - **Letters**: A-Z (case-insensitive)
 - **Numbers**: 0-9
 - **Numpad**: Numpad0-Numpad9, NumpadAdd, NumpadSubtract, NumpadMultiply, NumpadDivide, NumpadDecimal
-- **Special**: Space
+- **Special**: Space, Tab, Enter, Backspace, Pause, CapsLock, NumLock, ScrollLock, PrintScreen, Menu
+- **Punctuation**: `;` `=` `,` `-` `.` `/` `` ` `` `[` `\` `]` `'`
+- **Media**: VolumeMute, VolumeDown, VolumeUp, MediaNext, MediaPrevious, MediaStop, MediaPlayPause
+- **Mouse**: MButton, XButton1, XButton2, WheelUp, WheelDown
+- **Bare modifiers**: Ctrl, Alt, Shift or Win alone as the trigger key
 - **Modifiers**: Any of the above can be combined with `Ctrl`/`Alt`/`Shift`/`Win` - see [Modifier Combos](#hotkey-configuration)
 
 ### Per-Character Hotkeys (Direct Activation)
@@ -1034,7 +1287,7 @@ Assigning the same hotkey to more than one character turns it into an implicit c
 
 ### Notified-Character Cycling
 
-Bound via `hotkeyCycleNotified` and `hotkeyPreviousNotified` (see [Hotkey Configuration](#hotkey-configuration)), these hotkeys jump to whichever character most recently triggered a notification, without needing to click through thumbnails to find who needs attention.
+Bound via `hotkeyCycleNotified` and `hotkeyPreviousNotified` (see [Hotkey Configuration](#hotkey-configuration)), these hotkeys step through the characters that recently triggered a notification, without needing to click through thumbnails to find who needs attention.
 
 - Characters are tracked in a FIFO queue: each notification adds (or re-adds) the character at the back of the queue.
 - A character stays eligible for `notified_cycle_retention_seconds` (see [Notification System](#notification-system)) after its last notification, then ages out; a new notification resets the window.
@@ -1050,6 +1303,8 @@ Customize individual characters with position, size, border colors, display name
     {
       "name": "Main Character",
       "position": { "x": 100, "y": 200 },
+      "windowPosition": { "x": -7, "y": 0 },
+      "windowSize": { "width": 1934, "height": 1087 },
       "borderColors": {
         "activeBorderColor": "0xFFFF00FF",
         "inactiveBorderColor": "0xFF808080"
@@ -1079,12 +1334,19 @@ Customize individual characters with position, size, border colors, display name
 }
 ```
 
+- **position**: Where this character's thumbnail sits (screen pixels).
+- **windowPosition**: Where this character's EVE client window goes when moved to its saved position (see [Auto-Move Position](#auto-move-position)). Set it with Save Position on the Characters tab while the client is running. It's the window's top-left corner, including the few pixels of invisible resize border Windows adds, so a client snapped to a screen's left edge saves at about `x: -7`. A position whose title bar would be off every screen (e.g. after a monitor was removed) is pulled onto the nearest monitor.
+- **windowSize**: The window's size when its position was saved, set and cleared with it. Only the Characters tab's position preview uses it; moving a client to its saved position doesn't resize it.
+- **borderColors**: Optional `activeBorderColor` / `inactiveBorderColor` overrides for this character's thumbnail border; either can be left out to use the thumbnail's own.
+- **thumbnailSize**: Optional `width` / `height` override for this character's thumbnail (ignored while a thumbnail space holds the character).
+- **nameColor**: Optional color for this character's name text, taking precedence over `useUniqueCharacterNameColors`.
+- **displayName**: Optional name shown instead of the character name on the thumbnail and in the Client List (and spoken, with `tts_use_display_name`).
 - **hotkey**: Optional. Virtual key code string (same format as [hotkey groups](#hotkey-groups-character-cycling)) that directly activates this character's window. `null`/omitted to disable. See [Per-Character Hotkeys](#per-character-hotkeys-direct-activation).
 - **opacity**: Optional per-character override for `thumbnailOpacity` (default: `null`, inherits the global value; clamped to the same 51–255 minimum).
 - **excludeFromMinimize**: Skip this character when auto-minimize fires (default: `false`). See [Auto-Minimize](#auto-minimize).
 - **excludeFromCloseAll**: Skip this character when the Close All hotkey fires (default: `false`). See [Close All](#close-all).
 - **excludeFromAutoMove**: Skip this character when moving EVE client windows to their saved positions, whether via the auto-move-on-login setting or the `hotkeyMoveToSavedPositions` hotkey (default: `false`).
-- **hideThumbnail**: Hide this character's thumbnail (and its row in list view) entirely, regardless of state (default: `false`).
+- **hideThumbnail**: Hide this character's thumbnail (and its row in list view) entirely, regardless of state; it takes no cell in a thumbnail space, so the others close up (default: `false`).
 - **notificationsMuted**: Suppress all notifications for this character, regardless of the global/per-type notification settings (default: `false`). See [Notification System](#notification-system).
 
 **Note**: Character positions are automatically saved when you drag thumbnails. Manual editing is not recommended.
@@ -1107,9 +1369,11 @@ Define custom colors for specific solar systems:
 
 > **Note**: An exact name always beats a pattern, regardless of row order; otherwise the first matching row wins.
 
-With `useUniqueSystemColors` on, systems without an override get an automatically assigned color: the palette color farthest from your overrides and every other assigned color. `useUniqueCharacterNameColors` does the same for character names, and `useUniqueCharacterBorderColors` for the focused border (a character's own `borderColors.activeBorderColor` wins); a character gets one stored color used for both, avoiding every character's own `nameColor` and active border color. Assignments are kept for the 64 most recently seen systems and 64 most recently seen characters in `colors.json` next to the `profiles` folder (shared by all profiles), written when the last EVE client closes or the app exits; delete the file to reassign them.
+With `useUniqueSystemColors` on, systems without an override get an automatically assigned color: the palette color farthest from your overrides and every other assigned color. `useUniqueCharacterNameColors` does the same for character names, and `useUniqueCharacterBorderColors` for the focused border (a character's own `borderColors.activeBorderColor` wins); a character gets one stored color used for both, avoiding every character's own `nameColor` and active border color. Assignments are kept for the 64 most recently seen systems and 64 most recently seen characters in `data/colors.json` (shared by all profiles), written when the last EVE client closes or the app exits; delete the file to reassign them.
 
-> **Note**: The key is `systemName`, not `name` - an entry using the wrong key will fail to load and abort loading the entire profile.
+Chatlog monitoring also keeps each character's EVE character ID, read from its log file names, in `data/character_ids.json`, so later lookups skip reading log headers; it's managed automatically, and deleting it only means the IDs are found again from the logs. The Characters tab shows each known character's portrait, downloaded once from EVE's image server into `data/portraits/` and never fetched again, with a default portrait until then; delete a file there to fetch that portrait anew.
+
+> **Note**: The key is `systemName`, not `name`. Unknown keys are ignored, so an entry using `name` loads with no system names and never matches.
 
 ## Config Dialog Accent Color
 
@@ -1133,26 +1397,19 @@ Whether the config dialog's Advanced Mode (extra, rarely-changed settings sectio
 
 ## Color Format
 
-Colors use hexadecimal string format in JSON:
-- **RGB format**: `"0xRRGGBB"` (no transparency, fully opaque)
-- **ARGB format**: `"0xAARRGGBB"` (includes alpha/transparency)
+Colors are hexadecimal strings in `"0xAARRGGBB"` form: alpha, then red, green and blue. `0x`/`0X` prefixes, a `#` prefix, and bare hex digits with no prefix (e.g. `"FF606060"`) are all accepted. A six-digit `"0xRRGGBB"` is read with an alpha of `00`.
 
-`0x`/`0X` prefixes, a `#` prefix, and bare hex digits with no prefix (e.g. `"FF606060"`) are all accepted.
+Where alpha applies:
+- **Text colors** (character and system names, notification text, overlay labels, badges) ignore alpha and are always drawn opaque, so `"0xFFFFFF"` and `"0xFFFFFFFF"` are the same white.
+- **Everything else** (borders, text backgrounds, the exclusion overlay) uses it: `0xFF` is fully opaque, `0x80` about half transparent, and `0x00` fully transparent, so a six-digit color there is invisible.
 
 Examples:
 ```json
-"0x00FFFFFF"   // White (opaque)
-"0x00FF0000"   // Red (opaque)
-"0x0000FF00"   // Green (opaque)
-"0x000000FF"   // Blue (opaque)
-"0x80000000"   // Black with 50% transparency
+"0xFFFFFFFF"   // White (opaque)
+"0xFFFF0000"   // Red (opaque)
 "0xFF606060"   // Gray (opaque)
-"0xFF00FFFF"   // Cyan (opaque)
+"0x80000000"   // Black, about 50% transparent
+"0x00FFFFFF"   // White text; invisible as a border or background
 ```
-
-Alpha channel values:
-- `0xFF` = 255 = Fully opaque
-- `0x80` = 128 = 50% transparent
-- `0x00` = 0 = Fully transparent
 
 

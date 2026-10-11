@@ -268,15 +268,13 @@ public class TrinityWindow {
 [TrinityWindow]::Run(__CHARNAME__, __CTRLFILE__, __BGIMAGE__)
 '@
 
-# Deterministic (hashed, not random) so re-running the script resolves to the same filename.
+# Deterministic (hashed, not random) so a character keeps one ID across runs, as in EVE.
 function Get-StableCharId {
     param([string]$CharName)
     $hash = [System.Security.Cryptography.MD5]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($CharName))
     $num = [BitConverter]::ToUInt32($hash, 0)
     return 1000000000 + ($num % 1147483647)
 }
-
-$StableSessionStart = [datetime]'2024-01-01 00:00:00'
 
 function Get-CharacterStateFile {
     param([string]$CharName)
@@ -420,7 +418,7 @@ function Add-GamelogEvent {
             "[ $ts ] (combat) Warp disruption attempt from Hostile Pilot to you!"
         }
         'Decloak' {
-            "[ $ts ] (notify) Your cloak deactivates due to proximity to Guristas Pith Ship."
+            "[ $ts ] (notify) Your cloak deactivates due to proximity to a nearby Purifier."
         }
         'ObservatoryDecloak' {
             "[ $ts ] (notify) Your cloak deactivates due to a pulse from a Mobile Observatory in the area."
@@ -492,7 +490,18 @@ function Select-NotificationTypeKind {
 
 # Runs in its own child process via Start-Job, so line-building is duplicated from Add-GamelogEvent rather than shared.
 $script:BurstScriptBlock = {
-    param($Path, $Kind, $DurationSeconds, $IntervalSeconds)
+    param($Path, $Kind, $DurationSeconds, $IntervalSeconds, $Replay)
+    if ($Replay) {
+        $start = Get-Date
+        foreach ($entry in $Replay) {
+            $parts = $entry.Split([char]'|', 2)
+            $wait = ($start.AddSeconds([int]$parts[0]) - (Get-Date)).TotalMilliseconds
+            if ($wait -gt 0) { Start-Sleep -Milliseconds $wait }
+            $ts = (Get-Date).ToString('yyyy.MM.dd HH:mm:ss')
+            [System.IO.File]::AppendAllText($Path, "[ $ts ] $($parts[1])`r`n", [System.Text.Encoding]::UTF8)
+        }
+        return
+    }
     $end = (Get-Date).AddSeconds($DurationSeconds)
     while ((Get-Date) -lt $end) {
         $ts = (Get-Date).ToString('yyyy.MM.dd HH:mm:ss')
@@ -540,11 +549,51 @@ $script:BurstIntervals = @{
     'combatMixed' = 2
 }
 
+# 3 minutes of real mining (two lasers on 12s cycles, two critical successes) from a captured gamelog,
+# as "seconds from start|line after the timestamp"; the mining burst replays it on its original timing.
+$script:MiningReplay = @'
+0|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>110<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+0|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>110<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+12|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+12|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>112<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+24|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>114<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+24|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>112<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+36|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>114<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+36|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>112<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+48|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>112<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+48|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+60|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+60|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+72|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+72|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>114<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+84|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>112<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+84|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>112<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+96|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+96|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+108|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+108|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>110<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+120|(mining) <color=#fff0ff45>Critical mining success!<color=0x77ffffff><font size=10> You mined an additional <color=#fff0ff45><font size=12>160<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+120|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+120|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>114<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+132|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>110<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+132|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+144|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+144|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+156|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>110<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+156|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>111<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+168|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+168|(mining) <color=#fff0ff45>Critical mining success!<color=0x77ffffff><font size=10> You mined an additional <color=#fff0ff45><font size=12>187<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+168|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>114<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+180|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>110<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+180|(mining) <color=0x77ffffff>You mined <font size=12><color=#ff8dc169>113<color=0x77ffffff><font size=10> units of <color=0xffffffff><font size=12>Nocxite II-Grade
+'@ -split "`r?`n"
+
 function Start-EventBurst {
     param([string]$Path, [string]$Kind, [int]$DurationSeconds = 60)
 
     $interval = $script:BurstIntervals[$Kind]
-    $job = Start-Job -ScriptBlock $script:BurstScriptBlock -ArgumentList $Path, $Kind, $DurationSeconds, $interval
+    $replay = if ($Kind -eq 'mining') { $script:MiningReplay } else { $null }
+    $job = Start-Job -ScriptBlock $script:BurstScriptBlock -ArgumentList $Path, $Kind, $DurationSeconds, $interval, $replay
     return $job
 }
 
@@ -613,18 +662,13 @@ function Start-SimClient {
 
     $charId = Get-StableCharId -CharName $CharName
 
-    # Resume the character's most recent session if we have one, rather than reverting to the stable file.
+    # Like a real client launch: fresh session logs dated now, so they're among the newest EMP scans; only the last system carries over.
     $existingState = Get-CharacterState -CharName $CharName
-    if ($existingState) {
-        $chatlogPath = $existingState.Chatlog
-        $gamelogPath = $existingState.Gamelog
-        $startSystem = $existingState.System
-    } else {
-        $chatlogPath = New-ChatlogFile -CharName $CharName -CharId $charId -Dir $ChatlogDir -Started $StableSessionStart -System 'Jita'
-        $gamelogPath = New-GamelogFile -CharName $CharName -CharId $charId -Dir $GamelogDir -Started $StableSessionStart
-        $startSystem = 'Jita'
-        Save-CharacterState -CharName $CharName -ChatlogPath $chatlogPath -GamelogPath $gamelogPath -System $startSystem
-    }
+    $startSystem = if ($existingState) { $existingState.System } else { 'Jita' }
+    $now = Get-Date
+    $chatlogPath = New-ChatlogFile -CharName $CharName -CharId $charId -Dir $ChatlogDir -Started $now -System $startSystem
+    $gamelogPath = New-GamelogFile -CharName $CharName -CharId $charId -Dir $GamelogDir -Started $now
+    Save-CharacterState -CharName $CharName -ChatlogPath $chatlogPath -GamelogPath $gamelogPath -System $startSystem
 
     $script = $agentTemplate.Replace('__CHARNAME__', "'$($CharName.Replace("'", "''"))'").Replace('__CTRLFILE__', "'$($ctrlFile.Replace("'", "''"))'").Replace('__BGIMAGE__', "'$($bgImagePath.Replace("'", "''"))'")
     $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($script))
@@ -742,7 +786,11 @@ function Start-CharacterBurst {
         Remove-Job -Job $existing -Force -ErrorAction SilentlyContinue
     }
     $c.Jobs[$Kind] = Start-EventBurst -Path $c.Gamelog -Kind $Kind -DurationSeconds $DurationSeconds
-    Write-Host "$CharName started a ${DurationSeconds}s '$Kind' burst (events every $($script:BurstIntervals[$Kind])s)." -ForegroundColor Green
+    if ($Kind -eq 'mining') {
+        Write-Host "$CharName started replaying 3 minutes of real mining ($($script:MiningReplay.Count) yields)." -ForegroundColor Green
+    } else {
+        Write-Host "$CharName started a ${DurationSeconds}s '$Kind' burst (events every $($script:BurstIntervals[$Kind])s)." -ForegroundColor Green
+    }
 }
 
 # Fires several distinct NotificationTypes on one character ~1.5s apart (one from each Event Alerts category:
@@ -822,7 +870,7 @@ function Start-UniqueColorTest {
     }
     Write-Host ''
     Write-Host 'Compare the thumbnails: every system (and, with Unique Character Name Colors on, every character) should have a clearly different color.' -ForegroundColor Cyan
-    Write-Host 'Then restart the app: each must keep its color (stored in colors.json next to profiles).' -ForegroundColor Cyan
+    Write-Host 'Then restart the app: each must keep its color (stored in data\colors.json).' -ForegroundColor Cyan
 }
 
 function Start-SystemColorTest {
@@ -886,8 +934,9 @@ $menu = @'
 
   [s] status                 [n] start new character   [o] log OUT (title -> "EVE")
   [i] log back IN            [k] kill (crash) client    [b] bounty burst (60s)
-  [m] mining burst (60s)     [c] combat burst (60s)     [j] jump to system
+  [m] real mining (3 min)     [c] combat burst (60s)     [j] jump to system
   [r] random 3-system route  [e] fire event type...     [x] notification storm (multi-alert test)
+  [l] move via Local only (pod/filament: no gamelog jump line)
   [t] travel mode test (group jump, leave one behind)
   [y] system color test (patterns, comma lists, precedence)
   [u] unique color test (every client in its own system)
@@ -957,6 +1006,18 @@ try {
                     $c = $clients[$name]
                     Add-GamelogJump -Path $c.Gamelog -From $c.System -To $newSystem | Write-Host
                     Add-ChatlogJump -Path $c.Chatlog -System $newSystem | Out-Null
+                    $c.System = $newSystem
+                    Save-CharacterState -CharName $name -ChatlogPath $c.Chatlog -GamelogPath $c.Gamelog -System $c.System
+                }
+            }
+        }
+        'l' {
+            $name = Select-Character
+            if ($name) {
+                $newSystem = Read-Host 'Move to system'
+                if ($newSystem) {
+                    $c = $clients[$name]
+                    Add-ChatlogJump -Path $c.Chatlog -System $newSystem | Write-Host
                     $c.System = $newSystem
                     Save-CharacterState -CharName $name -ChatlogPath $c.Chatlog -GamelogPath $c.Gamelog -System $c.System
                 }

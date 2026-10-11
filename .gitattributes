@@ -1,0 +1,13 @@
+* text=auto eol=lf
+
+# cmd.exe misparses batch files with bare LF line endings.
+*.bat text eol=crlf
+
+*.dll binary
+*.ico binary
+*.jpg binary
+*.ttf binary
+*.woff2 binary
+
+# Vendored webview (see docs/BUILDING.md), kept out of GitHub language stats.
+deps/** linguist-vendored
