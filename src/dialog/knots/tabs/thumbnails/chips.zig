@@ -199,7 +199,7 @@ pub const Chip = struct {
     section: Section,
     fields: Fields,
     show_field: []const u8,
-    /// The thumbnail's Show Text Overlays has to be on too.
+    /// The Text Overlays section's switch has to be on too.
     needs_show_text: bool,
     /// Its section's master switch, e.g. Combat's `enabled`, which has to be on too.
     enabled_field: ?[]const u8 = null,

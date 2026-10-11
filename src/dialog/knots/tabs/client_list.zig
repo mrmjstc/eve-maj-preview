@@ -415,6 +415,7 @@ fn popover(context: *ui.Frame, display: DisplayRef) !void {
 fn settings(context: *ui.Frame, display: DisplayRef, part: Part) !bool {
     const is_close_clicked = try widgets.popoverTitle(context, .src(@src()), part.label());
     try requirementNotices(context, part);
+    const profile = session.profile();
 
     const was_aligned = widgets.useAlignedRows(true);
     defer _ = widgets.useAlignedRows(was_aligned);
@@ -441,10 +442,10 @@ fn settings(context: *ui.Frame, display: DisplayRef, part: Part) !bool {
             try bind.rgb(context, display, "listViewNotificationColor", "Text Color");
             try shown.close(context);
         },
-        .incoming_dps => try statSettings(context, display, "listViewShowIncomingDps", "Show Incoming Damage", "listViewShowIncomingPrefix", "Show IN: Prefix", "listViewIncomingDpsColor"),
-        .outgoing_dps => try statSettings(context, display, "listViewShowOutgoingDps", "Show Outgoing Damage", "listViewShowOutgoingPrefix", "Show OUT: Prefix", "listViewOutgoingDpsColor"),
-        .mining_rate => try statSettings(context, display, "listViewShowMiningRate", "Show Mining Rate", "listViewShowMiningPrefix", "Show M: Prefix", "listViewMiningRateColor"),
-        .bounty_rate => try statSettings(context, display, "listViewShowBountyRate", "Show Bounty Rate", "listViewShowBountyPrefix", "Show ISK: Prefix", "listViewBountyRateColor"),
+        .incoming_dps => try statSettings(context, display, profile.child("combat"), "Enable Combat Overlays", "listViewShowIncomingDps", "Show Incoming Damage", "listViewShowIncomingPrefix", "Show IN: Prefix", "listViewIncomingDpsColor"),
+        .outgoing_dps => try statSettings(context, display, profile.child("combat"), "Enable Combat Overlays", "listViewShowOutgoingDps", "Show Outgoing Damage", "listViewShowOutgoingPrefix", "Show OUT: Prefix", "listViewOutgoingDpsColor"),
+        .mining_rate => try statSettings(context, display, profile.child("mining"), "Enable Mining Overlay", "listViewShowMiningRate", "Show Mining Rate", "listViewShowMiningPrefix", "Show M: Prefix", "listViewMiningRateColor"),
+        .bounty_rate => try statSettings(context, display, profile.child("bounty"), "Enable Bounty Overlay", "listViewShowBountyRate", "Show Bounty Rate", "listViewShowBountyPrefix", "Show ISK: Prefix", "listViewBountyRateColor"),
     }
     return is_close_clicked;
 }
@@ -457,20 +458,17 @@ fn requirementNotices(context: *ui.Frame, part: Part) !void {
         .systems, .notifications, .incoming_dps, .outgoing_dps, .mining_rate, .bounty_rate => true,
     };
     if (needs_chatlog and !profile.chatlog.enabled) try widgets.notice(context, .src(@src()), "Requires Log Monitoring to be enabled.");
-    if (part == .notifications and !profile.thumbnail.notifications.enabled) try widgets.notice(context, .src(@src()), "Requires Enable Notifications on the Notifications tab.");
-    const missing_overlay: ?[]const u8 = switch (part) {
-        .active, .names, .systems, .notifications => null,
-        .incoming_dps, .outgoing_dps => if (profile.combat.enabled) null else "Requires the Combat overlay to be enabled on the Combat tab.",
-        .mining_rate => if (profile.mining.enabled) null else "Requires the Mining overlay to be enabled on the Mining tab.",
-        .bounty_rate => if (profile.bounty.enabled) null else "Requires the Bounty overlay to be enabled on the Bounty tab.",
-    };
-    if (missing_overlay) |text| try widgets.notice(context, .src(@src()), text);
+    if (part == .notifications and !profile.thumbnail.notifications.enabled) try widgets.notice(context, .src(@src()), "Requires Notification System switched on in the Notifications tab.");
 }
 
-fn statSettings(context: *ui.Frame, display: DisplayRef, comptime show_field: []const u8, show_label: []const u8, comptime prefix_field: []const u8, prefix_label: []const u8, comptime color_field: []const u8) !void {
+/// `overlay` is the session.Ref of the rate's overlay settings, e.g. combat's; its `enabled` is shared with the thumbnails' text, and the list shows the rate only while it's on.
+fn statSettings(context: *ui.Frame, display: DisplayRef, overlay: anytype, overlay_label: []const u8, comptime show_field: []const u8, show_label: []const u8, comptime prefix_field: []const u8, prefix_label: []const u8, comptime color_field: []const u8) !void {
+    try bind.toggle(context, overlay, "enabled", overlay_label);
+    const enabled = try widgets.openGroup(context, .str("knots.client_list.overlay:" ++ show_field), overlay.get("enabled"));
     try bind.toggle(context, display, show_field, show_label);
     const shown = try widgets.openGroup(context, .str("knots.client_list.shown:" ++ show_field), display.get(show_field));
     try bind.toggle(context, display, prefix_field, prefix_label);
     try bind.rgb(context, display, color_field, "Text Color");
     try shown.close(context);
+    try enabled.close(context);
 }

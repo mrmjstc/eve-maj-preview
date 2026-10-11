@@ -19,8 +19,7 @@ pub fn show(context: *ui.Frame) !void {
 }
 
 fn monitoring(context: *ui.Frame, chatlog: ChatlogRef) !void {
-    const section = try widgets.openSection(context, "Log Monitoring", "Watches EVE's chatlog and gamelog files to drive the DPS overlay, mining overlay, and system-location display. In EVE, enable Esc > Chat Channel Settings > Log chat to file so logs get written to disk.", &style.section);
-    try bind.toggle(context, chatlog, "enabled", "Enable Log Monitoring");
+    const section = try bind.switchedSection(context, "Log Monitoring", "Watches EVE's chatlog and gamelog files to drive the DPS overlay, mining overlay, and system-location display. In EVE, enable Esc > Chat Channel Settings > Log chat to file so logs get written to disk.", chatlog, "enabled", true);
     const options = try widgets.openGroup(context, .src(@src()), chatlog.get("enabled"));
     try directory(context, chatlog, "chatlogDir", "Chatlog Directory", "C:\\Users\\...\\Chatlogs", .chatlog_dir, "Select Chatlog Directory");
     try directory(context, chatlog, "gamelogDir", "Gamelog Directory", "C:\\Users\\...\\Gamelogs", .gamelog_dir, "Select Gamelog Directory");

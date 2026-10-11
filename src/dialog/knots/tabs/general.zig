@@ -19,7 +19,7 @@ const NEW_FILTER_NAME = "New Filter";
 
 var g_allocator: std.mem.Allocator = undefined;
 var g_selected_index: usize = 0;
-/// Enable Window Filters isn't saved; it starts on whenever the profile has filters.
+/// The Window Filters switch isn't saved; it starts on whenever the profile has filters.
 var g_are_filters_enabled: ?bool = null;
 /// The open "Pick Running Window" dropdown, under one filter.
 var g_picker: ?window_picker.Picker = null;
@@ -73,10 +73,10 @@ fn scanning(context: *ui.Frame) !void {
 }
 
 fn windowFilters(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Window Filters", "Configure which applications to track. Each filter can match by window class name and executable name.", &style.section);
     const profile = session.profile();
     var is_enabled = g_are_filters_enabled orelse (profile.ptr.windowFilters.items.len > 0);
-    if (try widgets.checkbox(context, .src(@src()), "Enable Window Filters", &is_enabled)) g_are_filters_enabled = is_enabled;
+    const section = try widgets.openSwitchedSection(context, "Window Filters", "Configure which applications to track. Each filter can match by window class name and executable name.", &style.section, .{ .is_on = &is_enabled });
+    if (section.is_flipped) g_are_filters_enabled = is_enabled;
     try widgets.hintText(context, .src(@src()), "When off, only EVE Online client windows are tracked.");
 
     const options = try widgets.openGroup(context, .src(@src()), is_enabled);

@@ -107,9 +107,11 @@ pub const Row = struct {
     }
 };
 
-/// What openSection returns; closing it ends the section's hints.
+/// What openSection and openSwitchedSection return; closing it ends the section's hints.
 pub const Section = struct {
     rect: Rect,
+    /// The header's switch was flipped this frame.
+    is_flipped: bool = false,
 
     pub fn close(self: Section, context: *ui.Frame) !void {
         g_open_section = null;
@@ -182,6 +184,9 @@ pub const RosterFooter = struct {
 };
 
 pub const RosterAction = enum { none, add, add_open_clients };
+
+/// A section's on/off switch, in its header; an unavailable one is drawn inert.
+pub const SectionSwitch = struct { is_on: *bool, is_available: bool = true };
 
 /// What useDetailRows replaced.
 pub const RowSettings = struct { is_aligned: bool, label_style: *const ui.Style };
@@ -292,41 +297,12 @@ pub fn reset() void {
 
 /// A panel with its heading, a button for its field hints when it has any, and the intro hint; the caller closes it.
 pub fn openSection(context: *ui.Frame, comptime title: []const u8, comptime hint: []const u8, section_style: *const ui.Style) !Section {
-    const key: ui.Key = .str("knots.section:" ++ title);
-    const id = key.hash();
-    const ui_state = context.ui();
-    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, id);
-    search.captureSection(id);
-    search.captureText(title);
-    search.captureText(hint);
-    // A section the search doesn't match is laid out of sight rather than skipped, so its caller needn't know.
-    const is_hidden = !search.sectionMatches(id);
-    const section = Rect{ .key = key, .style = if (is_hidden) &style.section_hidden else section_style };
-    _ = try section.open(context);
-    g_open_section = id;
-    g_section_row_count = 0;
+    return openAnySection(context, title, hint, section_style, null);
+}
 
-    const heading = Rect{ .key = .str("knots.heading:" ++ title), .style = &style.section_heading };
-    _ = try heading.open(context);
-    try context.e(Text{ .selectable = false, .key = .str("knots.title:" ++ title), .content = title, .style = &style.heading });
-    const actions = Rect{ .key = .str("knots.heading.actions:" ++ title), .style = &style.section_heading_actions };
-    _ = try actions.open(context);
-    if (g_hinted_before.contains(id)) {
-        const is_shown = g_hints_shown.contains(id);
-        if ((try context.interact(Button{
-            .key = .str("knots.hint.toggle:" ++ title),
-            .label = "?",
-            .style = if (is_shown) &style.hint_toggle_on else &style.hint_toggle,
-        })).clicked) {
-            if (is_shown) g_hints_shown.remove(id) else g_hints_shown.append(id);
-            context.requestRedraw();
-        }
-    }
-    try actions.close(context);
-    try heading.close(context);
-
-    if (hint.len > 0) try context.e(Text{ .selectable = false, .key = .str("knots.hint:" ++ title), .content = hint, .style = &style.hint });
-    return .{ .rect = section };
+/// openSection with an on/off switch for the whole section at the right of its heading.
+pub fn openSwitchedSection(context: *ui.Frame, comptime title: []const u8, comptime hint: []const u8, section_style: *const ui.Style, header_switch: SectionSwitch) !Section {
+    return openAnySection(context, title, hint, section_style, header_switch);
 }
 
 /// A label-then-controls row; the caller adds the controls and closes it.
@@ -854,6 +830,50 @@ fn reorderLifted(context: *ui.Frame, base: ui.Key) ?Lifted {
     if (drag.list != base.hash() or !drag.has_moved) return null;
     const mouse_y: f32 = @floatCast(context.ui().input.mouse_pos[1]);
     return .{ .from = drag.from, .slot = if (drag.insert > drag.from) drag.insert - 1 else drag.insert, .top = mouse_y - drag.grab_y, .row_height = drag.row_height };
+}
+
+fn openAnySection(context: *ui.Frame, comptime title: []const u8, comptime hint: []const u8, section_style: *const ui.Style, header_switch: ?SectionSwitch) !Section {
+    const key: ui.Key = .str("knots.section:" ++ title);
+    const id = key.hash();
+    const ui_state = context.ui();
+    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, id);
+    search.captureSection(id);
+    search.captureText(title);
+    search.captureText(hint);
+    // A section the search doesn't match is laid out of sight rather than skipped, so its caller needn't know.
+    const is_hidden = !search.sectionMatches(id);
+    const section = Rect{ .key = key, .style = if (is_hidden) &style.section_hidden else section_style };
+    _ = try section.open(context);
+    g_open_section = id;
+    g_section_row_count = 0;
+
+    const heading = Rect{ .key = .str("knots.heading:" ++ title), .style = &style.section_heading };
+    _ = try heading.open(context);
+    const title_row = Rect{ .key = .str("knots.heading.title:" ++ title), .style = &style.section_heading_title };
+    _ = try title_row.open(context);
+    try context.e(Text{ .selectable = false, .key = .str("knots.title:" ++ title), .content = title, .style = &style.heading });
+    if (g_hinted_before.contains(id)) {
+        const is_shown = g_hints_shown.contains(id);
+        if ((try context.interact(Button{
+            .key = .str("knots.hint.toggle:" ++ title),
+            .label = "?",
+            .style = if (is_shown) &style.hint_toggle_on else &style.hint_toggle,
+        })).clicked) {
+            if (is_shown) g_hints_shown.remove(id) else g_hints_shown.append(id);
+            context.requestRedraw();
+        }
+    }
+    try title_row.close(context);
+    var is_flipped = false;
+    if (header_switch) |toggle| {
+        const group = try openAnyGroup(context, .str("knots.section.switch.group:" ++ title), &style.section_switch, toggle.is_available);
+        is_flipped = try toggleSwitch(context, .str("knots.section.switch:" ++ title), toggle.is_on);
+        try group.close(context);
+    }
+    try heading.close(context);
+
+    if (hint.len > 0) try context.e(Text{ .selectable = false, .key = .str("knots.hint:" ++ title), .content = hint, .style = &style.hint });
+    return .{ .rect = section, .is_flipped = is_flipped };
 }
 
 fn openAnyGroup(context: *ui.Frame, key: ui.Key, group_style: *const ui.Style, is_enabled: bool) !Group {

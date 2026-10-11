@@ -19,8 +19,7 @@ const ORE_CATEGORIES = [_][]const u8{ "Ore", "Ice", "Moons", "Gas" };
 pub fn show(context: *ui.Frame) !void {
     try chatlogNotice(context);
     const ref = session.profile().child("mining");
-    const section = try widgets.openSection(context, "Mining Overlay Settings", "Displays m3 mined per minute on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.", &style.section);
-    try bind.toggle(context, ref, "enabled", "Enable Text Overlays");
+    const section = try bind.switchedSection(context, "Mining Overlay Settings", "Displays m3 mined per minute on each thumbnail, calculated from EVE gamelogs. Requires chatlog monitoring to be enabled.", ref, "enabled", true);
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.number(context, ref, "window_seconds", "Window", .{ .unit = "s" });
     try widgets.hintText(context, .src(@src()), "The rolling look-back period the m3/min rate is averaged over, not how often the number updates.");
@@ -34,7 +33,7 @@ pub fn show(context: *ui.Frame) !void {
     try options.close(context);
     try section.close(context);
 
-    const alerts = try widgets.openSection(context, "Alerts", "Notifications triggered by mining laser activity. Requires Text Overlays above to be enabled.", &style.section);
+    const alerts = try widgets.openSection(context, "Alerts", "Notifications triggered by mining laser activity. Requires Mining Overlay Settings above to be switched on.", &style.section);
     const alert_options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try widgets.subheading(context, .src(@src()), "Laser Idle Alert");
     try widgets.hintText(context, .src(@src()), "Fires when fewer than Event Threshold mining hits occur within Detection Window - a slowdown, not full silence.");

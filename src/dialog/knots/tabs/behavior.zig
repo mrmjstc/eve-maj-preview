@@ -14,6 +14,7 @@ const widgets = @import("../widgets.zig");
 const log = @import("../../../log.zig");
 
 const Button = ui.component.Button;
+const Text = ui.component.Text;
 const SelectInput = ui.component.SelectInput;
 const slog = log.Scoped("dialog_knots");
 
@@ -118,9 +119,8 @@ fn hoverZoom(context: *ui.Frame, ref: session.Ref(config.InteractionConfig), is_
 }
 
 fn autoMinimize(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Auto-Minimize", "Minimizes an EVE client window after it's been unfocused for the configured delay.", &style.section);
     const ref = session.profile().child("autoMinimize");
-    try bind.toggle(context, ref, "enabled", "Enable Auto-Minimize");
+    const section = try bind.switchedSection(context, "Auto-Minimize", "Minimizes an EVE client window after it's been unfocused for the configured delay.", ref, "enabled", true);
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.toggle(context, ref, "exemptLastActiveOnFocusLoss", "Keep Last-Active Client Visible");
     try widgets.hintText(context, .src(@src()), "Exempts whichever client you focused most recently, even past the delay.");
@@ -172,7 +172,7 @@ fn windowPosition(context: *ui.Frame) !void {
         g_is_sources_rescan_due = true;
         context.requestRedraw();
     }
-    if ((try context.interact(Button{ .key = .src(@src()), .label = "Set All", .style = &style.paired_button })).clicked) setAll(source);
+    if ((try context.interact(Button{ .key = .src(@src()), .label = "Set All", .disabled = source == null, .style = if (source == null) &style.paired_disabled_button else &style.paired_button })).clicked) setAll(source);
     try set_all.close(context);
     const clear_all = try widgets.openBinding(context, .src(@src()), "Saved Positions");
     if (try widgets.confirmButton(context, .src(@src()), "Clear All", "Confirm", &style.paired_danger_button, &style.paired_confirm_button)) clearAll();
@@ -194,8 +194,7 @@ fn sourceSelect(context: *ui.Frame) !?[]const u8 {
     const sources = if (g_sources) |*scan| scan else return null;
     const key: ui.Key = .str("knots.positions.source");
     if (sources.names.len == 0) {
-        const labels: []const []const u8 = &.{"No open EVE clients found"};
-        _ = try context.interact(SelectInput(u32){ .key = key, .labels = labels, .values = &.{0}, .initial_selected = 0, .style = try widgets.fittedSelect(context, labels), .parts = .{ .popup = &style.select_popup } });
+        try context.e(Text{ .selectable = false, .key = key, .content = "No open EVE clients", .style = &style.muted_text });
         return null;
     }
     const values = try context.arena().alloc(u32, sources.names.len);
@@ -278,15 +277,13 @@ fn potatoSelect(context: *ui.Frame) !?[]const []const u8 {
     const found = switch (g_potato) {
         .found => |*found| found,
         .not_scanned, .failed => {
-            const message: []const u8 = if (g_potato == .failed) "Failed to scan for EVE settings profiles." else "Scanning for EVE settings profiles...";
-            const labels: []const []const u8 = &.{message};
-            _ = try context.interact(SelectInput(u32){ .key = key, .labels = labels, .values = &.{0}, .initial_selected = 0, .style = try widgets.fittedSelect(context, labels), .parts = .{ .popup = &style.select_popup } });
+            const message = if (g_potato == .failed) "Failed to scan for EVE settings profiles" else "Scanning for EVE settings profiles...";
+            try context.e(Text{ .selectable = false, .key = key, .content = message, .style = &style.muted_text });
             return null;
         },
     };
     if (found.profiles.len == 0) {
-        const labels: []const []const u8 = &.{"No EVE settings profiles found."};
-        _ = try context.interact(SelectInput(u32){ .key = key, .labels = labels, .values = &.{0}, .initial_selected = 0, .style = try widgets.fittedSelect(context, labels), .parts = .{ .popup = &style.select_popup } });
+        try context.e(Text{ .selectable = false, .key = key, .content = "No EVE settings profiles found", .style = &style.muted_text });
         return null;
     }
     const arena = context.arena();

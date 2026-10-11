@@ -293,7 +293,10 @@ pub const notice: Style = .{
 pub const notice_text: Style = .{ .width = .grow(), .wrap = true, .foreground = .accent };
 
 pub const section_heading: Style = .{ .width = .grow(), .direction = .row, .justify = .space_between, .@"align" = .center };
-pub const section_heading_actions: Style = .{ .direction = .row, .@"align" = .center, .gap = 6 };
+/// The title and its ? button, so the right of the heading is left to the section's switch.
+pub const section_heading_title: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
+/// Inset like the rows' own switches, so it lines up above them.
+pub const section_switch: Style = group_inline.with(.{ .padding = .init(0, ROW_INSET, 0, 0) });
 
 /// The section's ? button, filled while its field hints show.
 pub const hint_toggle: Style = .{
@@ -705,6 +708,7 @@ pub const button_text: Style = .{ .foreground = .{ .color = TEXT } };
 /// Buttons in neighbouring rows, e.g. Set All over Clear All, at one width so their edges line up; it fits "Clear All" and "Confirm".
 const PAIRED_BUTTON_WIDTH = 90;
 pub const paired_button: Style = plain_button.with(.{ .width = .fixed(PAIRED_BUTTON_WIDTH), .justify = .center });
+pub const paired_disabled_button: Style = disabled_button.with(.{ .width = .fixed(PAIRED_BUTTON_WIDTH), .justify = .center });
 pub const paired_danger_button: Style = danger_button.with(.{ .width = .fixed(PAIRED_BUTTON_WIDTH), .justify = .center });
 pub const paired_confirm_button: Style = confirm_button.with(.{ .width = .fixed(PAIRED_BUTTON_WIDTH), .justify = .center });
 /// A button spanning its container, e.g. under a list.

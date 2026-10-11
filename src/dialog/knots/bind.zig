@@ -76,6 +76,14 @@ pub fn toggle(context: *ui.Frame, ref: anytype, comptime field: []const u8, labe
     if (try widgets.checkbox(context, fieldKey(ref, field), label, &is_checked)) ref.set(field, is_checked);
 }
 
+/// widgets.openSwitchedSection with `field` as its switch; the caller closes it.
+pub fn switchedSection(context: *ui.Frame, comptime title: []const u8, comptime hint: []const u8, ref: anytype, comptime field: []const u8, is_available: bool) !widgets.Section {
+    var is_on: bool = ref.get(field);
+    const section = try widgets.openSwitchedSection(context, title, hint, &style.section, .{ .is_on = &is_on, .is_available = is_available });
+    if (section.is_flipped) ref.set(field, is_on);
+    return section;
+}
+
 /// In aligned rows the unit sits inside the box.
 pub fn number(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, options: NumberOptions) !void {
     const key = fieldKey(ref, field);

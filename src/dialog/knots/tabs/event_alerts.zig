@@ -71,7 +71,7 @@ pub fn show(context: *ui.Frame) !void {
     if (!session.profile().ptr.chatlog.enabled) {
         try widgets.notice(context, .src(@src()), "Event Alerts requires Log Monitoring enabled to read logs and trigger alerts.");
     } else if (!is_enabled) {
-        try widgets.notice(context, .src(@src()), "Event Alerts requires Enable Notifications on the Notifications tab.");
+        try widgets.notice(context, .src(@src()), "Event Alerts requires Notification System switched on in the Notifications tab.");
     }
     const section = try widgets.openSection(context, "Event Alerts", "Per-event notification, suppression, speech, and border behavior. Select an event on the left to edit it.", &style.fill_section);
     const options = try widgets.openFillGroup(context, .src(@src()), is_enabled);

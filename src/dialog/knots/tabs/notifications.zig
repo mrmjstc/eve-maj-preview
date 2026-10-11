@@ -16,9 +16,8 @@ pub fn show(context: *ui.Frame) !void {
 }
 
 fn system(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Notification System", "Configure position, duration, and suppression behavior for event notifications.", &style.section);
     const ref = session.profile().child("thumbnail").child("notifications");
-    try bind.toggle(context, ref, "enabled", "Enable Notifications");
+    const section = try bind.switchedSection(context, "Notification System", "Configure position, duration, and suppression behavior for event notifications.", ref, "enabled", true);
     // Its placement and font are edited from its text on the Appearance tab's thumbnail preview.
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.number(context, ref, "suppress_click_duration_ms", "Click Suppress Duration", .{ .shows_seconds = true, .unit = "s" });
@@ -46,11 +45,11 @@ fn speech(context: *ui.Frame) !void {
 }
 
 fn travel(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Travel Mode", "Detects when a tracked character falls behind while the rest of the group jumps together, and fires a notification. Runs automatically once enabled below - no manual start/stop needed. Border color, duration, and TTS for the alert are configured on the Event Alerts tab under \"Left Behind\".", &style.section);
     const ref = session.profile().child("travel");
     // Its only output is a notification.
-    const notifications = try widgets.openGroup(context, .src(@src()), session.profile().ptr.thumbnail.notifications.enabled);
-    try bind.toggle(context, ref, "enabled", "Enable Travel Mode");
+    const are_notifications_enabled = session.profile().ptr.thumbnail.notifications.enabled;
+    const section = try bind.switchedSection(context, "Travel Mode", "Detects when a tracked character falls behind while the rest of the group jumps together, and fires a notification. Runs automatically once switched on - no manual start/stop needed. Border color, duration, and TTS for the alert are configured on the Event Alerts tab under \"Left Behind\".", ref, "enabled", are_notifications_enabled);
+    const notifications = try widgets.openGroup(context, .src(@src()), are_notifications_enabled);
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.number(context, ref, "window_seconds", "Catch-Up Window", .{ .unit = "s" });
     try widgets.hintText(context, .src(@src()), "How long a character can lag behind the group's jump before this fires.");
