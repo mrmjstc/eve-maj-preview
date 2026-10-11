@@ -38,12 +38,12 @@ const SEARCH_KEY: ui.Key = .str("knots.search");
 
 /// A heading in the sidebar over the tabs that belong to it.
 const Category = enum {
-    app,
     clients,
     display,
     input,
     alerts,
     overlays,
+    app,
 
     fn label(self: Category) []const u8 {
         return switch (self) {
@@ -59,9 +59,6 @@ const Category = enum {
 
 /// In sidebar order, each category's tabs together.
 const Tab = enum {
-    about,
-    backups,
-    general,
     characters,
     hotkey_groups,
     appearance,
@@ -73,6 +70,9 @@ const Tab = enum {
     notification_history,
     chatlog,
     mining,
+    general,
+    backups,
+    about,
 
     fn label(self: Tab) []const u8 {
         return switch (self) {
