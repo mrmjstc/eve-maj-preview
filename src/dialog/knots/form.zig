@@ -357,13 +357,7 @@ fn footer(context: *ui.Frame) !void {
 fn searchBox(context: *ui.Frame) !void {
     const box = Rect{ .key = .src(@src()), .style = &style.search_container };
     _ = try box.open(context);
-    try context.e(ui.component.TextInput{ .key = SEARCH_KEY, .buf = &search.g_query, .style = &style.search_input, .placeholder = "Search settings..." });
-    if (search.g_query.items.len > 0) {
-        if ((try context.interact(Button{ .key = .src(@src()), .label = "\u{00D7}", .style = &style.search_clear })).clicked) {
-            search.clear();
-            context.requestRedraw();
-        }
-    }
+    try widgets.searchBox(context, SEARCH_KEY, &search.g_query, "Search settings...");
     try box.close(context);
     if (search.isActive() and !search.needsIndex()) {
         const match_count = search.matchCount();

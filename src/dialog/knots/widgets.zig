@@ -431,13 +431,13 @@ pub fn openRoster(context: *ui.Frame, key: ui.Key, frame_style: *const ui.Style,
     return openAnyRoster(context, key, frame_style, is_filling, null);
 }
 
-/// openRoster with rosterSearch above its rows; the caller filters the rows by `query`.
+/// openRoster with a searchBox above its rows; the caller filters the rows by `query`.
 pub fn openSearchedRoster(context: *ui.Frame, key: ui.Key, frame_style: *const ui.Style, is_filling: bool, query: *std.ArrayList(u8), placeholder: []const u8) !Roster {
     return openAnyRoster(context, key, frame_style, is_filling, .{ .query = query, .placeholder = placeholder });
 }
 
-/// A search box at the top of a master list, with a button to clear it; `query` is owned by the caller's tab.
-pub fn rosterSearch(context: *ui.Frame, key: ui.Key, query: *std.ArrayList(u8), placeholder: []const u8) !void {
+/// A search box with a button to clear it, e.g. at the top of a master list; `query` is owned by the caller.
+pub fn searchBox(context: *ui.Frame, key: ui.Key, query: *std.ArrayList(u8), placeholder: []const u8) !void {
     const row = Rect{ .key = key, .style = &style.search_row };
     _ = try row.open(context);
     try context.e(TextInput{ .key = key.indexed(1), .buf = query, .style = &style.text_input, .placeholder = placeholder });
@@ -851,7 +851,7 @@ fn reorderLifted(context: *ui.Frame, base: ui.Key) ?Lifted {
 fn openAnyRoster(context: *ui.Frame, key: ui.Key, frame_style: *const ui.Style, is_filling: bool, roster_search: ?RosterSearch) !Roster {
     const frame = Rect{ .key = key, .style = frame_style };
     _ = try frame.open(context);
-    if (roster_search) |box| try rosterSearch(context, key.indexed(5), box.query, box.placeholder);
+    if (roster_search) |box| try searchBox(context, key.indexed(5), box.query, box.placeholder);
     const ui_state = context.ui();
     const pane_key = key.indexed(1);
     if (g_scroll_to_end == pane_key.hash()) {

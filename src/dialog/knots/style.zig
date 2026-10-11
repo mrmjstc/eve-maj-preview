@@ -838,7 +838,7 @@ pub const table_heading_price: Style = .{ .width = .fixed(PRICE_INPUT_WIDTH), .f
 pub const price_input: Style = number_input.with(.{ .width = .fixed(PRICE_INPUT_WIDTH), .height = .fixed(24) });
 const PRICE_INPUT_WIDTH = 140;
 
-/// A search box with its clear button, above a roster.
+/// widgets.searchBox's box and clear button.
 pub const search_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 4 };
 /// Several labelled controls on one line.
 pub const inline_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
@@ -933,21 +933,8 @@ pub const section_hidden: Style = .{
     .height = .fixed(0),
     .overflow = .hidden,
 };
-/// The settings search box and its clear button, at the footer's left.
-pub const search_container: Style = .{ .width = .fixed(180), .direction = .row, .@"align" = .center, .gap = 2 };
-pub const search_input: Style = text_input.with(.{ .width = .grow() });
-/// Inside the box's right edge, quiet until hovered.
-pub const search_clear: Style = .{
-    .width = .fixed(22),
-    .height = .fixed(22),
-    .padding = .all(0),
-    .justify = .center,
-    .background = .transparent,
-    .foreground = .{ .color = MUTED },
-    .radius = .sm,
-    .hover = &.{ .foreground = .{ .color = TEXT }, .background = .{ .color = SURFACE_ALT }, .state_layer = 0 },
-    .active = &.{ .state_layer = 0 },
-};
+/// The settings search at the footer's left: room for a 180px box, the gap and its clear button.
+pub const search_container: Style = .{ .width = .fixed(180 + 4 + CONTROL_HEIGHT) };
 pub const search_count_none: Style = .{ .width = .fixed(60), .foreground = .{ .color = ERROR } };
 pub const search_count_some: Style = .{ .width = .fixed(60), .foreground = .accent };
 

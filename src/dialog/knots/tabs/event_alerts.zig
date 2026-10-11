@@ -105,7 +105,7 @@ fn matchesSearch(notification_type: NotificationType) bool {
 fn typeRoster(context: *ui.Frame) !void {
     const roster = Rect{ .key = .src(@src()), .style = &style.roster };
     _ = try roster.open(context);
-    try widgets.rosterSearch(context, .str("knots.events.search"), &g_search, "Search events...");
+    try widgets.searchBox(context, .str("knots.events.search"), &g_search, "Search events...");
     const rows = try widgets.openScrollPane(context, .str("knots.events.rows"), style.roster_scroll);
     var last_category: ?notification.NotificationCategory = null;
     for (TYPES_IN_ORDER) |notification_type| {

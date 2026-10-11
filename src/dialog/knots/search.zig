@@ -49,10 +49,6 @@ pub fn needsIndex() bool {
     return isActive() and !g_is_indexed;
 }
 
-pub fn clear() void {
-    g_query.clearRetainingCapacity();
-}
-
 pub fn beginCapture(tab: usize) void {
     g_capture_tab = tab;
 }
