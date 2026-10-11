@@ -24,6 +24,7 @@ const backups = @import("tabs/backups.zig");
 const hotkeys = @import("tabs/hotkeys.zig");
 const hotkey_groups = @import("tabs/hotkey_groups.zig");
 const event_alerts = @import("tabs/event_alerts.zig");
+const characters = @import("tabs/characters.zig");
 const lang = @import("lang.zig");
 const search = @import("search.zig");
 const import_dialog = @import("import_dialog.zig");
@@ -254,6 +255,8 @@ fn run() void {
     defer update_notice.reset();
     event_alerts.init(g_allocator);
     defer event_alerts.reset();
+    characters.init(g_allocator);
+    defer characters.reset();
     general.init(g_allocator);
     defer general.reset();
     backups.init(g_allocator);

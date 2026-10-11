@@ -13,6 +13,7 @@ const SliderInput = ui.component.SliderInput;
 const ColorPicker = ui.component.ColorPicker;
 const Checkbox = ui.component.Checkbox;
 const Button = ui.component.Button;
+const TextInput = ui.component.TextInput;
 const Tooltip = ui.component.Tooltip;
 const Dialog = ui.component.Dialog;
 
@@ -149,10 +150,14 @@ pub const FieldGroup = struct {
 pub const Roster = struct {
     key: ui.Key,
     frame: Rect,
-    rows: Rect,
+    rows: ScrollPane,
 
-    /// The rows' container, for ReorderList.liftedStyle.
+    /// The column holding the rows inside their scroll pane, for ReorderList.liftedStyle.
     pub fn rowsKey(self: Roster) ui.Key {
+        return self.paneKey().indexed(1);
+    }
+
+    fn paneKey(self: Roster) ui.Key {
         return self.key.indexed(1);
     }
 
@@ -169,7 +174,7 @@ pub const Roster = struct {
         try self.frame.close(context);
         // Added rows go last; scrolled to on the next frame, once they're drawn.
         if (action != .none) {
-            g_scroll_to_end = self.rowsKey().hash();
+            g_scroll_to_end = self.paneKey().hash();
             context.requestRedraw();
         }
         return action;
@@ -184,6 +189,9 @@ pub const RosterFooter = struct {
 };
 
 pub const RosterAction = enum { none, add, add_open_clients };
+
+/// openSearchedRoster's search box.
+const RosterSearch = struct { query: *std.ArrayList(u8), placeholder: []const u8 };
 
 /// A section's on/off switch, in its header; an unavailable one is drawn inert.
 pub const SectionSwitch = struct { is_on: *bool, is_available: bool = true };
@@ -420,18 +428,26 @@ pub fn restoreRows(previous: RowSettings) void {
 
 /// A master list whose rows scroll, or fit when `is_filling` is false, above a pinned footer of add buttons.
 pub fn openRoster(context: *ui.Frame, key: ui.Key, frame_style: *const ui.Style, is_filling: bool) !Roster {
-    const frame = Rect{ .key = key, .style = frame_style };
-    _ = try frame.open(context);
-    const ui_state = context.ui();
-    const rows_id = key.indexed(1).hash();
-    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, rows_id);
-    if (g_scroll_to_end == rows_id) {
-        g_scroll_to_end = null;
-        (try ui_state.state.getOrCreate(.scroll, ui_state.allocator, rows_id)).offset = .{ 0, SCROLL_TO_END };
+    return openAnyRoster(context, key, frame_style, is_filling, null);
+}
+
+/// openRoster with rosterSearch above its rows; the caller filters the rows by `query`.
+pub fn openSearchedRoster(context: *ui.Frame, key: ui.Key, frame_style: *const ui.Style, is_filling: bool, query: *std.ArrayList(u8), placeholder: []const u8) !Roster {
+    return openAnyRoster(context, key, frame_style, is_filling, .{ .query = query, .placeholder = placeholder });
+}
+
+/// A search box at the top of a master list, with a button to clear it; `query` is owned by the caller's tab.
+pub fn rosterSearch(context: *ui.Frame, key: ui.Key, query: *std.ArrayList(u8), placeholder: []const u8) !void {
+    const row = Rect{ .key = key, .style = &style.search_row };
+    _ = try row.open(context);
+    try context.e(TextInput{ .key = key.indexed(1), .buf = query, .style = &style.text_input, .placeholder = placeholder });
+    if (query.items.len > 0) {
+        if ((try context.interact(Button{ .key = key.indexed(2), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) {
+            query.clearRetainingCapacity();
+            context.requestRedraw();
+        }
     }
-    const rows = Rect{ .key = key.indexed(1), .style = if (is_filling) &style.roster_rows else &style.roster_rows_fit };
-    _ = try rows.open(context);
-    return .{ .key = key, .frame = frame, .rows = rows };
+    try row.close(context);
 }
 
 /// The refresh icon that adds every open EVE client; a tooltip names it, since the icon alone doesn't.
@@ -830,6 +846,20 @@ fn reorderLifted(context: *ui.Frame, base: ui.Key) ?Lifted {
     if (drag.list != base.hash() or !drag.has_moved) return null;
     const mouse_y: f32 = @floatCast(context.ui().input.mouse_pos[1]);
     return .{ .from = drag.from, .slot = if (drag.insert > drag.from) drag.insert - 1 else drag.insert, .top = mouse_y - drag.grab_y, .row_height = drag.row_height };
+}
+
+fn openAnyRoster(context: *ui.Frame, key: ui.Key, frame_style: *const ui.Style, is_filling: bool, roster_search: ?RosterSearch) !Roster {
+    const frame = Rect{ .key = key, .style = frame_style };
+    _ = try frame.open(context);
+    if (roster_search) |box| try rosterSearch(context, key.indexed(5), box.query, box.placeholder);
+    const ui_state = context.ui();
+    const pane_key = key.indexed(1);
+    if (g_scroll_to_end == pane_key.hash()) {
+        g_scroll_to_end = null;
+        (try ui_state.state.getOrCreate(.scroll, ui_state.allocator, pane_key.hash())).offset = .{ 0, SCROLL_TO_END };
+    }
+    const rows = try openScrollPane(context, pane_key, if (is_filling) style.roster_scroll else style.roster_fit);
+    return .{ .key = key, .frame = frame, .rows = rows };
 }
 
 fn openAnySection(context: *ui.Frame, comptime title: []const u8, comptime hint: []const u8, section_style: *const ui.Style, header_switch: ?SectionSwitch) !Section {

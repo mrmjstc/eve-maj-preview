@@ -42,7 +42,20 @@ const FLAGS = [_]Flag{
 
 const Flag = struct { field: []const u8, label: []const u8 };
 
+var g_allocator: std.mem.Allocator = undefined;
 var g_selected_index: usize = 0;
+/// The roster's search text. Owned; freed in reset.
+var g_search: std.ArrayList(u8) = .empty;
+
+pub fn init(allocator: std.mem.Allocator) void {
+    g_allocator = allocator;
+}
+
+/// Once the window has closed.
+pub fn reset() void {
+    g_search.deinit(g_allocator);
+    g_search = .empty;
+}
 
 pub fn show(context: *ui.Frame) !void {
     const section = try widgets.openSection(
@@ -100,16 +113,27 @@ fn rosterName(context: *ui.Frame, index: usize) ![]const u8 {
     return if (name.len > 0) name else try std.fmt.allocPrint(context.arena(), "Character {d}", .{index + 1});
 }
 
+/// While searching, only matching rows show, and none can be dragged, since a drop among hidden rows would land somewhere unseen.
 fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const characters = profile.ptr.characters.items;
-    const list = try widgets.openRoster(context, .str("knots.characters.roster"), &style.roster, true);
+    const list = try widgets.openSearchedRoster(context, .str("knots.characters.roster"), &style.roster, true, &g_search, "Search characters...");
+    const query = std.mem.trim(u8, g_search.items, " ");
     if (characters.len == 0) {
         try widgets.boxedText(context, .src(@src()), "No characters yet.", &style.roster_empty, &style.roster_empty_text);
     }
     var order = widgets.ReorderList.begin(context, ROW_KEY, characters.len, 0);
+    var match_count: usize = 0;
     for (characters, 0..) |*character, index| {
-        try widgets.reorderRow(context, ROW_KEY, index);
+        if (query.len > 0) {
+            if (!try matchesSearch(context, character, index, query)) continue;
+        } else {
+            try widgets.reorderRow(context, ROW_KEY, index);
+        }
+        match_count += 1;
         if (try order.next(context, index)) try characterRow(context, character, index, null);
+    }
+    if (characters.len > 0 and match_count == 0) {
+        try widgets.boxedText(context, .src(@src()), "No matching characters.", &style.roster_empty, &style.roster_empty_text);
     }
     if (try order.end(context)) |lifted| {
         const lifted_style = try order.liftedStyle(context, list.rowsKey(), if (lifted == g_selected_index) &style.roster_row_selected else &style.roster_row);
@@ -133,6 +157,13 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
         },
         .add_open_clients => populateFromClients(context, profile),
     }
+}
+
+/// By the name as typed so far, or the display name.
+fn matchesSearch(context: *ui.Frame, character: *const config.CharacterConfig, index: usize, query: []const u8) !bool {
+    if (std.ascii.findIgnoreCase(try rosterName(context, index), query) != null) return true;
+    const display_name = character.displayName orelse return false;
+    return std.ascii.findIgnoreCase(display_name, query) != null;
 }
 
 fn detail(context: *ui.Frame, profile: ProfileRef) !void {

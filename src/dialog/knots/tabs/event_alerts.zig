@@ -13,12 +13,14 @@ const lang = @import("../lang.zig");
 const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
+const glyphs = @import("../glyphs.zig");
 const log = @import("../../../log.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
-const TextInput = ui.component.TextInput;
+const Canvas = ui.component.Canvas;
+const Tooltip = ui.component.Tooltip;
 const NotificationType = notification.NotificationType;
 const TypeRef = session.Ref(config.NotificationTypeConfig);
 const slog = log.Scoped("dialog_knots");
@@ -75,7 +77,6 @@ pub fn show(context: *ui.Frame) !void {
     }
     const section = try widgets.openSection(context, "Event Alerts", "Per-event notification, suppression, speech, and border behavior. Select an event on the left to edit it.", &style.fill_section);
     const options = try widgets.openFillGroup(context, .src(@src()), is_enabled);
-    try searchBox(context);
     const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail_fill };
     _ = try master_detail.open(context);
     try typeRoster(context);
@@ -83,19 +84,6 @@ pub fn show(context: *ui.Frame) !void {
     try master_detail.close(context);
     try options.close(context);
     try section.close(context);
-}
-
-fn searchBox(context: *ui.Frame) !void {
-    const row = Rect{ .key = .src(@src()), .style = &style.search_row };
-    _ = try row.open(context);
-    try context.e(TextInput{ .key = .str("knots.events.search"), .buf = &g_search, .style = &style.text_input, .placeholder = "Search events..." });
-    if (g_search.items.len > 0) {
-        if ((try context.interact(Button{ .key = .src(@src()), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) {
-            g_search.clearRetainingCapacity();
-            context.requestRedraw();
-        }
-    }
-    try row.close(context);
 }
 
 fn typeLabel(notification_type: NotificationType) []const u8 {
@@ -113,30 +101,55 @@ fn matchesSearch(notification_type: NotificationType) bool {
     return std.ascii.findIgnoreCase(typeShortLabel(notification_type), query) != null or std.ascii.findIgnoreCase(typeLabel(notification_type), query) != null;
 }
 
+/// Grouped under category headings; each row's dot is filled while its event is enabled.
 fn typeRoster(context: *ui.Frame) !void {
     const roster = Rect{ .key = .src(@src()), .style = &style.roster };
     _ = try roster.open(context);
-    const rows = Rect{ .key = .src(@src()), .style = &style.roster_rows };
-    _ = try rows.open(context);
+    try widgets.rosterSearch(context, .str("knots.events.search"), &g_search, "Search events...");
+    const rows = try widgets.openScrollPane(context, .str("knots.events.rows"), style.roster_scroll);
+    var last_category: ?notification.NotificationCategory = null;
     for (TYPES_IN_ORDER) |notification_type| {
         if (!matchesSearch(notification_type)) continue;
         const index = @backingInt(notification_type);
+        const category = notification.notificationCategory(notification_type);
+        if (last_category != category) {
+            last_category = category;
+            const heading = try std.ascii.allocUpperString(context.arena(), @tagName(category));
+            try widgets.boxedText(context, ui.Key.str("knots.events.category").indexed(@backingInt(category)), heading, &style.roster_category, &style.tab_category_text);
+        }
         const is_selected = notification_type == g_selected;
         const row = Button{ .key = ui.Key.str("knots.events.row").indexed(index), .style = if (is_selected) &style.roster_row_selected else &style.roster_row };
         if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
             g_selected = notification_type;
             context.requestRedraw();
         }
+        const ref = typeRef(index);
+        try context.e(Rect{ .key = ui.Key.str("knots.events.dot").indexed(index), .style = if (ref.get("enabled")) &style.event_dot_on else &style.event_dot_off });
         try context.e(Text{
             .selectable = false,
             .key = ui.Key.str("knots.events.name").indexed(index),
             .content = typeShortLabel(notification_type),
             .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
         });
+        if (ref.get("tts_enabled")) try marker(context, ui.Key.str("knots.events.tts").indexed(index), .speech, "Speaks aloud");
+        if (ref.get("sound_enabled")) try marker(context, ui.Key.str("knots.events.sound").indexed(index), .speaker, "Plays a custom sound");
         try row.close(context);
     }
     try rows.close(context);
     try roster.close(context);
+}
+
+/// A small glyph after an event's name, which a tooltip names.
+fn marker(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, tip: []const u8) !void {
+    const tooltip = Tooltip{ .key = key, .content = tip };
+    _ = try tooltip.open(context);
+    const glyph_key = key.indexed(1);
+    try context.e(Canvas{
+        .key = glyph_key,
+        .commands = try glyphs.commands(context.arena(), glyph, style.ROSTER_MARKER_SIZE, try glyphs.snapOffset(context, glyph_key), style.MUTED.value),
+        .style = &style.roster_marker,
+    });
+    try tooltip.close(context);
 }
 
 fn typeDetail(context: *ui.Frame, notification_type: NotificationType) !void {
@@ -283,7 +296,12 @@ fn preview(context: *ui.Frame, notification_type: NotificationType, comptime fie
         if (line_count > 0) try kept.append(context.arena(), '\n');
         try kept.appendSlice(context.arena(), line);
     }
-    try widgets.paragraph(context, ui.Key.str("knots.events.preview:" ++ @tagName(field)).indexed(@backingInt(notification_type)), try std.fmt.allocPrint(context.arena(), "Preview: {s}", .{kept.items}));
+    // Under the text box, like the placeholder chips.
+    const key = ui.Key.str("knots.events.preview:" ++ @tagName(field)).indexed(@backingInt(notification_type));
+    const row = Rect{ .key = key, .style = &style.chip_row };
+    _ = try row.open(context);
+    try widgets.boxedText(context, key.indexed(1), try std.fmt.allocPrint(context.arena(), "Preview: {s}", .{kept.items}), &style.chip_box, &style.preview_text);
+    try row.close(context);
 }
 
 /// The file's name only; the full path is what's saved.

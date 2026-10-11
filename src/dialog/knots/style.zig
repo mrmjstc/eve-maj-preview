@@ -170,6 +170,14 @@ pub const roster: Style = .{
 /// widgets.openRoster's rows, scrolling above its footer.
 pub const roster_rows: Style = .{ .width = .grow(), .height = .grow(), .direction = .column, .gap = 2, .overflow = .scroll_y };
 pub const roster_rows_fit: Style = .{ .width = .grow(), .direction = .column, .gap = 2 };
+/// A roster's rows in widgets.openScrollPane: the scrollbar draws over its pane, so the gutter keeps it off the rows' badges and markers while they scroll.
+pub const roster_scroll: ScrollPane = .{
+    .pane = &roster_rows,
+    .scrolling = &roster_rows.with(.{ .padding = .init(0, SCROLLBAR_THICKNESS + 2, 0, 0) }),
+    .content = &roster_rows_fit,
+};
+/// A roster whose rows fit rather than scroll, so it never needs the gutter.
+pub const roster_fit: ScrollPane = .{ .pane = &roster_rows_fit, .scrolling = &roster_rows_fit, .content = &roster_rows_fit };
 /// Every master list's add buttons, under its rows; bordered buttons, so no rule above them.
 pub const roster_footer: Style = .{
     .width = .grow(),
@@ -787,6 +795,15 @@ pub const detail_fit: Style = .{ .width = .grow(), .direction = .column, .gap = 
 /// A roster row's small trailing text, e.g. a filter's Disabled.
 pub const roster_badge: Style = .{ .font_size = .{ .px = 10 }, .foreground = .{ .color = MUTED } };
 pub const roster_badge_warning: Style = roster_badge.with(.{ .foreground = .accent });
+/// A heading over a run of roster rows, its text lined up with theirs.
+pub const roster_category: Style = .{ .width = .grow(), .padding = .init(8, 6, 2, 6) };
+/// Before an Event Alerts row: filled while the event is enabled, a hollow ring while it's off.
+pub const event_dot_on: Style = .{ .width = .fixed(EVENT_DOT_SIZE), .height = .fixed(EVENT_DOT_SIZE), .radius = .{ .fixed = EVENT_DOT_SIZE / 2 }, .background = .accent };
+pub const event_dot_off: Style = event_dot_on.with(.{ .background = .transparent, .border_width = .all(1), .border_color = .{ .color = BORDER_STRONG } });
+const EVENT_DOT_SIZE = 6;
+/// A roster row's glyph after its name, e.g. an event's speech marker: the size of its square.
+pub const ROSTER_MARKER_SIZE = 10;
+pub const roster_marker: Style = .{ .width = .fixed(ROSTER_MARKER_SIZE), .height = .fixed(ROSTER_MARKER_SIZE) };
 pub const inline_label: Style = .{ .foreground = .{ .color = TEXT } };
 pub const select_fill: Style = select.with(.{ .width = .grow() });
 
@@ -834,6 +851,8 @@ pub const chip_box: Style = .{ .width = .fixed(CUSTOM_TEXT_WIDTH + 8 + CONTROL_H
 /// A notification's custom text box: wider than an even split with its short state label.
 pub const custom_text_input: Style = text_input.with(.{ .width = .fixed(CUSTOM_TEXT_WIDTH) });
 const CUSTOM_TEXT_WIDTH = 190;
+/// A custom text's preview, in a chip_box so it starts under its text box.
+pub const preview_text: Style = hint.with(.{ .padding = .all(0) });
 pub const placeholder_chip: Style = plain_button.with(.{ .height = .fixed(22), .padding = .xy(6, 0), .font_size = .xs });
 /// widgets.boxedText's box around path_text, clipping a long file name so the row's buttons stay in view.
 pub const path_box: Style = .{ .width = .{ .kind = .fit, .max = 110 }, .overflow = .hidden };
