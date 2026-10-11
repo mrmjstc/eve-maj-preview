@@ -36,9 +36,9 @@ pub fn reset() void {
 
 pub fn show(context: *ui.Frame) !void {
     if (g_scanned_revision != profiles.revision()) scan();
-    const section = try widgets.openSection(context, "Profile Backups", "A deleted profile, or one that couldn't be read, is kept here. Restoring one copies it into a new profile and keeps the backup.", &style.section);
+    const section = try widgets.openSection(context, "Profile Backups", "When you delete a profile, or one fails to load, a copy is kept here. Restore makes it a new profile and keeps the copy.", &style.section);
     if (g_backups.len == 0) {
-        try widgets.paragraph(context, .src(@src()), "No backups yet.");
+        try widgets.paragraph(context, .src(@src()), "No backups yet: no profile has been deleted or failed to load.");
     }
     const arena = context.arena();
     for (g_backups, 0..) |backup, index| {

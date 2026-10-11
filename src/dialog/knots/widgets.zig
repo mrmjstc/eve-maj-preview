@@ -131,6 +131,17 @@ pub const ScrollPane = struct {
     }
 };
 
+/// What openEmptyState returns; closing it ends its button row and itself.
+pub const EmptyState = struct {
+    state: Rect,
+    actions: Rect,
+
+    pub fn close(self: EmptyState, context: *ui.Frame) !void {
+        try self.actions.close(context);
+        try self.state.close(context);
+    }
+};
+
 /// What openFieldGroup returns; closing it puts back the row settings it replaced.
 pub const FieldGroup = struct {
     row: Rect,
@@ -448,6 +459,19 @@ pub fn searchBox(context: *ui.Frame, key: ui.Key, query: *std.ArrayList(u8), pla
         }
     }
     try row.close(context);
+}
+
+/// An empty list's stand-in, centred where the list and its details would be: `title`, `message` on how to start, then the caller's buttons; the caller closes it.
+pub fn openEmptyState(context: *ui.Frame, key: ui.Key, title: []const u8, message: []const u8) !EmptyState {
+    const state = Rect{ .key = key, .style = &style.empty_state };
+    _ = try state.open(context);
+    search.captureText(title);
+    search.captureText(message);
+    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = title, .style = &style.heading });
+    try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = message, .style = &style.muted_text });
+    const actions = Rect{ .key = key.indexed(3), .style = &style.empty_state_actions };
+    _ = try actions.open(context);
+    return .{ .state = state, .actions = actions };
 }
 
 /// The refresh icon that adds every open EVE client; a tooltip names it, since the icon alone doesn't.

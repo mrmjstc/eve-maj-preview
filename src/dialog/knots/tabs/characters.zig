@@ -64,16 +64,31 @@ pub fn show(context: *ui.Frame) !void {
         "Customize each character's saved position, size, border color, display name, and jump-to hotkey. Characters are added automatically when detected.",
         &style.fill_section,
     );
-    const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail_fill };
-    _ = try master_detail.open(context);
     const profile = session.profile();
     const character_count = profile.ptr.characters.items.len;
+    if (character_count == 0) {
+        try emptyState(context, profile);
+        try section.close(context);
+        return;
+    }
     // The list can shrink while the window is open, e.g. on a profile switch.
-    if (g_selected_index >= character_count) g_selected_index = character_count -| 1;
+    if (g_selected_index >= character_count) g_selected_index = character_count - 1;
+    const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail_fill };
+    _ = try master_detail.open(context);
     try roster(context, profile);
     try detail(context, profile);
     try master_detail.close(context);
     try section.close(context);
+}
+
+/// Instead of the list and details, until there's a character.
+fn emptyState(context: *ui.Frame, profile: ProfileRef) !void {
+    const state = try widgets.openEmptyState(context, .str("knots.characters.empty"), "No characters yet", "They're added on their own as their EVE clients log in.");
+    if (try widgets.glyphButton(context, .str("knots.characters.empty.open"), .refresh, "Add Open Clients", &style.plain_button, false)) populateFromClients(context, profile);
+    if (try widgets.glyphButton(context, .str("knots.characters.empty.add"), .add, "Add Manually", &style.plain_button, false)) {
+        if (profile.append("characters", .{})) |added| g_selected_index = added.index;
+    }
+    try state.close(context);
 }
 
 /// `lifted_style` while it's being dragged, otherwise the roster's own.
@@ -118,9 +133,6 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const characters = profile.ptr.characters.items;
     const list = try widgets.openSearchedRoster(context, .str("knots.characters.roster"), &style.roster, true, &g_search, "Search characters...");
     const query = std.mem.trim(u8, g_search.items, " ");
-    if (characters.len == 0) {
-        try widgets.boxedText(context, .src(@src()), "No characters yet.", &style.roster_empty, &style.roster_empty_text);
-    }
     var order = widgets.ReorderList.begin(context, ROW_KEY, characters.len, 0);
     var match_count: usize = 0;
     for (characters, 0..) |*character, index| {
@@ -132,7 +144,7 @@ fn roster(context: *ui.Frame, profile: ProfileRef) !void {
         match_count += 1;
         if (try order.next(context, index)) try characterRow(context, character, index, null);
     }
-    if (characters.len > 0 and match_count == 0) {
+    if (match_count == 0) {
         try widgets.boxedText(context, .src(@src()), "No matching characters.", &style.roster_empty, &style.roster_empty_text);
     }
     if (try order.end(context)) |lifted| {
@@ -168,11 +180,6 @@ fn matchesSearch(context: *ui.Frame, character: *const config.CharacterConfig, i
 
 fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     const stack = try widgets.openScrollPane(context, .str("knots.character.detail"), style.detail_scroll);
-    if (profile.ptr.characters.items.len == 0) {
-        try widgets.paragraph(context, .str("knots.characters.empty"), "Add a character under the list, or add every open client with the refresh button beside it.");
-        try stack.close(context);
-        return;
-    }
     const index = g_selected_index;
     const character = profile.item("characters", index);
     const previous_rows = widgets.useDetailRows();

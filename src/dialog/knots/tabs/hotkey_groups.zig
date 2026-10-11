@@ -50,16 +50,21 @@ pub fn show(context: *ui.Frame) !void {
     try widgets.separator(context, .str("knots.groups.separator.reset"));
 
     const group_count = profile.ptr.hotkeyGroups.items.len;
-    if (g_selected_index >= group_count) g_selected_index = group_count -| 1;
+    if (group_count == 0) {
+        const state = try widgets.openEmptyState(context, .str("knots.groups.empty"), "No hotkey groups yet", "A group gives a set of characters their own cycle hotkeys.");
+        if (try widgets.glyphButton(context, .str("knots.groups.empty.add"), .add, "Add Group", &style.plain_button, false)) {
+            if (profile.append("hotkeyGroups", .{})) |added| g_selected_index = added.index;
+        }
+        try state.close(context);
+        try section.close(context);
+        return;
+    }
+    if (g_selected_index >= group_count) g_selected_index = group_count - 1;
     const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail_fill };
     _ = try master_detail.open(context);
     try roster(context, profile);
     const stack = try widgets.openScrollPane(context, .str("knots.groups.detail"), style.detail_scroll);
-    if (group_count == 0) {
-        try widgets.paragraph(context, .src(@src()), "Add a hotkey group under the list to give a set of characters their own cycling keys.");
-    } else {
-        try detail(context, profile, g_selected_index);
-    }
+    try detail(context, profile, g_selected_index);
     try stack.close(context);
     try master_detail.close(context);
     try section.close(context);
@@ -73,9 +78,6 @@ fn groupName(context: *ui.Frame, index: usize) ![]const u8 {
 fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const groups = profile.ptr.hotkeyGroups.items;
     const list = try widgets.openRoster(context, .str("knots.groups.roster"), &style.roster, true);
-    if (groups.len == 0) {
-        try widgets.boxedText(context, .src(@src()), "No hotkey groups yet.", &style.roster_empty, &style.roster_empty_text);
-    }
     var order = widgets.ReorderList.begin(context, GROUP_ROW_KEY, groups.len, 0);
     for (groups, 0..) |*group, index| {
         try widgets.reorderRow(context, GROUP_ROW_KEY, index);

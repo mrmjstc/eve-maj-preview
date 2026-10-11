@@ -209,6 +209,9 @@ pub const roster_row_selected: Style = roster_row.with(.{
 /// Wraps: knots doesn't clip text, so a long name would otherwise run under the row's badge.
 pub const roster_name: Style = .{ .width = .grow(), .wrap = true };
 pub const roster_name_selected: Style = roster_name.with(.{ .font = FONT_SEMIBOLD });
+/// widgets.openEmptyState: centred in the space a list and its details would fill.
+pub const empty_state: Style = .{ .width = .grow(), .height = .grow(), .direction = .column, .justify = .center, .@"align" = .center, .gap = 8 };
+pub const empty_state_actions: Style = .{ .direction = .row, .gap = 8, .padding = .init(8, 0, 0, 0) };
 pub const roster_empty: Style = .{ .width = .grow(), .padding = .xy(8, 6) };
 pub const roster_empty_text: Style = .{ .width = .grow(), .wrap = true, .font_size = .xs, .foreground = .{ .color = MUTED } };
 
