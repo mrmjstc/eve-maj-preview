@@ -28,6 +28,9 @@ const log = @import("log.zig");
 const App = app_mod.App;
 const slog = log.Scoped("main");
 
+const INSTANCE_WAIT_ATTEMPTS = 100;
+const INSTANCE_WAIT_INTERVAL_MS = 100;
+
 /// Routes panics into eve-maj.log; Zig only looks for `panic` in the root source file.
 pub const panic = std.debug.FullPanic(crash.handlePanic);
 
@@ -75,7 +78,7 @@ fn mainImpl(init: std.process.Init) !void {
         return protocol.forwardToRunningInstance(url, allocator);
     }
 
-    const instance_mutex = try claimSingleInstance() orelse return;
+    const instance_mutex = try claimSingleInstance(init.io) orelse return;
     defer _ = win32.CloseHandle(instance_mutex);
 
     if (parsed.invalid) |invalid| {
@@ -196,7 +199,7 @@ fn mainImpl(init: std.process.Init) !void {
 }
 
 /// The instance mutex, for the caller to close at exit; null when another instance is running, which has been asked to open its configuration window instead.
-fn claimSingleInstance() !?win32.HANDLE {
+fn claimSingleInstance(io: std.Io) !?win32.HANDLE {
     const mutex_name = std.unicode.utf8ToUtf16LeStringLiteral("Global\\EVE-Maj-Preview-SingleInstance");
     const instance_mutex = win32.CreateMutexW(null, win32.TRUE, mutex_name) orelse {
         slog.err("Failed to create instance mutex", .{});
@@ -206,12 +209,24 @@ fn claimSingleInstance() !?win32.HANDLE {
     if (win32.GetLastError() != win32.ERROR_ALREADY_EXISTS) return instance_mutex;
     _ = win32.CloseHandle(instance_mutex);
 
-    const hwnd = protocol.findExistingInstance() orelse {
+    const hwnd = waitForInstanceWindow(io) orelse {
         slog.info("Another instance of EVE-Maj Preview is already running", .{});
         return error.AlreadyRunning;
     };
     protocol.sendCommandToInstance(hwnd, .{ .open_config = {} });
     return null;
+}
+
+/// Polls because the other instance may hold the mutex but still be starting up, e.g. when the installer launches both at once.
+fn waitForInstanceWindow(io: std.Io) ?win32.HWND {
+    for (0..INSTANCE_WAIT_ATTEMPTS) |_| {
+        if (protocol.findExistingInstance()) |hwnd| return hwnd;
+        std.Io.sleep(io, .fromMilliseconds(INSTANCE_WAIT_INTERVAL_MS), .awake) catch |err| {
+            slog.warn("Failed to wait for the running instance's window: {}", .{err});
+            return null;
+        };
+    }
+    return protocol.findExistingInstance();
 }
 
 /// The hidden window whose WM_TIMER drives the app; never shown, so its class's cursor never shows either.
