@@ -197,13 +197,14 @@ pub const ThumbnailWindow = struct {
         return self.source_hwnd == active_source_hwnd;
     }
 
-    /// The one place a thumbnail's state is decided; only a style-lookup key (getStateConfig), never stored.
+    /// Only a style-lookup key (getStateConfig), never stored.
     pub fn effectiveRenderState(self: *const ThumbnailWindow, active_source_hwnd: ?win32.HWND) ThumbnailState {
-        if (self.is_dragged) return .dragging;
-        if (!self.notifications.isEmpty()) return .alert;
-        if (self.isFocused(active_source_hwnd)) return .active;
-        if (win32.isWindowIconic(self.source_hwnd)) return .minimized;
-        return .inactive;
+        return state.renderState(.{
+            .is_dragged = self.is_dragged,
+            .has_alert = !self.notifications.isEmpty(),
+            .is_focused = self.isFocused(active_source_hwnd),
+            .is_minimized = win32.isWindowIconic(self.source_hwnd),
+        });
     }
 
     /// Always recorded, even while isShown keeps it up, so the hide applies once the alert or drag ends.

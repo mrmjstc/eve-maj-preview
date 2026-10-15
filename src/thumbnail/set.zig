@@ -325,14 +325,13 @@ pub const ThumbnailSet = struct {
         }
     }
 
-    fn autoVisibility(self: *const ThumbnailSet, eve_has_focus: bool) state.VisibilityState {
-        return if (self.config.shownAutoHide().is_enabled and !eve_has_focus) .hidden_automatic else .visible;
+    fn focusHide(self: *const ThumbnailSet, eve_has_focus: bool) state.FocusHide {
+        return .{ .is_enabled = self.config.shownAutoHide().is_enabled, .is_eve_focused = eve_has_focus };
     }
 
-    /// Leaves one hidden by hand alone; returns whether it changed.
+    /// Returns whether it changed.
     pub fn applyAutoVisibility(self: *const ThumbnailSet, thumbnail: *ThumbnailWindow, eve_has_focus: bool) bool {
-        if (thumbnail.visibility_state == .hidden_manual) return false;
-        const target = self.autoVisibility(eve_has_focus);
+        const target = thumbnail.visibility_state.afterAutoHide(self.focusHide(eve_has_focus));
         if (thumbnail.visibility_state == target) return false;
         thumbnail.setVisibility(target);
         return true;
@@ -691,7 +690,7 @@ pub const ThumbnailSet = struct {
             .cached_group_badge_label = strings.group_badge_label,
             .auto_minimize = .{ .inactive_since = win32.Ticks.now() },
             // The new client isn't tracked yet, so isEveWindowForeground alone would miss it.
-            .visibility_state = self.autoVisibility(win32.GetForegroundWindow() == eve_window.hwnd or self.isEveWindowForeground()),
+            .visibility_state = state.VisibilityState.visible.afterAutoHide(self.focusHide(win32.GetForegroundWindow() == eve_window.hwnd or self.isEveWindowForeground())),
             .is_win32_enabled = is_win32_enabled,
         };
         thumbnail.refreshConfigCache(self.config, &self.auto_colors);

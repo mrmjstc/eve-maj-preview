@@ -47,6 +47,7 @@ test {
     _ = @import("protocol.zig");
     _ = @import("thumbnail/draw.zig");
     _ = @import("thumbnail/list_look.zig");
+    _ = @import("thumbnail/state.zig");
     _ = @import("travel/stragglers.zig");
     _ = @import("util/color.zig");
     _ = @import("util/format.zig");
