@@ -8,7 +8,7 @@ const Value = std.json.Value;
 const Draft = draft_mod.Draft;
 const Section = draft_mod.Section;
 
-/// Where each setting lives: older versions split app-wide and profile sections, and version 3 moved them all into the profile, so both layouts are read.
+/// Older versions split app-wide and profile sections; version 3 put all in the profile, so both are read.
 const Source = struct {
     profile: ?Value,
     global: ?Value,

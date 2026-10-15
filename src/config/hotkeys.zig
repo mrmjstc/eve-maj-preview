@@ -28,7 +28,7 @@ pub const HotkeysConfig = struct {
     pub const Wire = wire.Wire(HotkeysConfig);
 };
 
-/// Only what the profile saves; cycle exclusions and positions live in the hotkey manager (hotkeys/membership.zig, hotkeys/cycling.zig).
+/// Only what the profile saves; cycle state lives in hotkeys/membership.zig and hotkeys/cycling.zig.
 pub const HotkeyGroupConfig = struct {
     name: []const u8 = "",
     characters: std.ArrayList([]const u8) = .empty,
@@ -44,7 +44,7 @@ pub const HotkeyGroupConfig = struct {
     includeNotLoggedIn: bool = false,
     /// Cycling stops at the first/last member instead of wrapping, refocusing it if focus has moved away.
     stopAtEnds: bool = false,
-    /// Identifies this group to the config dialog while its name and position in the list change; 0 until assigned (see config/patch.zig).
+    /// The dialog's handle across renames and reorders; 0 until assigned (see config/patch.zig).
     id: u32 = 0,
 
     pub const runtime_fields = .{"id"};

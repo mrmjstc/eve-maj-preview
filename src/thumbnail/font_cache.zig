@@ -36,7 +36,7 @@ pub const FontCache = struct {
         self.entries.deinit();
     }
 
-    /// The thumbnail character-name font at `dpi`, for overlays not tied to one thumbnail window (ghost outlines, hint box, region-select label).
+    /// For overlays not tied to one thumbnail window: ghost outlines, hint box, region-select label.
     pub fn characterNameFont(self: *FontCache, thumbnail_config: *const config.ThumbnailConfig, dpi: u32) !win32.HFONT {
         return self.get(.main, dpi, thumbnail_config.characterNameFontName, win32.scalePixels(thumbnail_config.characterNameFontSize, win32.dpiToScale(dpi)), thumbnail_config.characterNameFontWeight);
     }
@@ -65,7 +65,7 @@ pub const FontCache = struct {
         const font_name_z = try self.allocator.dupeSentinel(u8, font_name, 0);
         defer self.allocator.free(font_name_z);
 
-        // Owns a copy rather than borrowing font_name, which may be freed/replaced out from under a cached entry.
+        // Copied, since font_name may be freed under a cached entry.
         const name_copy = try self.allocator.dupe(u8, font_name);
         errdefer self.allocator.free(name_copy);
 
@@ -98,7 +98,7 @@ pub const FontCache = struct {
     }
 };
 
-/// dpi realistically never exceeds ~480 (5x scale), well under the 16 bits reserved here.
+/// dpi stays far below the 16 bits reserved for it.
 fn cacheKey(slot: FontSlot, dpi: u32) u32 {
     return (@as(u32, @backingInt(slot)) << 16) | (dpi & 0xFFFF);
 }

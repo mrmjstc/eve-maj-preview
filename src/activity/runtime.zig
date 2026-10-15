@@ -3,6 +3,7 @@ const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const set = @import("../thumbnail/set.zig");
+const window = @import("../thumbnail/window.zig");
 const scout = @import("../clients/scout.zig");
 const chatlog = @import("../chatlog.zig");
 const tracker_mod = @import("tracker.zig");
@@ -11,6 +12,7 @@ const schedule = @import("../util/schedule.zig");
 const log = @import("../log.zig");
 
 const ThumbnailSet = set.ThumbnailSet;
+const ActivityStats = window.ActivityStats;
 const Config = config_mod.Config;
 const slog = log.Scoped("activity");
 
@@ -163,16 +165,17 @@ fn pushThrottled(
 
 fn pushDps(tracker: *tracker_mod.CombatTracker, thumbnail_set: *ThumbnailSet, _: *const Config, eve_window: scout.EveWindow, now: win32.Ticks) void {
     const dps = tracker.query(eve_window.character_name, tracker_mod.CombatWindow.computeDps, .{now}, .{ .incoming = 0.0, .outgoing = 0.0 });
-    thumbnail_set.updateDpsForCharacter(eve_window.hwnd, dps.incoming, dps.outgoing);
+    thumbnail_set.updateStats(eve_window.hwnd, ActivityStats.setDps, .{ dps.incoming, dps.outgoing });
 }
 
 fn pushMining(tracker: *tracker_mod.MiningTracker, thumbnail_set: *ThumbnailSet, _: *const Config, eve_window: scout.EveWindow, now: win32.Ticks) void {
     const rates = tracker.query(eve_window.character_name, tracker_mod.MiningWindow.computeRates, .{now}, .{ .m3 = 0.0, .isk = 0.0 });
-    thumbnail_set.updateMiningForCharacter(eve_window.hwnd, rates.m3, rates.isk);
+    thumbnail_set.updateStats(eve_window.hwnd, ActivityStats.setMining, .{ rates.m3, rates.isk });
 }
 
 fn pushBounty(tracker: *tracker_mod.BountyTracker, thumbnail_set: *ThumbnailSet, _: *const Config, eve_window: scout.EveWindow, now: win32.Ticks) void {
-    thumbnail_set.updateBountyForCharacter(eve_window.hwnd, tracker.query(eve_window.character_name, tracker_mod.BountyWindow.computeIskRate, .{now}, 0.0));
+    const isk_rate = tracker.query(eve_window.character_name, tracker_mod.BountyWindow.computeIskRate, .{now}, 0.0);
+    thumbnail_set.updateStats(eve_window.hwnd, ActivityStats.setBounty, .{isk_rate});
 }
 
 fn pushResources(tracker: *resources_mod.ResourceTracker, thumbnail_set: ?*ThumbnailSet, windows: []const scout.EveWindow, now: win32.Ticks) void {
@@ -181,6 +184,6 @@ fn pushResources(tracker: *resources_mod.ResourceTracker, thumbnail_set: ?*Thumb
     const active_set = thumbnail_set orelse return;
     for (windows) |eve_window| {
         const stats = tracker.getStats(eve_window.process_id);
-        active_set.updateResourceStatsForCharacter(eve_window.hwnd, stats.cpu_percent, stats.ram_mb, stats.vram_mb, stats.has_vram);
+        active_set.updateStats(eve_window.hwnd, ActivityStats.setResources, .{ stats.cpu_percent, stats.ram_mb, stats.vram_mb, stats.has_vram });
     }
 }

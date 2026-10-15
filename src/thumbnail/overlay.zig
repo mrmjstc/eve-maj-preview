@@ -33,13 +33,13 @@ const MAX_LINES = 1 + 1 + 1 + 1 + 2 + 2 + 1 + 3;
 const MAX_STACK_LINES = 3;
 const TEXT_BUFFER_SIZE = 32;
 
-/// One resolved (text, color) line of the stacked notification block; built by createRenderSettings, drawn by renderThumbnailOverlay.
+/// One resolved line of the notification block.
 pub const NotificationLine = struct {
     text: []const u8 = "",
     color: u32 = 0xFFFFFF,
 };
 
-/// Everything a thumbnail's overlay depends on but the stat config, which is read from the profile since every config edit clears the render cache anyway.
+/// All an overlay depends on except the stat config, which every config edit's cache clear covers.
 pub const RenderSettings = struct {
     /// Every overlay text; the per-element flags below are already false without it.
     show_text: bool = true,
@@ -64,7 +64,7 @@ pub const RenderSettings = struct {
     system_name_font_size: i32 = 12,
     system_name_font_weight: types.FontWeight = .Regular,
     show_notifications: bool = false,
-    /// Borrows from the thumbnail's notification stack, whose text is freed as entries expire, so it's compared by notification_revision, never read from a cached copy.
+    /// Borrows the notification stack's text, freed as entries expire, so compare by notification_revision.
     notification_lines: [MAX_NOTIFICATION_LINES]NotificationLine = @splat(.{}),
     notification_line_count: usize = 0,
     notification_revision: u32 = 0,
@@ -137,7 +137,7 @@ pub const RenderSettings = struct {
     has_vram_data: bool = false,
 };
 
-/// A text run's size and the font it was measured in, keyed by font only, so whoever changes the text clears `dims`; `font_name` borrows config's buffer.
+/// Keyed by font only, so whoever changes the text clears `dims`; `font_name` borrows config's buffer.
 const MeasuredText = struct {
     dims: ?TextDimensions = null,
     font_name: []const u8 = "",
@@ -154,17 +154,16 @@ const MeasuredText = struct {
     }
 };
 
-/// Per-thumbnail state the overlay renderer keeps between renders.
 pub const RenderCache = struct {
     /// Recreated only on resize.
     bitmap: ?gdi_overlay.OverlayBitmap = null,
-    /// Last rendered settings, to skip redundant redraws; borrows the thumbnail's strings, so whatever frees one must set this to null.
+    /// Skips redundant redraws; borrows the thumbnail's strings, so whatever frees one must null this.
     settings: ?RenderSettings = null,
     character_name: MeasuredText = .{},
     system_name: MeasuredText = .{},
     group_badge: MeasuredText = .{},
 
-    /// Forces the next render to redraw and re-measure everything, dropping the font-name slices borrowed from config that a preview edit may have just freed.
+    /// Also drops font-name slices borrowed from config, which a preview edit may have freed.
     pub fn invalidate(self: *RenderCache) void {
         self.settings = null;
         self.character_name = .{};
@@ -177,7 +176,7 @@ pub const RenderCache = struct {
     }
 };
 
-/// One text run: render_origin places its glyphs, background_origin/background_dimensions its background, which differ in a stacked block (shared width, per-line alignment).
+/// render_origin places the glyphs; in a stacked block the background differs from it.
 const DrawLine = struct {
     font: win32.HFONT,
     /// Borrowed for one render pass.
@@ -240,7 +239,7 @@ const Layout = struct {
         self.add(.{ .font = font, .text = text, .render_origin = origin, .background_origin = origin, .background_dimensions = dims, .color = color, .bg_color = bg_color });
     }
 
-    /// Lines stacked top-down as one block anchored at `anchor`, so Bottom*/Center* positions count every line's height.
+    /// One block anchored at `anchor`, so Bottom and Center positions count every line.
     fn addStack(self: *Layout, font: win32.HFONT, texts: []const []const u8, anchor: TextPosition, offset_x: i32, offset_y: i32, color: u32, bg_color: u32) void {
         var dims: [MAX_STACK_LINES]TextDimensions = undefined;
         var block: TextDimensions = .{ .width = 0, .height = 0 };
@@ -267,7 +266,7 @@ const Layout = struct {
     }
 };
 
-/// Several lines, each its own colour, under one background; filled and drawn after everything else so nothing covers them.
+/// Lines in their own colours under one background, drawn last so nothing covers them.
 const NotificationBlock = struct {
     font: win32.HFONT,
     origin: TextOrigin,
@@ -275,7 +274,7 @@ const NotificationBlock = struct {
     line_heights: [MAX_NOTIFICATION_LINES]usize,
 };
 
-/// Fonts are fetched for the window's own DPI; the stat fonts' sizes are scaled here, since their config isn't in RenderSettings.
+/// For the window's own DPI; scales the stat fonts, whose config isn't in RenderSettings.
 const Fonts = struct {
     cache: *FontCache,
     dpi: u32,
@@ -385,7 +384,7 @@ pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const 
     const state_config = thumbnail_config.getStateConfig(state);
     const is_shown = thumbnail.isShown();
     const is_focused = thumbnail.isFocused(active_source_hwnd);
-    // Read live rather than cached, so fonts and size track whichever monitor this window is on right now.
+    // Read live, so fonts and size track the monitor this window is on now.
     const dpi_scale = win32.dpiToScale(win32.GetDpiForWindow(thumbnail.hwnd));
     const is_active_hidden = state == .active and thumbnail_config.activeThumbnailHidden;
     // A hidden thumbnail shows no border or text either.
@@ -486,7 +485,7 @@ pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const 
     return settings;
 }
 
-/// Every field but show_thumbnail, walked at comptime so a field added to RenderSettings is always part of the check.
+/// All fields but show_thumbnail, walked at comptime so new fields are always compared.
 fn visualEqual(a: RenderSettings, b: RenderSettings) bool {
     const info = @typeInfo(RenderSettings).@"struct";
     inline for (info.field_names, info.field_types) |name, F| {
@@ -517,7 +516,7 @@ fn valuesEqual(comptime T: type, a: T, b: T) bool {
     }
 }
 
-/// Pointer+len fast path before falling back to a byte compare; config- and notification-owned slices are pointer+len identical every tick when unchanged.
+/// Unchanged config and notification slices keep their pointer and length, so those are checked first.
 fn stringsEqualFast(a: []const u8, b: []const u8) bool {
     return (a.ptr == b.ptr and a.len == b.len) or std.mem.eql(u8, a, b);
 }
@@ -641,7 +640,7 @@ fn addResources(layout: *Layout, fonts: Fonts, config: *const config_mod.Config,
     if (count > 0) layout.addStack(font, texts[0..count], resources.position, resources.offset_x, resources.offset_y, resources.color, settings.resources_bg_color);
 }
 
-/// Not size-cached like the names: the stack changes far more often, so a cache would miss almost every render.
+/// Not size-cached: the stack changes too often for a cache to hit.
 fn layoutNotifications(layout: *Layout, fonts: Fonts, settings: RenderSettings) !?NotificationBlock {
     if (!settings.show_notifications or settings.notification_line_count == 0) return null;
     const font = try fonts.get(.notification, settings.notifications_font_name, settings.notifications_font_size, settings.notifications_font_weight);
@@ -656,13 +655,13 @@ fn layoutNotifications(layout: *Layout, fonts: Fonts, settings: RenderSettings) 
     return block;
 }
 
-/// The state's override wins; forced opaque when the window's Opacity applies instead, so the two alphas don't compound.
+/// Forced opaque when the window's Opacity applies, so the two alphas don't compound.
 fn resolveTextBgColor(state_config: config_mod.StateVisualConfig, base_color: u32, is_forced_opaque: bool) u32 {
     const resolved = state_config.textBgColor orelse base_color;
     return if (is_forced_opaque) color_mod.withAlpha(resolved, 255) else resolved;
 }
 
-/// Colour precedence, lowest first: the Active/Inactive base, the state's own override, the newest notification's type while alerting, then the character's own colours.
+/// Lowest first: Active/Inactive base, state override, newest alert's type, then the character's colours.
 fn resolveBorder(config: *const config_mod.Config, thumbnail: *const ThumbnailWindow, state: config_mod.ThumbnailState, state_config: config_mod.StateVisualConfig, flags: BorderFlags) Border {
     const thumbnail_config = &config.thumbnail;
     const is_focused = flags.is_focused;
@@ -671,7 +670,7 @@ fn resolveBorder(config: *const config_mod.Config, thumbnail: *const ThumbnailWi
     // Only the newest notification drives border effects; older entries only add text lines.
     const newest = if (state == .alert) thumbnail.notifications.newest() else null;
 
-    // A notification hiding or flashing the border is skipped for the focused character, so it can't fight that character's active border.
+    // Not for the focused character, so it can't fight its active border.
     const notification_hides = if (newest) |notification| !is_focused and (!notification.show_border or notification.isFlashOff(win32.Ticks.now())) else false;
     const is_shown = !flags.hides_all and !notification_hides and (state_config.showBorder orelse (if (uses_focused_look) thumbnail_config.showBorderWhenFocused else thumbnail_config.showBorderWhenInactive));
 
@@ -715,7 +714,7 @@ fn overlaySize(config: *const config_mod.Config, thumbnail: *const ThumbnailWind
     return .{ .width = scalePixels(width, dpi_scale), .height = scalePixels(height, dpi_scale) };
 }
 
-/// Newest first; each entry keeps its own suppress_when_focused and colour, so types in one stack filter and colour independently.
+/// Newest first; each entry filters and colours itself.
 fn notificationLines(out: *[MAX_NOTIFICATION_LINES]NotificationLine, thumbnail: *const ThumbnailWindow, is_focused: bool, base_color: u32) usize {
     var count: usize = 0;
     for (thumbnail.notifications.items()) |entry| {

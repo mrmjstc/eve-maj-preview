@@ -41,7 +41,7 @@ var g_allocator: std.mem.Allocator = undefined;
 /// Open clients for Set All, scanned when the tab first shows and on ↻.
 var g_sources: ?Scan = null;
 var g_potato: PotatoScan = .not_scanned;
-/// Set by a ↻ click and done before the next frame draws its dropdown, since a rescan frees the names this frame's dropdown drew.
+/// Done before the next frame's dropdown, since a rescan frees the names this frame drew.
 var g_is_sources_rescan_due: bool = false;
 /// Like g_is_sources_rescan_due, for the EVE settings profiles.
 var g_is_potato_rescan_due: bool = false;
@@ -192,7 +192,7 @@ fn windowPosition(context: *ui.Frame) !void {
     try section.close(context);
 }
 
-/// Set All, Clear All and its Confirm share a width, so their edges line up: the widest of their labels, at least style.PAIRED_BUTTON_WIDTH.
+/// Set All, Clear All and Confirm share the widest label's width, at least style.PAIRED_BUTTON_WIDTH.
 fn pairedButtonWidth(context: *ui.Frame) !f32 {
     const padding = comptime style.plain_button.padding.?;
     const border = 2;

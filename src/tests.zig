@@ -25,6 +25,7 @@ test {
     _ = @import("control/minimize_rules.zig");
     _ = @import("control/restart_plan.zig");
     _ = @import("dialog/knots/color_convert.zig");
+    _ = @import("dialog/knots/field_strings.zig");
     _ = @import("dialog/knots/labels.zig");
     _ = @import("dialog/knots/screen_math.zig");
     _ = @import("dialog/tools/region_math.zig");

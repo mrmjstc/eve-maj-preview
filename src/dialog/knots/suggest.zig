@@ -12,10 +12,10 @@ const slog = log.Scoped("dialog_knots");
 /// Clear of the indexes the box's own key is used with.
 const LIST_KEY_INDEX = 70;
 
-/// The box whose list is showing; kept while the mouse is down on the list, since pressing it takes the box's focus.
+/// Kept while the mouse is down on the list, since pressing it takes the box's focus.
 var g_open_box_id: ?u64 = null;
 
-/// Under the box keyed `box_key`: open clients whose name contains what's typed but isn't it; returns the one clicked.
+/// Open clients whose name contains `typed` but isn't it; returns the one clicked.
 pub fn openClients(context: *ui.Frame, box_key: ui.Key, typed: []const u8) !?[]const u8 {
     const ui_state = context.ui();
     const box_id = box_key.hash();

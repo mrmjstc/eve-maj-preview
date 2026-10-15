@@ -151,14 +151,14 @@ pub fn styledTextBox(context: *ui.Frame, ref: anytype, comptime field: []const u
     if (std.hash.Wyhash.hash(0, state.text.items) != typed_hash) context.requestRedraw();
 }
 
-/// `field` as typed so far while its text box has focus, otherwise as saved; copied into the frame's arena, since the box can change it later in the frame.
+/// Typed text while the box has focus, else saved; copied to the frame arena, since the box can change it mid-frame.
 pub fn liveText(context: *ui.Frame, ref: anytype, comptime field: []const u8) ![]const u8 {
     const key = boxKey(ref, field);
     const shown = if (context.ui().focused(key.hash())) typedText(key) else ref.get(field);
     return context.arena().dupe(u8, shown);
 }
 
-/// A text box for a string that isn't one setting, e.g. an entry of a list of names; returns what was typed once the box loses focus, borrowed from the frame's arena.
+/// For a string that isn't one setting; returns the text once the box loses focus, borrowed from the frame's arena.
 pub fn stringBox(context: *ui.Frame, key: ui.Key, current: []const u8, placeholder: []const u8, box_style: *const ui.Style) !?[]const u8 {
     const state = try textState(key);
     var committed: ?[]const u8 = null;
@@ -184,7 +184,7 @@ pub fn optionalUnitValueBox(context: *ui.Frame, key: ui.Key, value: ?f64, placeh
     return typed;
 }
 
-/// A number box for a value that isn't one setting, e.g. an ore's price override; returns what was typed once the box loses focus.
+/// For a number that isn't one setting, e.g. an ore price; returns what was typed once the box loses focus.
 pub fn valueBox(context: *ui.Frame, key: ui.Key, value: f64, box_style: *const ui.Style) !?f64 {
     const state = try textState(key);
     var committed: ?f64 = null;
@@ -240,7 +240,7 @@ pub fn slider(context: *ui.Frame, ref: anytype, comptime field: []const u8, labe
     try row.close(context);
 }
 
-/// Just the picker, whose Reset restores the field's default; aligned, it's a bare swatch that saves RGB only, so a colour with alpha comes out opaque.
+/// Reset restores the default; aligned, it's a bare swatch saving RGB only, so alpha comes out opaque.
 pub fn colorBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
     const is_aligned = widgets.isAligned();
     const opaque_mask: u32 = if (is_aligned) 0xFF000000 else 0;
@@ -304,7 +304,7 @@ pub fn percentSlider(context: *ui.Frame, key: ui.Key, value: u8, min: f32, max: 
     return @intFromFloat(@round(changed));
 }
 
-/// A font name from FONT_OPTIONS, plus the current one if it was set by hand; the row holds the font's size and weight beside it.
+/// FONT_OPTIONS, plus the current font if set by hand; size and weight sit beside it.
 pub fn fontBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
     const current: []const u8 = ref.get(field);
     const arena = context.arena();
@@ -359,7 +359,7 @@ pub fn choiceBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !
     try dropdown(context, ref, field, false);
 }
 
-/// What a text box keyed `key` holds right now, typed but not yet applied included; borrows the box's text, valid until it next changes.
+/// Includes text not yet applied; borrows the box's text, valid until it next changes.
 pub fn typedText(key: ui.Key) []const u8 {
     const state = g_text_states.getPtr(key.hash()) orelse return "";
     return state.text.items;
@@ -377,7 +377,7 @@ pub fn rangeOf(comptime T: type, comptime field: []const u8) ?[2]f32 {
     return .{ @as(f32, bounds[0]), @as(f32, bounds[1]) };
 }
 
-/// A number box for an optional value that isn't one setting, e.g. half of a character's size override; empty is unset.
+/// For an optional number that isn't one setting, e.g. half a size override; empty is unset.
 fn optionalValueBox(context: *ui.Frame, key: ui.Key, value: ?f64, placeholder: []const u8, box_style: *const ui.Style) !Typed {
     const state = try textState(key);
     var typed: Typed = .unchanged;
@@ -445,7 +445,7 @@ fn openUnitField(context: *ui.Frame, key: ui.Key, input_key: ui.Key) !ui.compone
     return field_rect;
 }
 
-/// A unit box for a value that isn't one setting, e.g. a slider's "85 %"; returns what was typed on blur, using `key` indices 4 to 6.
+/// For a value that isn't one setting, e.g. a slider's "85 %"; returns it on blur, using `key` indices 4 to 6.
 fn unitValueBox(context: *ui.Frame, key: ui.Key, value: f64, unit: []const u8) !?f64 {
     const box_key = key.indexed(4);
     const field_rect = try openUnitField(context, key.indexed(6), box_key);
@@ -455,7 +455,7 @@ fn unitValueBox(context: *ui.Frame, key: ui.Key, value: f64, unit: []const u8) !
     return typed;
 }
 
-/// A slider and a box to type its value into in `display`'s units, in a row the caller opened with `key`; returns the new value if either changed it.
+/// The box takes `display`'s units, in the caller's row; returns the new value if either changed it.
 fn sliderControls(context: *ui.Frame, key: ui.Key, value: f32, min: f32, max: f32, step: f32, display: Display) !?f64 {
     var slider_value = value;
     var changed: ?f64 = null;
@@ -504,7 +504,7 @@ fn FieldOf(comptime Ref: type, comptime field: []const u8) type {
     return @FieldType(@typeInfo(@FieldType(Ref, "ptr")).pointer.child, field);
 }
 
-/// `field`'s default in the settings struct `Ref` edits; null when it has none, so its swatch offers no Reset.
+/// Null when `field` has no default, so its swatch offers no Reset.
 fn defaultOf(comptime Ref: type, comptime field: []const u8) ?@FieldType(@typeInfo(@FieldType(Ref, "ptr")).pointer.child, field) {
     const T = @typeInfo(@FieldType(Ref, "ptr")).pointer.child;
     return comptime std.meta.fieldInfo(T, @field(std.meta.FieldEnum(T), field)).attrs.defaultValue(@FieldType(T, field));

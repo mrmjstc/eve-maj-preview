@@ -46,7 +46,7 @@ pub fn release(hwnd: win32.HWND) void {
     if (click.source_hwnd) |source_hwnd| dispatchClick(source_hwnd, click.is_shift_pressed);
 }
 
-/// Sets the Hover Cursor setting's cursor; false when it's Default or fails to load, so the caller lets Windows set its class cursor.
+/// False when it's Default or fails to load, so Windows sets the class cursor.
 pub fn applyHoverCursor() bool {
     const thumbnail_set = app.currentThumbnailSet() orelse return false;
     const resource: win32.LPCSTR = switch (thumbnail_set.config.interaction.hoverCursor) {

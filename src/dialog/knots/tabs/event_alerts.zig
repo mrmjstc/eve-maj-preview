@@ -247,7 +247,7 @@ fn typeRoster(context: *ui.Frame) !void {
     try roster.close(context);
 }
 
-/// style.roster, widened so each name's longest word fits beside a row's dot and a marker, rather than breaking mid-word.
+/// Widened so names' longest words don't break beside a dot and marker.
 fn rosterStyle(context: *ui.Frame) !*const ui.Style {
     var widest: f32 = 0;
     for (TYPES_IN_ORDER) |notification_type| {

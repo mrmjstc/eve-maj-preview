@@ -107,7 +107,7 @@ fn importSection(draft: *Draft, config: *const Config, root: Value, comptime nam
     try sectionNote(draft, name, if (section == .array) section.array.items.len else 0);
 }
 
-/// Older imports from other tools let their sample entries ("Example Name1") through, so a profile copy shouldn't carry them on.
+/// Older imports let sample entries ("Example Name1") through; a profile copy drops them.
 fn dropPlaceholderCharacters(list: *Value) void {
     if (list.* != .array) return;
     var kept_count: usize = 0;
@@ -133,7 +133,7 @@ fn sectionNote(draft: *Draft, comptime name: []const u8, item_count: usize) !voi
     try draft.note("{title} imported.", &.{.{ .name = "title", .value = (comptime sectionWords(name)).title, .should_translate = true }});
 }
 
-/// Only what the file has: `loaded` holds every field, defaults included, but a field an older file lacks should keep its current value.
+/// A field an older file lacks keeps its current value, though `loaded` has every field.
 fn present(arena: std.mem.Allocator, loaded: Value, raw: Value) !Value {
     if (loaded == .object and raw == .object) {
         var out: std.json.ObjectMap = .empty;

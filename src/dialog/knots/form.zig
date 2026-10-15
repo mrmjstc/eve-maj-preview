@@ -351,7 +351,7 @@ fn selectTab(context: *ui.Frame, tab: Tab) void {
 fn footer(context: *ui.Frame) !void {
     const bar = Rect{ .key = .src(@src()), .style = &style.footer };
     _ = try bar.open(context);
-    // A copy, since a dialog drawn after the footer may show a new status this frame, rewriting the buffer under it.
+    // Copied: a dialog drawn later this frame may rewrite the status buffer.
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = try context.arena().dupe(u8, status.text()), .style = switch (status.kind()) {
         .info => &style.status_info,
         .success => &style.status_success,

@@ -184,7 +184,7 @@ fn binding(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: 
     try row.close(context);
 }
 
-/// A backward/forward set in one row, each half marked with its direction; `ref` has session.Ref's get and set for both fields.
+/// Backward and forward in one row; `ref` has session.Ref's get and set for both.
 fn pair(context: *ui.Frame, ref: anytype, comptime previous: []const u8, comptime next: []const u8, label: []const u8) !void {
     const row = try widgets.openMarkedBinding(context, .str("knots.hotkeys.pair:" ++ previous), label, "\u{2190}");
     const halves = Rect{ .key = .str("knots.hotkeys.pair.halves:" ++ previous), .style = &style.inline_row_fit };
@@ -196,7 +196,7 @@ fn pair(context: *ui.Frame, ref: anytype, comptime previous: []const u8, comptim
     try row.close(context);
 }
 
-/// One row per existing profile rather than a list of its own, so adding or deleting a profile changes the rows.
+/// A row per profile, so adding or deleting a profile changes the rows.
 fn profileSwitchRows(context: *ui.Frame) !void {
     for (profiles.list(), 0..) |name, index| {
         const label = try lang.format(context.arena(), "Switch to: {name}", .{ .name = profiles.displayName(name) });
@@ -207,7 +207,7 @@ fn profileSwitchRows(context: *ui.Frame) !void {
     }
 }
 
-/// Each row ends in its hotkey box, lined up with the bindings above; a row left with no name and no key is removed.
+/// Hotkey boxes line up with the bindings above; a row left with no name and no key is removed.
 fn appHotkeys(context: *ui.Frame) !void {
     const global = session.global();
     var index: usize = 0;
@@ -230,7 +230,7 @@ fn appHotkeys(context: *ui.Frame) !void {
     try widgets.paragraph(context, .src(@src()), "Fill in the empty row to add one; clear a row to remove it.");
 }
 
-/// An empty row after the app hotkeys, so the list never looks empty; typing, binding or picking into it adds the entry.
+/// Keeps the list from looking empty; typing, binding or picking into it adds the entry.
 fn draftAppRow(context: *ui.Frame, index: usize) !void {
     const row = Rect{ .key = .str("knots.hotkeys.app.draft"), .style = &style.list_row };
     _ = try row.open(context);
@@ -270,7 +270,7 @@ fn urlHotkeys(context: *ui.Frame) !void {
         try bind.textBox(context, entry, "url", "https://example.com");
         try hotkey.field(context, entry, "hotkey");
         try row.close(context);
-        // Only aDashboard takes a clipboard upload, so the option hangs under its row and is cleared for any other URL.
+        // Only aDashboard takes a clipboard upload, so the option is cleared for any other URL.
         if (isAdashboard(entry.get("url"))) {
             try bind.toggle(context, entry, "uploadClipboard", "Upload Clipboard Content (dscan/local)");
             try widgets.hintText(context, ui.Key.str("knots.hotkeys.url.upload.hint").indexed(index), "Sends the clipboard to aDashboard and opens the result.");
@@ -303,7 +303,7 @@ fn hasUrlHotkey(comptime matches: fn ([]const u8) bool) bool {
     return false;
 }
 
-/// A preset's row after the URL hotkeys, like draftAppRow's, showing `url` filled in; typing a different URL or binding a key adds the entry.
+/// Like draftAppRow, prefilled with `url`; typing another URL or binding a key adds the entry.
 fn draftUrlRow(context: *ui.Frame, key: ui.Key, index: usize, url: []const u8) !void {
     const row = Rect{ .key = key, .style = &style.list_row };
     _ = try row.open(context);
@@ -321,7 +321,7 @@ fn isDotlan(url: []const u8) bool {
     return std.ascii.findIgnoreCase(url, "evemaps.dotlan.net") != null;
 }
 
-/// `entry` is an app or URL hotkey's session.Ref; true with no text in `text_field` and no key, once its box isn't being typed in.
+/// No text and no key, once its box isn't being typed in; `entry` is a hotkey's session.Ref.
 fn isBlank(context: *ui.Frame, entry: anytype, comptime text_field: []const u8) bool {
     if (context.ui().focused(bind.boxKey(entry, text_field).hash())) return false;
     return std.mem.trim(u8, entry.get(text_field), " ").len == 0 and entry.get("hotkey").isEmpty();

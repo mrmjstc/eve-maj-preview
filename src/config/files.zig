@@ -26,7 +26,7 @@ const LEGACY_FILES = [_]struct { from: []const u8, to: []const u8 }{
 
 var g_environ_map: ?*const std.process.Environ.Map = null;
 
-/// Must be called once before any function that reads environment variables (path %VAR% expansion, USERPROFILE fallback).
+/// Call once before anything that reads environment variables.
 pub fn setEnvironMap(environ_map: *const std.process.Environ.Map) void {
     g_environ_map = environ_map;
 }
@@ -42,7 +42,7 @@ pub fn environmentVariable(name: []const u8) ?[]const u8 {
     return environ_map.get(name);
 }
 
-/// Moves files older versions kept beside the exe into DATA_DIR and log.LOG_DIR, never replacing one; call once the cwd is the exe folder, before anything logs.
+/// Into DATA_DIR and log.LOG_DIR, never replacing a file; call once the cwd is the exe folder, before anything logs.
 pub fn migrateLegacyLayout(io: std.Io) void {
     const cwd = std.Io.Dir.cwd();
     for ([_][]const u8{ DATA_DIR, log.LOG_DIR }) |dir| {

@@ -26,16 +26,16 @@ const ThumbnailSet = set.ThumbnailSet;
 const HotkeyManager = hotkeys.HotkeyManager;
 const slog = log.Scoped("app");
 
-/// The tick timer on the timer window, beside focus.zig's HIDE_DEBOUNCE_TIMER_ID.
+/// Shares the timer window with focus.zig's HIDE_DEBOUNCE_TIMER_ID.
 pub const TICK_TIMER_ID: usize = 1;
-/// Timed rather than counted in ticks, so a slower scan interval doesn't stretch it; each scan is a full EnumWindows.
+/// Timed, not counted in ticks, so a slower scan interval doesn't stretch it.
 const FORCED_SCAN_INTERVAL_MS: u64 = 1000;
-/// With no window tracked and the configuration window closed there's nothing to draw, so the tick only keeps up with the scan.
+/// With nothing to draw, the tick only keeps up with the forced scan.
 const IDLE_TICK_INTERVAL_MS: win32.UINT = FORCED_SCAN_INTERVAL_MS;
 const TRAVEL_CHECK_INTERVAL_MS: u64 = 2000;
 const PROFILE_NAME_BUFFER_SIZE = 256;
 
-/// How far a live profile edit moves thumbnails: `spaces` reflows only while a thumbnail space is active, `all` repositions every thumbnail.
+/// How far a live profile edit moves thumbnails; `spaces` reflows only active spaces.
 pub const LiveLayout = enum { none, spaces, all };
 
 /// What restartSubsystems' earlier steps hand to its later ones.
@@ -58,16 +58,16 @@ pub const App = struct {
     global_settings: config.GlobalConfig = undefined,
     character_ids: CharacterIds = undefined,
     scout: scout_mod.Scout = undefined,
-    /// Kept across a Save or profile switch, unlike the hotkey manager that edits them.
+    /// Kept across a Save or profile switch.
     exclusions: exclusions_mod.Exclusions,
-    /// The history, notified queue and History Panel; kept across a thumbnail set rebuild, which would otherwise empty or recreate them.
+    /// Kept across a thumbnail set rebuild.
     notifications: center.NotificationCenter = .{},
     instance: win32.HINSTANCE = undefined,
     /// Kept across a thumbnail set rebuild, and reset when another profile is loaded.
     auto_minimizer: auto_minimize.AutoMinimizer,
     focus: focus_mod.FocusTracker = .{},
     trackers: runtime.Trackers,
-    /// Rebuilt by a profile switch, a Save or a view-mode change, so nothing else keeps it: read it from here each time.
+    /// Rebuilt on reload, so never cached elsewhere: read it from here each time.
     thumbnail_set: ?*ThumbnailSet = null,
     /// Rebuilt like `thumbnail_set`, and read from here the same way.
     hotkey_manager: ?*HotkeyManager = null,
@@ -94,7 +94,7 @@ pub const App = struct {
         };
     }
 
-    /// Switches on the next message-loop turn, not inside the tray menu or hotkey handler that asked and would be torn down under it; copies `profile_name`.
+    /// Deferred to the next message-loop turn, since the switch would tear down the caller; copies `profile_name`.
     pub fn requestProfileSwitch(self: *App, profile_name: []const u8) void {
         if (profile_name.len > self.pending_profile_buf.len) {
             slog.err("Failed to switch to profile '{s}': name too long", .{profile_name});
@@ -126,13 +126,13 @@ pub const App = struct {
         };
     }
 
-    /// After a Save of the running profile or global settings, restarts what only reads them at setup; `global_draft`, if given, is adopted and left holding the replaced values.
+    /// After a Save, restarts what reads settings only at setup; adopts `global_draft`, leaving it holding the replaced values.
     pub fn applySavedSettings(self: *App, global_draft: ?*config.GlobalConfig) !void {
         const timer_hwnd = self.timer_hwnd orelse return error.MissingTimerWindow;
         try self.restartSubsystems(timer_hwnd, null, global_draft);
     }
 
-    /// The config dialog changed the running profile's unsaved `live` copy; `layout` says whether thumbnails may need to move as well as repaint.
+    /// After a dialog edit to the live profile; `layout` says whether thumbnails may need to move.
     pub fn onLiveProfileEdited(self: *App, layout: LiveLayout) void {
         self.notifications.panel.sync(self.allocator, &self.store, self.instance);
         const thumbnail_set = self.thumbnail_set orelse return;
@@ -149,7 +149,7 @@ pub const App = struct {
         }
         thumbnail_set.syncListWindow();
         thumbnail_set.refreshAllThumbnailConfigCaches();
-        // Moved before they're redrawn, so a thumbnail shown again appears in its new place rather than flashing up in its old one.
+        // Moved before redrawing, so a re-shown thumbnail doesn't flash in its old place.
         switch (layout) {
             .none => {},
             .spaces => thumbnail_set.reflowIfSpacesActive(),
@@ -261,13 +261,12 @@ pub const App = struct {
         }
     }
 
-    /// The configured scan interval, or IDLE_TICK_INTERVAL_MS while there's nothing to draw.
     pub fn tickIntervalFor(self: *const App, window_count: usize) win32.UINT {
         if (window_count == 0 and !knots_host.isOpen()) return IDLE_TICK_INTERVAL_MS;
         return self.store.saved.timer.scanIntervalMs;
     }
 
-    /// SetTimer replaces the running tick timer in place; false if it couldn't be set.
+    /// Replaces the running timer in place; false on failure.
     pub fn setTickInterval(self: *App, timer_hwnd: win32.HWND, interval_ms: win32.UINT) bool {
         if (win32.SetTimer(timer_hwnd, TICK_TIMER_ID, interval_ms, null) == 0) return false;
         self.tick_interval_ms = interval_ms;
@@ -289,7 +288,7 @@ pub const App = struct {
         self.allocator.destroy(old_set);
     }
 
-    /// Keeps each client's last-known system name for buildThumbnailSet to seed the new thumbnail set with; the caller frees it.
+    /// Returns each client's last-known system name for buildThumbnailSet; the caller frees it.
     fn teardownThumbnailSet(self: *App) set.SystemNameSnapshot {
         var system_names = set.SystemNameSnapshot.init(self.allocator);
         if (self.thumbnail_set) |old_set| system_names.capture(old_set);
@@ -302,7 +301,7 @@ pub const App = struct {
         new_set.populate(windows, .{
             // Clients are already where the user put them; only startup and new arrivals auto-move.
             .should_move_to_saved = false,
-            // Only seeded if monitoring stays on to refresh it, or a stale name would freeze on screen forever.
+            // Only while monitoring stays on, or a stale name would never update.
             .system_names = if (self.store.saved.chatlog.enabled) system_names else null,
         });
     }
@@ -338,7 +337,7 @@ pub const App = struct {
         self.allocator.destroy(monitor);
     }
 
-    /// Picks up windows the new profile's filters match and drops those they no longer do; a failed scan keeps the already-tracked windows.
+    /// Applies the new profile's window filters; a failed scan keeps the tracked windows.
     fn rescanWindows(self: *App) []const scout_mod.EveWindow {
         self.scout.scanForEveWindows() catch |err| {
             slog.err("Failed to scan for EVE windows: {}", .{err});
@@ -378,7 +377,7 @@ pub const App = struct {
         slog.info("=== Profile reload complete: {s} ===", .{new_profile_name});
     }
 
-    /// Tears down and rebuilds everything set up from the profile, in control/restart_plan.zig's order; `replacement`, owned from here on, becomes the running store.
+    /// Runs control/restart_plan.zig's steps; takes ownership of `replacement`, which becomes the running store.
     fn restartSubsystems(self: *App, timer_hwnd: win32.HWND, replacement: ?config.ProfileStore, global_draft: ?*config.GlobalConfig) !void {
         var pending = replacement;
         errdefer if (pending) |*store| store.deinit();
@@ -436,7 +435,7 @@ pub const App = struct {
                 self.store.deinit();
                 self.store = store;
                 restart.pending.* = null;
-                // Not dumped as at startup, since the dump stalled every switch with the debug console open.
+                // Not dumped as at startup: it stalled switches with the debug console open.
                 slog.info("Loaded new config: {s}", .{self.store.saved.profile_name});
                 self.notifications.panel.sync(self.allocator, &self.store, self.instance);
             },
@@ -486,7 +485,7 @@ pub const App = struct {
     }
 };
 
-/// The running app, for Win32 callbacks, which Windows hands no context of ours; null outside the run.
+/// For Win32 callbacks, which get no context of ours; null outside the run.
 pub var g_app: ?*App = null;
 
 /// For Win32 callbacks; null outside the run and while a rebuild failed.

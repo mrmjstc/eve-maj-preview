@@ -63,7 +63,7 @@ pub const CharacterConfig = struct {
     hideThumbnail: bool = false,
     notificationsMuted: bool = false,
     opacity: ?u8 = null,
-    /// Identifies this entry to the config dialog while its name and position in the list change; 0 until assigned (see config/patch.zig).
+    /// The dialog's handle across renames and reorders; 0 until assigned (see config/patch.zig).
     id: u32 = 0,
 
     pub const runtime_fields = .{"id"};
@@ -72,7 +72,7 @@ pub const CharacterConfig = struct {
         .opacity = ranges_mod.OPACITY,
     };
 
-    /// ThumbnailConfig.validate() doesn't reach these overrides, and a negative size would panic once narrowed to usize downstream.
+    /// ThumbnailConfig.validate() skips these overrides, and a negative size would panic as a usize.
     pub fn validate(self: *CharacterConfig) void {
         ranges_mod.clamp(CharacterConfig, self);
     }
@@ -91,7 +91,7 @@ pub fn buildCharacterOrderMap(characters: []const CharacterConfig, allocator: st
     return map;
 }
 
-/// Ranks a_name/b_name by order_map, falling back to array position for ties or names absent from order_map (which always sort last).
+/// Names missing from order_map sort last; ties fall back to array position.
 pub fn orderMapLessThan(order_map: *const std.StringHashMap(usize), a_name: []const u8, b_name: []const u8, a_index: usize, b_index: usize) bool {
     const a_order = order_map.get(a_name);
     const b_order = order_map.get(b_name);

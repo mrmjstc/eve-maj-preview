@@ -88,7 +88,7 @@ var g_spawn_position: ?win32.POINT = null;
 var g_spawn_hook: ?win32.HHOOK = null;
 /// The running window, for retitling it; null while it's closed.
 var g_app: ?*knots.App = null;
-/// The language the window's width and title are for, which trails a newly picked one until fit_language runs.
+/// Trails a newly picked language until fit_language runs.
 var g_window_language: Language = .en;
 /// A fit_language command is on its way, so another isn't posted each frame until it runs.
 var g_is_fit_posted: bool = false;
@@ -168,7 +168,7 @@ pub fn onCommand(wParam: win32.WPARAM, lParam: win32.LPARAM) void {
     requestFrame();
 }
 
-/// Before each frame: the window's text follows the picked language at once, and its width and title follow between frames.
+/// Before each frame: text follows the picked language at once; width and title follow between frames.
 pub fn useLanguage(language: Language) void {
     lang.use(language);
     if (language == g_window_language or g_is_fit_posted) return;
@@ -307,7 +307,7 @@ fn run() void {
     defer profiles.deinit();
     status.clear();
 
-    // knots creates its window at the default spot and shows it straight away, so it's placed as it's created rather than moved after.
+    // knots shows its window as it's created, so it's placed then rather than moved after.
     const is_placed = installPlacement(position);
     var app = knots.App.init(g_io, g_allocator, .{
         .window = .{
@@ -398,7 +398,7 @@ fn startStatusTimer(show_ms: u32) void {
     }
 }
 
-/// A vsync-paced present blocks the main thread for up to a frame, which would stall the low-level input hooks behind it.
+/// Vsync would block the main thread up to a frame, stalling the low-level input hooks.
 fn choosePresentMode(view: *knots.View) void {
     g_is_present_mode_chosen = true;
     const modes = view.renderer.supported_present_modes;
@@ -412,7 +412,7 @@ fn choosePresentMode(view: *knots.View) void {
     };
 }
 
-/// Subclasses knots' window, to ask before closing with unsaved changes, remember where the window was left, and clear the status line.
+/// Subclasses knots' window to prompt on unsaved close, remember its position and clear the status line.
 fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     // A hotkey field recording takes the keys and buttons it binds before knots sees them.
     if (hotkey.onWindowMessage(msg, wParam, lParam)) return 0;
@@ -514,7 +514,7 @@ fn onClosed() void {
     }
 }
 
-/// Wider for languages whose labels run longer than English's, so they have room beside the fixed-width controls.
+/// Wider for languages with longer labels than English's.
 fn designWidth(language: Language) u32 {
     return switch (language) {
         .en => 850,
@@ -608,7 +608,7 @@ fn savePosition(window: win32.HWND) void {
     };
 }
 
-/// Falls back to DEFAULT_POSITION when the saved spot is on no monitor, e.g. a hand-edited value or an unplugged screen.
+/// DEFAULT_POSITION when the saved spot is on no monitor, e.g. an unplugged screen.
 fn savedPosition(settings: *const GlobalConfig) win32.POINT {
     const x = settings.dialogX orelse return DEFAULT_POSITION;
     const y = settings.dialogY orelse return DEFAULT_POSITION;

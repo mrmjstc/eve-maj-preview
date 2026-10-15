@@ -30,7 +30,7 @@ pub const ThumbnailSpace = struct {
     spacing: i32 = 0,
     /// Stops cells growing past the configured thumbnail size, leaving the rest of the region empty.
     limitToThumbnailSize: bool = false,
-    /// Identifies this space to the config dialog while its name and position in the list change; 0 until assigned (see config/patch.zig).
+    /// The dialog's handle across renames and reorders; 0 until assigned (see config/patch.zig).
     id: u32 = 0,
 
     pub const runtime_fields = .{"id"};

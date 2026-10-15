@@ -56,13 +56,13 @@ pub const ListWindow = struct {
         self.panel.deinit();
     }
 
-    /// Matches the panel to its configured position; whether it exists at all is the view mode's, which rebuilds the ThumbnailSet.
+    /// Matches the panel to its configured position.
     pub fn sync(self: *ListWindow) void {
         self.panel.followPosition(self.config.display.startX, self.config.display.startY);
         win32.setClickThroughStyle(self.panel.hwnd, self.config.interaction.clickThrough);
     }
 
-    /// The client of the row at client point (`x`, `y`), from the last render; null over the header or an empty cell.
+    /// From the last render; null over the header or an empty cell.
     fn rowSourceAt(self: *const ListWindow, x: i32, y: i32) ?win32.HWND {
         const sizes = list_look.metrics(&self.config.display);
         if (y < sizes.header_height) return null;
@@ -122,7 +122,7 @@ pub const ListWindow = struct {
             .Tracked => {},
             .Alphabetical => std.sort.pdq(usize, self.rows.items, AlphabeticalContext{ .thumbnails = thumbnails }, AlphabeticalContext.lessThan),
             .ConfiguredCharacters => {
-                // Built once per sort instead of rescanning the configured characters in every comparison.
+                // Built once per sort, not per comparison.
                 var order_map = try config_mod.buildCharacterOrderMap(self.config.characters.items, self.panel.allocator);
                 defer order_map.deinit();
                 std.sort.pdq(usize, self.rows.items, ConfiguredContext{ .thumbnails = thumbnails, .order_map = &order_map }, ConfiguredContext.lessThan);
@@ -201,7 +201,7 @@ pub const ListWindow = struct {
         return hasher.final();
     }
 
-    /// The row's combat, mining and bounty rates the list shows, in writing order; empty when none is.
+    /// In writing order; empty when the list shows none.
     fn statReadings(self: *const ListWindow, thumbnail: *const ThumbnailWindow, out: *[list_look.STAT_COUNT]list_look.StatReading) []const list_look.StatReading {
         const config = self.config;
         const settings: list_look.StatSettings = .{ .display = &config.display, .combat = &config.combat, .mining = &config.mining, .bounty = &config.bounty };
@@ -465,7 +465,7 @@ fn drawTextRight(dc: win32.HDC, text: []const u8, right_x: i32, y: i32, rgb: u32
     drawText(dc, text[0..length], x, y, rgb);
 }
 
-/// Right-aligned at `right_x`, each reading in its own colour a space apart; skipped like drawTextRight rather than drawn left of `min_x`.
+/// Each reading in its own colour, a space apart; skipped like drawTextRight past `min_x`.
 fn drawStatsRight(dc: win32.HDC, display: *const config_mod.DisplayConfig, readings: []const list_look.StatReading, right_x: i32, y: i32, min_x: i32) void {
     var texts: [list_look.STAT_COUNT][list_look.STAT_TEXT_MAX]u8 = undefined;
     var lengths: [list_look.STAT_COUNT]usize = undefined;

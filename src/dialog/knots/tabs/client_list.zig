@@ -113,7 +113,7 @@ const Look = struct {
     }
 };
 
-/// One rate's rows: the overlay switch it shares with the thumbnails, then the list's own show, prefix and colour, each named by its DisplayConfig field.
+/// The overlay switch shared with the thumbnails, then the list's own show, prefix and colour fields.
 const StatRows = struct {
     overlay_label: []const u8,
     show_field: []const u8,
@@ -527,7 +527,7 @@ fn requirementNotices(context: *ui.Frame, part: Part) !void {
     if (part == .notifications and !profile.thumbnail.notifications.enabled) try widgets.notice(context, .src(@src()), "Requires Notification System switched on in the Notifications tab.");
 }
 
-/// `overlay` is the session.Ref of the rate's overlay settings, e.g. combat's; its `enabled` is shared with the thumbnails' text, and the list shows the rate only while it's on.
+/// `overlay` is the rate's overlay session.Ref; its `enabled`, shared with the thumbnails, gates the list's rate.
 fn statSettings(context: *ui.Frame, display: DisplayRef, overlay: anytype, comptime rows: StatRows) !void {
     try bind.toggle(context, overlay, "enabled", rows.overlay_label);
     try widgets.hintText(context, .str("knots.client_list.overlay.hint:" ++ rows.show_field), "Also turns it on for thumbnails.");

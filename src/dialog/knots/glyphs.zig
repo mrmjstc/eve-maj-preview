@@ -64,7 +64,7 @@ pub fn commands(arena: std.mem.Allocator, glyph: Glyph, box: f32, snap: [2]f32, 
     return list.items;
 }
 
-/// How far to shift a canvas's drawing so its pixels land on whole device pixels, from where it was laid out last frame.
+/// The shift that lands a canvas on whole device pixels, from last frame's layout.
 pub fn snapOffset(context: *ui.Frame, key: ui.Key) ![2]f32 {
     const ui_state = context.ui();
     const measured = try ui_state.state.getOrCreate(.measured, ui_state.allocator, key.hash());

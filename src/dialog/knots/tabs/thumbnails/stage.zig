@@ -112,7 +112,7 @@ fn chipKey(index: usize) ui.Key {
     return ui.Key.str("knots.stage.chip").indexed(index);
 }
 
-/// The overlay as a thumbnail draws it, with its sample text; outlined while hovered or edited, and faded while it's off.
+/// With its sample text; outlined while hovered or edited, faded while off.
 fn showChip(context: *ui.Frame, comptime chip: chips.Chip, comptime index: usize, stage_box: Box, stage_size: [2]f32, scale: f32) !void {
     const ui_state = context.ui();
     const key = chipKey(index);
@@ -190,7 +190,7 @@ fn settledPosition(look: chips.Look, chip_size: [2]f32, stage_size: [2]f32, scal
     };
 }
 
-/// The cursor's spot for the chip, snapped flush to the nearest anchor when close and held within the offset range.
+/// Snapped flush to the nearest anchor when close, and held within the offset range.
 fn dragTarget(mouse: [2]f64, grab: [2]f32, stage_box: Box, chip_size: [2]f32, stage_size: [2]f32, scale: f32, range: [2]f32) [2]f32 {
     const max = [2]f32{ @max(0, stage_size[0] - chip_size[0]), @max(0, stage_size[1] - chip_size[1]) };
     var raw_position = [2]f32{
@@ -205,7 +205,7 @@ fn dragTarget(mouse: [2]f64, grab: [2]f32, stage_box: Box, chip_size: [2]f32, st
     };
 }
 
-/// The anchor is the third of the thumbnail the chip's centre lands in; the offsets are what's left over, in real pixels.
+/// The anchor is the third the chip's centre lands in; offsets are the rest, in real pixels.
 fn dropResult(position: [2]f32, chip_size: [2]f32, stage_size: [2]f32, scale: f32, range: [2]f32) Drop {
     const zone = zoneFor(position, chip_size, stage_size);
     const anchor = anchorPosition(zone, chip_size, stage_size);

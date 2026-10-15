@@ -148,7 +148,7 @@ Per-thumbnail state owned by other modules:
 | `auto_minimize` | `control/auto_minimize.zig` |
 | `is_dragged` | `drag/thumbnail.zig` |
 | `travel` | `travel/left_behind.zig` |
-| `stats` | Activity trackers, via `ThumbnailSet.update*ForCharacter` |
+| `stats` | Activity trackers, via `ThumbnailSet.updateStats` |
 
 Rendering:
 

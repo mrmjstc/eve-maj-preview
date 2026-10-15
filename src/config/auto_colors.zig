@@ -10,7 +10,7 @@ const slog = log.Scoped("config");
 
 const AUTO_COLORS_FILE = files.AUTO_COLORS_FILE;
 
-/// Runtime state owned by ThumbnailSet, not a setting; saved to AUTO_COLORS_FILE rather than the profile so saving the profile mid live-preview can't leak unsaved edits.
+/// Runtime state, not a setting: saved to AUTO_COLORS_FILE so a profile save mid-preview can't leak unsaved edits.
 pub const AutoColorStore = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
@@ -74,7 +74,7 @@ pub const AutoColorStore = struct {
         return colors;
     }
 
-    /// One stored colour per character, shared by its name and border; steers clear of every character's own name and active border overrides.
+    /// Shared by the character's name and border; avoids every character's own name and active border colours.
     fn characterColor(self: *AutoColorStore, config: *const config_mod.Config, character_name: []const u8) u32 {
         self.load();
 
@@ -122,7 +122,7 @@ pub const AutoColorStore = struct {
         }
     }
 
-    /// Writes pending colours; deferred to when the last thumbnail closes (and to deinit) so a session with EVE open never touches the disk for it.
+    /// Deferred to when the last thumbnail closes, and deinit, so a session with EVE open never writes.
     pub fn flush(self: *AutoColorStore) void {
         if (!self.system.is_dirty and !self.character.is_dirty) return;
         self.system.is_dirty = false;

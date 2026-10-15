@@ -132,7 +132,7 @@ fn rosterName(context: *ui.Frame, index: usize) ![]const u8 {
     return if (name.len > 0) name else try lang.format(context.arena(), "Character {n}", .{ .n = index + 1 });
 }
 
-/// While searching, only matching rows show, and none can be dragged, since a drop among hidden rows would land somewhere unseen.
+/// While searching, rows can't be dragged: a drop among hidden rows would land unseen.
 fn roster(context: *ui.Frame, profile: ProfileRef) !void {
     const characters = profile.ptr.characters.items;
     const list = try widgets.openSearchedRoster(context, .str("knots.characters.roster"), &style.roster, true, &g_search, "Search characters...");

@@ -41,7 +41,7 @@ const CONFIRM_TIMEOUT_MS = 2000;
 const ROW_DIVIDER_INDEX = 10;
 /// Past any roster's height; layout clamps a scroll offset to the content, so this lands on the last row.
 const SCROLL_TO_END: f32 = 1e9;
-/// A dropdown hugs its longest option up to this, so a long profile or client name is clipped rather than stretching its row.
+/// A dropdown's widest; longer names are clipped rather than stretching the row.
 const SELECT_MAX_WIDTH: f32 = 300;
 /// rowSelect's floor: as wide as the widest single-row dropdown's options need, "Mouse Down (Instant)".
 const SELECT_MIN_WIDTH: f32 = 170;
@@ -73,7 +73,7 @@ const RowHints = struct {
     }
 };
 
-/// What openGroup returns; a disabled group's controls are inert, and closing it veils them so they read as off.
+/// A disabled group's controls are inert; closing it veils them so they read as off.
 pub const Group = struct {
     key: ui.Key,
     rect: Rect,
@@ -99,7 +99,7 @@ pub const Group = struct {
     }
 };
 
-/// A settings row from openBinding, openRow or openModalRow, lit while the cursor is over it; closing it ends the row.
+/// Lit while hovered; closing it ends the row.
 pub const Row = struct {
     rect: Rect,
     /// Holds the divider above the row, so the row's highlight doesn't take in the gap.
@@ -296,21 +296,21 @@ var g_section_row_count: usize = 0;
 var g_row_hints: RowHints = .{};
 /// Last frame's row hints, which this frame's rows show as tooltips on their labels.
 var g_row_hints_before: RowHints = .{};
-/// The row whose label was drawn last, which a hintText straight after it explains; null after anything else that a hint could be about.
+/// For a hintText straight after; null after anything else a hint could be about.
 var g_last_labelled_row: ?ui.Key = null;
 var g_open_section: ?u64 = null;
 var g_confirm_key: ?u64 = null;
 /// The rows of the roster that just had a row added, to scroll to its end when next drawn.
 var g_scroll_to_end: ?u64 = null;
 var g_confirm_until_ms: i64 = 0;
-/// The detail label column's width this frame: wide enough for last frame's longest label word, so a long translated word doesn't break.
+/// Fits last frame's longest label word, so a long translated word doesn't break.
 var g_detail_column: f32 = style.DETAIL_LABEL_WIDTH;
 /// What this frame's labels need, taking over at the next beginFrame.
 var g_detail_column_next: f32 = style.DETAIL_LABEL_WIDTH;
 /// Every master list's width this frame: wide enough for last frame's widest footer and row names.
 var g_roster_width: f32 = style.ROSTER_WIDTH;
 var g_roster_width_next: f32 = style.ROSTER_WIDTH;
-/// The row being dragged to a new place in its list; `grab_y` and `row_height` are where it was picked up and its height, for drawing it lifted.
+/// `grab_y` and `row_height` let the lifted row be drawn where it was picked up.
 var g_reorder: ?struct { list: u64, from: usize, start_y: f64, grab_y: f32, row_height: f32, insert: usize, has_moved: bool = false } = null;
 
 pub fn beginFrame() void {
@@ -356,7 +356,7 @@ pub fn openBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Row {
     return row;
 }
 
-/// openBinding with `mark` at the end of the label's column, so the controls still start where other rows' do.
+/// `mark` ends the label column, so controls start where other rows' do.
 pub fn openMarkedBinding(context: *ui.Frame, key: ui.Key, label: []const u8, mark: []const u8) !Row {
     const row = try openSettingsRow(context, key, &style.aligned_row);
     const cell = Rect{ .key = key.indexed(2), .style = if (g_is_aligned) &style.inline_row else &style.label_cell };
@@ -369,12 +369,12 @@ pub fn openMarkedBinding(context: *ui.Frame, key: ui.Key, label: []const u8, mar
     return row;
 }
 
-/// A modal over the whole window, behind which the rest of the dialog dims and blurs; the caller opens and closes it.
+/// The rest of the dialog dims and blurs behind it; the caller opens and closes it.
 pub fn modal(key: ui.Key, is_open: *bool, panel_style: *const ui.Style) Dialog {
     return .{ .is_open = is_open, .key = key, .style = panel_style, .parts = .{ .backdrop = &style.modal_backdrop } };
 }
 
-/// A popover beside `anchor`, on whichever side has room; the caller fills it and ends it with closeResponse, where `.backdrop` is a click outside.
+/// On whichever side of `anchor` has room; in closeResponse, `.backdrop` is a click outside.
 pub fn openPopover(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box) !Dialog {
     const ui_state = context.ui();
     const extent = context.input().logical_extent;
@@ -393,7 +393,7 @@ pub fn openPopover(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box)
     return openPlaced(context, key, is_open, &style.popover, .{ x, y });
 }
 
-/// A menu dropping down from `anchor`, lined up with its left edge, or its right edge where there's no room; the caller fills it and closes it.
+/// Aligned to `anchor`'s left edge, or its right where there's no room; the caller fills and closes it.
 pub fn openMenu(context: *ui.Frame, key: ui.Key, is_open: *bool, anchor: Box) !Dialog {
     const viewport_width: f32 = @floatFromInt(context.input().logical_extent.width);
     const max_x = @max(POPOVER_MARGIN, viewport_width - style.MENU_WIDTH - POPOVER_MARGIN);
@@ -473,7 +473,7 @@ pub fn textWidth(context: *ui.Frame, text: []const u8, text_style: *const ui.Sty
     return (try face.measure(text, font_size * scale)).width / scale;
 }
 
-/// Widens every master list, from the next frame, so a row's `name` doesn't break mid-word beside its `lead` (a portrait or dot, 0 for none) and `badge` ("" for none).
+/// From the next frame, so `name` doesn't break beside `lead` (portrait or dot, 0 for none) and `badge` ("" for none).
 pub fn fitRosterRow(context: *ui.Frame, name: []const u8, lead: f32, badge: []const u8) !void {
     const frame_padding = comptime style.roster.padding.?;
     const row_padding = comptime style.roster_row.padding.?;
@@ -518,7 +518,7 @@ pub fn searchBox(context: *ui.Frame, key: ui.Key, query: *std.ArrayList(u8), pla
     try row.close(context);
 }
 
-/// An empty list's stand-in, centred where the list and its details would be: `title`, `message` on how to start, then the caller's buttons; the caller closes it.
+/// Centred where the list and details would be: `title`, `message`, then the caller's buttons; the caller closes it.
 pub fn openEmptyState(context: *ui.Frame, key: ui.Key, title: []const u8, message: []const u8) !EmptyState {
     const state = Rect{ .key = key, .style = &style.empty_state };
     _ = try state.open(context);
@@ -577,12 +577,12 @@ pub fn hotkeyWidth() ?*const ui.Style {
     return null;
 }
 
-/// A row of the caller's own cells, e.g. a grid's, spaced and divided like the aligned rows around it; the caller closes it.
+/// The caller's own cells, spaced and divided like aligned rows; the caller closes it.
 pub fn openRow(context: *ui.Frame, key: ui.Key) !Row {
     return openSettingsRow(context, key, &style.aligned_row);
 }
 
-/// A scrolling column that keeps a gutter for its scrollbar only while it has one, so its rows otherwise reach the edge like those around it.
+/// Keeps a scrollbar gutter only while scrolling, so rows otherwise reach the edge.
 pub fn openScrollPane(context: *ui.Frame, key: ui.Key, styles: style.ScrollPane) !ScrollPane {
     const content_key = key.indexed(1);
     const ui_state = context.ui();
@@ -604,7 +604,7 @@ pub fn openScrollPane(context: *ui.Frame, key: ui.Key, styles: style.ScrollPane)
     return .{ .pane = pane, .content = content };
 }
 
-/// A row of buttons, one per option, with `selected` highlighted; returns the index clicked, if it isn't the selected one.
+/// Returns the index clicked, unless it's `selected`.
 pub fn segmented(context: *ui.Frame, key: ui.Key, options: []const []const u8, selected: usize) !?usize {
     const group = Rect{ .key = key, .style = &style.segmented };
     _ = try group.open(context);
@@ -624,14 +624,14 @@ pub fn segmented(context: *ui.Frame, key: ui.Key, options: []const []const u8, s
     return clicked_index;
 }
 
-/// A modal's settings-style row, lit on hover like a popover's: `label` on the left, what the caller adds pushed to the right; the caller closes it.
+/// `label` left, the caller's controls right, lit on hover; the caller closes it.
 pub fn openModalRow(context: *ui.Frame, key: ui.Key, label: []const u8) !Row {
     const row = try openRow(context, key);
     try rowLabel(context, key, key.indexed(1), lang.text(label), &style.label_aligned);
     return row;
 }
 
-/// style.ACCENT_PRESETS, then a rainbow picker for any other; `is_custom` says the picker chose `color`, so it's the one ringed even when the colour matches a preset.
+/// style.ACCENT_PRESETS and a rainbow picker; `is_custom` rings the picker even when `color` matches a preset.
 pub fn accentChoices(context: *ui.Frame, key: ui.Key, color: *ui.Color, is_custom: *bool) !void {
     const row = Rect{ .key = key, .style = &style.accent_choices };
     _ = try row.open(context);
@@ -690,7 +690,7 @@ pub fn colorParts(is_aligned: bool) ColorPicker.Parts {
     };
 }
 
-/// A colour row that can be left unset to inherit `fallback`, shown struck through; the popup's Reset unsets it.
+/// Unset inherits `fallback`, shown struck through; Reset unsets it.
 pub fn optionalColor(context: *ui.Frame, key: ui.Key, label: []const u8, current: ?u32, fallback: u32) !?ColorChange {
     const row = try openBinding(context, key, label);
     var change: ?ColorChange = null;
@@ -716,7 +716,7 @@ pub fn reorderRow(context: *ui.Frame, base: ui.Key, index: usize) !void {
     try reorderRowByHandle(context, base, index, base.indexed(index));
 }
 
-/// reorderRow for a row whose controls would take the press, e.g. a text box: only a press on `handle` starts the drag.
+/// Only a press on `handle` starts the drag, for rows whose controls take the press.
 pub fn reorderRowByHandle(context: *ui.Frame, base: ui.Key, index: usize, handle: ui.Key) !void {
     const ui_state = context.ui();
     const id = base.indexed(index).hash();
@@ -826,7 +826,7 @@ pub fn glyphButton(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, label: 
     return response.clicked and !is_disabled;
 }
 
-/// A hint under a row ending in a link, e.g. "Learn more", always shown since a tooltip can't hold a link; returns whether the link was clicked.
+/// Always shown, since a tooltip can't hold a link; returns whether it was clicked.
 pub fn hintWithLink(context: *ui.Frame, key: ui.Key, content: []const u8, link_label: []const u8) !bool {
     const shown = lang.text(content);
     search.captureText(shown);
@@ -844,7 +844,7 @@ pub fn paragraph(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
     try boxedText(context, key, content, &style.hint_box, &style.hint);
 }
 
-/// A tooltip on the label of the row drawn just before it, else a paragraph; `content` must outlive the frame, e.g. a string literal.
+/// On the previous row's label, else a paragraph; `content` must outlive the frame.
 pub fn hintText(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
     const row = g_last_labelled_row orelse return paragraph(context, key, content);
     search.captureText(lang.text(content));
@@ -859,7 +859,7 @@ pub fn notice(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
     try boxedText(context, key, content, &style.notice, &style.notice_text);
 }
 
-/// Text inside a box: knots lays a Text out without its padding, border or background, so they go on a Rect around it.
+/// knots lays out a Text without padding, border or background, so they go on a surrounding Rect.
 pub fn boxedText(context: *ui.Frame, key: ui.Key, content: []const u8, box_style: *const ui.Style, text_style: *const ui.Style) !void {
     const box = Rect{ .key = key, .style = box_style };
     _ = try box.open(context);
@@ -914,7 +914,7 @@ pub fn checkbox(context: *ui.Frame, key: ui.Key, label: []const u8, is_checked: 
     return true;
 }
 
-/// A detail pane's lone setting: `label`, then a switch at the row's end that a click anywhere on the row flips; returns whether it was flipped.
+/// A click anywhere on the row flips the switch; returns whether it flipped.
 pub fn switchRow(context: *ui.Frame, key: ui.Key, label: []const u8, is_checked: *bool) !bool {
     const row = try openBinding(context, key, label);
     try context.e(Rect{ .key = key.indexed(3), .style = &style.spacer });
@@ -938,7 +938,7 @@ pub fn textStyle(arena: std.mem.Allocator, color: u32, size: f32, options: TextO
     return text_style;
 }
 
-/// knots has no switch, so it's a pill button whose knob slides across; returns whether it was flipped this frame.
+/// knots has no switch: a pill button with a sliding knob; returns whether it flipped.
 fn toggleSwitch(context: *ui.Frame, key: ui.Key, is_checked: *bool) !bool {
     // knots never animates layout, so the knob is pushed along by a spacer whose width is eased here.
     const position = context.ui().anim(key.hash(), "knob", if (is_checked.*) 1 else 0, .{ .duration_ms = style.SWITCH_ANIMATION_MS });
@@ -994,7 +994,7 @@ fn selectStyle(context: *ui.Frame, labels: []const []const u8, min_width: f32) !
     return fitted;
 }
 
-/// disabled_button, keeping `button_style`'s width and alignment so disabling a full-width button doesn't shrink it.
+/// Keeps `button_style`'s width and alignment, so a disabled full-width button doesn't shrink.
 fn disabledLook(context: *ui.Frame, button_style: *const ui.Style) !*const ui.Style {
     const look = try context.arena().create(ui.Style);
     look.* = style.disabled_button.with(.{ .width = button_style.width, .justify = button_style.justify, .gap = button_style.gap });
@@ -1084,7 +1084,7 @@ fn openAnyGroup(context: *ui.Frame, key: ui.Key, group_style: *const ui.Style, i
     return .{ .key = key, .rect = rect, .is_enabled = is_enabled };
 }
 
-/// A row's label, inside a tooltip when last frame gave the row a hint; a hintText straight after it explains this row.
+/// Inside a tooltip when last frame gave the row a hint.
 fn rowLabel(context: *ui.Frame, row_key: ui.Key, label_key: ui.Key, shown: []const u8, label_style: *const ui.Style) !void {
     g_last_labelled_row = row_key;
     const label = Text{ .selectable = false, .key = label_key, .content = shown, .style = label_style };
@@ -1103,7 +1103,7 @@ fn rowLabel(context: *ui.Frame, row_key: ui.Key, label_key: ui.Key, shown: []con
     try tip.close(context);
 }
 
-/// A plain row's label: pushed against its controls when aligned, else in the label column, which a detail pane widens to fit.
+/// Against the controls when aligned, else in the label column, which a detail pane widens.
 fn rowLabelStyle(context: *ui.Frame, shown: []const u8) !*const ui.Style {
     if (g_is_aligned) return alignedLabelStyle();
     if (g_label_style == &style.detail_label) return detailLabelStyle(context, shown);
@@ -1131,7 +1131,7 @@ fn fitRoster(context: *ui.Frame, footer: RosterFooter) !void {
     widenRosters(context, needed);
 }
 
-/// Every master list takes the widest of this frame's `needed` widths from the next frame, up to style.ROSTER_MAX_WIDTH.
+/// Every master list takes this frame's widest `needed` from the next frame, up to style.ROSTER_MAX_WIDTH.
 fn widenRosters(context: *ui.Frame, needed: f32) void {
     const width = @min(@ceil(needed), style.ROSTER_MAX_WIDTH);
     g_roster_width_next = @max(g_roster_width_next, width);
@@ -1148,7 +1148,7 @@ fn nextRowHasDivider() bool {
     return !g_is_in_field_group and g_open_section != null and g_section_row_count > 0;
 }
 
-/// Lit while the cursor is anywhere in last frame's box, controls included, since knots only hovers the innermost element.
+/// Lit anywhere in last frame's box, since knots only hovers the innermost element.
 fn openSettingsRow(context: *ui.Frame, key: ui.Key, row_style: *const ui.Style) !Row {
     const divider: ?Rect = if (g_is_aligned and nextRowHasDivider()) Rect{ .key = key.indexed(ROW_DIVIDER_INDEX), .style = &style.row_divider } else null;
     if (divider) |rect| _ = try rect.open(context);

@@ -169,7 +169,7 @@ pub fn freeField(comptime T: type, value: *T, default: ?T, allocator: std.mem.Al
 pub fn Wire(comptime R: type) type {
     return comptime blk: {
         const fields = savedFields(R);
-        // Converting nested defaults (e.g. every notification type's settings) all counts against one budget; this is only a runaway-loop ceiling.
+        // Nested defaults share one budget; this is only a runaway-loop ceiling.
         @setEvalBranchQuota(10_000_000);
         var names: [fields.len][]const u8 = undefined;
         var types: [fields.len]type = undefined;

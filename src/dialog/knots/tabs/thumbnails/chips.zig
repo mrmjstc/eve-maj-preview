@@ -179,7 +179,7 @@ pub const CHIPS = [_]Chip{
 /// The settings struct a chip's fields live in.
 pub const Section = enum { thumbnail, notifications, combat, mining, bounty, resources };
 
-/// One row of a chip's popover; number, choice and text rows show only in Advanced Mode, like the tabs they came from, and a `hint` is a tooltip on the row's label.
+/// Number, choice and text rows show only in Advanced Mode; a `hint` is a tooltip on the label.
 pub const PopoverField = union(enum) {
     /// A setting of the chip's section; `disables_color` greys out the text colour while it's on.
     toggle: struct { field: []const u8, label: []const u8, disables_color: bool = false, hint: ?[]const u8 = null },

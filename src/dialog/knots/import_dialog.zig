@@ -122,7 +122,7 @@ pub fn loadFile(path: []const u8) void {
 }
 
 pub fn show(context: *ui.Frame) !void {
-    // Cleared a frame after closing, not on the frame that closes it: that frame's text still borrows from the arena until it's drawn.
+    // Cleared the frame after closing: the closing frame's text still borrows from the arena.
     if (!g_is_open) return clearArena();
     const dialog = widgets.modal(.src(@src()), &g_is_open, &style.modal_wide);
     _ = try dialog.open(context);
@@ -249,7 +249,7 @@ fn isListed(ids: []const []const u8, id: []const u8) bool {
     return false;
 }
 
-/// A checkbox for the whole group, ticked while all of it is, over the group's sections; nothing when the file has none of them.
+/// Ticked while all its sections are, above them; nothing when the file has none.
 fn sectionGroup(context: *ui.Frame, group_index: usize, label: []const u8, sections: []Section, indices: []const usize) !void {
     if (indices.len == 0) return;
     const key = ui.Key.str("knots.import.group").indexed(group_index);
@@ -428,7 +428,7 @@ fn stringAt(value: std.json.Value, name: []const u8) ?[]const u8 {
     return if (field == .string) field.string else null;
 }
 
-/// A note in words: its English text translated, with each {parameter} filled in, translating the ones marked for it.
+/// Translates the English text, filling each {parameter} and translating the marked ones.
 fn translate(allocator: std.mem.Allocator, note: importer.Text) ![]const u8 {
     var out: []const u8 = try allocator.dupe(u8, lang.text(note.key));
     for (note.parameters) |parameter| {

@@ -48,21 +48,21 @@ pub const STAT_COUNT = std.enums.values(Stat).len;
 /// What the right-hand slot shows besides a notification or the system, in the order it writes them.
 pub const Stat = enum { incoming_dps, outgoing_dps, mining_rate, bounty_rate };
 
-/// One stat in the right-hand slot: mining in m3 per minute, bounty in ISK per the configured period; null while still being measured.
+/// Mining in m3 per minute, bounty in ISK per the configured period; null while still being measured.
 pub const StatReading = struct {
     stat: Stat,
     value: ?f32,
     has_prefix: bool,
 };
 
-/// The panel's sizes for the current settings, in pixels.
+/// In pixels.
 pub const Metrics = struct {
     column_width: i32,
     header_height: i32,
     row_height: i32,
 };
 
-/// What decides whether and how a stat shows: the list's own settings, and its overlay's, which also runs its tracker.
+/// The list's own settings and its overlay's, which also runs the tracker.
 pub const StatSettings = struct {
     display: *const DisplayConfig,
     combat: *const activity.CombatConfig,
@@ -98,7 +98,7 @@ pub fn rowHeight(font_size: i32) i32 {
     return @max(MIN_ROW_HEIGHT, lineHeight(font_size) + ROW_TEXT_PADDING);
 }
 
-/// Columns to lay `row_count` rows out in, row by row: the configured number, at most MAX_COLUMNS, and never more than there are rows.
+/// The configured count, capped at MAX_COLUMNS and at `row_count`.
 pub fn effectiveColumns(configured: u32, row_count: usize) i32 {
     const clamped: i32 = @max(1, @min(MAX_COLUMNS, @as(i32, @intCast(configured))));
     if (row_count == 0) return clamped;
@@ -157,7 +157,7 @@ pub fn statColor(display: *const DisplayConfig, stat: Stat) u32 {
     };
 }
 
-/// One reading as the slot shows it, e.g. "IN:412"; a truncated result is still drawn, so the writer's overflow is ignored.
+/// E.g. "IN:412"; overflow is ignored, since a truncated result is still drawn.
 pub fn writeStat(writer: *std.Io.Writer, reading: StatReading) void {
     if (reading.has_prefix) writer.writeAll(prefix(reading.stat)) catch {};
     const value = reading.value orelse {

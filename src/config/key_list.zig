@@ -7,7 +7,7 @@ const slog = log.Scoped("config");
 
 pub const MAX_KEYS = 4;
 
-/// Each key is a combined value (see vk.combineKey), with no pointers, so it copies and clones as a plain value.
+/// Each key is a combined value (see vk.combineKey), so it copies as a plain value.
 pub const KeyList = struct {
     keys: [MAX_KEYS]u32 = @splat(0),
     len: u8 = 0,
@@ -55,7 +55,7 @@ pub const KeyListWire = struct {
         return item == .string and (item.string.len == 0 or vk.parseVirtualKey(item.string) != null);
     }
 
-    /// A key that can't be read is skipped with a warning rather than failing, which would load the whole profile as defaults.
+    /// Skips an unreadable key with a warning, rather than failing the whole profile to defaults.
     pub fn jsonParseFromValue(_: std.mem.Allocator, source: std.json.Value, _: std.json.ParseOptions) !KeyListWire {
         var list: KeyList = .empty;
         switch (source) {

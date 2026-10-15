@@ -254,7 +254,7 @@ fn holdsKeys(comptime T: type) bool {
     };
 }
 
-/// A bare Win press, which Windows hands to the Start Menu before the window sees it, so the keyboard hook reports it.
+/// Windows hands a bare Win press to the Start Menu first, so the keyboard hook reports it.
 fn onWinKey(modifiers: u32) void {
     const recording = if (g_recording) |*active| active else return;
     if (recording.captured == null) capture(vk.VK_LWIN, modifiers);

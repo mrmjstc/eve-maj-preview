@@ -205,7 +205,7 @@ fn findMergedList(name: []const u8) ?MergedList {
     return null;
 }
 
-/// A section is gone into field by field; anything else, including a small struct like a position, is set whole.
+/// Sections are set field by field; anything else, even a small struct, whole.
 fn fieldOps(arena: std.mem.Allocator, ops: *std.ArrayList(patch.Op), path: []const []const u8, value: Value) !void {
     if (value != .object or !patch.isSection(Config, path)) return ops.append(arena, try setOp(arena, path, value));
     var it = value.object.iterator();

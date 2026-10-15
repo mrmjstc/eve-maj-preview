@@ -52,7 +52,7 @@ fn monitoring(context: *ui.Frame, chatlog: ChatlogRef) !void {
     try section.close(context);
 }
 
-/// A path box with a Browse button, whose folder picker sets the path once it closes; hovering the box shows a path too long for it.
+/// Browse's picker sets the path once it closes; hovering shows a path too long for the box.
 fn directory(context: *ui.Frame, chatlog: ChatlogRef, comptime row_settings: DirectoryRow) !void {
     const field = row_settings.field;
     const row = try widgets.openBinding(context, .str("knots.chatlog.dir:" ++ field), row_settings.label);

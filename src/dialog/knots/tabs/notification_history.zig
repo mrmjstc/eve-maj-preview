@@ -152,7 +152,7 @@ fn lookOf(profile: *const config.Config, available_width: f32) Look {
     };
 }
 
-/// Just tall enough for the samples shown (or the empty text), so the panel's empty space below them isn't drawn.
+/// Just tall enough for the samples or the empty text, leaving no blank space.
 fn previewHeight(display: *const config.DisplayConfig, sizes: history_look.Metrics) i32 {
     const capacity = history_look.rowCapacity(display, sizes);
     var shown_count: usize = 0;

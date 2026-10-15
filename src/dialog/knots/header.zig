@@ -68,7 +68,7 @@ var g_is_custom_accent: bool = false;
 /// The name being typed. Owned; freed in deinit.
 var g_name_text: std.ArrayList(u8) = .empty;
 var g_name_color: Color = undefined;
-/// The backup a restore prompt is for, and its name to show. Owned; freed when another prompt opens or in deinit.
+/// The backup a restore prompt is for. Owned; freed when another prompt opens or in deinit.
 var g_restore_backup: ?[]u8 = null;
 var g_restore_label: ?[]u8 = null;
 var g_confirm: ?Confirm = null;
@@ -259,7 +259,7 @@ fn openNewPrompt(start_from: StartFrom) void {
     });
 }
 
-/// The name a new profile is offered: none from defaults, "Main - Copy" for a copy of Main. Borrows from `buf` or the running profile.
+/// None from defaults, "Main - Copy" for a copy of Main; borrows from `buf` or the running profile.
 fn suggestedName(buf: *[SUGGESTION_LENGTH]u8, start_from: StartFrom) []const u8 {
     const name = profiles.displayName(session.profile().ptr.profile_name);
     return switch (start_from) {

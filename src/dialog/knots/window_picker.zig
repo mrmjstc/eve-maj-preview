@@ -29,7 +29,7 @@ pub const Picker = struct {
     windows: []const RunningWindow,
 };
 
-/// Scans the open windows for the item at `index`, replacing `picker`'s earlier scan; leaves it closed when there are none.
+/// Replaces `picker`'s earlier scan; leaves it closed when there are none.
 pub fn open(allocator: std.mem.Allocator, picker: *?Picker, index: usize) void {
     close(picker);
     var arena = std.heap.ArenaAllocator.init(allocator);
@@ -52,7 +52,7 @@ pub fn close(picker: *?Picker) void {
     picker.* = null;
 }
 
-/// The dropdown under the item at `index`, while its picker is open; returns the window picked, which borrows from the picker until `close`.
+/// While the picker is open; the window returned borrows from it until `close`.
 pub fn select(context: *ui.Frame, picker: *const ?Picker, key: ui.Key, index: usize) !?RunningWindow {
     const open_picker = picker.* orelse return null;
     if (open_picker.index != index) return null;

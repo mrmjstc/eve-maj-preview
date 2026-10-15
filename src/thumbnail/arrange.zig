@@ -15,7 +15,7 @@ const slog = log.Scoped("arrange");
 
 pub const Place = struct { position: config_mod.Position, size: Size };
 
-/// Where a thumbnail not yet in the list goes: the end of its space until the reflow that follows ranks it, else its hand-placed spot.
+/// The end of its space until the next reflow ranks it, else its hand-placed spot.
 pub fn newPlace(thumbnail_set: *const ThumbnailSet, character_name: []const u8, monitor_bounds: ?win32.RECT, scale: f32) Place {
     const layout = thumbnail_set.layout();
     if (spaces.spaceFor(thumbnail_set.config, character_name)) |space_index| {
@@ -34,7 +34,7 @@ pub fn hasCountDependentLayout(thumbnail_set: *const ThumbnailSet) bool {
     return spaces.anyActive(thumbnail_set.config);
 }
 
-/// After a change to who goes where or how big the cells are: membership, ranks, counts or the thumbnail size; no-op while no space is active.
+/// After a change to space membership, ranks, counts or thumbnail size.
 pub fn reflowIfSpacesActive(thumbnail_set: *ThumbnailSet) void {
     if (spaces.anyActive(thumbnail_set.config)) repositionAll(thumbnail_set);
 }
@@ -57,7 +57,7 @@ pub fn resizeIfNeeded(thumbnail_set: *ThumbnailSet, thumbnail: *ThumbnailWindow,
     thumbnail.resize(target);
 }
 
-/// Re-reads every thumbnail's config-derived settings, e.g. whether it's hidden; for the config dialog's live preview, before the reflow and refreshVisuals.
+/// For the dialog's live preview, before the reflow and refreshVisuals.
 pub fn refreshConfigCaches(thumbnail_set: *ThumbnailSet) void {
     // Every thumbnail, not just is_win32_enabled ones: list_view.zig reads these cache fields directly.
     for (thumbnail_set.thumbnails.items) |*thumbnail| {
@@ -68,9 +68,9 @@ pub fn refreshConfigCaches(thumbnail_set: *ThumbnailSet) void {
     }
 }
 
-/// Re-applies every thumbnail's visibility and size and redraws it, ignoring needs_render; for the config dialog's live preview, after refreshConfigCaches.
+/// Ignores needs_render; for the dialog's live preview, after refreshConfigCaches.
 pub fn refreshVisuals(thumbnail_set: *ThumbnailSet) void {
-    // Checked here so a live-preview toggle of the focus auto-hide reacts at once instead of on the next focus change.
+    // So a live auto-hide toggle reacts now, not on the next focus change.
     const any_eve_has_focus = thumbnail_set.isEveWindowForeground();
     const cells = spaceCells(thumbnail_set);
 
@@ -89,7 +89,7 @@ pub fn refreshVisuals(thumbnail_set: *ThumbnailSet) void {
     }
 }
 
-/// Sized for every is_win32_enabled thumbnail's two windows plus the hover zoom's; null if there's nothing to move or it fails.
+/// Null if there's nothing to move or it fails.
 pub fn beginDefer(thumbnail_set: *const ThumbnailSet) ?win32.HDWP {
     var window_count: c_int = 0;
     for (thumbnail_set.thumbnails.items) |thumbnail| {
@@ -145,7 +145,7 @@ pub fn repositionAll(thumbnail_set: *ThumbnailSet) void {
 
 /// Puts every thumbnail back on top after another app's topmost window took the z-order band.
 pub fn reassertTopmost(thumbnail_set: *ThumbnailSet) void {
-    // Batched so DWM applies the whole z-order change at once, instead of compositing each step and flashing thumbnails.
+    // Batched so DWM doesn't composite each step and flash thumbnails.
     var hdwp = beginDefer(thumbnail_set) orelse return;
     for (thumbnail_set.thumbnails.items) |thumbnail| {
         if (!thumbnail.is_win32_enabled) continue;
@@ -156,7 +156,6 @@ pub fn reassertTopmost(thumbnail_set: *ThumbnailSet) void {
     _ = win32.EndDeferWindowPos(hdwp);
 }
 
-/// Every active space's grid for the current thumbnails.
 fn spaceCells(thumbnail_set: *const ThumbnailSet) placement.SpaceCells {
     const layout = thumbnail_set.layout();
     return layout.spaceCells(&layout.spaceCounts());

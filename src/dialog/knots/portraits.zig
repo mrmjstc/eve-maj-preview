@@ -83,7 +83,7 @@ pub fn preload(name: []const u8) void {
     if (!g_entries.contains(id)) request(id);
 }
 
-/// `name`'s portrait, or null until it has loaded or when its ID isn't known yet; starts loading it the first time.
+/// Null until loaded or while its ID is unknown; the first call starts loading it.
 pub fn image(arena: std.mem.Allocator, key: ui.Key, name: []const u8, image_style: *const ui.Style) ?Image {
     const id = lookUp(arena, name) orelse return null;
     const entry = g_entries.getPtr(id) orelse {
@@ -123,7 +123,7 @@ fn lookUp(allocator: std.mem.Allocator, name: []const u8) ?[]const u8 {
     };
 }
 
-/// Adds the entry, then loads it; a failure leaves the entry empty until the window next opens, rather than retrying every frame.
+/// A failure leaves the entry empty until the window reopens, rather than retrying every frame.
 fn request(id: []const u8) void {
     const entry = addEntry(id) catch |err| {
         slog.warn("Failed to load the portrait of character '{s}': {}", .{ id, err });
@@ -152,7 +152,7 @@ fn startLoad(id: []const u8) !void {
     thread.detach();
 }
 
-/// The load's thread; takes ownership of `id`, and touches nothing of the main thread's but the allocator and the posted message.
+/// Takes ownership of `id`; shares only the allocator and the posted message with the main thread.
 fn loadThread(io: std.Io, timer_hwnd: win32.HWND, command: usize, id: []const u8) void {
     const loaded = g_allocator.create(Loaded) catch |err| {
         slog.warn("Failed to load the portrait of character '{s}': {}", .{ id, err });

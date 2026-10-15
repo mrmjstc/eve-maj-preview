@@ -51,7 +51,7 @@ pub fn horizontalAlignOf(position: TextPosition) HorizontalAlign {
     };
 }
 
-/// x for a line of `line_width` so it sits flush against whichever edge `alignment` anchors to, within a block of `block_width` starting at `block_x`.
+/// Puts a `line_width` line against the block edge `alignment` names.
 pub fn alignedLineX(block_x: i32, block_width: usize, line_width: usize, alignment: HorizontalAlign) i32 {
     return switch (alignment) {
         .left => block_x,
@@ -81,7 +81,7 @@ pub fn fillTextBackground(canvas: Canvas, x: i32, y: i32, text_width: usize, tex
     const end_y = @min(start_y + text_height, canvas.height);
     const end_x = @min(start_x + text_width, canvas.width);
     if (end_x <= start_x or end_y <= start_y) return;
-    // Premultiplied, or fixTextAlphaRect would take a transparent non-black background for unfixed GDI text and make it opaque.
+    // Premultiplied, or fixTextAlphaRect would make a transparent non-black background opaque.
     pixel_buffer.fillRect(canvas, start_x, start_y, end_x - start_x, end_y - start_y, color_mod.premultiplyAlpha(color));
 }
 
@@ -167,12 +167,12 @@ pub fn drawBorder(canvas: Canvas, border_width: usize, color: u32, style: Border
         },
         .Dashed => drawLengthwisePattern(canvas, border_width, color, DASH_LENGTH, DASH_GAP),
         .Dotted => {
-            // Square-ish dots roughly one border-width wide, spaced two border-widths apart, distinct from Dashed's fixed 8px marks.
+            // Dots one border-width long, two apart.
             const dot_length = if (border_width == 0) 0 else @max(1, border_width);
             drawLengthwisePattern(canvas, border_width, color, dot_length, dot_length * 2);
         },
         .Double => {
-            // Mirrors the CSS "double" border look; at very thin widths the lines abut with no visible gap and just render as solid.
+            // CSS-style double border; too thin for a gap, it renders solid.
             const line_width = if (border_width == 0) 0 else @max(1, border_width / 3);
             const inner_start = border_width - line_width;
 
@@ -204,7 +204,7 @@ pub fn drawBorder(canvas: Canvas, border_width: usize, color: u32, style: Border
             }
         },
         .DashDot => {
-            // Dash, gap, dot, gap: a four-phase pattern, so it needs its own test rather than drawLengthwisePattern's single mark/gap pair.
+            // Dash, gap, dot, gap: too many phases for drawLengthwisePattern.
             const dot_length: usize = if (border_width == 0) 0 else @max(1, border_width);
             const pattern_length = DASH_LENGTH + DASH_GAP + dot_length + DASH_GAP;
             const dot_start = DASH_LENGTH + DASH_GAP;
@@ -228,7 +228,7 @@ pub fn drawBorder(canvas: Canvas, border_width: usize, color: u32, style: Border
             }
         },
         .CornerBrackets => {
-            // Arm length scales with border_width but is capped at a third of the shorter dimension so brackets from adjacent corners never meet.
+            // Capped at a third of the shorter side so adjacent corners' brackets never meet.
             const arm_length = @min(border_width * 4, @min(width, height) / 3);
 
             pixel_buffer.fillRect(canvas, 0, 0, arm_length, border_width, color);
@@ -265,7 +265,7 @@ fn verticalAlignOf(position: TextPosition) VerticalAlign {
     };
 }
 
-/// y for a line of `line_height` so it sits flush against whichever edge `alignment` anchors to, within a block of `block_height` starting at `block_y`.
+/// Puts a `line_height` line against the block edge `alignment` names.
 fn alignedLineY(block_y: i32, block_height: usize, line_height: usize, alignment: VerticalAlign) i32 {
     return switch (alignment) {
         .top => block_y,
@@ -295,7 +295,7 @@ fn drawDiagonalBand(canvas: Canvas, color: u32, diagonal: Diagonal) void {
     }
 }
 
-/// The four border bands (top/bottom/left/right), each `border_width` thick and running the full length of its edge.
+/// Top, bottom, left, right; each runs its edge's full length.
 fn borderRegions(width: usize, height: usize, border_width: usize) [4]BorderRegion {
     return .{
         .{ .x_start = 0, .y_start = 0, .x_end = width, .y_end = border_width },
@@ -305,7 +305,6 @@ fn borderRegions(width: usize, height: usize, border_width: usize) [4]BorderRegi
     };
 }
 
-/// Marks pixels along the border's length using a repeating mark/gap pattern, where `distance` runs along the edge.
 fn drawLengthwisePattern(canvas: Canvas, border_width: usize, color: u32, mark_length: usize, gap_length: usize) void {
     const pixels = canvas.pixels;
     const width = canvas.width;

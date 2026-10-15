@@ -56,7 +56,7 @@ fn startPicker(target: Target, index: usize, title: []const u8, owner: ?win32.HW
     thread.detach();
 }
 
-/// The picker's thread, which owns and frees `title` and `file_type_name`; touches nothing of the main thread's but the allocator and the posted message.
+/// Owns `title` and `file_type_name`; shares only the allocator and the posted message with the main thread.
 fn pickerThread(target: Target, index: usize, title: []const u8, file_type_name: []const u8, owner: ?win32.HWND, timer_hwnd: win32.HWND, command: usize) void {
     defer g_is_busy.store(false, .release);
     defer g_allocator.free(title);

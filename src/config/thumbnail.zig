@@ -8,7 +8,7 @@ const NotificationConfig = notifications_mod.NotificationConfig;
 
 const BORDER_WIDTH = .{ 1, 50 };
 
-/// Which of the per-state visuals a thumbnail draws with; decided live by ThumbnailWindow.effectiveRenderState, never saved.
+/// Decided live by ThumbnailWindow.effectiveRenderState, never saved.
 pub const ThumbnailState = enum {
     inactive,
     active,

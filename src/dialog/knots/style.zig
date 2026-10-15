@@ -87,7 +87,7 @@ pub const CONTROL_HEIGHT = 28;
 /// How far a section's text and controls sit from its border, on every side.
 const SECTION_EDGE = 12;
 const SCROLLBAR_THICKNESS = 8;
-/// Right padding in a scrolling pane: the scrollbar draws over the content, so this keeps a gap between it and what's inside.
+/// The scrollbar draws over the content, so this keeps a gap.
 const SCROLLBAR_GUTTER = SCROLLBAR_THICKNESS + 10;
 /// A smaller gutter for panes of rows, whose content already sits a row's inset inside them.
 pub const ROW_SCROLLBAR_GUTTER = SCROLLBAR_THICKNESS + 2;
@@ -148,7 +148,7 @@ pub const tab_label: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color =
 pub const tab_label_lit: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } };
 pub const tab_glyph: Style = .{ .width = .fixed(glyphs.TAB_SIZE), .height = .fixed(glyphs.TAB_SIZE) };
 
-/// The tab's content when it scrolls, with vertical padding on the column so the pane's height compares straight against it.
+/// Pads the column, not the pane, so the pane's height compares straight against it.
 pub const content_scroll: ScrollPane = .{
     .pane = &content_scroll_pane,
     .scrolling = &content_scroll_pane.with(.{ .padding = .init(0, SCROLLBAR_GUTTER, 0, 8) }),
@@ -164,7 +164,7 @@ const content_scroll_pane: Style = .{
 /// The tab's content when the tab fills it itself.
 pub const content_fill: Style = .{ .width = .grow(), .height = .grow(), .direction = .column, .gap = 8, .padding = .all(8) };
 
-/// Every master list's width in English, fitting Characters' Add Character and refresh buttons; widgets widens it for a longer translation.
+/// Fits Characters' Add Character and refresh buttons in English; widgets widens it for longer translations.
 pub const ROSTER_WIDTH = 170;
 pub const ROSTER_MAX_WIDTH = 240;
 /// An inset well, darker than its section, rather than another bordered box.
@@ -181,7 +181,7 @@ pub const roster: Style = .{
 /// widgets.openRoster's rows, scrolling above its footer.
 pub const roster_rows: Style = .{ .width = .grow(), .height = .grow(), .direction = .column, .gap = 2, .overflow = .scroll_y };
 pub const roster_rows_fit: Style = .{ .width = .grow(), .direction = .column, .gap = 2 };
-/// A roster's rows in widgets.openScrollPane: the scrollbar draws over its pane, so the gutter keeps it off the rows' badges and markers while they scroll.
+/// The scrollbar draws over its pane, so the gutter keeps it off the rows' badges and markers.
 pub const roster_scroll: ScrollPane = .{
     .pane = &roster_rows,
     .scrolling = &roster_rows.with(.{ .padding = .init(0, ROW_SCROLLBAR_GUTTER, 0, 0) }),
@@ -322,7 +322,7 @@ pub const inset_column: Style = .{ .width = .grow(), .direction = .column, .gap 
 pub const hint: Style = .{ .font_size = .xs, .foreground = .{ .color = HINT_TEXT }, .wrap = true, .width = .grow() };
 /// Around a hint that goes with rows, so it starts where their labels do; knots ignores a Text's own padding.
 pub const hint_box: Style = .{ .width = .grow(), .padding = .xy(ROW_INSET, 0) };
-/// widgets.hintWithLink's row, inset like hint_box and drawn up into the gap after the row it explains, since knots has no margins.
+/// Inset like hint_box and pulled up into the gap after its row, since knots has no margins.
 pub const hint_link_row: Style = hint_row.with(.{ .padding = .init(-HINT_LINK_PULL, ROW_INSET, 0, ROW_INSET) });
 /// Less than any gap between rows, so the link row never overlaps the row above.
 const HINT_LINK_PULL = 6;
@@ -339,7 +339,7 @@ pub const notice: Style = .{
 };
 pub const notice_text: Style = .{ .width = .grow(), .wrap = true, .foreground = .accent };
 
-/// Inset like the rows, so the title, description and labels share one left edge and the switch lines up over the rows' own.
+/// Inset like the rows, so title, description, labels and switch line up with them.
 pub const section_heading: Style = .{ .width = .grow(), .direction = .row, .justify = .space_between, .@"align" = .center, .padding = .xy(ROW_INSET, 0) };
 /// The title's own row, so the right of the heading is left to the section's switch.
 pub const section_heading_title: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
@@ -361,7 +361,7 @@ pub const aligned_row: Style = .{
     .@"align" = .center,
     .gap = 8,
 };
-/// Wraps a row after a section's first; its padding matches the section's gap, so the divider sits midway between two rows' controls.
+/// Padding matches the section's gap, so the divider sits midway between rows.
 pub const row_divider: Style = .{
     .width = .grow(),
     .padding = .init(ROW_DIVIDER_SPACE, 0, 0, 0),
@@ -643,7 +643,7 @@ pub const ACCENT_PRESETS = [_]u32{ 0xFFD9A441, 0xFF5EC9C9, 0xFF7FB3D9, 0xFFA988D
 pub const accent_choices: Style = .{ .direction = .row, .@"align" = .center, .gap = 6 };
 const ACCENT_RING_SIZE = 24;
 const ACCENT_SWATCH_SIZE = 16;
-/// Around each accent choice in the profile name prompt, centring it so every ring lines up; lit in the accent while it's the chosen one.
+/// Centres each accent choice so the rings line up; lit in the accent while chosen.
 pub const accent_ring: Style = .{
     .width = .fixed(ACCENT_RING_SIZE),
     .height = .fixed(ACCENT_RING_SIZE),
@@ -734,7 +734,7 @@ pub const disabled_button: Style = .{
     .active = &.{ .state_layer = 0 },
 };
 
-/// Not scrolled, unlike knots' default panel: its wrapped text can measure a fraction over the panel and show a scrollbar.
+/// Not scrolled: its wrapped text can measure a fraction over and show a scrollbar.
 pub const modal: Style = .{
     .width = .fixed(360),
     .gap = 12,
@@ -744,7 +744,7 @@ pub const modal: Style = .{
     .radius = .md,
 };
 
-/// widgets.modal's backdrop: blurs the dialog under it on top of knots' own dimming, so the modal reads as in front.
+/// Blurs the dialog behind on top of knots' dimming, so the modal reads as in front.
 pub const modal_backdrop: Style = .{ .backdrop = .{ .blur = 3 } };
 
 pub const modal_text: Style = .{ .foreground = .{ .color = TEXT_SECONDARY }, .wrap = true, .width = .grow() };
@@ -798,7 +798,7 @@ pub const group_fill: Style = group.with(.{ .height = .grow() });
 pub const group_inline: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
 /// Strong enough that the controls under the veil read as disabled.
 const GROUP_VEIL_ALPHA = 0.7;
-/// Veils a disabled group, whose controls are already inert; knots' opacity wouldn't fade the children's boxes and borders.
+/// Veils a disabled group: knots' opacity wouldn't fade its children's boxes and borders.
 pub const group_veil: Style = .{
     .position = .absolute,
     .offset = .{ 0, 0 },
@@ -815,7 +815,7 @@ pub const confirm_button: Style = plain_button.with(.{
     .hover = &.{ .background = .{ .color = DESTRUCTIVE_FILL_HOVER }, .foreground = .{ .color = WHITE }, .state_layer = 0 },
 });
 pub const button_text: Style = .{ .foreground = .{ .color = TEXT } };
-/// Buttons in neighbouring rows, e.g. Set All over Clear All, at one width so their edges line up; fits English, and behavior.zig widens them for a longer translation.
+/// Lines up stacked buttons like Set All over Clear All; behavior.zig widens it for longer translations.
 pub const PAIRED_BUTTON_WIDTH = 90;
 pub const paired_button: Style = plain_button.with(.{ .width = .fixed(PAIRED_BUTTON_WIDTH), .justify = .center });
 pub const paired_disabled_button: Style = disabled_button.with(.{ .width = .fixed(PAIRED_BUTTON_WIDTH), .justify = .center });
@@ -848,10 +848,10 @@ pub const stage_row: Style = .{ .width = .grow(), .justify = .center };
 /// A thumbnail space's colour in the roster; the roster sets its colour.
 pub const SPACE_DOT_SIZE = 10;
 pub const space_dot: Style = .{ .width = .fixed(SPACE_DOT_SIZE), .height = .fixed(SPACE_DOT_SIZE), .radius = .{ .fixed = 2 } };
-/// A built-in space's name in place of its text box, as tall as one so the header doesn't jump between spaces.
+/// As tall as a text box, so the header doesn't jump between spaces.
 pub const space_fixed_name: Style = .{ .width = .grow(), .height = .fixed(CONTROL_HEIGHT), .direction = .row, .@"align" = .center, .padding = .xy(8, 0) };
 pub const space_fixed_name_text: Style = .{ .foreground = .{ .color = TEXT } };
-/// Marks the Login Screen and Unassigned Characters spaces; its radius is half its height, rounding it into a pill.
+/// Marks the built-in spaces; a radius of half its height makes it a pill.
 pub const space_built_in_tag: Style = .{ .padding = .xy(8, 2), .border_width = .all(1), .border_color = .{ .color = BORDER_STRONG }, .radius = .{ .fixed = 9 } };
 /// A space's Holds grid of hotkey group pills; the dialog sets its rows.
 pub const group_chip_grid: Style = .{ .width = .grow(), .direction = .grid, .gap = 6 };
@@ -873,7 +873,7 @@ pub const group_chip_held: Style = group_chip.with(.{ .background = .accent, .bo
 pub const group_chip_label: Style = .{ .foreground = .{ .color = TEXT_SECONDARY } };
 pub const group_chip_label_held: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = INK_DARK } };
 
-/// A text on the thumbnail preview; the stage sets its place, padding, background and outline from the overlay's settings.
+/// The stage sets its place, padding, background and outline from the overlay's settings.
 pub const overlay_text: Style = .{
     .position = .absolute,
     .border_width = .all(1),
@@ -1035,7 +1035,7 @@ pub const member_row: Style = .{ .width = .grow(), .direction = .row, .@"align" 
 pub const member_add_row: Style = inline_row.with(.{ .padding = .xy(ROW_INSET, 0) });
 /// A member row lifted by a drag: padded so its contents clear the lifted outline.
 pub const member_row_lift: Style = member_row.with(.{ .padding = .xy(ROW_INSET, 2) });
-/// Laid over a row's own style while it's dragged, raised under the cursor; ReorderList sets its width and place.
+/// Over a dragged row's own style; ReorderList sets its width and place.
 pub const lifted_row: Style = .{
     .position = .absolute,
     .background = .{ .color = SURFACE_ALT },
@@ -1083,7 +1083,7 @@ pub const suggest_row: Style = .{
 
 /// The Import dialog's file line before a file is picked.
 pub const import_file_none: Style = label_aligned.with(.{ .foreground = .{ .color = MUTED } });
-/// The Import dialog's "Sections to import" with its All and None links, set apart by the space above it like subheading_box.
+/// Set apart by the space above it, like subheading_box.
 pub const import_sections_heading: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 12, .padding = .init(16, 0, 0, 0) };
 /// The Import dialog's sections, two to a row.
 pub const import_section_grid: Style = .{ .width = .grow(), .direction = .column, .gap = 6 };

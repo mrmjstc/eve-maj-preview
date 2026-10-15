@@ -59,7 +59,7 @@ pub const ProfileStore = struct {
         character.position = entry.position;
     }
 
-    /// Sets `character_name`'s saved game-window position and size, or with a null name every character's; clearing a missing character is a no-op.
+    /// A null name sets every character's; clearing a missing character is a no-op.
     pub fn setWindowPosition(self: *ProfileStore, character_name: ?[]const u8, position: ?config_mod.Position, size: ?config_mod.WindowSize) !void {
         try applyWindowPosition(&self.live, character_name, position, size);
         try applyWindowPosition(&self.saved, character_name, position, size);
@@ -68,7 +68,7 @@ pub const ProfileStore = struct {
         self.persist();
     }
 
-    /// `group_index` is into `saved`, which the hotkey manager reads; returns whether `character_name` is now in the group, never saving a temporary group's members.
+    /// `group_index` is into `saved`; returns whether `character_name` is now a member, never saving a temporary group's.
     pub fn toggleGroupMember(self: *ProfileStore, group_index: usize, character_name: []const u8) !bool {
         if (group_index >= self.saved.hotkeyGroups.items.len) return error.InvalidGroupIndex;
         const group = &self.saved.hotkeyGroups.items[group_index];

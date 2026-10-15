@@ -24,7 +24,7 @@ pub const Renderer = struct {
         self.hover_zoom.deinit();
     }
 
-    /// Single point for drawing any thumbnail's overlay; a no-op outside Thumbnails mode, where the list window draws instead.
+    /// A no-op outside Thumbnails mode, where the list window draws instead.
     pub fn render(self: *Renderer, config: *const Config, thumbnail: *ThumbnailWindow, active_source_hwnd: ?win32.HWND) !void {
         if (!thumbnail.is_win32_enabled) return;
         const settings = overlay.createRenderSettings(config, thumbnail, active_source_hwnd);

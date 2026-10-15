@@ -19,7 +19,7 @@ pub const DEFAULT_ACCENT = blk: {
     const index = std.meta.fieldIndex(config.Config, "accentColor").?;
     break :blk @typeInfo(config.Config).@"struct".field_attrs[index].defaultValue(u32).?;
 };
-/// What a profile name may hold, for the prompts that ask for one; part of en.json's keys, so a new length limit needs them updated.
+/// For the name prompts; part of en.json's keys, so changing the limit means updating them.
 pub const NAME_RULES = std.fmt.comptimePrint("letters, digits, spaces, '-' and '_', up to {d} characters", .{profile_files.MAX_NAME_LENGTH});
 
 comptime {
@@ -176,7 +176,7 @@ pub fn nameProblem(arena: std.mem.Allocator, typed: []const u8) ?[]const u8 {
     return null;
 }
 
-/// Changes after every profile action, so a list built from the profile folder, e.g. the backups, can tell to read it again.
+/// Changes after every profile action, so lists built from the profile folder know to reread it.
 pub fn revision() u32 {
     return g_revision;
 }
@@ -237,7 +237,7 @@ fn run(action: Action, name: []const u8, accent: ?u32, unsaved: ?Unsaved) !void 
     }
 }
 
-/// Whether `action` replaces the running profile with another, dropping unsaved changes unless the prompt saves them.
+/// A switch drops unsaved changes unless the prompt saves them.
 fn switchesProfile(action: Action) bool {
     return switch (action) {
         .switch_to, .create, .copy, .restore, .import_new => true,
