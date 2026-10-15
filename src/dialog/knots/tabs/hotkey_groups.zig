@@ -133,10 +133,14 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
         try row.close(context);
         try widgets.hintText(context, .str("knots.groups.key.hint:" ++ key[0]), key[3]);
     }
-    const assign = try widgets.openBinding(context, .str("knots.groups.key:assignKey"), "Assign Key");
+    const assign = try widgets.openBinding(context, .str("knots.groups.key:assignKey"), "Assign Group");
     try hotkey.field(context, group, "assignKey");
     try assign.close(context);
     try widgets.hintText(context, .src(@src()), "Hover a thumbnail and press this to add or remove it.");
+    const close = try widgets.openBinding(context, .str("knots.groups.key:closeKey"), "Close Group");
+    try hotkey.field(context, group, "closeKey");
+    try close.close(context);
+    try widgets.hintText(context, .src(@src()), "Closes every open client in this group.");
     try keys.close(context);
     try widgets.separator(context, .str("knots.groups.separator.keys"));
 
@@ -146,7 +150,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     try bind.toggle(context, group, "stopAtEnds", "Stop at First/Last Character (Don't Loop)");
     try widgets.hintText(context, .src(@src()), "Pressing again at the end goes back to that character if you've switched away.");
     try bind.toggle(context, group, "temporaryMembership", "Temporary Membership (Resets on Restart)");
-    try widgets.hintText(context, .src(@src()), "Changes made with Assign Key aren't saved.");
+    try widgets.hintText(context, .src(@src()), "Changes made with Assign Group aren't saved.");
     try bind.toggle(context, group, "showBadge", "Show Group Badge on Thumbnails");
     try widgets.hintText(context, .src(@src()), "Shows the group's name on its characters' thumbnails.");
     try behavior.close(context);
@@ -155,7 +159,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     const characters = try widgets.openFillFieldGroup(context, .str("knots.groups.characters"), "Characters");
     // Temporary members are assigned while the app runs, so there's no list to edit.
     if (group.get("temporaryMembership")) {
-        try widgets.paragraph(context, .src(@src()), "Members are assigned while the app runs: hover a thumbnail and press the assign key to toggle it in or out.");
+        try widgets.paragraph(context, .src(@src()), "Members are assigned while the app runs: hover a thumbnail and press the Assign Group key to toggle it in or out.");
     } else {
         try members(context, group);
     }

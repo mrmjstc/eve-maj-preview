@@ -10,6 +10,7 @@ test {
     _ = @import("clients/scout.zig");
     _ = @import("config/characters.zig");
     _ = @import("config/global.zig");
+    _ = @import("config/hotkeys.zig");
     _ = @import("config/import/draft.zig");
     _ = @import("config/import/values.zig");
     _ = @import("config/key_list.zig");

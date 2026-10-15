@@ -5,6 +5,7 @@ const config_mod = @import("../config.zig");
 const scout = @import("scout.zig");
 const animation = @import("animation.zig");
 const exclusions_mod = @import("exclusions.zig");
+const strings = @import("../util/strings.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("actions");
@@ -122,12 +123,7 @@ pub fn closeAllClients(eve_windows: []const scout.EveWindow, config: *const conf
             continue;
         }
 
-        if (!win32.toBool(win32.PostMessageA(eve_window.hwnd, win32.WM_CLOSE, 0, 0))) {
-            slog.warn("Failed to send close to '{s}'", .{eve_window.character_name});
-            continue;
-        }
-        closed_count += 1;
-        slog.debug("Closing: {s}", .{eve_window.character_name});
+        if (closeClient(eve_window)) closed_count += 1;
     }
 
     if (closed_count > 0) {
@@ -137,6 +133,40 @@ pub fn closeAllClients(eve_windows: []const scout.EveWindow, config: *const conf
     } else {
         slog.debug("No EVE clients to close", .{});
     }
+}
+
+/// Ignores the Close All exclusions: the group's members were picked for it.
+pub fn closeGroupClients(eve_windows: []const scout.EveWindow, groups: []const config_mod.HotkeyGroupConfig, group_index: usize) void {
+    if (group_index >= groups.len) {
+        slog.err("Failed to close group: index {} is out of range", .{group_index});
+        return;
+    }
+    const group = &groups[group_index];
+    var name_buf: [config_mod.HotkeyGroupConfig.DISPLAY_NAME_SIZE]u8 = undefined;
+    const group_name = group.displayName(&name_buf, group_index);
+
+    var closed_count: usize = 0;
+    for (eve_windows) |eve_window| {
+        if (!eve_window.is_eve_client or !win32.isWindow(eve_window.hwnd)) continue;
+        if (strings.indexOfString(group.characters.items, eve_window.character_name) == null) continue;
+        if (closeClient(eve_window)) closed_count += 1;
+    }
+
+    if (closed_count > 0) {
+        slog.info("Sent close message to {} EVE client(s) in group '{s}'", .{ closed_count, group_name });
+    } else {
+        slog.info("No running clients in group '{s}' to close", .{group_name});
+    }
+}
+
+/// Logs its own failure; returns whether the close was sent.
+pub fn closeClient(eve_window: scout.EveWindow) bool {
+    if (!win32.toBool(win32.PostMessageA(eve_window.hwnd, win32.WM_CLOSE, 0, 0))) {
+        slog.warn("Failed to send close to '{s}'", .{eve_window.character_name});
+        return false;
+    }
+    slog.debug("Closing: {s}", .{eve_window.character_name});
+    return true;
 }
 
 fn clampToRect(position: config_mod.Position, rect: win32.RECT) config_mod.Position {

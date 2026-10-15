@@ -222,9 +222,14 @@ pub const HotkeyManager = struct {
         failed_count += self.registerGroupChains(hwnd, backward_chains.items, false);
 
         for (self.config.hotkeyGroups.items, 0..) |*group, group_index| {
-            if (group.assignKey.isEmpty()) continue;
-            const description = formatDescription(&description_buf, "group {} [{s}] assign", .{ group_index, group.name }, "group assign");
-            failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_ASSIGN_GROUP_BASE, group_index), group.assignKey, .{ .assign_group = .{ .group_index = group_index } }, description);
+            if (!group.assignKey.isEmpty()) {
+                const description = formatDescription(&description_buf, "group {} [{s}] assign", .{ group_index, group.name }, "group assign");
+                failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_ASSIGN_GROUP_BASE, group_index), group.assignKey, .{ .assign_group = .{ .group_index = group_index } }, description);
+            }
+            if (!group.closeKey.isEmpty()) {
+                const description = formatDescription(&description_buf, "group {} [{s}] close", .{ group_index, group.name }, "group close");
+                failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CLOSE_GROUP_BASE, group_index), group.closeKey, .{ .close_group = .{ .group_index = group_index } }, description);
+            }
         }
 
         for (per_character_groups.items, 0..) |*group, group_index| {
@@ -356,6 +361,10 @@ pub const HotkeyManager = struct {
             .cycle_group => |chain| cycling.cycleGroups(self, chain.group_indices, chain.is_forward),
             .activate_character => |*character_group| cycling.activatePerCharacterGroup(self, character_group),
             .assign_group => |assign| membership.assignHoveredToGroup(self, assign.group_index),
+            .close_group => |close| {
+                slog.info("Close group hotkey pressed", .{});
+                actions.closeGroupClients(self.scout.getWindows(), self.config.hotkeyGroups.items, close.group_index);
+            },
             .minimize_all => {
                 slog.info("Minimize all hotkey pressed", .{});
                 actions.minimizeAllClients(self.scout.getWindows(), self.live());
@@ -432,9 +441,7 @@ pub const HotkeyManager = struct {
             return;
         }
         slog.info("Close active hotkey pressed for: {s}", .{eve_window.character_name});
-        if (!win32.toBool(win32.PostMessageA(eve_window.hwnd, win32.WM_CLOSE, 0, 0))) {
-            slog.warn("Failed to send close to '{s}'", .{eve_window.character_name});
-        }
+        _ = actions.closeClient(eve_window);
     }
 
     fn toggleSuspend(self: *HotkeyManager) void {

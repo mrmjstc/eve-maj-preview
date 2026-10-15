@@ -16,6 +16,9 @@ const slog = log.Scoped("tray");
 /// Keeps profile item IDs inside their range above IDM_PROFILE_BASE.
 const MAX_PROFILE_ITEMS = 1000;
 
+/// Keeps close-group item IDs inside their range above IDM_CLOSE_GROUP_BASE.
+const MAX_GROUP_ITEMS = 1000;
+
 pub const TrayIcon = struct {
     hwnd: win32.HWND,
     nid: win32.NOTIFYICONDATAA,
@@ -141,6 +144,7 @@ pub const TrayIcon = struct {
         }
 
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLOSE_ALL_CLIENTS, "Close All Clients");
+        self.appendCloseGroup(menu, config.hotkeyGroups.items);
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_EXIT, "Exit");
 
@@ -172,12 +176,40 @@ pub const TrayIcon = struct {
         }
     }
 
+    /// Greyed out when the profile has no groups.
+    fn appendCloseGroup(self: *const TrayIcon, menu: win32.HMENU, groups: []const config_mod.HotkeyGroupConfig) void {
+        if (groups.len == 0) {
+            _ = win32.AppendMenuA(menu, win32.MF_STRING | win32.MF_GRAYED, 0, "Close Group");
+            return;
+        }
+        // Destroyed along with `menu`.
+        const group_menu = win32.CreatePopupMenu() orelse {
+            slog.err("Failed to create close group submenu", .{});
+            return;
+        };
+        for (groups[0..@min(groups.len, MAX_GROUP_ITEMS)], 0..) |*group, i| {
+            var name_buf: [config_mod.HotkeyGroupConfig.DISPLAY_NAME_SIZE]u8 = undefined;
+            const name_z = self.allocator.dupeSentinel(u8, group.displayName(&name_buf, i), 0) catch |err| {
+                slog.warn("Failed to copy group name '{s}' for tray menu: {}", .{ group.name, err });
+                continue;
+            };
+            defer self.allocator.free(name_z);
+            _ = win32.AppendMenuA(group_menu, win32.MF_STRING, win32.IDM_CLOSE_GROUP_BASE + i, name_z);
+        }
+        _ = win32.AppendMenuA(menu, win32.MF_POPUP, @intFromPtr(group_menu), "Close Group");
+    }
+
     pub fn handleMenuCommand(self: *const TrayIcon, command_id: u16, app: *App) void {
         if (command_id >= win32.IDM_PROFILE_BASE and command_id < win32.IDM_PROFILE_BASE + MAX_PROFILE_ITEMS) {
             const index = command_id - win32.IDM_PROFILE_BASE;
             if (index >= self.profiles.items.len) return;
             slog.info("Profile selected from menu: {s}", .{self.profiles.items[index]});
             app.requestProfileSwitch(self.profiles.items[index]);
+            return;
+        }
+        if (command_id >= win32.IDM_CLOSE_GROUP_BASE and command_id < win32.IDM_CLOSE_GROUP_BASE + MAX_GROUP_ITEMS) {
+            slog.info("Close group requested from system tray", .{});
+            actions.closeGroupClients(app.scout.getWindows(), app.store.live.hotkeyGroups.items, command_id - win32.IDM_CLOSE_GROUP_BASE);
             return;
         }
 

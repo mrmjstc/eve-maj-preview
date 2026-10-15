@@ -1,8 +1,8 @@
 //! Changes to cycle exclusions and hotkey-group membership.
-const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const animation = @import("../clients/animation.zig");
 const scout = @import("../clients/scout.zig");
+const config = @import("../config.zig");
 const manager_mod = @import("manager.zig");
 const log = @import("../log.zig");
 
@@ -87,10 +87,7 @@ pub fn assignHoveredToGroup(manager: *HotkeyManager, group_index: usize) void {
         slog.err("Failed to render thumbnail after group assignment: {}", .{err});
     };
 
-    var group_label_buf: [40]u8 = undefined;
-    const group_label = if (group.name.len > 0)
-        group.name
-    else
-        std.mem.print(&group_label_buf, "Hotkey Group {}", .{group_index + 1}) catch unreachable;
+    var group_label_buf: [config.HotkeyGroupConfig.DISPLAY_NAME_SIZE]u8 = undefined;
+    const group_label = group.displayName(&group_label_buf, group_index);
     thumbnail_set.notify(thumbnail.source_hwnd, .{ .notification_type = .GroupMembership, .state = if (added) .added else .removed, .target = group_label });
 }
