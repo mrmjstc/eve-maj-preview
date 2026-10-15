@@ -7,9 +7,9 @@ const config_mod = @import("../config.zig");
 const types = @import("../config/types.zig");
 const list_look = @import("list_look.zig");
 const app = @import("../app.zig");
-const window = @import("window.zig");
-const input = @import("input.zig");
-const drag_panel = @import("../drag/panel.zig");
+const window = @import("../thumbnail/window.zig");
+const input = @import("../thumbnail/input.zig");
+const drag = @import("drag.zig");
 const template = @import("../notifications/template.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
 
@@ -31,6 +31,7 @@ const RowText = struct {
 
 pub const ListWindow = struct {
     panel: PanelWindow,
+    /// Borrowed; outlives the window.
     store: *config_mod.ProfileStore,
     /// Borrows store.live.
     config: *const config_mod.Config,
@@ -380,10 +381,10 @@ fn listWindow() ?*ListWindow {
 fn listWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     // The thumbnail set only holds the list once its window exists, so creation's messages go without a header.
     const header_height = if (listWindow()) |list_window| list_look.metrics(&list_window.config.display).header_height else 0;
-    if (drag_panel.handleMessage(app.currentThumbnailSet(), hwnd, msg, lParam, header_height)) |result| return result;
+    if (drag.handleMessage(app.currentThumbnailSet(), hwnd, msg, lParam, header_height)) |result| return result;
     switch (msg) {
         win32.WM_ENTERSIZEMOVE => {
-            drag_panel.beginPanelDrag(hwnd);
+            drag.beginPanelDrag(hwnd);
             return 0;
         },
         win32.WM_EXITSIZEMOVE => {

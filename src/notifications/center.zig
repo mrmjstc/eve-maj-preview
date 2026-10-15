@@ -4,7 +4,7 @@ const win32 = @import("../platform/win32.zig");
 const config_mod = @import("../config.zig");
 const history_mod = @import("history.zig");
 const notified_queue_mod = @import("notified_queue.zig");
-const history_panel = @import("history_panel.zig");
+const history_panel = @import("../panels/history_panel.zig");
 
 /// App owns it, so a thumbnail set rebuild keeps all three; main thread only.
 pub const NotificationCenter = struct {

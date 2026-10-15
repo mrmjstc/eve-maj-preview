@@ -1,9 +1,9 @@
 //! The History Panel's look, shared by the panel and the config dialog's preview: its sizes, filter buttons and row text, in the client list's palette; no I/O.
 const std = @import("std");
-const notification = @import("notification.zig");
+const notification = @import("../notifications/notification.zig");
 const display_mod = @import("../config/display.zig");
 const notifications_mod = @import("../config/notifications.zig");
-const list_look = @import("../thumbnail/list_look.zig");
+const list_look = @import("list_look.zig");
 
 const DisplayConfig = display_mod.DisplayConfig;
 const NotificationConfig = notifications_mod.NotificationConfig;

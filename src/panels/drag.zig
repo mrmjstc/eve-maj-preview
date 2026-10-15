@@ -1,9 +1,11 @@
 //! Dragging for the list view and History Panel: their header strip is the drag handle, and Windows moves them while we snap.
 const win32 = @import("../platform/win32.zig");
 const set = @import("../thumbnail/set.zig");
-const snapping = @import("snapping.zig");
+const snapping = @import("../drag/snapping.zig");
+const log = @import("../log.zig");
 
 const ThumbnailSet = set.ThumbnailSet;
+const slog = log.Scoped("drag");
 
 // Drag anchor from WM_ENTERSIZEMOVE, since WM_MOVING's rect already holds earlier snaps; only one window drags at a time.
 var g_panel_drag_anchor_cursor: win32.POINT = .{ .x = 0, .y = 0 };
@@ -38,7 +40,10 @@ fn updatePanelDragRect(thumbnail_set: ?*ThumbnailSet, hwnd: win32.HWND, rect: *w
     const height = rect.bottom - rect.top;
 
     var cursor: win32.POINT = undefined;
-    if (!win32.toBool(win32.GetCursorPos(&cursor))) return;
+    if (!win32.toBool(win32.GetCursorPos(&cursor))) {
+        slog.debug("Failed to get the cursor position while dragging a panel", .{});
+        return;
+    }
     const intended_x = g_panel_drag_anchor_rect.left + (cursor.x - g_panel_drag_anchor_cursor.x);
     const intended_y = g_panel_drag_anchor_rect.top + (cursor.y - g_panel_drag_anchor_cursor.y);
 

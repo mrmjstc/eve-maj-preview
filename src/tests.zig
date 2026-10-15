@@ -39,15 +39,15 @@ test {
     _ = @import("layout/spaces.zig");
     _ = @import("layout/zoom.zig");
     _ = @import("notifications/gamelog_events.zig");
-    _ = @import("notifications/history_look.zig");
     _ = @import("notifications/notification.zig");
     _ = @import("notifications/rules.zig");
     _ = @import("notifications/stack.zig");
     _ = @import("notifications/template.zig");
+    _ = @import("panels/history_look.zig");
+    _ = @import("panels/list_look.zig");
     _ = @import("platform/virtual_keys.zig");
     _ = @import("protocol.zig");
     _ = @import("thumbnail/draw.zig");
-    _ = @import("thumbnail/list_look.zig");
     _ = @import("thumbnail/state.zig");
     _ = @import("travel/stragglers.zig");
     _ = @import("util/color.zig");

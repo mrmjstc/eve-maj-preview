@@ -158,7 +158,7 @@ Rendering:
 - `platform/gdi_overlay.zig`: DIB-backed layered windows, text helpers, `HintBox`, class registration.
 - `util/pixel_buffer.zig`: pure ARGB drawing (rects, rounded frames, alpha fix-up).
 - `platform/panel_window.zig`: `PanelWindow`, shared by the client list and History Panel.
-- `thumbnail/list_view.zig` + `list_look.zig`: `ClientList` view mode. `list_look` is pure and shared with the dialog preview.
+- `panels/list_view.zig` + `list_look.zig`: `ClientList` view mode. `list_look` is pure and shared with the dialog preview.
 - `thumbnail/hover_zoom.zig` + `layout/zoom.zig`: click-through enlarged copy under the cursor.
 
 Layout (`layout/`, mostly pure):
@@ -181,7 +181,7 @@ Layout (`layout/`, mostly pure):
 - **`control/auto_minimize.zig`**: minimizes idle clients; decisions in `minimize_rules.zig` (pure, tested).
 - **`clients/`**: actions on EVE windows only (minimize, close, move, `animation.zig`'s `showClient`). Imports nothing from thumbnail, hotkey, drag or control.
 - **`thumbnail/input.zig`**: thumbnail window procs. Left click → `activate`; shift-click → exclusion toggle; right drag → `drag/thumbnail.zig` (Ctrl moves all).
-- **`drag/`**: snapping (`snap_math.zig` pure), ghost overlays, panel header drags.
+- **`drag/`**: snapping (`snap_math.zig` pure), ghost overlays. Panel header drags are `panels/drag.zig`.
 - **`protocol.zig`**: `evemajpreview://switch/<name>`, `profile/<name>`, `hotkey/<action>`; registry registration; `WM_COPYDATA` IPC via `findExistingInstance`/`sendCommandToInstance`.
 
 Hotkey press → character switch:
@@ -211,7 +211,7 @@ WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> runAction
 - `notifications/dispatch.zig`: shows a notification if `rules.zig` (pure) allows it; adds sound, speech, history and notified-queue entries.
 - `notifications/template.zig`: fills `{name}` placeholders in custom text (pure).
 - `notifications/stack.zig`: per-thumbnail on-screen stack, with throttle timestamps.
-- `notifications/center.zig` (`NotificationCenter` on `App`): `history.zig` ring buffer, `notified_queue.zig`, `history_panel.zig`. Survives thumbnail set rebuilds.
+- `notifications/center.zig` (`NotificationCenter` on `App`): `history.zig` ring buffer, `notified_queue.zig`, `panels/history_panel.zig`. Survives thumbnail set rebuilds.
 - `notifications/alert_effects.zig`: speech and sound, plus the session-only audio mute.
 - The chatlog worker queues `Notification` payloads; text is rendered on the main thread.
 - `travel/`: left-behind detection; `stragglers.zig` is pure.

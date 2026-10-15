@@ -16,7 +16,7 @@ const state = @import("state.zig");
 const input = @import("input.zig");
 const window = @import("window.zig");
 const arrange = @import("arrange.zig");
-const list_view = @import("list_view.zig");
+const list_view = @import("../panels/list_view.zig");
 const renderer_mod = @import("renderer.zig");
 const center = @import("../notifications/center.zig");
 const dispatch = @import("../notifications/dispatch.zig");
@@ -69,6 +69,7 @@ pub const ThumbnailSet = struct {
     instance: win32.HINSTANCE,
     /// Read-only: runtime changes go through `store`, reaching the running and saved copies.
     config: *const config_mod.Config,
+    /// Borrowed; outlives the thumbnail set.
     store: *config_mod.ProfileStore,
     /// Borrowed from App, which keeps it across a thumbnail set rebuild.
     exclusions: *const exclusions_mod.Exclusions,
@@ -254,7 +255,10 @@ pub const ThumbnailSet = struct {
     /// Polled on demand, since a hotkey press carries no window of its own.
     pub fn thumbnailUnderCursor(self: *ThumbnailSet) ?*ThumbnailWindow {
         var cursor: win32.POINT = undefined;
-        if (!win32.toBool(win32.GetCursorPos(&cursor))) return null;
+        if (!win32.toBool(win32.GetCursorPos(&cursor))) {
+            slog.warn("Failed to get the cursor position to find the thumbnail under it", .{});
+            return null;
+        }
 
         const hwnd_at_cursor = win32.WindowFromPoint(cursor) orelse return null;
         const source_hwnd = win32.GetPropA(hwnd_at_cursor, window.SOURCE_HWND_PROP) orelse return null;
@@ -736,7 +740,10 @@ pub const ThumbnailSet = struct {
     fn positionOf(thumbnail: *const ThumbnailWindow) ?config_mod.ProfileStore.CharacterPosition {
         if (!thumbnail.is_win32_enabled) return null;
         var rect: win32.RECT = undefined;
-        if (!win32.toBool(win32.GetWindowRect(thumbnail.hwnd, &rect))) return null;
+        if (!win32.toBool(win32.GetWindowRect(thumbnail.hwnd, &rect))) {
+            slog.warn("Failed to get the position of '{s}' to save it", .{thumbnail.character_name});
+            return null;
+        }
         return .{ .name = thumbnail.character_name, .position = .{ .x = rect.left, .y = rect.top } };
     }
 };

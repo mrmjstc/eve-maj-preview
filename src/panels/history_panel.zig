@@ -4,13 +4,13 @@ const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const panel_window = @import("../platform/panel_window.zig");
 const config_mod = @import("../config.zig");
-const list_look = @import("../thumbnail/list_look.zig");
-const notification = @import("notification.zig");
-const history = @import("history.zig");
+const list_look = @import("list_look.zig");
+const notification = @import("../notifications/notification.zig");
+const history = @import("../notifications/history.zig");
 const history_look = @import("history_look.zig");
 const app = @import("../app.zig");
 const activation = @import("../control/activation.zig");
-const drag_panel = @import("../drag/panel.zig");
+const drag = @import("drag.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
 const log = @import("../log.zig");
 
@@ -372,10 +372,10 @@ fn historyWindow() ?*HistoryPanelWindow {
 fn historyPanelWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
     // The notification center only holds the panel once its window exists, so creation's messages go without a header.
     const header_height = if (historyWindow()) |window| history_look.metrics(&window.config.display).header_height else 0;
-    if (drag_panel.handleMessage(app.currentThumbnailSet(), hwnd, msg, lParam, header_height)) |result| return result;
+    if (drag.handleMessage(app.currentThumbnailSet(), hwnd, msg, lParam, header_height)) |result| return result;
     switch (msg) {
         win32.WM_ENTERSIZEMOVE => {
-            drag_panel.beginPanelDrag(hwnd);
+            drag.beginPanelDrag(hwnd);
             // No single character owns this panel, so every saved position shows as a ghost.
             if (app.currentThumbnailSet()) |thumbnail_set| thumbnail_set.ghost_overlay.show(thumbnail_set.instance, &thumbnail_set.renderer.font_cache, thumbnail_set.config, "");
             return 0;
