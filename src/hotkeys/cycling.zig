@@ -139,7 +139,7 @@ pub fn cycleGroups(manager: *HotkeyManager, group_indices: []const usize, is_for
 
 /// In the order the characters were excluded.
 pub fn cycleExcluded(manager: *HotkeyManager, is_forward: bool) void {
-    slog.info("{s} excluded character hotkey pressed", .{if (is_forward) "Next" else "Previous"});
+    slog.info("Cycle excluded character hotkey pressed ({s})", .{directionName(is_forward)});
     const excluded_names = manager.exclusions.names.items;
 
     const excluded_count = excluded_names.len;
@@ -169,7 +169,7 @@ pub fn cycleNotified(manager: *HotkeyManager, is_forward: bool) void {
     slog.info("Cycle notified character hotkey pressed ({s})", .{directionName(is_forward)});
     const retention_ms: u64 = @as(u64, manager.live().thumbnail.notifications.notified_cycle_retention_seconds) * std.time.ms_per_s;
 
-    var names = manager.app.notifications.notified_queue.namesWithin(manager.allocator, retention_ms) catch |err| {
+    var names = manager.notified_queue.namesWithin(manager.allocator, retention_ms) catch |err| {
         slog.err("Failed to build notified-character list: {}", .{err});
         return;
     };

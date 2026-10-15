@@ -12,8 +12,7 @@ const FOCUS_GRANT_COMBO_COUNT: u32 = 16;
 
 var g_focus_grant_hwnd: ?win32.HWND = null;
 var g_focus_grant_target: ?win32.HWND = null;
-/// The switch is async, so callers can't detect it via GetForegroundWindow right after requesting it.
-pub var g_focus_switch_requested = false;
+var g_is_switch_requested = false;
 
 /// Call once at startup.
 pub fn install(hwnd: win32.HWND) void {
@@ -49,13 +48,22 @@ pub fn handleWmHotkey(id: c_int) bool {
     return true;
 }
 
+pub fn clearSwitchRequest() void {
+    g_is_switch_requested = false;
+}
+
+/// Whether forceSetForegroundWindow ran since clearSwitchRequest; the switch is async, so GetForegroundWindow can't tell yet.
+pub fn wasSwitchRequested() bool {
+    return g_is_switch_requested;
+}
+
 /// SetForegroundWindow refuses without fresh real input, which hook-dispatched hotkeys lack; the direct call covers our own windows, the async conduit hotkey everything else.
 pub fn forceSetForegroundWindow(target_hwnd: win32.HWND) void {
     _ = win32.SetForegroundWindow(target_hwnd);
     _ = win32.SetFocus(target_hwnd);
 
     g_focus_grant_target = target_hwnd;
-    g_focus_switch_requested = true;
+    g_is_switch_requested = true;
     // keybd_event only injects this vk, so held modifiers stay held and still match a registration.
     win32.keybd_event(@intCast(FOCUS_GRANT_VK), 0, 0, 0);
     win32.keybd_event(@intCast(FOCUS_GRANT_VK), 0, win32.KEYEVENTF_KEYUP, 0);

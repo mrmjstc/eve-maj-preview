@@ -10,6 +10,7 @@ const config_mod = @import("../config.zig");
 const protocol = @import("../protocol.zig");
 const app_mod = @import("../app.zig");
 const alert_effects = @import("../notifications/alert_effects.zig");
+const notified_queue_mod = @import("../notifications/notified_queue.zig");
 const mouse_hook = @import("mouse_hook.zig");
 const keyboard_hook = @import("keyboard_hook.zig");
 const bindings = @import("bindings.zig");
@@ -35,7 +36,8 @@ const ComboSharers = struct {
 
 pub const HotkeyManager = struct {
     allocator: std.mem.Allocator,
-    /// Outlives the manager; its thumbnail set is read from here each time, since a rebuild replaces it.
+    io: std.Io,
+    /// Outlives the manager; for app-level actions, and its thumbnail set, read from here each time since a rebuild replaces it.
     app: *app_mod.App,
     /// The saved copy, for the bindings and the groups and characters their ids index into; other settings read live().
     config: *const config_mod.Config,
@@ -55,12 +57,17 @@ pub const HotkeyManager = struct {
     cycle: cycling.CycleState,
     /// Borrowed from `app`, which keeps them across the Save that recreates the manager.
     exclusions: *exclusions_mod.Exclusions,
+    /// Borrowed from `app`, which keeps it across the Save that recreates the manager.
+    notified_queue: *const notified_queue_mod.NotifiedQueue,
+    /// Borrowed from `app`'s focus tracker, which keeps it across the Save that recreates the manager.
+    last_non_eve_foreground: *?win32.HWND,
 
     /// Registers from the profile's saved copy, since bindings only change on Save.
     pub fn init(allocator: std.mem.Allocator, app: *app_mod.App, live_global: *const fn () *const config_mod.GlobalConfig) !HotkeyManager {
         const config = &app.store.saved;
         return .{
             .allocator = allocator,
+            .io = app.io,
             .app = app,
             .config = config,
             .store = &app.store,
@@ -70,6 +77,8 @@ pub const HotkeyManager = struct {
             .hotkey_map = .init(allocator),
             .cycle = try cycling.CycleState.init(allocator, config.hotkeyGroups.items.len),
             .exclusions = &app.exclusions,
+            .notified_queue = &app.notifications.notified_queue,
+            .last_non_eve_foreground = &app.focus.last_non_eve_foreground,
         };
     }
 
@@ -325,12 +334,12 @@ pub const HotkeyManager = struct {
         }
 
         // Only swallow the key's release if focus actually moved; a cycle with no eligible target never changes foreground.
-        focus_grant.g_focus_switch_requested = false;
+        focus_grant.clearSwitchRequest();
 
         self.runAction(action);
 
         // Win's release always needs swallowing, focus-change or not - an unmatched keyup still opens the Start Menu.
-        if (focus_grant.g_focus_switch_requested or vk_code == win32.VK_LWIN or vk_code == win32.VK_RWIN) {
+        if (focus_grant.wasSwitchRequested() or vk_code == win32.VK_LWIN or vk_code == win32.VK_RWIN) {
             keyboard_hook.markSwallowRelease(vk_code);
         }
     }
@@ -382,7 +391,7 @@ pub const HotkeyManager = struct {
                 const thumbnail_set = self.app.thumbnail_set orelse return;
                 actions.moveAllClientsToSavedPositions(self.scout.getWindows(), self.live(), thumbnail_set);
             },
-            .return_to_last_app => launch.returnToLastApp(&self.app.focus.last_non_eve_foreground),
+            .return_to_last_app => launch.returnToLastApp(self.last_non_eve_foreground),
             .next_app => launch.cycleApps(self.global_settings, true),
             .previous_app => launch.cycleApps(self.global_settings, false),
             .exit_app => {
@@ -391,7 +400,7 @@ pub const HotkeyManager = struct {
             },
             .close_active => self.closeForegroundClient(),
             .activate_app => |activate| launch.activateApp(self.global_settings, activate.app_index),
-            .open_url => |open_url| launch.openUrl(self.allocator, self.app.io, self.global_settings, open_url.url_index),
+            .open_url => |open_url| launch.openUrl(self.allocator, self.io, self.global_settings, open_url.url_index),
         }
     }
 
