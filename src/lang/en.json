@@ -336,6 +336,8 @@
   "Switches to the next character in this group.": "Switches to the next character in this group.",
   "Assign Group": "Assign Group",
   "Hover a thumbnail and press this to add or remove it.": "Hover a thumbnail and press this to add or remove it.",
+  "Minimize Group": "Minimize Group",
+  "Minimizes every open client in this group.": "Minimizes every open client in this group.",
   "Close Group": "Close Group",
   "Closes every open client in this group.": "Closes every open client in this group.",
   "Include Logged-Out Clients": "Include Logged-Out Clients",

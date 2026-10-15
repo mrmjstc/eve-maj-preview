@@ -13,6 +13,8 @@ const slog = log.Scoped("actions");
 /// Kept clear of the screen edges so a restored window's title bar stays grabbable.
 const SCREEN_EDGE_MARGIN: i32 = 30;
 
+pub const GroupAction = enum { minimize, close };
+
 pub fn minimizeAllClients(eve_windows: []const scout.EveWindow, config: *const config_mod.Config) void {
     slog.info("Minimizing all EVE clients (hotkey action)", .{});
 
@@ -135,27 +137,35 @@ pub fn closeAllClients(eve_windows: []const scout.EveWindow, config: *const conf
     }
 }
 
-/// Ignores the Close All exclusions: the group's members were picked for it.
-pub fn closeGroupClients(eve_windows: []const scout.EveWindow, groups: []const config_mod.HotkeyGroupConfig, group_index: usize) void {
+/// Minimizes or closes the group's running members; ignores the Close All exclusions, since the group's members were picked for it.
+pub fn applyToGroup(eve_windows: []const scout.EveWindow, config: *const config_mod.Config, groups: []const config_mod.HotkeyGroupConfig, group_index: usize, action: GroupAction) void {
     if (group_index >= groups.len) {
-        slog.err("Failed to close group: index {} is out of range", .{group_index});
+        slog.err("Failed to {s} group: index {} is out of range", .{ @tagName(action), group_index });
         return;
     }
     const group = &groups[group_index];
     var name_buf: [config_mod.HotkeyGroupConfig.DISPLAY_NAME_SIZE]u8 = undefined;
     const group_name = group.displayName(&name_buf, group_index);
 
-    var closed_count: usize = 0;
+    var applied_count: usize = 0;
     for (eve_windows) |eve_window| {
         if (!eve_window.is_eve_client or !win32.isWindow(eve_window.hwnd)) continue;
         if (strings.indexOfString(group.characters.items, eve_window.character_name) == null) continue;
-        if (closeClient(eve_window)) closed_count += 1;
+        switch (action) {
+            .minimize => animation.showClient(config, eve_window.hwnd, win32.SW_FORCEMINIMIZE),
+            .close => if (!closeClient(eve_window)) continue,
+        }
+        applied_count += 1;
     }
 
-    if (closed_count > 0) {
-        slog.info("Sent close message to {} EVE client(s) in group '{s}'", .{ closed_count, group_name });
+    if (applied_count > 0) {
+        const done = switch (action) {
+            .minimize => "Minimized",
+            .close => "Sent close message to",
+        };
+        slog.info("{s} {} EVE client(s) in group '{s}'", .{ done, applied_count, group_name });
     } else {
-        slog.info("No running clients in group '{s}' to close", .{group_name});
+        slog.info("No running clients in group '{s}' to {s}", .{ group_name, @tagName(action) });
     }
 }
 

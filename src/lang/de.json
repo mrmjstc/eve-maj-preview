@@ -336,6 +336,8 @@
   "Switches to the next character in this group.": "Wechselt zum nächsten Charakter dieser Gruppe.",
   "Assign Group": "Gruppe zuweisen",
   "Hover a thumbnail and press this to add or remove it.": "Über ein Thumbnail fahren und diese Taste drücken, um es hinzuzufügen oder zu entfernen.",
+  "Minimize Group": "Gruppe minimieren",
+  "Minimizes every open client in this group.": "Minimiert alle offenen Clients dieser Gruppe.",
   "Close Group": "Gruppe schließen",
   "Closes every open client in this group.": "Schließt alle offenen Clients dieser Gruppe.",
   "Include Logged-Out Clients": "Ausgeloggte Clients einbeziehen",

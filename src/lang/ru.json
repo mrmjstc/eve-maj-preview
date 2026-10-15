@@ -336,6 +336,8 @@
   "Switches to the next character in this group.": "Переключает на следующего персонажа этой группы.",
   "Assign Group": "Назначить группу",
   "Hover a thumbnail and press this to add or remove it.": "Наведите на миниатюру и нажмите эту клавишу, чтобы добавить или убрать её.",
+  "Minimize Group": "Свернуть группу",
+  "Minimizes every open client in this group.": "Сворачивает все открытые клиенты этой группы.",
   "Close Group": "Закрыть группу",
   "Closes every open client in this group.": "Закрывает все открытые клиенты этой группы.",
   "Include Logged-Out Clients": "Включать вышедшие клиенты",

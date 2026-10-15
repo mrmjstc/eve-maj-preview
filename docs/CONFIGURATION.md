@@ -570,6 +570,7 @@ All values are **keys**.
 | `characters` | string[] | `[]` | Cycle order. |
 | `forwardKey`, `backwardKey` | keys | | Cycle. Both optional. |
 | `assignKey` | keys | | Toggle the hovered thumbnail's character in/out of the group. Can't be shared. |
+| `minimizeKey` | keys | | Minimize every running member of the group. Can't be shared. |
 | `closeKey` | keys | | Close every running member of the group, ignoring Close All exclusions. Can't be shared. |
 | `temporaryMembership` | bool | `false` | Members aren't saved; the group starts empty each launch. |
 | `showBadge` | bool | `false` | Show the group on members' [group badge](#thumbnail). |

@@ -170,6 +170,14 @@ pub const HotkeyManager = struct {
         return failed_count;
     }
 
+    /// Returns how many of the group's `keys` failed to register.
+    fn registerGroupKey(self: *HotkeyManager, hwnd: win32.HWND, base: c_int, group_index: usize, keys: KeyList, action: HotkeyAction, comptime verb: []const u8) usize {
+        if (keys.isEmpty()) return 0;
+        var description_buf: [DESCRIPTION_SIZE]u8 = undefined;
+        const description = formatDescription(&description_buf, "group {} [{s}] " ++ verb, .{ group_index, self.config.hotkeyGroups.items[group_index].name }, "group " ++ verb);
+        return self.registerKeys(hwnd, bindings.bandId(base, group_index), keys, action, description);
+    }
+
     /// Returns how many of the binding's keys failed to register.
     fn registerGlobal(self: *HotkeyManager, hwnd: win32.HWND, comptime binding: bindings.GlobalBinding) usize {
         return self.registerKeys(hwnd, bindings.globalId(binding.action), self.bindingKeys(binding), bindings.actionFor(binding.action), binding.description);
@@ -222,14 +230,9 @@ pub const HotkeyManager = struct {
         failed_count += self.registerGroupChains(hwnd, backward_chains.items, false);
 
         for (self.config.hotkeyGroups.items, 0..) |*group, group_index| {
-            if (!group.assignKey.isEmpty()) {
-                const description = formatDescription(&description_buf, "group {} [{s}] assign", .{ group_index, group.name }, "group assign");
-                failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_ASSIGN_GROUP_BASE, group_index), group.assignKey, .{ .assign_group = .{ .group_index = group_index } }, description);
-            }
-            if (!group.closeKey.isEmpty()) {
-                const description = formatDescription(&description_buf, "group {} [{s}] close", .{ group_index, group.name }, "group close");
-                failed_count += self.registerKeys(hwnd, bindings.bandId(bindings.HOTKEY_ID_CLOSE_GROUP_BASE, group_index), group.closeKey, .{ .close_group = .{ .group_index = group_index } }, description);
-            }
+            failed_count += self.registerGroupKey(hwnd, bindings.HOTKEY_ID_ASSIGN_GROUP_BASE, group_index, group.assignKey, .{ .assign_group = .{ .group_index = group_index } }, "assign");
+            failed_count += self.registerGroupKey(hwnd, bindings.HOTKEY_ID_MINIMIZE_GROUP_BASE, group_index, group.minimizeKey, .{ .minimize_group = .{ .group_index = group_index } }, "minimize");
+            failed_count += self.registerGroupKey(hwnd, bindings.HOTKEY_ID_CLOSE_GROUP_BASE, group_index, group.closeKey, .{ .close_group = .{ .group_index = group_index } }, "close");
         }
 
         for (per_character_groups.items, 0..) |*group, group_index| {
@@ -361,9 +364,13 @@ pub const HotkeyManager = struct {
             .cycle_group => |chain| cycling.cycleGroups(self, chain.group_indices, chain.is_forward),
             .activate_character => |*character_group| cycling.activatePerCharacterGroup(self, character_group),
             .assign_group => |assign| membership.assignHoveredToGroup(self, assign.group_index),
+            .minimize_group => |minimize| {
+                slog.info("Minimize group hotkey pressed", .{});
+                actions.applyToGroup(self.scout.getWindows(), self.live(), self.config.hotkeyGroups.items, minimize.group_index, .minimize);
+            },
             .close_group => |close| {
                 slog.info("Close group hotkey pressed", .{});
-                actions.closeGroupClients(self.scout.getWindows(), self.config.hotkeyGroups.items, close.group_index);
+                actions.applyToGroup(self.scout.getWindows(), self.live(), self.config.hotkeyGroups.items, close.group_index, .close);
             },
             .minimize_all => {
                 slog.info("Minimize all hotkey pressed", .{});

@@ -133,14 +133,16 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
         try row.close(context);
         try widgets.hintText(context, .str("knots.groups.key.hint:" ++ key[0]), key[3]);
     }
-    const assign = try widgets.openBinding(context, .str("knots.groups.key:assignKey"), "Assign Group");
-    try hotkey.field(context, group, "assignKey");
-    try assign.close(context);
-    try widgets.hintText(context, .src(@src()), "Hover a thumbnail and press this to add or remove it.");
-    const close = try widgets.openBinding(context, .str("knots.groups.key:closeKey"), "Close Group");
-    try hotkey.field(context, group, "closeKey");
-    try close.close(context);
-    try widgets.hintText(context, .src(@src()), "Closes every open client in this group.");
+    inline for (.{
+        .{ "assignKey", "Assign Group", "Hover a thumbnail and press this to add or remove it." },
+        .{ "minimizeKey", "Minimize Group", "Minimizes every open client in this group." },
+        .{ "closeKey", "Close Group", "Closes every open client in this group." },
+    }) |key| {
+        const row = try widgets.openBinding(context, .str("knots.groups.key:" ++ key[0]), key[1]);
+        try hotkey.field(context, group, key[0]);
+        try row.close(context);
+        try widgets.hintText(context, .str("knots.groups.key.hint:" ++ key[0]), key[2]);
+    }
     try keys.close(context);
     try widgets.separator(context, .str("knots.groups.separator.keys"));
 

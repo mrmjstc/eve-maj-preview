@@ -2,7 +2,7 @@
 const std = @import("std");
 const protocol = @import("../protocol.zig");
 
-// ID bands: 0 group cycle (2 per combo), 1000 global, 2000 character, 3000 profile, 4000 group assign, 5000 app, 6000 URL, 7000 group close.
+// ID bands: 0 group cycle (2 per combo), 1000 global, 2000 character, 3000 profile, 4000 group assign, 5000 app, 6000 URL, 7000 group close, 8000 group minimize.
 pub const HOTKEY_ID_CYCLE_GROUP_BASE: c_int = 0;
 
 /// IDs in the group cycle band, before it runs into the global band.
@@ -21,6 +21,8 @@ pub const HOTKEY_ID_APP_HOTKEY_BASE: c_int = 5000;
 pub const HOTKEY_ID_URL_HOTKEY_BASE: c_int = 6000;
 
 pub const HOTKEY_ID_CLOSE_GROUP_BASE: c_int = 7000;
+
+pub const HOTKEY_ID_MINIMIZE_GROUP_BASE: c_int = 8000;
 
 pub const GLOBAL_BINDINGS = [_]GlobalBinding{
     .{ .action = .minimize_all, .protocol = .minimize_all, .field = "hotkeyMinimizeAll", .description = "minimize all clients" },
@@ -71,6 +73,9 @@ pub const HotkeyAction = union(enum) {
         group_index: usize,
     },
     close_group: struct {
+        group_index: usize,
+    },
+    minimize_group: struct {
         group_index: usize,
     },
     minimize_all: void,

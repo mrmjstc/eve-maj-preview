@@ -36,6 +36,7 @@ pub const HotkeyGroupConfig = struct {
     backwardKey: KeyList = .empty,
     /// Hover a thumbnail and press this to toggle that character in or out of the group.
     assignKey: KeyList = .empty,
+    minimizeKey: KeyList = .empty,
     /// Closes every running client in the group, ignoring the Close All exclusions.
     closeKey: KeyList = .empty,
     /// When true, membership is runtime-only: assign-key edits are never written back to the profile.

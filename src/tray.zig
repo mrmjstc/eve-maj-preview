@@ -16,8 +16,14 @@ const slog = log.Scoped("tray");
 /// Keeps profile item IDs inside their range above IDM_PROFILE_BASE.
 const MAX_PROFILE_ITEMS = 1000;
 
-/// Keeps close-group item IDs inside their range above IDM_CLOSE_GROUP_BASE.
+/// Keeps each group submenu's item IDs inside their range above its base.
 const MAX_GROUP_ITEMS = 1000;
+
+/// An item in one of the group submenus.
+const GroupCommand = struct {
+    group_index: usize,
+    action: actions.GroupAction,
+};
 
 pub const TrayIcon = struct {
     hwnd: win32.HWND,
@@ -144,7 +150,8 @@ pub const TrayIcon = struct {
         }
 
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLOSE_ALL_CLIENTS, "Close All Clients");
-        self.appendCloseGroup(menu, config.hotkeyGroups.items);
+        self.appendGroupMenu(menu, config.hotkeyGroups.items, win32.IDM_MINIMIZE_GROUP_BASE, "Minimize Group");
+        self.appendGroupMenu(menu, config.hotkeyGroups.items, win32.IDM_CLOSE_GROUP_BASE, "Close Group");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_EXIT, "Exit");
 
@@ -176,15 +183,15 @@ pub const TrayIcon = struct {
         }
     }
 
-    /// Greyed out when the profile has no groups.
-    fn appendCloseGroup(self: *const TrayIcon, menu: win32.HMENU, groups: []const config_mod.HotkeyGroupConfig) void {
+    /// A submenu of the groups, each item's ID `id_base` plus its index; greyed out when the profile has no groups.
+    fn appendGroupMenu(self: *const TrayIcon, menu: win32.HMENU, groups: []const config_mod.HotkeyGroupConfig, id_base: usize, label: [*:0]const u8) void {
         if (groups.len == 0) {
-            _ = win32.AppendMenuA(menu, win32.MF_STRING | win32.MF_GRAYED, 0, "Close Group");
+            _ = win32.AppendMenuA(menu, win32.MF_STRING | win32.MF_GRAYED, 0, label);
             return;
         }
         // Destroyed along with `menu`.
         const group_menu = win32.CreatePopupMenu() orelse {
-            slog.err("Failed to create close group submenu", .{});
+            slog.err("Failed to create the '{s}' submenu", .{std.mem.span(label)});
             return;
         };
         for (groups[0..@min(groups.len, MAX_GROUP_ITEMS)], 0..) |*group, i| {
@@ -194,9 +201,9 @@ pub const TrayIcon = struct {
                 continue;
             };
             defer self.allocator.free(name_z);
-            _ = win32.AppendMenuA(group_menu, win32.MF_STRING, win32.IDM_CLOSE_GROUP_BASE + i, name_z);
+            _ = win32.AppendMenuA(group_menu, win32.MF_STRING, id_base + i, name_z);
         }
-        _ = win32.AppendMenuA(menu, win32.MF_POPUP, @intFromPtr(group_menu), "Close Group");
+        _ = win32.AppendMenuA(menu, win32.MF_POPUP, @intFromPtr(group_menu), label);
     }
 
     pub fn handleMenuCommand(self: *const TrayIcon, command_id: u16, app: *App) void {
@@ -207,9 +214,9 @@ pub const TrayIcon = struct {
             app.requestProfileSwitch(self.profiles.items[index]);
             return;
         }
-        if (command_id >= win32.IDM_CLOSE_GROUP_BASE and command_id < win32.IDM_CLOSE_GROUP_BASE + MAX_GROUP_ITEMS) {
-            slog.info("Close group requested from system tray", .{});
-            actions.closeGroupClients(app.scout.getWindows(), app.store.live.hotkeyGroups.items, command_id - win32.IDM_CLOSE_GROUP_BASE);
+        if (groupCommand(command_id)) |command| {
+            slog.info("Group {s} requested from system tray", .{@tagName(command.action)});
+            actions.applyToGroup(app.scout.getWindows(), &app.store.live, app.store.live.hotkeyGroups.items, command.group_index, command.action);
             return;
         }
 
@@ -275,6 +282,17 @@ pub const TrayIcon = struct {
         }
     }
 };
+
+/// Null when `command_id` is outside both group submenus' ranges.
+fn groupCommand(command_id: u16) ?GroupCommand {
+    if (command_id >= win32.IDM_MINIMIZE_GROUP_BASE and command_id < win32.IDM_MINIMIZE_GROUP_BASE + MAX_GROUP_ITEMS) {
+        return .{ .group_index = command_id - win32.IDM_MINIMIZE_GROUP_BASE, .action = .minimize };
+    }
+    if (command_id >= win32.IDM_CLOSE_GROUP_BASE and command_id < win32.IDM_CLOSE_GROUP_BASE + MAX_GROUP_ITEMS) {
+        return .{ .group_index = command_id - win32.IDM_CLOSE_GROUP_BASE, .action = .close };
+    }
+    return null;
+}
 
 fn appendChecked(menu: win32.HMENU, is_checked: bool, id: usize, label: [*:0]const u8) void {
     var flags: u32 = win32.MF_STRING;

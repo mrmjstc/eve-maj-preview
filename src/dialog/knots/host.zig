@@ -44,7 +44,7 @@ const slog = log.Scoped("dialog_knots");
 
 const WINDOW_TITLE = "EVE-Maj Preview Configuration";
 /// In logical pixels, like designWidth's; knots has no zoom yet.
-const DESIGN_HEIGHT = 920;
+const DESIGN_HEIGHT = 960;
 const DEFAULT_POSITION: win32.POINT = .{ .x = 20, .y = 20 };
 /// On the window itself; clears the footer's status once it has shown long enough.
 const STATUS_TIMER_ID = 1;
