@@ -8,6 +8,9 @@ const Value = std.json.Value;
 const Draft = draft_mod.Draft;
 const Section = draft_mod.Section;
 
+/// Also EVE-O Preview's, whose hotkeys are readable text too.
+pub const SKIPPED_HOTKEY_NOTE = "Skipped hotkey for \"{name}\": \"{raw}\" can't be represented as a keyboard hotkey (mouse buttons/custom combinations aren't supported).";
+
 /// Older versions split app-wide and profile sections; version 3 put all in the profile, so both are read.
 const Source = struct {
     profile: ?Value,
@@ -205,12 +208,10 @@ fn appearance(draft: *Draft, source: Source) !void {
 
     try draft.setBool("thumbnail.showSystemName", values.flag(values.get(source.global, "ShowSystemName")));
     try draft.setBool("thumbnail.activeThumbnailHidden", values.flag(source.first(&.{ .{ source.global, "HideActiveThumbnail" }, .{ source.behavior, "HideThumbForActiveWin" } })));
-    try draft.note("Thumbnail appearance settings imported.", &.{});
 }
 
 fn characterPositions(draft: *Draft, source: Source) !void {
     const all = values.objectAt(source.profile, "Thumbnail Positions") orelse return;
-    var imported_count: usize = 0;
     var skipped_count: usize = 0;
     var it = all.object.iterator();
     while (it.next()) |entry| {
@@ -225,9 +226,7 @@ fn characterPositions(draft: *Draft, source: Source) !void {
         }
         if (values.number(values.get(position, "width"))) |width| try draft.put(character, "thumbnailSize.width", values.numberValue(width));
         if (values.number(values.get(position, "height"))) |height| try draft.put(character, "thumbnailSize.height", values.numberValue(height));
-        imported_count += 1;
     }
-    try draft.noteCount("Imported saved position/size for {n} character(s).", "n", imported_count);
     if (skipped_count > 0) try draft.noteCount("Skipped {n} example or non-character item(s) - not real characters.", "n", skipped_count);
 }
 
@@ -237,7 +236,6 @@ fn colorsAndHotkeys(draft: *Draft, source: Source) !void {
         const names = values.arrayAt(colors, "CharNames");
         const active = values.arrayAt(colors, "Bordercolor");
         const inactive = values.arrayAt(colors, "IABordercolor");
-        var imported_count: usize = 0;
         for (names, 0..) |raw, i| {
             if (raw != .string) continue;
             const name = values.characterName(raw.string) orelse continue;
@@ -248,37 +246,29 @@ fn colorsAndHotkeys(draft: *Draft, source: Source) !void {
             if (i < inactive.len and inactive[i] == .string) {
                 if (values.rgbColor(inactive[i].string)) |c| try draft.put(character, "borderColors.inactiveBorderColor", try values.colorValue(draft.arena, c));
             }
-            imported_count += 1;
         }
-        if (imported_count > 0) try draft.noteCount("Imported custom border colors for {n} character(s).", "n", imported_count);
         if (values.arrayAt(colors, "TextColor").len > 0) try draft.note("Per-character text color is not supported in EVE-Maj Preview and was not imported.", &.{});
     }
 
     const entries = source.characterHotkeys();
-    var converted_count: usize = 0;
-    var total_count: usize = 0;
     for (entries) |entry| {
         if (entry != .object) continue;
         var it = entry.object.iterator();
         while (it.next()) |hotkey| {
             const name = values.characterName(hotkey.key_ptr.*) orelse continue;
-            total_count += 1;
             const raw = if (hotkey.value_ptr.* == .string) hotkey.value_ptr.string else "";
             const character = try draft.character(name);
             if (values.ahkHotkey(raw)) |combined| {
                 try draft.put(character, "hotkey", try values.keyValue(draft.arena, combined));
-                converted_count += 1;
             } else {
-                try draft.note("Skipped hotkey for \"{name}\": \"{raw}\" can't be represented as a keyboard hotkey (mouse buttons/custom combinations aren't supported).", &.{ .{ .name = "name", .value = name }, .{ .name = "raw", .value = raw } });
+                try draft.note(SKIPPED_HOTKEY_NOTE, &.{ .{ .name = "name", .value = name }, .{ .name = "raw", .value = raw } });
             }
         }
     }
-    if (total_count > 0) try draft.note("Converted {converted} of {total} character hotkey(s).", &.{ .{ .name = "converted", .value = try draft.format(converted_count) }, .{ .name = "total", .value = try draft.format(total_count) } });
 }
 
 fn hotkeyGroups(draft: *Draft, source: Source) !void {
     const groups = values.objectAt(source.profile, "Hotkey Groups") orelse return;
-    const first_note = draft.notes.items.len;
     var it = groups.object.iterator();
     while (it.next()) |entry| {
         const name = entry.key_ptr.*;
@@ -292,7 +282,6 @@ fn hotkeyGroups(draft: *Draft, source: Source) !void {
         try groupKey(draft, group, "forwardKey", name, values.stringAt(group_settings, "ForwardsHotkey"), "Hotkey group \"{name}\": forward key \"{key}\" can't be converted.");
         try groupKey(draft, group, "backwardKey", name, values.stringAt(group_settings, "BackwardsHotkey"), "Hotkey group \"{name}\": backward key \"{key}\" can't be converted.");
     }
-    try draft.notes.insert(draft.arena, first_note, try draft.countText("Imported {n} hotkey group(s).", groups.object.count()));
 }
 
 fn groupKey(draft: *Draft, group: *std.json.ObjectMap, field: []const u8, name: []const u8, raw: ?[]const u8, failed_note: []const u8) !void {
@@ -316,7 +305,6 @@ fn autoMinimize(draft: *Draft, source: Source) !void {
         const name = values.characterName(raw.string) orelse continue;
         try draft.put(try draft.character(name), "excludeFromMinimize", .{ .bool = true });
     }
-    try draft.note("Auto-minimize settings imported.", &.{});
 }
 
 fn snapping(draft: *Draft, source: Source) !void {
@@ -330,7 +318,6 @@ fn snapping(draft: *Draft, source: Source) !void {
             try draft.note("Suspend-hotkeys key \"{key}\" can't be converted and was skipped.", &.{.{ .name = "key", .value = raw.? }});
         }
     }
-    try draft.note("Snapping settings imported.", &.{});
 }
 
 fn globalHotkeys(draft: *Draft, source: Source) !void {
@@ -338,7 +325,6 @@ fn globalHotkeys(draft: *Draft, source: Source) !void {
     try actionHotkey(draft, values.get(source.hotkeys, "Close_All_EVE_Win_Hotkey"), "hotkeys.hotkeyCloseAll", "Close All Clients");
     try draft.setBool("hotkeys.allowHotkeyAutoRepeat", values.flag(values.get(source.global, "CycleWhileHeld")));
     if (values.flag(values.get(source.global, "LockPositions"))) |locked| try draft.setBool("interaction.enableDragging", !locked);
-    try draft.note("Global action hotkeys imported.", &.{});
 }
 
 fn actionHotkey(draft: *Draft, raw: ?Value, path: []const u8, label: []const u8) !void {
@@ -361,7 +347,6 @@ fn chatlog(draft: *Draft, source: Source) !void {
     }
     try setDirectory(draft, "chatlog.chatlogDir", values.stringAt(source.global, "ChatLogDirectory") orelse values.stringAt(source.logs, "chatLogsDirectory"));
     try setDirectory(draft, "chatlog.gamelogDir", values.stringAt(source.global, "GameLogDirectory") orelse values.stringAt(source.logs, "gameLogsDirectory"));
-    try draft.note("Chatlog monitoring settings imported.", &.{});
 }
 
 fn setDirectory(draft: *Draft, path: []const u8, raw: ?[]const u8) !void {

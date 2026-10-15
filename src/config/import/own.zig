@@ -104,7 +104,6 @@ fn importSection(draft: *Draft, config: *const Config, root: Value, comptime nam
     var section = try present(draft.arena, loaded, raw);
     if (comptime std.mem.eql(u8, name, "characters")) dropPlaceholderCharacters(&section);
     try draft.root.put(draft.arena, name, section);
-    try sectionNote(draft, name, if (section == .array) section.array.items.len else 0);
 }
 
 /// Older imports let sample entries ("Example Name1") through; a profile copy drops them.
@@ -117,20 +116,6 @@ fn dropPlaceholderCharacters(list: *Value) void {
         kept_count += 1;
     }
     list.array.shrinkRetainingCapacity(kept_count);
-}
-
-fn sectionNote(draft: *Draft, comptime name: []const u8, item_count: usize) !void {
-    const list_notes = .{
-        .{ "characters", "Imported {n} character(s)." },
-        .{ "systemColors", "Imported {n} system color(s)." },
-        .{ "hotkeyGroups", "Imported {n} hotkey group(s)." },
-        .{ "windowFilters", "Imported {n} window filter(s)." },
-        .{ "thumbnailSpaces", "Imported {n} thumbnail space(s)." },
-    };
-    inline for (list_notes) |entry| {
-        if (comptime std.mem.eql(u8, entry[0], name)) return draft.noteCount(entry[1], "n", item_count);
-    }
-    try draft.note("{title} imported.", &.{.{ .name = "title", .value = (comptime sectionWords(name)).title, .should_translate = true }});
 }
 
 /// A field an older file lacks keeps its current value, though `loaded` has every field.

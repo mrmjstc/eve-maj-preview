@@ -31,6 +31,7 @@ const SUGGESTION_LENGTH = profile_files.MAX_NAME_LENGTH + 64;
 const PROFILE_BUTTON_KEY: ui.Key = .str("knots.header.profile");
 const MENU_KEY: ui.Key = .str("knots.header.menu");
 const SEARCH_KEY: ui.Key = .str("knots.search");
+const NAME_INPUT_KEY: ui.Key = .str("knots.header.name");
 
 /// The profile menu's entries after the profiles themselves.
 const MenuItem = enum {
@@ -62,6 +63,8 @@ var g_allocator: std.mem.Allocator = undefined;
 var g_is_menu_open: bool = false;
 var g_name_prompt: ?NamePrompt = null;
 var g_is_name_open: bool = false;
+/// Set as the name prompt opens, so its first frame focuses the name field.
+var g_should_focus_name: bool = false;
 var g_start_from: StartFrom = .defaults;
 /// The rainbow picker chose the accent, so it's the one ringed even when the colour matches a preset.
 var g_is_custom_accent: bool = false;
@@ -70,6 +73,7 @@ var g_name_text: std.ArrayList(u8) = .empty;
 var g_name_color: Color = undefined;
 /// The backup a restore prompt is for. Owned; freed when another prompt opens or in deinit.
 var g_restore_backup: ?[]u8 = null;
+/// The restored profile's name in the prompt's heading. Owned; freed with g_restore_backup.
 var g_restore_label: ?[]u8 = null;
 var g_confirm: ?Confirm = null;
 var g_is_confirm_open: bool = false;
@@ -122,7 +126,11 @@ pub fn openRestorePrompt(backup: []const u8, display_name: []const u8) void {
         clearRestore();
         return;
     };
-    openNamePrompt(.restore, display_name, profiles.DEFAULT_ACCENT);
+    const accent = config.readProfileBackupAccent(g_allocator, session.runningApp().io, backup) catch |err| blk: {
+        slog.warn("Failed to read the colour of backup '{s}': {}", .{ backup, err });
+        break :blk null;
+    };
+    openNamePrompt(.restore, display_name, accent orelse profiles.DEFAULT_ACCENT);
 }
 
 fn brand(context: *ui.Frame) !void {
@@ -289,6 +297,7 @@ fn openNamePrompt(prompt: NamePrompt, initial: []const u8, accent: u32) void {
     g_is_custom_accent = !widgets.isPresetAccent(accent);
     g_name_prompt = prompt;
     g_is_name_open = true;
+    g_should_focus_name = true;
 }
 
 /// Returns false once it has logged a failure.
@@ -321,12 +330,22 @@ fn namePrompt(context: *ui.Frame) !void {
     });
 
     const name_row = try widgets.openModalRow(context, .src(@src()), "Name");
-    try context.e(TextInput{ .key = .src(@src()), .buf = &g_name_text, .placeholder = lang.text("Profile name"), .style = &style.text_input_aligned });
+    if (g_should_focus_name) {
+        try widgets.focusTextInput(context, NAME_INPUT_KEY, g_name_text.items.len);
+        g_should_focus_name = false;
+    }
+    try context.e(TextInput{ .key = NAME_INPUT_KEY, .buf = &g_name_text, .placeholder = lang.text("Profile name"), .style = &style.text_input_aligned });
     try name_row.close(context);
     try widgets.hintText(context, .src(@src()), "Use " ++ profiles.NAME_RULES ++ ".");
     const typed = std.mem.trim(u8, g_name_text.items, " ");
-    const problem = profiles.nameProblem(arena, typed);
-    if (problem) |message| try widgets.boxedText(context, .src(@src()), message, &style.hint_box, &style.field_error);
+    // A restore may go over an existing profile, which is backed up first.
+    const replaced = if (prompt == .restore) profiles.existingProfile(arena, typed) else null;
+    const problem = if (replaced != null) null else profiles.nameProblem(arena, typed);
+    if (problem) |message| try widgets.boxedText(context, .src(@src()), message, &style.modal_hint_box, &style.field_error);
+    if (replaced) |file_name| {
+        const note = try lang.format(arena, "Replaces the current '{name}'; it's backed up first.", .{ .name = profiles.displayName(file_name) });
+        try widgets.boxedText(context, .src(@src()), note, &style.modal_hint_box, &style.hint);
+    }
 
     switch (prompt) {
         .new => {
@@ -352,7 +371,7 @@ fn namePrompt(context: *ui.Frame) !void {
     if (try modalButton(context, .src(@src()), "Cancel", &style.plain_button)) g_is_name_open = false;
     const submit_label = switch (prompt) {
         .new => "Create",
-        .restore => "Restore",
+        .restore => if (replaced != null) "Replace" else "Restore",
     };
     const can_submit = typed.len > 0 and problem == null;
     const submit = Button{ .key = .src(@src()), .label = lang.text(submit_label), .disabled = !can_submit, .style = if (can_submit) &style.primary_button else &style.disabled_primary_button };
@@ -378,7 +397,13 @@ fn submitName(prompt: NamePrompt) void {
             .defaults => .create,
             .copy => .copy,
         }, file_name, accent),
-        .restore => if (g_restore_backup) |backup| profiles.requestRestore(file_name, backup, accent),
+        .restore => if (g_restore_backup) |backup| {
+            if (profiles.listedName(file_name)) |existing| {
+                profiles.requestRestore(.replace_with_backup, existing, backup, accent);
+            } else {
+                profiles.requestRestore(.restore, file_name, backup, accent);
+            }
+        },
     }
     g_is_name_open = false;
 }
@@ -413,7 +438,7 @@ fn confirmPrompt(context: *ui.Frame) !void {
         .key = .src(@src()),
         .content = switch (confirm) {
             .delete => try lang.format(context.arena(), "'{name}' is moved to a backup, which the Backups tab can restore.", .{ .name = profiles.displayName(name) }),
-            .reset => try lang.format(context.arena(), "Every setting in '{name}' goes back to its default. This can't be undone.", .{ .name = profiles.displayName(name) }),
+            .reset => try lang.format(context.arena(), "Every setting in '{name}' goes back to its default. A backup is kept, which the Backups tab can restore.", .{ .name = profiles.displayName(name) }),
         },
         .style = &style.modal_text,
     });

@@ -99,7 +99,7 @@ pub const Group = struct {
     }
 };
 
-/// Lit while hovered; closing it ends the row.
+/// A settings row is lit while hovered; closing it ends the row.
 pub const Row = struct {
     rect: Rect,
     /// Holds the divider above the row, so the row's highlight doesn't take in the gap.
@@ -226,6 +226,9 @@ pub const ColorChange = union(enum) { cleared, set: u32 };
 /// A finished drag: item `from` now goes before what was item `before`.
 pub const Move = struct { from: usize, before: usize };
 
+/// A settings row is inset for its hover highlight; a modal's sits flush with the text and buttons around it.
+const RowLook = enum { settings, modal };
+
 /// A row being dragged, drawn under the cursor with a gap where it would land.
 const Lifted = struct {
     from: usize,
@@ -349,7 +352,7 @@ pub fn openSwitchedSection(context: *ui.Frame, comptime title: []const u8, compt
 
 /// A label-then-controls row; the caller adds the controls and closes it.
 pub fn openBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Row {
-    const row = try openSettingsRow(context, key, if (g_is_aligned) &style.aligned_row else &style.binding_row);
+    const row = try openSettingsRow(context, key, if (g_is_aligned) &style.aligned_row else &style.binding_row, .settings);
     const shown = lang.text(label);
     search.captureText(shown);
     try rowLabel(context, key, key.indexed(1), shown, try rowLabelStyle(context, shown));
@@ -358,7 +361,7 @@ pub fn openBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Row {
 
 /// `mark` ends the label column, so controls start where other rows' do.
 pub fn openMarkedBinding(context: *ui.Frame, key: ui.Key, label: []const u8, mark: []const u8) !Row {
-    const row = try openSettingsRow(context, key, &style.aligned_row);
+    const row = try openSettingsRow(context, key, &style.aligned_row, .settings);
     const cell = Rect{ .key = key.indexed(2), .style = if (g_is_aligned) &style.inline_row else &style.label_cell };
     _ = try cell.open(context);
     const shown = lang.text(label);
@@ -579,7 +582,22 @@ pub fn hotkeyWidth() ?*const ui.Style {
 
 /// The caller's own cells, spaced and divided like aligned rows; the caller closes it.
 pub fn openRow(context: *ui.Frame, key: ui.Key) !Row {
-    return openSettingsRow(context, key, &style.aligned_row);
+    return openSettingsRow(context, key, &style.aligned_row, .settings);
+}
+
+/// Focuses the text input `key` with its `text_length` bytes selected, so typing replaces them; call before drawing it, once as its modal opens.
+pub fn focusTextInput(context: *ui.Frame, key: ui.Key, text_length: usize) !void {
+    const ui_state = context.ui();
+    const id = key.hash();
+    ui_state.state.focused = id;
+    const edit_state = try ui_state.state.getOrCreate(.text_input, ui_state.allocator, id);
+    edit_state.sel_anchor = 0;
+    edit_state.cursor = @intCast(text_length);
+}
+
+/// openRow for a modal, flush with its text and buttons; the caller closes it.
+pub fn openModalFieldRow(context: *ui.Frame, key: ui.Key) !Row {
+    return openSettingsRow(context, key, &style.aligned_row, .modal);
 }
 
 /// Keeps a scrollbar gutter only while scrolling, so rows otherwise reach the edge.
@@ -624,9 +642,9 @@ pub fn segmented(context: *ui.Frame, key: ui.Key, options: []const []const u8, s
     return clicked_index;
 }
 
-/// `label` left, the caller's controls right, lit on hover; the caller closes it.
+/// `label` left, the caller's controls right; the caller closes it.
 pub fn openModalRow(context: *ui.Frame, key: ui.Key, label: []const u8) !Row {
-    const row = try openRow(context, key);
+    const row = try openModalFieldRow(context, key);
     try rowLabel(context, key, key.indexed(1), lang.text(label), &style.label_aligned);
     return row;
 }
@@ -1148,8 +1166,8 @@ fn nextRowHasDivider() bool {
     return !g_is_in_field_group and g_open_section != null and g_section_row_count > 0;
 }
 
-/// Lit anywhere in last frame's box, since knots only hovers the innermost element.
-fn openSettingsRow(context: *ui.Frame, key: ui.Key, row_style: *const ui.Style) !Row {
+/// A settings row is lit anywhere in last frame's box, since knots only hovers the innermost element.
+fn openSettingsRow(context: *ui.Frame, key: ui.Key, row_style: *const ui.Style, look: RowLook) !Row {
     const divider: ?Rect = if (g_is_aligned and nextRowHasDivider()) Rect{ .key = key.indexed(ROW_DIVIDER_INDEX), .style = &style.row_divider } else null;
     if (divider) |rect| _ = try rect.open(context);
 
@@ -1162,7 +1180,10 @@ fn openSettingsRow(context: *ui.Frame, key: ui.Key, row_style: *const ui.Style) 
     const mouse = ui_state.input.mouse_pos;
     const is_lit = is_live and measuredBox(ui_state, key).contains(.{ @floatCast(mouse[0]), @floatCast(mouse[1]) });
     const lit_style = try context.arena().create(ui.Style);
-    lit_style.* = row_style.with(.{ .padding = .xy(style.ROW_INSET, 0), .radius = .sm, .background = if (is_lit) .{ .color = style.ROW_HOVER } else .transparent });
+    lit_style.* = switch (look) {
+        .settings => row_style.with(.{ .padding = .xy(style.ROW_INSET, 0), .radius = .sm, .background = if (is_lit) .{ .color = style.ROW_HOVER } else .transparent }),
+        .modal => row_style.*,
+    };
     // Interactive, so the cursor moving onto another row redraws, and a click on the label lands on the row.
     _ = try ui_state.openStyled(key, .{ .base = &Rect.base.root, .user = lit_style }, .{}, .{ .interactive = true });
     return .{ .rect = .{ .key = key, .style = lit_style }, .divider = divider, .is_clicked = is_live and (ui_state.leftClicked(key.hash(), .exact) or ui_state.leftClicked(key.indexed(ROW_TOOLTIP_INDEX).hash(), .exact)) };

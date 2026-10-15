@@ -6,7 +6,6 @@ const session = @import("session.zig");
 const host = @import("host.zig");
 const lang = @import("../../lang/lang.zig");
 const profiles = @import("profiles.zig");
-const status = @import("status.zig");
 const style = @import("style.zig");
 const widgets = @import("widgets.zig");
 const color_convert = @import("color_convert.zig");
@@ -20,8 +19,9 @@ const TextInput = ui.component.TextInput;
 const SelectInput = ui.component.SelectInput;
 const slog = log.Scoped("dialog_knots");
 
-const FILE_HINT = "Select an old EVE-X Preview (.json), EVE-O Preview (.json), or EVE-APM Preview (.ini) file, or an EVE-Maj Preview profile (.json) \u{2014} format is detected automatically. Nothing is saved until you review and click Save.";
+const FILE_HINT = "Select an old EVE-X Preview (.json), EVE-O Preview (.json), or EVE-APM Preview (.ini) file, or an EVE-Maj Preview profile (.json) \u{2014} format is detected automatically.";
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
+const NEW_NAME_KEY: ui.Key = .str("knots.import.new_name");
 
 /// An EVE-Maj profile's sections under one of the sidebar's headings.
 const Group = struct { label: []const u8, ids: []const []const u8 };
@@ -53,8 +53,12 @@ const Analysis = struct {
 };
 
 const Summary = struct {
+    section_count: usize,
+    /// Warnings about settings that were skipped or need checking.
     notes: []const []const u8,
     skipped: []const []const u8,
+    /// The running profile was imported over, so a backup of it was kept.
+    has_backup: bool,
 };
 
 /// Which sections, available ones only, a list shows: all, one of MAJ_GROUPS, or those no group lists.
@@ -72,6 +76,8 @@ var g_file_name: []const u8 = "";
 var g_file_status: []const u8 = "";
 var g_analysis: ?Analysis = null;
 var g_imports_into_new: bool = false;
+/// Set as New Profile is chosen, so the next frame focuses the name field.
+var g_should_focus_name: bool = false;
 /// Owned; freed in reset.
 var g_new_name: std.ArrayList(u8) = .empty;
 var g_new_accent: ui.Color = undefined;
@@ -96,6 +102,7 @@ pub fn reset() void {
 pub fn open() void {
     clearArena();
     g_imports_into_new = false;
+    g_should_focus_name = false;
     g_new_name.clearRetainingCapacity();
     g_new_accent = color_convert.fromArgb(profiles.DEFAULT_ACCENT);
     g_is_new_accent_custom = false;
@@ -126,7 +133,7 @@ pub fn show(context: *ui.Frame) !void {
     if (!g_is_open) return clearArena();
     const dialog = widgets.modal(.src(@src()), &g_is_open, &style.modal_wide);
     _ = try dialog.open(context);
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Import Settings"), .style = &style.heading });
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text(if (g_summary == null) "Import Settings" else "Settings Imported"), .style = &style.heading });
     if (g_summary) |summary| {
         try summaryView(context, summary);
     } else {
@@ -137,12 +144,20 @@ pub fn show(context: *ui.Frame) !void {
     try dialog.close(context);
 }
 
-/// Applies the chosen sections to the running profile; called by the profile action once a new profile exists.
-pub fn applyImport() void {
-    applyChosen() catch |err| {
-        slog.err("Failed to import settings: {}", .{err});
-        status.show(.failure, "Import failed: {err}", .{ .err = err });
-    };
+/// Applies the chosen sections to the running profile, unsaved; called by the profile action once the backup or new profile exists.
+pub fn applyImport() !void {
+    const text = g_file_text orelse return error.MissingImportFile;
+    const analysis = g_analysis orelse return error.MissingImportFile;
+    var chosen: std.ArrayList([]const u8) = .empty;
+    for (analysis.sections) |section| {
+        if (section.is_available and section.is_chosen) try chosen.append(arena(), section.id);
+    }
+    const source: ?[]const u8 = if (analysis.profiles.len > 0) analysis.profiles[analysis.source_index] else null;
+    const built = try importer.build(arena(), text, source, chosen.items, lang.text("Cycle Group {n}"), session.profile().ptr);
+    try session.applyOps(arena(), built.ops);
+    const notes = try arena().alloc([]const u8, built.notes.len);
+    for (built.notes, notes) |note, *out| out.* = try translate(arena(), note);
+    g_summary = .{ .section_count = chosen.items.len, .notes = notes, .skipped = built.skipped, .has_backup = !g_imports_into_new };
 }
 
 fn readFile(path: []const u8) !void {
@@ -151,8 +166,8 @@ fn readFile(path: []const u8) !void {
 }
 
 fn fileStep(context: *ui.Frame) !void {
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text(FILE_HINT), .style = &style.hint });
-    const row = try widgets.openRow(context, .src(@src()));
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text(FILE_HINT), .style = &style.modal_text });
+    const row = try widgets.openModalFieldRow(context, .src(@src()));
     const has_file = g_file_name.len > 0;
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = if (has_file) g_file_name else lang.text("No file chosen"), .style = if (has_file) &style.label_aligned else &style.import_file_none });
     if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Browse"), .style = &style.plain_button })).clicked) host.browseImportFile();
@@ -180,16 +195,21 @@ fn optionsStep(context: *ui.Frame, analysis: *Analysis) !void {
     const running = try std.fmt.allocPrint(context.arena(), "'{s}'", .{profiles.displayName(session.profile().ptr.profile_name)});
     if (try widgets.segmented(context, .src(@src()), &.{ running, "New Profile" }, @intFromBool(g_imports_into_new))) |index| {
         g_imports_into_new = index == 1;
+        g_should_focus_name = g_imports_into_new;
         context.requestRedraw();
     }
     try target_row.close(context);
     try widgets.hintText(context, .src(@src()), "New Profile leaves your current settings untouched.");
     if (g_imports_into_new) {
         const name_row = try widgets.openModalRow(context, .src(@src()), "Name");
-        try context.e(TextInput{ .key = .str("knots.import.new_name"), .buf = &g_new_name, .style = &style.text_input_aligned, .placeholder = lang.text("Profile name") });
+        if (g_should_focus_name) {
+            try widgets.focusTextInput(context, NEW_NAME_KEY, g_new_name.items.len);
+            g_should_focus_name = false;
+        }
+        try context.e(TextInput{ .key = NEW_NAME_KEY, .buf = &g_new_name, .style = &style.text_input_aligned, .placeholder = lang.text("Profile name") });
         try name_row.close(context);
         try widgets.hintText(context, .src(@src()), "Use " ++ profiles.NAME_RULES ++ ".");
-        if (profiles.nameProblem(context.arena(), newName())) |message| try widgets.boxedText(context, .src(@src()), message, &style.hint_box, &style.field_error);
+        if (profiles.nameProblem(context.arena(), newName())) |message| try widgets.boxedText(context, .src(@src()), message, &style.modal_hint_box, &style.field_error);
         const color_row = try widgets.openModalRow(context, .src(@src()), "Color");
         try widgets.accentChoices(context, .src(@src()), &g_new_accent, &g_is_new_accent_custom);
         try color_row.close(context);
@@ -303,18 +323,23 @@ fn isAnyChosen(sections: []const Section) bool {
 }
 
 fn summaryView(context: *ui.Frame, summary: Summary) !void {
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Import complete"), .style = &style.hint });
     const arena_allocator = context.arena();
+    const saved = try lang.format(arena_allocator, "{n} section(s) imported into '{name}' and saved.", .{ .n = summary.section_count, .name = profiles.displayName(session.profile().ptr.profile_name) });
+    const message = if (summary.has_backup)
+        try std.fmt.allocPrint(arena_allocator, "{s} {s}", .{ saved, lang.text("Your previous settings were backed up; restore them from the Backups tab if needed.") })
+    else
+        saved;
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = message, .style = &style.modal_text });
     if (summary.skipped.len > 0) {
         try context.e(Text{ .selectable = false, .key = .src(@src()), .content = try lang.format(arena_allocator, "{n} setting(s) couldn't be read and were left unchanged:", .{ .n = summary.skipped.len }), .style = &style.status_failure });
         for (summary.skipped, 0..) |path, index| {
             try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.import.skipped").indexed(index), .content = try std.fmt.allocPrint(arena_allocator, "\u{2022} {s}", .{path}), .style = &style.muted_text });
         }
     }
+    if (summary.notes.len > 0) try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Some settings need your attention:"), .style = &style.status_failure });
     for (summary.notes, 0..) |note, index| {
         try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.import.note").indexed(index), .content = try std.fmt.allocPrint(arena_allocator, "\u{2022} {s}", .{note}), .style = &style.modal_text });
     }
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Review the affected tabs, then click Save to keep these changes."), .style = &style.hint });
 }
 
 fn buttons(context: *ui.Frame) !void {
@@ -332,10 +357,10 @@ fn buttons(context: *ui.Frame) !void {
     try row.close(context);
 }
 
-/// Into the running profile, or into a new one once the profile action has created it and switched to it.
+/// Through a profile action, since saving can only happen between frames.
 fn runImport() void {
     if (!g_imports_into_new) {
-        applyImport();
+        profiles.request(.import_running, session.profile().ptr.profile_name, null);
         return;
     }
     host.importIntoNewProfile(newName(), color_convert.toArgb(g_new_accent));
@@ -344,21 +369,6 @@ fn runImport() void {
 /// Borrows from g_new_name.
 fn newName() []const u8 {
     return std.mem.trim(u8, g_new_name.items, " ");
-}
-
-fn applyChosen() !void {
-    const text = g_file_text orelse return;
-    const analysis = g_analysis orelse return;
-    var chosen: std.ArrayList([]const u8) = .empty;
-    for (analysis.sections) |section| {
-        if (section.is_available and section.is_chosen) try chosen.append(arena(), section.id);
-    }
-    const source: ?[]const u8 = if (analysis.profiles.len > 0) analysis.profiles[analysis.source_index] else null;
-    const built = try importer.build(arena(), text, source, chosen.items, lang.text("Cycle Group {n}"), session.profile().ptr);
-    try session.applyOps(arena(), built.ops);
-    const notes = try arena().alloc([]const u8, built.notes.len);
-    for (built.notes, notes) |note, *out| out.* = try translate(arena(), note);
-    g_summary = .{ .notes = notes, .skipped = built.skipped };
 }
 
 /// Reads the file with the app's importer, which replies in JSON.

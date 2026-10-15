@@ -1,4 +1,4 @@
-//! The configuration window's Backups tab: profiles kept when they were deleted or couldn't be read, each restored as a new profile or deleted for good; main thread only.
+//! The configuration window's Backups tab: profiles kept when they were deleted, reset, imported over or couldn't be read, each restored or deleted for good; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -38,9 +38,9 @@ pub fn reset() void {
 
 pub fn show(context: *ui.Frame) !void {
     if (g_scanned_revision != profiles.revision()) scan();
-    const section = try widgets.openSection(context, "Profile Backups", "When you delete a profile, or one fails to load, a copy is kept here. Restore makes it a new profile and keeps the copy.", &style.section);
+    const section = try widgets.openSection(context, "Profile Backups", "When you delete, reset or import over a profile, or one fails to load, a copy is kept here. Restore brings it back as a new profile or over the current one, and keeps the copy.", &style.section);
     if (g_backups.len == 0) {
-        try widgets.paragraph(context, .src(@src()), "No backups yet: no profile has been deleted or failed to load.");
+        try widgets.paragraph(context, .src(@src()), "No backups yet: no profile has been deleted, reset, imported over or failed to load.");
     }
     const arena = context.arena();
     for (g_backups, 0..) |backup, index| {

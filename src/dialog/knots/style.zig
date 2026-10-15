@@ -322,6 +322,8 @@ pub const inset_column: Style = .{ .width = .grow(), .direction = .column, .gap 
 pub const hint: Style = .{ .font_size = .xs, .foreground = .{ .color = HINT_TEXT }, .wrap = true, .width = .grow() };
 /// Around a hint that goes with rows, so it starts where their labels do; knots ignores a Text's own padding.
 pub const hint_box: Style = .{ .width = .grow(), .padding = .xy(ROW_INSET, 0) };
+/// hint_box for a modal, whose rows aren't inset.
+pub const modal_hint_box: Style = .{ .width = .grow() };
 /// Inset like hint_box and pulled up into the gap after its row, since knots has no margins.
 pub const hint_link_row: Style = hint_row.with(.{ .padding = .init(-HINT_LINK_PULL, ROW_INSET, 0, ROW_INSET) });
 /// Less than any gap between rows, so the link row never overlaps the row above.
@@ -1094,7 +1096,7 @@ pub const import_section_cell: Style = .{ .width = .grow() };
 /// A group of the Import dialog's sections: its checkbox over its grid.
 pub const import_section_group: Style = .{ .width = .grow(), .direction = .column, .gap = 6, .padding = .init(6, 0, 0, 0) };
 
-/// Room for the Import dialog's lists, scrolling once they outgrow the window.
+/// Room for the Import dialog's lists and an update's notes, scrolling once they outgrow the window.
 pub const modal_wide: Style = modal.with(.{ .width = .fixed(520), .overflow = .scroll_y });
 
 /// Modal text that sits on a line with something after it, e.g. a link.

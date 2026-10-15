@@ -1,4 +1,4 @@
-//! Profile files on disk: where they live, loading with fallbacks, saving, creating defaults, and the backups kept when one is deleted or unreadable.
+//! Profile files on disk: where they live, loading with fallbacks, saving, creating defaults, and the backups kept when one is deleted, reset, imported over or unreadable.
 const std = @import("std");
 const files = @import("files.zig");
 const config_mod = @import("../config.zig");
@@ -13,6 +13,9 @@ const BACKUP_DIR = "backup";
 
 /// `name` borrows from the file name; null `saved_at_seconds` for a backup named any other way.
 pub const BackupName = struct { name: []const u8, saved_at_seconds: ?u64 };
+
+/// Whether a copy may overwrite the profile it's copied to.
+const CopyMode = enum { new_only, replace };
 
 /// Caller owns the returned slice.
 pub fn path(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
@@ -55,14 +58,22 @@ pub fn copy(allocator: std.mem.Allocator, io: std.Io, source: []const u8, target
     try validateName(source);
     const source_path = try path(allocator, source);
     defer allocator.free(source_path);
-    try copyFrom(allocator, io, source_path, target, accent_color);
+    try copyFrom(allocator, io, source_path, target, accent_color, .new_only);
 }
 
 /// Restores a file from PROFILES_DIR/backup (see deleteToBackup) as the new profile `target`.
 pub fn restoreBackup(allocator: std.mem.Allocator, io: std.Io, backup: []const u8, target: []const u8, accent_color: ?u32) !void {
     const source_path = try backupPath(allocator, backup);
     defer allocator.free(source_path);
-    try copyFrom(allocator, io, source_path, target, accent_color);
+    try copyFrom(allocator, io, source_path, target, accent_color, .new_only);
+}
+
+/// Overwrites the existing profile `target` with `backup`, once a backup of `target` itself is kept.
+pub fn replaceWithBackup(allocator: std.mem.Allocator, io: std.Io, backup: []const u8, target: []const u8, accent_color: ?u32) !void {
+    const source_path = try backupPath(allocator, backup);
+    defer allocator.free(source_path);
+    try backUp(allocator, io, target);
+    try copyFrom(allocator, io, source_path, target, accent_color, .replace);
 }
 
 pub fn deleteBackup(allocator: std.mem.Allocator, io: std.Io, backup: []const u8) !void {
@@ -90,6 +101,16 @@ pub fn deleteToBackup(allocator: std.mem.Allocator, io: std.Io, name: []const u8
     const cwd = std.Io.Dir.cwd();
     try cwd.rename(profile_path, cwd, backup_path, io);
     slog.info("Moved profile '{s}' to {s}", .{ name, backup_path });
+}
+
+/// Copies the profile into PROFILES_DIR/backup, named as deleteToBackup names it, and leaves it in place.
+pub fn backUp(allocator: std.mem.Allocator, io: std.Io, name: []const u8) !void {
+    try validateName(name);
+    const profile_path = try path(allocator, name);
+    defer allocator.free(profile_path);
+    const backup_path = try copyToBackup(allocator, io, profile_path, name);
+    defer allocator.free(backup_path);
+    slog.info("Backed up profile '{s}' to {s}", .{ name, backup_path });
 }
 
 /// Splits a backup's `<unix time>_<name>.json` file name (see newBackupPath) into its profile name and time.
@@ -204,9 +225,14 @@ pub fn readAccent(allocator: std.mem.Allocator, io: std.Io, name: []const u8) !?
     try validateName(name);
     const profile_path = try path(allocator, name);
     defer allocator.free(profile_path);
-    const content = try std.Io.Dir.cwd().readFileAlloc(io, profile_path, allocator, .limited(files.MAX_CONFIG_FILE_SIZE));
-    defer allocator.free(content);
-    return accentFromJson(allocator, content);
+    return readAccentFrom(allocator, io, profile_path);
+}
+
+/// Like readAccent, for a file in PROFILES_DIR/backup.
+pub fn readBackupAccent(allocator: std.mem.Allocator, io: std.Io, backup: []const u8) !?u32 {
+    const backup_path = try backupPath(allocator, backup);
+    defer allocator.free(backup_path);
+    return readAccentFrom(allocator, io, backup_path);
 }
 
 pub fn save(config: *const Config, allocator: std.mem.Allocator, io: std.Io, file_path: []const u8) !void {
@@ -242,13 +268,13 @@ fn backupPath(allocator: std.mem.Allocator, backup: []const u8) ![]u8 {
     return std.Io.Dir.path.join(allocator, &.{ files.PROFILES_DIR, BACKUP_DIR, backup });
 }
 
-fn copyFrom(allocator: std.mem.Allocator, io: std.Io, source_path: []const u8, target: []const u8, accent_color: ?u32) !void {
+fn copyFrom(allocator: std.mem.Allocator, io: std.Io, source_path: []const u8, target: []const u8, accent_color: ?u32, mode: CopyMode) !void {
     try validateName(target);
     const target_path = try path(allocator, target);
     defer allocator.free(target_path);
 
     const cwd = std.Io.Dir.cwd();
-    cwd.copyFile(source_path, cwd, target_path, io, .{ .replace = false }) catch |err| switch (err) {
+    cwd.copyFile(source_path, cwd, target_path, io, .{ .replace = mode == .replace }) catch |err| switch (err) {
         error.PathAlreadyExists => return error.ProfileAlreadyExists,
         else => return err,
     };
@@ -270,17 +296,21 @@ fn newBackupPath(allocator: std.mem.Allocator, io: std.Io, name: []const u8) ![]
 
 /// Keeps a copy of a profile that couldn't be read, since running on defaults saves over it.
 fn backUpUnreadable(allocator: std.mem.Allocator, io: std.Io, profile_path: []const u8, name: []const u8) void {
-    const backup_path = newBackupPath(allocator, io, name) catch |err| {
+    const backup_path = copyToBackup(allocator, io, profile_path, name) catch |err| {
         slog.err("Failed to back up unreadable profile '{s}': {}", .{ name, err });
         return;
     };
     defer allocator.free(backup_path);
-    const cwd = std.Io.Dir.cwd();
-    cwd.copyFile(profile_path, cwd, backup_path, io, .{}) catch |err| {
-        slog.err("Failed to back up unreadable profile '{s}' to '{s}': {}", .{ name, backup_path, err });
-        return;
-    };
     slog.warn("Backed up unreadable profile '{s}' to '{s}'", .{ name, backup_path });
+}
+
+/// Caller owns the returned backup path.
+fn copyToBackup(allocator: std.mem.Allocator, io: std.Io, profile_path: []const u8, name: []const u8) ![]u8 {
+    const backup_path = try newBackupPath(allocator, io, name);
+    errdefer allocator.free(backup_path);
+    const cwd = std.Io.Dir.cwd();
+    try cwd.copyFile(profile_path, cwd, backup_path, io, .{});
+    return backup_path;
 }
 
 fn loadFile(allocator: std.mem.Allocator, io: std.Io, profile_path: []const u8, name: []const u8) !Config {
@@ -297,6 +327,12 @@ fn loadFile(allocator: std.mem.Allocator, io: std.Io, profile_path: []const u8, 
     };
     config.chatlog.warnUnreachableDirs(io);
     return config;
+}
+
+fn readAccentFrom(allocator: std.mem.Allocator, io: std.Io, file_path: []const u8) !?u32 {
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, file_path, allocator, .limited(files.MAX_CONFIG_FILE_SIZE));
+    defer allocator.free(content);
+    return accentFromJson(allocator, content);
 }
 
 fn accentFromJson(allocator: std.mem.Allocator, json: []const u8) !?u32 {

@@ -102,11 +102,9 @@ pub fn build(draft: *Draft, root: Value, chosen: []const []const u8, cycle_group
     if (draft_mod.isChosen(chosen, "hotkeyGroups")) try hotkeyGroups(draft, root, cycle_group_name);
     if (draft_mod.isChosen(chosen, "autoMinimize")) {
         if (values.get(root, "MinimizeInactiveClients")) |v| try draft.setBool("autoMinimize.enabled", values.truthy(v));
-        try draft.note("Auto-minimize settings imported.", &.{});
     }
     if (draft_mod.isChosen(chosen, "snapping")) {
         if (values.get(root, "EnableThumbnailSnap")) |v| try draft.setBool("snapping.enabled", values.truthy(v));
-        try draft.note("Snapping settings imported.", &.{});
     }
 }
 
@@ -223,7 +221,6 @@ fn countCharacters(arena: std.mem.Allocator, map: ?Value, seen: *std.array_hash_
 }
 
 fn appearance(draft: *Draft, root: Value) !void {
-    try draft.note("Thumbnail appearance settings imported.", &.{});
     if (values.jsonNumber(values.get(root, "ThumbnailsOpacity"))) |fraction| {
         try draft.setNumber("thumbnail.thumbnailOpacity", std.math.clamp(@round(fraction * 255), 0, 255));
     }
@@ -266,7 +263,6 @@ fn appearance(draft: *Draft, root: Value) !void {
 }
 
 fn characterPositions(draft: *Draft, root: Value) !void {
-    var imported_names: std.array_hash_map.String(void) = .empty;
     var skipped_names: std.array_hash_map.String(void) = .empty;
 
     if (values.objectAt(root, "FlatLayout")) |layout| {
@@ -278,7 +274,6 @@ fn characterPositions(draft: *Draft, root: Value) !void {
             };
             const point = pair(entry.value_ptr.*) orelse continue;
             try eve_x.putPosition(draft, try draft.character(name), point[0], point[1]);
-            try imported_names.put(draft.arena, name, {});
         }
     }
     if (values.objectAt(root, "PerClientThumbnailSize")) |sizes| {
@@ -292,7 +287,6 @@ fn characterPositions(draft: *Draft, root: Value) !void {
             const character = try draft.character(name);
             try draft.put(character, "thumbnailSize.width", values.numberValue(size[0]));
             try draft.put(character, "thumbnailSize.height", values.numberValue(size[1]));
-            try imported_names.put(draft.arena, name, {});
         }
     }
     if (values.objectAt(root, "DisableThumbnail")) |disabled| {
@@ -304,16 +298,13 @@ fn characterPositions(draft: *Draft, root: Value) !void {
             };
             if (!values.truthy(entry.value_ptr.*)) continue;
             try draft.put(try draft.character(name), "hideThumbnail", .{ .bool = true });
-            try imported_names.put(draft.arena, name, {});
         }
     }
-    try draft.noteCount("Imported saved position/size for {n} character(s).", "n", imported_names.count());
     if (skipped_names.count() > 0) try draft.noteCount(SKIPPED_PLACEHOLDER_NOTE, "n", skipped_names.count());
 }
 
 fn colorsAndHotkeys(draft: *Draft, root: Value) !void {
     var skipped_names: std.array_hash_map.String(void) = .empty;
-    var colored_count: usize = 0;
     if (values.objectAt(root, "PerClientActiveClientHighlightColor")) |colors| {
         var it = colors.object.iterator();
         while (it.next()) |entry| {
@@ -323,35 +314,29 @@ fn colorsAndHotkeys(draft: *Draft, root: Value) !void {
             };
             const border_color = color(if (entry.value_ptr.* == .string) entry.value_ptr.string else null) orelse continue;
             try draft.put(try draft.character(name), "borderColors.activeBorderColor", try values.colorValue(draft.arena, border_color));
-            colored_count += 1;
         }
     }
 
-    var converted_count: usize = 0;
-    var total_count: usize = 0;
     if (values.objectAt(root, "ClientHotkey")) |hotkeys| {
-        total_count = hotkeys.object.count();
         var it = hotkeys.object.iterator();
         while (it.next()) |entry| {
             const name = values.characterName(entry.key_ptr.*) orelse {
                 try skipped_names.put(draft.arena, entry.key_ptr.*, {});
                 continue;
             };
-            if (entry.value_ptr.* != .string) continue;
-            const combined = hotkey(entry.value_ptr.string) orelse continue;
+            if (entry.value_ptr.* != .string or std.mem.trim(u8, entry.value_ptr.string, " \t").len == 0) continue;
+            const combined = hotkey(entry.value_ptr.string) orelse {
+                try draft.note(eve_x.SKIPPED_HOTKEY_NOTE, &.{ .{ .name = "name", .value = name }, .{ .name = "raw", .value = entry.value_ptr.string } });
+                continue;
+            };
             try draft.put(try draft.character(name), "hotkey", try values.keyValue(draft.arena, combined));
-            converted_count += 1;
         }
     }
 
-    try draft.noteCount("Imported {n} custom border color(s).", "n", colored_count);
-    if (total_count > 0) try draft.note("Converted {converted} of {total} character hotkey(s).", &.{ .{ .name = "converted", .value = try draft.format(converted_count) }, .{ .name = "total", .value = try draft.format(total_count) } });
     if (skipped_names.count() > 0) try draft.noteCount(SKIPPED_PLACEHOLDER_NOTE, "n", skipped_names.count());
 }
 
 fn hotkeyGroups(draft: *Draft, root: Value, cycle_group_name: []const u8) !void {
-    const first_note = draft.notes.items.len;
-    var imported_count: usize = 0;
     for (1..CYCLE_GROUP_COUNT + 1) |group_number| {
         const members = try cycleGroupMembers(draft.arena, root, group_number);
         if (members.len == 0) continue;
@@ -367,7 +352,5 @@ fn hotkeyGroups(draft: *Draft, root: Value, cycle_group_name: []const u8) !void 
         try draft.put(group, "characters", .{ .array = list });
         try draft.put(group, "forwardKey", try values.keysValue(draft.arena, forward));
         try draft.put(group, "backwardKey", try values.keysValue(draft.arena, backward));
-        imported_count += 1;
     }
-    try draft.notes.insert(draft.arena, first_note, try draft.countText("Imported {n} hotkey group(s).", imported_count));
 }

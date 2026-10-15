@@ -294,7 +294,6 @@ fn borderStyle(draft: *Draft, path: []const u8, raw: ?[]const u8, label: []const
 }
 
 fn appearance(draft: *Draft, ini: *const Ini) !void {
-    try draft.note("Thumbnail appearance settings imported.", &.{});
     try draft.setColor("thumbnail.borderColor", values.rgbColor(ini.get("ui", "highlightColor")));
     try draft.setNumber("thumbnail.borderWidth", number(ini.get("ui", "highlightBorderWidth")));
     try draft.setBool("thumbnail.showBorderWhenFocused", qtBool(ini.get("ui", "highlightActiveWindow")));
@@ -351,7 +350,6 @@ fn appearance(draft: *Draft, ini: *const Ini) !void {
 
 fn characterPositions(draft: *Draft, ini: *const Ini) !void {
     const entries = ini.section("thumbnailPositions") orelse return;
-    var imported_count: usize = 0;
     var skipped_count: usize = 0;
     var it = entries.iterator();
     while (it.next()) |entry| {
@@ -363,15 +361,12 @@ fn characterPositions(draft: *Draft, ini: *const Ini) !void {
         }
         const name = values.characterName(decoded) orelse continue;
         try eve_x.putPosition(draft, try draft.character(name), @floatFromInt(point.x), @floatFromInt(point.y));
-        imported_count += 1;
     }
-    try draft.noteCount("Imported saved position for {n} character(s).", "n", imported_count);
     if (skipped_count > 0) try draft.noteCount(SKIPPED_NON_EVE_NOTE, "n", skipped_count);
 }
 
 fn colorsAndHotkeys(draft: *Draft, ini: *const Ini) !void {
     var skipped_count: usize = 0;
-    var colored_count: usize = 0;
     if (ini.section("characterBorderColors")) |entries| {
         var it = entries.iterator();
         while (it.next()) |entry| {
@@ -383,13 +378,11 @@ fn colorsAndHotkeys(draft: *Draft, ini: *const Ini) !void {
             }
             const name = values.characterName(decoded) orelse continue;
             try draft.put(try draft.character(name), "borderColors.activeBorderColor", try values.colorValue(draft.arena, color));
-            colored_count += 1;
         }
     }
 
-    var converted_count: usize = 0;
-    const hotkeys = ini.section("characterHotkeys");
-    if (hotkeys) |entries| {
+    var has_converted = false;
+    if (ini.section("characterHotkeys")) |entries| {
         var it = entries.iterator();
         while (it.next()) |entry| {
             const decoded = try decodeKey(draft.arena, entry.key_ptr.*);
@@ -398,22 +391,21 @@ fn colorsAndHotkeys(draft: *Draft, ini: *const Ini) !void {
                 continue;
             }
             const name = values.characterName(decoded) orelse continue;
-            const combined = tupleHotkey(entry.value_ptr.*) orelse continue;
+            const combined = tupleHotkey(entry.value_ptr.*) orelse {
+                if (isBound(entry.value_ptr.*)) try draft.note("Skipped hotkey for \"{name}\": it can't be represented as a keyboard hotkey (mouse button or unsupported).", &.{.{ .name = "name", .value = name }});
+                continue;
+            };
             try draft.put(try draft.character(name), "hotkey", try values.keyValue(draft.arena, combined));
-            converted_count += 1;
+            has_converted = true;
         }
     }
+    if (has_converted) try draft.note("Character hotkeys were decoded from EVE-APM Preview's internal hotkey format - please confirm they're correct.", &.{});
 
-    try draft.noteCount("Imported {n} custom border color(s).", "n", colored_count);
-    const total_count = if (hotkeys) |found| found.count() else 0;
-    if (total_count > 0) try draft.note("Converted {converted} of {total} character hotkey(s) (decoded from EVE-APM Preview's internal hotkey format).", &.{ .{ .name = "converted", .value = try draft.format(converted_count) }, .{ .name = "total", .value = try draft.format(total_count) } });
     if (skipped_count > 0) try draft.noteCount(SKIPPED_NON_EVE_NOTE, "n", skipped_count);
 }
 
 fn hotkeyGroups(draft: *Draft, ini: *const Ini) !void {
     const entries = ini.section("cycleGroups") orelse return;
-    const first_note_index = draft.notes.items.len;
-    var imported_count: usize = 0;
     var it = entries.iterator();
     while (it.next()) |entry| {
         const group = try parseGroup(draft.arena, entry.value_ptr.*);
@@ -428,13 +420,11 @@ fn hotkeyGroups(draft: *Draft, ini: *const Ini) !void {
         try draft.put(fields, "characters", .{ .array = members });
         try draft.put(fields, "forwardKey", if (forward) |k| try values.keyValue(draft.arena, k) else .null);
         try draft.put(fields, "backwardKey", if (backward) |k| try values.keyValue(draft.arena, k) else .null);
-        imported_count += 1;
 
         if (forward != null or backward != null) try draft.note("Hotkey group \"{name}\": forward/backward key(s) were decoded from EVE-APM Preview's internal hotkey format - please confirm they're correct.", &.{.{ .name = "name", .value = name }});
         if (forward == null and isBound(group.forward)) try draft.note("Hotkey group \"{name}\": forward key can't be represented as a keyboard hotkey (mouse button or unsupported) and was skipped.", &.{.{ .name = "name", .value = name }});
         if (backward == null and isBound(group.backward)) try draft.note("Hotkey group \"{name}\": backward key can't be represented as a keyboard hotkey (mouse button or unsupported) and was skipped.", &.{.{ .name = "name", .value = name }});
     }
-    try draft.notes.insert(draft.arena, first_note_index, try draft.countText("Imported {n} hotkey group(s).", imported_count));
 }
 
 /// EVE-APM can bind several keys to one action.
@@ -462,7 +452,6 @@ fn globalHotkeys(draft: *Draft, ini: *const Ini) !void {
     try actionHotkey(draft, ini, "hotkeys", "suspendHotkey", "hotkeys.hotkeySuspend", "Toggle Suspend Hotkeys");
     try draft.setBool("hotkeys.requireEveFocus", qtBool(ini.get("hotkey", "onlyWhenEVEFocused")));
     try draft.setBool("hotkeys.resetGroupIndexOnNonGroupFocus", qtBool(ini.get("hotkey", "resetGroupIndexOnNonGroupFocus")));
-    try draft.note("Global action hotkeys imported.", &.{});
 }
 
 fn characterList(draft: *Draft, raw: ?[]const u8, field: []const u8) !void {
@@ -479,14 +468,12 @@ fn autoMinimize(draft: *Draft, ini: *const Ini) !void {
     try draft.setNumber("autoMinimize.delayMs", intValue(ini.get("window", "minimizeDelay")));
     try characterList(draft, ini.get("window", "neverMinimizeCharacters"), "excludeFromMinimize");
     try characterList(draft, ini.get("window", "neverCloseCharacters"), "excludeFromCloseAll");
-    try draft.note("Auto-minimize settings imported.", &.{});
 }
 
 fn snapping(draft: *Draft, ini: *const Ini) !void {
     try draft.setBool("snapping.enabled", qtBool(ini.get("position", "enableSnapping")));
     try draft.setNumber("snapping.threshold", intValue(ini.get("position", "snapDistance")));
     if (qtBool(ini.get("position", "lockPositions"))) |is_locked| try draft.setBool("interaction.enableDragging", !is_locked);
-    try draft.note("Snapping settings imported.", &.{});
 }
 
 fn chatlog(draft: *Draft, ini: *const Ini) !void {
@@ -499,7 +486,6 @@ fn chatlog(draft: *Draft, ini: *const Ini) !void {
     if (unquote(ini.get("gamelog", "directory"))) |directory| {
         if (directory.len > 0) try draft.setString("chatlog.gamelogDir", directory);
     }
-    try draft.note("Chatlog monitoring settings imported.", &.{});
 }
 
 fn notifications(draft: *Draft, ini: *const Ini) !void {
@@ -508,13 +494,10 @@ fn notifications(draft: *Draft, ini: *const Ini) !void {
     const color = values.rgbColor(ini.get("combatMessages", "color"));
     const suppresses_all = qtBool(ini.get("combatMessages", "suppressWhenFocused"));
 
-    var mapped_count: usize = 0;
-    var total_count: usize = 0;
     var events = std.mem.splitScalar(u8, ini.get("combatMessages", "enabledEventTypes") orelse "", ',');
     while (events.next()) |raw| {
         const event = std.mem.trim(u8, raw, " \t");
         if (event.len == 0) continue;
-        total_count += 1;
         const target = eventType(event) orelse {
             try draft.note("Event type \"{evt}\" has no equivalent notification in EVE-Maj Preview and was not imported.", &.{.{ .name = "evt", .value = event }});
             continue;
@@ -526,9 +509,7 @@ fn notifications(draft: *Draft, ini: *const Ini) !void {
         try draft.setColor(try concat(draft, base, "border_color"), color);
         const suppress_key = try draft.arena.print("suppressFocused\\{s}", .{event});
         try draft.setBool(try concat(draft, base, "suppress_when_focused"), qtBool(ini.get("combatMessages", suppress_key)) orelse suppresses_all);
-        mapped_count += 1;
     }
-    if (total_count > 0) try draft.note("Imported {mapped} of {total} event notification type(s).", &.{ .{ .name = "mapped", .value = try draft.format(mapped_count) }, .{ .name = "total", .value = try draft.format(total_count) } });
 }
 
 fn concat(draft: *Draft, prefix: []const u8, suffix: []const u8) ![]const u8 {
