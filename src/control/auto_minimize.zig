@@ -12,12 +12,6 @@ const Config = config_mod.Config;
 const ThumbnailWindow = window.ThumbnailWindow;
 const slog = log.Scoped("auto_minimize");
 
-/// Per-thumbnail auto-minimize state; only AutoMinimizer.check writes it after creation.
-pub const AutoMinimizeState = struct {
-    /// When check's delay counts from: the last tick the thumbnail was Active or Minimized.
-    inactive_since: win32.Ticks,
-};
-
 /// App owns it, so a thumbnail set rebuild keeps it.
 pub const AutoMinimizer = struct {
     last_focused_by_monitor: std.AutoHashMap(win32.HMONITOR, win32.HWND),

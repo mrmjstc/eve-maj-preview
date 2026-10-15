@@ -1,9 +1,10 @@
 //! Decides whether a notification shows on a thumbnail, and puts it there with its sound, speech, history entry and recently-notified cycle entry.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const config = @import("../config.zig");
+const config_mod = @import("../config.zig");
 const window = @import("../thumbnail/window.zig");
-const center_mod = @import("center.zig");
+const history_mod = @import("history.zig");
+const notified_queue_mod = @import("notified_queue.zig");
 const notification_mod = @import("notification.zig");
 const stack = @import("stack.zig");
 const rules = @import("rules.zig");
@@ -15,11 +16,17 @@ const slog = log.Scoped("notification");
 
 const TEST_PERMANENT_FALLBACK_MS: u32 = 5000;
 
+/// Where a shown notification is recorded beyond its thumbnail; both live in App's NotificationCenter.
+pub const Records = struct {
+    history: *history_mod.NotificationHistory,
+    notified_queue: *notified_queue_mod.NotifiedQueue,
+};
+
 /// What showing a notification reads and records beyond the thumbnail itself; borrowed for one call.
 pub const Context = struct {
     allocator: std.mem.Allocator,
-    config: *const config.Config,
-    center: *center_mod.NotificationCenter,
+    config: *const config_mod.Config,
+    records: Records,
     active_source_hwnd: ?win32.HWND,
 };
 
@@ -62,7 +69,7 @@ pub fn notifyAll(context: Context, thumbnails: []ThumbnailWindow, notification: 
 }
 
 /// Config dialog's "Test Notification": shows `notification_type` with sample fields on every EVE client, bypasses every suppression, force-shows hidden thumbnails for its duration, and skips history/cycle tracking; alerts play once rather than per thumbnail.
-pub fn showTest(context: Context, thumbnails: []ThumbnailWindow, notification_type: notification_mod.NotificationType, type_config: config.NotificationTypeConfig) !void {
+pub fn showTest(context: Context, thumbnails: []ThumbnailWindow, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig) !void {
     const example = notification_mod.sample(notification_type);
     var text_buf: [notification_mod.TEXT_MAX]u8 = undefined;
     var spoken_buf: [notification_mod.TEXT_MAX]u8 = undefined;
@@ -134,8 +141,8 @@ fn queue(context: Context, thumbnail: *ThumbnailWindow, text: []const u8, notifi
     push(context.allocator, thumbnail, .fromConfig(try context.allocator.dupe(u8, text), notification_type, type_config, now, type_config.duration_ms));
 
     // Game events feed the "cycle to recently notified" queue; feedback on the user's own action must not.
-    if (!notification_mod.isUserAction(notification_type)) context.center.notified_queue.track(context.allocator, thumbnail.character_name);
-    if (should_record_history) context.center.history.push(thumbnail.source_hwnd, thumbnail.character_name, text, notification_type, thumbnail.cached_character_color);
+    if (!notification_mod.isUserAction(notification_type)) context.records.notified_queue.track(context.allocator, thumbnail.character_name);
+    if (should_record_history) context.records.history.push(thumbnail.source_hwnd, thumbnail.character_name, text, notification_type, thumbnail.cached_character_color);
 
     slog.debug("Queued notification for {s}: [{s}] {s} (border_color_override: {?})", .{ thumbnail.character_name, @tagName(notification_type), text, type_config.border_color });
     return true;

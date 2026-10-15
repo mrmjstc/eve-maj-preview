@@ -8,7 +8,7 @@ const types = @import("../config/types.zig");
 const list_look = @import("list_look.zig");
 const app = @import("../app.zig");
 const window = @import("../thumbnail/window.zig");
-const input = @import("../thumbnail/input.zig");
+const thumbnail_input = @import("../control/thumbnail_input.zig");
 const drag = @import("drag.zig");
 const template = @import("../notifications/template.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
@@ -374,8 +374,8 @@ fn registerWindowClass(instance: win32.HINSTANCE) !void {
 }
 
 fn listWindow() ?*ListWindow {
-    const thumbnail_set = app.currentThumbnailSet() orelse return null;
-    return if (thumbnail_set.list_window) |*list_window| list_window else null;
+    const running = app.g_app orelse return null;
+    return if (running.list_window) |*list_window| list_window else null;
 }
 
 fn listWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) callconv(.c) win32.LRESULT {
@@ -394,17 +394,17 @@ fn listWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPara
         win32.WM_LBUTTONDOWN => {
             const list_window = listWindow() orelse return 0;
             const source_hwnd = list_window.rowSourceAt(win32.lparamX(lParam), win32.lparamY(lParam)) orelse return 0;
-            input.press(hwnd, source_hwnd);
+            thumbnail_input.press(hwnd, source_hwnd);
             return 0;
         },
         win32.WM_LBUTTONUP => {
-            input.release(hwnd);
+            thumbnail_input.release(hwnd);
             return 0;
         },
         win32.WM_SETCURSOR => {
             // Rows only: the header is the drag handle.
             const hit_test: win32.LRESULT = @as(u16, @truncate(@as(usize, @bitCast(lParam))));
-            if (hit_test == win32.HTCLIENT and input.applyHoverCursor()) return 1;
+            if (hit_test == win32.HTCLIENT and thumbnail_input.applyHoverCursor()) return 1;
             return win32.DefWindowProcA(hwnd, msg, wParam, lParam);
         },
         else => return win32.DefWindowProcA(hwnd, msg, wParam, lParam),

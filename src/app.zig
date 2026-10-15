@@ -7,9 +7,11 @@ const exclusions_mod = @import("clients/exclusions.zig");
 const auto_minimize = @import("control/auto_minimize.zig");
 const focus_mod = @import("control/focus.zig");
 const restart_plan = @import("control/restart_plan.zig");
+const thumbnail_input = @import("control/thumbnail_input.zig");
 const set = @import("thumbnail/set.zig");
 const hotkeys = @import("hotkeys/manager.zig");
 const center = @import("notifications/center.zig");
+const list_view = @import("panels/list_view.zig");
 const chatlog = @import("chatlog.zig");
 const character_ids_mod = @import("chatlog/character_ids.zig");
 const runtime = @import("activity/runtime.zig");
@@ -69,6 +71,8 @@ pub const App = struct {
     trackers: runtime.Trackers,
     /// Rebuilt on reload, so never cached elsewhere: read it from here each time.
     thumbnail_set: ?*ThumbnailSet = null,
+    /// Built and torn down with `thumbnail_set`; non-null only in ClientList mode.
+    list_window: ?list_view.ListWindow = null,
     /// Rebuilt like `thumbnail_set`, and read from here the same way.
     hotkey_manager: ?*HotkeyManager = null,
     /// Rebuilt when a reload changes the log folders.
@@ -106,7 +110,10 @@ pub const App = struct {
         };
         @memcpy(self.pending_profile_buf[0..profile_name.len], profile_name);
         self.pending_profile = self.pending_profile_buf[0..profile_name.len];
-        _ = win32.PostMessageA(timer_hwnd, win32.WM_SWITCH_PROFILE, 0, 0);
+        if (!win32.toBool(win32.PostMessageA(timer_hwnd, win32.WM_SWITCH_PROFILE, 0, 0))) {
+            slog.err("Failed to switch to profile '{s}': the switch couldn't be queued", .{profile_name});
+            self.pending_profile = null;
+        }
     }
 
     pub fn runPendingProfileSwitch(self: *App) void {
@@ -147,7 +154,7 @@ pub const App = struct {
             slog.info("Rebuilt thumbnails for view mode {s}", .{@tagName(self.store.live.display.viewMode)});
             return;
         }
-        thumbnail_set.syncListWindow();
+        if (self.list_window) |*list_window| list_window.sync();
         thumbnail_set.refreshAllThumbnailConfigCaches();
         // Moved before redrawing, so a re-shown thumbnail doesn't flash in its old place.
         switch (layout) {
@@ -170,6 +177,11 @@ pub const App = struct {
 
         if (self.thumbnail_set) |thumbnail_set| {
             thumbnail_set.update(scout_result.windows, scout_result.closed_windows.items, scout_result.name_changes.items);
+            if (self.list_window) |*list_window| {
+                list_window.render(thumbnail_set.thumbnails.items, thumbnail_set.active_source_hwnd) catch |err| {
+                    slog.err("Failed to render list window: {}", .{err});
+                };
+            }
             focus_mod.afterThumbnailSetUpdate(self, thumbnail_set, scout_result.name_changes.items);
             self.auto_minimizer.check(thumbnail_set.config, thumbnail_set.thumbnails.items, thumbnail_set.active_source_hwnd);
 
@@ -276,12 +288,25 @@ pub const App = struct {
     pub fn createThumbnailSet(self: *App) !*ThumbnailSet {
         const new_set = try self.allocator.create(ThumbnailSet);
         errdefer self.allocator.destroy(new_set);
-        new_set.* = try ThumbnailSet.init(self.allocator, &self.store, &self.exclusions, &self.notifications);
+        new_set.* = try ThumbnailSet.init(self.allocator, &self.store, &self.exclusions, self.notifications.records(), .{
+            .window_procs = .{ .thumbnail = thumbnail_input.windowProc, .text = thumbnail_input.textWindowProc },
+            .destroy_hook = thumbnail_input.windowDestroyProc,
+        });
         self.thumbnail_set = new_set;
+        if (new_set.view_mode == .ClientList) {
+            self.list_window = list_view.ListWindow.init(self.allocator, &self.store, self.instance) catch |err| blk: {
+                slog.err("Failed to create list window: {}", .{err});
+                break :blk null;
+            };
+        }
         return new_set;
     }
 
     pub fn destroyThumbnailSet(self: *App) void {
+        if (self.list_window) |*list_window| {
+            list_window.deinit();
+            self.list_window = null;
+        }
         const old_set = self.thumbnail_set orelse return;
         self.thumbnail_set = null;
         old_set.deinit();

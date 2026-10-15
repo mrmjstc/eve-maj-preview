@@ -9,19 +9,6 @@ const ThumbnailSet = set.ThumbnailSet;
 const Exclusions = exclusions_mod.Exclusions;
 const slog = log.Scoped("left_behind");
 
-/// Per-thumbnail travel state; ThumbnailSet records jumps, check() reads it and flags alerts.
-pub const LeftBehindState = struct {
-    /// Zero = hasn't jumped this session.
-    last_jump: win32.Ticks = .{},
-    /// Guards the left-behind alert to one per episode; cleared on jump.
-    alert_fired: bool = false,
-
-    pub fn recordJump(self: *LeftBehindState) void {
-        self.last_jump = win32.Ticks.now();
-        self.alert_fired = false;
-    }
-};
-
 /// Flags characters behind the group's current system by more than config.travel.window_seconds.
 pub fn check(thumbnail_set: *ThumbnailSet, exclusions: *const Exclusions, now: win32.Ticks) void {
     const travel = &thumbnail_set.config.travel;

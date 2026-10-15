@@ -13,12 +13,9 @@ const placement = @import("../layout/placement.zig");
 const spaces = @import("../layout/spaces.zig");
 const monitors = @import("../layout/monitors.zig");
 const state = @import("state.zig");
-const input = @import("input.zig");
 const window = @import("window.zig");
 const arrange = @import("arrange.zig");
-const list_view = @import("../panels/list_view.zig");
 const renderer_mod = @import("renderer.zig");
-const center = @import("../notifications/center.zig");
 const dispatch = @import("../notifications/dispatch.zig");
 const notification_mod = @import("../notifications/notification.zig");
 const log = @import("../log.zig");
@@ -73,12 +70,10 @@ pub const ThumbnailSet = struct {
     store: *config_mod.ProfileStore,
     /// Borrowed from App, which keeps it across a thumbnail set rebuild.
     exclusions: *const exclusions_mod.Exclusions,
-    /// Borrowed from App, which keeps it across a thumbnail set rebuild.
-    notifications: *center.NotificationCenter,
+    /// Borrowed from App's NotificationCenter, which keeps them across a thumbnail set rebuild.
+    notification_records: dispatch.Records,
     destroy_event_hook: ?win32.HANDLE = null,
     renderer: renderer_mod.Renderer,
-    /// Non-null only in ClientList mode.
-    list_window: ?list_view.ListWindow = null,
     auto_move: auto_move_mod.AutoMoveVerifier,
     ghost_overlay: drag_overlays.GhostOverlay,
     /// Shared by dragging and region select.
@@ -104,14 +99,21 @@ pub const ThumbnailSet = struct {
         system_names: ?*const SystemNameSnapshot = null,
     };
 
+    /// Passed in, since input handling sits above thumbnail/.
+    pub const Callbacks = struct {
+        window_procs: window.WindowProcs,
+        /// The EVENT_OBJECT_DESTROY hook on our own process's windows.
+        destroy_hook: win32.WINEVENTPROC,
+    };
+
     const ThumbnailStrings = struct {
         character_name: []const u8,
         system_name: []const u8,
         group_badge_label: []const u8,
     };
 
-    /// Borrows `store`, `exclusions` and `notifications`, which must outlive the thumbnail set.
-    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, exclusions: *const exclusions_mod.Exclusions, notifications: *center.NotificationCenter) !ThumbnailSet {
+    /// Borrows `store`, `exclusions` and `notification_records`, which must outlive the thumbnail set.
+    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, exclusions: *const exclusions_mod.Exclusions, notification_records: dispatch.Records, callbacks: Callbacks) !ThumbnailSet {
         const instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
         const config = &store.live;
 
@@ -126,32 +128,20 @@ pub const ThumbnailSet = struct {
             .config = config,
             .store = store,
             .exclusions = exclusions,
-            .notifications = notifications,
+            .notification_records = notification_records,
             .view_mode = config.display.viewMode,
         };
 
-        try window.registerClasses(instance);
+        try window.registerClasses(instance, callbacks.window_procs);
 
         // Own process only: removeDestroyedOverlay acts on our overlay windows alone.
-        thumbnail_set.destroy_event_hook = win32.setWinEventHookForProcess(win32.EVENT_OBJECT_DESTROY, input.windowDestroyProc, win32.GetCurrentProcessId());
+        thumbnail_set.destroy_event_hook = win32.setWinEventHookForProcess(win32.EVENT_OBJECT_DESTROY, callbacks.destroy_hook, win32.GetCurrentProcessId());
         if (thumbnail_set.destroy_event_hook == null) slog.err("Failed to set up destroy event hook", .{});
-
-        if (config.display.viewMode == .ClientList) {
-            thumbnail_set.list_window = list_view.ListWindow.init(allocator, store, instance) catch |err| blk: {
-                slog.err("Failed to create list window: {}", .{err});
-                break :blk null;
-            };
-        }
 
         return thumbnail_set;
     }
 
     pub fn deinit(self: *ThumbnailSet) void {
-        if (self.list_window) |*list_window| {
-            list_window.deinit();
-            self.list_window = null;
-        }
-
         if (self.destroy_event_hook) |hook| _ = win32.UnhookWinEvent(hook);
 
         self.ghost_overlay.deinit();
@@ -505,17 +495,6 @@ pub const ThumbnailSet = struct {
         if (needs_region_reflow) self.repositionAllThumbnails();
 
         self.renderDirtyThumbnails(null);
-
-        if (self.list_window) |*list_window| {
-            list_window.render(self.thumbnails.items, self.active_source_hwnd) catch |err| {
-                slog.err("Failed to render list window: {}", .{err});
-            };
-        }
-    }
-
-    /// Applies list view settings read only at creation, after a dialog change.
-    pub fn syncListWindow(self: *ThumbnailSet) void {
-        if (self.list_window) |*list| list.sync();
     }
 
     pub fn saveThumbnailPosition(self: *ThumbnailSet, hwnd: win32.HWND) void {
@@ -539,7 +518,7 @@ pub const ThumbnailSet = struct {
     }
 
     fn dispatchContext(self: *const ThumbnailSet) dispatch.Context {
-        return .{ .allocator = self.allocator, .config = self.config, .center = self.notifications, .active_source_hwnd = self.active_source_hwnd };
+        return .{ .allocator = self.allocator, .config = self.config, .records = self.notification_records, .active_source_hwnd = self.active_source_hwnd };
     }
 
     fn destroyThumbnail(self: *ThumbnailSet, thumbnail: ThumbnailWindow) void {

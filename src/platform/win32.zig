@@ -256,10 +256,12 @@ pub const COPYDATASTRUCT = extern struct {
     lpData: ?*const anyopaque,
 };
 
+pub const WNDPROC = *const fn (HWND, UINT, WPARAM, LPARAM) callconv(.c) LRESULT;
+
 pub const WNDCLASSEXA = extern struct {
     cbSize: UINT,
     style: UINT,
-    lpfnWndProc: *const fn (HWND, UINT, WPARAM, LPARAM) callconv(.c) LRESULT,
+    lpfnWndProc: WNDPROC,
     cbClsExtra: c_int,
     cbWndExtra: c_int,
     hInstance: HINSTANCE,

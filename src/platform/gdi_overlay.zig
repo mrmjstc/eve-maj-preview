@@ -11,8 +11,8 @@ const slog = log.Scoped("gdi_overlay");
 pub const HINT_BACKGROUND_COLOR: u32 = 0xC8000000;
 const HINT_BOX_CLASS_NAME = "EVE_HINT_BOX_CLASS";
 // Same per-line padding the thumbnail overlay gives its text runs.
-const HINT_LINE_PAD_X = 5;
-const HINT_LINE_PAD_Y = 2;
+const HINT_LINE_PADDING_X = 5;
+const HINT_LINE_PADDING_Y = 2;
 /// Longest hint line drawn, in bytes.
 const HINT_TEXT_MAX = 256;
 
@@ -224,11 +224,11 @@ pub const HintBox = struct {
             if (old_font) |previous_font| _ = win32.SelectObject(overlay.mem_dc, previous_font);
         }
 
-        drawTextUtf8(HINT_TEXT_MAX, overlay.mem_dc, box_padding + HINT_LINE_PAD_X, box_padding + HINT_LINE_PAD_Y, line1, text_color);
+        drawTextUtf8(HINT_TEXT_MAX, overlay.mem_dc, box_padding + HINT_LINE_PADDING_X, box_padding + HINT_LINE_PADDING_Y, line1, text_color);
         pixel_buffer.fixTextAlphaRect(overlay.canvas(), box_padding, box_padding, line1_size.width, line1_size.height);
 
         const line2_y: i32 = @intCast(box_padding + line1_size.height + line_gap);
-        drawTextUtf8(HINT_TEXT_MAX, overlay.mem_dc, box_padding + HINT_LINE_PAD_X, line2_y + HINT_LINE_PAD_Y, line2, text_color);
+        drawTextUtf8(HINT_TEXT_MAX, overlay.mem_dc, box_padding + HINT_LINE_PADDING_X, line2_y + HINT_LINE_PADDING_Y, line2, text_color);
         pixel_buffer.fixTextAlphaRect(overlay.canvas(), box_padding, line2_y, line2_size.width, line2_size.height);
 
         presentLayered(hwnd, overlay, 255);
@@ -382,7 +382,7 @@ pub fn truncateTextToFit(comptime buf_size: usize, dc: win32.HDC, out: *[buf_siz
 /// `background` may be null for a layered/owner-drawn window that paints its own background.
 pub fn registerWindowClass(
     instance: win32.HINSTANCE,
-    window_proc: *const fn (win32.HWND, win32.UINT, win32.WPARAM, win32.LPARAM) callconv(.c) win32.LRESULT,
+    window_proc: win32.WNDPROC,
     class_name: [*:0]const u8,
     background: ?win32.HBRUSH,
 ) !void {
@@ -442,7 +442,7 @@ fn registerHintBoxClass(instance: win32.HINSTANCE) !void {
 fn hintLineSize(dc: win32.HDC, text: []const u8) struct { width: usize, height: usize } {
     const size = measureTextSizeUtf8(HINT_TEXT_MAX, dc, text);
     return .{
-        .width = @intCast(@max(0, size.cx) + HINT_LINE_PAD_X * 2),
-        .height = @intCast(@max(0, size.cy) + HINT_LINE_PAD_Y * 2),
+        .width = @intCast(@max(0, size.cx) + HINT_LINE_PADDING_X * 2),
+        .height = @intCast(@max(0, size.cy) + HINT_LINE_PADDING_Y * 2),
     };
 }

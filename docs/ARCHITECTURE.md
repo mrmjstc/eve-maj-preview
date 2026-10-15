@@ -50,12 +50,13 @@ Owns every long-lived subsystem. Main thread only.
 | `store` (`ProfileStore`), `global_settings`, `character_ids`, `scout`, `exclusions`, `notifications` (`NotificationCenter`), `focus`, `trackers`, tray, update checker | Whole run |
 | `auto_minimizer` | Whole run; reset when a different profile loads |
 | `thumbnail_set`, `hotkey_manager`, `chatlog_monitor` | Rebuilt on reload; heap pointers |
+| `list_window` | Built and torn down with `thumbnail_set`; ClientList mode only |
 
 Rules:
 
 - Rebuilt subsystems are read from `App` each time, never cached elsewhere.
 - State that must survive a rebuild lives on `App` (exclusions, notification history, auto-minimize toggle).
-- `HotkeyManager` holds `*App`. `ThumbnailSet` borrows only the store, exclusions and notification center.
+- `HotkeyManager` holds `*App`. `ThumbnailSet` borrows only the store, exclusions and the notification center's history and notified queue (`dispatch.Records`). App passes in its window procs and destroy hook, so `thumbnail/` imports no input or panel code.
 
 Reload entry points:
 
@@ -130,7 +131,7 @@ Cross-thread data:
 
 **`clients/scout.zig`** (`Scout`): `EnumWindows` matched against `windowFilters` (class name, then exe path for new windows only). `trinityWindow` titles give the character name. Per-process `EVENT_OBJECT_NAMECHANGE`/`DESTROY` hooks catch renames and closes between scans. No creation hook: it would fire for every window on the desktop.
 
-**`thumbnail/set.zig`** (`ThumbnailSet`): the central mutable state. Owns the `ThumbnailWindow` list (linear search, a few dozen at most), keeps it in step with Scout, dispatches notifications, schedules layout and redraws. Holds the `Renderer`, list view window, auto-move verifier, ghost overlay, hint box and `AutoColorStore`.
+**`thumbnail/set.zig`** (`ThumbnailSet`): the central mutable state. Owns the `ThumbnailWindow` list (linear search, a few dozen at most), keeps it in step with Scout, dispatches notifications, schedules layout and redraws. Holds the `Renderer`, auto-move verifier, ghost overlay, hint box and `AutoColorStore`.
 
 **`thumbnail/window.zig`** (`ThumbnailWindow`): one per client, two HWNDs:
 
@@ -158,7 +159,7 @@ Rendering:
 - `platform/gdi_overlay.zig`: DIB-backed layered windows, text helpers, `HintBox`, class registration.
 - `util/pixel_buffer.zig`: pure ARGB drawing (rects, rounded frames, alpha fix-up).
 - `platform/panel_window.zig`: `PanelWindow`, shared by the client list and History Panel.
-- `panels/list_view.zig` + `list_look.zig`: `ClientList` view mode. `list_look` is pure and shared with the dialog preview.
+- `panels/list_view.zig` + `list_look.zig`: `ClientList` view mode; App owns the window, built and torn down with the thumbnail set. `list_look` is pure and shared with the dialog preview.
 - `thumbnail/hover_zoom.zig` + `layout/zoom.zig`: click-through enlarged copy under the cursor.
 
 Layout (`layout/`, mostly pure):
@@ -180,7 +181,7 @@ Layout (`layout/`, mostly pure):
 - **`control/focus.zig`** (`FocusTracker`): the `EVENT_SYSTEM_FOREGROUND` hook; feeds the thumbnail set, auto-minimize and cycling; auto-hides thumbnails after focus leaves EVE.
 - **`control/auto_minimize.zig`**: minimizes idle clients; decisions in `minimize_rules.zig` (pure, tested).
 - **`clients/`**: actions on EVE windows only (minimize, close, move, `animation.zig`'s `showClient`). Imports nothing from thumbnail, hotkey, drag or control.
-- **`thumbnail/input.zig`**: thumbnail window procs. Left click → `activate`; shift-click → exclusion toggle; right drag → `drag/thumbnail.zig` (Ctrl moves all).
+- **`control/thumbnail_input.zig`**: thumbnail window procs, passed into `thumbnail/` by App. Left click → `activate`; shift-click → exclusion toggle; right drag → `drag/thumbnail.zig` (Ctrl moves all).
 - **`drag/`**: snapping (`snap_math.zig` pure), ghost overlays. Panel header drags are `panels/drag.zig`.
 - **`protocol.zig`**: `evemajpreview://switch/<name>`, `profile/<name>`, `hotkey/<action>`; registry registration; `WM_COPYDATA` IPC via `findExistingInstance`/`sendCommandToInstance`.
 

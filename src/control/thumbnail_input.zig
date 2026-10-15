@@ -2,12 +2,12 @@
 const win32 = @import("../platform/win32.zig");
 const app = @import("../app.zig");
 const membership = @import("../hotkeys/membership.zig");
-const activation = @import("../control/activation.zig");
+const activation = @import("activation.zig");
 const thumbnail_drag = @import("../drag/thumbnail.zig");
-const window = @import("window.zig");
+const window = @import("../thumbnail/window.zig");
 const log = @import("../log.zig");
 
-const slog = log.Scoped("input");
+const slog = log.Scoped("thumbnail_input");
 
 /// A left press waiting for its release when clicks trigger on mouse-up; right-click drags instead.
 const ClickState = struct {
@@ -100,9 +100,20 @@ pub fn textWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, l
 /// Batched with the hover zoom's raise, so the text is never composited above the zoom in between.
 fn raiseTextOverlay(hwnd: win32.HWND) void {
     const text_hwnd = win32.linkedWindow(hwnd) orelse return;
-    var hdwp = win32.BeginDeferWindowPos(3) orelse return;
-    hdwp = win32.deferRaiseTopmost(hdwp, text_hwnd) orelse return;
-    if (app.currentThumbnailSet()) |thumbnail_set| hdwp = thumbnail_set.renderer.hover_zoom.deferRaise(hdwp) orelse return;
+    var hdwp = win32.BeginDeferWindowPos(3) orelse {
+        slog.debug("Failed to begin raising the text overlay", .{});
+        return;
+    };
+    hdwp = win32.deferRaiseTopmost(hdwp, text_hwnd) orelse {
+        slog.debug("Failed to raise the text overlay", .{});
+        return;
+    };
+    if (app.currentThumbnailSet()) |thumbnail_set| {
+        hdwp = thumbnail_set.renderer.hover_zoom.deferRaise(hdwp) orelse {
+            slog.debug("Failed to raise the hover zoom with the text overlay", .{});
+            return;
+        };
+    }
     _ = win32.EndDeferWindowPos(hdwp);
 }
 

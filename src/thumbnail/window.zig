@@ -3,13 +3,10 @@ const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
 const config_mod = @import("../config.zig");
-const input = @import("input.zig");
 const state = @import("state.zig");
 const overlay = @import("overlay.zig");
-const travel_left_behind = @import("../travel/left_behind.zig");
 const stack = @import("../notifications/stack.zig");
 const scout = @import("../clients/scout.zig");
-const auto_minimize_mod = @import("../control/auto_minimize.zig");
 const log = @import("../log.zig");
 
 const ThumbnailState = config_mod.ThumbnailState;
@@ -107,6 +104,25 @@ pub const ActivityStats = struct {
     }
 };
 
+/// Per-thumbnail travel state; ThumbnailSet records jumps, travel/left_behind.zig's check reads it and flags alerts.
+pub const LeftBehindState = struct {
+    /// Zero = hasn't jumped this session.
+    last_jump: win32.Ticks = .{},
+    /// Guards the left-behind alert to one per episode; cleared on jump.
+    alert_fired: bool = false,
+
+    pub fn recordJump(self: *LeftBehindState) void {
+        self.last_jump = win32.Ticks.now();
+        self.alert_fired = false;
+    }
+};
+
+/// Per-thumbnail auto-minimize state; only control/auto_minimize.zig's AutoMinimizer.check writes it after creation.
+pub const AutoMinimizeState = struct {
+    /// When check's delay counts from: the last tick the thumbnail was Active or Minimized.
+    inactive_since: win32.Ticks,
+};
+
 pub const ThumbnailWindow = struct {
     hwnd: win32.HWND,
     /// Layered window used for both the text overlay and the border.
@@ -120,7 +136,7 @@ pub const ThumbnailWindow = struct {
     system_name: []const u8,
     /// YYYYMMDD*1000000+HHMMSS of the event that set system_name; 0 for live tailing, which always applies.
     system_name_event_timestamp: u64 = 0,
-    travel: travel_left_behind.LeftBehindState = .{},
+    travel: LeftBehindState = .{},
     notifications: stack.NotificationStack = .{},
     last_click_time: win32.Ticks = .{},
     is_excluded_from_cycle: bool = false,
@@ -136,7 +152,7 @@ pub const ThumbnailWindow = struct {
     render_cache: overlay.RenderCache = .{},
 
     visibility_state: state.VisibilityState = .visible,
-    auto_minimize: auto_minimize_mod.AutoMinimizeState,
+    auto_minimize: AutoMinimizeState,
     /// Catches a minimize/restore with no focus change; refreshed each tick except while dragged.
     was_minimized: bool = false,
 
@@ -278,21 +294,27 @@ pub const Handles = struct {
     thumbnail_id: win32.HTHUMBNAIL,
 };
 
+/// Passed in, since input handling sits above thumbnail/.
+pub const WindowProcs = struct {
+    thumbnail: win32.WNDPROC,
+    text: win32.WNDPROC,
+};
+
 var g_has_registered_classes: bool = false;
 
 /// Once per process, since window classes outlive any one ThumbnailSet.
-pub fn registerClasses(instance: win32.HINSTANCE) !void {
+pub fn registerClasses(instance: win32.HINSTANCE, procs: WindowProcs) !void {
     if (g_has_registered_classes) return;
 
     // Black, not white COLOR_WINDOW: shows through whenever DWM has no live thumbnail frame to composite.
     const thumbnail_bg_brush = win32.CreateSolidBrush(0x00000000) orelse return error.CreateBrushFailed;
     // Owned by the class once registered.
-    gdi_overlay.registerWindowClass(instance, input.windowProc, WINDOW_CLASS_NAME, thumbnail_bg_brush) catch |err| {
+    gdi_overlay.registerWindowClass(instance, procs.thumbnail, WINDOW_CLASS_NAME, thumbnail_bg_brush) catch |err| {
         _ = win32.DeleteObject(thumbnail_bg_brush);
         return err;
     };
     // No background brush for a layered window.
-    try gdi_overlay.registerWindowClass(instance, input.textWindowProc, TEXT_WINDOW_CLASS_NAME, null);
+    try gdi_overlay.registerWindowClass(instance, procs.text, TEXT_WINDOW_CLASS_NAME, null);
     g_has_registered_classes = true;
 }
 
