@@ -31,7 +31,7 @@ All relative to the exe folder (`main.zig` sets the cwd there).
 1. Set per-monitor DPI awareness, install crash handlers.
 2. Parse arguments (`arguments.zig`: `--profile`/`-p`, `--config`, `--protocol <url>`).
 3. `--protocol`: forward to the running instance over `WM_COPYDATA` and exit. Done before the single-instance check.
-4. Claim the `Global\EVE-Maj-Preview-SingleInstance` mutex. If taken, send `open_config` to the running instance and exit.
+4. Claim the `Global\EVE-Maj-Preview-SingleInstance` mutex. If taken, send `evemajpreview://config` to the running instance and exit.
 5. Load bundled fonts, `GlobalConfig`, `CharacterIds`, language, then the profile into a `ProfileStore`.
 6. Build subsystems in dependency order: notification center → `Scout` → `ThumbnailSet` → `ChatlogMonitor` (worker stopped) → activity `Trackers` → start the chatlog worker.
 7. Create the hidden timer window, focus hook, tray icon, update check thread.
@@ -79,8 +79,7 @@ Reload entry points:
 | `WM_TIMER` `HIDE_DEBOUNCE_TIMER_ID` | `focus.onHideTimer` |
 | `WM_HOTKEY` | `focus_grant.handleWmHotkey`, else `HotkeyManager.handleHotkeyPress` |
 | `WM_TRAYICON`, `WM_COMMAND` | `TrayIcon` |
-| `WM_COPYDATA` | Protocol commands from a second process |
-| `WM_PROTOCOL_HOTKEY` | `HotkeyManager.runGlobalAction` |
+| `WM_COPYDATA` | `protocol/run.handleCopyData`: protocol URLs from a second process |
 | `WM_SWITCH_PROFILE` | `App.runPendingProfileSwitch` |
 | `WM_HOTKEYS_STATE_CHANGED` | Suspend/resume notification |
 | `WM_KNOTS_COMMAND` | `dialog/knots/host.onCommand` |
@@ -173,7 +172,7 @@ Layout (`layout/`, mostly pure):
 ## Input and control
 
 - **Hotkeys** go through `WH_KEYBOARD_LL`/`WH_MOUSE_LL` (`hotkeys/keyboard_hook.zig`, `mouse_hook.zig`, shared `hook_bindings.zig`), not `RegisterHotKey`, so bare modifiers and mouse buttons bind. Matches are posted as `WM_HOTKEY`.
-- **IDs** (`hotkeys/bindings.zig`): bands of 1000 per kind (cycle group 0, global action 1000, per-character 2000, profile switch 3000, assign group 4000, app 5000, URL 6000). `GLOBAL_BINDINGS` maps global actions to config fields and protocol actions.
+- **IDs** (`hotkeys/bindings.zig`): bands of 1000 per kind (cycle group 0, global action 1000, per-character 2000, profile switch 3000, assign group 4000, app 5000, URL 6000, close group 7000, minimize group 8000). `GLOBAL_BINDINGS` maps global actions to config fields and protocol actions.
 - **`hotkeys/manager.zig`** (`HotkeyManager`): registration, suspend and dialog-recording pause, and `runAction`, the one switch on `HotkeyAction`. Bindings come from `store.saved`; other settings from `store.live`.
 - **`hotkeys/cycling.zig`**: every cycle hotkey. Decisions are in `cycle_order.zig` (pure, tested).
 - **`control/activation.zig`** (`activate`): where every click, cycle and protocol switch ends. Restore, foreground, reconcile thumbnail states, dismiss click-suppressed notifications, sync cycle cursors.
@@ -183,7 +182,7 @@ Layout (`layout/`, mostly pure):
 - **`clients/`**: actions on EVE windows only (minimize, close, move, `animation.zig`'s `showClient`). Imports nothing from thumbnail, hotkey, drag or control.
 - **`control/thumbnail_input.zig`**: thumbnail window procs, passed into `thumbnail/` by App. Left click → `activate`; shift-click → exclusion toggle; right drag → `drag/thumbnail.zig` (Ctrl moves all).
 - **`drag/`**: snapping (`snap_math.zig` pure), ghost overlays. Panel header drags are `panels/drag.zig`.
-- **`protocol.zig`**: `evemajpreview://switch/<name>`, `profile/<name>`, `hotkey/<action>`; registry registration; `WM_COPYDATA` IPC via `findExistingInstance`/`sendCommandToInstance`.
+- **`protocol/`**: `url.zig` parses `evemajpreview://` URLs into a `Command` (pure, tested); `ipc.zig` sends the URL text itself to the running instance over `WM_COPYDATA`; `run.zig` parses it there and runs it through the same code as its hotkey or tray item (group actions via `HotkeyManager.runGroupAction`); `registry.zig` registers the handler, again whenever the exe path changes.
 
 Hotkey press → character switch:
 

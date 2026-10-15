@@ -7,7 +7,7 @@ const scout = @import("../clients/scout.zig");
 const actions = @import("../clients/actions.zig");
 const exclusions_mod = @import("../clients/exclusions.zig");
 const config_mod = @import("../config.zig");
-const protocol = @import("../protocol.zig");
+const url = @import("../protocol/url.zig");
 const app_mod = @import("../app.zig");
 const alert_effects = @import("../notifications/alert_effects.zig");
 const notified_queue_mod = @import("../notifications/notified_queue.zig");
@@ -353,8 +353,25 @@ pub const HotkeyManager = struct {
     }
 
     /// Runs a global action requested outside a hotkey press (protocol URL, tray menu), bypassing the press-only suspend/focus gating.
-    pub fn runGlobalAction(self: *HotkeyManager, action: protocol.GlobalAction) void {
+    pub fn runGlobalAction(self: *HotkeyManager, action: url.GlobalAction) void {
         var hotkey_action = bindings.fromProtocol(action);
+        self.runAction(&hotkey_action);
+    }
+
+    /// Like runGlobalAction, for the hotkey group named `group_name`; a cycle runs that group alone, even if its key is shared.
+    pub fn runGroupAction(self: *HotkeyManager, action: url.GroupAction, group_name: []const u8) void {
+        const group_index = self.config.hotkeyGroupIndex(group_name) orelse {
+            slog.warn("Failed to run group '{s}': no hotkey group named '{s}'", .{ @tagName(action), group_name });
+            return;
+        };
+        const group_indices = [_]usize{group_index};
+        var hotkey_action: HotkeyAction = switch (action) {
+            .next => .{ .cycle_group = .{ .group_indices = &group_indices, .is_forward = true } },
+            .previous => .{ .cycle_group = .{ .group_indices = &group_indices, .is_forward = false } },
+            .assign => .{ .assign_group = .{ .group_index = group_index } },
+            .minimize => .{ .minimize_group = .{ .group_index = group_index } },
+            .close => .{ .close_group = .{ .group_index = group_index } },
+        };
         self.runAction(&hotkey_action);
     }
 
@@ -415,6 +432,13 @@ pub const HotkeyManager = struct {
                 app_mod.requestExit();
             },
             .close_active => self.closeForegroundClient(),
+            .toggle_dragging => self.app.toggleDragging(),
+            .toggle_travel_mode => self.app.toggleTravelMode(),
+            .toggle_notification_history => self.app.toggleNotificationHistory(),
+            .clear_notification_history => {
+                slog.info("Clear notification history hotkey pressed", .{});
+                self.app.notifications.history.clear();
+            },
             .activate_app => |activate| launch.activateApp(self.global_settings, activate.app_index),
             .open_url => |open_url| launch.openUrl(self.allocator, self.io, self.global_settings, open_url.url_index),
         }

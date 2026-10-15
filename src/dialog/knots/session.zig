@@ -1,7 +1,7 @@
 //! What the knots configuration window edits: the running profile's `live` copy and a draft of the global settings, changed only through `Ref.set`; main thread only.
 const std = @import("std");
 const config = @import("../../config.zig");
-const protocol = @import("../../protocol.zig");
+const registry = @import("../../protocol/registry.zig");
 const app_mod = @import("../../app.zig");
 const patch = @import("../../config/patch.zig");
 const run_on_startup = @import("../run_on_startup.zig");
@@ -281,7 +281,7 @@ pub fn save() !void {
         log.setLevel(settings.logLevel);
         if (settings.logLevel == .debug) log.openDebugConsole() else log.closeDebugConsole();
         run_on_startup.apply(settings.runOnStartup);
-        if (settings.autoRegisterProtocol) protocol.ensureRegistered(g_allocator);
+        if (settings.autoRegisterProtocol) registry.ensureRegistered();
     }
     g_is_dirty_stale = true;
 }

@@ -10,7 +10,6 @@ const arguments = @import("arguments.zig");
 const app_mod = @import("app.zig");
 const config = @import("config.zig");
 const scout = @import("clients/scout.zig");
-const activation = @import("control/activation.zig");
 const focus = @import("control/focus.zig");
 const chatlog = @import("chatlog.zig");
 const mouse_hook = @import("hotkeys/mouse_hook.zig");
@@ -18,7 +17,10 @@ const keyboard_hook = @import("hotkeys/keyboard_hook.zig");
 const tts = @import("notifications/tts.zig");
 const sound = @import("notifications/sound.zig");
 const tray = @import("tray.zig");
-const protocol = @import("protocol.zig");
+const ipc = @import("protocol/ipc.zig");
+const registry = @import("protocol/registry.zig");
+const run = @import("protocol/run.zig");
+const url = @import("protocol/url.zig");
 const update = @import("update.zig");
 const knots_host = @import("dialog/knots/host.zig");
 const run_on_startup = @import("dialog/run_on_startup.zig");
@@ -73,9 +75,9 @@ fn mainImpl(init: std.process.Init) !void {
     const parsed = arguments.parse(try init.minimal.args.toSlice(args_arena.allocator()));
 
     // Before the mutex check, so commands work even when another instance is already running.
-    if (parsed.protocol_url) |url| {
-        slog.info("Protocol handler invoked: {s}", .{url});
-        return protocol.forwardToRunningInstance(url, allocator);
+    if (parsed.protocol_url) |protocol_url| {
+        slog.info("Protocol handler invoked: {s}", .{protocol_url});
+        return ipc.forwardToRunningInstance(protocol_url);
     }
 
     const instance_mutex = try claimSingleInstance(init.io) orelse return;
@@ -119,7 +121,7 @@ fn mainImpl(init: std.process.Init) !void {
     app.notifications.start(allocator, &app.store, app.instance);
     defer app.notifications.deinit(allocator);
 
-    if (app.global_settings.autoRegisterProtocol) protocol.ensureRegistered(allocator);
+    if (app.global_settings.autoRegisterProtocol) registry.ensureRegistered();
 
     defer tts.shutdown();
     defer sound.shutdown();
@@ -213,27 +215,27 @@ fn claimSingleInstance(io: std.Io) !?win32.HANDLE {
         slog.info("Another instance of EVE-Maj Preview is already running", .{});
         return error.AlreadyRunning;
     };
-    protocol.sendCommandToInstance(hwnd, .{ .open_config = {} });
+    ipc.send(hwnd, url.OPEN_CONFIG_URL);
     return null;
 }
 
 /// Polls because the other instance may hold the mutex but still be starting up, e.g. when the installer launches both at once.
 fn waitForInstanceWindow(io: std.Io) ?win32.HWND {
     for (0..INSTANCE_WAIT_ATTEMPTS) |_| {
-        if (protocol.findExistingInstance()) |hwnd| return hwnd;
+        if (ipc.findExistingInstance()) |hwnd| return hwnd;
         std.Io.sleep(io, .fromMilliseconds(INSTANCE_WAIT_INTERVAL_MS), .awake) catch |err| {
             slog.warn("Failed to wait for the running instance's window: {}", .{err});
             return null;
         };
     }
-    return protocol.findExistingInstance();
+    return ipc.findExistingInstance();
 }
 
 /// The hidden window whose WM_TIMER drives the app; never shown, so its class's cursor never shows either.
 fn createTimerWindow() !win32.HWND {
     const instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
-    try gdi_overlay.registerWindowClass(instance, timerWindowProc, protocol.MAIN_WINDOW_CLASS, null);
-    return win32.CreateWindowExA(0, protocol.MAIN_WINDOW_CLASS, "EVE Timer Window", 0, 0, 0, 0, 0, null, null, instance, null) orelse error.CreateWindowFailed;
+    try gdi_overlay.registerWindowClass(instance, timerWindowProc, ipc.MAIN_WINDOW_CLASS, null);
+    return win32.CreateWindowExA(0, ipc.MAIN_WINDOW_CLASS, "EVE Timer Window", 0, 0, 0, 0, 0, null, null, instance, null) orelse error.CreateWindowFailed;
 }
 
 fn startChatlogMonitoring(monitor: *chatlog.ChatlogMonitor, characters: []const config.CharacterConfig) void {
@@ -312,38 +314,11 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
             return 0;
         },
         win32.WM_COPYDATA => {
-            const copy_data = win32.lparamToPtr(win32.COPYDATASTRUCT, lParam);
-            const payload = protocol.copyDataBytes(copy_data);
-
-            switch (copy_data.dwData) {
-                win32.PROTOCOL_SWITCH_CHARACTER => if (payload) |character_name| {
-                    slog.info("Protocol handler: switch to character: {s}", .{character_name});
-                    if (app.scout.getHwndByName(character_name)) |target_hwnd| {
-                        activation.activate(app, target_hwnd);
-                    } else {
-                        slog.warn("Failed to switch to character '{s}': not running", .{character_name});
-                    }
-                },
-                win32.PROTOCOL_SWITCH_PROFILE => if (payload) |profile_name| {
-                    slog.info("Protocol handler: switch to profile: {s}", .{profile_name});
-                    app.switchProfile(profile_name);
-                },
-                win32.PROTOCOL_OPEN_CONFIG => knots_host.open(),
-                else => {},
-            }
+            run.handleCopyData(app, win32.lparamToPtr(win32.COPYDATASTRUCT, lParam));
             return 0;
         },
         win32.WM_KNOTS_COMMAND => {
             knots_host.onCommand(wParam, lParam);
-            return 0;
-        },
-        win32.WM_PROTOCOL_HOTKEY => {
-            const action = std.enums.fromInt(protocol.GlobalAction, wParam) orelse {
-                slog.warn("Failed to run protocol hotkey: unknown action {}", .{wParam});
-                return 0;
-            };
-            slog.info("Protocol handler: {s}", .{@tagName(action)});
-            if (app.hotkey_manager) |manager| manager.runGlobalAction(action);
             return 0;
         },
         else => return win32.DefWindowProcA(hwnd, msg, wParam, lParam),

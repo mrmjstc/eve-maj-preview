@@ -132,6 +132,20 @@ pub fn show(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "Uses the window positions saved on the Characters tab.");
     try actions.close(context);
 
+    const modes = try widgets.openSection(context, "Modes", "Turn thumbnail dragging or Travel Mode on and off. Both are also in the tray menu.", &style.section);
+    try binding(context, profile_hotkeys, "hotkeyToggleDragging", "Toggle Thumbnail Dragging");
+    try widgets.hintText(context, .src(@src()), "Lets you move thumbnails with the mouse.");
+    try binding(context, profile_hotkeys, "hotkeyToggleTravelMode", "Toggle Travel Mode");
+    try widgets.hintText(context, .src(@src()), "Alerts you when a character is left behind on a jump.");
+    try modes.close(context);
+
+    const history = try widgets.openSection(context, "Notification History", "Show, hide or clear the notification history panel. Both are also in the tray menu.", &style.section);
+    try binding(context, profile_hotkeys, "hotkeyToggleNotificationHistory", "Toggle Notification History");
+    try widgets.hintText(context, .src(@src()), "Shows or hides the history panel.");
+    try binding(context, profile_hotkeys, "hotkeyClearNotificationHistory", "Clear Notification History");
+    try widgets.hintText(context, .src(@src()), "Empties the history panel.");
+    try history.close(context);
+
     const cycling = try widgets.openSection(context, "Special Cycling", "Step through the excluded characters, or the ones that recently notified.", &style.section);
     try pair(context, profile_hotkeys, "hotkeyPreviousExcluded", "hotkeyNextExcluded", "Excluded Characters");
     try widgets.hintText(context, .src(@src()), "Steps through only the characters you've excluded.");

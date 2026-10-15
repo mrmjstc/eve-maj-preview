@@ -18,7 +18,7 @@ const Text = ui.component.Text;
 const SelectInput = ui.component.SelectInput;
 const slog = log.Scoped("dialog_knots");
 
-const PROTOCOL_DOCS_URL = "https://github.com/mrmjstc/eve-maj-preview/blob/main/docs/CONFIGURATION.md#protocol-handler";
+const PROTOCOL_DOCS_URL = "https://github.com/mrmjstc/eve-maj-preview/blob/main/docs/CONFIGURATION.md#command-line-and-protocol";
 
 /// A list of names scanned from outside the settings, kept until the next scan.
 const Scan = struct {
@@ -195,12 +195,12 @@ fn windowPosition(context: *ui.Frame) !void {
 /// Set All, Clear All and Confirm share the widest label's width, at least style.PAIRED_BUTTON_WIDTH.
 fn pairedButtonWidth(context: *ui.Frame) !f32 {
     const padding = comptime style.plain_button.padding.?;
-    const border = 2;
+    const border_width = comptime style.plain_button.border_width.?.max();
     var widest: f32 = 0;
     for ([_][]const u8{ "Set All", "Clear All", "Confirm" }) |label| {
         widest = @max(widest, try widgets.textWidth(context, lang.text(label), &style.button_text));
     }
-    return @max(style.PAIRED_BUTTON_WIDTH, @ceil(padding.left() + widest + padding.right() + border));
+    return @max(style.PAIRED_BUTTON_WIDTH, @ceil(padding.left() + widest + padding.right() + 2 * border_width));
 }
 
 fn clearAll() void {
@@ -287,8 +287,8 @@ fn ultraPotato(context: *ui.Frame) !void {
     try row.close(context);
     try widgets.hintText(context, .src(@src()), "The EVE settings to change. Close EVE first.");
     const apply = try widgets.openBinding(context, .src(@src()), "Lowest Graphics Settings");
-    const can_apply = paths != null;
-    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Apply Ultra Potato Mode"), .disabled = !can_apply, .style = if (can_apply) &style.plain_button else &style.disabled_button })).clicked) {
+    const has_selection = paths != null;
+    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Apply Ultra Potato Mode"), .disabled = !has_selection, .style = if (has_selection) &style.plain_button else &style.disabled_button })).clicked) {
         if (paths) |chosen| applyPotato(chosen);
     }
     try apply.close(context);

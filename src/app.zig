@@ -227,6 +227,25 @@ pub const App = struct {
         thumbnail_set.notifyAll(.{ .notification_type = .AutoMinimizeToggle, .state = if (is_enabled) .on else .off });
     }
 
+    /// The hotkey and tray toggle.
+    pub fn toggleDragging(self: *App) void {
+        const is_enabled = !self.store.live.interaction.enableDragging;
+        self.store.update(.{ .interaction = .{ .enableDragging = is_enabled } });
+        slog.info("Thumbnail dragging toggled: {s}", .{if (is_enabled) "enabled" else "disabled"});
+    }
+
+    /// The hotkey and tray toggle.
+    pub fn toggleTravelMode(self: *App) void {
+        const is_enabled = !self.store.live.travel.enabled;
+        self.store.update(.{ .travel = .{ .enabled = is_enabled } });
+        slog.info("Travel Mode toggled: {s}", .{if (is_enabled) "enabled" else "disabled"});
+    }
+
+    /// The hotkey and tray toggle.
+    pub fn toggleNotificationHistory(self: *App) void {
+        self.notifications.panel.toggle(self.allocator, &self.store, self.instance, scout_mod.anyCharacterLoggedIn(self.scout.getWindows()));
+    }
+
     fn deliverChatlogFindings(self: *App, findings: *const chatlog.Findings) void {
         const thumbnail_set = self.thumbnail_set;
         const shown_count = findings.system_updates.items.len + findings.notifications.items.len;

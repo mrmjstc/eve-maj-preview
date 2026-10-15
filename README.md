@@ -82,9 +82,11 @@ EVE-Maj Preview registers a `evemajpreview://` URL protocol for external control
 evemajpreview://switch/Character%20Name
 evemajpreview://profile/pvp.json
 evemajpreview://hotkey/toggle_visibility
+evemajpreview://group/close/Mining%20Fleet
+evemajpreview://config
 ```
 
-See [Protocol Handler](docs/CONFIGURATION.md#protocol-handler) in the configuration reference for the full URL format, all hotkey actions, and registration details.
+See [Command line and protocol](docs/CONFIGURATION.md#command-line-and-protocol) in the configuration reference for the full URL format, all hotkey actions, and registration details.
 
 ## Configuration Reference
 

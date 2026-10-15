@@ -24,6 +24,10 @@ pub const HotkeysConfig = struct {
     hotkeyCycleNotified: KeyList = .empty,
     hotkeyPreviousNotified: KeyList = .empty,
     hotkeyMoveToSavedPositions: KeyList = .empty,
+    hotkeyToggleDragging: KeyList = .empty,
+    hotkeyToggleTravelMode: KeyList = .empty,
+    hotkeyToggleNotificationHistory: KeyList = .empty,
+    hotkeyClearNotificationHistory: KeyList = .empty,
 
     pub const Wire = wire.Wire(HotkeysConfig);
 };

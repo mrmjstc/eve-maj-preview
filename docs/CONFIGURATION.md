@@ -561,6 +561,10 @@ All values are **keys**.
 | `hotkeyExitApp` | keys | | Exit the app (clients stay open). |
 | `hotkeyCycleNotified`, `hotkeyPreviousNotified` | keys | | Cycle recently notified characters, oldest first, one shared cursor. |
 | `hotkeyMoveToSavedPositions` | keys | | Move clients to `windowPosition`, honouring `excludeFromAutoMove`. |
+| `hotkeyToggleDragging` | keys | | Toggle `interaction.enableDragging`. |
+| `hotkeyToggleTravelMode` | keys | | Toggle `travel.enabled`. |
+| `hotkeyToggleNotificationHistory` | keys | | Show/hide the notification history panel. |
+| `hotkeyClearNotificationHistory` | keys | | Clear the notification history. |
 
 ### hotkeyGroups
 
@@ -665,13 +669,22 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `--config` | Open the config dialog. Any second launch forwards this to the running instance. |
 | `--protocol <url>` | Forward a protocol URL to the running instance and exit. |
 
-`evemajpreview://` URLs are forwarded to the running instance and dropped if none is running. Registered under `HKCU\Software\Classes\evemajpreview` (no admin) with the current executable's path; re-register after moving the exe.
+`evemajpreview://` URLs are forwarded to the running instance and dropped if none is running. Registered under `HKCU\Software\Classes\evemajpreview` (no admin) with the current executable's path; re-registered at startup if the exe has moved. Names are percent-encoded (`%20` for a space); `+` is kept as written.
 
 | URL | Effect |
 |---|---|
-| `evemajpreview://switch/<character>` | Activate that character. URL-encoded. |
+| `evemajpreview://switch/<character>` | Activate that character. |
 | `evemajpreview://profile/<file>` | Load `<file>` (e.g. `pvp.json`, case-insensitive). Invalid or missing → `default.json`. |
 | `evemajpreview://hotkey/<action>` | Run a global hotkey action. |
+| `evemajpreview://group/<action>/<group>` | Run a [hotkey group](#hotkeygroups) action on the group with that name (case-insensitive). |
+| `evemajpreview://config` | Open the config dialog. |
+
+| Group action | Same as |
+|---|---|
+| `next`, `previous` | `forwardKey`, `backwardKey`, cycling this group alone even if its key is shared |
+| `assign` | `assignKey` |
+| `minimize` | `minimizeKey` |
+| `close` | `closeKey` |
 
 | Action | Same as |
 |---|---|
@@ -692,3 +705,7 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `next_not_logged_in`, `previous_not_logged_in` | `hotkeyCycleNotLoggedInForward`, `…Backward` |
 | `return_to_last_app` | `hotkeyReturnToLastApp` |
 | `next_app`, `previous_app` | `hotkeyCycleAppsForward`, `…Backward` |
+| `toggle_dragging` | `hotkeyToggleDragging` |
+| `toggle_travel_mode` | `hotkeyToggleTravelMode` |
+| `toggle_notification_history` | `hotkeyToggleNotificationHistory` |
+| `clear_notification_history` | `hotkeyClearNotificationHistory` |

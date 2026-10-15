@@ -47,7 +47,7 @@ test {
     _ = @import("panels/history_look.zig");
     _ = @import("panels/list_look.zig");
     _ = @import("platform/virtual_keys.zig");
-    _ = @import("protocol.zig");
+    _ = @import("protocol/url.zig");
     _ = @import("thumbnail/draw.zig");
     _ = @import("thumbnail/state.zig");
     _ = @import("travel/stragglers.zig");

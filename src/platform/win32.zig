@@ -76,15 +76,9 @@ pub const WM_USER = 0x0400;
 pub const WM_APP = 0x8000;
 pub const WM_TRAYICON = WM_USER + 1;
 pub const WM_SWITCH_PROFILE = WM_APP + 4;
-pub const WM_PROTOCOL_HOTKEY = WM_APP + 7;
 pub const WM_HOTKEYS_STATE_CHANGED = WM_APP + 12;
 pub const WM_KNOTS_COMMAND = WM_APP + 16;
 pub const WM_COMMAND = 0x0111;
-
-pub const PROTOCOL_SWITCH_CHARACTER: usize = 1;
-pub const PROTOCOL_SWITCH_PROFILE: usize = 2;
-// 3-8 were the old config.exe's commands; skipped so a stale copy can't be misread.
-pub const PROTOCOL_OPEN_CONFIG: usize = 9;
 
 pub const SPI_GETANIMATION = 0x0048;
 pub const SPI_SETANIMATION = 0x0049;
@@ -138,8 +132,8 @@ pub const INFINITE = 0xFFFFFFFF;
 
 pub const HKEY_CURRENT_USER: HKEY = @ptrFromInt(0x80000001);
 pub const KEY_WRITE: DWORD = 0x20006;
-pub const KEY_READ: DWORD = 0x20019;
 pub const REG_SZ: DWORD = 1;
+pub const RRF_RT_REG_SZ: DWORD = 0x00000002;
 pub const REG_OPTION_NON_VOLATILE: DWORD = 0;
 pub const ERROR_SUCCESS: LONG = 0;
 pub const ERROR_FILE_NOT_FOUND: LONG = 2;
@@ -414,6 +408,15 @@ pub extern "advapi32" fn RegOpenKeyExA(
     ulOptions: DWORD,
     samDesired: DWORD,
     phkResult: *HKEY,
+) callconv(.c) LONG;
+pub extern "advapi32" fn RegGetValueA(
+    hkey: HKEY,
+    lpSubKey: ?LPCSTR,
+    lpValue: ?LPCSTR,
+    dwFlags: DWORD,
+    pdwType: ?*DWORD,
+    pvData: ?*anyopaque,
+    pcbData: ?*DWORD,
 ) callconv(.c) LONG;
 pub extern "advapi32" fn RegCloseKey(hKey: HKEY) callconv(.c) LONG;
 pub extern "advapi32" fn RegDeleteValueA(hKey: HKEY, lpValueName: ?LPCSTR) callconv(.c) LONG;

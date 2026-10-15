@@ -234,6 +234,14 @@ pub const Config = struct {
         return null;
     }
 
+    /// Ignores case, as typed names in URLs do; the first match wins.
+    pub fn hotkeyGroupIndex(self: *const Config, name: []const u8) ?usize {
+        for (self.hotkeyGroups.items, 0..) |group, index| {
+            if (std.ascii.eqlIgnoreCase(group.name, name)) return index;
+        }
+        return null;
+    }
+
     pub fn hasHotkeyGroupNamed(self: *const Config, name: []const u8) bool {
         for (self.hotkeyGroups.items) |group| {
             if (std.mem.eql(u8, group.name, name)) return true;

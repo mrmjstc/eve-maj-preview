@@ -220,8 +220,7 @@ pub const TrayIcon = struct {
             return;
         }
 
-        const store = &app.store;
-        const config = &store.live;
+        const config = &app.store.live;
         switch (command_id) {
             win32.IDM_EXIT => {
                 slog.info("Exit requested from system tray", .{});
@@ -231,17 +230,9 @@ pub const TrayIcon = struct {
                 slog.info("Opening configuration dialog from system tray", .{});
                 knots_host.open();
             },
-            win32.IDM_TOGGLE_DRAGGING => {
-                const is_enabled = !config.interaction.enableDragging;
-                store.update(.{ .interaction = .{ .enableDragging = is_enabled } });
-                slog.info("Thumbnail dragging toggled: {s}", .{if (is_enabled) "enabled" else "disabled"});
-            },
+            win32.IDM_TOGGLE_DRAGGING => app.toggleDragging(),
             win32.IDM_TOGGLE_AUTO_MINIMIZE => app.toggleAutoMinimize(),
-            win32.IDM_TOGGLE_TRAVEL_MODE => {
-                const is_enabled = !config.travel.enabled;
-                store.update(.{ .travel = .{ .enabled = is_enabled } });
-                slog.info("Travel Mode toggled: {s}", .{if (is_enabled) "enabled" else "disabled"});
-            },
+            win32.IDM_TOGGLE_TRAVEL_MODE => app.toggleTravelMode(),
             win32.IDM_TOGGLE_VISIBILITY => {
                 slog.info("Toggle visibility requested from system tray", .{});
                 const thumbnail_set = app.thumbnail_set orelse {
@@ -252,7 +243,7 @@ pub const TrayIcon = struct {
             },
             win32.IDM_TOGGLE_NOTIF_HISTORY => {
                 slog.info("Toggle history panel requested from system tray", .{});
-                app.notifications.panel.toggle(app.allocator, store, app.instance, scout.anyCharacterLoggedIn(app.scout.getWindows()));
+                app.toggleNotificationHistory();
             },
             win32.IDM_CLEAR_NOTIF_HISTORY => {
                 slog.info("Clear notification history requested from system tray", .{});
