@@ -1,4 +1,4 @@
-//! What the knots configuration window edits: the running profile's `live` copy and a draft of the global settings, changed only through `Ref.set`; main thread only.
+//! What the knots configuration window edits: the running profile's `live` copy and a draft of the global settings, changed only through `Ref`'s setters; main thread only.
 const std = @import("std");
 const config = @import("../../config.zig");
 const registry = @import("../../protocol/registry.zig");
@@ -48,7 +48,7 @@ pub fn Ref(comptime T: type) type {
             return @field(self.ptr, field);
         }
 
-        /// The only way the window changes a setting: stores `value` (copying strings), clamps the document and previews it.
+        /// Stores `value` (copying strings), clamps the document and previews it.
         pub fn set(self: Self, comptime field: []const u8, value: @FieldType(T, field)) void {
             const F = @FieldType(T, field);
             const slot = &@field(self.ptr, field);
@@ -70,6 +70,24 @@ pub fn Ref(comptime T: type) type {
                 slot.* = value;
             }
             edited(self.doc, comptime layoutFor(T, field, .none), self.layout);
+        }
+
+        /// `set` for several non-string fields, previewed once so thumbnails never lay out a half-applied change; `values` is e.g. `.{ .width = w, .height = h }`.
+        pub fn setFields(self: Self, values: anytype) void {
+            var layout: app_mod.LiveLayout = .none;
+            var is_changed = false;
+            inline for (@typeInfo(@TypeOf(values)).@"struct".field_names) |field| {
+                const F = @FieldType(T, field);
+                if (F == []const u8 or F == ?[]const u8) @compileError("setFields doesn't copy strings; use set for '" ++ field ++ "'");
+                const value: F = @field(values, field);
+                const slot = &@field(self.ptr, field);
+                if (!std.meta.eql(slot.*, value)) {
+                    slot.* = value;
+                    is_changed = true;
+                    layout = wider(layout, comptime layoutFor(T, field, .none));
+                }
+            }
+            if (is_changed) edited(self.doc, layout, self.layout);
         }
 
         /// A nested section, e.g. `profile().child("thumbnail")`.

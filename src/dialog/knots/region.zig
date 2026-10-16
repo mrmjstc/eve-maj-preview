@@ -113,10 +113,7 @@ fn find(space_id: u32) ?session.Ref(config.ThumbnailSpace) {
 
 fn setRect(space_id: u32, x: ?i32, y: ?i32, width: ?i32, height: ?i32) void {
     const space = find(space_id) orelse return;
-    space.set("x", x);
-    space.set("y", y);
-    space.set("width", width);
-    space.set("height", height);
+    space.setFields(.{ .x = x, .y = y, .width = width, .height = height });
 }
 
 fn onFinished() void {

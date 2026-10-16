@@ -47,6 +47,11 @@ const BorderFields = struct {
     color_field: []const u8,
 };
 
+const SliderShape = struct { width: i32, height: i32, ratio: f32 };
+
+/// The exact ratio the size slider last applied, reused while the size is still what it set, so rounding can't drift the shape.
+var g_slider_shape: ?SliderShape = null;
+
 pub fn show(context: *ui.Frame) !void {
     const thumbnail = session.profile().child("thumbnail");
     const display = session.profile().child("display");
@@ -73,13 +78,16 @@ fn dimensions(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
 
     const row = try widgets.openBinding(context, .str("knots.thumbnails.size"), "Size");
     var width: f32 = @floatFromInt(thumbnail.get("width"));
-    const ratio = width / @as(f32, @floatFromInt(@max(thumbnail.get("height"), 1)));
+    const ratio = sliderRatio(thumbnail);
     // Stops where either side hits its bound, or saving clamps that side alone and breaks the ratio.
     const min_width = @max(@as(f32, config.ThumbnailConfig.WIDTH[0]), @as(f32, config.ThumbnailConfig.HEIGHT[0]) * ratio);
     const max_width = @max(min_width, @min(@as(f32, MAX_SIZE_SLIDER), @as(f32, config.ThumbnailConfig.HEIGHT[1]) * ratio));
     if (try widgets.slider(context, .str("knots.thumbnails.size.slider"), &width, min_width, max_width, 1)) {
-        thumbnail.set("width", @intFromFloat(@round(width)));
-        thumbnail.set("height", @intFromFloat(@round(width / ratio)));
+        const new_width: i32 = @intFromFloat(@round(width));
+        const new_height: i32 = @intFromFloat(@round(width / ratio));
+        thumbnail.setFields(.{ .width = new_width, .height = new_height });
+        // Read back, since validation may have clamped either side.
+        g_slider_shape = .{ .width = thumbnail.get("width"), .height = thumbnail.get("height"), .ratio = ratio };
     }
     try bind.unitNumberBox(context, thumbnail, "width", "px", .{});
     try context.e(Text{ .selectable = false, .key = .str("knots.thumbnails.size.x"), .content = "\u{00D7}", .style = &style.muted_text });
@@ -87,6 +95,16 @@ fn dimensions(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
     try row.close(context);
     try widgets.hintText(context, .src(@src()), "The slider keeps the shape; type in the boxes for any size.");
     try section.close(context);
+}
+
+/// The slider's last ratio while the size is still what it set, else the size's own.
+fn sliderRatio(thumbnail: ThumbnailRef) f32 {
+    const width = thumbnail.get("width");
+    const height = thumbnail.get("height");
+    if (g_slider_shape) |shape| {
+        if (shape.width == width and shape.height == height) return shape.ratio;
+    }
+    return @as(f32, @floatFromInt(width)) / @as(f32, @floatFromInt(@max(height, 1)));
 }
 
 /// Picking a ratio keeps the width and fits the height to it; Custom leaves the size as typed.

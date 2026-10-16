@@ -311,8 +311,10 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
     if (gdi_overlay.OverlayBitmap.needsResize(cache.bitmap, settings.overlay_width, settings.overlay_height)) {
         const screen_dc = win32.GetDC(null) orelse return error.GetDCFailed;
         defer _ = win32.ReleaseDC(null, screen_dc);
+        // Only the first: a live size edit resizes every thumbnail each frame.
+        const is_first = cache.bitmap == null;
         try gdi_overlay.OverlayBitmap.recreate(&cache.bitmap, screen_dc, settings.overlay_width, settings.overlay_height);
-        slog.debug("Allocated overlay bitmap {}x{} for {s}", .{ settings.overlay_width, settings.overlay_height, thumbnail.character_name });
+        if (is_first) slog.debug("Allocated overlay bitmap {}x{} for {s}", .{ settings.overlay_width, settings.overlay_height, thumbnail.character_name });
     }
     const overlay = &cache.bitmap.?;
     overlay.clear();
