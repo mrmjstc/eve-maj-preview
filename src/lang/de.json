@@ -984,5 +984,6 @@
   "Login Screen": "Login-Bildschirm",
   "Unassigned Characters": "Nicht zugewiesene Charaktere",
   "New Filter {n}": "Neuer Filter {n}",
-  "Failed to scan running windows: {err}": "Fehler beim Scannen der laufenden Fenster: {err}"
+  "Failed to scan running windows: {err}": "Fehler beim Scannen der laufenden Fenster: {err}",
+  "Reopened after an error. Your unsaved changes are kept.": "Nach einem Fehler neu geöffnet. Deine ungespeicherten Änderungen bleiben erhalten."
 }

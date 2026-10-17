@@ -984,5 +984,6 @@
   "Login Screen": "Écran de connexion",
   "Unassigned Characters": "Personnages non assignés",
   "New Filter {n}": "Nouveau filtre {n}",
-  "Failed to scan running windows: {err}": "Échec de l'analyse des fenêtres en cours d'exécution : {err}"
+  "Failed to scan running windows: {err}": "Échec de l'analyse des fenêtres en cours d'exécution : {err}",
+  "Reopened after an error. Your unsaved changes are kept.": "Rouverte après une erreur. Vos modifications non enregistrées sont conservées."
 }

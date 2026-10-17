@@ -984,5 +984,6 @@
   "Login Screen": "Login Screen",
   "Unassigned Characters": "Unassigned Characters",
   "New Filter {n}": "New Filter {n}",
-  "Failed to scan running windows: {err}": "Failed to scan running windows: {err}"
+  "Failed to scan running windows: {err}": "Failed to scan running windows: {err}",
+  "Reopened after an error. Your unsaved changes are kept.": "Reopened after an error. Your unsaved changes are kept."
 }

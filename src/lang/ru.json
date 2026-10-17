@@ -984,5 +984,6 @@
   "Login Screen": "Экран входа",
   "Unassigned Characters": "Нераспределенные персонажи",
   "New Filter {n}": "Новый фильтр {n}",
-  "Failed to scan running windows: {err}": "Не удалось просканировать запущенные окна: {err}"
+  "Failed to scan running windows: {err}": "Не удалось просканировать запущенные окна: {err}",
+  "Reopened after an error. Your unsaved changes are kept.": "Окно открыто заново после ошибки. Несохраненные изменения сохранены."
 }

@@ -984,5 +984,6 @@
   "Login Screen": "Ekran logowania",
   "Unassigned Characters": "Nieprzypisane postacie",
   "New Filter {n}": "Nowy filtr {n}",
-  "Failed to scan running windows: {err}": "Nie udało się przeskanować działających okien: {err}"
+  "Failed to scan running windows: {err}": "Nie udało się przeskanować działających okien: {err}",
+  "Reopened after an error. Your unsaved changes are kept.": "Ponownie otwarto po błędzie. Niezapisane zmiany zostały zachowane."
 }

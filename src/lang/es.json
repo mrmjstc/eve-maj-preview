@@ -984,5 +984,6 @@
   "Login Screen": "Pantalla de login",
   "Unassigned Characters": "Personajes sin asignar",
   "New Filter {n}": "Nuevo filtro {n}",
-  "Failed to scan running windows: {err}": "Error al escanear las ventanas en ejecución: {err}"
+  "Failed to scan running windows: {err}": "Error al escanear las ventanas en ejecución: {err}",
+  "Reopened after an error. Your unsaved changes are kept.": "Se volvió a abrir tras un error. Tus cambios sin guardar se conservan."
 }

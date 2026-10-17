@@ -48,6 +48,9 @@ const DESIGN_HEIGHT = 960;
 const DEFAULT_POSITION: win32.POINT = .{ .x = 20, .y = 20 };
 /// On the window itself; clears the footer's status once it has shown long enough.
 const STATUS_TIMER_ID = 1;
+/// Per open, so an error every frame can't reopen the window forever.
+const MAX_REOPENS = 2;
+const REOPENED_NOTICE = "Reopened after an error. Your unsaved changes are kept.";
 
 /// Posted to the timer window as wParam of WM_KNOTS_COMMAND, so none runs inside a tray handler or a frame.
 pub const Command = enum(usize) {
@@ -255,16 +258,48 @@ fn run() void {
             return;
         },
     }
-    const settings = &session.runningApp().global_settings;
-    const position = savedPosition(settings);
-    g_window_language = settings.language;
-    g_is_fit_posted = false;
-
     session.begin() catch |err| {
         slog.err("Failed to start editing the configuration: {}", .{err});
         return;
     };
     defer session.end();
+
+    var reopen_count: u32 = 0;
+    while (true) : (reopen_count += 1) {
+        runWindow(reopen_count > 0) catch |err| {
+            slog.err("Failed to run the knots configuration window: {}", .{err});
+            if (shouldReopen(reopen_count)) continue;
+        };
+        break;
+    }
+    if (g_should_quit_after_close) {
+        g_should_quit_after_close = false;
+        win32.PostQuitMessage(0);
+    }
+}
+
+/// After a failed window, unless the app is exiting; the session's edits outlive it, so a reopened one carries on with them.
+fn shouldReopen(reopen_count: u32) bool {
+    if (g_should_quit_after_close) return false;
+    if (reopen_count < MAX_REOPENS) {
+        slog.info("Reopening the knots configuration window after its error", .{});
+        return true;
+    }
+    const message = if (session.isDirty())
+        "The configuration window closed after repeated errors, and its unsaved changes were lost. The log has the details."
+    else
+        "The configuration window closed after repeated errors. The log has the details.";
+    _ = win32.MessageBoxA(null, message, "EVE-Maj Preview", win32.MB_OK | win32.MB_ICONERROR);
+    return false;
+}
+
+/// One window over the open session, until it closes or a frame fails.
+fn runWindow(is_reopened: bool) !void {
+    const settings = &session.runningApp().global_settings;
+    const position = savedPosition(settings);
+    g_window_language = settings.language;
+    g_is_fit_posted = false;
+
     bind.init(g_allocator);
     pickers.init(g_allocator);
     defer bind.reset();
@@ -306,6 +341,7 @@ fn run() void {
     profiles.init(g_allocator, scheduleProfileAction);
     defer profiles.deinit();
     status.clear();
+    if (is_reopened) status.show(.failure, REOPENED_NOTICE, .{});
 
     // knots shows its window as it's created, so it's placed then rather than moved after.
     const is_placed = installPlacement(position);
@@ -347,9 +383,7 @@ fn run() void {
     _ = win32.SetForegroundWindow(window);
 
     slog.info("Knots configuration window opened", .{});
-    app.start(frame) catch |err| {
-        slog.err("Failed to run the knots configuration window: {}", .{err});
-    };
+    try app.start(frame);
 }
 
 /// Makes the next top-level window this thread creates start at `position`; false if it couldn't.
@@ -508,10 +542,6 @@ fn onClosed() void {
     g_app = null;
     g_state = .closed;
     g_should_force_close = false;
-    if (g_should_quit_after_close) {
-        g_should_quit_after_close = false;
-        win32.PostQuitMessage(0);
-    }
 }
 
 /// Wider for languages with longer labels than English's.
