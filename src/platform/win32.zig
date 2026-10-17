@@ -78,6 +78,11 @@ pub const WM_TRAYICON = WM_USER + 1;
 pub const WM_SWITCH_PROFILE = WM_APP + 4;
 pub const WM_HOTKEYS_STATE_CHANGED = WM_APP + 12;
 pub const WM_KNOTS_COMMAND = WM_APP + 16;
+/// Posted to the hotkey hook thread, with a request in lParam.
+pub const WM_HOOK_REQUEST = WM_APP + 20;
+/// Posted to the timer window when the config dialog records a bare Win press; wParam holds the other held modifiers.
+pub const WM_WIN_KEY_CAPTURED = WM_APP + 21;
+pub const WM_QUIT = 0x0012;
 pub const WM_COMMAND = 0x0111;
 
 pub const SPI_GETANIMATION = 0x0048;
@@ -282,6 +287,9 @@ pub extern "user32" fn GetMessageA(lpMsg: *MSG, hWnd: ?HWND, wMsgFilterMin: UINT
 pub extern "user32" fn TranslateMessage(lpMsg: *const MSG) callconv(.c) BOOL;
 pub extern "user32" fn DispatchMessageA(lpMsg: *const MSG) callconv(.c) LRESULT;
 pub extern "user32" fn PostQuitMessage(nExitCode: c_int) callconv(.c) void;
+pub extern "user32" fn PeekMessageA(lpMsg: *MSG, hWnd: ?HWND, wMsgFilterMin: UINT, wMsgFilterMax: UINT, wRemoveMsg: UINT) callconv(.c) BOOL;
+pub extern "user32" fn PostThreadMessageA(idThread: DWORD, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.c) BOOL;
+pub const PM_NOREMOVE: UINT = 0x0000;
 pub extern "user32" fn PostMessageA(hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.c) BOOL;
 pub extern "user32" fn DefWindowProcA(hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.c) LRESULT;
 pub extern "user32" fn RegisterClassExA(lpWndClass: *const WNDCLASSEXA) callconv(.c) WORD;
@@ -425,6 +433,9 @@ pub extern "user32" fn SetFocus(hWnd: HWND) callconv(.c) ?HWND;
 pub extern "user32" fn GetWindowPlacement(hWnd: HWND, lpwndpl: *WINDOWPLACEMENT) callconv(.c) BOOL;
 pub extern "user32" fn AttachThreadInput(idAttach: DWORD, idAttachTo: DWORD, fAttach: BOOL) callconv(.c) BOOL;
 pub extern "user32" fn GetCurrentThreadId() callconv(.c) DWORD;
+pub extern "kernel32" fn GetCurrentThread() callconv(.c) HANDLE;
+pub extern "kernel32" fn SetThreadPriority(hThread: HANDLE, nPriority: c_int) callconv(.c) BOOL;
+pub const THREAD_PRIORITY_TIME_CRITICAL: c_int = 15;
 pub extern "user32" fn IsWindow(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn IsIconic(hWnd: HWND) callconv(.c) BOOL;
 pub extern "user32" fn IsZoomed(hWnd: HWND) callconv(.c) BOOL;
@@ -1500,12 +1511,6 @@ pub inline fn ptrToLparam(ptr: anytype) LPARAM {
 
 pub inline fn lparamToPtr(comptime T: type, lParam: LPARAM) *T {
     return @ptrFromInt(@as(usize, @bitCast(lParam)));
-}
-
-/// The virtual-key code a WM_HOTKEY lParam carries in its high word.
-pub inline fn hotkeyVkFromLparam(lParam: LPARAM) u32 {
-    const bits: u32 = @truncate(@as(usize, @bitCast(lParam)));
-    return bits >> 16;
 }
 
 const VK_DOWN_FLAG: c_short = @bitCast(@as(c_ushort, 0x8000));

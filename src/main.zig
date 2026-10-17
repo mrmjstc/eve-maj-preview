@@ -14,6 +14,7 @@ const focus = @import("control/focus.zig");
 const chatlog = @import("chatlog.zig");
 const mouse_hook = @import("hotkeys/mouse_hook.zig");
 const keyboard_hook = @import("hotkeys/keyboard_hook.zig");
+const hook_thread = @import("hotkeys/hook_thread.zig");
 const tts = @import("notifications/tts.zig");
 const sound = @import("notifications/sound.zig");
 const tray = @import("tray.zig");
@@ -176,12 +177,14 @@ fn mainImpl(init: std.process.Init) !void {
 
     if (app.chatlog_monitor) |monitor| app_mod.addChatlogCharacters(monitor, eve_windows);
 
+    hook_thread.start();
     try app.createHotkeyManager(timer_hwnd);
     focus_grant.install(timer_hwnd);
     defer {
         app.destroyHotkeyManager();
         mouse_hook.deinit();
         keyboard_hook.deinit();
+        hook_thread.stop();
         focus_grant.uninstall();
     }
 
@@ -315,6 +318,10 @@ fn timerWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lPar
         },
         win32.WM_COPYDATA => {
             run.handleCopyData(app, win32.lparamToPtr(win32.COPYDATASTRUCT, lParam));
+            return 0;
+        },
+        win32.WM_WIN_KEY_CAPTURED => {
+            keyboard_hook.onWinKeyCaptured(wParam);
             return 0;
         },
         win32.WM_KNOTS_COMMAND => {

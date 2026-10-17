@@ -174,6 +174,7 @@ pub const App = struct {
         var scout_result = self.scout.update(force_scan);
         defer scout_result.deinit(self.allocator);
         self.clearLoggedOutExclusions(scout_result.name_changes.items);
+        if (self.hotkey_manager) |manager| manager.syncFocusFilter(scout_result.windows);
 
         if (self.thumbnail_set) |thumbnail_set| {
             thumbnail_set.update(scout_result.windows, scout_result.closed_windows.items, scout_result.name_changes.items);
@@ -360,6 +361,7 @@ pub const App = struct {
         manager.registerHotkeys(timer_hwnd) catch |err| {
             slog.warn("Failed to register hotkeys, continuing without hotkey support: {}", .{err});
         };
+        manager.syncFocusFilter(self.scout.getWindows());
     }
 
     pub fn destroyHotkeyManager(self: *App) void {

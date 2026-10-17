@@ -1,7 +1,6 @@
 //! Registering hotkeys and dispatching each press to its action.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
-const focus_grant = @import("../platform/focus_grant.zig");
 const vk = @import("../platform/virtual_keys.zig");
 const scout = @import("../clients/scout.zig");
 const actions = @import("../clients/actions.zig");
@@ -13,6 +12,7 @@ const alert_effects = @import("../notifications/alert_effects.zig");
 const notified_queue_mod = @import("../notifications/notified_queue.zig");
 const mouse_hook = @import("mouse_hook.zig");
 const keyboard_hook = @import("keyboard_hook.zig");
+const hook_bindings = @import("hook_bindings.zig");
 const bindings = @import("bindings.zig");
 const cycling = @import("cycling.zig");
 const cycle_order = @import("cycle_order.zig");
@@ -61,6 +61,8 @@ pub const HotkeyManager = struct {
     notified_queue: *const notified_queue_mod.NotifiedQueue,
     /// Borrowed from `app`'s focus tracker, which keeps it across the Save that recreates the manager.
     last_non_eve_foreground: *?win32.HWND,
+    /// What syncFocusFilter last handed the hook thread; null until it first does, so a recreated manager sends it again.
+    sent_focus_filter: ?hook_bindings.FocusFilter = null,
 
     /// Registers from the profile's saved copy, since bindings only change on Save.
     pub fn init(allocator: std.mem.Allocator, app: *app_mod.App, live_global: *const fn () *const config_mod.GlobalConfig) !HotkeyManager {
@@ -306,17 +308,14 @@ pub const HotkeyManager = struct {
         self.hotkey_map.clearRetainingCapacity();
     }
 
-    /// Handles a WM_HOTKEY press; `lParam` is used only to recover the vk code for release-consumption.
+    /// Handles a WM_HOTKEY press; `lParam` says whether it's a held key's auto-repeat.
     pub fn handleHotkeyPress(self: *HotkeyManager, hotkey_id: c_int, lParam: win32.LPARAM) void {
         const action = self.hotkey_map.getPtr(hotkey_id) orelse {
             slog.warn("Received unknown hotkey ID: {}", .{hotkey_id});
             return;
         };
 
-        // Auto-repeat while a key is held isn't filtered by the keyboard hook, so this must run before every early return or held keys would re-fire.
-        const vk_code = win32.hotkeyVkFromLparam(lParam);
-        const is_repeat = !keyboard_hook.trackPress(self.allocator, vk_code);
-        if (is_repeat and !self.live().hotkeys.allowHotkeyAutoRepeat) {
+        if (hook_bindings.isRepeat(lParam) and !self.live().hotkeys.allowHotkeyAutoRepeat) {
             slog.debug("Hotkey {} ignored - key-repeat re-fire while held", .{hotkey_id});
             return;
         }
@@ -336,20 +335,29 @@ pub const HotkeyManager = struct {
             return;
         }
 
+        // Checked again after the hook's check, since focus can move before this message arrives.
         if (self.live().hotkeys.requireEveFocus and self.foregroundEveWindow() == null) {
             slog.debug("Hotkey {} ignored - EVE window not in focus", .{hotkey_id});
             return;
         }
 
-        // Only swallow the key's release if focus actually moved; a cycle with no eligible target never changes foreground.
-        focus_grant.clearSwitchRequest();
-
         self.runAction(action);
+    }
 
-        // Win's release always needs swallowing, focus-change or not - an unmatched keyup still opens the Start Menu.
-        if (focus_grant.wasSwitchRequested() or vk_code == win32.VK_LWIN or vk_code == win32.VK_RWIN) {
-            keyboard_hook.markSwallowRelease(vk_code);
+    /// Per tick: hands the hook thread the windows and setting the require-EVE-focus check needs, whenever they change, so it can let keys through to other apps.
+    pub fn syncFocusFilter(self: *HotkeyManager, windows: []const scout.EveWindow) void {
+        var filter: hook_bindings.FocusFilter = .{
+            .is_required = self.live().hotkeys.requireEveFocus,
+            .exempt_id = bindings.globalId(.suspend_hotkeys),
+        };
+        const is_complete = for (windows) |eve_window| {
+            if (!filter.add(eve_window.hwnd)) break false;
+        } else true;
+        if (self.sent_focus_filter) |*sent| {
+            if (sent.eql(&filter)) return;
         }
+        if (!is_complete) slog.warn("Failed to pass every window to the require-EVE-focus check: over {} tracked, so hotkeys pass through in the rest", .{filter.window_count});
+        if (hook_bindings.setFocusFilter(filter)) self.sent_focus_filter = filter;
     }
 
     /// Runs a global action requested outside a hotkey press (protocol URL, tray menu), bypassing the press-only suspend/focus gating.
@@ -505,7 +513,7 @@ pub const HotkeyManager = struct {
         slog.debug("Config dialog is recording a hotkey - unregistering live hotkeys", .{});
         self.is_dialog_suspended = true;
         self.unregisterAll();
-        keyboard_hook.armWinKeyCapture();
+        if (self.app.timer_hwnd) |hwnd| keyboard_hook.armWinKeyCapture(hwnd);
     }
 
     /// Re-registers from the same in-memory config unregisterAll left untouched, so this restores exactly what was live before.
