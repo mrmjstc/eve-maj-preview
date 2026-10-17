@@ -1,6 +1,7 @@
 //! The Appearance tab's thumbnail preview: drawn from the edited settings at its real size, its texts dragged into place and clicked to edit in a popover; main thread only.
 const std = @import("std");
 const ui = @import("ui");
+const config = @import("../../../../config.zig");
 const types = @import("../../../../config/types.zig");
 const draw = @import("../../../../thumbnail/draw.zig");
 const session = @import("../../session.zig");
@@ -13,6 +14,7 @@ const images = @import("../../images.zig");
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
+const Image = ui.component.Image;
 const Box = widgets.Box;
 const measuredBox = widgets.measuredBox;
 
@@ -76,6 +78,7 @@ pub fn show(context: *ui.Frame) !void {
     inline for (chips.CHIPS, 0..) |chip, index| {
         try showChip(context, chip, index, stage_box, stage_size, scale);
     }
+    try focusedBorder(context, thumbnail, stage_size);
 
     try stage.close(context);
     try frame.close(context);
@@ -248,6 +251,45 @@ fn stageBackground(context: *ui.Frame, stage_size: [2]f32, opacity: f32) !void {
         .opacity = opacity,
     };
     if (images.g_layout_preview.image(.str("knots.stage.backdrop"), image_style)) |image| try context.e(image);
+}
+
+/// Drawn by the thumbnail's own border code at real size, then scaled with the stage.
+fn focusedBorder(context: *ui.Frame, thumbnail: *const config.ThumbnailConfig, stage_size: [2]f32) !void {
+    if (!thumbnail.showBorderWhenFocused) return;
+    const width: usize = @intCast(@max(thumbnail.width, 1));
+    const height: usize = @intCast(@max(thumbnail.height, 1));
+    // drawBorder needs room for both sides.
+    const border_width = @min(thumbnail.borderWidth, @min(width, height) / 2);
+    const pixels = try context.arena().alloc(u32, width * height);
+    @memset(pixels, 0);
+    draw.drawBorder(.{ .pixels = pixels.ptr, .width = width, .height = height }, border_width, thumbnail.borderColor, thumbnail.borderStyle);
+
+    const look = extern struct { width: u32, height: u32, border_width: u32, color: u32, style: u32 }{
+        .width = @intCast(width),
+        .height = @intCast(height),
+        .border_width = @intCast(border_width),
+        .color = thumbnail.borderColor,
+        .style = @intFromEnum(thumbnail.borderStyle),
+    };
+    const image_style = try context.arena().create(ui.Style);
+    image_style.* = .{
+        .position = .absolute,
+        .width = .fixed(stage_size[0]),
+        .height = .fixed(stage_size[1]),
+    };
+    try context.e(Image{
+        .key = .str("knots.stage.border"),
+        .source = .{ .pixels = .{
+            .data = std.mem.sliceAsBytes(pixels),
+            .width = look.width,
+            .height = look.height,
+            // 0xAARRGGBB words sit in memory as B, G, R, A.
+            .format = .bgra8_srgb,
+            .upload_policy = .versioned,
+            .version = std.hash.Wyhash.hash(0, std.mem.asBytes(&look)),
+        } },
+        .style = image_style,
+    });
 }
 
 fn scaleAlpha(argb: u32, alpha: f32) ui.Color {
