@@ -68,7 +68,7 @@ pub fn cycleApps(global_settings: *const config.GlobalConfig, is_forward: bool) 
     slog.debug("Cycle apps hotkey pressed - no other app in the App Hotkeys list is running", .{});
 }
 
-pub fn openUrl(allocator: std.mem.Allocator, io: std.Io, global_settings: *const config.GlobalConfig, url_index: usize) void {
+pub fn openUrl(allocator: std.mem.Allocator, global_settings: *const config.GlobalConfig, url_index: usize) void {
     if (url_index >= global_settings.urlHotkeys.items.len) {
         slog.err("Failed to open URL: hotkey index {} is out of range", .{url_index});
         return;
@@ -81,7 +81,7 @@ pub fn openUrl(allocator: std.mem.Allocator, io: std.Io, global_settings: *const
 
     if (url_hotkey.uploadClipboard) {
         slog.info("Open URL hotkey pressed (uploading clipboard): {s}", .{url_hotkey.url});
-        paste_upload.uploadClipboardAndOpenAsync(allocator, io, url_hotkey.url);
+        paste_upload.uploadClipboardAndOpenAsync(allocator, url_hotkey.url);
         return;
     }
 

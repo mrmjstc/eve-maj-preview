@@ -36,7 +36,6 @@ const ComboSharers = struct {
 
 pub const HotkeyManager = struct {
     allocator: std.mem.Allocator,
-    io: std.Io,
     /// Outlives the manager; for app-level actions, and its thumbnail set, read from here each time since a rebuild replaces it.
     app: *app_mod.App,
     /// The saved copy, for the bindings and the groups and characters their ids index into; other settings read live().
@@ -69,7 +68,6 @@ pub const HotkeyManager = struct {
         const config = &app.store.saved;
         return .{
             .allocator = allocator,
-            .io = app.io,
             .app = app,
             .config = config,
             .store = &app.store,
@@ -448,7 +446,7 @@ pub const HotkeyManager = struct {
                 self.app.notifications.history.clear();
             },
             .activate_app => |activate| launch.activateApp(self.global_settings, activate.app_index),
-            .open_url => |open_url| launch.openUrl(self.allocator, self.io, self.global_settings, open_url.url_index),
+            .open_url => |open_url| launch.openUrl(self.allocator, self.global_settings, open_url.url_index),
         }
     }
 

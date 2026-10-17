@@ -39,10 +39,15 @@ const PriceLookup = struct {
 };
 
 const PriceFetchContext = struct {
+    /// Thread-safe; shared by every worker.
     allocator: std.mem.Allocator,
+    /// Shared by every worker.
     io: std.Io,
-    client: *std.http.Client,
+    /// Shared by every worker; each request opens its own WinHTTP handles.
+    session: *const http_client.Session,
+    /// Read-only while the workers run.
     lookups: []const PriceLookup,
+    /// Workers claim lookups by incrementing it atomically.
     next_index: std.atomic.Value(usize),
     results_mutex: std.Io.Mutex = .init,
     /// Guarded by results_mutex.
@@ -51,10 +56,10 @@ const PriceFetchContext = struct {
 
 /// Each ore's Jita buy price via its compressed variant, from the public ESI API, leaving out unmatched names; `allocator` must be thread-safe, and the result is in `arena`.
 pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io: std.Io, names: []const []const u8) !Prices {
-    var client: std.http.Client = .{ .allocator = allocator, .io = io };
-    defer client.deinit();
+    var session = try http_client.Session.init();
+    defer session.deinit();
 
-    var type_ids = try resolveOreTypeIds(allocator, &client, names);
+    var type_ids = try resolveOreTypeIds(allocator, &session, names);
     defer {
         var it = type_ids.keyIterator();
         while (it.next()) |key| allocator.free(key.*);
@@ -78,7 +83,7 @@ pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io
         var context = PriceFetchContext{
             .allocator = allocator,
             .io = io,
-            .client = &client,
+            .session = &session,
             .lookups = lookups,
             .next_index = .init(0),
             .results = &results,
@@ -106,7 +111,7 @@ pub fn fetchOrePrices(allocator: std.mem.Allocator, arena: std.mem.Allocator, io
 }
 
 /// ESI type IDs for each "Compressed <name>" from the public name resolver, leaving out unmatched names; the caller frees the keys and the map.
-fn resolveOreTypeIds(allocator: std.mem.Allocator, client: *std.http.Client, names: []const []const u8) !std.StringHashMap(i64) {
+fn resolveOreTypeIds(allocator: std.mem.Allocator, session: *const http_client.Session, names: []const []const u8) !std.StringHashMap(i64) {
     var result: std.StringHashMap(i64) = .init(allocator);
     errdefer {
         var it = result.keyIterator();
@@ -127,7 +132,7 @@ fn resolveOreTypeIds(allocator: std.mem.Allocator, client: *std.http.Client, nam
     const body = try std.json.Stringify.valueAlloc(allocator, prefixed, .{});
     defer allocator.free(body);
 
-    const response = http_client.fetch(allocator, client, ESI_BASE ++ "/universe/ids/?datasource=tranquility", .{
+    const response = session.fetch(allocator, ESI_BASE ++ "/universe/ids/?datasource=tranquility", .{
         .content_type = "application/json",
         .payload = body,
     }) catch return result;
@@ -171,14 +176,14 @@ fn resolveOreTypeIds(allocator: std.mem.Allocator, client: *std.http.Client, nam
 }
 
 /// The highest Jita 4-4 buy order for type_id, or null if there's none; reads only page 1, which these ores' order counts stay well under.
-fn fetchJitaBuyPrice(allocator: std.mem.Allocator, client: *std.http.Client, type_id: i64) ?f64 {
+fn fetchJitaBuyPrice(allocator: std.mem.Allocator, session: *const http_client.Session, type_id: i64) ?f64 {
     const url = allocator.print(ESI_BASE ++ "/markets/{d}/orders/?datasource=tranquility&order_type=buy&type_id={d}", .{ ESI_JITA_REGION_ID, type_id }) catch |err| {
         slog.warn("Failed to build ESI price URL for type_id {}: {}", .{ type_id, err });
         return null;
     };
     defer allocator.free(url);
 
-    const response = http_client.fetch(allocator, client, url, .{}) catch return null;
+    const response = session.fetch(allocator, url, .{}) catch return null;
     defer allocator.free(response);
 
     const parsed = std.json.parseFromSlice(std.json.Value, allocator, response, .{}) catch |err| {
@@ -215,7 +220,7 @@ fn priceFetchWorker(context: *PriceFetchContext) void {
         if (lookup_index >= context.lookups.len) return;
 
         const lookup = context.lookups[lookup_index];
-        const price = fetchJitaBuyPrice(context.allocator, context.client, lookup.type_id) orelse continue;
+        const price = fetchJitaBuyPrice(context.allocator, context.session, lookup.type_id) orelse continue;
 
         context.results_mutex.lock(context.io) catch |err| {
             slog.warn("Failed to lock price results mutex for '{s}': {}", .{ lookup.name, err });

@@ -180,7 +180,7 @@ fn load(io: std.Io, id: []const u8) !wic.Decoded {
         }
     }
 
-    const body = try fetch(io, id);
+    const body = try fetch(id);
     defer g_allocator.free(body);
     const decoded = try decode(body);
     save(io, path, body);
@@ -202,12 +202,12 @@ fn readCached(io: std.Io, path: []const u8) ?[]u8 {
 }
 
 /// Caller frees.
-fn fetch(io: std.Io, id: []const u8) ![]u8 {
-    var client: std.http.Client = .{ .allocator = g_allocator, .io = io };
-    defer client.deinit();
+fn fetch(id: []const u8) ![]u8 {
+    var http_session = try http_client.Session.init();
+    defer http_session.deinit();
     var url_buf: [128]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, URL_FORMAT, .{ id, FETCH_SIZE });
-    return http_client.fetch(g_allocator, &client, url, .{});
+    return http_session.fetch(g_allocator, url, .{});
 }
 
 /// A portrait that can't be saved still shows; it's fetched again next run.

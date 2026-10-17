@@ -165,8 +165,7 @@ fn mainImpl(init: std.process.Init) !void {
     app.tray_icon = try tray.TrayIcon.init(allocator, timer_hwnd);
     defer if (app.tray_icon) |*icon| icon.deinit();
 
-    app.update_checker = update.UpdateChecker.init(allocator, init.io);
-    defer if (app.update_checker) |*checker| checker.deinit();
+    defer update.g_update_status.deinit(init.io);
     if (app.global_settings.disableUpdateChecks) slog.info("Update checks are disabled", .{}) else startUpdateCheck(allocator, init.io);
 
     try app.scout.scanForEveWindows();
@@ -252,7 +251,7 @@ fn startChatlogMonitoring(monitor: *chatlog.ChatlogMonitor, characters: []const 
 }
 
 fn startUpdateCheck(allocator: std.mem.Allocator, io: std.Io) void {
-    const update_thread = std.Thread.spawn(.{}, update.UpdateChecker.checkForUpdatesBackground, .{ allocator, io }) catch |err| {
+    const update_thread = std.Thread.spawn(.{}, update.checkForUpdatesBackground, .{ allocator, io }) catch |err| {
         slog.warn("Failed to start update check thread: {}", .{err});
         return;
     };

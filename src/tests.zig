@@ -35,6 +35,7 @@ test {
     _ = @import("drag/snap_math.zig");
     _ = @import("hotkeys/bindings.zig");
     _ = @import("hotkeys/cycle_order.zig");
+    _ = @import("hotkeys/paste_upload.zig");
     _ = @import("lang/wording.zig");
     _ = @import("layout/region_grid.zig");
     _ = @import("layout/spaces.zig");

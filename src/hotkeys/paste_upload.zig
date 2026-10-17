@@ -1,32 +1,110 @@
 //! A URL hotkey that uploads the clipboard's text to a paste site and opens the resulting page.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
+const http_client = @import("../util/http_client.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("paste_upload");
 
-/// Guards against a double-press spawning two overlapping uploads (and two browser tabs); cleared once the background thread finishes.
-var g_is_upload_in_flight: std.atomic.Value(bool) = .init(false);
+/// Most uploads running at once, so a held hotkey can't start a thread per repeat.
+const MAX_UPLOADS = 4;
 
-/// Runs the upload+open on a background thread so the HTTP round-trip doesn't block the main message loop; a no-op if one is already running. `allocator` must be thread-safe.
-pub fn uploadClipboardAndOpenAsync(allocator: std.mem.Allocator, io: std.Io, url: []const u8) void {
-    if (g_is_upload_in_flight.swap(true, .acq_rel)) {
-        slog.info("Clipboard upload already in progress; ignoring", .{});
-        return;
-    }
+/// Hash of the text each running upload sends, or 0 for a free slot; claimed on the main thread, released by the upload's own thread.
+var g_upload_hashes: [MAX_UPLOADS]std.atomic.Value(u64) = @splat(std.atomic.Value(u64).init(0));
 
-    const url_copy = allocator.dupe(u8, url) catch |err| {
-        slog.err("Failed to copy URL for clipboard upload: {}", .{err});
-        g_is_upload_in_flight.store(false, .release);
+/// Reads the clipboard now, so each press sends what was copied at that moment, then uploads and opens it on a background thread; the same text pressed again while it's still uploading is ignored. Main thread only; `allocator` must be thread-safe.
+pub fn uploadClipboardAndOpenAsync(allocator: std.mem.Allocator, url: []const u8) void {
+    const text = win32.getClipboardText(allocator) orelse {
+        slog.warn("Clipboard has no text; opening '{s}' without uploading", .{url});
+        openFallback(url);
         return;
     };
+    const slot_index = claimSlot(textHash(text)) orelse {
+        allocator.free(text);
+        return;
+    };
+    startUpload(allocator, url, text, slot_index) catch |err| {
+        slog.err("Failed to start the clipboard upload to '{s}': {}", .{ url, err });
+        allocator.free(text);
+        releaseSlot(slot_index);
+    };
+}
 
-    if (std.Thread.spawn(.{}, uploadClipboardAndOpenThread, .{ allocator, io, url_copy })) |thread| {
-        thread.detach();
-    } else |err| {
-        slog.warn("Failed to start clipboard upload thread: {}", .{err});
-        allocator.free(url_copy);
-        g_is_upload_in_flight.store(false, .release);
+/// Never 0, which marks a free slot.
+fn textHash(text: []const u8) u64 {
+    return @max(std.hash.Wyhash.hash(0, text), 1);
+}
+
+/// The slot now holding `hash`, or null (logged) if that text is already uploading or every slot is busy.
+fn claimSlot(hash: u64) ?usize {
+    for (&g_upload_hashes) |*slot| {
+        if (slot.load(.acquire) == hash) {
+            slog.info("This clipboard text is already uploading; ignoring", .{});
+            return null;
+        }
+    }
+    for (&g_upload_hashes, 0..) |*slot, i| {
+        if (slot.cmpxchgStrong(0, hash, .acq_rel, .monotonic) == null) return i;
+    }
+    slog.warn("Failed to start a clipboard upload: {d} are already running", .{MAX_UPLOADS});
+    return null;
+}
+
+fn releaseSlot(slot_index: usize) void {
+    g_upload_hashes[slot_index].store(0, .release);
+}
+
+/// Takes ownership of `text` only on success.
+fn startUpload(allocator: std.mem.Allocator, url: []const u8, text: []const u8, slot_index: usize) !void {
+    const url_copy = try allocator.dupe(u8, url);
+    errdefer allocator.free(url_copy);
+    const thread = try std.Thread.spawn(.{}, uploadThread, .{ allocator, url_copy, text, slot_index });
+    thread.detach();
+}
+
+fn uploadThread(allocator: std.mem.Allocator, url: []const u8, text: []const u8, slot_index: usize) void {
+    defer releaseSlot(slot_index);
+    defer allocator.free(url);
+    defer allocator.free(text);
+    uploadAndOpen(allocator, url, text);
+}
+
+/// Posts `text` in aDashboard's paste-intake form shape and opens the page the site redirects to, falling back to the plain url if the upload fails.
+fn uploadAndOpen(allocator: std.mem.Allocator, url: []const u8, text: []const u8) void {
+    const encoded = formUrlEncode(allocator, text) catch |err| {
+        slog.err("Failed to encode clipboard content for upload: {}", .{err});
+        openFallback(url);
+        return;
+    };
+    defer allocator.free(encoded);
+
+    const body = allocator.print("Paste+anything={s}&submit=new", .{encoded}) catch |err| {
+        slog.err("Failed to build upload body: {}", .{err});
+        openFallback(url);
+        return;
+    };
+    defer allocator.free(body);
+
+    var session = http_client.Session.init() catch {
+        openFallback(url);
+        return;
+    };
+    defer session.deinit();
+
+    // Paste sites answer with Post/Redirect/Get, which WinHTTP follows to the new paste's page.
+    const response = session.send(allocator, url, .{ .content_type = "application/x-www-form-urlencoded", .payload = body }) catch {
+        openFallback(url);
+        return;
+    };
+    defer response.deinit(allocator);
+    if (response.status / 100 != 2) slog.warn("Failed to upload to '{s}': status {d}", .{ url, response.status });
+
+    slog.info("Uploaded clipboard, opening {s}", .{response.url});
+    if (!win32.setClipboardText(response.url)) {
+        slog.warn("Failed to copy paste URL '{s}' to the clipboard", .{response.url});
+    }
+    if (!win32.shellOpen(response.url.ptr, null)) {
+        slog.err("Failed to open uploaded paste URL '{s}'", .{response.url});
     }
 }
 
@@ -50,89 +128,26 @@ fn formUrlEncode(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
     return out.toOwnedSlice(allocator);
 }
 
-/// POSTs `body` to `url`; the client's default redirect_behavior already follows the Post/Redirect/Get response paste sites use, so this returns the final landing page's URL (null-terminated for shellOpen; caller frees).
-fn postAndFollowRedirect(allocator: std.mem.Allocator, io: std.Io, url: []const u8, body: []const u8) ![:0]const u8 {
-    var client: std.http.Client = .{ .allocator = allocator, .io = io };
-    defer client.deinit();
-
-    const uri = try std.Uri.parse(url);
-    var request = try client.request(.POST, uri, .{
-        .headers = .{
-            .content_type = .{ .override = "application/x-www-form-urlencoded" },
-            .user_agent = .{ .override = "EVE-Maj-Preview" },
-        },
-    });
-    defer request.deinit();
-
-    request.transfer_encoding = .{ .content_length = body.len };
-    var body_writer = try request.sendBodyUnflushed(&.{});
-    try body_writer.writer.writeAll(body);
-    try body_writer.end();
-    const connection = request.connection orelse return error.MissingConnection;
-    try connection.flush();
-
-    var redirect_buf: [8 * 1024]u8 = undefined;
-    var response = try request.receiveHead(&redirect_buf);
-
-    const reader = response.reader(&.{});
-    _ = reader.discardRemaining() catch |err| {
-        slog.debug("Failed to discard remaining response body: {}", .{err});
-    };
-
-    if (response.head.status.class() != .success) {
-        slog.warn("Failed to upload to '{s}': status {}", .{ url, response.head.status });
-    }
-
-    return allocator.printSentinel("{f}", .{request.uri}, 0);
-}
-
 fn openFallback(url: []const u8) void {
     if (!win32.shellOpenUrl(url)) {
         slog.err("Failed to open URL '{s}'", .{url});
     }
 }
 
-/// Uploads clipboard text to url via aDashboard's paste-intake form shape and opens the resulting page, falling back to opening the plain url if there's no clipboard text or the upload fails.
-fn uploadClipboardAndOpen(allocator: std.mem.Allocator, io: std.Io, url: []const u8) void {
-    const clipboard_text = win32.getClipboardText(allocator) orelse {
-        slog.warn("Clipboard has no text; opening '{s}' without uploading", .{url});
-        openFallback(url);
-        return;
-    };
-    defer allocator.free(clipboard_text);
-
-    const encoded = formUrlEncode(allocator, clipboard_text) catch |err| {
-        slog.err("Failed to encode clipboard content for upload: {}", .{err});
-        openFallback(url);
-        return;
-    };
-    defer allocator.free(encoded);
-
-    const body = allocator.print("Paste+anything={s}&submit=new", .{encoded}) catch |err| {
-        slog.err("Failed to build upload body: {}", .{err});
-        openFallback(url);
-        return;
-    };
-    defer allocator.free(body);
-
-    const final_url = postAndFollowRedirect(allocator, io, url, body) catch |err| {
-        slog.err("Failed to upload the clipboard to '{s}': {}", .{ url, err });
-        openFallback(url);
-        return;
-    };
-    defer allocator.free(final_url);
-
-    slog.info("Uploaded clipboard, opening {s}", .{final_url});
-    if (!win32.setClipboardText(final_url)) {
-        slog.warn("Failed to copy paste URL '{s}' to the clipboard", .{final_url});
-    }
-    if (!win32.shellOpen(final_url.ptr, null)) {
-        slog.err("Failed to open uploaded paste URL '{s}'", .{final_url});
-    }
+test "formUrlEncode keeps unreserved characters and turns spaces into plus" {
+    const encoded = try formUrlEncode(std.testing.allocator, "Az09-_.~ x");
+    defer std.testing.allocator.free(encoded);
+    try std.testing.expectEqualStrings("Az09-_.~+x", encoded);
 }
 
-fn uploadClipboardAndOpenThread(allocator: std.mem.Allocator, io: std.Io, url: []const u8) void {
-    defer allocator.free(url);
-    defer g_is_upload_in_flight.store(false, .release);
-    uploadClipboardAndOpen(allocator, io, url);
+test "formUrlEncode percent-encodes reserved characters, newlines and non-ASCII bytes" {
+    const encoded = try formUrlEncode(std.testing.allocator, "a&b=c+d\r\n\xe9");
+    defer std.testing.allocator.free(encoded);
+    try std.testing.expectEqualStrings("a%26b%3Dc%2Bd%0D%0A%E9", encoded);
+}
+
+test "formUrlEncode of empty text is empty" {
+    const encoded = try formUrlEncode(std.testing.allocator, "");
+    defer std.testing.allocator.free(encoded);
+    try std.testing.expectEqualStrings("", encoded);
 }

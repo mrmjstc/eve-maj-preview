@@ -57,6 +57,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.linkSystemLibrary("winmm", .{});
     exe.root_module.linkSystemLibrary("mfplat", .{});
     exe.root_module.linkSystemLibrary("mfreadwrite", .{});
+    exe.root_module.linkSystemLibrary("winhttp", .{});
 
     exe.root_module.addWin32ResourceFile(.{
         .file = b.path("app.rc"),

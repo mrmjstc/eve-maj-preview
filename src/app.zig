@@ -17,7 +17,6 @@ const character_ids_mod = @import("chatlog/character_ids.zig");
 const runtime = @import("activity/runtime.zig");
 const travel_left_behind = @import("travel/left_behind.zig");
 const tray = @import("tray.zig");
-const update = @import("update.zig");
 const knots_host = @import("dialog/knots/host.zig");
 const session = @import("dialog/knots/session.zig");
 const schedule = @import("util/schedule.zig");
@@ -80,7 +79,6 @@ pub const App = struct {
     /// The hidden window whose WM_TIMER drives the tick; others post to it.
     timer_hwnd: ?win32.HWND = null,
     tray_icon: ?tray.TrayIcon = null,
-    update_checker: ?update.UpdateChecker = null,
     pending_profile_buf: [PROFILE_NAME_BUFFER_SIZE]u8 = undefined,
     /// Borrows from pending_profile_buf.
     pending_profile: ?[]const u8 = null,
