@@ -33,7 +33,6 @@ pub const Glyph = enum {
     speech,
     speaker,
     check,
-    chevron,
 };
 
 /// The glyph centred in a `box`-sized square, moved onto whole device pixels by `snap` (see snapOffset).
@@ -358,14 +357,6 @@ fn bitmap(glyph: Glyph) []const []const u8 {
             ".##.##...",
             "..###....",
             "...#.....",
-        },
-        .chevron => &.{
-            "#.......#",
-            "##.....##",
-            ".##...##.",
-            "..##.##..",
-            "...###...",
-            "....#....",
         },
     };
 }

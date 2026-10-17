@@ -594,13 +594,16 @@ pub const profile_button: Style = .{
     .padding = .xy(8, 0),
     .background = .{ .color = SURFACE },
     .border_width = .all(1),
-    .border_color = .{ .color = BORDER },
+    .border_color = .{ .color = BORDER_STRONG },
     .radius = .md,
     .hover = &.{ .border_color = .accent, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
 pub const profile_button_open: Style = profile_button.with(.{ .border_color = .accent });
-pub const profile_name: Style = .{ .width = .grow(), .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } };
+pub const profile_name: Style = .{ .width = .grow(), .foreground = .{ .color = TEXT } };
+/// knots' select sizes its chevron to 10px at the dialog's text size.
+pub const SELECT_CHEVRON_SIZE = 10;
+pub const select_chevron: Style = .{ .width = .fixed(SELECT_CHEVRON_SIZE), .height = .fixed(SELECT_CHEVRON_SIZE) };
 /// A profile's accent colour beside its name; the caller sets its colour.
 pub const profile_swatch: Style = .{ .width = .fixed(12), .height = .fixed(12), .radius = .{ .fixed = 3 } };
 

@@ -162,7 +162,7 @@ fn profileButton(context: *ui.Frame) !void {
     const running = session.profile().ptr;
     try swatch(context, PROFILE_BUTTON_KEY.indexed(1), running.accentColor);
     try context.e(Text{ .selectable = false, .key = PROFILE_BUTTON_KEY.indexed(2), .content = profiles.displayName(running.profile_name), .style = &style.profile_name });
-    try glyph(context, PROFILE_BUTTON_KEY.indexed(3), .chevron, style.MUTED);
+    try context.e(Canvas{ .key = PROFILE_BUTTON_KEY.indexed(3), .commands = try selectChevron(context.arena(), g_is_menu_open), .style = &style.select_chevron });
     try button.close(context);
     if (response.clicked) {
         g_is_menu_open = true;
@@ -248,6 +248,19 @@ fn swatch(context: *ui.Frame, key: ui.Key, argb: u32) !void {
     const swatch_style = try context.arena().create(ui.Style);
     swatch_style.* = style.profile_swatch.with(.{ .background = color_convert.solid(argb) });
     try context.e(Rect{ .key = key, .style = swatch_style });
+}
+
+/// Drawn as knots' select draws its own, so the profile button reads as one of the dropdowns.
+fn selectChevron(arena: std.mem.Allocator, is_open: bool) ![]const Canvas.DrawCmd {
+    const size: f32 = style.SELECT_CHEVRON_SIZE;
+    const mid = size * 0.5;
+    const edge_y = size * @as(f32, if (is_open) 0.62 else 0.38);
+    const tip_y = size * @as(f32, if (is_open) 0.34 else 0.66);
+    const thickness = 1.75;
+    const commands = try arena.alloc(Canvas.DrawCmd, 2);
+    commands[0] = .{ .line = .{ .from = .{ size * 0.2, edge_y }, .to = .{ mid, tip_y }, .color = style.TEXT.value, .thickness = thickness } };
+    commands[1] = .{ .line = .{ .from = .{ mid, tip_y }, .to = .{ size * 0.8, edge_y }, .color = style.TEXT.value, .thickness = thickness } };
+    return commands;
 }
 
 fn glyph(context: *ui.Frame, key: ui.Key, which: glyphs.Glyph, tint: Color) !void {

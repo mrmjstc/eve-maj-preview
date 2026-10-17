@@ -207,13 +207,13 @@ pub fn close(self: *const ColorPicker, frame: *Frame) !void {
         .corner_radius = m.swatch_radius.shrink(0.5),
         .thickness = 1,
     } });
-    // EVE-Maj patch: an unset colour is struck through, dark under light so it shows on any fallback.
+    // EVE-Maj patch: an unset colour is struck through in grey, dark under light so it shows on any fallback.
     if (self.is_unset) {
         const inset: f32 = 4;
         const from: [2]f32 = .{ inset, m.swatch_h - inset };
         const to: [2]f32 = .{ m.swatch_w - inset, inset };
         try swatch_cmds.append(arena, .{ .line = .{ .from = from, .to = to, .color = .{ 0, 0, 0, 0.6 }, .thickness = 3 } });
-        try swatch_cmds.append(arena, .{ .line = .{ .from = from, .to = to, .color = .{ 0.9, 0.3, 0.25, 1 }, .thickness = 1.5 } });
+        try swatch_cmds.append(arena, .{ .line = .{ .from = from, .to = to, .color = .{ 0.85, 0.86, 0.88, 1 }, .thickness = 1.5 } });
     }
     _ = try ui.open(self.key.indexed(SWATCH_INDEX), .{
         .width = .fixed(m.swatch_w),
