@@ -51,11 +51,23 @@ pub fn migrateLegacyLayout(io: std.Io) void {
 
     // Log files come first in LEGACY_FILES, so the old log is moved before these messages reopen it.
     for (LEGACY_FILES) |file| {
-        cwd.access(io, file.from, .{}) catch continue;
-        const target_exists = if (cwd.access(io, file.to, .{})) |_| true else |_| false;
-        if (target_exists) {
+        cwd.access(io, file.from, .{}) catch |err| switch (err) {
+            error.FileNotFound => continue,
+            else => {
+                slog.warn("Failed to check for legacy file '{s}': {}", .{ file.from, err });
+                continue;
+            },
+        };
+        if (cwd.access(io, file.to, .{})) |_| {
             slog.debug("Left '{s}' in place: '{s}' already exists", .{ file.from, file.to });
             continue;
+        } else |err| switch (err) {
+            error.FileNotFound => {},
+            // Unknown, so it's left alone rather than risk moving over it.
+            else => {
+                slog.warn("Failed to move '{s}': couldn't check for '{s}': {}", .{ file.from, file.to, err });
+                continue;
+            },
         }
         cwd.rename(file.from, cwd, file.to, io) catch |err| {
             slog.warn("Failed to move '{s}' to '{s}': {}", .{ file.from, file.to, err });
@@ -81,28 +93,27 @@ pub fn atomicWriteFile(allocator: std.mem.Allocator, io: std.Io, path: []const u
         io.random(&random_bytes);
         break :blk std.mem.readInt(u64, &random_bytes, .little);
     };
-    const temp_path = try allocator.print("{s}.{x}.tmp", .{ path, unique });
+    const temp_path = allocator.print("{s}.{x}.tmp", .{ path, unique }) catch |err| {
+        slog.err("Failed to build a temp file name for '{s}': {}", .{ path, err });
+        return err;
+    };
     defer allocator.free(temp_path);
 
-    const temp_file = std.Io.Dir.cwd().createFile(io, temp_path, .{}) catch |err| {
+    const cwd = std.Io.Dir.cwd();
+    const temp_file = cwd.createFile(io, temp_path, .{}) catch |err| {
         slog.err("Failed to create temp file '{s}' ({} bytes): {}", .{ temp_path, content.len, err });
         return err;
     };
-    defer temp_file.close(io);
-
-    temp_file.writeStreamingAll(io, content) catch |err| {
-        slog.err("Failed to write {} bytes to temp file '{s}': {}", .{ content.len, temp_path, err });
-        std.Io.Dir.cwd().deleteFile(io, temp_path) catch |cleanup_err| {
-            slog.err("Failed to clean up temp file '{s}' after write failure (original error: {}): {}", .{ temp_path, err, cleanup_err });
-        };
+    writeAndSync(io, temp_file, temp_path, content) catch |err| {
+        temp_file.close(io);
+        deleteTemp(io, temp_path, err);
         return err;
     };
+    temp_file.close(io);
 
-    std.Io.Dir.cwd().rename(temp_path, std.Io.Dir.cwd(), path, io) catch |err| {
+    cwd.rename(temp_path, cwd, path, io) catch |err| {
         slog.err("Failed to rename temp file '{s}' to '{s}' ({} bytes): {}", .{ temp_path, path, content.len, err });
-        std.Io.Dir.cwd().deleteFile(io, temp_path) catch |cleanup_err| {
-            slog.err("Failed to clean up temp file '{s}' after rename failure (original error: {}): {}", .{ temp_path, err, cleanup_err });
-        };
+        deleteTemp(io, temp_path, err);
         return err;
     };
 }
@@ -152,4 +163,22 @@ pub fn expandEnvironmentVariables(allocator: std.mem.Allocator, path: []const u8
     }
 
     return result.toOwnedSlice(allocator);
+}
+
+/// Flushed before the rename, so a crash can't leave the renamed file empty; logs its own failures.
+fn writeAndSync(io: std.Io, file: std.Io.File, temp_path: []const u8, content: []const u8) !void {
+    file.writeStreamingAll(io, content) catch |err| {
+        slog.err("Failed to write {} bytes to temp file '{s}': {}", .{ content.len, temp_path, err });
+        return err;
+    };
+    file.sync(io) catch |err| {
+        slog.err("Failed to flush temp file '{s}' to disk: {}", .{ temp_path, err });
+        return err;
+    };
+}
+
+fn deleteTemp(io: std.Io, temp_path: []const u8, original_err: anyerror) void {
+    std.Io.Dir.cwd().deleteFile(io, temp_path) catch |err| {
+        slog.err("Failed to clean up temp file '{s}' (original error: {}): {}", .{ temp_path, original_err, err });
+    };
 }
