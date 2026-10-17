@@ -15,7 +15,7 @@ var g_upload_hashes: [MAX_UPLOADS]std.atomic.Value(u64) = @splat(std.atomic.Valu
 /// Reads the clipboard now, so each press sends what was copied at that moment, then uploads and opens it on a background thread; the same text pressed again while it's still uploading is ignored. Main thread only; `allocator` must be thread-safe.
 pub fn uploadClipboardAndOpenAsync(allocator: std.mem.Allocator, url: []const u8) void {
     const text = win32.getClipboardText(allocator) orelse {
-        slog.warn("Clipboard has no text; opening '{s}' without uploading", .{url});
+        slog.info("Clipboard has no text; opening '{s}' without uploading", .{url});
         openFallback(url);
         return;
     };
@@ -97,7 +97,11 @@ fn uploadAndOpen(allocator: std.mem.Allocator, url: []const u8, text: []const u8
         return;
     };
     defer response.deinit(allocator);
-    if (response.status / 100 != 2) slog.warn("Failed to upload to '{s}': status {d}", .{ url, response.status });
+    if (response.status / 100 != 2) {
+        slog.warn("Failed to upload to '{s}': status {d}", .{ url, response.status });
+        openFallback(url);
+        return;
+    }
 
     slog.info("Uploaded clipboard, opening {s}", .{response.url});
     if (!win32.setClipboardText(response.url)) {
