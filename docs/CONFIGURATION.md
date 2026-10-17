@@ -545,7 +545,7 @@ All values are **keys**.
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `requireEveFocus` | bool | `false` | Hotkeys only fire while an EVE client has focus. |
+| `requireEveFocus` | bool | `false` | Hotkeys only fire while an EVE client has focus; elsewhere their keys reach the focused app as normal. Suspend works anywhere. |
 | `resetGroupIndexOnNonGroupFocus` | bool | `false` | Reset a group's cycle position when focus leaves the group. |
 | `allowHotkeyAutoRepeat` | bool | `false` | Holding a keyboard hotkey repeats it. |
 | `exactHotkeyModifiers` | bool | `false` | `false`: an unbound combo falls back to its bare key's binding (`Alt+1` fires `1`). `true`: modifiers must match exactly; unbound combos pass to the game. |

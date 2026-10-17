@@ -36,7 +36,7 @@ All relative to the exe folder (`main.zig` sets the cwd there).
 6. Build subsystems in dependency order: notification center → `Scout` → `ThumbnailSet` → `ChatlogMonitor` (worker stopped) → activity `Trackers` → start the chatlog worker.
 7. Create the hidden timer window, focus hook, tray icon, update check thread.
 8. Scan windows, populate thumbnails, add characters to the chatlog monitor.
-9. Create the `HotkeyManager`, install the focus grant, start the tick timer.
+9. Start the hotkey hook thread, create the `HotkeyManager`, install the focus grant, start the tick timer.
 10. Run the `GetMessageA` loop.
 
 Each step's `defer` sits right after it, so teardown is the reverse order. `app.g_app` is set first and cleared last.
@@ -82,6 +82,7 @@ Reload entry points:
 | `WM_COPYDATA` | `protocol/run.handleCopyData`: protocol URLs from a second process |
 | `WM_SWITCH_PROFILE` | `App.runPendingProfileSwitch` |
 | `WM_HOTKEYS_STATE_CHANGED` | Suspend/resume notification |
+| `WM_WIN_KEY_CAPTURED` | `keyboard_hook.onWinKeyCaptured`: a bare Win press the config dialog is recording |
 | `WM_KNOTS_COMMAND` | `dialog/knots/host.onCommand` |
 
 ## The tick (`App.tick`)
@@ -109,7 +110,8 @@ Throttled work uses `util/schedule.zig`: intervals measure from the tick's start
 
 | Thread | Module | Talks to main via |
 |---|---|---|
-| Main | message loop, all window procs, WinEvent and low-level hooks, tick, config window | — |
+| Main | message loop, all window procs, WinEvent hooks, tick, config window | — |
+| Hotkey hooks | `hotkeys/hook_thread.zig`: the low-level keyboard and mouse hooks, at time-critical priority | Posts `WM_HOTKEY` and `WM_WIN_KEY_CAPTURED`; main changes bindings through `hook_thread.call` |
 | Chatlog worker | `chatlog.zig` | `chatlog/queue.zig` queues |
 | TTS worker | `notifications/tts.zig` (STA COM, SAPI) | Fire-and-forget command queue |
 | Sound worker | `notifications/sound.zig` (Media Foundation + waveOut) | Fire-and-forget command queue |
@@ -124,6 +126,7 @@ Cross-thread data:
 - Chatlog: `commands` (main → worker); `system_updates`, `notifications`, `session_starts` (worker → main). Every other `ChatlogMonitor` field is owned by one thread.
 - `activity/tracker.zig` trackers: written by the worker, read by main, each under its own mutex.
 - `CharacterIds`: locks its own map.
+- Hook bindings, held presses and the require-EVE-focus filter: hook thread only. Main changes them through `hook_thread.call`, which runs the change there and waits for it.
 - The worker reads `GlobalConfig` ore prices, so new global settings are adopted only while it's stopped.
 
 ## Window discovery and thumbnails
@@ -171,7 +174,7 @@ Layout (`layout/`, mostly pure):
 
 ## Input and control
 
-- **Hotkeys** go through `WH_KEYBOARD_LL`/`WH_MOUSE_LL` (`hotkeys/keyboard_hook.zig`, `mouse_hook.zig`, shared `hook_bindings.zig`), not `RegisterHotKey`, so bare modifiers and mouse buttons bind. Matches are posted as `WM_HOTKEY`.
+- **Hotkeys** go through `WH_KEYBOARD_LL`/`WH_MOUSE_LL` (`hotkeys/keyboard_hook.zig`, `mouse_hook.zig`, shared `hook_bindings.zig`), not `RegisterHotKey`, so bare modifiers and mouse buttons bind. Matches are posted as `WM_HOTKEY`. The hooks run on their own thread, so a busy main thread never delays input or gets them removed by Windows. Each key or button press is decided at its first down: a swallowed press has its repeats and release swallowed too, so a client never sees a key-up without its down, which holding Ctrl through a cycle depends on. With `requireEveFocus`, a bound key pressed outside a tracked window passes through untouched.
 - **IDs** (`hotkeys/bindings.zig`): bands of 1000 per kind (cycle group 0, global action 1000, per-character 2000, profile switch 3000, assign group 4000, app 5000, URL 6000, close group 7000, minimize group 8000). `GLOBAL_BINDINGS` maps global actions to config fields and protocol actions.
 - **`hotkeys/manager.zig`** (`HotkeyManager`): registration, suspend and dialog-recording pause, and `runAction`, the one switch on `HotkeyAction`. Bindings come from `store.saved`; other settings from `store.live`.
 - **`hotkeys/cycling.zig`**: every cycle hotkey. Decisions are in `cycle_order.zig` (pure, tested).
@@ -237,7 +240,7 @@ WM_HOTKEY -> timerWindowProc -> HotkeyManager.handleHotkeyPress -> runAction
 
 ## Configuration window (`dialog/`)
 
-Immediate-mode (knots on Vulkan), main thread, nested message loop so the tick, hooks and tray keep running. Each frame reads settings and writes them straight back; there's no form state.
+Immediate-mode (knots on Vulkan), main thread, nested message loop so the tick and tray keep running. Each frame reads settings and writes them straight back; there's no form state.
 
 - `knots/host.zig`: window lifecycle, nested loop, close prompt, saved position. Anything that replaces documents or touches the app is posted as `WM_KNOTS_COMMAND` and runs between frames.
 - `knots/session.zig`: edits `store.live` and a `GlobalConfig` draft. Every change goes through `Ref.set` (or list `append`/`remove`/`move`): copies strings, clamps, calls `App.onLiveProfileEdited`. Replaced strings are freed a frame later. Dirty = differs from saved. `save()` commits, restarts subsystems and adopts the global draft.
