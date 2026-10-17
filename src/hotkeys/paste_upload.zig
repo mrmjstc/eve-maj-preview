@@ -2,6 +2,7 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const http_client = @import("../util/http_client.zig");
+const detached = @import("../util/detached.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("paste_upload");
@@ -58,8 +59,7 @@ fn releaseSlot(slot_index: usize) void {
 fn startUpload(allocator: std.mem.Allocator, url: []const u8, text: []const u8, slot_index: usize) !void {
     const url_copy = try allocator.dupe(u8, url);
     errdefer allocator.free(url_copy);
-    const thread = try std.Thread.spawn(.{}, uploadThread, .{ allocator, url_copy, text, slot_index });
-    thread.detach();
+    try detached.spawn(uploadThread, .{ allocator, url_copy, text, slot_index });
 }
 
 fn uploadThread(allocator: std.mem.Allocator, url: []const u8, text: []const u8, slot_index: usize) void {

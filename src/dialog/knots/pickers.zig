@@ -2,6 +2,7 @@
 const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
 const lang = @import("../../lang/lang.zig");
+const detached = @import("../../util/detached.zig");
 const log = @import("../../log.zig");
 
 const slog = log.Scoped("dialog_knots");
@@ -52,8 +53,7 @@ fn startPicker(target: Target, index: usize, title: []const u8, owner: ?win32.HW
     errdefer g_allocator.free(shown_title);
     const file_type_name = try g_allocator.dupe(u8, lang.text(fileTypeName(target)));
     errdefer g_allocator.free(file_type_name);
-    const thread = try std.Thread.spawn(.{}, pickerThread, .{ target, index, shown_title, file_type_name, owner, timer_hwnd, command });
-    thread.detach();
+    try detached.spawn(pickerThread, .{ target, index, shown_title, file_type_name, owner, timer_hwnd, command });
 }
 
 /// Owns `title` and `file_type_name`; shares only the allocator and the posted message with the main thread.

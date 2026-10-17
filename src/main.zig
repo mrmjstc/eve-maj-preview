@@ -26,6 +26,7 @@ const update = @import("update.zig");
 const knots_host = @import("dialog/knots/host.zig");
 const run_on_startup = @import("dialog/run_on_startup.zig");
 const lang = @import("lang/lang.zig");
+const detached = @import("util/detached.zig");
 const log = @import("log.zig");
 
 const App = app_mod.App;
@@ -33,6 +34,8 @@ const slog = log.Scoped("main");
 
 const INSTANCE_WAIT_ATTEMPTS = 100;
 const INSTANCE_WAIT_INTERVAL_MS = 100;
+/// Enough for a request finishing as the app exits, without holding exit up.
+const DETACHED_EXIT_WAIT_MS = 2000;
 
 /// Routes panics into eve-maj.log; Zig only looks for `panic` in the root source file.
 pub const panic = std.debug.FullPanic(crash.handlePanic);
@@ -166,6 +169,8 @@ fn mainImpl(init: std.process.Init) !void {
     defer if (app.tray_icon) |*icon| icon.deinit();
 
     defer update.g_update_status.deinit(init.io);
+    // After the defers of what the threads use, so it runs before those.
+    defer detached.waitForAll(init.io, DETACHED_EXIT_WAIT_MS);
     if (app.global_settings.disableUpdateChecks) slog.info("Update checks are disabled", .{}) else startUpdateCheck(allocator, init.io);
 
     try app.scout.scanForEveWindows();
@@ -251,11 +256,9 @@ fn startChatlogMonitoring(monitor: *chatlog.ChatlogMonitor, characters: []const 
 }
 
 fn startUpdateCheck(allocator: std.mem.Allocator, io: std.Io) void {
-    const update_thread = std.Thread.spawn(.{}, update.checkForUpdatesBackground, .{ allocator, io }) catch |err| {
+    detached.spawn(update.checkForUpdatesBackground, .{ allocator, io }) catch |err| {
         slog.warn("Failed to start update check thread: {}", .{err});
-        return;
     };
-    update_thread.detach();
 }
 
 /// Run-key startup entries launch with an arbitrary working directory, not the exe's folder.

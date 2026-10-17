@@ -3,6 +3,7 @@ const std = @import("std");
 const win32 = @import("../../platform/win32.zig");
 const config = @import("../../config.zig");
 const esi_prices = @import("../tools/esi_prices.zig");
+const detached = @import("../../util/detached.zig");
 const log = @import("../../log.zig");
 
 const slog = log.Scoped("dialog_knots");
@@ -43,12 +44,11 @@ pub fn isFetching() bool {
 /// `timer_hwnd` receives `command` with the result; returns false if a fetch is already running or couldn't start.
 pub fn fetch(io: std.Io, timer_hwnd: win32.HWND, command: usize) bool {
     if (g_is_busy.swap(true, .acq_rel)) return false;
-    const thread = std.Thread.spawn(.{}, fetchThread, .{ io, timer_hwnd, command }) catch |err| {
+    detached.spawn(fetchThread, .{ io, timer_hwnd, command }) catch |err| {
         slog.err("Failed to fetch ore prices: {}", .{err});
         g_is_busy.store(false, .release);
         return false;
     };
-    thread.detach();
     return true;
 }
 

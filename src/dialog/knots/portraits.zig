@@ -7,6 +7,7 @@ const files = @import("../../config/files.zig");
 const session = @import("session.zig");
 const http_client = @import("../../util/http_client.zig");
 const rgba = @import("../../util/rgba.zig");
+const detached = @import("../../util/detached.zig");
 const log = @import("../../log.zig");
 
 const Image = ui.component.Image;
@@ -65,7 +66,7 @@ pub fn init(allocator: std.mem.Allocator, timer_hwnd: ?win32.HWND, command: usiz
     }
 }
 
-/// At app exit; a load still running is freed when its result lands.
+/// At app exit; a load still running posts a result nothing reads, which goes with the process.
 pub fn deinit() void {
     var it = g_entries.iterator();
     while (it.next()) |entry| {
@@ -148,8 +149,7 @@ fn startLoad(id: []const u8) !void {
     const timer_hwnd = g_timer_hwnd orelse return error.MissingTimerWindow;
     const owned_id = try g_allocator.dupe(u8, id);
     errdefer g_allocator.free(owned_id);
-    const thread = try std.Thread.spawn(.{}, loadThread, .{ session.runningApp().io, timer_hwnd, g_command, owned_id });
-    thread.detach();
+    try detached.spawn(loadThread, .{ session.runningApp().io, timer_hwnd, g_command, owned_id });
 }
 
 /// Takes ownership of `id`; shares only the allocator and the posted message with the main thread.
