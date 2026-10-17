@@ -121,6 +121,8 @@ Throttled work uses `util/schedule.zig`: intervals measure from the tick's start
 
 TTS and sound share `notifications/worker.zig`'s lazily started `Worker`.
 
+The one-shot threads (update check, clipboard uploads, dialog helpers) are started through `util/detached.zig`, which counts them; `main.zig` waits up to 2 s at exit for them to finish before tearing down what they use.
+
 Cross-thread data:
 
 - Chatlog: `commands` (main → worker); `system_updates`, `notifications`, `session_starts` (worker → main). Every other `ChatlogMonitor` field is owned by one thread.
