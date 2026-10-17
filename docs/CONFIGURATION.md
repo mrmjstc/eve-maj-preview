@@ -20,7 +20,7 @@ Paths are relative to the executable's folder.
 | `profiles\<name>.json` | A profile. `default.json` is created on first run and can't be deleted. |
 | `profiles\global.settings.json` | [Global settings](#global-settings), shared by all profiles. |
 | `profiles\backup\<unix time>_<name>.json` | Deleted profiles, and profiles that failed to parse. Listed in the dialog's Backups tab. |
-| `profiles\global.settings.json.bak` | Global settings file that failed to parse. |
+| `profiles\global.settings.json.bak` | Global settings file that failed to read or parse. |
 | `data\colors.json` | Generated unique system/character colours (64 most recent of each). Written when the last client closes or on exit. Delete to reassign. |
 | `data\character_ids.json` | Character IDs read from log file names. Rebuilt from logs if deleted. |
 | `data\portraits\<id>.jpg` | Character portraits, downloaded once. Delete one to refetch it. |
