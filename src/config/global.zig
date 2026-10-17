@@ -228,25 +228,28 @@ pub const GlobalConfig = struct {
                 slog.debug("No global settings file, using defaults", .{});
                 return GlobalConfig.fromWire(.{}, allocator);
             }
-            slog.err("Failed to read global settings file: {}", .{err});
-            std.Io.Dir.cwd().deleteFile(io, files.GLOBAL_SETTINGS_FILE) catch |delete_err| {
-                slog.warn("Failed to delete unreadable global settings file: {}", .{delete_err});
-            };
+            slog.err("Failed to read global settings file, using defaults and keeping it as '{s}': {}", .{ UNREADABLE_BACKUP_FILE, err });
+            keepUnreadable(io);
             return GlobalConfig.fromWire(.{}, allocator);
         };
         defer allocator.free(content);
 
         const settings = loadFromJson(allocator, content) catch |err| {
             slog.warn("Failed to parse global settings file, using defaults and keeping it as '{s}': {}", .{ UNREADABLE_BACKUP_FILE, err });
-            const cwd = std.Io.Dir.cwd();
-            cwd.rename(files.GLOBAL_SETTINGS_FILE, cwd, UNREADABLE_BACKUP_FILE, io) catch |rename_err| {
-                slog.err("Failed to keep unreadable global settings as '{s}': {}", .{ UNREADABLE_BACKUP_FILE, rename_err });
-            };
+            keepUnreadable(io);
             return GlobalConfig.fromWire(.{}, allocator);
         };
 
         slog.info("Loaded global settings: last profile = {s}", .{settings.lastUsedProfile});
         return settings;
+    }
+
+    /// Moved aside rather than deleted, since running on defaults saves over it; a file still locked fails that save too, so it survives either way.
+    fn keepUnreadable(io: std.Io) void {
+        const cwd = std.Io.Dir.cwd();
+        cwd.rename(files.GLOBAL_SETTINGS_FILE, cwd, UNREADABLE_BACKUP_FILE, io) catch |err| {
+            slog.err("Failed to keep unreadable global settings as '{s}': {}", .{ UNREADABLE_BACKUP_FILE, err });
+        };
     }
 
     fn loadFromJson(allocator: std.mem.Allocator, json_text: []const u8) !GlobalConfig {
@@ -260,7 +263,7 @@ pub const GlobalConfig = struct {
         return wire.toJsonAlloc(allocator, self);
     }
 
-    pub fn save(self: *GlobalConfig, io: std.Io) !void {
+    pub fn save(self: *const GlobalConfig, io: std.Io) !void {
         const json = try self.toJsonString(self.allocator);
         defer self.allocator.free(json);
 
