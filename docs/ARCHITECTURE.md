@@ -47,7 +47,7 @@ Owns every long-lived subsystem. Main thread only.
 
 | Field | Lifetime |
 |---|---|
-| `store` (`ProfileStore`), `global_settings`, `character_ids`, `scout`, `exclusions`, `notifications` (`NotificationCenter`), `focus`, `trackers`, tray, update checker | Whole run |
+| `store` (`ProfileStore`), `global_settings`, `character_ids`, `scout`, `exclusions`, `notifications` (`NotificationCenter`), `focus`, `trackers`, tray | Whole run |
 | `auto_minimizer` | Whole run; reset when a different profile loads |
 | `thumbnail_set`, `hotkey_manager`, `chatlog_monitor` | Rebuilt on reload; heap pointers |
 | `list_window` | Built and torn down with `thumbnail_set`; ClientList mode only |
@@ -116,7 +116,7 @@ Throttled work uses `util/schedule.zig`: intervals measure from the tick's start
 | TTS worker | `notifications/tts.zig` (STA COM, SAPI) | Fire-and-forget command queue |
 | Sound worker | `notifications/sound.zig` (Media Foundation + waveOut) | Fire-and-forget command queue |
 | Update check | `update.zig`, one-shot | Mutex-guarded `UpdateStatus` |
-| Clipboard upload | `hotkeys/paste_upload.zig`, one-shot | None |
+| Clipboard upload | `hotkeys/paste_upload.zig`, one per press, at most 4 at once | None; slots claimed through atomics |
 | Dialog helpers | `pickers.zig`, `prices.zig`, `portraits.zig`, one-shot | `WM_KNOTS_COMMAND` |
 
 TTS and sound share `notifications/worker.zig`'s lazily started `Worker`.
@@ -271,4 +271,4 @@ Immediate-mode (knots on Vulkan), main thread, nested message loop so the tick a
 | `platform/fonts.zig` | Bundled Cascadia and Geist, registered process-private |
 | `platform/virtual_keys.zig` | VK codes, `KEY_NAMES`, mouse-chord encoding |
 | `platform/wic.zig` | Image decoding (portraits) |
-| `util/` | Colour (OKLab picks), number format, HTTP, schedule, strings |
+| `util/` | Colour (OKLab picks), number format, HTTP (WinHTTP, with timeouts), schedule, strings |
