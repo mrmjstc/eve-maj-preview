@@ -9,6 +9,7 @@ const host = @import("../host.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const window_picker = @import("../window_picker.zig");
+const status = @import("../status.zig");
 const lang = @import("../../../lang/lang.zig");
 const log = @import("../../../log.zig");
 
@@ -23,7 +24,8 @@ const NEW_FILTER_NAME = "New Filter";
 const PROTOCOL_DOCS_URL = "https://github.com/mrmjstc/eve-maj-preview/blob/main/docs/CONFIGURATION.md#command-line-and-protocol";
 
 var g_allocator: std.mem.Allocator = undefined;
-var g_selected_index: usize = 0;
+/// The filter open in its editor, or null while every filter shows as a row.
+var g_open_index: ?usize = null;
 /// The Window Filters switch isn't saved; it starts on whenever the profile has filters.
 var g_are_filters_enabled: ?bool = null;
 /// The open "Pick Running Window" dropdown, under one filter.
@@ -37,7 +39,7 @@ pub fn init(allocator: std.mem.Allocator) void {
 pub fn reset() void {
     window_picker.close(&g_picker);
     g_are_filters_enabled = null;
-    g_selected_index = 0;
+    g_open_index = null;
 }
 
 pub fn show(context: *ui.Frame) !void {
@@ -86,7 +88,18 @@ fn logging(context: *ui.Frame) !void {
     const section = try widgets.openSection(context, "Logging", "How much detail is written to the log file.", &style.section);
     try bind.choice(context, session.global(), "logLevel", "Log Level");
     try widgets.hintText(context, .src(@src()), "Use Debug when reporting a problem.");
+    const file_row = try widgets.openBinding(context, .src(@src()), "Log File");
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = log.LOG_FILE_NAME, .style = &style.muted_text });
+    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Open Folder"), .style = &style.plain_button })).clicked) openLogFolder();
+    try file_row.close(context);
     try section.close(context);
+}
+
+/// The working directory is the app's folder, so the relative log folder opens from there.
+fn openLogFolder() void {
+    if (win32.shellOpen(log.LOG_DIR, null)) return;
+    slog.err("Failed to open the log folder '{s}'", .{log.LOG_DIR});
+    status.show(.failure, "Failed to open the log folder", .{});
 }
 
 fn scanning(context: *ui.Frame) !void {
@@ -108,93 +121,88 @@ fn windowFilters(context: *ui.Frame) !void {
     try section.close(context);
 }
 
-/// The built-in EVE filter is the profile default and isn't editable here, so it's left out of the roster.
+/// The built-in EVE filter is the profile default and isn't editable here, so it's left out of the list.
 fn isBuiltIn(filter: *const config.WindowFilterConfig) bool {
     return std.mem.eql(u8, filter.name, config.WindowFilterConfig.DEFAULT.name);
 }
 
+/// A row per filter, the open one shown as its editor in its place, then Add.
 fn filterList(context: *ui.Frame, profile: ProfileRef) !void {
-    const filters = profile.ptr.windowFilters.items;
-    var first_editable: ?usize = null;
-    var is_selected_editable = false;
-    for (filters, 0..) |*filter, index| {
-        if (isBuiltIn(filter)) continue;
-        if (first_editable == null) first_editable = index;
-        if (index == g_selected_index) is_selected_editable = true;
-    }
-    const first = first_editable orelse {
-        if (try widgets.emptyListRow(context, .src(@src()), "No window filters yet. Add one to show another app's windows as thumbnails.", "Add Window Filter")) addFilter(profile);
-        return;
-    };
-    if (!is_selected_editable) g_selected_index = first;
-    const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail };
-    _ = try master_detail.open(context);
-    // A fixed height, like System Colors', so Add sits at the bottom as on every other list.
-    const list = try widgets.openRoster(context, .str("knots.filter.roster"), &style.roster_fixed, true);
-
     const arena = context.arena();
-    for (filters, 0..) |*filter, index| {
+    var has_editable = false;
+    for (profile.ptr.windowFilters.items, 0..) |*filter, index| {
         if (isBuiltIn(filter)) continue;
-        const is_selected = index == g_selected_index;
-        const row = Button{ .key = ui.Key.str("knots.filter.row").indexed(index), .style = if (is_selected) &style.roster_row_selected else &style.roster_row };
-        if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
-            g_selected_index = index;
+        has_editable = true;
+        if (g_open_index == index) {
+            if (try filterEditor(context, profile, index)) return;
+            continue;
+        }
+        const row = Button{ .key = ui.Key.str("knots.filter.row").indexed(index), .style = &style.list_item };
+        if ((try widgets.openRosterRow(context, row)).clicked) {
+            g_open_index = index;
+            window_picker.close(&g_picker);
             context.requestRedraw();
         }
+        const text_column = Rect{ .key = ui.Key.str("knots.filter.text").indexed(index), .style = &style.list_item_text };
+        _ = try text_column.open(context);
         const name = if (filter.name.len > 0) filter.name else try lang.format(arena, "New Filter {n}", .{ .n = index + 1 });
-        try context.e(Text{
-            .selectable = false,
-            .key = ui.Key.str("knots.filter.name").indexed(index),
-            .content = name,
-            .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
-        });
-        const badge = if (filter.enabled) "" else lang.text("Disabled");
-        if (badge.len > 0) try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.filter.badge").indexed(index), .content = badge, .style = &style.roster_badge });
-        try widgets.fitRosterRow(context, name, 0, badge);
+        try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.filter.name").indexed(index), .content = name, .style = &style.list_item_name });
+        const detail = if (!filter.enabled) lang.text("Disabled") else try std.mem.join(arena, ", ", filter.executable_names.items);
+        if (detail.len > 0) try context.e(Text{ .selectable = false, .key = ui.Key.str("knots.filter.detail").indexed(index), .content = detail, .style = &style.list_item_detail });
+        try text_column.close(context);
+        try widgets.listChevron(context, ui.Key.str("knots.filter.chevron").indexed(index));
         try row.close(context);
     }
-    if (try list.close(context, .{ .add_label = "Add Window Filter" }) == .add) addFilter(profile);
-    try filterDetail(context, profile, g_selected_index);
-    try master_detail.close(context);
+    if (!has_editable) try widgets.paragraph(context, .src(@src()), "No window filters yet. Add one to show another app's windows as thumbnails.");
+    if (try widgets.glyphButton(context, .src(@src()), .add, "Add Window Filter", &style.add_button, false)) addFilter(profile);
 }
 
 fn addFilter(profile: ProfileRef) void {
-    if (profile.append("windowFilters", .{ .name = lang.text(NEW_FILTER_NAME), .enabled = true })) |added| g_selected_index = added.index;
+    if (profile.append("windowFilters", .{ .name = lang.text(NEW_FILTER_NAME), .enabled = true })) |added| g_open_index = added.index;
+    window_picker.close(&g_picker);
 }
 
-fn filterDetail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
+/// Returns whether the filter was removed, which ends the list for this frame.
+fn filterEditor(context: *ui.Frame, profile: ProfileRef, index: usize) !bool {
     const filter = profile.item("windowFilters", index);
-    const stack = Rect{ .key = .src(@src()), .style = &style.detail_fit };
-    _ = try stack.open(context);
+    const editor = Rect{ .key = ui.Key.str("knots.filter.editor").indexed(index), .style = &style.inline_editor };
+    _ = try editor.open(context);
 
-    const header = try widgets.openDetailHeader(context, .src(@src()));
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Filter Name"), .style = &style.inline_label });
+    const header = Rect{ .key = ui.Key.str("knots.filter.header").indexed(index), .style = &style.inline_editor_header };
+    _ = try header.open(context);
     const name_before = try context.arena().dupe(u8, filter.get("name"));
     try bind.textBox(context, filter, "name", "e.g., EVE Online");
     const name_after = filter.get("name");
     const removed = try widgets.confirmButton(context, ui.Key.str("knots.filter.remove").indexed(index), "Remove", "Confirm", &style.plain_button, &style.confirm_button);
+    if ((try context.interact(Button{ .key = ui.Key.str("knots.filter.done").indexed(index), .label = lang.text("Done"), .style = &style.primary_button })).clicked) {
+        g_open_index = null;
+        window_picker.close(&g_picker);
+        context.requestRedraw();
+    }
     try header.close(context);
     if (!std.mem.eql(u8, name_before, name_after)) carryRename(profile, std.mem.trim(u8, name_before, " "), std.mem.trim(u8, name_after, " "));
 
     var is_enabled: bool = filter.get("enabled");
     if (try widgets.switchRow(context, ui.Key.str("knots.filter.enabled").indexed(index), "Enabled", &is_enabled)) filter.set("enabled", is_enabled);
     try widgets.hintText(context, ui.Key.str("knots.filter.enabled.hint").indexed(index), "When off, this filter matches nothing.");
-    const classes = try widgets.openBinding(context, ui.Key.str("knots.filter.classes").indexed(index), "Window Classes");
-    try bind.csvBox(context, filter, "class_names", "e.g., trinityWindow");
-    try classes.close(context);
-    try widgets.hintText(context, ui.Key.str("knots.filter.classes.hint").indexed(index), "Optional. Leave blank to match by Executable Names only.");
-    const executables = try widgets.openBinding(context, ui.Key.str("knots.filter.exes").indexed(index), "Executable Names");
+    const executables = try widgets.openStackedBinding(context, ui.Key.str("knots.filter.exes").indexed(index), "Executable Names");
     try bind.csvBox(context, filter, "executable_names", "e.g., exefile.exe");
     try executables.close(context);
     try widgets.hintText(context, ui.Key.str("knots.filter.exes.hint").indexed(index), "Separate names with commas.");
+    const classes = try widgets.openStackedBinding(context, ui.Key.str("knots.filter.classes").indexed(index), "Window Classes");
+    try bind.csvBox(context, filter, "class_names", "e.g., trinityWindow");
+    try classes.close(context);
+    try widgets.hintText(context, ui.Key.str("knots.filter.classes.hint").indexed(index), "Optional. Leave blank to match by Executable Names only.");
     const detect = try widgets.openBinding(context, ui.Key.str("knots.filter.detect").indexed(index), "Detect");
     if (try widgets.glyphButton(context, ui.Key.str("knots.filter.pick").indexed(index), .refresh, "Pick Running Window", &style.add_button, false)) window_picker.open(g_allocator, &g_picker, index);
     try detect.close(context);
     try widgets.hintText(context, ui.Key.str("knots.filter.detect.hint").indexed(index), "Pick an open window to fill in this filter.");
     try picker(context, profile, filter);
-    try stack.close(context);
+    try editor.close(context);
 
-    if (removed) removeFilter(profile, index);
+    if (!removed) return false;
+    removeFilter(profile, index);
+    return true;
 }
 
 fn picker(context: *ui.Frame, profile: ProfileRef, filter: FilterRef) !void {
@@ -246,6 +254,6 @@ fn removeFilter(profile: ProfileRef, index: usize) void {
         if (characterIndex(profile, name)) |entry| profile.remove("characters", entry);
     }
     profile.remove("windowFilters", index);
-    if (g_selected_index >= index) g_selected_index -|= 1;
+    g_open_index = null;
     window_picker.close(&g_picker);
 }

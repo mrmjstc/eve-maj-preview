@@ -23,16 +23,15 @@ const FILE_HINT = "Select an old EVE-X Preview (.json), EVE-O Preview (.json), o
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const NEW_NAME_KEY: ui.Key = .str("knots.import.new_name");
 
-/// An EVE-Maj profile's sections under one of the sidebar's headings.
+/// An EVE-Maj profile's sections under one of the category bar's categories.
 const Group = struct { label: []const u8, ids: []const []const u8 };
 
-/// EVE-Maj profile sections grouped like the sidebar's tabs, by Config field name; a section left out lands in "Other".
+/// EVE-Maj profile sections grouped like the category bar's tabs, by Config field name; a section left out lands in "Other".
 const MAJ_GROUPS = [_]Group{
     .{ .label = "Clients", .ids = &.{ "characters", "hotkeyGroups", "windowFilters", "exclusion" } },
-    .{ .label = "Display", .ids = &.{ "display", "thumbnail", "thumbnailSpaces", "snapping", "autoMovePosition" } },
+    .{ .label = "Display", .ids = &.{ "display", "thumbnail", "thumbnailSpaces", "snapping", "autoMovePosition", "mining", "combat", "bounty", "resources", "ping" } },
     .{ .label = "Input", .ids = &.{ "hotkeys", "interaction", "autoMinimize", "closeAll" } },
     .{ .label = "Alerts", .ids = &.{ "chatlog", "travel", "systemColors" } },
-    .{ .label = "Overlays", .ids = &.{ "mining", "combat", "bounty", "resources", "ping" } },
     .{ .label = "App", .ids = &.{ "timer", "accentColor" } },
 };
 

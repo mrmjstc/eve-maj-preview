@@ -1,4 +1,4 @@
-//! The Appearance tab's System Colors section: a colour per solar system, or per name pattern; main thread only.
+//! The Thumbnails tab's System Colors section: a colour per solar system, or per name pattern; main thread only.
 const ui = @import("ui");
 const config = @import("../../../config.zig");
 const session = @import("../session.zig");

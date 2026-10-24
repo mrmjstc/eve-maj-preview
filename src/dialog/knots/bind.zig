@@ -59,6 +59,9 @@ pub const Display = enum {
 /// What an optional number box was left holding when it lost focus.
 pub const Typed = union(enum) { unchanged, cleared, value: f64 };
 
+/// What alphaRow puts after its label.
+const AlphaRowParts = enum { alpha, alpha_and_rgb };
+
 var g_allocator: std.mem.Allocator = undefined;
 /// Keyed by the box's element id; owned, freed in reset.
 var g_text_states: std.AutoHashMapUnmanaged(u64, TextState) = .empty;
@@ -307,19 +310,12 @@ pub fn rgbBox(context: *ui.Frame, ref: anytype, comptime field: []const u8) !voi
 
 /// The alpha of an ARGB setting as a slider row with its % box, keeping its RGB.
 pub fn alphaSlider(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
-    const key = fieldKey(ref, field).indexed(11);
-    const row = try widgets.openBinding(context, key, label);
-    try alphaControls(context, ref, field, key, null);
-    try row.close(context);
+    try alphaRow(context, ref, field, label, .alpha);
 }
 
 /// alphaSlider with rgb's picker after its % box, on one row.
 pub fn rgbAlpha(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
-    const key = fieldKey(ref, field).indexed(11);
-    const row = try widgets.openBinding(context, key, label);
-    try alphaControls(context, ref, field, key, &style.slider_box_short);
-    try rgbBox(context, ref, field);
-    try row.close(context);
+    try alphaRow(context, ref, field, label, .alpha_and_rgb);
 }
 
 /// A 0-255 value's slider and %, in a row the caller opened with `key`; returns the new value if either changed it.
@@ -493,6 +489,19 @@ fn unitValueBox(context: *ui.Frame, key: ui.Key, value: f64, unit: []const u8) !
 fn percentSliderSized(context: *ui.Frame, key: ui.Key, value: u8, min: f32, max: f32, track_style: ?*const ui.Style) !?u8 {
     const changed = try sliderControls(context, key, @floatFromInt(value), min, max, 1, .percent_of_255, track_style) orelse return null;
     return @intFromFloat(@round(changed));
+}
+
+fn alphaRow(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, parts: AlphaRowParts) !void {
+    const key = fieldKey(ref, field).indexed(11);
+    const row = try widgets.openBinding(context, key, label);
+    switch (parts) {
+        .alpha => try alphaControls(context, ref, field, key, null),
+        .alpha_and_rgb => {
+            try alphaControls(context, ref, field, key, &style.slider_box_short);
+            try rgbBox(context, ref, field);
+        },
+    }
+    try row.close(context);
 }
 
 /// An ARGB setting's alpha slider and % box, keeping its RGB, in a row the caller opened with `key`.

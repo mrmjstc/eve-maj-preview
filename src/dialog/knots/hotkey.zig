@@ -476,8 +476,12 @@ fn recordingLabel(context: *ui.Frame, key: ui.Key) !void {
     try label.close(context);
 }
 
-/// Records a hotkey's first combo or another one; `tip_text` names which, since the + alone doesn't.
+/// Records a hotkey's first combo, labelled, or another one, a + whose tooltip names it.
 fn addKeyButton(context: *ui.Frame, key: ui.Key, tip_text: []const u8) !bool {
+    if (std.mem.eql(u8, tip_text, SET_KEY)) {
+        const button = Button{ .key = key.indexed(3), .label = lang.text(SET_KEY), .style = &style.hotkey_set };
+        return (try context.interact(button)).clicked;
+    }
     const tip = Tooltip{ .key = key, .content = lang.text(tip_text), .style = &style.hotkey_add_gap };
     _ = try tip.open(context);
     const is_clicked = try widgets.glyphButton(context, key.indexed(3), .add, "", &style.icon_button, false);

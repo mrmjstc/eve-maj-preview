@@ -130,14 +130,6 @@ pub fn open() void {
     postCommand(.open);
 }
 
-/// The footer's Close: asks about unsaved changes like the title bar's close button.
-pub fn requestClose() void {
-    const window = g_hwnd orelse return;
-    if (!win32.toBool(win32.PostMessageA(window, win32.WM_CLOSE, 0, 0))) {
-        slog.warn("Failed to close the knots configuration window: error {d}", .{win32.GetLastError()});
-    }
-}
-
 /// Returns whether the exit waits for the window to close, which then posts the quit itself.
 pub fn closeForExit() bool {
     if (g_state != .open) return false;
@@ -339,6 +331,10 @@ fn runWindow(is_reopened: bool) !void {
     defer hotkeys.reset();
     hotkey_groups.init(g_allocator);
     defer hotkey_groups.reset();
+    characters.init(g_allocator);
+    defer characters.reset();
+    event_alerts.init(g_allocator);
+    defer event_alerts.reset();
     behavior.init(g_allocator);
     defer behavior.reset();
     defer client_list.reset();
@@ -603,9 +599,9 @@ fn onClosed() void {
 /// Wider for languages with longer labels than English's.
 fn designWidth(language: Language) u32 {
     return switch (language) {
-        .en => 810,
-        .es, .pt => 820,
-        .de, .fr, .pl, .ru => 870,
+        .en => 600,
+        .es, .pt => 620,
+        .de, .fr, .pl, .ru => 640,
     };
 }
 

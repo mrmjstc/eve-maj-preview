@@ -1,4 +1,4 @@
-//! The configuration window's Appearance tab: how clients are shown, then that mode's settings, texts and system colours; main thread only.
+//! The configuration window's Thumbnails, Overlays and Client List tabs: how clients are shown, then each mode's settings; main thread only.
 const ui = @import("ui");
 const win32 = @import("../../../platform/win32.zig");
 const config = @import("../../../config.zig");
@@ -12,13 +12,11 @@ const text_overlays = @import("text_overlays.zig");
 const system_colors = @import("system_colors.zig");
 const log = @import("../../../log.zig");
 
+const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const ThumbnailRef = session.Ref(config.ThumbnailConfig);
 const DisplayRef = session.Ref(config.DisplayConfig);
 const slog = log.Scoped("dialog_knots");
-
-/// The boxes can go up to the setting's own maximum.
-const MAX_SIZE_SLIDER = 1280;
 
 /// The first matches a running client; the last is whatever the size boxes say.
 const RATIOS = [_]Ratio{
@@ -49,70 +47,55 @@ const BorderFields = struct {
     color_field: []const u8,
 };
 
-const SliderShape = struct { width: i32, height: i32, ratio: f32 };
-
-/// The exact ratio the size slider last applied, reused while the size is still what it set, so rounding can't drift the shape.
-var g_slider_shape: ?SliderShape = null;
-
+/// The mode picker, then the thumbnails' own settings while they're shown.
 pub fn show(context: *ui.Frame) !void {
     const thumbnail = session.profile().child("thumbnail");
-    const display = session.profile().child("display");
-    try displayMode(context, display);
-    switch (display.get("viewMode")) {
+    try displayMode(context, session.profile().child("display"));
+    switch (session.profile().ptr.display.viewMode) {
         .Thumbnails => {
-            try text_overlays.show(context);
             try dimensions(context, thumbnail);
             try borders(context, thumbnail);
             try visibility(context, thumbnail);
-            try system_colors.show(context);
         },
-        .ClientList => {
-            try client_list.show(context, display);
-            try system_colors.show(context);
-        },
-        .Nothing => {},
+        .ClientList, .Nothing => {},
     }
 }
 
+/// The texts placed on each thumbnail, and the colours system names take.
+pub fn showOverlays(context: *ui.Frame) !void {
+    try text_overlays.show(context);
+    try system_colors.show(context);
+}
+
+pub fn showClientList(context: *ui.Frame) !void {
+    try client_list.show(context, session.profile().child("display"));
+    try system_colors.show(context);
+}
+
+/// While the size matches a ratio, typing a width keeps that shape.
 fn dimensions(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
     const section = try widgets.openSection(context, "Dimensions", "The pixel size each thumbnail is rendered at.", &style.section);
-    try aspectRatio(context, thumbnail);
-
+    const width_before = thumbnail.get("width");
+    const ratio_index = currentRatio(width_before, thumbnail.get("height"));
     const row = try widgets.openBinding(context, .str("knots.thumbnails.size"), "Thumbnail Size");
-    var width: f32 = @floatFromInt(thumbnail.get("width"));
-    const ratio = sliderRatio(thumbnail);
-    // Stops where either side hits its bound, or saving clamps that side alone and breaks the ratio.
-    const min_width = @max(@as(f32, config.ThumbnailConfig.WIDTH[0]), @as(f32, config.ThumbnailConfig.HEIGHT[0]) * ratio);
-    const max_width = @max(min_width, @min(@as(f32, MAX_SIZE_SLIDER), @as(f32, config.ThumbnailConfig.HEIGHT[1]) * ratio));
-    if (try widgets.slider(context, .str("knots.thumbnails.size.slider"), &width, min_width, max_width, 1)) {
-        const new_width: i32 = @intFromFloat(@round(width));
-        const new_height: i32 = @intFromFloat(@round(width / ratio));
-        thumbnail.setFields(.{ .width = new_width, .height = new_height });
-        // Read back, since validation may have clamped either side.
-        g_slider_shape = .{ .width = thumbnail.get("width"), .height = thumbnail.get("height"), .ratio = ratio };
-    }
+    try context.e(Rect{ .key = .src(@src()), .style = &style.spacer });
     try bind.unitNumberBox(context, thumbnail, "width", "px", .{});
     try context.e(Text{ .selectable = false, .key = .str("knots.thumbnails.size.x"), .content = "\u{00D7}", .style = &style.muted_text });
     try bind.unitNumberBox(context, thumbnail, "height", "px", .{});
     try row.close(context);
-    try widgets.hintText(context, .src(@src()), "The slider keeps the shape; type in the boxes for any size.");
-    try section.close(context);
-}
-
-/// The slider's last ratio while the size is still what it set, else the size's own.
-fn sliderRatio(thumbnail: ThumbnailRef) f32 {
+    try widgets.hintText(context, .src(@src()), "With an aspect ratio picked, the height follows the width.");
     const width = thumbnail.get("width");
-    const height = thumbnail.get("height");
-    if (g_slider_shape) |shape| {
-        if (shape.width == width and shape.height == height) return shape.ratio;
+    if (width != width_before) {
+        if (RATIOS[ratio_index].ratio) |ratio| thumbnail.set("height", @intFromFloat(@round(@as(f32, @floatFromInt(width)) / ratio)));
     }
-    return @as(f32, @floatFromInt(width)) / @as(f32, @floatFromInt(@max(height, 1)));
+    try aspectRatio(context, thumbnail);
+    try section.close(context);
 }
 
 /// Picking a ratio keeps the width and fits the height to it; Custom leaves the size as typed.
 fn aspectRatio(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
     const row = try widgets.openBinding(context, .str("knots.thumbnails.ratio"), "Aspect Ratio");
-    const picked = try widgets.segmented(context, .str("knots.thumbnails.ratio.options"), &RATIO_LABELS, currentRatio(thumbnail.get("width"), thumbnail.get("height")));
+    const picked = try widgets.dropdown(context, .str("knots.thumbnails.ratio.options"), &RATIO_LABELS, currentRatio(thumbnail.get("width"), thumbnail.get("height")));
     try row.close(context);
     try widgets.hintText(context, .src(@src()), "Match EVE copies the shape of an open EVE window.");
 
@@ -205,14 +188,14 @@ fn visibility(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
     try widgets.hintText(context, .src(@src()), "Hides the thumbnail of the client you're in.");
     try bind.toggle(context, thumbnail, "hideWhenNoEveFocus", "Hide When No EVE Focus");
     try widgets.hintText(context, .src(@src()), "Thumbnails come back when you return to EVE.");
-    const delay = try widgets.openGroup(context, .src(@src()), thumbnail.get("hideWhenNoEveFocus"));
+    const delay = try widgets.openNestedGroup(context, .src(@src()), thumbnail.get("hideWhenNoEveFocus"));
     try bind.number(context, thumbnail, "hideDebounceMs", "Hide Delay", .{ .shows_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "Waits this long, so quick switches don't flicker.");
     try delay.close(context);
     try section.close(context);
 }
 
-/// Picks which of the tab's other sections are drawn, and whether the Placement tab is offered.
+/// Picks which of the tab's other sections are drawn, and which of the Display tabs are offered.
 fn displayMode(context: *ui.Frame, display: DisplayRef) !void {
     const section = try widgets.openSection(context, "Display Mode", "How clients are shown. With None, hotkeys and alerts keep working.", &style.section);
     try bind.segmented(context, display, "viewMode", "Show Clients As", &.{ "Thumbnails", "Client List", "None" });

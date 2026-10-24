@@ -1,4 +1,4 @@
-//! The configuration window's Notification History tab: a preview of the panel of recent notifications, then its settings; main thread only.
+//! The configuration window's History tab: a preview of the panel of recent notifications, then its settings; main thread only.
 const ui = @import("ui");
 const config = @import("../../../config.zig");
 const notification = @import("../../../notifications/notification.zig");
@@ -116,7 +116,7 @@ fn rowSettings(context: *ui.Frame, ref: DisplayRef, is_shown: bool) !void {
     try widgets.hintText(context, .src(@src()), "Shows times like \"5m ago\" instead of a fixed clock time.");
     try bind.toggle(context, ref, "notifInfoPanelMergeEnabled", "Merge Repeats");
     try widgets.hintText(context, .src(@src()), "Repeats share one row with a count; click it to expand.");
-    const merge = try widgets.openGroup(context, .src(@src()), ref.get("notifInfoPanelMergeEnabled"));
+    const merge = try widgets.openNestedGroup(context, .src(@src()), ref.get("notifInfoPanelMergeEnabled"));
     try bind.number(context, ref, "notifInfoPanelMergeWindowSec", "Merge Window", .{ .unit = "s" });
     try widgets.hintText(context, .src(@src()), "Repeats this close together share a row.");
     try merge.close(context);

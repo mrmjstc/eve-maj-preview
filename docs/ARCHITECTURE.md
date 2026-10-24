@@ -248,7 +248,7 @@ Immediate-mode (knots on Vulkan), main thread, nested message loop so the tick a
 
 - `knots/host.zig`: window lifecycle, nested loop, close prompt, saved position. Every save goes through `saveChanges`, which refuses while hotkeys conflict. Anything that replaces documents or touches the app is posted as `WM_KNOTS_COMMAND` and runs between frames.
 - `knots/session.zig`: edits `store.live` and a `GlobalConfig` draft. Every change goes through `Ref.set` (or list `append`/`remove`/`move`): copies strings, clamps, calls `App.onLiveProfileEdited`. Replaced strings are freed a frame later. Dirty = differs from saved. `save()` commits, restarts subsystems and adopts the global draft.
-- `knots/form.zig`: header, sidebar, open tab, footer, prompts. `knots/tabs/`: one file per tab.
+- `knots/form.zig`: header, category bar and page tabs, open tab, save bar, prompts. `knots/tabs/`: one file per tab; Characters, Hotkey Groups and Event Alerts are lists whose items open a page of their own.
 - `knots/widgets.zig`, `bind.zig`, `style.zig`: layout pieces, setting-bound controls, styles.
 - `knots/hotkey.zig`: recording field; pauses live hotkeys while recording. Finds conflicting combos and names their holders, using `labels.zig`'s hotkey labels.
 - `tools/region_select.zig`: full-screen overlay for drawing a thumbnail space; math in `region_math.zig`.

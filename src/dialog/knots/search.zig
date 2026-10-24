@@ -95,7 +95,7 @@ pub fn tabHasMatches(tab: usize) bool {
     return false;
 }
 
-/// The first tab, in sidebar order, with a matching section.
+/// The first tab, in the category bar's order, with a matching section.
 pub fn firstMatchingTab() ?usize {
     var first: ?usize = null;
     for (g_entries.items) |*entry| {

@@ -25,7 +25,7 @@ const Speed = struct { label: []const u8, rate: i8 };
 pub fn show(context: *ui.Frame) !void {
     const profile = session.profile();
     if (!profile.ptr.chatlog.enabled) {
-        try widgets.noticeWithButton(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.", "Go to Log Monitoring", .log_monitoring);
+        try widgets.noticeWithButton(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.", "Go to Log Files", .log_monitoring);
     }
     try system(context);
     try speech(context);
@@ -34,9 +34,9 @@ pub fn show(context: *ui.Frame) !void {
 
 fn system(context: *ui.Frame) !void {
     const ref = session.profile().child("thumbnail").child("notifications");
-    const section = try widgets.openSection(context, "Notification System", "Alerts for game events like fleet invites. Set each one up on Event Alerts.", &style.section);
+    const section = try widgets.openSection(context, "Notification System", "Alerts for game events like fleet invites. Set each one up on the Events tab.", &style.section);
     try bind.toggle(context, ref, "enabled", "Enable Notification System");
-    // Its placement and font are edited from its text on the Appearance tab's thumbnail preview.
+    // Its placement and font are edited from its text on the Thumbnails tab's thumbnail preview.
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.number(context, ref, "suppress_click_duration_ms", "Quiet After Click", .{ .shows_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "No alerts for a character this long after you click it.");
@@ -47,13 +47,13 @@ fn system(context: *ui.Frame) !void {
 }
 
 fn speech(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Text-to-Speech", "Reads alerts aloud. Turn it on per event with Speak Aloud on Event Alerts.", &style.section);
+    const section = try widgets.openSection(context, "Text-to-Speech", "Reads alerts aloud. Turn it on per event with Speak Aloud on the Events tab.", &style.section);
     const ref = session.profile().child("thumbnail").child("notifications");
     // Speech only means something while notifications fire, so the section dims with them.
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
     try bind.toggle(context, ref, "tts_speak_character_name", "Prefix Spoken Alerts with the Character Name");
     try widgets.hintText(context, .src(@src()), "So you know which character an alert is about.");
-    const display_name = try widgets.openGroup(context, .src(@src()), ref.get("tts_speak_character_name"));
+    const display_name = try widgets.openNestedGroup(context, .src(@src()), ref.get("tts_speak_character_name"));
     try bind.toggle(context, ref, "tts_use_display_name", "Speak Display Name Instead of Character Name");
     try widgets.hintText(context, .src(@src()), "Uses the Display Name set on the Characters tab.");
     try display_name.close(context);
@@ -83,7 +83,7 @@ fn travel(context: *ui.Frame) !void {
     const ref = session.profile().child("travel");
     // Its only output is a notification.
     const are_notifications_enabled = session.profile().ptr.thumbnail.notifications.enabled;
-    const section = try widgets.openSection(context, "Travel Mode", "Alerts when a character misses its group's jump (Left Behind on Event Alerts).", &style.section);
+    const section = try widgets.openSection(context, "Travel Mode", "Alerts when a character misses its group's jump (Left Behind on the Events tab).", &style.section);
     const notifications = try widgets.openGroup(context, .src(@src()), are_notifications_enabled);
     try bind.toggle(context, ref, "enabled", "Enable Travel Mode");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));

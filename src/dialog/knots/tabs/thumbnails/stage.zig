@@ -1,4 +1,4 @@
-//! The Appearance tab's thumbnail preview: drawn from the edited settings at its real size, its texts dragged into place and clicked to edit in a popover; main thread only.
+//! The Thumbnails tab's thumbnail preview: drawn from the edited settings at its real size, its texts dragged into place and clicked to edit in a popover; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../../config.zig");

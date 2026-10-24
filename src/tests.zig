@@ -32,6 +32,7 @@ test {
     _ = @import("dialog/knots/field_strings.zig");
     _ = @import("dialog/knots/labels.zig");
     _ = @import("dialog/knots/screen_math.zig");
+    _ = @import("dialog/knots/text_case.zig");
     _ = @import("dialog/tools/region_math.zig");
     _ = @import("dialog/tools/ultra_potato.zig");
     _ = @import("drag/ghost_groups.zig");

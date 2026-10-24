@@ -5,6 +5,7 @@ const style = @import("style.zig");
 const glyphs = @import("glyphs.zig");
 const search = @import("search.zig");
 const color_convert = @import("color_convert.zig");
+const text_case = @import("text_case.zig");
 const lang = @import("../../lang/lang.zig");
 
 const Rect = ui.component.Rect;
@@ -17,13 +18,18 @@ const Button = ui.component.Button;
 const TextInput = ui.component.TextInput;
 const Tooltip = ui.component.Tooltip;
 const Dialog = ui.component.Dialog;
+const SelectInput = ui.component.SelectInput;
 
-/// Most row tooltips a frame holds; past this a row's hint is dropped.
+/// Most row hints a frame holds; past this a row's hint is dropped.
 const MAX_ROW_HINTS = 128;
-/// A row's tooltip around its label is keyed as the row's own key indexed by this.
+/// A row's tooltip around its label, or the column holding its label and description, is keyed as the row's own key indexed by this.
 const ROW_TOOLTIP_INDEX = 12;
+/// A row's description under its label is keyed as the row's own key indexed by this.
+const ROW_DESCRIPTION_INDEX = 14;
 /// Dialog keys its panel as its own key indexed by this.
 const DIALOG_PANEL_INDEX = 2;
+/// openPrompt keys its heading as the dialog's own key indexed by this, clear of Dialog's own parts.
+const PROMPT_TITLE_INDEX = 20;
 /// Kept between a popover and the window's edges.
 const POPOVER_MARGIN: f32 = 8;
 const POPOVER_GAP: f32 = 8;
@@ -58,8 +64,8 @@ pub const TAB_CONTENT_KEY: ui.Key = .str("knots.content");
 /// A laid-out element's rectangle, in window coordinates.
 pub const Box = @FieldType(ui.State.Measured, "box");
 
-/// A tab a notice's button opens, named here since the tabs can't reach form's Tab.
-pub const NoticeTarget = enum { notifications, log_monitoring };
+/// A tab a notice's button or a menu opens, named here since the tabs can't reach form's Tab.
+pub const NoticeTarget = enum { notifications, log_monitoring, backups };
 
 /// Hints by the hash of the row they explain; searched linearly, since a tab has only a few dozen.
 const RowHints = struct {
@@ -307,7 +313,7 @@ var g_is_undivided: bool = false;
 var g_section_row_count: usize = 0;
 /// This frame's row hints, registered after their rows are drawn.
 var g_row_hints: RowHints = .{};
-/// Last frame's row hints, which this frame's rows show as tooltips on their labels.
+/// Last frame's row hints, which this frame's rows show under their labels, or as tooltips in a popover.
 var g_row_hints_before: RowHints = .{};
 /// For a hintText straight after; null after anything else a hint could be about.
 var g_last_labelled_row: ?ui.Key = null;
@@ -380,7 +386,7 @@ pub fn openSection(context: *ui.Frame, comptime title: []const u8, comptime hint
 
     const intro = Rect{ .key = .str("knots.intro:" ++ title), .style = &style.section_intro };
     _ = try intro.open(context);
-    try context.e(Text{ .selectable = false, .key = .str("knots.title:" ++ title), .content = shown_title, .style = &style.heading });
+    try context.e(Text{ .selectable = false, .key = .str("knots.title:" ++ title), .content = try text_case.upper(context.arena(), shown_title), .style = &style.section_title });
     if (hint.len > 0) try boxedText(context, .str("knots.hint:" ++ title), hint, &style.section_hint_box, &style.hint);
     try intro.close(context);
 
@@ -425,6 +431,19 @@ pub fn openWrappingBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !
     return row;
 }
 
+/// openBinding for controls too wide to sit beside the label, e.g. a folder path: they go under it, across the row; aligned rows only, elsewhere it's openBinding.
+pub fn openStackedBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Row {
+    if (!g_is_aligned) return openBinding(context, key, label);
+    var row = try openSettingsRow(context, key, &style.aligned_row_stacked, .settings);
+    const shown = lang.text(label);
+    search.captureText(shown);
+    try rowLabel(context, key, key.indexed(1), shown, &style.label_aligned);
+    const controls = Rect{ .key = key.indexed(ROW_CONTROLS_INDEX), .style = &style.row_controls_stacked };
+    _ = try controls.open(context);
+    row.controls = controls;
+    return row;
+}
+
 /// openBinding for a slider; in a field group its label only fits its text, leaving the spare width to the slider.
 pub fn openSliderBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Row {
     if (!g_is_in_field_group) return openBinding(context, key, label);
@@ -440,6 +459,37 @@ pub fn openSliderBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Ro
 /// The rest of the dialog dims and blurs behind it; the caller opens and closes it.
 pub fn modal(key: ui.Key, is_open: *bool, panel_style: *const ui.Style) Dialog {
     return .{ .is_open = is_open, .key = key, .style = panel_style, .parts = .{ .backdrop = &style.modal_backdrop } };
+}
+
+/// A modal headed by `title`, translated here, so text already translated passes through; the caller fills it, ends it with openPromptActions and closes it.
+pub fn openPrompt(context: *ui.Frame, key: ui.Key, is_open: *bool, title: []const u8) !Dialog {
+    const dialog = modal(key, is_open, &style.modal);
+    _ = try dialog.open(context);
+    try context.e(Text{ .selectable = false, .key = key.indexed(PROMPT_TITLE_INDEX), .content = lang.text(title), .style = &style.heading });
+    return dialog;
+}
+
+/// A prompt's buttons, starting with Cancel, which closes it; the caller adds the rest and closes the row.
+pub fn openPromptActions(context: *ui.Frame, key: ui.Key, is_open: *bool) !Rect {
+    const actions = Rect{ .key = key, .style = &style.modal_actions };
+    _ = try actions.open(context);
+    if (try promptButton(context, key.indexed(1), "Cancel", &style.plain_button)) is_open.* = false;
+    return actions;
+}
+
+/// `label` is in English, translated here; returns whether it was clicked.
+pub fn promptButton(context: *ui.Frame, key: ui.Key, label: []const u8, button_style: *const ui.Style) !bool {
+    const is_clicked = (try context.interact(Button{ .key = key, .label = lang.text(label), .style = button_style })).clicked;
+    if (is_clicked) context.requestRedraw();
+    return is_clicked;
+}
+
+/// A prompt's main button, greyed out until `is_enabled`; `label` is already translated; returns whether it was clicked while enabled.
+pub fn promptSubmit(context: *ui.Frame, key: ui.Key, label: []const u8, is_enabled: bool) !bool {
+    const button = Button{ .key = key, .label = label, .disabled = !is_enabled, .style = if (is_enabled) &style.primary_button else &style.disabled_button };
+    const is_clicked = (try context.interact(button)).clicked and is_enabled;
+    if (is_clicked) context.requestRedraw();
+    return is_clicked;
 }
 
 /// On whichever side of `anchor` has room; in closeResponse, `.backdrop` is a click outside.
@@ -499,11 +549,6 @@ pub fn rowSelect(context: *ui.Frame, labels: []const []const u8) !*const ui.Styl
 /// A label beside a column of aligned rows without dividers, e.g. a set of switches; the caller closes it.
 pub fn openFieldGroup(context: *ui.Frame, key: ui.Key, label: []const u8) !FieldGroup {
     return openAnyFieldGroup(context, key, label, &style.field_group, &style.field_group_column);
-}
-
-/// openFieldGroup taking the rest of its pane's height, e.g. for a list that scrolls inside it.
-pub fn openFillFieldGroup(context: *ui.Frame, key: ui.Key, label: []const u8) !FieldGroup {
-    return openAnyFieldGroup(context, key, label, &style.field_group_fill, &style.field_group_column_fill);
 }
 
 /// A rule between runs of unaligned rows, which draw no dividers of their own.
@@ -621,11 +666,51 @@ pub fn addOpenClientsButton(context: *ui.Frame, key: ui.Key, button_style: *cons
     return is_clicked;
 }
 
-/// A master list's row, showing the hand cursor while hovered; the caller closes it.
+/// A list's clickable row, showing the hand cursor while hovered; the caller closes it.
 pub fn openRosterRow(context: *ui.Frame, row: Button) !Button.Response {
     const response = try row.openResponse(context);
     if (response.hovered) context.ui().requestCursor(.pointer);
     return response;
+}
+
+/// Back from an item's page to `list_name`'s list; returns whether it was clicked.
+pub fn backLink(context: *ui.Frame, key: ui.Key, list_name: []const u8) !bool {
+    const label = try std.fmt.allocPrint(context.arena(), "\u{2039}  {s}", .{lang.text(list_name)});
+    const is_clicked = (try context.interact(Button{ .key = key, .label = label, .style = &style.back_link })).clicked;
+    if (is_clicked) context.requestRedraw();
+    return is_clicked;
+}
+
+/// An item page's header row: the caller draws what leads it (e.g. a portrait), its pageTitle, then its actions, and closes it.
+pub fn openPageHeader(context: *ui.Frame, key: ui.Key) !Rect {
+    const header = Rect{ .key = key, .style = &style.page_header };
+    _ = try header.open(context);
+    return header;
+}
+
+/// Takes the header's spare width, pushing its actions to the right edge.
+pub fn pageTitle(context: *ui.Frame, key: ui.Key, title: []const u8) !void {
+    try context.e(Text{ .selectable = false, .key = key, .content = title, .style = &style.page_title });
+}
+
+/// A list page's buttons, pushed to the right edge; the caller draws them and closes it.
+pub fn openListToolbar(context: *ui.Frame, key: ui.Key) !Rect {
+    const toolbar = Rect{ .key = key, .style = &style.list_toolbar };
+    _ = try toolbar.open(context);
+    try context.e(Rect{ .key = key.indexed(1), .style = &style.spacer });
+    return toolbar;
+}
+
+/// The chevron ending a list row that opens a page.
+pub fn listChevron(context: *ui.Frame, key: ui.Key) !void {
+    try context.e(Text{ .selectable = false, .key = key, .content = "\u{203A}", .style = &style.list_item_chevron });
+}
+
+/// Back to the open tab's top, e.g. as one of its list's pages opens.
+pub fn scrollTabToTop(context: *ui.Frame) void {
+    const ui_state = context.ui();
+    if (ui_state.state.get(.scroll, TAB_CONTENT_KEY.hash())) |scroll| scroll.offset = .{ 0, 0 };
+    context.requestRedraw();
 }
 
 /// A detail pane's top row, whose rule replaces the next row's divider; the caller closes it.
@@ -756,6 +841,32 @@ pub fn segmented(context: *ui.Frame, key: ui.Key, options: []const []const u8, s
     return clicked_index;
 }
 
+/// A dropdown of `options` (in English, translated here) with `selected` chosen; returns the option picked this frame, if another.
+pub fn dropdown(context: *ui.Frame, key: ui.Key, options: []const []const u8, selected: usize) !?usize {
+    const shown = try context.arena().alloc([]const u8, options.len);
+    const values = try context.arena().alloc(u32, options.len);
+    for (options, shown, values, 0..) |option, *label, *value, index| {
+        label.* = lang.text(option);
+        search.captureText(label.*);
+        value.* = @intCast(index);
+    }
+    // The dropdown keeps its own selection; while closed it follows the caller's, which may have changed elsewhere.
+    if (context.ui().state.get(.select_input, key.hash())) |state| {
+        if (!state.open) state.selected = @intCast(selected);
+    }
+    const response = try context.interact(SelectInput(u32){
+        .key = key,
+        .labels = shown,
+        .values = values,
+        .initial_selected = @intCast(selected),
+        .style = try rowSelect(context, shown),
+        .parts = .{ .popup = &style.select_popup },
+    });
+    const picked = response.selected orelse return null;
+    if (picked.value == selected) return null;
+    return picked.value;
+}
+
 /// `label` left, the caller's controls right; the caller closes it.
 pub fn openModalRow(context: *ui.Frame, key: ui.Key, label: []const u8) !Row {
     const row = try openModalFieldRow(context, key);
@@ -860,6 +971,12 @@ pub fn reorderRowByHandle(context: *ui.Frame, base: ui.Key, index: usize, handle
     }
 }
 
+/// Whether a row of `base`'s list was dragged far enough to move, so letting go of it isn't a click.
+pub fn isDragMoving(base: ui.Key) bool {
+    const drag = g_reorder orelse return false;
+    return drag.list == base.hash() and drag.has_moved;
+}
+
 /// Call once the rows are drawn: follows the drag, and returns the move once it's dropped somewhere new.
 pub fn reorderFinish(context: *ui.Frame, base: ui.Key, count: usize) ?Move {
     const drag = if (g_reorder) |*active| active else return null;
@@ -894,9 +1011,14 @@ pub fn openGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
     return openAnyGroup(context, key, if (g_is_compact) &style.group_compact else &style.group, is_enabled);
 }
 
-/// Like openGroup, filling the rest of a filling tab's section.
-pub fn openFillGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
-    return openAnyGroup(context, key, &style.group_fill, is_enabled);
+/// Like openGroup, indented, for settings that only apply while the one above them is on.
+pub fn openNestedGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
+    return openAnyGroup(context, key, if (g_is_compact) &style.group_compact else &style.group_nested, is_enabled);
+}
+
+/// Like openGroup, around whole sections, spaced as sections are.
+pub fn openSectionsGroup(context: *ui.Frame, key: ui.Key, is_enabled: bool) !Group {
+    return openAnyGroup(context, key, &style.group_sections, is_enabled);
 }
 
 /// Like openGroup, for controls side by side inside one row.
@@ -982,7 +1104,7 @@ pub fn hintText(context: *ui.Frame, key: ui.Key, content: []const u8) !void {
     search.captureText(lang.text(content));
     const row_id = row.hash();
     if (!g_row_hints.append(row_id, content)) return;
-    // Registered after its row was drawn, so the tooltip shows from the next frame.
+    // Registered after its row was drawn, so it shows from the next frame.
     if (g_row_hints_before.find(row_id) == null) context.requestRedraw();
 }
 
@@ -1001,6 +1123,11 @@ pub fn noticeWithButton(context: *ui.Frame, key: ui.Key, content: []const u8, bu
     if (!is_clicked) return;
     g_notice_target = target;
     context.requestRedraw();
+}
+
+/// Opens `target`'s tab once this frame's tab is drawn, e.g. from the profile menu.
+pub fn openTarget(target: NoticeTarget) void {
+    g_notice_target = target;
 }
 
 /// The tab a notice's button asked for since the last call, for form to open once the tab is drawn.
@@ -1200,6 +1327,17 @@ fn rowLabel(context: *ui.Frame, row_key: ui.Key, label_key: ui.Key, shown: []con
     g_last_labelled_row = row_key;
     const label = Text{ .selectable = false, .key = label_key, .content = shown, .style = label_style };
     const hint = g_row_hints_before.find(row_key.hash()) orelse return context.e(label);
+    // A popover's rows are too tight for a line under each label, so theirs stays a tooltip.
+    if (g_is_aligned and !g_is_compact) {
+        const column_style = try context.arena().create(ui.Style);
+        column_style.* = style.row_label_column.with(.{ .width = label_style.width });
+        const column = Rect{ .key = row_key.indexed(ROW_TOOLTIP_INDEX), .style = column_style };
+        _ = try column.open(context);
+        try context.e(label);
+        try context.e(Text{ .selectable = false, .key = row_key.indexed(ROW_DESCRIPTION_INDEX), .content = lang.text(hint), .style = &style.row_description });
+        try column.close(context);
+        return;
+    }
     // Sized like the label, so a label that grows still pushes the row's controls to its end.
     const trigger = try context.arena().create(ui.Style);
     trigger.* = .{ .width = label_style.width };

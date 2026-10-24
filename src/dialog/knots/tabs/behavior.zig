@@ -1,4 +1,4 @@
-//! The configuration window's Behavior tab: mouse interaction, auto-minimize, exclusion, saved window positions and Ultra Potato Mode; main thread only.
+//! The configuration window's Mouse & Windows tab: mouse interaction, auto-minimize, exclusion, saved window positions and Ultra Potato Mode; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -93,7 +93,7 @@ fn hoverZoom(context: *ui.Frame, ref: session.Ref(config.InteractionConfig), is_
     const zoom_options = try widgets.openGroup(context, .src(@src()), !is_click_through);
     try bind.toggle(context, ref, "hoverZoomEnabled", "Zoom on Hover");
     try widgets.hintText(context, .src(@src()), "Shows a bigger copy of a thumbnail while you hover over it.");
-    const zoom = try widgets.openGroup(context, .src(@src()), ref.get("hoverZoomEnabled"));
+    const zoom = try widgets.openNestedGroup(context, .src(@src()), ref.get("hoverZoomEnabled"));
     try bind.number(context, ref, "hoverZoomPercent", "Zoom Size", .{ .unit = "%" });
     try widgets.hintText(context, .src(@src()), "Shrinks to fit if it would go off the monitor.");
     try bind.choice(context, ref, "hoverZoomAnchor", "Zoom Anchor");
@@ -106,7 +106,7 @@ fn autoMinimize(context: *ui.Frame) !void {
     const ref = session.profile().child("autoMinimize");
     const section = try widgets.openSection(context, "Auto-Minimize", "Minimizes EVE clients that have been in the background for a while.", &style.section);
     try bind.toggle(context, ref, "enabled", "Enable Auto-Minimize");
-    const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
+    const options = try widgets.openNestedGroup(context, .src(@src()), ref.get("enabled"));
     try bind.toggle(context, ref, "exemptLastActiveOnFocusLoss", "Keep Last-Active Client Visible");
     try widgets.hintText(context, .src(@src()), "Never minimizes the client you were just in, even after the delay.");
     try bind.number(context, ref, "delayMs", "Delay", .{ .shows_seconds = true, .unit = "s" });
@@ -151,7 +151,7 @@ fn windowPosition(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "Also moves clients already logged in when the app starts.");
     try bind.number(context, ref, "verifyCount", "Recheck Count", .{ .unit = "times", .singular_unit = "time" });
     try widgets.hintText(context, .src(@src()), "How many times to check again; 0 turns this off.");
-    const rechecks = try widgets.openGroup(context, .src(@src()), ref.get("verifyCount") > 0);
+    const rechecks = try widgets.openNestedGroup(context, .src(@src()), ref.get("verifyCount") > 0);
     try bind.number(context, ref, "verifyIntervalMs", "Recheck Interval", .{ .shows_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "EVE can shift its window while loading, so it's checked again this often.");
     try rechecks.close(context);

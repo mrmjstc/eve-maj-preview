@@ -1,4 +1,4 @@
-//! The texts a thumbnail can show, as placed on the Appearance tab's thumbnail preview: which settings each one reads, and its popover; main thread only.
+//! The texts a thumbnail can show, as placed on the Thumbnails tab's thumbnail preview: which settings each one reads, and its popover; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../../config.zig");

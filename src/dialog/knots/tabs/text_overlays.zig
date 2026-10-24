@@ -1,4 +1,4 @@
-//! The Appearance tab's Text Overlays section: the thumbnail preview its texts are placed on, and whether they show and sync their styling; main thread only.
+//! The Thumbnails tab's Text Overlays section: the thumbnail preview its texts are placed on, and whether they show and sync their styling; main thread only.
 const ui = @import("ui");
 const session = @import("../session.zig");
 const bind = @import("../bind.zig");

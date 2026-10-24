@@ -1,4 +1,4 @@
-//! The configuration window's Placement tab: the placement mode and a screen preview, then hand-placement settings or a list of thumbnail spaces beside the selected one's details; main thread only.
+//! The configuration window's Layout tab: the placement mode and a screen preview, then hand-placement settings or a list of thumbnail spaces beside the selected one's details; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const win32 = @import("../../../platform/win32.zig");
@@ -124,7 +124,7 @@ fn manual(context: *ui.Frame, display: DisplayRef) !void {
     const drag = try widgets.openGroup(context, .src(@src()), !interaction.get("clickThrough"));
     try bind.toggle(context, interaction, "enableDragging", "Enable Dragging");
     try drag.close(context);
-    try widgets.hintText(context, .src(@src()), "Stays off while Click Through is on in the Behavior tab.");
+    try widgets.hintText(context, .src(@src()), "Stays off while Click Through is on in the Mouse & Windows tab.");
     try bind.toggle(context, display, "honorSavedPositions", "Restore Saved Positions");
     try widgets.hintText(context, .src(@src()), "When off, thumbnails always start at the Start Position.");
     try dragging.close(context);

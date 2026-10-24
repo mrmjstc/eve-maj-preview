@@ -33,7 +33,7 @@ pub fn show(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "How often the number on the thumbnail changes.");
     try bind.toggle(context, ref, "show_isk_rate", "Show ISK Rate");
     try widgets.hintText(context, .src(@src()), "Uses the prices below; fetch or enter them first.");
-    const isk_rate = try widgets.openGroup(context, .src(@src()), ref.get("show_isk_rate"));
+    const isk_rate = try widgets.openNestedGroup(context, .src(@src()), ref.get("show_isk_rate"));
     try bind.segmented(context, ref, "isk_rate_unit", "ISK Rate Unit", &.{ "Per Minute", "Per Hour" });
     try widgets.hintText(context, .src(@src()), "Shows ISK earned per minute or per hour.");
     try isk_rate.close(context);
@@ -189,5 +189,5 @@ fn fetchedLabel(arena: std.mem.Allocator, fetched_at_seconds: i64) ![]const u8 {
 
 fn chatlogNotice(context: *ui.Frame) !void {
     if (session.profile().ptr.chatlog.enabled) return;
-    try widgets.noticeWithButton(context, .str("knots.mining.chatlog"), "The Mining overlay requires Log Monitoring enabled to read logs.", "Go to Log Monitoring", .log_monitoring);
+    try widgets.noticeWithButton(context, .str("knots.mining.chatlog"), "The Mining overlay requires Log Monitoring enabled to read logs.", "Go to Log Files", .log_monitoring);
 }

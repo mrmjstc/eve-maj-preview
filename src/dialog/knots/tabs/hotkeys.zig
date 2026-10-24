@@ -119,7 +119,7 @@ pub fn show(context: *ui.Frame) !void {
     // Its own switches, so they read as part of its row.
     const was_undivided = widgets.useUndividedRows(true);
     try bind.toggle(context, close_all, "excludeCycleExcludedClients", "Skip Excluded Characters");
-    try widgets.hintText(context, .src(@src()), "Uses the excluded characters from the Behavior tab.");
+    try widgets.hintText(context, .src(@src()), "Uses the excluded characters from the Mouse & Windows tab.");
     try bind.toggle(context, close_all, "excludeLoginScreenClients", "Skip Logged-Out Clients");
     try widgets.hintText(context, .src(@src()), "Leaves clients at the login screen running.");
     _ = widgets.useUndividedRows(was_undivided);
@@ -167,7 +167,7 @@ pub fn show(context: *ui.Frame) !void {
 
     const clients = try widgets.openSection(context, "Client Cycling", "Step through every open EVE client, in the loaded profile's Characters order.", &style.section);
     try bind.toggle(context, global, "cycleAllClientsRespectExclusions", "Skip Excluded Characters");
-    try widgets.hintText(context, .src(@src()), "Uses the excluded characters from the Behavior tab.");
+    try widgets.hintText(context, .src(@src()), "Uses the excluded characters from the Mouse & Windows tab.");
     try pair(context, global, "hotkeyCycleAllClientsBackward", "hotkeyCycleAllClientsForward", "Every logged-in client, in Characters tab order.");
     try pair(context, global, "hotkeyCycleNotLoggedInBackward", "hotkeyCycleNotLoggedInForward", "Clients at the login screen, oldest logout first.");
     try clients.close(context);

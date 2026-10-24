@@ -1,4 +1,4 @@
-//! The Appearance tab's Client List sections: a preview of the panel whose parts are clicked to edit them in a popover, then the panel's other settings; main thread only.
+//! The Thumbnails tab's Client List sections: a preview of the panel whose parts are clicked to edit them in a popover, then the panel's other settings; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -186,7 +186,7 @@ fn visibility(context: *ui.Frame, display: DisplayRef) !void {
     try widgets.hintText(context, .src(@src()), "Lower lets you see through the list.");
     try bind.toggle(context, display, "listViewHideWhenNoEveFocus", "Hide When No EVE Focus");
     try widgets.hintText(context, .src(@src()), "The list comes back when you return to EVE.");
-    const delay = try widgets.openGroup(context, .src(@src()), display.get("listViewHideWhenNoEveFocus"));
+    const delay = try widgets.openNestedGroup(context, .src(@src()), display.get("listViewHideWhenNoEveFocus"));
     try bind.number(context, display, "listViewHideDebounceMs", "Hide Delay", .{ .shows_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "Waits this long, so quick switches don't flicker.");
     try delay.close(context);

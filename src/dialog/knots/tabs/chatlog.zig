@@ -1,4 +1,4 @@
-//! The configuration window's Log Monitoring tab: where the chat and game logs are, and how often they're polled; main thread only.
+//! The configuration window's Log Files tab: where the chat and game logs are, and how often they're polled; main thread only.
 const ui = @import("ui");
 const config = @import("../../../config.zig");
 const session = @import("../session.zig");
@@ -56,12 +56,12 @@ fn monitoring(context: *ui.Frame, chatlog: ChatlogRef) !void {
 /// Browse's picker sets the path once it closes; hovering shows a path too long for the box.
 fn directory(context: *ui.Frame, chatlog: ChatlogRef, comptime row_settings: DirectoryRow) !void {
     const field = row_settings.field;
-    const row = try widgets.openBinding(context, .str("knots.chatlog.dir:" ++ field), row_settings.label);
+    const row = try widgets.openStackedBinding(context, .str("knots.chatlog.dir:" ++ field), row_settings.label);
     // Copied, since the box can replace the path before the tooltip draws it.
     const path = try context.arena().dupe(u8, chatlog.get(field));
-    const tip: ?Tooltip = if (path.len > 0) .{ .key = .str("knots.chatlog.path:" ++ field), .content = path, .parts = .{ .popup = &style.path_tooltip } } else null;
+    const tip: ?Tooltip = if (path.len > 0) .{ .key = .str("knots.chatlog.path:" ++ field), .content = path, .style = &style.path_tooltip_trigger, .parts = .{ .popup = &style.path_tooltip } } else null;
     if (tip) |t| _ = try t.open(context);
-    try bind.styledTextBox(context, chatlog, field, row_settings.placeholder, &style.path_input);
+    try bind.styledTextBox(context, chatlog, field, row_settings.placeholder, &style.text_input);
     if (tip) |t| try t.close(context);
     if ((try context.interact(Button{ .key = .str("knots.chatlog.browse:" ++ field), .label = lang.text("Browse"), .style = &style.plain_button })).clicked) {
         host.browseFolder(row_settings.target, row_settings.title);

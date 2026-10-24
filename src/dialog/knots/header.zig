@@ -13,6 +13,7 @@ const color_convert = @import("color_convert.zig");
 const images = @import("images.zig");
 const import_dialog = @import("import_dialog.zig");
 const glyphs = @import("glyphs.zig");
+const hotkey = @import("hotkey.zig");
 const search = @import("search.zig");
 const lang = @import("../../lang/lang.zig");
 const log = @import("../../log.zig");
@@ -39,7 +40,9 @@ const MenuItem = enum {
     new,
     duplicate,
     rename,
+    color,
     import,
+    restore,
     reset,
     delete,
 
@@ -48,7 +51,9 @@ const MenuItem = enum {
             .new => .add,
             .duplicate => .copy,
             .rename => .pencil,
+            .color => .swatch,
             .import => .import,
+            .restore => .refresh,
             .reset => .reset,
             .delete => .delete,
         };
@@ -80,6 +85,11 @@ var g_restore_backup: ?[]u8 = null;
 var g_restore_label: ?[]u8 = null;
 var g_confirm: ?Confirm = null;
 var g_is_confirm_open: bool = false;
+var g_is_color_open: bool = false;
+/// The colour being picked for the running profile, previewed until the prompt closes.
+var g_color: Color = undefined;
+/// The rainbow picker chose g_color, so it's the one ringed even when the colour matches a preset.
+var g_is_custom_color: bool = false;
 
 pub fn init(allocator: std.mem.Allocator) void {
     g_allocator = allocator;
@@ -95,10 +105,12 @@ pub fn deinit() void {
     g_is_name_open = false;
     g_confirm = null;
     g_is_confirm_open = false;
+    g_is_color_open = false;
 }
 
-/// The accent picked in the name prompt, previewed on the window until it closes.
+/// The accent picked in the name or colour prompt, previewed on the window until it closes.
 pub fn previewAccent() ?u32 {
+    if (g_is_color_open) return color_convert.toArgb(g_color);
     if (!g_is_name_open) return null;
     return color_convert.toArgb(g_name_color);
 }
@@ -114,6 +126,7 @@ pub fn show(context: *ui.Frame) !void {
 
     try profileMenu(context);
     try namePrompt(context);
+    try colorPrompt(context);
     try confirmPrompt(context);
 }
 
@@ -201,7 +214,13 @@ fn profileMenu(context: *ui.Frame) !void {
     } else if (try menuItem(context, .rename, rename_label, false)) {
         openNamePrompt(.rename, name, running.accentColor);
     }
+    if (try menuItem(context, .color, lang.text("Change Color"), false)) {
+        g_color = color_convert.fromArgb(running.accentColor);
+        g_is_custom_color = !widgets.isPresetAccent(running.accentColor);
+        g_is_color_open = true;
+    }
     if (try menuItem(context, .import, lang.text("Import Settings"), false)) import_dialog.open();
+    if (try menuItem(context, .restore, lang.text("Restore from Backup"), false)) widgets.openTarget(.backups);
     try divider(context, MENU_KEY.indexed(13));
     if (try menuItem(context, .reset, try lang.format(arena, "Reset '{name}' to Defaults", .{ .name = name }), false)) openConfirm(.reset);
     const delete_label = try lang.format(arena, "Delete '{name}'", .{ .name = name });
@@ -225,8 +244,21 @@ fn profileItem(context: *ui.Frame, index: usize, name: []const u8, accent: u32, 
     }
     try swatch(context, key.indexed(2), accent);
     try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = profiles.displayName(name), .style = if (is_running or response.hovered) &style.menu_label_lit else &style.menu_label });
+    if (switchHotkey(name)) |keys| {
+        var text: std.Io.Writer.Allocating = .init(context.arena());
+        try hotkey.writeKeys(&text.writer, keys);
+        try widgets.boxedText(context, key.indexed(4), text.written(), &style.keycap, &style.keycap_text);
+    }
     try button.close(context);
     return closesMenu(context, response.clicked);
+}
+
+/// The hotkey that switches to profile `name`, if one is set.
+fn switchHotkey(name: []const u8) ?config.KeyList {
+    for (session.global().ptr.profileSwitchHotkeys.items) |entry| {
+        if (entry.hotkey.len > 0 and std.mem.eql(u8, entry.targetProfile, name)) return entry.hotkey;
+    }
+    return null;
 }
 
 /// Returns whether it was clicked, which closes the menu.
@@ -352,17 +384,10 @@ fn namePrompt(context: *ui.Frame) !void {
         return;
     }
     const arena = context.arena();
-    const dialog = widgets.modal(.src(@src()), &g_is_name_open, &style.modal);
-    _ = try dialog.open(context);
-    try context.e(Text{
-        .selectable = false,
-        .key = .src(@src()),
-        .content = switch (prompt) {
-            .new => lang.text("New Profile"),
-            .rename => lang.text("Rename Profile"),
-            .restore => try lang.format(arena, "Restore Backup: {name}", .{ .name = g_restore_label orelse "" }),
-        },
-        .style = &style.heading,
+    const dialog = try widgets.openPrompt(context, .src(@src()), &g_is_name_open, switch (prompt) {
+        .new => "New Profile",
+        .rename => "Rename Profile",
+        .restore => try lang.format(arena, "Restore Backup: {name}", .{ .name = g_restore_label orelse "" }),
     });
 
     const name_row = try widgets.openModalRow(context, .src(@src()), "Name");
@@ -408,9 +433,7 @@ fn namePrompt(context: *ui.Frame) !void {
         try widgets.hintText(context, .src(@src()), "Marks it in the profile menu and tints this window.");
     }
 
-    const actions = Rect{ .key = .src(@src()), .style = &style.modal_actions };
-    _ = try actions.open(context);
-    if (try modalButton(context, .src(@src()), "Cancel", &style.plain_button)) g_is_name_open = false;
+    const actions = try widgets.openPromptActions(context, .src(@src()), &g_is_name_open);
     const submit_label = switch (prompt) {
         .new => "Create",
         .rename => "Rename",
@@ -418,11 +441,7 @@ fn namePrompt(context: *ui.Frame) !void {
     };
     const is_unchanged = prompt == .rename and std.mem.eql(u8, typed, profiles.displayName(running_name));
     const can_submit = typed.len > 0 and problem == null and !is_unchanged;
-    const submit = Button{ .key = .src(@src()), .label = lang.text(submit_label), .disabled = !can_submit, .style = if (can_submit) &style.primary_button else &style.disabled_button };
-    if ((try context.interact(submit)).clicked and can_submit) {
-        submitName(prompt);
-        context.requestRedraw();
-    }
+    if (try widgets.promptSubmit(context, .src(@src()), lang.text(submit_label), can_submit)) submitName(prompt);
     try actions.close(context);
     try dialog.close(context);
 }
@@ -460,6 +479,21 @@ fn clearRestore() void {
     g_restore_label = null;
 }
 
+/// Changes the running profile's colour as an unsaved edit, like any other setting.
+fn colorPrompt(context: *ui.Frame) !void {
+    if (!g_is_color_open) return;
+    const dialog = try widgets.openPrompt(context, .src(@src()), &g_is_color_open, "Profile Color");
+    try widgets.accentChoices(context, .src(@src()), &g_color, &g_is_custom_color);
+    try widgets.hintText(context, .src(@src()), "Marks it in the profile menu and tints this window.");
+    const actions = try widgets.openPromptActions(context, .src(@src()), &g_is_color_open);
+    if (try widgets.promptButton(context, .src(@src()), "Apply", &style.primary_button)) {
+        session.profile().set("accentColor", color_convert.toArgb(g_color));
+        g_is_color_open = false;
+    }
+    try actions.close(context);
+    try dialog.close(context);
+}
+
 fn openConfirm(confirm: Confirm) void {
     g_confirm = confirm;
     g_is_confirm_open = true;
@@ -472,12 +506,10 @@ fn confirmPrompt(context: *ui.Frame) !void {
         return;
     }
     const name = session.profile().ptr.profile_name;
-    const dialog = widgets.modal(.src(@src()), &g_is_confirm_open, &style.modal);
-    _ = try dialog.open(context);
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text(switch (confirm) {
+    const dialog = try widgets.openPrompt(context, .src(@src()), &g_is_confirm_open, switch (confirm) {
         .delete => "Delete Profile?",
         .reset => "Reset Profile?",
-    }), .style = &style.heading });
+    });
     try context.e(Text{
         .selectable = false,
         .key = .src(@src()),
@@ -487,10 +519,8 @@ fn confirmPrompt(context: *ui.Frame) !void {
         },
         .style = &style.modal_text,
     });
-    const actions = Rect{ .key = .src(@src()), .style = &style.modal_actions };
-    _ = try actions.open(context);
-    if (try modalButton(context, .src(@src()), "Cancel", &style.plain_button)) g_is_confirm_open = false;
-    if (try modalButton(context, .src(@src()), switch (confirm) {
+    const actions = try widgets.openPromptActions(context, .src(@src()), &g_is_confirm_open);
+    if (try widgets.promptButton(context, .src(@src()), switch (confirm) {
         .delete => "Delete",
         .reset => "Reset",
     }, &style.danger_primary_button)) {
@@ -502,10 +532,4 @@ fn confirmPrompt(context: *ui.Frame) !void {
     }
     try actions.close(context);
     try dialog.close(context);
-}
-
-fn modalButton(context: *ui.Frame, key: ui.Key, label: []const u8, button_style: *const ui.Style) !bool {
-    const is_clicked = (try context.interact(Button{ .key = key, .label = lang.text(label), .style = button_style })).clicked;
-    if (is_clicked) context.requestRedraw();
-    return is_clicked;
 }

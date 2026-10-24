@@ -1,12 +1,14 @@
-//! The configuration window's frame: categorised tab sidebar, the open tab, the Save footer and the unsaved-changes prompts; main thread only.
+//! The configuration window's frame: the category bar and its page tabs, the open tab, the save bar and the unsaved-changes prompts; main thread only.
 const std = @import("std");
 const knots = @import("knots");
 const ui = @import("ui");
+const types = @import("../../config/types.zig");
 const host = @import("host.zig");
 const session = @import("session.zig");
 const style = @import("style.zig");
 const widgets = @import("widgets.zig");
 const glyphs = @import("glyphs.zig");
+const icons = @import("icons.zig");
 const import_dialog = @import("import_dialog.zig");
 const update_notice = @import("update_notice.zig");
 const search = @import("search.zig");
@@ -34,41 +36,52 @@ const Rect = ui.component.Rect;
 const Text = ui.component.Text;
 const Button = ui.component.Button;
 const Canvas = ui.component.Canvas;
+const ViewMode = types.ViewMode;
 
-/// A heading in the sidebar over the tabs that belong to it.
+/// One of the bar's categories, over the tabs that belong to it.
 const Category = enum {
     clients,
     display,
     input,
     alerts,
-    overlays,
     app,
 
     fn label(self: Category) []const u8 {
         return switch (self) {
-            .app => "APP",
-            .clients => "CLIENTS",
-            .display => "DISPLAY",
-            .input => "INPUT",
-            .alerts => "ALERTS",
-            .overlays => "OVERLAYS",
+            .clients => "Clients",
+            .display => "Display",
+            .input => "Input",
+            .alerts => "Alerts",
+            .app => "App",
+        };
+    }
+
+    fn icon(self: Category) icons.Icon {
+        return switch (self) {
+            .clients => .people,
+            .display => .display,
+            .input => .keyboard,
+            .alerts => .bell,
+            .app => .sliders,
         };
     }
 };
 
-/// In sidebar order, each category's tabs together.
+/// In bar order, each category's tabs together.
 const Tab = enum {
     characters,
     hotkey_groups,
     appearance,
+    overlays,
     placement,
+    client_list,
+    mining,
     hotkeys,
     behavior,
     notifications,
     event_alerts,
     notification_history,
     chatlog,
-    mining,
     general,
     backups,
     about,
@@ -77,75 +90,64 @@ const Tab = enum {
         return switch (self) {
             .characters => "Characters",
             .hotkey_groups => "Hotkey Groups",
-            .appearance => "Appearance",
-            .placement => "Placement",
-            .hotkeys => "Hotkeys",
-            .behavior => "Behavior",
-            .notifications => "Notifications",
-            .event_alerts => "Event Alerts",
-            .notification_history => "Notification History",
-            .chatlog => "Log Monitoring",
+            .appearance => "Thumbnails",
+            .overlays => "Overlays",
+            .placement => "Layout",
+            .client_list => "Client List",
             .mining => "Mining",
+            .hotkeys => "Hotkeys",
+            .behavior => "Mouse & Windows",
+            .notifications => "Notifications",
+            // Short, since the Alerts category already names them and its four tabs share one row.
+            .event_alerts => "Events",
+            .notification_history => "History",
+            .chatlog => "Log Files",
             .general => "General",
-            .about => "About",
             .backups => "Backups",
+            .about => "About",
         };
     }
 
     fn category(self: Tab) Category {
         return switch (self) {
             .characters, .hotkey_groups => .clients,
-            .appearance, .placement => .display,
+            .appearance, .overlays, .placement, .client_list, .mining => .display,
             .hotkeys, .behavior => .input,
             .notifications, .event_alerts, .notification_history, .chatlog => .alerts,
-            .mining => .overlays,
-            .about, .backups, .general => .app,
-        };
-    }
-
-    fn glyph(self: Tab) glyphs.Glyph {
-        return switch (self) {
-            .characters => .list,
-            .hotkey_groups => .split_square,
-            .appearance => .thumbnail,
-            .placement => .tiles,
-            .hotkeys => .keyboard,
-            .behavior => .pointer,
-            .notifications => .envelope,
-            .event_alerts => .bell,
-            .notification_history => .clock,
-            .chatlog => .document,
-            .mining => .pickaxe,
-            .general => .gear,
-            .about => .star,
-            .backups => .reset,
+            .general, .backups, .about => .app,
         };
     }
 
     fn isAdvanced(self: Tab) bool {
         return switch (self) {
             .mining => true,
-            .characters, .hotkey_groups, .appearance, .placement, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .general, .about, .backups => false,
+            .characters, .hotkey_groups, .appearance, .overlays, .placement, .client_list, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .general, .about, .backups => false,
         };
     }
 
     fn needsThumbnails(self: Tab) bool {
         return switch (self) {
-            .placement => true,
-            .characters, .hotkey_groups, .appearance, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .mining, .general, .about, .backups => false,
+            .overlays, .placement => true,
+            .characters, .hotkey_groups, .appearance, .client_list, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .mining, .general, .about, .backups => false,
+        };
+    }
+
+    fn needsClientList(self: Tab) bool {
+        return switch (self) {
+            .client_list => true,
+            .characters, .hotkey_groups, .appearance, .overlays, .placement, .mining, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .general, .backups, .about => false,
         };
     }
 
     /// Fills the content area itself instead of scrolling in it.
     fn fills(self: Tab) bool {
         return switch (self) {
-            .characters, .hotkey_groups, .event_alerts => true,
             .placement => placement.fillsWindow(),
-            .appearance, .hotkeys, .behavior, .notifications, .notification_history, .chatlog, .mining, .general, .about, .backups => false,
+            .characters, .hotkey_groups, .event_alerts, .appearance, .overlays, .client_list, .hotkeys, .behavior, .notifications, .notification_history, .chatlog, .mining, .general, .about, .backups => false,
         };
     }
 
-    // The sidebar heads each category once, so its tabs must be adjacent.
+    // A category's page tabs are a run of this enum, so its tabs must be adjacent.
     comptime {
         const tabs = std.enums.values(Tab);
         for (tabs[0 .. tabs.len - 1], tabs[1..]) |previous, tab| {
@@ -154,19 +156,28 @@ const Tab = enum {
     }
 };
 
-/// Which tabs the sidebar offers this frame.
+/// Which tabs the window offers this frame.
 const Offered = struct {
     is_advanced_mode: bool,
-    shows_thumbnails: bool,
+    view_mode: ViewMode,
 
     fn has(self: Offered, tab: Tab) bool {
         if (!self.is_advanced_mode and tab.isAdvanced()) return false;
-        if (!self.shows_thumbnails and tab.needsThumbnails()) return false;
+        if (self.view_mode != .Thumbnails and tab.needsThumbnails()) return false;
+        if (self.view_mode != .ClientList and tab.needsClientList()) return false;
         return true;
     }
 };
 
 var g_tab: Tab = .about;
+/// The tab each category opens on: the one last open in it.
+var g_category_tabs: std.EnumArray(Category, Tab) = .init(.{
+    .clients = .characters,
+    .display = .appearance,
+    .input = .hotkeys,
+    .alerts = .notifications,
+    .app = .about,
+});
 var g_is_close_prompt_open: bool = false;
 
 /// The window's close button was pressed with unsaved changes.
@@ -183,10 +194,10 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     applyAccent(context);
     const offered = Offered{
         .is_advanced_mode = session.global().get("advancedMode"),
-        .shows_thumbnails = session.showsThumbnails(),
+        .view_mode = session.profile().ptr.display.viewMode,
     };
-    // Turning Advanced Mode off or leaving thumbnail mode can hide the open tab.
-    if (!offered.has(g_tab)) selectTab(context, if (g_tab.needsThumbnails()) .appearance else .about);
+    // Turning Advanced Mode off or changing how clients are shown can hide the open tab.
+    if (!offered.has(g_tab)) selectTab(context, if (g_tab.category() == .display) .appearance else .about);
     const size = context.input().logical_extent;
     // Style pointers must outlive the frame's layout, which the arena does.
     const root_style = try context.arena().create(ui.Style);
@@ -200,9 +211,8 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     _ = try root.open(context);
     try header.show(context);
 
-    const body = Rect{ .key = .src(@src()), .style = &.{ .width = .grow(), .height = .grow(), .direction = .row } };
-    _ = try body.open(context);
-    try sidebar(context, offered);
+    try categoryBar(context, offered);
+    try pageTabs(context, offered);
     const fill = Rect{ .key = widgets.TAB_CONTENT_KEY, .style = &style.content_fill };
     var scroll: ?widgets.ScrollPane = null;
     if (g_tab.fills()) {
@@ -219,10 +229,10 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
         try showTab(context, g_tab);
     }
     if (scroll) |pane| try pane.close(context) else try fill.close(context);
-    try body.close(context);
     if (widgets.takeNoticeTarget()) |target| selectTab(context, switch (target) {
         .notifications => .notifications,
         .log_monitoring => .chatlog,
+        .backups => .backups,
     });
 
     try footer(context);
@@ -244,6 +254,8 @@ fn showTab(context: *ui.Frame, tab: Tab) !void {
         .about => try about.show(context),
         .backups => try backups.show(context),
         .appearance => try display.show(context),
+        .overlays => try display.showOverlays(context),
+        .client_list => try display.showClientList(context),
         .placement => try placement.show(context),
         .characters => try characters.show(context),
         .behavior => try behavior.show(context),
@@ -258,7 +270,7 @@ fn showTab(context: *ui.Frame, tab: Tab) !void {
     }
 }
 
-/// Draws every tab the sidebar offers out of sight, once, so the search can see sections on tabs that aren't open.
+/// Draws every offered tab out of sight, once, so the search can see sections on tabs that aren't open.
 fn indexTabs(context: *ui.Frame, offered: Offered) !void {
     const hidden = Rect{ .key = .src(@src()), .style = &style.section_hidden };
     _ = try hidden.open(context);
@@ -272,107 +284,112 @@ fn indexTabs(context: *ui.Frame, offered: Offered) !void {
     context.requestRedraw();
 }
 
-fn sidebar(context: *ui.Frame, offered: Offered) !void {
-    const bar = Rect{ .key = .src(@src()), .style = try sidebarStyle(context, offered) };
+fn categoryBar(context: *ui.Frame, offered: Offered) !void {
+    const bar = Rect{ .key = .src(@src()), .style = &style.category_bar };
     _ = try bar.open(context);
-    var last_category: ?Category = null;
-    for (std.enums.values(Tab)) |tab| {
-        if (!offered.has(tab)) continue;
-        if (!search.tabHasMatches(@backingInt(tab))) continue;
-        if (last_category != tab.category()) {
-            last_category = tab.category();
-            const index = @backingInt(tab.category());
-            try context.e(.{
-                Rect{ .key = ui.Key.str("knots.tab.category").indexed(index), .style = &style.tab_category },
-                .{Text{
-                    .selectable = false,
-                    .key = ui.Key.str("knots.tab.category.label").indexed(index),
-                    .content = lang.text(tab.category().label()),
-                    .style = &style.tab_category_text,
-                }},
-            });
-        }
-        try tabItem(context, tab);
+    for (std.enums.values(Category)) |category| {
+        const first = firstShown(category, offered) orelse continue;
+        try categoryItem(context, category, first, offered);
     }
     try bar.close(context);
 }
 
-/// style.sidebar, widened to its longest tab or category name in the chosen language.
-fn sidebarStyle(context: *ui.Frame, offered: Offered) !*const ui.Style {
-    const item_padding = comptime style.tab_item.padding.?;
-    const category_padding = comptime style.tab_category.padding.?;
-    const bar_padding = comptime style.sidebar.padding.?;
-    const bar_border = 1;
-    var widest: f32 = 0;
-    for (std.enums.values(Tab)) |tab| {
-        if (!offered.has(tab)) continue;
-        const label_width = try widgets.textWidth(context, lang.text(tab.label()), &style.tab_label);
-        widest = @max(widest, item_padding.left() + glyphs.TAB_SIZE + style.tab_item.gap.? + label_width + item_padding.right());
-        const category_width = try widgets.textWidth(context, lang.text(tab.category().label()), &style.tab_category_text);
-        widest = @max(widest, category_padding.left() + category_width + category_padding.right());
-    }
-    const width = std.math.clamp(@ceil(bar_padding.left() + widest + bar_padding.right() + bar_border), style.SIDEBAR_WIDTH, style.SIDEBAR_MAX_WIDTH);
-    const sized = try context.arena().create(ui.Style);
-    sized.* = style.sidebar.with(.{ .width = .fixed(width) });
-    return sized;
-}
-
-fn tabItem(context: *ui.Frame, tab: Tab) !void {
-    const is_active = g_tab == tab;
-    const index = @backingInt(tab);
+fn categoryItem(context: *ui.Frame, category: Category, first: Tab, offered: Offered) !void {
+    const is_active = g_tab.category() == category;
+    const index = @backingInt(category);
     const item = Button{
-        .key = ui.Key.str("knots.tab").indexed(index),
-        .style = if (is_active) &style.tab_item_active else &style.tab_item,
+        .key = ui.Key.str("knots.category").indexed(index),
+        .style = if (is_active) &style.category_item_active else &style.category_item,
     };
     const response = try item.openResponse(context);
-    const tint: ui.Color = if (is_active) context.ui().theme.primary else if (response.hovered) style.TEXT else style.MUTED;
-    const glyph_key = ui.Key.str("knots.tab.glyph").indexed(index);
+    const tint: ui.Color = if (is_active) context.ui().theme.primary else if (response.hovered) style.TEXT else style.HINT_TEXT;
     try context.e(Canvas{
-        .key = glyph_key,
-        .commands = try glyphs.commands(context.arena(), tab.glyph(), glyphs.TAB_SIZE, try glyphs.snapOffset(context, glyph_key), tint.value),
-        .style = &style.tab_glyph,
+        .key = ui.Key.str("knots.category.icon").indexed(index),
+        .commands = try icons.commands(context.arena(), category.icon(), style.CATEGORY_ICON_SIZE, tint.value, style.BG.value),
+        .style = &style.category_icon,
     });
     try context.e(Text{
         .selectable = false,
-        .key = ui.Key.str("knots.tab.label").indexed(index),
-        .content = lang.text(tab.label()),
-        .style = if (is_active or response.hovered) &style.tab_label_lit else &style.tab_label,
+        .key = ui.Key.str("knots.category.label").indexed(index),
+        .content = lang.text(category.label()),
+        .style = if (is_active or response.hovered) &style.category_label_lit else &style.category_label,
     });
     try item.close(context);
-    if (response.clicked and !is_active) selectTab(context, tab);
+    if (response.clicked and !is_active) {
+        const remembered = g_category_tabs.get(category);
+        selectTab(context, if (isShown(remembered, offered)) remembered else first);
+    }
+}
+
+/// The open category's tabs, as pills under the bar.
+fn pageTabs(context: *ui.Frame, offered: Offered) !void {
+    const row = Rect{ .key = .src(@src()), .style = &style.page_tabs };
+    _ = try row.open(context);
+    for (std.enums.values(Tab)) |tab| {
+        if (tab.category() != g_tab.category() or !isShown(tab, offered)) continue;
+        const is_active = g_tab == tab;
+        const button = Button{
+            .key = ui.Key.str("knots.tab").indexed(@backingInt(tab)),
+            .label = lang.text(tab.label()),
+            .style = if (is_active) &style.page_tab_active else &style.page_tab,
+        };
+        if ((try context.interact(button)).clicked and !is_active) selectTab(context, tab);
+    }
+    try row.close(context);
+}
+
+/// Offered, and matching the search while one is typed.
+fn isShown(tab: Tab, offered: Offered) bool {
+    return offered.has(tab) and search.tabHasMatches(@backingInt(tab));
+}
+
+fn firstShown(category: Category, offered: Offered) ?Tab {
+    for (std.enums.values(Tab)) |tab| {
+        if (tab.category() == category and isShown(tab, offered)) return tab;
+    }
+    return null;
 }
 
 /// The new tab starts at its top.
 fn selectTab(context: *ui.Frame, tab: Tab) void {
     g_tab = tab;
-    const ui_state = context.ui();
-    if (ui_state.state.get(.scroll, widgets.TAB_CONTENT_KEY.hash())) |scroll| scroll.offset = .{ 0, 0 };
-    context.requestRedraw();
+    g_category_tabs.set(tab.category(), tab);
+    widgets.scrollTabToTop(context);
 }
 
 fn footer(context: *ui.Frame) !void {
     const bar = Rect{ .key = .src(@src()), .style = &style.footer };
     _ = try bar.open(context);
-    // Copied: a dialog drawn later this frame may rewrite the status buffer.
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = try context.arena().dupe(u8, status.text()), .style = switch (status.kind()) {
-        .info => &style.status_info,
-        .success => &style.status_success,
-        .failure => &style.status_failure,
-    } });
-    try context.e(Rect{ .key = .src(@src()), .style = &.{ .width = .grow() } });
-    if (session.isDirty()) try context.e(.{
-        Rect{ .key = .src(@src()), .style = &style.unsaved_chip },
-        .{
-            Text{ .selectable = false, .key = .src(@src()), .content = "●", .style = &style.unsaved_dot },
-            Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Unsaved changes"), .style = &style.unsaved_text },
-        },
-    });
-    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Close"), .style = &style.outline_button })).clicked) {
-        host.requestClose();
+    const is_dirty = session.isDirty();
+    if (status.text().len > 0) {
+        // Copied: a dialog drawn later this frame may rewrite the status buffer.
+        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = try context.arena().dupe(u8, status.text()), .style = switch (status.kind()) {
+            .info => &style.status_info,
+            .success => &style.status_success,
+            .failure => &style.status_failure,
+        } });
+    } else if (is_dirty) {
+        try context.e(.{
+            Rect{ .key = .src(@src()), .style = &style.unsaved_chip },
+            .{
+                Text{ .selectable = false, .key = .src(@src()), .content = "\u{25CF}", .style = &style.unsaved_dot },
+                Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Unsaved changes"), .style = &style.unsaved_text },
+            },
+        });
+    } else {
+        const glyph_key: ui.Key = .src(@src());
+        try context.e(Canvas{
+            .key = glyph_key,
+            .commands = try glyphs.commands(context.arena(), .check, glyphs.ICON_SIZE, try glyphs.snapOffset(context, glyph_key), style.SUCCESS.value),
+            .style = &style.icon_glyph,
+        });
+        try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("All changes saved"), .style = &style.muted_text });
     }
-    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Save"), .style = &style.primary_button })).clicked) {
-        host.postCommand(.save);
-    }
+    try context.e(Rect{ .key = .src(@src()), .style = &style.spacer });
+    const discard = Button{ .key = .src(@src()), .label = lang.text("Discard"), .disabled = !is_dirty, .style = if (is_dirty) &style.ghost_button else &style.ghost_button_disabled };
+    if ((try context.interact(discard)).clicked and is_dirty) host.postCommand(.discard);
+    const save = Button{ .key = .src(@src()), .label = lang.text("Save"), .disabled = !is_dirty, .style = if (is_dirty) &style.save_button else &style.disabled_button };
+    if ((try context.interact(save)).clicked and is_dirty) host.postCommand(.save);
     try bar.close(context);
 }
 
