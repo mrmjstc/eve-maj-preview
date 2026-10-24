@@ -15,6 +15,8 @@ pub const Glyph = enum {
     reset,
     import,
     swatch,
+    chevron_down,
+    chevron_up,
     pencil,
     refresh,
     grip,
@@ -64,6 +66,20 @@ pub fn snapOffset(context: *ui.Frame, key: ui.Key) ![2]f32 {
 /// The glyph's rows, `#` for a lit pixel.
 fn bitmap(glyph: Glyph) []const []const u8 {
     return switch (glyph) {
+        .chevron_down => &.{
+            "##.....##",
+            ".##...##.",
+            "..##.##..",
+            "...###...",
+            "....#....",
+        },
+        .chevron_up => &.{
+            "....#....",
+            "...###...",
+            "..##.##..",
+            ".##...##.",
+            "##.....##",
+        },
         .swatch => &.{
             "###########",
             "#.........#",

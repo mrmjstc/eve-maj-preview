@@ -1021,7 +1021,7 @@
   "Group Hotkeys": "Горячие клавиши группы",
   "Cycling": "Переключение",
   "Members are assigned with the Assign Group key instead of listed, and are forgotten on restart.": "Участники назначаются клавишей «Назначить группу», а не списком, и забываются при перезапуске.",
-  "How each game event alerts you. Pick one to edit it.": "Как вас оповещает каждое игровое событие. Выберите одно, чтобы изменить его.",
+  "How each game event alerts you. Click one to open its settings.": "Как вас оповещает каждое игровое событие. Нажмите на событие, чтобы открыть его настройки.",
   "Alert Behavior": "Поведение тревоги",
   "Text": "Текст",
   "Mouse & Windows": "Мышь и окна",

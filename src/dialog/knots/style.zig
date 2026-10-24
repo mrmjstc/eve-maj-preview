@@ -263,6 +263,8 @@ pub const inline_editor: Style = .{
     .border_color = .{ .color = BORDER },
     .radius = .md,
 };
+/// Buttons at the foot of an inline_editor, at its right edge.
+pub const inline_editor_actions: Style = .{ .width = .grow(), .direction = .row, .justify = .end, .gap = 8, .padding = .init(4, ROW_INSET, 0, ROW_INSET) };
 /// inline_editor's name box and its actions.
 pub const inline_editor_header: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8, .padding = .xy(ROW_INSET, 0) };
 /// A list page's buttons, over its card at the right edge.

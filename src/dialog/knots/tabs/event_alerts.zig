@@ -1,4 +1,4 @@
-//! The configuration window's Events tab: a list of notification types, each opening a page of its settings; main thread only.
+//! The configuration window's Events tab: a list of notification types, each opening its settings under its row; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -52,8 +52,8 @@ const TextField = enum { custom_text, custom_text_alt };
 const Shown = enum { all, on, off };
 
 var g_allocator: std.mem.Allocator = undefined;
-/// The type whose page is open, or null for the list.
-var g_open: ?NotificationType = null;
+/// The type whose settings are open under its row, or null while every row is closed.
+var g_expanded: ?NotificationType = null;
 /// What the list is filtered by; owned, freed in reset.
 var g_filter: std.ArrayList(u8) = .empty;
 var g_shown: Shown = .all;
@@ -85,11 +85,7 @@ pub fn show(context: *ui.Frame) !void {
         try widgets.noticeWithButton(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.", "Go to Log Files", .log_monitoring);
     }
     const options = try widgets.openSectionsGroup(context, .src(@src()), is_enabled);
-    if (g_open) |notification_type| {
-        try typePage(context, notification_type);
-    } else {
-        try typeList(context);
-    }
+    try typeList(context);
     try options.close(context);
 }
 
@@ -182,7 +178,7 @@ fn typeList(context: *ui.Frame) !void {
     }
 
     const query = std.mem.trim(u8, g_filter.items, " ");
-    const section = try widgets.openSection(context, "Event Alerts", "How each game event alerts you. Pick one to edit it.", &style.list_section);
+    const section = try widgets.openSection(context, "Event Alerts", "How each game event alerts you. Click one to open its settings.", &style.list_section);
     var last_category: ?notification.NotificationCategory = null;
     var shown_count: usize = 0;
     for (TYPES_IN_ORDER) |notification_type| {
@@ -209,9 +205,10 @@ fn typeList(context: *ui.Frame) !void {
         const is_switched = try widgets.checkbox(context, ui.Key.str("knots.events.switch").indexed(index), "", &is_on);
         if (is_switched) ref.set("enabled", is_on);
         // The row hears a click on its switch too, which only flips the switch.
+        const is_expanded = g_expanded == notification_type;
         if (is_row_clicked and !is_switched) {
-            g_open = notification_type;
-            widgets.scrollTabToTop(context);
+            g_expanded = if (is_expanded) null else notification_type;
+            context.requestRedraw();
         }
         try context.e(Text{
             .selectable = false,
@@ -221,8 +218,14 @@ fn typeList(context: *ui.Frame) !void {
         });
         if (ref.get("tts_enabled")) try marker(context, ui.Key.str("knots.events.tts").indexed(index), .speech, "Speaks aloud");
         if (ref.get("sound_enabled")) try marker(context, ui.Key.str("knots.events.sound").indexed(index), .speaker, "Plays a custom sound");
-        try widgets.listChevron(context, ui.Key.str("knots.events.chevron").indexed(index));
+        const chevron_key = ui.Key.str("knots.events.chevron").indexed(index);
+        try context.e(Canvas{
+            .key = chevron_key,
+            .commands = try glyphs.commands(arena, if (is_expanded) .chevron_up else .chevron_down, glyphs.TAB_SIZE, try glyphs.snapOffset(context, chevron_key), style.BORDER_STRONG.value),
+            .style = &style.tab_glyph,
+        });
         try row.close(context);
+        if (is_expanded) try typeEditor(context, notification_type);
     }
     if (shown_count == 0) try widgets.paragraph(context, .src(@src()), "No events match.");
     try section.close(context);
@@ -241,35 +244,24 @@ fn marker(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, tip: []const u8)
     try tooltip.close(context);
 }
 
-fn typePage(context: *ui.Frame, notification_type: NotificationType) !void {
+/// The open event's settings, under its row in the list.
+fn typeEditor(context: *ui.Frame, notification_type: NotificationType) !void {
     const ref = typeRef(@backingInt(notification_type));
-    if (try widgets.backLink(context, .src(@src()), "Events")) {
-        g_open = null;
-        return;
-    }
-    var is_enabled: bool = ref.get("enabled");
-    const header = try widgets.openPageHeader(context, .src(@src()));
-    try widgets.pageTitle(context, .src(@src()), typeLabel(notification_type));
-    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("\u{25B6} Test"), .disabled = !is_enabled, .style = if (is_enabled) &style.plain_button else &style.disabled_button })).clicked) {
-        testNotification(notification_type);
-    }
-    // Unlabelled: beside the event's name it reads as that event's on and off.
-    if (try widgets.checkbox(context, ui.Key.str("knots.events.enabled").indexed(ref.index), "", &is_enabled)) ref.set("enabled", is_enabled);
-    try header.close(context);
+    const is_enabled: bool = ref.get("enabled");
+    const editor = Rect{ .key = ui.Key.str("knots.events.editor").indexed(ref.index), .style = &style.inline_editor };
+    _ = try editor.open(context);
+    const rest = try widgets.openGroup(context, .src(@src()), is_enabled);
 
-    const rest = try widgets.openSectionsGroup(context, .src(@src()), is_enabled);
-    const timing = try widgets.openSection(context, "Timing", "", &style.section);
+    try widgets.subheading(context, .src(@src()), "Timing");
     try bind.number(context, ref, "duration_ms", "Duration", .{ .shows_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "How long the alert shows; 0 keeps it until dismissed.");
     try bind.number(context, ref, "throttle_ms", "Cooldown", .{ .shows_seconds = true, .unit = "s" });
     try widgets.hintText(context, .src(@src()), "Ignores repeats within this time.");
-    try timing.close(context);
 
-    const text_section = try widgets.openSection(context, "Custom Text", "", &style.section);
+    try widgets.subheading(context, .src(@src()), "Custom Text");
     try customText(context, ref, notification_type);
-    try text_section.close(context);
 
-    const behavior = try widgets.openSection(context, "Alert Behavior", "", &style.section);
+    try widgets.subheading(context, .src(@src()), "Alert Behavior");
     try bind.toggle(context, ref, "suppress_when_focused", "Suppress While Focused");
     try widgets.hintText(context, .src(@src()), "Skips the alert while you're on that character.");
     try bind.toggle(context, ref, "suppress_when_clicked", "Suppress After Click");
@@ -278,9 +270,8 @@ fn typePage(context: *ui.Frame, notification_type: NotificationType) !void {
     try widgets.hintText(context, .src(@src()), "Only for as long as the alert lasts.");
     try bind.toggle(context, ref, "tts_enabled", "Speak Aloud (TTS)");
     try widgets.hintText(context, .src(@src()), "Reads the alert out loud. Voice settings are on the Notifications tab.");
-    try behavior.close(context);
 
-    const border = try widgets.openSection(context, "Border", "", &style.section);
+    try widgets.subheading(context, .src(@src()), "Border");
     try bind.toggle(context, ref, "show_border", "Show Border");
     try widgets.hintText(context, .src(@src()), "Marks the thumbnail with a colored border during the alert.");
     // A hidden border has no colour to set and nothing to flash.
@@ -291,12 +282,16 @@ fn typePage(context: *ui.Frame, notification_type: NotificationType) !void {
     try bind.optionalColor(context, ref, "border_color", "Border Color", defaults.inactiveBorderColor);
     try widgets.hintText(context, .src(@src()), "Reset uses the default color.");
     try border_options.close(context);
-    try border.close(context);
 
-    const sound_section = try widgets.openSection(context, "Sound", "", &style.section);
+    try widgets.subheading(context, .src(@src()), "Sound");
     try sound(context, ref, @backingInt(notification_type));
-    try sound_section.close(context);
+
+    const actions = Rect{ .key = .src(@src()), .style = &style.inline_editor_actions };
+    _ = try actions.open(context);
+    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("\u{25B6} Test"), .style = &style.plain_button })).clicked) testNotification(notification_type);
+    try actions.close(context);
     try rest.close(context);
+    try editor.close(context);
 }
 
 fn customText(context: *ui.Frame, ref: TypeRef, notification_type: NotificationType) !void {

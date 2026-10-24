@@ -103,10 +103,14 @@ pub const Group = struct {
                 try self.rect.close(context);
                 return;
             };
+            // Placed inside the group's padding, so it's that much smaller than the group, e.g. an indented one.
+            const padding = self.rect.style.padding;
+            const inset_width = if (padding) |sides| sides.left() + sides.right() else 0;
+            const inset_height = if (padding) |sides| sides.top() + sides.bottom() else 0;
             const veil = try context.arena().create(ui.Style);
             veil.* = style.group_veil.with(.{
-                .width = .fixed(measured.box.w()),
-                .height = .fixed(measured.box.h()),
+                .width = .fixed(measured.box.w() - inset_width),
+                .height = .fixed(measured.box.h() - inset_height),
             });
             // Not a button, so hovering still reaches the labels' tooltips under it.
             try context.e(Rect{ .key = self.key.indexed(1), .style = veil });

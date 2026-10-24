@@ -1021,7 +1021,7 @@
   "Group Hotkeys": "Skróty grupy",
   "Cycling": "Przełączanie",
   "Members are assigned with the Assign Group key instead of listed, and are forgotten on restart.": "Członkowie są przypisywani klawiszem Przypisz do grupy zamiast listy i zapominani po restarcie.",
-  "How each game event alerts you. Pick one to edit it.": "Jak każde zdarzenie w grze cię alarmuje. Wybierz jedno, aby je edytować.",
+  "How each game event alerts you. Click one to open its settings.": "Jak każde zdarzenie w grze cię alarmuje. Kliknij jedno, aby otworzyć jego ustawienia.",
   "Alert Behavior": "Zachowanie alertu",
   "Text": "Tekst",
   "Mouse & Windows": "Mysz i okna",
