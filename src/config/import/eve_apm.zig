@@ -128,6 +128,7 @@ pub fn build(draft: *Draft, ini: *const Ini, chosen: []const []const u8) !void {
     if (draft_mod.isChosen(chosen, "snapping")) try snapping(draft, ini);
     if (draft_mod.isChosen(chosen, "chatlog")) try chatlog(draft, ini);
     if (draft_mod.isChosen(chosen, "notifications")) try notifications(draft, ini);
+    try orderCharacters(draft, ini);
 }
 
 /// QSettings' own percent-encoding: "%XX" is a Latin-1 byte and "%UXXXX" a UTF-16 unit, unlike URI encoding.
@@ -284,6 +285,32 @@ fn parseGroup(arena: std.mem.Allocator, raw: []const u8) !Group {
         if (trimmed.len > 0) try members.append(arena, trimmed);
     }
     return .{ .members = members.items, .forward = parts.next(), .backward = parts.next() };
+}
+
+/// QSettings writes keys near-alphabetically, so only the cycle groups keep the order the user gave their characters.
+fn orderCharacters(draft: *Draft, ini: *const Ini) !void {
+    const characters = draft.root.getPtr("characters") orelse return;
+    const groups = ini.section("cycleGroups") orelse return;
+    var order: std.ArrayList([]const u8) = .empty;
+    for (groups.values()) |raw| {
+        const group = try parseGroup(draft.arena, raw);
+        try order.appendSlice(draft.arena, group.members);
+    }
+    std.mem.sort(std.json.Value, characters.array.items, order.items, struct {
+        fn lessThan(names: []const []const u8, a: std.json.Value, b: std.json.Value) bool {
+            return groupRank(names, a) < groupRank(names, b);
+        }
+    }.lessThan);
+}
+
+/// Characters in no group rank last, keeping their file order since the sort is stable.
+fn groupRank(order: []const []const u8, character: std.json.Value) usize {
+    const name = character.object.get("name") orelse return order.len;
+    if (name != .string) return order.len;
+    for (order, 0..) |member, i| {
+        if (std.ascii.eqlIgnoreCase(member, name.string)) return i;
+    }
+    return order.len;
 }
 
 fn borderStyle(draft: *Draft, path: []const u8, raw: ?[]const u8, label: []const u8) !void {
