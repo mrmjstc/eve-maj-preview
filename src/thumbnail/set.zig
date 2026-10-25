@@ -562,6 +562,7 @@ pub const ThumbnailSet = struct {
         thumbnail.replaceText(self.allocator, .character_name, try self.allocator.dupe(u8, name));
         thumbnail.refreshConfigCache(self.config, &self.auto_colors);
         self.refreshGroupBadge(thumbnail);
+        self.refreshExclusion(thumbnail);
     }
 
     /// The client went from the login screen to a character.
@@ -581,14 +582,11 @@ pub const ThumbnailSet = struct {
         if (self.config.autoMovePosition.enabled) {
             self.auto_move.moveToSavedPosition(self.config, thumbnail.source_hwnd, name);
         }
-
-        self.refreshExclusion(thumbnail);
     }
 
     /// Back at the login screen; applyNameChanges' reflow moves it.
     fn onLogout(self: *ThumbnailSet, thumbnail: *ThumbnailWindow) void {
         dispatch.clearAll(self.allocator, thumbnail);
-        self.refreshExclusion(thumbnail);
         self.clearSystemName(thumbnail);
         slog.debug("Cleared system name for logged out client", .{});
     }
