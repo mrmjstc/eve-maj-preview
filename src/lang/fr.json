@@ -725,6 +725,8 @@
   "Uses each character's window position from the Characters tab.": "Utilise la position de fenêtre de chaque personnage de l'onglet Personnages.",
   "Restore Saved Position on App Startup": "Restaurer la position enregistrée au démarrage",
   "Also moves clients already logged in when the app starts.": "Déplace aussi les clients déjà connectés au démarrage de l'appli.",
+  "Restore Saved Position on Profile Reload": "Restaurer la position enregistrée au changement de profil",
+  "Moves clients to the new profile's saved positions when you switch profile; applies to every profile.": "Déplace les clients vers les positions enregistrées du nouveau profil quand vous changez de profil ; s'applique à tous les profils.",
   "Recheck Interval": "Intervalle de vérification",
   "EVE can shift its window while loading, so it's checked again this often.": "EVE peut déplacer sa fenêtre au chargement, elle est donc revérifiée à cette fréquence.",
   "Recheck Count": "Nombre de vérifications",

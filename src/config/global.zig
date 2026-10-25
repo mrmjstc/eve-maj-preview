@@ -174,6 +174,7 @@ pub const GlobalConfig = struct {
     autoRegisterProtocol: bool = true,
     alwaysOnTop: bool = true,
     advancedMode: bool = false,
+    moveOnProfileSwitch: bool = false,
     oreTable: std.ArrayList(OrePriceConfig) = .empty,
     /// Unix seconds of the last successful price fetch, or 0 if never.
     orePricesFetchedAtSeconds: i64 = 0,

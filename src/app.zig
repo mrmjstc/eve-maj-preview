@@ -424,10 +424,19 @@ pub const App = struct {
         try self.restartSubsystems(timer_hwnd, new_store, null);
 
         if (profile_changed) {
-            if (self.thumbnail_set) |thumbnail_set| thumbnail_set.notifyAll(.{ .notification_type = .ProfileSwitch, .target = config.profileDisplayName(self.store.live.profile_name) });
+            if (self.thumbnail_set) |thumbnail_set| {
+                thumbnail_set.notifyAll(.{ .notification_type = .ProfileSwitch, .target = config.profileDisplayName(self.store.live.profile_name) });
+                if (self.global_settings.moveOnProfileSwitch) self.moveClientsToSavedPositions(thumbnail_set);
+            }
         }
 
         slog.info("=== Profile reload complete: {s} ===", .{new_profile_name});
+    }
+
+    fn moveClientsToSavedPositions(self: *const App, thumbnail_set: *ThumbnailSet) void {
+        for (self.scout.getWindows()) |eve_window| {
+            if (eve_window.is_eve_client) thumbnail_set.auto_move.moveToSavedPosition(thumbnail_set.config, eve_window.hwnd, eve_window.character_name);
+        }
     }
 
     /// Runs control/restart_plan.zig's steps; takes ownership of `replacement`, which becomes the running store.

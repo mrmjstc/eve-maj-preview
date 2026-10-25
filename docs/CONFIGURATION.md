@@ -662,6 +662,7 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `language` | enum | `en` | `en` `de` `es` `fr` `pl` `pt` `ru`. Dialog and on-screen hints. |
 | `advancedMode` | bool | `false` | Show the dialog's advanced settings. |
 | `alwaysOnTop` | bool | `true` | Keep the config dialog on top. |
+| `moveOnProfileSwitch` | bool | `false` | On a profile switch, move running clients to the new profile's saved window positions. |
 | `dialogX`, `dialogY` | int? | `null` | Dialog position. Set by the app. |
 | `runOnStartup` | bool | `false` | `HKCU\…\Run` entry, re-applied each launch. |
 | `autoRegisterProtocol` | bool | `true` | Register `evemajpreview://` at startup if missing. |
