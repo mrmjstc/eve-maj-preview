@@ -58,20 +58,15 @@ pub fn show(context: *ui.Frame) !void {
     const thumbnail = session.profile().child("thumbnail");
     const display = session.profile().child("display");
     try displayMode(context, display);
-    switch (display.get("viewMode")) {
-        .Thumbnails => {
-            try text_overlays.show(context);
-            try dimensions(context, thumbnail);
-            try borders(context, thumbnail);
-            try visibility(context, thumbnail);
-            try system_colors.show(context);
-        },
-        .ClientList => {
-            try client_list.show(context, display);
-            try system_colors.show(context);
-        },
-        .Nothing => {},
+    const view_mode = display.get("viewMode");
+    if (view_mode.showsThumbnails()) {
+        try text_overlays.show(context);
+        try dimensions(context, thumbnail);
+        try borders(context, thumbnail);
+        try visibility(context, thumbnail);
     }
+    if (view_mode.showsClientList()) try client_list.show(context, display);
+    if (view_mode.showsThumbnails() or view_mode.showsClientList()) try system_colors.show(context);
 }
 
 fn dimensions(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
@@ -215,7 +210,8 @@ fn visibility(context: *ui.Frame, thumbnail: ThumbnailRef) !void {
 /// Picks which of the tab's other sections are drawn, and whether the Placement tab is offered.
 fn displayMode(context: *ui.Frame, display: DisplayRef) !void {
     const section = try widgets.openSection(context, "Display Mode", "How clients are shown. With None, hotkeys and alerts keep working.", &style.section);
-    try bind.segmented(context, display, "viewMode", "Show Clients As", &.{ "Thumbnails", "Client List", "None" });
+    try bind.segmented(context, display, "viewMode", "Show Clients As", &.{ "Thumbnails", "Client List", "Both", "None" });
     try widgets.hintText(context, .src(@src()), "Client List is lighter on your PC than Thumbnails.");
+    if (display.get("viewMode") == .ThumbnailsAndList) try widgets.hintText(context, .src(@src()), "The list follows the thumbnails' colors and hiding.");
     try section.close(context);
 }

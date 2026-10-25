@@ -57,10 +57,27 @@ pub const TextPosition = enum {
     BottomRight,
 };
 
+/// In the order the Display tab offers them.
 pub const ViewMode = enum {
     Thumbnails,
     ClientList,
+    /// The list follows the thumbnails' colours and auto-hide rather than its own.
+    ThumbnailsAndList,
     Nothing,
+
+    pub fn showsThumbnails(self: ViewMode) bool {
+        return switch (self) {
+            .Thumbnails, .ThumbnailsAndList => true,
+            .ClientList, .Nothing => false,
+        };
+    }
+
+    pub fn showsClientList(self: ViewMode) bool {
+        return switch (self) {
+            .ClientList, .ThumbnailsAndList => true,
+            .Thumbnails, .Nothing => false,
+        };
+    }
 };
 
 pub const ListViewOrder = enum {

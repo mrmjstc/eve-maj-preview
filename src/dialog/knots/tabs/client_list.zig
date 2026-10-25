@@ -184,12 +184,15 @@ fn visibility(context: *ui.Frame, display: DisplayRef) !void {
     try widgets.hintText(context, .src(@src()), "Opens the list where you last left it.");
     try bind.slider(context, display, "listViewOpacity", "Opacity", .{ .display = .percent_of_255 });
     try widgets.hintText(context, .src(@src()), "Lower lets you see through the list.");
-    try bind.toggle(context, display, "listViewHideWhenNoEveFocus", "Hide When No EVE Focus");
-    try widgets.hintText(context, .src(@src()), "The list comes back when you return to EVE.");
-    const delay = try widgets.openGroup(context, .src(@src()), display.get("listViewHideWhenNoEveFocus"));
-    try bind.number(context, display, "listViewHideDebounceMs", "Hide Delay", .{ .shows_seconds = true, .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "Waits this long, so quick switches don't flicker.");
-    try delay.close(context);
+    // Beside thumbnails, the list hides with them.
+    if (!session.showsThumbnails()) {
+        try bind.toggle(context, display, "listViewHideWhenNoEveFocus", "Hide When No EVE Focus");
+        try widgets.hintText(context, .src(@src()), "The list comes back when you return to EVE.");
+        const delay = try widgets.openGroup(context, .src(@src()), display.get("listViewHideWhenNoEveFocus"));
+        try bind.number(context, display, "listViewHideDebounceMs", "Hide Delay", .{ .shows_seconds = true, .unit = "s" });
+        try widgets.hintText(context, .src(@src()), "Waits this long, so quick switches don't flicker.");
+        try delay.close(context);
+    }
     try section.close(context);
 }
 
@@ -334,8 +337,9 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, available_wid
     const columns: usize = @intCast(list_look.effectiveColumns(display.listViewColumns, SAMPLES.len));
     const panel_width: f32 = @floatFromInt(sizes.column_width * @as(i32, @intCast(columns)));
     const scale = if (available_width > 0 and panel_width > available_width) available_width / panel_width else 1;
-    const active_color = if (display.listViewUseUniqueActiveColors) style.UNIQUE_SAMPLE else display.listViewActiveColor;
-    const uses_unique_names = display.listViewUseUniqueCharacterNameColors;
+    const shown = profile.shownColors();
+    const active_color = if (shown.uses_unique_border_colors) style.UNIQUE_SAMPLE else shown.active_color;
+    const uses_unique_names = shown.uses_unique_name_colors;
     const stat_settings: list_look.StatSettings = .{ .display = display, .combat = &profile.combat, .mining = &profile.mining, .bounty = &profile.bounty };
 
     var stat_labels: [list_look.STAT_COUNT]StatLabel = undefined;
@@ -350,7 +354,7 @@ fn lookOf(arena: std.mem.Allocator, profile: *const config.Config, available_wid
         .active_name_color = if (uses_unique_names) style.UNIQUE_SAMPLE else list_look.activeNameColor(active_color),
         .name_color = if (uses_unique_names) style.UNIQUE_SAMPLE else list_look.NAME,
         .notification_color = profile.thumbnail.notifications.getTypeConfig(.FleetInvite).text_color orelse display.listViewNotificationColor,
-        .system_color = if (display.listViewUseUniqueSystemColors) style.UNIQUE_SAMPLE else display.listViewSystemNameColor,
+        .system_color = if (shown.uses_unique_system_colors) style.UNIQUE_SAMPLE else shown.system_name_color,
         .name_size = @as(f32, @floatFromInt(display.listViewFontSize)) * scale,
         .small_size = @as(f32, @floatFromInt(list_look.smallFontSize(display.listViewFontSize))) * scale,
         .shows_systems = display.listViewShowSystemName,
@@ -440,8 +444,13 @@ fn settings(context: *ui.Frame, display: DisplayRef, part: Part) !bool {
     defer _ = widgets.useAlignedRows(was_aligned);
     const was_compact = widgets.useCompactRows(true);
     defer _ = widgets.useCompactRows(was_compact);
+    const follows_thumbnails = session.showsThumbnails();
     switch (part) {
         .active => {
+            if (follows_thumbnails) {
+                try widgets.notice(context, .src(@src()), "Follows the thumbnails' active border color.");
+                return is_close_clicked;
+            }
             try bind.toggle(context, display, "listViewUseUniqueActiveColors", "Unique Character Active Colors");
             try widgets.hintText(context, .src(@src()), "Each character's mark gets its own color.");
             const group = try widgets.openGroup(context, .src(@src()), !display.get("listViewUseUniqueActiveColors"));
@@ -450,12 +459,20 @@ fn settings(context: *ui.Frame, display: DisplayRef, part: Part) !bool {
             try group.close(context);
         },
         .names => {
+            if (follows_thumbnails) {
+                try widgets.notice(context, .src(@src()), "Follows the thumbnails' unique character name colors.");
+                return is_close_clicked;
+            }
             try bind.toggle(context, display, "listViewUseUniqueCharacterNameColors", "Unique Character Name Colors");
             try widgets.hintText(context, .src(@src()), "Each character's name gets its own color.");
         },
         .systems => {
             try bind.toggle(context, display, "listViewShowSystemName", "Show System Name");
             try widgets.hintText(context, .src(@src()), "Needs Log Monitoring to know where each character is.");
+            if (follows_thumbnails) {
+                try widgets.notice(context, .src(@src()), "Colors follow the thumbnails' system name settings.");
+                return is_close_clicked;
+            }
             const shown = try widgets.openGroup(context, .src(@src()), display.get("listViewShowSystemName"));
             try bind.toggle(context, display, "listViewUseUniqueSystemColors", "Unique System Colors");
             try widgets.hintText(context, .src(@src()), "Each system gets its own color; System Colors overrides it.");

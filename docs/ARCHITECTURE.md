@@ -50,7 +50,7 @@ Owns every long-lived subsystem. Main thread only.
 | `store` (`ProfileStore`), `global_settings`, `character_ids`, `scout`, `exclusions`, `notifications` (`NotificationCenter`), `focus`, `trackers`, tray | Whole run |
 | `auto_minimizer` | Whole run; reset when a different profile loads |
 | `thumbnail_set`, `hotkey_manager`, `chatlog_monitor` | Rebuilt on reload; heap pointers |
-| `list_window` | Built and torn down with `thumbnail_set`; ClientList mode only |
+| `list_window` | Built and torn down with `thumbnail_set`; `ClientList` and `ThumbnailsAndList` modes only |
 
 Rules:
 
@@ -165,7 +165,7 @@ Rendering:
 - `platform/gdi_overlay.zig`: DIB-backed layered windows, text helpers, `HintBox`, class registration.
 - `util/pixel_buffer.zig`: pure ARGB drawing (rects, rounded frames, alpha fix-up).
 - `platform/panel_window.zig`: `PanelWindow`, shared by the client list and History Panel.
-- `panels/list_view.zig` + `list_look.zig`: `ClientList` view mode; App owns the window, built and torn down with the thumbnail set. `list_look` is pure and shared with the dialog preview.
+- `panels/list_view.zig` + `list_look.zig`: `ClientList` and `ThumbnailsAndList` view modes; App owns the window, built and torn down with the thumbnail set. `list_look` is pure and shared with the dialog preview.
 - `thumbnail/hover_zoom.zig` + `layout/zoom.zig`: click-through enlarged copy under the cursor.
 
 Layout (`layout/`, mostly pure):

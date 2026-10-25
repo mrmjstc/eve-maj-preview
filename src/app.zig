@@ -71,7 +71,7 @@ pub const App = struct {
     trackers: runtime.Trackers,
     /// Rebuilt on reload, so never cached elsewhere: read it from here each time.
     thumbnail_set: ?*ThumbnailSet = null,
-    /// Built and torn down with `thumbnail_set`; non-null only in ClientList mode.
+    /// Built and torn down with `thumbnail_set`; non-null only while the view mode shows the client list.
     list_window: ?list_view.ListWindow = null,
     /// Rebuilt like `thumbnail_set`, and read from here the same way.
     hotkey_manager: ?*HotkeyManager = null,
@@ -320,7 +320,7 @@ pub const App = struct {
             .destroy_hook = thumbnail_input.windowDestroyProc,
         });
         self.thumbnail_set = new_set;
-        if (new_set.view_mode == .ClientList) {
+        if (new_set.view_mode.showsClientList()) {
             self.list_window = list_view.ListWindow.init(self.allocator, &self.store, self.instance) catch |err| blk: {
                 slog.err("Failed to create list window: {}", .{err});
                 break :blk null;

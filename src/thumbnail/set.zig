@@ -684,7 +684,7 @@ pub const ThumbnailSet = struct {
     }
 
     fn createThumbnail(self: *ThumbnailSet, eve_window: *const scout.EveWindow, initial_system_name: []const u8) !void {
-        if (self.config.display.viewMode != .Thumbnails) {
+        if (!self.config.display.viewMode.showsThumbnails()) {
             return self.createTrackingOnlyEntry(eve_window, initial_system_name);
         }
 
