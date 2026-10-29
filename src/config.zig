@@ -101,6 +101,8 @@ pub const PROFILE_FORMAT_VERSION: u32 = migrate.SPACES_VERSION;
 
 pub const ShownColors = struct {
     system_name_color: u32,
+    /// The thumbnails' focused border, which the client list also uses beside them; alone, the list's own.
+    active_color: u32,
     uses_unique_system_colors: bool,
     uses_unique_name_colors: bool,
     /// For thumbnails their active border; for the client list its active colour.
@@ -301,17 +303,19 @@ pub const Config = struct {
         return self.characterSetting(character_name, "displayName", null) orelse character_name;
     }
 
-    /// The colour settings of whichever view is shown, since the client list has its own.
+    /// The colour settings of whichever view is shown, since the client list alone has its own.
     pub fn shownColors(self: *const Config) ShownColors {
         return switch (self.display.viewMode) {
             .ClientList => .{
                 .system_name_color = self.display.listViewSystemNameColor,
+                .active_color = self.display.listViewActiveColor,
                 .uses_unique_system_colors = self.display.listViewUseUniqueSystemColors,
                 .uses_unique_name_colors = self.display.listViewUseUniqueCharacterNameColors,
                 .uses_unique_border_colors = self.display.listViewUseUniqueActiveColors,
             },
-            .Thumbnails, .Nothing => .{
+            .Thumbnails, .ThumbnailsAndList, .Nothing => .{
                 .system_name_color = self.thumbnail.systemNameColor,
+                .active_color = self.thumbnail.borderColor,
                 .uses_unique_system_colors = self.thumbnail.useUniqueSystemColors,
                 .uses_unique_name_colors = self.thumbnail.useUniqueCharacterNameColors,
                 .uses_unique_border_colors = self.thumbnail.useUniqueCharacterBorderColors,
@@ -319,11 +323,11 @@ pub const Config = struct {
         };
     }
 
-    /// The focus auto-hide of whichever view is shown, since the client list has its own.
+    /// The focus auto-hide of whichever view is shown, since the client list alone has its own.
     pub fn shownAutoHide(self: *const Config) AutoHide {
         return switch (self.display.viewMode) {
             .ClientList => .{ .is_enabled = self.display.listViewHideWhenNoEveFocus, .delay_ms = self.display.listViewHideDebounceMs },
-            .Thumbnails, .Nothing => .{ .is_enabled = self.thumbnail.hideWhenNoEveFocus, .delay_ms = self.thumbnail.hideDebounceMs },
+            .Thumbnails, .ThumbnailsAndList, .Nothing => .{ .is_enabled = self.thumbnail.hideWhenNoEveFocus, .delay_ms = self.thumbnail.hideDebounceMs },
         };
     }
 
@@ -441,6 +445,15 @@ test "shownColors follows the client list's own settings in its view" {
     try testing.expectEqual(@as(u32, 0xFF000003), config.shownColors().system_name_color);
     config.display.viewMode = .Thumbnails;
     try testing.expectEqual(@as(u32, 0xFF000004), config.shownColors().system_name_color);
+}
+
+test "shownColors follows the thumbnails when the list is shown beside them" {
+    var config = try testConfig(
+        \\{"display": {"viewMode": "ThumbnailsAndList", "listViewActiveColor": "0xFF000001"}, "thumbnail": {"borderColor": "0xFF000002"}}
+    );
+    defer config.deinit();
+
+    try testing.expectEqual(@as(u32, 0xFF000002), config.shownColors().active_color);
 }
 
 test "getOrCreateCharacter returns an existing character rather than adding another" {

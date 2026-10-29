@@ -179,10 +179,14 @@ fn detail(context: *ui.Frame, profile: ProfileRef) !void {
     const removed = try widgets.confirmButton(context, ui.Key.str("knots.character.remove").indexed(index), "Remove", "Confirm", &style.plain_button, &style.confirm_button);
     try header.close(context);
     const name_box = bind.boxKey(character, "name");
-    if (try suggest.openClients(context, name_box, bind.typedText(name_box))) |picked| character.set("name", picked);
+    const characters = profile.ptr.characters.items;
+    const taken = try context.arena().alloc([]const u8, characters.len);
+    for (characters, taken) |other, *name| name.* = other.name;
+    if (try suggest.openClients(context, name_box, bind.typedText(name_box), taken)) |picked| character.set("name", picked);
 
     try bind.text(context, character, "displayName", "Display Name", "Same as character name");
     try widgets.hintText(context, .str("knots.character.display.hint"), "Shown on the thumbnail and spoken aloud. Clients are still matched by Character Name.");
+    try widgets.separator(context, .str("knots.character.separator.display"));
 
     const hotkey_row = try widgets.openBinding(context, .str("knots.character.hotkey"), "Direct Hotkey");
     try hotkey.field(context, character, "hotkey");

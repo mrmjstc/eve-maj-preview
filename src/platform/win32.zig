@@ -49,6 +49,7 @@ pub const WM_KEYDOWN = 0x0100;
 pub const WM_KEYUP = 0x0101;
 pub const WM_SYSKEYDOWN = 0x0104;
 pub const WM_SYSKEYUP = 0x0105;
+pub const KEY_EXTENDED_BIT: LPARAM = 1 << 24;
 pub const WM_LBUTTONDOWN = 0x0201;
 pub const WM_LBUTTONUP = 0x0202;
 pub const WM_LBUTTONDBLCLK = 0x0203;
@@ -188,6 +189,7 @@ pub const KBDLLHOOKSTRUCT = extern struct {
     time: DWORD,
     dwExtraInfo: usize,
 };
+pub const LLKHF_EXTENDED: DWORD = 0x01;
 /// nCode value meaning a WH_KEYBOARD_LL/WH_MOUSE_LL hook must process the event
 pub const HC_ACTION: c_int = 0;
 pub const RECT = extern struct {
@@ -833,6 +835,61 @@ pub extern "iphlpapi" fn IcmpSendEcho2(
 ) callconv(.c) DWORD;
 pub extern "iphlpapi" fn IcmpParseReplies(ReplyBuffer: *anyopaque, ReplySize: DWORD) callconv(.c) DWORD;
 
+// WinHTTP - HTTPS requests and WebSockets.
+pub const HINTERNET = *anyopaque;
+pub const WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY: DWORD = 4;
+pub const WINHTTP_FLAG_SECURE: DWORD = 0x00800000;
+pub const WINHTTP_QUERY_STATUS_CODE: DWORD = 19;
+pub const WINHTTP_QUERY_FLAG_NUMBER: DWORD = 0x20000000;
+pub const WINHTTP_OPTION_URL: DWORD = 34;
+pub const WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET: DWORD = 114;
+pub const INTERNET_SCHEME_HTTPS: c_int = 2;
+pub const INTERNET_DEFAULT_HTTPS_PORT: u16 = 443;
+pub const ERROR_WINHTTP_TIMEOUT: DWORD = 12002;
+pub const WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE: c_int = 0;
+pub const WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE: c_int = 1;
+pub const WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE: c_int = 2;
+pub const WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE: c_int = 3;
+pub const WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE: c_int = 4;
+pub const WINHTTP_WEB_SOCKET_SUCCESS_CLOSE_STATUS: u16 = 1000;
+
+pub const URL_COMPONENTS = extern struct {
+    dwStructSize: DWORD = @sizeOf(URL_COMPONENTS),
+    lpszScheme: ?[*]u16 = null,
+    dwSchemeLength: DWORD = 0,
+    nScheme: c_int = 0,
+    lpszHostName: ?[*]u16 = null,
+    dwHostNameLength: DWORD = 0,
+    nPort: u16 = 0,
+    lpszUserName: ?[*]u16 = null,
+    dwUserNameLength: DWORD = 0,
+    lpszPassword: ?[*]u16 = null,
+    dwPasswordLength: DWORD = 0,
+    lpszUrlPath: ?[*]u16 = null,
+    dwUrlPathLength: DWORD = 0,
+    lpszExtraInfo: ?[*]u16 = null,
+    dwExtraInfoLength: DWORD = 0,
+};
+
+pub extern "winhttp" fn WinHttpOpen(agent: ?[*:0]const u16, access_type: DWORD, proxy: ?[*:0]const u16, proxy_bypass: ?[*:0]const u16, flags: DWORD) callconv(.c) ?HINTERNET;
+pub extern "winhttp" fn WinHttpSetTimeouts(handle: HINTERNET, resolve_ms: c_int, connect_ms: c_int, send_ms: c_int, receive_ms: c_int) callconv(.c) BOOL;
+pub extern "winhttp" fn WinHttpCrackUrl(url: [*]const u16, url_length: DWORD, flags: DWORD, components: *URL_COMPONENTS) callconv(.c) BOOL;
+pub extern "winhttp" fn WinHttpConnect(session: HINTERNET, server_name: [*:0]const u16, server_port: u16, reserved: DWORD) callconv(.c) ?HINTERNET;
+pub extern "winhttp" fn WinHttpOpenRequest(connection: HINTERNET, verb: [*:0]const u16, object_name: [*:0]const u16, version: ?[*:0]const u16, referrer: ?[*:0]const u16, accept_types: ?*const ?[*:0]const u16, flags: DWORD) callconv(.c) ?HINTERNET;
+pub extern "winhttp" fn WinHttpSetOption(handle: HINTERNET, option: DWORD, buffer: ?*anyopaque, buffer_length: DWORD) callconv(.c) BOOL;
+pub extern "winhttp" fn WinHttpSendRequest(request: HINTERNET, headers: ?[*]const u16, headers_length: DWORD, optional: ?*const anyopaque, optional_length: DWORD, total_length: DWORD, context: usize) callconv(.c) BOOL;
+pub extern "winhttp" fn WinHttpReceiveResponse(request: HINTERNET, reserved: ?*anyopaque) callconv(.c) BOOL;
+pub extern "winhttp" fn WinHttpQueryHeaders(request: HINTERNET, info_level: DWORD, name: ?[*:0]const u16, buffer: ?*anyopaque, buffer_length: *DWORD, index: ?*DWORD) callconv(.c) BOOL;
+pub extern "winhttp" fn WinHttpQueryOption(handle: HINTERNET, option: DWORD, buffer: ?*anyopaque, buffer_length: *DWORD) callconv(.c) BOOL;
+pub extern "winhttp" fn WinHttpReadData(request: HINTERNET, buffer: [*]u8, bytes_to_read: DWORD, bytes_read: *DWORD) callconv(.c) BOOL;
+pub extern "winhttp" fn WinHttpCloseHandle(handle: HINTERNET) callconv(.c) BOOL;
+pub extern "winhttp" fn WinHttpWebSocketCompleteUpgrade(request: HINTERNET, context: usize) callconv(.c) ?HINTERNET;
+/// These four return a Win32 error code, 0 on success, rather than a BOOL.
+pub extern "winhttp" fn WinHttpWebSocketSend(web_socket: HINTERNET, buffer_type: c_int, buffer: ?*const anyopaque, buffer_length: DWORD) callconv(.c) DWORD;
+pub extern "winhttp" fn WinHttpWebSocketReceive(web_socket: HINTERNET, buffer: *anyopaque, buffer_length: DWORD, bytes_read: *DWORD, buffer_type: *c_int) callconv(.c) DWORD;
+pub extern "winhttp" fn WinHttpWebSocketShutdown(web_socket: HINTERNET, status: u16, reason: ?*const anyopaque, reason_length: DWORD) callconv(.c) DWORD;
+pub extern "winhttp" fn WinHttpWebSocketClose(web_socket: HINTERNET, status: u16, reason: ?*const anyopaque, reason_length: DWORD) callconv(.c) DWORD;
+
 pub const FILETIME = extern struct {
     dwLowDateTime: DWORD,
     dwHighDateTime: DWORD,
@@ -1428,9 +1485,9 @@ pub fn showFolderPicker(allocator: std.mem.Allocator, title: []const u8, owner: 
     defer dialog.release();
 
     _ = dialog.setOptions(FOS_PICKFOLDERS);
-    const title_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, title);
-    defer allocator.free(title_w);
-    _ = dialog.setTitle(title_w.ptr);
+    const title_wide = try std.unicode.utf8ToUtf16LeAllocZ(allocator, title);
+    defer allocator.free(title_wide);
+    _ = dialog.setTitle(title_wide.ptr);
 
     return showAndGetPath(allocator, dialog, owner);
 }
@@ -1442,15 +1499,15 @@ pub fn showFilePicker(allocator: std.mem.Allocator, title: []const u8, filter_na
     const dialog = try createFileOpenDialog();
     defer dialog.release();
 
-    const title_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, title);
-    defer allocator.free(title_w);
-    _ = dialog.setTitle(title_w.ptr);
+    const title_wide = try std.unicode.utf8ToUtf16LeAllocZ(allocator, title);
+    defer allocator.free(title_wide);
+    _ = dialog.setTitle(title_wide.ptr);
 
-    const filter_name_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, filter_name);
-    defer allocator.free(filter_name_w);
-    const filter_spec_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, filter_spec);
-    defer allocator.free(filter_spec_w);
-    const specs = [_]COMDLG_FILTERSPEC{.{ .pszName = filter_name_w.ptr, .pszSpec = filter_spec_w.ptr }};
+    const filter_name_wide = try std.unicode.utf8ToUtf16LeAllocZ(allocator, filter_name);
+    defer allocator.free(filter_name_wide);
+    const filter_spec_wide = try std.unicode.utf8ToUtf16LeAllocZ(allocator, filter_spec);
+    defer allocator.free(filter_spec_wide);
+    const specs = [_]COMDLG_FILTERSPEC{.{ .pszName = filter_name_wide.ptr, .pszSpec = filter_spec_wide.ptr }};
     _ = dialog.setFileTypes(&specs);
 
     return showAndGetPath(allocator, dialog, owner);
@@ -1476,9 +1533,9 @@ fn showAndGetPath(allocator: std.mem.Allocator, dialog: *IFileOpenDialog, owner:
     const result_item = dialog.getResult() orelse return null;
     defer result_item.release();
 
-    const path_w = result_item.getDisplayName(SIGDN_FILESYSPATH) orelse return null;
-    defer CoTaskMemFree(path_w);
-    return try std.unicode.utf16LeToUtf8Alloc(allocator, std.mem.span(path_w));
+    const path_wide = result_item.getDisplayName(SIGDN_FILESYSPATH) orelse return null;
+    defer CoTaskMemFree(path_wide);
+    return try std.unicode.utf16LeToUtf8Alloc(allocator, std.mem.span(path_wide));
 }
 
 extern "shell32" fn SHGetKnownFolderPath(

@@ -57,7 +57,7 @@ pub fn show(context: *ui.Frame) !void {
     const dialog = widgets.modal(.src(@src()), &g_is_open, &style.modal_wide);
     _ = try dialog.open(context);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("Update Available!"), .style = &style.heading });
-    const line = Rect{ .key = .src(@src()), .style = &style.hint_row };
+    const line = Rect{ .key = .src(@src()), .style = &style.text_link_row };
     _ = try line.open(context);
     try context.e(Text{ .selectable = false, .key = .src(@src()), .content = lang.text("A new version is available:"), .style = &style.modal_text_inline });
     if ((try context.interact(Button{ .key = .src(@src()), .label = if (g_version.len > 0) g_version else g_url, .style = &style.link })).clicked) {

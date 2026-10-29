@@ -1048,15 +1048,19 @@ fn tessellateLayer(ui: *UI, allocator: Allocator, draw_list: *DrawList, slots: [
                     }
                 }
             },
-            .canvas => |c| try canvas_tessellator.tessellate(allocator, draw_list, c.cmds, .{ el.box.x(), el.box.y() }, clip),
+            // EVE-Maj patch: snapped like a rect's edges, so a canvas inside a bordered box stays centred in it.
+            .canvas => |c| try canvas_tessellator.tessellate(allocator, draw_list, c.cmds, .{ snapToPixel(el.box.x(), content_scale), snapToPixel(el.box.y(), content_scale) }, clip),
             .gpu_canvas => |canvas| {
                 try draw_list.pushCustomDraw(&canvas, el.box, clip);
             },
             .image => |img| {
                 const zero4 = [4]f32{ 0, 0, 0, 0 };
+                // EVE-Maj patch: edges snapped like a rect's, so an image filling a snapped box covers it exactly.
+                const x0 = snapToPixel(el.box.x(), content_scale);
+                const y0 = snapToPixel(el.box.y(), content_scale);
                 const inst = types.Instance{
-                    .pos = .{ el.box.x(), el.box.y() },
-                    .size = .{ el.box.w(), el.box.h() },
+                    .pos = .{ x0, y0 },
+                    .size = .{ snapToPixel(el.box.x() + el.box.w(), content_scale) - x0, snapToPixel(el.box.y() + el.box.h(), content_scale) - y0 },
                     .uv0 = .{ 0, 0 },
                     .uv1 = .{ 1, 1 },
                     .color = img.tint,

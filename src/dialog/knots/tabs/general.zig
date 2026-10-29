@@ -1,4 +1,4 @@
-//! The configuration window's General tab: app-wide preferences and startup, then, in Advanced Mode, logging, scanning, and the window filters that pick which applications are tracked; main thread only.
+//! The configuration window's General tab: log monitoring, app-wide preferences and startup, then, in Advanced Mode, logging, scanning, and the window filters that pick which applications are tracked; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const win32 = @import("../../../platform/win32.zig");
@@ -9,6 +9,7 @@ const host = @import("../host.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const window_picker = @import("../window_picker.zig");
+const chatlog = @import("chatlog.zig");
 const lang = @import("../../../lang/lang.zig");
 const log = @import("../../../log.zig");
 
@@ -26,7 +27,6 @@ var g_allocator: std.mem.Allocator = undefined;
 var g_selected_index: usize = 0;
 /// The Window Filters switch isn't saved; it starts on whenever the profile has filters.
 var g_are_filters_enabled: ?bool = null;
-/// The open "Pick Running Window" dropdown, under one filter.
 var g_picker: ?window_picker.Picker = null;
 
 pub fn init(allocator: std.mem.Allocator) void {
@@ -41,6 +41,8 @@ pub fn reset() void {
 }
 
 pub fn show(context: *ui.Frame) !void {
+    // First, so the "Go to Log Monitoring" notices land on it.
+    try chatlog.show(context);
     try preferences(context);
     try startup(context);
     if (!session.global().get("advancedMode")) return;
@@ -73,10 +75,11 @@ fn startup(context: *ui.Frame) !void {
     const global = session.global();
     try bind.toggle(context, global, "runOnStartup", "Run on Startup");
     try widgets.hintText(context, .src(@src()), "Starts EVE-Maj Preview when you sign in to Windows.");
-    try bind.toggle(context, global, "autoRegisterProtocol", "Auto-Register Protocol Handler");
-    if (try widgets.hintWithLink(context, .src(@src()), "Lets links in other apps control EVE-Maj Preview.", "Learn more")) {
-        if (!win32.shellOpenUrl(PROTOCOL_DOCS_URL)) slog.warn("Failed to open '{s}' in the browser", .{PROTOCOL_DOCS_URL});
-    }
+    var is_registering: bool = global.get("autoRegisterProtocol");
+    const clicked = try widgets.switchRowWithLink(context, .src(@src()), "Auto-Register Protocol Handler", "Learn more", &is_registering);
+    if (clicked.is_flipped) global.set("autoRegisterProtocol", is_registering);
+    if (clicked.is_link_clicked and !win32.shellOpenUrl(PROTOCOL_DOCS_URL)) slog.warn("Failed to open '{s}' in the browser", .{PROTOCOL_DOCS_URL});
+    try widgets.hintText(context, .src(@src()), "Lets links in other apps control EVE-Maj Preview.");
     try bind.invertedToggle(context, global, "disableUpdateChecks", "Check for Updates");
     try widgets.hintText(context, .src(@src()), "Looks online for a new version at startup.");
     try section.close(context);

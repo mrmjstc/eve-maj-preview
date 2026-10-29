@@ -16,6 +16,7 @@ pub const VK_FOCUS_GRANT: u32 = 0xE8;
 pub const VK_MENU: u32 = win32.VK_MENU;
 pub const VK_LWIN: u32 = win32.VK_LWIN;
 pub const VK_RWIN: u32 = win32.VK_RWIN;
+pub const VK_CLEAR: u32 = 0x0C;
 pub const VK_SPACE: u32 = 0x20;
 pub const VK_PRIOR: u32 = 0x21;
 pub const VK_NEXT: u32 = 0x22;
@@ -70,6 +71,16 @@ const MODIFIER_BIT_OFFSET: u5 = 8;
 
 const VK_MASK: u32 = 0xFF;
 const MOD_MASK: u32 = 0x0F;
+
+/// The prefix each modifier flag is written with, in the order they're written.
+const MODIFIER_NAMES = [_]struct { flag: u32, name: []const u8 }{
+    .{ .flag = MOD_CONTROL, .name = "Ctrl" },
+    .{ .flag = MOD_ALT, .name = "Alt" },
+    .{ .flag = MOD_SHIFT, .name = "Shift" },
+    .{ .flag = MOD_WIN, .name = "Win" },
+};
+
+const KeyName = struct { vk_code: u32, name: []const u8 };
 
 /// Every key a binding can use, in the spelling it's shown and typed in; the config dialog's recorder offers exactly these.
 const KEY_NAMES: []const KeyName = blk: {
@@ -137,16 +148,6 @@ const KEY_NAMES: []const KeyName = blk: {
     break :blk list;
 };
 
-/// The prefix each modifier flag is written with, in the order they're written.
-const MODIFIER_NAMES = [_]struct { flag: u32, name: []const u8 }{
-    .{ .flag = MOD_CONTROL, .name = "Ctrl" },
-    .{ .flag = MOD_ALT, .name = "Alt" },
-    .{ .flag = MOD_SHIFT, .name = "Shift" },
-    .{ .flag = MOD_WIN, .name = "Win" },
-};
-
-const KeyName = struct { vk_code: u32, name: []const u8 };
-
 pub fn extractVk(combined: u32) u32 {
     return combined & VK_MASK;
 }
@@ -173,6 +174,24 @@ pub fn currentModifiers() u32 {
     if (win32.isShiftPressed()) modifiers |= MOD_SHIFT;
     if (win32.isWinPressed()) modifiers |= MOD_WIN;
     return modifiers;
+}
+
+/// The numpad key behind a non-extended navigation key, which Windows sends for Shift+Numpad while NumLock is on.
+pub fn numpadForNavigation(vk_code: u32) ?u32 {
+    return switch (vk_code) {
+        VK_INSERT => VK_NUMPAD0,
+        VK_END => VK_NUMPAD0 + 1,
+        VK_DOWN => VK_NUMPAD0 + 2,
+        VK_NEXT => VK_NUMPAD0 + 3,
+        VK_LEFT => VK_NUMPAD0 + 4,
+        VK_CLEAR => VK_NUMPAD0 + 5,
+        VK_RIGHT => VK_NUMPAD0 + 6,
+        VK_HOME => VK_NUMPAD0 + 7,
+        VK_UP => VK_NUMPAD0 + 8,
+        VK_PRIOR => VK_NUMPAD0 + 9,
+        VK_DELETE => VK_DECIMAL,
+        else => null,
+    };
 }
 
 pub fn keyName(vk_code: u32) ?[]const u8 {
@@ -344,4 +363,11 @@ test "isMouseHookVk covers the mouse buttons and wheel only" {
     try testing.expect(isMouseHookVk(VK_MBUTTON) and isMouseHookVk(VK_XBUTTON1) and isMouseHookVk(VK_XBUTTON2));
     try testing.expect(isMouseHookVk(VK_WHEELUP) and isMouseHookVk(VK_WHEELDOWN));
     try testing.expect(!isMouseHookVk(VK_F1) and !isMouseHookVk('A'));
+}
+
+test "numpadForNavigation maps each navigation key back to its numpad key" {
+    try testing.expectEqual(VK_NUMPAD0 + 1, numpadForNavigation(VK_END).?);
+    try testing.expectEqual(VK_NUMPAD0 + 5, numpadForNavigation(VK_CLEAR).?);
+    try testing.expectEqual(VK_DECIMAL, numpadForNavigation(VK_DELETE).?);
+    try testing.expect(numpadForNavigation('A') == null);
 }

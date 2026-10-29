@@ -227,7 +227,7 @@ pub const Look = struct {
 };
 
 /// The Text Overlays section's Sync Fonts and Backgrounds; not saved.
-pub var g_should_sync_styling: bool = false;
+pub var g_should_sync_styling: bool = true;
 
 pub fn look(comptime chip: Chip) Look {
     const ref = refFor(chip.section);

@@ -9,6 +9,7 @@ const widgets = @import("widgets.zig");
 const glyphs = @import("glyphs.zig");
 const import_dialog = @import("import_dialog.zig");
 const update_notice = @import("update_notice.zig");
+const barrage = @import("barrage.zig");
 const search = @import("search.zig");
 const hotkey = @import("hotkey.zig");
 const header = @import("header.zig");
@@ -23,7 +24,6 @@ const hotkey_groups = @import("tabs/hotkey_groups.zig");
 const display = @import("tabs/display.zig");
 const characters = @import("tabs/characters.zig");
 const behavior = @import("tabs/behavior.zig");
-const chatlog = @import("tabs/chatlog.zig");
 const notifications = @import("tabs/notifications.zig");
 const event_alerts = @import("tabs/event_alerts.zig");
 const notification_history = @import("tabs/notification_history.zig");
@@ -67,7 +67,6 @@ const Tab = enum {
     notifications,
     event_alerts,
     notification_history,
-    chatlog,
     mining,
     general,
     backups,
@@ -84,7 +83,6 @@ const Tab = enum {
             .notifications => "Notifications",
             .event_alerts => "Event Alerts",
             .notification_history => "Notification History",
-            .chatlog => "Log Monitoring",
             .mining => "Mining",
             .general => "General",
             .about => "About",
@@ -97,7 +95,7 @@ const Tab = enum {
             .characters, .hotkey_groups => .clients,
             .appearance, .placement => .display,
             .hotkeys, .behavior => .input,
-            .notifications, .event_alerts, .notification_history, .chatlog => .alerts,
+            .notifications, .event_alerts, .notification_history => .alerts,
             .mining => .overlays,
             .about, .backups, .general => .app,
         };
@@ -114,7 +112,6 @@ const Tab = enum {
             .notifications => .envelope,
             .event_alerts => .bell,
             .notification_history => .clock,
-            .chatlog => .document,
             .mining => .pickaxe,
             .general => .gear,
             .about => .star,
@@ -125,14 +122,14 @@ const Tab = enum {
     fn isAdvanced(self: Tab) bool {
         return switch (self) {
             .mining => true,
-            .characters, .hotkey_groups, .appearance, .placement, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .general, .about, .backups => false,
+            .characters, .hotkey_groups, .appearance, .placement, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .general, .about, .backups => false,
         };
     }
 
     fn needsThumbnails(self: Tab) bool {
         return switch (self) {
             .placement => true,
-            .characters, .hotkey_groups, .appearance, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .chatlog, .mining, .general, .about, .backups => false,
+            .characters, .hotkey_groups, .appearance, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .mining, .general, .about, .backups => false,
         };
     }
 
@@ -141,7 +138,7 @@ const Tab = enum {
         return switch (self) {
             .characters, .hotkey_groups, .event_alerts => true,
             .placement => placement.fillsWindow(),
-            .appearance, .hotkeys, .behavior, .notifications, .notification_history, .chatlog, .mining, .general, .about, .backups => false,
+            .appearance, .hotkeys, .behavior, .notifications, .notification_history, .mining, .general, .about, .backups => false,
         };
     }
 
@@ -179,7 +176,7 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     session.beginFrame();
     widgets.beginFrame();
     search.beginFrame();
-    try hotkey.beginFrame(context.arena());
+    try hotkey.beginFrame(context);
     applyAccent(context);
     const offered = Offered{
         .is_advanced_mode = session.global().get("advancedMode"),
@@ -222,12 +219,13 @@ pub fn frame(_: *knots.View, context: *ui.Frame) !void {
     try body.close(context);
     if (widgets.takeNoticeTarget()) |target| selectTab(context, switch (target) {
         .notifications => .notifications,
-        .log_monitoring => .chatlog,
+        .log_monitoring => .general,
     });
 
     try footer(context);
     try import_dialog.show(context);
     try update_notice.show(context);
+    try barrage.show(context);
     try unsavedPrompt(context);
     // Last, so it opens over the Import dialog that queued its switch.
     try switchPrompt(context);
@@ -247,7 +245,6 @@ fn showTab(context: *ui.Frame, tab: Tab) !void {
         .placement => try placement.show(context),
         .characters => try characters.show(context),
         .behavior => try behavior.show(context),
-        .chatlog => try chatlog.show(context),
         .notifications => try notifications.show(context),
         .event_alerts => try event_alerts.show(context),
         .notification_history => try notification_history.show(context),

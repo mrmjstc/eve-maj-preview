@@ -260,7 +260,7 @@ pub fn profile() Ref(Config) {
 
 /// Whether the edited profile shows thumbnails, which decides where thumbnail-only settings are offered.
 pub fn showsThumbnails() bool {
-    return profile().ptr.display.viewMode == .Thumbnails;
+    return profile().ptr.display.viewMode.showsThumbnails();
 }
 
 /// After the running profile was replaced, e.g. by a profile switch, so isDirty compares it again.

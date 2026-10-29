@@ -44,6 +44,7 @@ pub const Renderer = struct {
             self.hover_zoom.renderOverlay(&self.font_cache, thumbnail, settings, config);
         }
 
-        thumbnail.render_cache.settings = settings;
+        // Only settings the bitmap was drawn with, or showing it again would skip the redraw and show stale content.
+        thumbnail.render_cache.settings = if (settings.show_thumbnail) settings else null;
     }
 };

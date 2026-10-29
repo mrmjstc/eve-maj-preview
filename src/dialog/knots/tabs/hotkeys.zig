@@ -84,7 +84,6 @@ const DraftUrlHotkey = struct {
 };
 
 var g_allocator: std.mem.Allocator = undefined;
-/// The open "Pick Running Window" dropdown, under one app hotkey.
 var g_picker: ?window_picker.Picker = null;
 /// The URL hotkey Add URL Hotkey just added, kept while blank until its box has had focus.
 var g_fresh_url_index: ?usize = null;
@@ -181,6 +180,7 @@ pub fn show(context: *ui.Frame) !void {
     try pair(context, global, "hotkeyCycleAppsBackward", "hotkeyCycleAppsForward", "Steps through the running apps below, in order.");
     try binding(context, global, "hotkeyReturnToLastApp");
     try widgets.hintText(context, .src(@src()), "Jumps back to the app you used before EVE.");
+    try widgets.separator(context, .str("knots.hotkeys.separator.last_app"));
     try widgets.subheading(context, .src(@src()), "App Hotkeys");
     try appHotkeys(context);
     try widgets.subheading(context, .src(@src()), "URL Hotkeys");
@@ -192,7 +192,7 @@ pub fn show(context: *ui.Frame) !void {
 fn binding(context: *ui.Frame, ref: anytype, comptime field: []const u8) !void {
     const label = comptime labels.hotkeyLabel(field);
     comptime std.debug.assert(label.half == .none);
-    const row = try widgets.openBinding(context, .str("knots.hotkeys.binding:" ++ field), label.text);
+    const row = try widgets.openWrappingBinding(context, .str("knots.hotkeys.binding:" ++ field), label.text);
     try hotkey.field(context, ref, field);
     try row.close(context);
 }
@@ -203,7 +203,7 @@ fn pair(context: *ui.Frame, ref: anytype, comptime previous: []const u8, comptim
     comptime std.debug.assert(label.half == .back and labels.hotkeyLabel(next).half == .forward and std.mem.eql(u8, label.text, labels.hotkeyLabel(next).text));
     const group = try widgets.openFieldGroup(context, .str("knots.hotkeys.pair:" ++ previous), label.text);
     inline for (.{ .{ previous, "Cycle Backward" }, .{ next, "Cycle Forward" } }) |half| {
-        const row = try widgets.openBinding(context, .str("knots.hotkeys.half:" ++ half[0]), half[1]);
+        const row = try widgets.openWrappingBinding(context, .str("knots.hotkeys.half:" ++ half[0]), half[1]);
         try hotkey.field(context, ref, half[0]);
         try row.close(context);
         try widgets.hintText(context, .str("knots.hotkeys.half.hint:" ++ half[0]), hint);
@@ -211,11 +211,10 @@ fn pair(context: *ui.Frame, ref: anytype, comptime previous: []const u8, comptim
     try group.close(context);
 }
 
-/// A row per profile, so adding or deleting a profile changes the rows.
 fn profileSwitchRows(context: *ui.Frame) !void {
     for (profiles.list(), 0..) |name, index| {
         const label = try lang.format(context.arena(), "Switch to: {name}", .{ .name = profiles.displayName(name) });
-        const row = try widgets.openBinding(context, ui.Key.str("knots.hotkeys.profile").indexed(index), label);
+        const row = try widgets.openWrappingBinding(context, ui.Key.str("knots.hotkeys.profile").indexed(index), label);
         try hotkey.field(context, ProfileSwitch{ .index = index, .target = name }, "hotkey");
         try row.close(context);
         try widgets.hintText(context, ui.Key.str("knots.hotkeys.profile.hint").indexed(index), "Loads this profile.");

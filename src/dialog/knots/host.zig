@@ -38,6 +38,7 @@ const portraits = @import("portraits.zig");
 const prices = @import("prices.zig");
 const behavior = @import("tabs/behavior.zig");
 const client_list = @import("tabs/client_list.zig");
+const barrage = @import("barrage.zig");
 const log = @import("../../log.zig");
 
 const GlobalConfig = config.GlobalConfig;
@@ -50,6 +51,9 @@ const DESIGN_HEIGHT = 960;
 const DEFAULT_POSITION: win32.POINT = .{ .x = 20, .y = 20 };
 /// On the window itself; clears the footer's status once it has shown long enough.
 const STATUS_TIMER_ID = 1;
+/// On the window itself; draws frames while the Barrage easter egg is open.
+const ANIMATION_TIMER_ID = 2;
+const ANIMATION_INTERVAL_MS = 15;
 /// Per open, so an error every frame can't reopen the window forever.
 const MAX_REOPENS = 2;
 const REOPENED_NOTICE = "Reopened after an error. Your unsaved changes are kept.";
@@ -75,6 +79,8 @@ pub const Command = enum(usize) {
     fit_language,
     /// The update check started as the window opened has finished; the frame it draws shows what it found.
     update_checked,
+    /// What the Barrage link's thread received, as a *link.Arrival in lParam.
+    barrage_arrival,
 };
 
 const State = enum { closed, open };
@@ -108,6 +114,7 @@ pub fn init(app: *app_mod.App) void {
     pickers.init(g_allocator);
     prices.init(g_allocator);
     portraits.setAllocator(g_allocator);
+    barrage.init(g_allocator);
 }
 
 /// At app exit.
@@ -174,6 +181,7 @@ pub fn onCommand(wParam: win32.WPARAM, lParam: win32.LPARAM) void {
         .portrait_loaded => applyPortrait(lParam),
         .fit_language => fitLanguage(),
         .update_checked => {},
+        .barrage_arrival => barrage.onArrival(lParam),
     }
     requestFrame();
 }
@@ -248,6 +256,19 @@ pub fn fetchPrices() bool {
 /// Draws a frame soon, for a change made outside one, e.g. a region selection finishing.
 pub fn redraw() void {
     requestFrame();
+}
+
+/// Draws frames steadily until stopAnimation, for the Barrage easter egg.
+pub fn startAnimation() void {
+    const window = g_hwnd orelse return;
+    if (win32.SetTimer(window, ANIMATION_TIMER_ID, ANIMATION_INTERVAL_MS, null) == 0) {
+        slog.warn("Failed to start animating the configuration window, Barrage will stutter: error {d}", .{win32.GetLastError()});
+    }
+}
+
+pub fn stopAnimation() void {
+    const window = g_hwnd orelse return;
+    _ = win32.KillTimer(window, ANIMATION_TIMER_ID);
 }
 
 /// Refused with error.ConflictingHotkeys, which the status line explains, while hotkeys conflict; between frames only.
@@ -342,6 +363,7 @@ fn runWindow(is_reopened: bool) !void {
     behavior.init(g_allocator);
     defer behavior.reset();
     defer client_list.reset();
+    defer barrage.reset();
     images.init(g_allocator);
     defer images.deinit();
     header.init(g_allocator);
@@ -463,11 +485,18 @@ fn windowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, lParam: w
             requestFrame();
             return 0;
         },
-        win32.WM_TIMER => if (wParam == STATUS_TIMER_ID) {
-            _ = win32.KillTimer(hwnd, STATUS_TIMER_ID);
-            status.clear();
-            requestFrame();
-            return 0;
+        win32.WM_TIMER => switch (wParam) {
+            STATUS_TIMER_ID => {
+                _ = win32.KillTimer(hwnd, STATUS_TIMER_ID);
+                status.clear();
+                requestFrame();
+                return 0;
+            },
+            ANIMATION_TIMER_ID => {
+                requestFrame();
+                return 0;
+            },
+            else => {},
         },
         win32.WM_EXITSIZEMOVE => savePosition(hwnd),
         else => {},
@@ -603,7 +632,7 @@ fn onClosed() void {
 /// Wider for languages with longer labels than English's.
 fn designWidth(language: Language) u32 {
     return switch (language) {
-        .en => 770,
+        .en => 810,
         .es, .pt => 820,
         .de, .fr, .pl, .ru => 870,
     };

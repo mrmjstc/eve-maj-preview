@@ -5,6 +5,8 @@ test {
     _ = @import("activity/resources.zig");
     _ = @import("activity/tracker.zig");
     _ = @import("arguments.zig");
+    _ = @import("barrage/game.zig");
+    _ = @import("barrage/messages.zig");
     _ = @import("chatlog/lines.zig");
     _ = @import("chatlog/queue.zig");
     _ = @import("chatlog/utf16.zig");
@@ -43,6 +45,7 @@ test {
     _ = @import("layout/region_grid.zig");
     _ = @import("layout/spaces.zig");
     _ = @import("layout/zoom.zig");
+    _ = @import("multiplayer/wire.zig");
     _ = @import("notifications/gamelog_events.zig");
     _ = @import("notifications/notification.zig");
     _ = @import("notifications/rules.zig");

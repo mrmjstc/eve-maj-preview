@@ -68,6 +68,8 @@ const Recording = struct {
     captured: ?u32 = null,
     /// MOD_* flags held so far, shown in the recording label before the key that completes the combo.
     held: u32 = 0,
+    /// Set by the fake Shift release before a Shift+Numpad press.
+    is_shift_faked: bool = false,
 };
 
 /// What a combo's caps or remove button asked for this frame.
@@ -88,6 +90,8 @@ var g_conflicts: []const u32 = &.{};
 var g_manual: ?ManualEdit = null;
 /// Called once a capture arrives from outside a frame, so the window redraws to apply it.
 var g_on_capture: ?*const fn () void = null;
+/// A field changed outside a frame; the frame drawing it asks for one more, since its row measures it a frame late.
+var g_is_layout_stale: bool = false;
 
 pub fn init(allocator: std.mem.Allocator, on_capture: *const fn () void) void {
     g_allocator = allocator;
@@ -104,12 +108,17 @@ pub fn reset() void {
 
 /// From the window procedure while a field records; returns whether it consumed the message.
 pub fn onWindowMessage(msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPARAM) bool {
-    _ = lParam;
     const recording = if (g_recording) |*active| active else return false;
     switch (msg) {
         win32.WM_KEYDOWN, win32.WM_SYSKEYDOWN => {
             const virtual_key: u32 = @truncate(wParam);
             if (virtual_key == win32.VK_ESCAPE or recording.captured != null) return true;
+            if (recording.is_shift_faked and lParam & win32.KEY_EXTENDED_BIT == 0) {
+                if (vk.numpadForNavigation(virtual_key)) |numpad| {
+                    capture(numpad, vk.currentModifiers() | vk.MOD_SHIFT);
+                    return true;
+                }
+            }
             if (modifierFlag(virtual_key)) |own| {
                 const held = vk.currentModifiers() | own;
                 // Key repeat sends this again while the modifier is held.
@@ -130,8 +139,12 @@ pub fn onWindowMessage(msg: win32.UINT, wParam: win32.WPARAM, lParam: win32.LPAR
                 redraw();
                 return true;
             }
-            // A modifier released alone is the key itself; the others still held are its modifiers.
             if (recording.captured == null) {
+                if (virtual_key == vk.VK_SHIFT and isFakeShiftRelease(lParam)) {
+                    recording.is_shift_faked = true;
+                    return true;
+                }
+                // A modifier released alone is the key itself; the others still held are its modifiers.
                 if (modifierFlag(virtual_key)) |own| capture(if (virtual_key == vk.VK_RWIN) vk.VK_LWIN else virtual_key, vk.currentModifiers() & ~own);
             }
             return true;
@@ -167,6 +180,7 @@ pub fn field(context: *ui.Frame, ref: anytype, comptime field_name: []const u8) 
                 applyCapture(&current, recording.slot, combo);
                 ref.set(field_name, current);
                 stopRecording();
+                context.requestRedraw();
             }
         }
     }
@@ -177,7 +191,8 @@ pub fn field(context: *ui.Frame, ref: anytype, comptime field_name: []const u8) 
     const width = widgets.hotkeyWidth();
     // knots offsets an end-justified row before growing its children, so the typing box, which grows in a detail pane, keeps a start-justified row.
     const row_style = if (width != null) &style.hotkey_row_fit else if (manualEditFor(id) != null) &style.hotkey_row_typing else &style.hotkey_row;
-    const row = Rect{ .key = key.indexed(1), .style = row_style };
+    const keycaps = if (try needsCompact(context, current)) &style.keycaps_compact else &style.keycaps;
+    const row = Rect{ .key = key.indexed(1), .style = try withGap(context, row_style, keycaps.size.combo_gap) };
     _ = try row.open(context);
     if (manualEditFor(id)) |edit| {
         try manualBox(context, edit, ref, field_name, key, width);
@@ -185,21 +200,21 @@ pub fn field(context: *ui.Frame, ref: anytype, comptime field_name: []const u8) 
         var removed: ?usize = null;
         const shows_remove = widgets.isRowLit() or hasComboFocus(context, key, current.len);
         for (current.slice(), 0..) |combo, index| {
-            if (index > 0) try orText(context, key.indexed(OR_KEY_BASE + index));
+            if (index > 0) try orText(context, key.indexed(OR_KEY_BASE + index), keycaps);
             const combo_key = key.indexed(COMBO_KEY_BASE + index);
             if (isRecordingSlot(id, index)) {
-                try recordingLabel(context, combo_key);
+                try recordingLabel(context, combo_key, keycaps);
                 continue;
             }
-            switch (try comboControl(context, combo_key, combo, shows_remove)) {
+            switch (try comboControl(context, combo_key, combo, keycaps, shows_remove)) {
                 .none => {},
                 .replace => startRecording(context, id, index),
                 .remove => removed = index,
             }
         }
         if (isRecordingSlot(id, null)) {
-            if (current.len > 0) try orText(context, key.indexed(OR_KEY_BASE));
-            try recordingLabel(context, key.indexed(6));
+            if (current.len > 0) try orText(context, key.indexed(OR_KEY_BASE), keycaps);
+            try recordingLabel(context, key.indexed(6), keycaps);
         }
         // The same + throughout, so the row doesn't change under the pointer; a second click cancels.
         if (current.len < key_list.MAX_KEYS) {
@@ -226,8 +241,12 @@ pub fn field(context: *ui.Frame, ref: anytype, comptime field_name: []const u8) 
     try row.close(context);
 }
 
-pub fn beginFrame(arena: std.mem.Allocator) !void {
-    g_conflicts = try findConflicts(arena);
+pub fn beginFrame(context: *ui.Frame) !void {
+    if (g_is_layout_stale) {
+        g_is_layout_stale = false;
+        context.requestRedraw();
+    }
+    g_conflicts = try findConflicts(context.arena());
 }
 
 /// Combos the edited documents bind more than once outside one HolderKind cycle; allocated in `arena`.
@@ -369,7 +388,7 @@ fn onWinKey(modifiers: u32) void {
 }
 
 /// Lit while hovered or focused, like a settings row; its remove badge shows then and whenever `shows_remove`, and Delete on its caps removes it too.
-fn comboControl(context: *ui.Frame, key: ui.Key, combo: u32, shows_remove: bool) !ComboAction {
+fn comboControl(context: *ui.Frame, key: ui.Key, combo: u32, keycaps: *const style.Keycaps, shows_remove: bool) !ComboAction {
     const ui_state = context.ui();
     const caps_key = key.indexed(1);
     const remove_key = key.indexed(2);
@@ -382,19 +401,18 @@ fn comboControl(context: *ui.Frame, key: ui.Key, combo: u32, shows_remove: bool)
     const is_caps_focused = ui_state.focused(caps_key.hash());
     const is_lit = is_hovered or is_caps_focused or ui_state.focused(remove_key.hash());
 
-    const holder = Rect{ .key = key, .style = if (is_lit) &style.hotkey_combo_lit else &style.hotkey_combo };
+    const holder = Rect{ .key = key, .style = if (is_lit) &keycaps.combo_lit else &keycaps.combo };
     _ = try holder.open(context);
-    const caps = Button{ .key = caps_key, .style = &style.hotkey_caps };
+    const caps = Button{ .key = caps_key, .style = &keycaps.caps };
     const response = try caps.openResponse(context);
-    try comboCaps(context, caps_key, combo, std.mem.findScalar(u32, g_conflicts, combo) != null);
+    try comboCaps(context, caps_key, combo, keycaps, std.mem.findScalar(u32, g_conflicts, combo) != null);
     try caps.close(context);
     var action: ComboAction = if (response.clicked) .replace else .none;
     // Laid over the combo's top-right corner rather than beside it, so lighting a combo doesn't shift the row.
     if ((is_lit or shows_remove) and box.w() > 0) {
         const badge = try context.arena().create(ui.Style);
-        // knots places an absolute child from inside its parent's padding.
-        const padding = comptime style.hotkey_combo.padding.?;
-        badge.* = style.hotkey_remove.with(.{ .offset = .{ box.w() - padding.left() - style.HOTKEY_REMOVE_SIZE + style.HOTKEY_REMOVE_OVERHANG, -padding.top() - style.HOTKEY_REMOVE_OVERHANG } });
+        // knots places an absolute child from inside its parent's padding, which a combo has only at its sides.
+        badge.* = style.hotkey_remove.with(.{ .offset = .{ box.w() - keycaps.size.combo_padding_x - style.HOTKEY_REMOVE_SIZE + style.HOTKEY_REMOVE_OVERHANG, -style.HOTKEY_REMOVE_OVERHANG } });
         if ((try context.interact(Button{ .key = remove_key, .label = "\u{00D7}", .style = badge })).clicked) action = .remove;
     }
     try holder.close(context);
@@ -413,30 +431,80 @@ fn hasComboFocus(context: *ui.Frame, key: ui.Key, count: usize) bool {
 }
 
 /// Red while `is_conflict`, since the combo has no box of its own to mark it.
-fn comboCaps(context: *ui.Frame, key: ui.Key, combo: u32, is_conflict: bool) !void {
-    const cap_style = if (is_conflict) &style.keycap_conflict else &style.keycap;
-    const modifier_text = if (is_conflict) &style.keycap_conflict_text else &style.keycap_modifier_text;
-    const key_text = if (is_conflict) &style.keycap_conflict_text else &style.keycap_text;
-    const part_index = try modifierCaps(context, key, vk.extractModifiers(combo), cap_style, modifier_text);
-    const virtual_key = vk.extractVk(combo);
-    const name = vk.keyName(virtual_key) orelse try std.fmt.allocPrint(context.arena(), "VK{X}", .{virtual_key});
-    try cap(context, key.indexed(KEYCAP_KEY_BASE + part_index), name, cap_style, key_text);
+fn comboCaps(context: *ui.Frame, key: ui.Key, combo: u32, keycaps: *const style.Keycaps, is_conflict: bool) !void {
+    const cap_style = if (is_conflict) &keycaps.cap_conflict else &keycaps.cap;
+    const modifier_text = if (is_conflict) &keycaps.conflict_text else &keycaps.modifier_text;
+    const key_text = if (is_conflict) &keycaps.conflict_text else &keycaps.text;
+    const part_index = try modifierCaps(context, key, vk.extractModifiers(combo), keycaps, cap_style, modifier_text);
+    try cap(context, key.indexed(KEYCAP_KEY_BASE + part_index), try keyCapName(context, combo), cap_style, key_text);
 }
 
 /// A cap and a + for each of `modifiers`' MOD_* flags; returns how many parts it keyed, so what follows takes the next.
-fn modifierCaps(context: *ui.Frame, key: ui.Key, modifiers: u32, cap_style: *const ui.Style, text_style: *const ui.Style) !usize {
+fn modifierCaps(context: *ui.Frame, key: ui.Key, modifiers: u32, keycaps: *const style.Keycaps, cap_style: *const ui.Style, text_style: *const ui.Style) !usize {
     var part_index: usize = 0;
     for (MODIFIER_ORDER) |modifier| {
         if (modifiers & modifier.flag == 0) continue;
         try cap(context, key.indexed(KEYCAP_KEY_BASE + part_index), modifier.name, cap_style, text_style);
-        try context.e(Text{ .selectable = false, .key = key.indexed(KEYCAP_KEY_BASE + part_index + 1), .content = "+", .style = &style.keycap_plus });
+        try context.e(Text{ .selectable = false, .key = key.indexed(KEYCAP_KEY_BASE + part_index + 1), .content = "+", .style = &keycaps.plus });
         part_index += 2;
     }
     return part_index;
 }
 
-fn orText(context: *ui.Frame, key: ui.Key) !void {
-    try context.e(Text{ .selectable = false, .key = key, .content = lang.text("or"), .style = &style.hotkey_or });
+/// Whether the combos at full size would overrun the room beside the row's label, so they're drawn compact.
+fn needsCompact(context: *ui.Frame, keys: KeyList) !bool {
+    const room = try widgets.controlsRoom(context) orelse return false;
+    return try fieldWidth(context, keys, &style.keycaps) > room;
+}
+
+/// How wide field lays out `keys` with `keycaps`, with its + and, in Advanced Mode, its typing button.
+fn fieldWidth(context: *ui.Frame, keys: KeyList, keycaps: *const style.Keycaps) !f32 {
+    var width: f32 = 0;
+    var part_count: usize = 0;
+    for (keys.slice(), 0..) |combo, index| {
+        if (index > 0) {
+            width += try widgets.textWidth(context, lang.text("or"), &keycaps.@"or");
+            part_count += 1;
+        }
+        width += try comboWidth(context, combo, keycaps);
+        part_count += 1;
+    }
+    if (keys.len < key_list.MAX_KEYS) {
+        width += comptime style.hotkey_add_gap.padding.?.left() + style.CONTROL_HEIGHT;
+        part_count += 1;
+    }
+    if (session.global().get("advancedMode")) {
+        width += style.CONTROL_HEIGHT;
+        part_count += 1;
+    }
+    return width + keycaps.size.combo_gap * @as(f32, @floatFromInt(part_count -| 1));
+}
+
+fn comboWidth(context: *ui.Frame, combo: u32, keycaps: *const style.Keycaps) !f32 {
+    const modifiers = vk.extractModifiers(combo);
+    var width = 2 * keycaps.size.combo_padding_x + try capWidth(context, try keyCapName(context, combo), keycaps);
+    var part_count: usize = 1;
+    for (MODIFIER_ORDER) |modifier| {
+        if (modifiers & modifier.flag == 0) continue;
+        width += try capWidth(context, modifier.name, keycaps) + try widgets.textWidth(context, "+", &keycaps.plus);
+        part_count += 2;
+    }
+    return width + keycaps.size.gap * @as(f32, @floatFromInt(part_count - 1));
+}
+
+fn capWidth(context: *ui.Frame, name: []const u8, keycaps: *const style.Keycaps) !f32 {
+    const text_width = try widgets.textWidth(context, try std.ascii.allocUpperString(context.arena(), name), &keycaps.text);
+    return text_width + 2 * (keycaps.size.cap_padding_x + style.KEYCAP_BORDER);
+}
+
+/// `combo`'s key as its cap shows it; a key without a name is written as hex, made in the frame's arena.
+fn keyCapName(context: *ui.Frame, combo: u32) ![]const u8 {
+    const virtual_key = vk.extractVk(combo);
+    return vk.keyName(virtual_key) orelse std.fmt.allocPrint(context.arena(), "VK{X}", .{virtual_key});
+}
+
+fn orText(context: *ui.Frame, key: ui.Key, keycaps: *const style.Keycaps) !void {
+    try context.e(Text{ .selectable = false, .key = key, .content = lang.text("or"), .style = &keycaps.@"or" });
 }
 
 /// Replaces `slot`'s combo, or adds one when it's null.
@@ -456,14 +524,14 @@ fn cap(context: *ui.Frame, key: ui.Key, name: []const u8, cap_style: *const ui.S
 }
 
 /// Where the combo being recorded will go: a prompt, then the modifiers held so far as they're pressed.
-fn recordingLabel(context: *ui.Frame, key: ui.Key) !void {
+fn recordingLabel(context: *ui.Frame, key: ui.Key, keycaps: *const style.Keycaps) !void {
     const held = if (g_recording) |recording| recording.held else 0;
-    const label = Rect{ .key = key, .style = &style.hotkey_combo };
+    const label = Rect{ .key = key, .style = &keycaps.combo };
     _ = try label.open(context);
     if (held == 0) {
         try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = lang.text(RECORDING_PROMPT), .style = &style.hotkey_prompt });
     } else {
-        const part_index = try modifierCaps(context, key, held, &style.keycap, &style.keycap_modifier_text);
+        const part_index = try modifierCaps(context, key, held, keycaps, &keycaps.cap, &keycaps.modifier_text);
         try context.e(Text{ .selectable = false, .key = key.indexed(KEYCAP_KEY_BASE + part_index), .content = "\u{2026}", .style = &style.hotkey_prompt });
     }
     try label.close(context);
@@ -476,6 +544,16 @@ fn addKeyButton(context: *ui.Frame, key: ui.Key, tip_text: []const u8) !bool {
     const is_clicked = try widgets.glyphButton(context, key.indexed(3), .add, "", &style.icon_button, false);
     try tip.close(context);
     return is_clicked;
+}
+
+/// `base` unchanged when it already has `gap`, else a copy made in the frame's arena.
+fn withGap(context: *ui.Frame, base: *const ui.Style, gap: f32) !*const ui.Style {
+    if (base.gap) |current| {
+        if (current == gap) return base;
+    }
+    const gapped = try context.arena().create(ui.Style);
+    gapped.* = base.with(.{ .gap = gap });
+    return gapped;
 }
 
 fn sized(context: *ui.Frame, base: *const ui.Style, width: ?*const ui.Style) !*const ui.Style {
@@ -583,7 +661,16 @@ fn capture(virtual_key: u32, modifiers: u32) void {
 }
 
 fn redraw() void {
+    g_is_layout_stale = true;
     if (g_on_capture) |on_capture| on_capture();
+}
+
+/// Marked extended, or followed by a queued numpad navigation key-down.
+fn isFakeShiftRelease(lParam: win32.LPARAM) bool {
+    if (lParam & win32.KEY_EXTENDED_BIT != 0) return true;
+    var next: win32.MSG = undefined;
+    if (!win32.toBool(win32.PeekMessageA(&next, null, win32.WM_KEYDOWN, win32.WM_KEYDOWN, win32.PM_NOREMOVE))) return false;
+    return next.lParam & win32.KEY_EXTENDED_BIT == 0 and vk.numpadForNavigation(@truncate(next.wParam)) != null;
 }
 
 fn modifierFlag(virtual_key: u32) ?u32 {

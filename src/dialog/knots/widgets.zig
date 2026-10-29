@@ -39,6 +39,8 @@ pub const DRAG_THRESHOLD = 8;
 const CONFIRM_TIMEOUT_MS = 2000;
 /// A row's divider wrapper is keyed as the row's own key indexed by this.
 const ROW_DIVIDER_INDEX = 10;
+/// openWrappingBinding's controls are keyed as the row's own key indexed by this.
+const ROW_CONTROLS_INDEX = 13;
 /// Scroll panes that can wait to scroll to their end at once, e.g. a roster and the tab it's on.
 const MAX_PENDING_SCROLLS = 4;
 /// Past any pane's height; layout clamps a scroll offset to the content, so this lands at its end.
@@ -56,8 +58,16 @@ pub const TAB_CONTENT_KEY: ui.Key = .str("knots.content");
 /// A laid-out element's rectangle, in window coordinates.
 pub const Box = @FieldType(ui.State.Measured, "box");
 
-/// A tab a notice's button opens, named here since the tabs can't reach form's Tab.
+/// What a notice's button opens, named here since the tabs can't reach form's Tab.
 pub const NoticeTarget = enum { notifications, log_monitoring };
+
+const BindingRow = struct {
+    /// Last frame's width inside the row's insets.
+    room: f32,
+    /// Borrows from the frame; null once the controls have wrapped under it.
+    label: ?[]const u8,
+    label_style: *const ui.Style,
+};
 
 /// Hints by the hash of the row they explain; searched linearly, since a tab has only a few dozen.
 const RowHints = struct {
@@ -114,14 +124,20 @@ pub const Row = struct {
     divider: ?Rect,
     /// The row's own space, e.g. its label, was clicked rather than a control in it.
     is_clicked: bool,
+    /// openWrappingBinding's box around the controls, measured to choose their line.
+    controls: ?Rect = null,
 
     pub fn close(self: Row, context: *ui.Frame) !void {
         g_is_row_lit = false;
         g_is_row_click_pending = false;
+        g_binding_row = null;
+        if (self.controls) |controls| try controls.close(context);
         try self.rect.close(context);
         if (self.divider) |divider| try divider.close(context);
     }
 };
+
+pub const LinkedSwitch = struct { is_flipped: bool, is_link_clicked: bool };
 
 /// What openSection returns; the caller closes it.
 pub const Section = struct {
@@ -282,6 +298,7 @@ pub const ReorderList = struct {
 
     fn gapIfDue(self: *const ReorderList, context: *ui.Frame, lifted: Lifted) !void {
         if (self.slot != @max(lifted.slot, self.first_slot)) return;
+        if (g_reorder) |*drag| drag.drawn_slot = self.slot;
         const gap_style = try context.arena().create(ui.Style);
         gap_style.* = style.reorder_gap.with(.{ .height = .fixed(lifted.row_height) });
         try context.e(Rect{ .key = .src(@src()), .style = gap_style });
@@ -311,11 +328,13 @@ var g_open_section: ?u64 = null;
 var g_is_row_lit: bool = false;
 /// The settings row being drawn had its label clicked, and no control in it has taken the click yet; see takeRowClick.
 var g_is_row_click_pending: bool = false;
+/// The open binding row, for controlsRoom; null outside one.
+var g_binding_row: ?BindingRow = null;
 var g_confirm_key: ?u64 = null;
+var g_confirm_until_ms: i64 = 0;
 /// Scroll panes that just had something added at their end, to scroll there when next opened; searched linearly, since there are only a few.
 var g_scroll_to_end: [MAX_PENDING_SCROLLS]u64 = undefined;
 var g_scroll_to_end_count: usize = 0;
-var g_confirm_until_ms: i64 = 0;
 /// Fits last frame's longest label word, so a long translated word doesn't break.
 var g_detail_column: f32 = style.DETAIL_LABEL_WIDTH;
 /// What this frame's labels need, taking over at the next beginFrame.
@@ -323,8 +342,20 @@ var g_detail_column_next: f32 = style.DETAIL_LABEL_WIDTH;
 /// Every master list's width this frame: wide enough for last frame's widest footer and row names.
 var g_roster_width: f32 = style.ROSTER_WIDTH;
 var g_roster_width_next: f32 = style.ROSTER_WIDTH;
-/// `grab_y` and `row_height` let the lifted row be drawn where it was picked up.
-var g_reorder: ?struct { list: u64, from: usize, start_y: f64, grab_y: f32, row_height: f32, insert: usize, has_moved: bool = false } = null;
+var g_reorder: ?struct {
+    list: u64,
+    from: usize,
+    start_y: f64,
+    /// From the row's top to the cursor at the press, so the lifted row stays where it was picked up.
+    grab_y: f32,
+    row_height: f32,
+    insert: usize,
+    /// The gap's slot in this frame's layout, starting at `from`, where the row sits before it lifts.
+    drawn_slot: usize,
+    /// The gap's slot in the layout the measured boxes come from, a frame behind.
+    measured_slot: usize,
+    has_moved: bool = false,
+} = null;
 /// Set by a notice's button; see takeNoticeTarget.
 var g_notice_target: ?NoticeTarget = null;
 
@@ -346,6 +377,7 @@ pub fn reset() void {
     g_open_section = null;
     g_is_row_lit = false;
     g_is_row_click_pending = false;
+    g_binding_row = null;
     g_is_undivided = false;
     g_confirm_key = null;
     g_scroll_to_end_count = 0;
@@ -353,6 +385,7 @@ pub fn reset() void {
     g_detail_column_next = style.DETAIL_LABEL_WIDTH;
     g_roster_width = style.ROSTER_WIDTH;
     g_roster_width_next = style.ROSTER_WIDTH;
+    g_reorder = null;
     g_notice_target = null;
 }
 
@@ -392,7 +425,36 @@ pub fn openBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Row {
     const row = try openSettingsRow(context, key, if (g_is_aligned) &style.aligned_row else &style.binding_row, .settings);
     const shown = lang.text(label);
     search.captureText(shown);
-    try rowLabel(context, key, key.indexed(1), shown, try rowLabelStyle(context, shown));
+    const label_style = try rowLabelStyle(context, shown);
+    const room = measuredBox(context.ui(), key).w() - 2 * style.ROW_INSET;
+    g_binding_row = if (room > 0) .{ .room = room, .label = shown, .label_style = label_style } else null;
+    try rowLabel(context, key, key.indexed(1), shown, label_style);
+    return row;
+}
+
+/// openBinding whose controls drop under the label when they don't fit beside it; aligned rows only, elsewhere it's openBinding.
+pub fn openWrappingBinding(context: *ui.Frame, key: ui.Key, label: []const u8) !Row {
+    if (!g_is_aligned) return openBinding(context, key, label);
+    const ui_state = context.ui();
+    const controls_key = key.indexed(ROW_CONTROLS_INDEX);
+    // Unmeasured, the controls stay beside the label for a frame, then move if they don't fit.
+    if (ui_state.state.get(.measured, controls_key.hash()) == null) context.requestRedraw();
+    _ = try ui_state.state.getOrCreate(.measured, ui_state.allocator, controls_key.hash());
+    const shown = lang.text(label);
+    const label_style = try alignedLabelStyle(context, shown);
+    // The controls fit their content on either line, so last frame's width can't flip the choice back.
+    const controls_width = measuredBox(ui_state, controls_key).w();
+    const room = measuredBox(ui_state, key).w() - 2 * style.ROW_INSET;
+    const label_width = if (label_style.width) |width| width.min else 0;
+    const wraps = controls_width > 0 and room > 0 and label_width + style.aligned_row.gap.? + controls_width > room;
+    var row = try openSettingsRow(context, key, if (wraps) &style.aligned_row_wrapped else &style.aligned_row, .settings);
+    // Wrapped, the controls have the row to themselves.
+    g_binding_row = if (room > 0) .{ .room = room, .label = if (wraps) null else shown, .label_style = label_style } else null;
+    search.captureText(shown);
+    try rowLabel(context, key, key.indexed(1), shown, label_style);
+    const controls = Rect{ .key = controls_key, .style = &style.row_controls };
+    _ = try controls.open(context);
+    row.controls = controls;
     return row;
 }
 
@@ -477,7 +539,7 @@ pub fn openFillFieldGroup(context: *ui.Frame, key: ui.Key, label: []const u8) !F
     return openAnyFieldGroup(context, key, label, &style.field_group_fill, &style.field_group_column_fill);
 }
 
-/// A rule between runs of unaligned rows, which draw no dividers of their own.
+/// A rule where no row divider falls, e.g. between unaligned rows or before a subheading.
 pub fn separator(context: *ui.Frame, key: ui.Key) !void {
     g_last_labelled_row = null;
     try context.e(Rect{ .key = key, .style = &style.separator });
@@ -650,6 +712,13 @@ pub fn hotkeyWidth() ?*const ui.Style {
     return null;
 }
 
+/// The width the open binding row's controls have beside its label on one line, or under it once wrapped; null outside one or before it's measured.
+pub fn controlsRoom(context: *ui.Frame) !?f32 {
+    const row = g_binding_row orelse return null;
+    const label = row.label orelse return row.room;
+    return row.room - try labelWidth(context, label, row.label_style) - style.aligned_row.gap.?;
+}
+
 /// The caller's own cells, spaced and divided like aligned rows; the caller closes it.
 pub fn openRow(context: *ui.Frame, key: ui.Key) !Row {
     return openSettingsRow(context, key, &style.aligned_row, .settings);
@@ -778,7 +847,6 @@ pub fn accentChoices(context: *ui.Frame, key: ui.Key, color: *ui.Color, is_custo
     }
 }
 
-/// Whether accentChoices offers `argb` as a preset.
 pub fn isPresetAccent(argb: u32) bool {
     return presetIndex(argb) != null;
 }
@@ -827,7 +895,7 @@ pub fn reorderRowByHandle(context: *ui.Frame, base: ui.Key, index: usize, handle
     if (ui_state.leftPressed(handle.hash(), .within)) {
         const box = measuredBox(ui_state, base.indexed(index));
         const mouse_y = ui_state.input.mouse_pos[1];
-        g_reorder = .{ .list = base.hash(), .from = index, .start_y = mouse_y, .grab_y = @as(f32, @floatCast(mouse_y)) - box.y(), .row_height = box.h(), .insert = index };
+        g_reorder = .{ .list = base.hash(), .from = index, .start_y = mouse_y, .grab_y = @as(f32, @floatCast(mouse_y)) - box.y(), .row_height = box.h(), .insert = index, .drawn_slot = index, .measured_slot = index };
     }
 }
 
@@ -841,16 +909,22 @@ pub fn reorderFinish(context: *ui.Frame, base: ui.Key, count: usize) ?Move {
         if (@abs(mouse_y - drag.start_y) > DRAG_THRESHOLD) drag.has_moved = true;
         if (drag.has_moved) {
             ui_state.requestCursor(.move);
-            // Counted without the dragged row, which may be drawn under the cursor; rows moving to open a gap move away from it, so this settles.
+            // Rows above the gap swap at the lifted row's top and rows below at its bottom, so each swap falls halfway, wherever the row was grabbed.
+            const top = @as(f32, @floatCast(mouse_y)) - drag.grab_y;
             var slot: usize = 0;
+            var other_index: usize = 0;
             for (0..count) |index| {
                 if (index == drag.from) continue;
+                const is_above_gap = other_index < drag.measured_slot;
+                other_index += 1;
                 const measured = ui_state.state.get(.measured, base.indexed(index).hash()) orelse continue;
-                if (mouse_y > measured.box.y() + measured.box.h() / 2) slot += 1;
+                const edge = if (is_above_gap) top else top + drag.row_height;
+                if (edge > measured.box.y() + measured.box.h() / 2) slot += 1;
             }
             drag.insert = if (slot >= drag.from) slot + 1 else slot;
             context.requestRedraw();
         }
+        drag.measured_slot = drag.drawn_slot;
         return null;
     }
     const finished = drag.*;
@@ -927,18 +1001,6 @@ pub fn glyphButton(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, label: 
     if (label.len > 0) try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = lang.text(label), .style = if (is_disabled) &style.muted_text else &style.button_text });
     try button.close(context);
     return response.clicked and !is_disabled;
-}
-
-/// Always shown, since a tooltip can't hold a link; returns whether it was clicked.
-pub fn hintWithLink(context: *ui.Frame, key: ui.Key, content: []const u8, link_label: []const u8) !bool {
-    const shown = lang.text(content);
-    search.captureText(shown);
-    const row = Rect{ .key = key, .style = &style.hint_link_row };
-    _ = try row.open(context);
-    try context.e(Text{ .selectable = false, .key = key.indexed(1), .content = shown, .style = &style.hint_inline });
-    const is_clicked = (try context.interact(Button{ .key = key.indexed(2), .label = lang.text(link_label), .style = &style.link })).clicked;
-    try row.close(context);
-    return is_clicked;
 }
 
 /// Text in the hint style that always shows, inset to start where rows' labels do.
@@ -1042,14 +1104,12 @@ pub fn checkbox(context: *ui.Frame, key: ui.Key, label: []const u8, is_checked: 
 
 /// A click anywhere on the row flips the switch; returns whether it flipped.
 pub fn switchRow(context: *ui.Frame, key: ui.Key, label: []const u8, is_checked: *bool) !bool {
-    const row = try openBinding(context, key, label);
-    try context.e(Rect{ .key = key.indexed(3), .style = &style.spacer });
-    const is_flipped = try toggleSwitch(context, key.indexed(4), is_checked);
-    try row.close(context);
-    if (is_flipped) return true;
-    if (!row.is_clicked) return false;
-    is_checked.* = !is_checked.*;
-    return true;
+    return (try linkedSwitchRow(context, key, label, null, is_checked)).is_flipped;
+}
+
+/// switchRow with a link before the switch, since a hint's tooltip can't hold one.
+pub fn switchRowWithLink(context: *ui.Frame, key: ui.Key, label: []const u8, link_label: []const u8, is_checked: *bool) !LinkedSwitch {
+    return linkedSwitchRow(context, key, label, link_label, is_checked);
 }
 
 /// A preview's text at `size` px in `color`, made in `arena`.
@@ -1062,6 +1122,17 @@ pub fn textStyle(arena: std.mem.Allocator, color: u32, size: f32, options: TextO
     };
     if (options.is_grown) text_style.width = .grow();
     return text_style;
+}
+
+fn linkedSwitchRow(context: *ui.Frame, key: ui.Key, label: []const u8, link_label: ?[]const u8, is_checked: *bool) !LinkedSwitch {
+    const row = try openBinding(context, key, label);
+    try context.e(Rect{ .key = key.indexed(3), .style = &style.spacer });
+    const is_link_clicked = if (link_label) |text| (try context.interact(Button{ .key = key.indexed(5), .label = lang.text(text), .style = &style.link })).clicked else false;
+    const is_flipped = try toggleSwitch(context, key.indexed(4), is_checked);
+    try row.close(context);
+    if (is_flipped or is_link_clicked or !row.is_clicked) return .{ .is_flipped = is_flipped, .is_link_clicked = is_link_clicked };
+    is_checked.* = !is_checked.*;
+    return .{ .is_flipped = true, .is_link_clicked = false };
 }
 
 /// knots has no switch: a pill button with a sliding knob; returns whether it flipped.
@@ -1183,6 +1254,14 @@ fn rowLabel(context: *ui.Frame, row_key: ui.Key, label_key: ui.Key, shown: []con
     ui_state.inert_depth = inert_depth;
     try context.e(label);
     try tip.close(context);
+}
+
+/// A label column's width, else `shown` on one line.
+fn labelWidth(context: *ui.Frame, shown: []const u8, label_style: *const ui.Style) !f32 {
+    if (label_style.width) |width| {
+        if (width.kind == .fixed) return width.value;
+    }
+    return textWidth(context, shown, label_style);
 }
 
 /// Against the controls when aligned, else in the label column, which a detail pane widens.

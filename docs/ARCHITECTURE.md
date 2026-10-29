@@ -50,7 +50,7 @@ Owns every long-lived subsystem. Main thread only.
 | `store` (`ProfileStore`), `global_settings`, `character_ids`, `scout`, `exclusions`, `notifications` (`NotificationCenter`), `focus`, `trackers`, tray | Whole run |
 | `auto_minimizer` | Whole run; reset when a different profile loads |
 | `thumbnail_set`, `hotkey_manager`, `chatlog_monitor` | Rebuilt on reload; heap pointers |
-| `list_window` | Built and torn down with `thumbnail_set`; ClientList mode only |
+| `list_window` | Built and torn down with `thumbnail_set`; `ClientList` and `ThumbnailsAndList` modes only |
 
 Rules:
 
@@ -165,7 +165,7 @@ Rendering:
 - `platform/gdi_overlay.zig`: DIB-backed layered windows, text helpers, `HintBox`, class registration.
 - `util/pixel_buffer.zig`: pure ARGB drawing (rects, rounded frames, alpha fix-up).
 - `platform/panel_window.zig`: `PanelWindow`, shared by the client list and History Panel.
-- `panels/list_view.zig` + `list_look.zig`: `ClientList` view mode; App owns the window, built and torn down with the thumbnail set. `list_look` is pure and shared with the dialog preview.
+- `panels/list_view.zig` + `list_look.zig`: `ClientList` and `ThumbnailsAndList` view modes; App owns the window, built and torn down with the thumbnail set. `list_look` is pure and shared with the dialog preview.
 - `thumbnail/hover_zoom.zig` + `layout/zoom.zig`: click-through enlarged copy under the cursor.
 
 Layout (`layout/`, mostly pure):
@@ -178,7 +178,7 @@ Layout (`layout/`, mostly pure):
 
 ## Input and control
 
-- **Hotkeys** go through `WH_KEYBOARD_LL`/`WH_MOUSE_LL` (`hotkeys/keyboard_hook.zig`, `mouse_hook.zig`, shared `hook_bindings.zig`), not `RegisterHotKey`, so bare modifiers and mouse buttons bind. Matches are posted as `WM_HOTKEY`. The hooks run on their own thread, so a busy main thread never delays input or gets them removed by Windows. Each key or button press is decided at its first down: a swallowed press has its repeats and release swallowed too, so a client never sees a key-up without its down, which holding Ctrl through a cycle depends on. With `requireEveFocus`, a bound key pressed outside a tracked window passes through untouched.
+- **Hotkeys** go through `WH_KEYBOARD_LL`/`WH_MOUSE_LL` (`hotkeys/keyboard_hook.zig`, `mouse_hook.zig`, shared `hook_bindings.zig`), not `RegisterHotKey`, so bare modifiers and mouse buttons bind. Matches are posted as `WM_HOTKEY`. The hooks run on their own thread, so a busy main thread never delays input or gets them removed by Windows. Each key or button press is decided at its first down: a swallowed press has its repeats and release swallowed too, so a client never sees a key-up without its down, which holding Ctrl through a cycle depends on. With `requireEveFocus`, a bound key pressed outside a tracked window passes through untouched. With NumLock on, Windows sends Shift+Numpad as a fake Shift release then a navigation key; the hook and the config dialog's recorder read it back as Shift+Numpad.
 - **IDs** (`hotkeys/bindings.zig`): bands of 1000 per kind (cycle group 0, global action 1000, per-character 2000, profile switch 3000, assign group 4000, app 5000, URL 6000, close group 7000, minimize group 8000). `GLOBAL_BINDINGS` maps global actions to config fields and protocol actions.
 - **`hotkeys/manager.zig`** (`HotkeyManager`): registration, suspend and dialog-recording pause, and `runAction`, the one switch on `HotkeyAction`. Bindings come from `store.saved`; other settings from `store.live`.
 - **`hotkeys/cycling.zig`**: every cycle hotkey. Decisions are in `cycle_order.zig` (pure, tested).
@@ -250,7 +250,7 @@ Immediate-mode (knots on Vulkan), main thread, nested message loop so the tick a
 - `knots/session.zig`: edits `store.live` and a `GlobalConfig` draft. Every change goes through `Ref.set` (or list `append`/`remove`/`move`): copies strings, clamps, calls `App.onLiveProfileEdited`. Replaced strings are freed a frame later. Dirty = differs from saved. `save()` commits, restarts subsystems and adopts the global draft.
 - `knots/form.zig`: header, sidebar, open tab, footer, prompts. `knots/tabs/`: one file per tab.
 - `knots/widgets.zig`, `bind.zig`, `style.zig`: layout pieces, setting-bound controls, styles.
-- `knots/hotkey.zig`: recording field; pauses live hotkeys while recording. Finds conflicting combos and names their holders, using `labels.zig`'s hotkey labels.
+- `knots/hotkey.zig`: recording field; pauses live hotkeys while recording. Draws its key caps compact when full size would overrun the room `widgets.controlsRoom` reports beside the row's label. Finds conflicting combos and names their holders, using `labels.zig`'s hotkey labels.
 - `tools/region_select.zig`: full-screen overlay for drawing a thumbnail space; math in `region_math.zig`.
 - `tools/esi_prices.zig`: Jita ore prices. `tools/ultra_potato.zig`: patches EVE's graphics YAML.
 - `run_on_startup.zig`: the Run registry key.
@@ -272,7 +272,9 @@ Immediate-mode (knots on Vulkan), main thread, nested message loop so the tick a
 | `tray.zig` | Tray icon and menu |
 | `update.zig` | GitHub release check |
 | `lang/` | UI strings by English key, per-language JSON |
+| `barrage/` | Barrage, the artillery game behind About's wordmark: rules, terrain and AI (`game.zig`), players' messages (`messages.zig`); drawn by `dialog/knots/barrage.zig` and `barrage_tanks.zig` |
+| `multiplayer/` | Anonymous games by join code, up to six players: relay notices and codes (`wire.zig`), relay connection thread (`link.zig`); relay Worker in `tools/game-relay/` |
 | `platform/fonts.zig` | Bundled Cascadia and Geist, registered process-private |
 | `platform/virtual_keys.zig` | VK codes, `KEY_NAMES`, mouse-chord encoding |
 | `platform/wic.zig` | Image decoding (portraits) |
-| `util/` | Colour (OKLab picks), number format, HTTP (WinHTTP, with timeouts), schedule, strings |
+| `util/` | Colour (OKLab picks), number format, HTTP and WebSocket (WinHTTP, with timeouts), schedule, strings |

@@ -1,4 +1,4 @@
-//! The ClientList view mode: one compact panel with a row per client, in place of thumbnail windows.
+//! The client list: one compact panel with a row per client, in place of or beside the thumbnail windows.
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const gdi_overlay = @import("../platform/gdi_overlay.zig");
@@ -81,12 +81,12 @@ pub const ListWindow = struct {
         self.store.update(.{ .display = .{ .startX = top_left.x, .startY = top_left.y } });
     }
 
-    /// The list's active colour, or the character's own (or unique) active border colour.
+    /// The shown active colour, or the character's own (or unique) active border colour.
     fn resolveActiveBadgeColor(self: *const ListWindow, thumbnail: *const ThumbnailWindow) u32 {
         if (thumbnail.cached_border_colors) |colors| {
             if (colors.activeBorderColor) |color| return color;
         }
-        return self.config.display.listViewActiveColor;
+        return self.config.shownColors().active_color;
     }
 
     /// Puts `rows` in the configured order and records each row's client.

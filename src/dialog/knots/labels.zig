@@ -30,7 +30,7 @@ const OVERRIDES = std.StaticStringMap([]const u8).initComptime(.{
 /// The Hotkeys tab's row label for each fixed binding, keyed by setting name; a back/forward pair's halves share their row's.
 const HOTKEY_LABELS = std.StaticStringMap(HotkeyLabel).initComptime(.{
     .{ "hotkeyCloseAll", HotkeyLabel{ .text = "Close All Clients" } },
-    .{ "hotkeyCloseActive", HotkeyLabel{ .text = "Close Active Client" } },
+    .{ "hotkeyCloseActive", HotkeyLabel{ .text = "Close Focused Client" } },
     .{ "hotkeyMinimizeAll", HotkeyLabel{ .text = "Minimize All Clients" } },
     .{ "hotkeyToggleVisibility", HotkeyLabel{ .text = "Toggle Thumbnail Visibility" } },
     .{ "hotkeyToggleAutoMinimize", HotkeyLabel{ .text = "Toggle Auto-Minimize" } },

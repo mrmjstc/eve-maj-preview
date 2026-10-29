@@ -8,6 +8,7 @@ const update_notice = @import("../update_notice.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const images = @import("../images.zig");
+const barrage = @import("../barrage.zig");
 const lang = @import("../../../lang/lang.zig");
 const log = @import("../../../log.zig");
 
@@ -39,7 +40,11 @@ fn brand(context: *ui.Frame) !void {
     if (images.g_wordmark.image(.src(@src()), &style.wordmark)) |wordmark| {
         const centre = Rect{ .key = .src(@src()), .style = &.{ .width = .grow(), .justify = .center, .padding = .init(0, 0, 4, 0) } };
         _ = try centre.open(context);
+        const button = Button{ .key = .src(@src()), .style = &style.wordmark_button };
+        const response = try button.openResponse(context);
         try context.e(wordmark);
+        try button.close(context);
+        if (response.clicked) barrage.countWordmarkClick(context);
         try centre.close(context);
     }
     try widgets.paragraph(context, .str("knots.about.description"), "A modern, lightweight window preview tool for EVE Online, built with Zig.");

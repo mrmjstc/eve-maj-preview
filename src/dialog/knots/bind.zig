@@ -317,7 +317,8 @@ pub fn alphaSlider(context: *ui.Frame, ref: anytype, comptime field: []const u8,
 pub fn rgbAlpha(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8) !void {
     const key = fieldKey(ref, field).indexed(11);
     const row = try widgets.openBinding(context, key, label);
-    try alphaControls(context, ref, field, key, &style.slider_box_short);
+    // Fixed even in a field group, to leave room for the swatch.
+    try alphaControls(context, ref, field, key, &style.slider_box_aligned);
     try rgbBox(context, ref, field);
     try row.close(context);
 }

@@ -351,6 +351,12 @@ fn renderFrame(
         );
     }
 
+    // A minimized window stays zero-sized after its resize event, and frames requested meanwhile can't be built.
+    const physical_extent = viewport.window.getFramebufferSize();
+    if (physical_extent.width == 0 or physical_extent.height == 0) return;
+    const logical_extent = viewport.window.getSize();
+    if (logical_extent.width == 0 or logical_extent.height == 0) return;
+
     viewport.applyRendererReconfigure();
 
     const input = try viewport.window.collectInput();
@@ -379,8 +385,8 @@ fn renderFrame(
                 viewport.timer.delta.nanoseconds,
             ),
         ),
-        .logical_extent = viewport.window.getSize(),
-        .physical_extent = viewport.window.getFramebufferSize(),
+        .logical_extent = logical_extent,
+        .physical_extent = physical_extent,
         .content_scale = viewport.window.getContentScale(),
         .paste_text = paste_text,
         .dropped_paths = dropped_paths,

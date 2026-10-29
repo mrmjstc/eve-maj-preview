@@ -1,4 +1,4 @@
-//! The configuration window's Log Monitoring tab: where the chat and game logs are, and how often they're polled; main thread only.
+//! The General tab's Log Monitoring sections: where the chat and game logs are, and how often they're polled; main thread only.
 const ui = @import("ui");
 const config = @import("../../../config.zig");
 const session = @import("../session.zig");
@@ -13,7 +13,6 @@ const Button = ui.component.Button;
 const Tooltip = ui.component.Tooltip;
 const ChatlogRef = session.Ref(config.ChatlogConfig);
 
-/// One log folder's row: the ChatlogConfig field it binds, its text, and the folder picker its Browse button opens.
 const DirectoryRow = struct {
     field: []const u8,
     label: []const u8,

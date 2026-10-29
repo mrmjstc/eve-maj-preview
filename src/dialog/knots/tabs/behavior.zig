@@ -149,6 +149,8 @@ fn windowPosition(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "Uses each character's window position from the Characters tab.");
     try bind.toggle(context, ref, "moveOnStartup", "Restore Saved Position on App Startup");
     try widgets.hintText(context, .src(@src()), "Also moves clients already logged in when the app starts.");
+    try bind.toggle(context, session.global(), "moveOnProfileSwitch", "Restore Saved Position on Profile Reload");
+    try widgets.hintText(context, .src(@src()), "Moves clients to the new profile's saved positions when you switch profile; applies to every profile.");
     try bind.number(context, ref, "verifyCount", "Recheck Count", .{ .unit = "times", .singular_unit = "time" });
     try widgets.hintText(context, .src(@src()), "How many times to check again; 0 turns this off.");
     const rechecks = try widgets.openGroup(context, .src(@src()), ref.get("verifyCount") > 0);

@@ -24,7 +24,6 @@ const NotificationType = notification.NotificationType;
 const TypeRef = session.Ref(config.NotificationTypeConfig);
 const slog = log.Scoped("dialog_knots");
 
-/// The most a custom text box takes.
 const CUSTOM_TEXT_MAX_LENGTH = 100;
 const NEWLINE_TOKEN = "\\n";
 /// Holds notification.defaultText, which the box and its preview both show.
@@ -243,7 +242,6 @@ fn rosterStyle(context: *ui.Frame) !*const ui.Style {
     return widgets.withWidth(context, &style.roster, width);
 }
 
-/// A small glyph after an event's name, which a tooltip names.
 fn marker(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, tip: []const u8) !void {
     const tooltip = Tooltip{ .key = key, .content = lang.text(tip) };
     _ = try tooltip.open(context);
@@ -350,7 +348,6 @@ fn customText(context: *ui.Frame, ref: TypeRef, notification_type: NotificationT
     try group.close(context);
 }
 
-/// A placeholder chip, whose tooltip says what clicking it does; returns whether it was clicked.
 fn tagChip(context: *ui.Frame, key: ui.Key, token: []const u8) !bool {
     const tip = Tooltip{ .key = key, .content = lang.text("Inserts this into the text at the cursor.") };
     _ = try tip.open(context);
@@ -362,8 +359,7 @@ fn tagChip(context: *ui.Frame, key: ui.Key, token: []const u8) !bool {
 fn textBox(context: *ui.Frame, ref: TypeRef, notification_type: NotificationType, comptime field: TextField, sample: notification.Notification, has_states: bool) !void {
     const name = @tagName(field);
     const state = sample.state orelse .on;
-    // A type with one text needs no label beyond its field group's.
-    const label = if (has_states) englishStateLabel(state) else "";
+    const label = if (has_states) englishStateLabel(state) else "Text";
     const row = try widgets.openBinding(context, ui.Key.str("knots.events.text:" ++ name).indexed(ref.index), label);
     var buffer: [DEFAULT_TEXT_SIZE]u8 = undefined;
     // The box keeps its placeholder until the frame is drawn, so it can't point at this stack buffer.

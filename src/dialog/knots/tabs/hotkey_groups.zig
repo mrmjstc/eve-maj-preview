@@ -133,7 +133,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
         .{ "minimizeKey", "Minimize Group", "Minimizes every open client in this group." },
         .{ "closeKey", "Close Group", "Closes every open client in this group." },
     }) |key| {
-        const row = try widgets.openBinding(context, .str("knots.groups.key:" ++ key[0]), key[1]);
+        const row = try widgets.openWrappingBinding(context, .str("knots.groups.key:" ++ key[0]), key[1]);
         try hotkey.field(context, group, key[0]);
         try row.close(context);
         try widgets.hintText(context, .str("knots.groups.key.hint:" ++ key[0]), key[2]);
@@ -254,7 +254,7 @@ fn addMemberRow(context: *ui.Frame, group: GroupRef) !void {
     if (is_add_clicked or (is_focused and context.ui().input.containsKey(.enter))) addMember(group);
     if (try widgets.addOpenClientsButton(context, .src(@src()), &style.plain_button)) fillFromClients(context, group);
     try add_row.close(context);
-    if (try suggest.openClients(context, ADD_MEMBER_KEY, g_new_member.items)) |picked| {
+    if (try suggest.openClients(context, ADD_MEMBER_KEY, g_new_member.items, group.ptr.characters.items)) |picked| {
         g_new_member.clearRetainingCapacity();
         try g_new_member.appendSlice(g_allocator, picked);
     }
@@ -278,7 +278,7 @@ fn memberRow(context: *ui.Frame, group: GroupRef, member_index: usize, row_style
     }
     const is_removed = (try context.interact(Button{ .key = ui.Key.str("knots.groups.member.remove").indexed(member_index), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked;
     try row.close(context);
-    if (try suggest.openClients(context, name_key, bind.typedText(name_key))) |picked| group.setStringAt("characters", member_index, picked);
+    if (try suggest.openClients(context, name_key, bind.typedText(name_key), group.ptr.characters.items)) |picked| group.setStringAt("characters", member_index, picked);
     return is_removed;
 }
 
@@ -286,7 +286,7 @@ fn memberHandleKey(member_index: usize) ui.Key {
     return ui.Key.str("knots.groups.member.handle").indexed(member_index);
 }
 
-/// Adds every logged-in client the group doesn't list yet.
+/// Adds every logged-in client the group doesn't list yet, matched like the Characters tab's populateFromClients.
 fn fillFromClients(context: *ui.Frame, group: GroupRef) void {
     const names = positions.openClients(context.arena()) catch |err| {
         slog.err("Failed to fill hotkey group from open clients: {}", .{err});
@@ -300,7 +300,7 @@ fn fillFromClients(context: *ui.Frame, group: GroupRef) void {
     var added_count: usize = 0;
     for (names) |name| {
         const exists = for (group.ptr.characters.items) |member| {
-            if (std.ascii.eqlIgnoreCase(member, name)) break true;
+            if (std.ascii.eqlIgnoreCase(std.mem.trim(u8, member, " "), std.mem.trim(u8, name, " "))) break true;
         } else false;
         if (exists) continue;
         group.appendString("characters", name);

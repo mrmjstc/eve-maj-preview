@@ -272,7 +272,7 @@ Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also
 | Key | Type | Default | Range / values | Notes |
 |---|---|---|---|---|
 | `placementMode` | enum | `Manual` | `Manual` `ThumbnailSpaces` | `Manual` ignores `thumbnailSpaces`. |
-| `viewMode` | enum | `Thumbnails` | `Thumbnails` `ClientList` `Nothing` | `Nothing`: no visuals; tracking, hotkeys, alerts still run. |
+| `viewMode` | enum | `Thumbnails` | `Thumbnails` `ClientList` `ThumbnailsAndList` `Nothing` | `ThumbnailsAndList`: both at once. `Nothing`: no visuals; tracking, hotkeys, alerts still run. |
 | `startX`, `startY` | int | `10` | screen | Spawn point for thumbnails with no saved position. Monitor-relative when `monitorIndex` is set. |
 | `newThumbnailSpacing` | int | `10` | 0–200 | Horizontal gap when lining up new thumbnails from `startX`/`startY`. |
 | `monitorIndex` | int? | `null` | 0–9 | `null` = absolute coordinates. |
@@ -280,7 +280,7 @@ Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also
 | `honorSavedPositions` | bool | `true` | | Use `characters[].position`. |
 | `hideThumbnailsDuringRegionSelect` | bool | `true` | | Hide thumbnails while drawing a space's region. |
 
-**Client List** (`viewMode: ClientList`): one row per client; click activates, Shift+click toggles exclusion, drag the header to move. It uses its own colour, system name and auto-hide settings below instead of the `thumbnail` ones; per-character colours, display names, `systemColors` and each overlay's `enabled` are shared.
+**Client List** (`viewMode: ClientList` or `ThumbnailsAndList`): one row per client; click activates, Shift+click toggles exclusion, drag the header to move. With `ClientList` it uses its own colour, system name and auto-hide settings below instead of the `thumbnail` ones; with `ThumbnailsAndList` it follows the `thumbnail` ones (active colour from `borderColor`) and hides with the thumbnails. Per-character colours, display names, `systemColors` and each overlay's `enabled` are always shared. Its position is `startX`/`startY`, which thumbnails also start from.
 
 | Key | Type | Default | Range / values | Notes |
 |---|---|---|---|---|
@@ -662,6 +662,7 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `language` | enum | `en` | `en` `de` `es` `fr` `pl` `pt` `ru`. Dialog and on-screen hints. |
 | `advancedMode` | bool | `false` | Show the dialog's advanced settings. |
 | `alwaysOnTop` | bool | `true` | Keep the config dialog on top. |
+| `moveOnProfileSwitch` | bool | `false` | On a profile switch, move running clients to the new profile's saved window positions. |
 | `dialogX`, `dialogY` | int? | `null` | Dialog position. Set by the app. |
 | `runOnStartup` | bool | `false` | `HKCU\…\Run` entry, re-applied each launch. |
 | `autoRegisterProtocol` | bool | `true` | Register `evemajpreview://` at startup if missing. |

@@ -64,7 +64,7 @@ pub const theme = ui.Theme.parse(.{
     .highlighted = .{ .hex = "#e8e6e1" },
     .toned = .{ .hex = "#6b6e75" },
     .dimmed = .{ .hex = "#96948f" },
-    .radius = 6,
+    .radius = RADIUS,
     // Smallest first: labels, body text (the default, `sm`), headings, then two larger steps.
     .font_size = .{ 11, 12, 14, 16, 20 },
     .scrollbar_thickness = SCROLLBAR_THICKNESS,
@@ -81,6 +81,8 @@ pub const FONT_REGULAR_DATA = fonts.GEIST_REGULAR_DATA;
 pub const FONT_SEMIBOLD_DATA = fonts.GEIST_SEMIBOLD_DATA;
 
 pub const CONTROL_HEIGHT = 28;
+/// The theme's `.md` corner radius.
+const RADIUS = 6;
 /// How far a section's text and controls sit in from its card's sides.
 const SECTION_EDGE = 12;
 /// Between sections: wider than a section's own gaps, so the space does the grouping.
@@ -104,7 +106,6 @@ pub const section: Style = .{
     .radius = .md,
 };
 
-/// A section that fills its tab, like the Characters list's.
 pub const fill_section: Style = section.with(.{ .height = .grow() });
 
 /// A section's heading and its card; widgets.openSection gives it the card's height.
@@ -265,14 +266,13 @@ pub const drag_grip: Style = .{ .width = .fixed(DRAG_GRIP_SIZE), .height = .fixe
 /// A master-detail list's details: unboxed, since the section around it is already a card.
 pub const detail_scroll: ScrollPane = .{
     .pane = &detail_scroll_pane,
-    .scrolling = &detail_scroll_pane.with(.{ .padding = .init(0, ROW_SCROLLBAR_GUTTER, 0, 8) }),
+    .scrolling = &detail_scroll_pane.with(.{ .padding = .init(0, ROW_SCROLLBAR_GUTTER, 0, 0) }),
     .content = &.{ .width = .grow(), .direction = .column, .gap = 8 },
 };
 const detail_scroll_pane: Style = .{
     .width = .grow(),
     .height = .grow(),
     .direction = .column,
-    .padding = .init(0, 0, 0, 8),
     .overflow = .scroll_y,
 };
 
@@ -291,7 +291,7 @@ pub const field_group_column: Style = .{ .width = .grow(), .direction = .column,
 pub const field_group_fill: Style = field_group.with(.{ .height = .grow() });
 pub const field_group_column_fill: Style = field_group_column.with(.{ .height = .grow() });
 /// A master-detail pane's details that fill it without scrolling, so a list inside them can scroll alone.
-pub const detail_fill: Style = .{ .width = .grow(), .height = .grow(), .direction = .column, .gap = 8, .padding = .init(0, 0, 0, 8) };
+pub const detail_fill: Style = .{ .width = .grow(), .height = .grow(), .direction = .column, .gap = 8 };
 
 pub const detail_header: Style = .{
     .width = .grow(),
@@ -332,7 +332,7 @@ pub const path_tooltip: Style = .{ .width = .{ .kind = .fit, .max = 480 } };
 
 pub const heading: Style = .{ .font = FONT_SEMIBOLD, .font_size = .md, .foreground = .{ .color = TEXT } };
 
-/// Set apart by the space above it, not a rule; the row after it starts a new run with no divider.
+/// Set apart by the space above it; the row after it starts a new run with no divider.
 pub const subheading_box: Style = .{ .width = .grow(), .padding = .init(16, ROW_INSET, 0, ROW_INSET) };
 pub const subheading: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } };
 /// Inset like a row, for a section's content that isn't one, e.g. a table or a full-width button.
@@ -344,10 +344,6 @@ pub const hint: Style = .{ .font_size = .xs, .foreground = .{ .color = HINT_TEXT
 pub const hint_box: Style = .{ .width = .grow(), .padding = .xy(ROW_INSET, 0) };
 /// hint_box for a modal, whose rows aren't inset.
 pub const modal_hint_box: Style = .{ .width = .grow() };
-/// Inset like hint_box and pulled up into the gap after its row, since knots has no margins.
-pub const hint_link_row: Style = hint_row.with(.{ .padding = .init(-HINT_LINK_PULL, ROW_INSET, 0, ROW_INSET) });
-/// Less than any gap between rows, so the link row never overlaps the row above.
-const HINT_LINK_PULL = 6;
 /// A hint that always shows, warning that a setting won't take effect.
 pub const hint_warning: Style = hint.with(.{ .foreground = .accent });
 
@@ -360,7 +356,6 @@ pub const notice: Style = .{
     .radius = .md,
 };
 pub const notice_text: Style = .{ .width = .grow(), .wrap = true, .foreground = .accent };
-/// notice with a button after its text.
 pub const notice_with_button: Style = notice.with(.{ .direction = .row, .@"align" = .center, .gap = 12, .padding = .xy(10, 4) });
 pub const notice_button: Style = plain_button.with(.{ .background = .transparent, .border_color = .accent, .foreground = .accent });
 
@@ -384,6 +379,10 @@ pub const aligned_row: Style = .{
     .@"align" = .center,
     .gap = 8,
 };
+/// widgets.openWrappingBinding's row once its controls don't fit beside the label: they go under it, at the right edge.
+pub const aligned_row_wrapped: Style = aligned_row.with(.{ .direction = .column, .@"align" = .end, .gap = 4 });
+/// Fits its content, so it measures the same beside the label or under it.
+pub const row_controls: Style = .{ .width = .fit(), .direction = .row, .@"align" = .center };
 /// Padding matches the section's gap, so the divider sits midway between rows.
 pub const row_divider: Style = .{
     .width = .grow(),
@@ -436,28 +435,27 @@ const SWITCH_KNOB = SWITCH_HEIGHT - 2 * SWITCH_INSET;
 
 pub const slider_box: Style = .{ .width = .grow(), .padding = .xy(8, 0) };
 /// Fixed, so it doesn't share the row's spare width with a growing label.
-pub const slider_box_aligned: Style = .{ .width = .fixed(220), .padding = .xy(8, 0) };
+pub const slider_box_aligned: Style = .{ .width = .fixed(160), .padding = .xy(8, 0) };
 /// Takes a field group row's spare width, since a detail pane may be too narrow for slider_box_aligned's.
 pub const slider_box_grouped: Style = slider_box_aligned.with(.{ .width = .grow() });
-/// Shorter, to fit a colour swatch after its % box.
-pub const slider_box_short: Style = slider_box_aligned.with(.{ .width = .fixed(160) });
 
+const SEGMENTED_PADDING = 2;
 pub const segmented: Style = .{
     .direction = .row,
     .gap = 2,
-    .padding = .all(2),
+    .padding = .all(SEGMENTED_PADDING),
     .background = .{ .color = SURFACE },
     .border_width = .all(1),
     .border_color = .{ .color = BORDER_STRONG },
     .radius = .md,
 };
 pub const segment: Style = .{
-    // Inside segmented's 2px padding, so the whole control is as tall as an input.
-    .height = .fixed(CONTROL_HEIGHT - 4),
+    // Inside segmented's padding, so the whole control is as tall as an input.
+    .height = .fixed(CONTROL_HEIGHT - 2 * SEGMENTED_PADDING),
     .padding = .xy(10, 0),
     .background = .transparent,
     // The control's radius less its padding, so the corners nest.
-    .radius = .{ .fixed = 4 },
+    .radius = .{ .fixed = RADIUS - SEGMENTED_PADDING },
     // BORDER rather than SURFACE_ALT, which sits too close to the control's SURFACE to show.
     .hover = &.{ .background = .{ .color = BORDER }, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
@@ -477,16 +475,7 @@ pub const segment_label_selected: Style = .{ .font = FONT_SEMIBOLD, .foreground 
 pub const NUMBER_WIDTH = 64;
 /// A unit box's room for its number and the box's own edges, which bind.openUnitField adds its unit's width to.
 pub const UNIT_FIELD_NUMBER_ROOM = 48;
-pub const number_input: Style = .{
-    .width = .fixed(NUMBER_WIDTH),
-    .height = .fixed(CONTROL_HEIGHT),
-    .padding = .xy(8, 4),
-    .background = .{ .color = SURFACE },
-    .border_color = .{ .color = BORDER_STRONG },
-    .radius = .md,
-    .hover = &.{ .border_color = .accent },
-    .focus = &.{ .border_color = .accent },
-};
+pub const number_input: Style = text_input.with(.{ .width = .fixed(NUMBER_WIDTH) });
 /// A number box with its unit inside, e.g. "85 %": this field draws the box, around unit_field_input and the unit.
 pub const unit_field: Style = .{
     .width = .fixed(NUMBER_WIDTH),
@@ -576,7 +565,6 @@ pub const wordmark: Style = .{ .width = .fixed(269), .height = .fixed(96) };
 pub const fact_label: Style = .{ .font = FONT_SEMIBOLD, .font_size = .xs, .foreground = .{ .color = MUTED } };
 pub const hint_plain: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED } };
 
-/// A text link, a Button so it's clickable and focusable.
 pub const link: Style = .{
     .padding = .all(0),
     .background = .transparent,
@@ -784,7 +772,6 @@ pub const primary_button: Style = .{
     .hover = &.{ .background = .{ .color = SURFACE }, .border_color = .accented, .foreground = .accented, .state_layer = 0 },
     .active = &.{ .state_layer = 0 },
 };
-/// primary_button for a destructive action.
 pub const danger_primary_button: Style = primary_button.with(.{
     .border_color = .{ .color = DESTRUCTIVE },
     .foreground = .{ .color = DESTRUCTIVE },
@@ -851,7 +838,6 @@ pub const paired_button: Style = plain_button.with(.{ .width = .fixed(PAIRED_BUT
 pub const paired_disabled_button: Style = disabled_button.with(.{ .width = .fixed(PAIRED_BUTTON_WIDTH), .justify = .center });
 pub const paired_danger_button: Style = danger_button.with(.{ .width = .fixed(PAIRED_BUTTON_WIDTH), .justify = .center });
 pub const paired_confirm_button: Style = confirm_button.with(.{ .width = .fixed(PAIRED_BUTTON_WIDTH), .justify = .center });
-/// A button spanning its container, e.g. under a list.
 pub const full_width_button: Style = plain_button.with(.{ .width = .grow() });
 pub const button_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8, .padding = .xy(ROW_INSET, 0) };
 /// button_row at the right edge, under its rows' controls.
@@ -926,14 +912,14 @@ pub const icon_button_danger_text: Style = icon_button.with(.{
 pub const icon_button_disabled_text: Style = icon_button_disabled.with(.{ .font_size = .{ .px = 15 } });
 pub const icon_button_confirm: Style = confirm_button.with(.{ .width = .fixed(CONTROL_HEIGHT), .padding = .all(0), .justify = .center });
 
-/// Outside a filling tab: a roster beside the selected item's details, both sized to their content.
-pub const master_detail: Style = .{ .width = .grow(), .direction = .row, .gap = 8, .padding = .xy(ROW_INSET, 0) };
+/// Outside a filling tab: a roster beside the selected item's details, both sized to their content; only the roster side is inset, since the details' rows inset themselves.
+pub const master_detail: Style = .{ .width = .grow(), .direction = .row, .gap = 8, .padding = .init(0, 0, 0, ROW_INSET) };
 /// A master-detail filling the rest of its section, for a tab that fills the window.
 pub const master_detail_fill: Style = master_detail.with(.{ .height = .grow() });
 pub const roster_filters: Style = roster.with(.{ .height = .fit(), .overflow = .visible });
 /// A roster in a scrolling tab whose rows scroll inside it, so adding one doesn't push it off the bottom.
 pub const roster_fixed: Style = roster.with(.{ .height = .fixed(220) });
-pub const detail_fit: Style = .{ .width = .grow(), .direction = .column, .gap = 8, .padding = .init(0, 0, 0, 8) };
+pub const detail_fit: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
 /// A roster row's small trailing text, e.g. a filter's Disabled.
 pub const roster_badge: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED } };
 pub const roster_badge_warning: Style = roster_badge.with(.{ .foreground = .accent });
@@ -949,9 +935,7 @@ pub const roster_marker: Style = .{ .width = .fixed(ROSTER_MARKER_SIZE), .height
 pub const inline_label: Style = .{ .foreground = .{ .color = TEXT } };
 pub const select_fill: Style = select.with(.{ .width = .grow() });
 
-/// A field hint with a link after it.
-pub const hint_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 4 };
-pub const hint_inline: Style = .{ .font_size = .xs, .foreground = .{ .color = HINT_TEXT } };
+pub const text_link_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 4 };
 
 /// Bordered rows grouped by category, as the ore price table shows them.
 pub const table: Style = .{
@@ -994,7 +978,7 @@ pub const inline_row: Style = .{ .width = .grow(), .direction = .row, .@"align" 
 /// Small buttons that insert a {placeholder}, at the right edge like an aligned row's controls.
 pub const chip_row: Style = .{ .width = .grow(), .direction = .row, .justify = .end, .padding = .xy(ROW_INSET, 0) };
 /// As wide as a custom text box and its clear button, so the chips start under the box.
-pub const chip_box: Style = .{ .width = .fixed(CUSTOM_TEXT_WIDTH + 8 + CONTROL_HEIGHT), .direction = .row, .gap = 4, .wrap = true };
+pub const chip_box: Style = .{ .width = .fixed(CUSTOM_TEXT_WIDTH + binding_row.gap.? + CONTROL_HEIGHT), .direction = .row, .gap = 4, .wrap = true };
 /// A notification's custom text box: wider than an even split with its short state label.
 pub const custom_text_input: Style = text_input.with(.{ .width = .fixed(CUSTOM_TEXT_WIDTH) });
 const CUSTOM_TEXT_WIDTH = 190;
@@ -1009,28 +993,8 @@ pub const hotkey_width_aligned: Style = .{ .width = .{ .kind = .fit, .min = 130 
 /// Narrower, to fit beside its label in a detail pane's field group.
 pub const hotkey_width_grouped: Style = .{ .width = .{ .kind = .fit, .min = 100 } };
 pub const hotkey_prompt: Style = .{ .foreground = .{ .color = MUTED } };
-/// One combo: its caps then its remove button, with no box, since caps already read as keys.
-pub const hotkey_combo: Style = .{
-    .direction = .row,
-    .@"align" = .center,
-    .gap = 3,
-    .height = .fixed(CONTROL_HEIGHT - 4),
-    .padding = .xy(6, 0),
-    .background = .transparent,
-    .radius = .md,
-};
-/// While hovered or focused, like a lit settings row.
-pub const hotkey_combo_lit: Style = hotkey_combo.with(.{ .background = .{ .color = SURFACE } });
-/// A Button, so the caps can be clicked or tabbed to and replaced.
-pub const hotkey_caps: Style = .{
-    .direction = .row,
-    .@"align" = .center,
-    .gap = 3,
-    .padding = .all(0),
-    .background = .transparent,
-    .hover = &.{ .state_layer = 0 },
-    .active = &.{ .state_layer = 0 },
-};
+/// A key cap's left and right borders, each.
+pub const KEYCAP_BORDER = 1;
 pub const HOTKEY_REMOVE_SIZE = 14;
 /// How far the remove badge reaches past its combo's top-right corner.
 pub const HOTKEY_REMOVE_OVERHANG = 3;
@@ -1058,23 +1022,10 @@ pub const hotkey_row_fit: Style = hotkey_row.with(.{ .width = .fit() });
 pub const hotkey_row_typing: Style = hotkey_row.with(.{ .justify = .start });
 /// Around the + after a hotkey's combos: set further off than the row's gap, so it reads as an action rather than another combo.
 pub const hotkey_add_gap: Style = .{ .padding = .init(0, 0, 0, 8) };
-/// Between a hotkey's combos, since any one of them triggers it.
-pub const hotkey_or: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED } };
 pub const hotkey_edit_on: Style = icon_button.with(.{ .background = .{ .color = SUCCESS }, .border_color = .{ .color = SUCCESS } });
-/// The heavier bottom edge reads as a key rather than a chip.
-pub const keycap: Style = .{
-    .padding = .init(3, 5, 3, 5),
-    .background = .{ .color = SURFACE_ALT },
-    .border_width = .edges(1, 1, 3, 1),
-    .border_color = .{ .color = BORDER_STRONG },
-    .radius = .md,
-};
-pub const keycap_text: Style = .{ .font_size = .xs, .foreground = .{ .color = TEXT } };
-pub const keycap_modifier_text: Style = keycap_text.with(.{ .foreground = .{ .color = MUTED } });
-/// A cap of a combo bound to something else too.
-pub const keycap_conflict: Style = keycap.with(.{ .background = .{ .color = ERROR_TINT }, .border_color = .{ .color = ERROR } });
-pub const keycap_conflict_text: Style = keycap_text.with(.{ .foreground = .{ .color = ERROR } });
-pub const keycap_plus: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED } };
+pub const keycaps: Keycaps = keycapsSized(.{ .font_size = .xs, .gap = 3, .cap_padding_x = 5, .cap_padding_y = 3, .combo_padding_x = 6, .combo_gap = hotkey_row.gap.? });
+/// For a hotkey whose combos would overrun its row at full size.
+pub const keycaps_compact: Keycaps = keycapsSized(.{ .font_size = .{ .px = 9 }, .gap = 2, .cap_padding_x = 4, .cap_padding_y = 2, .combo_padding_x = 3, .combo_gap = 4 });
 
 /// A plain button with widgets.glyphButton's glyph before its label, e.g. Add or Pick Running Window, at its natural width.
 pub const add_button: Style = plain_button.with(.{ .gap = 6 });
@@ -1116,24 +1067,29 @@ pub const section_hidden: Style = .{
     .overflow = .hidden,
 };
 /// The settings search at the header's right: room for a 180px box, the gap and its clear button.
-pub const search_container: Style = .{ .width = .fixed(180 + 4 + CONTROL_HEIGHT) };
+pub const search_container: Style = .{ .width = .fixed(180 + search_row.gap.? + CONTROL_HEIGHT) };
 pub const search_count_none: Style = .{ .foreground = .{ .color = ERROR } };
 pub const search_count_some: Style = .{ .foreground = .accent };
 
-/// Open clients' names offered under a name box.
+pub const SUGGEST_LIST_PADDING = 2;
+pub const SUGGEST_LIST_BORDER = 1;
+pub const SUGGEST_ROW_PADDING_Y = 4;
+/// Open clients' names offered under a name box; suggest.zig sets its place and size.
 pub const suggest_list: Style = .{
-    .width = .grow(),
     .direction = .column,
-    .padding = .all(2),
+    .padding = .all(SUGGEST_LIST_PADDING),
+    .overflow = .scroll_y,
+    // So it draws over the rows it covers and takes their clicks.
+    .layer = .dropdown,
     .background = .{ .color = SURFACE },
-    .border_width = .all(1),
+    .border_width = .all(SUGGEST_LIST_BORDER),
     .border_color = .{ .color = BORDER_STRONG },
     .radius = .md,
 };
 pub const suggest_row: Style = .{
     .width = .grow(),
     .justify = .start,
-    .padding = .xy(8, 4),
+    .padding = .xy(8, SUGGEST_ROW_PADDING_Y),
     .background = .transparent,
     .foreground = .{ .color = TEXT_SECONDARY },
     .radius = .sm,
@@ -1158,11 +1114,210 @@ pub const import_section_group: Style = .{ .width = .grow(), .direction = .colum
 /// Room for the Import dialog's lists and an update's notes, scrolling once they outgrow the window.
 pub const modal_wide: Style = modal.with(.{ .width = .fixed(520), .overflow = .scroll_y });
 
+/// Barrage's six seats, in seat order, each distinct on the dark field.
+pub const BARRAGE_PLAYER_COLORS = [_]Color{ color("#5ec98f"), color("#e0b84e"), color("#5fa8e8"), color("#e05a4e"), color("#b48ce6"), color("#4ed0d0") };
+pub const BARRAGE_GROUND = color("#9c8a62");
+pub const BARRAGE_FIRE = color("#e8743b");
+/// Wide enough for Barrage's field inside the panel's 16px padding.
+pub const BARRAGE_FIELD_WIDTH = 740;
+pub const BARRAGE_FIELD_HEIGHT = 520;
+pub const BARRAGE_HEALTH_TRACK_WIDTH = 60;
+pub const BARRAGE_POWER_TRACK_WIDTH = 100;
+/// From the field's edges to the cards over its top corners.
+const BARRAGE_CARD_INSET = 10;
+/// Fits "... wins the match!" with a 37-character name.
+const BARRAGE_BANNER_WIDTH = 640;
+pub const barrage_panel: Style = modal.with(.{ .width = .fixed(BARRAGE_FIELD_WIDTH + 2 * 16) });
+pub const barrage_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 12 };
+/// Narrower than text_input_aligned, leaving room for the Join button beside it.
+pub const barrage_code_input: Style = text_input.with(.{ .width = .fixed(150) });
+pub const barrage_actions: Style =.{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
+pub const barrage_name: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } };
+/// Wide enough that the seat buttons beside it line up.
+pub const barrage_seat_label: Style = barrage_name.with(.{ .width = .fixed(140) });
+pub const barrage_name_out: Style = barrage_name.with(.{ .foreground = .{ .color = MUTED } });
+pub const barrage_choice: Style = outline_button.with(.{ .width = .fixed(120) });
+pub const barrage_status: Style = .{ .width = .grow(), .foreground = .{ .color = TEXT_SECONDARY } };
+pub const barrage_value: Style = .{ .foreground = .{ .color = TEXT } };
+pub const barrage_code: Style = .{ .font = FONT_SEMIBOLD, .font_size = .xl, .foreground = .accent };
+pub const barrage_standings: Style = .{ .width = .grow(), .direction = .column, .gap = 8 };
+pub const barrage_standings_row: Style = .{ .width = .grow(), .direction = .row };
+/// A third of the field's width, so standings line up in columns.
+pub const barrage_standing: Style = .{ .width = .fixed(BARRAGE_FIELD_WIDTH / 3), .direction = .column, .gap = 4 };
+pub const barrage_standing_line: Style = .{ .direction = .row, .@"align" = .center, .gap = 8 };
+pub const barrage_health_track: Style = .{ .width = .fixed(BARRAGE_HEALTH_TRACK_WIDTH), .height = .fixed(4), .direction = .row, .background = .{ .color = BORDER } };
+/// Given its width and colour per tank.
+pub const barrage_health_fill: Style = .{ .height = .fixed(4) };
+pub const barrage_wins: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED } };
+pub const barrage_tank_options: Style = .{ .direction = .row, .gap = 6 };
+/// Holds a tank style's preview and name, clickable without looking like a filled button.
+pub const barrage_tank_option: Style = .{
+    .direction = .column,
+    .@"align" = .center,
+    .gap = 2,
+    .padding = .all(4),
+    .background = .transparent,
+    .border_width = .all(1),
+    .border_color = .{ .color = BORDER },
+    .radius = .md,
+    .hover = &.{ .border_color = .accent, .state_layer = 0 },
+    .active = &.{ .state_layer = 0 },
+};
+pub const barrage_tank_option_chosen: Style = barrage_tank_option.with(.{ .border_color = .accent });
+/// barrage.zig's PREVIEW_WIDTH by PREVIEW_HEIGHT field units at PREVIEW_SCALE.
+pub const barrage_tank_preview: Style = .{ .width = .fixed(80), .height = .fixed(60) };
+/// Centred at the top of the field, over the wind arrow.
+pub const barrage_wind_label: Style = .{ .position = .absolute, .offset = .{ BARRAGE_FIELD_WIDTH / 2 - 60, 8 }, .width = .fixed(120), .direction = .row, .justify = .center };
+pub const barrage_wind_text: Style = .{ .foreground = .{ .color = MUTED } };
+/// Over the field's sky, see-through enough that a shell passing behind still shows.
+const barrage_card: Style = .{
+    .direction = .column,
+    .gap = 4,
+    .padding = .all(10),
+    .background = .{ .color = color("#1e1f22d0") },
+    .border_width = .all(1),
+    .border_color = .{ .color = BORDER },
+    .radius = .md,
+};
+pub const barrage_aim_card: Style = barrage_card.with(.{ .position = .absolute, .offset = .{ BARRAGE_CARD_INSET, BARRAGE_CARD_INSET }, .width = .fixed(200) });
+/// Holds the weapon card against the field's right edge, however wide the card is.
+pub const barrage_weapon_dock: Style = .{
+    .position = .absolute,
+    .offset = .{ 0, BARRAGE_CARD_INSET },
+    .width = .fixed(BARRAGE_FIELD_WIDTH - BARRAGE_CARD_INSET),
+    .direction = .row,
+    .justify = .end,
+};
+/// One line, as wide as its contents.
+pub const barrage_weapon_card: Style = barrage_card.with(.{
+    .direction = .row,
+    .@"align" = .center,
+    .gap = 6,
+});
+pub const barrage_card_line: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
+pub const barrage_card_status: Style = .{ .font_size = .xs, .foreground = .{ .color = TEXT_SECONDARY } };
+/// A key or an ammo count in the cards.
+pub const barrage_card_hint: Style = .{ .font_size = .xs, .foreground = .{ .color = MUTED } };
+/// Wide enough that the aim card's values line up.
+pub const barrage_card_label: Style = barrage_card_hint.with(.{ .width = .fixed(40) });
+pub const barrage_power_track: Style = .{ .width = .fixed(BARRAGE_POWER_TRACK_WIDTH), .height = .fixed(6), .direction = .row, .background = .{ .color = BORDER } };
+/// Given its width and colour per tank.
+pub const barrage_power_fill: Style = .{ .height = .fixed(6) };
+/// Steps the weapon card through the weapons, without looking like a filled button.
+pub const barrage_weapon_arrow: Style = .{
+    .padding = .xy(6, 2),
+    .background = .transparent,
+    .foreground = .{ .color = TEXT_SECONDARY },
+    .radius = .sm,
+    .hover = &.{ .background = .{ .color = ROW_HOVER }, .foreground = .{ .color = TEXT }, .state_layer = 0 },
+    .active = &.{ .state_layer = 0 },
+};
+/// Given the longest weapon name's width, so the arrows don't move.
+pub const barrage_weapon_name: Style = .{ .font = FONT_SEMIBOLD, .foreground = .accent };
+/// Over the middle of the field.
+pub const barrage_banner: Style = .{
+    .position = .absolute,
+    .offset = .{ (BARRAGE_FIELD_WIDTH - BARRAGE_BANNER_WIDTH) / 2, BARRAGE_FIELD_HEIGHT / 2 - 56 },
+    .width = .fixed(BARRAGE_BANNER_WIDTH),
+    .direction = .column,
+    .@"align" = .center,
+    .gap = 6,
+    .padding = .all(16),
+    .background = .{ .color = PANEL },
+    .border_width = .all(1),
+    .border_color = .{ .color = BORDER },
+    .radius = .md,
+};
+pub const barrage_banner_title: Style = .{ .font = FONT_SEMIBOLD, .font_size = .xl, .foreground = .{ .color = TEXT } };
+pub const barrage_banner_text: Style = .{ .foreground = .{ .color = TEXT_SECONDARY } };
+/// About's wordmark, clickable for the Barrage easter egg without looking like a button.
+pub const wordmark_button: Style = .{
+    .padding = .all(0),
+    .background = .transparent,
+    .radius = .none,
+    .hover = &.{ .state_layer = 0 },
+    .active = &.{ .state_layer = 0 },
+};
+
 /// Modal text that sits on a line with something after it, e.g. a link.
 pub const modal_text_inline: Style = .{ .foreground = .{ .color = TEXT_SECONDARY } };
 
+/// The styles a hotkey's combos are drawn with, in one size.
+pub const Keycaps = struct {
+    /// One combo: its caps then its remove button, with no box, since caps already read as keys.
+    combo: Style,
+    /// While hovered or focused, like a lit settings row.
+    combo_lit: Style,
+    /// A Button, so the caps can be clicked or tabbed to and replaced.
+    caps: Style,
+    /// The heavier bottom edge reads as a key rather than a chip.
+    cap: Style,
+    /// A cap of a combo bound to something else too.
+    cap_conflict: Style,
+    text: Style,
+    modifier_text: Style,
+    conflict_text: Style,
+    plus: Style,
+    /// Between a hotkey's combos, since any one of them triggers it.
+    @"or": Style,
+    /// What the styles above were built from, so the field can work out how wide they lay out.
+    size: KeycapSize,
+};
+pub const KeycapSize = struct {
+    font_size: ui.FontSize.Input,
+    /// Between a combo's caps and its + signs.
+    gap: f32,
+    cap_padding_x: f32,
+    cap_padding_y: f32,
+    combo_padding_x: f32,
+    /// Between the combos, their "or"s and the field's buttons.
+    combo_gap: f32,
+};
+
 /// widgets.openScrollPane's looks: the pane, the pane with its scrollbar gutter, and the column inside it.
 pub const ScrollPane = struct { pane: *const Style, scrolling: *const Style, content: *const Style };
+
+fn keycapsSized(comptime size: KeycapSize) Keycaps {
+    const combo: Style = .{
+        .direction = .row,
+        .@"align" = .center,
+        .gap = size.gap,
+        .height = .fixed(CONTROL_HEIGHT - 4),
+        .padding = .xy(size.combo_padding_x, 0),
+        .background = .transparent,
+        .radius = .md,
+    };
+    const cap: Style = .{
+        .padding = .xy(size.cap_padding_x, size.cap_padding_y),
+        .background = .{ .color = SURFACE_ALT },
+        .border_width = .edges(KEYCAP_BORDER, KEYCAP_BORDER, 3, KEYCAP_BORDER),
+        .border_color = .{ .color = BORDER_STRONG },
+        .radius = .md,
+    };
+    const text: Style = .{ .font_size = size.font_size, .foreground = .{ .color = TEXT } };
+    const dim_text = text.with(.{ .foreground = .{ .color = MUTED } });
+    return .{
+        .combo = combo,
+        .combo_lit = combo.with(.{ .background = .{ .color = SURFACE } }),
+        .caps = .{
+            .direction = .row,
+            .@"align" = .center,
+            .gap = size.gap,
+            .padding = .all(0),
+            .background = .transparent,
+            .hover = &.{ .state_layer = 0 },
+            .active = &.{ .state_layer = 0 },
+        },
+        .cap = cap,
+        .cap_conflict = cap.with(.{ .background = .{ .color = ERROR_TINT }, .border_color = .{ .color = ERROR } }),
+        .text = text,
+        .modifier_text = dim_text,
+        .conflict_text = text.with(.{ .foreground = .{ .color = ERROR } }),
+        .plus = dim_text,
+        .@"or" = dim_text,
+        .size = size,
+    };
+}
 
 fn color(comptime hex: []const u8) Color {
     return Color.hex(hex) catch unreachable;
