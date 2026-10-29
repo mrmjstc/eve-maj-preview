@@ -1,6 +1,6 @@
 .{
     .name = .EVE_Maj_Preview,
-    .version = "1.0.8",
+    .version = "1.0.9",
     .minimum_zig_version = "0.17.0",
     .dependencies = .{
         // Vendored from knots-ui/knots@9cd60181892ef12d9cb3e0d87f5461e928140a92, with deps/knots/PATCHES.md's changes.
