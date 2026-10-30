@@ -47,7 +47,7 @@ const slog = log.Scoped("dialog_knots");
 
 const WINDOW_TITLE = "EVE-Maj Preview Configuration";
 /// In logical pixels, like designWidth's; knots has no zoom yet.
-const DESIGN_HEIGHT = 960;
+const DESIGN_HEIGHT = 990;
 const DEFAULT_POSITION: win32.POINT = .{ .x = 20, .y = 20 };
 /// On the window itself; clears the footer's status once it has shown long enough.
 const STATUS_TIMER_ID = 1;
@@ -235,13 +235,13 @@ pub fn importIntoNewProfile(name: []const u8, accent: u32) void {
     profiles.request(.import_new, file_name, accent);
 }
 
-/// A notification type's custom sound, set once the picker closes.
-pub fn browseSoundFile(type_index: usize) void {
+/// A notification type's or chat alert rule's custom sound, set once the picker closes; `index` is whichever `target` names.
+pub fn browseSoundFile(target: pickers.Target, index: usize) void {
     const timer_hwnd = session.runningApp().timer_hwnd orelse {
         slog.err("Failed to open the sound file picker: the timer window is missing", .{});
         return;
     };
-    pickers.browse(.sound_file, type_index, "Select Sound File", g_hwnd, timer_hwnd, @backingInt(Command.picked));
+    pickers.browse(target, index, "Select Sound File", g_hwnd, timer_hwnd, @backingInt(Command.picked));
 }
 
 /// Starts fetching Jita ore prices; returns false if a fetch is already running or couldn't start.
@@ -560,13 +560,18 @@ fn applyPicked(lParam: win32.LPARAM) void {
         .chatlog_dir => chatlog.set("chatlogDir", picked.path),
         .gamelog_dir => chatlog.set("gamelogDir", picked.path),
         .import_file => import_dialog.loadFile(picked.path),
-        // Picking a file means the sound is wanted.
-        .sound_file => {
-            const type_config = event_alerts.typeRef(picked.index);
-            type_config.set("sound_path", picked.path);
-            type_config.set("sound_enabled", true);
+        .sound_file => useSound(event_alerts.typeRef(picked.index), picked.path),
+        // The rule may have been removed while the picker was open.
+        .rule_sound_file => if (picked.index < session.profile().ptr.chatAlerts.items.len) {
+            useSound(session.profile().item("chatAlerts", picked.index).child("alert"), picked.path);
         },
     }
+}
+
+/// Picking a file means the sound is wanted.
+fn useSound(alert: session.Ref(config.NotificationTypeConfig), path: []const u8) void {
+    alert.set("sound_path", path);
+    alert.set("sound_enabled", true);
 }
 
 fn save() bool {

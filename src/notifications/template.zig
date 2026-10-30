@@ -1,7 +1,7 @@
 //! Fills a notification's custom text with the event's values; no I/O.
 const std = @import("std");
 
-pub const Field = enum { source, target, character };
+pub const Field = enum { source, target, character, channel, message, jumps };
 
 pub const Placeholder = struct {
     name: []const u8,
@@ -13,12 +13,18 @@ pub const Values = struct {
     source: ?[]const u8 = null,
     target: ?[]const u8 = null,
     character: ?[]const u8 = null,
+    channel: ?[]const u8 = null,
+    message: ?[]const u8 = null,
+    jumps: ?[]const u8 = null,
 
     fn get(self: Values, field: Field) ?[]const u8 {
         return switch (field) {
             .source => self.source,
             .target => self.target,
             .character => self.character,
+            .channel => self.channel,
+            .message => self.message,
+            .jumps => self.jumps,
         };
     }
 };

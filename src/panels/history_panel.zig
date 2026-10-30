@@ -152,8 +152,8 @@ pub const HistoryPanelWindow = struct {
         self.store.update(.{ .display = .{ .notifInfoPanelX = top_left.x, .notifInfoPanelY = top_left.y } });
     }
 
-    fn messageColor(self: *const HistoryPanelWindow, notification_type: notification.NotificationType) u32 {
-        return history_look.messageColor(&self.config.thumbnail.notifications, notification_type);
+    fn messageColor(self: *const HistoryPanelWindow, entry: *const history.Entry) u32 {
+        return entry.text_color orelse history_look.messageColor(&self.config.thumbnail.notifications, entry.notification_type);
     }
 
     fn handleFooterClick(self: *HistoryPanelWindow, x: i32) void {
@@ -190,7 +190,7 @@ pub const HistoryPanelWindow = struct {
             hasher.update(entry.text());
             hasher.update(std.mem.asBytes(&entry.is_unmerged));
             const name_color = entry.character_color orelse list_look.NAME;
-            const message_color = self.messageColor(entry.notification_type);
+            const message_color = self.messageColor(entry);
             hasher.update(std.mem.asBytes(&name_color));
             hasher.update(std.mem.asBytes(&message_color));
             if (shows_timestamp) {
@@ -324,7 +324,7 @@ pub const HistoryPanelWindow = struct {
         const name_max = @divTrunc(@max(0, message_right - left) * history_look.NAME_MAX_PERCENT, 100);
         const message_x = left + drawFitted(dc, name, left, y, name_color, name_max) + history_look.TEXT_GAP;
         if (message_x >= message_right) return;
-        _ = drawFitted(dc, entry.text(), message_x, y, self.messageColor(entry.notification_type), message_right - message_x);
+        _ = drawFitted(dc, entry.text(), message_x, y, self.messageColor(entry), message_right - message_x);
     }
 
     /// Each filter button's label centred in it, brighter while its category shows.
@@ -352,6 +352,7 @@ fn setCategoryEnabled(store: *config_mod.ProfileStore, category: notification.No
         .Mining => store.update(.{ .display = .{ .notifInfoPanelShowMining = is_enabled } }),
         .Combat => store.update(.{ .display = .{ .notifInfoPanelShowCombat = is_enabled } }),
         .Navigation => store.update(.{ .display = .{ .notifInfoPanelShowNavigation = is_enabled } }),
+        .Chat => store.update(.{ .display = .{ .notifInfoPanelShowChat = is_enabled } }),
         .General => store.update(.{ .display = .{ .notifInfoPanelShowGeneral = is_enabled } }),
     }
 }

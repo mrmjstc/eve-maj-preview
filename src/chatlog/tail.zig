@@ -27,6 +27,8 @@ pub const LogFile = struct {
     character_name: []const u8,
     /// UTF-16 LE if true, UTF-8 if not.
     is_chatlog: bool,
+    /// Owned; freed in deinit; empty for a gamelog.
+    channel_name: []const u8,
     /// Kept open between polls; Zig opens with full sharing, so EVE can still write and delete it.
     file: ?std.Io.File = null,
     position: u64 = 0,
@@ -47,16 +49,19 @@ pub const LogFile = struct {
     last_system_hash: u64 = 0,
     long_line_warning_count: u32 = 0,
 
-    pub fn init(allocator: std.mem.Allocator, path: []const u8, character_name: []const u8, is_chatlog: bool) !LogFile {
+    pub fn init(allocator: std.mem.Allocator, path: []const u8, character_name: []const u8, channel_name: []const u8, is_chatlog: bool) !LogFile {
         const owned_path = try allocator.dupe(u8, path);
         errdefer allocator.free(owned_path);
-        return .{ .path = owned_path, .character_name = try allocator.dupe(u8, character_name), .is_chatlog = is_chatlog };
+        const owned_character = try allocator.dupe(u8, character_name);
+        errdefer allocator.free(owned_character);
+        return .{ .path = owned_path, .character_name = owned_character, .channel_name = try allocator.dupe(u8, channel_name), .is_chatlog = is_chatlog };
     }
 
     pub fn deinit(self: *LogFile, allocator: std.mem.Allocator, io: std.Io) void {
         self.closeFile(io);
         allocator.free(self.path);
         allocator.free(self.character_name);
+        allocator.free(self.channel_name);
         self.lines.deinit(allocator);
         self.u16_buffer.deinit(allocator);
         self.utf8_buffer.deinit(allocator);
@@ -68,15 +73,21 @@ pub const LogFile = struct {
         self.file = null;
     }
 
-    /// Returns the system the file last recorded; later reads start from its current end.
+    /// A log followed only for its chat, so it says nothing about a character's system.
+    pub fn isChannelLog(self: *const LogFile) bool {
+        return self.is_chatlog and !std.mem.eql(u8, self.channel_name, lines_mod.LOCAL_CHANNEL);
+    }
+
+    /// Returns the system the file last recorded, unless it's a channel log; later reads start from its current end.
     pub fn start(self: *LogFile, allocator: std.mem.Allocator, io: std.Io) !?lines_mod.SystemMatch {
         const file = try std.Io.Dir.cwd().openFile(io, self.path, .{});
         self.file = file;
         const stat = try file.stat(io);
         self.last_size = stat.size;
         self.last_modified_ns = @intCast(stat.mtime.nanoseconds);
-        self.position = stat.size;
+        self.position = self.characterBoundary(stat.size);
         self.has_started = true;
+        if (self.isChannelLog()) return null;
 
         const found = try self.findSystemBackward(allocator, io, file, stat.size);
         if (found == null and stat.size > MAX_BACKWARD_SCAN_BYTES) {
@@ -117,7 +128,7 @@ pub const LogFile = struct {
         const stat = try file.stat(io);
         self.last_size = stat.size;
         self.last_modified_ns = @intCast(stat.mtime.nanoseconds);
-        self.position = stat.size;
+        self.position = self.characterBoundary(stat.size);
         self.has_started = true;
         slog.info("Following '{s}' from its end, after its start failed", .{self.path});
     }
@@ -164,7 +175,7 @@ pub const LogFile = struct {
 
         // EVE only appends, so a size below what's been read means something else (e.g. a sync client) rewrote it; replaying would refire old events.
         if (size < self.position) {
-            self.position = if (self.is_chatlog) size & ~@as(u64, 1) else size;
+            self.position = self.characterBoundary(size);
             self.last_size = size;
             self.last_modified_ns = modified_ns;
             self.lines.reset();
@@ -197,6 +208,11 @@ pub const LogFile = struct {
             self.last_size = size;
             self.last_modified_ns = modified_ns;
         }
+    }
+
+    /// An odd size means EVE is mid-write, and starting there would misread everything after it as UTF-16.
+    fn characterBoundary(self: *const LogFile, offset: u64) u64 {
+        return if (self.is_chatlog) offset & ~@as(u64, 1) else offset;
     }
 
     fn decode(self: *LogFile, allocator: std.mem.Allocator, data: []const u8) !?[]u8 {

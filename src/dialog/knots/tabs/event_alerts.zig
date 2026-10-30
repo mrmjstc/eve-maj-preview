@@ -8,6 +8,7 @@ const overlay = @import("../../../thumbnail/overlay.zig");
 const session = @import("../session.zig");
 const bind = @import("../bind.zig");
 const host = @import("../host.zig");
+const pickers = @import("../pickers.zig");
 const status = @import("../status.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
@@ -25,24 +26,27 @@ const TypeRef = session.Ref(config.NotificationTypeConfig);
 const slog = log.Scoped("dialog_knots");
 
 const CUSTOM_TEXT_MAX_LENGTH = 100;
-const NEWLINE_TOKEN = "\\n";
 /// Holds notification.defaultText, which the box and its preview both show.
 const DEFAULT_TEXT_SIZE = 128;
 /// knots' Tooltip keys its popup and text as its own key indexed 1 and 2, so what it wraps takes this.
 const TOOLTIP_CHILD_INDEX = 3;
+/// A chip's left and right borders together.
+const CHIP_BORDERS = 2;
 
-/// Every type, by category, then as declared.
+/// Every type, by category, then as declared; chat rules have settings of their own instead, on the Chat Alerts tab.
 const TYPES_IN_ORDER = blk: {
     var ordered: [std.enums.values(NotificationType).len]NotificationType = undefined;
     var count: usize = 0;
     for (std.enums.values(notification.NotificationCategory)) |category| {
+        if (category == .Chat) continue;
         for (std.enums.values(NotificationType)) |notification_type| {
             if (notification.notificationCategory(notification_type) != category) continue;
             ordered[count] = notification_type;
             count += 1;
         }
     }
-    break :blk ordered;
+    const listed = ordered[0..count].*;
+    break :blk listed;
 };
 
 const TextField = enum { custom_text, custom_text_alt };
@@ -75,13 +79,109 @@ pub fn show(context: *ui.Frame) !void {
     try section.close(context);
 }
 
-fn typeLabel(notification_type: NotificationType) []const u8 {
-    return lang.text(englishLabel(notification_type));
+/// Not in a frame that also draws another's, as the search's index would: their keys would clash.
+pub fn alertSettings(context: *ui.Frame, ref: TypeRef, notification_type: NotificationType, sound_target: pickers.Target, sound_index: usize) !void {
+    try customText(context, ref, notification_type);
+    try widgets.separator(context, .str("knots.events.separator.text"));
+
+    const behavior = try widgets.openFieldGroup(context, .str("knots.events.behavior"), "Behavior");
+    try bind.toggle(context, ref, "suppress_when_focused", "Suppress While Focused");
+    try widgets.hintText(context, .src(@src()), "Skips the alert while you're on that character.");
+    try bind.toggle(context, ref, "suppress_when_clicked", "Suppress After Click");
+    try widgets.hintText(context, .src(@src()), "Skips the alert briefly after you click that character.");
+    try bind.toggle(context, ref, "show_hidden_thumbnail", "Show Thumbnail Even If Hidden");
+    try widgets.hintText(context, .src(@src()), "Only for as long as the alert lasts.");
+    try bind.toggle(context, ref, "tts_enabled", "Speak Aloud (TTS)");
+    try widgets.hintText(context, .src(@src()), "Reads the alert out loud. Voice settings are on the Notifications tab.");
+    try behavior.close(context);
+    try widgets.separator(context, .str("knots.events.separator.behavior"));
+
+    const border = try widgets.openFieldGroup(context, .str("knots.events.border"), "Border");
+    try bind.toggle(context, ref, "show_border", "Show Border");
+    try widgets.hintText(context, .src(@src()), "Marks the thumbnail with a colored border during the alert.");
+    // A hidden border has no colour to set and nothing to flash.
+    const border_options = try widgets.openGroup(context, .src(@src()), ref.get("show_border"));
+    try bind.toggle(context, ref, "flash_border", "Flash Border");
+    try widgets.hintText(context, .src(@src()), "Makes the border blink.");
+    const defaults = config.ThumbnailConfig{};
+    try bind.optionalColor(context, ref, "border_color", "Border Color", defaults.inactiveBorderColor);
+    try widgets.hintText(context, .src(@src()), "Reset uses the default color.");
+    try border_options.close(context);
+    try border.close(context);
+    try widgets.separator(context, .str("knots.events.separator.border"));
+
+    try sound(context, ref, sound_target, sound_index);
+}
+
+/// Fires an alert on every thumbnail with the settings the window has for it, saved or not.
+pub fn testAlert(notification_type: NotificationType, alert: config.NotificationTypeConfig) void {
+    const thumbnail_set = session.runningApp().thumbnail_set orelse {
+        slog.warn("Failed to test notification: the thumbnail set isn't ready", .{});
+        return;
+    };
+    thumbnail_set.showTestNotification(notification_type, alert) catch |err| {
+        slog.err("Failed to test notification: {}", .{err});
+        status.show(.failure, "Failed to test notification: {err}", .{ .err = err });
+    };
 }
 
 /// The short name keeps the roster narrow; the detail header uses the full one.
 fn typeShortLabel(notification_type: NotificationType) []const u8 {
     return lang.text(englishShortLabel(notification_type));
+}
+
+/// Returns whether it was clicked.
+fn typeRow(context: *ui.Frame, notification_type: NotificationType, is_selected: bool) !bool {
+    const index = @backingInt(notification_type);
+    const row = Button{ .key = ui.Key.str("knots.events.row").indexed(index), .style = if (is_selected) &style.roster_row_selected else &style.roster_row };
+    const is_clicked = (try widgets.openRosterRow(context, row)).clicked;
+    const ref = typeRef(index);
+    try context.e(Rect{ .key = ui.Key.str("knots.events.dot").indexed(index), .style = if (ref.get("enabled")) &style.event_dot_on else &style.event_dot_off });
+    try context.e(Text{
+        .selectable = false,
+        .key = ui.Key.str("knots.events.name").indexed(index),
+        .content = typeShortLabel(notification_type),
+        .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
+    });
+    if (ref.get("tts_enabled")) try marker(context, ui.Key.str("knots.events.tts").indexed(index), .speech, "Speaks aloud");
+    if (ref.get("sound_enabled")) try marker(context, ui.Key.str("knots.events.sound").indexed(index), .speaker, "Plays a custom sound");
+    try row.close(context);
+    return is_clicked;
+}
+
+fn typeDetail(context: *ui.Frame, notification_type: NotificationType) !void {
+    const ref = typeRef(@backingInt(notification_type));
+    const stack = try widgets.openScrollPane(context, .str("knots.events.detail"), style.detail_scroll);
+    const previous_rows = widgets.useDetailRows();
+    defer widgets.restoreRows(previous_rows);
+
+    const header = try widgets.openDetailHeader(context, .src(@src()));
+    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = typeLabel(notification_type), .style = &style.roster_name_selected });
+    var is_enabled: bool = ref.get("enabled");
+    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("\u{25B6} Test"), .disabled = !is_enabled, .style = &style.plain_button })).clicked) {
+        testAlert(notification_type, ref.ptr.*);
+    }
+    try header.close(context);
+    if (try widgets.switchRow(context, ui.Key.str("knots.events.enabled").indexed(ref.index), "Enabled", &is_enabled)) ref.set("enabled", is_enabled);
+    try widgets.hintText(context, .src(@src()), "When off, this event never alerts.");
+    try widgets.separator(context, .str("knots.events.separator.enabled"));
+
+    const rest = try widgets.openGroup(context, .src(@src()), is_enabled);
+    const timing = try widgets.openFieldGroup(context, .str("knots.events.timing"), "Timing");
+    try bind.number(context, ref, "duration_ms", "Duration", .{ .shows_seconds = true, .unit = "s" });
+    try widgets.hintText(context, .src(@src()), "How long the alert shows; 0 keeps it until dismissed.");
+    try bind.number(context, ref, "throttle_ms", "Cooldown", .{ .shows_seconds = true, .unit = "s" });
+    try widgets.hintText(context, .src(@src()), "Ignores repeats within this time.");
+    try timing.close(context);
+    try widgets.separator(context, .str("knots.events.separator.timing"));
+
+    try alertSettings(context, ref, notification_type, .sound_file, ref.index);
+    try rest.close(context);
+    try stack.close(context);
+}
+
+fn typeLabel(notification_type: NotificationType) []const u8 {
+    return lang.text(englishLabel(notification_type));
 }
 
 /// In English, capitalised like the sidebar's headings; boxedText translates it.
@@ -91,6 +191,7 @@ fn categoryHeading(category: notification.NotificationCategory) []const u8 {
         .Mining => "MINING",
         .Combat => "COMBAT",
         .Navigation => "NAVIGATION",
+        .Chat => "CHAT",
         .General => "GENERAL",
     };
 }
@@ -104,6 +205,8 @@ fn englishLabel(notification_type: NotificationType) []const u8 {
         .AutopilotReached => "Autopilot Reached",
         .BombLauncherEmpty => "Bomb Launcher Empty",
         .CargoFull => "Cargo Full",
+        .ChatIntel => "Chat Intel",
+        .ChatKeyword => "Chat Keyword",
         .CloakFailed => "Cloak Failed",
         .ConduitJump => "Conduit Jump",
         .ConversationInvite => "Conversation Invite",
@@ -145,6 +248,8 @@ fn englishShortLabel(notification_type: NotificationType) []const u8 {
         .AutopilotReached => "Waypoint Reached",
         .BombLauncherEmpty => "Out of Bombs",
         .CargoFull => "Cargo Full",
+        .ChatIntel => "Chat Intel",
+        .ChatKeyword => "Chat Keyword",
         .CloakFailed => "Cloak Failed",
         .ConduitJump => "Conduit Jump",
         .ConversationInvite => "Convo Invite",
@@ -199,29 +304,16 @@ fn typeRoster(context: *ui.Frame) !void {
     const rows = try widgets.openScrollPane(context, .str("knots.events.rows"), style.roster_scroll);
     var last_category: ?notification.NotificationCategory = null;
     for (TYPES_IN_ORDER) |notification_type| {
-        const index = @backingInt(notification_type);
         const category = notification.notificationCategory(notification_type);
         if (last_category != category) {
             last_category = category;
             try widgets.boxedText(context, ui.Key.str("knots.events.category").indexed(@backingInt(category)), categoryHeading(category), &style.roster_category, &style.tab_category_text);
         }
         const is_selected = notification_type == g_selected;
-        const row = Button{ .key = ui.Key.str("knots.events.row").indexed(index), .style = if (is_selected) &style.roster_row_selected else &style.roster_row };
-        if ((try widgets.openRosterRow(context, row)).clicked and !is_selected) {
+        if (try typeRow(context, notification_type, is_selected) and !is_selected) {
             g_selected = notification_type;
             context.requestRedraw();
         }
-        const ref = typeRef(index);
-        try context.e(Rect{ .key = ui.Key.str("knots.events.dot").indexed(index), .style = if (ref.get("enabled")) &style.event_dot_on else &style.event_dot_off });
-        try context.e(Text{
-            .selectable = false,
-            .key = ui.Key.str("knots.events.name").indexed(index),
-            .content = typeShortLabel(notification_type),
-            .style = if (is_selected) &style.roster_name_selected else &style.roster_name,
-        });
-        if (ref.get("tts_enabled")) try marker(context, ui.Key.str("knots.events.tts").indexed(index), .speech, "Speaks aloud");
-        if (ref.get("sound_enabled")) try marker(context, ui.Key.str("knots.events.sound").indexed(index), .speaker, "Plays a custom sound");
-        try row.close(context);
     }
     try rows.close(context);
     try roster.close(context);
@@ -254,66 +346,6 @@ fn marker(context: *ui.Frame, key: ui.Key, glyph: glyphs.Glyph, tip: []const u8)
     try tooltip.close(context);
 }
 
-fn typeDetail(context: *ui.Frame, notification_type: NotificationType) !void {
-    const ref = typeRef(@backingInt(notification_type));
-    const stack = try widgets.openScrollPane(context, .str("knots.events.detail"), style.detail_scroll);
-    const previous_rows = widgets.useDetailRows();
-    defer widgets.restoreRows(previous_rows);
-
-    const header = try widgets.openDetailHeader(context, .src(@src()));
-    try context.e(Text{ .selectable = false, .key = .src(@src()), .content = typeLabel(notification_type), .style = &style.roster_name_selected });
-    var is_enabled: bool = ref.get("enabled");
-    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("\u{25B6} Test"), .disabled = !is_enabled, .style = &style.plain_button })).clicked) {
-        testNotification(notification_type);
-    }
-    try header.close(context);
-    if (try widgets.switchRow(context, ui.Key.str("knots.events.enabled").indexed(ref.index), "Enabled", &is_enabled)) ref.set("enabled", is_enabled);
-    try widgets.hintText(context, .src(@src()), "When off, this event never alerts.");
-    try widgets.separator(context, .str("knots.events.separator.enabled"));
-
-    const rest = try widgets.openGroup(context, .src(@src()), is_enabled);
-    const timing = try widgets.openFieldGroup(context, .str("knots.events.timing"), "Timing");
-    try bind.number(context, ref, "duration_ms", "Duration", .{ .shows_seconds = true, .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "How long the alert shows; 0 keeps it until dismissed.");
-    try bind.number(context, ref, "throttle_ms", "Cooldown", .{ .shows_seconds = true, .unit = "s" });
-    try widgets.hintText(context, .src(@src()), "Ignores repeats within this time.");
-    try timing.close(context);
-    try widgets.separator(context, .str("knots.events.separator.timing"));
-
-    try customText(context, ref, notification_type);
-    try widgets.separator(context, .str("knots.events.separator.text"));
-
-    const behavior = try widgets.openFieldGroup(context, .str("knots.events.behavior"), "Behavior");
-    try bind.toggle(context, ref, "suppress_when_focused", "Suppress While Focused");
-    try widgets.hintText(context, .src(@src()), "Skips the alert while you're on that character.");
-    try bind.toggle(context, ref, "suppress_when_clicked", "Suppress After Click");
-    try widgets.hintText(context, .src(@src()), "Skips the alert briefly after you click that character.");
-    try bind.toggle(context, ref, "show_hidden_thumbnail", "Show Thumbnail Even If Hidden");
-    try widgets.hintText(context, .src(@src()), "Only for as long as the alert lasts.");
-    try bind.toggle(context, ref, "tts_enabled", "Speak Aloud (TTS)");
-    try widgets.hintText(context, .src(@src()), "Reads the alert out loud. Voice settings are on the Notifications tab.");
-    try behavior.close(context);
-    try widgets.separator(context, .str("knots.events.separator.behavior"));
-
-    const border = try widgets.openFieldGroup(context, .str("knots.events.border"), "Border");
-    try bind.toggle(context, ref, "show_border", "Show Border");
-    try widgets.hintText(context, .src(@src()), "Marks the thumbnail with a colored border during the alert.");
-    // A hidden border has no colour to set and nothing to flash.
-    const border_options = try widgets.openGroup(context, .src(@src()), ref.get("show_border"));
-    try bind.toggle(context, ref, "flash_border", "Flash Border");
-    try widgets.hintText(context, .src(@src()), "Makes the border blink.");
-    const defaults = config.ThumbnailConfig{};
-    try bind.optionalColor(context, ref, "border_color", "Border Color", defaults.inactiveBorderColor);
-    try widgets.hintText(context, .src(@src()), "Reset uses the default color.");
-    try border_options.close(context);
-    try border.close(context);
-    try widgets.separator(context, .str("knots.events.separator.border"));
-
-    try sound(context, ref, @backingInt(notification_type));
-    try rest.close(context);
-    try stack.close(context);
-}
-
 fn customText(context: *ui.Frame, ref: TypeRef, notification_type: NotificationType) !void {
     const primary_sample = notification.sample(notification_type);
     const alt_state = notification.altState(notification_type);
@@ -325,17 +357,7 @@ fn customText(context: *ui.Frame, ref: TypeRef, notification_type: NotificationT
         try textBox(context, ref, notification_type, .custom_text_alt, alt_sample, true);
     }
 
-    const chips = Rect{ .key = .src(@src()), .style = &style.chip_row };
-    _ = try chips.open(context);
-    const chip_box = Rect{ .key = .src(@src()), .style = &style.chip_box };
-    _ = try chip_box.open(context);
-    for (notification.placeholders(notification_type), 0..) |placeholder, index| {
-        const token = try std.fmt.allocPrint(context.arena(), "{{{s}}}", .{placeholder.name});
-        if (try tagChip(context, ui.Key.str("knots.events.chip").indexed(index), token)) insertToken(context, ref, notification_type, token);
-    }
-    if (try tagChip(context, .str("knots.events.chip.newline"), NEWLINE_TOKEN)) insertToken(context, ref, notification_type, NEWLINE_TOKEN);
-    try chip_box.close(context);
-    try chips.close(context);
+    try placeholderChips(context, ref, notification_type);
 
     try preview(context, notification_type, .custom_text, ref.get("custom_text"), primary_sample);
     if (alt_state) |state| {
@@ -346,6 +368,44 @@ fn customText(context: *ui.Frame, ref: TypeRef, notification_type: NotificationT
     try bind.optionalColor(context, ref, "text_color", "Text Color", session.profile().ptr.thumbnail.notifications.color);
     try widgets.hintText(context, .src(@src()), "Reset uses the Notification text's color on the Appearance tab.");
     try group.close(context);
+}
+
+/// A row per run of chips that fits, since knots only wraps text.
+fn placeholderChips(context: *ui.Frame, ref: TypeRef, notification_type: NotificationType) !void {
+    const arena = context.arena();
+    const placeholders = notification.placeholders(notification_type);
+    const tokens = try arena.alloc([]const u8, placeholders.len);
+    for (placeholders, tokens) |placeholder, *token| token.* = try std.fmt.allocPrint(arena, "{{{s}}}", .{placeholder.name});
+
+    var first: usize = 0;
+    while (first < tokens.len) {
+        const end = try chipRowEnd(context, tokens, first);
+        const row = Rect{ .key = ui.Key.str("knots.events.chip.row").indexed(first), .style = &style.chip_row };
+        _ = try row.open(context);
+        const box = Rect{ .key = ui.Key.str("knots.events.chip.box").indexed(first), .style = &style.chip_box };
+        _ = try box.open(context);
+        for (tokens[first..end], first..) |token, index| {
+            if (try tagChip(context, ui.Key.str("knots.events.chip").indexed(index), token)) insertToken(context, ref, notification_type, token);
+        }
+        try box.close(context);
+        try row.close(context);
+        first = end;
+    }
+}
+
+/// Past the last of `tokens` from `first` that fits on a row; always takes at least one.
+fn chipRowEnd(context: *ui.Frame, tokens: []const []const u8, first: usize) !usize {
+    const padding = comptime style.placeholder_chip.padding.?;
+    const gap = comptime style.chip_box.gap.?;
+    var used: f32 = 0;
+    var end = first;
+    while (end < tokens.len) : (end += 1) {
+        const width = try widgets.textWidth(context, tokens[end], &style.placeholder_chip) + padding.left() + padding.right() + CHIP_BORDERS;
+        const needed = if (end == first) width else used + gap + width;
+        if (end > first and needed > style.CHIP_BOX_WIDTH) break;
+        used = needed;
+    }
+    return end;
 }
 
 fn tagChip(context: *ui.Frame, key: ui.Key, token: []const u8) !bool {
@@ -396,11 +456,7 @@ fn preview(context: *ui.Frame, notification_type: NotificationType, comptime fie
     var default_buffer: [DEFAULT_TEXT_SIZE]u8 = undefined;
     var render_buffer: [notification.TEXT_MAX]u8 = undefined;
     const typed = std.mem.trim(u8, custom orelse "", " ");
-    const shown = if (typed.len == 0) notification.defaultText(sample, &default_buffer) else template.render(typed, notification.placeholders(notification_type), .{
-        .source = sample.source,
-        .target = sample.target,
-        .character = notification.SAMPLE_CHARACTER,
-    }, &render_buffer) orelse typed;
+    const shown = if (typed.len == 0) notification.defaultText(sample, &default_buffer) else template.render(typed, notification.placeholders(notification_type), notification.templateValues(sample, notification.SAMPLE_CHARACTER), &render_buffer) orelse typed;
     var lines = std.mem.splitScalar(u8, shown, '\n');
     var kept: std.ArrayList(u8) = .empty;
     var line_count: usize = 0;
@@ -418,7 +474,7 @@ fn preview(context: *ui.Frame, notification_type: NotificationType, comptime fie
 }
 
 /// The file's name only; the full path is what's saved.
-fn sound(context: *ui.Frame, ref: TypeRef, type_index: usize) !void {
+fn sound(context: *ui.Frame, ref: TypeRef, sound_target: pickers.Target, sound_index: usize) !void {
     const group = try widgets.openFieldGroup(context, .str("knots.events.sound"), "Sound");
     try bind.toggle(context, ref, "sound_enabled", "Play Custom Sound");
     try widgets.hintText(context, .src(@src()), "Plays a sound file of your choice with the alert.");
@@ -427,23 +483,11 @@ fn sound(context: *ui.Frame, ref: TypeRef, type_index: usize) !void {
     const path = ref.get("sound_path") orelse "";
     try widgets.boxedText(context, .src(@src()), if (path.len == 0) "None" else std.fs.path.basename(path), &style.path_box, if (path.len == 0) &style.path_text_empty else &style.path_text);
     if (path.len > 0 and (try context.interact(Button{ .key = .src(@src()), .label = "\u{00D7}", .style = &style.icon_button_danger_text })).clicked) ref.set("sound_path", null);
-    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Browse"), .style = &style.plain_button })).clicked) host.browseSoundFile(type_index);
+    if ((try context.interact(Button{ .key = .src(@src()), .label = lang.text("Browse"), .style = &style.plain_button })).clicked) host.browseSoundFile(sound_target, sound_index);
     try row.close(context);
     try widgets.hintText(context, .src(@src()), "A WAV or MP3 file.");
     try bind.slider(context, ref, "sound_volume", "Volume", .{ .display = .percent });
     try widgets.hintText(context, .src(@src()), "Only affects this alert's sound.");
     try options.close(context);
     try group.close(context);
-}
-
-/// Fires the type on every thumbnail with the settings the window has for it, saved or not.
-fn testNotification(notification_type: NotificationType) void {
-    const thumbnail_set = session.runningApp().thumbnail_set orelse {
-        slog.warn("Failed to test notification: the thumbnail set isn't ready", .{});
-        return;
-    };
-    thumbnail_set.showTestNotification(notification_type, session.profile().ptr.thumbnail.notifications.getTypeConfig(notification_type)) catch |err| {
-        slog.err("Failed to test notification: {}", .{err});
-        status.show(.failure, "Failed to test notification: {err}", .{ .err = err });
-    };
 }

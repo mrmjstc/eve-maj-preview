@@ -200,7 +200,7 @@ const TtsEngine = struct {
 
     pub fn run(self: *TtsEngine, command: Command) void {
         switch (command) {
-            .speak => |text| self.speak(text),
+            .speak => |speech| self.speak(speech.text),
             .set_volume_percent => |volume_percent| self.setVolume(volume_percent),
             .set_rate => |rate| self.setRate(rate),
         }
@@ -212,14 +212,19 @@ const TtsEngine = struct {
     }
 };
 
-const Command = union(enum) {
+const Speech = struct {
     /// Owned by page_allocator.
-    speak: []const u8,
+    text: []const u8,
+    is_minor: bool,
+};
+
+const Command = union(enum) {
+    speak: Speech,
     set_volume_percent: u8,
     set_rate: i8,
 
     pub fn deinit(self: Command) void {
-        if (self == .speak) std.heap.page_allocator.free(self.speak);
+        if (self == .speak) std.heap.page_allocator.free(self.speak.text);
     }
 
     /// Voice settings are never dropped, or later alerts would speak with stale ones.
@@ -228,6 +233,10 @@ const Command = union(enum) {
             .speak => true,
             .set_volume_percent, .set_rate => false,
         };
+    }
+
+    pub fn isMinorAlert(self: Command) bool {
+        return self == .speak and self.speak.is_minor;
     }
 };
 
@@ -245,14 +254,16 @@ pub fn setVoiceSettings(volume_percent: u8, rate: i8) void {
     g_worker.push(.{ .set_rate = rate });
 }
 
-/// Returns at once; alerts are spoken in order, past `max_waiting` the oldest waiting one is dropped, and none are if SAPI is unavailable.
-pub fn speakAlert(text: []const u8, max_waiting: usize) void {
+/// Returns at once; alerts are spoken in order, past `max_waiting` the oldest waiting one is dropped, `is_minor` ones first, and none are spoken if SAPI is unavailable.
+pub fn speakAlert(text: []const u8, max_waiting: usize, is_minor: bool) void {
     if (!g_worker.start()) return;
     const copy = std.heap.page_allocator.dupe(u8, text) catch |err| {
         slog.warn("Failed to queue TTS alert: {}", .{err});
         return;
     };
-    g_worker.pushAlert(.{ .speak = copy }, max_waiting);
+    // Chat text reaches here, and SAPI can take text that opens with a tag for markup.
+    std.mem.replaceScalar(u8, copy, '<', ' ');
+    g_worker.pushAlert(.{ .speak = .{ .text = copy, .is_minor = is_minor } }, max_waiting);
 }
 
 /// Call once during app shutdown.

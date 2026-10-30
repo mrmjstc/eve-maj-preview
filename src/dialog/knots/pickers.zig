@@ -12,6 +12,8 @@ pub const Target = enum {
     gamelog_dir,
     /// A notification type's sound; Picked.index is the type.
     sound_file,
+    /// A chat alert rule's sound; Picked.index is the rule.
+    rule_sound_file,
     /// A settings file for the Import dialog.
     import_file,
 };
@@ -64,7 +66,7 @@ fn pickerThread(target: Target, index: usize, title: []const u8, file_type_name:
     defer g_allocator.free(file_type_name);
     const shown = switch (target) {
         .chatlog_dir, .gamelog_dir => win32.showFolderPicker(g_allocator, title, owner),
-        .sound_file => win32.showFilePicker(g_allocator, title, file_type_name, "*.wav;*.mp3", owner),
+        .sound_file, .rule_sound_file => win32.showFilePicker(g_allocator, title, file_type_name, "*.wav;*.mp3", owner),
         .import_file => win32.showFilePicker(g_allocator, title, file_type_name, "*.json;*.ini", owner),
     };
     const path = shown catch |err| {
@@ -86,7 +88,7 @@ fn pickerThread(target: Target, index: usize, title: []const u8, file_type_name:
 fn fileTypeName(target: Target) []const u8 {
     return switch (target) {
         .chatlog_dir, .gamelog_dir => "",
-        .sound_file => "Audio Files (*.wav, *.mp3)",
+        .sound_file, .rule_sound_file => "Audio Files (*.wav, *.mp3)",
         .import_file => "Settings Files (*.json, *.ini)",
     };
 }

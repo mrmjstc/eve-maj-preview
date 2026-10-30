@@ -22,6 +22,11 @@ pub const Records = struct {
     notified_queue: *notified_queue_mod.NotifiedQueue,
 };
 
+const HistoryRecord = struct {
+    /// Null uses the type's own colour.
+    text_color: ?u32 = null,
+};
+
 /// What showing a notification reads and records beyond the thumbnail itself; borrowed for one call.
 pub const Context = struct {
     allocator: std.mem.Allocator,
@@ -30,13 +35,14 @@ pub const Context = struct {
     active_source_hwnd: ?win32.HWND,
 };
 
-/// Shows `notification` on one client's thumbnail, subject to that type's notification settings.
+/// Shows `notification` on one client's thumbnail, subject to its type's notification settings, or its chat rule's.
 pub fn notify(context: Context, thumbnail: *ThumbnailWindow, notification: notification_mod.Notification) void {
     const settings = &context.config.thumbnail.notifications;
-    const type_config = settings.getTypeConfig(notification.notification_type);
+    const type_config = alertConfig(context.config, notification);
     var text_buf: [notification_mod.TEXT_MAX]u8 = undefined;
     const text = notification_mod.text(notification, type_config.customText(), thumbnail.character_name, &text_buf);
-    const queued = queue(context, thumbnail, text, notification.notification_type, true) catch |err| {
+    const history_text_color = if (notification.chat_rule_index != null) type_config.text_color else null;
+    const queued = queue(context, thumbnail, text, notification.notification_type, type_config, .{ .text_color = history_text_color }) catch |err| {
         slog.err("Failed to show {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), thumbnail.character_name, err });
         return;
     };
@@ -46,7 +52,7 @@ pub fn notify(context: Context, thumbnail: *ThumbnailWindow, notification: notif
         (if (settings.tts_use_display_name) thumbnail.cached_display_name else thumbnail.character_name)
     else
         null;
-    alert_effects.play(settings, type_config, text, spoken_name);
+    alert_effects.play(settings, type_config, text, spoken_name, notification_mod.notificationCategory(notification.notification_type) == .Chat);
 }
 
 /// Shows `notification` on every EVE client's thumbnail for a global user action; kept out of history, and sound/speech play once rather than per thumbnail.
@@ -59,13 +65,13 @@ pub fn notifyAll(context: Context, thumbnails: []ThumbnailWindow, notification: 
     var has_shown_any = false;
     for (thumbnails) |*thumbnail| {
         if (!thumbnail.is_eve_client) continue;
-        const queued = queue(context, thumbnail, text, notification.notification_type, false) catch |err| {
+        const queued = queue(context, thumbnail, text, notification.notification_type, type_config, null) catch |err| {
             slog.err("Failed to show {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), thumbnail.character_name, err });
             continue;
         };
         has_shown_any = has_shown_any or queued;
     }
-    if (has_shown_any) alert_effects.play(settings, type_config, text, null);
+    if (has_shown_any) alert_effects.play(settings, type_config, text, null, false);
 }
 
 /// Bypasses every suppression, shows hidden thumbnails and skips history and cycle tracking; alerts play once, not per thumbnail.
@@ -92,7 +98,7 @@ pub fn showTest(context: Context, thumbnails: []ThumbnailWindow, notification_ty
     }
 
     const speech = spoken orelse notification_mod.text(example, type_config.customText(), notification_mod.SAMPLE_CHARACTER, &spoken_buf);
-    alert_effects.playUnmuted(&context.config.thumbnail.notifications, type_config, speech, null);
+    alert_effects.playUnmuted(&context.config.thumbnail.notifications, type_config, speech, null, false);
 }
 
 /// Removes click-dismissable notifications (control/activation.zig's activate); returns whether anything was removed.
@@ -125,10 +131,18 @@ pub fn expire(allocator: std.mem.Allocator, thumbnails: []ThumbnailWindow) void 
     }
 }
 
-/// Applies the type's enable/mute/suppress/throttle rules and queues the notification; false if it was filtered out.
-fn queue(context: Context, thumbnail: *ThumbnailWindow, text: []const u8, notification_type: notification_mod.NotificationType, should_record_history: bool) !bool {
+/// A rule removed since the alert was raised falls back to the type's settings.
+fn alertConfig(config: *const config_mod.Config, notification: notification_mod.Notification) config_mod.NotificationTypeConfig {
+    const chat_rules = config.chatAlerts.items;
+    if (notification.chat_rule_index) |index| {
+        if (index < chat_rules.len) return chat_rules[index].alert;
+    }
+    return config.thumbnail.notifications.getTypeConfig(notification.notification_type);
+}
+
+/// Applies `type_config`'s enable/mute/suppress/throttle rules and queues the notification, kept out of history if `history_record` is null; false if it was filtered out.
+fn queue(context: Context, thumbnail: *ThumbnailWindow, text: []const u8, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig, history_record: ?HistoryRecord) !bool {
     const settings = &context.config.thumbnail.notifications;
-    const type_config = settings.getTypeConfig(notification_type);
     const now = win32.Ticks.now();
     if (rules.holdReason(settings, type_config, .{
         .is_muted = context.config.isNotificationMuted(thumbnail.character_name),
@@ -142,7 +156,7 @@ fn queue(context: Context, thumbnail: *ThumbnailWindow, text: []const u8, notifi
 
     // Game events feed the "cycle to recently notified" queue; feedback on the user's own action must not.
     if (!notification_mod.isUserAction(notification_type)) context.records.notified_queue.track(context.allocator, thumbnail.character_name);
-    if (should_record_history) context.records.history.push(thumbnail.source_hwnd, thumbnail.character_name, text, notification_type, thumbnail.cached_character_color);
+    if (history_record) |record| context.records.history.push(thumbnail.source_hwnd, thumbnail.character_name, text, notification_type, thumbnail.cached_character_color, record.text_color);
 
     slog.debug("Queued notification for {s}: [{s}] {s} (border_color_override: {?})", .{ thumbnail.character_name, @tagName(notification_type), text, type_config.border_color });
     return true;

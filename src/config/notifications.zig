@@ -30,8 +30,10 @@ pub const NotificationTypeConfig = struct {
         return .{ .primary = self.custom_text, .alt = self.custom_text_alt };
     }
 
+    /// Chat alerts have no throttle: it would drop a different message, and each rule has a cooldown instead.
     fn defaultFor(notification_type: notification.NotificationType) NotificationTypeConfig {
-        return if (notification.isUserAction(notification_type)) .{ .duration_ms = 3000, .throttle_ms = 0 } else .{};
+        if (notification.isUserAction(notification_type)) return .{ .duration_ms = 3000, .throttle_ms = 0 };
+        return if (notification.notificationCategory(notification_type) == .Chat) .{ .throttle_ms = 0 } else .{};
     }
 
     /// A const, not a fn: evaluated once instead of per comptime Wire field default, which exceeded the branch quota.

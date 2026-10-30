@@ -4,7 +4,13 @@ const gamelog_events = @import("../notifications/gamelog_events.zig");
 
 /// Longer lines are dropped; combat lines with colour tags run to 2-3KB.
 pub const MAX_LINE_LENGTH = 4000;
+/// The channel of `Local_...` logs, which every character follows for its system.
+pub const LOCAL_CHANNEL = "Local";
 const LOCAL_CHANGE = "EVE System > Channel changed to Local";
+/// EVE's own lines, such as a channel's MOTD on joining, which are never someone talking.
+const SYSTEM_SPEAKER = "EVE System";
+/// "_YYYYMMDD_HHMMSS_" between a channel and a character ID.
+const FILE_STAMP_LENGTH = 17;
 const JUMP = "Jumping from ";
 const UNDOCK = "Undocking from ";
 /// EVE's tag on jump and undock lines.
@@ -20,6 +26,20 @@ pub const Activity = enum { event, mining, bounty };
 pub const GameLine = struct {
     system: ?SystemChange = null,
     activity: ?Activity = null,
+};
+
+pub const ChatMessage = struct {
+    /// Borrows from the parsed line.
+    speaker: []const u8,
+    /// Borrows from the parsed line.
+    body: []const u8,
+};
+
+pub const ChannelFile = struct {
+    /// Borrows from the file name.
+    channel: []const u8,
+    /// See logFileTimestamp.
+    timestamp: u64,
 };
 
 /// With its line's timestamp, so chatlog and gamelog finds can be compared for recency.
@@ -84,6 +104,21 @@ pub fn parseChatLine(line: []const u8) ?[]const u8 {
     const message = stamped[close + " ] ".len ..];
     if (!std.mem.startsWith(u8, message, LOCAL_CHANGE)) return null;
     return localSystem(message);
+}
+
+/// "[ time ] Some Pilot > text"; null for EVE's own lines, or an empty message.
+pub fn parseChatMessage(line: []const u8) ?ChatMessage {
+    const stamped = std.mem.trimStart(u8, line, "\u{FEFF}");
+    if (!std.mem.startsWith(u8, stamped, "[ ")) return null;
+    const close = std.mem.find(u8, stamped, " ] ") orelse return null;
+    const rest = stamped[close + " ] ".len ..];
+    // The first arrow: pilot names can't hold one, but a message can.
+    const arrow = std.mem.find(u8, rest, " > ") orelse return null;
+    const speaker = rest[0..arrow];
+    if (std.mem.eql(u8, speaker, SYSTEM_SPEAKER)) return null;
+    const body = std.mem.trim(u8, rest[arrow + " > ".len ..], " \t");
+    if (speaker.len == 0 or body.len == 0) return null;
+    return .{ .speaker = speaker, .body = body };
 }
 
 /// Dispatches on the message's first characters, so each line is scanned once.
@@ -158,6 +193,18 @@ pub fn logFileTimestamp(file_name: []const u8, is_chatlog: bool) u64 {
     const date = std.fmt.parseInt(u64, stamp[0..8], 10) catch return 0;
     const time = std.fmt.parseInt(u64, stamp[9..15], 10) catch return 0;
     return date * 1000000 + time;
+}
+
+/// "<channel>_YYYYMMDD_HHMMSS_<id>.txt", read from its end, since a channel's name can hold anything; null for any other name.
+pub fn channelFile(file_name: []const u8) ?ChannelFile {
+    const id = characterIdFromFileName(file_name) orelse return null;
+    const stem_length = withoutTxt(file_name).len;
+    if (stem_length <= id.len + FILE_STAMP_LENGTH) return null;
+    const channel_end = stem_length - id.len - FILE_STAMP_LENGTH;
+    if (file_name[channel_end] != '_') return null;
+    const timestamp = logFileTimestamp(file_name[channel_end + 1 ..], false);
+    if (timestamp == 0) return null;
+    return .{ .channel = file_name[0..channel_end], .timestamp = timestamp };
 }
 
 /// UTC Unix seconds for a logFileTimestamp; null for 0 or an impossible date.
@@ -276,6 +323,32 @@ test "parseChatLine reads the system from a Local channel change" {
 test "parseChatLine ignores a Local change typed by a player" {
     try testing.expect(parseChatLine("\u{FEFF}[ 2026.09.21 21:10:31 ] Some Pilot > EVE System > Channel changed to Local : Jita") == null);
     try testing.expect(parseChatLine("\u{FEFF}[ 2026.09.21 21:10:31 ] Some Pilot > [ 2099.01.01 00:00:00 ] EVE System > Channel changed to Local : Jita") == null);
+}
+
+test "parseChatMessage splits a pilot's line at the first arrow" {
+    const message = parseChatMessage("\u{FEFF}[ 2026.10.29 21:27:13 ] Some Pilot > C-J6MT > MR4-MY hostile").?;
+    try testing.expectEqualStrings("Some Pilot", message.speaker);
+    try testing.expectEqualStrings("C-J6MT > MR4-MY hostile", message.body);
+}
+
+test "parseChatMessage skips EVE's own lines and anything that isn't a message" {
+    try testing.expect(parseChatMessage("[ 2026.10.29 21:27:12 ] EVE System > Channel MOTD: Jita is lovely") == null);
+    try testing.expect(parseChatMessage("[ 2026.10.29 21:27:13 ] Some Pilot >  ") == null);
+    try testing.expect(parseChatMessage("          Channel Name:    Local") == null);
+}
+
+test "channelFile reads a channel name holding underscores, spaces or an ampersand" {
+    const file = channelFile("I. Delve & Q_Intel_20260507_175255_2120480881.txt").?;
+    try testing.expectEqualStrings("I. Delve & Q_Intel", file.channel);
+    try testing.expectEqual(@as(u64, 20260507175255), file.timestamp);
+    try testing.expectEqualStrings("Local", channelFile("Local_20261029_212708_2122627139.txt").?.channel);
+}
+
+test "channelFile rejects names EVE didn't write" {
+    try testing.expect(channelFile("20261029_212708_2122627139.txt") == null);
+    try testing.expect(channelFile("Corp_20261029_212708.txt") == null);
+    try testing.expect(channelFile("Corp_notastamp_123456_2122627139.txt") == null);
+    try testing.expect(channelFile("Corp_20261029_212708_2122627139 (1).txt") == null);
 }
 
 test "parseGameLine reads EVE's (None) jump lines and untagged ones" {

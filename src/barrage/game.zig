@@ -114,13 +114,13 @@ pub const Tank = struct {
     }
 
     pub fn hasAmmo(self: *const Tank, weapon: Weapon) bool {
-        return spec(weapon).ammo == null or self.ammo[@intFromEnum(weapon)] > 0;
+        return spec(weapon).ammo == null or self.ammo[@backingInt(weapon)] > 0;
     }
 
     /// Null for unlimited.
     pub fn ammoLeft(self: *const Tank, weapon: Weapon) ?u8 {
         if (spec(weapon).ammo == null) return null;
-        return self.ammo[@intFromEnum(weapon)];
+        return self.ammo[@backingInt(weapon)];
     }
 
     /// Where the barrel turns.
@@ -136,10 +136,10 @@ pub const Tank = struct {
 
     /// The next weapon with ammo left in `direction`, -1 or 1; the shell always has some.
     fn nextWeapon(self: *const Tank, direction: i8) Weapon {
-        var index: i32 = @intFromEnum(self.weapon);
+        var index: i32 = @backingInt(self.weapon);
         for (0..WEAPON_COUNT) |_| {
             index = @mod(index + direction, @as(i32, WEAPON_COUNT));
-            const weapon: Weapon = @enumFromInt(index);
+            const weapon: Weapon = @fromBackingInt(@intCast(index));
             if (self.hasAmmo(weapon)) return weapon;
         }
         return .shell;
@@ -427,7 +427,7 @@ pub const Game = struct {
             tank.power = 60;
             tank.fall_from = null;
             tank.angle_degrees = if (tank.x < FIELD_WIDTH / 2) 60 else 120;
-            for (&tank.ammo, 0..) |*ammo, index| ammo.* = spec(@enumFromInt(index)).ammo orelse 0;
+            for (&tank.ammo, 0..) |*ammo, index| ammo.* = spec(@fromBackingInt(@intCast(index))).ammo orelse 0;
         }
         self.wind = (random.float(f32) * 2 - 1) * MAX_WIND * STARTING_WIND_SHARE;
         self.projectile_count = 0;
@@ -502,7 +502,7 @@ pub const Game = struct {
         const weapon = tank.weapon;
         self.last_fired = .{ .shot = .{ .angle_degrees = tank.angle_degrees, .power = tank.power }, .weapon = weapon, .turn = self.turn, .state_hash = self.stateHash() };
         self.turn +%= 1;
-        if (spec(weapon).ammo != null) tank.ammo[@intFromEnum(weapon)] -= 1;
+        if (spec(weapon).ammo != null) tank.ammo[@backingInt(weapon)] -= 1;
         if (!tank.hasAmmo(weapon)) tank.weapon = .shell;
         self.addProjectile(.{ .flight = .launch(tank, tank.angle_degrees, tank.power), .weapon = weapon, .owner = self.current });
         self.leftover_seconds = 0;
@@ -973,7 +973,7 @@ test "a limited weapon runs out, falls back to the shell, and is skipped when st
     game.fire();
     try testing.expectEqual(@as(?u8, 0), game.tanks[0].ammoLeft(.megaton));
     try testing.expectEqual(Weapon.shell, game.tanks[0].weapon);
-    game.tanks[0].ammo[@intFromEnum(Weapon.heavy_shell)] = 0;
+    game.tanks[0].ammo[@backingInt(Weapon.heavy_shell)] = 0;
     try testing.expectEqual(Weapon.cluster, game.tanks[0].nextWeapon(1));
     try testing.expectEqual(Weapon.dirt_clod, game.tanks[0].nextWeapon(-1));
 }

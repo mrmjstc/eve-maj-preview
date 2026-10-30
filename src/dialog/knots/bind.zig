@@ -125,6 +125,13 @@ pub fn text(context: *ui.Frame, ref: anytype, comptime field: []const u8, label:
     try row.close(context);
 }
 
+/// `text` with its own box style, e.g. to share a left edge with the rows around it.
+pub fn styledText(context: *ui.Frame, ref: anytype, comptime field: []const u8, label: []const u8, placeholder: []const u8, box_style: *const ui.Style) !void {
+    const row = try widgets.openBinding(context, fieldKey(ref, field), label);
+    try styledTextBox(context, ref, field, placeholder, box_style);
+    try row.close(context);
+}
+
 /// Just the box, for a row with more in it, e.g. a Browse button.
 pub fn textBox(context: *ui.Frame, ref: anytype, comptime field: []const u8, placeholder: []const u8) !void {
     try styledTextBox(context, ref, field, placeholder, &style.text_input);

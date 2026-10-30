@@ -25,7 +25,7 @@ pub const TIME_TEXT_MAX = 24;
 pub const COUNT_TEXT_MAX = 24;
 
 /// The footer's filter buttons, left to right.
-pub const CATEGORY_ORDER = [_]NotificationCategory{ .Fleet, .Mining, .Combat, .Navigation, .General };
+pub const CATEGORY_ORDER = [_]NotificationCategory{ .Fleet, .Mining, .Combat, .Navigation, .Chat, .General };
 
 /// The panel's sizes for the current settings, in pixels; its width and height are the configured ones.
 pub const Metrics = struct {
@@ -62,6 +62,7 @@ pub fn categoryLabel(category: NotificationCategory) []const u8 {
         .Mining => "Mining",
         .Combat => "Combat",
         .Navigation => "Nav",
+        .Chat => "Chat",
         .General => "General",
     };
 }
@@ -90,6 +91,7 @@ pub fn isCategoryEnabled(display: *const DisplayConfig, category: NotificationCa
         .Mining => display.notifInfoPanelShowMining,
         .Combat => display.notifInfoPanelShowCombat,
         .Navigation => display.notifInfoPanelShowNavigation,
+        .Chat => display.notifInfoPanelShowChat,
         .General => display.notifInfoPanelShowGeneral,
     };
 }

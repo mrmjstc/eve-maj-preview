@@ -978,8 +978,9 @@ pub const inline_row: Style = .{ .width = .grow(), .direction = .row, .@"align" 
 /// Small buttons that insert a {placeholder}, at the right edge like an aligned row's controls.
 pub const chip_row: Style = .{ .width = .grow(), .direction = .row, .justify = .end, .padding = .xy(ROW_INSET, 0) };
 /// As wide as a custom text box and its clear button, so the chips start under the box.
-pub const chip_box: Style = .{ .width = .fixed(CUSTOM_TEXT_WIDTH + binding_row.gap.? + CONTROL_HEIGHT), .direction = .row, .gap = 4, .wrap = true };
-/// A notification's custom text box: wider than an even split with its short state label.
+pub const chip_box: Style = .{ .width = .fixed(CHIP_BOX_WIDTH), .direction = .row, .gap = 4 };
+pub const CHIP_BOX_WIDTH = CUSTOM_TEXT_WIDTH + binding_row.gap.? + CONTROL_HEIGHT;
+/// A short text box at a field group row's right edge, beside a short label, e.g. a notification's custom text.
 pub const custom_text_input: Style = text_input.with(.{ .width = .fixed(CUSTOM_TEXT_WIDTH) });
 const CUSTOM_TEXT_WIDTH = 190;
 pub const placeholder_chip: Style = plain_button.with(.{ .height = .fixed(22), .padding = .xy(6, 0), .font_size = .xs });
@@ -1131,7 +1132,7 @@ pub const barrage_panel: Style = modal.with(.{ .width = .fixed(BARRAGE_FIELD_WID
 pub const barrage_row: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 12 };
 /// Narrower than text_input_aligned, leaving room for the Join button beside it.
 pub const barrage_code_input: Style = text_input.with(.{ .width = .fixed(150) });
-pub const barrage_actions: Style =.{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
+pub const barrage_actions: Style = .{ .width = .grow(), .direction = .row, .@"align" = .center, .gap = 8 };
 pub const barrage_name: Style = .{ .font = FONT_SEMIBOLD, .foreground = .{ .color = TEXT } };
 /// Wide enough that the seat buttons beside it line up.
 pub const barrage_seat_label: Style = barrage_name.with(.{ .width = .fixed(140) });

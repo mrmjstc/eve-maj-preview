@@ -14,6 +14,7 @@ const chatlog_mod = @import("config/chatlog.zig");
 const activity = @import("config/activity.zig");
 const notifications = @import("config/notifications.zig");
 const window_filters = @import("config/window_filters.zig");
+const chat_alerts = @import("config/chat_alerts.zig");
 const thumbnail_mod = @import("config/thumbnail.zig");
 const display_mod = @import("config/display.zig");
 const behavior = @import("config/behavior.zig");
@@ -81,6 +82,7 @@ pub const IskRateUnit = activity.IskRateUnit;
 pub const NotificationTypeConfig = notifications.NotificationTypeConfig;
 pub const NotificationConfig = notifications.NotificationConfig;
 pub const WindowFilterConfig = window_filters.WindowFilterConfig;
+pub const ChatAlertConfig = chat_alerts.ChatAlertConfig;
 pub const StateVisualConfig = thumbnail_mod.StateVisualConfig;
 pub const ThumbnailState = thumbnail_mod.ThumbnailState;
 pub const ThumbnailConfig = thumbnail_mod.ThumbnailConfig;
@@ -141,6 +143,7 @@ pub const Config = struct {
     systemColors: std.ArrayList(SystemColorConfig) = .empty,
     hotkeyGroups: std.ArrayList(HotkeyGroupConfig) = .empty,
     thumbnailSpaces: std.ArrayList(ThumbnailSpace) = .empty,
+    chatAlerts: std.ArrayList(ChatAlertConfig) = .empty,
     hotkeys: HotkeysConfig = .{},
 
     pub const runtime_fields = .{ "allocator", "profile_name" };
@@ -347,6 +350,7 @@ pub const Config = struct {
         ranges.clamp(Config, self);
         for (self.characters.items) |*character| character.validate();
         for (self.thumbnailSpaces.items) |*space| space.validate();
+        for (self.chatAlerts.items) |*rule| rule.validate();
         spaces.keepOneOfEachSpecialSpace(self.thumbnailSpaces.items);
     }
 

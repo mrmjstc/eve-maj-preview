@@ -60,6 +60,7 @@ pub const Trackers = struct {
         if (monitor) |active_monitor| {
             active_monitor.setTrackers(self.combat, self.mining, self.bounty);
             active_monitor.setDamageAlertExcludedWeapons(config.combat.damage_alert_excluded_weapons);
+            active_monitor.setChatAlerts(config);
         }
     }
 

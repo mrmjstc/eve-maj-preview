@@ -16,6 +16,7 @@ const SECTIONS = std.StaticStringMap(SectionWords).initComptime(.{
     .{ "autoMinimize", SectionWords{ .title = "Auto-Minimize", .hint = "Minimize inactive clients" } },
     .{ "bounty", SectionWords{ .title = "Bounty Tracker", .hint = "Bounty log parsing" } },
     .{ "characters", SectionWords{ .title = "Characters", .hint = "Positions, sizes, colors, hotkeys ({n})" } },
+    .{ "chatAlerts", SectionWords{ .title = "Chat Alerts", .hint = "Chat channel alert rules ({n})" } },
     .{ "chatlog", SectionWords{ .title = "Chatlog Monitoring", .hint = "Chat/game log directories and triggers" } },
     .{ "closeAll", SectionWords{ .title = "Close All", .hint = "Close-all behavior" } },
     .{ "combat", SectionWords{ .title = "Combat Tracker", .hint = "Combat log parsing" } },

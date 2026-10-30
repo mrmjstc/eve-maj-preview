@@ -4,7 +4,7 @@ const log = @import("../log.zig");
 
 const POLL_MS: i64 = 50;
 
-/// `Engine` has `init`, `run` and `deinit`, called on the worker thread; `Command`'s `deinit` frees what it owns once run or dropped, and `isAlert` says whether pushAlert may drop it; `description` names the feature in logs.
+/// `Engine` has `init`, `run` and `deinit`, called on the worker thread; `Command`'s `deinit` frees what it owns once run or dropped, `isAlert` says whether pushAlert may drop it, and `isMinorAlert` that it goes before other alerts; `description` names the feature in logs.
 pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []const u8, comptime description: []const u8) type {
     const slog = log.Scoped(scope);
 
@@ -52,7 +52,7 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
             };
         }
 
-        /// Like push, then drops the oldest waiting alerts past `max_waiting`, so a flood can't delay new ones without limit; below 1 counts as 1, keeping `command` itself.
+        /// Like push, then drops the oldest waiting alerts past `max_waiting`, minor ones first, so a flood can't delay new ones without limit; below 1 counts as 1, keeping `command` itself unless it's minor and the rest aren't.
         pub fn pushAlert(self: *Self, command: Command, max_waiting: usize) void {
             self.append(command, @max(max_waiting, 1)) catch |err| {
                 slog.warn("Failed to queue a {s} alert: {}", .{ description, err });
@@ -85,15 +85,22 @@ pub fn Worker(comptime Command: type, comptime Engine: type, comptime scope: []c
             for (self.queue.items) |queued| {
                 if (queued.isAlert()) alert_count += 1;
             }
+            const excess_count = alert_count -| max_waiting;
+            const minor_count = self.dropOldest(excess_count, true);
+            return minor_count + self.dropOldest(excess_count - minor_count, false);
+        }
+
+        /// Up to `excess_count` of the oldest alerts, only minor ones if `is_minor_only`; caller holds mutex.
+        fn dropOldest(self: *Self, excess_count: usize, is_minor_only: bool) usize {
             var dropped_count: usize = 0;
             var i: usize = 0;
-            while (alert_count > max_waiting and i < self.queue.items.len) {
-                if (!self.queue.items[i].isAlert()) {
+            while (dropped_count < excess_count and i < self.queue.items.len) {
+                const queued = self.queue.items[i];
+                if (!queued.isAlert() or (is_minor_only and !queued.isMinorAlert())) {
                     i += 1;
                     continue;
                 }
                 self.queue.orderedRemove(i).deinit();
-                alert_count -= 1;
                 dropped_count += 1;
             }
             return dropped_count;
@@ -147,6 +154,7 @@ const FreedLog = struct {
 const TestCommand = struct {
     id: u8,
     is_alert: bool,
+    is_minor: bool = false,
     log: *FreedLog,
 
     fn deinit(self: TestCommand) void {
@@ -156,6 +164,10 @@ const TestCommand = struct {
 
     fn isAlert(self: TestCommand) bool {
         return self.is_alert;
+    }
+
+    fn isMinorAlert(self: TestCommand) bool {
+        return self.is_minor;
     }
 };
 
@@ -215,6 +227,29 @@ test "pushAlert keeps the new alert when max_waiting is 0" {
     var buffer: [8]u8 = undefined;
     try testing.expectEqualSlices(u8, &.{2}, drainIds(&worker, &buffer));
     try testing.expectEqualSlices(u8, &.{1}, log_entries.freed());
+}
+
+test "pushAlert drops minor alerts before older ones that aren't" {
+    var log_entries: FreedLog = .{};
+    var worker: TestWorker = .{ .io = testing.io };
+    worker.push(.{ .id = 1, .is_alert = true, .log = &log_entries });
+    worker.push(.{ .id = 2, .is_alert = true, .is_minor = true, .log = &log_entries });
+    worker.pushAlert(.{ .id = 3, .is_alert = true, .log = &log_entries }, 2);
+
+    var buffer: [8]u8 = undefined;
+    try testing.expectEqualSlices(u8, &.{ 1, 3 }, drainIds(&worker, &buffer));
+    try testing.expectEqualSlices(u8, &.{2}, log_entries.freed());
+}
+
+test "a new minor alert never pushes out one that isn't" {
+    var log_entries: FreedLog = .{};
+    var worker: TestWorker = .{ .io = testing.io };
+    worker.push(.{ .id = 1, .is_alert = true, .log = &log_entries });
+    worker.pushAlert(.{ .id = 2, .is_alert = true, .is_minor = true, .log = &log_entries }, 1);
+
+    var buffer: [8]u8 = undefined;
+    try testing.expectEqualSlices(u8, &.{1}, drainIds(&worker, &buffer));
+    try testing.expectEqualSlices(u8, &.{2}, log_entries.freed());
 }
 
 test "push keeps every alert" {

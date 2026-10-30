@@ -26,6 +26,7 @@ const characters = @import("tabs/characters.zig");
 const behavior = @import("tabs/behavior.zig");
 const notifications = @import("tabs/notifications.zig");
 const event_alerts = @import("tabs/event_alerts.zig");
+const chat_alerts = @import("tabs/chat_alerts.zig");
 const notification_history = @import("tabs/notification_history.zig");
 const mining = @import("tabs/mining.zig");
 const placement = @import("tabs/placement.zig");
@@ -66,6 +67,7 @@ const Tab = enum {
     behavior,
     notifications,
     event_alerts,
+    chat_alerts,
     notification_history,
     mining,
     general,
@@ -82,6 +84,7 @@ const Tab = enum {
             .behavior => "Behavior",
             .notifications => "Notifications",
             .event_alerts => "Event Alerts",
+            .chat_alerts => "Chat Alerts",
             .notification_history => "Notification History",
             .mining => "Mining",
             .general => "General",
@@ -95,7 +98,7 @@ const Tab = enum {
             .characters, .hotkey_groups => .clients,
             .appearance, .placement => .display,
             .hotkeys, .behavior => .input,
-            .notifications, .event_alerts, .notification_history => .alerts,
+            .notifications, .event_alerts, .chat_alerts, .notification_history => .alerts,
             .mining => .overlays,
             .about, .backups, .general => .app,
         };
@@ -111,6 +114,7 @@ const Tab = enum {
             .behavior => .pointer,
             .notifications => .envelope,
             .event_alerts => .bell,
+            .chat_alerts => .speech,
             .notification_history => .clock,
             .mining => .pickaxe,
             .general => .gear,
@@ -122,21 +126,21 @@ const Tab = enum {
     fn isAdvanced(self: Tab) bool {
         return switch (self) {
             .mining => true,
-            .characters, .hotkey_groups, .appearance, .placement, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .general, .about, .backups => false,
+            .characters, .hotkey_groups, .appearance, .placement, .hotkeys, .behavior, .notifications, .event_alerts, .chat_alerts, .notification_history, .general, .about, .backups => false,
         };
     }
 
     fn needsThumbnails(self: Tab) bool {
         return switch (self) {
             .placement => true,
-            .characters, .hotkey_groups, .appearance, .hotkeys, .behavior, .notifications, .event_alerts, .notification_history, .mining, .general, .about, .backups => false,
+            .characters, .hotkey_groups, .appearance, .hotkeys, .behavior, .notifications, .event_alerts, .chat_alerts, .notification_history, .mining, .general, .about, .backups => false,
         };
     }
 
     /// Fills the content area itself instead of scrolling in it.
     fn fills(self: Tab) bool {
         return switch (self) {
-            .characters, .hotkey_groups, .event_alerts => true,
+            .characters, .hotkey_groups, .event_alerts, .chat_alerts => true,
             .placement => placement.fillsWindow(),
             .appearance, .hotkeys, .behavior, .notifications, .notification_history, .mining, .general, .about, .backups => false,
         };
@@ -247,6 +251,7 @@ fn showTab(context: *ui.Frame, tab: Tab) !void {
         .behavior => try behavior.show(context),
         .notifications => try notifications.show(context),
         .event_alerts => try event_alerts.show(context),
+        .chat_alerts => try chat_alerts.show(context),
         .notification_history => try notification_history.show(context),
         .mining => try mining.show(context),
         .general => try general.show(context),

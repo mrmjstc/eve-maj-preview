@@ -66,6 +66,7 @@ pub const DisplayConfig = struct {
     notifInfoPanelShowMining: bool = true,
     notifInfoPanelShowCombat: bool = true,
     notifInfoPanelShowNavigation: bool = true,
+    notifInfoPanelShowChat: bool = true,
     notifInfoPanelShowGeneral: bool = true,
 
     /// Manual ignores thumbnailSpaces, so every thumbnail is placed by hand.

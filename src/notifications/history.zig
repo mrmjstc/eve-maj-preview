@@ -17,6 +17,8 @@ pub const Entry = struct {
     timestamp: win32.Ticks = .{},
     /// Fixed at push time, so the panel doesn't re-resolve it every render.
     character_color: ?u32 = null,
+    /// A chat rule's own text colour, which its type's settings don't hold.
+    text_color: ?u32 = null,
     is_unmerged: bool = false,
 
     pub fn characterName(self: *const Entry) []const u8 {
@@ -36,8 +38,8 @@ pub const NotificationHistory = struct {
     /// Bumped on every change so the History Panel can cheaply detect one.
     revision: u32 = 0,
 
-    pub fn push(self: *NotificationHistory, source_hwnd: win32.HWND, character_name: []const u8, notification_text: []const u8, notification_type: notification.NotificationType, character_color: ?u32) void {
-        var entry: Entry = .{ .source_hwnd = source_hwnd, .notification_type = notification_type, .timestamp = win32.Ticks.now(), .character_color = character_color };
+    pub fn push(self: *NotificationHistory, source_hwnd: win32.HWND, character_name: []const u8, notification_text: []const u8, notification_type: notification.NotificationType, character_color: ?u32, text_color: ?u32) void {
+        var entry: Entry = .{ .source_hwnd = source_hwnd, .notification_type = notification_type, .timestamp = win32.Ticks.now(), .character_color = character_color, .text_color = text_color };
 
         const name_len = @min(character_name.len, entry.character_name_buf.len);
         @memcpy(entry.character_name_buf[0..name_len], character_name[0..name_len]);

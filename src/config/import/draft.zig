@@ -16,6 +16,7 @@ const MERGED_LISTS = [_]MergedList{
     .{ .name = "thumbnailSpaces", .key_field = "name", .keeps_ids = true },
     .{ .name = "systemColors", .key_field = "systemName", .keeps_ids = false },
     .{ .name = "windowFilters", .key_field = "name", .keeps_ids = false },
+    .{ .name = "chatAlerts", .key_field = "name", .keeps_ids = false },
 };
 
 /// A list whose items are matched on `key_field`; one that `keeps_ids` is edited item by item, any other is replaced whole.

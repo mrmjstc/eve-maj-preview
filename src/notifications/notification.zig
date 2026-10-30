@@ -25,6 +25,14 @@ const LEFT_BEHIND = [_]Placeholder{ .{ .name = "system", .field = .source }, .{ 
 const GROUP = [_]Placeholder{ .{ .name = "group", .field = .target }, CHARACTER };
 const PROFILE = [_]Placeholder{.{ .name = "profile", .field = .target }};
 const MESSAGE = [_]Placeholder{ .{ .name = "message", .field = .source }, CHARACTER };
+const CHAT_PILOT: Placeholder = .{ .name = "pilot", .field = .source };
+const CHAT_CHANNEL: Placeholder = .{ .name = "channel", .field = .channel };
+const CHAT_MESSAGE: Placeholder = .{ .name = "message", .field = .message };
+const CHAT_INTEL = [_]Placeholder{ .{ .name = "system", .field = .target }, .{ .name = "jumps", .field = .jumps }, CHAT_PILOT, CHAT_CHANNEL, CHAT_MESSAGE, CHARACTER };
+const CHAT_KEYWORD = [_]Placeholder{ .{ .name = "keyword", .field = .target }, CHAT_PILOT, CHAT_CHANNEL, CHAT_MESSAGE, CHARACTER };
+/// No {system}: the message always names it, as that's what matched.
+const CHAT_INTEL_WORDING = "{jumps}j: {message}";
+const CHAT_KEYWORD_WORDING = "{channel}: {message}";
 
 pub const NotificationType = enum {
     FleetInvite,
@@ -56,6 +64,8 @@ pub const NotificationType = enum {
     JumpCloning,
     SystemChange,
     TravelLeftBehind,
+    ChatIntel,
+    ChatKeyword,
     GroupMembership,
     CycleExclusion,
     HotkeySuspend,
@@ -71,6 +81,7 @@ pub const NotificationCategory = enum {
     Mining,
     Combat,
     Navigation,
+    Chat,
     General,
 };
 
@@ -82,6 +93,14 @@ pub const Notification = struct {
     state: ?State = null,
     source: ?[]const u8 = null,
     target: ?[]const u8 = null,
+    /// Chat alerts only.
+    channel: ?[]const u8 = null,
+    /// Chat alerts only.
+    message: ?[]const u8 = null,
+    /// Chat alerts only; already text, as the template only fills in text.
+    jumps: ?[]const u8 = null,
+    /// Which of the profile's chat alert rules raised it, whose settings then replace the type's.
+    chat_rule_index: ?usize = null,
 };
 
 /// Null or empty uses the default wording.
@@ -97,6 +116,7 @@ pub fn notificationCategory(notification_type: NotificationType) NotificationCat
         .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .CrystalBroke => .Mining,
         .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .BombLauncherEmpty, .SelfDestruct, .WarpBubble => .Combat,
         .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind => .Navigation,
+        .ChatIntel, .ChatKeyword => .Chat,
         .ConversationInvite, .GroupMembership, .CycleExclusion, .HotkeySuspend, .ProfileSwitch, .AutoMinimizeToggle, .SavedPositionMove, .Generic => .General,
     };
 }
@@ -105,7 +125,7 @@ pub fn notificationCategory(notification_type: NotificationType) NotificationCat
 pub fn isUserAction(notification_type: NotificationType) bool {
     return switch (notification_type) {
         .GroupMembership, .CycleExclusion, .HotkeySuspend, .ProfileSwitch, .AutoMinimizeToggle, .SavedPositionMove => true,
-        .FleetInvite, .FleetFollow, .FleetRegroup, .FleetDisband, .ConversationInvite, .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .CrystalBroke, .BombLauncherEmpty, .SelfDestruct, .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .WarpBubble, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind, .Generic => false,
+        .FleetInvite, .FleetFollow, .FleetRegroup, .FleetDisband, .ConversationInvite, .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .CrystalBroke, .BombLauncherEmpty, .SelfDestruct, .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .WarpBubble, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind, .ChatIntel, .ChatKeyword, .Generic => false,
     };
 }
 
@@ -121,6 +141,8 @@ pub fn placeholders(notification_type: NotificationType) []const Placeholder {
         .Decloak, .WarpBubble => &OBJECT,
         .SystemChange, .ConduitJump => &DESTINATION,
         .TravelLeftBehind => &LEFT_BEHIND,
+        .ChatIntel => &CHAT_INTEL,
+        .ChatKeyword => &CHAT_KEYWORD,
         .GroupMembership => &GROUP,
         .ProfileSwitch => &PROFILE,
         .Generic => &MESSAGE,
@@ -137,7 +159,7 @@ pub fn altState(notification_type: NotificationType) ?State {
         .AutoMinimizeToggle => .off,
         .GroupMembership => .removed,
         .CycleExclusion => .included,
-        .FleetInvite, .FleetFollow, .FleetRegroup, .FleetDisband, .ConversationInvite, .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .CrystalBroke, .BombLauncherEmpty, .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .WarpBubble, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind, .ProfileSwitch, .SavedPositionMove, .Generic => null,
+        .FleetInvite, .FleetFollow, .FleetRegroup, .FleetDisband, .ConversationInvite, .MiningCompression, .AsteroidDepleted, .MiningIdle, .MiningStopped, .CargoFull, .TakingDamage, .WarpScrambled, .WarpDisrupted, .Decloak, .ObservatoryDecloak, .CloakFailed, .CrystalBroke, .BombLauncherEmpty, .Docking, .AutopilotReached, .AutopilotApproaching, .JumpRange, .AggressionCantJump, .WarpBubble, .ConduitJump, .JumpCloning, .SystemChange, .TravelLeftBehind, .ChatIntel, .ChatKeyword, .ProfileSwitch, .SavedPositionMove, .Generic => null,
     };
 }
 
@@ -152,6 +174,8 @@ pub fn sample(notification_type: NotificationType) Notification {
         .ProfileSwitch => .{ .notification_type = notification_type, .target = "Default" },
         .SystemChange, .ConduitJump => .{ .notification_type = notification_type, .target = "Jita" },
         .TravelLeftBehind => .{ .notification_type = notification_type, .source = "Perimeter", .target = "Jita" },
+        .ChatIntel => .{ .notification_type = notification_type, .source = "Some Pilot", .target = "Perimeter", .channel = "Intel", .message = "Perimeter spike 10", .jumps = "2" },
+        .ChatKeyword => .{ .notification_type = notification_type, .source = "Some Pilot", .target = "bubble", .channel = "Fleet", .message = "bubble on the gate" },
         .Generic => .{ .notification_type = notification_type, .source = "Generic notification" },
         .FleetInvite, .ConversationInvite => .{ .notification_type = notification_type, .source = "Some Pilot" },
         .FleetFollow, .FleetRegroup => .{ .notification_type = notification_type, .source = "Fleet Commander" },
@@ -172,10 +196,21 @@ pub fn text(notification: Notification, custom: CustomText, character_name: ?[]c
     const custom_text = (if (is_alt) custom.alt else custom.primary) orelse return defaultText(notification, buf);
     if (custom_text.len == 0) return defaultText(notification, buf);
 
-    const values: template.Values = .{ .source = notification.source, .target = notification.target, .character = character_name };
-    return template.render(custom_text, placeholders(notification.notification_type), values, buf) orelse {
+    return template.render(custom_text, placeholders(notification.notification_type), templateValues(notification, character_name), buf) orelse {
         slog.debug("Custom {s} text uses a placeholder this event has no value for, using the default", .{@tagName(notification.notification_type)});
         return defaultText(notification, buf);
+    };
+}
+
+/// Borrows from both arguments.
+pub fn templateValues(notification: Notification, character_name: ?[]const u8) template.Values {
+    return .{
+        .source = notification.source,
+        .target = notification.target,
+        .character = character_name,
+        .channel = notification.channel,
+        .message = notification.message,
+        .jumps = notification.jumps,
     };
 }
 
@@ -210,6 +245,8 @@ pub fn defaultText(notification: Notification, buf: []u8) []const u8 {
         .ConduitJump => withField(buf, "Taking Conduit to {s}", notification.target, "Conduit Jump"),
         .SystemChange => withField(buf, "Jumped to {s}", notification.target, "Jumped"),
         .TravelLeftBehind => withField(buf, "Left behind in {s}", notification.source, "Left behind"),
+        .ChatIntel => chatText(notification, CHAT_INTEL_WORDING, &CHAT_INTEL, "Chat intel", buf),
+        .ChatKeyword => chatText(notification, CHAT_KEYWORD_WORDING, &CHAT_KEYWORD, "Chat keyword", buf),
         .GroupMembership => if (notification.state == .removed)
             withField(buf, "Removed from {s}", notification.target, "Removed from group")
         else
@@ -221,6 +258,11 @@ pub fn defaultText(notification: Notification, buf: []u8) []const u8 {
         .SavedPositionMove => "Moved to saved position",
         .Generic => notification.source orelse "",
     };
+}
+
+/// Through the template rather than a format, so a long message is cut instead of losing the whole text.
+fn chatText(notification: Notification, wording: []const u8, chat_placeholders: []const Placeholder, fallback: []const u8, buf: []u8) []const u8 {
+    return template.render(wording, chat_placeholders, templateValues(notification, null), buf) orelse fallback;
 }
 
 fn withField(buf: []u8, comptime format: []const u8, field: ?[]const u8, fallback: []const u8) []const u8 {
@@ -258,6 +300,13 @@ test "defaultText words each state" {
     try testing.expectEqualStrings("Auto-minimize off", defaultText(.{ .notification_type = .AutoMinimizeToggle, .state = .off }, &buf));
 }
 
+test "defaultText cuts a long chat message rather than dropping it" {
+    var buf: [24]u8 = undefined;
+    const long_message: Notification = .{ .notification_type = .ChatKeyword, .channel = "Fleet", .message = "bubble on the gate and more besides" };
+    try testing.expectEqualStrings("Fleet: bubble on the gat", defaultText(long_message, &buf));
+    try testing.expectEqualStrings("Chat keyword", defaultText(.{ .notification_type = .ChatKeyword }, &buf));
+}
+
 test "text fills custom wording, picking the alt state's own" {
     var buf: [64]u8 = undefined;
     const custom: CustomText = .{ .primary = "{character} invited by {pilot}", .alt = "unused" };
@@ -284,6 +333,9 @@ test "every placeholder a type offers is filled by its sample" {
                 .source => example.source,
                 .target => example.target,
                 .character => SAMPLE_CHARACTER,
+                .channel => example.channel,
+                .message => example.message,
+                .jumps => example.jumps,
             };
             try testing.expect(value != null);
         }

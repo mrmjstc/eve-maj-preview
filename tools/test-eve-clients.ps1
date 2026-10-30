@@ -4,7 +4,7 @@
   window detection and chatlog/gamelog parsing, without running the real game.
 
 .DESCRIPTION
-  Detection in src/scout.zig requires BOTH:
+  Detection in src/clients/scout.zig requires BOTH:
     - a top-level visible window with class name exactly "trinityWindow"
     - owned by a process whose exe path ends in "exefile.exe"
   This script satisfies both by copying the local powershell.exe to
@@ -18,6 +18,9 @@
   It also writes real-format chatlog/gamelog fixture files (UTF-16LE
   chatlogs, UTF-8-BOM gamelogs, stamped in UTC like EVE's) that you can append simulated events to
   (bounty payouts, mining, combat, jumps) while the app is watching them.
+
+  Each client also joins -ChatChannels, one log per client per channel as in
+  EVE, so a chat message lands in every listener's log for Chat Alerts to read.
 
   Everything is confined to -WorkDir. Nothing under the real
   Documents\EVE\logs folders is touched unless you explicitly point
@@ -34,6 +37,9 @@
   paths (Chatlog/Gamelog directory fields) to have it watch the simulated
   files instead of your real EVE logs.
 
+.PARAMETER ChatChannels
+  Channels every client joins at login, besides Local.
+
 .PARAMETER WindowStyle
   Console window style for the spawned exefile.exe copies. Kept visible by
   default (Minimized) rather than Hidden, since a hidden process running
@@ -49,6 +55,9 @@
     gamejump|char|system[|age]        gamelog jump line only
     local|char|system[|age]           Local change only, like [l]
     event|char|kind                   one Add-GamelogEvent kind, e.g. FleetInvite
+    chat|channel|speaker|message      a chat message, written to every listener's log
+    join|char|channel                 opens a channel log mid-session
+    chattest[|seconds]                the Chat Alerts test, without waiting for Enter
     burst|char|kind[|seconds]         bounty, mining, combatIn, combatOut, miss, combatMixed
     status
   An age (seconds) stamps the line that far in the past, as a log read late
@@ -68,9 +77,10 @@
 param(
     [string[]]$CharacterNames = @('Test Client 1', 'Test Client 2', 'Test Client 3', 'Test Client 4', 'Test Client 5', 'Test Client 6', 'Test Client 7', 'Test Client 8', 'Test Client 9', 'Test Client 10'),
     [string]$WorkDir = (Join-Path $env:TEMP 'EveMajSim'),
-    # Matches config.zig's own default, so the app picks these fixtures up with no settings change.
+    # Matches src/config/chatlog.zig's own default, so the app picks these fixtures up with no settings change.
     [string]$ChatlogDir = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'EVE\logs\Chatlogs'),
     [string]$GamelogDir = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'EVE\logs\Gamelogs'),
+    [string[]]$ChatChannels = @('east.imperium', 'Intel Test', 'Fleet', 'Corp'),
     [ValidateSet('Normal', 'Minimized', 'Maximized')]
     [string]$WindowStyle = 'Minimized',
     # Stretched to fill each simulated window so it looks like the game, not a blank box.
@@ -114,7 +124,7 @@ if (-not $NoBackgroundImage -and $BackgroundImageUrl) {
     if (Test-Path $candidatePath) { $bgImagePath = $candidatePath }
 }
 
-# Agent: a real top-level window registered under class name "trinityWindow", the only thing scout.zig's filter matches on.
+# Agent: a real top-level window registered under class name "trinityWindow", which src/clients/scout.zig's filter matches on.
 $agentTemplate = @'
 Add-Type -TypeDefinition @"
 using System;
@@ -324,24 +334,39 @@ function Get-CharacterState {
     return $null
 }
 
+# As in real logs: the built-in channels have fixed IDs, a player channel a hash, and a fleet its fleet's number.
+function Get-ChannelId {
+    param([string]$Channel)
+    switch ($Channel) {
+        'Local' { return 'local' }
+        'Corp' { return 'corp' }
+        'Alliance' { return 'alliance' }
+        'Fleet' { return 'fleet_1207012318337' }
+    }
+    $hash = [System.Security.Cryptography.MD5]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Channel))
+    return 'player_' + (($hash | ForEach-Object { $_.ToString('x2') }) -join '')
+}
+
 # Matches a real captured chatlog's exact structure: LF header, CRLF+leading-BOM log lines.
 function New-ChatlogFile {
-    param([string]$CharName, [string]$CharId, [string]$Dir, [datetime]$Started, [string]$System)
+    param([string]$CharName, [string]$CharId, [string]$Dir, [datetime]$Started, [string]$System, [string]$Channel = 'Local')
 
     $stamp = $Started.ToString('yyyyMMdd_HHmmss')
-    $path = Join-Path $Dir "Local_${stamp}_${CharId}.txt"
+    $path = Join-Path $Dir "${Channel}_${stamp}_${CharId}.txt"
     if (Test-Path $path) { return $path }
 
     $sessionTs = $Started.ToString('yyyy.MM.dd HH:mm:ss')
     $dashLine = (' ' * 8) + ('-' * 63)
     $header = "`r`n`r`n`n`n" +
         "$dashLine`n`n" +
-        "          Channel ID:      local`n" +
-        "          Channel Name:    Local`n" +
+        "          Channel ID:      $(Get-ChannelId -Channel $Channel)`n" +
+        "          Channel Name:    $Channel`n" +
         "          Listener:        $CharName`n" +
         "          Session started: $sessionTs`n" +
         "$dashLine`n`n"
-    $firstLine = Format-ChatlogLine -Ts $sessionTs -Text "EVE System > Channel changed to Local : $System"
+    # A MOTD naming a system and a keyword, as a real one can: EVE's own lines must never alert.
+    $firstText = if ($Channel -eq 'Local') { "EVE System > Channel changed to Local : $System" } else { "EVE System > Channel MOTD: Welcome to $Channel. Report every bubble near Jita and Perimeter." }
+    $firstLine = Format-ChatlogLine -Ts $sessionTs -Text $firstText
 
     $text = $header + $firstLine
     $bytes = [System.Text.Encoding]::Unicode.GetPreamble() + [System.Text.Encoding]::Unicode.GetBytes($text)
@@ -405,9 +430,8 @@ function Add-GamelogEvent {
         'undock' {
             "[ $ts ] Undocking from Jita IV - Moon 4 - Caldari Navy Assembly Plant in Jita"
         }
-        # Everything below fires one specific src/types.zig NotificationType, matching the exact substrings
-        # src/chatlog.zig's parseQuestionEvent/parseNotifyEvent/parseCombatEvent/parseNoneEvent look for - see
-        # the config dialog's Event Alerts table (NOTIFICATION_TYPES in config_dialog.js) for the full type list.
+        # Everything below fires one specific NotificationType (src/notifications/notification.zig), matching the exact
+        # substrings src/notifications/gamelog_events.zig's parseQuestionEvent/parseNotifyEvent/parseCombatEvent/parseNoneEvent look for.
         'FleetInvite' {
             "[ $ts ] (question) Someone wants you to join their fleet, do you accept?"
         }
@@ -661,6 +685,45 @@ function Add-ChatlogJump {
     return $line
 }
 
+# Every client's log gets its own copy, up to 1s apart like real clients', so the app must count them as one message.
+function Send-ChatMessage {
+    param([string]$Channel, [string]$Speaker, [string]$Text)
+
+    $listeners = @($clients.Keys | Where-Object { $clients[$_].LoggedIn -and ($Channel -eq 'Local' -or $clients[$_].ChannelLogs.ContainsKey($Channel)) })
+    if ($listeners.Count -eq 0) {
+        Write-Warning "No logged-in client is in '$Channel'."
+        return
+    }
+    $now = [DateTime]::UtcNow
+    for ($idx = 0; $idx -lt $listeners.Count; $idx++) {
+        $c = $clients[$listeners[$idx]]
+        $path = if ($Channel -eq 'Local') { $c.Chatlog } else { $c.ChannelLogs[$Channel] }
+        $ts = $now.AddSeconds($idx % 2).ToString('yyyy.MM.dd HH:mm:ss')
+        $line = Format-ChatlogLine -Ts $ts -Text "$Speaker > $Text"
+        [System.IO.File]::AppendAllText($path, $line, [System.Text.Encoding]::Unicode)
+    }
+    Write-Host "[$Channel, $($listeners.Count) listener(s)] $Speaker > $Text"
+}
+
+function New-ChannelLogs {
+    param([string]$CharName, [string]$CharId, [datetime]$Started, [string]$System)
+
+    $logs = @{}
+    foreach ($channel in $ChatChannels) {
+        $logs[$channel] = New-ChatlogFile -CharName $CharName -CharId $CharId -Dir $ChatlogDir -Started $Started -System $System -Channel $channel
+    }
+    return $logs
+}
+
+function Join-ChatChannel {
+    param([string]$CharName, [string]$Channel)
+
+    $c = $clients[$CharName]
+    if ($c.ChannelLogs.ContainsKey($Channel)) { return }
+    $c.ChannelLogs[$Channel] = New-ChatlogFile -CharName $CharName -CharId $c.CharId -Dir $ChatlogDir -Started ([DateTime]::UtcNow) -System $c.System -Channel $Channel
+    Write-Host "$CharName joined $Channel."
+}
+
 function Add-GamelogJump {
     param([string]$Path, [string]$From, [string]$To, [int]$AgeSeconds = 0)
 
@@ -692,6 +755,7 @@ function Start-SimClient {
     $now = [DateTime]::UtcNow
     $chatlogPath = New-ChatlogFile -CharName $CharName -CharId $charId -Dir $ChatlogDir -Started $now -System $startSystem
     $gamelogPath = New-GamelogFile -CharName $CharName -CharId $charId -Dir $GamelogDir -Started $now
+    $channelLogs = New-ChannelLogs -CharName $CharName -CharId $charId -Started $now -System $startSystem
     Save-CharacterState -CharName $CharName -ChatlogPath $chatlogPath -GamelogPath $gamelogPath -System $startSystem
 
     $script = $agentTemplate.Replace('__CHARNAME__', "'$($CharName.Replace("'", "''"))'").Replace('__CTRLFILE__', "'$($ctrlFile.Replace("'", "''"))'").Replace('__BGIMAGE__', "'$($bgImagePath.Replace("'", "''"))'")
@@ -707,6 +771,7 @@ function Start-SimClient {
         CharId      = $charId
         Chatlog     = $chatlogPath
         Gamelog     = $gamelogPath
+        ChannelLogs = $channelLogs
         System      = $startSystem
         LoggedIn    = $true
         Jobs        = @{}
@@ -819,8 +884,8 @@ function Start-CharacterBurst {
 
 # Fires several distinct NotificationTypes on one character ~1.5s apart (one from each Event Alerts category:
 # fleet, mining, combat, navigation, general) so they land inside each other's default 10s display window and
-# visibly stack - exercises both the stack itself and the oldest-entry eviction once more than MAX_STACKED_NOTIFICATIONS
-# (3, see painter.zig) are active at once. Blocks the menu loop for a few seconds while it runs.
+# visibly stack - exercises both the stack itself and the oldest-entry eviction once more than CAPACITY
+# (3, see src/notifications/stack.zig) are active at once. Blocks the menu loop for a few seconds while it runs.
 function Start-NotificationStorm {
     param([string]$CharName, [string[]]$Kinds = @('FleetInvite', 'CargoFull', 'Decloak', 'Docking', 'ConversationInvite'))
 
@@ -918,6 +983,70 @@ function Start-SystemColorTest {
     Start-CharacterJumpSequence -CharName $CharName -Systems $systems -IntervalSeconds $IntervalSeconds
 }
 
+# Rules to enter on the Chat Alerts tab; each sets how its own alerts look and sound there.
+$script:ChatAlertTestRules = @(
+    @{ Type = 'Intel'; Channels = '*.imperium, Intel Test, Fleet'; Detail = 'Max Jumps 5'; Exclude = 'clr, nv' }
+    @{ Type = 'Keyword'; Channels = 'Fleet'; Detail = 'Keywords: bubble, warp in'; Exclude = '' }
+)
+
+# Each step alerts or stays quiet for one reason; $Near sits in Jita and $Far in Amarr, with everyone else in Dodixie.
+function Get-ChatAlertTestSteps {
+    param([string]$Near, [string]$Far)
+
+    return @(
+        @{ Channel = 'east.imperium'; Speaker = 'Scout One'; Text = 'Perimeter 3 hostiles on gate'; Expect = "Chat Intel, once only, on $Near (Perimeter, 1j)" }
+        @{ Channel = 'Intel Test'; Speaker = 'Scout One'; Text = 'amarr red gang'; Expect = 'NOTHING (a plain-word name must be written as spelled)' }
+        @{ Channel = 'Intel Test'; Speaker = 'Scout One'; Text = 'Amarr red gang'; Expect = "Chat Intel on $Far (Amarr, 0j), the nearer client" }
+        @{ Channel = 'east.imperium'; Speaker = 'Scout Two'; Text = 'Amarr gang still there'; Expect = 'NOTHING (Amarr is on cooldown, though the message is new)' }
+        @{ Channel = 'east.imperium'; Speaker = 'Scout One'; Text = 'C-J6MT neut in local'; Expect = 'NOTHING (out of range of every client)' }
+        @{ Channel = 'east.imperium'; Speaker = 'Scout One'; Text = 'Sobaseki clr'; Expect = 'NOTHING (clr is excluded)' }
+        @{ Channel = 'east.imperium'; Speaker = 'Scout One'; Text = 'New Caldari spike'; Expect = "Chat Intel on $Near (New Caldari, 1j: a two-word name)" }
+        @{ Channel = 'Corp'; Speaker = 'Scout One'; Text = 'Maurasi hostile, bubble up'; Expect = 'NOTHING (Corp is in no rule)' }
+        @{ Channel = 'east.imperium'; Speaker = $Near; Text = 'Maurasi spike'; Expect = 'NOTHING (your own character said it)' }
+        @{ Channel = 'east.imperium'; Speaker = 'EVE System'; Text = 'Channel MOTD: Maurasi is lovely'; Expect = "NOTHING (EVE's own line)" }
+        @{ Channel = 'Fleet'; Speaker = 'Fleet Commander'; Text = 'BUBBLE on the gate'; Expect = 'Chat Keyword (bubble), once only, on any client' }
+        @{ Channel = 'Fleet'; Speaker = 'Fleet Commander'; Text = 'bubbles everywhere'; Expect = 'NOTHING (keywords match whole words)' }
+        @{ Channel = 'Fleet'; Speaker = 'Fleet Commander'; Text = 'Warp In now'; Expect = 'Chat Keyword (warp in, a phrase in any case)' }
+        @{ Channel = 'Fleet'; Speaker = 'Fleet Commander'; Text = 'warp in to Muvolailen'; Expect = "Chat Intel only on $Near (Muvolailen, 1j): intel beats a keyword" }
+    )
+}
+
+function Start-ChatAlertTest {
+    param([int]$IntervalSeconds = 5, [switch]$NoPrompt)
+
+    $present = @($clients.Keys | Where-Object { $clients[$_].LoggedIn })
+    if ($present.Count -lt 2) { Write-Warning 'The Chat Alerts test needs 2 logged-in clients.'; return }
+    $near = $present[0]
+    $far = $present[1]
+
+    Write-Host ''
+    Write-Host 'Add these rows on the Chat Alerts tab, then Save:' -ForegroundColor Cyan
+    foreach ($rule in $script:ChatAlertTestRules) {
+        Write-Host ("  {0,-8} channels: {1,-30} {2}  exclude: {3}" -f $rule.Type, $rule.Channels, $rule.Detail, $rule.Exclude)
+    }
+    Write-Host ''
+    if (-not $NoPrompt) { Read-Host 'Press Enter once they''re saved to start' | Out-Null }
+
+    foreach ($name in $present) {
+        foreach ($channel in @('east.imperium', 'Intel Test', 'Fleet', 'Corp')) { Join-ChatChannel -CharName $name -Channel $channel }
+        $base = if ($name -eq $near) { 'Jita' } elseif ($name -eq $far) { 'Amarr' } else { 'Dodixie' }
+        if ($clients[$name].System -ne $base) { Move-Character -CharName $name -System $base | Out-Null }
+    }
+    Write-Host "$near is in Jita, $far in Amarr, the rest in Dodixie." -ForegroundColor Green
+    Start-Sleep -Seconds 2
+
+    $steps = @(Get-ChatAlertTestSteps -Near $near -Far $far)
+    for ($idx = 0; $idx -lt $steps.Count; $idx++) {
+        $step = $steps[$idx]
+        Write-Host ''
+        Write-Host ("Step {0} of {1}, expect: {2}" -f ($idx + 1), $steps.Count, $step.Expect) -ForegroundColor Cyan
+        Send-ChatMessage -Channel $step.Channel -Speaker $step.Speaker -Text $step.Text
+        Start-Sleep -Seconds $IntervalSeconds
+    }
+    Write-Host ''
+    Write-Host 'Done. Notification History should list one row per alert above, under the Chat filter.' -ForegroundColor Green
+}
+
 # Jumps everyone but $StragglerName to one new system, for testing Travel Mode's left-behind alert.
 function Start-TravelModeTest {
     param([string[]]$CharNames, [string]$StragglerName)
@@ -975,6 +1104,7 @@ function Set-CharacterLogin {
     $now = [DateTime]::UtcNow
     $c.Chatlog = New-ChatlogFile -CharName $CharName -CharId $c.CharId -Dir $ChatlogDir -Started $now -System $c.System
     $c.Gamelog = New-GamelogFile -CharName $CharName -CharId $c.CharId -Dir $GamelogDir -Started $now
+    $c.ChannelLogs = New-ChannelLogs -CharName $CharName -CharId $c.CharId -Started $now -System $c.System
     Save-CharacterState -CharName $CharName -ChatlogPath $c.Chatlog -GamelogPath $c.Gamelog -System $c.System
     Write-Host "$CharName is now logged in (new session log files created)"
 }
@@ -986,9 +1116,9 @@ function Invoke-Action {
     $parts = @($Spec.Split('|') | ForEach-Object { $_.Trim() })
     $verb = $parts[0].ToLower()
     $name = if ($parts.Count -gt 1) { $parts[1] } else { '' }
-    $needsClient = $verb -notin @('wait', 'start', 'status')
+    $needsClient = $verb -notin @('wait', 'start', 'status', 'chat', 'chattest')
     if ($needsClient -and -not $clients.Contains($name)) { throw "Unknown character '$name' in action '$Spec'" }
-    $age = if ($parts.Count -gt 3) { [int]$parts[3] } else { 0 }
+    $age = if ($parts.Count -gt 3 -and $verb -in @('gamejump', 'local')) { [int]$parts[3] } else { 0 }
 
     Write-Host "> $Spec" -ForegroundColor DarkCyan
     switch ($verb) {
@@ -1004,6 +1134,12 @@ function Invoke-Action {
         'burst' {
             $seconds = if ($parts.Count -gt 3) { [int]$parts[3] } else { 60 }
             Start-CharacterBurst -CharName $name -Kind $parts[2] -DurationSeconds $seconds
+        }
+        'chat' { Send-ChatMessage -Channel $name -Speaker $parts[2] -Text $parts[3] }
+        'join' { Join-ChatChannel -CharName $name -Channel $parts[2] }
+        'chattest' {
+            $seconds = if ($parts.Count -gt 1) { [int]$parts[1] } else { 5 }
+            Start-ChatAlertTest -IntervalSeconds $seconds -NoPrompt
         }
         'status' { Show-Status }
         default { throw "Unknown verb '$verb' in action '$Spec'" }
@@ -1032,6 +1168,7 @@ $menu = @'
   [t] travel mode test (group jump, leave one behind)
   [y] system color test (patterns, comma lists, precedence)
   [u] unique color test (every client in its own system)
+  [a] chat message            [h] join chat channel      [v] chat alerts test (rules, range, duplicates)
   [q] quit (stops everyone)
 '@
 
@@ -1145,6 +1282,20 @@ try {
             if ($name) { Start-SystemColorTest -CharName $name }
         }
         'u' { Start-UniqueColorTest }
+        'a' {
+            $channel = Read-Host "Channel ($($ChatChannels -join ', '), Local)"
+            $speaker = Read-Host 'Speaker'
+            $message = Read-Host 'Message'
+            if ($channel -and $speaker -and $message) { Send-ChatMessage -Channel $channel -Speaker $speaker -Text $message }
+        }
+        'h' {
+            $name = Select-Character
+            if ($name) {
+                $channel = Read-Host 'Channel to join'
+                if ($channel) { Join-ChatChannel -CharName $name -Channel $channel }
+            }
+        }
+        'v' { Start-ChatAlertTest }
         'q' {
             break mainLoop
         }
