@@ -37,6 +37,7 @@ const FLAGS = [_]Flag{
     .{ .field = "excludeFromMinimize", .label = "Exclude from Auto-Minimize", .hint = "This client is never minimized automatically." },
     .{ .field = "excludeFromCloseAll", .label = "Exclude from Close All", .hint = "The Close All hotkey leaves this client open." },
     .{ .field = "excludeFromAutoMove", .label = "Exclude from Auto-Move", .hint = "Its window is never moved to its saved position." },
+    .{ .field = "excludeFromChatAlerts", .label = "Exclude from Chat Alerts", .hint = "This client never receives chat alerts." },
     .{ .field = "hideThumbnail", .label = "Hide Thumbnail", .hint = "Also hides its row in the client list." },
     .{ .field = "notificationsMuted", .label = "Mute Notifications", .hint = "No alerts for this character at all." },
 };

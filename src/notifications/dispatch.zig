@@ -16,10 +16,11 @@ const slog = log.Scoped("notification");
 
 const TEST_PERMANENT_FALLBACK_MS: u32 = 5000;
 
-/// Where a shown notification is recorded beyond its thumbnail; both live in App's NotificationCenter.
+/// Where a shown notification is recorded beyond its thumbnail; all live in App's NotificationCenter.
 pub const Records = struct {
     history: *history_mod.NotificationHistory,
     notified_queue: *notified_queue_mod.NotifiedQueue,
+    shown_alert_group: *?u64,
 };
 
 const HistoryRecord = struct {
@@ -42,11 +43,14 @@ pub fn notify(context: Context, thumbnail: *ThumbnailWindow, notification: notif
     var text_buf: [notification_mod.TEXT_MAX]u8 = undefined;
     const text = notification_mod.text(notification, type_config.customText(), thumbnail.character_name, &text_buf);
     const history_text_color = if (notification.chat_rule_index != null) type_config.text_color else null;
-    const queued = queue(context, thumbnail, text, notification.notification_type, type_config, .{ .text_color = history_text_color }) catch |err| {
+    const is_repeat = isAlertRepeat(context.records.shown_alert_group.*, notification.alert_group);
+    const history_record: ?HistoryRecord = if (is_repeat) null else .{ .text_color = history_text_color };
+    const queued = queue(context, thumbnail, text, notification.notification_type, type_config, history_record) catch |err| {
         slog.err("Failed to show {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), thumbnail.character_name, err });
         return;
     };
-    if (!queued) return;
+    if (!queued or is_repeat) return;
+    context.records.shown_alert_group.* = notification.alert_group;
 
     const spoken_name: ?[]const u8 = if (settings.tts_speak_character_name and thumbnail.character_name.len > 0)
         (if (settings.tts_use_display_name) thumbnail.cached_display_name else thumbnail.character_name)
@@ -129,6 +133,12 @@ pub fn expire(allocator: std.mem.Allocator, thumbnails: []ThumbnailWindow) void 
             if (newest.isFlashing(now)) thumbnail.needs_render = true;
         }
     }
+}
+
+fn isAlertRepeat(shown_group: ?u64, alert_group: ?u64) bool {
+    const shown = shown_group orelse return false;
+    const group = alert_group orelse return false;
+    return shown == group;
 }
 
 /// A rule removed since the alert was raised falls back to the type's settings.

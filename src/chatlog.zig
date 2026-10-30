@@ -110,6 +110,8 @@ pub const ChatlogMonitor = struct {
     client_systems: std.ArrayList(ClientSystem) = .empty,
     /// Worker only: chat alerts raised lately, so other clients' copies and cooldowns stay quiet.
     recent_hits: alert_rules_mod.RecentHits = .{},
+    /// Worker only.
+    next_alert_group: u64 = 0,
 
     const LineHandler = struct {
         monitor: *ChatlogMonitor,
@@ -208,7 +210,7 @@ pub const ChatlogMonitor = struct {
         var muted: std.ArrayList([]const u8) = .empty;
         defer muted.deinit(self.allocator);
         for (settings.characters.items) |character| {
-            if (!character.notificationsMuted) continue;
+            if (!character.notificationsMuted and !character.excludeFromChatAlerts) continue;
             muted.append(self.allocator, character.name) catch |err| {
                 slog.err("Failed to copy chat alert rules, keeping the previous ones: {}", .{err});
                 return;
@@ -598,7 +600,7 @@ pub const ChatlogMonitor = struct {
 
     /// Gated by the type's settings in ThumbnailSet.notify, once the main thread delivers it.
     fn queueNotification(self: *ChatlogMonitor, character_name: []const u8, notification: notification_mod.Notification) void {
-        var event: queue.NotificationEvent = .{ .character_name = "", .notification = .{ .notification_type = notification.notification_type, .state = notification.state, .chat_rule_index = notification.chat_rule_index } };
+        var event: queue.NotificationEvent = .{ .character_name = "", .notification = .{ .notification_type = notification.notification_type, .state = notification.state, .chat_rule_index = notification.chat_rule_index, .alert_group = notification.alert_group } };
         self.copyNotificationEvent(&event, character_name, notification) catch |err| {
             event.deinit(self.allocator);
             slog.err("Failed to copy {s} notification for '{s}': {}", .{ @tagName(notification.notification_type), character_name, err });
@@ -666,11 +668,10 @@ pub const ChatlogMonitor = struct {
         if (self.recent_hits.isRepeat(alert_rules_mod.messageKey(message), now_ms, alert_rules_mod.DUPLICATE_WINDOW_MS)) return;
         if (self.recent_hits.isRepeat(hit.cooldown_key, now_ms, hit.cooldown_ms)) return;
 
-        const character_name = hit.character_name orelse fallbackClient(rules, file.character_name, clients) orelse return;
         var jumps_buf: [3]u8 = undefined;
         // A u8 is at most three digits.
         const jumps: ?[]const u8 = if (hit.jumps) |count| std.mem.print(&jumps_buf, "{d}", .{count}) catch unreachable else null;
-        self.queueNotification(character_name, .{
+        const notification: notification_mod.Notification = .{
             .notification_type = hit.notification_type,
             .source = message.speaker,
             .target = hit.term,
@@ -678,8 +679,18 @@ pub const ChatlogMonitor = struct {
             .message = message.body,
             .jumps = jumps,
             .chat_rule_index = hit.rule_index,
-        });
-        slog.debug("Chat alert ({s}) for {s} in '{s}': {s}", .{ @tagName(hit.notification_type), character_name, file.channel_name, hit.term });
+            .alert_group = self.next_alert_group,
+        };
+        self.next_alert_group += 1;
+        slog.debug("Chat alert ({s}) in '{s}': {s}", .{ @tagName(hit.notification_type), file.channel_name, hit.term });
+
+        if (hit.nearest_clients.count() == 0) {
+            const character_name = fallbackClient(rules, file.character_name, clients) orelse return;
+            self.queueNotification(character_name, notification);
+            return;
+        }
+        var nearest = hit.nearest_clients.iterator(.{});
+        while (nearest.next()) |index| self.queueNotification(clients[index].character_name, notification);
     }
 
     /// Borrows names from client_systems.

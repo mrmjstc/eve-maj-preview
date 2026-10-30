@@ -9,6 +9,7 @@ const lines = @import("lines.zig");
 const ChatAlertConfig = chat_alerts.ChatAlertConfig;
 const ChatAlertKind = chat_alerts.ChatAlertKind;
 const SystemIndex = universe.SystemIndex;
+const ClientSet = std.StaticBitSet(MAX_CLIENTS);
 
 /// Clients can log the same line up to 2s apart, so this is well past that and short of a real repeat.
 pub const DUPLICATE_WINDOW_MS = 5000;
@@ -54,8 +55,8 @@ pub const Hit = struct {
     term: []const u8,
     /// Intel only.
     jumps: ?u8 = null,
-    /// The nearest client for intel, borrowed from the caller's list; null when any client will do.
-    character_name: ?[]const u8 = null,
+    /// Indices into the caller's list of the clients tied for nearest; empty when any client will do.
+    nearest_clients: ClientSet = .empty,
     /// See Rule.config_index; set by firstHit.
     rule_index: usize = 0,
     /// Which rule and term share the cooldown; set by firstHit.
@@ -70,7 +71,7 @@ pub const RuleSet = struct {
     arena: *std.heap.ArenaAllocator,
     /// By kind, then as listed in the profile; in `arena`.
     rules: []const Rule,
-    /// Characters whose alerts the user turned off, in `arena`; they never receive one, so another client must.
+    /// Characters whose chat alerts the user turned off, in `arena`; they never receive one, so another client must.
     muted_characters: []const []const u8,
 
     /// Copies what it keeps; disabled rules, and ones that can't match, are left out.
@@ -115,7 +116,7 @@ pub const RuleSet = struct {
         return false;
     }
 
-    /// `clients` are the characters intel is measured from.
+    /// `clients` are the characters intel is measured from, at most MAX_CLIENTS.
     pub fn firstHit(self: *const RuleSet, channel: []const u8, message: lines.ChatMessage, clients: []const Client) ?Hit {
         var folded_buf: [lines.MAX_LINE_LENGTH]u8 = undefined;
         const folded = foldCase(message.body, &folded_buf);
@@ -238,11 +239,14 @@ fn intelHit(rule: *const Rule, mentions: []const SystemIndex, clients: []const C
     var distances: universe.Distances = undefined;
     for (mentions) |system| {
         universe.measureDistances(system, rule.max_jumps, &distances);
-        for (clients) |client| {
+        for (clients, 0..) |client, index| {
             const jumps = distances[client.system];
-            if (jumps >= nearest_jumps) continue;
-            nearest_jumps = jumps;
-            nearest = .{ .notification_type = rule.kind.notificationType(), .term = universe.systemName(system), .jumps = jumps, .character_name = client.character_name };
+            if (jumps == universe.UNREACHED or jumps > nearest_jumps) continue;
+            if (jumps < nearest_jumps) {
+                nearest_jumps = jumps;
+                nearest = .{ .notification_type = rule.kind.notificationType(), .term = universe.systemName(system), .jumps = jumps };
+            }
+            if (nearest) |*hit| hit.nearest_clients.set(index);
         }
     }
     return nearest;
@@ -355,7 +359,19 @@ test "an intel rule picks the client nearest the mentioned system" {
     try testing.expectEqual(notification.NotificationType.ChatIntel, hit.notification_type);
     try testing.expectEqualStrings("Maurasi", hit.term);
     try testing.expectEqual(@as(?u8, 0), hit.jumps);
-    try testing.expectEqualStrings("Same", hit.character_name.?);
+    try testing.expectEqual(@as(usize, 1), hit.nearest_clients.count());
+    try testing.expect(hit.nearest_clients.isSet(2));
+}
+
+test "an intel rule names every client tied for nearest, and only them" {
+    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "*", .max_jumps = 5 }}, NO_MUTES);
+    defer rules.deinit();
+    const clients = [_]Client{ clientAt("Near", "Perimeter"), clientAt("Same", "Maurasi"), clientAt("Also Same", "Maurasi") };
+
+    const hit = rules.firstHit("Fleet", said("Maurasi hostile gang"), &clients).?;
+    try testing.expectEqual(@as(usize, 2), hit.nearest_clients.count());
+    try testing.expect(hit.nearest_clients.isSet(1));
+    try testing.expect(hit.nearest_clients.isSet(2));
 }
 
 test "an intel rule ignores systems out of range" {
@@ -391,7 +407,7 @@ test "a keyword matches a whole word in any case, in Russian too" {
     const hit = rules.firstHit("Fleet", said("BUBBLE on gate"), &.{}).?;
     try testing.expectEqual(notification.NotificationType.ChatKeyword, hit.notification_type);
     try testing.expectEqualStrings("bubble", hit.term);
-    try testing.expect(hit.character_name == null);
+    try testing.expectEqual(@as(usize, 0), hit.nearest_clients.count());
     try testing.expect(rules.firstHit("Fleet", said("Warp In now"), &.{}) != null);
     try testing.expect(rules.firstHit("Fleet", said("пузырь на гейте"), &.{}) != null);
     try testing.expect(rules.firstHit("Fleet", said("bubbles everywhere"), &.{}) == null);

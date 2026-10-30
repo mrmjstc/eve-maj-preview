@@ -60,6 +60,7 @@ pub const CharacterConfig = struct {
     excludeFromMinimize: bool = false,
     excludeFromCloseAll: bool = false,
     excludeFromAutoMove: bool = false,
+    excludeFromChatAlerts: bool = false,
     hideThumbnail: bool = false,
     notificationsMuted: bool = false,
     opacity: ?u8 = null,

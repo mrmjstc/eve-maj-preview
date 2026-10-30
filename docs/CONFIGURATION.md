@@ -620,6 +620,7 @@ Matched by exact `name`. Positions are saved automatically on drag.
 | `excludeFromMinimize` | bool | `false` | |
 | `excludeFromCloseAll` | bool | `false` | |
 | `excludeFromAutoMove` | bool | `false` | |
+| `excludeFromChatAlerts` | bool | `false` | This client never receives chat alerts. |
 | `hideThumbnail` | bool | `false` | Hide its thumbnail and list row; takes no space cell. |
 | `notificationsMuted` | bool | `false` | |
 

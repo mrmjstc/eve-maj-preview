@@ -1,4 +1,4 @@
-//! The configuration window's Chat Alerts tab: rules for which chat messages raise an alert; main thread only.
+//! The configuration window's Chat Events tab: rules for which chat messages raise an alert; main thread only.
 const ui = @import("ui");
 const config = @import("../../../config.zig");
 const session = @import("../session.zig");
@@ -22,11 +22,11 @@ pub fn show(context: *ui.Frame) !void {
     const profile = session.profile();
     const is_enabled = profile.ptr.thumbnail.notifications.enabled;
     if (!is_enabled) {
-        try widgets.noticeWithButton(context, .src(@src()), "Chat Alerts requires Notification System switched on in the Notifications tab.", "Go to Notifications", .notifications);
+        try widgets.noticeWithButton(context, .src(@src()), "Chat Events requires Notification System switched on in the Notifications tab.", "Go to Notifications", .notifications);
     } else if (!profile.ptr.chatlog.enabled) {
-        try widgets.noticeWithButton(context, .src(@src()), "Chat Alerts read EVE's chat logs, so they need Log Monitoring.", "Go to Log Monitoring", .log_monitoring);
+        try widgets.noticeWithButton(context, .src(@src()), "Chat Events reads EVE's chat logs, so it needs Log Monitoring.", "Go to Log Monitoring", .log_monitoring);
     }
-    const section = try widgets.openSection(context, "Chat Alerts", "Alert on messages in the chat channels you choose.", &style.fill_section);
+    const section = try widgets.openSection(context, "Chat Events", "Alert on messages in the chat channels you choose.", &style.fill_section);
     const options = try widgets.openFillGroup(context, .src(@src()), is_enabled);
     const rule_count = profile.ptr.chatAlerts.items.len;
     if (rule_count == 0) {
@@ -142,7 +142,7 @@ fn detail(context: *ui.Frame, profile: ProfileRef, index: usize) !void {
     try timing.close(context);
     try widgets.separator(context, .str("knots.chat_alerts.separator.timing"));
 
-    // The search's index draws every tab in one frame, and Event Alerts' own alert settings already give it these words.
+    // The search's index draws every tab in one frame, and Game Events' own alert settings already give it these words.
     if (!search.needsIndex()) try event_alerts.alertSettings(context, alert, notification_type, .rule_sound_file, index);
     try rest.close(context);
     try stack.close(context);

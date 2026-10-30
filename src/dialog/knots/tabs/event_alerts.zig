@@ -1,4 +1,4 @@
-//! The configuration window's Event Alerts tab: a list of notification types beside the selected type's settings; main thread only.
+//! The configuration window's Game Events tab: a list of notification types beside the selected type's settings; main thread only.
 const std = @import("std");
 const ui = @import("ui");
 const config = @import("../../../config.zig");
@@ -33,7 +33,7 @@ const TOOLTIP_CHILD_INDEX = 3;
 /// A chip's left and right borders together.
 const CHIP_BORDERS = 2;
 
-/// Every type, by category, then as declared; chat rules have settings of their own instead, on the Chat Alerts tab.
+/// Every type, by category, then as declared; chat rules have settings of their own instead, on the Chat Events tab.
 const TYPES_IN_ORDER = blk: {
     var ordered: [std.enums.values(NotificationType).len]NotificationType = undefined;
     var count: usize = 0;
@@ -64,11 +64,11 @@ pub fn typeRef(index: usize) TypeRef {
 pub fn show(context: *ui.Frame) !void {
     const is_enabled = session.profile().ptr.thumbnail.notifications.enabled;
     if (!is_enabled) {
-        try widgets.noticeWithButton(context, .src(@src()), "Event Alerts requires Notification System switched on in the Notifications tab.", "Go to Notifications", .notifications);
+        try widgets.noticeWithButton(context, .src(@src()), "Game Events requires Notification System switched on in the Notifications tab.", "Go to Notifications", .notifications);
     } else if (!session.profile().ptr.chatlog.enabled) {
         try widgets.noticeWithButton(context, .src(@src()), "Without Log Monitoring, only alerts for your own actions, like Profile Switch, are shown.", "Go to Log Monitoring", .log_monitoring);
     }
-    const section = try widgets.openSection(context, "Event Alerts", "How each game event alerts you. Pick an event on the left to edit it.", &style.fill_section);
+    const section = try widgets.openSection(context, "Game Events", "How each game event alerts you. Pick an event on the left to edit it.", &style.fill_section);
     const options = try widgets.openFillGroup(context, .src(@src()), is_enabled);
     const master_detail = Rect{ .key = .src(@src()), .style = &style.master_detail_fill };
     _ = try master_detail.open(context);

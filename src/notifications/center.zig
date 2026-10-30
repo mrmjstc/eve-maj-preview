@@ -7,13 +7,15 @@ const notified_queue_mod = @import("notified_queue.zig");
 const dispatch = @import("dispatch.zig");
 const history_panel = @import("../panels/history_panel.zig");
 
-/// App owns it, so a thumbnail set rebuild keeps all three; main thread only.
+/// App owns it, so a thumbnail set rebuild keeps it all; main thread only.
 pub const NotificationCenter = struct {
     /// What the History Panel lists.
     history: history_mod.NotificationHistory = .{},
     /// Who the cycle-to-notified hotkey visits.
     notified_queue: notified_queue_mod.NotifiedQueue = .{},
     panel: history_panel.HistoryPanel = .{},
+    /// The latest alert group to show, so its other copies stay silent.
+    shown_alert_group: ?u64 = null,
 
     /// Creates the panel's window if `store`'s profile shows it.
     pub fn start(self: *NotificationCenter, allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) void {
@@ -27,7 +29,7 @@ pub const NotificationCenter = struct {
 
     /// For the thumbnail set to record what it shows; valid as long as the center.
     pub fn records(self: *NotificationCenter) dispatch.Records {
-        return .{ .history = &self.history, .notified_queue = &self.notified_queue };
+        return .{ .history = &self.history, .notified_queue = &self.notified_queue, .shown_alert_group = &self.shown_alert_group };
     }
 
     /// Per tick: redraws the panel from the history, or hides it.

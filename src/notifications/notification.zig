@@ -101,6 +101,8 @@ pub const Notification = struct {
     jumps: ?[]const u8 = null,
     /// Which of the profile's chat alert rules raised it, whose settings then replace the type's.
     chat_rule_index: ?usize = null,
+    /// Shared by one alert's copies, queued in a row; only the first shown makes a sound or a history entry.
+    alert_group: ?u64 = null,
 };
 
 /// Null or empty uses the default wording.

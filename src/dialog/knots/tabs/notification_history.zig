@@ -1,4 +1,4 @@
-//! The configuration window's Notification History tab: a preview of the panel of recent notifications, then its settings; main thread only.
+//! The configuration window's History Panel tab: a preview of the panel of recent notifications, then its settings; main thread only.
 const ui = @import("ui");
 const config = @import("../../../config.zig");
 const notification = @import("../../../notifications/notification.zig");
@@ -55,12 +55,12 @@ const Look = struct {
 
 pub fn show(context: *ui.Frame) !void {
     const are_notifications_enabled = session.profile().ptr.thumbnail.notifications.enabled;
-    if (!are_notifications_enabled) try widgets.noticeWithButton(context, .src(@src()), "Notification History requires Notification System switched on in the Notifications tab.", "Go to Notifications", .notifications);
+    if (!are_notifications_enabled) try widgets.noticeWithButton(context, .src(@src()), "History Panel requires Notification System switched on in the Notifications tab.", "Go to Notifications", .notifications);
     const ref = session.profile().child("display");
 
-    const section = try widgets.openSection(context, "Notification History", "A panel of recent alerts. Click a row to jump to that character.", &style.section);
+    const section = try widgets.openSection(context, "History Panel", "A panel of recent alerts. Click a row to jump to that character.", &style.section);
     const notifications = try widgets.openGroup(context, .src(@src()), are_notifications_enabled);
-    try bind.toggle(context, ref, "showNotifInfoPanel", "Enable Notification History");
+    try bind.toggle(context, ref, "showNotifInfoPanel", "Enable History Panel");
     const shown = try widgets.openGroup(context, .src(@src()), ref.get("showNotifInfoPanel"));
     try preview(context, session.profile().ptr);
     try shown.close(context);

@@ -34,7 +34,7 @@ pub fn show(context: *ui.Frame) !void {
 
 fn system(context: *ui.Frame) !void {
     const ref = session.profile().child("thumbnail").child("notifications");
-    const section = try widgets.openSection(context, "Notification System", "Alerts for game events like fleet invites. Set each one up on Event Alerts.", &style.section);
+    const section = try widgets.openSection(context, "Notification System", "Alerts for game events like fleet invites. Set each one up on Game Events.", &style.section);
     try bind.toggle(context, ref, "enabled", "Enable Notification System");
     // Its placement and font are edited from its text on the Appearance tab's thumbnail preview.
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
@@ -47,7 +47,7 @@ fn system(context: *ui.Frame) !void {
 }
 
 fn speech(context: *ui.Frame) !void {
-    const section = try widgets.openSection(context, "Text-to-Speech", "Reads alerts aloud. Turn it on per event with Speak Aloud on Event Alerts.", &style.section);
+    const section = try widgets.openSection(context, "Text-to-Speech", "Reads alerts aloud. Turn it on per event with Speak Aloud on Game Events.", &style.section);
     const ref = session.profile().child("thumbnail").child("notifications");
     // Speech only means something while notifications fire, so the section dims with them.
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));
@@ -83,7 +83,7 @@ fn travel(context: *ui.Frame) !void {
     const ref = session.profile().child("travel");
     // Its only output is a notification.
     const are_notifications_enabled = session.profile().ptr.thumbnail.notifications.enabled;
-    const section = try widgets.openSection(context, "Travel Mode", "Alerts when a character misses its group's jump (Left Behind on Event Alerts).", &style.section);
+    const section = try widgets.openSection(context, "Travel Mode", "Alerts when a character misses its group's jump (Left Behind on Game Events).", &style.section);
     const notifications = try widgets.openGroup(context, .src(@src()), are_notifications_enabled);
     try bind.toggle(context, ref, "enabled", "Enable Travel Mode");
     const options = try widgets.openGroup(context, .src(@src()), ref.get("enabled"));

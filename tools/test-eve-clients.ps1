@@ -20,7 +20,7 @@
   (bounty payouts, mining, combat, jumps) while the app is watching them.
 
   Each client also joins -ChatChannels, one log per client per channel as in
-  EVE, so a chat message lands in every listener's log for Chat Alerts to read.
+  EVE, so a chat message lands in every listener's log for Chat Events to read.
 
   Everything is confined to -WorkDir. Nothing under the real
   Documents\EVE\logs folders is touched unless you explicitly point
@@ -57,7 +57,7 @@
     event|char|kind                   one Add-GamelogEvent kind, e.g. FleetInvite
     chat|channel|speaker|message      a chat message, written to every listener's log
     join|char|channel                 opens a channel log mid-session
-    chattest[|seconds]                the Chat Alerts test, without waiting for Enter
+    chattest[|seconds]                the Chat Events test, without waiting for Enter
     burst|char|kind[|seconds]         bounty, mining, combatIn, combatOut, miss, combatMixed
     status
   An age (seconds) stamps the line that far in the past, as a log read late
@@ -882,7 +882,7 @@ function Start-CharacterBurst {
     }
 }
 
-# Fires several distinct NotificationTypes on one character ~1.5s apart (one from each Event Alerts category:
+# Fires several distinct NotificationTypes on one character ~1.5s apart (one from each Game Events category:
 # fleet, mining, combat, navigation, general) so they land inside each other's default 10s display window and
 # visibly stack - exercises both the stack itself and the oldest-entry eviction once more than CAPACITY
 # (3, see src/notifications/stack.zig) are active at once. Blocks the menu loop for a few seconds while it runs.
@@ -983,7 +983,7 @@ function Start-SystemColorTest {
     Start-CharacterJumpSequence -CharName $CharName -Systems $systems -IntervalSeconds $IntervalSeconds
 }
 
-# Rules to enter on the Chat Alerts tab; each sets how its own alerts look and sound there.
+# Rules to enter on the Chat Events tab; each sets how its own alerts look and sound there.
 $script:ChatAlertTestRules = @(
     @{ Type = 'Intel'; Channels = '*.imperium, Intel Test, Fleet'; Detail = 'Max Jumps 5'; Exclude = 'clr, nv' }
     @{ Type = 'Keyword'; Channels = 'Fleet'; Detail = 'Keywords: bubble, warp in'; Exclude = '' }
@@ -1015,12 +1015,12 @@ function Start-ChatAlertTest {
     param([int]$IntervalSeconds = 5, [switch]$NoPrompt)
 
     $present = @($clients.Keys | Where-Object { $clients[$_].LoggedIn })
-    if ($present.Count -lt 2) { Write-Warning 'The Chat Alerts test needs 2 logged-in clients.'; return }
+    if ($present.Count -lt 2) { Write-Warning 'The Chat Events test needs 2 logged-in clients.'; return }
     $near = $present[0]
     $far = $present[1]
 
     Write-Host ''
-    Write-Host 'Add these rows on the Chat Alerts tab, then Save:' -ForegroundColor Cyan
+    Write-Host 'Add these rows on the Chat Events tab, then Save:' -ForegroundColor Cyan
     foreach ($rule in $script:ChatAlertTestRules) {
         Write-Host ("  {0,-8} channels: {1,-30} {2}  exclude: {3}" -f $rule.Type, $rule.Channels, $rule.Detail, $rule.Exclude)
     }

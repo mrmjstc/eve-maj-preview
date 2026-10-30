@@ -925,7 +925,7 @@ pub const roster_badge: Style = .{ .font_size = .xs, .foreground = .{ .color = M
 pub const roster_badge_warning: Style = roster_badge.with(.{ .foreground = .accent });
 /// A heading over a run of roster rows, its text lined up with theirs.
 pub const roster_category: Style = .{ .width = .grow(), .padding = .init(8, 6, 2, 6) };
-/// Before an Event Alerts row: filled while the event is enabled, a hollow ring while it's off.
+/// Before an Game Events row: filled while the event is enabled, a hollow ring while it's off.
 pub const event_dot_on: Style = .{ .width = .fixed(EVENT_DOT_SIZE), .height = .fixed(EVENT_DOT_SIZE), .radius = .{ .fixed = EVENT_DOT_SIZE / 2 }, .background = .accent };
 pub const event_dot_off: Style = event_dot_on.with(.{ .background = .transparent, .border_width = .all(1), .border_color = .{ .color = BORDER_STRONG } });
 pub const EVENT_DOT_SIZE = 6;
