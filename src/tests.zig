@@ -46,6 +46,7 @@ test {
     _ = @import("layout/region_grid.zig");
     _ = @import("layout/spaces.zig");
     _ = @import("layout/zoom.zig");
+    _ = @import("map/connections.zig");
     _ = @import("map/evestars.zig");
     _ = @import("map/intel_pins.zig");
     _ = @import("map/layout.zig");

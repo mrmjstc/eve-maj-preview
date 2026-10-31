@@ -12,6 +12,10 @@ const font_cache_mod = @import("font_cache.zig");
 const window = @import("window.zig");
 const spaces = @import("../layout/spaces.zig");
 const pixel_buffer = @import("../util/pixel_buffer.zig");
+const universe = @import("../map/universe.zig");
+const layout_mod = @import("../map/layout.zig");
+const connections_mod = @import("../map/connections.zig");
+const map_look = @import("../panels/map_look.zig");
 const log = @import("../log.zig");
 
 const ThumbnailWindow = window.ThumbnailWindow;
@@ -32,6 +36,8 @@ const MAX_NOTIFICATION_LINES = stack.CAPACITY * MAX_LINES_PER_NOTIFICATION;
 const MAX_LINES = 1 + 1 + 1 + 1 + 2 + 2 + 1 + 3 + 1;
 const MAX_STACK_LINES = 3;
 const TEXT_BUFFER_SIZE = 32;
+/// Of the Map Panel's halo, so a new pin doesn't cover a map this small.
+const CONNECTION_HALO_SCALE: f32 = 0.5;
 
 /// One resolved line of the notification block.
 pub const NotificationLine = struct {
@@ -52,8 +58,14 @@ pub const RenderSettings = struct {
     show_system_name: bool = false,
     /// Borrows from the thumbnail.
     system_name: []const u8 = "",
+    /// Shown in place of system_name unless empty.
+    connections: connections_mod.Connections = .{},
     character_name_color: u32 = 0xFFFFFF,
     system_name_color: u32 = 0xFFFFFF,
+    /// For every connection but the character's own system, which keeps system_name_color.
+    connection_color: u32 = 0xFFFFFF,
+    connection_map_width: i32 = 0,
+    connection_map_height: i32 = 0,
     character_name_bg_color: u32 = 0x80000000,
     system_name_bg_color: u32 = 0x80000000,
     /// Borrows from config.
@@ -230,6 +242,12 @@ const Layout = struct {
         return draw.measureText(self.dc, text);
     }
 
+    /// Without measureText's padding, for text sharing a line.
+    fn measureRun(self: *Layout, font: win32.HFONT, text: []const u8) TextDimensions {
+        const padded = self.measure(font, text);
+        return .{ .width = padded.width - draw.TEXT_PADDING_X * 2, .height = padded.height - draw.TEXT_PADDING_Y * 2 };
+    }
+
     /// Short stat text only, so it can't outgrow its buffer in practice; "---" if it somehow does.
     fn print(self: *Layout, comptime fmt: []const u8, args: anytype) []const u8 {
         return std.mem.print(self.nextTextBuf(), fmt, args) catch "---";
@@ -356,6 +374,8 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
         try addResources(&layout, fonts, config, stats, settings);
         try addPing(&layout, fonts, config, stats, settings);
     }
+    var connection_map: layout_mod.Layout = .{};
+    const connection_font = try layoutConnectionMap(&connection_map, &layout, fonts, settings);
     const notifications = try layoutNotifications(&layout, fonts, settings);
 
     const lines = layout.lines[0..layout.count];
@@ -363,6 +383,7 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
     for (lines) |line| {
         draw.fillTextBackground(overlay.canvas(), line.background_origin.x, line.background_origin.y, line.background_dimensions.width, line.background_dimensions.height, line.bg_color);
     }
+    if (connection_font != null) drawConnectionMap(overlay.canvas(), &connection_map, settings);
     if (notifications) |block| {
         draw.fillTextBackground(overlay.canvas(), block.origin.x, block.origin.y, block.dims.width, block.dims.height, settings.notifications_bg_color);
     }
@@ -374,6 +395,10 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
     for (lines) |line| {
         layout.select(line.font);
         draw.renderText(overlay.mem_dc, line.text, line.render_origin.x, line.render_origin.y, line.color);
+    }
+    if (connection_font) |font| {
+        layout.select(font);
+        renderConnectionLabels(overlay.mem_dc, &connection_map, settings);
     }
     if (notifications) |block| {
         layout.select(block.font);
@@ -391,6 +416,10 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
     // Bounded to where text was drawn instead of scanning the whole overlay.
     for (lines) |line| {
         pixel_buffer.fixTextAlphaRect(overlay.canvas(), line.background_origin.x, line.background_origin.y, line.background_dimensions.width, line.background_dimensions.height);
+    }
+    if (connection_font != null) {
+        const area = connection_map.area;
+        pixel_buffer.fixTextAlphaRect(overlay.canvas(), area.left, area.top, @intCast(area.right - area.left), @intCast(area.bottom - area.top));
     }
     if (notifications) |block| {
         pixel_buffer.fixTextAlphaRect(overlay.canvas(), block.origin.x, block.origin.y, block.dims.width, block.dims.height);
@@ -424,6 +453,10 @@ pub fn createRenderSettings(config: *const config_mod.Config, thumbnail: *const 
         .display_name = thumbnail.cached_display_name,
         .show_system_name = show_text and thumbnail_config.showSystemName and thumbnail.system_name.len > 0,
         .system_name = thumbnail.system_name,
+        .connections = thumbnail.connections,
+        .connection_color = thumbnail_config.systemNameColor,
+        .connection_map_width = scalePixels(thumbnail_config.systemConnectionMapWidth, dpi_scale),
+        .connection_map_height = scalePixels(thumbnail_config.systemConnectionMapHeight, dpi_scale),
         // Unique character colours win over the state's text colour.
         .character_name_color = thumbnail.cached_character_color orelse state_config.textColor orelse thumbnail_config.characterNameColor,
         .system_name_color = thumbnail.cached_system_color,
@@ -554,7 +587,7 @@ fn addCharacterName(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings
 }
 
 fn addSystemName(layout: *Layout, fonts: Fonts, cache: *RenderCache, settings: RenderSettings) !void {
-    if (!settings.show_system_name) return;
+    if (!settings.show_system_name or settings.connections.count > 0) return;
     const font = try fonts.get(.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
     const dims = cache.system_name.measure(layout, font, settings.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
     layout.addAt(font, settings.system_name, dims, settings.system_name_position, settings.system_name_offset_x, settings.system_name_offset_y, settings.system_name_color, settings.system_name_bg_color);
@@ -671,6 +704,99 @@ fn addPing(layout: *Layout, fonts: Fonts, config: *const config_mod.Config, stat
     const font = try fonts.getScaled(.ping, ping.font_name, ping.font_size, ping.font_weight);
     const text = if (stats.ping_ms) |ms| layout.print("{d} ms", .{ms}) else layout.print("?? ms", .{});
     layout.addAt(font, text, layout.measure(font, text), ping.position, ping.offset_x, ping.offset_y, ping.color, settings.ping_bg_color);
+}
+
+/// Fills `map` and returns its labels' font; null while the plain system name shows instead.
+fn layoutConnectionMap(map: *layout_mod.Layout, layout: *Layout, fonts: Fonts, settings: RenderSettings) !?win32.HFONT {
+    const connections = settings.connections.slice();
+    if (!settings.show_system_name or connections.len == 0) return null;
+    const font = try fonts.get(.system_name, settings.system_name_font_name, settings.system_name_font_size, settings.system_name_font_weight);
+
+    var systems: [connections_mod.CAPACITY]universe.SystemIndex = undefined;
+    for (connections, 0..) |connection, index| systems[index] = connection.system;
+    const dims: TextDimensions = .{
+        .width = @min(@as(usize, @intCast(settings.connection_map_width)), layout.width),
+        .height = @min(@as(usize, @intCast(settings.connection_map_height)), layout.height),
+    };
+    const origin = layout.position(settings.system_name_position, dims, settings.system_name_offset_x, settings.system_name_offset_y);
+    const area: layout_mod.Box = .{ .left = origin.x, .top = origin.y, .right = origin.x + @as(i32, @intCast(dims.width)), .bottom = origin.y + @as(i32, @intCast(dims.height)) };
+    map.buildAround(systems[0..connections.len], area);
+
+    var node_widths: [connections_mod.CAPACITY]i32 = undefined;
+    var line_height: i32 = 0;
+    for (map.nodes[0..map.node_count], 0..) |node, index| {
+        const label = layout.measureRun(font, universe.systemName(node.system));
+        node_widths[index] = @intCast(label.width);
+        line_height = @max(line_height, @as(i32, @intCast(label.height)));
+    }
+    var exit_widths: [layout_mod.MAX_EXITS]i32 = undefined;
+    for (map.exits[0..map.exit_count], 0..) |exit, index| {
+        exit_widths[index] = @intCast(layout.measureRun(font, exitLabel(exit, settings)).width);
+    }
+
+    var connection_order: [connections_mod.CAPACITY]u16 = undefined;
+    var node_order: [connections_mod.CAPACITY]u16 = undefined;
+    var node_order_count: usize = 0;
+    for (settings.connections.labelOrder(&connection_order)) |connection_index| {
+        node_order[node_order_count] = map.nodeOf(connections[connection_index].system) orelse continue;
+        node_order_count += 1;
+    }
+    map.placeLabelsInOrder(node_order[0..node_order_count], &node_widths, &exit_widths, line_height);
+    return font;
+}
+
+fn hasIntel(connection: ?connections_mod.Connection) bool {
+    const marked = connection orelse return false;
+    return marked.intel_freshness_percent > 0;
+}
+
+/// The region it leads to, as on the Map Panel; with intel, the system the report names.
+fn exitLabel(exit: layout_mod.Exit, settings: RenderSettings) []const u8 {
+    return if (hasIntel(settings.connections.find(exit.destination))) universe.systemName(exit.destination) else universe.regionName(exit.region);
+}
+
+fn labelColor(connection: ?connections_mod.Connection, plain_color: u32) u32 {
+    const marked = connection orelse return plain_color;
+    return if (marked.intel_freshness_percent > 0) map_look.intelColor(marked.is_clear) else plain_color;
+}
+
+fn drawIntelHalo(canvas: pixel_buffer.Canvas, x: i32, y: i32, connection: ?connections_mod.Connection) void {
+    const marked = connection orelse return;
+    if (marked.intel_freshness_percent == 0) return;
+    const halo_radius = map_look.intelHaloRadius(marked.intel_shrink_percent, 100) * CONNECTION_HALO_SCALE;
+    map_look.drawIntelHalo(canvas, x, y, halo_radius, marked.is_clear, marked.intel_freshness_percent);
+}
+
+/// Layered like the Map Panel: halos, gates, then systems; no background, so the client shows through.
+fn drawConnectionMap(canvas: pixel_buffer.Canvas, map: *const layout_mod.Layout, settings: RenderSettings) void {
+    const nodes = map.nodes[0..map.node_count];
+    const exits = map.exits[0..map.exit_count];
+    for (nodes) |node| drawIntelHalo(canvas, node.x, node.y, settings.connections.find(node.system));
+    for (exits) |exit| drawIntelHalo(canvas, exit.x, exit.y, settings.connections.find(exit.destination));
+    for (map.edges[0..map.edge_count]) |edge| {
+        const first = nodes[edge.first];
+        const second = nodes[edge.second];
+        pixel_buffer.drawLine(canvas, first.x, first.y, second.x, second.y, if (edge.is_local) map_look.EDGE_LOCAL else map_look.EDGE_CROSS);
+    }
+    for (exits) |exit| map_look.drawExit(canvas, nodes[exit.from], exit, map_look.EXIT);
+    const marker_radius = map_look.markerRadius(0, 0);
+    for (nodes) |node| {
+        pixel_buffer.fillCircle(canvas, node.x, node.y, marker_radius, map_look.securityColor(universe.systemInfo(node.system).security_tenths));
+    }
+    pixel_buffer.drawRing(canvas, nodes[0].x, nodes[0].y, marker_radius + map_look.RING_GAP, map_look.RING_THICKNESS, map_look.FOCUS);
+}
+
+/// In the font already selected into `dc`; the character's own system keeps its colour unless intel names it.
+fn renderConnectionLabels(dc: win32.HDC, map: *const layout_mod.Layout, settings: RenderSettings) void {
+    for (map.nodes[0..map.node_count], 0..) |node, index| {
+        const label = node.label orelse continue;
+        const plain_color = if (index == 0) settings.system_name_color else settings.connection_color;
+        draw.renderText(dc, universe.systemName(node.system), label.left - draw.TEXT_PADDING_X, label.top - draw.TEXT_PADDING_Y, labelColor(settings.connections.find(node.system), plain_color));
+    }
+    for (map.exits[0..map.exit_count]) |exit| {
+        const label = exit.label orelse continue;
+        draw.renderText(dc, exitLabel(exit, settings), label.left - draw.TEXT_PADDING_X, label.top - draw.TEXT_PADDING_Y, labelColor(settings.connections.find(exit.destination), map_look.EXIT));
+    }
 }
 
 /// Not size-cached: the stack changes too often for a cache to hit.

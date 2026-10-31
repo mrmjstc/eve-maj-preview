@@ -19,6 +19,8 @@ const renderer_mod = @import("renderer.zig");
 const dispatch = @import("../notifications/dispatch.zig");
 const notification_mod = @import("../notifications/notification.zig");
 const universe = @import("../map/universe.zig");
+const intel_pins = @import("../map/intel_pins.zig");
+const connections = @import("../map/connections.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("thumbnail_set");
@@ -403,6 +405,17 @@ pub const ThumbnailSet = struct {
 
         thumbnail.needs_render = true;
         slog.debug("Updated system for {s}: {s}", .{ thumbnail.character_name, system_name });
+    }
+
+    /// Call every tick, since pins fade with nothing to announce it.
+    pub fn updateConnections(self: *ThumbnailSet, pins: *const intel_pins.IntelPins, now_ms: u64) void {
+        const thumbnail_config = &self.config.thumbnail;
+        const shrink_ms: u64 = @as(u64, @intCast(@max(0, self.config.display.mapPanelIntelShrinkSec))) * std.time.ms_per_s;
+        const intel: ?connections.IntelView = if (thumbnail_config.showSystemConnectionIntel) .{ .pins = pins, .shrink_ms = shrink_ms } else null;
+        for (self.thumbnails.items) |*thumbnail| {
+            const start = if (thumbnail_config.showSystemConnections) universe.findSystem(thumbnail.system_name) else null;
+            if (thumbnail.connections.refresh(start, thumbnail_config.systemConnectionJumps, intel, now_ms)) thumbnail.needs_render = true;
+        }
     }
 
     /// Past `max_immediate`, the rest stay dirty for the next tick.

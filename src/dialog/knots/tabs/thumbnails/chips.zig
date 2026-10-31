@@ -41,11 +41,18 @@ pub const CHIPS = [_]Chip{
         .show_field = "showSystemName",
         .needs_show_text = true,
         .unique_field = "useUniqueSystemColors",
+        .sub_gate_field = "showSystemConnections",
         .chatlog_notice = NEEDS_LOGS,
         .popover = &([_]PopoverField{
             .{ .toggle = .{ .field = "showSystemName", .label = "Show System Name", .hint = "Needs Log Monitoring to know where each character is." } },
             .{ .toggle = .{ .field = "useUniqueSystemColors", .label = "Unique System Colors", .disables_color = true, .hint = "Each system gets its own color; System Colors overrides it." } },
-        } ++ STYLE_ROWS),
+        } ++ STYLE_ROWS ++ [_]PopoverField{
+            .{ .toggle = .{ .field = "showSystemConnections", .label = "Show Connections", .hint = "Replaces the name with a small map of the system and those a few gates out." } },
+            .{ .number = .{ .field = "systemConnectionJumps", .label = "Connection Jumps", .unit = "jumps", .singular_unit = "jump", .is_always_shown = true, .hint = "How many gates out the map reaches; it stops at the region's edge." } },
+            .{ .number = .{ .field = "systemConnectionMapWidth", .label = "Map Width", .unit = "px", .is_always_shown = true, .hint = "Names that don't fit are left out, so a bigger map shows more." } },
+            .{ .number = .{ .field = "systemConnectionMapHeight", .label = "Map Height", .unit = "px", .is_always_shown = true } },
+            .{ .toggle = .{ .field = "showSystemConnectionIntel", .label = "Mark Systems With Intel", .hint = "Circles systems named in intel channels, like the Map Panel. Needs an intel rule." } },
+        }),
     },
     .{
         .label = "Group Badge",
@@ -182,11 +189,11 @@ pub const CHIPS = [_]Chip{
 /// The settings struct a chip's fields live in.
 pub const Section = enum { thumbnail, notifications, combat, mining, bounty, resources, ping };
 
-/// Number, segmented and text rows show only in Advanced Mode; a `hint` is a tooltip on the label.
+/// Number, segmented and text rows show only in Advanced Mode, unless a number's `is_always_shown`; a `hint` is a tooltip on the label.
 pub const PopoverField = union(enum) {
     /// A setting of the chip's section; `disables_color` greys out the font row's colour while it's on.
     toggle: struct { field: []const u8, label: []const u8, disables_color: bool = false, hint: ?[]const u8 = null },
-    number: struct { field: []const u8, label: []const u8, unit: []const u8, shows_seconds: bool = false, hint: ?[]const u8 = null },
+    number: struct { field: []const u8, label: []const u8, unit: []const u8, singular_unit: ?[]const u8 = null, shows_seconds: bool = false, is_always_shown: bool = false, hint: ?[]const u8 = null },
     /// `options` names each tag in declaration order.
     segmented: struct { field: []const u8, label: []const u8, options: []const []const u8, hint: ?[]const u8 = null },
     text: struct { field: []const u8, label: []const u8, placeholder: []const u8, hint: ?[]const u8 = null },
@@ -208,6 +215,8 @@ pub const Chip = struct {
     /// Its section's master switch, e.g. Combat's `enabled`, which has to be on too.
     enabled_field: ?[]const u8 = null,
     unique_field: ?[]const u8 = null,
+    /// A toggle whose later rows wait on it too.
+    sub_gate_field: ?[]const u8 = null,
     /// What its popover says while Log Monitoring is off; null for a text the logs don't drive.
     chatlog_notice: ?[]const u8 = null,
     popover: []const PopoverField,
@@ -299,8 +308,8 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
     defer _ = widgets.useCompactRows(was_compact);
     const is_advanced = session.global().get("advancedMode");
     var is_color_disabled = false;
-    // Every row after the section's master switch, or the chip's show switch, waits on it.
-    var gates: [2]widgets.Group = undefined;
+    // Every row after the section's master switch, the chip's show switch or its sub-gate waits on it.
+    var gates: [3]widgets.Group = undefined;
     var gate_count: usize = 0;
     inline for (chip.popover) |row| {
         switch (row) {
@@ -313,8 +322,8 @@ pub fn showSettings(context: *ui.Frame, comptime chip: Chip, comptime index: usi
                     gate_count += 1;
                 }
             },
-            .number => |number| if (is_advanced) {
-                try bind.number(context, ref, number.field, number.label, .{ .unit = number.unit, .shows_seconds = number.shows_seconds });
+            .number => |number| if (is_advanced or number.is_always_shown) {
+                try bind.number(context, ref, number.field, number.label, .{ .unit = number.unit, .singular_unit = number.singular_unit, .shows_seconds = number.shows_seconds });
                 if (number.hint) |hint| try widgets.hintText(context, .str("knots.chip.hint:" ++ chip.label ++ ":" ++ number.field), hint);
             },
             .segmented => |segmented| if (is_advanced) {
@@ -412,6 +421,9 @@ fn toggleLabel(comptime chip: Chip, comptime field: []const u8) []const u8 {
 
 fn isGate(comptime chip: Chip, comptime field: []const u8) bool {
     if (std.mem.eql(u8, field, chip.show_field)) return true;
+    if (chip.sub_gate_field) |sub_gate_field| {
+        if (std.mem.eql(u8, field, sub_gate_field)) return true;
+    }
     const enabled_field = chip.enabled_field orelse return false;
     return std.mem.eql(u8, field, enabled_field);
 }

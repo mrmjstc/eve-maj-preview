@@ -19,6 +19,7 @@ const NODE_CLEARANCE = 5;
 const LABEL_SIDE_GAP = 2;
 /// How close the cursor must come to a system or an exit, in pixels.
 const HIT_RADIUS = 9;
+const TAKEN_CAPACITY = universe.MAX_REGION_SYSTEMS * 2 + MAX_EXITS * 2;
 
 /// In pixels, `right` and `bottom` exclusive.
 pub const Box = struct {
@@ -64,7 +65,7 @@ pub const Exit = struct {
     label: ?Box = null,
 };
 
-/// One region laid out; rebuilt when the region or the panel's size changes.
+/// One region, or a handful of systems around one, laid out; rebuilt when they or the area change.
 pub const Layout = struct {
     region: RegionIndex = 0,
     area: Box = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
@@ -93,39 +94,57 @@ pub const Layout = struct {
             self.node_count += 1;
         }
 
-        const fit = bounds.fitTo(area);
-        for (self.nodes[0..self.node_count]) |*node| {
-            const info = universe.systemInfo(node.system);
-            node.x = fit.pixelX(info.x);
-            node.y = fit.pixelY(info.y);
+        self.placeNodes(bounds.fitTo(area));
+        for (0..self.node_count) |index| {
+            var links = universe.neighbours(self.nodes[index].system);
+            while (links.next()) |neighbour| self.addGate(@intCast(index), neighbour);
         }
-        for (0..self.node_count) |index| self.addGates(@intCast(index), fit);
+    }
+
+    /// Only the gates among `systems`, at least one of them: those in the first's region become nodes, in order, and the rest exits.
+    pub fn buildAround(self: *Layout, systems: []const SystemIndex, area: Box) void {
+        self.region = universe.systemInfo(systems[0]).region;
+        self.area = area;
+        self.node_count = 0;
+        self.edge_count = 0;
+        self.exit_count = 0;
+
+        var bounds: Bounds = .{};
+        for (systems) |system| {
+            const info = universe.systemInfo(system);
+            if (info.region != self.region) continue;
+            bounds.include(info);
+            self.nodes[self.node_count] = .{ .system = system, .x = 0, .y = 0 };
+            self.node_count += 1;
+        }
+        self.placeNodes(bounds.fitTo(area));
+        for (0..self.node_count) |index| {
+            var links = universe.neighbours(self.nodes[index].system);
+            while (links.next()) |neighbour| {
+                if (isListed(systems, neighbour)) self.addGate(@intCast(index), neighbour);
+            }
+        }
     }
 
     /// Greedily, the most connected systems first; `node_widths` and `exit_widths` are pixel widths in `nodes` and `exits` order.
     pub fn placeLabels(self: *Layout, node_widths: []const i32, exit_widths: []const i32, line_height: i32) void {
-        var taken: [universe.MAX_REGION_SYSTEMS * 2 + MAX_EXITS * 2]Box = undefined;
-        var taken_count: usize = 0;
-        for (self.nodes[0..self.node_count]) |node| {
-            taken[taken_count] = markerBox(node.x, node.y);
-            taken_count += 1;
-        }
-        for (self.exits[0..self.exit_count]) |exit| {
-            taken[taken_count] = markerBox(exit.x, exit.y);
-            taken_count += 1;
-        }
+        var taken: [TAKEN_CAPACITY]Box = undefined;
+        var taken_count = self.takeMarkers(&taken);
 
         var order: [universe.MAX_REGION_SYSTEMS]u16 = undefined;
         for (order[0..self.node_count], 0..) |*slot, index| slot.* = @intCast(index);
         std.mem.sort(u16, order[0..self.node_count], self, moreConnected);
 
-        for (order[0..self.node_count]) |index| {
-            const node = &self.nodes[index];
-            node.label = self.claimSpot(&taken, &taken_count, node.x, node.y, node_widths[index], line_height);
-        }
-        for (self.exits[0..self.exit_count], exit_widths[0..self.exit_count]) |*exit, width| {
-            exit.label = self.claimSpot(&taken, &taken_count, exit.x, exit.y, width, line_height);
-        }
+        self.labelNodes(order[0..self.node_count], node_widths, line_height, &taken, &taken_count);
+        self.labelExits(exit_widths, line_height, &taken, &taken_count);
+    }
+
+    /// Like placeLabels, first come first served along `order`, places in `nodes`; a node left out keeps no label.
+    pub fn placeLabelsInOrder(self: *Layout, order: []const u16, node_widths: []const i32, exit_widths: []const i32, line_height: i32) void {
+        var taken: [TAKEN_CAPACITY]Box = undefined;
+        var taken_count = self.takeMarkers(&taken);
+        self.labelNodes(order, node_widths, line_height, &taken, &taken_count);
+        self.labelExits(exit_widths, line_height, &taken, &taken_count);
     }
 
     /// The nearest system within reach of the cursor.
@@ -164,28 +183,62 @@ pub const Layout = struct {
         return null;
     }
 
-    fn addGates(self: *Layout, index: u16, fit: Fit) void {
-        const node = self.nodes[index];
-        const info = universe.systemInfo(node.system);
-        var links = universe.neighbours(node.system);
-        while (links.next()) |neighbour| {
-            const other = universe.systemInfo(neighbour);
-            if (other.region != self.region) {
-                self.addExit(index, neighbour, other, fit);
-                continue;
-            }
-            if (neighbour < node.system or self.edge_count == MAX_EDGES) continue;
-            const second = self.nodeOf(neighbour) orelse continue;
-            self.edges[self.edge_count] = .{ .first = index, .second = second, .is_local = other.constellation == info.constellation };
-            self.edge_count += 1;
+    fn placeNodes(self: *Layout, fit: Fit) void {
+        for (self.nodes[0..self.node_count]) |*node| {
+            const info = universe.systemInfo(node.system);
+            node.x = fit.pixelX(info.x);
+            node.y = fit.pixelY(info.y);
         }
     }
 
-    fn addExit(self: *Layout, from: u16, destination: SystemIndex, other: universe.SystemInfo, fit: Fit) void {
+    /// Returns how many it took.
+    fn takeMarkers(self: *const Layout, taken: []Box) usize {
+        var taken_count: usize = 0;
+        for (self.nodes[0..self.node_count]) |node| {
+            taken[taken_count] = markerBox(node.x, node.y);
+            taken_count += 1;
+        }
+        for (self.exits[0..self.exit_count]) |exit| {
+            taken[taken_count] = markerBox(exit.x, exit.y);
+            taken_count += 1;
+        }
+        return taken_count;
+    }
+
+    fn labelNodes(self: *Layout, order: []const u16, node_widths: []const i32, line_height: i32, taken: []Box, taken_count: *usize) void {
+        for (order) |index| {
+            const node = &self.nodes[index];
+            node.label = self.claimSpot(taken, taken_count, node.x, node.y, node_widths[index], line_height);
+        }
+    }
+
+    fn labelExits(self: *Layout, exit_widths: []const i32, line_height: i32, taken: []Box, taken_count: *usize) void {
+        for (self.exits[0..self.exit_count], exit_widths[0..self.exit_count]) |*exit, width| {
+            exit.label = self.claimSpot(taken, taken_count, exit.x, exit.y, width, line_height);
+        }
+    }
+
+    fn addGate(self: *Layout, index: u16, neighbour: SystemIndex) void {
+        const system = self.nodes[index].system;
+        const info = universe.systemInfo(system);
+        const other = universe.systemInfo(neighbour);
+        if (other.region != self.region) {
+            self.addExit(index, neighbour, info, other);
+            return;
+        }
+        // Each gate is seen from both ends, so only the lower system's end adds it.
+        if (neighbour < system or self.edge_count == MAX_EDGES) return;
+        const second = self.nodeOf(neighbour) orelse return;
+        self.edges[self.edge_count] = .{ .first = index, .second = second, .is_local = other.constellation == info.constellation };
+        self.edge_count += 1;
+    }
+
+    /// Aimed on CCP's map rather than in pixels, so it still points the right way with no other system to scale by.
+    fn addExit(self: *Layout, from: u16, destination: SystemIndex, info: universe.SystemInfo, other: universe.SystemInfo) void {
         if (self.exit_count == MAX_EXITS) return;
         const node = self.nodes[from];
-        const delta_x: f32 = @floatFromInt(fit.pixelX(other.x) - node.x);
-        const delta_y: f32 = @floatFromInt(fit.pixelY(other.y) - node.y);
+        const delta_x: f32 = @floatFromInt(@as(i32, other.x) - info.x);
+        const delta_y: f32 = @floatFromInt(@as(i32, other.y) - info.y);
         const length = @sqrt(delta_x * delta_x + delta_y * delta_y);
         const step_x = if (length > 0) delta_x / length else 0;
         const step_y = if (length > 0) delta_y / length else -1;
@@ -284,6 +337,13 @@ fn markerBox(x: i32, y: i32) Box {
 fn overlapsAny(box: Box, others: []const Box) bool {
     for (others) |other| {
         if (box.overlaps(other)) return true;
+    }
+    return false;
+}
+
+fn isListed(systems: []const SystemIndex, system: SystemIndex) bool {
+    for (systems) |listed| {
+        if (listed == system) return true;
     }
     return false;
 }
@@ -393,6 +453,43 @@ test "placed labels never overlap each other or a marker, and stay inside the ar
     }
     // The tightest region: most names still fit, and hover covers the rest.
     try testing.expect(placed_count * 2 > layout.node_count);
+}
+
+test "buildAround keeps its systems in order, joined by the gates among them alone" {
+    var layout: Layout = .{};
+    const jita = universe.findSystem("Jita").?;
+    const perimeter = universe.findSystem("Perimeter").?;
+    layout.buildAround(&.{ jita, perimeter }, TEST_AREA);
+    try testing.expectEqual(@as(usize, 2), layout.node_count);
+    try testing.expectEqual(jita, layout.nodes[0].system);
+    try testing.expectEqual(perimeter, layout.nodes[1].system);
+    try testing.expectEqual(@as(usize, 1), layout.edge_count);
+    try testing.expectEqual(@as(usize, 0), layout.exit_count);
+}
+
+test "buildAround makes a listed system over the border an exit, and ignores other gates" {
+    var layout: Layout = .{};
+    const dodixie = universe.findSystem("Dodixie").?;
+    const meves = universe.findSystem("Meves").?;
+    layout.buildAround(&.{ dodixie, meves }, TEST_AREA);
+    try testing.expectEqual(@as(usize, 1), layout.node_count);
+    try testing.expectEqual(@as(usize, 0), layout.edge_count);
+    try testing.expectEqual(@as(usize, 1), layout.exit_count);
+    try testing.expectEqual(meves, layout.exits[0].destination);
+    // Meves lies down and left of Dodixie, which a lone system has no scale to show.
+    try testing.expect(layout.exits[0].x < layout.nodes[0].x);
+    try testing.expect(layout.exits[0].y > layout.nodes[0].y);
+}
+
+test "placeLabelsInOrder serves the first in its order, and skips those left out" {
+    var layout: Layout = .{};
+    const jita = universe.findSystem("Jita").?;
+    const perimeter = universe.findSystem("Perimeter").?;
+    layout.buildAround(&.{ jita, perimeter }, TEST_AREA);
+    const widths = [_]i32{ TEST_LABEL_WIDTH, TEST_LABEL_WIDTH };
+    layout.placeLabelsInOrder(&.{1}, &widths, &.{}, TEST_LINE_HEIGHT);
+    try testing.expect(layout.nodes[1].label != null);
+    try testing.expect(layout.nodes[0].label == null);
 }
 
 test "nodeAt finds a system within reach and nothing further off" {

@@ -47,10 +47,6 @@ const AGE_BUCKET_MS: u64 = 15_000;
 /// More clients than this go unmarked.
 const MAX_MARKS = 64;
 const DEFAULT_REGION_ID = 10000002;
-/// Around a client's or the hovered system's marker.
-const RING_GAP: f32 = 3;
-const RING_THICKNESS: f32 = 1.5;
-const EXIT_RADIUS: f32 = 2;
 /// While a popup or an Eve Stars call is open, as the app's tick can be a second apart.
 const PUMP_TIMER_ID: usize = 1;
 const PUMP_INTERVAL_MS: win32.UINT = 100;
@@ -900,10 +896,7 @@ pub const MapPanelWindow = struct {
         // Under everything else, so a new halo doesn't hide the systems around it.
         for (layout.nodes[0..layout.node_count]) |node| {
             const pin = scene.pins.find(node.system, now_ms) orelse continue;
-            const halo_radius = self.intelHaloRadius(pin, now_ms);
-            const freshness = pin.freshnessPercent(now_ms);
-            pixel_buffer.fillCircle(canvas, node.x, node.y, halo_radius, map_look.intelHaloColor(pin.is_clear, freshness));
-            pixel_buffer.drawRing(canvas, node.x, node.y, halo_radius, RING_THICKNESS, map_look.intelRimColor(pin.is_clear, freshness));
+            map_look.drawIntelHalo(canvas, node.x, node.y, self.intelHaloRadius(pin, now_ms), pin.is_clear, pin.freshnessPercent(now_ms));
         }
         for (layout.edges[0..layout.edge_count]) |edge| {
             const first = layout.nodes[edge.first];
@@ -913,11 +906,8 @@ pub const MapPanelWindow = struct {
             pixel_buffer.drawLine(canvas, first.x, first.y, second.x, second.y, edge_color);
         }
         for (layout.exits[0..layout.exit_count], 0..) |exit, index| {
-            const node = layout.nodes[exit.from];
             const is_hovered = self.hover.kind == .exit and self.hover.index == index;
-            const exit_color = if (is_hovered) map_look.EDGE_HOVER else map_look.EXIT;
-            pixel_buffer.drawLine(canvas, node.x, node.y, exit.x, exit.y, exit_color);
-            pixel_buffer.fillCircle(canvas, exit.x, exit.y, EXIT_RADIUS, exit_color);
+            map_look.drawExit(canvas, layout.nodes[exit.from], exit, if (is_hovered) map_look.EDGE_HOVER else map_look.EXIT);
         }
 
         const metric = self.config.display.mapPanelMetric;
@@ -928,14 +918,14 @@ pub const MapPanelWindow = struct {
             const marker_color = if (metric == .Security) map_look.securityColor(universe.systemInfo(node.system).security_tenths) else map_look.heatColor(value, peak);
             pixel_buffer.fillCircle(canvas, node.x, node.y, radius, marker_color);
             const is_hovered = if (hovered_node) |hovered| hovered == index else false;
-            if (is_hovered or self.focus_system == node.system) pixel_buffer.drawRing(canvas, node.x, node.y, radius + RING_GAP, RING_THICKNESS, map_look.FOCUS);
+            if (is_hovered or self.focus_system == node.system) pixel_buffer.drawRing(canvas, node.x, node.y, radius + map_look.RING_GAP, map_look.RING_THICKNESS, map_look.FOCUS);
         }
 
         for (self.marks[0..self.mark_count]) |mark| {
             const index = layout.nodeOf(mark.system) orelse continue;
             const node = layout.nodes[index];
             const ring_color = if (mark.is_active) self.config.display.listViewActiveColor else mark.color;
-            pixel_buffer.drawRing(canvas, node.x, node.y, map_look.markerRadius(0, 0) + 2 * RING_GAP, RING_THICKNESS, ring_color);
+            pixel_buffer.drawRing(canvas, node.x, node.y, map_look.markerRadius(0, 0) + 2 * map_look.RING_GAP, map_look.RING_THICKNESS, ring_color);
         }
     }
 

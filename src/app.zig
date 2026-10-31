@@ -185,6 +185,7 @@ pub const App = struct {
         hook_bindings.logFailedPosts();
 
         if (self.thumbnail_set) |thumbnail_set| {
+            thumbnail_set.updateConnections(&self.map_panel.pins, tick_start.ms);
             thumbnail_set.update(scout_result.windows, scout_result.closed_windows.items, scout_result.name_changes.items);
             if (self.list_window) |*list_window| {
                 list_window.render(thumbnail_set.thumbnails.items, thumbnail_set.active_source_hwnd) catch |err| {

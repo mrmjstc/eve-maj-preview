@@ -7,6 +7,7 @@ const state = @import("state.zig");
 const overlay = @import("overlay.zig");
 const stack = @import("../notifications/stack.zig");
 const scout = @import("../clients/scout.zig");
+const connections_mod = @import("../map/connections.zig");
 const log = @import("../log.zig");
 
 const ThumbnailState = config_mod.ThumbnailState;
@@ -155,6 +156,8 @@ pub const ThumbnailWindow = struct {
     system_name: []const u8,
     /// YYYYMMDD*1000000+HHMMSS of the event that set system_name; 0 if unreadable, which always applies.
     system_name_event_timestamp: u64 = 0,
+    /// Empty while showSystemConnections is off, or system_name isn't on the gate map; only ThumbnailSet.updateConnections writes it.
+    connections: connections_mod.Connections = .{},
     travel: LeftBehindState = .{},
     notifications: stack.NotificationStack = .{},
     last_click_time: win32.Ticks = .{},

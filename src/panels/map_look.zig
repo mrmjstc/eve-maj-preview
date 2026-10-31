@@ -1,4 +1,4 @@
-//! The Map Panel's look: its sizes, footer buttons, region picker, marker colours and tooltip text; no I/O.
+//! The Map Panel's look: its sizes, footer buttons, region picker, map markers and tooltip text; no I/O.
 const std = @import("std");
 const types = @import("../config/types.zig");
 const display_mod = @import("../config/display.zig");
@@ -9,6 +9,7 @@ const layout = @import("../map/layout.zig");
 const stats_mod = @import("../map/stats.zig");
 const evestars = @import("../map/evestars.zig");
 const color = @import("../util/color.zig");
+const pixel_buffer = @import("../util/pixel_buffer.zig");
 const utf8 = @import("../util/utf8.zig");
 
 const Box = layout.Box;
@@ -39,6 +40,10 @@ const HEAT_RADIUS_GROWTH: f32 = 3;
 /// Just outside a client's ring, so neither hides the other.
 const INTEL_HALO_RADIUS: f32 = 11;
 const INTEL_HALO_PEAK_RADIUS: f32 = 28;
+/// Around a marked system's marker.
+pub const RING_GAP: f32 = 3;
+pub const RING_THICKNESS: f32 = 1.5;
+const EXIT_RADIUS: f32 = 2;
 /// Past this, a line of who's in a system stops naming them.
 const MAX_CHARACTERS_NAMED = 4;
 /// Fits securityText's longest result.
@@ -266,16 +271,15 @@ pub fn intelColor(is_clear: bool) u32 {
     return if (is_clear) INTEL_CLEAR else INTEL;
 }
 
-/// A pin's halo fill, fainter as it ages; kept faint so lines and names read through it.
-pub fn intelHaloColor(is_clear: bool, freshness_percent: u64) u32 {
-    const alpha: u8 = @intCast(15 + freshness_percent * 30 / 100);
-    return color.withAlpha(intelColor(is_clear), alpha);
+pub fn drawIntelHalo(canvas: pixel_buffer.Canvas, x: i32, y: i32, radius: f32, is_clear: bool, freshness_percent: u64) void {
+    pixel_buffer.fillCircle(canvas, x, y, radius, intelHaloColor(is_clear, freshness_percent));
+    pixel_buffer.drawRing(canvas, x, y, radius, RING_THICKNESS, intelRimColor(is_clear, freshness_percent));
 }
 
-/// The rim that makes a pin's halo stand out, fainter as it ages.
-pub fn intelRimColor(is_clear: bool, freshness_percent: u64) u32 {
-    const alpha: u8 = @intCast(60 + freshness_percent * 195 / 100);
-    return color.withAlpha(intelColor(is_clear), alpha);
+/// The stub from a system to where its gate out of the region points.
+pub fn drawExit(canvas: pixel_buffer.Canvas, node: layout.Node, exit: layout.Exit, exit_color: u32) void {
+    pixel_buffer.drawLine(canvas, node.x, node.y, exit.x, exit.y, exit_color);
+    pixel_buffer.fillCircle(canvas, exit.x, exit.y, EXIT_RADIUS, exit_color);
 }
 
 pub fn systemTooltip(facts: SystemFacts) Tooltip {
@@ -369,6 +373,18 @@ fn securityText(buffer: *[SECURITY_TEXT_MAX]u8, security_tenths: i8) []const u8 
     const magnitude = @abs(security_tenths);
     const sign = if (security_tenths < 0) "-" else "";
     return std.fmt.bufPrint(buffer, "{s}{d}.{d}", .{ sign, magnitude / 10, magnitude % 10 }) catch unreachable;
+}
+
+/// A pin's halo fill, fainter as it ages; kept faint so lines and names read through it.
+fn intelHaloColor(is_clear: bool, freshness_percent: u64) u32 {
+    const alpha: u8 = @intCast(15 + freshness_percent * 30 / 100);
+    return color.withAlpha(intelColor(is_clear), alpha);
+}
+
+/// The rim that makes a pin's halo stand out, fainter as it ages.
+fn intelRimColor(is_clear: bool, freshness_percent: u64) u32 {
+    const alpha: u8 = @intCast(60 + freshness_percent * 195 / 100);
+    return color.withAlpha(intelColor(is_clear), alpha);
 }
 
 fn heatShare(value: u32, peak: u32) f32 {

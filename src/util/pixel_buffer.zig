@@ -118,7 +118,7 @@ pub fn drawRoundedFrame(canvas: Canvas, radius: usize, argb: u32) void {
     }
 }
 
-/// Anti-aliased; for an opaque canvas, and clipped to it pixel by pixel.
+/// Anti-aliased, and clipped to the canvas pixel by pixel.
 pub fn drawLine(canvas: Canvas, from_x: i32, from_y: i32, to_x: i32, to_y: i32, argb: u32) void {
     const is_steep = @abs(to_y - from_y) > @abs(to_x - from_x);
     var start_major = if (is_steep) from_y else from_x;
@@ -144,7 +144,7 @@ pub fn drawLine(canvas: Canvas, from_x: i32, from_y: i32, to_x: i32, to_y: i32, 
     }
 }
 
-/// Anti-aliased; for an opaque canvas, and clipped to it. `argb`'s alpha fades the whole disc.
+/// Anti-aliased, and clipped to the canvas. `argb`'s alpha fades the whole disc.
 pub fn fillCircle(canvas: Canvas, center_x: i32, center_y: i32, radius: f32, argb: u32) void {
     drawRing(canvas, center_x, center_y, radius, radius + 1, argb);
 }
@@ -164,7 +164,7 @@ pub fn drawRing(canvas: Canvas, center_x: i32, center_y: i32, radius: f32, thick
     }
 }
 
-/// Over an opaque pixel, so the result is opaque too; `coverage` is 0 to 1, on top of `argb`'s own alpha.
+/// Over a premultiplied pixel, so it suits a transparent overlay as well as an opaque canvas; `coverage` is 0 to 1, on top of `argb`'s own alpha.
 fn blendPixel(canvas: Canvas, x: i32, y: i32, argb: u32, coverage: f32) void {
     if (x < 0 or y < 0) return;
     const pixel_x: usize = @intCast(x);
@@ -174,7 +174,9 @@ fn blendPixel(canvas: Canvas, x: i32, y: i32, argb: u32, coverage: f32) void {
     if (alpha <= 0) return;
 
     const pixel = &canvas.pixels[pixel_y * canvas.width + pixel_x];
-    var blended: u32 = 0xFF00_0000;
+    const under_alpha: f32 = @floatFromInt(pixel.* >> 24);
+    const blended_alpha: u32 = @intFromFloat(@round(under_alpha + (255 - under_alpha) * alpha));
+    var blended: u32 = blended_alpha << 24;
     inline for (.{ 16, 8, 0 }) |shift| {
         const over: f32 = @floatFromInt((argb >> shift) & 0xFF);
         const under: f32 = @floatFromInt((pixel.* >> shift) & 0xFF);
@@ -242,6 +244,12 @@ test "fillCircle fills its centre, leaves its corners and clips at the edge" {
     try testing.expectEqual(@as(u32, 0xFF000000), buffer[0]);
     fillCircle(canvas, -1, -1, 2, 0xFFFFFFFF);
     try testing.expectEqual(@as(u32, 0xFFFFFFFF), buffer[0]);
+}
+
+test "drawing over a transparent pixel leaves it as see-through as the colour" {
+    var buffer = [_]u32{0};
+    fillCircle(.{ .pixels = &buffer, .width = 1, .height = 1 }, 0, 0, 2, 0x80FFFFFF);
+    try testing.expectEqual(@as(u32, 0x80808080), buffer[0]);
 }
 
 test "drawRing leaves the middle untouched" {
