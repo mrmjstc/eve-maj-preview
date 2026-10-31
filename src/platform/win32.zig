@@ -694,6 +694,8 @@ pub const IDM_CLEAR_NOTIF_HISTORY = 1010;
 pub const IDM_TOGGLE_TRAVEL_MODE = 1011;
 pub const IDM_RESTORE_SAVED_POSITIONS = 1012;
 pub const IDM_TOGGLE_ALERT_MUTE = 1013;
+pub const IDM_TOGGLE_MAP_PANEL = 1014;
+pub const IDM_TOGGLE_INTEL_PANEL = 1015;
 pub const IDM_PROFILE_BASE = 2000;
 pub const IDM_CLOSE_GROUP_BASE = 3000;
 pub const IDM_MINIMIZE_GROUP_BASE = 4000;
@@ -917,6 +919,7 @@ pub const SYSTEMTIME = extern struct {
 pub extern "kernel32" fn GetLocalTime(lpSystemTime: *SYSTEMTIME) callconv(.c) void;
 pub extern "kernel32" fn GetTickCount64() callconv(.c) u64;
 
+pub extern "gdi32" fn GdiFlush() callconv(.c) BOOL;
 pub extern "gdi32" fn TextOutA(hdc: HDC, x: c_int, y: c_int, lpString: LPCSTR, c: c_int) callconv(.c) BOOL;
 pub extern "gdi32" fn GetTextFaceA(hdc: HDC, c: c_int, lpName: [*]u8) callconv(.c) c_int;
 pub extern "gdi32" fn GetTextExtentPoint32A(hdc: HDC, lpString: LPCSTR, c: c_int, psizl: *SIZE) callconv(.c) BOOL;

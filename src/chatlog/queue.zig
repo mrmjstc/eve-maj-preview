@@ -1,6 +1,7 @@
 //! What the main thread and the chatlog worker send each other.
 const std = @import("std");
 const notification_mod = @import("../notifications/notification.zig");
+const universe = @import("../map/universe.zig");
 
 /// Main thread to worker; each name is owned by the command.
 pub const Command = union(enum) {
@@ -42,6 +43,23 @@ pub const SessionStart = struct {
 
     pub fn deinit(self: *SessionStart, allocator: std.mem.Allocator) void {
         allocator.free(self.character_name);
+    }
+};
+
+/// Worker to main thread: a system named in an intel channel, for the map and Intel Panel.
+pub const IntelSighting = struct {
+    system: universe.SystemIndex,
+    /// The whole message; owned, freed in deinit.
+    message: []const u8,
+    /// The message calls this system clear, rather than reporting something in it.
+    is_clear: bool,
+    /// It goes on the map; a rule's exclusions keep a line in the Intel Panel but off the map.
+    is_pinned: bool,
+    /// The first system its message names, so the Intel Panel lists the message once.
+    is_message_first: bool,
+
+    pub fn deinit(self: *IntelSighting, allocator: std.mem.Allocator) void {
+        allocator.free(self.message);
     }
 };
 

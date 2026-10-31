@@ -197,6 +197,7 @@ pub const ListWindow = struct {
                 hasher.update(std.mem.asBytes(&notification.border_color_override));
                 hasher.update(std.mem.asBytes(&notification.text_color_override));
                 hasher.update(std.mem.asBytes(&notification.shows_text));
+                if (notification.lead) |lead| hasher.update(std.mem.asBytes(&lead.color));
             }
         }
 
@@ -349,7 +350,13 @@ pub const ListWindow = struct {
         var notification_buffer: [TEXT_BUFFER_SIZE]u8 = undefined;
         const newest = if (display.listViewShowNotifications) thumbnail.notifications.newestWithText() else null;
         if (newest) |notification| {
-            drawTextRight(dc, template.oneLine(notification.text, &notification_buffer), right_x, small_y, notification.text_color_override orelse display.listViewNotificationColor, text_left);
+            const line = template.oneLine(notification.text, &notification_buffer);
+            const line_color = notification.text_color_override orelse display.listViewNotificationColor;
+            if (notification.lead) |lead| {
+                drawTextWithLeadRight(dc, line, lead.length, lead.color, right_x, small_y, line_color, text_left);
+            } else {
+                drawTextRight(dc, line, right_x, small_y, line_color, text_left);
+            }
         } else if (readings.len > 0) {
             drawStatsRight(dc, display, readings, right_x, small_y, text_left);
         } else if (is_excluded) {
@@ -461,10 +468,17 @@ fn measureTextWidth(dc: win32.HDC, text: []const u8) usize {
 
 /// Right edge at `right_x`; skipped rather than drawn left of `min_x`, where it would overlap the name.
 fn drawTextRight(dc: win32.HDC, text: []const u8, right_x: i32, y: i32, rgb: u32, min_x: i32) void {
+    drawTextWithLeadRight(dc, text, 0, rgb, right_x, y, rgb, min_x);
+}
+
+/// Like drawTextRight, with the first `lead_length` bytes in `lead_color`.
+fn drawTextWithLeadRight(dc: win32.HDC, text: []const u8, lead_length: usize, lead_color: u32, right_x: i32, y: i32, rgb: u32, min_x: i32) void {
     const length = @min(text.len, TEXT_BUFFER_SIZE - 1);
     const x = right_x - @as(i32, @intCast(measureTextWidth(dc, text[0..length])));
     if (x < min_x) return;
-    drawText(dc, text[0..length], x, y, rgb);
+    const lead_end = @min(lead_length, length);
+    drawText(dc, text[0..lead_end], x, y, lead_color);
+    drawText(dc, text[lead_end..length], x + @as(i32, @intCast(measureTextWidth(dc, text[0..lead_end]))), y, rgb);
 }
 
 /// Each reading in its own colour, a space apart; skipped like drawTextRight past `min_x`.

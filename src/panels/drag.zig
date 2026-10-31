@@ -1,4 +1,4 @@
-//! Dragging for the list view and History Panel: their header strip is the drag handle, and Windows moves them while we snap.
+//! Dragging for the list view and the History, Map and Intel panels: their header strip is the drag handle, and Windows moves them while we snap.
 const win32 = @import("../platform/win32.zig");
 const set = @import("../thumbnail/set.zig");
 const snapping = @import("../drag/snapping.zig");
@@ -32,6 +32,22 @@ pub fn handleMessage(thumbnail_set: ?*ThumbnailSet, hwnd: win32.HWND, msg: win32
 pub fn beginPanelDrag(hwnd: win32.HWND) void {
     _ = win32.GetCursorPos(&g_panel_drag_anchor_cursor);
     _ = win32.GetWindowRect(hwnd, &g_panel_drag_anchor_rect);
+}
+
+/// handleMessage for a panel no single character owns, so every saved position shows as a ghost while it drags; null for WM_EXITSIZEMOVE, for the panel to save where it landed.
+pub fn handleSharedMessage(thumbnail_set: ?*ThumbnailSet, hwnd: win32.HWND, msg: win32.UINT, lParam: win32.LPARAM, header_height: i32) ?win32.LRESULT {
+    switch (msg) {
+        win32.WM_ENTERSIZEMOVE => {
+            beginPanelDrag(hwnd);
+            if (thumbnail_set) |active_set| active_set.ghost_overlay.show(active_set.instance, &active_set.renderer.font_cache, active_set.config, "");
+            return 0;
+        },
+        win32.WM_EXITSIZEMOVE => {
+            if (thumbnail_set) |active_set| active_set.ghost_overlay.hide();
+            return null;
+        },
+        else => return handleMessage(thumbnail_set, hwnd, msg, lParam, header_height),
+    }
 }
 
 /// Recomputes the intended position from the cursor's movement since the drag began, ignoring Windows' possibly already-snapped `rect`, then snaps it.

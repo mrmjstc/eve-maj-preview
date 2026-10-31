@@ -4,23 +4,17 @@ const notification = @import("../notifications/notification.zig");
 const display_mod = @import("../config/display.zig");
 const notifications_mod = @import("../config/notifications.zig");
 const list_look = @import("list_look.zig");
+const panel_look = @import("panel_look.zig");
 
 const DisplayConfig = display_mod.DisplayConfig;
 const NotificationConfig = notifications_mod.NotificationConfig;
 const NotificationCategory = notification.NotificationCategory;
 
 pub const HEADER_TEXT = "Notification History";
-/// Between the filter buttons, and round them inside the footer.
-pub const FILTER_GAP: i32 = 4;
-pub const FILTER_RADIUS: usize = 3;
-/// An enabled filter button's background.
-pub const FILTER_ON: u32 = 0xFF2E3036;
 /// Between a row's name and its message, and its message and timestamp.
 pub const TEXT_GAP: i32 = 6;
 /// The most of a row's text width a long name may take from its message.
 pub const NAME_MAX_PERCENT = 50;
-/// Fits relativeTime's longest result.
-pub const TIME_TEXT_MAX = 24;
 /// Fits countText's longest result.
 pub const COUNT_TEXT_MAX = 24;
 
@@ -35,25 +29,26 @@ pub const Metrics = struct {
     footer_height: i32,
 };
 
-/// A filter button's left and right edges, from the panel's outer left edge.
-pub const Span = struct { left: i32, right: i32 };
-
-/// Rows and the header grow with the font as the client list's do; a filter button is as tall as the header.
+/// Rows and the header grow with the font as the client list's do.
 pub fn metrics(display: *const DisplayConfig) Metrics {
-    const font_size = display.notifInfoPanelFontSize;
-    const header_height = list_look.headerHeight(font_size);
+    const header_height = panel_look.headerHeight(display);
     return .{
         .header_height = header_height,
-        .row_height = list_look.rowHeight(font_size),
-        .footer_height = if (display.notifInfoPanelShowCategoryFilters) header_height + 2 * FILTER_GAP else 0,
+        .row_height = list_look.rowHeight(display.notifInfoPanelFontSize),
+        .footer_height = if (display.notifInfoPanelShowCategoryFilters) panel_look.footerHeight(header_height) else 0,
     };
 }
 
 /// How many rows fit between the header and footer, at most notifInfoPanelMaxRows.
 pub fn rowCapacity(display: *const DisplayConfig, sizes: Metrics) usize {
-    const room = display.notifInfoPanelHeight - sizes.header_height - sizes.footer_height - list_look.BOTTOM_PADDING;
+    return rowsThatFit(display.notifInfoPanelHeight, sizes, @max(1, display.notifInfoPanelMaxRows));
+}
+
+/// How many rows a panel `panel_height` tall holds, at most `limit`.
+pub fn rowsThatFit(panel_height: i32, sizes: Metrics, limit: i32) usize {
+    const room = panel_height - sizes.header_height - sizes.footer_height - list_look.BOTTOM_PADDING;
     const fit_count = @max(0, @divTrunc(room, sizes.row_height));
-    return @intCast(@min(fit_count, @max(1, display.notifInfoPanelMaxRows)));
+    return @intCast(@min(fit_count, limit));
 }
 
 pub fn categoryLabel(category: NotificationCategory) []const u8 {
@@ -67,22 +62,10 @@ pub fn categoryLabel(category: NotificationCategory) []const u8 {
     };
 }
 
-/// The `index`th filter button in CATEGORY_ORDER, in a panel `width` wide.
-pub fn filterSpan(width: i32, index: usize) Span {
-    const button_count: i32 = CATEGORY_ORDER.len;
-    const signed_index: i32 = @intCast(index);
-    const room = @max(0, width - FILTER_GAP * (button_count + 1));
-    const left = FILTER_GAP * (signed_index + 1);
-    return .{ .left = left + @divTrunc(room * signed_index, button_count), .right = left + @divTrunc(room * (signed_index + 1), button_count) };
-}
-
 /// The filter button under `x`; null in a gap between them.
 pub fn filterAt(width: i32, x: i32) ?NotificationCategory {
-    for (CATEGORY_ORDER, 0..) |category, index| {
-        const span = filterSpan(width, index);
-        if (x >= span.left and x < span.right) return category;
-    }
-    return null;
+    const index = panel_look.buttonIndexAt(width, CATEGORY_ORDER.len, x) orelse return null;
+    return CATEGORY_ORDER[index];
 }
 
 pub fn isCategoryEnabled(display: *const DisplayConfig, category: NotificationCategory) bool {
@@ -107,14 +90,6 @@ pub fn messageColor(notifications: *const NotificationConfig, notification_type:
     return notifications.getTypeConfig(notification_type).text_color orelse notifications.color;
 }
 
-/// How long ago, e.g. "just now", "5m ago" or "2h ago".
-pub fn relativeTime(buffer: *[TIME_TEXT_MAX]u8, elapsed_ms: u64) []const u8 {
-    const elapsed_seconds = elapsed_ms / std.time.ms_per_s;
-    if (elapsed_seconds < std.time.s_per_min) return "just now";
-    if (elapsed_seconds < std.time.s_per_hour) return std.mem.print(buffer, "{d}m ago", .{elapsed_seconds / std.time.s_per_min}) catch unreachable;
-    return std.mem.print(buffer, "{d}h ago", .{elapsed_seconds / std.time.s_per_hour}) catch unreachable;
-}
-
 /// A merged row's count, shown in place of the name.
 pub fn countText(buffer: *[COUNT_TEXT_MAX]u8, count: usize) []const u8 {
     return std.mem.print(buffer, "+{d}", .{count}) catch unreachable;
@@ -122,18 +97,9 @@ pub fn countText(buffer: *[COUNT_TEXT_MAX]u8, count: usize) []const u8 {
 
 const testing = std.testing;
 
-test "filterSpan fills the width between gaps without overlapping" {
-    const width = 300;
-    try testing.expectEqual(FILTER_GAP, filterSpan(width, 0).left);
-    try testing.expectEqual(width - FILTER_GAP, filterSpan(width, CATEGORY_ORDER.len - 1).right);
-    for (1..CATEGORY_ORDER.len) |index| {
-        try testing.expectEqual(filterSpan(width, index - 1).right + FILTER_GAP, filterSpan(width, index).left);
-    }
-}
-
 test "filterAt finds the button under the cursor and misses the gaps" {
-    try testing.expectEqual(@as(?NotificationCategory, .Fleet), filterAt(300, FILTER_GAP));
-    try testing.expectEqual(@as(?NotificationCategory, .General), filterAt(300, 300 - FILTER_GAP - 1));
+    try testing.expectEqual(@as(?NotificationCategory, .Fleet), filterAt(300, panel_look.BUTTON_GAP));
+    try testing.expectEqual(@as(?NotificationCategory, .General), filterAt(300, 300 - panel_look.BUTTON_GAP - 1));
     try testing.expectEqual(@as(?NotificationCategory, null), filterAt(300, 0));
 }
 
@@ -157,11 +123,4 @@ test "showsCategory ignores the filters while their buttons are hidden" {
     try testing.expect(!showsCategory(&display, .Mining));
     display.notifInfoPanelShowCategoryFilters = false;
     try testing.expect(showsCategory(&display, .Mining));
-}
-
-test "relativeTime rounds down to minutes, then hours" {
-    var buffer: [TIME_TEXT_MAX]u8 = undefined;
-    try testing.expectEqualStrings("just now", relativeTime(&buffer, 59_999));
-    try testing.expectEqualStrings("5m ago", relativeTime(&buffer, 5 * 60_000 + 30_000));
-    try testing.expectEqualStrings("2h ago", relativeTime(&buffer, 2 * 3_600_000 + 59 * 60_000));
 }

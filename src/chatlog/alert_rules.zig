@@ -15,12 +15,14 @@ const ClientSet = std.StaticBitSet(MAX_CLIENTS);
 pub const DUPLICATE_WINDOW_MS = 5000;
 /// Past it, further clients can't be chosen for an alert.
 pub const MAX_CLIENTS = 64;
-const MAX_MENTIONS = 8;
+pub const MAX_MENTIONS = 8;
 /// "Old Man Star" is the longest.
 const MAX_NAME_WORDS = 3;
 const RECENT_HIT_CAPACITY = 64;
-/// What separates words when looking for system names; hyphens don't, as they're part of many names.
-const WORD_BREAKS = " \t,.;:!?()[]\"/";
+/// Case-folded.
+const CLEAR_WORDS = [_][]const u8{ "clear", "clr" };
+/// What separates words when looking for system names; hyphens don't, as they're part of many names, and players often star a system.
+const WORD_BREAKS = " \t,.;:!?()[]\"/*";
 
 pub const Client = struct {
     /// Owned by whoever holds the list.
@@ -47,6 +49,15 @@ const Rule = struct {
     exclude: []const []const u8,
     max_jumps: u8,
     cooldown_ms: u32,
+};
+
+pub const IntelReport = struct {
+    /// Every system the message names, for the Intel Panel; borrows from the caller's buffer.
+    systems: []const SystemIndex,
+    /// How many of `systems`, from the first, get a map pin; a rule's exclusions keep the rest off the map.
+    pin_count: usize = 0,
+    /// The message calls the first of `systems` clear, rather than reporting something in it.
+    is_clear: bool = false,
 };
 
 pub const Hit = struct {
@@ -114,6 +125,25 @@ pub const RuleSet = struct {
             if (std.mem.eql(u8, muted, character_name)) return true;
         }
         return false;
+    }
+
+    /// What `message` says if an intel rule follows `channel`, at any distance from a client; a clear report's first system passes the rule's exclusions for a pin, and systems fill `out`.
+    pub fn intelReport(self: *const RuleSet, channel: []const u8, message: lines.ChatMessage, out: []SystemIndex) IntelReport {
+        var folded_buf: [lines.MAX_LINE_LENGTH]u8 = undefined;
+        const folded = foldCase(message.body, &folded_buf);
+        const is_clear = saysClear(folded);
+        var is_followed = false;
+        var is_excluded_by_all = true;
+        for (self.rules) |*rule| {
+            if (rule.kind != .intel or !matchesChannel(rule.channels, channel)) continue;
+            is_followed = true;
+            if (!isExcluded(rule, folded)) is_excluded_by_all = false;
+        }
+        if (!is_followed) return .{ .systems = out[0..0] };
+
+        const systems = mentionedSystems(message.body, out);
+        const pin_count = if (!is_excluded_by_all) systems.len else if (is_clear) @min(systems.len, 1) else 0;
+        return .{ .systems = systems, .pin_count = pin_count, .is_clear = is_clear };
     }
 
     /// `clients` are the characters intel is measured from, at most MAX_CLIENTS.
@@ -221,6 +251,15 @@ fn matchesChannel(patterns: []const u8, channel: []const u8) bool {
 
 fn isExcluded(rule: *const Rule, folded_body: []const u8) bool {
     for (rule.exclude) |word| {
+        if (containsWord(folded_body, word)) return true;
+    }
+    return false;
+}
+
+/// "Hek clr?" asks and "Hek not clear" warns, so neither counts; a pin wrongly marked safe is the costly mistake.
+fn saysClear(folded_body: []const u8) bool {
+    if (std.mem.indexOfScalar(u8, folded_body, '?') != null or containsWord(folded_body, "not")) return false;
+    for (CLEAR_WORDS) |word| {
         if (containsWord(folded_body, word)) return true;
     }
     return false;
@@ -380,6 +419,75 @@ test "an intel rule ignores systems out of range" {
     const clients = [_]Client{clientAt("Trader", "Jita")};
     try testing.expect(rules.firstHit("Fleet", said("C-J6MT hostile"), &clients) == null);
     try testing.expect(rules.firstHit("Fleet", said("Perimeter hostile"), &clients) != null);
+}
+
+test "intelReport pins systems out of alert range, but not in other channels or excluded lines" {
+    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "I. * Intel", .max_jumps = 1, .exclude = "nv" }}, NO_MUTES);
+    defer rules.deinit();
+    var buffer: [MAX_MENTIONS]SystemIndex = undefined;
+    try testing.expectEqual(@as(usize, 1), rules.intelReport("I. Delve Intel", said("C-J6MT hostile"), &buffer).pin_count);
+    try testing.expectEqual(@as(usize, 0), rules.intelReport("Corp", said("C-J6MT hostile"), &buffer).systems.len);
+    try testing.expectEqual(@as(usize, 0), rules.intelReport("I. Delve Intel", said("C-J6MT nv"), &buffer).pin_count);
+}
+
+test "an excluded line still reports its systems for the feed, without a pin" {
+    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "I. * Intel", .exclude = "nv" }}, NO_MUTES);
+    defer rules.deinit();
+    var buffer: [MAX_MENTIONS]SystemIndex = undefined;
+    const report = rules.intelReport("I. Delve Intel", said("C-J6MT nv"), &buffer);
+    try testing.expectEqual(@as(usize, 1), report.systems.len);
+    try testing.expectEqual(@as(usize, 0), report.pin_count);
+}
+
+test "a line excluded by one rule still pins for another following the channel" {
+    var rules = try RuleSet.init(testing.allocator, &.{ .{ .channels = "I. * Intel", .exclude = "nv" }, .{ .channels = "I. *" } }, NO_MUTES);
+    defer rules.deinit();
+    var buffer: [MAX_MENTIONS]SystemIndex = undefined;
+    try testing.expectEqual(@as(usize, 1), rules.intelReport("I. Delve Intel", said("C-J6MT nv"), &buffer).pin_count);
+}
+
+test "a starred system is found, in alerts and on the map" {
+    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "I. * Intel", .max_jumps = 1 }}, NO_MUTES);
+    defer rules.deinit();
+    var buffer: [MAX_MENTIONS]SystemIndex = undefined;
+    const report = rules.intelReport("I. Delve Intel", said("Hatsashin Purvanen  C-J6MT*"), &buffer);
+    try testing.expectEqual(@as(usize, 1), report.systems.len);
+    try testing.expectEqual(universe.findSystem("C-J6MT").?, report.systems[0]);
+    const clients = [_]Client{clientAt("Trader", "Perimeter")};
+    try testing.expect(rules.firstHit("I. Delve Intel", said("Perimeter* 9+"), &clients) != null);
+}
+
+test "only a clear report's first system passes a rule's exclusions" {
+    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "I. * Intel", .exclude = "clr" }}, NO_MUTES);
+    defer rules.deinit();
+    var buffer: [MAX_MENTIONS]SystemIndex = undefined;
+    const report = rules.intelReport("I. Delve Intel", said("C-J6MT clr, watch X-1QGA"), &buffer);
+    try testing.expect(report.is_clear);
+    try testing.expectEqual(@as(usize, 2), report.systems.len);
+    try testing.expectEqual(@as(usize, 1), report.pin_count);
+    try testing.expectEqual(universe.findSystem("C-J6MT").?, report.systems[0]);
+}
+
+test "a rule without the exclusion keeps a clear report's other systems" {
+    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "I. * Intel" }}, NO_MUTES);
+    defer rules.deinit();
+    var buffer: [MAX_MENTIONS]SystemIndex = undefined;
+    const report = rules.intelReport("I. Delve Intel", said("C-J6MT clr, watch X-1QGA"), &buffer);
+    try testing.expect(report.is_clear);
+    try testing.expectEqual(@as(usize, 2), report.pin_count);
+}
+
+test "a clear report passes a rule's exclusions, but a question or a denial doesn't count" {
+    var rules = try RuleSet.init(testing.allocator, &.{.{ .channels = "I. * Intel", .exclude = "clr, clear" }}, NO_MUTES);
+    defer rules.deinit();
+    var buffer: [MAX_MENTIONS]SystemIndex = undefined;
+    const clear = rules.intelReport("I. Delve Intel", said("C-J6MT CLR"), &buffer);
+    try testing.expectEqual(@as(usize, 1), clear.pin_count);
+    try testing.expect(clear.is_clear);
+    try testing.expect(rules.intelReport("I. Delve Intel", said("C-J6MT clear"), &buffer).is_clear);
+    try testing.expect(!rules.intelReport("I. Delve Intel", said("C-J6MT hostile"), &buffer).is_clear);
+    try testing.expectEqual(@as(usize, 0), rules.intelReport("I. Delve Intel", said("C-J6MT clr?"), &buffer).pin_count);
+    try testing.expectEqual(@as(usize, 0), rules.intelReport("I. Delve Intel", said("C-J6MT not clear"), &buffer).pin_count);
 }
 
 test "only channels a rule names are followed, and the Utopia in Corp stays quiet" {

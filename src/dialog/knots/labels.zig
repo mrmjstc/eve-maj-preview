@@ -38,6 +38,8 @@ const HOTKEY_LABELS = std.StaticStringMap(HotkeyLabel).initComptime(.{
     .{ "hotkeyToggleDragging", HotkeyLabel{ .text = "Toggle Thumbnail Dragging" } },
     .{ "hotkeyToggleTravelMode", HotkeyLabel{ .text = "Toggle Travel Mode" } },
     .{ "hotkeyToggleNotificationHistory", HotkeyLabel{ .text = "Toggle Notification History" } },
+    .{ "hotkeyToggleMapPanel", HotkeyLabel{ .text = "Toggle Map Panel" } },
+    .{ "hotkeyToggleIntelPanel", HotkeyLabel{ .text = "Toggle Intel Panel" } },
     .{ "hotkeyClearNotificationHistory", HotkeyLabel{ .text = "Clear Notification History" } },
     .{ "hotkeyPreviousExcluded", HotkeyLabel{ .text = "Excluded Characters", .half = .back } },
     .{ "hotkeyNextExcluded", HotkeyLabel{ .text = "Excluded Characters", .half = .forward } },

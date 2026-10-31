@@ -210,6 +210,7 @@ Event popups on thumbnails, from game and chat logs (needs [chatlog](#chatlog)) 
 | `flash_border` | bool | `false` | | Blink the border 4× (150 ms phases) first. Needs `show_border`. |
 | `border_color` | colour? | `null` | | `null` = `alert` state / `borderColor`. |
 | `text_color` | colour? | `null` | | `null` = `color` (thumbnails) / `display.listViewNotificationColor` (Client List). |
+| `color_system_name` | bool | `false` | | Chat intel only: draw the system in its usual name colour when the text starts with it. |
 | `tts_enabled` | bool | `false` | | Speak it. No global switch. |
 | `sound_enabled` | bool | `false` | | Play `sound_path`. No global switch. |
 | `sound_path` | string? | `null` | | Absolute path to `.wav` or `.mp3`. |
@@ -321,6 +322,8 @@ Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also
 | `notifInfoPanelHeight` | int | `400` | 60–2160 | |
 | `rememberNotifInfoPanelPosition` | bool | `true` | | Save position on drag. |
 | `hideNotifInfoPanelWhenNoCharacters` | bool | `true` | | |
+| `hideNotifInfoPanelWhenNoEveFocus` | bool | `false` | | Hide while no EVE client has focus; this app's own windows count as focus. The tray toggle or hotkey shows it until EVE next has focus. |
+| `notifInfoPanelHideDebounceMs` | int | `500` | 0–5000 | Delay before hiding. |
 | `notifInfoPanelOpacity` | int | `255` | opacity | |
 | `notifInfoPanelFontName` | string | `"Segoe UI"` | | |
 | `notifInfoPanelFontSize` | int | `13` | font size | |
@@ -331,6 +334,47 @@ Every type except `HotkeySuspend`, `ProfileSwitch` and `AutoMinimizeToggle` also
 | `notifInfoPanelMergeWindowSec` | int | `10` | 1–300 | Max gap to merge. |
 | `notifInfoPanelShowCategoryFilters` | bool | `true` | | |
 | `notifInfoPanelShowFleet`, `notifInfoPanelShowMining`, `notifInfoPanelShowCombat`, `notifInfoPanelShowNavigation`, `notifInfoPanelShowGeneral` | bool | `true` | | Category filters. |
+
+**Map Panel**: a schematic of one region, with live stats, client positions and chat intel. Also toggled from the tray.
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `showMapPanel` | bool | `false` | | |
+| `mapPanelX`, `mapPanelY` | int | `330`, `60` | screen | |
+| `mapPanelWidth` | int | `760` | 300–3840 | |
+| `mapPanelHeight` | int | `600` | 240–2160 | |
+| `rememberMapPanelPosition` | bool | `true` | | Save position on drag. |
+| `hideMapPanelWhenNoCharacters` | bool | `false` | | |
+| `hideMapPanelWhenNoEveFocus` | bool | `false` | | As `hideNotifInfoPanelWhenNoEveFocus`. |
+| `mapPanelHideDebounceMs` | int | `500` | 0–5000 | Delay before hiding. |
+| `mapPanelOpacity` | int | `255` | opacity | |
+| `mapPanelFontName` | string | `"Segoe UI"` | | Names on the map only. Its header, buttons and tooltips use `notifInfoPanelFontName`, size and weight, so both panels match. |
+| `mapPanelFontSize` | int | `10` | font size | Names on the map only. |
+| `mapPanelFontWeight` | enum | `Regular` | weight | Names on the map only. |
+| `mapPanelRegionId` | int | `10000002` | | CCP's region ID; The Forge by default. Set by picking a region. |
+| `mapPanelFollowActive` | bool | `true` | | Open the active client's region when it changes. Needs log monitoring. |
+| `mapPanelMetric` | enum | `Security` | `Security`, `ShipKills`, `NpcKills`, `Jumps` | What the markers show. |
+| `mapPanelLiveStats` | bool | `true` | | Fetch kills, jumps and sovereignty from ESI every 15 minutes while the panel shows. |
+| `mapPanelShowIntel` | bool | `true` | | Highlight systems named in intel channels. Off only hides the pins. |
+| `mapPanelIntelShrinkSec` | int | `60` | 1–900 | Seconds a new intel pin's halo takes to shrink to its resting size. The pin itself lasts 15 minutes. |
+| `mapPanelIntelShowClear` | bool | `true` | | Turn a live pin yellow and restart its shrink and 15 minutes when intel calls its system `clear` or `clr`, even if the rule excludes those words. Only the first system a message names is cleared. Off, those messages are ignored. |
+
+**Intel Panel**: lists every report that names a system in a channel an intel rule follows, at any distance, against the nearest client. It uses the default wording, whatever a rule's `custom_text` or `text_color`, and the History Panel's font, timestamp and merge settings. A rule's exclusions don't apply here: `clr` and `nv` lines list too, though they stay off the map and don't alert. Clicking a row opens its system on the Map Panel. Also toggled from the tray. Clearing the history clears both.
+
+| Key | Type | Default | Range | Notes |
+|---|---|---|---|---|
+| `showIntelPanel` | bool | `false` | | Intel alerts stay in the History Panel while this is off, or while it's a sidebar and the map is off; otherwise they leave it. Thumbnail alerts, sounds and borders are unaffected. |
+| `intelPanelAttached` | bool | `true` | | Draw it as a sidebar inside the Map Panel's window, which grows by `intelPanelWidth`; the settings below marked *detached* don't apply. |
+| `intelPanelSide` | enum | `Right` | `Left`, `Right` | Which side of the map the sidebar sits on. |
+| `intelPanelX`, `intelPanelY` | int | `1100`, `60` | screen | *Detached.* |
+| `intelPanelWidth` | int | `340` | 160–3840 | |
+| `intelPanelHeight` | int | `400` | 120–2160 | *Detached.* |
+| `rememberIntelPanelPosition` | bool | `true` | | *Detached.* Save position on drag. |
+| `hideIntelPanelWhenNoCharacters` | bool | `false` | | *Detached.* |
+| `hideIntelPanelWhenNoEveFocus` | bool | `false` | | *Detached.* As `hideNotifInfoPanelWhenNoEveFocus`. |
+| `intelPanelHideDebounceMs` | int | `500` | 0–5000 | *Detached.* Delay before hiding. |
+| `intelPanelOpacity` | int | `255` | opacity | |
+| `intelPanelColorSystemNames` | bool | `true` | | Draw each row's system in its name colour: `systemColors`, then unique colours if on, then the default. Doesn't need a rule's `color_system_name`. |
 
 ### thumbnailSpaces
 
@@ -584,6 +628,8 @@ All values are **keys**.
 | `hotkeyToggleTravelMode` | keys | | Toggle `travel.enabled`. |
 | `hotkeyToggleNotificationHistory` | keys | | Show/hide the notification history panel. |
 | `hotkeyClearNotificationHistory` | keys | | Clear the notification history. |
+| `hotkeyToggleMapPanel` | keys | | Show/hide the map panel. |
+| `hotkeyToggleIntelPanel` | keys | | Show/hide the intel panel. |
 
 ### hotkeyGroups
 
@@ -730,3 +776,5 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `toggle_travel_mode` | `hotkeyToggleTravelMode` |
 | `toggle_notification_history` | `hotkeyToggleNotificationHistory` |
 | `clear_notification_history` | `hotkeyClearNotificationHistory` |
+| `toggle_map_panel` | `hotkeyToggleMapPanel` |
+| `toggle_intel_panel` | `hotkeyToggleIntelPanel` |

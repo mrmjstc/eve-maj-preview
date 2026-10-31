@@ -57,6 +57,11 @@ pub const TextPosition = enum {
     BottomRight,
 };
 
+/// What the Map Panel's markers show; saved into profiles by name.
+pub const MapMetric = enum { Security, ShipKills, NpcKills, Jumps };
+/// Which side of the Map Panel the Intel Panel sits on.
+pub const PanelSide = enum { Left, Right };
+
 /// In the order the Display tab offers them.
 pub const ViewMode = enum {
     Thumbnails,

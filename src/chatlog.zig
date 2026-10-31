@@ -40,11 +40,13 @@ pub const Findings = struct {
     system_updates: std.ArrayList(queue.SystemUpdate) = .empty,
     notifications: std.ArrayList(queue.NotificationEvent) = .empty,
     session_starts: std.ArrayList(queue.SessionStart) = .empty,
+    intel_sightings: std.ArrayList(queue.IntelSighting) = .empty,
 
     pub fn deinit(self: *Findings, allocator: std.mem.Allocator) void {
         freeAll(queue.SystemUpdate, allocator, &self.system_updates);
         freeAll(queue.NotificationEvent, allocator, &self.notifications);
         freeAll(queue.SessionStart, allocator, &self.session_starts);
+        freeAll(queue.IntelSighting, allocator, &self.intel_sightings);
     }
 };
 
@@ -90,6 +92,8 @@ pub const ChatlogMonitor = struct {
     notifications: queue.Queue(queue.NotificationEvent),
     /// Worker to main thread.
     session_starts: queue.Queue(queue.SessionStart),
+    /// Worker to main thread.
+    intel_sightings: queue.Queue(queue.IntelSighting),
 
     /// Main thread only: characters added and not yet removed, so each is sent to the worker once.
     requested: std.StringHashMap(void),
@@ -110,6 +114,8 @@ pub const ChatlogMonitor = struct {
     client_systems: std.ArrayList(ClientSystem) = .empty,
     /// Worker only: chat alerts raised lately, so other clients' copies and cooldowns stay quiet.
     recent_hits: alert_rules_mod.RecentHits = .{},
+    /// Worker only: intel lines seen lately, so other clients' copies aren't listed again.
+    recent_sightings: alert_rules_mod.RecentHits = .{},
     /// Worker only.
     next_alert_group: u64 = 0,
 
@@ -143,6 +149,7 @@ pub const ChatlogMonitor = struct {
             .system_updates = .init(allocator, io),
             .notifications = .init(allocator, io),
             .session_starts = .init(allocator, io),
+            .intel_sightings = .init(allocator, io),
             .requested = .init(allocator),
             .monitored_paths = .init(allocator),
             .wanted = .init(allocator),
@@ -158,6 +165,7 @@ pub const ChatlogMonitor = struct {
         self.system_updates.deinit();
         self.notifications.deinit();
         self.session_starts.deinit();
+        self.intel_sightings.deinit();
         freeKeys(self.allocator, &self.requested);
         freeKeys(self.allocator, &self.wanted);
         freeKeys(self.allocator, &self.monitored_paths);
@@ -297,6 +305,7 @@ pub const ChatlogMonitor = struct {
         drainLogged(queue.SystemUpdate, &self.system_updates, &findings.system_updates, "system updates");
         drainLogged(queue.NotificationEvent, &self.notifications, &findings.notifications, "notifications");
         drainLogged(queue.SessionStart, &self.session_starts, &findings.session_starts, "session starts");
+        drainLogged(queue.IntelSighting, &self.intel_sightings, &findings.intel_sightings, "intel sightings");
         return findings;
     }
 
@@ -657,7 +666,10 @@ pub const ChatlogMonitor = struct {
     fn handleChatMessage(self: *ChatlogMonitor, file: *const LogFile, line: []const u8) void {
         const rules = if (self.alert_rules) |*rules| rules else return;
         if (!rules.followsChannel(file.channel_name)) return;
-        const message = lines.parseChatMessage(line) orelse return;
+        var message = lines.parseChatMessage(line) orelse return;
+        var body_buf: [lines.MAX_LINE_LENGTH]u8 = undefined;
+        message.body = lines.collapseSpaces(message.body, &body_buf);
+        self.queueIntelSightings(rules, file.channel_name, message);
         if (self.wanted.contains(message.speaker)) return;
 
         var client_buf: [alert_rules_mod.MAX_CLIENTS]alert_rules_mod.Client = undefined;
@@ -691,6 +703,23 @@ pub const ChatlogMonitor = struct {
         }
         var nearest = hit.nearest_clients.iterator(.{});
         while (nearest.next()) |index| self.queueNotification(clients[index].character_name, notification);
+    }
+
+    /// One per system named, however far off: the map and Intel Panel show intel a client's alert range doesn't reach.
+    fn queueIntelSightings(self: *ChatlogMonitor, rules: *const RuleSet, channel: []const u8, message: lines.ChatMessage) void {
+        var mention_buf: [alert_rules_mod.MAX_MENTIONS]universe.SystemIndex = undefined;
+        const report = rules.intelReport(channel, message, &mention_buf);
+        if (report.systems.len == 0) return;
+        if (self.recent_sightings.isRepeat(alert_rules_mod.messageKey(message), win32.Ticks.now().ms, alert_rules_mod.DUPLICATE_WINDOW_MS)) return;
+        for (report.systems, 0..) |system, index| {
+            const owned = self.allocator.dupe(u8, message.body) catch |err| {
+                slog.warn("Failed to copy intel for the map: {}", .{err});
+                return;
+            };
+            self.intel_sightings.push(.{ .system = system, .message = owned, .is_clear = report.is_clear and index == 0, .is_pinned = index < report.pin_count, .is_message_first = index == 0 }) catch |err| {
+                slog.warn("Failed to queue intel for the map: {}", .{err});
+            };
+        }
     }
 
     /// Borrows names from client_systems.

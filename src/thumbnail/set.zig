@@ -18,6 +18,7 @@ const arrange = @import("arrange.zig");
 const renderer_mod = @import("renderer.zig");
 const dispatch = @import("../notifications/dispatch.zig");
 const notification_mod = @import("../notifications/notification.zig");
+const universe = @import("../map/universe.zig");
 const log = @import("../log.zig");
 
 const slog = log.Scoped("thumbnail_set");
@@ -169,6 +170,11 @@ pub const ThumbnailSet = struct {
     /// For a global user action: kept out of history, and its sound and speech play once.
     pub fn notifyAll(self: *ThumbnailSet, notification: notification_mod.Notification) void {
         dispatch.notifyAll(self.dispatchContext(), self.thumbnails.items, notification);
+    }
+
+    /// For the Intel Panel, which lists every report; `message` is copied.
+    pub fn listIntel(self: *ThumbnailSet, system: universe.SystemIndex, message: []const u8) void {
+        dispatch.listIntel(self.dispatchContext(), self.thumbnails.items, system, message);
     }
 
     pub fn showTestNotification(self: *ThumbnailSet, notification_type: notification_mod.NotificationType, type_config: config_mod.NotificationTypeConfig) !void {
@@ -519,8 +525,8 @@ pub const ThumbnailSet = struct {
         self.store.setCharacterPositions(entries.items);
     }
 
-    fn dispatchContext(self: *const ThumbnailSet) dispatch.Context {
-        return .{ .allocator = self.allocator, .config = self.config, .records = self.notification_records, .active_source_hwnd = self.active_source_hwnd };
+    fn dispatchContext(self: *ThumbnailSet) dispatch.Context {
+        return .{ .allocator = self.allocator, .config = self.config, .auto_colors = &self.auto_colors, .records = self.notification_records, .active_source_hwnd = self.active_source_hwnd };
     }
 
     fn destroyThumbnail(self: *ThumbnailSet, thumbnail: ThumbnailWindow) void {

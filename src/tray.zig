@@ -184,6 +184,8 @@ pub const TrayIcon = struct {
 
         appendChecked(menu, app.notifications.panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), win32.IDM_TOGGLE_NOTIF_HISTORY, "Show Notification History");
         _ = win32.AppendMenuA(menu, win32.MF_STRING, win32.IDM_CLEAR_NOTIF_HISTORY, "Clear Notification History");
+        appendChecked(menu, app.map_panel.isVisible(config, scout.anyCharacterLoggedIn(app.scout.getWindows())), win32.IDM_TOGGLE_MAP_PANEL, "Show Map Panel");
+        appendChecked(menu, app.isIntelPanelVisible(), win32.IDM_TOGGLE_INTEL_PANEL, "Show Intel Panel");
         appendChecked(menu, alert_effects.isMuted(), win32.IDM_TOGGLE_ALERT_MUTE, "Mute Audio Alerts");
         _ = win32.AppendMenuA(menu, win32.MF_SEPARATOR, 0, null);
 
@@ -295,7 +297,15 @@ pub const TrayIcon = struct {
             },
             win32.IDM_CLEAR_NOTIF_HISTORY => {
                 slog.info("Clear notification history requested from system tray", .{});
-                app.notifications.history.clear();
+                app.notifications.clearHistories();
+            },
+            win32.IDM_TOGGLE_MAP_PANEL => {
+                slog.info("Toggle map panel requested from system tray", .{});
+                app.toggleMapPanel();
+            },
+            win32.IDM_TOGGLE_INTEL_PANEL => {
+                slog.info("Toggle intel panel requested from system tray", .{});
+                app.toggleIntelPanel();
             },
             win32.IDM_TOGGLE_ALERT_MUTE => alert_effects.toggleMuted(),
             win32.IDM_SUSPEND_HOTKEYS => {

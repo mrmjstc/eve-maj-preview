@@ -46,6 +46,9 @@ test {
     _ = @import("layout/region_grid.zig");
     _ = @import("layout/spaces.zig");
     _ = @import("layout/zoom.zig");
+    _ = @import("map/intel_pins.zig");
+    _ = @import("map/layout.zig");
+    _ = @import("map/stats.zig");
     _ = @import("map/universe.zig");
     _ = @import("multiplayer/wire.zig");
     _ = @import("notifications/gamelog_events.zig");
@@ -56,6 +59,8 @@ test {
     _ = @import("notifications/worker.zig");
     _ = @import("panels/history_look.zig");
     _ = @import("panels/list_look.zig");
+    _ = @import("panels/map_look.zig");
+    _ = @import("panels/panel_look.zig");
     _ = @import("platform/virtual_keys.zig");
     _ = @import("protocol/url.zig");
     _ = @import("thumbnail/draw.zig");
@@ -67,4 +72,5 @@ test {
     _ = @import("util/rgba.zig");
     _ = @import("util/schedule.zig");
     _ = @import("util/strings.zig");
+    _ = @import("util/utf8.zig");
 }

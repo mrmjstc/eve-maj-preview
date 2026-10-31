@@ -126,6 +126,8 @@ fn mainImpl(init: std.process.Init) !void {
     app.instance = win32.GetModuleHandleA(null) orelse return error.GetModuleHandleFailed;
     app.notifications.start(allocator, &app.store, app.instance);
     defer app.notifications.deinit(allocator);
+    app.map_panel.start(allocator, &app.store, app.instance, &app.notifications.intel_history);
+    defer app.map_panel.deinit();
 
     if (app.global_settings.autoRegisterProtocol) registry.ensureRegistered();
 

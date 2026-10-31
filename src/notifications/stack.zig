@@ -23,6 +23,7 @@ pub const ActiveNotification = struct {
     shows_text: bool = true,
     border_color_override: ?u32 = null,
     text_color_override: ?u32 = null,
+    lead: ?notification.Lead = null,
     show_border: bool = true,
     flash_border: bool = false,
 

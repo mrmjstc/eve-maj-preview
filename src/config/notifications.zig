@@ -17,6 +17,8 @@ pub const NotificationTypeConfig = struct {
     throttle_ms: u32 = 10000,
     border_color: ?u32 = null,
     text_color: ?u32 = null,
+    /// Chat intel only: draws the system its text starts with in that system's name colour.
+    color_system_name: bool = false,
     show_border: bool = false,
     flash_border: bool = false,
     tts_enabled: bool = false,

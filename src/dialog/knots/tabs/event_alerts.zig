@@ -370,6 +370,10 @@ fn customText(context: *ui.Frame, ref: TypeRef, notification_type: NotificationT
     const shown_text = try widgets.openGroup(context, .src(@src()), ref.get("show_text"));
     try bind.optionalColor(context, ref, "text_color", "Text Color", session.profile().ptr.thumbnail.notifications.color);
     try widgets.hintText(context, .src(@src()), "Reset uses the Notification text's color on the Appearance tab.");
+    if (notification_type == .ChatIntel) {
+        try bind.toggle(context, ref, "color_system_name", "Color System Name");
+        try widgets.hintText(context, .src(@src()), "Uses the same color as the system's name on thumbnails, when the text starts with the system.");
+    }
     try shown_text.close(context);
     try group.close(context);
 }

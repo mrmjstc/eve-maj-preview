@@ -444,8 +444,10 @@ pub const HotkeyManager = struct {
             .toggle_notification_history => self.app.toggleNotificationHistory(),
             .clear_notification_history => {
                 slog.info("Clear notification history hotkey pressed", .{});
-                self.app.notifications.history.clear();
+                self.app.notifications.clearHistories();
             },
+            .toggle_map_panel => self.app.toggleMapPanel(),
+            .toggle_intel_panel => self.app.toggleIntelPanel(),
             .activate_app => |activate| launch.activateApp(self.global_settings, activate.app_index),
             .open_url => |open_url| launch.openUrl(self.allocator, self.global_settings, open_url.url_index),
         }

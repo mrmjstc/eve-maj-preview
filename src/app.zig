@@ -13,6 +13,8 @@ const hotkeys = @import("hotkeys/manager.zig");
 const hook_bindings = @import("hotkeys/hook_bindings.zig");
 const center = @import("notifications/center.zig");
 const list_view = @import("panels/list_view.zig");
+const map_panel_mod = @import("panels/map_panel.zig");
+const panel_look = @import("panels/panel_look.zig");
 const chatlog = @import("chatlog.zig");
 const character_ids_mod = @import("chatlog/character_ids.zig");
 const runtime = @import("activity/runtime.zig");
@@ -64,6 +66,8 @@ pub const App = struct {
     exclusions: exclusions_mod.Exclusions,
     /// Kept across a thumbnail set rebuild.
     notifications: center.NotificationCenter = .{},
+    /// Kept across a thumbnail set rebuild.
+    map_panel: map_panel_mod.MapPanel = .{},
     instance: win32.HINSTANCE = undefined,
     /// Kept across a thumbnail set rebuild, and reset when another profile is loaded.
     auto_minimizer: auto_minimize.AutoMinimizer,
@@ -140,7 +144,8 @@ pub const App = struct {
 
     /// After a dialog edit to the live profile.
     pub fn onLiveProfileEdited(self: *App, layout: LiveLayout) void {
-        self.notifications.panel.sync(self.allocator, &self.store, self.instance);
+        self.map_panel.sync(self.allocator, &self.store, self.instance);
+        self.notifications.sync(self.allocator, &self.store, self.instance);
         const thumbnail_set = self.thumbnail_set orelse return;
         // A view mode builds different windows, so it needs a new thumbnail set rather than a restyle.
         if (thumbnail_set.view_mode != self.store.live.display.viewMode) {
@@ -202,7 +207,9 @@ pub const App = struct {
             self.deliverChatlogFindings(&findings);
         }
         // After the chatlog's alerts are delivered, so the panel lists them this tick.
-        self.notifications.update(&self.store.live, scout_mod.anyCharacterLoggedIn(scout_result.windows));
+        const presence = self.panelPresence();
+        self.map_panel.update(self.allocator, &self.store.live, presence, self.thumbnail_set);
+        self.notifications.update(&self.store.live, presence);
 
         self.trackers.tick(&self.store.live, scout_result.windows, tick_start, self.tick_interval_ms, self.thumbnail_set);
 
@@ -254,6 +261,32 @@ pub const App = struct {
         self.notifications.panel.toggle(self.allocator, &self.store, self.instance, scout_mod.anyCharacterLoggedIn(self.scout.getWindows()));
     }
 
+    pub fn toggleMapPanel(self: *App) void {
+        self.map_panel.toggle(self.allocator, &self.store, self.instance, scout_mod.anyCharacterLoggedIn(self.scout.getWindows()));
+    }
+
+    pub fn toggleIntelPanel(self: *App) void {
+        const presence = self.panelPresence();
+        self.notifications.intel_panel.toggle(self.allocator, &self.store, self.instance, presence, self.map_panel.isVisible(&self.store.live, presence.any_character_logged_in));
+    }
+
+    pub fn isIntelPanelVisible(self: *const App) bool {
+        const presence = self.panelPresence();
+        return self.notifications.intel_panel.isVisible(&self.store.live, presence, self.map_panel.isVisible(&self.store.live, presence.any_character_logged_in));
+    }
+
+    fn panelPresence(self: *const App) panel_look.Presence {
+        return .{ .any_character_logged_in = scout_mod.anyCharacterLoggedIn(self.scout.getWindows()), .is_eve_focused = self.isEveFocused() };
+    }
+
+    /// For the panels' auto-hide; our own windows count, so the config dialog doesn't hide a panel being edited.
+    fn isEveFocused(self: *const App) bool {
+        const foreground = win32.GetForegroundWindow() orelse return false;
+        if (win32.isOwnProcessWindow(foreground)) return true;
+        const thumbnail_set = self.thumbnail_set orelse return false;
+        return thumbnail_set.hasThumbnail(foreground);
+    }
+
     fn deliverChatlogFindings(self: *App, findings: *const chatlog.Findings) void {
         const thumbnail_set = self.thumbnail_set;
         const shown_count = findings.system_updates.items.len + findings.notifications.items.len;
@@ -275,6 +308,20 @@ pub const App = struct {
                     continue;
                 };
                 active_set.notify(hwnd, event.notification);
+            }
+        }
+
+        const now_ms = win32.Ticks.now().ms;
+        for (findings.intel_sightings.items) |sighting| {
+            if (sighting.is_pinned) {
+                if (!sighting.is_clear) {
+                    self.map_panel.pins.add(sighting.system, sighting.message, now_ms);
+                } else if (self.store.live.display.mapPanelIntelShowClear) {
+                    self.map_panel.pins.markClear(sighting.system, sighting.message, now_ms);
+                }
+            }
+            if (sighting.is_message_first) {
+                if (self.thumbnail_set) |active_set| active_set.listIntel(sighting.system, sighting.message);
             }
         }
 
@@ -499,7 +546,8 @@ pub const App = struct {
                 restart.pending.* = null;
                 // Not dumped as at startup: it stalled switches with the debug console open.
                 slog.info("Loaded new config: {s}", .{self.store.saved.profile_name});
-                self.notifications.panel.sync(self.allocator, &self.store, self.instance);
+                self.map_panel.sync(self.allocator, &self.store, self.instance);
+                self.notifications.sync(self.allocator, &self.store, self.instance);
             },
             .record_last_used_profile => self.global_settings.updateLastUsed(self.io, self.store.saved.profile_name) catch |err| {
                 slog.warn("Failed to update global settings: {}", .{err});

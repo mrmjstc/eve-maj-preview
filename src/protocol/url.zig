@@ -37,6 +37,8 @@ pub const GlobalAction = enum {
     toggle_travel_mode,
     toggle_notification_history,
     clear_notification_history,
+    toggle_map_panel,
+    toggle_intel_panel,
 };
 
 pub const GroupAction = enum { next, previous, assign, minimize, close };

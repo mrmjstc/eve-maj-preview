@@ -30,9 +30,23 @@ const CHAT_CHANNEL: Placeholder = .{ .name = "channel", .field = .channel };
 const CHAT_MESSAGE: Placeholder = .{ .name = "message", .field = .message };
 const CHAT_INTEL = [_]Placeholder{ .{ .name = "system", .field = .target }, .{ .name = "jumps", .field = .jumps }, CHAT_PILOT, CHAT_CHANNEL, CHAT_MESSAGE, CHARACTER };
 const CHAT_KEYWORD = [_]Placeholder{ .{ .name = "keyword", .field = .target }, CHAT_PILOT, CHAT_CHANNEL, CHAT_MESSAGE, CHARACTER };
-/// No {system}: the message always names it, as that's what matched.
-const CHAT_INTEL_WORDING = "{jumps}j: {message}";
+/// {jumps} is spelled out here by intelText; custom wording gets the bare number.
+const CHAT_INTEL_WORDING = "{system} ({jumps}): {message}";
+/// For a message that said nothing but the system's name.
+const CHAT_INTEL_BARE_WORDING = "{system} ({jumps})";
+/// For a system a client is in, where the distance says nothing.
+const CHAT_INTEL_HERE_WORDING = "{system}: {message}";
+const CHAT_INTEL_HERE_BARE_WORDING = "{system}";
+/// Fits " jumps" after a jump count.
+const JUMPS_TEXT_MAX = 16;
 const CHAT_KEYWORD_WORDING = "{channel}: {message}";
+
+/// The start of a notification's text, drawn in its own colour.
+pub const Lead = struct {
+    /// Bytes of the text.
+    length: usize,
+    color: u32,
+};
 
 pub const NotificationType = enum {
     FleetInvite,
@@ -121,6 +135,13 @@ pub fn notificationCategory(notification_type: NotificationType) NotificationCat
         .ChatIntel, .ChatKeyword => .Chat,
         .ConversationInvite, .GroupMembership, .CycleExclusion, .HotkeySuspend, .ProfileSwitch, .AutoMinimizeToggle, .SavedPositionMove, .Generic => .General,
     };
+}
+
+/// How much of a chat intel alert's `shown_text` is its system; null for other types, or custom wording that doesn't start with it.
+pub fn systemLeadLength(notification: Notification, shown_text: []const u8) ?usize {
+    if (notification.notification_type != .ChatIntel) return null;
+    const system = notification.target orelse return null;
+    return if (std.mem.startsWith(u8, shown_text, system)) system.len else null;
 }
 
 /// Feedback for something the user just did, as opposed to a game event.
@@ -247,7 +268,7 @@ pub fn defaultText(notification: Notification, buf: []u8) []const u8 {
         .ConduitJump => withField(buf, "Taking Conduit to {s}", notification.target, "Conduit Jump"),
         .SystemChange => withField(buf, "Jumped to {s}", notification.target, "Jumped"),
         .TravelLeftBehind => withField(buf, "Left behind in {s}", notification.source, "Left behind"),
-        .ChatIntel => chatText(notification, CHAT_INTEL_WORDING, &CHAT_INTEL, "Chat intel", buf),
+        .ChatIntel => intelText(notification, buf),
         .ChatKeyword => chatText(notification, CHAT_KEYWORD_WORDING, &CHAT_KEYWORD, "Chat keyword", buf),
         .GroupMembership => if (notification.state == .removed)
             withField(buf, "Removed from {s}", notification.target, "Removed from group")
@@ -265,6 +286,60 @@ pub fn defaultText(notification: Notification, buf: []u8) []const u8 {
 /// Through the template rather than a format, so a long message is cut instead of losing the whole text.
 fn chatText(notification: Notification, wording: []const u8, chat_placeholders: []const Placeholder, fallback: []const u8, buf: []u8) []const u8 {
     return template.render(wording, chat_placeholders, templateValues(notification, null), buf) orelse fallback;
+}
+
+/// The wording leads with the system, so the message drops its name; custom wording still gets the whole message.
+fn intelText(notification: Notification, buf: []u8) []const u8 {
+    var shown = notification;
+    var is_bare = false;
+    var message_buf: [TEXT_MAX]u8 = undefined;
+    var jumps_buf: [JUMPS_TEXT_MAX]u8 = undefined;
+    if (notification.jumps) |jumps| {
+        shown.jumps = if (std.mem.eql(u8, jumps, "1")) withField(&jumps_buf, "{s} jump", jumps, jumps) else withField(&jumps_buf, "{s} jumps", jumps, jumps);
+    }
+    if (notification.target) |system| {
+        if (notification.message) |message| {
+            const trimmed = withoutName(message, system, &message_buf);
+            shown.message = trimmed;
+            is_bare = trimmed.len == 0;
+        }
+    }
+    const is_here = if (notification.jumps) |jumps| std.mem.eql(u8, jumps, "0") else false;
+    const wording = if (is_here)
+        (if (is_bare) CHAT_INTEL_HERE_BARE_WORDING else CHAT_INTEL_HERE_WORDING)
+    else
+        (if (is_bare) CHAT_INTEL_BARE_WORDING else CHAT_INTEL_WORDING);
+    return chatText(shown, wording, &CHAT_INTEL, "Chat intel", buf);
+}
+
+/// `message` with whole-word matches of `name` taken out, in any case, and the punctuation that leaves at its ends; cut to `out`'s length, and the result points into it.
+fn withoutName(message: []const u8, name: []const u8, out: []u8) []const u8 {
+    var length: usize = 0;
+    var index: usize = 0;
+    while (index < message.len) {
+        if (isNameAt(message, name, index)) {
+            index += name.len;
+            if (index < message.len and message[index] == ' ') index += 1;
+            continue;
+        }
+        if (length == out.len) break;
+        out[length] = message[index];
+        length += 1;
+        index += 1;
+    }
+    return std.mem.trim(u8, out[0..length], " ,:;*");
+}
+
+fn isNameAt(message: []const u8, name: []const u8, index: usize) bool {
+    if (!std.ascii.startsWithIgnoreCase(message[index..], name)) return false;
+    const end = index + name.len;
+    const is_start_clear = index == 0 or !isNameByte(message[index - 1]);
+    return is_start_clear and (end == message.len or !isNameByte(message[end]));
+}
+
+/// Hyphens count, as they're part of many system names; bytes of a multi-byte character too.
+fn isNameByte(byte: u8) bool {
+    return std.ascii.isAlphanumeric(byte) or byte == '-' or byte >= 0x80;
 }
 
 fn withField(buf: []u8, comptime format: []const u8, field: ?[]const u8, fallback: []const u8) []const u8 {
@@ -307,6 +382,60 @@ test "defaultText cuts a long chat message rather than dropping it" {
     const long_message: Notification = .{ .notification_type = .ChatKeyword, .channel = "Fleet", .message = "bubble on the gate and more besides" };
     try testing.expectEqualStrings("Fleet: bubble on the gat", defaultText(long_message, &buf));
     try testing.expectEqualStrings("Chat keyword", defaultText(.{ .notification_type = .ChatKeyword }, &buf));
+}
+
+test "defaultText leads intel with the system and how far off it is" {
+    var buf: [64]u8 = undefined;
+    const intel: Notification = .{ .notification_type = .ChatIntel, .target = "Perimeter", .message = "Perimeter 3 hostiles on gate", .jumps = "1" };
+    try testing.expectEqualStrings("Perimeter (1 jump): 3 hostiles on gate", defaultText(intel, &buf));
+    var further = intel;
+    further.jumps = "2";
+    try testing.expectEqualStrings("Perimeter (2 jumps): 3 hostiles on gate", defaultText(further, &buf));
+}
+
+test "defaultText leaves the distance out of intel in a client's own system" {
+    var buf: [64]u8 = undefined;
+    const intel: Notification = .{ .notification_type = .ChatIntel, .target = "Perimeter", .message = "Perimeter 3 hostiles on gate", .jumps = "0" };
+    try testing.expectEqualStrings("Perimeter: 3 hostiles on gate", defaultText(intel, &buf));
+    var bare = intel;
+    bare.message = "Perimeter";
+    try testing.expectEqualStrings("Perimeter", defaultText(bare, &buf));
+}
+
+test "systemLeadLength covers a leading system, in intel alone" {
+    const intel: Notification = .{ .notification_type = .ChatIntel, .target = "Perimeter" };
+    try testing.expectEqual(@as(?usize, 9), systemLeadLength(intel, "Perimeter (1 jump): gang"));
+    try testing.expectEqual(@as(?usize, null), systemLeadLength(intel, "1: Perimeter gang"));
+    try testing.expectEqual(@as(?usize, null), systemLeadLength(.{ .notification_type = .ChatKeyword, .target = "bubble" }, "bubble up"));
+}
+
+test "custom wording gets the bare jump count and the whole message" {
+    var buf: [64]u8 = undefined;
+    const intel: Notification = .{ .notification_type = .ChatIntel, .target = "Perimeter", .message = "Perimeter gang", .jumps = "2" };
+    try testing.expectEqualStrings("2: Perimeter gang", text(intel, .{ .primary = "{jumps}: {message}" }, null, &buf));
+}
+
+test "defaultText shows intel that only named the system without a dangling colon" {
+    var buf: [64]u8 = undefined;
+    const intel: Notification = .{ .notification_type = .ChatIntel, .target = "Perimeter", .message = "Perimeter", .jumps = "1" };
+    try testing.expectEqualStrings("Perimeter (1 jump)", defaultText(intel, &buf));
+}
+
+test "withoutName takes out the whole name in any case, wherever it sits" {
+    var buf: [64]u8 = undefined;
+    try testing.expectEqualStrings("Kllaus Fehrnah", withoutName("Kllaus Fehrnah HED-GP", "HED-GP", &buf));
+    try testing.expectEqualStrings("hostile", withoutName("c-j6mt hostile", "C-J6MT", &buf));
+    try testing.expectEqualStrings("3 hostiles", withoutName("Perimeter, 3 hostiles", "Perimeter", &buf));
+    try testing.expectEqualStrings("spike", withoutName("New Caldari spike", "New Caldari", &buf));
+    try testing.expectEqualStrings("gang gone", withoutName("Hek gang Hek gone", "Hek", &buf));
+    try testing.expectEqualStrings("9+", withoutName("G-Q5JU* 9+", "G-Q5JU", &buf));
+    try testing.expectEqualStrings("Shiroji", withoutName("Shiroji N3-JBX*", "N3-JBX", &buf));
+}
+
+test "withoutName leaves a name inside a longer word or system" {
+    var buf: [64]u8 = undefined;
+    try testing.expectEqualStrings("Hekate gang", withoutName("Hekate gang", "Hek", &buf));
+    try testing.expectEqualStrings("X-1QGA hostile", withoutName("X-1QGA hostile", "1QGA", &buf));
 }
 
 test "text fills custom wording, picking the alt state's own" {

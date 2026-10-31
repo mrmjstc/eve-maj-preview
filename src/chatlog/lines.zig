@@ -121,6 +121,18 @@ pub fn parseChatMessage(line: []const u8) ?ChatMessage {
     return .{ .speaker = speaker, .body = body };
 }
 
+/// EVE pads linked items with two spaces; cut to `out`'s length, and the result points into it.
+pub fn collapseSpaces(text: []const u8, out: []u8) []const u8 {
+    var length: usize = 0;
+    for (text, 0..) |byte, index| {
+        if (length == out.len) break;
+        if (byte == ' ' and index > 0 and text[index - 1] == ' ') continue;
+        out[length] = byte;
+        length += 1;
+    }
+    return out[0..length];
+}
+
 /// Dispatches on the message's first characters, so each line is scanned once.
 pub fn parseGameLine(line: []const u8) GameLine {
     const close = std.mem.find(u8, line, "] ") orelse return .{};
@@ -335,6 +347,15 @@ test "parseChatMessage skips EVE's own lines and anything that isn't a message" 
     try testing.expect(parseChatMessage("[ 2026.10.29 21:27:12 ] EVE System > Channel MOTD: Jita is lovely") == null);
     try testing.expect(parseChatMessage("[ 2026.10.29 21:27:13 ] Some Pilot >  ") == null);
     try testing.expect(parseChatMessage("          Channel Name:    Local") == null);
+}
+
+test "collapseSpaces leaves one space between EVE's linked items" {
+    var buffer: [64]u8 = undefined;
+    try testing.expectEqualStrings("7L3-JS ExEgle Fenrir Hammer cyclone", collapseSpaces("7L3-JS  ExEgle    Fenrir Hammer cyclone", &buffer));
+    try testing.expectEqualStrings("HED-GP clr", collapseSpaces("HED-GP clr", &buffer));
+    try testing.expectEqualStrings("", collapseSpaces("", &buffer));
+    var short: [4]u8 = undefined;
+    try testing.expectEqualStrings("a b ", collapseSpaces("a  b  cdef", &short));
 }
 
 test "channelFile reads a channel name holding underscores, spaces or an ampersand" {

@@ -32,6 +32,7 @@ pub const Glyph = enum {
     speech,
     speaker,
     check,
+    map,
 };
 
 /// The glyph centred in a `box`-sized square, moved onto whole device pixels by `snap` (see snapOffset).
@@ -75,6 +76,19 @@ pub fn snapOffset(context: *ui.Frame, key: ui.Key) ![2]f32 {
 /// The glyph's rows, `#` for a lit pixel.
 fn bitmap(glyph: Glyph) []const []const u8 {
     return switch (glyph) {
+        .map => &.{
+            "..##.......",
+            ".#..#......",
+            ".#..#....##",
+            "..##....#..",
+            "...#...#...",
+            "....#.#....",
+            ".....#.....",
+            "....#.#....",
+            "...#...##..",
+            "..#...#..#.",
+            ".......##..",
+        },
         .star => &.{
             ".....#.....",
             ".....#.....",

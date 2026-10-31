@@ -37,6 +37,9 @@ const TEXT_BUFFER_SIZE = 32;
 pub const NotificationLine = struct {
     text: []const u8 = "",
     color: u32 = 0xFFFFFF,
+    /// Bytes of `text` drawn in lead_color; 0 for none.
+    lead_length: usize = 0,
+    lead_color: u32 = 0,
 };
 
 /// All an overlay depends on except the stat config, which every config edit's cache clear covers.
@@ -376,7 +379,11 @@ pub fn renderOverlay(font_cache: *FontCache, cache: *RenderCache, target_hwnd: w
         layout.select(block.font);
         var y = block.origin.y;
         for (settings.notification_lines[0..settings.notification_line_count], block.line_heights[0..settings.notification_line_count]) |line, line_height| {
-            draw.renderText(overlay.mem_dc, line.text, block.origin.x, y, line.color);
+            if (line.lead_length > 0) {
+                draw.renderTextWithLead(overlay.mem_dc, line.text, line.lead_length, line.lead_color, block.origin.x, y, line.color);
+            } else {
+                draw.renderText(overlay.mem_dc, line.text, block.origin.x, y, line.color);
+            }
             y += @as(i32, @intCast(line_height));
         }
     }
@@ -516,7 +523,7 @@ fn visualEqual(a: RenderSettings, b: RenderSettings) bool {
 fn valuesEqual(comptime T: type, a: T, b: T) bool {
     if (T == []const u8) return stringsEqualFast(a, b);
     // The cached line's text may have been freed; notification_revision catches a change its address and length miss.
-    if (T == NotificationLine) return a.text.ptr == b.text.ptr and a.text.len == b.text.len and a.color == b.color;
+    if (T == NotificationLine) return a.text.ptr == b.text.ptr and a.text.len == b.text.len and a.color == b.color and a.lead_length == b.lead_length and a.lead_color == b.lead_color;
     switch (@typeInfo(T)) {
         .@"struct" => |info| {
             inline for (info.field_names, info.field_types) |name, F| {
@@ -751,6 +758,12 @@ fn notificationLines(out: *[MAX_NOTIFICATION_LINES]NotificationLine, thumbnail: 
         while (lines.next()) |line| : (line_index += 1) {
             if (line_index == MAX_LINES_PER_NOTIFICATION) break;
             out[count] = .{ .text = line, .color = color };
+            if (entry.lead) |lead| {
+                if (line_index == 0 and lead.length <= line.len) {
+                    out[count].lead_length = lead.length;
+                    out[count].lead_color = lead.color;
+                }
+            }
             count += 1;
         }
     }

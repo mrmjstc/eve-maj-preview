@@ -148,6 +148,13 @@ pub fn show(context: *ui.Frame) !void {
     try widgets.hintText(context, .src(@src()), "Empties the history panel.");
     try history.close(context);
 
+    const map = try widgets.openSection(context, "Map Panel", "Show or hide the map. Also in the tray menu.", &style.section);
+    try binding(context, profile_hotkeys, "hotkeyToggleMapPanel");
+    try widgets.hintText(context, .src(@src()), "Shows or hides the map panel.");
+    try binding(context, profile_hotkeys, "hotkeyToggleIntelPanel");
+    try widgets.hintText(context, .src(@src()), "Shows or hides the intel panel.");
+    try map.close(context);
+
     const cycling = try widgets.openSection(context, "Special Cycling", "Step through the excluded characters, or the ones that recently notified.", &style.section);
     try pair(context, profile_hotkeys, "hotkeyPreviousExcluded", "hotkeyNextExcluded", "Steps through only the characters you've excluded.");
     try pair(context, profile_hotkeys, "hotkeyPreviousNotified", "hotkeyCycleNotified", "Characters with a recent alert. Set how recent on the Notifications tab.");

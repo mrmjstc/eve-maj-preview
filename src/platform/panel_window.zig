@@ -1,4 +1,4 @@
-//! A topmost layered panel redrawn into a DIB, shared by the client list and the History Panel: its window, font, bitmap and redraw skipping.
+//! A topmost layered panel redrawn into a DIB, shared by the client list and the History, Map and Intel panels: its window, font, bitmap and redraw skipping.
 const std = @import("std");
 const win32 = @import("win32.zig");
 const fonts = @import("fonts.zig");
@@ -99,12 +99,18 @@ pub const PanelWindow = struct {
     }
 
     /// Null, logged, if the window's position can't be read.
-    pub fn topLeft(self: *const PanelWindow) ?win32.POINT {
+    pub fn bounds(self: *const PanelWindow) ?win32.RECT {
         var rect: win32.RECT = undefined;
         if (!win32.toBool(win32.GetWindowRect(self.hwnd, &rect))) {
-            slog.warn("Failed to read the panel's position, keeping the saved one", .{});
+            slog.warn("Failed to read the panel's position", .{});
             return null;
         }
+        return rect;
+    }
+
+    /// Null, logged, if the window's position can't be read.
+    pub fn topLeft(self: *const PanelWindow) ?win32.POINT {
+        const rect = self.bounds() orelse return null;
         return .{ .x = rect.left, .y = rect.top };
     }
 };

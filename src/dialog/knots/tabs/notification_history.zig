@@ -4,11 +4,13 @@ const config = @import("../../../config.zig");
 const notification = @import("../../../notifications/notification.zig");
 const history_look = @import("../../../panels/history_look.zig");
 const list_look = @import("../../../panels/list_look.zig");
+const panel_look = @import("../../../panels/panel_look.zig");
 const session = @import("../session.zig");
 const bind = @import("../bind.zig");
 const style = @import("../style.zig");
 const widgets = @import("../widgets.zig");
 const color_convert = @import("../color_convert.zig");
+const panel_settings = @import("panel_settings.zig");
 
 const Rect = ui.component.Rect;
 const Text = ui.component.Text;
@@ -24,7 +26,7 @@ const SAMPLES = [_]Sample{
     .{ .name = "Pilot Echo", .notification_type = .TakingDamage, .text = "Taking damage", .age_ms = 95_000 },
     .{ .name = "Pilot Foxtrot", .notification_type = .CargoFull, .text = "Cargo hold full", .age_ms = 4 * 60_000, .merged_count = 3 },
     .{ .name = "Pilot Bravo", .notification_type = .Docking, .text = "Docked", .age_ms = 12 * 60_000 },
-    .{ .name = "Pilot Golf", .notification_type = .ChatIntel, .text = "2j: Perimeter spike 10", .age_ms = 40 * 60_000 },
+    .{ .name = "Pilot Golf", .notification_type = .ChatIntel, .text = "Perimeter (2 jumps): spike 10", .age_ms = 40 * 60_000 },
     .{ .name = "Pilot Charlie", .notification_type = .SystemChange, .text = "Jumped to Perimeter", .age_ms = 2 * 3_600_000 },
     .{ .name = "Pilot Delta", .notification_type = .CycleExclusion, .text = "Excluded from cycling", .age_ms = 3 * 3_600_000 },
 };
@@ -70,12 +72,18 @@ pub fn show(context: *ui.Frame) !void {
     // Laid out like the Client List's own sections, which set up the same kind of panel.
     const is_shown = are_notifications_enabled and ref.get("showNotifInfoPanel");
     try layout(context, ref, is_shown);
-    try visibility(context, ref, is_shown);
+    try panel_settings.visibility(context, ref, .history, is_shown, .{
+        .remember = "rememberNotifInfoPanelPosition",
+        .opacity = "notifInfoPanelOpacity",
+        .without_characters = "hideNotifInfoPanelWhenNoCharacters",
+        .without_focus = "hideNotifInfoPanelWhenNoEveFocus",
+        .delay_ms = "notifInfoPanelHideDebounceMs",
+    });
     try rowSettings(context, ref, is_shown);
 }
 
 fn layout(context: *ui.Frame, ref: DisplayRef, is_shown: bool) !void {
-    const section = try widgets.openSection(context, "Panel Layout", "The panel's size, how many rows it holds, its font, and its filter buttons.", &style.section);
+    const section = try widgets.openSection(context, "Layout", "The panel's size, how many rows it holds, its font, and its filter buttons.", &style.section);
     const options = try widgets.openGroup(context, .src(@src()), is_shown);
     const size = try widgets.openBinding(context, .src(@src()), "Size");
     try bind.unitNumberBox(context, ref, "notifInfoPanelWidth", "px", .{});
@@ -97,21 +105,8 @@ fn layout(context: *ui.Frame, ref: DisplayRef, is_shown: bool) !void {
     try section.close(context);
 }
 
-fn visibility(context: *ui.Frame, ref: DisplayRef, is_shown: bool) !void {
-    const section = try widgets.openSection(context, "Panel Visibility", "Where the panel opens, how see-through it is, and when it hides.", &style.section);
-    const options = try widgets.openGroup(context, .src(@src()), is_shown);
-    try bind.toggle(context, ref, "rememberNotifInfoPanelPosition", "Remember Position");
-    try widgets.hintText(context, .src(@src()), "Opens the panel where you last left it.");
-    try bind.slider(context, ref, "notifInfoPanelOpacity", "Opacity", .{ .display = .percent_of_255 });
-    try widgets.hintText(context, .src(@src()), "Lower lets you see through the panel.");
-    try bind.toggle(context, ref, "hideNotifInfoPanelWhenNoCharacters", "Hide When No Characters Are Logged In");
-    try widgets.hintText(context, .src(@src()), "The panel comes back when a character logs in.");
-    try options.close(context);
-    try section.close(context);
-}
-
 fn rowSettings(context: *ui.Frame, ref: DisplayRef, is_shown: bool) !void {
-    const section = try widgets.openSection(context, "Panel Rows", "How each notification is shown in the panel.", &style.section);
+    const section = try widgets.openSection(context, "Rows", "How each notification is shown in the panel.", &style.section);
     const options = try widgets.openGroup(context, .src(@src()), is_shown);
     try bind.toggle(context, ref, "notifInfoPanelShowTimestamp", "Relative Timestamps");
     try widgets.hintText(context, .src(@src()), "Shows times like \"5m ago\" instead of a fixed clock time.");
@@ -239,7 +234,7 @@ fn rows(context: *ui.Frame, profile: *const config.Config, look: Look) !void {
         const message_color = history_look.messageColor(&profile.thumbnail.notifications, sample.notification_type);
         try context.e(Text{ .selectable = false, .key = key.indexed(2), .content = sample.text, .style = try widgets.textStyle(arena, message_color, look.name_size, .{ .is_grown = true }) });
         if (display.notifInfoPanelShowTimestamp) {
-            const time_text = history_look.relativeTime(try arena.create([history_look.TIME_TEXT_MAX]u8), sample.age_ms);
+            const time_text = panel_look.relativeTime(try arena.create([panel_look.TIME_TEXT_MAX]u8), sample.age_ms);
             try context.e(Text{ .selectable = false, .key = key.indexed(3), .content = time_text, .style = try widgets.textStyle(arena, list_look.MUTED, look.small_size, .{}) });
         }
         try row.close(context);
@@ -256,7 +251,7 @@ fn rows(context: *ui.Frame, profile: *const config.Config, look: Look) !void {
 /// The category filter buttons, filled while their category shows.
 fn footer(context: *ui.Frame, display: *const config.DisplayConfig, look: Look) !void {
     const arena = context.arena();
-    const gap = look.scaled(history_look.FILTER_GAP);
+    const gap = look.scaled(panel_look.BUTTON_GAP);
     const footer_style = try arena.create(ui.Style);
     footer_style.* = .{
         .width = .grow(),
@@ -277,8 +272,8 @@ fn footer(context: *ui.Frame, display: *const config.DisplayConfig, look: Look) 
             .height = .grow(),
             .justify = .center,
             .@"align" = .center,
-            .radius = .{ .fixed = look.scaled(@intCast(history_look.FILTER_RADIUS)) },
-            .background = if (is_enabled) color_convert.solid(history_look.FILTER_ON) else .transparent,
+            .radius = .{ .fixed = look.scaled(@intCast(panel_look.BUTTON_RADIUS)) },
+            .background = if (is_enabled) color_convert.solid(panel_look.BUTTON_ON) else .transparent,
             .overflow = .hidden,
         };
         const key = FILTER_KEY.indexed(index);

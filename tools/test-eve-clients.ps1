@@ -1008,6 +1008,8 @@ function Get-ChatAlertTestSteps {
         @{ Channel = 'Fleet'; Speaker = 'Fleet Commander'; Text = 'bubbles everywhere'; Expect = 'NOTHING (keywords match whole words)' }
         @{ Channel = 'Fleet'; Speaker = 'Fleet Commander'; Text = 'Warp In now'; Expect = 'Chat Keyword (warp in, a phrase in any case)' }
         @{ Channel = 'Fleet'; Speaker = 'Fleet Commander'; Text = 'warp in to Muvolailen'; Expect = "Chat Intel only on $Near (Muvolailen, 1j): intel beats a keyword" }
+        @{ Channel = 'east.imperium'; Speaker = 'Scout One'; Text = 'Perimeter clr?'; Expect = 'NOTHING (a question: the Map Panel pin on Perimeter stays red)' }
+        @{ Channel = 'east.imperium'; Speaker = 'Scout One'; Text = 'Perimeter clr'; Expect = 'No alert (clr is excluded), but the Map Panel pin on Perimeter turns yellow and shrinks again' }
     )
 }
 
