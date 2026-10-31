@@ -178,6 +178,8 @@ pub const GlobalConfig = struct {
     oreTable: std.ArrayList(OrePriceConfig) = .empty,
     /// Unix seconds of the last successful price fetch, or 0 if never.
     orePricesFetchedAtSeconds: i64 = 0,
+    /// Here rather than in a profile, since profiles get shared; never logged.
+    evestarsToken: []const u8 = "",
     dialogX: ?i32 = null,
     dialogY: ?i32 = null,
 
@@ -274,7 +276,9 @@ pub const GlobalConfig = struct {
     }
 
     pub fn logSettings(self: *const GlobalConfig) void {
-        wire.logJson(self.allocator, self);
+        var shown = self.*;
+        shown.evestarsToken = "";
+        wire.logJson(self.allocator, &shown);
     }
 
     pub fn updateLastUsed(self: *GlobalConfig, io: std.Io, profile_name: []const u8) !void {

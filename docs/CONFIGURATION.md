@@ -727,6 +727,7 @@ A window must pass both lists; a filter with both empty matches nothing. Non-EVE
 | `urlHotkeys[].uploadClipboard` | bool | `false` | POST clipboard text to `url` as form field `Paste anything`, put the result URL on the clipboard and open it; falls back to opening `url`. For `adashboard.info`. |
 | `oreTable` | `[{name, price}]` | `[]` | ISK/unit overrides, 0–1e12. A name also covers its grade variants (`Veldspar` → `Veldspar II-Grade`). Others use built-in Jita prices. |
 | `orePricesFetchedAtSeconds` | int | `0` | Unix time of the last Fetch Prices. |
+| `evestarsToken` | string | `""` | Eve Stars API token. Set, it adds the Map Panel's system search and right-click destinations. Plain text in this file, left out of the log. |
 
 ## Command line and protocol
 

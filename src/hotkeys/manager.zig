@@ -2,7 +2,7 @@
 const std = @import("std");
 const win32 = @import("../platform/win32.zig");
 const vk = @import("../platform/virtual_keys.zig");
-const scout = @import("../clients/scout.zig");
+const scout_mod = @import("../clients/scout.zig");
 const actions = @import("../clients/actions.zig");
 const exclusions_mod = @import("../clients/exclusions.zig");
 const config_mod = @import("../config.zig");
@@ -47,12 +47,14 @@ pub const HotkeyManager = struct {
     /// A function rather than a pointer, since the config window's draft it may return comes and goes.
     live_global: *const fn () *const config_mod.GlobalConfig,
     /// Borrowed from `app`.
-    scout: *scout.Scout,
+    scout: *scout_mod.Scout,
     hotkey_map: std.AutoHashMap(c_int, HotkeyAction),
     /// The suspend hotkey itself stays live.
     are_hotkeys_suspended: bool = false,
     /// Whether the config dialog is recording a new hotkey; kept separate from are_hotkeys_suspended so the two don't clobber each other.
     is_dialog_suspended: bool = false,
+    /// Whether a text box outside the config dialog has the keyboard.
+    is_typing_suspended: bool = false,
     cycle: cycling.CycleState,
     /// Borrowed from `app`, which keeps them across the Save that recreates the manager.
     exclusions: *exclusions_mod.Exclusions,
@@ -75,7 +77,7 @@ pub const HotkeyManager = struct {
             .live_global = live_global,
             .scout = &app.scout,
             .hotkey_map = .init(allocator),
-            .cycle = try cycling.CycleState.init(allocator, config.hotkeyGroups.items.len),
+            .cycle = try .init(allocator, config.hotkeyGroups.items.len),
             .exclusions = &app.exclusions,
             .notified_queue = &app.notifications.notified_queue,
             .last_non_eve_foreground = &app.focus.last_non_eve_foreground,
@@ -344,7 +346,7 @@ pub const HotkeyManager = struct {
     }
 
     /// Per tick: hands the hook thread the windows and setting the require-EVE-focus check needs, whenever they change, so it can let keys through to other apps.
-    pub fn syncFocusFilter(self: *HotkeyManager, windows: []const scout.EveWindow) void {
+    pub fn syncFocusFilter(self: *HotkeyManager, windows: []const scout_mod.EveWindow) void {
         var filter: hook_bindings.FocusFilter = .{
             .is_required = self.live().hotkeys.requireEveFocus,
             .exempt_id = bindings.globalId(.suspend_hotkeys),
@@ -453,7 +455,7 @@ pub const HotkeyManager = struct {
         }
     }
 
-    pub fn foregroundEveWindow(self: *const HotkeyManager) ?scout.EveWindow {
+    pub fn foregroundEveWindow(self: *const HotkeyManager) ?scout_mod.EveWindow {
         const foreground_hwnd = win32.GetForegroundWindow() orelse return null;
         for (self.scout.getWindows()) |eve_window| {
             if (eve_window.hwnd == foreground_hwnd) return eve_window;
@@ -527,6 +529,21 @@ pub const HotkeyManager = struct {
         keyboard_hook.disarmWinKeyCapture();
         self.registerHotkeys(hwnd) catch |err| {
             slog.err("Failed to re-register hotkeys after dialog recording: {}", .{err});
+        };
+    }
+
+    /// Unbinds rather than gates, since the hooks would otherwise swallow the letters typed; hotkeys already suspended stay as they are.
+    pub fn typingSuspendHotkeys(self: *HotkeyManager) void {
+        if (self.are_hotkeys_suspended or self.is_dialog_suspended or self.is_typing_suspended) return;
+        self.is_typing_suspended = true;
+        self.unregisterAll();
+    }
+
+    pub fn typingResumeHotkeys(self: *HotkeyManager, hwnd: win32.HWND) void {
+        if (!self.is_typing_suspended) return;
+        self.is_typing_suspended = false;
+        self.registerHotkeys(hwnd) catch |err| {
+            slog.err("Failed to re-register hotkeys after typing: {}", .{err});
         };
     }
 

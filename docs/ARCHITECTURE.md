@@ -122,6 +122,7 @@ Throttled work uses `util/schedule.zig`: intervals measure from the tick's start
 | Clipboard upload | `hotkeys/paste_upload.zig`, one per press, at most 4 at once | None; slots claimed through atomics |
 | Dialog helpers | `pickers.zig`, `prices.zig`, `portraits.zig`, one-shot | `WM_KNOTS_COMMAND` |
 | Map stats | `map/stats_feed.zig`, one-shot every 15 minutes while the Map Panel shows | Atomic snapshot swap, taken on the tick |
+| Eve Stars calls | `map/evestars_feed.zig`, one-shot per search, character list or send, one at a time for each | Atomic reply swap, taken on the tick or the panel's 100ms timer |
 
 TTS and sound share `notifications/worker.zig`'s lazily started `Worker`. Alerts go through `pushAlert`, which drops the oldest waiting alerts past a limit (speech: the profile's `tts_max_waiting`; sound: 3); voice settings go through `push` and are never dropped.
 
@@ -170,7 +171,7 @@ Rendering:
 - `panels/list_view.zig` + `list_look.zig`: `ClientList` and `ThumbnailsAndList` view modes; App owns the window, built and torn down with the thumbnail set. `list_look` is pure and shared with the dialog preview.
 - `panels/panel_look.zig` + `panel_chrome.zig`: what the History, Map and Intel panels share, so they match: fonts, header, footer buttons, frame, and when they show.
 - `panels/history_rows.zig`: the rows the History and Intel panels list. The Map Panel draws them in a sidebar; `panels/intel_panel.zig` is the Intel Panel's own window for when it's detached.
-- `panels/map_panel.zig` + `map_look.zig`: the Map Panel; App owns it, so it survives thumbnail set rebuilds. Draws from `map/`: `universe.zig` (embedded map, built by `.claude/tools/build_universe.py`), `layout.zig` (positions and label placement on CCP's flattened map), `stats.zig` + `stats_feed.zig` (ESI figures), `intel_pins.zig` (systems named in intel channels). Hover redraws from `WM_MOUSEMOVE`, since the idle tick is a second apart.
+- `panels/map_panel.zig` + `map_look.zig`: the Map Panel; App owns it, so it survives thumbnail set rebuilds. Draws from `map/`: `universe.zig` (embedded map, built by `.claude/tools/build_universe.py`), `layout.zig` (positions and label placement on CCP's flattened map), `stats.zig` + `stats_feed.zig` (ESI figures), `intel_pins.zig` (systems named in intel channels), `evestars.zig` + `evestars_feed.zig` + `destinations.zig` (the Eve Stars route API). Hover redraws from `WM_MOUSEMOVE`, since the idle tick is a second apart. Its menu and search results are drawn in the panel, which never activates; only the search takes the keyboard, unbinding the hotkeys while it's open.
 - `thumbnail/hover_zoom.zig` + `layout/zoom.zig`: click-through enlarged copy under the cursor.
 
 Layout (`layout/`, mostly pure):

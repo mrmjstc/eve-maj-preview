@@ -7,6 +7,7 @@ const panel_look = @import("panel_look.zig");
 const universe = @import("../map/universe.zig");
 const layout = @import("../map/layout.zig");
 const stats_mod = @import("../map/stats.zig");
+const evestars = @import("../map/evestars.zig");
 const color = @import("../util/color.zig");
 const utf8 = @import("../util/utf8.zig");
 
@@ -24,6 +25,13 @@ pub const TOOLTIP_MAX_LINES = 9;
 pub const TOOLTIP_PADDING: i32 = 6;
 /// Fits a line's longest text, cut to size past that.
 pub const TOOLTIP_LINE_MAX = 128;
+/// Between a popup's rows.
+pub const POPUP_ROW_GAP: i32 = 4;
+/// So the results don't resize as names come and go.
+pub const SEARCH_WIDTH: i32 = 280;
+const SEARCH_BOX_WIDTH: i32 = 180;
+/// Between the search box and the map's edges.
+const SEARCH_BOX_MARGIN: i32 = 6;
 const PICKER_LINE_PADDING: i32 = 4;
 const NODE_RADIUS: f32 = 3.5;
 /// How much bigger the busiest system's marker is than a quiet one's.
@@ -35,6 +43,8 @@ const INTEL_HALO_PEAK_RADIUS: f32 = 28;
 const MAX_CHARACTERS_NAMED = 4;
 /// Fits securityText's longest result.
 const SECURITY_TEXT_MAX = 8;
+/// Between a search result's parts.
+const HIT_GAP = "  ";
 
 // The colours below are 0xAARRGGBB, not premultiplied.
 pub const EDGE_LOCAL: u32 = 0xFF4A4D55;
@@ -54,6 +64,18 @@ const SECURITY_COLORS = [_]u32{ 0xFFF00000, 0xFFD73000, 0xFFF04800, 0xFFF06000, 
 /// In the footer, left to right.
 pub const Button = enum { regions, security, kills, npc_kills, jumps, follow };
 pub const BUTTON_ORDER = std.enums.values(Button);
+
+/// A stretch of a row's text in its own colour, as byte offsets into it.
+pub const Accent = struct {
+    start: usize,
+    end: usize,
+    color: u32,
+};
+
+pub const HitLabel = struct {
+    text: evestars.Text,
+    security: Accent,
+};
 
 /// The panel's sizes for the current settings, in pixels; its width and height are the configured ones.
 pub const Metrics = struct {
@@ -96,6 +118,41 @@ pub const PickerGrid = struct {
             const region: RegionIndex = @intCast(index);
             const box = self.cell(region);
             if (x >= box.left and x < box.right and y >= box.top and y < box.bottom) return region;
+        }
+        return null;
+    }
+};
+
+/// Rows over the map, running on into more columns if the area is too short: the destination menu and search results.
+pub const PopupGrid = struct {
+    box: Box,
+    row_count: usize,
+    row_height: i32,
+    column_width: i32,
+    rows_per_column: i32,
+
+    /// Beside `x`,`y`, like a tooltip; `row_height` must be above zero.
+    pub fn init(area: Box, x: i32, y: i32, row_count: usize, column_width: i32, row_height: i32) PopupGrid {
+        const signed_count: i32 = @intCast(@max(1, row_count));
+        const rows_that_fit = @max(1, @divTrunc(area.bottom - area.top - 2 * TOOLTIP_PADDING, row_height));
+        const rows_per_column = @min(signed_count, rows_that_fit);
+        const column_count = std.math.divCeil(i32, signed_count, rows_per_column) catch unreachable;
+        const box = tooltipBox(area, x, y, column_count * column_width + 2 * TOOLTIP_PADDING, rows_per_column * row_height + 2 * TOOLTIP_PADDING);
+        return .{ .box = box, .row_count = row_count, .row_height = row_height, .column_width = column_width, .rows_per_column = rows_per_column };
+    }
+
+    pub fn cell(self: PopupGrid, index: usize) Box {
+        const signed_index: i32 = @intCast(index);
+        const left = self.box.left + TOOLTIP_PADDING + @divTrunc(signed_index, self.rows_per_column) * self.column_width;
+        const top = self.box.top + TOOLTIP_PADDING + @mod(signed_index, self.rows_per_column) * self.row_height;
+        return .{ .left = left, .top = top, .right = left + self.column_width, .bottom = top + self.row_height };
+    }
+
+    /// Searched linearly, so it agrees with `cell`.
+    pub fn rowAt(self: PopupGrid, x: i32, y: i32) ?usize {
+        for (0..self.row_count) |index| {
+            const box = self.cell(index);
+            if (x >= box.left and x < box.right and y >= box.top and y < box.bottom) return index;
         }
         return null;
     }
@@ -258,6 +315,44 @@ pub fn exitTooltip(from: SystemIndex, destination: SystemIndex) Tooltip {
     return tooltip;
 }
 
+/// In the bottom right of `area`, the map, narrowing with it to leave the map room.
+pub fn searchBox(area: Box, height: i32) Box {
+    const width = @min(SEARCH_BOX_WIDTH, @divTrunc(area.right - area.left, 3));
+    const right = area.right - SEARCH_BOX_MARGIN;
+    const bottom = area.bottom - SEARCH_BOX_MARGIN;
+    return .{ .left = right - width, .top = bottom - height, .right = right, .bottom = bottom };
+}
+
+pub fn targetLabel(target: *const evestars.Target) evestars.Text {
+    const name = target.name.slice();
+    return switch (target.kind) {
+        .group => .print("{s} ({d})", .{ name, target.character_count }),
+        .character => if (target.can_send) .print("{s}", .{name}) else .print("{s} (can't send)", .{name}),
+    };
+}
+
+pub fn targetColor(target: *const evestars.Target) u32 {
+    return if (target.can_send) list_look.NAME else list_look.MUTED;
+}
+
+pub fn hitLabel(system: SystemIndex) HitLabel {
+    const info = universe.systemInfo(system);
+    const name = universe.systemName(system);
+    var security_buf: [SECURITY_TEXT_MAX]u8 = undefined;
+    const security = securityText(&security_buf, info.security_tenths);
+    const start = name.len + HIT_GAP.len;
+    return .{
+        .text = .print("{s}" ++ HIT_GAP ++ "{s}" ++ HIT_GAP ++ "{s}", .{ name, security, universe.regionName(info.region) }),
+        .security = .{ .start = start, .end = start + security.len, .color = securityColor(info.security_tenths) },
+    };
+}
+
+pub fn noticeTooltip(notice: *const evestars.Notice) Tooltip {
+    var tooltip: Tooltip = .{ .title_color = if (notice.is_failure) INTEL else list_look.NAME };
+    for (0..notice.line_count) |index| tooltip.add("{s}", .{notice.line(index)});
+    return tooltip;
+}
+
 /// Beside `x`,`y` while there's room, else on the other side; always inside `area`.
 pub fn tooltipBox(area: Box, x: i32, y: i32, width: i32, height: i32) Box {
     const beside = x + TOOLTIP_PADDING * 2 + width;
@@ -312,6 +407,52 @@ test "buttonAt finds every button and misses the gaps" {
         try testing.expectEqual(@as(?Button, button), buttonAt(600, span.left));
     }
     try testing.expectEqual(@as(?Button, null), buttonAt(600, 0));
+}
+
+test "the search box sits in the map's bottom right, and narrows with it" {
+    const wide = searchBox(TEST_AREA, 24);
+    try testing.expectEqual(SEARCH_BOX_WIDTH, wide.right - wide.left);
+    try testing.expectEqual(TEST_AREA.right - SEARCH_BOX_MARGIN, wide.right);
+    try testing.expectEqual(TEST_AREA.bottom - SEARCH_BOX_MARGIN, wide.bottom);
+    try testing.expectEqual(@as(i32, 24), wide.bottom - wide.top);
+    const narrow = searchBox(.{ .left = 0, .top = 0, .right = 300, .bottom = 200 }, 24);
+    try testing.expectEqual(@as(i32, 100), narrow.right - narrow.left);
+}
+
+test "a popup too tall for its area runs on into another column" {
+    const grid: PopupGrid = .init(.{ .left = 0, .top = 0, .right = 400, .bottom = 100 }, 10, 10, 12, 120, 20);
+    try testing.expectEqual(@as(i32, 4), grid.rows_per_column);
+    for (0..12) |index| {
+        const box = grid.cell(index);
+        try testing.expectEqual(@as(?usize, index), grid.rowAt(box.left, box.top));
+    }
+    try testing.expectEqual(grid.cell(0).top, grid.cell(4).top);
+    try testing.expect(grid.cell(4).left > grid.cell(0).left);
+}
+
+test "a popup finds no row outside itself" {
+    const grid: PopupGrid = .init(TEST_AREA, 100, 100, 3, 120, 20);
+    try testing.expectEqual(@as(?usize, null), grid.rowAt(0, 0));
+}
+
+test "a target's label says why it may not get the route" {
+    var target: evestars.Target = .{ .id = 1, .name = .print("Alpha", .{}), .kind = .character };
+    try testing.expectEqualStrings("Alpha", targetLabel(&target).slice());
+    target.can_send = false;
+    try testing.expectEqualStrings("Alpha (can't send)", targetLabel(&target).slice());
+    target.kind = .group;
+    target.character_count = 4;
+    try testing.expectEqualStrings("Alpha (4)", targetLabel(&target).slice());
+}
+
+test "a search result names the system, its security and its region" {
+    try testing.expectEqualStrings("Jita  0.9  The Forge", hitLabel(universe.findSystem("Jita").?).text.slice());
+}
+
+test "a search result's accent covers its security alone" {
+    const hit = hitLabel(universe.findSystem("Jita").?);
+    try testing.expectEqualStrings("0.9", hit.text.slice()[hit.security.start..hit.security.end]);
+    try testing.expectEqual(SECURITY_COLORS[9], hit.security.color);
 }
 
 test "securityColor keeps every reading on the scale" {

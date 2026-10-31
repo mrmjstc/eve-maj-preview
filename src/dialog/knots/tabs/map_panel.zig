@@ -28,7 +28,18 @@ pub fn show(context: *ui.Frame) !void {
         .delay_ms = "mapPanelHideDebounceMs",
     });
     try behavior(context, ref, is_shown);
+    try eveStars(context, is_shown);
     try intelPanel(context, ref);
+}
+
+fn eveStars(context: *ui.Frame, is_shown: bool) !void {
+    const section = try widgets.openSection(context, "Eve Stars", "Sets destinations in your game clients through evestars.net.", &style.section);
+    const options = try widgets.openGroup(context, .src(@src()), is_shown);
+    try bind.text(context, session.global(), "evestarsToken", "API Token", "evestars_...");
+    try widgets.hintText(context, .src(@src()), "Make one on the Eve Stars site, under Pilot then API. It's kept on this PC, outside your profiles.");
+    try widgets.hintText(context, .src(@src()), "Right-click a system on the map to set it as a group's or character's destination. Adds a search box to the map.");
+    try options.close(context);
+    try section.close(context);
 }
 
 fn intelPanel(context: *ui.Frame, ref: DisplayRef) !void {

@@ -17,6 +17,8 @@ const layout_mod = @import("../map/layout.zig");
 const stats_mod = @import("../map/stats.zig");
 const stats_feed = @import("../map/stats_feed.zig");
 const intel_pins = @import("../map/intel_pins.zig");
+const evestars = @import("../map/evestars.zig");
+const destinations_mod = @import("../map/destinations.zig");
 const app = @import("../app.zig");
 const activation = @import("../control/activation.zig");
 const scout = @import("../clients/scout.zig");
@@ -27,6 +29,8 @@ const pixel_buffer = @import("../util/pixel_buffer.zig");
 const log = @import("../log.zig");
 
 const Box = layout_mod.Box;
+const Destinations = destinations_mod.Destinations;
+const GlobalConfig = config_mod.GlobalConfig;
 const Layout = layout_mod.Layout;
 const MapMetric = types.MapMetric;
 const PanelWindow = panel_window.PanelWindow;
@@ -47,6 +51,9 @@ const DEFAULT_REGION_ID = 10000002;
 const RING_GAP: f32 = 3;
 const RING_THICKNESS: f32 = 1.5;
 const EXIT_RADIUS: f32 = 2;
+/// While a popup or an Eve Stars call is open, as the app's tick can be a second apart.
+const PUMP_TIMER_ID: usize = 1;
+const PUMP_INTERVAL_MS: win32.UINT = 100;
 /// Shown instead of the real pins while mapPanelShowIntel is off.
 const NO_PINS: intel_pins.IntelPins = .{};
 
@@ -66,19 +73,35 @@ const Scene = struct {
     active_source_hwnd: ?win32.HWND = null,
     stats: ?*const Snapshot,
     pins: *const intel_pins.IntelPins,
+    destinations: *const Destinations,
 };
 
 const Hover = struct {
     kind: Kind = .none,
-    /// A `nodes` or `exits` place, a RegionIndex, a Button's value or an `intel_rows` place, by kind.
+    /// A `nodes` or `exits` place, a RegionIndex, a Button's value, an `intel_rows` place or a popup row, by kind.
     index: u16 = 0,
 
-    const Kind = enum { none, node, exit, region, button, intel_row };
+    const Kind = enum { none, node, exit, region, button, intel_row, popup_row, search_box };
 
     fn eql(self: Hover, other: Hover) bool {
         return self.kind == other.kind and self.index == other.index;
     }
 };
+
+/// Right-clicking a system opens this over the map.
+const DestinationMenu = struct {
+    system: SystemIndex,
+    anchor: win32.POINT,
+};
+
+const PopupRow = struct {
+    text: evestars.Text,
+    color: u32,
+    accent: ?map_look.Accent = null,
+};
+
+/// Whether the search gives the keyboard back to what had it, or something else already took it.
+const SearchEnding = enum { hand_back, keyboard_gone };
 
 /// The shared fonts, and the map's own for the names on it.
 const MapText = struct {
@@ -97,17 +120,22 @@ pub const MapPanel = struct {
     pins: intel_pins.IntelPins = .{},
     /// What the Intel Panel lists, drawn here while it's inside the map; borrowed, outlives the panel.
     intel_history: ?*const history.NotificationHistory = null,
+    /// Holds the Eve Stars token; borrowed, outlives the panel.
+    global: ?*const GlobalConfig = null,
+    destinations: Destinations = .{},
 
     /// Creates the window if `store`'s profile shows it.
-    pub fn start(self: *MapPanel, allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE, intel_history: *const history.NotificationHistory) void {
+    pub fn start(self: *MapPanel, allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE, intel_history: *const history.NotificationHistory, global: *const GlobalConfig) void {
         self.intel_history = intel_history;
+        self.global = global;
         if (store.live.display.showMapPanel) self.createWindow(allocator, store, instance);
     }
 
-    /// Only once the feed's thread has finished.
+    /// Only once the feeds' threads have finished.
     pub fn deinit(self: *MapPanel) void {
         self.destroyWindow();
         self.feed.deinit();
+        self.destinations.deinit();
         if (self.stats) |snapshot| stats_feed.destroySnapshot(snapshot);
         self.stats = null;
     }
@@ -165,6 +193,7 @@ pub const MapPanel = struct {
             if (self.stats) |old| stats_feed.destroySnapshot(old);
             self.stats = fresh;
         }
+        self.pump(allocator);
 
         const window = if (self.window) |*w| w else return;
         if (!self.isVisible(config, presence.any_character_logged_in)) {
@@ -175,10 +204,16 @@ pub const MapPanel = struct {
         self.redraw(thumbnail_set);
     }
 
+    /// Per tick, and on the pump timer: takes Eve Stars' replies and starts what's due.
+    fn pump(self: *MapPanel, allocator: std.mem.Allocator) void {
+        self.destinations.poll(allocator, tokenOf(self.global), win32.Ticks.now().ms);
+    }
+
     /// Also from the window's own input, since the tick can be a second apart with no clients running.
     fn redraw(self: *MapPanel, thumbnail_set: ?*const ThumbnailSet) void {
         const window = if (self.window) |*w| w else return;
-        var scene: Scene = .{ .stats = self.stats, .pins = if (window.config.display.mapPanelShowIntel) &self.pins else &NO_PINS };
+        window.setPumping(window.isPopupOpen() or self.destinations.isWaiting());
+        var scene: Scene = .{ .stats = self.stats, .pins = if (window.config.display.mapPanelShowIntel) &self.pins else &NO_PINS, .destinations = &self.destinations };
         if (thumbnail_set) |active_set| {
             scene.thumbnails = active_set.thumbnails.items;
             scene.active_source_hwnd = active_set.active_source_hwnd;
@@ -189,14 +224,17 @@ pub const MapPanel = struct {
     }
 
     fn createWindow(self: *MapPanel, allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE) void {
-        self.window = MapPanelWindow.init(allocator, store, instance, self.intel_history) catch |err| {
+        self.window = MapPanelWindow.init(allocator, store, instance, self.intel_history, self.global) catch |err| {
             slog.err("Failed to create Map Panel window: {}", .{err});
             return;
         };
     }
 
     fn destroyWindow(self: *MapPanel) void {
-        if (self.window) |*window| window.deinit();
+        if (self.window) |*window| {
+            if (app.g_app) |running| window.closeSearch(running, .hand_back);
+            window.deinit();
+        }
         self.window = null;
     }
 };
@@ -232,8 +270,22 @@ pub const MapPanelWindow = struct {
     /// The sidebar's rows, from the last render.
     intel_rows: [history.CAPACITY]history_rows.Row = undefined,
     intel_row_count: usize = 0,
+    /// See MapPanel.global.
+    global: ?*const GlobalConfig,
+    /// Null while it's closed.
+    menu: ?DestinationMenu = null,
+    /// The search box is open, and has the keyboard.
+    is_searching: bool = false,
+    /// The picked row of the search's hits.
+    search_index: usize = 0,
+    /// What had the keyboard before the search, to hand it back.
+    search_return_hwnd: ?win32.HWND = null,
+    /// Where the open popup's rows are, from the last render.
+    popup: ?map_look.PopupGrid = null,
+    /// PUMP_TIMER_ID is running.
+    is_pumping: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE, intel_history: ?*const history.NotificationHistory) !MapPanelWindow {
+    pub fn init(allocator: std.mem.Allocator, store: *config_mod.ProfileStore, instance: win32.HINSTANCE, intel_history: ?*const history.NotificationHistory, global: ?*const GlobalConfig) !MapPanelWindow {
         const display = &store.live.display;
         try registerWindowClass(instance);
         const panel = try PanelWindow.init(allocator, instance, MAP_PANEL_WINDOW_CLASS, "EVE Map", .{
@@ -249,6 +301,7 @@ pub const MapPanelWindow = struct {
             .region = regionFromSettings(display.mapPanelRegionId),
             .settled_region_id = display.mapPanelRegionId,
             .intel_history = intel_history,
+            .global = global,
         };
     }
 
@@ -343,7 +396,44 @@ pub const MapPanelWindow = struct {
         return .init(self.bodyArea(sizes), sizes.header_height);
     }
 
+    fn hasEveStars(self: *const MapPanelWindow) bool {
+        return tokenOf(self.global).len > 0;
+    }
+
+    fn isPopupOpen(self: *const MapPanelWindow) bool {
+        return self.menu != null or self.is_searching;
+    }
+
+    fn setPumping(self: *MapPanelWindow, is_wanted: bool) void {
+        if (is_wanted == self.is_pumping) return;
+        if (!is_wanted) {
+            _ = win32.KillTimer(self.panel.hwnd, PUMP_TIMER_ID);
+            self.is_pumping = false;
+            return;
+        }
+        self.is_pumping = win32.SetTimer(self.panel.hwnd, PUMP_TIMER_ID, PUMP_INTERVAL_MS, null) != 0;
+        if (!self.is_pumping) slog.warn("Failed to start the Map Panel's timer, so Eve Stars' replies wait for the tick", .{});
+    }
+
+    fn searchBox(self: *const MapPanelWindow, sizes: map_look.Metrics) Box {
+        return map_look.searchBox(self.bodyArea(sizes), sizes.header_height);
+    }
+
+    /// The region picker has the whole area, so the box is only there over the map.
+    fn isOverSearchBox(self: *const MapPanelWindow, x: i32, y: i32) bool {
+        if (!self.hasEveStars() or self.is_picking_region) return false;
+        const box = self.searchBox(map_look.metrics(&self.config.display));
+        return x >= box.left and x < box.right and y >= box.top and y < box.bottom;
+    }
+
+    /// While a popup is open, only it and the search box can be hit.
     fn hitTest(self: *const MapPanelWindow, x: i32, y: i32) Hover {
+        if (self.isOverSearchBox(x, y)) return .{ .kind = .search_box };
+        if (self.isPopupOpen()) {
+            const grid = self.popup orelse return .{};
+            const row_index = grid.rowAt(x, y) orelse return .{};
+            return .{ .kind = .popup_row, .index = @intCast(row_index) };
+        }
         const sizes = map_look.metrics(&self.config.display);
         if (y >= self.panel.height - sizes.footer_height) {
             const button = map_look.buttonAt(self.panel.width, x) orelse return .{};
@@ -388,9 +478,15 @@ pub const MapPanelWindow = struct {
         const hit = self.hitTest(x, y);
         switch (hit.kind) {
             .none => {
+                if (self.isPopupOpen()) {
+                    self.closePopup(running);
+                    return;
+                }
                 self.is_picking_region = false;
                 self.focus_system = null;
             },
+            .popup_row => self.pressPopupRow(running, hit.index),
+            .search_box => self.openSearch(running),
             .button => self.pressButton(@fromBackingInt(@intCast(hit.index))),
             .region => self.chooseRegion(@intCast(hit.index)),
             .intel_row => self.openIntelRow(hit.index),
@@ -408,6 +504,100 @@ pub const MapPanelWindow = struct {
                 self.chooseRegion(exit.region);
                 self.focus_system = exit.destination;
             },
+        }
+    }
+
+    fn handleRightClick(self: *MapPanelWindow, running: *app.App, x: i32, y: i32) void {
+        const hit = self.hitTest(x, y);
+        if (self.isPopupOpen()) {
+            self.closePopup(running);
+            return;
+        }
+        if (hit.kind != .node or !self.hasEveStars()) return;
+        const node = self.layout.nodes[hit.index];
+        self.menu = .{ .system = node.system, .anchor = .{ .x = node.x, .y = node.y } };
+        self.hover = .{};
+        running.map_panel.destinations.refreshTargets(running.allocator, tokenOf(self.global), win32.Ticks.now().ms);
+    }
+
+    fn closePopup(self: *MapPanelWindow, running: *app.App) void {
+        self.menu = null;
+        self.popup = null;
+        self.closeSearch(running, .hand_back);
+    }
+
+    /// Row 0 of the menu is its heading.
+    fn pressPopupRow(self: *MapPanelWindow, running: *app.App, row_index: usize) void {
+        const destinations = &running.map_panel.destinations;
+        const menu = self.menu orelse return self.pickHit(running, row_index);
+        const targets = destinations.targets.slice();
+        if (row_index == 0 or row_index > targets.len) return;
+        self.closePopup(running);
+        destinations.send(running.allocator, tokenOf(self.global), &targets[row_index - 1], menu.system, win32.Ticks.now().ms);
+    }
+
+    /// A click doesn't activate the panel, so the keyboard has to be asked for; the hotkeys let go of it meanwhile.
+    fn openSearch(self: *MapPanelWindow, running: *app.App) void {
+        if (self.is_searching) return;
+        self.menu = null;
+        self.popup = null;
+        self.is_picking_region = false;
+        running.map_panel.destinations.beginSearch();
+        self.search_index = 0;
+        self.search_return_hwnd = win32.GetForegroundWindow();
+        self.is_searching = true;
+        if (running.hotkey_manager) |manager| manager.typingSuspendHotkeys();
+        if (!win32.toBool(win32.SetForegroundWindow(self.panel.hwnd))) slog.warn("Failed to take the keyboard for the map's search", .{});
+        _ = win32.SetFocus(self.panel.hwnd);
+    }
+
+    fn closeSearch(self: *MapPanelWindow, running: *app.App, ending: SearchEnding) void {
+        if (!self.is_searching) return;
+        self.is_searching = false;
+        self.popup = null;
+        if (running.hotkey_manager) |manager| {
+            if (running.timer_hwnd) |hwnd| manager.typingResumeHotkeys(hwnd);
+        }
+        switch (ending) {
+            .keyboard_gone => {},
+            .hand_back => if (self.search_return_hwnd) |hwnd| {
+                _ = win32.SetForegroundWindow(hwnd);
+            },
+        }
+    }
+
+    /// Shows the hit on the map; a hit list that has since shrunk picks nothing.
+    fn pickHit(self: *MapPanelWindow, running: *app.App, index: usize) void {
+        const hits = running.map_panel.destinations.hits.slice();
+        if (index >= hits.len) return;
+        const system = hits[index];
+        self.closePopup(running);
+        self.selectSystem(system);
+    }
+
+    /// `wParam` is WM_CHAR's character; names are ASCII, so anything else is ignored.
+    fn onSearchChar(self: *MapPanelWindow, running: *app.App, wParam: win32.WPARAM) void {
+        if (!self.is_searching) return;
+        const destinations = &running.map_panel.destinations;
+        const now_ms = win32.Ticks.now().ms;
+        if (wParam == win32.VK_BACK) {
+            destinations.eraseChar(now_ms);
+        } else if (wParam >= ' ' and wParam < 0x7F) {
+            destinations.typeChar(@intCast(wParam), now_ms);
+        } else {
+            return;
+        }
+        self.search_index = 0;
+    }
+
+    fn onSearchKey(self: *MapPanelWindow, running: *app.App, wParam: win32.WPARAM) void {
+        if (!self.is_searching) return;
+        switch (wParam) {
+            win32.VK_ESCAPE => self.closePopup(running),
+            win32.VK_RETURN => self.pickHit(running, self.search_index),
+            win32.VK_UP => self.search_index -|= 1,
+            win32.VK_DOWN => self.search_index = @min(self.search_index + 1, running.map_panel.destinations.hits.count -| 1),
+            else => {},
         }
     }
 
@@ -470,6 +660,15 @@ pub const MapPanelWindow = struct {
         hasher.update(std.mem.asBytes(&self.hover.kind));
         hasher.update(std.mem.asBytes(&self.hover.index));
         if (self.focus_system) |system| hasher.update(std.mem.asBytes(&system));
+        hasher.update(std.mem.asBytes(&self.hasEveStars()));
+        hasher.update(std.mem.asBytes(&self.is_searching));
+        hasher.update(std.mem.asBytes(&self.search_index));
+        hasher.update(std.mem.asBytes(&scene.destinations.revision));
+        if (self.menu) |menu| {
+            hasher.update(std.mem.asBytes(&menu.system));
+            hasher.update(std.mem.asBytes(&menu.anchor.x));
+            hasher.update(std.mem.asBytes(&menu.anchor.y));
+        }
         for (self.marks[0..self.mark_count]) |mark| {
             hasher.update(std.mem.asBytes(&mark.system));
             hasher.update(std.mem.asBytes(&mark.color));
@@ -583,9 +782,12 @@ pub const MapPanelWindow = struct {
                 self.drawPickerLabels(dc, sizes, fonts.chrome);
             } else {
                 self.drawLabels(dc, scene, fonts.label_font, now_ms);
+                self.drawSearchBox(bitmap, scene.destinations, sizes, fonts.chrome);
                 self.drawTooltip(bitmap, scene, sizes, fonts.chrome, now_ms);
             }
             if (sidebar) |box| self.drawIntelRows(dc, fonts.chrome, box, sizes, intel_entries);
+            self.drawPopup(bitmap, scene.destinations, sizes, fonts.chrome);
+            self.drawNotice(bitmap, scene.destinations, sizes, fonts.chrome);
         }
 
         panel_chrome.finish(canvas);
@@ -638,6 +840,22 @@ pub const MapPanelWindow = struct {
         else
             null;
         panel_chrome.drawHeader(dc, text, sizes.header_height, panel_width, title, status);
+    }
+
+    /// Filled after the labels it covers, so GDI has to finish them first.
+    fn drawSearchBox(self: *const MapPanelWindow, bitmap: *const gdi_overlay.OverlayBitmap, destinations: *const Destinations, sizes: map_look.Metrics, text: panel_chrome.Text) void {
+        if (!self.hasEveStars()) return;
+        const box = self.searchBox(sizes);
+        const box_width = box.right - box.left;
+        _ = win32.GdiFlush();
+        pixel_buffer.fillRoundedRect(bitmap.canvas(), @intCast(box.left), @intCast(box.top), @intCast(box_width), @intCast(box.bottom - box.top), panel_look.BUTTON_RADIUS, panel_look.BUTTON_ON);
+
+        const dc = bitmap.mem_dc;
+        _ = win32.SelectObject(dc, text.small_font);
+        const label: evestars.Text = if (self.is_searching) .print("{s}_", .{destinations.query()}) else .print("Search systems", .{});
+        const label_color = if (self.is_searching) list_look.NAME else list_look.MUTED;
+        const y = box.top + @divTrunc(box.bottom - box.top - text.small_height, 2);
+        _ = panel_chrome.drawFitted(dc, label.slice(), box.left + panel_look.BUTTON_GAP, y, label_color, box_width - 2 * panel_look.BUTTON_GAP);
     }
 
     fn drawPickerFills(self: *const MapPanelWindow, canvas: pixel_buffer.Canvas, sizes: map_look.Metrics) void {
@@ -737,7 +955,7 @@ pub const MapPanelWindow = struct {
 
     fn tooltipFor(self: *const MapPanelWindow, scene: Scene, now_ms: u64) ?map_look.Tooltip {
         switch (self.hover.kind) {
-            .none, .region, .button, .intel_row => return null,
+            .none, .region, .button, .intel_row, .popup_row, .search_box => return null,
             .exit => {
                 const exit = self.layout.exits[self.hover.index];
                 return map_look.exitTooltip(self.layout.nodes[exit.from].system, exit.destination);
@@ -771,6 +989,18 @@ pub const MapPanelWindow = struct {
     /// Filled after the labels it covers, so GDI has to finish them first.
     fn drawTooltip(self: *const MapPanelWindow, bitmap: *const gdi_overlay.OverlayBitmap, scene: Scene, sizes: map_look.Metrics, text: panel_chrome.Text, now_ms: u64) void {
         const tooltip = self.tooltipFor(scene, now_ms) orelse return;
+        self.drawTextBox(bitmap, &tooltip, self.hoverAnchor(), sizes, text);
+    }
+
+    /// Over the map's bottom left, out of the search box's way.
+    fn drawNotice(self: *const MapPanelWindow, bitmap: *const gdi_overlay.OverlayBitmap, destinations: *const Destinations, sizes: map_look.Metrics, text: panel_chrome.Text) void {
+        const notice = if (destinations.notice) |*shown| shown else return;
+        const area = self.bodyArea(sizes);
+        const tooltip = map_look.noticeTooltip(notice);
+        self.drawTextBox(bitmap, &tooltip, .{ .x = area.left, .y = area.bottom }, sizes, text);
+    }
+
+    fn drawTextBox(self: *const MapPanelWindow, bitmap: *const gdi_overlay.OverlayBitmap, tooltip: *const map_look.Tooltip, anchor: win32.POINT, sizes: map_look.Metrics, text: panel_chrome.Text) void {
         const dc = bitmap.mem_dc;
         _ = win32.SelectObject(dc, text.name_font);
 
@@ -780,7 +1010,6 @@ pub const MapPanelWindow = struct {
         const line_count: i32 = @intCast(tooltip.line_count);
         const box_height = line_count * text.name_height + 2 * map_look.TOOLTIP_PADDING;
 
-        const anchor = self.hoverAnchor();
         const box = map_look.tooltipBox(self.bodyArea(sizes), anchor.x, anchor.y, box_width, box_height);
         _ = win32.GdiFlush();
         const canvas = bitmap.canvas();
@@ -794,16 +1023,101 @@ pub const MapPanelWindow = struct {
         }
     }
 
+    fn popupRowCount(self: *const MapPanelWindow, destinations: *const Destinations) usize {
+        if (self.menu != null) return 1 + @max(1, destinations.targets.count);
+        return @max(1, destinations.hits.count);
+    }
+
+    fn popupRow(self: *const MapPanelWindow, destinations: *const Destinations, index: usize) PopupRow {
+        if (self.menu) |menu| {
+            if (index == 0) return .{ .text = .print("Set destination: {s}", .{universe.systemName(menu.system)}), .color = list_look.MUTED };
+            const targets = destinations.targets.slice();
+            if (targets.len == 0) return .{ .text = .print("{s}", .{if (destinations.feed.characters.isBusy()) "Loading..." else "No characters"}), .color = list_look.MUTED };
+            const target = &targets[index - 1];
+            return .{ .text = map_look.targetLabel(target), .color = map_look.targetColor(target) };
+        }
+        const hits = destinations.hits.slice();
+        if (hits.len == 0) return .{ .text = .print("{s}", .{searchStatus(destinations)}), .color = list_look.MUTED };
+        const hit = map_look.hitLabel(hits[index]);
+        return .{ .text = hit.text, .color = list_look.NAME, .accent = hit.security };
+    }
+
+    /// The row that's lit, if any; the menu's heading and the search's status line never are.
+    fn litPopupRow(self: *const MapPanelWindow, destinations: *const Destinations) ?usize {
+        if (self.is_searching and destinations.hits.count == 0) return null;
+        if (self.hover.kind == .popup_row and (self.is_searching or self.hover.index > 0)) return self.hover.index;
+        return if (self.is_searching) self.search_index else null;
+    }
+
+    /// Measures its rows here, so hit testing has this render's `popup` to go by.
+    fn drawPopup(self: *MapPanelWindow, bitmap: *const gdi_overlay.OverlayBitmap, destinations: *const Destinations, sizes: map_look.Metrics, text: panel_chrome.Text) void {
+        if (!self.isPopupOpen()) return;
+        const dc = bitmap.mem_dc;
+        _ = win32.SelectObject(dc, text.name_font);
+        const row_count = self.popupRowCount(destinations);
+        var column_width: i32 = if (self.is_searching) map_look.SEARCH_WIDTH else 0;
+        for (0..row_count) |index| {
+            const row = self.popupRow(destinations, index);
+            column_width = @max(column_width, wideTextWidth(dc, row.text.slice()) + map_look.TOOLTIP_PADDING);
+        }
+
+        const area = self.bodyArea(sizes);
+        const search_box = self.searchBox(sizes);
+        // Past the box by the gap the grid leaves, so with no room there the results open above it, flush with its right edge.
+        const anchor: win32.POINT = if (self.menu) |menu| menu.anchor else .{ .x = search_box.right + 2 * map_look.TOOLTIP_PADDING, .y = search_box.top };
+        const grid: map_look.PopupGrid = .init(area, anchor.x, anchor.y, row_count, column_width, text.name_height + map_look.POPUP_ROW_GAP);
+        self.popup = grid;
+
+        _ = win32.GdiFlush();
+        const canvas = bitmap.canvas();
+        const box = grid.box;
+        pixel_buffer.fillRect(canvas, @intCast(box.left), @intCast(box.top), @intCast(box.right - box.left), @intCast(box.bottom - box.top), map_look.TOOLTIP_FILL);
+        pixel_buffer.drawRectOutline(canvas, box.left, box.top, @intCast(box.right - box.left), @intCast(box.bottom - box.top), 1, list_look.DIVIDER);
+        if (self.litPopupRow(destinations)) |lit| {
+            if (lit < row_count) {
+                const cell = grid.cell(lit);
+                pixel_buffer.fillRect(canvas, @intCast(cell.left), @intCast(cell.top), @intCast(cell.right - cell.left), @intCast(cell.bottom - cell.top), panel_look.BUTTON_ON);
+            }
+        }
+        for (0..row_count) |index| {
+            const row = self.popupRow(destinations, index);
+            const cell = grid.cell(index);
+            const y = cell.top + @divTrunc(map_look.POPUP_ROW_GAP, 2);
+            drawPopupRow(dc, &row, cell.left + @divTrunc(map_look.TOOLTIP_PADDING, 2), y, cell.right - cell.left - map_look.TOOLTIP_PADDING);
+        }
+    }
+
     fn hoverAnchor(self: *const MapPanelWindow) win32.POINT {
         return switch (self.hover.kind) {
             .node => .{ .x = self.layout.nodes[self.hover.index].x, .y = self.layout.nodes[self.hover.index].y },
             .exit => .{ .x = self.layout.exits[self.hover.index].x, .y = self.layout.exits[self.hover.index].y },
-            .none, .region, .button, .intel_row => .{ .x = 0, .y = 0 },
+            .none, .region, .button, .intel_row, .popup_row, .search_box => .{ .x = 0, .y = 0 },
         };
     }
 };
 
 var g_is_class_registered: bool = false;
+
+fn drawPopupRow(dc: win32.HDC, row: *const PopupRow, x: i32, y: i32, max_width: i32) void {
+    const text = row.text.slice();
+    const accent = row.accent orelse {
+        _ = panel_chrome.drawFitted(dc, text, x, y, row.color, max_width);
+        return;
+    };
+    const lead_width = panel_chrome.drawFitted(dc, text[0..accent.start], x, y, row.color, max_width);
+    const accent_width = panel_chrome.drawFitted(dc, text[accent.start..accent.end], x + lead_width, y, accent.color, max_width - lead_width);
+    const tail_x_offset = lead_width + accent_width;
+    _ = panel_chrome.drawFitted(dc, text[accent.end..], x + tail_x_offset, y, row.color, max_width - tail_x_offset);
+}
+
+fn tokenOf(global: ?*const GlobalConfig) []const u8 {
+    return if (global) |settings| settings.evestarsToken else "";
+}
+
+fn searchStatus(destinations: *const Destinations) []const u8 {
+    if (destinations.search_due_ms != null or destinations.feed.search.isBusy()) return "Searching...";
+    return if (destinations.query_length < destinations_mod.MIN_QUERY_LENGTH) "Type a system's name" else "No systems found";
+}
 
 fn regionFromSettings(region_id: u32) RegionIndex {
     return universe.findRegionById(region_id) orelse universe.findRegionById(DEFAULT_REGION_ID) orelse 0;
@@ -858,6 +1172,42 @@ fn mapPanelWindowProc(hwnd: win32.HWND, msg: win32.UINT, wParam: win32.WPARAM, l
             const running = app.g_app orelse return 0;
             const window = mapWindow() orelse return 0;
             window.handleClick(running, win32.lparamX(lParam), win32.lparamY(lParam));
+            redrawAfterInput(running);
+            return 0;
+        },
+        win32.WM_RBUTTONDOWN => {
+            const running = app.g_app orelse return 0;
+            const window = mapWindow() orelse return 0;
+            window.handleRightClick(running, win32.lparamX(lParam), win32.lparamY(lParam));
+            redrawAfterInput(running);
+            return 0;
+        },
+        win32.WM_CHAR => {
+            const running = app.g_app orelse return 0;
+            const window = mapWindow() orelse return 0;
+            window.onSearchChar(running, wParam);
+            redrawAfterInput(running);
+            return 0;
+        },
+        win32.WM_KEYDOWN => {
+            const running = app.g_app orelse return 0;
+            const window = mapWindow() orelse return 0;
+            window.onSearchKey(running, wParam);
+            redrawAfterInput(running);
+            return 0;
+        },
+        win32.WM_KILLFOCUS => {
+            const running = app.g_app orelse return 0;
+            const window = mapWindow() orelse return 0;
+            // Also sent as the window is destroyed, when its bitmap has gone; closing it ends any search first.
+            if (!window.is_searching) return 0;
+            window.closeSearch(running, .keyboard_gone);
+            redrawAfterInput(running);
+            return 0;
+        },
+        win32.WM_TIMER => {
+            const running = app.g_app orelse return 0;
+            running.map_panel.pump(running.allocator);
             redrawAfterInput(running);
             return 0;
         },

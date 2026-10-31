@@ -30,6 +30,8 @@ pub const FetchOptions = struct {
     payload: ?[]const u8 = null,
     /// Borrows from the caller.
     extra_headers: []const Header = &.{},
+    /// How long the response may take, for a server that works before it answers; null for TIMEOUT_MS.
+    receive_timeout_ms: ?c_int = null,
 };
 
 pub const Response = struct {
@@ -38,6 +40,8 @@ pub const Response = struct {
     body: []u8,
     /// Where the response came from, after any redirects; owned, freed in deinit.
     url: [:0]u8,
+    /// From a Retry-After header given in seconds.
+    retry_after_seconds: ?u32 = null,
 
     pub fn deinit(self: *const Response, allocator: std.mem.Allocator) void {
         allocator.free(self.body);
@@ -49,6 +53,7 @@ const RequestError = error{
     InvalidUrl,
     ConnectFailed,
     OpenRequestFailed,
+    SetTimeoutsFailed,
     SendRequestFailed,
     ReceiveResponseFailed,
     QueryStatusFailed,
@@ -132,6 +137,10 @@ pub const Session = struct {
         const request = win32.WinHttpOpenRequest(connection, verb, object, null, null, null, flags) orelse return winHttpFailure(win32_error, error.OpenRequestFailed);
         defer _ = win32.WinHttpCloseHandle(request);
 
+        if (options.receive_timeout_ms) |timeout_ms| {
+            if (!win32.toBool(win32.WinHttpSetTimeouts(request, TIMEOUT_MS, TIMEOUT_MS, TIMEOUT_MS, timeout_ms))) return winHttpFailure(win32_error, error.SetTimeoutsFailed);
+        }
+
         const headers = try headerBlock(allocator, options);
         defer allocator.free(headers);
         const payload = options.payload orelse "";
@@ -152,7 +161,7 @@ pub const Session = struct {
         const body = try readBody(allocator, request, win32_error);
         errdefer allocator.free(body);
         const final_url = try finalUrl(allocator, request, win32_error);
-        return .{ .status = status, .body = body, .url = final_url };
+        return .{ .status = status, .body = body, .url = final_url, .retry_after_seconds = retryAfterSeconds(request) };
     }
 };
 
@@ -160,6 +169,14 @@ pub const Session = struct {
 fn winHttpFailure(win32_error: *DWORD, err: RequestError) RequestError {
     win32_error.* = win32.GetLastError();
     return if (win32_error.* == win32.ERROR_WINHTTP_TIMEOUT) error.TimedOut else err;
+}
+
+/// Null when the header is absent or holds a date, which is most replies, so it isn't a failure.
+fn retryAfterSeconds(request: HINTERNET) ?u32 {
+    var seconds: DWORD = 0;
+    var size: DWORD = @sizeOf(DWORD);
+    const has_seconds = win32.toBool(win32.WinHttpQueryHeaders(request, win32.WINHTTP_QUERY_RETRY_AFTER | win32.WINHTTP_QUERY_FLAG_NUMBER, null, &seconds, &size, null));
+    return if (has_seconds) seconds else null;
 }
 
 /// "Name: value\r\n" lines for WinHttpSendRequest; caller frees.
