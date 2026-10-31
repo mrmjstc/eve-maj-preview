@@ -496,6 +496,8 @@
   "Text": "Tekst",
   "Text Color": "Kolor tekstu",
   "Reset uses the Notification text's color on the Appearance tab.": "Reset przywraca kolor tekstu Powiadomienie z zakładki Wygląd.",
+  "Show Text": "Pokaż tekst",
+  "Off hides the text on thumbnails and the client list. Borders, sound, speech and Notification History still work.": "Wyłączenie ukrywa tekst na miniaturach i liście klientów. Obramowania, dźwięk, mowa i historia powiadomień działają dalej.",
   "The color of this text.": "Kolor tego tekstu.",
   "Used while unique colors are off.": "Używany, gdy unikalne kolory są wyłączone.",
   "Font": "Czcionka",

@@ -496,6 +496,8 @@
   "Text": "Text",
   "Text Color": "Textfarbe",
   "Reset uses the Notification text's color on the Appearance tab.": "Zurücksetzen nutzt die Farbe des Benachrichtigung-Texts im Aussehen-Tab.",
+  "Show Text": "Text anzeigen",
+  "Off hides the text on thumbnails and the client list. Borders, sound, speech and Notification History still work.": "Aus blendet den Text auf Thumbnails und in der Client-Liste aus. Rahmen, Sound, Sprachausgabe und der Benachrichtigungsverlauf funktionieren weiter.",
   "The color of this text.": "Die Farbe dieses Textes.",
   "Used while unique colors are off.": "Gilt, solange eindeutige Farben aus sind.",
   "Font": "Schriftart",

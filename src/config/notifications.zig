@@ -7,6 +7,8 @@ const ranges_mod = @import("ranges.zig");
 
 pub const NotificationTypeConfig = struct {
     enabled: bool = true,
+    /// Off leaves its border, sound, speech and history entry, for an alert with no words on screen.
+    show_text: bool = true,
     duration_ms: u32 = 10000,
     suppress_when_focused: bool = false,
     suppress_when_clicked: bool = false,

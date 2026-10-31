@@ -744,7 +744,7 @@ fn overlaySize(config: *const config_mod.Config, thumbnail: *const ThumbnailWind
 fn notificationLines(out: *[MAX_NOTIFICATION_LINES]NotificationLine, thumbnail: *const ThumbnailWindow, is_focused: bool, base_color: u32) usize {
     var count: usize = 0;
     for (thumbnail.notifications.items()) |entry| {
-        if (entry.suppress_when_focused and is_focused) continue;
+        if (!entry.shows_text or (entry.suppress_when_focused and is_focused)) continue;
         const color = entry.text_color_override orelse base_color;
         var lines = std.mem.splitScalar(u8, entry.text, '\n');
         var line_index: usize = 0;

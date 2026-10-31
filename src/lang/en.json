@@ -496,6 +496,8 @@
   "Text": "Text",
   "Text Color": "Text Color",
   "Reset uses the Notification text's color on the Appearance tab.": "Reset uses the Notification text's color on the Appearance tab.",
+  "Show Text": "Show Text",
+  "Off hides the text on thumbnails and the client list. Borders, sound, speech and Notification History still work.": "Off hides the text on thumbnails and the client list. Borders, sound, speech and Notification History still work.",
   "The color of this text.": "The color of this text.",
   "Used while unique colors are off.": "Used while unique colors are off.",
   "Font": "Font",

@@ -196,6 +196,7 @@ pub const ListWindow = struct {
                 hashString(&hasher, notification.text);
                 hasher.update(std.mem.asBytes(&notification.border_color_override));
                 hasher.update(std.mem.asBytes(&notification.text_color_override));
+                hasher.update(std.mem.asBytes(&notification.shows_text));
             }
         }
 
@@ -344,9 +345,9 @@ pub const ListWindow = struct {
         const small_y = row_top + @divTrunc(sizes.row_height - text.small_height, 2);
         const right_x = column_left + sizes.column_width - list_look.PADDING_X;
 
-        // One slot only: the newest notification wins, then stats, then exclusion, then the system.
+        // One slot only: the newest notification with text wins, then stats, then exclusion, then the system.
         var notification_buffer: [TEXT_BUFFER_SIZE]u8 = undefined;
-        const newest = if (display.listViewShowNotifications) thumbnail.notifications.newest() else null;
+        const newest = if (display.listViewShowNotifications) thumbnail.notifications.newestWithText() else null;
         if (newest) |notification| {
             drawTextRight(dc, template.oneLine(notification.text, &notification_buffer), right_x, small_y, notification.text_color_override orelse display.listViewNotificationColor, text_left);
         } else if (readings.len > 0) {

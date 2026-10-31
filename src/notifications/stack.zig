@@ -20,6 +20,7 @@ pub const ActiveNotification = struct {
     suppress_when_focused: bool,
     suppress_when_clicked: bool,
     reveals_thumbnail: bool = false,
+    shows_text: bool = true,
     border_color_override: ?u32 = null,
     text_color_override: ?u32 = null,
     show_border: bool = true,
@@ -35,6 +36,7 @@ pub const ActiveNotification = struct {
             .suppress_when_focused = type_config.suppress_when_focused,
             .suppress_when_clicked = type_config.suppress_when_clicked,
             .reveals_thumbnail = type_config.show_hidden_thumbnail,
+            .shows_text = type_config.show_text,
             .border_color_override = type_config.border_color,
             .text_color_override = type_config.text_color,
             .show_border = type_config.show_border,
@@ -73,6 +75,14 @@ pub const NotificationStack = struct {
     /// Governs the thumbnail's Alert border; older entries only add text lines.
     pub fn newest(self: *const NotificationStack) ?ActiveNotification {
         return if (self.len > 0) self.entries[0] else null;
+    }
+
+    /// Can be older than newest(), whose border still leads.
+    pub fn newestWithText(self: *const NotificationStack) ?ActiveNotification {
+        for (self.items()) |entry| {
+            if (entry.shows_text) return entry;
+        }
+        return null;
     }
 
     pub fn revealsThumbnail(self: *const NotificationStack) bool {
@@ -226,6 +236,18 @@ test "dismissing log-driven entries keeps the user's own actions" {
     try testing.expectEqual(1, notifications.len);
     try testing.expectEqual(notification.NotificationType.ProfileSwitch, notifications.entries[0].notification_type);
     try testing.expect(!notifications.dismissLogDriven(testing.allocator));
+}
+
+test "newestWithText skips entries without text, which newest still returns" {
+    var notifications: NotificationStack = .{};
+    defer notifications.deinit(testing.allocator);
+    try testing.expect(notifications.newestWithText() == null);
+    notifications.push(testing.allocator, try testEntry(.FleetInvite, false, 0));
+    var silent = try testEntry(.FleetFollow, false, 0);
+    silent.shows_text = false;
+    notifications.push(testing.allocator, silent);
+    try testing.expectEqual(notification.NotificationType.FleetFollow, notifications.newest().?.notification_type);
+    try testing.expectEqual(notification.NotificationType.FleetInvite, notifications.newestWithText().?.notification_type);
 }
 
 test "pushing a type already shown replaces its entry" {

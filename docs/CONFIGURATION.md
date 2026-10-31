@@ -200,6 +200,7 @@ Event popups on thumbnails, from game and chat logs (needs [chatlog](#chatlog)) 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
 | `enabled` | bool | `true` | | |
+| `show_text` | bool | `true` | | Show the text on thumbnails and the client list. Off keeps the border, sound, speech and history entry. |
 | `duration_ms` | int | `10000`; `3000` for user-action types | 0–60000 | |
 | `throttle_ms` | int | `10000`; `0` for user-action types | 0–300000 | Per thumbnail, from the last one shown. `0` = off. |
 | `suppress_when_focused` | bool | `false` | | Skip while that client has focus. |

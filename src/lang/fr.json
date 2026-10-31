@@ -496,6 +496,8 @@
   "Text": "Texte",
   "Text Color": "Couleur du texte",
   "Reset uses the Notification text's color on the Appearance tab.": "Réinitialiser reprend la couleur du texte Notification de l'onglet Apparence.",
+  "Show Text": "Afficher le texte",
+  "Off hides the text on thumbnails and the client list. Borders, sound, speech and Notification History still work.": "Désactivé masque le texte sur les vignettes et la liste des clients. Les bordures, le son, la voix et l'historique des notifications continuent de fonctionner.",
   "The color of this text.": "La couleur de ce texte.",
   "Used while unique colors are off.": "Utilisée tant que les couleurs uniques sont désactivées.",
   "Font": "Police",

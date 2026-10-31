@@ -350,6 +350,8 @@ fn customText(context: *ui.Frame, ref: TypeRef, notification_type: NotificationT
     const primary_sample = notification.sample(notification_type);
     const alt_state = notification.altState(notification_type);
     const group = try widgets.openFieldGroup(context, .str("knots.events.text"), "Custom Text");
+    try bind.toggle(context, ref, "show_text", "Show Text");
+    try widgets.hintText(context, .src(@src()), "Off hides the text on thumbnails and the client list. Borders, sound, speech and Notification History still work.");
     try textBox(context, ref, notification_type, .custom_text, primary_sample, alt_state != null);
     if (alt_state) |state| {
         var alt_sample = primary_sample;
@@ -365,8 +367,10 @@ fn customText(context: *ui.Frame, ref: TypeRef, notification_type: NotificationT
         alt_sample.state = state;
         try preview(context, notification_type, .custom_text_alt, ref.get("custom_text_alt"), alt_sample);
     }
+    const shown_text = try widgets.openGroup(context, .src(@src()), ref.get("show_text"));
     try bind.optionalColor(context, ref, "text_color", "Text Color", session.profile().ptr.thumbnail.notifications.color);
     try widgets.hintText(context, .src(@src()), "Reset uses the Notification text's color on the Appearance tab.");
+    try shown_text.close(context);
     try group.close(context);
 }
 

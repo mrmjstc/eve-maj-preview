@@ -496,6 +496,8 @@
   "Text": "Текст",
   "Text Color": "Цвет текста",
   "Reset uses the Notification text's color on the Appearance tab.": "Сброс возвращает цвет текста «Уведомление» с вкладки «Внешний вид».",
+  "Show Text": "Показывать текст",
+  "Off hides the text on thumbnails and the client list. Borders, sound, speech and Notification History still work.": "Выключение скрывает текст на миниатюрах и в списке клиентов. Рамки, звук, озвучивание и история уведомлений продолжают работать.",
   "The color of this text.": "Цвет этого текста.",
   "Used while unique colors are off.": "Используется, пока уникальные цвета выключены.",
   "Font": "Шрифт",

@@ -496,6 +496,8 @@
   "Text": "Texto",
   "Text Color": "Color de texto",
   "Reset uses the Notification text's color on the Appearance tab.": "Restablecer usa el color del texto Notificación de la pestaña Apariencia.",
+  "Show Text": "Mostrar texto",
+  "Off hides the text on thumbnails and the client list. Borders, sound, speech and Notification History still work.": "Desactivado oculta el texto en las miniaturas y la lista de clientes. Los bordes, el sonido, la voz y el historial de notificaciones siguen funcionando.",
   "The color of this text.": "El color de este texto.",
   "Used while unique colors are off.": "Se usa mientras los colores únicos están desactivados.",
   "Font": "Fuente",
